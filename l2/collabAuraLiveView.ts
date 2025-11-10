@@ -60,6 +60,11 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
         this.setEvents();
     }
 
+    connectedCallback() {
+        super.connectedCallback();
+        this.setEvents();
+    }
+
     render() {
         const lang = this.getMessageKey(messages);
         this.msg = messages[lang];
@@ -118,7 +123,6 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
     }
 
     private async checkToLoadPage(pageName: string, moduleName: string, modulePath: string, project: number, target: string) {
-
         let tabActual = this.tabs[this.actualTab];
         const _target = !target ? moduleName : target;
 
@@ -245,10 +249,8 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
     }
 
     private async load() {
-
         const tabActual = this.tabs[this.actualTab];
         if (!this.iframe) return;
-        this.setEvents();
 
         const doc = this.iframe?.contentDocument;
         if (!doc) return;
@@ -291,6 +293,8 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
                 this.loadPage(tabActual.pageInitial);
             }
         } catch (err: any) {
+
+            console.info(err);
             // this.setError(err.message);
 
         } finally {
@@ -343,6 +347,7 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
             this.toogleLoading(false);
         } catch (err: any) {
             // this.setError(err.message);
+            console.info(err);
             this.toogleLoading(false);
         }
     }
@@ -409,6 +414,7 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
 
         } catch (err: any) {
             // this.setError(err.message);
+            console.info(err);
             this.toogleLoading(false);
         }
     }

@@ -4,6 +4,8 @@ import { createAllModels } from './_100554_collabLibModel';
 import { createStorFile, IReqCreateStorFile } from './_100554_collabLibStor';
 import { getGlobalCss, getTokensCss } from './_100554_designSystemBase';
 import { getDependenciesByHtmlFile } from './_100554_libCompile';
+import { getProjectConfig, getProjectModuleConfig } from './_100554_libCommom';
+
 import { convertTagToFileName } from './_100554_utilsLit';
 
 let esBuild: any;
@@ -465,21 +467,21 @@ async function getAllPages(project: number, modulePath: string) {
 }
 
 async function getProjectModule(project: number, moduleName: string): Promise<IModuleInfo> {
-    const keyToImportProject = `./_${project}_project`;
-    const moduleProject = await import(`./${keyToImportProject}`);
+
+
+    const moduleProject = await getProjectConfig(project)
     if (!moduleProject) throw new Error(`_${project}_project not found`);
     if (!moduleProject.modules) throw new Error(`No modules configured`);
     const moduleConfig = moduleProject.modules.find((item: any) => item.name === moduleName);
     if (!moduleConfig) throw new Error(`Not found module in project: ${moduleName}`);
 
-    const keyToImportModule = `./_${project}_${moduleConfig.path}_module`;
-    const moduleInfo = await import(`./${keyToImportModule}`);
+    const moduleInfo = await getProjectModuleConfig(moduleConfig.path, project)
     if (!moduleInfo) throw new Error(`Not found module config : ${moduleName}`);
 
     const rc: IModuleInfo = {
         name: moduleName,
         path: moduleConfig.path,
-        theme: moduleInfo.moduleConfig.theme
+        theme: moduleInfo.theme
     }
     return rc;
 }
