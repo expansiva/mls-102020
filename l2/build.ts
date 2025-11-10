@@ -13,7 +13,7 @@ export const DISTFOLDER = 'wwwroot';
 
 export async function buildModule(project: number, moduleName: string) {
 
-    await loadEsBuild();
+    await loadEsbuild();
     const moduleConfig = await getProjectModule(project, moduleName);
     const allPages = await getAllPages(project, moduleConfig.path) || [];
     let buildRequired: boolean = false;
@@ -64,6 +64,11 @@ export async function buildModule(project: number, moduleName: string) {
                 needBuild = await checkOrganismInPageIsOutdated(storFiles.defs.references?.widgets || [], dtHtmlDist, dtJsDist, storFiles.html.inLocalStorage, storFiles.ts.inLocalStorage);
             }
         }
+
+        console.info({
+            needBuild,
+            page: storFiles.ts.shortName
+        })
 
         if (needBuild) {
             buildRequired = true;
@@ -163,65 +168,65 @@ async function executeEsBuild(importsMap: Record<string, string>, valids: string
 
             build.onResolve({ filter: /.*/ }, (args: any) => {
 
-            
-                    if (valids.includes(args.path)) {
-                        return {
-                            path: args.path,
-                            namespace: 'virtual',
-                        };
-                    }
 
-                    if (args.path.startsWith("_") &&
-                        !args.importer.startsWith("https://")) {
-                        return {
-                            path: args.path.replace('_', '/_'),
-                            namespace: 'virtual',
-                        };
-                    }
+                if (valids.includes(args.path)) {
+                    return {
+                        path: args.path,
+                        namespace: 'virtual',
+                    };
+                }
 
-                    if ((args.path.startsWith("./") || args.path.startsWith("../")) &&
-                        !args.importer.startsWith("https://") && !importsMap[args.importer]) {
+                if (args.path.startsWith("_") &&
+                    !args.importer.startsWith("https://")) {
+                    return {
+                        path: args.path.replace('_', '/_'),
+                        namespace: 'virtual',
+                    };
+                }
 
-                        const url = new URL(args.path, 'file:' + args.importer);
-                        let path = url.pathname;
+                if ((args.path.startsWith("./") || args.path.startsWith("../")) &&
+                    !args.importer.startsWith("https://") && !importsMap[args.importer]) {
 
-                        if (!(/_(\d+)_/.test(path))) {
+                    const url = new URL(args.path, 'file:' + args.importer);
+                    let path = url.pathname;
 
-                            const info = mls.l2.getPath(args.importer.replace('/l2/', '').replace('/', ''));
+                    if (!(/_(\d+)_/.test(path))) {
 
-                            if (!info.project) info.project = mls.actualProject as number;
-                            
-                            if (path.indexOf(`_${info.project}_`) < 0) {
-                                path = url.pathname.replace('/', `/_${info.project}_`)
-                            }
+                        const info = mls.l2.getPath(args.importer.replace('/l2/', '').replace('/', ''));
+
+                        if (!info.project) info.project = mls.actualProject as number;
+
+                        if (path.indexOf(`_${info.project}_`) < 0) {
+                            path = url.pathname.replace('/', `/_${info.project}_`)
                         }
-
-                        return { path, namespace: 'virtual' };
-
                     }
 
-                    // import url externa
-                    if ((
-                        args.path.startsWith("./") ||
-                        args.path.startsWith("../") ||
-                        args.path.startsWith("/")) &&
-                        args.importer.startsWith("https://")) {
+                    return { path, namespace: 'virtual' };
 
-                        const url = new URL(args.path, args.importer);
-                        return { path: url.href, namespace: 'virtual' };
+                }
 
-                    }
+                // import url externa
+                if ((
+                    args.path.startsWith("./") ||
+                    args.path.startsWith("../") ||
+                    args.path.startsWith("/")) &&
+                    args.importer.startsWith("https://")) {
 
-                    // import url externa
-                    if (args.path.startsWith("/") && importsMap[args.importer]) {
-                        const url = new URL(args.path, importsMap[args.importer]);
-                        return { path: url.href, namespace: 'virtual' };
-                    }
+                    const url = new URL(args.path, args.importer);
+                    return { path: url.href, namespace: 'virtual' };
 
-                    // url externa
-                    if (args.path.startsWith("http")) {
-                        return { path: args.path, namespace: 'virtual' };
-                    }
+                }
+
+                // import url externa
+                if (args.path.startsWith("/") && importsMap[args.importer]) {
+                    const url = new URL(args.path, importsMap[args.importer]);
+                    return { path: url.href, namespace: 'virtual' };
+                }
+
+                // url externa
+                if (args.path.startsWith("http")) {
+                    return { path: args.path, namespace: 'virtual' };
+                }
 
 
                 return null;
@@ -517,8 +522,7 @@ function findWidgets(html: string) {
 
 }
 
-async function loadEsBuild() {
-
+async function loadEsbuild() {
     if ((mls as any).esbuild) {
         esBuild = (mls as any).esbuild;
     } else if (!(mls as any).esbuildInLoad) await initializeEsBuild();
@@ -535,8 +539,8 @@ async function initializeEsBuild() {
         });
         (mls as any).esbuild = esBuild;
         (mls as any).esbuildInLoad = false
-    }
 
+    }
 }
 
 
