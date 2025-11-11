@@ -198,6 +198,13 @@ async function executeEsBuild(importsMap: Record<string, string>, valids: string
 
             build.onResolve({ filter: /.*/ }, (args: any) => {
 
+                if (args.path.startsWith('./_100554_')) {
+                    return {
+                        path: args.path.replace('./_100554_', '/_100554_'),
+                        namespace: 'virtual',
+                    };
+                }
+
                 if (valids.includes(args.path)) {
                     return {
                         path: args.path,
@@ -218,7 +225,7 @@ async function executeEsBuild(importsMap: Record<string, string>, valids: string
 
                     const url = new URL(args.path, 'file:' + args.importer);
                     let path = url.pathname;
-                    
+
                     if (!(/_(\d+)_/.test(path))) {
 
                         const info = mls.l2.getPath(args.importer.replace('/l2/', '').replace('/', ''));
