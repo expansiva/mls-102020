@@ -210,7 +210,7 @@ async function buildRunTimeFile(storFile: mls.stor.IFileInfo) {
     const importsMap = parseImportsMap(data.importsMap);
     const valids = [...new Set([...Object.keys(importsMap), ...data.importsJs])];
     const result = await executeEsBuild(importsMap, valids, [], data.importsJs);
-    generateOutputRunTime(project, result.outputFiles[0].text);
+    return generateOutputRunTime(project, result.outputFiles[0].text);
 
 }
 
@@ -400,17 +400,31 @@ async function prepareStyleFile(project: number, theme: string): Promise<boolean
     return false;
 }
 
+const templateRunTime = `
+(window as any)['originalDefine'] = customElements.define.bind(customElements);
+customElements.define = (name, constructor, options) => {
+  if (!customElements.get(name)) {
+    return (window as any)['originalDefine'](name, constructor, options);
+  }
+};
+
+`
+
 async function prepareRunTimeFile(project: number) {
 
     const shortName = 'collabRunTime';
     const runTimeStorTime = mls.stor.getKeyToFiles(project, 2, shortName, '', '.ts');
-    const storFile = mls.stor.files[runTimeStorTime];
+    let storFile = mls.stor.files[runTimeStorTime];
+    
+    if (!storFile) storFile = await createStorFileOutput({ project, shortName, folder: '', ext: '.ts' }, templateRunTime);
     if (!storFile) return;
+
     const keyDist = mls.stor.getKeyToFiles(project, 2, shortName, DISTFOLDER, '.js');
-    const storFileDist = mls.stor.files[keyDist];
-    if (!storFileDist || storFile.inLocalStorage) {
-        await buildRunTimeFile(storFile);
-    }
+    let storFileDist: mls.stor.IFileInfo | undefined = mls.stor.files[keyDist];
+
+    if (!storFileDist || storFile.inLocalStorage) storFileDist = await buildRunTimeFile(storFile);
+    if (!storFileDist) return;
+
     const version = storFileDist?.versionRef || '0';
     const cacheRunTime = await mls.stor.cache.getFileFromCache(project, DISTFOLDER, shortName, '.js', version);
     if (!cacheRunTime) {
@@ -442,6 +456,7 @@ async function generateOutputRunTime(project: number, content: string) {
         shortName,
         version: storFileDistRunTime.versionRef,
     });
+    return storFileDistRunTime;
 }
 
 async function generateOutputCssGlobal(project: number, cssString: string) {
