@@ -36,7 +36,7 @@ export class Aura {
     }
 
     public async send(url: string, options: any): Promise<Response> {
-        console.info({send: url})
+
         return new Promise((resolve, reject) => {
 
             if (!this.channel) {
