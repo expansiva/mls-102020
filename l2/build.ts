@@ -53,7 +53,12 @@ export async function buildModule(project: number, moduleName: string) {
 async function needsRebuild(storFiles: any, dist: any): Promise<boolean> {
     const { ts, html, defs } = storFiles;
 
-    if (!dist.storFileDistJs || !dist.storFileDistHtml) return true;
+    if (!dist.storFileDistJs ||
+        !dist.storFileDistJs.updatedAt || 
+        !dist.storFileDistHtml  || 
+        !dist.storFileDistHtml.updatedAt 
+    ) return true;
+    
     const dtJsDist = new Date(dist.storFileDistJs.updatedAt || '');
     const dtHtmlDist = new Date(dist.storFileDistHtml.updatedAt || '');
 
