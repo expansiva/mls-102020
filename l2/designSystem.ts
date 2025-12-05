@@ -1,6 +1,6 @@
 /// <mls shortName="designSystem" project="102020" enhancement="_100554_enhancementLit" groupName="other" />
 
-import { IDesignSystemTokens } from './_100554_designSystemBase';
+import { IDesignSystemTokens } from '/_100554_/l2/designSystemBase';
 
 export const tokens: IDesignSystemTokens[] = [
     {

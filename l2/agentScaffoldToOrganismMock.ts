@@ -9,12 +9,12 @@
   Executar agentUpdateMocks -> vai analisar o defs do modulo, e executar todos os actions necessários em organismos ou pages e alterar devFidelity para moduleMock
 */
 
-import { IAgent, svg_agent } from './_100554_aiAgentBase';
-import { getPromptByHtml } from './_100554_aiPrompts';
-import { createAllModels } from './_100554_collabLibModel';
-import { getProjectConfig } from './_100554_libCommom';
-import { getState } from './_100554_collabState';
-import { ServiceSource100554 } from './_100554_serviceSource';
+import { IAgent, svg_agent } from '/_100554_/l2/aiAgentBase';
+import { getPromptByHtml } from '/_100554_/l2/aiPrompts';
+import { createAllModels } from '/_100554_/l2/collabLibModel';
+import { getProjectConfig } from '/_100554_/l2/libCommom';
+import { getState } from '/_100554_/l2/collabState';
+import { ServiceSource100554 } from '/_100554_/l2/serviceSource';
 
 import {
   getNextPendingStepByAgentName,
@@ -23,13 +23,13 @@ import {
   updateTaskTitle,
   notifyTaskChange,
   updateStepStatus,
-} from "./_100554_aiAgentHelper";
+} from "/_100554_/l2/aiAgentHelper";
 
 import {
   startNewInteractionInAiTask,
   startNewAiTask,
   executeNextStep,
-} from "./_100554_aiAgentOrchestration";
+} from "/_100554_/l2/aiAgentOrchestration";
 
 const agentName = "agentScaffoldToOrganismMock";
 const project = 102020;
