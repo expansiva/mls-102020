@@ -9,12 +9,12 @@
   Executar agentUpdateMocks -> vai analisar o defs do modulo, e executar todos os actions necessários em organismos ou pages e alterar devFidelity para moduleMock
 */
 
-import { IAgent, svg_agent } from '/_100554_/l2/aiAgentBase';
-import { getPromptByHtml } from '/_100554_/l2/aiPrompts';
-import { createAllModels } from '/_100554_/l2/collabLibModel';
-import { getProjectConfig } from '/_100554_/l2/libCommom';
-import { getState } from '/_100554_/l2/collabState';
-import { ServiceSource100554 } from '/_100554_/l2/serviceSource';
+import { IAgent, svg_agent } from '/_100554_/l2/aiAgentBase.js';
+import { getPromptByHtml } from '/_100554_/l2/aiPrompts.js';
+import { createAllModels } from '/_100554_/l2/collabLibModel.js';
+import { getProjectConfig } from '/_100554_/l2/libCommom.js';
+import { getState } from '/_100554_/l2/collabState.js';
+import { ServiceSource100554 } from '/_100554_/l2/serviceSource.js';
 
 import {
   getNextPendingStepByAgentName,
@@ -23,13 +23,13 @@ import {
   updateTaskTitle,
   notifyTaskChange,
   updateStepStatus,
-} from "/_100554_/l2/aiAgentHelper";
+} from "/_100554_/l2/aiAgentHelper.js";
 
 import {
   startNewInteractionInAiTask,
   startNewAiTask,
   executeNextStep,
-} from "/_100554_/l2/aiAgentOrchestration";
+} from "/_100554_/l2/aiAgentOrchestration.js";
 
 const agentName = "agentScaffoldToOrganismMock";
 const project = 102020;
