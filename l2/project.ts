@@ -1,3 +1,5 @@
-/// <mls shortName="project" project="102020" enhancement="_100554_enhancementLit" groupName="other" />
+/// <mls shortName="project" project="102020" enhancement="_blank" groupName="other" />
 
-export const modules = [];
+export const projectConfig = {
+  "modules": []
+}
