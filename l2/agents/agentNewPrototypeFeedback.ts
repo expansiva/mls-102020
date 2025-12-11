@@ -185,7 +185,7 @@ export class AgentGeneratePrototypeFeedback100554 extends StateLitElement {
 
     private prepareAgentGeneratePrototype1() {
         if (!this.task) return;
-        const agent1 = getAgentStepByAgentName(this.task, 'agentGeneratePrototype');
+        const agent1 = getAgentStepByAgentName(this.task, 'agentNewPrototype');
         if (!agent1) return;
         this.agent1Running = agent1.status === 'pending';
         if (agent1.status === 'completed') {
@@ -200,7 +200,7 @@ export class AgentGeneratePrototypeFeedback100554 extends StateLitElement {
 
     private prepareAgentGeneratePrototype2() {
         if (!this.task) return;
-        const agent2 = getAgentStepByAgentName(this.task, 'agentGeneratePrototype2');
+        const agent2 = getAgentStepByAgentName(this.task, 'agentNewPrototype2');
         if (!agent2) return;
         this.agent2Running = agent2.status === 'pending';
         if (agent2.status === 'completed') {
@@ -215,7 +215,7 @@ export class AgentGeneratePrototypeFeedback100554 extends StateLitElement {
 
     private prepareAgentGeneratePrototype3() {
         if (!this.task) return;
-        const agent3 = getAgentStepByAgentName(this.task, 'agentGeneratePrototype3');
+        const agent3 = getAgentStepByAgentName(this.task, 'agentNewPrototype3');
         if (!agent3) return;
         this.agent3Running = agent3.status === 'pending';
         if (agent3 && agent3.status === 'completed') {
@@ -236,7 +236,7 @@ export class AgentGeneratePrototypeFeedback100554 extends StateLitElement {
         const totalPages = this.agent4Pages?.length;
         const rootSteps = this.task.iaCompressed?.nextSteps || [];
         const allSteps = await this.getAllSteps(rootSteps);
-        const allAgents4 = allSteps.filter((agent) => agent.type === 'agent' && agent.agentName === 'agentGeneratePrototype4');
+        const allAgents4 = allSteps.filter((agent) => agent.type === 'agent' && agent.agentName === 'agentNewPrototype4');
 
         const allCompleted = allAgents4.every((agent) => agent.status === 'completed');
         const someRunning = allAgents4.some((agent) => agent.status === 'pending');
