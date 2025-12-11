@@ -105,7 +105,7 @@ const _afterClarification = async (context: mls.msg.ExecutionContext, stepId: nu
 
     const newStep: mls.msg.AIPayload = {
         type: 'agent',
-        agentName: `${agentName}2`,
+        agentName: `agentNewPrototype2`,
         prompt: '...',
         status: 'pending',
         stepId: getNextStepIdAvaliable(context.task),
