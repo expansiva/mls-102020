@@ -6,7 +6,7 @@ import { getImages } from '/_100554_/l2/libUnsplash';
 import { convertFileNameToTag, convertTagToFileName } from '/_100554_/l2/utilsLit';
 import { createNewFile } from "/_100554_/l2/pluginNewFileBase";
 import { formatHtml } from '/_100554_/l2/collabDOMSync';
-import { addModule } from '/_100554_/l2/projectAST';
+import { addModule, configureMasterFrontEnd } from '/_100554_/l2/projectAST';
 import { getPayload3, PayLoad3 } from '/_102020_/l2/agents/agentNewPrototype3';
 import { getGlobalLess } from '/_100554_/l2/designSystemBase.js';
 import { createAllModels } from '/_100554_/l2/collabLibModel.js';
@@ -36,6 +36,9 @@ const agentProject = 102020;
 const projectToSave = mls.actualProject || 0;
 const enhancementTs = '_102020_enhancementAura';
 const enhancementStyle = '_100554_enhancementStyle';
+const auraStart = '_102020_start';
+const auraBuild = '_102020_build';
+const auraLiveView = '_102020_collabAuraLiveView';
 
 export function createAgent(): IAgent {
     return {
@@ -440,6 +443,8 @@ function getModel(info: { project: number, shortName: string, folder: string }):
 async function createProjectFile(moduleName: string, project: number, payload3: PayLoad3) {
     const res = await addModule(project, moduleName, true);
     if (!res.ok) throw new Error(`[${agentName}](createProjectFile) ${res.message}`)
+    const res2 = await configureMasterFrontEnd(project, auraStart, auraBuild, auraLiveView);
+    if (!res2.ok) throw new Error(`[${agentName}](createProjectFile) ${res.message}`)
 }
 
 async function createModuleFile(shortName: string, project: number, folder: string, groupName: string, payload3: PayLoad3) {
@@ -453,9 +458,8 @@ async function createModuleFile(shortName: string, project: number, folder: stri
 export const moduleConfig = {
   theme: "${folder}",
   initialPage: "${shortName}"
+  menu: ${JSON.stringify(payload3.menu, null, 2)}
 }
-
-export const payload3 = ${JSON.stringify(payload3, null, 2)}
 
 `;
 
@@ -563,8 +567,6 @@ function generateLessPage(
         name: style.getAttribute('data-name'),
         content: style.textContent
     }));
-
-
 
     const tagNameWithoutFolder = convertFileNameToTag({ shortName: info.shortName, project: info.project });
     let styleData = resultStyles.find((result) => result.name === `page-${tagNameWithoutFolder}`); // page-home-100554
@@ -714,6 +716,9 @@ function generateTsOrganism(
     doc.body.querySelectorAll('*').forEach(el => {
         el.id = el.id || `${prefixId}-${counter++}`;
     });
+
+    doc.body.querySelectorAll('script').forEach((scr) => scr.remove());
+    doc.body.querySelectorAll('style').forEach((stl) => stl.remove());
 
     const ts = `
 /// <mls shortName="${shortName}" project="${info.project}" folder="${info.folder}" enhancement="${enhancement}" groupName="${groupName}" />
@@ -1713,6 +1718,44 @@ function getPayload3Mock(): PayLoad3 {
                 "success": "#28A745"
             }
         },
+        "menu": [
+            {
+                "pageName": "homePage",
+                "title": "Início",
+                "auth": "user",
+                "icon": "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'><path d='M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/><polyline points='9,22 9,12 15,12 15,22'/></svg>"
+            },
+            {
+                "pageName": "servicesPage",
+                "title": "Serviços",
+                "auth": "user",
+                "icon": "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'><circle cx='12' cy='12' r='3'/><path d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z'/></svg>"
+            },
+            {
+                "pageName": "productsPage",
+                "title": "Produtos",
+                "auth": "user",
+                "icon": "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'><rect x='2' y='3' width='20' height='14' rx='2' ry='2'/><line x1='8' y1='21' x2='16' y2='21'/><line x1='12' y1='17' x2='12' y2='21'/></svg>"
+            },
+            {
+                "pageName": "appointmentPage",
+                "title": "Agendar",
+                "auth": "user",
+                "icon": "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'><rect x='3' y='4' width='18' height='18' rx='2' ry='2'/><line x1='16' y1='2' x2='16' y2='6'/><line x1='8' y1='2' x2='8' y2='6'/><line x1='3' y1='10' x2='21' y2='10'/></svg>"
+            },
+            {
+                "pageName": "cartPage",
+                "title": "Carrinho",
+                "auth": "user",
+                "icon": "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'><circle cx='9' cy='21' r='1'/><circle cx='20' cy='21' r='1'/><path d='M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6'/></svg>"
+            },
+            {
+                "pageName": "adminPanel",
+                "title": "Admin",
+                "auth": "admin",
+                "icon": "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'><path d='M12 1l3 6 6 3-6 3-3 6-3-6-6-3 6-3z'/></svg>"
+            }
+        ]
     }
     return data;
 }

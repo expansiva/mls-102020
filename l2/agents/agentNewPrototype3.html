@@ -47,6 +47,9 @@ Examples: Stripe (payment), Sentry (error tracking), Google Analytics (usage tra
 
 5. Using the information from "pages" and "pagesWireframe", define each organism resume and store them in "organism".
 
+6. Using the information from the "pages", define which pages should appear in the main menu,
+store them in 'menu'
+
 ## Output format (JSON):
 ```json
 
@@ -102,6 +105,8 @@ interface NewModuleAnalysis {
  pagesWireframe: PagesWireframe[],
  organism: Organism[],
  visualIdentity: VisualIdentity,
+ menu: MenuDefinition
+
 }
 
 interface UserRequestsEnhancements { 
@@ -173,6 +178,14 @@ interface VisualIdentity {
     warning: string;
     success: string;
   }
+}
+
+
+export interface MenuDefinition {
+    pageName: string,
+    title: string,
+    auth: 'admin' | 'user',
+    icon: string // svg icon width="16" height="16"
 } </promptcustom>  <promptcustom type="human" group=""> ## User Prompt 
 {{userPrompt}} </promptcustom>  <promptcustom type="ai" group=""> ## Clarification 2
 ```json
