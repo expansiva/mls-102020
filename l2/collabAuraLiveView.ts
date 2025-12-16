@@ -15,6 +15,7 @@ interface ITab {
     actualPage: string,
     icon: string | undefined,
     target: string,
+    iframe: HTMLIFrameElement | undefined
 }
 
 /// **collab_i18n_start**
@@ -59,11 +60,6 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
 
     async firstUpdated(_changedProperties: Map<PropertyKey, unknown>) {
         super.firstUpdated(_changedProperties);
-        this.setEvents();
-    }
-
-    connectedCallback() {
-        super.connectedCallback();
         this.setEvents();
     }
 
@@ -131,6 +127,7 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
     }
 
     private async checkToLoadPage(pageName: string, moduleName: string, modulePath: string, project: number, target: string) {
+
         let tabActual = this.tabs[this.actualTab];
         const _target = !target ? moduleName : target;
 
@@ -144,10 +141,12 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
 
         if (tabActual.project !== project || tabActual.moduleName !== moduleName) {
             this.toogleLoading(true);
-            // await buildModule(project, moduleName);
             await this.setActualTabInfos(project, pageName, modulePath, moduleName, _target);
+            tabActual = this.tabs[this.actualTab];
+
         } else if (_target !== '') {
             await this.setActualTabInfos(project, pageName, modulePath, moduleName, _target);
+            tabActual = this.tabs[this.actualTab];
         }
 
         if (oldProject !== project) {
@@ -156,7 +155,9 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
         }
 
         this.toogleLoading(false);
-        this.loadPage(pageName);
+        if (tabActual.iframe) {
+            this.loadPage(pageName);
+        }
     }
 
     private async setInitialTabInfos(project: number, pageInitial: string, modulePath: string) {
@@ -172,9 +173,9 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
             pageInitial,
             project: project,
             icon: moduleConfig.icon,
-            target: moduleConfig.name
+            target: moduleConfig.name,
+            iframe: undefined
         }];
-
 
         this.tabsMenu = [
             { text: this.tabs[0].moduleName, icon: this.tabs[0].icon, allowClose: false }
@@ -241,7 +242,8 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
             modulePath,
             pageInitial: actualPage,
             project,
-            target: target || moduleName
+            target: target || moduleName,
+            iframe: undefined
         }
 
         this.tabs.push({ ...defaultTab });
@@ -257,6 +259,7 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
     }
 
     private async load() {
+
         const tabActual = this.tabs[this.actualTab];
         if (!this.iframe) return;
 
@@ -293,18 +296,17 @@ export class CollabAuraLiveView102020 extends CollabLitElement {
 
         try {
             this.toogleLoading(true);
-            // const needBuild = await buildModule(tabActual.project, tabActual.moduleName);
+            await buildModule(tabActual.project, tabActual.moduleName);
             await this.injectGlobalStyle();
             await this.injectScriptRunTime();
             this.liveViewReady = true;
-            if (!tabActual.actualPage && tabActual.pageInitial) {
+            if (tabActual.pageInitial) {
                 this.loadPage(tabActual.pageInitial);
             }
+            tabActual.iframe = this.iframe;
         } catch (err: any) {
-
             console.info(err);
             // this.setError(err.message);
-
         } finally {
             this.toogleLoading(false);
         }
