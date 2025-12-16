@@ -457,7 +457,7 @@ async function createModuleFile(shortName: string, project: number, folder: stri
 
 export const moduleConfig = {
   theme: "${folder}",
-  initialPage: "${shortName}"
+  initialPage: "${shortName}",
   menu: ${JSON.stringify(payload3.menu, null, 2)}
 }
 
