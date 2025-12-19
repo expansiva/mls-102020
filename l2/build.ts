@@ -55,11 +55,11 @@ async function needsRebuild(storFiles: any, dist: any): Promise<boolean> {
     const { ts, html, defs } = storFiles;
 
     if (!dist.storFileDistJs ||
-        !dist.storFileDistJs.updatedAt || 
-        !dist.storFileDistHtml  || 
-        !dist.storFileDistHtml.updatedAt 
+        !dist.storFileDistJs.updatedAt ||
+        !dist.storFileDistHtml ||
+        !dist.storFileDistHtml.updatedAt
     ) return true;
-    
+
     const dtJsDist = new Date(dist.storFileDistJs.updatedAt || '');
     const dtHtmlDist = new Date(dist.storFileDistHtml.updatedAt || '');
 
@@ -343,9 +343,15 @@ async function generateOutput(storFile: mls.stor.IFileInfo, htmlString: string, 
     let storFileHtml = storFilesDist.storFileDistHtml;
 
     if (!storFileJs) storFileJs = await createStorFileOutput({ project, shortName, folder: newDistFolder, ext: '.js' }, jsString);
-    else await mls.stor.localStor.setContent(storFileJs, { contentType: 'string', content: jsString });
+    else {
+        await mls.stor.localStor.setContent(storFileJs, { contentType: 'string', content: jsString });
+        storFileJs.status = 'changed';
+    }
     if (!storFileHtml) storFileHtml = await createStorFileOutput({ project, shortName, folder: newDistFolder, ext: '.html' }, htmlString);
-    else await mls.stor.localStor.setContent(storFileHtml, { contentType: 'string', content: htmlString });
+    else {
+        await mls.stor.localStor.setContent(storFileHtml, { contentType: 'string', content: htmlString });
+        storFileHtml.status = 'changed';
+    }
 
     storFileHtml.updatedAt = new Date().toISOString();
     storFileJs.updatedAt = new Date().toISOString();
@@ -421,7 +427,7 @@ async function prepareRunTimeFile(project: number) {
     const shortName = 'collabRunTime';
     const runTimeStorTime = mls.stor.getKeyToFiles(project, 2, shortName, '', '.ts');
     let storFile = mls.stor.files[runTimeStorTime];
-    
+
     if (!storFile) storFile = await createStorFileOutput({ project, shortName, folder: '', ext: '.ts' }, templateRunTime);
     if (!storFile) return;
 
@@ -453,7 +459,11 @@ async function generateOutputRunTime(project: number, content: string) {
     const keyToDistRunTime = mls.stor.getKeyToFiles(project, 2, shortName, DISTFOLDER, '.js');
     let storFileDistRunTime = mls.stor.files[keyToDistRunTime];
     if (!storFileDistRunTime) storFileDistRunTime = await createStorFileOutput({ project, shortName, folder: DISTFOLDER, ext: '.js' }, content);
-    else await mls.stor.localStor.setContent(storFileDistRunTime, { contentType: 'string', content: content });
+    else {
+        await mls.stor.localStor.setContent(storFileDistRunTime, { contentType: 'string', content: content });
+        storFileDistRunTime.status = 'changed';
+
+    }
     await mls.stor.cache.addIfNeed({
         project,
         folder: DISTFOLDER,
@@ -471,7 +481,10 @@ async function generateOutputCssGlobal(project: number, cssString: string) {
     const keyToDistCssGlobal = mls.stor.getKeyToFiles(project, 2, shortName, DISTFOLDER, '.css');
     let storFileDistCssGlobal = mls.stor.files[keyToDistCssGlobal];
     if (!storFileDistCssGlobal) storFileDistCssGlobal = await createStorFileOutput({ project, shortName, folder: DISTFOLDER, ext: '.css' }, cssString);
-    else await mls.stor.localStor.setContent(storFileDistCssGlobal, { contentType: 'string', content: cssString });
+    else {
+        await mls.stor.localStor.setContent(storFileDistCssGlobal, { contentType: 'string', content: cssString });
+        storFileDistCssGlobal.status = 'changed';
+    }
     await mls.stor.cache.addIfNeed({
         project,
         folder: DISTFOLDER,
