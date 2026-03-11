@@ -5,7 +5,7 @@ import { createStorFile, IReqCreateStorFile } from '/_100554_/l2/collabLibStor.j
 import { getGlobalCss, getTokensCss } from '/_100554_/l2/designSystemBase.js';
 import { getDependenciesByHtmlFile } from '/_100554_/l2/libCompile.js';
 import { getProjectConfig, getProjectModuleConfig } from '/_100554_/l2/libCommom.js';
-import { convertTagToFileName } from '/_100554_/l2/utilsLit.js';
+import { getPath,convertTagToFileName } from '/_102027_/l2/utils.js';
 
 let esBuild: any;
 export const DISTFOLDER = 'wwwroot';
@@ -142,7 +142,7 @@ async function createL1Models() {
     await readProjectTypescriptAndCompileL1(mls.actualProject as number, '', true)
 }
 
-async function checkOrganismInPageIsOutdated(widgets: mls.l4.DefsWidget[], outdatedHtml: Date, outdatedTs: Date, outdatedHTMLLocal: boolean, outdatedTsLocal: boolean) {
+async function checkOrganismInPageIsOutdated(widgets: any[], outdatedHtml: Date, outdatedTs: Date, outdatedHTMLLocal: boolean, outdatedTsLocal: boolean) {
     let needBuild: boolean = false;
 
     for (let widget of widgets) {
@@ -259,7 +259,8 @@ async function executeEsBuild(importsMap: Record<string, string>, valids: string
 
                     if (!(/_(\d+)_/.test(path))) {
 
-                        const info = mls.l2.getPath(args.importer.replace('/l2/', '').replace('/', ''));
+                        const info = getPath(args.importer.replace('/l2/', '').replace('/', ''));
+                        if(!info) throw new Error('[virtualFsPlugin] Not found path:'+args.importer.replace('/l2/', '').replace('/', '') )
                         if (!info.project) info.project = mls.actualProject as number;
                         if (path.indexOf(`_${info.project}_`) < 0) {
                             path = url.pathname.replace('/', `/_${info.project}_`)
@@ -526,7 +527,7 @@ async function createStorFileOutput(data: { project: number, shortName: string, 
 
 async function getAllPages(project: number, modulePath: string) {
 
-    const allPages: { ts: mls.stor.IFileInfo, html: mls.stor.IFileInfo, defs: mls.l4.BaseDefs }[] = [];
+    const allPages: { ts: mls.stor.IFileInfo, html: mls.stor.IFileInfo, defs: any /*mls.l4.BaseDefs*/ }[] = [];
 
     for (let key of Object.keys(mls.stor.files)) {
         const storFile = mls.stor.files[key];
