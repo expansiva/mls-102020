@@ -1,10 +1,10 @@
 /// <mls fileReference="_102020_/l2/build.ts" enhancement="_blank" />
 
-import { createAllModels, readProjectTypescriptAndCompileL1 } from '/_100554_/l2/collabLibModel.js';
-import { createStorFile, IReqCreateStorFile } from '/_100554_/l2/collabLibStor.js';
-import { getGlobalCss, getTokensCss } from '/_100554_/l2/designSystemBase.js';
-import { getDependenciesByHtmlFile } from '/_100554_/l2/libCompile.js';
-import { getProjectConfig, getProjectModuleConfig } from '/_100554_/l2/libCommom.js';
+import { createAllModels, readProjectTypescriptAndCompileL1 } from '/_102027_/l2/libModel.js';
+import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
+import { getGlobalCss, getTokensCss } from '/_102027_/l2/designSystemBase.js';
+import { getDependenciesByHtmlFile } from '/_102027_/l2/libCompile.js';
+import { getProjectConfig, getProjectModuleConfig } from '/_102027_/l2/libCommom.js';
 import { getPath,convertTagToFileName } from '/_102027_/l2/utils.js';
 
 let esBuild: any;
