@@ -1,0 +1,29 @@
+<plugin-agent-playground-100554  style="display:none"> <promptcustom type="memory" group="A"> {
+    "fileReference": "_102020_/l2/widgets/card.ts",
+    "description": "Widget do tipo Card com seções header/body/footer e suporte a imagem no header. Ao clicar, o card executa animação de flip (giro) para revelar o verso com conteúdo adicional; ao clicar novamente, retorna ao estado inicial.",
+    "finalPrompt": "Criar um widget (web component) do tipo Card com seções header, body e footer. Permitir configurar uma imagem no header (src/alt e opção de exibir/ocultar). O card deve possuir frente e verso: ao clicar no card, realizar uma animação de flip (giro 3D) e exibir o conteúdo do verso; ao clicar novamente, voltar ao estado inicial (frente). Deve ser acessível (teclado e aria), responsivo e permitir customização básica via propriedades e slots. Implementar no arquivo: _102020_/l2/widgets/card.ts",
+    "group": "groupCard",
+    "functionalRequirements": [
+        "Implementar como Web Component (custom element) no arquivo informado.",
+        "Estrutura com três seções na face frontal: header, body e footer.",
+        "Suportar configuração de imagem no header via propriedades (ex.: headerImageSrc, headerImageAlt) e comportamento quando não configurada (não renderizar área de imagem ou manter espaço opcional).",
+        "Suportar conteúdo no verso do card (back side) via slot dedicado (ex.: slot=\"back\").",
+        "Ao clicar no card, alternar estado entre 'front' e 'back' com animação de flip 3D; segundo clique reverte.",
+        "Suportar alternância via teclado: Enter/Espaço quando o card estiver focado.",
+        "Expor estado 'flipped' como propriedade/atributo refletido para CSS e integração (ex.: flipped=true/false).",
+        "Disparar evento customizado ao alternar (ex.: \"flip\" com detail { flipped: boolean }).",
+        "Acessibilidade: role apropriado (ex.: button) quando clicável, tabindex=0, aria-pressed refletindo o estado, e respeitar prefers-reduced-motion reduzindo/desligando animação.",
+        "Não depender de bibliotecas externas.",
+        "Garantir que cliques em elementos interativos internos (links/botões) possam opcionalmente não disparar flip (com estratégia: ignoreInteractive=true por padrão, ou checagem de alvo)."
+    ],
+    "visualRequirements": [
+        "Card com container com bordas arredondadas, sombra leve e padding consistente.",
+        "Header com área para imagem (full-width) e opcional área de título/subtítulo via slot.",
+        "Body com tipografia padrão e espaçamento vertical confortável.",
+        "Footer separado por uma linha/divisor sutil e alinhamento flex para ações.",
+        "Efeito de flip 3D: usar perspective no container, transform-style: preserve-3d, e backface-visibility: hidden nas faces; duração ~400–700ms com easing suave.",
+        "Manter o mesmo tamanho/altura entre frente e verso (verso ocupa exatamente a face do card).",
+        "Responsivo: largura fluida (100%) com max-width configurável via CSS custom properties.",
+        "Fornecer CSS custom properties para cores, borda, radius, shadow, duração da animação e altura da imagem no header."
+    ]
+} </promptcustom> </plugin-agent-playground-100554>
