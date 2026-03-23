@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/aura.ts" enhancement="_blank" />
 
-const pendingRequests: Record<string, any> = {};
+const pendingRequests: Record<string, any> = {}; 
 
 export class Aura {
 
