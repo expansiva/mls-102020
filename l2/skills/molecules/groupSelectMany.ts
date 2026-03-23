@@ -1,12 +1,12 @@
-/// <mls fileReference="_102020_/l2/skills/molecules/groupSelectOne.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/skills/molecules/groupSelectMany.ts" enhancement="_blank"/>
 
 export const skill = `
-
-# Skill: groupSelectOne
+# Skill: groupSelectMany
 
 ## Metadata
 
-- **Name:** groupSelectOne
+- **Name:** groupSelectMany
+- **Category:** Data Entry & Editing
 - **Version:** 1.0.0
 - **Last Updated:** 03/23/2026
 
@@ -16,19 +16,19 @@ export const skill = `
 
 ### Essence
 
-Allow the user to choose **exactly one option** from several available.
+Allow the user to choose **one or more options** from several available.
 
 ### When to Use
 
-- User must make an exclusive choice
-- Only one answer is valid at a time
-- Options are mutually exclusive
+- User can select multiple items simultaneously
+- Multiple answers are valid
+- Building a collection of selected items
 
 ### When NOT to Use
 
-- User can select multiple options → use **SelectMultiple**
-- There is only one option (on/off) → use **Toggle/Switch**
-- Input is free/textual → use **Input**
+- User must select exactly one option → use **SelectOne**
+- Simple on/off state → use **Toggle**
+- Free text input → use **InputText**
 
 ---
 
@@ -46,28 +46,30 @@ Allow the user to choose **exactly one option** from several available.
 
 | Property | Type | Default | Required | Decorator | Description |
 |----------|------|---------|:--------:|-----------|-------------|
-| 'value' | 'string \| number \| null' | 'null' | | '@propertyDataSource' | Value of the selected option |
+| 'value' | 'Array<string \| number>' | '[]' | | '@propertyDataSource' | Array of selected option values |
 | 'options' | 'Option[]' | '[]' | ✓ | '@propertyDataSource' | List of available options |
 | 'placeholder' | 'string' | '''' | | '@propertyCompositeDataSource' | Text displayed when no option is selected |
+| 'min' | 'number' | '0' | | '@property' | Minimum selections required |
+| 'max' | 'number' | 'Infinity' | | '@property' | Maximum selections allowed |
 | 'disabled' | 'boolean' | 'false' | | '@property' | Disables the entire component |
 | 'readonly' | 'boolean' | 'false' | | '@property' | Displays value but prevents changes |
 | 'loading' | 'boolean' | 'false' | | '@property' | Indicates asynchronous loading |
 | 'error' | 'boolean \| string' | 'false' | | '@property' | Error state or message |
-| 'required' | 'boolean' | 'false' | | '@property' | Indicates mandatory selection |
+| 'required' | 'boolean' | 'false' | | '@property' | Indicates at least one selection required |
 
 #### Decorator Reference
 
 | Decorator | Purpose | Binding Example |
 |-----------|---------|-----------------|
-| '@propertyDataSource' | Binds to a single dynamic state | '{{page1.selectedId}}' |
-| '@propertyCompositeDataSource' | Binds to multiple composed states | 'Select a {{page1.itemType}}' |
+| '@propertyDataSource' | Binds to a single dynamic state | '{{page1.selectedIds}}' |
+| '@propertyCompositeDataSource' | Binds to multiple composed states | 'Select {{page1.itemType}}s' |
 | '@property' | Static configuration or local UI state | Direct value assignment |
 
 ### Events
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| 'change' | '{ value: string \| number, option: Option }' | Fired when selection changes |
+| 'change' | '{ value: Array, added?: Option, removed?: Option }' | Fired when selection changes |
 
 ---
 
@@ -90,7 +92,7 @@ Allow the user to choose **exactly one option** from several available.
 | State | Description |
 |-------|-------------|
 | **default** | Option available for selection |
-| **selected** | Currently selected option |
+| **selected** | Option is currently selected |
 | **disabled** | Option cannot be selected |
 | **hover** | Cursor over the option |
 | **focus** | Option has focus (keyboard navigation) |
@@ -105,35 +107,33 @@ Allow the user to choose **exactly one option** from several available.
 |-----|--------|
 | 'Tab' | Moves focus to/from the component |
 | 'Arrow Up/Down' | Navigates between options |
-| 'Arrow Left/Right' | Navigates between options (horizontal variants) |
-| 'Enter' / 'Space' | Selects focused option |
+| 'Space' | Toggles selection of focused option |
+| 'Ctrl/Cmd + A' | Select all (if allowed) |
 | 'Escape' | Closes dropdown (if applicable) |
-| 'Home' | Moves to first option |
-| 'End' | Moves to last option |
 
 ### ARIA
 
 | Attribute | Application |
 |-----------|-------------|
 | 'role="listbox"' | Options container |
+| 'aria-multiselectable="true"' | Indicates multiple selection |
 | 'role="option"' | Each individual option |
 | 'aria-selected' | Indicates selected option |
 | 'aria-disabled' | Indicates disabled option/component |
 | 'aria-required' | Indicates required field |
-| 'aria-invalid' | Indicates error state |
-| 'aria-expanded' | Indicates if dropdown is open |
 
 ---
 
-## Validation Rules
+## Implementations (Molecules)
 
-| Rule | Condition | Suggested Message |
-|------|-----------|-------------------|
-| required | 'required === true && value === null' | "Please select an option" |
-| invalidOption | 'value' does not exist in 'options' | "Invalid option" |
+| Molecule | Description | Best For |
+|----------|-------------|----------|
+| **Checkbox Group** | Group of checkboxes | Few options, all visible |
+| **Tags/Chips** | Selectable tag pills | Visual selection, removable items |
+| **Dual List** | Two-panel transfer list | Large datasets, bulk selection |
+| **Multi-select Dropdown** | Dropdown with checkboxes | Many options, limited space |
 
 ---
-
 
 ## Changelog
 

@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/skills/molecules/groupCard.test.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/skills/molecules/groupDataTable.test.ts" enhancement="_blank"/>
 
  import { ICANTest, ICANIntegration, ICANSchema  } from '/_100554_/l2/tsTestAST.js';
  export const integrations: ICANIntegration[] = [];

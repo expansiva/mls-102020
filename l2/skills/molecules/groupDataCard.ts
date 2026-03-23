@@ -1,15 +1,15 @@
-/// <mls fileReference="_102020_/l2/skills/molecules/groupCard.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/skills/molecules/groupDataCard.ts" enhancement="_blank"/>
 
 export const skill = `
 
-# Skill: GroupCard
+# Skill: groupDataCard
 
 ## Metadata
 
-- **Name:** GroupCard
-- **Category:** Display Molecules
+- **Name:** groupDataCard
+- **Category:** Data Display
 - **Version:** 1.0.0
-- **Last Updated:** 20/03/2026
+- **Last Updated:** 03/23/2026
 
 ---
 
@@ -17,36 +17,24 @@ export const skill = `
 
 ### Essence
 
-Display structured information within a visually delimited container.
+Display structured information within a visually delimited container, optimized for **data presentation**.
 
 ### When to Use
 
 - Present grouped, related information
 - Display items in a list or grid
 - Showcase content with visual hierarchy
-- Create interactive content blocks
+- Kanban or card-based interfaces
 
 ### When NOT to Use
 
-- Simple text display without grouping → use **Text/Typography**
-- Single action button → use **Button**
-- Navigation items → use **Menu/Nav**
-- Tabular data → use **Table**
+- Tabular data comparison → use **DataTable**
+- Single metric highlight → use **KpiMetric**
+- Simple text display → use **DisplayText**
 
 ---
 
 ## Contract
-
-### Anatomy
-
-| Area | Description | Required |
-|------|-------------|:--------:|
-| 'header' | Top area (title, actions) | |
-| 'media' | Image, video, or visual content | |
-| 'body' | Main content area | |
-| 'footer' | Bottom area (actions, metadata) | |
-
-All areas are flexible slots. A valid Card must have at least one area populated.
 
 ### Component Properties
 
@@ -60,6 +48,7 @@ All areas are flexible slots. A valid Card must have at least one area populated
 | 'image' | 'string' | '''' | | '@propertyDataSource' | URL of the image/media |
 | 'icon' | 'string' | '''' | | '@propertyDataSource' | Card icon identifier |
 | 'metadata' | 'object' | '{}' | | '@propertyDataSource' | Additional info (date, author, tags) |
+| 'data' | 'object' | '{}' | | '@propertyDataSource' | Full data record |
 
 #### Behavior Properties
 
@@ -67,9 +56,9 @@ All areas are flexible slots. A valid Card must have at least one area populated
 |----------|------|---------|:--------:|-----------|-------------|
 | 'clickable' | 'boolean' | 'false' | | '@property' | Entire card is clickable |
 | 'hoverable' | 'boolean' | 'false' | | '@property' | Visual effect on hover |
-| 'selectable' | 'boolean' | 'false' | | '@property' | Can be selected (checkbox/radio) |
+| 'selectable' | 'boolean' | 'false' | | '@property' | Can be selected |
 | 'selected' | 'boolean' | 'false' | | '@propertyDataSource' | Card is currently selected |
-| 'expandable' | 'boolean' | 'false' | | '@property' | Can expand to show more content |
+| 'expandable' | 'boolean' | 'false' | | '@property' | Can expand to show more |
 | 'expanded' | 'boolean' | 'false' | | '@propertyDataSource' | Card is currently expanded |
 | 'dismissible' | 'boolean' | 'false' | | '@property' | Can be closed/removed |
 | 'draggable' | 'boolean' | 'false' | | '@property' | Can be dragged |
@@ -94,11 +83,11 @@ All areas are flexible slots. A valid Card must have at least one area populated
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| 'click' | '{ }' | Fired when card is clicked (if 'clickable') |
-| 'select' | '{ selected: boolean }' | Fired when card is selected/deselected (if 'selectable') |
-| 'expand' | '{ expanded: boolean }' | Fired when card is expanded/collapsed (if 'expandable') |
-| 'dismiss' | '{ }' | Fired when card is closed (if 'dismissible') |
-| 'action' | '{ action: string }' | Fired when a card action is triggered |
+| 'click' | '{ data }' | Fired when card is clicked |
+| 'select' | '{ selected, data }' | Fired when card is selected/deselected |
+| 'expand' | '{ expanded }' | Fired when card is expanded/collapsed |
+| 'dismiss' | '{ data }' | Fired when card is closed |
+| 'action' | '{ action, data }' | Fired when a card action is triggered |
 
 ---
 
@@ -109,14 +98,14 @@ All areas are flexible slots. A valid Card must have at least one area populated
 | State | Description | Expected Behavior |
 |-------|-------------|-------------------|
 | **default** | Initial/neutral state | Standard appearance |
-| **hover** | Cursor over the card | Visual feedback (if 'hoverable') |
+| **hover** | Cursor over the card | Visual feedback |
 | **focus** | Card has focus | Visual focus indicator |
 | **disabled** | Card is disabled | Non-interactive, visually dimmed |
 | **loading** | Loading content | Displays skeleton/placeholder |
 | **selected** | Card is selected | Visual selection indicator |
 | **expanded** | Card is expanded | Shows additional content |
 | **error** | Error state | Visual error feedback |
-| **dragging** | Card is being dragged | Visual drag feedback (if 'draggable') |
+| **dragging** | Card is being dragged | Visual drag feedback |
 
 ---
 
@@ -127,28 +116,36 @@ All areas are flexible slots. A valid Card must have at least one area populated
 | Key | Action |
 |-----|--------|
 | 'Tab' | Moves focus to/from the card |
-| 'Enter' / 'Space' | Activates card (click, select, or expand) |
-| 'Escape' | Closes expanded card or cancels drag |
-| 'Arrow Keys' | Navigate between cards in a grid/list |
+| 'Enter' / 'Space' | Activates card action |
+| 'Escape' | Closes expanded card |
+| 'Arrow Keys' | Navigate between cards |
 
 ### ARIA
 
 | Attribute | Application |
 |-----------|-------------|
 | 'role="article"' | Card container (informational) |
-| 'role="button"' | Card container (if 'clickable') |
-| 'role="checkbox"' | Card container (if 'selectable') |
+| 'role="button"' | Card container (if clickable) |
 | 'aria-selected' | Indicates selected state |
 | 'aria-expanded' | Indicates expanded state |
 | 'aria-disabled' | Indicates disabled state |
-| 'aria-busy' | Indicates loading state |
-| 'aria-grabbed' | Indicates dragging state |
 
+---
+
+## Implementations (Molecules)
+
+| Molecule | Description | Best For |
+|----------|-------------|----------|
+| **Info Card** | Basic information display | General content |
+| **Metric Card** | KPI/statistic display | Dashboard metrics |
+| **Kanban Card** | Draggable task card | Project management |
+
+---
 
 ## Changelog
 
 | Version | Date | Description |
 |---------|------|-------------|
-| 1.0.0 | 20/03/2026 | Initial contract definition |
+| 1.0.0 | 03/23/2026 | Initial contract definition |
 
 `
