@@ -2,16 +2,22 @@
 
 import { IAgentAsync, IAgentMeta } from '/_100554_/l2/aiAgentBase.js';
 import { skills as skillList } from '/_102020_/l2/skills/molecules/index';
+import { skill as skillMolecule } from '/_102020_/l2/skills/aura/moleculeGeneration.js';
+
+import { finishClarification } from "/_100554_/l2/aiAgentOrchestration.js";
+import {ClarificationData } from '/_102020_/l2/agents/agentNewMoleculePlannerClarification.js';
 
 export function createAgent(): IAgentAsync {
     return {
-        agentName: "agentNewMolecule",
+        agentName: "agentNewMoleculePlanner",
         agentProject: 102020,
         agentFolder: "agents",
-        agentDescription: "New agent",
+        agentDescription: "Agent Planner for a new moleculle",
         visibility: "public",
         beforePromptImplicit,
-        afterPromptStep
+        afterPromptStep,
+        beforeClarificationStep
+
     };
 }
 
@@ -32,6 +38,8 @@ async function beforePromptImplicit(
                 type: "system",
                 content: system1
                     .replace("{{ groups }}", JSON.stringify(skillList, null, 2))
+                    .replace("{{ skillMolecule }}", skillMolecule)
+
             }, {
                 type: "human",
                 content: context.message.content
@@ -58,12 +66,60 @@ async function afterPromptStep(
 
     const payload = (step.interaction?.payload?.[0]);
     if (payload?.type !== 'clarification' || !payload.json) throw new Error(`[afterPromptStep] invalid payload: ${payload}`)
+
+    return [];
+
+}
+
+async function beforeClarificationStep(
+    agent: IAgentMeta,
+    context: mls.msg.ExecutionContext,
+    parentStep: mls.msg.AIAgentStep,
+    step: mls.msg.AIClarificationStep,
+    hookSequential: number,
+    json: ClarificationData
+): Promise<HTMLElement> {
+
+    if (!context.task) throw new Error(`[beforeClarificationStep] invalid task: undefined`)
+
+    const intentsToClarification: mls.msg.AgentIntent[] = processOutput(agent, context, parentStep, step, hookSequential, json);
+    await import('/_102020_/l2/agents/agentNewMoleculePlannerClarification.js');
+    const clariEl = document.createElement('agents--agent-new-molecule-planner-clarification-102020');
+    (clariEl as any).data = json;
+
+    clariEl.addEventListener('clarification-finish', (e: Event) => {
+        const { detail } = e as CustomEvent<{ value: unknown; action: "continue" | "cancel" }>;
+        const { value, action } = detail;
+        const normalizedValue = `\`\`\`json \n ${JSON.stringify(value, null, 2)} \n \`\`\``
+  
+        finishClarification(
+            agent,
+            step.stepId,
+            parentStep.stepId,
+            intentsToClarification,
+            context,
+            normalizedValue,
+            action
+        );
+    });
+
+    return clariEl;
+
+}
+
+function processOutput(
+    agent: IAgentMeta,
+    context: mls.msg.ExecutionContext,
+    parentStep: mls.msg.AIAgentStep,
+    step: mls.msg.AIClarificationStep,
+    hookSequential: number,
+    suggestions: ClarificationData
+): mls.msg.AgentIntent[] {
+
+    console.log("processOutput === Suggestions")
+    console.log(JSON.stringify(suggestions, null, 2));
+
     let status: mls.msg.AIStepStatus = 'completed';
-    let intents: mls.msg.AgentIntent[] = [];
-
-    const output = payload.json;
-
-    console.info(output)
 
     const updateStatus: mls.msg.AgentIntentUpdateStatus = {
         type: 'update-status',
@@ -76,7 +132,39 @@ async function afterPromptStep(
         status
     };
 
-    return [...intents, updateStatus];
+    const updateStatusAgent: mls.msg.AgentIntentUpdateStatus = {
+        type: 'update-status',
+        hookSequential,
+        messageId: context.message.orderAt,
+        threadId: context.message.threadId,
+        taskId: context.task?.PK || '',
+        parentStepId: 1,
+        stepId: parentStep.stepId,
+        status: 'completed'
+    };
+
+    const newStep: mls.msg.AgentIntentAddStep = {
+        type: "add-step",
+        messageId: context.message.orderAt,
+        threadId: context.message.threadId,
+        taskId: context.task?.PK || '',
+        parentStepId: 1,
+        step:
+        {
+            type: 'agent',
+            stepId: 0,
+            interaction: null,
+            status: 'waiting_human_input',
+            nextSteps: [],
+            agentName: "agentNewMoleculeDefs",
+            prompt: `{{clarification}}`,
+            rags: null,
+        }
+    };
+
+    const intents: mls.msg.AgentIntent[] = [newStep, updateStatusAgent, updateStatus];
+    return intents;
+
 
 }
 
@@ -91,8 +179,13 @@ If the original prompt is not about creating a web component, return an error as
 
 Identify the most appropriate group for this molecule.
 
+Suggest the name of molecule and put in 'fileReference'. Format: _[project]_/l2/[folder]/[moleculeName].ts
+
 ##Avaliables groups
 {{ groups }}
+
+## How molecules works in collab.codes
+{{ skillMolecule }}
 
 ## Output format
 You must return the object strictly as JSON
@@ -109,7 +202,7 @@ export type Output =
 export interface TClarification {
     fileReference: string,
     description: string,
-    finalPrompt: string,
+    prompt: string, // same user prompt
     group: string,
     functionalRequirements: string[],
     visualRequirements: string[],

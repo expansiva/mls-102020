@@ -1,6 +1,8 @@
 /// <mls fileReference="_102020_/l2/agents/agentNewMoleculeDefs.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
 
 import { IAgentAsync, IAgentMeta } from '/_100554_/l2/aiAgentBase.js';
+import { createAllFiles } from '/_102027_/l2/libStor.js';
+
 
 export function createAgent(): IAgentAsync {
     return {
@@ -10,6 +12,7 @@ export function createAgent(): IAgentAsync {
         agentDescription: "Define molecule defs with skill to creation",
         visibility: "private",
         beforePromptImplicit,
+        beforePromptStep,
         afterPromptStep
     };
 }
@@ -34,13 +37,39 @@ async function beforePromptImplicit(
                 type: "human",
                 content: context.message.content
             }],
-            taskTitle: `Test 1`,
+            taskTitle: `Planning`,
             threadId: context.message.threadId,
             userMessage: context.message.content,
         }
     };
     return [addMessageAI];
 
+}
+
+async function beforePromptStep(
+    agent: IAgentMeta,
+    context: mls.msg.ExecutionContext,
+    parentStep: mls.msg.AIAgentStep,
+    step: mls.msg.AIAgentStep,
+    hookSequential: number,
+    args?: string
+): Promise<mls.msg.AgentIntent[]> {
+
+    if (!args) throw new Error(`(${agent.agentName})[beforePromptStep] args invalid`);
+
+    const continueIntent: mls.msg.AgentIntentPromptReady = {
+        type: "prompt_ready",
+        args,
+        messageId: context.message.orderAt,
+        threadId: context.message.threadId,
+        taskId: context.task?.PK || '',
+        hookSequential,
+        parentStepId: parentStep.stepId,
+        humanPrompt: args || '',
+        systemPrompt: system1
+    }
+
+    return [continueIntent];
 }
 
 async function afterPromptStep(
@@ -59,10 +88,9 @@ async function afterPromptStep(
     let status: mls.msg.AIStepStatus = 'completed';
     let intents: mls.msg.AgentIntent[] = [];
 
-    const output = payload.result;
-
-    console.info(output)
-
+    const output: IResult = payload.result;
+    debugger;
+    await updateDefs(output.skillMd, output.fileReference, output.group);
     const updateStatus: mls.msg.AgentIntentUpdateStatus = {
         type: 'update-status',
         hookSequential,
@@ -78,6 +106,28 @@ async function afterPromptStep(
 
 }
 
+export async function updateDefs(skill: string, fileReference: string, group: string): Promise<void> {
+
+    let fileInfo = mls.stor.convertFileReferenceToFile(fileReference);
+    if (!fileReference || fileInfo.project < 1) throw new Error(`Invalid step in update defs, incorrect meta fileRecerence: ${fileReference}`);
+
+    const template = `/// <mls fileReference="${fileReference.replace('.ts', '.defs.ts')}" enhancement="_blank" />
+
+// Do not change – automatically generated code. 
+
+export const group = '${group}';
+export const skill = \`${skill}\`;
+
+`;
+
+    await createAllFiles({
+        ...fileInfo,
+        enhancement: '',
+        defsSource: template,
+        tsSource: '// In develpoment',
+    }, true, false);
+
+}
 
 
 const system1 = `
@@ -123,7 +173,13 @@ You must return the object strictly as JSON
 export type Output =
     {
         type: "flexible";
-        result: string;
+        result: IResult
     }
+
+interface IResult {
+    fileReference: string,
+    group: string,
+    skillMd: string,
+}
 
 //#endregion 
