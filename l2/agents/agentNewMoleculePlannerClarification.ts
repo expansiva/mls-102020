@@ -2,6 +2,7 @@
 
 import { html, TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { convertFileNameToTag } from "/_102027_/l2/utils.js";
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 
 /// **collab_i18n_start**
@@ -305,12 +306,17 @@ export class AgentNewMoleculePlannerClarification102020 extends StateLitElement 
 
     private onAction(action: 'cancel' | 'continue') {
 
-        console.info(this.data)
+        const path = mls.stor.getPathToFile(this.data.fileReference)
+        const suggestions2 = {
+            tagName: convertFileNameToTag(path),
+            ...this.data
+        }
+
 
         this.dispatchEvent(
             new CustomEvent('clarification-finish', {
                 detail: {
-                    value: this.data,
+                    value: suggestions2,
                     action
                 },
                 bubbles: true,

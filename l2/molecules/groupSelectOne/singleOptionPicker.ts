@@ -526,9 +526,3 @@ export class SingleOptionPickerMolecule extends MoleculeAuraElement {
     `;
   }
 }
-
-declare global {
-  interface HTMLElementTagNameMap {
-    'group-select-one--single-option-picker-102020': SingleOptionPickerMolecule;
-  }
-}

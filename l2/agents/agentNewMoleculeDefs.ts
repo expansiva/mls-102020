@@ -17,6 +17,7 @@ export function createAgent(): IAgentAsync {
     };
 }
 
+
 async function beforePromptImplicit(
     agent: IAgentMeta,
     context: mls.msg.ExecutionContext,
@@ -37,7 +38,7 @@ async function beforePromptImplicit(
                 type: "human",
                 content: context.message.content
             }],
-            taskTitle: `Planning`,
+            taskTitle: `Preparing defs...`,
             threadId: context.message.threadId,
             userMessage: context.message.content,
         }
@@ -89,7 +90,6 @@ async function afterPromptStep(
     let intents: mls.msg.AgentIntent[] = [];
 
     const output: IResult = payload.result;
-    debugger;
     await updateDefs(output.skillMd, output.fileReference, output.group);
     const updateStatus: mls.msg.AgentIntentUpdateStatus = {
         type: 'update-status',
@@ -139,6 +139,9 @@ You are a planner responsible for defining a \`skill.md\`.
 Your goal is to describe ONLY the functional requirements of the molecule.
 
 Follow this structure:
+
+# Metadata
+- TagName:
 
 # Objective
 A clear description of what the molecule does from a user or system perspective.

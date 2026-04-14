@@ -863,9 +863,3 @@ export class ResponsiveRichDataTableMolecule extends MoleculeAuraElement {
     `;
   }
 }
-
-declare global {
-  interface HTMLElementTagNameMap {
-    'group-view-table--responsive-rich-data-table-102020': ResponsiveRichDataTableMolecule;
-  }
-}
