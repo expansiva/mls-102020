@@ -3,6 +3,7 @@
 export const skill = `# Molecule Generation Skill
 
 > Skill for generating UI Molecule components in the Collab system.
+
 ---
 
 ## 1. Metadata
@@ -74,6 +75,19 @@ import { propertyDataSource, propertyCompositeDataSource } from '/_100554_/l2/co
 
 // Base Class
 import { MoleculeAuraElement } from '/_102020_/l2/moleculeBase.js';
+\`\`\`
+
+### Import Rules — CRITICAL
+
+\`\`\`typescript
+// ❌ WRONG — Do NOT import directives from separate paths
+import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { ifDefined } from 'lit/directives/if-defined.js';
+import { classMap } from 'lit/directives/class-map.js';
+import { repeat } from 'lit/directives/repeat.js';
+
+// ✅ CORRECT — Import ALL directives from 'lit'
+import { html, nothing, unsafeHTML, ifDefined, repeat } from 'lit';
 \`\`\`
 
 > **Note:** Do NOT import \`classMap\`. Use template strings for CSS classes instead (see Section 7).

@@ -1,11 +1,12 @@
 /// <mls fileReference="_102020_/l2/agents/agentNewMoleculePlanner.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
 
-import { IAgentAsync, IAgentMeta } from '/_100554_/l2/aiAgentBase.js';
-import { skills as skillList } from '/_102020_/l2/skills/molecules/index';
-import { skill as skillMolecule } from '/_102020_/l2/skills/aura/moleculeGeneration.js';
+import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 
-import { finishClarification } from "/_100554_/l2/aiAgentOrchestration.js";
-import {ClarificationData } from '/_102020_/l2/agents/agentNewMoleculePlannerClarification.js';
+import { skills as skillList } from '/_102020_/l2/skills/molecules/index';
+import { skill as skillMolecule } from '/_102020_/l2/skills/aura/moleculeGeneration2.js';
+import { finishClarification } from "/_102027_/l2/aiAgentOrchestration.js";
+
+import { ClarificationData } from '/_102020_/l2/agents/agentNewMoleculePlannerClarification.js';
 
 export function createAgent(): IAgentAsync {
     return {
@@ -29,6 +30,10 @@ async function beforePromptImplicit(
 
     if (!userPrompt || userPrompt.length < 5) throw new Error('invalid prompt');
 
+    const baseMolecule = await getBaseMolecule();
+
+    console.info({ skillList })
+
     const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
         type: "add-message-ai",
         request: {
@@ -39,12 +44,14 @@ async function beforePromptImplicit(
                 content: system1
                     .replace("{{ groups }}", JSON.stringify(skillList, null, 2))
                     .replace("{{ skillMolecule }}", skillMolecule)
+                    .replace("{{systemBaseMolecule}}", baseMolecule)
+
 
             }, {
                 type: "human",
                 content: context.message.content
             }],
-            taskTitle: `Test 1`,
+            taskTitle: `Planner...`,
             threadId: context.message.threadId,
             userMessage: context.message.content,
         }
@@ -91,7 +98,7 @@ async function beforeClarificationStep(
         const { detail } = e as CustomEvent<{ value: unknown; action: "continue" | "cancel" }>;
         const { value, action } = detail;
         const normalizedValue = `\`\`\`json \n ${JSON.stringify(value, null, 2)} \n \`\`\``
-  
+
         finishClarification(
             agent,
             step.stepId,
@@ -106,7 +113,6 @@ async function beforeClarificationStep(
     return clariEl;
 
 }
-
 function processOutput(
     agent: IAgentMeta,
     context: mls.msg.ExecutionContext,
@@ -149,6 +155,7 @@ function processOutput(
         threadId: context.message.threadId,
         taskId: context.task?.PK || '',
         parentStepId: 1,
+        stepTitle: 'Preparing defs',
         step:
         {
             type: 'agent',
@@ -168,6 +175,14 @@ function processOutput(
 
 }
 
+async function getBaseMolecule() {
+    const key = mls.stor.getKeyToFile({ project: 102020, shortName: 'moleculeBase', folder: '', extension: '.ts', level: 2 })
+    const storFile = mls.stor.files[key];
+    if (!storFile) return '';
+    return await storFile.getContent() as string
+}
+
+
 const system1 = `
 <!-- modelType: codereasoning-->
 <!-- modelTypeList: geminiChat (2.5 pro), code (grok), deepseekchat, codeflash (gemini), deepseekreasoner, mini (4.1) ou nano (openai), codeinstruct (4.1), codereasoning(gpt5), code2 (kimi 2.5) -->
@@ -175,10 +190,24 @@ const system1 = `
 You are a planner responsible for defining the creation details of a new web component (widget) that will be included in an HTML page.
 Tasks:
 Understand the purpose of the widget by analyzing the original user prompt and define technical/functional restrictions and requirements.
+
+## IMPORTANT RULES
+
+- You MUST NOT define implementation details.
+- DO NOT mention how the component should be built.
+- DO NOT suggest technologies, APIs, or patterns (e.g., shadow DOM, slots, hooks, state management, etc).
+- DO NOT describe HTML structure or CSS strategies.
+
+- Your responsibility is ONLY to define:
+  - Functional requirements
+  - Behavioral rules
+  - Data inputs/outputs
+  - User interactions
+
+- The implementation (how it will be built) is the responsibility of the group skill.
+
 If the original prompt is not about creating a web component, return an error asking the user to redo the request.
-
 Identify the most appropriate group for this molecule.
-
 Suggest the name of molecule and put in 'fileReference'. Format: _[project]_/l2/[folder]/[moleculeName].ts
 
 ##Avaliables groups
@@ -186,6 +215,11 @@ Suggest the name of molecule and put in 'fileReference'. Format: _[project]_/l2/
 
 ## How molecules works in collab.codes
 {{ skillMolecule }}
+
+## Molecule Class Base
+\`\`\`typescript
+{{systemBaseMolecule}}
+\`\`\`
 
 ## Output format
 You must return the object strictly as JSON

@@ -608,9 +608,3 @@ export class DropdownSelectMolecule extends MoleculeAuraElement {
     `;
   }
 }
-
-declare global {
-  interface HTMLElementTagNameMap {
-    'molecules--dropdown-select-102020': DropdownSelectMolecule;
-  }
-}
