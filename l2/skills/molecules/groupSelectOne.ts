@@ -2,13 +2,14 @@
 
 export const skill = `
 
-# Skill: groupSelectOne
+# Skill: select + one
 
 ## Metadata
 
-- **Name:** groupSelectOne
+- **Name:** selectOne
 - **Version:** 1.0.0
-- **Last Updated:** 03/23/2026
+- **Category:** Data Entry
+- **Last Updated:** 04/01/2026
 
 ---
 
@@ -26,34 +27,36 @@ Allow the user to choose **exactly one option** from several available.
 
 ### When NOT to Use
 
-- User can select multiple options → use **SelectMultiple**
-- There is only one option (on/off) → use **Toggle/Switch**
-- Input is free/textual → use **Input**
+- User can select multiple options → use **select + many**
+- There is only one option (on/off) → use **toggle + state**
+- Input is free/textual → use **enter + text**
+
+### Possible Implementations
+
+- Select (Dropdown)
+- Radio Group
+- Segmented Control
+- Native Select
+- Toggle Group (exclusive)
+- Combobox
+- List Picker
+- Selectable Cards
 
 ---
 
 ## Contract
 
-### Option Structure
-
-| Property | Type | Required | Description |
-|----------|------|:--------:|-------------|
-| 'value' | 'string \| number' | ✓ | Unique identifier for the option |
-| 'label' | 'string' | ✓ | Text displayed to the user |
-| 'disabled' | 'boolean' | | If 'true', option cannot be selected |
-
 ### Component Properties
 
 | Property | Type | Default | Required | Decorator | Description |
 |----------|------|---------|:--------:|-----------|-------------|
-| 'value' | 'string \| number \| null' | 'null' | | '@propertyDataSource' | Value of the selected option |
-| 'options' | 'Option[]' | '[]' | ✓ | '@propertyDataSource' | List of available options |
-| 'placeholder' | 'string' | '''' | | '@propertyCompositeDataSource' | Text displayed when no option is selected |
+| 'value' | 'string \| number \| null' | 'null' | ✓ | '@propertyDataSource' | Value of the selected option |
 | 'disabled' | 'boolean' | 'false' | | '@property' | Disables the entire component |
 | 'readonly' | 'boolean' | 'false' | | '@property' | Displays value but prevents changes |
 | 'loading' | 'boolean' | 'false' | | '@property' | Indicates asynchronous loading |
 | 'error' | 'boolean \| string' | 'false' | | '@property' | Error state or message |
 | 'required' | 'boolean' | 'false' | | '@property' | Indicates mandatory selection |
+| 'name' | 'string' | '''' | | '@property' | Field name for forms |
 
 #### Decorator Reference
 
@@ -67,7 +70,181 @@ Allow the user to choose **exactly one option** from several available.
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| 'change' | '{ value: string \| number, option: Option }' | Fired when selection changes |
+| 'change' | '{ value: string \| number, option: Object }' | Fired when selection changes |
+| 'blur' | — | Fired when component loses focus |
+
+---
+
+## Slot Tags
+
+Slot tags are **unknown HTML elements** (not registered Custom Elements). The parent component reads and interprets these tags to build its structure.
+
+### Summary
+
+| Tag | Required | Description |
+|-----|:--------:|-------------|
+| '<Trigger>' | | Element that opens/activates the selection |
+| '<Value>' | | Displays the selected value |
+| '<Content>' | ✓ | Container for options |
+| '<Group>' | | Groups options with a label |
+| '<Item>' | ✓ (min. 1) | A selectable option |
+| '<Empty>' | | Displayed when no options available |
+
+---
+
+### '<Trigger>'
+
+Element that opens/activates the selection.
+
+| Attribute | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| 'placeholder' | 'string' | | Text when nothing selected |
+
+**Accepts:** Any content (text, icons, '<Value>')
+
+'''html
+<Trigger placeholder="Select...">
+  <Icon name="chevron-down" />
+  <Value />
+</Trigger>
+'''
+
+---
+
+### '<Value>'
+
+Displays the selected value. Usually used inside '<Trigger>'.
+
+| Attribute | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| 'placeholder' | 'string' | | Text when nothing selected |
+
+**Accepts:** None (self-closing)
+
+'''html
+<Value placeholder="None selected" />
+'''
+
+---
+
+### '<Content>'
+
+Container for options. **Required.**
+
+**Accepts:** '<Group>', '<Item>', '<Empty>'
+
+'''html
+<Content>
+  <Item value="a">Option A</Item>
+  <Item value="b">Option B</Item>
+</Content>
+'''
+
+---
+
+### '<Group>'
+
+Groups options with a label.
+
+| Attribute | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| 'label' | 'string' | ✓ | Group title |
+
+**Accepts:** '<Item>'
+
+'''html
+<Group label="Fruits">
+  <Item value="apple">Apple</Item>
+  <Item value="banana">Banana</Item>
+</Group>
+'''
+
+---
+
+### '<Item>'
+
+A selectable option. **Required** (minimum 1).
+
+| Attribute | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| 'value' | 'string \| number' | ✓ | Unique option value |
+| 'disabled' | 'boolean' | | Disables this option |
+
+**Accepts:** Any content (text, icons, images, badges)
+
+'''html
+<Item value="user-1">
+  <Avatar src="photo.jpg" />
+  <span>John Doe</span>
+  <Badge>Admin</Badge>
+</Item>
+
+<Item value="user-2" disabled>
+  <Avatar src="photo2.jpg" />
+  <span>Jane (inactive)</span>
+</Item>
+'''
+
+---
+
+### '<Empty>'
+
+Displayed when no options available or search has no results.
+
+**Accepts:** Any content
+
+'''html
+<Empty>
+  <Icon name="search-x" />
+  <span>No results found</span>
+</Empty>
+'''
+
+---
+
+## Slot Hierarchy
+
+'''
+component (root)
+├── <Trigger>
+│   └── <Value>
+└── <Content>
+    ├── <Group>
+    │   └── <Item>
+    ├── <Item>
+    └── <Empty>
+'''
+
+| Tag | Valid Parents |
+|-----|---------------|
+| '<Trigger>' | root |
+| '<Value>' | '<Trigger>' |
+| '<Content>' | root |
+| '<Group>' | '<Content>' |
+| '<Item>' | '<Content>', '<Group>' |
+| '<Empty>' | '<Content>' |
+
+---
+
+## Validation Rules
+
+### Slot Validation
+
+| Rule | Type | Message |
+|------|------|---------|
+| '<Content>' missing | error | 'Missing required slot <Content>' |
+| No '<Item>' present | error | 'At least 1 <Item> is required inside <Content>' |
+| '<Item>' without 'value' | error | '<Item> requires attribute "value"' |
+| '<Group>' without 'label' | error | '<Group> requires attribute "label"' |
+| Unknown tag found | warning | 'Unknown slot <TagName> ignored' |
+| Tag in invalid position | warning | '<TagName> is not valid inside <ParentTag>, ignored' |
+
+### Data Validation
+
+| Rule | Condition | Suggested Message |
+|------|-----------|-------------------|
+| required | 'required === true && value === null' | "Please select an option" |
+| invalidOption | 'value' not found in '<Item>' values | "Invalid option" |
 
 ---
 
@@ -85,7 +262,7 @@ Allow the user to choose **exactly one option** from several available.
 | **loading** | Loading options | Displays loading indicator |
 | **error** | Error state | Visual error feedback (color, icon) |
 
-### Option States
+### Item States
 
 | State | Description |
 |-------|-------------|
@@ -125,20 +302,23 @@ Allow the user to choose **exactly one option** from several available.
 
 ---
 
-## Validation Rules
+## Interchangeability
 
-| Rule | Condition | Suggested Message |
-|------|-----------|-------------------|
-| required | 'required === true && value === null' | "Please select an option" |
-| invalidOption | 'value' does not exist in 'options' | "Invalid option" |
+All components implementing 'select + one' accept the same slot tag structure. To switch the visual implementation, simply change the parent component tag:
+
+Each implementation decides internally:
+- Which tags it uses
+- Which tags it ignores
+- How it renders each tag
+
+The contract ensures **structural compatibility** across all implementations in the group.
 
 ---
-
 
 ## Changelog
 
 | Version | Date | Description |
 |---------|------|-------------|
-| 1.0.0 | 03/23/2026 | Initial contract definition |
+| 1.0.0 | 04/01/2026 | Initial contract with slot tags definition |
 
 `
