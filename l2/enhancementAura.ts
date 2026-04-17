@@ -79,6 +79,6 @@ export const onAfterChange = async (modelTS: mls.editor.IModelTS): Promise<void>
 
 
 export const onAfterCompile = async (modelTS: mls.editor.IModelTS): Promise<void> => {
-    await injectStyle(modelTS, 'Default', '_102020_enhancementAura');
+    await injectStyle(modelTS, 'Default', '_102020_/l2/enhancementAura');
     return;
 }

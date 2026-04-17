@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/moleculeBase.ts" enhancement="_102027_/l2/enhancementLit" />
 
-import { StateLitElement } from '/_100554_/l2/stateLitElement.js';
+import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 
 // =============================================================================
 // TYPES
