@@ -5,6 +5,7 @@ import { IAgentAsync, IAgentMeta } from '/_100554_/l2/aiAgentBase.js';
 // import { skill as skillDesing } from '/_102020_/l2/skills/aura/design.js';
 import { skill as skillAura } from '/_102020_/l2/skills/aura/overview.js';
 import { skill as skillMolecule } from '/_102020_/l2/skills/aura/moleculeGeneration2.js';
+import { skills as skillList } from '/_102020_/l2/skills/molecules/index';
 
 export function createAgent(): IAgentAsync {
     return {
@@ -15,9 +16,11 @@ export function createAgent(): IAgentAsync {
         visibility: "public",
         beforePromptAtomic,
         beforePromptImplicit,
+        beforePromptStep,
         afterPromptStep
     };
 }
+
 
 async function beforePromptAtomic(
     agent: IAgentMeta,
@@ -36,7 +39,6 @@ async function beforePromptAtomic(
         skillMolecule: data.skill,
         skillGroup: skillByGroup
     });
-
 
 
     const system2 = `
@@ -85,6 +87,7 @@ async function beforePromptImplicit(
 
     if (!userPrompt || userPrompt.length < 5) throw new Error('invalid prompt');
     const baseMolecule = await getBaseMolecule();
+    const userPrompt2 = await getSystemUser(userPrompt);
 
     const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
         type: "add-message-ai",
@@ -101,7 +104,7 @@ async function beforePromptImplicit(
 
             }, {
                 type: "human",
-                content: context.message.content
+                content: userPrompt2
             }],
             taskTitle: `Creating molecule`,
             threadId: context.message.threadId,
@@ -112,6 +115,60 @@ async function beforePromptImplicit(
 
 }
 
+async function beforePromptStep(
+    agent: IAgentMeta,
+    context: mls.msg.ExecutionContext,
+    parentStep: mls.msg.AIAgentStep,
+    step: mls.msg.AIAgentStep,
+    hookSequential: number,
+    args?: string
+): Promise<mls.msg.AgentIntent[]> {
+
+
+    if (!args) throw new Error(`(${agent.agentName})[beforePromptStep] args invalid`);
+    const baseMolecule = await getBaseMolecule();
+    const userPrompt = await getSystemUser(args);
+
+    const continueIntent: mls.msg.AgentIntentPromptReady = {
+        type: "prompt_ready",
+        args,
+        messageId: context.message.orderAt,
+        threadId: context.message.threadId,
+        taskId: context.task?.PK || '',
+        hookSequential,
+        parentStepId: parentStep.stepId,
+        humanPrompt: userPrompt,
+        systemPrompt: system1
+            // .replace("{{systemSkillDesign}}", skillDesing)
+            .replace("{{systemSkillAura}}", skillAura)
+            .replace("{{systemSkillMolecule}}", skillMolecule)
+            .replace("{{systemBaseMolecule}}", baseMolecule)
+    }
+
+    return [continueIntent];
+}
+
+
+async function getSystemUser(fileReference: string) {
+
+    const path = mls.stor.getPathToFile(fileReference);
+    const files = await mls.stor.getFiles({ ...path, loadContent: false });
+    if(!files.ts) throw new Error(`[getSystemUser] invalid file: ${fileReference}`)   
+    const data = await getMoleculeSkill(files.ts);
+    const skillByGroup = await getGroupSkill(data.group);
+    const system2 = `
+
+    ## File Reference : ${data.fileReference}
+    
+    ## Skill Group: ${data.group}
+    \`\`\`
+        ${skillByGroup}
+    \`\`\`
+
+    `
+
+    return system2;
+}
 
 async function afterPromptStep(
     agent: IAgentMeta,
@@ -150,11 +207,33 @@ async function afterPromptStep(
 async function processOutput(context: mls.msg.ExecutionContext, output: Result): Promise<mls.msg.AgentIntent[]> {
 
     console.info(output);
-    await updateFiles(context, output);
-    return [];
+    const fileRef = await updateFiles(context, output);
+    console.info({ fileRef, group: output.group });
+
+    const newStep: mls.msg.AgentIntentAddStep = {
+        type: "add-step",
+        messageId: context.message.orderAt,
+        threadId: context.message.threadId,
+        taskId: context.task?.PK || '',
+        parentStepId: 1,
+        stepTitle: 'Preparing playground',
+        step:
+        {
+            type: 'agent',
+            stepId: 0,
+            interaction: null,
+            status: 'waiting_human_input',
+            nextSteps: [],
+            agentName: "agentNewMoleculePlayground",
+            prompt: JSON.stringify({ group : output.group, fileReference: fileRef}),
+            rags: null,
+        }
+    };
+
+    return [newStep];
 }
 
-async function updateFiles(context: mls.msg.ExecutionContext, result: Result): Promise<void> {
+async function updateFiles(context: mls.msg.ExecutionContext, result: Result): Promise<string> {
 
     const molecule = result.ts;
     const html = result.htmlUseCaseExample;
@@ -168,7 +247,9 @@ async function updateFiles(context: mls.msg.ExecutionContext, result: Result): P
     const paramsHtml = { ...fileInfo, content: html, versionRef: new Date().toISOString(), extension: ".html" };
 
     await updateStorFile(paramsTs);
-    await updateStorFile(paramsHtml);
+    // await updateStorFile(paramsHtml);
+
+    return tripleSlash.variables['fileReference'];
 
 }
 
@@ -186,7 +267,8 @@ async function updateStorFile(params: { project: number, shortName: string, leve
 
 
 async function getGroupSkill(group: string) {
-    const path = `/_102020_/skills/molecules/${group}.js`;
+    const path = skillList.find((item) => item.name === group)?.skillReference;
+    if(!path) throw new Error(`[getGroupSkill] skill for group not found: ${path}`);
     const module = await import(path);
     if (!module || !module.skill) throw new Error(`[getGroupSkill] skill for group not found: ${path}`);
     if (typeof module.skill !== 'string') throw new Error(`[getGroupSkill] invalid type of skill: ${path}, must be string`);
@@ -251,7 +333,17 @@ Task: Generate a molecule according the user request.
 
 ## Output format
 You must return the object strictly as JSON
-[[OutputSection]]
+export type Output =
+    {
+        type: "flexible";
+        result: Result;
+    }
+
+export type Result = {
+    ts: string,
+    htmlUseCaseExample: string // Example of use molecule with static data, no script
+    group: string,
+}
 
 `
 
@@ -265,6 +357,7 @@ export type Output =
 export type Result = {
     ts: string,
     htmlUseCaseExample: string // Example of use molecule with static data, no script
+    group: string,
 }
 //#endregion 
 

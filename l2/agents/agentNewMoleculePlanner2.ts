@@ -1,24 +1,24 @@
-/// <mls fileReference="_102020_/l2/agents/agentNewMoleculePlanner.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
+/// <mls fileReference="_102020_/l2/agents/agentNewMoleculePlanner2.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
 
-import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 
-import { skills as skillList } from '/_102020_/l2/skills/molecules/index';
 import { skill as skillMolecule } from '/_102020_/l2/skills/aura/moleculeGeneration2.js';
 import { finishClarification } from "/_102027_/l2/aiAgentOrchestration.js";
+import { skills as skillList } from '/_102020_/l2/skills/molecules/index';
 
+import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { ClarificationData } from '/_102020_/l2/agents/agentNewMoleculePlannerClarification.js';
 
 export function createAgent(): IAgentAsync {
     return {
-        agentName: "agentNewMoleculePlanner",
+        agentName: "agentNewMoleculePlanner2",
         agentProject: 102020,
         agentFolder: "agents",
         agentDescription: "Agent Planner for a new moleculle",
-        visibility: "public",
+        visibility: "private",
         beforePromptImplicit,
+        beforePromptStep,
         afterPromptStep,
         beforeClarificationStep
-
     };
 }
 
@@ -31,8 +31,7 @@ async function beforePromptImplicit(
     if (!userPrompt || userPrompt.length < 5) throw new Error('invalid prompt');
 
     const baseMolecule = await getBaseMolecule();
-
-    console.info({ skillList })
+    const groupDetails = skillList.find((item) => item.name === userPrompt);
 
     const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
         type: "add-message-ai",
@@ -42,10 +41,10 @@ async function beforePromptImplicit(
             inputAI: [{
                 type: "system",
                 content: system1
-                    .replace("{{ groups }}", JSON.stringify(skillList, null, 2))
+                    .replace("{{ group }}", userPrompt)
                     .replace("{{ skillMolecule }}", skillMolecule)
+                    .replace("{{ groupDesc }}", groupDetails?.description || '')
                     .replace("{{systemBaseMolecule}}", baseMolecule)
-
 
             }, {
                 type: "human",
@@ -58,6 +57,41 @@ async function beforePromptImplicit(
     };
     return [addMessageAI];
 
+}
+
+async function beforePromptStep(
+    agent: IAgentMeta,
+    context: mls.msg.ExecutionContext,
+    parentStep: mls.msg.AIAgentStep,
+    step: mls.msg.AIAgentStep,
+    hookSequential: number,
+    args?: string
+): Promise<mls.msg.AgentIntent[]> {
+
+    if (!args) throw new Error(`(${agent.agentName})[beforePromptStep] args invalid`);
+
+    const data: { group: string, prompt: string } = JSON.parse(args)
+
+    const baseMolecule = await getBaseMolecule();
+    const groupDetails = skillList.find((item) => item.name === data.group);
+
+    const continueIntent: mls.msg.AgentIntentPromptReady = {
+        type: "prompt_ready",
+        args,
+        messageId: context.message.orderAt,
+        threadId: context.message.threadId,
+        taskId: context.task?.PK || '',
+        hookSequential,
+        parentStepId: parentStep.stepId,
+        humanPrompt: data.prompt || '',
+        systemPrompt: system1
+            .replace("{{ group }}", data.group)
+            .replace("{{ skillMolecule }}", skillMolecule)
+            .replace("{{ groupDesc }}", groupDetails?.description || '')
+            .replace("{{systemBaseMolecule}}", baseMolecule)
+    }
+
+    return [continueIntent];
 }
 
 async function afterPromptStep(
@@ -182,7 +216,6 @@ async function getBaseMolecule() {
     return await storFile.getContent() as string
 }
 
-
 const system1 = `
 <!-- modelType: codereasoning-->
 <!-- modelTypeList: geminiChat (2.5 pro), code (grok), deepseekchat, codeflash (gemini), deepseekreasoner, mini (4.1) ou nano (openai), codeinstruct (4.1), codereasoning(gpt5), code2 (kimi 2.5) -->
@@ -206,15 +239,17 @@ Understand the purpose of the widget by analyzing the original user prompt and d
 
 - The implementation (how it will be built) is the responsibility of the group skill.
 
-If the original prompt is not about creating a web component, return an error asking the user to redo the request.
 Identify the most appropriate group for this molecule.
 Suggest the name of molecule and put in 'fileReference'. Format: _[project]_/l2/[folder]/[moleculeName].ts
 
-##Avaliables groups
-{{ groups }}
 
 ## How molecules works in collab.codes
+\`\`\`md
 {{ skillMolecule }}
+\`\`\`
+
+## Group: {{ group }}
+{{ groupDesc }}
 
 ## Molecule Class Base
 \`\`\`typescript
@@ -223,7 +258,20 @@ Suggest the name of molecule and put in 'fileReference'. Format: _[project]_/l2/
 
 ## Output format
 You must return the object strictly as JSON
-[[OutputSection]]
+export type Output =
+    {
+        type: "clarification";
+        json: TClarification;
+    }
+
+export interface TClarification {
+    fileReference: string,
+    description: string,
+    prompt: string, // same user prompt
+    group: string,
+    functionalRequirements: string[],
+    visualRequirements: string[],
+}
 `
 
 //#region OutputSection

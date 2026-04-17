@@ -17,7 +17,6 @@ export function createAgent(): IAgentAsync {
     };
 }
 
-
 async function beforePromptImplicit(
     agent: IAgentMeta,
     context: mls.msg.ExecutionContext,
@@ -87,7 +86,6 @@ async function afterPromptStep(
     const payload = (step.interaction?.payload?.[0]);
     if (payload?.type !== 'flexible' || !payload.result) throw new Error(`[afterPromptStep] invalid payload: ${payload}`)
     let status: mls.msg.AIStepStatus = 'completed';
-    let intents: mls.msg.AgentIntent[] = [];
 
     const output: IResult = payload.result;
     await updateDefs(output.skillMd, output.fileReference, output.group);
@@ -102,7 +100,27 @@ async function afterPromptStep(
         status
     };
 
-    return [...intents, updateStatus];
+    const newStep: mls.msg.AgentIntentAddStep = {
+        type: "add-step",
+        messageId: context.message.orderAt,
+        threadId: context.message.threadId,
+        taskId: context.task?.PK || '',
+        parentStepId: 1,
+        stepTitle: `Implements molecule: ${output.fileReference}`,
+        step:
+        {
+            type: 'agent',
+            stepId: 0,
+            interaction: null,
+            status: 'waiting_human_input',
+            nextSteps: [],
+            agentName: "agentNewMolecule",
+            prompt: output.fileReference,
+            rags: null,
+        }
+    };
+
+    return [newStep, updateStatus];
 
 }
 
@@ -120,12 +138,24 @@ export const skill = \`${skill}\`;
 
 `;
 
-    await createAllFiles({
+    const rc = await createAllFiles({
         ...fileInfo,
         enhancement: '',
         defsSource: template,
         tsSource: '// In develpoment',
-    }, true, false);
+        
+    }, true, true);
+
+    if (rc.ts) {
+        const modelTs = await (rc.ts as mls.stor.IFileInfo).getOrCreateModel();
+        mls.editor.forceModelUpdate(modelTs.model);
+    }
+
+    
+    if (rc.def) {
+        const modelDef = await (rc.def as mls.stor.IFileInfo).getOrCreateModel();
+        mls.editor.forceModelUpdate(modelDef.model);
+    }
 
 }
 
@@ -169,7 +199,17 @@ If any implementation detail is included, remove it and rewrite.
 
 ## Output format
 You must return the object strictly as JSON
-[[OutputSection]]
+export type Output =
+    {
+        type: "flexible";
+        result: IResult
+    }
+
+interface IResult {
+    fileReference: string,
+    group: string,
+    skillMd: string,
+}
 `
 
 //#region OutputSection
