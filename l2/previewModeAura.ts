@@ -364,7 +364,7 @@ export class PreviewModeAura {
 
     private mountTokens(tokens: string, file: mls.stor.IFileInfo): void {
         try {
-            const iframe = window.preview.iframe;
+            const iframe = (window as any).preview.iframe;
             if (!iframe || !iframe.contentDocument) return;
             this.removeOlderTokens(iframe, file);
             const css = tokens || '';
