@@ -91,7 +91,7 @@ export class ServicePreview extends ServiceBase {
 
   constructor() {
     super();
-    window.preview = {
+    (window as any).preview = {
       editor: undefined,
       iframe: undefined,
     };
@@ -235,8 +235,8 @@ export class ServicePreview extends ServiceBase {
   }
 
   private getIframePreviewHTML(): HTMLHtmlElement | undefined {
-    if (!window.preview.iframe) throw new Error('Preview not created yet');
-    const htmlEl = window.preview.iframe
+    if (!(window as any).preview.iframe) throw new Error('Preview not created yet');
+    const htmlEl = (window as any).preview.iframe
       ?.contentDocument
       ?.querySelector('html') as HTMLHtmlElement;
     return htmlEl;
@@ -389,7 +389,7 @@ export class ServicePreview extends ServiceBase {
     wrapper.appendChild(iframe);
     container.appendChild(wrapper);
 
-    window.preview.iframe = iframe;
+    (window as any).preview.iframe = iframe;
 
     iframe.addEventListener('load', () => {
       this.writePreviewContent(iframe);
@@ -456,7 +456,7 @@ export class ServicePreview extends ServiceBase {
     const container = this.querySelector('#preview-container') as HTMLElement;
     if (!container) return;
     container.innerHTML = '';
-    window.preview.iframe = undefined;
+    (window as any).preview.iframe = undefined;
     this.configureTools(false);
   }
 
@@ -510,7 +510,7 @@ export class ServicePreview extends ServiceBase {
 
   private async addStyles() {
 
-    const iframeHtml = window.preview.iframe?.contentDocument
+    const iframeHtml = (window as any).preview.iframe?.contentDocument
     if (!iframeHtml || !iframeHtml) return;
     const id = convertFileToTag({ project: this.project, shortName: this.shortName, folder: this.folder });
 
@@ -532,7 +532,7 @@ export class ServicePreview extends ServiceBase {
 
   private mountTokens(tokens: string): void {
     try {
-      const iframe = window.preview.iframe;
+      const iframe = (window as any).preview.iframe;
       if (!iframe || !iframe.contentDocument) return;
       this.removeOlderTokens(iframe);
       const css = tokens || '';
@@ -574,7 +574,7 @@ export class ServicePreview extends ServiceBase {
     });
 
     (this.monacoEditor as any)['mlsEditor'] = this._ed1;
-    window.preview.editor = this._ed1;
+    (window as any).preview.editor = this._ed1;
     
   }
 
