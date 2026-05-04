@@ -40,8 +40,9 @@ export class PreviewModeAura {
 
         if (!this.json || !this.ifr || !this.esbuild || !this.file) return;
 
-        const find = this.findWidgets(this.ifr.contentDocument?.body)
-        const result = await this._buildJS(find);
+        const find = this.findWidgets(this.ifr.contentDocument?.body);
+        const auraWidgets = this.getImportsAuraWigetsPlayGround();
+        const result = await this._buildJS([...find, ...auraWidgets]);
         this.mountJSImporMap(this.json, this.ifr);
         this.mountLinks(this.json, this.ifr);
         this.mountTailwindDarkMode(this.ifr);
@@ -53,7 +54,7 @@ export class PreviewModeAura {
     }
 
     private async _buildJS(other: string[]) {
-            
+
         if (!this.json || !this.esbuild || !this.file) return;
 
         let myMap = this.parseImportsMap(this.json.importsMap);
@@ -241,6 +242,16 @@ export class PreviewModeAura {
         const ret = [...new Set(array)]
         return ret;
 
+    }
+
+    private getImportsAuraWigetsPlayGround() {
+        return [
+            '/_102020_widgetPlaygroundState',
+            '/_102020_widgetPlaygroundStateBoolean',
+            '/_102020_widgetPlaygroundStateNumber',
+            '/_102020_widgetPlaygroundStateText',
+            '/_102020_widgetPlaygroundStatePreviewCode',
+        ]
     }
 
     private async loadEsbuild() {
