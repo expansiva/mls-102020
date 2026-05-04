@@ -5,20 +5,23 @@
 // =============================================================================
 // Editable code viewer with syntax highlighting using highlight.js
 
-import { html, TemplateResult } from 'lit';
+import { html, TemplateResult, LitElement } from 'lit';
 import { customElement, property, state, query } from 'lit/decorators.js';
-import { MoleculeAuraElement } from '/_102020_/l2/moleculeBase.js';
 import { initState, setState } from '/_102027_/l2/collabState.js';
 
 declare const hljs: any;
 
 @customElement('widget-playground-state-preview-code-102020')
-export class PlaygroundStatePreviewCode extends MoleculeAuraElement {
+export class PlaygroundStatePreviewCode extends LitElement {
 
 
   // ===========================================================================
   // PROPERTIES
   // ===========================================================================
+
+  protected createRenderRoot(): HTMLElement | DocumentFragment {
+    return this;
+  }
 
   @property({ type: String })
   target: string = '';
