@@ -1,9 +1,7 @@
 /// <mls fileReference="_102020_/l2/widgetPlaygroundStateText.ts" enhancement="_102020_/l2/enhancementAura.ts"/>
 
 import { html } from 'lit';
-import {  } from 'lit/directives/class-map.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
-
 import { customElement, property, query } from 'lit/decorators.js';
 import { propertyDataSource } from '/_102027_/l2/collabDecorators.js';
 import { CollabLitElement } from '/_102027_/l2/collabLitElement.js'
@@ -42,8 +40,6 @@ export class WidgetPlaygroundStateText extends CollabLitElement {
     @property({ type: Boolean }) autofocus: boolean = false;
 
     @propertyDataSource({ type: String }) hint: string | undefined;
-
-    @property({ type: String }) autocorrect: 'off' | 'on' | undefined = undefined;
 
     @property({ type: String }) autoCapitalize: 'off' | 'none' | 'on' | 'sentences' | 'words' | 'characters' | undefined = undefined;
 
