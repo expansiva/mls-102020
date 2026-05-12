@@ -99,6 +99,7 @@ export class ServicePreview extends ServiceBase {
       refresh: undefined
     };
     this.initStatesPreview();
+    this.initStatesPreviewL3();
   }
 
   public details: IService = {
@@ -198,7 +199,10 @@ export class ServicePreview extends ServiceBase {
   }
 
   private initStatesPreview() {
-    initState('preview', { pausePreview: false, service: this, language: 'en' });
+    initState('preview', { pausePreview: !this.watch, service: this, language: this.lang });
+  }
+
+  private initStatesPreviewL3() {
     initState('previewL3', {
       selectedElement: null,       // selector do elemento selecionado
       selectedTagName: '',
@@ -243,7 +247,7 @@ export class ServicePreview extends ServiceBase {
   private async changeLanguagePreview(lang: string) {
 
     const hasLang = Object.values(this.languages).findIndex((item) => item.acronym === lang);
-  
+
     if (hasLang === -1) {
       await this.setLanguages();
     }
@@ -265,7 +269,6 @@ export class ServicePreview extends ServiceBase {
     if (this.menu.tools.languages.selected === undefined) return;
     const opMenu = this.menu.tools.languages.options[this.menu.tools.languages.selected as number].text;
     const lang = this.languages[opMenu].acronym;
-
     setState('preview.language', lang);
 
     return true;
@@ -435,8 +438,9 @@ export class ServicePreview extends ServiceBase {
   }
 
   private createPreview() {
-
+    
     this.initStatesPreview();
+    this.initStatesPreviewL3();
     this.clearPreview();
 
     const container = this.querySelector('#preview-container') as HTMLElement;

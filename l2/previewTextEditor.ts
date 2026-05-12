@@ -229,7 +229,7 @@ function parseMessageObjects(source: string, block: { start: number; end: number
 
     // Parse dos key: value dentro do objeto
     const entries = parseObjectEntries(objContent, block.start + objStartInBlock);
-    
+
     results.push({ name, lang, entries });
   }
 
@@ -692,6 +692,109 @@ export function findTextOriginByIndex(text: string, source: string, expressionIn
   return findTextOrigin(text, source);
 }
 
+// --- Occurrence-based disambiguation ---
+
+/**
+ * Finds ALL i18n keys whose value matches the given text.
+ * Returns them in declaration order.
+ */
+export function findAllI18nMatches(text: string, source: string, lang?: string): { key: string; origin: II18nOrigin }[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  const i18nBlock = extractI18nBlock(source);
+  if (!i18nBlock) return [];
+
+  const messageObjects = parseMessageObjects(source, i18nBlock);
+  if (messageObjects.length === 0) return [];
+
+  const normalizedText = trimmed.replace(/\s+/g, ' ');
+  const matchingKeys: string[] = [];
+
+  const primaryObj = lang
+    ? messageObjects.find(o => o.lang === lang) || messageObjects[0]
+    : messageObjects[0];
+
+  for (const [key, entry] of Object.entries(primaryObj.entries)) {
+    const normalizedValue = entry.value.replace(/\s+/g, ' ').trim();
+    if (normalizedValue === normalizedText) {
+      matchingKeys.push(key);
+    }
+  }
+
+  const results: { key: string; origin: II18nOrigin }[] = [];
+
+  for (const foundKey of matchingKeys) {
+    const templateExpression = findTemplateExpression(foundKey, source);
+    const languages: II18nEntry[] = [];
+    for (const obj of messageObjects) {
+      const entry = obj.entries[foundKey];
+      if (entry) {
+        languages.push({
+          objectName: obj.name,
+          lang: obj.lang,
+          value: entry.value,
+          startOffset: entry.startOffset,
+          endOffset: entry.endOffset,
+        });
+      }
+    }
+    results.push({
+      key: foundKey,
+      origin: {
+        type: 'i18n',
+        key: foundKey,
+        templateExpression: templateExpression || `this.msg.${foundKey}`,
+        languages,
+      },
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Resolves text origin using DOM occurrence index to disambiguate
+ * when multiple i18n keys have the same value.
+ * 
+ * @param text - Visible text
+ * @param source - Full .ts source  
+ * @param occurrenceIndex - Which occurrence of this text in the DOM (0-based)
+ * @param lang - Current language
+ */
+export function findTextOriginByOccurrence(
+  text: string,
+  source: string,
+  occurrenceIndex: number,
+  lang?: string
+): TextOrigin {
+  const trimmed = text.trim();
+  if (!trimmed) return { type: 'dynamic', reason: 'Empty text' };
+
+  const matches = findAllI18nMatches(trimmed, source, lang);
+
+  if (matches.length > 1 && occurrenceIndex >= 0) {
+    const templateMap = buildTemplateMap(source);
+
+    const matchesWithPos = matches.map(m => {
+      const templateIdx = templateMap.findIndex(expr => expr.i18nKey === m.key);
+      return { ...m, templateIdx };
+    }).filter(m => m.templateIdx >= 0)
+      .sort((a, b) => a.templateIdx - b.templateIdx);
+
+    if (occurrenceIndex < matchesWithPos.length) {
+      return matchesWithPos[occurrenceIndex].origin;
+    }
+  }
+
+  if (matches.length > 0) {
+    return matches[0].origin;
+  }
+
+  return findTextOrigin(text, source);
+}
+
+
 
 // --- Troca de tag de web component ---
 
@@ -704,19 +807,28 @@ export interface ITagReplaceResult {
 }
 
 /**
- * Substitui uma ocorrência específica de uma tag de web component no template do render().
+ * Substitui uma ocorrência específica ou todas as ocorrências de uma tag
+ * de web component no template do render().
  * 
- * Usa o selectorPath para determinar qual ocorrência da tag deve ser trocada,
- * contando a posição do elemento no DOM (ex: se o path termina com a tag,
- * conta quantos irmãos da mesma tag vêm antes para achar a ocorrência certa).
+ * Também gerencia os imports:
+ * - Se oldTag ainda existe no template após a troca → mantém import antigo E adiciona novo
+ * - Se oldTag não existe mais → remove import antigo e adiciona novo
+ * - Se import do newTag já existe → não duplica
  * 
  * @param oldTag - Tag atual (ex: 'ml-floating-text-input')
  * @param newTag - Nova tag (ex: 'ml-new-text-input')
  * @param source - Conteúdo completo do arquivo .ts
- * @param selectorPath - Path do elemento selecionado no DOM (ex: 'page-comp > main > ml-floating-text-input')
+ * @param selectorPath - Path do elemento selecionado no DOM
+ * @param mode - 'selected' troca só o selecionado, 'all' troca todas as ocorrências
  * @returns Resultado com o novo source
  */
-export function replaceComponentTag(oldTag: string, newTag: string, source: string, selectorPath?: string): ITagReplaceResult {
+export function replaceComponentTag(
+  oldTag: string,
+  newTag: string,
+  source: string,
+  selectorPath?: string,
+  mode: 'selected' | 'all' = 'selected'
+): ITagReplaceResult {
   if (!oldTag || !newTag) {
     return { success: false, error: 'oldTag and newTag are required' };
   }
@@ -737,22 +849,17 @@ export function replaceComponentTag(oldTag: string, newTag: string, source: stri
   const { start, end } = templateRange;
   const template = source.substring(start, end);
 
-  // Determina qual ocorrência trocar baseado no selectorPath
-  const occurrenceIndex = getOccurrenceFromPath(oldTag, selectorPath);
-
   // Encontra todas as posições de abertura e fechamento da tag no template
   const escapedOld = escapeRegex(oldTag);
   const openRegex = new RegExp(`<${escapedOld}(\\s|>|\\/)`, 'g');
   const closeRegex = new RegExp(`</${escapedOld}>`, 'g');
 
-  // Coleta posições de todas as aberturas
   const openMatches: { index: number; length: number; suffix: string }[] = [];
   let m: RegExpExecArray | null;
   while ((m = openRegex.exec(template)) !== null) {
     openMatches.push({ index: m.index, length: m[0].length, suffix: m[1] });
   }
 
-  // Coleta posições de todos os fechamentos
   const closeMatches: { index: number; length: number }[] = [];
   while ((m = closeRegex.exec(template)) !== null) {
     closeMatches.push({ index: m.index, length: m[0].length });
@@ -762,17 +869,27 @@ export function replaceComponentTag(oldTag: string, newTag: string, source: stri
     return { success: false, error: `Tag "${oldTag}" not found in template` };
   }
 
-  // Se occurrenceIndex é válido e há múltiplas ocorrências, troca só aquela
-  // Senão troca todas (comportamento original)
-  const targetOpen = (occurrenceIndex >= 0 && occurrenceIndex < openMatches.length)
-    ? [openMatches[occurrenceIndex]]
-    : openMatches;
+  const totalOccurrences = openMatches.length;
 
-  const targetClose = (occurrenceIndex >= 0 && occurrenceIndex < closeMatches.length)
-    ? [closeMatches[occurrenceIndex]]
-    : closeMatches;
+  // Determina quais ocorrências trocar
+  let targetOpen: typeof openMatches;
+  let targetClose: typeof closeMatches;
 
-  // Coleta todas as substituições com posições absolutas no source
+  if (mode === 'all') {
+    targetOpen = openMatches;
+    targetClose = closeMatches;
+  } else {
+    // mode === 'selected' — usa o selectorPath para identificar qual
+    const occurrenceIndex = getOccurrenceFromPath(oldTag, selectorPath);
+    targetOpen = (occurrenceIndex >= 0 && occurrenceIndex < openMatches.length)
+      ? [openMatches[occurrenceIndex]]
+      : [openMatches[0]];
+    targetClose = (occurrenceIndex >= 0 && occurrenceIndex < closeMatches.length)
+      ? [closeMatches[occurrenceIndex]]
+      : [closeMatches[0]];
+  }
+
+  // Coleta substituições com posições absolutas no source
   const replacements: { srcStart: number; srcEnd: number; replacement: string }[] = [];
 
   for (const open of targetOpen) {
@@ -803,8 +920,12 @@ export function replaceComponentTag(oldTag: string, newTag: string, source: stri
     newSource = newSource.substring(0, r.srcStart) + r.replacement + newSource.substring(r.srcEnd);
   }
 
-  // Troca o import correspondente
-  newSource = replaceImportForTag(oldTag, newTag, newSource);
+  // Verifica se ainda restam ocorrências da oldTag no template após a substituição
+  const remainingOldTags = totalOccurrences - targetOpen.length;
+  const oldTagStillExists = remainingOldTags > 0;
+
+  // Gerencia imports
+  newSource = updateImportsForTagReplace(oldTag, newTag, newSource, oldTagStillExists);
 
   return {
     success: true,
@@ -814,14 +935,13 @@ export function replaceComponentTag(oldTag: string, newTag: string, source: stri
 }
 
 /**
- * Troca o import de um web component no source.
+ * Gerencia os imports ao trocar uma tag de web component.
  * 
- * Usa resolveTagToFile para converter tag → { project, shortName, folder }
- * e monta o path no padrão: /_${project}_/l2/${folder}/${shortName}.js
- * 
- * Procura o import antigo no source e substitui pelo novo.
+ * - Se oldTag ainda existe no template → mantém import antigo E adiciona o novo
+ * - Se oldTag não existe mais → remove import antigo e adiciona o novo
+ * - Se o import do newTag já existe → não duplica
  */
-function replaceImportForTag(oldTag: string, newTag: string, source: string): string {
+function updateImportsForTagReplace(oldTag: string, newTag: string, source: string, oldTagStillExists: boolean): string {
   const oldFile = resolveTagToFile(oldTag);
   const newFile = resolveTagToFile(newTag);
 
@@ -832,12 +952,70 @@ function replaceImportForTag(oldTag: string, newTag: string, source: string): st
 
   if (!oldImportPath || !newImportPath) return source;
 
-  // Procura o import que contém o path antigo
-  // Suporta: import 'path'; e import { X } from 'path'; e import X from 'path';
-  const escapedPath = escapeRegex(oldImportPath);
-  const importRegex = new RegExp(`(import\\s+(?:[^;]*?from\\s+)?['"])${escapedPath}(['"]\\s*;?)`, 'g');
+  // Verifica se o import do newTag já existe no source
+  const newImportExists = source.includes(newImportPath);
 
-  return source.replace(importRegex, `$1${newImportPath}$2`);
+  // Encontra a linha de import da oldTag
+  const escapedOldPath = escapeRegex(oldImportPath);
+  const importRegex = new RegExp(`^(import\\s+(?:[^;]*?from\\s+)?['"])${escapedOldPath}(['"]\\s*;?)\\s*$`, 'gm');
+  const importMatch = importRegex.exec(source);
+
+  if (!importMatch) {
+    // Import antigo não encontrado — apenas adiciona o novo se não existe
+    if (!newImportExists) {
+      return addImport(source, newImportPath);
+    }
+    return source;
+  }
+
+  const oldImportLine = importMatch[0];
+  const newImportLine = `${importMatch[1]}${newImportPath}${importMatch[2]}`;
+
+  if (oldTagStillExists) {
+    // Mantém import antigo E adiciona o novo (se não existe)
+    if (!newImportExists) {
+      const insertPos = importMatch.index + oldImportLine.length;
+      return source.substring(0, insertPos) + '\n' + newImportLine + source.substring(insertPos);
+    }
+    return source;
+  } else {
+    // Remove import antigo e adiciona o novo (se não existe)
+    if (newImportExists) {
+      // Apenas remove o antigo
+      return source.replace(oldImportLine, '').replace(/\n\n\n+/g, '\n\n');
+    } else {
+      // Substitui o antigo pelo novo
+      return source.replace(oldImportLine, newImportLine);
+    }
+  }
+}
+
+/**
+ * Adiciona uma linha de import no source, após o último import existente.
+ */
+function addImport(source: string, importPath: string): string {
+  const newImportLine = `import '${importPath}';`;
+
+  // Encontra a posição do último import no source
+  const importRegex = /^import\s+.+;?\s*$/gm;
+  let lastImportEnd = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = importRegex.exec(source)) !== null) {
+    lastImportEnd = match.index + match[0].length;
+  }
+
+  if (lastImportEnd > 0) {
+    return source.substring(0, lastImportEnd) + '\n' + newImportLine + source.substring(lastImportEnd);
+  }
+
+  // Sem imports — insere no topo (após a primeira linha)
+  const firstNewline = source.indexOf('\n');
+  if (firstNewline >= 0) {
+    return source.substring(0, firstNewline + 1) + newImportLine + '\n' + source.substring(firstNewline + 1);
+  }
+
+  return newImportLine + '\n' + source;
 }
 
 /**

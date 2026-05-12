@@ -1,14 +1,14 @@
-/// <mls fileReference="_102020_/l2/agents/agentAddLanguage.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
+/// <mls fileReference="_102020_/l2/agents/agentRemoveLanguage.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as skilli18n } from '/_102020_/l2/skills/aura/language.js';
 
 export function createAgent(): IAgentAsync {
     return {
-        agentName: "agentAddLanguage",
+        agentName: "agentRemoveLanguage",
         agentProject: 102020,
         agentFolder: "agents",
-        agentDescription: "New i18n language",
+        agentDescription: "Remove i18n language",
         visibility: "private",
         beforePromptImplicit,
         beforePromptStep,
@@ -31,7 +31,7 @@ async function beforePromptImplicit(
             action: 'addMessageAI',
             agentName: agent.agentName,
             inputAI: inputs,
-            taskTitle: `Add language`,
+            taskTitle: `Remove languages`,
             threadId: context.message.threadId,
             userMessage: context.message.content,
             longTermMemory: {},
@@ -56,7 +56,6 @@ async function beforePromptStep(
 
     if (!args) throw new Error(`[beforePromptStep] args invalid`)
     const data = JSON.parse(args);
-    console.info(`===process with args: ${args}`)
     const actuali18n = await getPagei18nBlock(data.fileReference);
 
     const continueParallel: mls.msg.AgentIntentPromptReady = {
@@ -69,7 +68,7 @@ async function beforePromptStep(
         parentStepId: parentStep.stepId,
         humanPrompt: `
 
-        Add languages: ${data.languages}
+        Remove languages: ${data.languages}
 
         ##File Reference: ${data.fileReference}
 
@@ -92,9 +91,7 @@ async function afterPromptStep(
     hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
 
-
     if (!agent || !context || !step) throw new Error(`[afterPromptStep] invalid params, agent:${!!agent}, context:${!!context}, step:${!!step}`);
-
     const payload = (step.interaction?.payload?.[0]);
     if (payload?.type !== 'flexible' || !payload.result) throw new Error(`[afterPromptStep] invalid payload: ${payload}`)
     let status: mls.msg.AIStepStatus = 'completed';
@@ -183,7 +180,7 @@ const system1 = `
 
 <!-- modelTypeList: geminiChat (2.5 pro), code (grok), deepseekchat, codeflash (gemini), deepseekreasoner, mini (4.1) ou nano (openai), codeinstruct (4.1), codereasoning(gpt5), code2 (kimi 2.5) -->
 
-You are a translation specialist responsible for adding a new i18n language, following the established standard.
+You are an agent responsible for removing an existing i18n new language, following the established standard.
 
 {{ skillLanguage }}
 

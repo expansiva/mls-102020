@@ -1,6 +1,5 @@
 /// <mls fileReference="_102020_/l2/serviceGenome.ts" enhancement="_102027_/l2/enhancementLit"/>
 
-
 import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu, IOptions } from '/_102027_/l2/serviceBase.js';
@@ -60,6 +59,8 @@ const message_en = {
     langScenarioDesc: 'Manage the i18n translations for the current page. Select an existing language to preview it, or add a new one.',
     molScenarioDesc: 'Switch between molecule variants for the selected widget. Click a variant to replace it in the page.',
     molReplaceError: 'Could not replace the molecule in the source.',
+    molSelectedOnly: 'Selected only',
+    molAllOccurrences: 'All occurrences',
     inDevelopment: 'In development',
 };
 type MessageType = typeof message_en;
@@ -103,6 +104,8 @@ const messages: Record<string, MessageType> = {
         langScenarioDesc: 'Gerencie as traduções i18n da página atual. Selecione um idioma existente para visualizá-lo ou adicione um novo.',
         molScenarioDesc: 'Alterne entre variantes de molécula para o widget selecionado. Clique em uma variante para substituí-la na página.',
         molReplaceError: 'Não foi possível substituir a molécula no código fonte.',
+        molSelectedOnly: 'Somente selecionado',
+        molAllOccurrences: 'Todas ocorrências',
         inDevelopment: 'Em desenvolvimento',
     },
     es: {
@@ -143,6 +146,8 @@ const messages: Record<string, MessageType> = {
         langScenarioDesc: 'Administre las traducciones i18n de la página actual. Seleccione un idioma existente para previsualizarlo o agregue uno nuevo.',
         molScenarioDesc: 'Alterne entre variantes de molécula para el widget seleccionado. Haga clic en una variante para reemplazarla en la página.',
         molReplaceError: 'No se pudo reemplazar la molécula en el código fuente.',
+        molSelectedOnly: 'Solo seleccionado',
+        molAllOccurrences: 'Todas las ocurrencias',
         inDevelopment: 'En desarrollo',
     },
 };
@@ -237,8 +242,8 @@ export class ServiceGenome100554 extends ServiceBase {
         position: 'right',
         tooltip: 'Genome Customization',
         visible: true,
-        widget: '_100554_serviceGenome',
-        level: [1, 2, 3, 4, 5, 6, 7],
+        widget: '_102020_serviceGenome',
+        level: [3],
     };
 
     public onClickMain(op: string) {
@@ -290,6 +295,9 @@ export class ServiceGenome100554 extends ServiceBase {
     @state() private _moleculesConfig: IKnobConfig = {
         key: 'molecules', min: 1, max: 1, labels: {}, disabled: true,
     };
+
+    // molecules replace mode: selected only or all occurrences
+    @state() private _moleculeReplaceMode: 'selected' | 'all' = 'selected';
 
     // general variation status (for non-language knobs)
     @state() private _variationExists: boolean = true;
@@ -511,7 +519,6 @@ export class ServiceGenome100554 extends ServiceBase {
         };
 
         // pega nome da molecule atual pela tag
-        // ex: tag = "ds-button-primary", group = "ds" → moleculeName = "button-primary"
         const currentMoleculeName = tag.replace(`${actualGroup}-`, '');
 
         // tenta encontrar índice da molecule atual
@@ -616,10 +623,18 @@ export class ServiceGenome100554 extends ServiceBase {
             newTag,
             oldTag: this._oldSelectedTag,
             file: selectedFile,
-            selector
+            selector,
+            mode: this._moleculeReplaceMode,
         });
 
-        const result = replaceComponentTag(this._oldSelectedTag, newTag, source, selector);
+        const result = replaceComponentTag(
+            this._oldSelectedTag,
+            newTag,
+            source,
+            selector,
+            this._moleculeReplaceMode
+        );
+
         if (!result.success) {
             this._moleculeError = this.msg.molReplaceError;
             this.requestUpdate();
@@ -1374,6 +1389,36 @@ export class ServiceGenome100554 extends ServiceBase {
                 <span class="text-[11px] text-gray-400 dark:text-gray-600 leading-relaxed">
                     ${this._selectedMoleculeGroupDescription || this.msg.molScenarioDesc}
                 </span>
+            </div>
+
+            <!-- Replace mode radio -->
+            <div class="flex items-center gap-4">
+                <label class="
+                    inline-flex items-center gap-1.5 cursor-pointer
+                    text-[11px] text-gray-500 dark:text-gray-400
+                ">
+                    <input
+                        type="radio"
+                        name="molReplaceMode"
+                        .checked=${this._moleculeReplaceMode === 'selected'}
+                        @change=${() => { this._moleculeReplaceMode = 'selected'; this.requestUpdate(); }}
+                        class="w-3 h-3 accent-indigo-600"
+                    />
+                    ${this.msg.molSelectedOnly}
+                </label>
+                <label class="
+                    inline-flex items-center gap-1.5 cursor-pointer
+                    text-[11px] text-gray-500 dark:text-gray-400
+                ">
+                    <input
+                        type="radio"
+                        name="molReplaceMode"
+                        .checked=${this._moleculeReplaceMode === 'all'}
+                        @change=${() => { this._moleculeReplaceMode = 'all'; this.requestUpdate(); }}
+                        class="w-3 h-3 accent-indigo-600"
+                    />
+                    ${this.msg.molAllOccurrences}
+                </label>
             </div>
 
             <!-- Error message -->

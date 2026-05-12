@@ -3,7 +3,7 @@
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { customElement, property, state, query } from 'lit/decorators.js';
 import { globalState, setState, initState, getState, subscribe, unsubscribe } from '/_102027_/l2/collabState.js';
-import { findTextOrigin, findTextOriginByIndex, buildTemplateMap, applyTextEdit } from '/_102020_/l2/previewTextEditor.js';
+import { findTextOrigin, findTextOriginByIndex, findTextOriginByOccurrence, buildTemplateMap, applyTextEdit } from '/_102020_/l2/previewTextEditor.js';
 
 /// **collab_i18n_start**
 const message_pt = {
@@ -49,7 +49,7 @@ class PreviewEditorL3 extends StateLitElement {
       selectedStyles: {},
       selectedRect: null,
       breadcrumb: [],
-      editMode: 'select',          // 'select' | 'text' | 'inspect'
+      editMode: 'select',
       hoveredElement: null,
       panelVisible: true,
     });
@@ -290,14 +290,12 @@ class PreviewEditorL3 extends StateLitElement {
     const target = e.target as HTMLElement;
     if (this.isL3Control(target)) return;
 
-    // Se está editando texto, não interfere (permite clicar dentro do span de edição)
     const currentMode = getState('previewL3.editMode');
     if (currentMode === 'text') return;
 
     e.preventDefault();
     e.stopPropagation();
 
-    // Resolve o elemento selecionável: se está dentro de um web component, seleciona o web component
     const selectableEl = this.resolveSelectableElement(target);
 
     this.selectedElementRef = selectableEl;
@@ -314,38 +312,33 @@ class PreviewEditorL3 extends StateLitElement {
     this.showPropertiesPanel();
     this.notifyHost('element-select', selectableEl);
 
-    // Se clicou num text node, entra direto em modo edição
     const textResult = this.findClickedTextNode(e, target);
     if (textResult) {
+      // Count which occurrence of this text in the DOM was clicked
+      // (needed to disambiguate when multiple i18n keys have the same value)
+      const pageTag = this.findPageComponent();
+      const clickedText = (textResult.textNode.textContent || '').trim();
+      const occurrenceIndex = pageTag
+        ? this.getTextOccurrenceIndex(textResult.textNode, clickedText, pageTag)
+        : 0;
+
       setState('previewL3.editMode', 'text');
-      this.enableTextEdit(selectableEl, textResult.textNode, textResult.offset);
+      this.enableTextEdit(selectableEl, textResult.textNode, textResult.offset, occurrenceIndex);
     }
   }
 
-  /**
-   * Resolve qual elemento deve ser selecionado.
-   * Se o target está dentro de um custom element (web component) que é filho
-   * do componente da página, seleciona o web component em vez do elemento interno.
-   */
   private resolveSelectableElement(target: HTMLElement): HTMLElement {
     let current: HTMLElement | null = target;
 
-    // Sobe no DOM procurando um custom element (tag com hífen)
-    // Para quando encontrar o componente da página ou o próprio preview-editor
     while (current && current !== this) {
       const parent: HTMLElement | null = current.parentElement;
       if (!parent || parent === this) break;
 
       const parentTag = parent.tagName.toLowerCase();
 
-      // Se o parent é um custom element (tem hífen) e NÃO é o componente da página
-      // nem o preview-editor, então o parent é um web component interno
-      // e devemos selecionar ele
       if (parentTag.includes('-') && parentTag !== 'preview-editor-l3-102020') {
-        // Verifica se é um web component que está dentro do page component
         const pageTag = this.findPageComponent();
         if (pageTag && parentTag !== pageTag) {
-          // O parent é um web component interno → seleciona ele
           return parent;
         }
       }
@@ -360,7 +353,6 @@ class PreviewEditorL3 extends StateLitElement {
     const target = e.target as HTMLElement;
     if (this.isL3Control(target)) return;
 
-    // Não interfere durante edição de texto
     const mode = getState('previewL3.editMode');
     if (mode === 'text') return;
 
@@ -417,9 +409,6 @@ class PreviewEditorL3 extends StateLitElement {
 
   // --- Text node helpers ---
 
-  /**
-   * Encontra o text node mais próximo do ponto de clique e o offset do cursor.
-   */
   private findClickedTextNode(e: MouseEvent, el: HTMLElement): { textNode: Text; offset: number } | null {
     if (document.caretRangeFromPoint) {
       const range = document.caretRangeFromPoint(e.clientX, e.clientY);
@@ -431,7 +420,6 @@ class PreviewEditorL3 extends StateLitElement {
       }
     }
 
-    // Fallback: primeiro text node direto do elemento com conteúdo
     for (const child of Array.from(el.childNodes)) {
       if (child.nodeType === Node.TEXT_NODE && (child.textContent || '').trim()) {
         return { textNode: child as Text, offset: 0 };
@@ -445,8 +433,9 @@ class PreviewEditorL3 extends StateLitElement {
 
   /**
    * Edita um text node específico, isolando-o num span temporário.
+   * O expressionIndex é resolvido ANTES de entrar aqui (enquanto o DOM ainda está intacto).
    */
-  private enableTextEdit(selectableEl: HTMLElement, textNode: Text, caretOffset: number = 0) {
+  private enableTextEdit(selectableEl: HTMLElement, textNode: Text, caretOffset: number = 0, occurrenceIndex: number = 0) {
     const oldText = (textNode.textContent || '').trim();
     if (!oldText) return;
 
@@ -458,7 +447,6 @@ class PreviewEditorL3 extends StateLitElement {
     textNode.parentNode?.replaceChild(editSpan, textNode);
     editSpan.focus();
 
-    // Posiciona o cursor no ponto do clique
     const spanTextNode = editSpan.firstChild;
     if (spanTextNode && spanTextNode.nodeType === Node.TEXT_NODE) {
       const range = document.createRange();
@@ -473,14 +461,13 @@ class PreviewEditorL3 extends StateLitElement {
     const onBlur = () => {
       const newText = (editSpan.textContent || '').trim();
 
-      // Restaura text node
       const newTextNode = document.createTextNode(editSpan.textContent || '');
       editSpan.parentNode?.replaceChild(newTextNode, editSpan);
 
       setState('previewL3.editMode', 'select');
 
       if (newText !== oldText) {
-        this.applyTextEditToSource(oldText, newText, selectableEl);
+        this.applyTextEditToSource(oldText, newText, selectableEl, occurrenceIndex);
       }
 
       editSpan.removeEventListener('blur', onBlur);
@@ -503,7 +490,11 @@ class PreviewEditorL3 extends StateLitElement {
     editSpan.addEventListener('keydown', onKeydown);
   }
 
-  private applyTextEditToSource(oldText: string, newText: string, el: HTMLElement) {
+  /**
+   * Applies the text edit to the source .ts file.
+   * Uses occurrenceIndex to disambiguate when multiple i18n keys have the same value.
+   */
+  private applyTextEditToSource(oldText: string, newText: string, el: HTMLElement, occurrenceIndex: number = 0) {
     const pageComponent = this.findPageComponent();
     if (!pageComponent) return;
 
@@ -511,26 +502,33 @@ class PreviewEditorL3 extends StateLitElement {
     if (!tsModel) return;
 
     const source = tsModel.model.getValue();
+    const lang = getState('preview.language') || 'en';
 
-    const expressionIndex = this.getExpressionIndex(el, pageComponent);
+    console.log('[TextEdit] applyTextEditToSource', {
+      oldText,
+      newText,
+      lang,
+      occurrenceIndex,
+    });
 
-    const templateMap = buildTemplateMap(source);
+    // Use occurrence-based resolution to handle duplicate values
+    const origin = findTextOriginByOccurrence(oldText, source, occurrenceIndex, lang);
 
-    let origin;
-
-    if (expressionIndex >= 0 && expressionIndex < templateMap.length) {
-      origin = findTextOriginByIndex(oldText, source, expressionIndex);
-    } else {
-      origin = findTextOrigin(oldText, source);
-    }
+    console.log('[TextEdit] origin resolved:', origin.type === 'i18n' ? {
+      type: origin.type,
+      key: origin.key,
+      languages: origin.languages.map(l => ({ lang: l.lang, value: l.value, offset: `${l.startOffset}-${l.endOffset}` })),
+    } : origin);
 
     if (origin.type === 'dynamic') return;
 
-    const lang = getState('preview.language') || 'en';
     const result = applyTextEdit(origin, newText, source, lang);
+
+    console.log('[TextEdit] applyTextEdit result:', { success: result.success, error: result.error });
 
     if (!result.success || !result.newSource) return;
 
+    setState('preview.pausePreview', true);
     tsModel.model.pushEditOperations(
       [],
       [{
@@ -542,14 +540,20 @@ class PreviewEditorL3 extends StateLitElement {
   }
 
   /**
-   * Calcula o índice da expressão ${...} no template.
-   * Conta apenas text nodes precedidos por Lit comment marker <!--?lit$...-->
+   * Counts which occurrence of the same visible text this text node is in the DOM.
+   * 
+   * For example, if "Passwords" appears twice in the page (from password and showPassword),
+   * and the user clicked the second one, this returns 1 (0-based).
+   * 
+   * Only counts Lit-rendered text nodes (those preceded by <!--?lit$...--> comments),
+   * which correspond to ${...} expressions in the template.
    */
-  private getExpressionIndex(targetEl: HTMLElement, pageTag: string): number {
+  private getTextOccurrenceIndex(targetTextNode: Text, text: string, pageTag: string): number {
     const pageEl = this.querySelector(pageTag);
-    if (!pageEl) return -1;
+    if (!pageEl) return 0;
 
-    const litTextNodes: { textNode: Text; parentEl: HTMLElement }[] = [];
+    const normalizedText = text.trim();
+    let occurrenceCount = 0;
 
     const walker = document.createTreeWalker(
       pageEl,
@@ -559,34 +563,29 @@ class PreviewEditorL3 extends StateLitElement {
 
     let node: Node | null = walker.firstChild();
     while (node) {
+      // Look for text nodes preceded by Lit comment markers
       if (node.nodeType === Node.TEXT_NODE && (node.textContent || '').trim()) {
         const prev = node.previousSibling;
-        if (prev && prev.nodeType === Node.COMMENT_NODE) {
-          const comment = (prev as Comment).data;
-          if (comment.startsWith('?lit$')) {
-            litTextNodes.push({
-              textNode: node as Text,
-              parentEl: node.parentElement as HTMLElement,
-            });
+        const isLitBinding = prev
+          && prev.nodeType === Node.COMMENT_NODE
+          && (prev as Comment).data.startsWith('?lit$');
+
+        if (isLitBinding) {
+          const nodeText = (node.textContent || '').trim();
+          if (nodeText === normalizedText) {
+            if (node === targetTextNode) {
+              return occurrenceCount;
+            }
+            occurrenceCount++;
           }
         }
       }
       node = walker.nextNode();
     }
 
-    for (let i = 0; i < litTextNodes.length; i++) {
-      const { parentEl } = litTextNodes[i];
-      if (parentEl === targetEl || targetEl.contains(parentEl)) {
-        return i;
-      }
-    }
-
-    return -1;
+    return 0;
   }
 
-  /**
-   * Encontra o primeiro custom element filho que é o componente da página.
-   */
   private findPageComponent(): string | null {
     for (const child of Array.from(this.children)) {
       const tag = child.tagName.toLowerCase();
@@ -597,9 +596,6 @@ class PreviewEditorL3 extends StateLitElement {
     return null;
   }
 
-  /**
-   * Busca o model .ts do componente da página via mls.editor.models.
-   */
   private getPageTsModel(tag: string): any | null {
     try {
       const service = getState('preview.service') as any;
