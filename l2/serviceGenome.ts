@@ -66,7 +66,8 @@ const message_en = {
     deviceModuleMissing: 'Module not found',
     devicePageMissing: 'Page not found in module',
     deviceCreatePage: 'Create page',
-    deviceCreateModule: 'Create module',
+    deviceCreateVariation: 'Create variation',
+    deviceCurrentVariation: 'Current variation',
     devicePages: 'pages',
     langRemoveTitle: 'Remove language',
     langRemoveBtn: 'Remove',
@@ -123,7 +124,8 @@ const messages: Record<string, MessageType> = {
         deviceModuleMissing: 'Módulo não encontrado',
         devicePageMissing: 'Página não encontrada no módulo',
         deviceCreatePage: 'Criar página',
-        deviceCreateModule: 'Criar módulo',
+        deviceCreateVariation: 'Criar variação',
+        deviceCurrentVariation: 'Variação atual',
         devicePages: 'páginas',
         langRemoveTitle: 'Remover idioma',
         langRemoveBtn: 'Remover',
@@ -177,7 +179,8 @@ const messages: Record<string, MessageType> = {
         deviceModuleMissing: 'Módulo no encontrado',
         devicePageMissing: 'Página no encontrada en el módulo',
         deviceCreatePage: 'Crear página',
-        deviceCreateModule: 'Crear módulo',
+        deviceCreateVariation: 'Crear variación',
+        deviceCurrentVariation: 'Variación actual',
         devicePages: 'páginas',
         langRemoveTitle: 'Eliminar idioma',
         langRemoveBtn: 'Eliminar',
@@ -415,6 +418,17 @@ export class ServiceGenome100554 extends ServiceBase {
     }
 
     // ─── Computed ─────────────────────────────────────────────────────
+
+    private _fmtLabel(s: string): string {
+        return s.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    private get _variationLabel(): string {
+        const device = this._fmtLabel(this._deviceLabel);
+        const layout = this._layoutValue !== null ? this._fmtLabel(KNOB_CONFIGS.layout.labels[this._layoutValue] || '') : '';
+        const kit = this._kitValue !== null ? this._fmtLabel(KNOB_CONFIGS.kit.labels[this._kitValue] || '') : '';
+        return [device, layout, kit].filter(Boolean).join(' → ');
+    }
 
     private get _deviceLabel(): string {
         const v = this._deviceValue;
@@ -1447,44 +1461,6 @@ export class ServiceGenome100554 extends ServiceBase {
     private _renderDetailsRow() {
         return html`
             <div class="flex flex-col gap-0 flex-1">
-
-                <!-- Collapsible: Variation Details -->
-                <details class="group border-b border-gray-200 dark:border-gray-800">
-                    <summary class="
-                        flex items-center gap-2 px-4 py-2.5
-                        cursor-pointer select-none
-                        text-[10px] font-semibold uppercase tracking-wider
-                        text-gray-400 dark:text-gray-600
-                        hover:text-gray-500 dark:hover:text-gray-500
-                    ">
-                        <span class="
-                            transition-transform duration-200
-                            group-open:rotate-90
-                            text-[8px]
-                        ">▶</span>
-                        ${this.msg.detailsSummary}
-                    </summary>
-                    <div class="flex flex-col gap-2 px-4 pb-3">
-                        <div class="
-                            flex items-center gap-2 px-2.5 py-1.5 rounded
-                            bg-gray-50 dark:bg-gray-900
-                            border border-gray-200 dark:border-gray-800
-                            font-mono text-[11px] text-gray-600 dark:text-gray-400
-                        ">
-                            <span class="text-gray-400 dark:text-gray-600 text-xs">📁</span>
-                            ${this._variationPath}
-                        </div>
-                        <div class="flex flex-wrap gap-1.5">
-                            ${this._renderDetailBadge(this.msg.styleLabel, this._styleName)}
-                            ${this._renderDetailBadge(this.msg.langLabel, this._languageName)}
-                            ${this._moleculesValue !== null
-                ? this._renderDetailBadge(this.msg.moleculeLabel, this._moleculeName)
-                : nothing}
-                        </div>
-                    </div>
-                </details>
-
-                <!-- Context-sensitive scenario area -->
                 <div class="flex flex-col gap-3 px-4 py-3 flex-1">
                     ${this._renderContextStatusArea()}
                 </div>
@@ -1525,10 +1501,10 @@ export class ServiceGenome100554 extends ServiceBase {
                 return this._renderDeviceScenario();
 
             case 'layout':
-                return this._renderInDevelopment(this.msg.layout);
+                return this._renderDeviceScenario();
 
             case 'kit':
-                return this._renderInDevelopment(this.msg.kit);
+                return this._renderDeviceScenario();
 
             case 'style':
                 return this._renderInDevelopment(this.msg.style);
@@ -1570,6 +1546,12 @@ export class ServiceGenome100554 extends ServiceBase {
                         ${this.msg.deviceModuleFound}:
                         <span class="font-semibold capitalize">${this._actualModule}</span>
                     </span>
+                </div>
+
+                <!-- Current variation breadcrumb -->
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.deviceCurrentVariation}:</span>
+                    <span class="text-[10px] font-medium text-gray-600 dark:text-gray-300">${this._variationLabel}</span>
                 </div>
 
                 <!-- Variation status -->
@@ -1619,7 +1601,7 @@ export class ServiceGenome100554 extends ServiceBase {
                             @click=${() => { /* TODO: call agent */ }}
                         >
                             ${status.state === 'module-missing'
-                                ? this.msg.deviceCreateModule
+                                ? this.msg.deviceCreateVariation
                                 : this.msg.deviceCreatePage}
                         </button>
                     </div>
@@ -2283,19 +2265,5 @@ export class ServiceGenome100554 extends ServiceBase {
         `;
     }
 
-    // ─── Detail Badge helper ──────────────────────────────────────────
 
-    private _renderDetailBadge(label: string, value: string) {
-        return html`
-            <div class="
-                inline-flex items-center gap-1
-                px-2 py-0.5 rounded text-[10px]
-                bg-gray-100 dark:bg-gray-900
-                border border-gray-200 dark:border-gray-800
-            ">
-                <span class="text-gray-400 dark:text-gray-600 font-medium">${label}:</span>
-                <span class="text-gray-700 dark:text-gray-300 font-semibold">${value}</span>
-            </div>
-        `;
-    }
 }
