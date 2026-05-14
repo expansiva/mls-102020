@@ -32,9 +32,9 @@ async function beforePromptImplicit(
 
     if (!userPrompt || userPrompt.length < 5) throw new Error('invalid prompt');
 
-    const data: { group: string, fileReference: string } = JSON.parse(userPrompt);
+    const data: { group: string, fileReference: string, skill: string } = JSON.parse(userPrompt);
     const baseMolecule = await getBaseMolecule();
-    const userPrompt2 = await getSystemUser(context, data.fileReference);
+    const userPrompt2 = await getSystemUser(context, data.fileReference, { skill: data.skill, group: data.group });
 
     const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
         type: "add-message-ai",
@@ -56,7 +56,7 @@ async function beforePromptImplicit(
             taskTitle: `Creating molecule`,
             threadId: context.message.threadId,
             userMessage: context.message.content,
-            longTermMemory: { group : data.group }
+            longTermMemory: { group: data.group }
         }
     };
     return [addMessageAI];
@@ -97,16 +97,29 @@ async function beforePromptStep(
 }
 
 
-async function getSystemUser(context: mls.msg.ExecutionContext, fileReference: string) {
+async function getSystemUser(context: mls.msg.ExecutionContext, fileReference: string, dataForTest?: { skill: string, group: string }) {
 
     const path = mls.stor.getPathToFile(fileReference);
     const files = await mls.stor.getFiles({ ...path, loadContent: false });
-    if (!files.defs) throw new Error(`[getSystemUser] invalid file: ${fileReference}`);
 
-    const data = await getMoleculeSkill(files.defs);
+    let data: {
+        skill: string;
+        group: string;
+        fileReference: string;
+    } = { fileReference: '', skill: '', group: '' };
+
+    if (dataForTest) {
+        data = {
+            fileReference,
+            group: dataForTest.group,
+            skill: dataForTest.skill
+        }
+    } else if (!files.defs) throw new Error(`[getSystemUser] invalid file: ${fileReference}`)
+    else data = await getMoleculeSkill(files.defs);
+
     const skillByGroup = await getGroupSkill(data.group);
     const tagName = convertFileToTag(path);
-    if(context.task) await appendLongTermMemory(context, { 'group': data.group });
+    if (context.task) await appendLongTermMemory(context, { 'group': data.group });
 
     const system2 = `
 
@@ -168,6 +181,11 @@ const MaxFixEffort = 2;
 
 async function processOutput(context: mls.msg.ExecutionContext, output: Result): Promise<mls.msg.AgentIntent[]> {
 
+    if (context.isTest) {
+        console.info(output.ts)
+        return [];
+    }
+
     const data = await updateFiles(context, output);
     const group = context.task?.iaCompressed?.longMemory['group'];
     const fixCountRaw = context.task?.iaCompressed?.longMemory['fixCount'];
@@ -175,8 +193,6 @@ async function processOutput(context: mls.msg.ExecutionContext, output: Result):
     const fixCount = Number.isNaN(parsed) ? 0 : parsed;
 
     if (data.hasErrors && fixCount < MaxFixEffort && !context.isTest) {
-
-        console.info('Chamando agent fix');
 
         const newCount = fixCount + 1;
         await appendLongTermMemory(context, { 'fixCount': newCount.toString() });
@@ -205,9 +221,8 @@ async function processOutput(context: mls.msg.ExecutionContext, output: Result):
         return [newStep];
     }
 
-    console.info({ ref: data.fileReference, group: group });
 
-    if (context.isTest) return [];
+
 
     const newStep: mls.msg.AgentIntentAddStep = {
         type: "add-step",
@@ -234,7 +249,7 @@ async function processOutput(context: mls.msg.ExecutionContext, output: Result):
 
 async function updateFiles(context: mls.msg.ExecutionContext, result: Result) {
 
-    const molecule = result.ts; 
+    const molecule = result.ts;
     const fileReference = molecule.trim().split('\n')[0];
     const tripleSlash = mls.common.tripleslash.parseXMLTripleSlash(fileReference);
     let fileInfo = mls.stor.convertFileReferenceToFile(tripleSlash.variables['fileReference']);
