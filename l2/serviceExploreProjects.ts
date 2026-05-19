@@ -163,7 +163,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
         tooltip: 'Explore Projects',
         visible: true,
         widget: '_102020_serviceExploreProjects',
-        level: [5],
+        level: [6],
     };
 
     public onClickMain(op: string): void {
@@ -171,7 +171,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
     }
 
     public menu: IServiceMenu = {
-        title: 'Explore Projects',
+        title: '',
         main: {},
         tools: {},
         tabs: undefined,
