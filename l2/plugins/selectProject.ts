@@ -16,9 +16,6 @@ const message_en = {
     customTitle: 'New Project',
     customDesc: 'Create a new project within this organization.',
     needsOrg: 'Select an organization first to see the available projects.',
-    edit: 'Edit',
-    cancel: 'Cancel',
-    save: 'Save',
     loading: 'Loading README…',
 };
 type MessageType = typeof message_en;
@@ -32,9 +29,6 @@ const messages: Record<string, MessageType> = {
         customTitle: 'Novo Projeto',
         customDesc: 'Crie um novo projeto dentro desta organização.',
         needsOrg: 'Selecione uma organização primeiro para ver os projetos disponíveis.',
-        edit: 'Editar',
-        cancel: 'Cancelar',
-        save: 'Salvar',
         loading: 'Carregando README…',
     },
     es: {
@@ -45,9 +39,6 @@ const messages: Record<string, MessageType> = {
         customTitle: 'Nuevo Proyecto',
         customDesc: 'Cree un nuevo proyecto dentro de esta organización.',
         needsOrg: 'Seleccione una organización primero para ver los proyectos disponibles.',
-        edit: 'Editar',
-        cancel: 'Cancelar',
-        save: 'Guardar',
         loading: 'Cargando README…',
     },
 };
@@ -78,14 +69,11 @@ export class PluginSelectProject extends StateLitElement {
     @property({ attribute: false }) selectedOrg: IOrg | null = null;
     @property({ attribute: false }) value: number | null = null;
 
-    @state() private _editing: boolean = false;
-    @state() private _editText: string = '';
     @state() private _readme: string | null = null;
     @state() private _readmeLoading: boolean = false;
 
     willUpdate(changed: Map<string, unknown>) {
         if (changed.has('value') || changed.has('selectedOrg')) {
-            this._editing = false;
             this._readme = null;
             const project = this._selectedProject;
             if (project) this._loadReadme(project.project);
@@ -189,76 +177,16 @@ export class PluginSelectProject extends StateLitElement {
             <div class="
                 rounded-lg border border-gray-200 dark:border-gray-800
                 bg-gray-50 dark:bg-gray-900/50
-                px-3 py-3 flex flex-col gap-2
+                px-3 py-3
             ">
                 ${this._readmeLoading
                     ? html`<span class="text-xs text-gray-400 dark:text-gray-600 italic">${this.msg.loading}</span>`
-                    : this._editing
-                        ? this._renderEditMode()
-                        : this._renderViewMode()}
-            </div>
-        `;
-    }
-
-    private _renderViewMode() {
-        const content = this._readme ?? '';
-        return html`
-            <div class="flex items-start gap-2">
-                <div class="flex-1 min-w-0">
-                    ${content
-                        ? html`<plugins--markdown-viewer-102020 .text=${content}></plugins--markdown-viewer-102020>`
-                        : html`<span class="text-xs text-gray-400 dark:text-gray-600 italic">—</span>`}
-                </div>
-                <button
-                    class="
-                        shrink-0 text-[10px] px-2 py-0.5 rounded
-                        border border-gray-200 dark:border-gray-700
-                        text-gray-400 dark:text-gray-600
-                        hover:text-gray-600 dark:hover:text-gray-400
-                        hover:border-gray-300 dark:hover:border-gray-600
-                        transition-colors
-                    "
-                    @click=${() => { this._editText = this._readme ?? ''; this._editing = true; }}
-                >${this.msg.edit}</button>
-            </div>
-        `;
-    }
-
-    private _renderEditMode() {
-        return html`
-            <textarea
-                class="
-                    w-full text-xs font-mono leading-relaxed resize-none
-                    bg-white dark:bg-gray-900
-                    border border-gray-300 dark:border-gray-700 rounded-md
-                    px-2.5 py-2
-                    text-gray-700 dark:text-gray-300
-                    focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600
-                "
-                rows="6"
-                .value=${this._editText}
-                @input=${(e: Event) => { this._editText = (e.target as HTMLTextAreaElement).value; }}
-            ></textarea>
-            <div class="flex justify-end gap-2">
-                <button
-                    class="
-                        text-xs px-3 py-1 rounded
-                        border border-gray-200 dark:border-gray-700
-                        text-gray-500 dark:text-gray-400
-                        hover:bg-gray-100 dark:hover:bg-gray-800
-                        transition-colors
-                    "
-                    @click=${() => { this._editing = false; }}
-                >${this.msg.cancel}</button>
-                <button
-                    class="
-                        text-xs px-3 py-1 rounded
-                        bg-indigo-500 dark:bg-indigo-600 text-white
-                        hover:bg-indigo-600 dark:hover:bg-indigo-500
-                        transition-colors
-                    "
-                    @click=${() => { this._readme = this._editText; this._editing = false; }}
-                >${this.msg.save}</button>
+                    : html`
+                        <plugins--markdown-viewer-102020
+                            .text=${this._readme ?? ''}
+                            @md-save=${(e: CustomEvent) => { this._readme = e.detail.value; }}
+                        ></plugins--markdown-viewer-102020>
+                    `}
             </div>
         `;
     }

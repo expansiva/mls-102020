@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/plugins/selectOrganization.ts" enhancement="_102027_/l2/enhancementLit.ts"/>
 
 import { html, nothing } from 'lit';
-import { customElement, property, state } from 'lit/decorators.js';
+import { customElement, property } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import '/_102020_/l2/plugins/markdownViewer.js';
 
@@ -18,9 +18,6 @@ const message_en = {
     noOrgs: 'No organizations found.',
     createNew: 'Create new organization',
     inDevelopment: 'In development',
-    edit: 'Edit',
-    cancel: 'Cancel',
-    save: 'Save',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -36,9 +33,6 @@ const messages: Record<string, MessageType> = {
         noOrgs: 'Nenhuma organização encontrada.',
         createNew: 'Criar nova organização',
         inDevelopment: 'Em desenvolvimento',
-        edit: 'Editar',
-        cancel: 'Cancelar',
-        save: 'Salvar',
     },
     es: {
         title: 'Seleccionar Organización',
@@ -51,9 +45,6 @@ const messages: Record<string, MessageType> = {
         noOrgs: 'No se encontraron organizaciones.',
         createNew: 'Crear nueva organización',
         inDevelopment: 'En desarrollo',
-        edit: 'Editar',
-        cancel: 'Cancelar',
-        save: 'Guardar',
     },
 };
 /// **collab_i18n_end**
@@ -83,13 +74,7 @@ export class PluginSelectOrganization extends StateLitElement {
     @property({ attribute: false }) orgs: IOrg[] = [];
     @property({ attribute: false }) value: number | null = null;
 
-    @state() private _editing: boolean = false;
-    @state() private _editText: string = '';
     private readonly _descriptions: Map<string, string> = new Map();
-
-    willUpdate(changed: Map<string, unknown>) {
-        if (changed.has('value')) this._editing = false;
-    }
 
     private get msg(): MessageType {
         const lang = this.getMessageKey(messages);
@@ -153,78 +138,15 @@ export class PluginSelectOrganization extends StateLitElement {
             <div class="
                 rounded-lg border border-gray-200 dark:border-gray-800
                 bg-gray-50 dark:bg-gray-900/50
-                px-3 py-3 flex flex-col gap-2
+                px-3 py-3
             ">
-                ${this._editing
-                    ? this._renderEditMode(org, description)
-                    : this._renderViewMode(description)}
-            </div>
-        `;
-    }
-
-    private _renderViewMode(description: string) {
-        return html`
-            <div class="flex items-start gap-2">
-                <div class="flex-1 min-w-0">
-                    ${description
-                        ? html`<plugins--markdown-viewer-102020 .text=${description}></plugins--markdown-viewer-102020>`
-                        : html`<span class="text-xs text-gray-400 dark:text-gray-600 italic">—</span>`}
-                </div>
-                <button
-                    class="
-                        shrink-0 text-[10px] px-2 py-0.5 rounded
-                        border border-gray-200 dark:border-gray-700
-                        text-gray-400 dark:text-gray-600
-                        hover:text-gray-600 dark:hover:text-gray-400
-                        hover:border-gray-300 dark:hover:border-gray-600
-                        transition-colors
-                    "
-                    @click=${() => { this._editText = description; this._editing = true; }}
-                >${this.msg.edit}</button>
-            </div>
-        `;
-    }
-
-    private _renderEditMode(org: IOrg, description: string) {
-        return html`
-            <textarea
-                class="
-                    w-full text-xs font-mono leading-relaxed resize-none
-                    bg-white dark:bg-gray-900
-                    border border-gray-300 dark:border-gray-700 rounded-md
-                    px-2.5 py-2
-                    text-gray-700 dark:text-gray-300
-                    placeholder-gray-400 dark:placeholder-gray-600
-                    focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600
-                "
-                rows="6"
-                .value=${this._editText || description}
-                @input=${(e: Event) => { this._editText = (e.target as HTMLTextAreaElement).value; }}
-            ></textarea>
-            <div class="flex justify-end gap-2">
-                <button
-                    class="
-                        text-xs px-3 py-1 rounded
-                        border border-gray-200 dark:border-gray-700
-                        text-gray-500 dark:text-gray-400
-                        hover:bg-gray-100 dark:hover:bg-gray-800
-                        transition-colors
-                    "
-                    @click=${() => { this._editing = false; }}
-                >${this.msg.cancel}</button>
-                <button
-                    class="
-                        text-xs px-3 py-1 rounded
-                        bg-indigo-500 dark:bg-indigo-600 text-white
-                        hover:bg-indigo-600 dark:hover:bg-indigo-500
-                        transition-colors
-                    "
-                    @click=${() => {
-                        this._descriptions.set(org.key, this._editText);
-                        this._editing = false;
+                <plugins--markdown-viewer-102020
+                    .text=${description}
+                    @md-save=${(e: CustomEvent) => {
+                        this._descriptions.set(org.key, e.detail.value);
                         this.requestUpdate();
                     }}
-                >${this.msg.save}</button>
+                ></plugins--markdown-viewer-102020>
             </div>
         `;
     }
