@@ -2,7 +2,7 @@
 
 import { html, css } from 'lit';
 import { customElement, property, state, query } from 'lit/decorators.js';
-import { globalState, setState, initState, getState, subscribe } from '/_102027_/l2/collabState.js';
+import { globalState, setState, initState, getState, subscribe, unsubscribe } from '/_102027_/l2/collabState.js';
 import { getPath } from '/_102027_/l2/utils.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { getTokensCss, getTokensLess, removeTokensFromSource } from '/_102027_/l2/designSystemBase.js';
@@ -27,6 +27,7 @@ import { PreviewModeAura } from '/_102020_/l2/previewModeAura.js';
 import { IJSONDependence } from '/_102027_/l2/libCompile.js';
 import { OpenedFileL2 } from '/_102027_/l2/libCommom.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu, IOptions } from '/_102027_/l2/serviceBase.js';
+
 
 /// **collab_i18n_start**
 const message_pt = {
@@ -196,6 +197,10 @@ export class ServicePreview extends ServiceBase {
     if (key === 'preview.language') {
       this.changeLanguagePreview(value);
     }
+    if (key === 'preview.file') {
+      console.info(value);
+      this.changeFilePreview(value)
+    }
   }
 
   private initStatesPreview() {
@@ -243,6 +248,22 @@ export class ServicePreview extends ServiceBase {
 
     this.onStyleChanged();
     return this.light;
+  }
+
+  private async changeFilePreview(file: mls.stor.IFileInfo) {
+    const { project, shortName, folder } = file;
+    
+    if (this.actualFiles &&
+      this.actualFiles.ts &&
+      this.actualFiles.ts.folder === folder &&
+      this.actualFiles.ts.project === project &&
+      this.actualFiles.ts.shortName === shortName
+    ) return;
+
+    await this.setActualFiles(project, shortName, folder)
+    setState('preview.pausePreview', false);
+    if (!this.watch && this.menu.selectTool) this.menu.selectTool('watchPreview');
+    this.createPreview();
   }
 
   private async changeLanguagePreview(lang: string) {
@@ -439,7 +460,7 @@ export class ServicePreview extends ServiceBase {
   }
 
   private createPreview() {
-    
+
     this.initStatesPreview();
     this.initStatesPreviewL3();
     this.clearPreview();
@@ -815,7 +836,8 @@ export class ServicePreview extends ServiceBase {
     this.createEditor();
     this.setLanguages();
     this.configureTools(false);
-    subscribe('preview.language', this)
+    subscribe('preview.language', this);
+    subscribe('preview.file', this);
     window.addEventListener('task-change', this.onTaskChange);
   }
 
@@ -828,6 +850,8 @@ export class ServicePreview extends ServiceBase {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.clearPreview();
+    unsubscribe('preview.language', this);
+    unsubscribe('preview.file', this);
     window.removeEventListener('task-change', this.onTaskChange);
   }
 

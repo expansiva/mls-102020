@@ -1,8 +1,120 @@
 /// <mls fileReference="_102020_/l2/designSystem.ts" enhancement="_blank" />
 
 import { IDesignSystemTokens } from '/_102027_/l2/designSystemBase.js';
-
 export const tokens: IDesignSystemTokens[] = [
+    {
+        themeName: 'Neumorphism Dense ERP',
+        description: 'Compact enterprise neumorphism design system with dense layouts and soft elevated surfaces.',
+
+        /* =====================================================
+           COLORS
+        ===================================================== */
+
+        color: {
+            surface: '#E5E7EB',
+            surface2: '#EBEDF1',
+            surface3: '#F3F4F6',
+
+            text: '#374151',
+            textMuted: '#6B7280',
+
+            primary: '#4F46E5',
+            primaryForeground: '#FFFFFF',
+
+            success: '#22C55E',
+            warning: '#FACC15',
+            danger: '#F87171',
+
+            border: '#E0E2E6',
+            borderStrong: '#D1D5DB',
+        },
+
+        /* =====================================================
+           GLOBAL
+        ===================================================== */
+
+        global: {
+
+            /* radius */
+            radiusXs: '6px',
+            radiusSm: '10px',
+            radiusMd: '14px',
+            radiusLg: '18px',
+
+            /* shadows */
+            shadowSoft: `
+				4px 4px 8px rgba(163,177,198,.45),
+				-4px -4px 8px rgba(255,255,255,.65)
+			`,
+
+            shadowMedium: `
+				6px 6px 12px rgba(163,177,198,.50),
+				-6px -6px 12px rgba(255,255,255,.75)
+			`,
+
+            shadowStrong: `
+				8px 8px 16px rgba(163,177,198,.55),
+				-8px -8px 16px rgba(255,255,255,.85)
+			`,
+
+            /* inset shadows */
+            shadowInsetSoft: `
+				inset 2px 2px 4px rgba(163,177,198,.30),
+				inset -2px -2px 4px rgba(255,255,255,.45)
+			`,
+
+            shadowInset: `
+				inset 4px 4px 8px rgba(163,177,198,.40),
+				inset -4px -4px 8px rgba(255,255,255,.65)
+			`,
+
+            /* focus */
+            focusRing: `
+				0 0 0 3px rgba(99,102,241,.18)
+			`,
+
+            /* spacing */
+            spaceXxs: '2px',
+            spaceXs: '4px',
+            spaceSm: '8px',
+            spaceMd: '12px',
+            spaceLg: '16px',
+            spaceXl: '20px',
+
+            /* density */
+            inputHeightSm: '28px',
+            inputHeightMd: '34px',
+            inputHeightLg: '40px',
+
+            tableRowHeight: '34px',
+            tableHeaderHeight: '36px',
+
+            sidebarWidth: '240px',
+
+            /* motion */
+            transitionFast: '120ms',
+            transitionNormal: '200ms',
+        },
+
+        /* =====================================================
+           TYPOGRAPHY
+        ===================================================== */
+
+        typography: {
+
+            fontSizeXs: '11px',
+            fontSizeSm: '12px',
+            fontSizeMd: '13px',
+            fontSizeLg: '14px',
+            fontSizeXl: '18px',
+
+            fontWeightNormal: '500',
+            fontWeightBold: '600',
+
+            lineHeightCompact: '1.2',
+            lineHeightNormal: '1.4',
+        },
+    },
     {
         themeName: "Default",
         description: "Tema padrão do projeto",
@@ -161,121 +273,6 @@ export const tokens: IDesignSystemTokens[] = [
             "_dark-link-color-hover": "#1a95f6",
             "_dark-link-color-focus": "#0073d8",
             "_dark-link-color-disabled": "#66b3ef"
-        },
-        global: {
-            "breakpoint-small": "544px",
-            "breakpoint-medium": "768px",
-            "breakpoint-large": "1012px",
-            "transition-slow": "0.2s",
-            "transition-normal": "0.3s",
-            "transition-fast": "0.5s",
-            "space-base-unit": "0.25rem",
-            "space-8": "calc(@space-base-unit * 2)",
-            "space-16": "calc(@space-base-unit * 4)",
-            "space-24": "calc(@space-base-unit * 6)",
-            "space-32": "calc(@space-base-unit * 8)",
-            "space-40": "calc(@space-base-unit * 10)",
-            "space-48": "calc(@space-base-unit * 12)",
-            "space-64": "calc(@space-base-unit * 16)"
-        },
-        typography: {
-            "font-base-unit": ".25rem",
-            "font-family-primary": "'Charlie Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
-            "font-family-secondary": "serif",
-            "font-size-12": "calc(@font-base-unit * 3)",
-            "font-size-16": "calc(@font-base-unit * 4)",
-            "font-size-20": "calc(@font-base-unit * 5)",
-            "font-size-24": "calc(@font-base-unit * 6)",
-            "font-size-40": "calc(@font-base-unit * 10)",
-            "font-size-48": "calc(@font-base-unit * 12)",
-            "font-size-64": "calc(@font-base-unit * 16)",
-            "line-height-base-unit": "1",
-            "line-height-small": "calc(@line-height-base-unit * 1.1)",
-            "line-height-medium": "calc(@line-height-base-unit * 1.3)",
-            "line-height-large": "calc(@line-height-base-unit * 1.5)",
-            "font-weight-lighter": "100",
-            "font-weight-light": "200",
-            "font-weight-normal": "400",
-            "font-weight-bold": "700",
-            "font-weight-bolder": "900"
-        },
-    },
-    {
-        themeName: "Natal",
-        description: "Tema utilizado para o natal",
-        color: {
-            "text-primary-color-lighter": "#D32F2F",
-            "text-primary-color-lighter-hover": "#E53935",
-            "text-primary-color-lighter-focus": "#C62828",
-            "text-primary-color-lighter-disabled": "#B71C1C",
-            "text-primary-color": "#FF0000",
-            "text-primary-color-hover": "#FF4D4D",
-            "text-primary-color-focus": "#E60000",
-            "text-primary-color-disabled": "#FF9999",
-            "text-primary-color-darker": "#8B0000",
-            "text-primary-color-darker-hover": "#9B111E",
-            "text-primary-color-darker-focus": "#7A0000",
-            "text-primary-color-darker-disabled": "#660000",
-            "text-secondary-color-lighter": "#4CAF50",
-            "text-secondary-color-lighter-hover": "#66BB6A",
-            "text-secondary-color-lighter-focus": "#43A047",
-            "text-secondary-color-lighter-disabled": "#2E7D32",
-            "text-secondary-color": "#008000",
-            "text-secondary-color-hover": "#009933",
-            "text-secondary-color-focus": "#006600",
-            "text-secondary-color-disabled": "#339966",
-            "text-secondary-color-darker": "#006400",
-            "text-secondary-color-darker-hover": "#007700",
-            "text-secondary-color-darker-focus": "#004d00",
-            "text-secondary-color-darker-disabled": "#003300",
-            "bg-primary-color-lighter": "#FFF5E1",
-            "bg-primary-color-lighter-hover": "#FFEDD5",
-            "bg-primary-color-lighter-focus": "#FFE4C4",
-            "bg-primary-color-lighter-disabled": "#FFDAB9",
-            "bg-primary-color": "#FFFFFF",
-            "bg-primary-color-hover": "#F8F8F8",
-            "bg-primary-color-focus": "#F0F0F0",
-            "bg-primary-color-disabled": "#E0E0E0",
-            "bg-primary-color-darker": "#F5F5DC",
-            "bg-primary-color-darker-hover": "#EDE5C4",
-            "bg-primary-color-darker-focus": "#DCD0A4",
-            "bg-primary-color-darker-disabled": "#CDBE90",
-            "bg-secondary-color-lighter": "#C5E1A5",
-            "bg-secondary-color-lighter-hover": "#AED581",
-            "bg-secondary-color-lighter-focus": "#9CCC65",
-            "bg-secondary-color-lighter-disabled": "#8BC34A",
-            "bg-secondary-color": "#4CAF50",
-            "bg-secondary-color-hover": "#43A047",
-            "bg-secondary-color-focus": "#388E3C",
-            "bg-secondary-color-disabled": "#2E7D32",
-            "bg-secondary-color-darker": "#1B5E20",
-            "bg-secondary-color-darker-hover": "#2E7D32",
-            "bg-secondary-color-darker-focus": "#388E3C",
-            "bg-secondary-color-darker-disabled": "#4CAF50",
-            "error-color": "#D32F2F",
-            "error-color-hover": "#E57373",
-            "error-color-focus": "#C62828",
-            "error-color-disabled": "#B71C1C",
-            "success-color": "#388E3C",
-            "success-color-hover": "#4CAF50",
-            "success-color-focus": "#2E7D32",
-            "success-color-disabled": "#1B5E20",
-            "warning-color": "#FFD700",
-            "warning-color-hover": "#FFEA00",
-            "warning-color-focus": "#FFC107",
-            "warning-color-disabled": "#FFEB3B",
-            "info-color": "#1565C0",
-            "info-color-hover": "#1976D2",
-            "info-color-focus": "#0D47A1",
-            "info-color-disabled": "#64B5F6",
-            "active-color": "#D32F2F",
-            "active-color-hover": "#E53935",
-            "active-color-focus": "#C62828",
-            "active-color-disabled": "#B71C1C",
-            "link-color": "#B22222",
-            "link-color-hover": "#C71585",
-            "link-color-focus": "#8B0000",
-            "link-color-disabled": "#DC143C"
         },
         global: {
             "breakpoint-small": "544px",

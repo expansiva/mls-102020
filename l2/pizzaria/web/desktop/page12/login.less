@@ -1,0 +1,303 @@
+/// <mls fileReference="_102020_/l2/pizzaria/web/desktop/page12/login.less" enhancement="_102020/l2/enhancementStyleAura"/>
+
+pizzaria--web--desktop--page12--login-102020 {
+
+    /* =====================================================
+	   RADIUS
+	===================================================== */
+
+    --radius-xs: 6px;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 18px;
+
+    /* =====================================================
+	   SURFACES
+	===================================================== */
+
+    --surface: 229 231 235;
+    --surface2: 235 237 241;
+    --surface3: 243 244 246;
+
+    /* =====================================================
+	   TEXT
+	===================================================== */
+
+    --text: 55 65 81;
+    --text-muted: 107 114 128;
+
+    /* =====================================================
+	   BRAND
+	===================================================== */
+
+    --primary: 79 70 229;
+    --primary-foreground: 255 255 255;
+
+    /* =====================================================
+	   FEEDBACK
+	===================================================== */
+
+    --success: 34 197 94;
+    --warning: 250 204 21;
+    --danger: 248 113 113;
+
+    /* =====================================================
+	   BORDERS
+	===================================================== */
+
+    --border: 224 226 230;
+    --border-strong: 209 213 219;
+
+    /* =====================================================
+	   SHADOWS
+	===================================================== */
+
+    --shadow-soft:
+        4px 4px 8px rgba(163, 177, 198, .45),
+        -4px -4px 8px rgba(255, 255, 255, .65);
+
+    --shadow-medium:
+        6px 6px 12px rgba(163, 177, 198, .50),
+        -6px -6px 12px rgba(255, 255, 255, .75);
+
+    --shadow-strong:
+        8px 8px 16px rgba(163, 177, 198, .55),
+        -8px -8px 16px rgba(255, 255, 255, .85);
+
+    /* =====================================================
+	   INSET SHADOWS
+	===================================================== */
+
+    --shadow-inset-soft:
+        inset 2px 2px 4px rgba(163, 177, 198, .30),
+        inset -2px -2px 4px rgba(255, 255, 255, .45);
+
+    --shadow-inset:
+        inset 4px 4px 8px rgba(163, 177, 198, .40),
+        inset -4px -4px 8px rgba(255, 255, 255, .65);
+
+    /* =====================================================
+	   FOCUS
+	===================================================== */
+
+    --focus-ring:
+        0 0 0 3px rgba(99, 102, 241, .18);
+
+    /* =====================================================
+	   DENSITY
+	===================================================== */
+
+    --space-xxs: 2px;
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-lg: 16px;
+    --space-xl: 20px;
+
+    /* =====================================================
+	   INPUTS
+	===================================================== */
+
+    --input-height-sm: 28px;
+    --input-height-md: 34px;
+    --input-height-lg: 40px;
+
+    /* =====================================================
+	   TABLES
+	===================================================== */
+
+    --table-row-height: 34px;
+    --table-header-height: 36px;
+
+    /* =====================================================
+	   SIDEBAR
+	===================================================== */
+
+    --sidebar-width: 240px;
+
+    /* =====================================================
+	   MOTION
+	===================================================== */
+
+    --transition-fast: 120ms;
+    --transition-normal: 200ms;
+
+    /* =====================================================
+	   TYPOGRAPHY
+	===================================================== */
+
+    --font-size-xs: 11px;
+    --font-size-sm: 12px;
+    --font-size-md: 13px;
+    --font-size-lg: 14px;
+    --font-size-xl: 18px;
+
+    --font-weight-normal: 500;
+    --font-weight-bold: 600;
+
+    display: block;
+
+    min-height: 100vh;
+
+    background: rgb(var(--surface));
+
+    color: rgb(var(--text));
+
+    /* =====================================================
+	   CARD
+	===================================================== */
+
+    .login-card {
+
+        background: rgb(var(--surface2));
+
+        border-radius: var(--radius-lg);
+
+        box-shadow: var(--shadow-medium);
+
+        border: 1px solid rgb(var(--border));
+    }
+
+    /* =====================================================
+	   HEADER
+	===================================================== */
+
+    .login-title {
+
+        font-size: var(--font-size-xl);
+
+        font-weight: var(--font-weight-bold);
+
+        color: rgb(var(--text));
+    }
+
+    .login-description {
+
+        font-size: var(--font-size-md);
+
+        color: rgb(var(--text-muted));
+    }
+
+    /* =====================================================
+	   INPUTS
+	===================================================== */
+
+    .field-input {
+
+        display: block;
+
+        --ml-input-height: var(--input-height-lg);
+
+        --ml-input-radius: var(--radius-md);
+
+        --ml-input-background: rgb(var(--surface3));
+
+        --ml-input-color: rgb(var(--text));
+
+        --ml-input-border: rgb(var(--border));
+
+        --ml-input-shadow: var(--shadow-inset);
+
+        --ml-input-focus-ring: var(--focus-ring);
+    }
+
+    /* =====================================================
+	   CHECKBOX
+	===================================================== */
+
+    .login-checkbox {
+
+        font-size: var(--font-size-sm);
+
+        font-weight: var(--font-weight-normal);
+
+        color: rgb(var(--text-muted));
+    }
+
+    .login-checkbox__input {
+
+        width: 16px;
+        height: 16px;
+
+        accent-color: rgb(var(--primary));
+    }
+
+    /* =====================================================
+	   PRIMARY BUTTON
+	===================================================== */
+
+    .btn-primary {
+
+        height: var(--input-height-lg);
+
+        width: 100%;
+
+        padding-inline: var(--space-lg);
+
+        background: rgb(var(--primary));
+
+        color: rgb(var(--primary-foreground));
+
+        border: none;
+
+        border-radius: var(--radius-md);
+
+        box-shadow: var(--shadow-soft);
+
+        font-size: var(--font-size-md);
+
+        font-weight: var(--font-weight-bold);
+
+        cursor: pointer;
+
+        transition:
+            transform var(--transition-fast),
+            box-shadow var(--transition-fast),
+            opacity var(--transition-fast);
+    }
+
+    .btn-primary:hover {
+
+        transform: translateY(-1px);
+
+        box-shadow: var(--shadow-strong);
+    }
+
+    .btn-primary:active {
+
+        transform: translateY(0);
+
+        box-shadow: var(--shadow-inset-soft);
+    }
+
+    /* =====================================================
+	   LINKS
+	===================================================== */
+
+    .btn-link {
+
+        background: transparent;
+
+        border: none;
+
+        padding: 0;
+
+        color: rgb(var(--primary));
+
+        font-size: var(--font-size-sm);
+
+        font-weight: var(--font-weight-normal);
+
+        cursor: pointer;
+
+        transition: opacity var(--transition-fast);
+    }
+
+    .btn-link:hover {
+
+        opacity: .75;
+    }
+
+}
+
+

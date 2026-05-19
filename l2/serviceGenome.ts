@@ -14,6 +14,7 @@ import { languages as allLanguages, ICollabLanguage } from '/_102027_/l2/collabL
 import { skills as listOfGroups } from '/_102020_/l2/skills/molecules/index.js';
 import { replaceComponentTag } from '/_102020_/l2/previewTextEditor.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
+import { IDesignSystemTokens, getTokens } from '/_102027_/l2/designSystemBase.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
 
@@ -24,8 +25,8 @@ const message_en = {
     svcTitle: 'Genome',
     device: 'Device',
     layout: 'Layout',
-    style: 'Style',
-    kit: 'UI Kit',
+    designSystem: 'Design System',
+    designSystemDefault: 'Default',
     language: 'Language',
     molecules: 'Molecules',
     noMolecule: 'Select a widget in the preview to enable molecule variants',
@@ -61,6 +62,20 @@ const message_en = {
     molSelectedOnly: 'Selected only',
     molAllOccurrences: 'All occurrences',
     inDevelopment: 'In development',
+    dsDefaultDesc: 'Creative mode — no design system applied. The AI has complete freedom to create visual elements without any constraints.',
+    dsCustomName: 'Design system name',
+    dsCustomNamePlaceholder: 'e.g. Material Design',
+    dsCustomDescLabel: 'Description',
+    dsCustomDescPlaceholder: 'Describe the design system…',
+    dsCustomSkillLabel: 'skill.md',
+    dsCustomSkillPlaceholder: 'Paste the content of skill.md here…',
+    dsGenerateBtn: 'Generate Design System',
+    dsTokensBtn: 'Tokens',
+    dsTokensColor: 'Colors',
+    dsTokensGlobal: 'Global',
+    dsTokensTypography: 'Typography',
+    dsTypoPreviewText: 'The quick brown fox jumps over the lazy dog.',
+    dsTypoActiveToken: 'Active token',
     deviceNoModule: 'No module selected',
     deviceModuleFound: 'Selected module',
     deviceModuleMissing: 'Module not found',
@@ -82,8 +97,8 @@ const messages: Record<string, MessageType> = {
         svcTitle: 'Genome',
         device: 'Dispositivo',
         layout: 'Layout',
-        style: 'Estilo',
-        kit: 'UI Kit',
+        designSystem: 'Design System',
+        designSystemDefault: 'Padrão',
         language: 'Idioma',
         molecules: 'Moléculas',
         noMolecule: 'Selecione um widget no preview para habilitar variantes de molécula',
@@ -119,6 +134,20 @@ const messages: Record<string, MessageType> = {
         molSelectedOnly: 'Somente selecionado',
         molAllOccurrences: 'Todas ocorrências',
         inDevelopment: 'Em desenvolvimento',
+        dsDefaultDesc: 'Modo criativo — sem design system aplicado. A IA tem liberdade total para criar elementos visuais sem nenhuma restrição.',
+        dsCustomName: 'Nome do design system',
+        dsCustomNamePlaceholder: 'ex: Material Design',
+        dsCustomDescLabel: 'Descrição',
+        dsCustomDescPlaceholder: 'Descreva o design system…',
+        dsCustomSkillLabel: 'skill.md',
+        dsCustomSkillPlaceholder: 'Cole aqui o conteúdo do skill.md…',
+        dsGenerateBtn: 'Gerar Design System',
+        dsTokensBtn: 'Tokens',
+        dsTokensColor: 'Cores',
+        dsTokensGlobal: 'Global',
+        dsTokensTypography: 'Tipografia',
+        dsTypoPreviewText: 'A rápida raposa marrom pula sobre o cachorro preguiçoso.',
+        dsTypoActiveToken: 'Token ativo',
         deviceNoModule: 'Nenhum módulo selecionado',
         deviceModuleFound: 'Módulo selecionado',
         deviceModuleMissing: 'Módulo não encontrado',
@@ -137,8 +166,8 @@ const messages: Record<string, MessageType> = {
         svcTitle: 'Genome',
         device: 'Dispositivo',
         layout: 'Diseño',
-        style: 'Estilo',
-        kit: 'UI Kit',
+        designSystem: 'Design System',
+        designSystemDefault: 'Predeterminado',
         language: 'Idioma',
         molecules: 'Moléculas',
         noMolecule: 'Seleccione un widget en la vista previa para habilitar variantes de molécula',
@@ -174,6 +203,20 @@ const messages: Record<string, MessageType> = {
         molSelectedOnly: 'Solo seleccionado',
         molAllOccurrences: 'Todas las ocurrencias',
         inDevelopment: 'En desarrollo',
+        dsDefaultDesc: 'Modo creativo — sin sistema de diseño aplicado. La IA tiene libertad total para crear elementos visuales sin ninguna restricción.',
+        dsCustomName: 'Nombre del sistema de diseño',
+        dsCustomNamePlaceholder: 'ej: Material Design',
+        dsCustomDescLabel: 'Descripción',
+        dsCustomDescPlaceholder: 'Describe el sistema de diseño…',
+        dsCustomSkillLabel: 'skill.md',
+        dsCustomSkillPlaceholder: 'Pega aquí el contenido del skill.md…',
+        dsGenerateBtn: 'Generar Design System',
+        dsTokensBtn: 'Tokens',
+        dsTokensColor: 'Colores',
+        dsTokensGlobal: 'Global',
+        dsTokensTypography: 'Tipografía',
+        dsTypoPreviewText: 'El rápido zorro marrón salta sobre el perro perezoso.',
+        dsTypoActiveToken: 'Token activo',
         deviceNoModule: 'Ningún módulo seleccionado',
         deviceModuleFound: 'Módulo seleccionado',
         deviceModuleMissing: 'Módulo no encontrado',
@@ -250,27 +293,6 @@ const KNOB_CONFIGS: Record<string, IKnobConfig> = {
             4: 'sidebar',
         },
     },
-    style: {
-        key: 'style',
-        min: 1,
-        max: 3,
-        labels: {
-            1: 'material',
-            2: 'glass',
-            3: 'neumorphism',
-        },
-    },
-    kit: {
-        key: 'kit',
-        min: 1,
-        max: 4,
-        labels: {
-            1: 'dense-erp',
-            2: 'modern-forms',
-            3: 'classic-forms',
-            4: 'touch-friendly',
-        },
-    },
 };
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -304,6 +326,7 @@ export class ServiceGenome100554 extends ServiceBase {
 
     onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
         this._initLanguageKnob();
+        this._initDesignSystemKnob();
     }
 
     // ─── State ────────────────────────────────────────────────────────
@@ -313,8 +336,7 @@ export class ServiceGenome100554 extends ServiceBase {
     // knob values (null = not set)
     @state() private _deviceValue: number | null = 1;
     @state() private _layoutValue: number | null = 1;
-    @state() private _styleValue: number | null = 1;
-    @state() private _kitValue: number | null = 1;
+    @state() private _designSystemValue: number | null = 1;
     @state() private _languageValue: number | null = 1;
     @state() private _moleculesValue: number | null = null;
 
@@ -324,6 +346,11 @@ export class ServiceGenome100554 extends ServiceBase {
     // language knob — dynamic config built from project
     @state() private _languageConfig: IKnobConfig = {
         key: 'language', min: 1, max: 1, labels: { 1: 'Custom' }, disabled: false,
+    };
+
+    // design system knob — dynamic config (value 1 = default, last = Custom)
+    @state() private _designSystemConfig: IKnobConfig = {
+        key: 'designSystem', min: 1, max: 2, labels: { 1: 'Default', 2: 'Custom' }, disabled: false,
     };
 
     // language status for the details row
@@ -337,6 +364,26 @@ export class ServiceGenome100554 extends ServiceBase {
 
     // remove language scope state
     @state() private _removeLangApplyAll: boolean = false;
+
+    // custom design system form state
+    @state() private _dsName: string = '';
+    @state() private _dsDescription: string = '';
+    @state() private _dsSkill: string = '';
+
+    // loaded project design systems
+    @state() private _projectDesignSystems: IDesignSystemTokens[] = [];
+
+    // color token edits: key → current value (overrides ds.color)
+    @state() private _dsColorEdits: Record<string, string> = {};
+
+    // which color swatch is open for inline editing
+    @state() private _dsEditingColorKey: string | null = null;
+
+    // typography token edits: key → current value (overrides ds.typography)
+    @state() private _dsTypographyEdits: Record<string, string> = {};
+
+    // which typography token is active (applied to the mini preview)
+    @state() private _dsTypographyActiveKey: string | null = null;
 
     // molecules dynamic config (loaded from context)
     @state() private _moleculesConfig: IKnobConfig = {
@@ -386,8 +433,7 @@ export class ServiceGenome100554 extends ServiceBase {
         return {
             device: this._deviceValue,
             layout: this._layoutValue,
-            style: this._styleValue,
-            kit: this._kitValue,
+            designSystem: this._designSystemValue,
             language: this._languageValue,
             molecules: this._moleculesValue,
         };
@@ -397,8 +443,13 @@ export class ServiceGenome100554 extends ServiceBase {
         switch (key) {
             case 'device': this._deviceValue = value; break;
             case 'layout': this._layoutValue = value; break;
-            case 'style': this._styleValue = value; break;
-            case 'kit': this._kitValue = value; break;
+            case 'designSystem':
+                this._designSystemValue = value;
+                this._dsColorEdits = {};
+                this._dsEditingColorKey = null;
+                this._dsTypographyEdits = {};
+                this._dsTypographyActiveKey = null;
+                break;
             case 'language':
                 this._languageValue = value;
                 this._onLanguageChanged(value);
@@ -410,7 +461,7 @@ export class ServiceGenome100554 extends ServiceBase {
         }
 
         // Refresh pages list when context-defining knobs change
-        if (key === 'device' || key === 'layout' || key === 'kit') {
+        if (key === 'device' || key === 'layout' || key === 'designSystem') {
             this._refreshPagesContext();
         }
 
@@ -426,8 +477,8 @@ export class ServiceGenome100554 extends ServiceBase {
     private get _variationLabel(): string {
         const device = this._fmtLabel(this._deviceLabel);
         const layout = this._layoutValue !== null ? this._fmtLabel(KNOB_CONFIGS.layout.labels[this._layoutValue] || '') : '';
-        const kit = this._kitValue !== null ? this._fmtLabel(KNOB_CONFIGS.kit.labels[this._kitValue] || '') : '';
-        return [device, layout, kit].filter(Boolean).join(' → ');
+        const ds = this._designSystemValue !== null ? (this._designSystemConfig.labels[this._designSystemValue] || '') : '';
+        return [device, layout, ds].filter(Boolean).join(' → ');
     }
 
     private get _deviceLabel(): string {
@@ -443,13 +494,8 @@ export class ServiceGenome100554 extends ServiceBase {
 
     private get _pageCode(): string {
         const l = this._layoutValue ?? 0;
-        const k = this._kitValue ?? 0;
-        return `page${l}${k}`;
-    }
-
-    private get _styleName(): string {
-        const v = this._styleValue;
-        return v !== null ? (KNOB_CONFIGS.style.labels[v] || '—') : '—';
+        const ds = this._designSystemValue ?? 1;
+        return `page${l}${ds}`;
     }
 
     private get _languageName(): string {
@@ -515,6 +561,7 @@ export class ServiceGenome100554 extends ServiceBase {
     private _getKnobConfig(key: string): IKnobConfig {
         if (key === 'molecules') return this._moleculesConfig;
         if (key === 'language') return this._languageConfig;
+        if (key === 'designSystem') return this._designSystemConfig;
         return KNOB_CONFIGS[key];
     }
 
@@ -724,6 +771,43 @@ export class ServiceGenome100554 extends ServiceBase {
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // ─── Design System Logic ──────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════
+
+    private async getDesignSystemsInProject(): Promise<IDesignSystemTokens[]> {
+        if (!mls.actualProject) return [];
+        const designSystems = await getTokens(mls.actualProject);
+        return designSystems;
+    }
+
+    private async _initDesignSystemKnob() {
+        const projectDS = await this.getDesignSystemsInProject();
+        this._projectDesignSystems = projectDS;
+
+        const labels: Record<number, string> = {
+            1: this.msg.designSystemDefault,
+        };
+        projectDS.forEach((ds, i) => {
+            labels[i + 2] = ds.themeName;
+        });
+        labels[projectDS.length + 2] = 'Custom';
+
+        this._designSystemConfig = {
+            key: 'designSystem',
+            min: 1,
+            max: projectDS.length + 2,
+            labels,
+            disabled: false,
+        };
+
+        if (this._designSystemValue === null || this._designSystemValue > this._designSystemConfig.max) {
+            this._designSystemValue = 1;
+        }
+
+        this.requestUpdate();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // ─── Language Logic ───────────────────────────────────────────────
     // ═══════════════════════════════════════════════════════════════════
 
@@ -748,7 +832,14 @@ export class ServiceGenome100554 extends ServiceBase {
             disabled: false,
         };
 
-        if (this._languageValue === null || this._languageValue > this._languageConfig.max) {
+        const previewLang = getState('preview.language') as string | undefined;
+        const previewIndex = previewLang
+            ? Number(Object.entries(labels).find(([, v]) => v === previewLang)?.[0] ?? 0)
+            : 0;
+
+        if (previewIndex >= 1 && previewIndex <= this._languageConfig.max) {
+            this._languageValue = previewIndex;
+        } else if (this._languageValue === null || this._languageValue > this._languageConfig.max) {
             this._languageValue = 1;
         }
 
@@ -862,6 +953,8 @@ export class ServiceGenome100554 extends ServiceBase {
             this._deviceStatus = { state: 'module-missing', targetPath: targetFolder };
         } else if (moduleFiles.some((f) => f.shortName === shortName)) {
             this._deviceStatus = { state: 'page-found', files: moduleFiles };
+            const matchingFile = moduleFiles.find((f) => f.shortName === shortName);
+            if (matchingFile) setState('preview.file', matchingFile);
         } else {
             this._deviceStatus = { state: 'module-found', shortName, files: moduleFiles };
         }
@@ -1196,8 +1289,7 @@ export class ServiceGenome100554 extends ServiceBase {
                 path: this._variationPath,
                 device: this._deviceLabel,
                 layout: this._layoutValue,
-                kit: this._kitValue,
-                style: this._styleName,
+                designSystem: this._designSystemValue,
                 language: this._languageName,
                 molecule: this._moleculeName,
             },
@@ -1233,6 +1325,7 @@ export class ServiceGenome100554 extends ServiceBase {
     connectedCallback() {
         super.connectedCallback();
         this._initLanguageKnob();
+        this._initDesignSystemKnob();
         subscribe('previewL3.selectedTagName', this);
     }
 
@@ -1307,18 +1400,17 @@ export class ServiceGenome100554 extends ServiceBase {
                 <!-- Separator -->
                 <div class="w-px h-10 bg-gray-200 dark:bg-gray-800 shrink-0"></div>
 
-                <!-- Group 2: Layout + Kit -->
+                <!-- Group 2: Layout + Design System -->
                 <div class="flex flex-wrap items-center justify-center">
                     ${this._renderKnobItem('layout')}
-                    ${this._renderKnobItem('kit')}
+                    ${this._renderKnobItem('designSystem')}
                 </div>
 
                 <!-- Separator -->
                 <div class="w-px h-10 bg-gray-200 dark:bg-gray-800 shrink-0"></div>
 
-                <!-- Group 3: Style + Language + Molecules -->
+                <!-- Group 3: Language + Molecules -->
                 <div class="flex flex-wrap items-center justify-center">
-                    ${this._renderKnobItem('style')}
                     ${this._renderKnobItem('language')}
                     ${this._renderKnobItem('molecules')}
                 </div>
@@ -1503,11 +1595,8 @@ export class ServiceGenome100554 extends ServiceBase {
             case 'layout':
                 return this._renderDeviceScenario();
 
-            case 'kit':
-                return this._renderDeviceScenario();
-
-            case 'style':
-                return this._renderInDevelopment(this.msg.style);
+            case 'designSystem':
+                return this._renderDesignSystemScenario();
 
             case 'molecules':
                 return this._renderMoleculesScenario();
@@ -1611,21 +1700,422 @@ export class ServiceGenome100554 extends ServiceBase {
         `;
     }
 
-    // ─── In Development placeholder ───────────────────────────────────
+    // ─── Design System scenario ───────────────────────────────────────
 
-    private _renderInDevelopment(knobLabel: string) {
-        return html`
-            <div class="
-                flex items-center gap-2 px-3 py-2.5 rounded-lg
-                bg-gray-100 dark:bg-gray-900
-                border border-dashed border-gray-300 dark:border-gray-700
-            ">
-                <span class="text-sm">🚧</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">
-                    ${this.msg.inDevelopment}: <span class="font-semibold">${knobLabel}</span>
-                </span>
-            </div>
-        `;
+    private _renderDesignSystemScenario() {
+        const isDefault = this._designSystemValue === 1;
+        const isCustom = this._designSystemValue === this._designSystemConfig.max;
+
+        if (isDefault) {
+            return html`
+                <div class="flex flex-col gap-2">
+
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                        <span class="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                            ${this.msg.deviceModuleFound}:
+                            <span class="font-semibold capitalize">${this._actualModule}</span>
+                        </span>
+                    </div>
+
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.deviceCurrentVariation}:</span>
+                        <span class="text-[10px] font-medium text-gray-600 dark:text-gray-300">${this._variationLabel}</span>
+                    </div>
+
+                    <div class="
+                        flex flex-col gap-1.5 px-3 py-2.5 rounded-lg
+                        bg-indigo-50 dark:bg-indigo-950
+                        border border-indigo-200 dark:border-indigo-800
+                    ">
+                        <span class="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                            ${this.msg.designSystemDefault}
+                        </span>
+                        <span class="text-[11px] text-indigo-600 dark:text-indigo-400 leading-relaxed">
+                            ${this.msg.dsDefaultDesc}
+                        </span>
+                    </div>
+
+                </div>
+            `;
+        }
+
+        // Project DS selected (values between default and custom)
+        if (!isDefault && !isCustom && this._designSystemValue !== null) {
+            const dsIndex = this._designSystemValue - 2;
+            const ds = this._projectDesignSystems[dsIndex];
+            if (!ds) return nothing;
+
+            const variationFound = this._deviceStatus.state === 'page-found';
+
+            const colorEntries = Object.entries(ds.color);
+            const hasEdits = Object.keys(this._dsColorEdits).length > 0;
+
+            const typographyEntries = Object.entries(ds.typography || {});
+            const hasTypoEdits = Object.keys(this._dsTypographyEdits).length > 0;
+            const previewStyle = (() => {
+                if (!this._dsTypographyActiveKey) return '';
+                const activeKey = this._dsTypographyActiveKey;
+                const val = this._dsTypographyEdits[activeKey] ?? (ds.typography || {})[activeKey] ?? '';
+                const k = activeKey.toLowerCase();
+                if (k.includes('font-size') || k.includes('fontsize') || k.includes('size')) return `font-size:${val};`;
+                if (k.includes('font-family') || k.includes('fontfamily') || k.includes('family')) return `font-family:${val};`;
+                if (k.includes('font-weight') || k.includes('fontweight') || k.includes('weight')) return `font-weight:${val};`;
+                if (k.includes('line-height') || k.includes('lineheight') || k.includes('leading')) return `line-height:${val};`;
+                if (k.includes('letter-spacing') || k.includes('letterspacing') || k.includes('tracking')) return `letter-spacing:${val};`;
+                return '';
+            })();
+
+            return html`
+                <div class="flex flex-col gap-2">
+
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                        <span class="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                            ${this.msg.deviceModuleFound}:
+                            <span class="font-semibold capitalize">${this._actualModule}</span>
+                        </span>
+                    </div>
+
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.deviceCurrentVariation}:</span>
+                        <span class="text-[10px] font-medium text-gray-600 dark:text-gray-300">${this._variationLabel}</span>
+                    </div>
+
+                    <!-- Variation status -->
+                    <div class="flex items-center gap-2">
+                        <span class="
+                            w-2 h-2 rounded-full shrink-0
+                            ${variationFound ? 'bg-emerald-500' : 'bg-red-500'}
+                        "></span>
+                        <span class="
+                            text-xs font-medium
+                            ${variationFound ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}
+                        ">
+                            ${variationFound ? this.msg.variationExists : this.msg.variationMissing}
+                        </span>
+                    </div>
+
+                    ${!variationFound ? html`
+                        <div class="flex justify-end">
+                            <button
+                                class="
+                                    inline-flex items-center gap-1.5
+                                    px-3 py-1.5 rounded-lg
+                                    text-xs font-medium cursor-pointer
+                                    bg-indigo-600 text-white
+                                    hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600
+                                    transition-colors duration-150
+                                "
+                                @click=${() => { /* TODO: call agent */ }}
+                            >
+                                ${this.msg.deviceCreateVariation}
+                            </button>
+                        </div>
+                    ` : nothing}
+
+                    ${variationFound ? html`
+
+                    ${ds.description ? html`
+                        <div class="
+                            flex flex-col gap-1 px-3 py-2.5 rounded-lg
+                            bg-gray-50 dark:bg-gray-900
+                            border border-gray-200 dark:border-gray-800
+                        ">
+                            <span class="text-xs font-semibold text-gray-700 dark:text-gray-200">${ds.themeName}</span>
+                            <span class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">${ds.description}</span>
+                        </div>
+                    ` : nothing}
+
+                    <!-- Color palette -->
+                    ${colorEntries.length ? html`
+                        <details class="flex flex-col gap-2">
+                            <summary class="cursor-pointer select-none">
+                                ${hasEdits ? html`
+                                    <button
+                                        class="float-right text-[10px] text-amber-500 hover:text-amber-700 dark:hover:text-amber-300 cursor-pointer"
+                                        @click=${(e: Event) => { e.preventDefault(); this._dsColorEdits = {}; this._dsEditingColorKey = null; }}
+                                    >↩ reset</button>
+                                ` : nothing}
+                                <span class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                                    ${this.msg.dsTokensColor}
+                                </span>
+                            </summary>
+
+                            <div class="flex flex-wrap gap-2">
+                                ${colorEntries.map(([key, originalValue]) => {
+                                    const current = this._dsColorEdits[key] ?? originalValue;
+                                    const isModified = key in this._dsColorEdits;
+                                    const isEditing = this._dsEditingColorKey === key;
+                                    return html`
+                                        <div
+                                            class="flex flex-col items-center gap-0.5 cursor-pointer"
+                                            title="${key}: ${current}"
+                                            @click=${() => { this._dsEditingColorKey = isEditing ? null : key; }}
+                                        >
+                                            <div class="relative w-7 h-7 rounded-md" style="
+                                                background: ${current};
+                                                outline: 2px solid ${isEditing ? '#6366f1' : isModified ? '#f59e0b' : 'transparent'};
+                                                outline-offset: 1px;
+                                            ">
+                                                ${isModified ? html`
+                                                    <span class="
+                                                        absolute -top-1 -right-1
+                                                        w-2 h-2 rounded-full
+                                                        bg-amber-400 border border-white dark:border-gray-900
+                                                    "></span>
+                                                ` : nothing}
+                                            </div>
+                                            <span class="text-[9px] font-mono text-gray-400 dark:text-gray-500 w-7 truncate text-center">${key}</span>
+                                        </div>
+                                    `;
+                                })}
+                            </div>
+
+                            <!-- Inline color editor -->
+                            ${this._dsEditingColorKey && (this._dsColorEdits[this._dsEditingColorKey] !== undefined || ds.color[this._dsEditingColorKey] !== undefined) ? html`
+                                ${((_key: string) => {
+                                    const originalValue = ds.color[_key];
+                                    const currentValue = this._dsColorEdits[_key] ?? originalValue;
+                                    const isModified = _key in this._dsColorEdits;
+                                    const isHex = /^#[0-9a-fA-F]{6}$/.test(currentValue);
+                                    return html`
+                                        <div class="
+                                            flex flex-col gap-2 px-3 py-2.5 rounded-lg
+                                            bg-gray-50 dark:bg-gray-900
+                                            border border-indigo-200 dark:border-indigo-800
+                                        ">
+                                            <div class="flex items-center justify-between">
+                                                <span class="text-[11px] font-semibold font-mono text-gray-700 dark:text-gray-200">${_key}</span>
+                                                ${isModified ? html`
+                                                    <button
+                                                        class="text-[10px] text-amber-500 hover:text-amber-700 dark:hover:text-amber-300 cursor-pointer"
+                                                        @click=${() => {
+                                                            const edits = { ...this._dsColorEdits };
+                                                            delete edits[_key];
+                                                            this._dsColorEdits = edits;
+                                                        }}
+                                                    >↩ undo</button>
+                                                ` : nothing}
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                ${isHex ? html`
+                                                    <input
+                                                        type="color"
+                                                        .value=${currentValue}
+                                                        @input=${(e: Event) => {
+                                                            this._dsColorEdits = { ...this._dsColorEdits, [_key]: (e.target as HTMLInputElement).value };
+                                                        }}
+                                                        class="w-8 h-7 rounded cursor-pointer p-0 border-0 bg-transparent"
+                                                    />
+                                                ` : nothing}
+                                                <input
+                                                    type="text"
+                                                    .value=${currentValue}
+                                                    @input=${(e: Event) => {
+                                                        this._dsColorEdits = { ...this._dsColorEdits, [_key]: (e.target as HTMLInputElement).value };
+                                                    }}
+                                                    class="
+                                                        flex-1 px-2 py-1 rounded
+                                                        text-xs font-mono
+                                                        bg-white dark:bg-gray-800
+                                                        border border-gray-300 dark:border-gray-700
+                                                        text-gray-800 dark:text-gray-200
+                                                        focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400
+                                                    "
+                                                />
+                                            </div>
+                                        </div>
+                                    `;
+                                })(this._dsEditingColorKey)}
+                            ` : nothing}
+
+                        </details>
+                    ` : nothing}
+
+                    <!-- Typography -->
+                    ${typographyEntries.length ? html`
+                        <details class="flex flex-col gap-2 mt-4">
+
+                            <summary class="cursor-pointer select-none">
+                                ${hasTypoEdits ? html`
+                                    <button
+                                        class="float-right text-[10px] text-amber-500 hover:text-amber-700 dark:hover:text-amber-300 cursor-pointer"
+                                        @click=${(e: Event) => { e.preventDefault(); this._dsTypographyEdits = {}; this._dsTypographyActiveKey = null; }}
+                                    >↩ reset</button>
+                                ` : nothing}
+                                <span class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                                    ${this.msg.dsTokensTypography}
+                                </span>
+                            </summary>
+
+                            <!-- Mini preview -->
+                            <div class="
+                                px-3 py-2.5 rounded-lg
+                                bg-gray-50 dark:bg-gray-900
+                                border border-gray-200 dark:border-gray-700
+                                text-gray-800 dark:text-gray-200
+                                transition-all duration-150
+                            " style="${previewStyle}">
+                                <span>${this.msg.dsTypoPreviewText}</span>
+                            </div>
+
+                            <!-- Token list -->
+                            <div class="flex flex-col gap-1 mt-3">
+                                ${typographyEntries.map(([key, originalValue]) => {
+                                    const currentValue = this._dsTypographyEdits[key] ?? originalValue;
+                                    const isModified = key in this._dsTypographyEdits;
+                                    const isActive = this._dsTypographyActiveKey === key;
+                                    return html`
+                                        <div class="
+                                            flex flex-col gap-1 px-2 py-1.5 rounded-md cursor-pointer
+                                            ${isActive
+                                                ? 'bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800'
+                                                : 'bg-gray-50 dark:bg-gray-900 border border-transparent hover:border-gray-200 dark:hover:border-gray-700'}
+                                        ">
+                                            <div
+                                                class="flex items-center justify-between"
+                                                @click=${() => { this._dsTypographyActiveKey = isActive ? null : key; }}
+                                            >
+                                                <span class="text-[10px] font-semibold font-mono ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-600 dark:text-gray-400'}">${key}</span>
+                                                <div class="flex items-center gap-2">
+                                                    ${isModified ? html`
+                                                        <button
+                                                            class="text-[10px] text-amber-500 hover:text-amber-700 dark:hover:text-amber-300 cursor-pointer"
+                                                            @click=${(e: Event) => {
+                                                                e.stopPropagation();
+                                                                const edits = { ...this._dsTypographyEdits };
+                                                                delete edits[key];
+                                                                this._dsTypographyEdits = edits;
+                                                            }}
+                                                        >↩ undo</button>
+                                                    ` : nothing}
+                                                    <span class="text-[10px] font-mono text-gray-400 dark:text-gray-500 truncate max-w-[8rem]">${currentValue}</span>
+                                                    ${isModified ? html`<span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>` : nothing}
+                                                </div>
+                                            </div>
+                                            ${isActive ? html`
+                                                <input
+                                                    type="text"
+                                                    .value=${currentValue}
+                                                    @click=${(e: Event) => e.stopPropagation()}
+                                                    @input=${(e: Event) => {
+                                                        this._dsTypographyEdits = { ...this._dsTypographyEdits, [key]: (e.target as HTMLInputElement).value };
+                                                    }}
+                                                    class="
+                                                        w-full px-2 py-1 rounded
+                                                        text-xs font-mono
+                                                        bg-white dark:bg-gray-800
+                                                        border border-indigo-300 dark:border-indigo-700
+                                                        text-gray-800 dark:text-gray-200
+                                                        focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400
+                                                    "
+                                                />
+                                            ` : nothing}
+                                        </div>
+                                    `;
+                                })}
+                            </div>
+
+                        </details>
+                    ` : nothing}
+
+                    ` : nothing}
+
+                </div>
+            `;
+        }
+
+        if (isCustom) {
+            const canGenerate = this._dsName.trim().length > 0;
+            return html`
+                <div class="flex flex-col gap-2">
+
+                    <div class="flex flex-col gap-1">
+                        <span class="text-[11px] font-medium text-gray-600 dark:text-gray-400">
+                            ${this.msg.dsCustomName}
+                        </span>
+                        <input
+                            type="text"
+                            placeholder="${this.msg.dsCustomNamePlaceholder}"
+                            .value=${this._dsName}
+                            @input=${(e: Event) => { this._dsName = (e.target as HTMLInputElement).value; }}
+                            class="
+                                w-full px-2 py-1.5 rounded
+                                text-xs
+                                bg-white dark:bg-gray-800
+                                border border-gray-300 dark:border-gray-700
+                                text-gray-800 dark:text-gray-200
+                                placeholder-gray-400 dark:placeholder-gray-600
+                                focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400
+                            "
+                        />
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <span class="text-[11px] font-medium text-gray-600 dark:text-gray-400">
+                            ${this.msg.dsCustomDescLabel}
+                        </span>
+                        <textarea
+                            placeholder="${this.msg.dsCustomDescPlaceholder}"
+                            .value=${this._dsDescription}
+                            @input=${(e: Event) => { this._dsDescription = (e.target as HTMLTextAreaElement).value; }}
+                            rows="3"
+                            class="
+                                w-full px-2 py-1.5 rounded resize-none
+                                text-xs
+                                bg-white dark:bg-gray-800
+                                border border-gray-300 dark:border-gray-700
+                                text-gray-800 dark:text-gray-200
+                                placeholder-gray-400 dark:placeholder-gray-600
+                                focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400
+                            "
+                        ></textarea>
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <span class="text-[11px] font-medium text-gray-600 dark:text-gray-400">
+                            ${this.msg.dsCustomSkillLabel}
+                        </span>
+                        <textarea
+                            placeholder="${this.msg.dsCustomSkillPlaceholder}"
+                            .value=${this._dsSkill}
+                            @input=${(e: Event) => { this._dsSkill = (e.target as HTMLTextAreaElement).value; }}
+                            rows="5"
+                            class="
+                                w-full px-2 py-1.5 rounded resize-none
+                                text-xs font-mono
+                                bg-white dark:bg-gray-800
+                                border border-gray-300 dark:border-gray-700
+                                text-gray-800 dark:text-gray-200
+                                placeholder-gray-400 dark:placeholder-gray-600
+                                focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400
+                            "
+                        ></textarea>
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button
+                            class="
+                                inline-flex items-center gap-1.5
+                                px-2.5 py-1 rounded
+                                text-[11px] font-medium cursor-pointer
+                                transition-colors duration-150
+                                ${canGenerate
+                                    ? 'bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600'
+                                    : 'bg-gray-200 text-gray-400 dark:bg-gray-800 dark:text-gray-600 cursor-not-allowed'}
+                            "
+                            ?disabled=${!canGenerate}
+                        >
+                            ${this.msg.dsGenerateBtn}
+                        </button>
+                    </div>
+
+                </div>
+            `;
+        }
+
+        return nothing;
     }
 
     // ─── Molecules scenario area ──────────────────────────────────────
