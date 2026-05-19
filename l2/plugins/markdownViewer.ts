@@ -2,8 +2,19 @@
 
 import { html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
+
+// ─── marked (lazy CDN load) ───────────────────────────────────────────
+let _markedFn: ((text: string) => string) | null = null;
+let _markedLoading = false;
+
+async function _loadMarked(): Promise<void> {
+    if (_markedFn || _markedLoading) return;
+    _markedLoading = true;
+    const url = 'https://esm.sh/marked@15';
+    const mod = await (import(url) as Promise<any>);
+    _markedFn = (text: string) => mod.marked.parse(text) as string;
+}
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -34,7 +45,22 @@ export class PluginMarkdownViewer extends StateLitElement {
         return messages[this.getMessageKey(messages)];
     }
 
+    connectedCallback() {
+        super.connectedCallback();
+        _loadMarked().then(() => this.requestUpdate());
+    }
+
     createRenderRoot() { return this; }
+
+    updated() {
+        if (!this._editing) {
+            const el = this.querySelector('[data-md]') as HTMLElement | null;
+            if (!el) return;
+            el.innerHTML = (_markedFn && this.text?.trim())
+                ? _markedFn(this.text)
+                : '<span style="font-style:italic;opacity:0.4">—</span>';
+        }
+    }
 
     render() {
         return this._editing ? this._renderEdit() : this._renderView();
@@ -43,11 +69,10 @@ export class PluginMarkdownViewer extends StateLitElement {
     private _renderView() {
         return html`
             <div class="flex items-start gap-2">
-                <div class="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                    ${this.text?.trim()
-                        ? unsafeHTML(this._parse(this.text))
-                        : html`<span class="italic text-gray-400 dark:text-gray-600">—</span>`}
-                </div>
+                <div
+                    data-md
+                    class="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 leading-relaxed"
+                ></div>
                 <button
                     class="
                         shrink-0 text-[10px] px-2 py-0.5 rounded
@@ -109,57 +134,5 @@ export class PluginMarkdownViewer extends StateLitElement {
             composed: true,
         }));
         this._editing = false;
-    }
-
-    // ─── Markdown parser ─────────────────────────────────────────────
-
-    private _parse(md: string): string {
-        const lines = md.split('\n');
-        let out = '';
-        let inList = false;
-        let paraLines: string[] = [];
-
-        const flushPara = () => {
-            if (!paraLines.length) return;
-            out += `<p style="margin:0 0 0.4em">${paraLines.map(l => this._inline(l)).join('<br>')}</p>`;
-            paraLines = [];
-        };
-        const closeList = () => {
-            if (!inList) return;
-            out += '</ul>';
-            inList = false;
-        };
-
-        for (const line of lines) {
-            const headerMatch = line.match(/^(#{1,3})\s+(.*)/);
-            const listMatch = line.match(/^[-*]\s+(.*)/);
-
-            if (headerMatch) {
-                flushPara(); closeList();
-                const level = headerMatch[1].length;
-                const sizes = ['font-size:1.1em;font-weight:700', 'font-size:1em;font-weight:700', 'font-weight:600'];
-                out += `<div style="${sizes[level - 1]};margin:0.6em 0 0.2em">${this._inline(headerMatch[2])}</div>`;
-            } else if (listMatch) {
-                flushPara();
-                if (!inList) { out += '<ul style="margin:0 0 0.4em;padding:0">'; inList = true; }
-                out += `<li style="list-style:none;padding-left:0.9em">&#8226;&nbsp;${this._inline(listMatch[1])}</li>`;
-            } else if (line.trim() === '') {
-                flushPara(); closeList();
-            } else {
-                paraLines.push(line);
-            }
-        }
-
-        flushPara(); closeList();
-        return out;
-    }
-
-    private _inline(s: string): string {
-        s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-        s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
-        s = s.replace(/`([^`]+)`/g, '<code style="font-family:monospace;font-size:0.9em;background:rgba(128,128,128,0.12);padding:0.1em 0.35em;border-radius:3px">$1</code>');
-        return s;
     }
 }
