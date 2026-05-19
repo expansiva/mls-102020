@@ -17,6 +17,7 @@ const message_en = {
     needsOrg: 'Select an organization first to see the available projects.',
     loading: 'Loading README…',
     selectBtn: 'Select Project',
+    actualProject: 'actual project',
     noReadme: 'No README found — click Edit and save to add one.',
     noResults: 'No projects match your search.',
     createNew: 'New Project',
@@ -35,6 +36,7 @@ const messages: Record<string, MessageType> = {
         needsOrg: 'Selecione uma organização primeiro para ver os projetos disponíveis.',
         loading: 'Carregando README…',
         selectBtn: 'Selecionar Projeto',
+        actualProject: 'projeto atual',
         noReadme: 'Nenhum README encontrado — clique em Editar e salve para adicionar.',
         noResults: 'Nenhum projeto corresponde à sua busca.',
         createNew: 'Novo Projeto',
@@ -50,6 +52,7 @@ const messages: Record<string, MessageType> = {
         needsOrg: 'Seleccione una organización primero para ver los proyectos disponibles.',
         loading: 'Cargando README…',
         selectBtn: 'Seleccionar Proyecto',
+        actualProject: 'proyecto actual',
         noReadme: 'No se encontró README — haga clic en Editar y guarde para añadir uno.',
         noResults: 'Ningún proyecto coincide con su búsqueda.',
         createNew: 'Nuevo Proyecto',
@@ -159,22 +162,28 @@ export class PluginSelectProject extends StateLitElement {
             <div class="flex flex-col gap-3">
                 <div class="flex items-start justify-between gap-2">
                     ${this._renderHeader(this.msg.title, null, this.msg.desc)}
-                    ${project ? html`
-                        <button
-                            class="
-                                shrink-0 text-[10px] px-2.5 py-1 rounded
-                                bg-indigo-500 dark:bg-indigo-600 text-white
-                                hover:bg-indigo-600 dark:hover:bg-indigo-500
-                                transition-colors whitespace-nowrap
-                            "
-                            @click=${() => {
-                                mls.setActualProject(project.project);
-                                const orgIndex = mls.l5.getProjectOrgIndex(project.project);
-                                mls.l5.setActualOrg(orgIndex);
-                                window.location.reload();
-                            }}
-                        >${this.msg.selectBtn}</button>
-                    ` : nothing}
+                    ${project
+                        ? mls.actualProject === project.project
+                            ? html`<span class="
+                                shrink-0 text-[10px] px-2 py-0.5 rounded-full font-medium
+                                bg-emerald-100 dark:bg-emerald-900/30
+                                text-emerald-600 dark:text-emerald-400
+                            ">${this.msg.actualProject}</span>`
+                            : html`<button
+                                class="
+                                    shrink-0 text-[10px] px-2.5 py-1 rounded
+                                    bg-indigo-500 dark:bg-indigo-600 text-white
+                                    hover:bg-indigo-600 dark:hover:bg-indigo-500
+                                    transition-colors whitespace-nowrap
+                                "
+                                @click=${() => {
+                                    mls.setActualProject(project.project);
+                                    const orgIndex = mls.l5.getProjectOrgIndex(project.project);
+                                    mls.l5.setActualOrg(orgIndex);
+                                    window.location.reload();
+                                }}
+                            >${this.msg.selectBtn}</button>`
+                        : nothing}
                 </div>
                 ${project ? this._renderSelectedProjectDetail(project, org) : nothing}
             </div>
