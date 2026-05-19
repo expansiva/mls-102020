@@ -3,6 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
+import { setProjectDetails } from '/_102027_/l2/libCommom.js';
 import '/_102020_/l2/plugins/markdownViewer.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -180,6 +181,7 @@ export class PluginSelectProject extends StateLitElement {
                                     mls.setActualProject(project.project);
                                     const orgIndex = mls.l5.getProjectOrgIndex(project.project);
                                     mls.l5.setActualOrg(orgIndex);
+                                    setProjectDetails(project.project);
                                     window.location.reload();
                                 }}
                             >${this.msg.selectBtn}</button>`
