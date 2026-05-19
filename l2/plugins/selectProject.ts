@@ -119,7 +119,7 @@ export class PluginSelectProject extends StateLitElement {
                     ? nothing
                     : html`
                         <div class="flex flex-col gap-1.5">
-                            ${org.projects.map(p => this._renderProjectCard(p))}
+                            ${org.projects.map((p, i) => this._renderProjectCard(p, i + 1))}
                         </div>
                     `}
             </div>
@@ -138,7 +138,7 @@ export class PluginSelectProject extends StateLitElement {
         return html`
             <div class="flex flex-col gap-1">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-xs font-semibold text-gray-700 dark:text-gray-200">${title}</span>
+                    <span class="text-lg font-semibold text-gray-700 dark:text-gray-200">${title}</span>
                     ${badge ? html`
                         <span class="
                             text-[10px] font-mono px-1.5 py-0.5 rounded
@@ -147,7 +147,7 @@ export class PluginSelectProject extends StateLitElement {
                         ">${badge}</span>
                     ` : nothing}
                 </div>
-                <span class="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed">
+                <span class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
                     ${description}
                 </span>
             </div>
@@ -168,18 +168,31 @@ export class PluginSelectProject extends StateLitElement {
         `;
     }
 
-    private _renderProjectCard(project: IProject) {
+    private _renderProjectCard(project: IProject, selectValue?: number) {
         const org = this.selectedOrg!;
+        const clickable = selectValue !== undefined;
         return html`
-            <div class="
-                rounded-lg border border-gray-200 dark:border-gray-800
-                bg-gray-50 dark:bg-gray-900/50
-                px-3 py-2.5 flex items-center gap-2
-            ">
+            <div
+                class="
+                    rounded-lg border border-gray-200 dark:border-gray-800
+                    bg-gray-50 dark:bg-gray-900/50
+                    px-3 py-2.5 flex items-center gap-2
+                    ${clickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors' : ''}
+                "
+                @click=${clickable ? () => this._dispatchSelect(selectValue!) : nothing}
+            >
                 <span class="text-[10px] text-gray-400 dark:text-gray-600 font-mono">${org.name}</span>
                 <span class="text-gray-300 dark:text-gray-700">/</span>
                 <span class="text-xs font-medium text-gray-700 dark:text-gray-300">${project.name}</span>
             </div>
         `;
+    }
+
+    private _dispatchSelect(value: number) {
+        this.dispatchEvent(new CustomEvent('select-project', {
+            detail: { value },
+            bubbles: true,
+            composed: true,
+        }));
     }
 }

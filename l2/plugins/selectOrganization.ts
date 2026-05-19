@@ -3,6 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
+import '/_102020_/l2/plugins/markdownViewer.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -15,6 +16,8 @@ const message_en = {
     customDesc: 'Create a new organization to group your projects.',
     projects: 'projects',
     noOrgs: 'No organizations found.',
+    createNew: 'Create new organization',
+    inDevelopment: 'In development',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -28,6 +31,8 @@ const messages: Record<string, MessageType> = {
         customDesc: 'Crie uma nova organização para agrupar seus projetos.',
         projects: 'projetos',
         noOrgs: 'Nenhuma organização encontrada.',
+        createNew: 'Criar nova organização',
+        inDevelopment: 'Em desenvolvimento',
     },
     es: {
         title: 'Seleccionar Organización',
@@ -38,6 +43,8 @@ const messages: Record<string, MessageType> = {
         customDesc: 'Cree una nueva organización para agrupar sus proyectos.',
         projects: 'proyectos',
         noOrgs: 'No se encontraron organizaciones.',
+        createNew: 'Crear nueva organización',
+        inDevelopment: 'En desarrollo',
     },
 };
 /// **collab_i18n_end**
@@ -97,8 +104,35 @@ export class PluginSelectOrganization extends StateLitElement {
         const org = this._selectedOrg;
         return html`
             <div class="flex flex-col gap-3">
-                ${this._renderHeader(this.msg.title, org?.name ?? null, this.msg.desc)}
-                ${org ? this._renderOrgCard(org) : nothing}
+                ${this._renderHeader(this.msg.title, null, this.msg.desc)}
+                ${org ? this._renderSelectedOrgDetail(org) : nothing}
+            </div>
+        `;
+    }
+
+    private _renderSelectedOrgDetail(org: IOrg) {
+        const date = org.created_at ? new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short' }).format(new Date(org.created_at)) : null;
+        return html`
+            <div class="
+                rounded-lg border border-gray-200 dark:border-gray-800
+                bg-gray-50 dark:bg-gray-900/50
+                px-3 py-3 flex flex-col gap-2
+            ">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">${org.name}</span>
+                    ${date ? html`<span class="text-[10px] text-gray-400 dark:text-gray-600 font-mono">(${date})</span>` : nothing}
+                    <span class="text-gray-300 dark:text-gray-700">·</span>
+                    <span class="
+                        text-[10px] px-2 py-0.5 rounded-full font-medium
+                        bg-indigo-100 dark:bg-indigo-900/30
+                        text-indigo-600 dark:text-indigo-400
+                    ">${org.projects.length} ${this.msg.projects}</span>
+                </div>
+                ${org.description ? html`
+                    <plugins--markdown-viewer-102020
+                        .text=${org.description}
+                    ></plugins--markdown-viewer-102020>
+                ` : nothing}
             </div>
         `;
     }
@@ -111,9 +145,13 @@ export class PluginSelectOrganization extends StateLitElement {
                     ? html`<span class="text-[11px] text-gray-400 dark:text-gray-600 italic">${this.msg.noOrgs}</span>`
                     : html`
                         <div class="flex flex-col gap-1.5">
-                            ${this.orgs.map(org => this._renderOrgCard(org))}
+                            ${this.orgs.map((org, i) => this._renderOrgCard(org, i + 1))}
                         </div>
                     `}
+                <button
+                    class="self-start text-xs text-indigo-500 dark:text-indigo-400 hover:underline"
+                    @click=${() => this._dispatchSelect(this.orgs.length + 1)}
+                >+ ${this.msg.createNew}</button>
             </div>
         `;
     }
@@ -122,6 +160,13 @@ export class PluginSelectOrganization extends StateLitElement {
         return html`
             <div class="flex flex-col gap-3">
                 ${this._renderHeader(this.msg.customTitle, null, this.msg.customDesc)}
+                <div class="
+                    rounded-lg border border-amber-200 dark:border-amber-800/40
+                    bg-amber-50 dark:bg-amber-900/10
+                    px-3 py-2.5
+                ">
+                    <span class="text-xs text-amber-600 dark:text-amber-400">${this.msg.inDevelopment}</span>
+                </div>
             </div>
         `;
     }
@@ -130,7 +175,7 @@ export class PluginSelectOrganization extends StateLitElement {
         return html`
             <div class="flex flex-col gap-1">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-xs font-semibold text-gray-700 dark:text-gray-200">${title}</span>
+                    <span class="text-lg font-semibold text-gray-700 dark:text-gray-200">${title}</span>
                     ${badge ? html`
                         <span class="
                             text-[10px] font-mono px-1.5 py-0.5 rounded
@@ -139,20 +184,25 @@ export class PluginSelectOrganization extends StateLitElement {
                         ">${badge}</span>
                     ` : nothing}
                 </div>
-                <span class="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed">
+                <span class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
                     ${description}
                 </span>
             </div>
         `;
     }
 
-    private _renderOrgCard(org: IOrg) {
+    private _renderOrgCard(org: IOrg, selectValue?: number) {
+        const clickable = selectValue !== undefined;
         return html`
-            <div class="
-                rounded-lg border border-gray-200 dark:border-gray-800
-                bg-gray-50 dark:bg-gray-900/50
-                px-3 py-2.5 flex items-center justify-between
-            ">
+            <div
+                class="
+                    rounded-lg border border-gray-200 dark:border-gray-800
+                    bg-gray-50 dark:bg-gray-900/50
+                    px-3 py-2.5 flex items-center justify-between
+                    ${clickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors' : ''}
+                "
+                @click=${clickable ? () => this._dispatchSelect(selectValue!) : nothing}
+            >
                 <span class="text-xs font-medium text-gray-700 dark:text-gray-300">${org.name}</span>
                 <span class="
                     text-[10px] px-2 py-0.5 rounded-full font-medium
@@ -161,5 +211,13 @@ export class PluginSelectOrganization extends StateLitElement {
                 ">${org.projects.length} ${this.msg.projects}</span>
             </div>
         `;
+    }
+
+    private _dispatchSelect(value: number) {
+        this.dispatchEvent(new CustomEvent('select-org', {
+            detail: { value },
+            bubbles: true,
+            composed: true,
+        }));
     }
 }

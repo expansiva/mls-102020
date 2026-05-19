@@ -63,7 +63,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         return html`
             <div class="flex flex-col gap-1">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-xs font-semibold text-gray-700 dark:text-gray-200">${title}</span>
+                    <span class="text-lg font-semibold text-gray-700 dark:text-gray-200">${title}</span>
                     ${badge ? html`
                         <span class="
                             text-[10px] font-mono px-1.5 py-0.5 rounded
@@ -72,7 +72,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                         ">${badge}</span>
                     ` : nothing}
                 </div>
-                <span class="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed">
+                <span class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
                     ${description}
                 </span>
             </div>

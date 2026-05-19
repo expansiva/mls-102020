@@ -303,11 +303,16 @@ export class ServiceExploreProjects102020 extends ServiceBase {
         switch (key) {
             case 'organization':
                 this._orgValue = value;
-                this._projectValue = null;
                 this._dsValue = null;
                 this._langValue = null;
                 const org = this._orgs[value !== null ? value - 1 : -1];
-                this._projectConfig = org ? this._buildProjectConfigFromOrg(org) : DISABLED_CONFIG('project');
+                if (org) {
+                    this._projectConfig = this._buildProjectConfigFromOrg(org);
+                    this._projectValue = 0;
+                } else {
+                    this._projectConfig = DISABLED_CONFIG('project');
+                    this._projectValue = null;
+                }
                 this._dsConfig = DISABLED_CONFIG('designSystem');
                 this._langConfig = DISABLED_CONFIG('language');
                 break;
@@ -447,6 +452,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                     <plugins--select-organization-102020
                         .orgs=${this._orgs}
                         .value=${this._orgValue}
+                        @select-org=${(e: CustomEvent) => this._setKnobValue('organization', e.detail.value)}
                     ></plugins--select-organization-102020>
                 `;
             case 'project':
@@ -454,6 +460,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                     <plugins--select-project-102020
                         .selectedOrg=${this._selectedOrg}
                         .value=${this._projectValue}
+                        @select-project=${(e: CustomEvent) => this._setKnobValue('project', e.detail.value)}
                     ></plugins--select-project-102020>
                 `;
             case 'designSystem':
