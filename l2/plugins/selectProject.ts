@@ -16,6 +16,7 @@ const message_en = {
     customDesc: 'Create a new project within this organization.',
     needsOrg: 'Select an organization first to see the available projects.',
     loading: 'Loading README…',
+    selectBtn: 'Select Project',
     noReadme: 'No README found — click Edit and save to add one.',
     noResults: 'No projects match your search.',
     createNew: 'New Project',
@@ -33,6 +34,7 @@ const messages: Record<string, MessageType> = {
         customDesc: 'Crie um novo projeto dentro desta organização.',
         needsOrg: 'Selecione uma organização primeiro para ver os projetos disponíveis.',
         loading: 'Carregando README…',
+        selectBtn: 'Selecionar Projeto',
         noReadme: 'Nenhum README encontrado — clique em Editar e salve para adicionar.',
         noResults: 'Nenhum projeto corresponde à sua busca.',
         createNew: 'Novo Projeto',
@@ -47,6 +49,7 @@ const messages: Record<string, MessageType> = {
         customDesc: 'Cree un nuevo proyecto dentro de esta organización.',
         needsOrg: 'Seleccione una organización primero para ver los proyectos disponibles.',
         loading: 'Cargando README…',
+        selectBtn: 'Seleccionar Proyecto',
         noReadme: 'No se encontró README — haga clic en Editar y guarde para añadir uno.',
         noResults: 'Ningún proyecto coincide con su búsqueda.',
         createNew: 'Nuevo Proyecto',
@@ -129,7 +132,7 @@ export class PluginSelectProject extends StateLitElement {
         try {
             const key = mls.stor.getKeyToFile({ project: projectId, level: 0, shortName: 'README', folder: '', extension: '.md' });
             const storFile = mls.stor.files[key];
-            this._readme = storFile ? await storFile.getContent() : null;
+            this._readme = storFile ? await storFile.getContent() as string : null;
         } catch {
             this._readme = null;
         }
@@ -154,7 +157,25 @@ export class PluginSelectProject extends StateLitElement {
         const org = this.selectedOrg!;
         return html`
             <div class="flex flex-col gap-3">
-                ${this._renderHeader(this.msg.title, null, this.msg.desc)}
+                <div class="flex items-start justify-between gap-2">
+                    ${this._renderHeader(this.msg.title, null, this.msg.desc)}
+                    ${project ? html`
+                        <button
+                            class="
+                                shrink-0 text-[10px] px-2.5 py-1 rounded
+                                bg-indigo-500 dark:bg-indigo-600 text-white
+                                hover:bg-indigo-600 dark:hover:bg-indigo-500
+                                transition-colors whitespace-nowrap
+                            "
+                            @click=${() => {
+                                mls.setActualProject(project.project);
+                                const orgIndex = mls.l5.getProjectOrgIndex(project.project);
+                                mls.l5.setActualOrg(orgIndex);
+                                window.location.reload();
+                            }}
+                        >${this.msg.selectBtn}</button>
+                    ` : nothing}
+                </div>
                 ${project ? this._renderSelectedProjectDetail(project, org) : nothing}
             </div>
         `;
