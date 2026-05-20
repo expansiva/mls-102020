@@ -101,7 +101,7 @@ export class PluginSelectLanguage extends StateLitElement {
     @state() private _loading: boolean = false;
     @state() private _search: string = '';
     @state() private _addSearch: string = '';
-    @state() private _addSelected: string = '';
+    @state() private _addSelected: string[] = [];
     @state() private _dropdownOpen: boolean = false;
     @state() private _removing: boolean = false;
     @state() private _pendingTasks = new Map<string, IPendingTask>();
@@ -114,13 +114,13 @@ export class PluginSelectLanguage extends StateLitElement {
             this._languages = [];
             this._search = '';
             this._addSearch = '';
-            this._addSelected = '';
+            this._addSelected = [];
             if (this.selectedProject) this._loadLanguages(this.selectedProject.project);
         }
         if (changed.has('value')) {
             this._search = '';
             this._addSearch = '';
-            this._addSelected = '';
+            this._addSelected = [];
             this._dropdownOpen = false;
         }
     }
@@ -211,21 +211,28 @@ export class PluginSelectLanguage extends StateLitElement {
     }
 
     private async _executeAddLanguage() {
-        if (!this._addSelected) return;
+        if (this._addSelected.length === 0) return;
         const hasRunning = [...this._pendingTasks.values()].some(t => t.status === 'running');
         if (hasRunning) return;
 
-        const langCode = this._addSelected;
-        this._pendingTasks = new Map(this._pendingTasks).set(langCode, { status: 'running', startedAt: Date.now() });
-        this._addSelected = '';
+        const langs = [...this._addSelected];
+        const taskKey = langs.join('+');
+        const langObjs = langs.map(code => {
+            const obj = (allLanguages as ICollabLanguage[]).find(l => l.code === code);
+            return { code, name: obj?.name ?? code };
+        });
+        const prompt = JSON.stringify([{ languages: langObjs, projectId: this.selectedProject?.project ?? 0 }]);
+
+        this._pendingTasks = new Map(this._pendingTasks).set(taskKey, { status: 'running', startedAt: Date.now() });
+        this._addSelected = [];
         this._addSearch = '';
         this.requestUpdate();
 
         try {
-            await this.executeAgent('agentAddLanguage', '_102020_/l2/plugins/selectLanguage');
-            this._pendingTasks = new Map(this._pendingTasks).set(langCode, { ...this._pendingTasks.get(langCode)!, status: 'done' });
+            await this.executeAgent('agentAddLanguage', prompt);
+            this._pendingTasks = new Map(this._pendingTasks).set(taskKey, { ...this._pendingTasks.get(taskKey)!, status: 'done' });
         } catch (e: any) {
-            this._pendingTasks = new Map(this._pendingTasks).set(langCode, { ...this._pendingTasks.get(langCode)!, status: 'error', message: e?.message });
+            this._pendingTasks = new Map(this._pendingTasks).set(taskKey, { ...this._pendingTasks.get(taskKey)!, status: 'error', message: e?.message });
         }
         this.requestUpdate();
     }
@@ -347,9 +354,7 @@ export class PluginSelectLanguage extends StateLitElement {
         const hasRunning = [...this._pendingTasks.values()].some(t => t.status === 'running');
         const q = this._addSearch.toLowerCase();
         const alreadyAdded = new Set(this._languages);
-        const selectedObj = this._addSelected
-            ? (allLanguages as ICollabLanguage[]).find(l => l.code === this._addSelected) ?? null
-            : null;
+        const selectedSet = new Set(this._addSelected);
         const filtered = (allLanguages as ICollabLanguage[]).filter(l =>
             !alreadyAdded.has(l.code) &&
             (!q || l.name.toLowerCase().includes(q) || l.code.toLowerCase().includes(q))
@@ -374,52 +379,65 @@ export class PluginSelectLanguage extends StateLitElement {
                     "
                     @focus=${() => { this._dropdownOpen = true; }}
                     @blur=${() => { setTimeout(() => { this._dropdownOpen = false; this.requestUpdate(); }, 150); }}
-                    @input=${(e: Event) => { this._addSearch = (e.target as HTMLInputElement).value; this._addSelected = ''; this._dropdownOpen = true; }}
+                    @input=${(e: Event) => { this._addSearch = (e.target as HTMLInputElement).value; this._dropdownOpen = true; }}
                 />
 
                 ${this._dropdownOpen ? html`
                     <div class="flex flex-col gap-0.5 max-h-52 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 py-0.5">
                         ${filtered.length === 0
                             ? html`<span class="px-3 py-2 text-[11px] text-gray-400 dark:text-gray-600 italic">${this.msg.noResults}</span>`
-                            : filtered.map(l => html`
-                                <div
-                                    class="
-                                        flex items-center gap-2 px-3 py-1.5 cursor-pointer
-                                        hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors
-                                    "
-                                    @mousedown=${(e: Event) => { e.preventDefault(); this._addSelected = l.code; this._addSearch = l.name; this._dropdownOpen = false; }}
-                                >
-                                    <div class="shrink-0 w-[30px] h-7 overflow-hidden rounded-sm">${unsafeHTML((l as any).svg ?? '')}</div>
-                                    <span class="text-xs text-gray-700 dark:text-gray-300">${l.name}</span>
-                                    <span class="
-                                        ml-auto shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded
-                                        bg-gray-100 dark:bg-gray-800
-                                        text-gray-500 dark:text-gray-400
-                                        uppercase tracking-wider
-                                    ">${l.code}</span>
-                                </div>
-                            `)}
+                            : filtered.map(l => {
+                                const isSelected = selectedSet.has(l.code);
+                                return html`
+                                    <div
+                                        class="
+                                            flex items-center gap-2 px-3 py-1.5 cursor-pointer transition-colors
+                                            ${isSelected
+                                                ? 'bg-indigo-50 dark:bg-indigo-900/20'
+                                                : 'hover:bg-gray-100 dark:hover:bg-gray-800'}
+                                        "
+                                        @mousedown=${(e: Event) => {
+                                            e.preventDefault();
+                                            this._addSelected = isSelected
+                                                ? this._addSelected.filter(c => c !== l.code)
+                                                : [...this._addSelected, l.code];
+                                        }}
+                                    >
+                                        <span class="shrink-0 w-3.5 text-center text-[10px] text-indigo-500 dark:text-indigo-400">
+                                            ${isSelected ? '✓' : ''}
+                                        </span>
+                                        <div class="shrink-0 w-[30px] h-7 overflow-hidden rounded-sm">${unsafeHTML((l as any).svg ?? '')}</div>
+                                        <span class="text-xs text-gray-700 dark:text-gray-300">${l.name}</span>
+                                        <span class="
+                                            ml-auto shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded
+                                            bg-gray-100 dark:bg-gray-800
+                                            text-gray-500 dark:text-gray-400
+                                            uppercase tracking-wider
+                                        ">${l.code}</span>
+                                    </div>
+                                `;
+                            })}
                     </div>
                 ` : ''}
 
-                ${selectedObj ? html`
-                    <div class="
-                        flex items-center gap-2 px-2.5 py-2 rounded-md
-                        border border-indigo-200 dark:border-indigo-700
-                        bg-indigo-50 dark:bg-indigo-900/10
-                    ">
-                        <div class="shrink-0 w-[30px] h-7 overflow-hidden rounded-sm">${unsafeHTML((selectedObj as any).svg ?? '')}</div>
-                        <span class="flex-1 text-xs text-gray-700 dark:text-gray-300">${selectedObj.name}</span>
-                        <span class="
-                            shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded
-                            bg-indigo-100 dark:bg-indigo-900/30
-                            text-indigo-600 dark:text-indigo-400
-                            uppercase tracking-wider
-                        ">${selectedObj.code}</span>
-                        <button
-                            class="shrink-0 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors leading-none"
-                            @click=${() => { this._addSelected = ''; this._addSearch = ''; }}
-                        >&#x2715;</button>
+                ${this._addSelected.length > 0 ? html`
+                    <div class="flex flex-wrap gap-1.5">
+                        ${this._addSelected.map(code => {
+                            const langObj = (allLanguages as ICollabLanguage[]).find(l => l.code === code);
+                            return html`
+                                <div class="flex items-center gap-1 px-2 py-1 rounded-md
+                                    border border-indigo-200 dark:border-indigo-700
+                                    bg-indigo-50 dark:bg-indigo-900/10
+                                ">
+                                    <span class="text-[10px] font-mono uppercase tracking-wider text-indigo-600 dark:text-indigo-400">${code}</span>
+                                    ${langObj ? html`<span class="text-[10px] text-gray-500 dark:text-gray-400">${langObj.name}</span>` : ''}
+                                    <button
+                                        class="ml-0.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors leading-none"
+                                        @click=${() => { this._addSelected = this._addSelected.filter(c => c !== code); }}
+                                    >&#x2715;</button>
+                                </div>
+                            `;
+                        })}
                     </div>
                 ` : ''}
 
@@ -427,33 +445,36 @@ export class PluginSelectLanguage extends StateLitElement {
                     class="
                         self-start text-xs px-3 py-1.5 rounded
                         transition-colors
-                        ${!this._addSelected || hasRunning
+                        ${this._addSelected.length === 0 || hasRunning
                             ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed'
                             : 'bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 cursor-pointer'}
                     "
-                    ?disabled=${!this._addSelected || hasRunning}
+                    ?disabled=${this._addSelected.length === 0 || hasRunning}
                     @click=${() => this._executeAddLanguage()}
                 >${this.msg.add}</button>
 
                 ${this._pendingTasks.size > 0 ? html`
                     <div class="flex flex-col gap-1">
-                        ${[...this._pendingTasks.entries()].map(([code, task]) => html`
-                            <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-md
-                                ${task.status === 'running' ? 'bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-700'
-                                : task.status === 'done'    ? 'bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-700'
-                                :                            'bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-700'}
-                            ">
-                                ${task.status === 'running' ? html`<span class="text-[10px] text-indigo-500 dark:text-indigo-400">⟳</span>` : ''}
-                                ${task.status === 'done'    ? html`<span class="text-[10px] text-emerald-500 dark:text-emerald-400">✓</span>` : ''}
-                                ${task.status === 'error'   ? html`<span class="text-[10px] text-red-500 dark:text-red-400">✕</span>` : ''}
-                                <span class="text-[10px] font-mono uppercase tracking-wider
-                                    ${task.status === 'running' ? 'text-indigo-600 dark:text-indigo-400'
-                                    : task.status === 'done'    ? 'text-emerald-600 dark:text-emerald-400'
-                                    :                             'text-red-600 dark:text-red-400'}
-                                ">${code}</span>
-                                ${task.message ? html`<span class="text-[10px] text-red-400 dark:text-red-500 truncate">${task.message}</span>` : ''}
-                            </div>
-                        `)}
+                        ${[...this._pendingTasks.entries()].map(([taskKey, task]) => {
+                            const codes = taskKey.split('+');
+                            return html`
+                                <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-md
+                                    ${task.status === 'running' ? 'bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-700'
+                                    : task.status === 'done'    ? 'bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-700'
+                                    :                            'bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-700'}
+                                ">
+                                    ${task.status === 'running' ? html`<span class="text-[10px] text-indigo-500 dark:text-indigo-400">⟳</span>` : ''}
+                                    ${task.status === 'done'    ? html`<span class="text-[10px] text-emerald-500 dark:text-emerald-400">✓</span>` : ''}
+                                    ${task.status === 'error'   ? html`<span class="text-[10px] text-red-500 dark:text-red-400">✕</span>` : ''}
+                                    <span class="text-[10px] font-mono uppercase tracking-wider
+                                        ${task.status === 'running' ? 'text-indigo-600 dark:text-indigo-400'
+                                        : task.status === 'done'    ? 'text-emerald-600 dark:text-emerald-400'
+                                        :                             'text-red-600 dark:text-red-400'}
+                                    ">${codes.join(', ')}</span>
+                                    ${task.message ? html`<span class="text-[10px] text-red-400 dark:text-red-500 truncate">${task.message}</span>` : ''}
+                                </div>
+                            `;
+                        })}
                     </div>
                 ` : ''}
             </div>
