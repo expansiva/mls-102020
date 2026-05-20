@@ -293,14 +293,17 @@ export class PluginSelectLanguage extends StateLitElement {
                             <span class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">${this.msg.removeDesc}</span>
                             <button
                                 class="
-                                    self-start text-xs px-3 py-1.5 rounded transition-colors
+                                    self-start flex items-center gap-1.5 text-xs px-3 py-1.5 rounded transition-colors
                                     ${hasRunning
                                         ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed'
                                         : 'bg-red-500 dark:bg-red-600 text-white hover:bg-red-600 dark:hover:bg-red-500 cursor-pointer'}
                                 "
                                 ?disabled=${hasRunning}
                                 @click=${() => this._executeRemoveLanguage()}
-                            >${removing ? '⟳' : this.msg.removeBtn}</button>
+                            >
+                                ${removing ? this._renderSpinner('border-gray-400 dark:border-gray-500') : ''}
+                                ${removing ? 'processing…' : this.msg.removeBtn}
+                            </button>
                         </fieldset>
                     `;
                 })()}
@@ -440,7 +443,7 @@ export class PluginSelectLanguage extends StateLitElement {
                                     border border-indigo-200 dark:border-indigo-700
                                     bg-indigo-50 dark:bg-indigo-900/10
                                 ">
-                                    <div class="shrink-0 w-[22px] h-[18px] overflow-hidden rounded-sm">${unsafeHTML((langObj as any)?.svg ?? '')}</div>
+                                    <div class="shrink-0 w-[30px] h-6 overflow-hidden rounded-sm">${unsafeHTML((langObj as any)?.svg ?? '')}</div>
                                     <span class="text-[10px] font-mono uppercase tracking-wider text-indigo-600 dark:text-indigo-400">${code}</span>
                                     ${langObj ? html`<span class="text-[10px] text-gray-500 dark:text-gray-400">${langObj.name}</span>` : ''}
                                     <button
@@ -475,14 +478,15 @@ export class PluginSelectLanguage extends StateLitElement {
                                     : task.status === 'done'    ? 'bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-700'
                                     :                            'bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-700'}
                                 ">
-                                    ${task.status === 'running' ? html`<span class="text-[10px] text-indigo-500 dark:text-indigo-400">⟳</span>` : ''}
-                                    ${task.status === 'done'    ? html`<span class="text-[10px] text-emerald-500 dark:text-emerald-400">✓</span>` : ''}
-                                    ${task.status === 'error'   ? html`<span class="text-[10px] text-red-500 dark:text-red-400">✕</span>` : ''}
+                                    ${task.status === 'running' ? this._renderSpinner() : ''}
+                                    ${task.status === 'done'  ? html`<span class="text-[10px] text-emerald-500 dark:text-emerald-400">✓</span>` : ''}
+                                    ${task.status === 'error' ? html`<span class="text-[10px] text-red-500 dark:text-red-400">✕</span>` : ''}
                                     <span class="text-[10px] font-mono uppercase tracking-wider
                                         ${task.status === 'running' ? 'text-indigo-600 dark:text-indigo-400'
                                         : task.status === 'done'    ? 'text-emerald-600 dark:text-emerald-400'
                                         :                             'text-red-600 dark:text-red-400'}
                                     ">${codes.join(', ')}</span>
+                                    ${task.status === 'running' ? html`<span class="text-[10px] text-indigo-400 dark:text-indigo-500 italic">processing…</span>` : ''}
                                     ${task.message ? html`<span class="text-[10px] text-red-400 dark:text-red-500 truncate">${task.message}</span>` : ''}
                                 </div>
                             `;
@@ -494,6 +498,10 @@ export class PluginSelectLanguage extends StateLitElement {
     }
 
     // ─── Shared helpers ───────────────────────────────────────────────
+
+    private _renderSpinner(color: string = 'border-indigo-500 dark:border-indigo-400') {
+        return html`<div class="w-3 h-3 border-2 ${color} border-t-transparent rounded-full animate-spin shrink-0"></div>`;
+    }
 
     private _renderHeader(title: string, description: string) {
         return html`
