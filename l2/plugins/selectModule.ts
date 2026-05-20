@@ -163,9 +163,16 @@ export class PluginSelectModule extends StateLitElement {
 
     private _renderAll() {
         const q = this._search.toLowerCase();
+        // @ts-ignore
+        const actualModule = mls.actualModule;
         const filtered = this.modules
             .map((m, i) => ({ m, selectValue: i + 1 }))
-            .filter(({ m }) => !q || m.name.toLowerCase().includes(q) || m.path.toLowerCase().includes(q));
+            .filter(({ m }) => !q || m.name.toLowerCase().includes(q) || m.path.toLowerCase().includes(q))
+            .sort((a, b) => {
+                if (a.m.name === actualModule) return -1;
+                if (b.m.name === actualModule) return 1;
+                return 0;
+            });
         const max = this.modules.length + 1;
 
         return html`

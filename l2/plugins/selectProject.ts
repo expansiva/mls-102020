@@ -228,7 +228,12 @@ export class PluginSelectProject extends StateLitElement {
         const q = this._search.toLowerCase();
         const filtered = org.projects
             .map((p, i) => ({ p, selectValue: i + 1 }))
-            .filter(({ p }) => !q || p.name.toLowerCase().includes(q) || String(p.project).includes(q));
+            .filter(({ p }) => !q || p.name.toLowerCase().includes(q) || String(p.project).includes(q))
+            .sort((a, b) => {
+                if (a.p.project === mls.actualProject) return -1;
+                if (b.p.project === mls.actualProject) return 1;
+                return 0;
+            });
         const max = org.projects.length + 1;
 
         return html`

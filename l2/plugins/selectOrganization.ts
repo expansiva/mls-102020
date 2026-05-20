@@ -166,9 +166,16 @@ export class PluginSelectOrganization extends StateLitElement {
 
     private _renderAll() {
         const q = this._search.toLowerCase();
+        // @ts-ignore
+        const actualOrg = mls?.l5?.actualOrg ?? -1;
         const filtered = this.orgs
             .map((org, i) => ({ org, selectValue: i + 1 }))
-            .filter(({ org }) => !q || org.name.toLowerCase().includes(q));
+            .filter(({ org }) => !q || org.name.toLowerCase().includes(q))
+            .sort((a, b) => {
+                if (a.org.index === actualOrg) return -1;
+                if (b.org.index === actualOrg) return 1;
+                return 0;
+            });
         const max = this.orgs.length + 1;
 
         return html`
