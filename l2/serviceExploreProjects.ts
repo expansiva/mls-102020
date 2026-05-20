@@ -136,12 +136,6 @@ const DS_CONFIG: IKnobConfig = {
     labels: { 1: 'Default', 2: 'Material', 3: 'Custom' },
 };
 
-const LANG_CONFIG: IKnobConfig = {
-    key: 'language',
-    min: 1,
-    max: 3,
-    labels: { 1: 'en', 2: 'pt', 3: 'es' },
-};
 
 const DISABLED_CONFIG = (key: string): IKnobConfig => ({
     key,
@@ -218,6 +212,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                 ? org.projects.findIndex(p => p.project === actualProjectId)
                 : -1;
             this._setKnobValue('project', matchedProjectPos >= 0 ? matchedProjectPos + 1 : 0);
+            if (matchedProjectPos >= 0) this._selectedKnob = 'project';
         }
     }
 
@@ -323,7 +318,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                 const orgLen = this._selectedOrg?.projects.length ?? 0;
                 const isRealProject = value !== null && value > 0 && value <= orgLen;
                 this._dsConfig = isRealProject ? { ...DS_CONFIG } : DISABLED_CONFIG('designSystem');
-                this._langConfig = isRealProject ? { ...LANG_CONFIG } : DISABLED_CONFIG('language');
+                this._langConfig = isRealProject ? { key: 'language', min: 0, max: 1, labels: {}, disabled: false } : DISABLED_CONFIG('language');
                 break;
             case 'designSystem':
                 this._dsValue = value;
@@ -344,6 +339,12 @@ export class ServiceExploreProjects102020 extends ServiceBase {
 
     private _onKnobClick(key: string) {
         this._selectedKnob = key;
+        this.requestUpdate();
+    }
+
+    private _onLangConfig(e: CustomEvent) {
+        this._langConfig = { key: 'language', min: e.detail.min, max: e.detail.max, labels: e.detail.labels };
+        if (this._langValue === null) this._langValue = 0;
         this.requestUpdate();
     }
 
@@ -474,9 +475,10 @@ export class ServiceExploreProjects102020 extends ServiceBase {
             case 'language':
                 return html`
                     <plugins--select-language-102020
-                        .projectSelected=${this._selectedProject !== null}
+                        .selectedProject=${this._selectedProject}
                         .value=${this._langValue}
-                        .labels=${this._langConfig.labels}
+                        @lang-config=${(e: CustomEvent) => this._onLangConfig(e)}
+                        @select-language=${(e: CustomEvent) => this._setKnobValue('language', e.detail.value)}
                     ></plugins--select-language-102020>
                 `;
             default:

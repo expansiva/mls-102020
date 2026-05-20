@@ -150,7 +150,7 @@ export class PluginSelectProject extends StateLitElement {
     private _renderNeedsOrg() {
         return html`
             <div class="flex flex-col gap-3">
-                ${this._renderHeader(this.msg.title, null, this.msg.desc)}
+                ${this._renderHeader(this.msg.title, this.msg.desc)}
                 ${this._renderNotice(this.msg.needsOrg)}
             </div>
         `;
@@ -159,47 +159,33 @@ export class PluginSelectProject extends StateLitElement {
     private _renderSelected() {
         const project = this._selectedProject;
         const org = this.selectedOrg!;
+        const max = (org?.projects.length ?? 0) + 1;
         return html`
             <div class="flex flex-col gap-3">
-                <div class="flex items-start justify-between gap-2">
-                    <div class="flex flex-col gap-1">
-                        <div class="flex items-center gap-1.5 flex-wrap">
-                            <button
-                                class="cursor-pointer p-1 -ml-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"
-                                @click=${() => this._dispatchSelect(0)}
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <polyline points="15 18 9 12 15 6"></polyline>
-                                </svg>
-                            </button>
-                            <span class="text-lg font-semibold text-gray-700 dark:text-gray-200">${this.msg.title}</span>
-                        </div>
-                        <span class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">${this.msg.desc}</span>
-                    </div>
-                    ${project
-                        ? mls.actualProject === project.project
-                            ? html`<span class="
-                                shrink-0 text-[10px] px-2 py-0.5 rounded-full font-medium
-                                bg-emerald-100 dark:bg-emerald-900/30
-                                text-emerald-600 dark:text-emerald-400
-                            ">${this.msg.actualProject}</span>`
-                            : html`<button
-                                class="
-                                    shrink-0 text-[10px] px-2.5 py-1 rounded
-                                    bg-indigo-500 dark:bg-indigo-600 text-white
-                                    hover:bg-indigo-600 dark:hover:bg-indigo-500
-                                    transition-colors whitespace-nowrap
-                                "
-                                @click=${() => {
-                                    mls.setActualProject(project.project);
-                                    const orgIndex = mls.l5.getProjectOrgIndex(project.project);
-                                    mls.l5.setActualOrg(orgIndex);
-                                    setProjectDetails(project.project);
-                                    window.location.reload();
-                                }}
-                            >${this.msg.selectBtn}</button>`
-                        : nothing}
-                </div>
+                ${this._renderNavHeader(this.msg.title, this.msg.desc, this.value ?? 0, 0, max)}
+                ${project
+                    ? mls.actualProject === project.project
+                        ? html`<span class="
+                            self-start text-[10px] px-2 py-0.5 rounded-full font-medium
+                            bg-emerald-100 dark:bg-emerald-900/30
+                            text-emerald-600 dark:text-emerald-400
+                        ">${this.msg.actualProject}</span>`
+                        : html`<button
+                            class="
+                                self-start text-[10px] px-2.5 py-1 rounded
+                                bg-indigo-500 dark:bg-indigo-600 text-white
+                                hover:bg-indigo-600 dark:hover:bg-indigo-500
+                                transition-colors whitespace-nowrap cursor-pointer
+                            "
+                            @click=${() => {
+                                mls.setActualProject(project.project);
+                                const orgIndex = mls.l5.getProjectOrgIndex(project.project);
+                                mls.l5.setActualOrg(orgIndex);
+                                setProjectDetails(project.project);
+                                window.location.reload();
+                            }}
+                        >${this.msg.selectBtn}</button>`
+                    : nothing}
                 ${project ? this._renderSelectedProjectDetail(project, org) : nothing}
             </div>
         `;
@@ -216,6 +202,7 @@ export class PluginSelectProject extends StateLitElement {
                     <span class="text-[10px] text-gray-400 dark:text-gray-600 font-mono">${org.name}</span>
                     <span class="text-gray-300 dark:text-gray-700">/</span>
                     <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">${project.name}</span>
+                    <span class="ml-auto text-[10px] font-mono text-gray-400 dark:text-gray-600">#${project.project}</span>
                 </div>
             </div>
 
@@ -242,21 +229,20 @@ export class PluginSelectProject extends StateLitElement {
         const filtered = org.projects
             .map((p, i) => ({ p, selectValue: i + 1 }))
             .filter(({ p }) => !q || p.name.toLowerCase().includes(q) || String(p.project).includes(q));
+        const max = org.projects.length + 1;
 
         return html`
             <div class="flex flex-col gap-3">
-                <div class="flex items-start justify-between gap-2">
-                    ${this._renderHeader(this.msg.allTitle, null, this.msg.allDesc)}
-                    <button
-                        class="
-                            shrink-0 text-[10px] px-2.5 py-1 rounded
-                            bg-indigo-500 dark:bg-indigo-600 text-white
-                            hover:bg-indigo-600 dark:hover:bg-indigo-500
-                            transition-colors whitespace-nowrap
-                        "
-                        @click=${() => this._dispatchSelect(org.projects.length + 1)}
-                    >+ ${this.msg.createNew}</button>
-                </div>
+                ${this._renderNavHeader(this.msg.allTitle, this.msg.allDesc, 0, 0, max)}
+                <button
+                    class="
+                        self-start text-[10px] px-2.5 py-1 rounded
+                        bg-indigo-500 dark:bg-indigo-600 text-white
+                        hover:bg-indigo-600 dark:hover:bg-indigo-500
+                        transition-colors whitespace-nowrap
+                    "
+                    @click=${() => this._dispatchSelect(max)}
+                >+ ${this.msg.createNew}</button>
 
                 <input
                     type="text"
@@ -287,31 +273,50 @@ export class PluginSelectProject extends StateLitElement {
     }
 
     private _renderCustom() {
+        const max = (this.selectedOrg?.projects.length ?? 0) + 1;
         return html`
             <div class="flex flex-col gap-3">
-                ${this._renderHeader(this.msg.customTitle, null, this.msg.customDesc)}
+                ${this._renderNavHeader(this.msg.customTitle, this.msg.customDesc, max, 0, max)}
             </div>
         `;
     }
 
     // ─── Shared helpers ───────────────────────────────────────────────
 
-    private _renderHeader(title: string, badge: string | null, description: string) {
+    private _renderHeader(title: string, description: string) {
         return html`
             <div class="flex flex-col gap-1">
-                <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-lg font-semibold text-gray-700 dark:text-gray-200">${title}</span>
-                    ${badge ? html`
-                        <span class="
-                            text-[10px] font-mono px-1.5 py-0.5 rounded
-                            bg-gray-100 dark:bg-gray-800
-                            text-gray-500 dark:text-gray-400
-                        ">${badge}</span>
-                    ` : nothing}
-                </div>
+                <span class="text-lg font-semibold text-gray-700 dark:text-gray-200">${title}</span>
                 <span class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
                     ${description}
                 </span>
+            </div>
+        `;
+    }
+
+    private _renderNavHeader(title: string, desc: string, value: number, min: number, max: number) {
+        const atMin = value <= min;
+        const atMax = value >= max;
+        const navBtn = (label: string, target: number, disabled: boolean) => html`
+            <button
+                class="px-1 py-0.5 rounded text-sm font-mono leading-none transition-colors
+                    ${disabled
+                        ? 'text-gray-300 dark:text-gray-700 cursor-default'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}"
+                ?disabled=${disabled}
+                @click=${() => { if (!disabled) this._dispatchSelect(target); }}
+            >${label}</button>
+        `;
+        return html`
+            <div class="flex flex-col gap-1">
+                <div class="flex items-center gap-0.5 flex-wrap">
+                    ${navBtn('«', min, atMin)}
+                    ${navBtn('‹', value - 1, atMin)}
+                    <span class="text-lg font-semibold text-gray-700 dark:text-gray-200 px-1.5">${title}</span>
+                    ${navBtn('›', value + 1, atMax)}
+                    ${navBtn('»', max, atMax)}
+                </div>
+                <span class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">${desc}</span>
             </div>
         `;
     }
