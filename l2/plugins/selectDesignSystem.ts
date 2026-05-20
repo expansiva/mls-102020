@@ -64,13 +64,13 @@ export class PluginSelectDesignSystem extends StateLitElement {
                     <span class="text-lg font-semibold text-gray-700 dark:text-gray-200">${title}</span>
                     ${badge ? html`
                         <span class="
-                            text-[10px] font-mono px-1.5 py-0.5 rounded
+                            text-sm font-mono px-1.5 py-0.5 rounded
                             bg-gray-100 dark:bg-gray-800
                             text-gray-500 dark:text-gray-400
                         ">${badge}</span>
                     ` : nothing}
                 </div>
-                <span class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed text-center">
+                <span class="text-sm text-gray-400 dark:text-gray-500 leading-relaxed text-center">
                     ${description}
                 </span>
             </div>
@@ -84,7 +84,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 bg-amber-50 dark:bg-amber-900/10
                 px-3 py-2.5
             ">
-                <span class="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">
+                <span class="text-sm text-amber-600 dark:text-amber-400 leading-relaxed">
                     ${message}
                 </span>
             </div>
@@ -98,7 +98,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 bg-amber-50 dark:bg-amber-900/10
                 px-3 py-2.5
             ">
-                <span class="text-xs text-amber-600 dark:text-amber-400">${this.msg.inDevelopment}</span>
+                <span class="text-sm text-amber-600 dark:text-amber-400">${this.msg.inDevelopment}</span>
             </div>
         `;
     }

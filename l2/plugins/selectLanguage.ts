@@ -30,6 +30,7 @@ const message_en = {
     removeTitle: 'Remove Language',
     removeDesc: 'This language will be permanently removed from the selected project.',
     removeBtn: 'Remove',
+    followTask: 'Follow task',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -51,6 +52,7 @@ const messages: Record<string, MessageType> = {
         removeTitle: 'Remover Idioma',
         removeDesc: 'Este idioma será removido permanentemente do projeto selecionado.',
         removeBtn: 'Remover',
+        followTask: 'Acompanhar task',
     },
     es: {
         title: 'Idioma',
@@ -69,6 +71,7 @@ const messages: Record<string, MessageType> = {
         removeTitle: 'Eliminar Idioma',
         removeDesc: 'Este idioma será eliminado permanentemente del proyecto seleccionado.',
         removeBtn: 'Eliminar',
+        followTask: 'Seguir tarea',
     },
 };
 /// **collab_i18n_end**
@@ -278,7 +281,7 @@ export class PluginSelectLanguage extends StateLitElement {
         return html`
             <div class="flex flex-col gap-3">
                 ${this._renderHeader(this.msg.title, this.msg.desc)}
-                <span class="text-xs text-gray-400 dark:text-gray-600 italic">${this.msg.loading}</span>
+                <span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.loading}</span>
             </div>
         `;
     }
@@ -298,9 +301,9 @@ export class PluginSelectLanguage extends StateLitElement {
                     px-3 py-2.5 flex items-center gap-2
                 ">
                     <div class="shrink-0 w-[30px] h-7 overflow-hidden rounded-sm">${unsafeHTML(svg)}</div>
-                    <span class="text-xs text-gray-700 dark:text-gray-300">${fullName}</span>
+                    <span class="text-sm text-gray-700 dark:text-gray-300">${fullName}</span>
                     <span class="
-                        ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded
+                        ml-auto text-sm font-mono px-1.5 py-0.5 rounded
                         bg-emerald-100 dark:bg-emerald-900/30
                         text-emerald-600 dark:text-emerald-400
                         font-semibold uppercase tracking-wider
@@ -312,11 +315,11 @@ export class PluginSelectLanguage extends StateLitElement {
                     const hasRunning = [...this._pendingTasks.values()].some(t => t.status === 'running');
                     return html`
                         <fieldset class="rounded-lg border border-red-200 dark:border-red-800/40 px-3 py-2.5 flex flex-col gap-2">
-                            <legend class="text-[10px] font-medium text-red-500 dark:text-red-400 px-1">${this.msg.removeTitle}</legend>
-                            <span class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">${this.msg.removeDesc}</span>
+                            <legend class="text-sm font-medium text-red-500 dark:text-red-400 px-1">${this.msg.removeTitle}</legend>
+                            <span class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">${this.msg.removeDesc}</span>
                             <button
                                 class="
-                                    self-start flex items-center gap-1.5 text-xs px-3 py-1.5 rounded transition-colors
+                                    self-start flex items-center gap-1.5 text-sm px-3 py-1.5 rounded transition-colors
                                     ${hasRunning
                                         ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed'
                                         : 'bg-red-500 dark:bg-red-600 text-white hover:bg-red-600 dark:hover:bg-red-500 cursor-pointer'}
@@ -350,7 +353,7 @@ export class PluginSelectLanguage extends StateLitElement {
                 ${this._renderNavHeader(this.msg.allTitle, this.msg.allDesc, 0, 0, max)}
                 <button
                     class="
-                        self-end text-[10px] px-2.5 py-1 rounded
+                        self-end text-sm px-2.5 py-1 rounded
                         bg-indigo-500 dark:bg-indigo-600 text-white
                         hover:bg-indigo-600 dark:hover:bg-indigo-500
                         transition-colors whitespace-nowrap
@@ -363,7 +366,7 @@ export class PluginSelectLanguage extends StateLitElement {
                     .value=${this._search}
                     placeholder=${this.msg.searchPlaceholder}
                     class="
-                        w-full text-xs px-2.5 py-1.5 rounded-md
+                        w-full text-sm px-2.5 py-1.5 rounded-md
                         border border-gray-200 dark:border-gray-700
                         bg-white dark:bg-gray-900
                         text-gray-700 dark:text-gray-300
@@ -374,9 +377,9 @@ export class PluginSelectLanguage extends StateLitElement {
                 />
 
                 ${this._languages.length === 0
-                    ? html`<span class="text-[11px] text-gray-400 dark:text-gray-600 italic">${this.msg.noLanguages}</span>`
+                    ? html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noLanguages}</span>`
                     : filtered.length === 0
-                        ? html`<span class="text-[11px] text-gray-400 dark:text-gray-600 italic">${this.msg.noResults}</span>`
+                        ? html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noResults}</span>`
                         : html`
                             <div class="flex flex-col gap-1.5">
                                 ${filtered.map(({ lang, selectValue }) => this._renderLangCard(lang, selectValue))}
@@ -406,7 +409,7 @@ export class PluginSelectLanguage extends StateLitElement {
                     .value=${this._addSearch}
                     placeholder=${this.msg.searchPlaceholder}
                     class="
-                        w-full text-xs px-2.5 py-1.5 rounded-md
+                        w-full text-sm px-2.5 py-1.5 rounded-md
                         border border-gray-200 dark:border-gray-700
                         bg-white dark:bg-gray-900
                         text-gray-700 dark:text-gray-300
@@ -421,7 +424,7 @@ export class PluginSelectLanguage extends StateLitElement {
                 ${this._dropdownOpen ? html`
                     <div class="flex flex-col gap-0.5 max-h-52 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 py-0.5">
                         ${filtered.length === 0
-                            ? html`<span class="px-3 py-2 text-[11px] text-gray-400 dark:text-gray-600 italic">${this.msg.noResults}</span>`
+                            ? html`<span class="px-3 py-2 text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noResults}</span>`
                             : filtered.map(l => {
                                 const isSelected = selectedSet.has(l.code);
                                 return html`
@@ -440,13 +443,13 @@ export class PluginSelectLanguage extends StateLitElement {
                                             this._dropdownOpen = false;
                                         }}
                                     >
-                                        <span class="shrink-0 w-3.5 text-center text-[10px] text-indigo-500 dark:text-indigo-400">
+                                        <span class="shrink-0 w-3.5 text-center text-sm text-indigo-500 dark:text-indigo-400">
                                             ${isSelected ? '✓' : ''}
                                         </span>
                                         <div class="shrink-0 w-[30px] h-7 overflow-hidden rounded-sm">${unsafeHTML((l as any).svg ?? '')}</div>
-                                        <span class="text-xs text-gray-700 dark:text-gray-300">${l.name}</span>
+                                        <span class="text-sm text-gray-700 dark:text-gray-300">${l.name}</span>
                                         <span class="
-                                            ml-auto shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded
+                                            ml-auto shrink-0 text-sm font-mono px-1.5 py-0.5 rounded
                                             bg-gray-100 dark:bg-gray-800
                                             text-gray-500 dark:text-gray-400
                                             uppercase tracking-wider
@@ -467,8 +470,8 @@ export class PluginSelectLanguage extends StateLitElement {
                                     bg-indigo-50 dark:bg-indigo-900/10
                                 ">
                                     <div class="shrink-0 w-[30px] h-6 overflow-hidden rounded-sm">${unsafeHTML((langObj as any)?.svg ?? '')}</div>
-                                    <span class="text-[10px] font-mono uppercase tracking-wider text-indigo-600 dark:text-indigo-400">${code}</span>
-                                    ${langObj ? html`<span class="text-[10px] text-gray-500 dark:text-gray-400">${langObj.name}</span>` : ''}
+                                    <span class="text-sm font-mono uppercase tracking-wider text-indigo-600 dark:text-indigo-400">${code}</span>
+                                    ${langObj ? html`<span class="text-sm text-gray-500 dark:text-gray-400">${langObj.name}</span>` : ''}
                                     <button
                                         class="ml-0.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors leading-none"
                                         @click=${() => { this._addSelected = this._addSelected.filter(c => c !== code); }}
@@ -481,7 +484,7 @@ export class PluginSelectLanguage extends StateLitElement {
 
                 <button
                     class="
-                        self-start text-xs px-3 py-1.5 rounded
+                        self-start text-sm px-3 py-1.5 rounded
                         transition-colors
                         ${this._addSelected.length === 0 || hasRunning
                             ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed'
@@ -502,15 +505,21 @@ export class PluginSelectLanguage extends StateLitElement {
                                     :                            'bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-700'}
                                 ">
                                     ${task.status === 'running' ? this._renderSpinner() : ''}
-                                    ${task.status === 'done'  ? html`<span class="text-[10px] text-emerald-500 dark:text-emerald-400">✓</span>` : ''}
-                                    ${task.status === 'error' ? html`<span class="text-[10px] text-red-500 dark:text-red-400">✕</span>` : ''}
-                                    <span class="text-[10px] font-mono uppercase tracking-wider
+                                    ${task.status === 'done'  ? html`<span class="text-sm text-emerald-500 dark:text-emerald-400">✓</span>` : ''}
+                                    ${task.status === 'error' ? html`<span class="text-sm text-red-500 dark:text-red-400">✕</span>` : ''}
+                                    <span class="text-sm font-mono uppercase tracking-wider
                                         ${task.status === 'running' ? 'text-indigo-600 dark:text-indigo-400'
                                         : task.status === 'done'    ? 'text-emerald-600 dark:text-emerald-400'
                                         :                             'text-red-600 dark:text-red-400'}
                                     ">${codes.join(', ')}</span>
-                                    ${task.status === 'running' ? html`<span class="text-[10px] text-indigo-400 dark:text-indigo-500 italic">processing…</span>` : ''}
-                                    ${task.message ? html`<span class="text-[10px] text-red-400 dark:text-red-500 truncate">${task.message}</span>` : ''}
+                                    ${task.status === 'running' ? html`<span class="text-sm text-indigo-400 dark:text-indigo-500 italic">processing…</span>` : ''}
+                                    ${task.message ? html`<span class="text-sm text-red-400 dark:text-red-500 truncate">${task.message}</span>` : ''}
+                                    <button
+                                        class="ml-auto text-sm text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
+                                        @click=${() => {
+                                            // TODO: acompanhar task
+                                        }}
+                                    >${this.msg.followTask}</button>
                                 </div>
                             `;
                         })}
@@ -530,7 +539,7 @@ export class PluginSelectLanguage extends StateLitElement {
         return html`
             <div class="flex flex-col gap-1">
                 <span class="text-lg font-semibold text-gray-700 dark:text-gray-200">${title}</span>
-                <span class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed text-center">${description}</span>
+                <span class="text-sm text-gray-400 dark:text-gray-500 leading-relaxed text-center">${description}</span>
             </div>
         `;
     }
@@ -542,7 +551,7 @@ export class PluginSelectLanguage extends StateLitElement {
                 bg-amber-50 dark:bg-amber-900/10
                 px-3 py-2.5
             ">
-                <span class="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">${message}</span>
+                <span class="text-sm text-amber-600 dark:text-amber-400 leading-relaxed">${message}</span>
             </div>
         `;
     }
@@ -562,9 +571,9 @@ export class PluginSelectLanguage extends StateLitElement {
                 @click=${() => this._dispatchSelect(selectValue)}
             >
                 <div class="shrink-0 w-[30px] h-7 overflow-hidden rounded-sm">${unsafeHTML(svg)}</div>
-                <span class="text-xs text-gray-700 dark:text-gray-300">${fullName}</span>
+                <span class="text-sm text-gray-700 dark:text-gray-300">${fullName}</span>
                 <span class="
-                    ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded
+                    ml-auto text-sm font-mono px-1.5 py-0.5 rounded
                     bg-emerald-100 dark:bg-emerald-900/30
                     text-emerald-600 dark:text-emerald-400
                     font-semibold uppercase tracking-wider
@@ -599,7 +608,7 @@ export class PluginSelectLanguage extends StateLitElement {
                         ${navBtn('»', max, atMax)}
                     </div>
                 </div>
-                <span class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed text-center">${desc}</span>
+                <span class="text-sm text-gray-400 dark:text-gray-500 leading-relaxed text-center">${desc}</span>
             </div>
         `;
     }

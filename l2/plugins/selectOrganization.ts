@@ -137,11 +137,11 @@ export class PluginSelectOrganization extends StateLitElement {
                 px-3 py-2.5
             ">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">${org.name}</span>
-                    ${date ? html`<span class="text-[10px] text-gray-400 dark:text-gray-600 font-mono">(${date})</span>` : nothing}
+                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-300">${org.name}</span>
+                    ${date ? html`<span class="text-sm text-gray-400 dark:text-gray-600 font-mono">(${date})</span>` : nothing}
                     <span class="text-gray-300 dark:text-gray-700">·</span>
                     <span class="
-                        text-[10px] px-2 py-0.5 rounded-full font-medium
+                        text-sm px-2 py-0.5 rounded-full font-medium
                         bg-indigo-100 dark:bg-indigo-900/30
                         text-indigo-600 dark:text-indigo-400
                     ">${org.projects.length} ${this.msg.projects}</span>
@@ -176,7 +176,7 @@ export class PluginSelectOrganization extends StateLitElement {
                 ${this._renderNavHeader(this.msg.allTitle, this.msg.allDesc, 0, 0, max)}
                 <button
                     class="
-                        self-end text-[10px] px-2.5 py-1 rounded
+                        self-end text-sm px-2.5 py-1 rounded
                         bg-indigo-500 dark:bg-indigo-600 text-white
                         hover:bg-indigo-600 dark:hover:bg-indigo-500
                         transition-colors whitespace-nowrap
@@ -189,7 +189,7 @@ export class PluginSelectOrganization extends StateLitElement {
                     .value=${this._search}
                     placeholder=${this.msg.searchPlaceholder}
                     class="
-                        w-full text-xs px-2.5 py-1.5 rounded-md
+                        w-full text-sm px-2.5 py-1.5 rounded-md
                         border border-gray-200 dark:border-gray-700
                         bg-white dark:bg-gray-900
                         text-gray-700 dark:text-gray-300
@@ -200,9 +200,9 @@ export class PluginSelectOrganization extends StateLitElement {
                 />
 
                 ${this.orgs.length === 0
-                    ? html`<span class="text-[11px] text-gray-400 dark:text-gray-600 italic">${this.msg.noOrgs}</span>`
+                    ? html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noOrgs}</span>`
                     : filtered.length === 0
-                        ? html`<span class="text-[11px] text-gray-400 dark:text-gray-600 italic">${this.msg.noResults}</span>`
+                        ? html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noResults}</span>`
                         : html`
                             <div class="flex flex-col gap-1.5">
                                 ${filtered.map(({ org, selectValue }) => this._renderOrgCard(org, selectValue))}
@@ -222,7 +222,7 @@ export class PluginSelectOrganization extends StateLitElement {
                     bg-amber-50 dark:bg-amber-900/10
                     px-3 py-2.5
                 ">
-                    <span class="text-xs text-amber-600 dark:text-amber-400">${this.msg.inDevelopment}</span>
+                    <span class="text-sm text-amber-600 dark:text-amber-400">${this.msg.inDevelopment}</span>
                 </div>
             </div>
         `;
@@ -254,7 +254,7 @@ export class PluginSelectOrganization extends StateLitElement {
                         ${navBtn('»', max, atMax)}
                     </div>
                 </div>
-                <span class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed text-center">${desc}</span>
+                <span class="text-sm text-gray-400 dark:text-gray-500 leading-relaxed text-center">${desc}</span>
             </div>
         `;
     }
@@ -271,9 +271,9 @@ export class PluginSelectOrganization extends StateLitElement {
                 "
                 @click=${clickable ? () => this._dispatchSelect(selectValue!) : nothing}
             >
-                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">${org.name}</span>
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">${org.name}</span>
                 <span class="
-                    text-[10px] px-2 py-0.5 rounded-full font-medium
+                    text-sm px-2 py-0.5 rounded-full font-medium
                     bg-indigo-100 dark:bg-indigo-900/30
                     text-indigo-600 dark:text-indigo-400
                 ">${org.projects.length} ${this.msg.projects}</span>

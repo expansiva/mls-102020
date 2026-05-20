@@ -166,13 +166,13 @@ export class PluginSelectProject extends StateLitElement {
                 ${project
                     ? mls.actualProject === project.project
                         ? html`<span class="
-                            self-end text-[10px] px-2 py-0.5 rounded-full font-medium
+                            self-end text-sm px-2 py-0.5 rounded-full font-medium
                             bg-emerald-100 dark:bg-emerald-900/30
                             text-emerald-600 dark:text-emerald-400
                         ">${this.msg.actualProject}</span>`
                         : html`<button
                             class="
-                                self-end text-[10px] px-2.5 py-1 rounded
+                                self-end text-sm px-2.5 py-1 rounded
                                 bg-indigo-500 dark:bg-indigo-600 text-white
                                 hover:bg-indigo-600 dark:hover:bg-indigo-500
                                 transition-colors whitespace-nowrap cursor-pointer
@@ -199,10 +199,10 @@ export class PluginSelectProject extends StateLitElement {
                 px-3 py-2.5
             ">
                 <div class="flex items-center gap-2">
-                    <span class="text-[10px] text-gray-400 dark:text-gray-600 font-mono">${org.name}</span>
+                    <span class="text-sm text-gray-400 dark:text-gray-600 font-mono">${org.name}</span>
                     <span class="text-gray-300 dark:text-gray-700">/</span>
-                    <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">${project.name}</span>
-                    <span class="ml-auto text-[10px] font-mono text-gray-400 dark:text-gray-600">#${project.project}</span>
+                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-300">${project.name}</span>
+                    <span class="ml-auto text-sm font-mono text-gray-400 dark:text-gray-600">#${project.project}</span>
                 </div>
             </div>
 
@@ -212,7 +212,7 @@ export class PluginSelectProject extends StateLitElement {
                 px-3 py-3
             ">
                 ${this._readmeLoading
-                    ? html`<span class="text-xs text-gray-400 dark:text-gray-600 italic">${this.msg.loading}</span>`
+                    ? html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.loading}</span>`
                     : html`
                         <plugins--markdown-viewer-102020
                             .text=${this._readme ?? this.msg.noReadme}
@@ -236,7 +236,7 @@ export class PluginSelectProject extends StateLitElement {
                 ${this._renderNavHeader(this.msg.allTitle, this.msg.allDesc, 0, 0, max)}
                 <button
                     class="
-                        self-end text-[10px] px-2.5 py-1 rounded
+                        self-end text-sm px-2.5 py-1 rounded
                         bg-indigo-500 dark:bg-indigo-600 text-white
                         hover:bg-indigo-600 dark:hover:bg-indigo-500
                         transition-colors whitespace-nowrap
@@ -249,7 +249,7 @@ export class PluginSelectProject extends StateLitElement {
                     .value=${this._search}
                     placeholder=${this.msg.searchPlaceholder}
                     class="
-                        w-full text-xs px-2.5 py-1.5 rounded-md
+                        w-full text-sm px-2.5 py-1.5 rounded-md
                         border border-gray-200 dark:border-gray-700
                         bg-white dark:bg-gray-900
                         text-gray-700 dark:text-gray-300
@@ -262,7 +262,7 @@ export class PluginSelectProject extends StateLitElement {
                 ${org.projects.length === 0
                     ? nothing
                     : filtered.length === 0
-                        ? html`<span class="text-[11px] text-gray-400 dark:text-gray-600 italic">${this.msg.noResults}</span>`
+                        ? html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noResults}</span>`
                         : html`
                             <div class="flex flex-col gap-1.5">
                                 ${filtered.map(({ p, selectValue }) => this._renderProjectCard(p, selectValue))}
@@ -287,7 +287,7 @@ export class PluginSelectProject extends StateLitElement {
         return html`
             <div class="flex flex-col gap-1">
                 <span class="text-lg font-semibold text-gray-700 dark:text-gray-200">${title}</span>
-                <span class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+                <span class="text-sm text-gray-400 dark:text-gray-500 leading-relaxed">
                     ${description}
                 </span>
             </div>
@@ -320,7 +320,7 @@ export class PluginSelectProject extends StateLitElement {
                         ${navBtn('»', max, atMax)}
                     </div>
                 </div>
-                <span class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed text-center">${desc}</span>
+                <span class="text-sm text-gray-400 dark:text-gray-500 leading-relaxed text-center">${desc}</span>
             </div>
         `;
     }
@@ -332,7 +332,7 @@ export class PluginSelectProject extends StateLitElement {
                 bg-amber-50 dark:bg-amber-900/10
                 px-3 py-2.5
             ">
-                <span class="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">
+                <span class="text-sm text-amber-600 dark:text-amber-400 leading-relaxed">
                     ${message}
                 </span>
             </div>
@@ -352,10 +352,10 @@ export class PluginSelectProject extends StateLitElement {
                 "
                 @click=${clickable ? () => this._dispatchSelect(selectValue!) : nothing}
             >
-                <span class="text-[10px] text-gray-400 dark:text-gray-600 font-mono">${org.name}</span>
+                <span class="text-sm text-gray-400 dark:text-gray-600 font-mono">${org.name}</span>
                 <span class="text-gray-300 dark:text-gray-700">/</span>
-                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">${project.name}</span>
-                <span class="ml-auto text-[10px] font-mono text-gray-400 dark:text-gray-600">#${project.project}</span>
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">${project.name}</span>
+                <span class="ml-auto text-sm font-mono text-gray-400 dark:text-gray-600">#${project.project}</span>
             </div>
         `;
     }
