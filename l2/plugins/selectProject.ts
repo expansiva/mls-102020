@@ -199,10 +199,10 @@ export class PluginSelectProject extends StateLitElement {
                 px-3 py-2.5
             ">
                 <div class="flex items-center gap-2">
-                    <span class="text-sm text-gray-400 dark:text-gray-600 font-mono">${org.name}</span>
-                    <span class="text-gray-300 dark:text-gray-700">/</span>
-                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-300">${project.name}</span>
-                    <span class="ml-auto text-sm font-mono text-gray-400 dark:text-gray-600">#${project.project}</span>
+                    <span class="shrink-0 text-sm text-gray-400 dark:text-gray-600 font-mono">${org.name}</span>
+                    <span class="shrink-0 text-gray-300 dark:text-gray-700">/</span>
+                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-300" style="max-width:150px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${project.name}</span>
+                    <span class="shrink-0 ml-auto text-sm font-mono text-gray-400 dark:text-gray-600">#${project.project}</span>
                 </div>
             </div>
 
@@ -354,7 +354,7 @@ export class PluginSelectProject extends StateLitElement {
             >
                 <span class="text-sm text-gray-400 dark:text-gray-600 font-mono">${org.name}</span>
                 <span class="text-gray-300 dark:text-gray-700">/</span>
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">${project.name}</span>
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300" style="max-width:150px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${project.name}</span>
                 <span class="ml-auto text-sm font-mono text-gray-400 dark:text-gray-600">#${project.project}</span>
             </div>
         `;
