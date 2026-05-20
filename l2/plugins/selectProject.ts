@@ -311,8 +311,8 @@ export class PluginSelectProject extends StateLitElement {
             <div class="flex flex-col gap-1">
                 <div class="flex items-center">
                     <div class="flex items-center gap-0.5">
-                        ${navBtn('‹', value - 1, atMin)}
                         ${navBtn('«', min, atMin)}
+                        ${navBtn('‹', value - 1, atMin)}
                     </div>
                     <span class="flex-1 text-center text-lg font-semibold text-gray-700 dark:text-gray-200">${title}</span>
                     <div class="flex items-center gap-0.5">

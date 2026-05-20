@@ -6,6 +6,10 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { languages as allLanguages, ICollabLanguage } from '/_102027_/l2/collabLanguages.js';
+import { executeBeforePrompt, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
+import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
+import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
+import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -77,6 +81,14 @@ interface IProject {
     doSelect: boolean;
 }
 
+type TaskStatus = 'running' | 'done' | 'error';
+
+interface IPendingTask {
+    status: TaskStatus;
+    startedAt: number;
+    message?: string;
+}
+
 // ─── Component ───────────────────────────────────────────────────────
 
 @customElement('plugins--select-language-102020')
@@ -90,10 +102,12 @@ export class PluginSelectLanguage extends StateLitElement {
     @state() private _search: string = '';
     @state() private _addSearch: string = '';
     @state() private _addSelected: string = '';
-    @state() private _adding: boolean = false;
     @state() private _dropdownOpen: boolean = false;
     @state() private _removing: boolean = false;
+    @state() private _pendingTasks = new Map<string, IPendingTask>();
     @state() config: mls.l5_common.ProjectConfig | undefined;
+
+    private threadCache = new Map<string, Promise<any>>();
 
     willUpdate(changed: Map<string, unknown>) {
         if (changed.has('selectedProject')) {
@@ -152,24 +166,6 @@ export class PluginSelectLanguage extends StateLitElement {
         this.requestUpdate();
     }
 
-    private async _addLanguage() {
-        if (!this._addSelected || !this.selectedProject || !this.config) return;
-        this._adding = true;
-        this.requestUpdate();
-        try {
-            const existing: any[] = (this.config as any).languages ?? [];
-            const updated = { ...(this.config as any), languages: [...existing, { language: this._addSelected }] };
-            await updateConfigProject(this.selectedProject.project, updated);
-            this.config = updated as any;
-            this._languages = updated.languages.map((i: any) => i.language);
-            this._dispatchConfig();
-            const newIndex = this._languages.indexOf(this._addSelected);
-            if (newIndex >= 0) this._dispatchSelect(newIndex + 1);
-        } catch {}
-        this._adding = false;
-        this.requestUpdate();
-    }
-
     private async _removeLanguage() {
         const lang = this._selectedLang;
         if (!lang || !this.selectedProject || !this.config) return;
@@ -185,6 +181,52 @@ export class PluginSelectLanguage extends StateLitElement {
             this._dispatchSelect(0);
         } catch {}
         this._removing = false;
+        this.requestUpdate();
+    }
+
+    private async executeAgent(agentName: string, prompt: string) {
+        const fullName = '_102020_/l2/serviceExploreProjects';
+
+        let threadPromise = this.threadCache.get(fullName);
+        if (!threadPromise) {
+            threadPromise = (async () => {
+                let thread = await getThreadByName(fullName);
+                if (!thread) thread = await createThread(fullName, [], 'company');
+                return thread;
+            })();
+            this.threadCache.set(fullName, threadPromise);
+        }
+
+        const thread = await threadPromise;
+        const userId = getUserId();
+        if (!userId) return;
+
+        const threadId = thread?.threadId;
+        if (!threadId) return;
+
+        const moduleAgent = await loadAgent(agentName);
+        if (!moduleAgent) throw new Error('Invalid agent');
+        const context = getTemporaryContext(threadId, userId, prompt);
+        await executeBeforePrompt(moduleAgent, context);
+    }
+
+    private async _executeAddLanguage() {
+        if (!this._addSelected) return;
+        const hasRunning = [...this._pendingTasks.values()].some(t => t.status === 'running');
+        if (hasRunning) return;
+
+        const langCode = this._addSelected;
+        this._pendingTasks = new Map(this._pendingTasks).set(langCode, { status: 'running', startedAt: Date.now() });
+        this._addSelected = '';
+        this._addSearch = '';
+        this.requestUpdate();
+
+        try {
+            await this.executeAgent('agentAddLanguage', '_102020_/l2/plugins/selectLanguage');
+            this._pendingTasks = new Map(this._pendingTasks).set(langCode, { ...this._pendingTasks.get(langCode)!, status: 'done' });
+        } catch (e: any) {
+            this._pendingTasks = new Map(this._pendingTasks).set(langCode, { ...this._pendingTasks.get(langCode)!, status: 'error', message: e?.message });
+        }
         this.requestUpdate();
     }
 
@@ -302,6 +344,7 @@ export class PluginSelectLanguage extends StateLitElement {
     }
 
     private _renderCustom() {
+        const hasRunning = [...this._pendingTasks.values()].some(t => t.status === 'running');
         const q = this._addSearch.toLowerCase();
         const alreadyAdded = new Set(this._languages);
         const selectedObj = this._addSelected
@@ -384,13 +427,35 @@ export class PluginSelectLanguage extends StateLitElement {
                     class="
                         self-start text-xs px-3 py-1.5 rounded
                         transition-colors
-                        ${!this._addSelected || this._adding
+                        ${!this._addSelected || hasRunning
                             ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed'
                             : 'bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 cursor-pointer'}
                     "
-                    ?disabled=${!this._addSelected || this._adding}
-                    @click=${() => this._addLanguage()}
+                    ?disabled=${!this._addSelected || hasRunning}
+                    @click=${() => this._executeAddLanguage()}
                 >${this.msg.add}</button>
+
+                ${this._pendingTasks.size > 0 ? html`
+                    <div class="flex flex-col gap-1">
+                        ${[...this._pendingTasks.entries()].map(([code, task]) => html`
+                            <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-md
+                                ${task.status === 'running' ? 'bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-700'
+                                : task.status === 'done'    ? 'bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-700'
+                                :                            'bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-700'}
+                            ">
+                                ${task.status === 'running' ? html`<span class="text-[10px] text-indigo-500 dark:text-indigo-400">⟳</span>` : ''}
+                                ${task.status === 'done'    ? html`<span class="text-[10px] text-emerald-500 dark:text-emerald-400">✓</span>` : ''}
+                                ${task.status === 'error'   ? html`<span class="text-[10px] text-red-500 dark:text-red-400">✕</span>` : ''}
+                                <span class="text-[10px] font-mono uppercase tracking-wider
+                                    ${task.status === 'running' ? 'text-indigo-600 dark:text-indigo-400'
+                                    : task.status === 'done'    ? 'text-emerald-600 dark:text-emerald-400'
+                                    :                             'text-red-600 dark:text-red-400'}
+                                ">${code}</span>
+                                ${task.message ? html`<span class="text-[10px] text-red-400 dark:text-red-500 truncate">${task.message}</span>` : ''}
+                            </div>
+                        `)}
+                    </div>
+                ` : ''}
             </div>
         `;
     }
@@ -461,8 +526,8 @@ export class PluginSelectLanguage extends StateLitElement {
             <div class="flex flex-col gap-1">
                 <div class="flex items-center">
                     <div class="flex items-center gap-0.5">
-                        ${navBtn('‹', value - 1, atMin)}
                         ${navBtn('«', min, atMin)}
+                        ${navBtn('‹', value - 1, atMin)}
                     </div>
                     <span class="flex-1 text-center text-lg font-semibold text-gray-700 dark:text-gray-200">${title}</span>
                     <div class="flex items-center gap-0.5">
