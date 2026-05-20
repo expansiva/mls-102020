@@ -23,7 +23,8 @@ async function beforePromptImplicit(
     userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
 
-    const paths: { languages: string[], fileReference: string }[] = JSON.parse(userPrompt);
+    const [dataUser] = JSON.parse(userPrompt) as { languages: { code: string, name: string }[], projectId: number }[];
+    const paths: { languages: string[], fileReference: string }[] = await getPaths(dataUser.languages, dataUser.projectId);
     const inputs: mls.msg.IAMessageInputType[] = [{ type: "system", content: system1.replace('{{ skillLanguage }}', skilli18n) }];
 
     const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
@@ -119,6 +120,63 @@ async function afterPromptStep(
 
 }
 
+async function getPaths(languages: { code: string, name: string }[], project: number): Promise<{ languages: string[], fileReference: string }[]> {
+    if (!project) throw new Error(`[getPaths] invalid project`);
+    const module = await import(`/_${project}_/l2/project.js`);
+    if (!module?.projectConfig?.modules) throw new Error(`[getPaths] no modules configured in project`);
+    const modules: { name: string, path: string }[] = module.projectConfig.modules;
+
+    const result: { languages: string[], fileReference: string }[] = [];
+    const platforms = ['web', 'ios', 'android'];
+
+    for (const mod of modules) {
+        for (const platform of platforms) {
+            const sharedFolder = `${mod.path}/${platform}/shared`;
+
+            // @ts-ignore
+            const sharedFiles = Object.values(mls.stor.files).filter((f: any) =>
+                f.project === project &&
+                f.folder === sharedFolder &&
+                f.extension === '.ts'
+            );
+
+            for (const storFile of sharedFiles as any[]) {
+                const model = await storFile.getOrCreateModel();
+                if (!model) continue;
+                const source: string = model.model.getValue();
+
+                const missingLangs = languages
+                    .filter(lang => !_hasLanguageInI18nBlock(source, lang.code))
+                    .map(lang => lang.code);
+
+                if (missingLangs.length === 0) continue;
+
+                // @ts-ignore
+                const fileReference = mls.stor.convertFileToFileReference(storFile);
+                result.push({ languages: missingLangs, fileReference });
+            }
+        }
+    }
+
+    return result;
+}
+
+function _hasLanguageInI18nBlock(source: string, lang: string): boolean {
+    const startMarker = '/// **collab_i18n_start**';
+    const endMarker = '/// **collab_i18n_end**';
+    const startIdx = source.indexOf(startMarker);
+    const endIdx = source.indexOf(endMarker);
+    if (startIdx === -1 || endIdx === -1) return false;
+
+    const i18nBlock = source.substring(startIdx, endIdx);
+
+    const keyPatterns = [
+        new RegExp(`\\b${lang}\\s*:`, 'm'),
+        new RegExp(`['"]${lang}['"]\\s*:`, 'm'),
+    ];
+
+    return keyPatterns.some(pattern => pattern.test(i18nBlock));
+}
 
 async function getPagei18nBlock(fileReference: string) {
 

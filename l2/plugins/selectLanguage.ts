@@ -4,7 +4,7 @@ import { html } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
-import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { languages as allLanguages, ICollabLanguage } from '/_102027_/l2/collabLanguages.js';
 import { executeBeforePrompt, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
@@ -103,7 +103,6 @@ export class PluginSelectLanguage extends StateLitElement {
     @state() private _addSearch: string = '';
     @state() private _addSelected: string[] = [];
     @state() private _dropdownOpen: boolean = false;
-    @state() private _removing: boolean = false;
     @state() private _pendingTasks = new Map<string, IPendingTask>();
     @state() config: mls.l5_common.ProjectConfig | undefined;
 
@@ -166,21 +165,25 @@ export class PluginSelectLanguage extends StateLitElement {
         this.requestUpdate();
     }
 
-    private async _removeLanguage() {
+    private async _executeRemoveLanguage() {
         const lang = this._selectedLang;
-        if (!lang || !this.selectedProject || !this.config) return;
-        this._removing = true;
+        if (!lang || !this.selectedProject) return;
+        const hasRunning = [...this._pendingTasks.values()].some(t => t.status === 'running');
+        if (hasRunning) return;
+
+        const langObj = (allLanguages as ICollabLanguage[]).find(l => l.code === lang);
+        const taskKey = `remove:${lang}`;
+        const prompt = JSON.stringify([{ languages: [{ code: lang, name: langObj?.name ?? lang }], projectId: this.selectedProject.project }]);
+
+        this._pendingTasks = new Map(this._pendingTasks).set(taskKey, { status: 'running', startedAt: Date.now() });
         this.requestUpdate();
+
         try {
-            const existing: any[] = (this.config as any).languages ?? [];
-            const updated = { ...(this.config as any), languages: existing.filter((i: any) => i.language !== lang) };
-            await updateConfigProject(this.selectedProject.project, updated);
-            this.config = updated as any;
-            this._languages = updated.languages.map((i: any) => i.language);
-            this._dispatchConfig();
-            this._dispatchSelect(0);
-        } catch {}
-        this._removing = false;
+            await this.executeAgent('agentRemoveLanguage', prompt);
+            this._pendingTasks = new Map(this._pendingTasks).set(taskKey, { ...this._pendingTasks.get(taskKey)!, status: 'done' });
+        } catch (e: any) {
+            this._pendingTasks = new Map(this._pendingTasks).set(taskKey, { ...this._pendingTasks.get(taskKey)!, status: 'error', message: e?.message });
+        }
         this.requestUpdate();
     }
 
@@ -280,20 +283,27 @@ export class PluginSelectLanguage extends StateLitElement {
                         font-semibold uppercase tracking-wider
                     ">${lang}</span>
                 </div>
-                <fieldset class="rounded-lg border border-red-200 dark:border-red-800/40 px-3 py-2.5 flex flex-col gap-2">
-                    <legend class="text-[10px] font-medium text-red-500 dark:text-red-400 px-1">${this.msg.removeTitle}</legend>
-                    <span class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">${this.msg.removeDesc}</span>
-                    <button
-                        class="
-                            self-start text-xs px-3 py-1.5 rounded transition-colors
-                            ${this._removing
-                                ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed'
-                                : 'bg-red-500 dark:bg-red-600 text-white hover:bg-red-600 dark:hover:bg-red-500 cursor-pointer'}
-                        "
-                        ?disabled=${this._removing}
-                        @click=${() => this._removeLanguage()}
-                    >${this.msg.removeBtn}</button>
-                </fieldset>
+                ${(() => {
+                    const taskKey = `remove:${lang}`;
+                    const removing = this._pendingTasks.get(taskKey)?.status === 'running';
+                    const hasRunning = [...this._pendingTasks.values()].some(t => t.status === 'running');
+                    return html`
+                        <fieldset class="rounded-lg border border-red-200 dark:border-red-800/40 px-3 py-2.5 flex flex-col gap-2">
+                            <legend class="text-[10px] font-medium text-red-500 dark:text-red-400 px-1">${this.msg.removeTitle}</legend>
+                            <span class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">${this.msg.removeDesc}</span>
+                            <button
+                                class="
+                                    self-start text-xs px-3 py-1.5 rounded transition-colors
+                                    ${hasRunning
+                                        ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                                        : 'bg-red-500 dark:bg-red-600 text-white hover:bg-red-600 dark:hover:bg-red-500 cursor-pointer'}
+                                "
+                                ?disabled=${hasRunning}
+                                @click=${() => this._executeRemoveLanguage()}
+                            >${removing ? '⟳' : this.msg.removeBtn}</button>
+                        </fieldset>
+                    `;
+                })()}
             </div>
         `;
     }
@@ -401,6 +411,7 @@ export class PluginSelectLanguage extends StateLitElement {
                                             this._addSelected = isSelected
                                                 ? this._addSelected.filter(c => c !== l.code)
                                                 : [...this._addSelected, l.code];
+                                            this._dropdownOpen = false;
                                         }}
                                     >
                                         <span class="shrink-0 w-3.5 text-center text-[10px] text-indigo-500 dark:text-indigo-400">
@@ -425,10 +436,11 @@ export class PluginSelectLanguage extends StateLitElement {
                         ${this._addSelected.map(code => {
                             const langObj = (allLanguages as ICollabLanguage[]).find(l => l.code === code);
                             return html`
-                                <div class="flex items-center gap-1 px-2 py-1 rounded-md
+                                <div class="flex items-center gap-1.5 pl-1.5 pr-2 py-1 rounded-md
                                     border border-indigo-200 dark:border-indigo-700
                                     bg-indigo-50 dark:bg-indigo-900/10
                                 ">
+                                    <div class="shrink-0 w-[22px] h-[18px] overflow-hidden rounded-sm">${unsafeHTML((langObj as any)?.svg ?? '')}</div>
                                     <span class="text-[10px] font-mono uppercase tracking-wider text-indigo-600 dark:text-indigo-400">${code}</span>
                                     ${langObj ? html`<span class="text-[10px] text-gray-500 dark:text-gray-400">${langObj.name}</span>` : ''}
                                     <button
