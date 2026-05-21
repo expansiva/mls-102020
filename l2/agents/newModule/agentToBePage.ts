@@ -2,9 +2,8 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
-import { updateVariableJson } from '/_102027_/l2/defsAST.js';
-
-
+import { findPreviousAgentStep } from '/_102027_/l2/aiAgentHelper.js';
+import { updateVariableJson, updateVariableText } from '/_102027_/l2/defsAST.js';
 
 export function createAgent(): IAgentAsync {
     return {
@@ -30,6 +29,7 @@ async function beforePromptImplicit(
 
     // userPrompt contains all we need
     const info = JSON.parse(userPrompt);
+    const ontology = await getOntology(info.moduleName);
 
     const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
         type: "add-message-ai",
@@ -37,12 +37,12 @@ async function beforePromptImplicit(
             action: 'addMessageAI',
             agentName: agent.agentName,
             inputAI: [
-                { type: 'system', content: system1 },
+                { type: 'system', content: system1.replace('{{ontology}}', ontology).replace('{{moduleName}}', info.moduleName) },
                 { type: 'human', content: userPrompt }
             ],
             taskTitle: agent.agentDescription,
             threadId: context.message.threadId,
-            userMessage: info.page,
+            userMessage: context.message.content,
             longTermMemory: { moduleName: info.moduleName }
         }
 
@@ -129,7 +129,7 @@ async function afterPromptStep(
         cleaner: 'input_output',
         status: 'completed'
     };
-    return [...intents, updateStatus];
+    return [...intents];
 
 }
 
@@ -138,39 +138,136 @@ async function processOutput(context: mls.msg.ExecutionContext, output: any, age
     // preciso do modulo
     let module = context.task?.iaCompressed?.longMemory['moduleName'];
     if (!module) throw new Error('Not found moduleName:' + agent.agentName);
+
     output.status = 'draft';
-    const pageName = `_${mls.actualProject || 0}_/l2/${module}/${output.pages[0].pageName}.ts`;
 
     const refDef = `_${mls.actualProject || 0}_/l2/${module}/${output.pages[0].pageName}.defs.ts`;
-    const srcDefs = updateVariableJson('/// <mls fileReference="' + refDef + '"  enhancement="_blank"/>\n\n', 'definition', output);
+    let srcDefs = updateVariableJson('/// <mls fileReference="' + refDef + '"  enhancement="_blank"/>\n\n', 'definition', output);
+
+    srcDefs = addPipeLine(srcDefs, module, output.pages[0].pageName, refDef);
 
     await saveFile(refDef, srcDefs);
-    await saveFile(pageName, '');
 
-    /*const newStep: mls.msg.AgentIntentAddStep = {
-      type: "add-step",
-      messageId: context.message.orderAt,
-      threadId: context.message.threadId,
-      taskId: context.task?.PK || '',
-      parentStepId: parentStep.stepId,
-      stepTitle: 'Creating definition',
-      step:
-      { 
-        type: 'agent',
-        stepId: 0,
-        interaction: null,
-        status: 'waiting_human_input',
-        nextSteps: [],
-        agentName: 'agentToBePage2',
-        prompt: JSON.stringify({ outputPath:refDef, folder:`/_${mls.actualProject || 0}_/l2/${module}/web/` , definition: output }),
-        rags: [],
-        onFailure:'wait_after_prompt'
-      }
+    const stepOri = context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
+
+    const newStep: mls.msg.AgentIntentAddStep = {
+        type: "add-step",
+        messageId: context.message.orderAt,
+        threadId: context.message.threadId,
+        taskId: context.task?.PK || '',
+        parentStepId: stepOri || parentStep.stepId,
+        step:
+        {
+            type: 'agent',
+            stepId: 0,
+            interaction: null,
+            status: 'waiting_human_input',
+            nextSteps: [],
+            agentName: 'agentMaterialize',
+            prompt: refDef,
+            rags: [],
+            onFailure: 'wait_after_prompt'
+        }
     };
-  
-    return [newStep];*/
-    return [];
 
+    return [newStep];
+
+
+}
+
+function addPipeLine(src: string, moduleName: string, shortName: string, defsPath: string): string {
+
+    //contract
+    let newSrc = generateContract(src, defsPath, moduleName);
+
+    //shared
+    newSrc = generateShared(newSrc, defsPath, moduleName);
+
+    // page
+    newSrc = generatePage(newSrc, defsPath, moduleName, shortName);
+
+    //pipeLine
+    newSrc = updateVariableJson(newSrc, 'materializeIndex', generatePipeLine(moduleName, shortName));
+
+    return newSrc;
+}
+
+function generateContract(src: string, defsPath: string, moduleName: string) {
+    return updateVariableText(src, 'contractSpec', `
+## Pages spec
+\\\`\\\`\\\`JSON
+    [[(${defsPath}).definition]]
+\\\`\\\`\\\`
+
+## Ontology
+\\\`\\\`\\\`JSON
+    [[(_${mls.actualProject}_/l1/${moduleName}/module.ts)]]
+\\\`\\\`\\\`
+`)
+}
+
+function generateShared(src: string, defsPath: string, moduleName: string) {
+    return updateVariableText(src, 'sharedSpec', `
+## Pages spec
+\\\`\\\`\\\`JSON
+    [[(${defsPath}).definition]]
+\\\`\\\`\\\`
+
+## Ontology
+\\\`\\\`\\\`JSON
+    [[(_${mls.actualProject}_/l1/${moduleName}/module.ts)]]
+\\\`\\\`\\\`
+
+`)
+}
+
+function generatePage(src: string, defsPath: string, moduleName: string, shortName: string) {
+    return updateVariableText(src, 'desktopLayoutSpec', `
+## Pages spec
+\\\`\\\`\\\`JSON
+    [[(${defsPath}).definition]]
+\\\`\\\`\\\`
+
+## Base Class
+\\\`\\\`\\\`JSON
+    [[(_${mls.actualProject}_/l2/${moduleName}/web/shared/${shortName}.ts)]]
+\\\`\\\`\\\`
+`)
+}
+
+function generatePipeLine(moduleName: string, shortName: string) {
+    const dt = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const pipe = [
+        {
+            "id": "contract",
+            "specVar": "contractSpec",
+            "outputPath": "/l1/" + moduleName + "/layer_2_controller/" + shortName + ".ts",
+            "skillPath": "_102020_/l2/agents/newModule/skills/genContract.ts",
+            "agent": "agentMaterializeContract",
+            "dependsOn": [],
+            "specUpdatedAt": dt
+        },
+        {
+            "id": "shared",
+            "specVar": "sharedSpec",
+            "outputPath": "/l2/" + moduleName + "/web/shared/" + shortName + ".ts",
+            "skillPath": "_102020_/l2/agents/newModule/skills/genPageShared.ts",
+            "agent": "agentMaterializeSharedPage",
+            "dependsOn": ["contract"],
+            "specUpdatedAt": dt
+        },
+        {
+            "id": "desktop",
+            "specVar": "desktopLayoutSpec",
+            "outputPath": "/l2/" + moduleName + "/web/desktop/page11/" + shortName + ".ts",
+            "skillPath": "_102020_/l2/agents/newModule/skills/genPageRender.ts",
+            "agent": "agentMaterializePageLit",
+            "dependsOn": ["contract", "shared"],
+            "specUpdatedAt": dt,
+        }
+    ];
+
+    return pipe;
 }
 
 async function saveFile(ref: string, src: string) {
@@ -197,6 +294,16 @@ async function saveFile(ref: string, src: string) {
     await mls.stor.localStor.setContent(sf, { contentType: 'string', content: src });
 }
 
+async function getOntology(moduleName: string): Promise<string> {
+
+    const key = mls.stor.getKeyToFile({ project: mls.actualProject || 0, level: 2, shortName: 'module', folder: moduleName, extension: '.defs.ts' });
+
+    if (!mls.stor.files[key]) throw new Error("[agentTobePage] Not found ontology");
+
+    const src = await mls.stor.files[key].getContent() as string;
+    return src;
+}
+
 const system1 = `
 <!-- modelType: codeinstruct -->
 <!-- modelTypeList: geminiChat ?/10 , code (grok) ?/10, deepseekchat ?/10, codeflash (gemini) ?/10, deepseekreasoner ?/10, mini (4.1) ou nano (openai) ?/10, codeinstruct (4.1) ?/10, codereasoning(gpt5) ?/10, code2 (kimi 2.5) ?/10 -->
@@ -204,6 +311,22 @@ const system1 = `
 You are a senior Frontend Architect and Staff Software Engineer with 20+ years of experience building large-scale web applications.
 
 You must read the page definitions from the user prompt and **enrich the input data with additional relevant information**, including all necessary details, best practices, and technical considerations to create a complete and high-quality implementation.
+
+The module name is: {{moduleName}};
+
+## Anthology
+\`\`\`typescript
+
+{{ontology}}
+
+\`\`\`
+
+
+## Rules
+
+1 - Always respect the definition already provided in the anthology.
+2 - Do not invent areas that are not in the anthology.
+3 - It is of utmost importance that the anthology be respected.
 
 ## Output format
 You must return the object strictly as JSON, no spaces, no indent, minified
@@ -282,7 +405,7 @@ export interface DataShapeFields {
 export interface DataShapeObject {
     shape: 'object';
     stateKey: string;              // ex: 'db.catalogProducts.productDetail'
-    sourceRoutine: string;         // ex: 'productDetail.getProduct'
+    sourceRoutine: string;         // ex: '{moduleName}.getProduct'
     fields: ObjectFieldRef[];      // declares what's inside for layout agent
     params: DataShapeParam[];
 }
@@ -294,7 +417,7 @@ export interface DataShapeObject {
 export interface DataShapeCollection {
     shape: 'collection';
     stateKey: string;              // ex: 'db.product[]'
-    sourceRoutine: string;         // ex: 'catalogProducts.listProducts'
+    sourceRoutine: string;         // ex: '{moduleName}.listProducts'
     itemFields: ObjectFieldRef[];  // fields per item
     /** Does the collection support inline editing? */
     params: DataShapeParam[];
