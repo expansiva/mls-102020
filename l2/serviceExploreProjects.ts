@@ -442,7 +442,9 @@ export class ServiceExploreProjects102020 extends ServiceBase {
     private _renderDetailsRow() {
         return html`
             <div class="flex flex-col flex-1">
-                <div class="flex flex-col gap-3 px-4 py-4 flex-1">
+                <div class="flex flex-col gap-3 px-4 py-4 flex-1"
+                    @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
+                >
                     ${this._renderContextStatusArea()}
                 </div>
             </div>
@@ -473,6 +475,8 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                         .projectSelected=${this._selectedProject !== null}
                         .value=${this._dsValue}
                         .labels=${this._dsConfig.labels}
+                        .min=${this._dsConfig.min}
+                        .max=${this._dsConfig.max}
                     ></plugins--select-design-system-102020>
                 `;
             case 'language':

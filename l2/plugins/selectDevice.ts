@@ -108,7 +108,7 @@ export class PluginSelectDevice extends StateLitElement {
         const deviceExists = this._checkDeviceExists(v);
         return html`
             <div class="flex flex-col gap-3">
-                ${this._renderNavHeader(this.msg[device.titleKey], this.msg.desc, v, 1, DEVICES.length)}
+                ${this._renderNavHeader(this.msg.title, this.msg[device.titleKey], this.msg.desc, v, 1, DEVICES.length)}
                 ${this._renderDeviceCard(device)}
                 ${this.selectedModule ? this._renderDeviceStatus(deviceExists) : nothing}
             </div>
@@ -176,7 +176,7 @@ export class PluginSelectDevice extends StateLitElement {
         `;
     }
 
-    private _renderNavHeader(title: string, desc: string, value: number, min: number, max: number) {
+    private _renderNavHeader(fixedLabel: string, itemName: string, desc: string, value: number, min: number, max: number) {
         const atMin = value <= min;
         const atMax = value >= max;
         const navBtn = (label: string, target: number, disabled: boolean) => html`
@@ -191,12 +191,13 @@ export class PluginSelectDevice extends StateLitElement {
         `;
         return html`
             <div class="flex flex-col gap-1 border-b border-gray-200 dark:border-gray-700 pb-4">
+                <span class="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600 text-center">${fixedLabel}</span>
                 <div class="flex items-center">
                     <div class="flex items-center gap-0.5">
                         ${navBtn('«', min, atMin)}
                         ${navBtn('‹', value - 1, atMin)}
                     </div>
-                    <span class="flex-1 text-center text-lg font-semibold text-gray-700 dark:text-gray-200">${title}</span>
+                    <span class="flex-1 text-center text-lg font-semibold text-gray-700 dark:text-gray-200">${itemName}</span>
                     <div class="flex items-center gap-0.5">
                         ${navBtn('›', value + 1, atMax)}
                         ${navBtn('»', max, atMax)}

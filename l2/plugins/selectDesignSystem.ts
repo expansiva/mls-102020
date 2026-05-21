@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/plugins/selectDesignSystem.ts" enhancement="_102027_/l2/enhancementLit.ts"/>
 
-import { html, nothing } from 'lit';
+import { html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 
@@ -38,6 +38,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
     @property({ type: Boolean }) projectSelected: boolean = false;
     @property({ attribute: false }) value: number | null = null;
     @property({ attribute: false }) labels: Record<number, string> = {};
+    @property({ type: Number }) min: number = 1;
+    @property({ type: Number }) max: number = 3;
 
     private get msg(): MessageType {
         const lang = this.getMessageKey(messages);
@@ -47,34 +49,73 @@ export class PluginSelectDesignSystem extends StateLitElement {
     createRenderRoot() { return this; }
 
     render() {
+        if (!this.projectSelected || this.value === null) {
+            return html`
+                <div class="flex flex-col gap-3">
+                    ${this._renderStaticHeader(this.msg.title, this.msg.desc)}
+                    ${this._renderNotice(this.msg.needsProject)}
+                </div>
+            `;
+        }
+        const v = this.value;
+        const itemName = this.labels[v] ?? `${v}`;
         return html`
             <div class="flex flex-col gap-3">
-                ${this._renderHeader(this.msg.title, null, this.msg.desc)}
-                ${!this.projectSelected
-                    ? this._renderNotice(this.msg.needsProject)
-                    : this._renderInDevelopment()}
+                ${this._renderNavHeader(this.msg.title, itemName, this.msg.desc, v, this.min, this.max)}
+                ${this._renderInDevelopment()}
             </div>
         `;
     }
 
-    private _renderHeader(title: string, badge: string | null, description: string) {
+    private _renderStaticHeader(title: string, description: string) {
         return html`
             <div class="flex flex-col gap-1 border-b border-gray-200 dark:border-gray-700 pb-4">
-                <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-lg font-semibold text-gray-700 dark:text-gray-200">${title}</span>
-                    ${badge ? html`
-                        <span class="
-                            text-sm font-mono px-1.5 py-0.5 rounded
-                            bg-gray-100 dark:bg-gray-800
-                            text-gray-500 dark:text-gray-400
-                        ">${badge}</span>
-                    ` : nothing}
-                </div>
+                <span class="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600 text-center">${title}</span>
                 <span class="text-sm text-gray-400 dark:text-gray-500 leading-relaxed text-center">
                     ${description}
                 </span>
             </div>
         `;
+    }
+
+    private _renderNavHeader(fixedLabel: string, itemName: string, desc: string, value: number, min: number, max: number) {
+        const atMin = value <= min;
+        const atMax = value >= max;
+        const navBtn = (label: string, target: number, disabled: boolean) => html`
+            <button
+                class="px-1.5 py-1 rounded text-base font-mono leading-none transition-colors
+                    ${disabled
+                        ? 'text-gray-300 dark:text-gray-700 cursor-default'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}"
+                ?disabled=${disabled}
+                @click=${() => { if (!disabled) this._dispatchSelect(target); }}
+            >${label}</button>
+        `;
+        return html`
+            <div class="flex flex-col gap-1 border-b border-gray-200 dark:border-gray-700 pb-4">
+                <span class="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600 text-center">${fixedLabel}</span>
+                <div class="flex items-center">
+                    <div class="flex items-center gap-0.5">
+                        ${navBtn('«', min, atMin)}
+                        ${navBtn('‹', value - 1, atMin)}
+                    </div>
+                    <span class="flex-1 text-center text-lg font-semibold text-gray-700 dark:text-gray-200">${itemName}</span>
+                    <div class="flex items-center gap-0.5">
+                        ${navBtn('›', value + 1, atMax)}
+                        ${navBtn('»', max, atMax)}
+                    </div>
+                </div>
+                <span class="text-sm text-gray-400 dark:text-gray-500 leading-relaxed text-center">${desc}</span>
+            </div>
+        `;
+    }
+
+    private _dispatchSelect(value: number) {
+        this.dispatchEvent(new CustomEvent('select-ds', {
+            detail: { value },
+            bubbles: true,
+            composed: true,
+        }));
     }
 
     private _renderNotice(message: string) {
