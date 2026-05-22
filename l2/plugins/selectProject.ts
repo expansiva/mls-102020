@@ -252,6 +252,8 @@ export class PluginSelectProject extends StateLitElement {
     }
 
     private _renderSelectedProjectDetail(project: IProject, org: IOrg) {
+        // @ts-ignore
+        const isActual = mls.actualProject === project.project;
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
                 <div class="flex items-center gap-2">
@@ -261,7 +263,7 @@ export class PluginSelectProject extends StateLitElement {
                     <span class="shrink-0 ml-auto text-sm font-mono text-gray-400 dark:text-gray-600">#${project.project}</span>
                 </div>
             </div>
-            ${this._renderPluginPanels()}
+            ${isActual ? this._renderPluginPanels() : nothing}
         `;
     }
 
