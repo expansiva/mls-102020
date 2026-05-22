@@ -9,90 +9,185 @@ import '/_102020_/l2/plugins/navHeader.js';
 /// **collab_i18n_start**
 const message_en = {
     title: 'Pages',
-    desc: 'A page represents a screen or route within the module.',
+    desc: 'Pages of the selected module. Filtered by active device when one is selected.',
     allTitle: 'All Pages',
-    allDesc: 'Overview of all pages in this module.',
+    allDesc: 'All pages found for the selected module and device.',
     customTitle: 'New Page',
     customDesc: 'Create a new page in this module.',
-    noPages: 'No pages found in this module.',
+    noModule: 'No module selected.',
+    noPages: 'No pages found for this module.',
     noResults: 'No pages match your search.',
     createNew: 'New Page',
     searchPlaceholder: 'Search pages…',
     inDevelopment: 'In development',
+    devices: 'Devices',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
     en: message_en,
     pt: {
         title: 'Páginas',
-        desc: 'Uma página representa uma tela ou rota dentro do módulo.',
+        desc: 'Páginas do módulo selecionado. Filtradas pelo device ativo quando um estiver selecionado.',
         allTitle: 'Todas as Páginas',
-        allDesc: 'Visão geral de todas as páginas deste módulo.',
+        allDesc: 'Todas as páginas encontradas para o módulo e device selecionados.',
         customTitle: 'Nova Página',
         customDesc: 'Crie uma nova página neste módulo.',
-        noPages: 'Nenhuma página encontrada neste módulo.',
+        noModule: 'Nenhum módulo selecionado.',
+        noPages: 'Nenhuma página encontrada para este módulo.',
         noResults: 'Nenhuma página corresponde à sua busca.',
         createNew: 'Nova Página',
         searchPlaceholder: 'Buscar páginas…',
         inDevelopment: 'Em desenvolvimento',
+        devices: 'Dispositivos',
     },
     es: {
         title: 'Páginas',
-        desc: 'Una página representa una pantalla o ruta dentro del módulo.',
+        desc: 'Páginas del módulo seleccionado. Filtradas por dispositivo activo cuando hay uno seleccionado.',
         allTitle: 'Todas las Páginas',
-        allDesc: 'Visión general de todas las páginas de este módulo.',
+        allDesc: 'Todas las páginas encontradas para el módulo y dispositivo seleccionados.',
         customTitle: 'Nueva Página',
         customDesc: 'Cree una nueva página en este módulo.',
-        noPages: 'No se encontraron páginas en este módulo.',
+        noModule: 'Ningún módulo seleccionado.',
+        noPages: 'No se encontraron páginas para este módulo.',
         noResults: 'Ninguna página coincide con su búsqueda.',
         createNew: 'Nueva Página',
         searchPlaceholder: 'Buscar páginas…',
         inDevelopment: 'En desarrollo',
+        devices: 'Dispositivos',
     },
 };
 /// **collab_i18n_end**
 
 // ─── Types ───────────────────────────────────────────────────────────
 
-interface IPage {
+interface IModule {
     name: string;
     path: string;
 }
+
+interface IPageEntry {
+    name: string;
+    devices: string[];
+}
+
+// ─── Constants ───────────────────────────────────────────────────────
+
+const DEVICE_SUB_PATHS: Record<number, string> = {
+    1: 'web/desktop',
+    2: 'web/mobile',
+    3: 'android',
+    4: 'ios',
+};
+
+const DEVICE_LABELS: Record<string, string> = {
+    'web/desktop': 'Web Desktop',
+    'web/mobile': 'Web Mobile',
+    'android': 'Android',
+    'ios': 'iOS',
+};
 
 // ─── Component ───────────────────────────────────────────────────────
 
 @customElement('plugins--select-page-102020')
 export class PluginSelectPage extends StateLitElement {
 
-    @property({ attribute: false }) pages: IPage[] = [];
+    @property({ attribute: false }) selectedModule: IModule | null = null;
     @property({ attribute: false }) value: number | null = null;
 
+    @state() private _pages: IPageEntry[] = [];
     @state() private _search: string = '';
+    @state() private _activeDevice: string | null = null;
 
     willUpdate(changed: Map<string, unknown>) {
-        if (changed.has('value')) this._search = '';
+        if (changed.has('selectedModule')) {
+            this._search = '';
+            this._loadPages();
+        }
+        if (changed.has('value')) {
+            this._search = '';
+        }
     }
 
     private get msg(): MessageType {
         return messages[this.getMessageKey(messages)];
     }
 
-    private get _isAll(): boolean {
-        return this.value === 0;
+    private get _isAll(): boolean { return this.value === 0; }
+    private get _isCustom(): boolean { return this.value !== null && this.value > this._pages.length; }
+    private get _selectedPage(): IPageEntry | null {
+        if (this.value === null || this.value <= 0 || this.value > this._pages.length) return null;
+        return this._pages[this.value - 1];
     }
 
-    private get _isCustom(): boolean {
-        return this.value !== null && this.value > this.pages.length;
+    // ─── Page Loading ─────────────────────────────────────────────────
+
+    private _loadPages() {
+        this._pages = [];
+        if (!this.selectedModule) {
+            this._dispatchConfig();
+            return;
+        }
+
+        // @ts-ignore
+        const project: number = mls.actualProject;
+        // @ts-ignore
+        const actualDevice: number | undefined = mls.actualDevice;
+
+        const modulePath = this.selectedModule.path;
+        const devicePaths = (actualDevice && DEVICE_SUB_PATHS[actualDevice])
+            ? [DEVICE_SUB_PATHS[actualDevice]]
+            : Object.values(DEVICE_SUB_PATHS);
+
+        this._activeDevice = (actualDevice && DEVICE_SUB_PATHS[actualDevice])
+            ? DEVICE_LABELS[DEVICE_SUB_PATHS[actualDevice]] ?? null
+            : null;
+
+        const pageMap = new Map<string, Set<string>>();
+
+        // @ts-ignore
+        for (const f of Object.values(mls.stor.files as Record<string, any>)) {
+            if (f.project !== project) continue;
+            const folder: string = f.folder ?? '';
+            const shortName: string = f.shortName ?? '';
+            if (!shortName) continue;
+
+            for (const devicePath of devicePaths) {
+                const prefix = `${modulePath}/${devicePath}`;
+                if (!folder.startsWith(prefix + '/')) continue;
+
+                const afterPrefix = folder.slice(prefix.length + 1); // "page11"
+                if (/^page\d+$/.test(afterPrefix)) {
+                    if (!pageMap.has(shortName)) pageMap.set(shortName, new Set());
+                    pageMap.get(shortName)!.add(devicePath);
+                }
+            }
+        }
+
+        this._pages = Array.from(pageMap.entries())
+            .map(([name, devices]) => ({ name, devices: Array.from(devices).sort() }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+        console.log('[selectPage] pages found:', this._pages);
+
+        this._dispatchConfig();
+        this.requestUpdate();
     }
 
-    private get _selectedPage(): IPage | null {
-        if (this.value === null || this.value <= 0 || this.value > this.pages.length) return null;
-        return this.pages[this.value - 1];
+    private _dispatchConfig() {
+        const labels: Record<number, string> = { 0: 'All' };
+        this._pages.forEach((p, i) => { labels[i + 1] = p.name; });
+        labels[this._pages.length + 1] = '+';
+        this.dispatchEvent(new CustomEvent('page-config', {
+            detail: { min: 0, max: this._pages.length + 1, labels },
+            bubbles: true,
+            composed: true,
+        }));
     }
 
     createRenderRoot() { return this; }
 
     render() {
+        if (!this.selectedModule) return this._renderNoModule();
         if (this._isAll) return this._renderAll();
         if (this._isCustom) return this._renderCustom();
         return this._renderSelected();
@@ -100,9 +195,34 @@ export class PluginSelectPage extends StateLitElement {
 
     // ─── Scenario renders ─────────────────────────────────────────────
 
+    private _renderNoModule() {
+        return html`
+            <div class="flex flex-col gap-3">
+                ${this._renderHeader()}
+                <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5">
+                    <span class="text-sm text-amber-600 dark:text-amber-400">${this.msg.noModule}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    private _renderHeader(value = 0, max = 1) {
+        return html`
+            <plugins--nav-header-102020
+                .fixedLabel=${this.msg.title}
+                .itemName=${this.msg.allTitle}
+                .desc=${this.msg.desc}
+                .value=${value}
+                .min=${0}
+                .max=${max}
+                @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+            ></plugins--nav-header-102020>
+        `;
+    }
+
     private _renderSelected() {
         const page = this._selectedPage;
-        const max = this.pages.length + 1;
+        const max = this._pages.length + 1;
         return html`
             <div class="flex flex-col gap-3">
                 <plugins--nav-header-102020
@@ -119,19 +239,17 @@ export class PluginSelectPage extends StateLitElement {
         `;
     }
 
-    private _renderPageDetail(page: IPage) {
+    private _renderPageDetail(page: IPageEntry) {
         return html`
-            <div class="
-                rounded-lg border border-gray-200 dark:border-gray-800
-                bg-gray-50 dark:bg-gray-900/50
-                px-3 py-2.5
-            ">
-                <div class="flex items-center gap-2">
-                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-300">${page.name}</span>
-                    <span
-                        class="ml-auto text-sm font-mono text-gray-400 dark:text-gray-600"
-                        style="max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis"
-                    >${page.path}</span>
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">${page.name}</span>
+                <div class="flex items-center gap-1 flex-wrap">
+                    <span class="text-xs text-gray-400 dark:text-gray-600">${this.msg.devices}:</span>
+                    ${page.devices.map(d => html`
+                        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">
+                            ${DEVICE_LABELS[d] ?? d}
+                        </span>
+                    `)}
                 </div>
             </div>
         `;
@@ -139,10 +257,10 @@ export class PluginSelectPage extends StateLitElement {
 
     private _renderAll() {
         const q = this._search.toLowerCase();
-        const filtered = this.pages
+        const filtered = this._pages
             .map((p, i) => ({ p, selectValue: i + 1 }))
-            .filter(({ p }) => !q || p.name.toLowerCase().includes(q) || p.path.toLowerCase().includes(q));
-        const max = this.pages.length + 1;
+            .filter(({ p }) => !q || p.name.toLowerCase().includes(q));
+        const max = this._pages.length + 1;
 
         return html`
             <div class="flex flex-col gap-3">
@@ -155,6 +273,14 @@ export class PluginSelectPage extends StateLitElement {
                     .max=${max}
                     @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
                 ></plugins--nav-header-102020>
+
+                ${this._activeDevice ? html`
+                    <div class="flex items-center gap-1.5 px-1">
+                        <div class="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></div>
+                        <span class="text-xs text-indigo-600 dark:text-indigo-400 font-medium">${this._activeDevice}</span>
+                    </div>
+                ` : nothing}
+
                 <button
                     class="
                         self-end text-sm px-2.5 py-1 rounded
@@ -180,7 +306,7 @@ export class PluginSelectPage extends StateLitElement {
                     @input=${(e: Event) => { this._search = (e.target as HTMLInputElement).value; }}
                 />
 
-                ${this.pages.length === 0
+                ${this._pages.length === 0
                     ? html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noPages}</span>`
                     : filtered.length === 0
                         ? html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noResults}</span>`
@@ -194,7 +320,7 @@ export class PluginSelectPage extends StateLitElement {
     }
 
     private _renderCustom() {
-        const max = this.pages.length + 1;
+        const max = this._pages.length + 1;
         return html`
             <div class="flex flex-col gap-3">
                 <plugins--nav-header-102020
@@ -206,11 +332,7 @@ export class PluginSelectPage extends StateLitElement {
                     .max=${max}
                     @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
                 ></plugins--nav-header-102020>
-                <div class="
-                    rounded-lg border border-amber-200 dark:border-amber-800/40
-                    bg-amber-50 dark:bg-amber-900/10
-                    px-3 py-2.5
-                ">
+                <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5">
                     <span class="text-sm text-amber-600 dark:text-amber-400">${this.msg.inDevelopment}</span>
                 </div>
             </div>
@@ -219,7 +341,7 @@ export class PluginSelectPage extends StateLitElement {
 
     // ─── Shared helpers ───────────────────────────────────────────────
 
-    private _renderPageCard(page: IPage, selectValue: number) {
+    private _renderPageCard(page: IPageEntry, selectValue: number) {
         return html`
             <div
                 class="
@@ -231,11 +353,14 @@ export class PluginSelectPage extends StateLitElement {
                 "
                 @click=${() => this._dispatchSelect(selectValue)}
             >
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">${page.name}</span>
-                <span
-                    class="ml-auto text-sm font-mono text-gray-400 dark:text-gray-600"
-                    style="max-width:150px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis"
-                >${page.path}</span>
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300 flex-1">${page.name}</span>
+                <div class="flex items-center gap-1">
+                    ${page.devices.map(d => html`
+                        <span class="text-[10px] font-medium px-1 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                            ${DEVICE_LABELS[d]?.replace('Web ', '') ?? d}
+                        </span>
+                    `)}
+                </div>
             </div>
         `;
     }
