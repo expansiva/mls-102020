@@ -252,7 +252,7 @@ export class ServicePreview extends ServiceBase {
 
   private async changeFilePreview(file: mls.stor.IFileInfo) {
     const { project, shortName, folder } = file;
-    
+
     if (this.actualFiles &&
       this.actualFiles.ts &&
       this.actualFiles.ts.folder === folder &&
@@ -865,7 +865,7 @@ export class ServicePreview extends ServiceBase {
   }
 
   render() {
-
+    this.style.display = 'block';
     const lang = this.getMessageKey(messages);
     this.msg = messages[lang];
 

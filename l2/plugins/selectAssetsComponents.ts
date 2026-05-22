@@ -5,6 +5,9 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { mutationGroups, renderIcon, MutationGroupEntry, SkillCategory } from '/_102020_/l2/molecules/index.js';
+import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
+import { convertFileToTag } from '/_102020_/l2/utils';
+
 import '/_102020_/l2/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -340,12 +343,23 @@ export class PluginSelectAssetsComponents extends StateLitElement {
         this.findIndex(group.name);
     }
 
-    private findIndex(groupName: string) {
+    private async findIndex(groupName: string) {
         const folder = `molecules/${groupName.toLowerCase()}`;
         // @ts-ignore
-        const found = Object.values(mls.stor.files as Record<string, any>)
-            .filter((f: any) => f.folder === folder && f.shortName === 'index');
+        const found = Object.values(mls.stor.files as Record<string, mls.stor.IFileInfo>)
+            .filter((f: mls.stor.IFileInfo) => f.folder === folder && f.shortName === 'index' && f.extension === '.ts');
+            
         console.log(`[selectAssetsComponents] findIndex("${groupName}") →`, found);
+
+        const div = document.createElement('div');
+        for await (let index of found) {
+            const tag = convertFileToTag(index);
+            const indexElement = document.createElement(tag);
+            div.appendChild(indexElement);
+        }
+        openElementInServiceDetails(div);
+
+
     }
 
     // ─── SVG Icons ───────────────────────────────────────────────────
