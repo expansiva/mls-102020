@@ -343,23 +343,16 @@ export class PluginSelectAssetsComponents extends StateLitElement {
         this.findIndex(group.name);
     }
 
-    private async findIndex(groupName: string) {
+    private findIndex(groupName: string) {
         const folder = `molecules/${groupName.toLowerCase()}`;
         // @ts-ignore
-        const found = Object.values(mls.stor.files as Record<string, mls.stor.IFileInfo>)
-            .filter((f: mls.stor.IFileInfo) => f.folder === folder && f.shortName === 'index' && f.extension === '.ts');
-            
-        console.log(`[selectAssetsComponents] findIndex("${groupName}") →`, found);
+        const storFileItem = Object.values(mls.stor.files as Record<string, any>)
+            .find((f: any) => f.folder === folder && f.shortName === 'index' && f.extension === '.ts');
 
-        const div = document.createElement('div');
-        for await (let index of found) {
-            const tag = convertFileToTag(index);
-            const indexElement = document.createElement(tag);
-            div.appendChild(indexElement);
-        }
-        openElementInServiceDetails(div);
-
-
+        if (!storFileItem) return;
+        const tag = convertFileToTag(storFileItem);
+        const el = document.createElement(tag);
+        openElementInServiceDetails(el);
     }
 
     // ─── SVG Icons ───────────────────────────────────────────────────
