@@ -38,6 +38,8 @@ async function beforePromptImplicit(
 
     const currentDefs = await getContentByExtension(data.page, 'defs');
     const currentTs = await getContentByExtension(data.page, 'ts');
+    const groupMatch = currentDefs.match(/export const group = '([^']+)'/);
+    const group = groupMatch?.[1] || '';
 
     const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
         type: "add-message-ai",
@@ -56,7 +58,7 @@ async function beforePromptImplicit(
             taskTitle: `Evaluating improvement...`,
             threadId: context.message.threadId,
             userMessage: context.message.content,
-            longTermMemory: { page: data.page, position: data.position || 'left', prompt: data.prompt }
+            longTermMemory: { page: data.page, position: data.position || 'left', prompt: data.prompt, group }
         }
     };
     return [addMessageAI];
@@ -88,7 +90,9 @@ async function afterPromptStep(
 
     // YES path: delegate to agentImproveMoleculePlanner to follow the full improvement-with-defs-change flow
     if (payload.type === 'clarification') {
-        const fileReference = payload.json.fileReference.replace(/\.ts$/, '');
+        const fileReference = context.task?.iaCompressed?.longMemory['page'] || '';
+        const group = context.task?.iaCompressed?.longMemory['group'] || '';
+        const prompt = context.task?.iaCompressed?.longMemory['prompt'] || '';
         const newStep: mls.msg.AgentIntentAddStep = {
             type: "add-step",
             messageId: context.message.orderAt,
@@ -103,7 +107,7 @@ async function afterPromptStep(
                 status: 'waiting_human_input',
                 nextSteps: [],
                 agentName: "agentImproveMoleculePlanner",
-                prompt: JSON.stringify({ group: payload.json.group, prompt: payload.json.prompt, fileReference }),
+                prompt: JSON.stringify({ group, prompt, fileReference }),
                 rags: null,
             }
         };
@@ -144,6 +148,7 @@ async function afterPromptStep(
     //return [newStep, updateStatus];
     return [newStep];
 }
+
 
 
 async function getContentByExtension(page: string, ext: 'ts' | 'less' | 'html' | 'defs'): Promise<string> {
