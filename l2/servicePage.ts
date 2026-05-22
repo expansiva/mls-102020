@@ -1,0 +1,298 @@
+/// <mls fileReference="_102020_/l2/servicePage.ts" enhancement="_102027_/l2/enhancementLit"/>
+
+import { html, nothing } from 'lit';
+import { customElement, state } from 'lit/decorators.js';
+import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
+
+import '/_102027_/l2/collabSelectKnob.js';
+import '/_102020_/l2/plugins/selectPage.js';
+import '/_102020_/l2/plugins/selectRule.js';
+
+// ─── i18n ─────────────────────────────────────────────────────────────
+/// **collab_i18n_start**
+const message_en = {
+    svcTitle: 'Page',
+    page: 'Pages',
+    rule: 'Rules',
+};
+type MessageType = typeof message_en;
+const messages: Record<string, MessageType> = {
+    en: message_en,
+    pt: {
+        svcTitle: 'Página',
+        page: 'Páginas',
+        rule: 'Regras',
+    },
+    es: {
+        svcTitle: 'Página',
+        page: 'Páginas',
+        rule: 'Reglas',
+    },
+};
+/// **collab_i18n_end**
+
+// ─── Types ───────────────────────────────────────────────────────────
+
+interface IPage {
+    name: string;
+    path: string;
+}
+
+interface IRule {
+    name: string;
+    path: string;
+}
+
+interface IKnobConfig {
+    key: string;
+    min: number;
+    max: number;
+    labels: Record<number, string>;
+    disabled?: boolean;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+const DISABLED_CONFIG = (key: string): IKnobConfig => ({
+    key,
+    min: 1,
+    max: 1,
+    labels: {},
+    disabled: true,
+});
+
+// ─── Service ─────────────────────────────────────────────────────────
+
+@customElement('service-page-102020')
+export class ServicePage102020 extends ServiceBase {
+
+    public details: IService = {
+        icon: '&#xf0f6',
+        state: 'foreground',
+        position: 'left',
+        tooltip: 'Page',
+        visible: true,
+        widget: '_102020_servicePage',
+        level: [6],
+    };
+
+    public onClickMain(_op: string): void {
+        if (this.menu.setMode) this.menu.setMode('initial');
+    }
+
+    public menu: IServiceMenu = {
+        title: '',
+        main: {},
+        tools: {},
+        tabs: undefined,
+        onClickMain: this.onClickMain.bind(this),
+    };
+
+    onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {}
+
+    // ─── State ────────────────────────────────────────────────────────
+
+    @state() private msg: MessageType = message_en;
+
+    @state() private _pages: IPage[] = [];
+    @state() private _rules: IRule[] = [];
+
+    @state() private _pageConfig: IKnobConfig = DISABLED_CONFIG('page');
+    @state() private _ruleConfig: IKnobConfig = DISABLED_CONFIG('rule');
+
+    @state() private _pageValue: number | null = null;
+    @state() private _ruleValue: number | null = null;
+
+    @state() private _selectedKnob: string = 'page';
+
+    // ─── Data Loading ─────────────────────────────────────────────────
+
+    private async _loadData() {
+        // @ts-ignore
+        const project: number = mls.actualProject;
+        if (!project) return;
+        try {
+            const mod = await import(`/_${project}_/l2/project.js`);
+            const pages: IPage[] = mod?.projectConfig?.pages ?? [];
+            const rules: IRule[] = mod?.projectConfig?.rules ?? [];
+            this._pages = pages;
+            this._rules = rules;
+            this._pageConfig = this._buildConfig('page', pages.map(p => p.name));
+            this._ruleConfig = this._buildConfig('rule', rules.map(r => r.name));
+            this._pageValue = 0;
+            this._ruleValue = 0;
+        } catch {
+            this._pages = [];
+            this._rules = [];
+            this._pageConfig = DISABLED_CONFIG('page');
+            this._ruleConfig = DISABLED_CONFIG('rule');
+        }
+        this.requestUpdate();
+    }
+
+    private _buildConfig(key: string, names: string[]): IKnobConfig {
+        const labels: Record<number, string> = { 0: 'All' };
+        names.forEach((n, i) => { labels[i + 1] = n; });
+        labels[names.length + 1] = 'New';
+        return { key, min: 0, max: names.length + 1, labels };
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────
+
+    private get _knobValues(): Record<string, number | null> {
+        return {
+            page: this._pageValue,
+            rule: this._ruleValue,
+        };
+    }
+
+    private _getKnobConfig(key: string): IKnobConfig {
+        switch (key) {
+            case 'page': return this._pageConfig;
+            case 'rule': return this._ruleConfig;
+            default: return DISABLED_CONFIG(key);
+        }
+    }
+
+    private _setKnobValue(key: string, value: number | null) {
+        switch (key) {
+            case 'page': this._pageValue = value; break;
+            case 'rule': this._ruleValue = value; break;
+        }
+        this.requestUpdate();
+    }
+
+    // ─── Event Handlers ───────────────────────────────────────────────
+
+    private _onKnobChange(key: string, e: CustomEvent) {
+        this._selectedKnob = key;
+        this._setKnobValue(key, e.detail.value);
+    }
+
+    private _onKnobClick(key: string) {
+        this._selectedKnob = key;
+        this.requestUpdate();
+    }
+
+    // ─── Lifecycle ────────────────────────────────────────────────────
+
+    connectedCallback() {
+        super.connectedCallback();
+        this._loadData();
+    }
+
+    // ─── Render ───────────────────────────────────────────────────────
+
+    createRenderRoot() { return this; }
+
+    render() {
+        const lang = this.getMessageKey(messages);
+        this.msg = messages[lang];
+
+        return html`
+            <div class="flex flex-col min-h-full bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200">
+                ${this._renderKnobRow()}
+                ${this._renderDetailsRow()}
+            </div>
+        `;
+    }
+
+    // ─── Knob Row ─────────────────────────────────────────────────────
+
+    private _renderKnobRow() {
+        return html`
+            <div class="
+                flex items-center justify-center
+                px-2 py-3
+                border-b border-gray-200 dark:border-gray-800
+                gap-0
+            " style="--knob-scale: 0.5">
+                ${this._renderKnobItem('page')}
+                ${this._renderKnobItem('rule')}
+            </div>
+        `;
+    }
+
+    private _renderKnobItem(key: string) {
+        const config = this._getKnobConfig(key);
+        const value = this._knobValues[key];
+        const isContext = this._selectedKnob === key;
+        const isDisabled = config.disabled ?? false;
+        const label = this.msg[key as keyof MessageType] || key;
+
+        return html`
+            <div class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''}">
+                <collab-select-knob-102027
+                    .min=${config.min}
+                    .max=${config.max}
+                    .value=${value}
+                    .step=${1}
+                    .active=${true}
+                    .disabled=${isDisabled}
+                    .selected=${isContext}
+                    .showTicks=${false}
+                    @knob-change=${(e: CustomEvent) => this._onKnobChange(key, e)}
+                ></collab-select-knob-102027>
+
+                <div
+                    class="flex flex-col items-center gap-0.5 cursor-pointer"
+                    @click=${() => this._onKnobClick(key)}
+                >
+                    <span class="
+                        text-[9px] font-semibold uppercase tracking-wider
+                        ${isContext
+                            ? 'text-gray-700 dark:text-gray-200'
+                            : 'text-gray-400 dark:text-gray-600'}
+                        transition-colors duration-200
+                    ">${label}</span>
+
+                    <div class="
+                        w-1.5 h-1.5 rounded-full
+                        transition-all duration-200
+                        ${isContext
+                            ? 'bg-cyan-400 shadow-[0_0_4px_1px_rgba(34,211,238,0.6),0_0_8px_2px_rgba(34,211,238,0.3)]'
+                            : 'bg-gray-400/30 dark:bg-gray-700'}
+                    "></div>
+                </div>
+            </div>
+        `;
+    }
+
+    // ─── Details Row ──────────────────────────────────────────────────
+
+    private _renderDetailsRow() {
+        return html`
+            <div class="flex flex-col flex-1">
+                <div class="flex flex-col gap-3 px-4 py-4 flex-1"
+                    @select-page=${(e: CustomEvent) => this._setKnobValue('page', e.detail.value)}
+                    @select-rule=${(e: CustomEvent) => this._setKnobValue('rule', e.detail.value)}
+                >
+                    ${this._renderContextStatusArea()}
+                </div>
+            </div>
+        `;
+    }
+
+    private _renderContextStatusArea() {
+        switch (this._selectedKnob) {
+            case 'page':
+                return html`
+                    <plugins--select-page-102020
+                        .pages=${this._pages}
+                        .value=${this._pageValue}
+                        @select-page=${(e: CustomEvent) => this._setKnobValue('page', e.detail.value)}
+                    ></plugins--select-page-102020>
+                `;
+            case 'rule':
+                return html`
+                    <plugins--select-rule-102020
+                        .rules=${this._rules}
+                        .value=${this._ruleValue}
+                        @select-rule=${(e: CustomEvent) => this._setKnobValue('rule', e.detail.value)}
+                    ></plugins--select-rule-102020>
+                `;
+            default:
+                return nothing;
+        }
+    }
+}

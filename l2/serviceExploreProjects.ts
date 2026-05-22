@@ -172,7 +172,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
         onClickMain: this.onClickMain.bind(this),
     };
 
-    onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {}
+    onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) { }
 
     // ─── State ────────────────────────────────────────────────────────
 
@@ -240,7 +240,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                     if (!projectDriver || !projectURL || projectDriver === 'mls') return;
                     if (!info || !info.projectDriver || !info.projectURL) doSelect = false;
                     if (doSelect) prj.push({ project: p.id, name: p.name, doSelect });
-                } catch (e) {}
+                } catch (e) { }
             });
             if (prj.length <= 0) return;
             result.push({ name, created_at, description, key: org, index, projects: prj });
@@ -363,6 +363,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
     createRenderRoot() { return this; }
 
     render() {
+        this.style.display = 'block';
         const lang = this.getMessageKey(messages);
         this.msg = messages[lang];
 
@@ -420,8 +421,8 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                     <span class="
                         text-[9px] font-semibold uppercase tracking-wider
                         ${isContext
-                            ? 'text-gray-700 dark:text-gray-200'
-                            : 'text-gray-400 dark:text-gray-600'}
+                ? 'text-gray-700 dark:text-gray-200'
+                : 'text-gray-400 dark:text-gray-600'}
                         transition-colors duration-200
                     ">${label}</span>
 
@@ -429,8 +430,8 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                         w-1.5 h-1.5 rounded-full
                         transition-all duration-200
                         ${isContext
-                            ? 'bg-cyan-400 shadow-[0_0_4px_1px_rgba(34,211,238,0.6),0_0_8px_2px_rgba(34,211,238,0.3)]'
-                            : 'bg-gray-400/30 dark:bg-gray-700'}
+                ? 'bg-cyan-400 shadow-[0_0_4px_1px_rgba(34,211,238,0.6),0_0_8px_2px_rgba(34,211,238,0.3)]'
+                : 'bg-gray-400/30 dark:bg-gray-700'}
                     "></div>
                 </div>
             </div>
