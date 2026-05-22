@@ -4,7 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { setProjectDetails, loadPluginProject, openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
-import { convertFileToTag } from '/_102027_/l2/utils';
+import { convertFileToTag } from '/_102020_/l2/utils';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -347,6 +347,7 @@ export class PluginSelectProject extends StateLitElement {
         if (!storFileItem) return;
         const tag = convertFileToTag(storFileItem);
         const el = document.createElement(tag);
+        el.setAttribute('autoPrepare', 'true');
         openElementInServiceDetails(el);
     }
 
