@@ -33,7 +33,7 @@ const messages: Record<string, MessageType> = {
 
 // ─── Types ───────────────────────────────────────────────────────────
 
-interface IPage {
+interface IModule {
     name: string;
     path: string;
 }
@@ -94,13 +94,13 @@ export class ServicePage102020 extends ServiceBase {
 
     @state() private msg: MessageType = message_en;
 
-    @state() private _pages: IPage[] = [];
+    @state() private _modules: IModule[] = [];
     @state() private _rules: IRule[] = [];
 
-    @state() private _pageConfig: IKnobConfig = DISABLED_CONFIG('page');
+    @state() private _pageConfig: IKnobConfig = { key: 'page', min: 0, max: 1, labels: { 0: 'All', 1: '+' } };
     @state() private _ruleConfig: IKnobConfig = DISABLED_CONFIG('rule');
 
-    @state() private _pageValue: number | null = null;
+    @state() private _pageValue: number | null = 0;
     @state() private _ruleValue: number | null = null;
 
     @state() private _selectedKnob: string = 'page';
@@ -113,28 +113,33 @@ export class ServicePage102020 extends ServiceBase {
         if (!project) return;
         try {
             const mod = await import(`/_${project}_/l2/project.js`);
-            const pages: IPage[] = mod?.projectConfig?.pages ?? [];
+            const modules: IModule[] = mod?.projectConfig?.modules ?? [];
             const rules: IRule[] = mod?.projectConfig?.rules ?? [];
-            this._pages = pages;
+            this._modules = modules;
             this._rules = rules;
-            this._pageConfig = this._buildConfig('page', pages.map(p => p.name));
             this._ruleConfig = this._buildConfig('rule', rules.map(r => r.name));
-            this._pageValue = 0;
             this._ruleValue = 0;
         } catch {
-            this._pages = [];
+            this._modules = [];
             this._rules = [];
-            this._pageConfig = DISABLED_CONFIG('page');
             this._ruleConfig = DISABLED_CONFIG('rule');
         }
+        // @ts-ignore
         this.requestUpdate();
     }
 
     private _buildConfig(key: string, names: string[]): IKnobConfig {
         const labels: Record<number, string> = { 0: 'All' };
         names.forEach((n, i) => { labels[i + 1] = n; });
-        labels[names.length + 1] = 'New';
+        labels[names.length + 1] = '+';
         return { key, min: 0, max: names.length + 1, labels };
+    }
+
+    private get _selectedModule(): IModule | null {
+        // @ts-ignore
+        const actualModule: string | undefined = mls.actualModule;
+        if (!actualModule) return null;
+        return this._modules.find(m => m.name === actualModule) ?? null;
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────
@@ -260,12 +265,20 @@ export class ServicePage102020 extends ServiceBase {
 
     // ─── Details Row ──────────────────────────────────────────────────
 
+    private _onPageConfig(e: CustomEvent) {
+        const { min, max, labels } = e.detail;
+        this._pageConfig = { key: 'page', min, max, labels };
+        // @ts-ignore
+        this.requestUpdate();
+    }
+
     private _renderDetailsRow() {
         return html`
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col gap-3 px-4 py-4 flex-1"
                     @select-page=${(e: CustomEvent) => this._setKnobValue('page', e.detail.value)}
                     @select-rule=${(e: CustomEvent) => this._setKnobValue('rule', e.detail.value)}
+                    @page-config=${(e: CustomEvent) => this._onPageConfig(e)}
                 >
                     ${this._renderContextStatusArea()}
                 </div>
@@ -278,7 +291,7 @@ export class ServicePage102020 extends ServiceBase {
             case 'page':
                 return html`
                     <plugins--select-page-102020
-                        .pages=${this._pages}
+                        .selectedModule=${this._selectedModule}
                         .value=${this._pageValue}
                         @select-page=${(e: CustomEvent) => this._setKnobValue('page', e.detail.value)}
                     ></plugins--select-page-102020>
