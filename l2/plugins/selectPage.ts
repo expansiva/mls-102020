@@ -122,53 +122,63 @@ export class PluginSelectPage extends StateLitElement {
 
     // ─── Page Loading ─────────────────────────────────────────────────
 
-    private _loadPages() {
+    private async _loadPages(): Promise<void> {
         this._pages = [];
         if (!this.selectedModule) {
             this._dispatchConfig();
             return;
         }
 
-        // @ts-ignore
-        const project: number = mls.actualProject;
-        // @ts-ignore
-        const actualDevice: number | undefined = mls.actualDevice;
-
+        const project: number = mls.actualProject as number;
         const modulePath = this.selectedModule.path;
-        const devicePaths = (actualDevice && DEVICE_SUB_PATHS[actualDevice])
-            ? [DEVICE_SUB_PATHS[actualDevice]]
-            : Object.values(DEVICE_SUB_PATHS);
+        const actualDevice: number | undefined = (mls as any).actualDevice;
+        const activeDevicePath = (actualDevice && DEVICE_SUB_PATHS[actualDevice]) ? DEVICE_SUB_PATHS[actualDevice] : null;
 
-        this._activeDevice = (actualDevice && DEVICE_SUB_PATHS[actualDevice])
-            ? DEVICE_LABELS[DEVICE_SUB_PATHS[actualDevice]] ?? null
-            : null;
+        this._activeDevice = activeDevicePath ? (DEVICE_LABELS[activeDevicePath] ?? null) : null;
 
+        let routes: any[] = [];
+        try {
+            const mod = await import(`/_${project}_/l2/${modulePath}/module.js`);
+            routes = mod?.moduleFrontendDefinition?.routes ?? [];
+        } catch {
+            this._dispatchConfig();
+            this.requestUpdate();
+            return;
+        }
+
+        const entrypointPrefix = `/_${project}_/l2/`;
         const pageMap = new Map<string, { devices: Set<string>; file: mls.stor.IFileInfo }>();
 
-        // @ts-ignore
-        for (const f of Object.values(mls.stor.files as Record<string, any>)) {
-            if (f.project !== project) continue;
-            const folder: string = f.folder ?? '';
-            const shortName: string = f.shortName ?? '';
+        for (const route of routes) {
+            const entrypoint: string = route.entrypoint ?? '';
+            if (!entrypoint.startsWith(entrypointPrefix)) continue;
+
+            const relative = entrypoint.slice(entrypointPrefix.length).replace(/\.js$/, '');
+            const lastSlash = relative.lastIndexOf('/');
+            if (lastSlash < 0) continue;
+
+            const folder = relative.substring(0, lastSlash);
+            const shortName = relative.substring(lastSlash + 1);
             if (!shortName) continue;
 
-            for (const devicePath of devicePaths) {
-                const prefix = `${modulePath}/${devicePath}`;
-                if (!folder.startsWith(prefix + '/')) continue;
-
-                const afterPrefix = folder.slice(prefix.length + 1); // "page11"
-                if (/^page\d+$/.test(afterPrefix)) {
-                    if (!pageMap.has(shortName)) pageMap.set(shortName, { devices: new Set(), file: f });
-                    pageMap.get(shortName)!.devices.add(devicePath);
-                }
+            let devicePath: string | null = null;
+            for (const dp of Object.values(DEVICE_SUB_PATHS)) {
+                if (folder.includes(`/${dp}/`) || folder.endsWith(`/${dp}`)) { devicePath = dp; break; }
             }
+            if (!devicePath) continue;
+
+            if (activeDevicePath && devicePath !== activeDevicePath) continue;
+
+            if (!pageMap.has(shortName)) {
+                const file = { project, folder, shortName, level: 2, extension: '.ts' } as mls.stor.IFileInfo;
+                pageMap.set(shortName, { devices: new Set(), file });
+            }
+            pageMap.get(shortName)!.devices.add(devicePath);
         }
 
         this._pages = Array.from(pageMap.entries())
             .map(([name, { devices, file }]) => ({ name, devices: Array.from(devices).sort(), file }))
             .sort((a, b) => a.name.localeCompare(b.name));
-
-        console.log('[selectPage] pages found:', this._pages);
 
         this._dispatchConfig();
         this.requestUpdate();

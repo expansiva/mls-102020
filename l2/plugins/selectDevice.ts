@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/plugins/selectDevice.ts" enhancement="_102027_/l2/enhancementLit.ts"/>
 
 import { html, nothing } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
@@ -96,6 +96,42 @@ export class PluginSelectDevice extends StateLitElement {
     @property({ attribute: false }) value: number | null = null;
     @property({ attribute: false }) selectedModule: IModule | null = null;
 
+    @state() private _genome: Record<string, any> = {};
+    @state() private _routeCountByDevice: Record<string, number> = {};
+
+    willUpdate(changed: Map<string, unknown>) {
+        if (changed.has('selectedModule')) {
+            this._loadModuleData();
+        }
+    }
+
+    private async _loadModuleData(): Promise<void> {
+        this._genome = {};
+        this._routeCountByDevice = {};
+        if (!this.selectedModule) return;
+        const project: number = mls.actualProject;
+        try {
+            const mod = await import(`/_${project}_/l2/${this.selectedModule.path}/module.js`);
+            this._genome = mod?.moduleGenome ?? {};
+            const routes: any[] = mod?.moduleFrontendDefinition?.routes ?? [];
+            const counts: Record<string, number> = {};
+            for (const route of routes) {
+                const ep: string = route.entrypoint ?? '';
+                for (const dp of Object.values(DEVICE_SUB_PATHS)) {
+                    if (ep.includes(`/${dp}/`)) {
+                        counts[dp] = (counts[dp] ?? 0) + 1;
+                        break;
+                    }
+                }
+            }
+            this._routeCountByDevice = counts;
+        } catch {
+            this._genome = {};
+            this._routeCountByDevice = {};
+        }
+        this.requestUpdate();
+    }
+
     private get msg(): MessageType {
         const lang = this.getMessageKey(messages);
         return messages[lang];
@@ -119,7 +155,7 @@ export class PluginSelectDevice extends StateLitElement {
                 @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
             ></plugins--nav-header-102020>
                 ${this._renderDeviceCard(device)}
-                ${this.selectedModule ? this._renderDeviceStatus(deviceExists) : nothing}
+                ${this.selectedModule ? this._renderDeviceStatus(device, deviceExists) : nothing}
             </div>
         `;
     }
@@ -129,13 +165,7 @@ export class PluginSelectDevice extends StateLitElement {
     private _checkDeviceExists(deviceValue: number): boolean {
         if (!this.selectedModule) return false;
         const subPath = DEVICE_SUB_PATHS[deviceValue];
-        const folderPrefix = `${this.selectedModule.path}/${subPath}`;
-        // @ts-ignore
-        const project: number = mls.actualProject;
-        // @ts-ignore
-        return Object.values(mls.stor.files).some((f: any) =>
-            f.project === project && (f.folder === folderPrefix || f.folder.startsWith(folderPrefix + '/'))
-        );
+        return Object.keys(this._genome).some(key => key.startsWith(subPath + '/') || key === subPath);
     }
 
     private _renderDeviceCard(device: IDeviceInfo) {
@@ -152,8 +182,10 @@ export class PluginSelectDevice extends StateLitElement {
         `;
     }
 
-    private _renderDeviceStatus(exists: boolean) {
+    private _renderDeviceStatus(device: IDeviceInfo, exists: boolean) {
         if (exists) {
+            const subPath = DEVICE_SUB_PATHS[device.value];
+            const count = this._routeCountByDevice[subPath] ?? 0;
             return html`
                 <div class="
                     rounded-lg border border-emerald-200 dark:border-emerald-700/50
@@ -161,7 +193,7 @@ export class PluginSelectDevice extends StateLitElement {
                     px-3 py-2.5 flex items-center justify-between gap-2
                 ">
                     <span class="text-sm text-emerald-600 dark:text-emerald-400">${this.msg.deviceExists}</span>
-                    <span class="shrink-0 text-sm font-mono text-emerald-500 dark:text-emerald-400">12 ${this.msg.pages}</span>
+                    <span class="shrink-0 text-sm font-mono text-emerald-500 dark:text-emerald-400">${count} ${this.msg.pages}</span>
                 </div>
             `;
         }
