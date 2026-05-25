@@ -3,6 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
+import { createModel } from '/_102027_/l2/libModel.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
 import '/_102020_/l2/plugins/selectPage.js';
@@ -88,7 +89,7 @@ export class ServicePage102020 extends ServiceBase {
         onClickMain: this.onClickMain.bind(this),
     };
 
-    onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {}
+    onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) { }
 
     // ─── State ────────────────────────────────────────────────────────
 
@@ -196,29 +197,25 @@ export class ServicePage102020 extends ServiceBase {
         let name = `_${file.project}_${file.shortName}`;
         if (file.folder) name = `_${file.project}_${file.folder}/${file.shortName}`;
         for (const lv of [3, 4]) {
-            // @ts-ignore
             mls.actual[lv].setFullName(name);
-            // @ts-ignore
             mls.actual[lv][this.position as ('right' | 'left')] = file;
         }
-        // @ts-ignore
+
         const storFiles = await mls.stor.getFiles({ project: file.project, shortName: file.shortName, folder: file.folder, loadContent: false });
-        // @ts-ignore
-        if ([1, 2, 3, 4].includes(mls.actualLevel)) await this.createModel(file, '.ts');
-        // @ts-ignore
-        if ([2, 3, 4].includes(mls.actualLevel) && storFiles.less) await this.createModel(file, '.less');
-        // @ts-ignore
-        if ([2, 3, 4].includes(mls.actualLevel) && storFiles.html) await this.createModel(file, '.html');
+        if ([1, 2, 3, 4].includes(mls.actualLevel) && storFiles.ts) await createModel(storFiles.ts);
+        if ([2, 3, 4].includes(mls.actualLevel) && storFiles.less) await createModel(storFiles.less);
+        if ([2, 3, 4].includes(mls.actualLevel) && storFiles.html) await createModel(storFiles.html);
+
         const params: any = { action: 'open' };
-        params.level = file.level;
+        params.level = 4;
         params.project = file.project;
         params.shortName = file.shortName;
         params.extension = file.extension;
         params.folder = file.folder;
-        // @ts-ignore
+
         params.position = this.position as ('right' | 'left');
-        // @ts-ignore
         mls.events.fire([mls.actualLevel], ['FileAction'], JSON.stringify(params), 0);
+
     }
 
     // ─── Lifecycle ────────────────────────────────────────────────────
@@ -288,8 +285,8 @@ export class ServicePage102020 extends ServiceBase {
                     <span class="
                         text-[9px] font-semibold uppercase tracking-wider
                         ${isContext
-                            ? 'text-gray-700 dark:text-gray-200'
-                            : 'text-gray-400 dark:text-gray-600'}
+                ? 'text-gray-700 dark:text-gray-200'
+                : 'text-gray-400 dark:text-gray-600'}
                         transition-colors duration-200
                     ">${label}</span>
 
@@ -297,8 +294,8 @@ export class ServicePage102020 extends ServiceBase {
                         w-full h-0.5 rounded-full
                         transition-all duration-200
                         ${isContext
-                            ? 'bg-cyan-400 shadow-[0_0_4px_1px_rgba(34,211,238,0.6),0_0_8px_2px_rgba(34,211,238,0.3)]'
-                            : 'bg-transparent'}
+                ? 'bg-cyan-400 shadow-[0_0_4px_1px_rgba(34,211,238,0.6),0_0_8px_2px_rgba(34,211,238,0.3)]'
+                : 'bg-transparent'}
                     "></div>
                 </div>
             </div>
