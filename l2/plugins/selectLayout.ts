@@ -1,0 +1,192 @@
+/// <mls fileReference="_102020_/l2/plugins/selectLayout.ts" enhancement="_102027_/l2/enhancementLit.ts"/>
+
+import { html, nothing } from 'lit';
+import { customElement, property } from 'lit/decorators.js';
+import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
+import '/_102020_/l2/plugins/navHeader.js';
+
+// ─── i18n ─────────────────────────────────────────────────────────────
+/// **collab_i18n_start**
+const message_en = {
+    title: 'Layout',
+    desc: 'The layout defines the structural arrangement of UI elements on the page.',
+    standard: 'Standard',
+    standardDesc: 'Classic top-header with full-width content area.',
+    compact: 'Compact',
+    compactDesc: 'Condensed layout optimized for dense information display.',
+    tabs: 'Tabs',
+    tabsDesc: 'Tab-based navigation separating content into distinct sections.',
+    sidebar: 'Sidebar',
+    sidebarDesc: 'Persistent side navigation alongside a main content area.',
+};
+type MessageType = typeof message_en;
+const messages: Record<string, MessageType> = {
+    en: message_en,
+    pt: {
+        title: 'Layout',
+        desc: 'O layout define o arranjo estrutural dos elementos na página.',
+        standard: 'Padrão',
+        standardDesc: 'Cabeçalho superior com área de conteúdo em largura total.',
+        compact: 'Compacto',
+        compactDesc: 'Layout condensado otimizado para exibição densa de informações.',
+        tabs: 'Abas',
+        tabsDesc: 'Navegação por abas que separa o conteúdo em seções distintas.',
+        sidebar: 'Barra Lateral',
+        sidebarDesc: 'Navegação lateral persistente ao lado de uma área de conteúdo principal.',
+    },
+    es: {
+        title: 'Layout',
+        desc: 'El layout define la disposición estructural de los elementos en la página.',
+        standard: 'Estándar',
+        standardDesc: 'Cabecera superior con área de contenido de ancho completo.',
+        compact: 'Compacto',
+        compactDesc: 'Layout condensado optimizado para mostrar información densa.',
+        tabs: 'Pestañas',
+        tabsDesc: 'Navegación por pestañas que separa el contenido en secciones distintas.',
+        sidebar: 'Barra Lateral',
+        sidebarDesc: 'Navegación lateral persistente junto a un área de contenido principal.',
+    },
+};
+/// **collab_i18n_end**
+
+// ─── Layout option definitions ───────────────────────────────────────
+
+interface ILayoutOption {
+    value: number;
+    key: 'standard' | 'compact' | 'tabs' | 'sidebar';
+}
+
+const LAYOUT_OPTIONS: ILayoutOption[] = [
+    { value: 1, key: 'standard' },
+    { value: 2, key: 'compact' },
+    { value: 3, key: 'tabs' },
+    { value: 4, key: 'sidebar' },
+];
+
+// ─── Component ───────────────────────────────────────────────────────
+
+@customElement('plugins--select-layout-102020')
+export class PluginSelectLayout extends StateLitElement {
+
+    @property({ attribute: false }) value: number | null = 1;
+
+    private get msg(): MessageType {
+        return messages[this.getMessageKey(messages)];
+    }
+
+    createRenderRoot() { return this; }
+
+    render() {
+        const max = LAYOUT_OPTIONS.length;
+        const selectedOption = LAYOUT_OPTIONS.find(o => o.value === this.value);
+        return html`
+            <div class="flex flex-col gap-3">
+                <plugins--nav-header-102020
+                    .fixedLabel=${this.msg.title}
+                    .itemName=${selectedOption ? this.msg[selectedOption.key] : ''}
+                    .desc=${this.msg.desc}
+                    .value=${this.value ?? 1}
+                    .min=${1}
+                    .max=${max}
+                    @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+                ></plugins--nav-header-102020>
+
+                <div class="grid grid-cols-2 gap-2">
+                    ${LAYOUT_OPTIONS.map(opt => this._renderLayoutCard(opt))}
+                </div>
+            </div>
+        `;
+    }
+
+    private _renderLayoutCard(opt: ILayoutOption) {
+        const isSelected = this.value === opt.value;
+        const label = this.msg[opt.key];
+        const desc = this.msg[`${opt.key}Desc` as keyof MessageType];
+        return html`
+            <div
+                class="
+                    rounded-xl border p-2.5 cursor-pointer transition-all flex flex-col gap-2
+                    ${isSelected
+                        ? 'border-indigo-400 dark:border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 shadow-sm'
+                        : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-700'}
+                "
+                @click=${() => this._dispatchSelect(opt.value)}
+            >
+                <div class="w-full aspect-[4/3] rounded-lg overflow-hidden
+                    ${isSelected ? 'bg-indigo-100 dark:bg-indigo-900/30' : 'bg-gray-100 dark:bg-gray-800'}
+                ">
+                    ${this._renderDiagram(opt.key, isSelected)}
+                </div>
+                <div class="flex flex-col gap-0.5">
+                    <div class="flex items-center gap-1.5">
+                        ${isSelected ? html`<div class="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400 shrink-0"></div>` : nothing}
+                        <span class="text-xs font-semibold
+                            ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-700 dark:text-gray-200'}
+                        ">${label}</span>
+                    </div>
+                    <span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug">${desc}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    private _renderDiagram(key: ILayoutOption['key'], selected: boolean) {
+        const header = selected ? '#818cf8' : '#9ca3af';
+        const content = selected ? '#c7d2fe' : '#e5e7eb';
+        const sidebar = selected ? '#a5b4fc' : '#d1d5db';
+        const darkHeader = selected ? '#4f46e5' : '#4b5563';
+        const darkContent = selected ? '#3730a3' : '#374151';
+        const darkSidebar = selected ? '#4338ca' : '#374151';
+
+        if (key === 'standard') return html`
+            <svg viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                <rect x="4" y="4" width="72" height="12" rx="2" fill="${header}" class="dark:hidden"/>
+                <rect x="4" y="4" width="72" height="12" rx="2" fill="${darkHeader}" class="hidden dark:block"/>
+                <rect x="4" y="20" width="72" height="36" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="20" width="72" height="36" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+            </svg>`;
+
+        if (key === 'compact') return html`
+            <svg viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                <rect x="4" y="4" width="72" height="8" rx="2" fill="${header}" class="dark:hidden"/>
+                <rect x="4" y="4" width="72" height="8" rx="2" fill="${darkHeader}" class="hidden dark:block"/>
+                <rect x="4" y="15" width="72" height="6" rx="1" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="15" width="72" height="6" rx="1" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="4" y="24" width="72" height="6" rx="1" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="24" width="72" height="6" rx="1" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="4" y="33" width="72" height="6" rx="1" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="33" width="72" height="6" rx="1" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="4" y="42" width="72" height="6" rx="1" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="42" width="72" height="6" rx="1" fill="${darkContent}" class="hidden dark:block"/>
+            </svg>`;
+
+        if (key === 'tabs') return html`
+            <svg viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                <rect x="4" y="4" width="16" height="10" rx="2 2 0 0" fill="${header}" class="dark:hidden"/>
+                <rect x="4" y="4" width="16" height="10" rx="2 2 0 0" fill="${darkHeader}" class="hidden dark:block"/>
+                <rect x="22" y="4" width="16" height="10" rx="2 2 0 0" fill="${content}" class="dark:hidden"/>
+                <rect x="22" y="4" width="16" height="10" rx="2 2 0 0" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="40" y="4" width="16" height="10" rx="2 2 0 0" fill="${content}" class="dark:hidden"/>
+                <rect x="40" y="4" width="16" height="10" rx="2 2 0 0" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="4" y="14" width="72" height="42" rx="0 2 2 2" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="14" width="72" height="42" rx="0 2 2 2" fill="${darkContent}" class="hidden dark:block"/>
+            </svg>`;
+
+        // sidebar
+        return html`
+            <svg viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                <rect x="4" y="4" width="18" height="52" rx="2" fill="${sidebar}" class="dark:hidden"/>
+                <rect x="4" y="4" width="18" height="52" rx="2" fill="${darkSidebar}" class="hidden dark:block"/>
+                <rect x="26" y="4" width="50" height="52" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="26" y="4" width="50" height="52" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+            </svg>`;
+    }
+
+    private _dispatchSelect(value: number) {
+        this.dispatchEvent(new CustomEvent('select-layout', {
+            detail: { value },
+            bubbles: true,
+            composed: true,
+        }));
+    }
+}
