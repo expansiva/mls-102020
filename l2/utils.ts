@@ -158,7 +158,10 @@ function fromKebab(str: string): string {
 
 
 export function isPageFile(folder: string): boolean {
-    return /^.+\/(web\/desktop|web\/mobile|android|ios)\/page\d+$/.test(folder);
+    if (!mls.actualModule) return false;
+    const match = folder.match(/^(.+?)\/(web\/desktop|web\/mobile|android|ios)\/page\d+$/);
+    if (!match) return false;
+    return match[1] === mls.actualModule;
 }
 
 export function validateTagName(modelTS: mls.editor.IModelTS): boolean {

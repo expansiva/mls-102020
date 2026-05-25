@@ -42,6 +42,11 @@ const messages: Record<string, MessageType> = {
 
 // ─── Types ───────────────────────────────────────────────────────────
 
+interface IModule {
+    name: string;
+    path: string;
+}
+
 interface IKnobConfig {
     key: string;
     min: number;
@@ -95,6 +100,7 @@ export class ServiceGenome102020 extends ServiceBase {
     async onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
         this._initDesignSystemKnob();
         const file: mls.stor.IFileInfo | null = await mls.actual[3].getStorFile() ?? null;
+        await this._trySetActualModule(file);
         this._updateCurrentPage(file);
     }
 
@@ -322,6 +328,20 @@ export class ServiceGenome102020 extends ServiceBase {
 
     // ─── Lifecycle ────────────────────────────────────────────────────
 
+    private async _trySetActualModule(file: mls.stor.IFileInfo | null): Promise<void> {
+        if (mls.actualModule || !file) return;
+        const project: number = mls.actualProject;
+        if (!project) return;
+        let modules: IModule[] = [];
+        try {
+            const mod = await import(`/_${project}_/l2/project.js`);
+            modules = mod?.projectConfig?.modules ?? [];
+        } catch { return; }
+        const firstSegment = (file.folder ?? '').split('/')[0];
+        if (!firstSegment) return;
+        if (modules.some((m: IModule) => m.name === firstSegment)) mls.setActualModule(firstSegment);
+    }
+
     private _updateCurrentPage(file: mls.stor.IFileInfo | null) {
         this._currentPageFile = file;
         this._isPageContext = !file || isPageFile(file.folder ?? '');
@@ -359,6 +379,7 @@ export class ServiceGenome102020 extends ServiceBase {
 
     async firstUpdated() {
         const file: mls.stor.IFileInfo | null = await mls.actual[3].getStorFile() ?? null;
+        await this._trySetActualModule(file);
         this._updateCurrentPage(file);
     }
 
