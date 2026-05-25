@@ -3,8 +3,9 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAgentStepByAgentName, getTemporaryContext, findPreviousAgentStep } from '/_102027_/l2/aiAgentHelper.js';
 import { addMessage } from '/_102025_/l2/collabMessagesHelper.js';
-import { updateVariableJson } from '/_102027_/l2/defsAST.js';
+import { updateVariableJson, getVariableJson } from '/_102027_/l2/defsAST.js';
 import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
+import { ModuleToBe } from '/_102020_/l2/agents/newModule/agentToBeConceptual.js';
 
 export function createAgent(): IAgentAsync {
         return {
@@ -117,10 +118,13 @@ async function processOutputToBePages(context: mls.msg.ExecutionContext, toBePag
         let module = context.task?.iaCompressed?.longMemory['moduleName'];
         if (!module) throw new Error('[ToBePages]: Not found moduleName');
 
+        const visualStyle = await readVisualStyle(module);
+
         const pages = toBePages.pages;//.slice(0, 3)
         for (const page of pages) {
 
                 (page as any).status = 'draft';
+                if (visualStyle) (page as any).visualStyle = visualStyle;
 
                 const refDef = `_${mls.actualProject || 0}_/l2/${module}/${page.pageName}.defs.ts`;
                 const srcDefs = updateVariableJson('/// <mls fileReference="' + refDef + '"  enhancement="_blank"/>\n\n', 'definition', page);
@@ -129,14 +133,8 @@ async function processOutputToBePages(context: mls.msg.ExecutionContext, toBePag
 
         }
 
-        const key = mls.stor.getKeyToFile({ project: mls.actualProject || 0, level: 2, shortName: 'module', folder: module, extension: '.defs.ts' });
-
-        if (!mls.stor.files[key]) throw new Error("[agentTobePages] Not found ontology");
-
-        const src = await mls.stor.files[key].getContent() as string;
-
         const stepOri = context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
-          
+
         const newStep: mls.msg.AgentIntentAddStep = {
                 type: "add-step",
                 messageId: context.message.orderAt,
@@ -150,8 +148,8 @@ async function processOutputToBePages(context: mls.msg.ExecutionContext, toBePag
                         interaction: null,
                         status: 'waiting_human_input',
                         nextSteps: [],
-                        agentName: 'agentInterfaceOntology',
-                        prompt: src,
+                        agentName: 'agentOntologyGapCheck',
+                        prompt: JSON.stringify({ pages: toBePages, moduleName: module }),
                         rags: [],
                 }
         };
@@ -188,6 +186,18 @@ async function processOutputToBePages(context: mls.msg.ExecutionContext, toBePag
         return [newStep];*/
 
 
+}
+
+async function readVisualStyle(moduleName: string): Promise<string | undefined> {
+        try {
+                const key = mls.stor.getKeyToFile({ project: mls.actualProject || 0, level: 2, shortName: 'module', folder: moduleName, extension: '.defs.ts' });
+                if (!mls.stor.files[key]) return undefined;
+                const src = await mls.stor.files[key].getContent() as string;
+                const moduleToBe = getVariableJson<ModuleToBe>(src, 'ontology');
+                return moduleToBe.ui?.visualStyle;
+        } catch {
+                return undefined;
+        }
 }
 
 async function saveFile(ref: string, src: string) {
@@ -315,6 +325,7 @@ export interface Page {
         actor: string; // "customer" | "staff" | "admin"
         purpose: string;
         sections: Section[];
+        visualStyle?: string; // injected from ModuleToBe.ui.visualStyle to keep all pages visually consistent
 }
 export interface Section {
         sectionName: string; // main, aside, header, footer, ...

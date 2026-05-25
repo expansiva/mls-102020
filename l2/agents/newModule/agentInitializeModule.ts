@@ -161,6 +161,7 @@ export interface Clarification1 {
     tone: Question; // tone - e.g. Friendly, professional, and concise. Always aim to clarify without assuming.
     languages: Question; // languages - use default language from prompt, default is only one languages
     moduleName: Question; // moduleName - suggest a module name , search in "Already existing modules"
+    visualStyle: Question; // visual style of the site - e.g. 'Clean & minimalist', 'Dark & modern', 'Light & friendly', 'Corporate & professional', 'Bold & vibrant'
     openQuestion1: Question; // open question to clarify features,
     openQuestion2: Question; // open question to clarify features,
     openQuestion3: Question; // open question to clarify features,

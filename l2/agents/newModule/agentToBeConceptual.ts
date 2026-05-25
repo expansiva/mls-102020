@@ -181,7 +181,8 @@ const constraints = [
   "All field names and keys MUST be in English.",
   "All descriptions and string values MUST be written in the language specified by the 'userLanguage' field.",
   "All relevant information provided by the user in their answers MUST be converted into explicit 'rules' in the output. Always summarize and register them as clear, permanent rules.",
-  "The 'moduleName' field MUST follow camelCase format (e.g., 'myModuleName') and MUST NOT contain hyphens ('-'), underscores ('_'), or spaces."
+  "The 'moduleName' field MUST follow camelCase format (e.g., 'myModuleName') and MUST NOT contain hyphens ('-'), underscores ('_'), or spaces.",
+  "The 'ui.visualStyle' field MUST be populated from the user's answer to the visual style question in the clarification. Use the exact value the user chose."
 ];
 //#endregion
 
@@ -203,6 +204,9 @@ export interface ModuleToBe {
     moduleName: string;
     userPromptOriginal: string;
     userPromptFinal: string; // Final consolidated prompt, merging relevant clarification answers
+  };
+  ui: {
+    visualStyle: string; // e.g. 'Clean & minimalist', 'Dark & modern', 'Light & friendly', 'Corporate & professional', 'Bold & vibrant'
   };
   ontology?: OntologyDefinition;
   rules?: RulesRegistry;
