@@ -54,9 +54,9 @@ interface IKnobConfig {
 
 const LAYOUT_CONFIG: IKnobConfig = {
     key: 'layout',
-    min: 1,
+    min: 0,
     max: 4,
-    labels: { 1: 'standard', 2: 'compact', 3: 'tabs', 4: 'sidebar' },
+    labels: { 0: 'All', 1: 'standard', 2: 'compact', 3: 'tabs', 4: 'sidebar' },
 };
 
 const DISABLED_CONFIG = (key: string): IKnobConfig => ({
@@ -100,7 +100,8 @@ export class ServiceGenome102020 extends ServiceBase {
 
     @state() private msg: MessageType = message_en;
 
-    @state() private _layoutValue: number | null = 1;
+    @state() private _layoutValue: number | null = 0;
+    @state() private _currentPageFile: mls.stor.IFileInfo | null = null;
     @state() private _dsValue: number | null = 1;
     @state() private _moleculesValue: number | null = null;
     @state() private _selectedKnob: string = 'layout';
@@ -323,20 +324,39 @@ export class ServiceGenome102020 extends ServiceBase {
 
     // ─── Lifecycle ────────────────────────────────────────────────────
 
+    private _onFileActionGenome = (ev: mls.events.IEvent) => {
+        if (!ev.desc) return;
+        try {
+            const fa = JSON.parse(ev.desc) as mls.events.IFileAction;
+            if (fa.action !== 'open' || fa.position !== 'left') return;
+            // @ts-ignore
+            const file = mls.actual[this.level]?.left as mls.stor.IFileInfo ?? null;
+            this._currentPageFile = file;
+            // @ts-ignore
+            this.requestUpdate();
+        } catch { /* ignore */ }
+    };
+
     connectedCallback() {
         super.connectedCallback();
         subscribe('previewL3.selectedTagName', this);
         this._initDesignSystemKnob();
+        // @ts-ignore
+        mls.events.addEventListener([this.level], ['FileAction'], this._onFileActionGenome);
     }
 
     disconnectedCallback() {
         super.disconnectedCallback();
         unsubscribe('previewL3.selectedTagName', this);
+        // @ts-ignore
+        mls.events.removeEventListener([this.level], ['FileAction'], this._onFileActionGenome);
     }
 
     firstUpdated() {
         // @ts-ignore
         this._actualPage = mls.editor.models['_102020_pizzaria/web/desktop/page11_login']?.ts ?? null;
+        // @ts-ignore
+        this._currentPageFile = mls.actual[this.level]?.left as mls.stor.IFileInfo ?? null;
     }
 
     // ─── Render ───────────────────────────────────────────────────────
@@ -439,6 +459,7 @@ export class ServiceGenome102020 extends ServiceBase {
                 return html`
                     <plugins--select-layout-102020
                         .value=${this._layoutValue}
+                        .pageFile=${this._currentPageFile}
                     ></plugins--select-layout-102020>
                 `;
             case 'designSystem':

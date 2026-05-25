@@ -534,12 +534,12 @@ export class ServicePreview extends ServiceBase {
 
     if (!this.actualFiles || !this.actualFiles.html) {
       const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (doc) doc.body.innerHTML = `<div style="padding:24px;font-family:sans-serif;color:#888;">.html file not found for this page</div>`;
+      if (doc) doc.body.innerHTML = `<div style="padding:24px;font-family:sans-serif;color:#888;">.html file not found: ${this.page}</div>`;
       return;
     }
     if (!this.actualFiles.htmlContent) {
       const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (doc) doc.body.innerHTML = `<div style="padding:24px;font-family:sans-serif;color:#888;">.html content is empty</div>`;
+      if (doc) doc.body.innerHTML = `<div style="padding:24px;font-family:sans-serif;color:#888;">.html content is empty: ${this.page}</div>`;
       return;
     }
 
