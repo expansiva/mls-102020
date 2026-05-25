@@ -248,7 +248,10 @@ export class PluginSelectPage extends StateLitElement {
     private _renderPageDetail(page: IPageEntry) {
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
-                <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">${page.name}</span>
+                <div class="flex items-baseline gap-1">
+                    <span class="text-xs text-gray-400 dark:text-gray-500">${this.selectedModule?.name}/</span>
+                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">${page.name}</span>
+                </div>
                 <div class="flex items-center gap-1 flex-wrap">
                     <span class="text-xs text-gray-400 dark:text-gray-600">${this.msg.devices}:</span>
                     ${page.devices.map(d => html`
@@ -359,8 +362,11 @@ export class PluginSelectPage extends StateLitElement {
                 "
                 @click=${() => this._dispatchSelect(selectValue)}
             >
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300 flex-1">${page.name}</span>
-                <div class="flex items-center gap-1">
+                <div class="flex-1 flex items-baseline gap-1 min-w-0">
+                    <span class="text-[10px] text-gray-400 dark:text-gray-600 shrink-0">${this.selectedModule?.name}/</span>
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">${page.name}</span>
+                </div>
+                <div class="flex items-center gap-1 shrink-0">
                     ${page.devices.map(d => html`
                         <span class="text-[10px] font-medium px-1 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
                             ${DEVICE_LABELS[d]?.replace('Web ', '') ?? d}
