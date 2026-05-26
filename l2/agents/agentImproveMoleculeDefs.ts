@@ -134,7 +134,7 @@ async function updateExistingDefs(skill: string, fileReference: string, group: s
     if (!fileReference || fileInfo.project < 1) throw new Error(`[updateExistingDefs] Invalid fileReference: ${fileReference}`);
 
     const skillNormalized = skill.replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
-    const defsFileReference = fileReference.replace('.ts', '.defs.ts');
+    const defsFileReference = fileReference.indexOf('.defs.ts') === -1 ? fileReference.replace('.ts', '.defs.ts') : fileReference;
 
     const template = `/// <mls fileReference="${defsFileReference}" enhancement="_blank" />
 
