@@ -95,6 +95,10 @@ export class PluginSelectLayout extends StateLitElement {
     @state() private _saving: boolean = false;
     @state() private _saveError: string = '';
 
+    private _moduleProject: number = 0;
+    private _modulePrefix: string = '';
+    private _genomeKey: string = '';
+
     willUpdate(changed: Map<string, unknown>) {
         if (changed.has('pageFile')) {
             this._loadGenome();
@@ -103,6 +107,9 @@ export class PluginSelectLayout extends StateLitElement {
 
     private async _loadGenome(): Promise<void> {
         this._genomeLayoutValue = null;
+        this._moduleProject = 0;
+        this._modulePrefix = '';
+        this._genomeKey = '';
         if (!this.pageFile) return;
 
         const project: number = mls.actualProject as number;
@@ -111,6 +118,10 @@ export class PluginSelectLayout extends StateLitElement {
 
         const folder = this.pageFile.folder ?? '';
         const genomeKey = folder.substring(modulePrefix.length + 1);
+
+        this._moduleProject = project;
+        this._modulePrefix = modulePrefix;
+        this._genomeKey = genomeKey;
         if (!genomeKey) return;
 
         try {
@@ -250,6 +261,11 @@ export class PluginSelectLayout extends StateLitElement {
                 >
                     ${this._saving ? this.msg.adding : `+ ${this.msg.addLayout} (${label})`}
                 </button>
+                ${this._saveError ? html`
+                    <div class="rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 px-2.5 py-1.5">
+                        <span class="text-xs text-red-600 dark:text-red-400 font-mono">${this._saveError}</span>
+                    </div>
+                ` : nothing}
             </div>
         `;
     }
@@ -328,45 +344,49 @@ export class PluginSelectLayout extends StateLitElement {
     }
 
     private async _addLayoutToGenome(opt: ILayoutOption): Promise<void> {
-        if (!this.pageFile || this._saving) return;
-        const project: number = mls.actualProject as number;
-        const modulePrefix: string = (mls.actualModule as string) ?? '';
-        if (!modulePrefix) { this._saveError = 'No module selected.'; return; }
-
-        const folder = this.pageFile.folder ?? '';
-        const genomeKey = folder.substring(modulePrefix.length + 1);
-        if (!genomeKey) { this._saveError = 'Could not derive genome key.'; return; }
+        if (this._saving) return;
+        const project = this._moduleProject;
+        const modulePrefix = this._modulePrefix;
+        const genomeKey = this._genomeKey;
+        if (!project || !modulePrefix || !genomeKey) {
+            this._saveError = `Missing context (project=${project} module=${modulePrefix} key=${genomeKey})`;
+            return;
+        }
 
         this._saving = true;
         this._saveError = '';
-        // @ts-ignore
-        this.requestUpdate();
 
         try {
-            // 1. Ensure the module.ts file is loaded into a Monaco model
-            const storFiles: any = await mls.stor.getFiles({
+            // @ts-ignore
+            const mlsAny = mls as any;
+
+            // 1. Load module.ts content
+            const storFiles: any = await mlsAny.stor.getFiles({
                 project,
                 shortName: 'module',
                 folder: modulePrefix,
-                loadContent: false,
+                loadContent: true,
             });
             if (!storFiles?.ts) throw new Error(`module.ts not found (project=${project} folder=${modulePrefix})`);
 
-            // @ts-ignore
-            const libModel: any = await import('/_102027_/l2/libModel.js');
-            await libModel.createModel(storFiles.ts);
-
-            // 2. Get content from Monaco model
-            const modelKey: string = mls.editor.getKeyModel(project, 'module', modulePrefix, 2);
-            const tsModel: any = (mls.editor.models as any)[modelKey]?.ts;
-            if (!tsModel) throw new Error(`Monaco model not found (key=${modelKey})`);
-
-            const source: string = tsModel.model.getValue();
+            // 2. Get source from storage content or Monaco model
+            let source: string = storFiles.ts.content ?? '';
+            if (!source) {
+                // @ts-ignore
+                const libModel: any = await import('/_102027_/l2/libModel.js');
+                await libModel.createModel(storFiles.ts);
+                const level: number = storFiles.ts.level ?? 2;
+                const modelKey: string = mlsAny.editor.getKeyModel(project, 'module', modulePrefix, level);
+                const tsModel: any = mlsAny.editor.models[modelKey]?.ts;
+                if (!tsModel) throw new Error(`Monaco model not found for module.ts`);
+                source = tsModel.model.getValue();
+            }
+            if (!source) throw new Error('Could not load module.ts content');
 
             // 3. Apply AST transformation
             // @ts-ignore
             const astMod: any = await import('/_102020_/l2/newModule/astModuleFront.js');
-            const newSource = astMod.addModuleGenome(source, {
+            const newSource: string = astMod.addModuleGenome(source, {
                 key: genomeKey,
                 device: this._deriveDevice(genomeKey),
                 layout: opt.genomeKey,
@@ -375,13 +395,21 @@ export class PluginSelectLayout extends StateLitElement {
                 layoutSkill: '',
             });
 
-            // 4. Write back to Monaco model and trigger save
-            tsModel.model.pushEditOperations(
-                [],
-                [{ range: tsModel.model.getFullModelRange(), text: newSource }],
-                () => null,
-            );
-            mls.editor.forceModelUpdate(tsModel.model);
+            // 4. Write back via Monaco model
+            // @ts-ignore
+            const libModel2: any = await import('/_102027_/l2/libModel.js');
+            await libModel2.createModel({ ...storFiles.ts, content: newSource });
+            const level2: number = storFiles.ts.level ?? 2;
+            const modelKey2: string = mlsAny.editor.getKeyModel(project, 'module', modulePrefix, level2);
+            const tsModel2: any = mlsAny.editor.models[modelKey2]?.ts;
+            if (tsModel2) {
+                tsModel2.model.pushEditOperations(
+                    [],
+                    [{ range: tsModel2.model.getFullModelRange(), text: newSource }],
+                    () => null,
+                );
+                mlsAny.editor.forceModelUpdate(tsModel2.model);
+            }
 
             this._genomeLayoutValue = opt.value;
             this._dispatchSelect(opt.value);
@@ -390,8 +418,6 @@ export class PluginSelectLayout extends StateLitElement {
             this._saveError = e?.message ?? 'Unknown error';
         } finally {
             this._saving = false;
-            // @ts-ignore
-            this.requestUpdate();
         }
     }
 
