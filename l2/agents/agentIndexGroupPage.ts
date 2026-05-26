@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agents/agentIndexGroupPage.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { appendLongTermMemory } from '/_102027_/l2/aiAgentHelper.js';
 import { skill as indexGroupPageSkill } from '/_102020_/l2/skills/molecules/indexGroupPage.js';
 import { skills as skillList } from '/_102020_/l2/skills/molecules/index';
 import { createStorFile } from '/_102027_/l2/libStor.js';
@@ -110,7 +111,30 @@ async function afterPromptStep(
         return [updateStatus];
     }
 
-    await writeFiles(payload.result);
+    const { fileReference, compileOk } = await writeFiles(payload.result);
+
+    if (!compileOk) {
+        await appendLongTermMemory(context, { nextStep: 'finish' });
+        const fixStep: mls.msg.AgentIntentAddStep = {
+            type: 'add-step',
+            messageId: context.message.orderAt,
+            threadId: context.message.threadId,
+            taskId: context.task?.PK || '',
+            parentStepId: 1,
+            stepTitle: `Fix errors: ${fileReference}`,
+            step: {
+                type: 'agent',
+                stepId: 0,
+                interaction: null,
+                status: 'waiting_human_input',
+                nextSteps: [],
+                agentName: 'agentNewMoleculeFix',
+                prompt: fileReference,
+                rags: null,
+            }
+        };
+        return [fixStep];
+    }
 
     return [updateStatus];
 }
@@ -166,7 +190,7 @@ async function getGroupCreationSkill(agentName: string, skillReference: string):
     return module.skill;
 }
 
-async function writeFiles(output: Result): Promise<void> {
+async function writeFiles(output: Result): Promise<{ fileReference: string; compileOk: boolean }> {
 
     const firstLine = output.ts.trim().split('\n')[0];
     const tripleSlash = mls.common.tripleslash.parseXMLTripleSlash(firstLine);
@@ -177,6 +201,28 @@ async function writeFiles(output: Result): Promise<void> {
     if (fileInfo.project < 1) throw new Error(`[writeFiles] invalid fileReference: ${fileReference}`);
 
     const files = await mls.stor.getFiles({ ...fileInfo, loadContent: false });
+
+    // ── Write index.html ─────────────────────────────────────────────────────
+    const paramsHtml = { ...fileInfo, content: output.html, versionRef: new Date().toISOString(), extension: '.html' };
+
+    if (!files.html) {
+        const storFile = await createStorFile({
+            extension: '.html',
+            folder: fileInfo.folder,
+            level: fileInfo.level,
+            project: fileInfo.project,
+            shortName: fileInfo.shortName,
+            source: output.html,
+            status: 'new',
+        }, true, true, true);
+        const modelHtml = await storFile.getOrCreateModel();
+        if (modelHtml) mls.editor.forceModelUpdate(modelHtml.model);
+    } else {
+        const file = await mls.stor.addOrUpdateFile(paramsHtml);
+        if (!file) throw new Error('[writeFiles] failed to update index.html');
+        const modelHtml = await file.getOrCreateModel();
+        modelHtml.model.setValue(output.html);
+    }
 
     // ── Write index.ts ──────────────────────────────────────────────────────
     let modelTs: mls.editor.IModelTS;
@@ -204,27 +250,7 @@ async function writeFiles(output: Result): Promise<void> {
     const compileOk = await mls.l2.typescript.compileAndPostProcess(modelTs, true, false);
     console.info({ compileOk });
 
-    // ── Write index.html ─────────────────────────────────────────────────────
-    const paramsHtml = { ...fileInfo, content: output.html, versionRef: new Date().toISOString(), extension: '.html' };
-
-    if (!files.html) {
-        const storFile = await createStorFile({
-            extension: '.html',
-            folder: fileInfo.folder,
-            level: fileInfo.level,
-            project: fileInfo.project,
-            shortName: fileInfo.shortName,
-            source: output.html,
-            status: 'new',
-        }, true, true, true);
-        const modelHtml = await storFile.getOrCreateModel();
-        if (modelHtml) mls.editor.forceModelUpdate(modelHtml.model);
-    } else {
-        const file = await mls.stor.addOrUpdateFile(paramsHtml);
-        if (!file) throw new Error('[writeFiles] failed to update index.html');
-        const modelHtml = await file.getOrCreateModel();
-        modelHtml.model.setValue(output.html);
-    }
+    return { fileReference, compileOk };
 }
 
 // =========================================================================== SYSTEM PROMPT

@@ -191,6 +191,9 @@ async function processOutput(context: mls.msg.ExecutionContext, output: Result):
     const fixCount = Number.isNaN(parsed) ? 0 : parsed;
 
     if (compileResultOk) {
+        const nextStep = context.task?.iaCompressed?.longMemory['nextStep'];
+        if (nextStep === 'finish') return [];
+
         console.info('Fix ok, call playground agent');
         const group = context.task?.iaCompressed?.longMemory['group'];
 
