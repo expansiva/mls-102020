@@ -3,7 +3,6 @@
 import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
-import { addModuleGenome } from '/_102020_/l2/newModule/astModuleFront.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -94,6 +93,7 @@ export class PluginSelectLayout extends StateLitElement {
 
     @state() private _genomeLayoutValue: number | null = null;
     @state() private _saving: boolean = false;
+    @state() private _saveError: string = '';
 
     willUpdate(changed: Map<string, unknown>) {
         if (changed.has('pageFile')) {
@@ -329,32 +329,44 @@ export class PluginSelectLayout extends StateLitElement {
 
     private async _addLayoutToGenome(opt: ILayoutOption): Promise<void> {
         if (!this.pageFile || this._saving) return;
-        // @ts-ignore
-        const project: number = mls.actualProject;
-        // @ts-ignore
-        const modulePrefix: string = mls.actualModule ?? '';
-        if (!modulePrefix) return;
+        const project: number = mls.actualProject as number;
+        const modulePrefix: string = (mls.actualModule as string) ?? '';
+        if (!modulePrefix) { this._saveError = 'No module selected.'; return; }
 
         const folder = this.pageFile.folder ?? '';
         const genomeKey = folder.substring(modulePrefix.length + 1);
-        if (!genomeKey) return;
+        if (!genomeKey) { this._saveError = 'Could not derive genome key.'; return; }
 
         this._saving = true;
+        this._saveError = '';
         // @ts-ignore
         this.requestUpdate();
 
         try {
-            // @ts-ignore
+            // 1. Ensure the module.ts file is loaded into a Monaco model
             const storFiles: any = await mls.stor.getFiles({
                 project,
                 shortName: 'module',
                 folder: modulePrefix,
-                loadContent: true,
+                loadContent: false,
             });
-            const fileInfo: any = storFiles?.ts;
-            if (!fileInfo?.content) return;
+            if (!storFiles?.ts) throw new Error(`module.ts not found (project=${project} folder=${modulePrefix})`);
 
-            const newSource = addModuleGenome(fileInfo.content, {
+            // @ts-ignore
+            const libModel: any = await import('/_102027_/l2/libModel.js');
+            await libModel.createModel(storFiles.ts);
+
+            // 2. Get content from Monaco model
+            const modelKey: string = mls.editor.getKeyModel(project, 'module', modulePrefix, 2);
+            const tsModel: any = (mls.editor.models as any)[modelKey]?.ts;
+            if (!tsModel) throw new Error(`Monaco model not found (key=${modelKey})`);
+
+            const source: string = tsModel.model.getValue();
+
+            // 3. Apply AST transformation
+            // @ts-ignore
+            const astMod: any = await import('/_102020_/l2/newModule/astModuleFront.js');
+            const newSource = astMod.addModuleGenome(source, {
                 key: genomeKey,
                 device: this._deriveDevice(genomeKey),
                 layout: opt.genomeKey,
@@ -363,28 +375,19 @@ export class PluginSelectLayout extends StateLitElement {
                 layoutSkill: '',
             });
 
-            // @ts-ignore
-            const libModel: any = await import('/_102027_/l2/libModel.js');
-            await libModel.createModel(fileInfo);
-
-            // @ts-ignore
-            const modelKey: string = mls.editor.getKeyModel(project, 'module', modulePrefix, 2);
-            // @ts-ignore
-            const tsModel: any = (mls.editor.models as any)[modelKey]?.ts;
-            if (tsModel) {
-                tsModel.model.pushEditOperations(
-                    [],
-                    [{ range: tsModel.model.getFullModelRange(), text: newSource }],
-                    () => null,
-                );
-                // @ts-ignore
-                mls.editor.forceModelUpdate(tsModel.model);
-            }
+            // 4. Write back to Monaco model and trigger save
+            tsModel.model.pushEditOperations(
+                [],
+                [{ range: tsModel.model.getFullModelRange(), text: newSource }],
+                () => null,
+            );
+            mls.editor.forceModelUpdate(tsModel.model);
 
             this._genomeLayoutValue = opt.value;
             this._dispatchSelect(opt.value);
-        } catch (e) {
+        } catch (e: any) {
             console.error('[selectLayout] _addLayoutToGenome failed', e);
+            this._saveError = e?.message ?? 'Unknown error';
         } finally {
             this._saving = false;
             // @ts-ignore
