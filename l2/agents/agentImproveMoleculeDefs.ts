@@ -55,6 +55,10 @@ async function beforePromptStep(
 
     if (!args) throw new Error(`(${agent.agentName})[beforePromptStep] args invalid`);
 
+    const data = JSON.parse(args);
+    if (data.fileReference && context.task)
+        await appendLongTermMemory(context, { defsFileReference: data.fileReference });
+
     const continueIntent: mls.msg.AgentIntentPromptReady = {
         type: "prompt_ready",
         args,
@@ -85,7 +89,9 @@ async function afterPromptStep(
 
     const status: mls.msg.AIStepStatus = 'completed';
     const output: IResult = payload.result;
-    await updateExistingDefs(output.skillMd, output.fileReference, output.group);
+    const fileReference = context.task?.iaCompressed?.longMemory['defsFileReference'] || output.fileReference;
+    if (!fileReference) throw new Error(`[afterPromptStep] fileReference not found in longMemory or output`);
+    await updateExistingDefs(output.skillMd, fileReference, output.group);
 
     const updateStatus: mls.msg.AgentIntentUpdateStatus = {
         type: 'update-status',
@@ -205,7 +211,7 @@ export type Output =
     }
 
 interface IResult {
-    fileReference: string,
+    fileReference?: string, // deprecated: read from longMemory['defsFileReference'] instead
     group: string,
     skillMd: string,
 }
