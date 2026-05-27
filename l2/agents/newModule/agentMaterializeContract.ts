@@ -32,7 +32,7 @@ async function beforePromptImplicit(
   const orch = getMaterializeOrchestrator(info.path);
   info.item = await orch.getToExecuteOnlyMaterialize(info.id) as mls.defs.MaterializeEntry;  
 
-  const prompt = await getSkill(info);
+  const prompt = await getSkill(info, moduleName, device);
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: "add-message-ai",
@@ -69,7 +69,9 @@ async function beforePromptStep(
   const info = JSON.parse(args) as { path: string, item: mls.defs.MaterializeEntry, project?: number };
 
   info.project = mls.actualProject || 0;
-  const prompt = await getSkill(info);
+  const moduleName = context.task?.iaCompressed?.longMemory['moduleName'] as string;
+  const device = context.task?.iaCompressed?.longMemory['device'] as string || 'web';
+  const prompt = await getSkill(info, moduleName, device);
 
   const continueParallel: mls.msg.AgentIntentPromptReady = {
     type: "prompt_ready",
@@ -127,6 +129,7 @@ async function processOutput(context: mls.msg.ExecutionContext, output: any, age
 
   const orch = getMaterializeOrchestrator(output.path);
   await orch.createStorFile(output.outputPath, parseAISource(output.srcFile));
+  await orch.createStorFile(output.interfaceOutputPath, parseAISource(output.interfaceFile));
 
   const stepOri = context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
 
@@ -168,7 +171,12 @@ async function processOutput(context: mls.msg.ExecutionContext, output: any, age
 }
 
 
-async function getSkill(info: { path: string, item: mls.defs.MaterializeEntry, project?: number }): Promise<string> {
+async function getSkill(info: { path: string, item: mls.defs.MaterializeEntry, project?: number, [k: string]: unknown }, moduleName: string, device: string): Promise<string> {
+
+  const project = info.project || 0;
+  const fileName = info.item.outputPath.split('/').pop() || '';
+  const pageName = fileName.endsWith('.ts') ? fileName.slice(0, -3) : fileName;
+  info.interfaceOutputPath = `/_${project}_/l2/${moduleName}/${device}/contracts/${pageName}.ts`;
 
   const orch = getMaterializeOrchestrator(info.path);
   const user = await orch.getVar(info.path, info.item.specVar);
@@ -216,12 +224,14 @@ export type Output =
   {
     type: "flexible";
     result: {
-      path: string; // same value by "User info";
-      id: string; // same value by "User info";
-      outputPath: string, // same value by "User info";
-      srcFile: string
+      path: string;            // same value by "User info"
+      id: string;              // same value by "User info"
+      outputPath: string;      // same value by "User info"
+      interfaceOutputPath: string; // same value by "User info"
+      srcFile: string;
+      interfaceFile: string;
     }
   }
 
-//#endregion 
+//#endregion
 

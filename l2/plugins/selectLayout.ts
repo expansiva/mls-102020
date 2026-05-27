@@ -312,14 +312,16 @@ export class PluginSelectLayout extends StateLitElement {
 
         if (name === 'tabs') return html`
             <svg viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
-                <rect x="4" y="4" width="16" height="10" rx="2 2 0 0" fill="${header}" class="dark:hidden"/>
-                <rect x="4" y="4" width="16" height="10" rx="2 2 0 0" fill="${darkHeader}" class="hidden dark:block"/>
-                <rect x="22" y="4" width="16" height="10" rx="2 2 0 0" fill="${content}" class="dark:hidden"/>
-                <rect x="22" y="4" width="16" height="10" rx="2 2 0 0" fill="${darkContent}" class="hidden dark:block"/>
-                <rect x="40" y="4" width="16" height="10" rx="2 2 0 0" fill="${content}" class="dark:hidden"/>
-                <rect x="40" y="4" width="16" height="10" rx="2 2 0 0" fill="${darkContent}" class="hidden dark:block"/>
-                <rect x="4" y="14" width="72" height="42" rx="0 2 2 2" fill="${content}" class="dark:hidden"/>
-                <rect x="4" y="14" width="72" height="42" rx="0 2 2 2" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="4" y="4" width="16" height="12" rx="2" fill="${header}" class="dark:hidden"/>
+                <rect x="4" y="4" width="16" height="12" rx="2" fill="${darkHeader}" class="hidden dark:block"/>
+                <rect x="22" y="4" width="16" height="12" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="22" y="4" width="16" height="12" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="40" y="4" width="16" height="12" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="40" y="4" width="16" height="12" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="4" y="12" width="72" height="44" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="12" width="72" height="44" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="4" y="12" width="16" height="4" rx="0" fill="${header}" class="dark:hidden"/>
+                <rect x="4" y="12" width="16" height="4" rx="0" fill="${darkHeader}" class="hidden dark:block"/>
             </svg>`;
 
         if (name === 'sidebar') return html`
@@ -368,22 +370,18 @@ export class PluginSelectLayout extends StateLitElement {
             if (!genomeKey) return;
 
             const parts = genomeKey.split('/');
-            const device = parts[1] ?? 'desktop';
             const currentPage = parts[2] ?? '';
             const dsDigit = currentPage.replace(/^page\d/, '');
             const newPage = `page${opt.value}${dsDigit}`;
             const newGenomeKey = [...parts.slice(0, 2), newPage].join('/');
 
-            const dsKeys = Object.keys(this._designSystems).map(Number).sort((a, b) => a - b);
-            const dsKey = dsKeys[0];
-            const ds = dsKey !== undefined ? this._designSystems[dsKey] : null;
+            const actualDsKey = getAuraState().actualDesignSystem;
+            const ds = actualDsKey !== null ? this._designSystems[actualDsKey] : null;
 
             const genomeValue = {
                 designSystem: ds?.name ?? 'default',
-                designSystemSkill: ds?.skill ?? '',
-                device,
+                device: getAuraState().actualDevice ?? 'web/desktop',
                 layout: opt.name,
-                layoutSkill: opt.skill,
             };
 
             console.log('[selectLayout] genome key   :', newGenomeKey);

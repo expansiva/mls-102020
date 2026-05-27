@@ -10,7 +10,8 @@ import { executeBeforePrompt, loadAgent } from '/_102027_/l2/aiAgentOrchestratio
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
-import { setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
+import { getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
+import { ITask, setTask, getTask, getTasksByScope, hasRunning, clearScope, subscribeTaskManager } from '/_102020_/l2/taskManager.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -86,13 +87,6 @@ interface IProject {
     doSelect: boolean;
 }
 
-type TaskStatus = 'running' | 'done' | 'error';
-
-interface IPendingTask {
-    status: TaskStatus;
-    startedAt: number;
-    message?: string;
-}
 
 // ─── Component ───────────────────────────────────────────────────────
 
@@ -108,10 +102,20 @@ export class PluginSelectLanguage extends StateLitElement {
     @state() private _addSearch: string = '';
     @state() private _addSelected: string[] = [];
     @state() private _dropdownOpen: boolean = false;
-    @state() private _pendingTasks = new Map<string, IPendingTask>();
     @state() config: mls.l5_common.ProjectConfig | undefined;
 
+    private _unsubTasks: (() => void) | undefined;
     private threadCache = new Map<string, Promise<any>>();
+
+    connectedCallback() {
+        super.connectedCallback();
+        this._unsubTasks = subscribeTaskManager(() => this.requestUpdate());
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        this._unsubTasks?.();
+    }
 
     willUpdate(changed: Map<string, unknown>) {
         if (changed.has('selectedProject')) {
@@ -173,15 +177,14 @@ export class PluginSelectLanguage extends StateLitElement {
     private async _executeRemoveLanguage() {
         const lang = this._selectedLang;
         if (!lang || !this.selectedProject) return;
-        const hasRunning = [...this._pendingTasks.values()].some(t => t.status === 'running');
-        if (hasRunning) return;
+        if (hasRunning('language:remove')) return;
 
+        clearScope('language:remove');
         const langObj = (allLanguages as ICollabLanguage[]).find(l => l.code === lang);
-        const taskKey = `remove:${lang}`;
+        const taskKey = `language:remove:${lang}`;
         const prompt = JSON.stringify([{ languages: [{ code: lang, name: langObj?.name ?? lang }], projectId: this.selectedProject.project }]);
 
-        this._pendingTasks = new Map(this._pendingTasks).set(taskKey, { status: 'running', startedAt: Date.now() });
-        this.requestUpdate();
+        setTask(taskKey, { status: 'running', startedAt: Date.now() });
 
         try {
             await this.executeAgent('agentRemoveLanguage', prompt);
@@ -191,14 +194,19 @@ export class PluginSelectLanguage extends StateLitElement {
                 await updateConfigProject(this.selectedProject.project, updated);
                 this.config = updated as any;
                 this._languages = updated.languages.map((i: any) => i.language);
+                const currentLang = getAuraState().actualLanguage;
+                if (currentLang && !this._languages.includes(currentLang)) {
+                    const firstValid = this._languages[0] ?? null;
+                    setAuraState('actualLanguage', firstValid);
+                    saveAuraProject();
+                }
                 this._dispatchConfig();
                 this._dispatchSelect(0);
             }
-            this._pendingTasks = new Map(this._pendingTasks).set(taskKey, { ...this._pendingTasks.get(taskKey)!, status: 'done' });
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
         } catch (e: any) {
-            this._pendingTasks = new Map(this._pendingTasks).set(taskKey, { ...this._pendingTasks.get(taskKey)!, status: 'error', message: e?.message });
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: e?.message });
         }
-        this.requestUpdate();
     }
 
     private async executeAgent(agentName: string, prompt: string) {
@@ -229,21 +237,20 @@ export class PluginSelectLanguage extends StateLitElement {
 
     private async _executeAddLanguage() {
         if (this._addSelected.length === 0) return;
-        const hasRunning = [...this._pendingTasks.values()].some(t => t.status === 'running');
-        if (hasRunning) return;
+        if (hasRunning('language:add')) return;
 
+        clearScope('language:add');
         const langs = [...this._addSelected];
-        const taskKey = langs.join('+');
+        const taskKey = `language:add:${langs.join('+')}`;
         const langObjs = langs.map(code => {
             const obj = (allLanguages as ICollabLanguage[]).find(l => l.code === code);
             return { code, name: obj?.name ?? code };
         });
         const prompt = JSON.stringify([{ languages: langObjs, projectId: this.selectedProject?.project ?? 0 }]);
 
-        this._pendingTasks = new Map(this._pendingTasks).set(taskKey, { status: 'running', startedAt: Date.now() });
+        setTask(taskKey, { status: 'running', startedAt: Date.now() });
         this._addSelected = [];
         this._addSearch = '';
-        this.requestUpdate();
 
         try {
             await this.executeAgent('agentAddLanguage', prompt);
@@ -260,12 +267,12 @@ export class PluginSelectLanguage extends StateLitElement {
                 this.config = updated as any;
                 this._languages = updated.languages.map((i: any) => i.language);
                 this._dispatchConfig();
+                this._dispatchSelect(0);
             }
-            this._pendingTasks = new Map(this._pendingTasks).set(taskKey, { ...this._pendingTasks.get(taskKey)!, status: 'done' });
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
         } catch (e: any) {
-            this._pendingTasks = new Map(this._pendingTasks).set(taskKey, { ...this._pendingTasks.get(taskKey)!, status: 'error', message: e?.message });
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: e?.message });
         }
-        this.requestUpdate();
     }
 
     // ─── Scenario renders ─────────────────────────────────────────────
@@ -320,9 +327,9 @@ export class PluginSelectLanguage extends StateLitElement {
                     ">${lang}</span>
                 </div>
                 ${(() => {
-                    const taskKey = `remove:${lang}`;
-                    const removing = this._pendingTasks.get(taskKey)?.status === 'running';
-                    const hasRunning = [...this._pendingTasks.values()].some(t => t.status === 'running');
+                    const taskKey = `language:remove:${lang}`;
+                    const removing = getTask(taskKey)?.status === 'running';
+                    const isRunning = hasRunning('language:remove');
                     return html`
                         <fieldset class="rounded-lg border border-red-200 dark:border-red-800/40 px-3 py-2.5 flex flex-col gap-2">
                             <legend class="text-sm font-medium text-red-500 dark:text-red-400 px-1">${this.msg.removeTitle}</legend>
@@ -330,11 +337,11 @@ export class PluginSelectLanguage extends StateLitElement {
                             <button
                                 class="
                                     self-start flex items-center gap-1.5 text-sm px-3 py-1.5 rounded transition-colors
-                                    ${hasRunning
+                                    ${isRunning
                                         ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed'
                                         : 'bg-red-500 dark:bg-red-600 text-white hover:bg-red-600 dark:hover:bg-red-500 cursor-pointer'}
                                 "
-                                ?disabled=${hasRunning}
+                                ?disabled=${isRunning}
                                 @click=${() => this._executeRemoveLanguage()}
                             >
                                 ${removing ? this._renderSpinner('border-gray-400 dark:border-gray-500') : ''}
@@ -408,7 +415,8 @@ export class PluginSelectLanguage extends StateLitElement {
     }
 
     private _renderCustom() {
-        const hasRunning = [...this._pendingTasks.values()].some(t => t.status === 'running');
+        const isRunning = hasRunning('language:add');
+        const addTasks = getTasksByScope('language:add');
         const q = this._addSearch.toLowerCase();
         const alreadyAdded = new Set(this._languages);
         const selectedSet = new Set(this._addSelected);
@@ -512,18 +520,18 @@ export class PluginSelectLanguage extends StateLitElement {
                     class="
                         self-end text-sm px-3 py-1.5 rounded
                         transition-colors
-                        ${this._addSelected.length === 0 || hasRunning
+                        ${this._addSelected.length === 0 || isRunning
                             ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed'
                             : 'bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 cursor-pointer'}
                     "
-                    ?disabled=${this._addSelected.length === 0 || hasRunning}
+                    ?disabled=${this._addSelected.length === 0 || isRunning}
                     @click=${() => this._executeAddLanguage()}
                 >${this.msg.add}</button>
 
-                ${this._pendingTasks.size > 0 ? html`
+                ${addTasks.size > 0 ? html`
                     <div class="flex flex-col gap-1">
-                        ${[...this._pendingTasks.entries()].map(([taskKey, task]) => {
-                            const codes = taskKey.split('+');
+                        ${[...addTasks.entries()].map(([taskKey, task]) => {
+                            const codes = taskKey.replace('language:add:', '').split('+');
                             return html`
                                 <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-md
                                     ${task.status === 'running' ? 'bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-700'
