@@ -347,7 +347,13 @@ export class ServiceExploreProjects102020 extends ServiceBase {
 
     private _onLangConfig(e: CustomEvent) {
         this._langConfig = { key: 'language', min: e.detail.min, max: e.detail.max, labels: e.detail.labels };
-        if (this._langValue === null) this._langValue = 0;
+        const actualLanguage = getAuraState().actualLanguage;
+        if (actualLanguage) {
+            const entry = Object.entries(e.detail.labels as Record<number, string>).find(([, v]) => v === actualLanguage);
+            this._langValue = entry ? Number(entry[0]) : 0;
+        } else {
+            if (this._langValue === null) this._langValue = 0;
+        }
         this.requestUpdate();
     }
 
