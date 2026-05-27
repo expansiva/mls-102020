@@ -10,7 +10,7 @@ import { executeBeforePrompt, loadAgent } from '/_102027_/l2/aiAgentOrchestratio
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
-import { setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
+import { getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -191,6 +191,12 @@ export class PluginSelectLanguage extends StateLitElement {
                 await updateConfigProject(this.selectedProject.project, updated);
                 this.config = updated as any;
                 this._languages = updated.languages.map((i: any) => i.language);
+                const currentLang = getAuraState().actualLanguage;
+                if (currentLang && !this._languages.includes(currentLang)) {
+                    const firstValid = this._languages[0] ?? null;
+                    setAuraState('actualLanguage', firstValid);
+                    saveAuraProject();
+                }
                 this._dispatchConfig();
                 this._dispatchSelect(0);
             }
