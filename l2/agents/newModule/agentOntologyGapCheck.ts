@@ -112,7 +112,7 @@ async function afterPromptStep(
         console.info('antes', currentSrc);
         console.info('add', result.newEntities);
         const moduleToBe = getVariableJson<ModuleToBe>(currentSrc, 'ontology');
-    
+
         moduleToBe.ontology = moduleToBe.ontology ?? { entities: {} };
         moduleToBe.ontology.entities = { ...moduleToBe.ontology.entities, ...result.newEntities };
         ontologyContent = updateVariableJson(currentSrc, 'ontology', moduleToBe);
@@ -130,14 +130,15 @@ async function afterPromptStep(
         threadId: context.message.threadId,
         taskId: context.task?.PK || '',
         parentStepId: stepOri || parentStep.stepId,
-        step: {
+        step:
+        {
             type: 'agent',
             stepId: 0,
             interaction: null,
             status: 'waiting_human_input',
             nextSteps: [],
-            agentName: 'agentInterfaceOntology',
-            prompt: ontologyContent,
+            agentName: 'agentCreatePersistence',
+            prompt: 'Create a persistence file',
             rags: [],
         }
     };
