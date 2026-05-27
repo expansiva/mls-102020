@@ -11,7 +11,7 @@ import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import { getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
-import { ITask, setTask, getTask, getTasksByScope, hasRunning, subscribeTaskManager } from '/_102020_/l2/taskManager.js';
+import { ITask, setTask, getTask, getTasksByScope, hasRunning, clearScope, subscribeTaskManager } from '/_102020_/l2/taskManager.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -179,6 +179,7 @@ export class PluginSelectLanguage extends StateLitElement {
         if (!lang || !this.selectedProject) return;
         if (hasRunning('language:remove')) return;
 
+        clearScope('language:remove');
         const langObj = (allLanguages as ICollabLanguage[]).find(l => l.code === lang);
         const taskKey = `language:remove:${lang}`;
         const prompt = JSON.stringify([{ languages: [{ code: lang, name: langObj?.name ?? lang }], projectId: this.selectedProject.project }]);
@@ -238,6 +239,7 @@ export class PluginSelectLanguage extends StateLitElement {
         if (this._addSelected.length === 0) return;
         if (hasRunning('language:add')) return;
 
+        clearScope('language:add');
         const langs = [...this._addSelected];
         const taskKey = `language:add:${langs.join('+')}`;
         const langObjs = langs.map(code => {
@@ -265,6 +267,7 @@ export class PluginSelectLanguage extends StateLitElement {
                 this.config = updated as any;
                 this._languages = updated.languages.map((i: any) => i.language);
                 this._dispatchConfig();
+                this._dispatchSelect(0);
             }
             setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
         } catch (e: any) {

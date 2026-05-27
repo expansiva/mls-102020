@@ -43,6 +43,12 @@ export function hasRunning(scope: string): boolean {
 // ─── Subscription ────────────────────────────────────────────────────
 // Returns an unsubscribe function. Call it in disconnectedCallback.
 
+export function clearScope(scope: string): void {
+    const prefix = `${scope}:`;
+    [..._store.keys()].forEach(key => { if (key.startsWith(prefix)) _store.delete(key); });
+    _listeners.forEach(fn => fn());
+}
+
 export function subscribeTaskManager(listener: () => void): () => void {
     _listeners.add(listener);
     return () => _listeners.delete(listener);
