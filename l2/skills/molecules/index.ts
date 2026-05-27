@@ -150,8 +150,8 @@ export const skills = [
     {
         name: 'groupViewData',
         description: 'Display a collection of data with adaptive layout. The component decides the best presentation based on context (viewport, configuration). Use when displaying multiple records with defined fields and rich content.',
-        skillReference: '/_102020_/l2/skills/molecules/groupViewData',
-        skillUsageReference: ''
+        skillReference: '/_102020_/l2/skills/molecules/groupViewData/creation',
+        skillUsageReference: '/_102020_/l2/skills/molecules/groupViewData/usage'
     },
     {
         name: 'groupViewTable',
