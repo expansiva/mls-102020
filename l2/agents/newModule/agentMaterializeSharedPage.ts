@@ -182,7 +182,7 @@ async function getSkill(info: { path: string, item: mls.defs.MaterializeEntry, p
   const fileName = info.item.outputPath.startsWith('/') ? info.item.outputPath.slice(1) : info.item.outputPath;
   let sharedPathNorm = (sharedPath.startsWith('/') ? sharedPath.slice(1) : sharedPath);
   sharedPathNorm = sharedPathNorm.endsWith('/') ? sharedPathNorm.slice(0, -1) : sharedPathNorm;
-  info.item.outputPath = `/_${project}_/l2/${moduleName}/${sharedPathNorm}/${fileName}`;
+  info.item.outputPath = `${sharedPathNorm}/${fileName}`;
 
   const orch = getMaterializeOrchestrator(info.path);
   const user = await orch.getVar(info.path, info.item.specVar);

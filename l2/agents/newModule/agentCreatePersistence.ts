@@ -321,7 +321,7 @@ export const moduleGenome: Record<string, IGenomeConfig> = {
   
 export const skills: IPaths = {
   web: {
-    sharedPath: '/_102020_/l2/${moduleName}/web/shared',
+    sharedPath: '/_${mls.actualProject}_/l2/${moduleName}/web/shared',
     sharedSkill: '/_102020_/l2/agents/newModule/skills/genPageShared.ts'
   }
 }

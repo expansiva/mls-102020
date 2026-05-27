@@ -33,7 +33,7 @@ async function beforePromptImplicit(
   info.item = await orch.getToExecuteOnlyMaterialize(info.id) as mls.defs.MaterializeEntry;  
 
   const prompt = await getSkill(info, moduleName, device);
-
+  console.info(prompt);
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: "add-message-ai",
     request: {
@@ -72,7 +72,8 @@ async function beforePromptStep(
   const moduleName = context.task?.iaCompressed?.longMemory['moduleName'] as string;
   const device = context.task?.iaCompressed?.longMemory['device'] as string || 'web';
   const prompt = await getSkill(info, moduleName, device);
-
+  console.info(prompt);
+  
   const continueParallel: mls.msg.AgentIntentPromptReady = {
     type: "prompt_ready",
     args,
@@ -127,9 +128,12 @@ async function processOutput(context: mls.msg.ExecutionContext, output: any, age
 
   const onlyThisStep = (context.task?.iaCompressed?.longMemory['onlyStep'] as string || 'false') === 'true';
 
+  const outputPath = output.outputPath.startsWith('/') ? output.outputPath.slice(1) : output.outputPath; 
+  const interfaceOutputPath = output.interfaceOutputPath.startsWith('/') ? output.interfaceOutputPath.slice(1) : output.interfaceOutputPath; 
+
   const orch = getMaterializeOrchestrator(output.path);
-  await orch.createStorFile(output.outputPath, parseAISource(output.srcFile));
-  await orch.createStorFile(output.interfaceOutputPath, parseAISource(output.interfaceFile));
+  await orch.createStorFile(outputPath, parseAISource(output.srcFile));
+  await orch.createStorFile(interfaceOutputPath, parseAISource(output.interfaceFile));
 
   const stepOri = context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
 

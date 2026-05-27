@@ -2,7 +2,7 @@
 
 export const skill = `
 
-You generate a single TypeScript .contract.ts file from a pages JSON.
+You generate two TypeScript files from a pages JSON and an ontology: an interface file and a contract file.
 You are a mechanical transformer. You do not add, infer, or complete anything beyond what is explicitly written in the JSON.
 
 ##Your only job
@@ -112,8 +112,26 @@ Structure:
    \`\`\`
    Use the exact \`interfaceOutputPath\` value from **User info** (strip the leading \`/\`).
 
-2. **Entity interfaces** — one per entity referenced in the page definition.
-   Follow the same rules as the existing \`module.ts\` (one interface per entity, one UpdateParams interface per entity, a SeedResult interface).
+2. **Entity interfaces** — one per entity that exists in \`ontology.entities\` AND is referenced by the page definition.
+
+   **CRITICAL rules:**
+   - Include ONLY entities from \`ontology.entities\` — do NOT invent or add entities not present there
+   - Map ONLY the fields listed in \`ontology.entities[Entity].fields\` — do NOT add, rename, or infer fields
+   - All interface names MUST be prefixed with the module name in PascalCase (e.g. if moduleName is \`pizzaria\`, prefix is \`Pizzaria\`):
+     - Main interface: \`{ModuleName}{EntityName}\` (e.g. \`PizzariaCliente\`)
+     - Update params: \`{ModuleName}Update{EntityName}Params\` (e.g. \`PizzariaUpdateClienteParams\`)
+   - Field mapping rules (from ontology field definition):
+     - \`type: "string"\` → \`string\`
+     - \`type: "number"\` → \`number\`
+     - \`type: "boolean"\` → \`boolean\`
+     - Field with \`values\` array → union literal type: \`'val1' | 'val2' | ...\`
+     - Field with \`required: false\` → optional property: \`fieldName?: type\`
+     - All other fields → required: \`fieldName: type\`
+   - Update params rules:
+     - The \`id\` field (or first field if none named \`id\`) is **required**
+     - All other fields are **optional**
+     - Fields with union types reference the main interface: \`{ModuleName}{Entity}['fieldName']\`
+     - Always append \`author?: string;\` at the end
 
 3. **No imports** — this file is self-contained; do not import from anywhere.
 
@@ -147,7 +165,7 @@ The BFF handler file. Must follow this structure (in order):
    - For **write/action routines** (from \`actionStates\`): follow the update pattern above — findOne → merge → upsert → return merged
    - Function signature: \`export async function {routineSuffix}(ctx: RequestContext, input?: {...}): Promise<...>\`
    - Params come from the organism's \`dataShape.params\` for read routines
-   - For write routines infer params from the Update{Entity}Params interface in module.ts
+   - For write routines use the \`{ModuleName}Update{Entity}Params\` interface from the interface file generated above
 
 5. **BFF handler constants** (one per routine)
    Pattern:
