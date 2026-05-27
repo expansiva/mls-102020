@@ -122,24 +122,24 @@ async function afterPromptStep(
 
 async function getPaths(languages: { code: string, name: string }[], project: number): Promise<{ languages: string[], fileReference: string }[]> {
     if (!project) throw new Error(`[getPaths] invalid project`);
-    const module = await import(`/_${project}_/l2/project.js`);
-    if (!module?.projectConfig?.modules) throw new Error(`[getPaths] no modules configured in project`);
-    const modules: { name: string, path: string }[] = module.projectConfig.modules;
+    const moduleProject = await import(`/_${project}_/l2/project.js`);
 
+    if (!moduleProject?.projectConfig?.modules) throw new Error(`[getPaths] no modules configured in project`);
+    const modules: { name: string, path: string }[] = moduleProject.projectConfig.modules;
     const result: { languages: string[], fileReference: string }[] = [];
-    const platforms = ['web', 'ios', 'android'];
 
     for (const mod of modules) {
-        for (const platform of platforms) {
-            const sharedFolder = `${mod.path}/${platform}/shared`;
 
-            // @ts-ignore
+        const moduleConfig = await import(`/_${project}_/l2/${mod}/module.js`);
+        if (!moduleConfig?.skills) continue;
+
+        if (moduleConfig.web) {
+            const sharedFolder = `${mod.path}/${moduleConfig.web.sharedPath}`;
             const sharedFiles = Object.values(mls.stor.files).filter((f: any) =>
                 f.project === project &&
                 f.folder === sharedFolder &&
                 f.extension === '.ts'
             );
-
             for (const storFile of sharedFiles as any[]) {
                 const model = await storFile.getOrCreateModel();
                 if (!model) continue;
@@ -150,8 +150,6 @@ async function getPaths(languages: { code: string, name: string }[], project: nu
                     .map(lang => lang.code);
 
                 if (missingLangs.length === 0) continue;
-
-                // @ts-ignore
                 const fileReference = mls.stor.convertFileToFileReference(storFile);
                 result.push({ languages: missingLangs, fileReference });
             }
