@@ -74,7 +74,7 @@ import {
   consumeExpectedNavigationLoad,
   runBlockingUiAction,
 } from '/_102029_/l2/interactionRuntime.js';
-import type { {ModuleName}EntityA, {ModuleName}EntityB } from '/_{projectId}_/l1/{moduleName}/module.js';
+import type { {ModuleName}EntityA, {ModuleName}EntityB } from '/_{projectId}_/l2/{moduleName}/web/contracts/{pageName}.js';
 \`\`\`
 - Import only entity interfaces that are actually referenced in the class body
 - Determine which entities are used by reading \`organism.dataShape.itemFields[].entity\` and \`organism.dataShape.fields[].entity\` across all organisms

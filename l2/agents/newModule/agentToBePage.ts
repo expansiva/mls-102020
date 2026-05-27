@@ -191,7 +191,7 @@ function addPipeLine(src: string, moduleName: string, shortName: string, defsPat
     let newSrc = generateContract(src, defsPath, moduleName);
 
     //shared
-    newSrc = generateShared(newSrc, defsPath, moduleName);
+    newSrc = generateShared(newSrc, defsPath, moduleName, shortName);
 
     // page
     newSrc = generatePage(newSrc, defsPath, moduleName, shortName);
@@ -232,7 +232,6 @@ async function addRouters(tobe: ToBePages, moduleName: string, shortName: string
 }
 
 
-
 function generateContract(src: string, defsPath: string, moduleName: string) {
     return updateVariableText(src, 'contractSpec', `
 ## Pages spec
@@ -242,21 +241,21 @@ function generateContract(src: string, defsPath: string, moduleName: string) {
 
 ## Ontology
 \\\`\\\`\\\`JSON
-    [[(_${mls.actualProject}_/l1/${moduleName}/module.ts)]]
+    [[(_${mls.actualProject}_/l2/${moduleName}/module.defs.ts)]]
 \\\`\\\`\\\`
 `)
 }
 
-function generateShared(src: string, defsPath: string, moduleName: string) {
+function generateShared(src: string, defsPath: string, moduleName: string, shortName:string) {
     return updateVariableText(src, 'sharedSpec', `
 ## Pages spec
 \\\`\\\`\\\`JSON
     [[(${defsPath}).definitionPage]]
 \\\`\\\`\\\`
 
-## Ontology
+## Contracts
 \\\`\\\`\\\`JSON
-    [[(_${mls.actualProject}_/l1/${moduleName}/module.ts)]]
+    [[(_${mls.actualProject}_/l2/${moduleName}/web/contracts/${shortName}.ts)]]
 \\\`\\\`\\\`
 
 `)
@@ -282,7 +281,7 @@ function generatePipeLine(moduleName: string, shortName: string) {
         {
             "id": "contract",
             "specVar": "contractSpec",
-            "outputPath": "/l1/" + moduleName + "/layer_2_controllers/" + shortName + ".ts",
+            "outputPath": `_${mls.actualProject}_/l1/${moduleName}/layer_2_controllers/${shortName}.ts`,
             "skillPath": "_102020_/l2/agents/newModule/skills/genContract.ts",
             "agent": "agentMaterializeContract",
             "dependsOn": [],
