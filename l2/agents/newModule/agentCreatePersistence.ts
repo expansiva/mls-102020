@@ -122,9 +122,250 @@ async function processOutput(context: mls.msg.ExecutionContext, output: any): Pr
   let moduleName = context.task?.iaCompressed?.longMemory['moduleName'];
   if (!moduleName) throw new Error('[agentCreatePersistence]: Not found moduleName');
 
+  //Persistence.ts
   await saveFile(`_${mls.actualProject}_/l1/${moduleName}/layer_1_external/persistence.ts`, output.srcFile)
 
+  //Config.json
+  await generateConfig(moduleName);
+
+  //Html
+  await generateHtml(moduleName);
+
+  //Info Module
+  await generateInfoModule(moduleName);
+
+  //Router
+  await generateRouter(moduleName);
+
   return [];
+}
+
+async function generateConfig(moduleName: string) {
+
+
+  const src = `{
+  "defaultProjectId": "${mls.actualProject}",
+  "shellTemplates": {
+    "spa": "./_102033_/l2/shared/spa/index.html",
+    "pwa": "./_102033_/l2/shared/pwa/index.html"
+  },
+  "publication": {
+    "defaultTarget": "local",
+    "targets": {
+      "local": {
+        "assetBaseUrl": "",
+        "serveStaticFromServer": true,
+        "minify": false,
+        "sourcemap": true
+      },
+      "cdncloudflare": {
+        "assetBaseUrl": "https://cdn.example.com",
+        "serveStaticFromServer": false,
+        "minify": true,
+        "sourcemap": false
+      }
+    }
+  },
+  "workspaceDependencies": {
+    "102029": {
+      "repo": "https://github.com/expansiva/mls-102029.git",
+      "commit": "df672f8fefc28293a9beab9a320604ecd841b5a6"
+    },
+    "102033": {
+      "repo": "https://github.com/expansiva/mls-102033.git",
+      "commit": "33134618aeff3c5d26be74d448d8fdffd083436e"
+    },
+    "102034": {
+      "repo": "https://github.com/expansiva/mls-102034.git",
+      "commit": "752302fa5a64619d73b4492356f57682736d0820"
+    },
+    "102020": {
+      "repo": "https://github.com/expansiva/mls-102020.git",
+      "commit": "721b2375c1a06ebc6e076e4a9c376176e8104779"
+    },
+    "102027": {
+      "repo": "https://github.com/expansiva/mls-102027.git",
+      "commit": "d6b164152882a57ea0b35b8db09ded3edec373fd"
+    }
+  },
+  "projects": {
+    "${mls.actualProject}": {
+      "root": ".",
+      "type": "client",
+      "persistenceModules": [
+        {
+          "moduleId": "${moduleName}",
+          "persistenceEntrypoint": "./_102035_/l1/${moduleName}/layer_1_external/persistence.js"
+        }
+      ],
+      "modules": [
+        {
+          "moduleId": "${moduleName}",
+          "basePath": "/${moduleName}",
+          "shellMode": "spa",
+          "backendRouter": "./_102035_/l1/${moduleName}/layer_2_controllers/router.js"
+        }
+      ]
+    },
+    "102033": {
+      "root": "./_102033_",
+      "type": "master frontend"
+    },
+    "102034": {
+      "root": "./_102034_",
+      "type": "master backend",
+      "modules": [
+        {
+          "moduleId": "mdm",
+          "basePath": "/mdm",
+          "shellMode": "spa",
+          "backendRouter": "./_102034_/l1/mdm/layer_2_controllers/router.js"
+        },
+        {
+          "moduleId": "monitor",
+          "basePath": "/monitor",
+          "shellMode": "spa",
+          "backendRouter": "./_102034_/l1/monitor/layer_2_controllers/router.js"
+        },
+        {
+          "moduleId": "audit",
+          "basePath": "/audit",
+          "shellMode": "spa",
+          "backendRouter": "./_102034_/l1/audit/layer_2_controllers/router.js"
+        }
+      ],
+      "persistenceModules": [
+        {
+          "moduleId": "platform",
+          "persistenceEntrypoint": "./_102034_/l1/server/persistence.js"
+        },
+        {
+          "moduleId": "mdm",
+          "persistenceEntrypoint": "./_102034_/l1/mdm/persistence.js"
+        },
+        {
+          "moduleId": "monitor",
+          "persistenceEntrypoint": "./_102034_/l1/monitor/persistence.js"
+        }
+      ]
+    },
+    "102029": {
+      "root": "./_102029_",
+      "type": "lib"
+    },
+    "102020": {
+      "root": "./_102020_",
+      "type": "enhancement"
+    },
+    "102027": {
+      "root": "./_102027_",
+      "type": "enhancement"
+    }
+  }
+}
+`
+  await saveFile(`_${mls.actualProject}_/l0/config.json`, src, false);
+
+}
+
+async function generateHtml(moduleName: string) {
+
+
+  const srcHtml = `<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Collab Test ${moduleName}</title>
+    <link rel="manifest" href="/${moduleName}/assets/manifest.json" />
+  </head>
+  <body>
+    <collab-app-shell></collab-app-shell>
+    <script type="module" src="/_${mls.actualProject}_/l2/${moduleName}/index.js"></script>
+  </body>
+</html>
+`
+
+  const srcTS = `/// <mls fileReference="_${mls.actualProject}_/l2/${moduleName}/index.ts" enhancement="_blank" />
+import { bootstrapCollabApp } from '/_102033_/l2/core/bootstrap.js';
+
+void bootstrapCollabApp({
+  projectId: '${mls.actualProject}',
+  appId: '${moduleName}',
+  title: 'Collab Test · ${moduleName}',
+  shellMode: 'spa',
+  navigation: [
+    { label: 'Monitor', href: '/monitor' },
+  ],
+  pages: [],
+});
+`
+  await saveFile(`_${mls.actualProject}_/l2/${moduleName}/index.html`, srcHtml, false);
+  await saveFile(`_${mls.actualProject}_/l2/${moduleName}/index.ts`, srcTS);
+
+}
+
+async function generateInfoModule(moduleName: string) {
+
+
+  const src = `/// <mls fileReference="_${mls.actualProject}_/l2/${moduleName}/module.ts" enhancement="_blank" />
+import type { AuraModuleFrontendDefinition, IPaths, IGenomeConfig } from '/_102029_/l2/contracts/bootstrap.js';
+
+export const moduleGenome: Record<string, IGenomeConfig> = {
+  'web/desktop/page11': {
+    designSystem: 'default',
+    device: 'desktop',
+    layout: 'standard',
+  }
+} as const;
+  
+export const skills: IPaths = {
+  web: {
+    sharedPath: '/_102020_/l2/${moduleName}/web/shared',
+    sharedSkill: '/_102020_/l2/agents/newModule/skills/genPageShared.ts'
+  }
+}
+
+export const moduleStates = {
+} as const;
+
+export const moduleShellPreferences = {
+  layout: {
+    asideMode: {
+      desktop: 'inline',
+      mobile: 'fullscreen',
+    },
+  },
+} as const;
+
+export const moduleFrontendDefinition: AuraModuleFrontendDefinition = {
+  pageTitle: '${moduleName}',
+  device: 'desktop',
+  navigation: [
+  ],
+  routes: [
+  ],
+};
+`
+
+  await saveFile(`_${mls.actualProject}_/l2/${moduleName}/module.ts`, src);
+
+}
+
+async function generateRouter(moduleName: string) {
+
+
+  const src = `/// <mls fileReference="_${mls.actualProject}_/l1/${moduleName}/layer_2_controllers/router.ts" enhancement="_blank" />
+import type { BffHandler } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+
+
+export function createPizzariaRouter(): Map<string, BffHandler> {
+  return new Map<string, BffHandler>([]);
+}
+`
+
+  await saveFile(`_${mls.actualProject}_/l1/${moduleName}/layer_2_controllers/router.ts`, src);
+
 }
 
 async function saveFile(ref: string, src: string, needCreateModel: boolean = true) {

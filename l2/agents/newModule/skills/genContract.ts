@@ -99,9 +99,29 @@ const found = rows.filter(item => item.nome.includes(filtro));
 
 ---
 
-## Architecture of the file to generate
+## Two files to generate
 
-The file must follow this structure (in order):
+### File 1 — Interface file (\`interfaceFile\`)
+
+Contains all TypeScript interfaces and types the contract file needs.
+
+Structure:
+1. **MLS file header**
+   \`\`\`
+   /// <mls fileReference="{interfaceOutputPath without leading /}" enhancement="_blank" />
+   \`\`\`
+   Use the exact \`interfaceOutputPath\` value from **User info** (strip the leading \`/\`).
+
+2. **Entity interfaces** — one per entity referenced in the page definition.
+   Follow the same rules as the existing \`module.ts\` (one interface per entity, one UpdateParams interface per entity, a SeedResult interface).
+
+3. **No imports** — this file is self-contained; do not import from anywhere.
+
+---
+
+### File 2 — Contract file (\`srcFile\`)
+
+The BFF handler file. Must follow this structure (in order):
 
 1. **MLS file header**
    \`\`\`
@@ -109,7 +129,7 @@ The file must follow this structure (in order):
    \`\`\`
 
 2. **Imports**
-   - Import only the entity interfaces actually used (from \`/_{projectId}_/l1/{moduleName}/module.js\`)
+   - Import only the entity interfaces actually used — from \`{interfaceOutputPath with .ts → .js}\` (the interface file generated above, NOT from \`module.js\`)
    - Import \`AppError, ok, type BffHandler, type RequestContext\` from \`/_102034_/l1/server/layer_2_controllers/contracts.js\`
    - Do NOT import AuditLogService or StatusHistoryService unless there is a write action that changes status
 
@@ -162,12 +182,16 @@ For each entry in \`definition.pages[0].actionStates[]\`:
 
 ---
 
-## Output format rules
-- Return **only** the TypeScript source
+## Output format rules (both files)
 - No markdown fences, no explanations, no inline comments
 - 2-space indentation
 - One blank line between top-level declarations
 - Handlers must be exported named constants, not default exports
+- Both \`srcFile\` and \`interfaceFile\` must be single-line JSON strings with all special characters escaped:
+  - newlines → \\n
+  - tabs → \\t
+  - double quotes → \\"
+  - backslashes → \\\\
 
 ---
 
