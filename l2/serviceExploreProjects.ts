@@ -213,8 +213,26 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                 ? org.projects.findIndex(p => p.project === actualProjectId)
                 : -1;
             this._setKnobValue('project', matchedProjectPos >= 0 ? matchedProjectPos + 1 : 0);
-            if (matchedProjectPos >= 0) this._selectedKnob = 'project';
+            if (matchedProjectPos >= 0 && actualProjectId) {
+                this._selectedKnob = 'project';
+                this._initLangConfig(actualProjectId);
+            }
         }
+    }
+
+    private async _initLangConfig(projectId: number): Promise<void> {
+        try {
+            const libUrl: string = '/_102027_/l2/libProjectConfig.js';
+            const { getConfigProject } = await import(libUrl);
+            const config = await getConfigProject(projectId);
+            const languages: string[] = (config as any)?.languages?.map((i: any) => i.language) ?? [];
+            const labels: Record<number, string> = { 0: 'All' };
+            languages.forEach((lang, i) => { labels[i + 1] = lang; });
+            labels[languages.length + 1] = '+';
+            this._onLangConfig(new CustomEvent('lang-config', {
+                detail: { min: 0, max: languages.length + 1, labels },
+            }));
+        } catch { /* ignore — project may have no languages configured */ }
     }
 
     private _getOrgsFromMls(): IOrg[] {
