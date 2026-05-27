@@ -73,6 +73,7 @@ interface ILayoutOption {
     value: number;
     name: string;
     skill: string;
+    enabled: boolean;
 }
 
 // ─── Component ───────────────────────────────────────────────────────
@@ -85,7 +86,6 @@ export class PluginSelectLayout extends StateLitElement {
 
     @state() private _layoutOptions: ILayoutOption[] = [];
     @state() private _designSystems: Record<number, { name: string; skill: string }> = {};
-    @state() private _genomeLayoutValue: number | null = null;
     @state() private _saving: boolean = false;
     @state() private _saveError: string = '';
 
@@ -109,7 +109,7 @@ export class PluginSelectLayout extends StateLitElement {
             const config = mod?.projectConfig ?? null;
             const layoutsMap: Record<number, { name: string; skill: string }> = config?.layouts ?? {};
             this._layoutOptions = Object.entries(layoutsMap)
-                .map(([k, v]) => ({ value: Number(k), name: v.name, skill: v.skill }))
+                .map(([k, v]) => ({ value: Number(k), name: v.name, skill: v.skill, enabled: false }))
                 .sort((a, b) => a.value - b.value);
             this._designSystems = config?.designSystems ?? {};
         } catch { /* no project config */ }
@@ -118,7 +118,8 @@ export class PluginSelectLayout extends StateLitElement {
     }
 
     private async _loadGenome(): Promise<void> {
-        this._genomeLayoutValue = null;
+
+        this._layoutOptions = this._layoutOptions.map(o => ({ ...o, enabled: false }));
         if (!this.pageFile) return;
 
         if (!this._layoutOptions.length) await this._loadProjectConfig();
@@ -136,11 +137,9 @@ export class PluginSelectLayout extends StateLitElement {
             const genome: Record<string, any> = mod?.moduleGenome ?? {};
             const entry = genome[genomeKey];
             if (!entry) return;
-            const opt = this._layoutOptions.find(o => o.name === entry.layout);
-            if (opt) {
-                this._genomeLayoutValue = opt.value;
-                this._dispatchSelect(opt.value);
-            }
+            this._layoutOptions = this._layoutOptions.map(o => ({ ...o, enabled: o.name === entry.layout }));
+            const enabled = this._layoutOptions.find(o => o.enabled);
+            if (enabled) this._dispatchSelect(enabled.value);
         } catch { /* no genome */ }
 
         // @ts-ignore
@@ -188,7 +187,7 @@ export class PluginSelectLayout extends StateLitElement {
         }
 
         if (!selectedOption) return nothing;
-        const isConfigured = this._genomeLayoutValue === null || selectedOption.value === this._genomeLayoutValue;
+        const isConfigured = selectedOption.enabled;
         return html`
             <div class="flex flex-col gap-3">
                 <plugins--nav-header-102020
@@ -209,8 +208,7 @@ export class PluginSelectLayout extends StateLitElement {
     }
 
     private _isConfiguredLayout(opt: ILayoutOption): boolean {
-        if (this._genomeLayoutValue === null) return true;
-        return opt.value === this._genomeLayoutValue;
+        return opt.enabled;
     }
 
     private _renderLayoutCard(opt: ILayoutOption, isSelected: boolean) {
@@ -382,7 +380,7 @@ export class PluginSelectLayout extends StateLitElement {
 
             const genomeValue = {
                 designSystem: ds?.name ?? 'default',
-                designSystemSkill: ds?.skill ?? '/_102029_/l2/skills/designsystem/default.js',
+                designSystemSkill: ds?.skill ?? '',
                 device,
                 layout: opt.name,
                 layoutSkill: opt.skill,
