@@ -55,10 +55,6 @@ async function beforePromptStep(
 
     if (!args) throw new Error(`(${agent.agentName})[beforePromptStep] args invalid`);
 
-    const data = JSON.parse(args);
-    if (data.fileReference && context.task)
-        await appendLongTermMemory(context, { defsFileReference: data.fileReference });
-
     const continueIntent: mls.msg.AgentIntentPromptReady = {
         type: "prompt_ready",
         args,

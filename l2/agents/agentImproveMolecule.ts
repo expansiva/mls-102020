@@ -2,6 +2,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { finishClarification } from '/_102027_/l2/aiAgentOrchestration.js';
+import { appendLongTermMemory } from '/_102027_/l2/aiAgentHelper.js';
 import { ClarificationData } from '/_102020_/l2/agents/agentNewMoleculePlannerClarification.js';
 
 export function createAgent(): IAgentAsync {
@@ -138,6 +139,7 @@ async function beforeClarificationStep(
 
     if (!context.task) throw new Error(`[${agent.agentName}][beforeClarificationStep] invalid task: undefined`);
 
+    await appendLongTermMemory(context, { defsFileReference: json.fileReference });
     const intentsToClarification: mls.msg.AgentIntent[] = processOutput(agent, context, parentStep, step, hookSequential, json);
     await import('/_102020_/l2/agents/agentNewMoleculePlannerClarification.js');
     const clariEl = document.createElement('agents--agent-new-molecule-planner-clarification-102020');
