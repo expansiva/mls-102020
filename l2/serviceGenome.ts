@@ -99,6 +99,7 @@ export class ServiceGenome102020 extends ServiceBase {
 
     async onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
         this._initLayoutKnob();
+        this._initDsKnob();
         const file = await this._getActual3File();
         await this._trySetActualModule(file);
         this._updateCurrentPage(file);
@@ -161,6 +162,20 @@ export class ServiceGenome102020 extends ServiceBase {
         this._layoutValue = (stateLayout !== null && stateLayout <= this._layoutConfig.max) ? stateLayout : 0;
         // @ts-ignore
         this.requestUpdate();
+    }
+
+    private async _initDsKnob() {
+        const config = await this._loadProjectConfig();
+        const dsMap: Record<number, { name: string }> = config?.designSystems ?? {};
+        const keys = Object.keys(dsMap).map(Number).sort((a, b) => a - b);
+        if (!keys.length) return;
+        const labels: Record<number, string> = { 0: 'All' };
+        keys.forEach(k => { labels[k] = dsMap[k].name; });
+        const customKey = keys[keys.length - 1] + 1;
+        labels[customKey] = '+';
+        this._onDsConfig(new CustomEvent('ds-config', {
+            detail: { min: 0, max: customKey, labels },
+        }));
     }
 
     private _onDsConfig(e: CustomEvent) {
@@ -411,6 +426,7 @@ export class ServiceGenome102020 extends ServiceBase {
         AuraInitState();
         subscribe('previewL3.selectedTagName', this);
         this._initLayoutKnob();
+        this._initDsKnob();
         await this.setLastOpenedFileIfNeeded();
         mls.events.addEventListener([this.level], ['FileAction'], this._onFileActionGenome);
     }
