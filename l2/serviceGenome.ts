@@ -336,13 +336,17 @@ export class ServiceGenome102020 extends ServiceBase {
         switch (key) {
             case 'layout':
                 this._layoutValue = value;
-                setAuraState('actualLayout', value);
-                saveAuraProject();
+                if (value !== null && value > 0 && value <= this._layoutConfig.max) {
+                    setAuraState('actualLayout', value);
+                    saveAuraProject();
+                }
                 break;
             case 'designSystem':
                 this._dsValue = value;
-                setAuraState('actualDesignSystem', value);
-                saveAuraProject();
+                if (value !== null && value > 0 && value < this._dsConfig.max) {
+                    setAuraState('actualDesignSystem', value);
+                    saveAuraProject();
+                }
                 break;
             case 'molecules':
                 this._moleculesValue = value;
