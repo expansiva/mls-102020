@@ -25,6 +25,8 @@ async function beforePromptImplicit(
 
     const [dataUser] = JSON.parse(userPrompt) as { languages: { code: string, name: string }[], projectId: number }[];
     const paths: { languages: string[], fileReference: string }[] = await getPaths(dataUser.languages, dataUser.projectId);
+    if (paths.length === 0) throw new Error('No find files to add language');
+
     const inputs: mls.msg.IAMessageInputType[] = [{ type: "system", content: system1.replace('{{ skillLanguage }}', skilli18n) }];
 
     const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
@@ -129,13 +131,13 @@ async function getPaths(languages: { code: string, name: string }[], project: nu
     const result: { languages: string[], fileReference: string }[] = [];
 
     for (const mod of modules) {
-
-        const moduleConfig = await import(`/_${project}_/l2/${mod}/module.js`);
+        ;
+        const moduleConfig = await import(`/_${project}_/l2/${mod.name}/module.js`);
         if (!moduleConfig?.skills) continue;
 
-        if (moduleConfig.web) {
+        if (moduleConfig.skills.web) {
             
-            const sharedFolder = `${moduleConfig.web.sharedPath}`
+            const sharedFolder = `${moduleConfig.skills.web.sharedPath}`
                 .replace(/^\/?_\d+_\/l2\//, '')
                 .replace(/^\/|\/$/g, '');
 
