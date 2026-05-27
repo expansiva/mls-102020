@@ -380,14 +380,15 @@ export class PluginSelectPage extends StateLitElement {
         return html`
             <div
                 class="
-                    rounded-lg px-3 py-2.5 flex items-center gap-2
+                    rounded-lg border px-3 py-2.5 flex items-center gap-2
                     cursor-pointer transition-colors
                     ${isActive
-                        ? 'border border-cyan-400 dark:border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
-                        : 'border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-800/70'}
+                        ? 'border-emerald-200 dark:border-emerald-700/50 bg-emerald-50 dark:bg-emerald-900/10 hover:bg-emerald-100 dark:hover:bg-emerald-900/20'
+                        : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-800/70'}
                 "
                 @click=${() => this._dispatchSelect(selectValue)}
             >
+                ${isActive ? html`<div class="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 shrink-0"></div>` : nothing}
                 <div class="flex-1 flex items-baseline gap-1 min-w-0">
                     <span class="text-[10px] text-gray-400 dark:text-gray-600 shrink-0">${this.selectedModule?.name}/</span>
                     <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">${page.name}</span>
