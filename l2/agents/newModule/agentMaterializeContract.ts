@@ -72,7 +72,6 @@ async function beforePromptStep(
   const moduleName = context.task?.iaCompressed?.longMemory['moduleName'] as string;
   const device = context.task?.iaCompressed?.longMemory['device'] as string || 'web';
   const prompt = await getSkill(info, moduleName, device);
-  console.info(prompt);
   
   const continueParallel: mls.msg.AgentIntentPromptReady = {
     type: "prompt_ready",

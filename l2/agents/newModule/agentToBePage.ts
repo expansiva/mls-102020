@@ -5,19 +5,19 @@ import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
 import { findPreviousAgentStep } from '/_102027_/l2/aiAgentHelper.js';
 import { updateVariableJson, updateVariableText } from '/_102027_/l2/defsAST.js';
 import { addImport, addRoute, extractRouteHandlers } from "/_102020_/l2/newModule/astRouter.js";
-export function createAgent(): IAgentAsync {
+export function createAgent(): IAgentAsync { 
     return {
         agentName: "agentToBePage",
-        agentProject: 102020,
+        agentProject: 102020, 
         agentFolder: "agents/newModule",
-        agentDescription: "Implement Page",
+        agentDescription: "Implement Page", 
         visibility: "public",
-        beforePromptImplicit,
+        beforePromptImplicit, 
         beforePromptStep,
         afterPromptStep
 
     };
-}
+} 
 
 async function beforePromptImplicit(
     agent: IAgentMeta,
@@ -439,11 +439,12 @@ export interface DataShapeFields {
  * Use when: BFF returns a projected object, or entity has
  * nested sub-objects that must stay together.
  * stateKey: db.[entity] or db.[pageName].[routineAlias]
+ * sourceRoutine: [moduleName].[pageName].[routineName]
  */
 export interface DataShapeObject {
     shape: 'object';
-    stateKey: string;              // ex: 'db.catalogProducts.productDetail'
-    sourceRoutine: string;         // ex: '{moduleName}.getProduct'
+    stateKey: string;              // ex: 'db.catalogProducts.productDetail' 
+    sourceRoutine: string;         // ex: 'petshop.catalogProducts.getProduct'
     fields: ObjectFieldRef[];      // declares what's inside for layout agent
     params: DataShapeParam[];
 }
@@ -451,11 +452,12 @@ export interface DataShapeObject {
  * Collection — array of objects, each with same structure.
  * Use when: lists, tables, grids, sub-entity arrays (addresses).
  * stateKey: db.[entity][] or db.[pageName].[alias][]
+ * sourceRoutine: [moduleName].[pageName].[routineName]
  */
 export interface DataShapeCollection {
     shape: 'collection';
     stateKey: string;              // ex: 'db.product[]'
-    sourceRoutine: string;         // ex: '{moduleName}.listProducts'
+    sourceRoutine: string;         // ex: 'petshop.catalogProducts.listProducts'
     itemFields: ObjectFieldRef[];  // fields per item
     /** Does the collection support inline editing? */
     params: DataShapeParam[];
@@ -513,7 +515,7 @@ export interface EntityFieldRef {
 export interface ActionStateDef {
     stateKey: string; // e.g. 'ui.[page].cancel'
     description: string;
-    /** Possible values — typically 'idle' | 'loading' | 'success' | 'error' */
+    /** Values ​​according to the state, e.g.: Possible values ​​— typically 'idle' | 'loading' | 'success' | 'error' */
     values: string[];
 }
 export interface TempStateDef {
@@ -539,7 +541,7 @@ export interface NavigationFieldDef {
     navigationType: 'internal' | 'external';
 }
 export interface EmitDef {
-    event: string;
+    event: string; // ex: '{moduleName}.{pageName}.save'
     payload: string;
     writesState?: string;
 }

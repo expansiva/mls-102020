@@ -118,8 +118,8 @@ Structure:
    - Include ONLY entities from \`ontology.entities\` — do NOT invent or add entities not present there
    - Map ONLY the fields listed in \`ontology.entities[Entity].fields\` — do NOT add, rename, or infer fields
    - All interface names MUST be prefixed with the module name in PascalCase (e.g. if moduleName is \`pizzaria\`, prefix is \`Pizzaria\`):
-     - Main interface: \`{ModuleName}{EntityName}\` (e.g. \`PizzariaCliente\`)
-     - Update params: \`{ModuleName}Update{EntityName}Params\` (e.g. \`PizzariaUpdateClienteParams\`)
+     - Main interface: \`{ModuleName}{EntityName}Response\` (e.g. \`PizzariaClienteResponse\`)
+     - Update params: \`{ModuleName}Update{EntityName}Request\` (e.g. \`PizzariaUpdateClienteRequest\`)
    - Field mapping rules (from ontology field definition):
      - \`type: "string"\` → \`string\`
      - \`type: "number"\` → \`number\`
@@ -147,18 +147,21 @@ The BFF handler file. Must follow this structure (in order):
    \`\`\`
 
 2. **Imports**
-   - Import only the entity interfaces actually used — from \`{interfaceOutputPath with .ts → .js}\` (the interface file generated above, NOT from \`module.js\`)
+   - Import only the entity interfaces actually used — from \`{interfaceOutputPath with .ts → .js}\` (the interface file generated above)
    - Import \`AppError, ok, type BffHandler, type RequestContext\` from \`/_102034_/l1/server/layer_2_controllers/contracts.js\`
    - Do NOT import AuditLogService or StatusHistoryService unless there is a write action that changes status
+   - Import \`USE_MOCK\` and one named mock function per unique entity getter from \`"./mock.js"\`. Mock function name pattern: \`getMock{EntityName}Repository\` where EntityName is the ontology entity name verbatim (e.g., entity \`Caixa\` → \`getMockCaixaRepository\`, entity \`MovimentoCaixa\` → \`getMockMovimentoCaixaRepository\`). Collect all entity names that have a getter in this file and produce a single import line: \`import { USE_MOCK, getMock{A}Repository, getMock{B}Repository } from "./mock.js";\`
 
 3. **Repository getter functions** (one per unique entity touched by any routine)
    Pattern:
    \`\`\`typescript
    async function get{Entity}Repository(ctx: RequestContext) {
+     if (USE_MOCK) return getMock{Entity}Repository();
      return ctx.data.moduleData.getTable<{Prefix}{Entity}>('{prefix}{Entity}');
    }
    \`\`\`
    - Table name = moduleName + EntityName with first letter lowercase (e.g. \`pizzariaCliente\`)
+   - \`getMock{Entity}Repository\` uses the EntityName verbatim (same casing as the interface, e.g. \`getMockCaixaRepository\`, \`getMockMovimentoCaixaRepository\`)
 
 4. **Usecase functions** (one per routine identified below)
    - For **read routines** (from \`dataShape.sourceRoutine\`): call \`repo.findMany()\` then filter in-memory if params present; every filter/map callback param must be explicitly typed
@@ -168,6 +171,7 @@ The BFF handler file. Must follow this structure (in order):
    - For write routines use the \`{ModuleName}Update{Entity}Params\` interface from the interface file generated above
 
 5. **BFF handler constants** (one per routine)
+   [RoutineSuffix] with the first letter capitalized.
    Pattern:
    \`\`\`typescript
    export const {pageName}{RoutineSuffix}Handler: BffHandler = async ({ request, ctx }) => {

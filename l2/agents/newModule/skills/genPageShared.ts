@@ -60,12 +60,13 @@ The file must follow this structure (in order):
 
 ### 1. MLS file header
 \`\`\`
-/// <mls fileReference="_{projectId}_/l2/{moduleName}/web/shared/{pageName}.ts" enhancement="_blank" />
+/// <mls fileReference="_{projectId}_/l2/{moduleName}/web/shared/{pageName}.ts" enhancement="_102027_/l2/enhancementLit.ts" />
 \`\`\`
 
 ### 2. Imports
 \`\`\`typescript
 import { CollabLitElement } from '/_102029_/l2/collabLitElement.js';
+import { property } from 'lit/decorators.js';
 import type { AuraNormalizedError } from '/_102029_/l2/contracts/bootstrap.js';
 import type { BffClientOptions } from '/_102029_/l2/bffClient.js';
 import { execBff } from '/_102029_/l2/bffClient.js';
@@ -108,16 +109,10 @@ Required i18n keys (add more as needed by the page content):
 ### 4. Base class
 \`\`\`typescript
 export class {ModuleName}{PageName}Base extends CollabLitElement {
-  static properties = {
-    // one entry per reactive state field
-    someList: { state: true },
-    someObject: { state: true },
-    status: { state: true },
-  };
 
-  declare someList: SomeEntity[];
-  declare someObject: SomeEntity | undefined;
-  declare status: string;
+  property() someList: SomeEntity[];
+  property() someObject: SomeEntity | undefined;
+  property() status: string;
 
   protected msg: MessageType = messages['en'];
 
