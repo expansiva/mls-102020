@@ -1,0 +1,450 @@
+/// <mls fileReference="_102020_/l2/agentNewSolution/agentNewSolution.ts" enhancement="_102027_/l2/enhancementAgent"/>
+
+import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { getAgentStepByAgentName } from '/_102027_/l2/aiAgentHelper.js';
+
+export function createAgent(): IAgentAsync {
+  return {
+    agentName: 'agentNewSolution',
+    agentProject: 102020,
+    agentFolder: 'agentNewSolution',
+    agentDescription: 'Initialize new module or solution planning',
+    visibility: 'public',
+    beforePromptImplicit,
+    afterPromptStep,
+  };
+}
+
+type PlannedExecutionMode = 'sequential' | 'parallel_static' | 'parallel_dynamic' | 'manual_later';
+type PlannedExecutionHost = 'client' | 'server' | 'either';
+
+export const PLAN_IDS = [
+  'org-requirements',
+  'org-planner',
+  'org-materialization',
+  'req-discover-scope',
+  'req-clarification-answer',
+  'req-recommend-implementations',
+  'req-implementation-decisions',
+  'plan-solution-blueprint',
+  'plan-blueprint-review',
+  'plan-finalize-solution-plan',
+  'plan-mdm',
+  'plan-horizontals',
+  'plan-plugins',
+  'plan-persistence-index',
+  'plan-table-definition',
+  'plan-metrics-index',
+  'plan-metric-table-definition',
+  'plan-usecase-entities',
+  'plan-workflow-index',
+  'plan-workflow-definition',
+  'plan-agents',
+  'plan-page-index',
+  'plan-page-definition',
+  'plan-validate-solution-coverage',
+] as const;
+
+export type NewSolutionPlanId = typeof PLAN_IDS[number];
+
+type PlannedAIPayload = mls.msg.AIPayload & {
+  planning: StepPlanning;
+};
+
+type PlannedAgentStep = mls.msg.AIAgentStep & {
+  planning: StepPlanning;
+};
+
+type PlannedClarificationStep = mls.msg.AIClarificationStep & {
+  planning: StepPlanning;
+};
+
+interface StepPlanning {
+  planId: NewSolutionPlanId;
+  dependsOn: NewSolutionPlanId[];
+  executionMode: PlannedExecutionMode;
+  executionHost: PlannedExecutionHost;
+  dynamicSource?: {
+    sourcePlanId: NewSolutionPlanId;
+    selectorField: string;
+    argsField: string;
+  };
+}
+
+async function beforePromptImplicit(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  userPrompt: string,
+): Promise<mls.msg.AgentIntent[]> {
+
+  const normalizedPrompt = (userPrompt || '').trim();
+  if (normalizedPrompt.length < 5) throw new Error('invalid prompt');
+
+  const folders = Array.from(new Set(
+    Object.values(mls.stor.files)
+      .filter(f => f.project === mls.actualProject && f.level !== 3 && f.folder)
+      .map(f => f.folder)
+  ));
+
+  const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
+    type: 'add-message-ai',
+    request: {
+      action: 'addMessageAI',
+      agentName: agent.agentName,
+      inputAI: [{
+        type: 'system',
+        content: systemPrompt
+          .replace('{{folders}}', folders.join(', '))
+          .replace('{{planIds}}', PLAN_IDS.join(', '))
+      }, {
+        type: 'human',
+        content: normalizedPrompt
+      }],
+      taskTitle: 'newModule',
+      threadId: context.message.threadId,
+      userMessage: context.message.content,
+      longTermMemory: {
+        taskName: 'newModule',
+        flowName: 'newSolution',
+      },
+    }
+  };
+
+  return [addMessageAI];
+}
+
+async function afterPromptStep(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+): Promise<mls.msg.AgentIntent[]> {
+  if (!agent || !context || !step) throw new Error(`[afterPromptStep] invalid params, agent:${!!agent}, context:${!!context}, step:${!!step}`);
+
+  const payload = step.interaction?.payload?.[0] as Output | undefined;
+  if (!payload) throw new Error(`[afterPromptStep] missing payload`);
+
+  if (payload.type === 'result') {
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed')];
+  }
+
+  if (payload.type !== 'flexible' || !payload.result) throw new Error(`[afterPromptStep] invalid payload: ${JSON.stringify(payload)}`);
+
+  const initialPlan = normalizeInitialPlan(payload.result);
+  const plannedSteps = buildPlannedTree(initialPlan);
+  const addStepIntents: mls.msg.AgentIntentAddStep[] = plannedSteps.map((plannedStep) => ({
+    type: 'add-step',
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    parentStepId: step.stepId,
+    step: plannedStep,
+  }));
+
+  const updateStatus = createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed');
+  console.log(`[${agent.agentName}](afterPromptStep) created ${addStepIntents.length} planned steps for planId=${(plannedSteps[0].planning as StepPlanning).planId}`, addStepIntents);  
+  // return [...addStepIntents, updateStatus];
+  return [ updateStatus]; // test
+}
+
+function createUpdateStatusIntent(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  status: mls.msg.AIStepStatus,
+): mls.msg.AgentIntentUpdateStatus {
+  return {
+    type: 'update-status',
+    hookSequential,
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    parentStepId: parentStep.stepId,
+    stepId: step.stepId,
+    status,
+  };
+}
+
+function buildPlannedTree(initialPlan: InitialNewSolutionPlan): PlannedAgentStep[] {
+  const title = (planId: NewSolutionPlanId) => getLocalizedTitle(initialPlan, planId);
+
+  const requirementsChildren: PlannedAIPayload[] = [
+    plannedAgent('req-discover-scope', 'agentDiscoverSolutionScope', title('req-discover-scope'), ['org-requirements'], 'sequential'),
+    plannedClarification('req-clarification-answer', title('req-clarification-answer'), ['req-discover-scope']),
+    plannedAgent('req-recommend-implementations', 'agentRecommendImplementations', title('req-recommend-implementations'), ['req-clarification-answer'], 'sequential'),
+    plannedClarification('req-implementation-decisions', title('req-implementation-decisions'), ['req-recommend-implementations']),
+  ];
+
+  const plannerChildren: PlannedAIPayload[] = [
+    plannedAgent('plan-solution-blueprint', 'agentSolutionBlueprint', title('plan-solution-blueprint'), ['req-implementation-decisions'], 'sequential'),
+    plannedAgent('plan-blueprint-review', 'agentBlueprintReview', title('plan-blueprint-review'), ['plan-solution-blueprint'], 'sequential'),
+    plannedAgent('plan-finalize-solution-plan', 'agentFinalizeSolutionPlan', title('plan-finalize-solution-plan'), ['plan-blueprint-review'], 'sequential'),
+    plannedAgent('plan-mdm', 'agentPlanMDM', title('plan-mdm'), ['plan-finalize-solution-plan'], 'parallel_static'),
+    plannedAgent('plan-horizontals', 'agentPlanHorizontals', title('plan-horizontals'), ['plan-finalize-solution-plan'], 'parallel_static'),
+    plannedAgent('plan-plugins', 'agentPlanPlugins', title('plan-plugins'), ['plan-finalize-solution-plan'], 'parallel_static'),
+    plannedAgent('plan-persistence-index', 'agentPlanPersistenceIndex', title('plan-persistence-index'), ['plan-mdm', 'plan-horizontals', 'plan-plugins'], 'sequential'),
+    plannedAgent('plan-table-definition', 'agentPlanTableDefinition', title('plan-table-definition'), ['plan-persistence-index'], 'parallel_dynamic', {
+      sourcePlanId: 'plan-persistence-index',
+      selectorField: 'tableId',
+      argsField: 'tableId',
+    }),
+    plannedAgent('plan-metrics-index', 'agentPlanMetricsIndex', title('plan-metrics-index'), ['plan-table-definition'], 'sequential'),
+    plannedAgent('plan-metric-table-definition', 'agentPlanMetricTableDefinition', title('plan-metric-table-definition'), ['plan-metrics-index'], 'parallel_dynamic', {
+      sourcePlanId: 'plan-metrics-index',
+      selectorField: 'metricTableId',
+      argsField: 'metricTableId',
+    }),
+    plannedAgent('plan-usecase-entities', 'agentPlanUsecaseEntities', title('plan-usecase-entities'), ['plan-table-definition', 'plan-metric-table-definition'], 'sequential'),
+    plannedAgent('plan-workflow-index', 'agentPlanWorkflowIndex', title('plan-workflow-index'), ['plan-usecase-entities'], 'sequential'),
+    plannedAgent('plan-workflow-definition', 'agentPlanWorkflowDefinition', title('plan-workflow-definition'), ['plan-workflow-index'], 'parallel_dynamic', {
+      sourcePlanId: 'plan-workflow-index',
+      selectorField: 'workflowId',
+      argsField: 'workflowId',
+    }),
+    plannedAgent('plan-agents', 'agentPlanAgents', title('plan-agents'), ['plan-plugins', 'plan-usecase-entities', 'plan-workflow-definition'], 'sequential'),
+    plannedAgent('plan-page-index', 'agentPlanPageIndex', title('plan-page-index'), ['plan-metric-table-definition', 'plan-workflow-definition', 'plan-agents'], 'sequential'),
+    plannedAgent('plan-page-definition', 'agentPlanPageDefinition', title('plan-page-definition'), ['plan-page-index'], 'parallel_dynamic', {
+      sourcePlanId: 'plan-page-index',
+      selectorField: 'pageId',
+      argsField: 'pageId',
+    }),
+    plannedAgent('plan-validate-solution-coverage', 'agentValidateSolutionCoverage', title('plan-validate-solution-coverage'), ['plan-mdm', 'plan-horizontals', 'plan-plugins', 'plan-persistence-index', 'plan-table-definition', 'plan-metrics-index', 'plan-metric-table-definition', 'plan-usecase-entities', 'plan-workflow-definition', 'plan-agents', 'plan-page-definition'], 'sequential'),
+  ];
+
+  return [
+    plannedAgent('org-requirements', 'agentNewSolutionRequirements', title('org-requirements'), [], 'sequential', undefined, requirementsChildren),
+    plannedAgent('org-planner', 'agentNewSolutionPlanner', title('org-planner'), ['org-requirements'], 'sequential', undefined, plannerChildren),
+    plannedAgent('org-materialization', 'agentNewSolutionMaterialization', title('org-materialization'), ['plan-validate-solution-coverage'], 'manual_later'),
+  ];
+}
+
+function plannedAgent(
+  planId: NewSolutionPlanId,
+  agentName: string,
+  stepTitle: string,
+  dependsOn: NewSolutionPlanId[],
+  executionMode: PlannedExecutionMode,
+  dynamicSource?: StepPlanning['dynamicSource'],
+  nextSteps: PlannedAIPayload[] = [],
+): PlannedAgentStep {
+  return {
+    type: 'agent',
+    stepId: 0,
+    interaction: null,
+    stepTitle,
+    status: 'waiting_dependency',
+    nextSteps,
+    agentName,
+    prompt: JSON.stringify({ planId }),
+    rags: [],
+    planning: {
+      planId,
+      dependsOn,
+      executionMode,
+      executionHost: 'client',
+      dynamicSource,
+    },
+  };
+}
+
+function plannedClarification(
+  planId: NewSolutionPlanId,
+  stepTitle: string,
+  dependsOn: NewSolutionPlanId[],
+): PlannedClarificationStep {
+  return {
+    type: 'clarification',
+    stepId: 0,
+    interaction: null,
+    stepTitle,
+    status: 'waiting_dependency',
+    nextSteps: [],
+    json: JSON.stringify({ planId }),
+    planning: {
+      planId,
+      dependsOn,
+      executionMode: 'sequential',
+      executionHost: 'client',
+    },
+  };
+}
+
+function normalizeInitialPlan(result: InitialNewSolutionPlan): InitialNewSolutionPlan {
+  if (!result || typeof result !== 'object') throw new Error('[normalizeInitialPlan] invalid result');
+  if (!result.userLanguage || typeof result.userLanguage !== 'string') throw new Error('[normalizeInitialPlan] missing userLanguage');
+  if (!['module', 'solution', 'module_solution'].includes(result.requestKind)) throw new Error(`[normalizeInitialPlan] invalid requestKind: ${result.requestKind}`);
+  if (!result.userPrompt || typeof result.userPrompt !== 'string') throw new Error('[normalizeInitialPlan] missing userPrompt');
+  if (!result.titles || typeof result.titles !== 'object') result.titles = {};
+  if (!Array.isArray(result.todoItems)) result.todoItems = [];
+  if (!Array.isArray(result.openDetails)) result.openDetails = [];
+  return result;
+}
+
+function getLocalizedTitle(initialPlan: InitialNewSolutionPlan, planId: NewSolutionPlanId): string {
+  const title = initialPlan.titles?.[planId];
+  if (typeof title === 'string' && title.trim().length > 0 && title.trim().length < 140) {
+    return title.trim();
+  }
+  const language = `${initialPlan.userLanguage || ''} ${initialPlan.userPrompt || ''}`.toLowerCase();
+  const fallback = language.includes('pt') || language.includes('portugu')
+    ? fallbackTitlesPt
+    : fallbackTitlesEn;
+  return fallback[planId];
+}
+
+const fallbackTitlesEn: Record<NewSolutionPlanId, string> = {
+  'org-requirements': 'Requirements',
+  'org-planner': 'Planner',
+  'org-materialization': 'Materialization',
+  'req-discover-scope': 'Discover solution scope',
+  'req-clarification-answer': 'Answer initial clarification',
+  'req-recommend-implementations': 'Recommend implementations',
+  'req-implementation-decisions': 'Confirm implementation decisions',
+  'plan-solution-blueprint': 'Create solution blueprint',
+  'plan-blueprint-review': 'Review blueprint',
+  'plan-finalize-solution-plan': 'Finalize solution plan',
+  'plan-mdm': 'Plan MDM',
+  'plan-horizontals': 'Plan horizontal modules',
+  'plan-plugins': 'Plan plugins',
+  'plan-persistence-index': 'Plan persistence index',
+  'plan-table-definition': 'Plan table definitions',
+  'plan-metrics-index': 'Plan metrics index',
+  'plan-metric-table-definition': 'Plan metric table definitions',
+  'plan-usecase-entities': 'Plan usecase entities',
+  'plan-workflow-index': 'Plan workflow index',
+  'plan-workflow-definition': 'Plan workflow definitions',
+  'plan-agents': 'Plan operational agents',
+  'plan-page-index': 'Plan page index',
+  'plan-page-definition': 'Plan page definitions',
+  'plan-validate-solution-coverage': 'Validate solution coverage',
+};
+
+const fallbackTitlesPt: Record<NewSolutionPlanId, string> = {
+  'org-requirements': 'Requisitos',
+  'org-planner': 'Planner',
+  'org-materialization': 'Materializacao',
+  'req-discover-scope': 'Descobrir escopo da solucao',
+  'req-clarification-answer': 'Responder clarificacao inicial',
+  'req-recommend-implementations': 'Recomendar implementacoes',
+  'req-implementation-decisions': 'Confirmar decisoes de implementacao',
+  'plan-solution-blueprint': 'Criar blueprint da solucao',
+  'plan-blueprint-review': 'Revisar blueprint',
+  'plan-finalize-solution-plan': 'Finalizar plano da solucao',
+  'plan-mdm': 'Planejar MDM',
+  'plan-horizontals': 'Planejar modulos horizontais',
+  'plan-plugins': 'Planejar plugins',
+  'plan-persistence-index': 'Planejar indice de persistencia',
+  'plan-table-definition': 'Planejar definicoes de tabelas',
+  'plan-metrics-index': 'Planejar indice de metricas',
+  'plan-metric-table-definition': 'Planejar definicoes de tabelas de metricas',
+  'plan-usecase-entities': 'Planejar entidades e casos de uso',
+  'plan-workflow-index': 'Planejar indice de workflows',
+  'plan-workflow-definition': 'Planejar definicoes de workflows',
+  'plan-agents': 'Planejar agentes operacionais',
+  'plan-page-index': 'Planejar indice de paginas',
+  'plan-page-definition': 'Planejar definicoes de paginas',
+  'plan-validate-solution-coverage': 'Validar cobertura da solucao',
+};
+
+const systemPrompt = `
+<!-- modelType: codeinstruct -->
+
+You initialize the collab.codes "newModule" task.
+
+Analyze the user's prompt and decide whether it is a request to create a module or a solution.
+Use the same language as the user for all user-facing titles, todo descriptions, and open details.
+
+If the prompt is not about creating a module or solution, return only:
+{
+  "type": "result",
+  "result": "A short error message in the user's language"
+}
+
+If the prompt is valid, return only:
+{
+  "type": "flexible",
+  "result": {
+    "userLanguage": "ISO language code, such as pt-BR or en",
+    "requestKind": "module | solution | module_solution",
+    "userPrompt": "copy of the user prompt",
+    "titles": {
+      "plan id from the list": "localized user-facing title"
+    },
+    "todoItems": [
+      {
+        "planId": "plan id from the list",
+        "done": false,
+        "title": "localized short title",
+        "description": "localized implementation note"
+      }
+    ],
+    "openDetails": [
+      {
+        "title": "localized detail title",
+        "description": "localized question or decision still open"
+      }
+    ]
+  }
+}
+
+Rules:
+- Return valid JSON only.
+- The titles object must include every plan id listed below.
+- Do not invent agent names, dependencies, selectors, or execution rules. Code owns those.
+- Do not hard-code fixture examples such as rentalTable, vehicleSearchPage, fleet, rental, or reservation.
+- Every todo item must have done=false.
+- The flow runs client-side for now.
+
+Already existing modules:
+{{folders}}
+
+Plan ids:
+{{planIds}}
+
+## Output format
+Return only valid JSON in the following structure:
+[[OutputSection]]
+`;
+
+//#region OutputSection
+export type Output =
+  {
+    type: 'flexible';
+    result: InitialNewSolutionPlan;
+  } | {
+    type: 'result';
+    result: string;
+  };
+
+export interface InitialNewSolutionPlan {
+  userLanguage: string;
+  requestKind: 'module' | 'solution' | 'module_solution';
+  userPrompt: string;
+  titles: Partial<Record<NewSolutionPlanId, string>>;
+  todoItems: {
+    planId: NewSolutionPlanId;
+    done: boolean;
+    title: string;
+    description: string;
+  }[];
+  openDetails: {
+    title: string;
+    description: string;
+  }[];
+}
+//#endregion
+
+export function getInitialNewSolutionPlan(agent: IAgentMeta, context: mls.msg.ExecutionContext): InitialNewSolutionPlan {
+  if (!agent || !context || !context.task) throw new Error(`[${agent.agentName}](getInitialNewSolutionPlan) Invalid context or agent`);
+  const agentStep = getAgentStepByAgentName(context.task, agent.agentName);
+  if (!agentStep) throw new Error(`[${agent.agentName}](getInitialNewSolutionPlan) no agent found`);
+
+  const resultStep = agentStep.interaction?.payload?.[0];
+  if (!resultStep || resultStep.type !== 'flexible' || !(resultStep as mls.msg.AIFlexibleResultStep).result) {
+    throw new Error(`[${agent.agentName}](getInitialNewSolutionPlan) No flexible payload found for this agent.`);
+  }
+
+  return normalizeInitialPlan((resultStep as mls.msg.AIFlexibleResultStep).result as InitialNewSolutionPlan);
+}
