@@ -1,15 +1,14 @@
-/// <mls fileReference="_102020_/l2/agents/newModule/agentMoleculeMapper.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
+/// <mls fileReference="_102020_/l2/agents/newModule/agentMoleculeRewriter.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { findPreviousAgentStep } from '/_102027_/l2/aiAgentHelper.js';
 import { getMaterializeOrchestrator } from '/_102020_/l2/agents/newModule/materializeOrchestrator.js';
 
 export function createAgent(): IAgentAsync {
   return {
-    agentName: "agentMoleculeMapper",
+    agentName: "agentMoleculeRewriter",
     agentProject: 102020,
     agentFolder: "agents/newModule",
-    agentDescription: "Maps page UI elements to molecule groups and variants from mls-102040",
+    agentDescription: "Rewrites a page replacing mapped elements with molecules from mls-102040",
     visibility: "public",
     beforePromptImplicit,
     beforePromptStep,
@@ -23,9 +22,9 @@ async function beforePromptImplicit(
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
 
-  const info = JSON.parse(userPrompt) as { path: string };
+  const info = JSON.parse(userPrompt) as InputInfo;
 
-  const prompt = await buildPrompt(info.path);
+  const prompt = await buildPrompt(info);
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: "add-message-ai",
@@ -57,8 +56,8 @@ async function beforePromptStep(
 
   if (!args) throw new Error(`(${agent.agentName})[beforePromptStep] args invalid`);
 
-  const info = JSON.parse(args) as { path: string };
-  const prompt = await buildPrompt(info.path);
+  const info = JSON.parse(args) as InputInfo;
+  const prompt = await buildPrompt(info);
 
   const continueParallel: mls.msg.AgentIntentPromptReady = {
     type: "prompt_ready",
@@ -89,7 +88,10 @@ async function afterPromptStep(
   if (payload?.type !== 'flexible' || !payload.result) throw new Error(`(${agent.agentName}) [afterPromptStep] invalid payload: ${JSON.stringify(payload)}`);
 
   const output = payload.result as Output['result'];
-  const intents = await processOutput(context, output, parentStep);
+
+  const pathNorm = output.path.startsWith('/') ? output.path.slice(1) : output.path;
+  const orch = getMaterializeOrchestrator(pathNorm);
+  await orch.createStorFile(output.path, output.srcFile);
 
   const updateStatus: mls.msg.AgentIntentUpdateStatus = {
     type: 'update-status',
@@ -103,54 +105,34 @@ async function afterPromptStep(
     status: 'completed'
   };
 
-  return [...intents, updateStatus];
+  return [updateStatus];
 }
 
-async function processOutput(
-  context: mls.msg.ExecutionContext,
-  output: Output['result'],
-  parentStep: mls.msg.AIAgentStep
-): Promise<mls.msg.AgentIntent[]> {
+async function buildPrompt(info: InputInfo): Promise<string> {
 
-  const stepOri = context.task
-    ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId
-    : parentStep.stepId;
-
-  const newStep: mls.msg.AgentIntentAddStep = {
-    type: "add-step",
-    messageId: context.message.orderAt,
-    threadId: context.message.threadId,
-    taskId: context.task?.PK || '',
-    parentStepId: stepOri || parentStep.stepId,
-    step: {
-      type: 'agent',
-      stepId: 0,
-      interaction: null,
-      status: 'waiting_human_input',
-      nextSteps: [],
-      agentName: 'agentMoleculeRewriter',
-      prompt: JSON.stringify({ path: output.path, map: output.map, usedGroups: output.usedGroups }),
-      rags: [],
-    }
-  };
-
-  return [newStep];
-}
-
-async function buildPrompt(path: string): Promise<string> {
-
-  const pathNorm = path.startsWith('/') ? path.slice(1) : path;
+  const pathNorm = info.path.startsWith('/') ? info.path.slice(1) : info.path;
 
   const f = mls.stor.convertFileReferenceToFile(pathNorm);
   const key = mls.stor.getKeyToFile(f);
   const sf = mls.stor.files[key];
-  if (!sf) throw new Error(`[agentMoleculeMapper] File not found: ${path}`);
+  if (!sf) throw new Error(`[agentMoleculeRewriter] File not found: ${info.path}`);
   const pageSrc = await sf.getContent() as string;
 
   const orch = getMaterializeOrchestrator(pathNorm);
-  const catalog = await orch.getSkill('_102020_/l2/agents/newModule/catalog.ts');
+  const usageSections: string[] = [];
+  for (const group of info.usedGroups) {
+    const usage = await orch.getSkill(`_102020_/l2/skills/molecules/${group}/usage.ts`);
+    if (usage) usageSections.push(`### ${group}\n${usage}`);
+  }
 
-  return `## Page source\n\`\`\`typescript\n${pageSrc}\n\`\`\`\n\n## Molecule catalog\n${catalog}`;
+  const parts = [
+    `## Original page source\n\`\`\`typescript\n${pageSrc}\n\`\`\``,
+    `## Substitution map\n\`\`\`json\n${JSON.stringify(info.map, null, 2)}\n\`\`\``,
+    `## Molecule API reference\n${usageSections.join('\n\n')}`,
+    `## Output path\n${info.path}`,
+  ];
+
+  return parts.join('\n\n');
 }
 
 const system1 = `
@@ -160,23 +142,42 @@ const system1 = `
 You must return ONLY a valid JSON object. No preamble, no explanation, no markdown
 fences, no text before or after the JSON. Start your response with { and end with }
 
-## Task
-Analyze the provided Lit web component page and map each replaceable UI element
-to the most appropriate molecule from the catalog.
+## Output format
+The srcFile value must be a single-line JSON string.
+Escape ALL special characters inside it:
+  - newlines     → \\n
+  - tabs         → \\t
+  - double quotes → \\"
+  - backslashes  → \\\\
+Never embed raw multiline code blocks inside a JSON string value.
 
-## Rules
-- Before adding any element to the map, ask yourself: "Does this element's PRIMARY purpose
-  match what this group was designed for?" If the answer requires any rationalization or
-  indirect reasoning, the answer is NO — omit the element.
-- The match must be direct and obvious. A text input → groupentertext is obvious.
-  A button mapped to groupselectone because it "relates to" a select is NOT a match — omit it.
-- Do NOT map structural/layout elements: div, section, header, main, aside, form wrappers,
-  grid containers, decorative spans.
-- If no group in the catalog directly covers an element's purpose, OMIT the element entirely.
-  A shorter accurate map beats a longer wrong one. Never use a group as a fallback.
-- Group name must be exactly as listed in the catalog (all lowercase, no spaces).
-- Variant must be exactly one of the variants listed for that group.
-- usedGroups must contain only the distinct groups actually present in the map (no duplicates).
+## Task
+Rewrite the provided Lit web component page by replacing each element listed in the
+substitution map with the corresponding molecule from mls-102040.
+
+## Replacement rules
+
+### Tags and imports
+- Replace each mapped element with its molecule custom element using this exact tag format:
+  {group}--{variant}  (example: groupentertext--ml-floating-text-input)
+- Add one import per unique variant at the top of the file, grouped after the existing imports:
+  import '/_102040_/l2/molecules/{group}/{variant}.js';
+- Do NOT import the same variant twice.
+
+### API mapping (use the molecule API reference for each group)
+- Map the original element's bound value to the molecule's \`value\` property
+- Map the original label text to a \`<Label>\` slot child inside the molecule element
+- Map the original helper/hint text to a \`<Helper>\` slot child if present
+- Map the original error binding to the molecule's \`error\` property
+- Map the original change/input event handlers to the molecule's events as documented
+- Map the original \`disabled\` state to the molecule's \`?disabled\` property
+- All variants within a group share the same API — only the tag name changes
+
+### Preservation rules
+- Keep the first-line \`/// <mls fileReference=...\` comment exactly unchanged
+- Keep ALL class structure, state properties, computed variables, and non-template methods exactly as-is
+- Keep ALL elements NOT listed in the substitution map exactly as-is
+- Do not restructure, reformat, or optimize any code outside the replaced elements
 
 ## Output format
 
@@ -189,13 +190,18 @@ export type Output = {
   type: "flexible";
   result: {
     path: string;
-    map: Array<{
-      elementDescription: string;
-      group: string;
-      variant: string;
-      reason: string;
-    }>;
-    usedGroups: string[];
+    srcFile: string;
   }
 }
 //#endregion
+
+type InputInfo = {
+  path: string;
+  map: Array<{
+    elementDescription: string;
+    group: string;
+    variant: string;
+    reason: string;
+  }>;
+  usedGroups: string[];
+};
