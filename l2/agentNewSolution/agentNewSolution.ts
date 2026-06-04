@@ -347,7 +347,7 @@ const fallbackTitlesPt: Record<NewSolutionPlanId, string> = {
 };
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codepro -->
 
 You initialize the collab.codes "newModule" task.
 

@@ -621,7 +621,7 @@ function optionalPriority(value: unknown, path: string): Priority | undefined {
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codepro -->
 
 You are agentDiscoverSolutionScope for the collab.codes "newModule" flow.
 

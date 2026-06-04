@@ -557,7 +557,10 @@ function normalizeText(value: string): string {
     .toLowerCase();
 }
 
-const systemPrompt = `You are agentRecommendImplementations for the collab.codes "newModule" flow.
+const systemPrompt = `
+<!-- modelType: codepro -->
+
+You are agentRecommendImplementations for the collab.codes "newModule" flow.
 Use the discovered scope and clarification answer to recommend implementation artifacts for the next planning decision.
 Use the same language as the user for titles, descriptions, reasons, questions, and trace.
 Use English camelCase identifiers for recommendationId.
