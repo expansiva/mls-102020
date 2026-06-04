@@ -33,7 +33,7 @@ interface InitialNewSolutionPlanSummary {
   openDetails?: unknown[];
 }
 
-interface RequirementsClarificationAnswer {
+export interface RequirementsClarificationAnswer {
   title: string;
   userLanguage: string;
   answers: Record<string, string | boolean | string[]>;
@@ -328,7 +328,7 @@ function createActorFromString(value: string): SolutionScopeActor {
   };
 }
 
-function extractDiscoverSolutionScopeOutput(payload: unknown): DiscoverSolutionScopeOutput {
+export function extractDiscoverSolutionScopeOutput(payload: unknown): DiscoverSolutionScopeOutput {
   const value = parseMaybeJson(payload);
   if (!isRecord(value)) throw new Error('tool payload must be an object');
 
@@ -540,7 +540,7 @@ function getRequirementsClarificationAnswer(context: mls.msg.ExecutionContext): 
   return parsed;
 }
 
-function wantsInitialMetricsDashboard(answer?: RequirementsClarificationAnswer): boolean {
+export function wantsInitialMetricsDashboard(answer?: RequirementsClarificationAnswer): boolean {
   const raw = answer?.answers?.initialMetricsDashboard;
   if (raw === undefined) return false;
   if (raw === false) return false;

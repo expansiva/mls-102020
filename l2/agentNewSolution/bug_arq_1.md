@@ -63,6 +63,5 @@ After a clarification answer is applied:
 - No direct `mls.api.msgApplyIntents` call remains in `agentNewSolutionRequirements.ts`.
 - No dynamic import of `aiAgentOrchestration.js` remains in `agentNewSolutionRequirements.ts`.
 - Answering the first clarification unlocks and executes `agentDiscoverSolutionScope`.
-- The flow still reaches `agentRecommendImplementations` as the next missing agent.
+- The flow still reaches `agentSolutionBlueprint` after `req-implementation-decisions` and `agentNewSolutionPlanner` complete.
 - `pnpm build` passes in `/Volumes/WagnerSSD1/collab/mls-base`.
-
