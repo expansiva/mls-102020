@@ -18,6 +18,8 @@ export function createAgent(): IAgentAsync {
 export const DISCOVER_SOLUTION_SCOPE_TOOL_NAME = 'submitSolutionScopeDraft';
 export const DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION = '2026-06-02';
 export const DISCOVER_SOLUTION_SCOPE_STEP_ID = '03-discover-scope';
+const DISCOVER_SOLUTION_SCOPE_STEP_ID_ALIASES = [DISCOVER_SOLUTION_SCOPE_STEP_ID, 'req-discover-scope'];
+const DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION_ALIASES = [DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION, '1.0'];
 
 type ScopeStatus = 'ok' | 'needs_input' | 'failed';
 type Priority = 'now' | 'soon' | 'later' | 'never';
@@ -383,10 +385,8 @@ function normalizeToolArguments(value: unknown): DiscoverSolutionScopeOutput {
   const directOutput = tryNormalizeOutput(args);
   if (directOutput) return directOutput;
 
-  if (args.type === 'flexible') {
-    const output = tryNormalizeOutput(parseMaybeJson(args.result));
-    if (output) return output;
-  }
+  const output = tryNormalizeOutput(parseMaybeJson(args.result));
+  if (output) return output;
 
   throw new Error('tool arguments do not contain a flexible scope output');
 }
@@ -394,7 +394,7 @@ function normalizeToolArguments(value: unknown): DiscoverSolutionScopeOutput {
 function tryNormalizeOutput(value: unknown): DiscoverSolutionScopeOutput | null {
   const output = parseMaybeJson(value);
   if (!isRecord(output)) return null;
-  if (output.stepId !== DISCOVER_SOLUTION_SCOPE_STEP_ID || output.schemaVersion !== DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION) return null;
+  if (!isKnownScopeStepId(output.stepId) || !isKnownScopeSchemaVersion(output.schemaVersion)) return null;
   return normalizeDiscoverSolutionScopeOutput(output);
 }
 
@@ -404,8 +404,8 @@ function normalizeDiscoverSolutionScopeOutput(value: Record<string, unknown>): D
 
   return {
     runId: assertString(value.runId, 'runId'),
-    stepId: assertConst(value.stepId, DISCOVER_SOLUTION_SCOPE_STEP_ID, 'stepId'),
-    schemaVersion: assertConst(value.schemaVersion, DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION, 'schemaVersion'),
+    stepId: normalizeScopeStepId(value.stepId, 'stepId'),
+    schemaVersion: normalizeScopeSchemaVersion(value.schemaVersion, 'schemaVersion'),
     status: assertStatus(value.status, 'status'),
     result: {
       domain: assertString(result.domain, 'result.domain'),
@@ -428,6 +428,24 @@ function normalizeDiscoverSolutionScopeOutput(value: Record<string, unknown>): D
     questions: assertStringArray(value.questions, 'questions'),
     trace: assertStringArray(value.trace, 'trace'),
   };
+}
+
+function isKnownScopeStepId(value: unknown): boolean {
+  return DISCOVER_SOLUTION_SCOPE_STEP_ID_ALIASES.includes(value as string);
+}
+
+function isKnownScopeSchemaVersion(value: unknown): boolean {
+  return DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION_ALIASES.includes(value as string);
+}
+
+function normalizeScopeStepId(value: unknown, path: string): typeof DISCOVER_SOLUTION_SCOPE_STEP_ID {
+  if (isKnownScopeStepId(value)) return DISCOVER_SOLUTION_SCOPE_STEP_ID;
+  throw new Error(`${path} must be ${DISCOVER_SOLUTION_SCOPE_STEP_ID}`);
+}
+
+function normalizeScopeSchemaVersion(value: unknown, path: string): typeof DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION {
+  if (isKnownScopeSchemaVersion(value)) return DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION;
+  throw new Error(`${path} must be ${DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION}`);
 }
 
 function validateDiscoverSolutionScopeOutput(
@@ -585,11 +603,6 @@ function optionalString(value: unknown, path: string): string | undefined {
 function assertStringArray(value: unknown, path: string): string[] {
   if (!Array.isArray(value)) throw new Error(`${path} must be an array`);
   return value.map((item, index) => assertString(item, `${path}[${index}]`));
-}
-
-function assertConst<T extends string>(value: unknown, expected: T, path: string): T {
-  if (value !== expected) throw new Error(`${path} must be ${expected}`);
-  return expected;
 }
 
 function assertStatus(value: unknown, path: string): ScopeStatus {
