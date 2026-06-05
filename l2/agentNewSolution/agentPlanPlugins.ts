@@ -598,10 +598,4 @@ Do not return prose.
 - Do not plan a plugin as required for MVP unless implementation decisions approve it as "now".
 - Communication plugins may be planned only when reminders, alerts, approvals, contact, follow-ups, or communication workflows justify them.
 - Return an empty array when no external plugin is justified.
-
-## Content Memory
-actualDate: 2026-06-05
-userName: Wagner
-taskName: newModule
-flowName: newSolution
 `;

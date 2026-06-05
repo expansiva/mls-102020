@@ -82,20 +82,32 @@ const planPersistenceIndexToolSchema = createPlannerToolSchema(
     properties: {
       persistenceScope: {
         type: 'object',
-        additionalProperties: true,
+        additionalProperties: false,
         required: ['moduleId', 'newTablesRequired', 'metricsTablesRequired', 'excludedEntities'],
         properties: {
           moduleId: { type: 'string' },
           newTablesRequired: { type: 'boolean' },
           metricsTablesRequired: { type: 'boolean' },
-          excludedEntities: { type: 'array', items: { type: 'object', additionalProperties: true } },
+          excludedEntities: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['entityId', 'ownership', 'reason'],
+              properties: {
+                entityId: { type: 'string' },
+                ownership: { enum: ['mdmOwned', 'horizontalOwned', 'pluginOwned', 'external'] },
+                reason: { type: 'string' },
+              },
+            },
+          },
         },
       },
       tables: {
         type: 'array',
         items: {
           type: 'object',
-          additionalProperties: true,
+          additionalProperties: false,
           required: [
             'tableId',
             'tableName',
@@ -122,7 +134,7 @@ const planPersistenceIndexToolSchema = createPlannerToolSchema(
             ownership: { const: 'moduleOwned' },
             rootEntity: { type: 'string' },
             sourceEntities: { type: 'array', items: { type: 'string' } },
-            embeddedEntities: { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }] } },
+            embeddedEntities: { type: 'array', items: { type: 'string' } },
             persistencePattern: { enum: ['singleEntity', 'aggregateJsonDetails', 'eventLog', 'lookup', 'readModel'] },
             tableKind: { const: 'transactional' },
             detailsColumnRecommended: { type: 'boolean' },
@@ -229,8 +241,8 @@ function normalizePlanPersistenceIndexResult(value: unknown): PlanPersistenceInd
   return {
     persistenceScope: {
       moduleId: assertString(scope.moduleId, 'result.persistenceScope.moduleId'),
-      newTablesRequired: Boolean(scope.newTablesRequired),
-      metricsTablesRequired: Boolean(scope.metricsTablesRequired),
+      newTablesRequired: assertBoolean(scope.newTablesRequired, 'result.persistenceScope.newTablesRequired'),
+      metricsTablesRequired: assertBoolean(scope.metricsTablesRequired, 'result.persistenceScope.metricsTablesRequired'),
       excludedEntities: assertArray(scope.excludedEntities, 'result.persistenceScope.excludedEntities'),
     },
     tables: assertArray(result.tables, 'result.tables').map((item, index) => normalizePersistenceTable(item, `result.tables[${index}]`)),
@@ -267,7 +279,7 @@ function normalizePersistenceTable(value: unknown, path: string): PersistenceTab
     embeddedEntities,
     persistencePattern,
     tableKind: optionalString(table.tableKind, `${path}.tableKind`) || 'transactional',
-    detailsColumnRecommended: table.detailsColumnRecommended === undefined ? persistencePattern === 'aggregateJsonDetails' || embeddedEntities.length > 0 : Boolean(table.detailsColumnRecommended),
+    detailsColumnRecommended: assertBoolean(table.detailsColumnRecommended, `${path}.detailsColumnRecommended`),
     priority: table.priority === undefined ? 'now' : assertPriority(table.priority, `${path}.priority`),
     readsByArtifacts: normalizeStringArray(table.readsByArtifacts || [], `${path}.readsByArtifacts`),
     writesByArtifacts: normalizeStringArray(table.writesByArtifacts || [], `${path}.writesByArtifacts`),
@@ -277,9 +289,12 @@ function normalizePersistenceTable(value: unknown, path: string): PersistenceTab
 }
 
 function normalizePersistenceOwnership(value: unknown, path: string): string {
-  const ownership = optionalString(value, path) || 'moduleOwned';
-  if (ownership === 'module' || ownership === 'module_owned' || ownership === 'module-owned') return 'moduleOwned';
-  return ownership;
+  return assertString(value, path);
+}
+
+function assertBoolean(value: unknown, path: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`${path} must be a boolean`);
+  return value;
 }
 
 function validatePlanPersistenceIndexOutput(output: PlanPersistenceIndexOutput, initialMetricsRequested: boolean): void {
@@ -325,15 +340,7 @@ function normalizeStringArray(value: unknown, path: string): string[] {
 }
 
 function normalizeStringRef(value: unknown, path: string): string {
-  if (typeof value === 'string') return assertString(value, path);
-  const record = assertRecord(value, path);
-  return optionalString(record.entityName, `${path}.entityName`)
-    || optionalString(record.entityId, `${path}.entityId`)
-    || optionalString(record.name, `${path}.name`)
-    || optionalString(record.collectionName, `${path}.collectionName`)
-    || optionalString(record.tableId, `${path}.tableId`)
-    || optionalString(record.ruleId, `${path}.ruleId`)
-    || JSON.stringify(record);
+  return assertString(value, path);
 }
 
 function buildHumanPrompt(
@@ -394,10 +401,4 @@ Do not return prose.
 - Transactional table definitions must prepare for layer_1_external; direct access must be restricted to layer_3_usecases later.
 - Use rule ids; do not write loose rule text.
 - Do not generate TypeScript code.
-
-## Content Memory
-actualDate: 2026-06-05
-userName: Wagner
-taskName: newModule
-flowName: newSolution
 `;

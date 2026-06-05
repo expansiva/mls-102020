@@ -64,8 +64,98 @@ const planMetricTableDefinitionToolSchema = createPlannerToolSchema(
     additionalProperties: false,
     required: ['metricTableDefinition', 'defsPlan'],
     properties: {
-      metricTableDefinition: { type: 'object', additionalProperties: true },
-      defsPlan: { type: 'object', additionalProperties: true },
+      metricTableDefinition: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['metricTableId', 'tableName', 'moduleId', 'tableKind', 'storageEngine', 'layer', 'accessPolicy'],
+        properties: {
+          metricTableId: { type: 'string' },
+          tableName: { type: 'string' },
+          moduleId: { type: 'string' },
+          title: { type: 'string' },
+          purpose: { type: 'string' },
+          tableKind: { const: 'metricTimeseries' },
+          storageEngine: { const: 'postgresTimescaleDB' },
+          layer: { const: 'layer_1_external' },
+          timeColumn: { type: 'string' },
+          columns: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['name', 'type', 'nullable'],
+              properties: {
+                name: { type: 'string' },
+                type: { type: 'string' },
+                nullable: { type: 'boolean' },
+                default: { anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }] },
+                description: { type: 'string' },
+              },
+            },
+          },
+          dimensions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['dimensionId', 'column', 'type'],
+              properties: {
+                dimensionId: { type: 'string' },
+                column: { type: 'string' },
+                type: { type: 'string' },
+                description: { type: 'string' },
+              },
+            },
+          },
+          measures: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['measureId', 'column', 'aggregation'],
+              properties: {
+                measureId: { type: 'string' },
+                column: { type: 'string' },
+                aggregation: { type: 'string' },
+                unit: { type: 'string' },
+                description: { type: 'string' },
+              },
+            },
+          },
+          sourceWriteEvents: { type: 'array', items: { type: 'string' } },
+          updatePolicy: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['updatedByLayer', 'pagesMayUpdate', 'controllersMayUpdate'],
+            properties: {
+              updatedByLayer: { const: 'layer_3_usecases' },
+              pagesMayUpdate: { const: false },
+              controllersMayUpdate: { const: false },
+              usecaseRefs: { type: 'array', items: { type: 'string' } },
+            },
+          },
+          accessPolicy: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['directAccessAllowedFor'],
+            properties: {
+              directAccessAllowedFor: { type: 'array', items: { enum: ['layer_3_usecases'] } },
+              forbiddenFor: { type: 'array', items: { enum: ['pages', 'layer_2_controllers', 'agents'] } },
+            },
+          },
+          rulesApplied: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      defsPlan: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['fileName', 'exportName', 'saveAsDefs'],
+        properties: {
+          fileName: { type: 'string' },
+          exportName: { type: 'string' },
+          saveAsDefs: { type: 'boolean' },
+        },
+      },
     },
   }
 );
@@ -174,9 +264,14 @@ function normalizePlanMetricTableDefinitionResult(value: unknown): PlanMetricTab
     defsPlan: {
       fileName: assertString(defsPlan.fileName, 'result.defsPlan.fileName'),
       exportName: assertString(defsPlan.exportName, 'result.defsPlan.exportName'),
-      saveAsDefs: Boolean(defsPlan.saveAsDefs),
+      saveAsDefs: assertBoolean(defsPlan.saveAsDefs, 'result.defsPlan.saveAsDefs'),
     },
   };
+}
+
+function assertBoolean(value: unknown, path: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`${path} must be a boolean`);
+  return value;
 }
 
 function validatePlanMetricTableDefinitionOutput(output: PlanMetricTableDefinitionOutput): void {
@@ -263,10 +358,4 @@ Do not return prose.
 - updatePolicy.updatedByLayer must be layer_3_usecases.
 - defsPlan.fileName should be stable and metric-table-specific, such as tables/{metricTableId}.defs.ts.
 - Do not generate TypeScript code.
-
-## Content Memory
-actualDate: 2026-06-05
-userName: Wagner
-taskName: newModule
-flowName: newSolution
 `;

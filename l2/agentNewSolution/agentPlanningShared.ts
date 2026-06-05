@@ -60,6 +60,8 @@ export interface PlannerExtractConfig<T> {
   normalizeResult: (value: unknown) => T;
 }
 
+const plannerResultSchemasByToolName: Record<string, Record<string, unknown>> = {};
+
 export function createPlannerPromptReadyIntent(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
@@ -121,6 +123,8 @@ export function createPlannerToolSchema(
   stepId: string,
   resultSchema: Record<string, unknown>,
 ): mls.msg.LLMTool {
+  plannerResultSchemasByToolName[toolName] = resultSchema;
+
   return {
     type: 'function',
     function: {
@@ -411,6 +415,7 @@ function tryNormalizeNestedToolArguments<T>(value: unknown, config: PlannerExtra
 
 function tryNormalizeBareResult<T>(value: Record<string, unknown>, config: PlannerExtractConfig<T>): PlannerOutput<T> | null {
   try {
+    validatePlannerResultSchema(value, config);
     return {
       runId: optionalString(value.runId, 'runId') || 'provider-tool-call',
       stepId: config.stepId,
@@ -437,6 +442,7 @@ function tryNormalizePlannerOutput<T>(value: unknown, config: PlannerExtractConf
   if (output.result === undefined) return null;
   if (isToolWrapper(output.result, config.toolName)) return null;
   if (isNestedPlannerOutput(output.result, config)) return null;
+  validatePlannerResultSchema(output.result, config);
 
   return {
     runId: optionalString(output.runId, 'runId') || 'provider-tool-call',
@@ -447,6 +453,88 @@ function tryNormalizePlannerOutput<T>(value: unknown, config: PlannerExtractConf
     questions: normalizeStringList(output.questions, 'questions'),
     trace: normalizeStringList(output.trace, 'trace'),
   };
+}
+
+function validatePlannerResultSchema<T>(value: unknown, config: PlannerExtractConfig<T>): void {
+  const schema = plannerResultSchemasByToolName[config.toolName];
+  if (!schema) return;
+  validateJsonSchema(value, schema, 'result');
+}
+
+function validateJsonSchema(value: unknown, schema: unknown, path: string): void {
+  if (!isRecord(schema)) return;
+
+  const anyOf = schema.anyOf;
+  if (Array.isArray(anyOf)) {
+    const errors: string[] = [];
+    for (const option of anyOf) {
+      try {
+        validateJsonSchema(value, option, path);
+        return;
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+    throw new Error(`${path} must match one allowed schema: ${errors.join('; ')}`);
+  }
+
+  if (schema.const !== undefined && value !== schema.const) {
+    throw new Error(`${path} must be ${JSON.stringify(schema.const)}`);
+  }
+
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
+    throw new Error(`${path} must be one of ${schema.enum.map(item => JSON.stringify(item)).join(', ')}`);
+  }
+
+  if (schema.type !== undefined) validateJsonSchemaType(value, schema.type, path);
+
+  if (schema.type === 'object' || (schema.properties !== undefined || schema.required !== undefined)) {
+    if (!isRecord(value)) throw new Error(`${path} must be an object`);
+    const required = schema.required;
+    if (Array.isArray(required)) {
+      for (const key of required) {
+        if (typeof key === 'string' && value[key] === undefined) throw new Error(`${path}.${key} is required`);
+      }
+    }
+
+    const properties = isRecord(schema.properties) ? schema.properties : {};
+    for (const [key, propertySchema] of Object.entries(properties)) {
+      if (value[key] !== undefined) validateJsonSchema(value[key], propertySchema, `${path}.${key}`);
+    }
+
+    const additionalProperties = schema.additionalProperties;
+    if (additionalProperties === false) {
+      for (const key of Object.keys(value)) {
+        if (properties[key] === undefined) throw new Error(`${path}.${key} is not allowed`);
+      }
+    } else if (isRecord(additionalProperties)) {
+      for (const key of Object.keys(value)) {
+        if (properties[key] === undefined) validateJsonSchema(value[key], additionalProperties, `${path}.${key}`);
+      }
+    }
+  }
+
+  if (schema.type === 'array' || schema.items !== undefined) {
+    if (!Array.isArray(value)) throw new Error(`${path} must be an array`);
+    if (schema.items !== undefined) {
+      value.forEach((item, index) => validateJsonSchema(item, schema.items, `${path}[${index}]`));
+    }
+  }
+}
+
+function validateJsonSchemaType(value: unknown, type: unknown, path: string): void {
+  const types = Array.isArray(type) ? type : [type];
+  const ok = types.some(item => {
+    if (item === 'array') return Array.isArray(value);
+    if (item === 'object') return isRecord(value);
+    if (item === 'integer') return Number.isInteger(value);
+    if (item === 'number') return typeof value === 'number';
+    if (item === 'string') return typeof value === 'string';
+    if (item === 'boolean') return typeof value === 'boolean';
+    if (item === 'null') return value === null;
+    return true;
+  });
+  if (!ok) throw new Error(`${path} must be ${types.join(' or ')}`);
 }
 
 function isToolWrapper(value: unknown, toolName: string): boolean {

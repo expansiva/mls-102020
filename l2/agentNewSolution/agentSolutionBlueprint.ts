@@ -14,6 +14,7 @@ import {
   hasAcceptedNowArtifact,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import { solutionBlueprintResultSchema } from '/_102020_/l2/agentNewSolution/agentSolutionPlanSchemas.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -61,44 +62,7 @@ const solutionBlueprintToolSchema = createPlannerToolSchema(
   SOLUTION_BLUEPRINT_TOOL_NAME,
   'Submit the detailed solution blueprint for the newSolution planner.',
   SOLUTION_BLUEPRINT_STEP_ID,
-  {
-    type: 'object',
-    additionalProperties: false,
-    required: ['module', 'actors', 'capabilities', 'ontology', 'rules', 'relationships', 'userActions', 'artifactPlan', 'coverage'],
-    properties: {
-      module: { type: 'object', additionalProperties: true },
-      actors: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      capabilities: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      ontology: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['entities'],
-        properties: {
-          entities: { type: 'object', additionalProperties: true },
-        },
-      },
-      rules: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      relationships: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      userActions: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      artifactPlan: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['pages', 'workflows', 'plugins', 'agents', 'horizontalModules', 'mdm', 'metricTables', 'metricDashboards', 'usecaseEntities'],
-        properties: {
-          pages: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          workflows: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          plugins: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          agents: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          horizontalModules: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          mdm: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          metricTables: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          metricDashboards: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          usecaseEntities: { type: 'array', items: { type: 'object', additionalProperties: true } },
-        },
-      },
-      coverage: { type: 'array', items: { type: 'object', additionalProperties: true } },
-    },
-  }
+  solutionBlueprintResultSchema
 );
 
 async function beforePromptStep(
@@ -279,10 +243,4 @@ In result, return:
 - Do not make payments, scheduling, adoption, or unrelated features part of the MVP when the prompt or decisions excluded them.
 - Use rules with stable ruleId values. Do not leave rule text loose in pages.
 - Use status "needs_input" only when a safe blueprint cannot be drafted without another client decision.
-
-## Content Memory
-actualDate: 2026-06-05
-userName: Wagner
-taskName: newModule
-flowName: newSolution
 `;

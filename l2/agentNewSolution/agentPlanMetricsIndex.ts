@@ -77,9 +77,124 @@ const planMetricsIndexToolSchema = createPlannerToolSchema(
     additionalProperties: false,
     required: ['metricsPlan', 'metricTables', 'dashboardPages'],
     properties: {
-      metricsPlan: { type: 'object', additionalProperties: true },
-      metricTables: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      dashboardPages: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      metricsPlan: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['enabled', 'storageEngine'],
+        properties: {
+          enabled: { type: 'boolean' },
+          storageEngine: { const: 'postgresTimescaleDB' },
+          moduleId: { type: 'string' },
+          title: { type: 'string' },
+          description: { type: 'string' },
+          updateResponsibility: { const: 'layer_3_usecases' },
+          derivationSources: { type: 'array', items: { enum: ['baseTableUpdates', 'lifecycleTransitions', 'operationalRisks'] } },
+        },
+      },
+      metricTables: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'metricTableId',
+            'tableName',
+            'title',
+            'purpose',
+            'storageEngine',
+            'sourceBaseTables',
+            'sourceEntities',
+            'sourceWriteEvents',
+            'timeColumn',
+            'dimensions',
+            'measures',
+            'aggregationWindows',
+            'retentionPolicy',
+            'priority',
+            'rulesApplied',
+            'reason',
+          ],
+          properties: {
+            metricTableId: { type: 'string' },
+            tableName: { type: 'string' },
+            title: { type: 'string' },
+            purpose: { type: 'string' },
+            storageEngine: { const: 'postgresTimescaleDB' },
+            sourceBaseTables: { type: 'array', items: { type: 'string' } },
+            sourceEntities: { type: 'array', items: { type: 'string' } },
+            sourceWriteEvents: { type: 'array', items: { type: 'string' } },
+            timeColumn: { type: 'string' },
+            dimensions: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['dimensionId', 'column', 'type'],
+                properties: {
+                  dimensionId: { type: 'string' },
+                  column: { type: 'string' },
+                  type: { type: 'string' },
+                  description: { type: 'string' },
+                },
+              },
+            },
+            measures: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['measureId', 'column', 'type', 'aggregation'],
+                properties: {
+                  measureId: { type: 'string' },
+                  column: { type: 'string' },
+                  type: { type: 'string' },
+                  aggregation: { type: 'string' },
+                  unit: { type: 'string' },
+                  description: { type: 'string' },
+                },
+              },
+            },
+            aggregationWindows: { type: 'array', items: { type: 'string' } },
+            retentionPolicy: { type: 'string' },
+            priority: { enum: ['now', 'soon', 'later', 'never'] },
+            rulesApplied: { type: 'array', items: { type: 'string' } },
+            reason: { type: 'string' },
+          },
+        },
+      },
+      dashboardPages: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['metricDashboardId', 'title', 'actor', 'accessPolicy', 'priority', 'sources', 'widgets'],
+          properties: {
+            metricDashboardId: { type: 'string' },
+            title: { type: 'string' },
+            description: { type: 'string' },
+            actor: { type: 'string' },
+            accessPolicy: { type: 'string' },
+            priority: { enum: ['now', 'soon', 'later', 'never'] },
+            sources: { type: 'array', items: { type: 'string' } },
+            widgets: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['widgetId', 'title', 'metricId', 'type', 'sourceMetricTable'],
+                properties: {
+                  widgetId: { type: 'string' },
+                  title: { type: 'string' },
+                  metricId: { type: 'string' },
+                  type: { type: 'string' },
+                  sourceMetricTable: { type: 'string' },
+                },
+              },
+            },
+            rulesApplied: { type: 'array', items: { type: 'string' } },
+          },
+        },
+      },
     },
   }
 );
@@ -171,14 +286,15 @@ const planMetricsIndexConfig = {
 function normalizePlanMetricsIndexResult(value: unknown): PlanMetricsIndexResult {
   const result = assertRecord(value, 'result');
   const metricsPlan = assertRecord(result.metricsPlan, 'result.metricsPlan');
+  const metricTables = assertArray(result.metricTables, 'result.metricTables').map((item, index) => normalizeMetricTableIndexItem(item, `result.metricTables[${index}]`));
   return {
     metricsPlan: {
       ...metricsPlan,
-      enabled: Boolean(metricsPlan.enabled),
+      enabled: assertBoolean(metricsPlan.enabled, 'result.metricsPlan.enabled'),
       storageEngine: assertString(metricsPlan.storageEngine, 'result.metricsPlan.storageEngine'),
     },
-    metricTables: assertArray(result.metricTables, 'result.metricTables').map((item, index) => normalizeMetricTableIndexItem(item, `result.metricTables[${index}]`)),
-    dashboardPages: assertArray(result.dashboardPages, 'result.dashboardPages'),
+    metricTables,
+    dashboardPages: assertArray(result.dashboardPages, 'result.dashboardPages').map((item, index) => normalizeDashboardPage(item, `result.dashboardPages[${index}]`)),
   };
 }
 
@@ -194,14 +310,57 @@ function normalizeMetricTableIndexItem(value: unknown, path: string): MetricTabl
     sourceEntities: normalizeStringArray(table.sourceEntities, `${path}.sourceEntities`),
     sourceWriteEvents: normalizeStringArray(table.sourceWriteEvents, `${path}.sourceWriteEvents`),
     timeColumn: assertString(table.timeColumn, `${path}.timeColumn`),
-    dimensions: assertArray(table.dimensions, `${path}.dimensions`),
-    measures: assertArray(table.measures, `${path}.measures`),
+    dimensions: assertArray(table.dimensions, `${path}.dimensions`).map((item, index) => normalizeMetricDimension(item, `${path}.dimensions[${index}]`)),
+    measures: assertArray(table.measures, `${path}.measures`).map((item, index) => normalizeMetricMeasure(item, `${path}.measures[${index}]`)),
     aggregationWindows: normalizeStringArray(table.aggregationWindows, `${path}.aggregationWindows`),
     retentionPolicy: assertString(table.retentionPolicy, `${path}.retentionPolicy`),
     priority: assertPriority(table.priority, `${path}.priority`),
     rulesApplied: normalizeStringArray(table.rulesApplied, `${path}.rulesApplied`),
     reason: assertString(table.reason, `${path}.reason`),
   };
+}
+
+function normalizeMetricDimension(value: unknown, path: string): unknown {
+  const dimension = assertRecord(value, path);
+  assertString(dimension.dimensionId, `${path}.dimensionId`);
+  assertString(dimension.column, `${path}.column`);
+  assertString(dimension.type, `${path}.type`);
+  if (dimension.description !== undefined) assertString(dimension.description, `${path}.description`);
+  return dimension;
+}
+
+function normalizeMetricMeasure(value: unknown, path: string): unknown {
+  const measure = assertRecord(value, path);
+  assertString(measure.measureId, `${path}.measureId`);
+  assertString(measure.column, `${path}.column`);
+  assertString(measure.type, `${path}.type`);
+  assertString(measure.aggregation, `${path}.aggregation`);
+  if (measure.unit !== undefined) assertString(measure.unit, `${path}.unit`);
+  if (measure.description !== undefined) assertString(measure.description, `${path}.description`);
+  return measure;
+}
+
+function normalizeDashboardPage(value: unknown, path: string): unknown {
+  const page = assertRecord(value, path);
+  assertString(page.metricDashboardId, `${path}.metricDashboardId`);
+  assertString(page.title, `${path}.title`);
+  assertString(page.actor, `${path}.actor`);
+  assertString(page.accessPolicy, `${path}.accessPolicy`);
+  assertPriority(page.priority, `${path}.priority`);
+  normalizeStringArray(page.sources, `${path}.sources`);
+  assertArray(page.widgets, `${path}.widgets`).forEach((item, index) => normalizeDashboardWidget(item, `${path}.widgets[${index}]`));
+  if (page.rulesApplied !== undefined) normalizeStringArray(page.rulesApplied, `${path}.rulesApplied`);
+  return page;
+}
+
+function normalizeDashboardWidget(value: unknown, path: string): unknown {
+  const widget = assertRecord(value, path);
+  assertString(widget.widgetId, `${path}.widgetId`);
+  assertString(widget.title, `${path}.title`);
+  assertString(widget.metricId, `${path}.metricId`);
+  assertString(widget.type, `${path}.type`);
+  assertString(widget.sourceMetricTable, `${path}.sourceMetricTable`);
+  return widget;
 }
 
 function validatePlanMetricsIndexOutput(output: PlanMetricsIndexOutput, initialMetricsRequested: boolean): void {
@@ -239,6 +398,11 @@ function createFirstMetricTableDefinitionIntent(context: mls.msg.ExecutionContex
 
 function normalizeStringArray(value: unknown, path: string): string[] {
   return assertArray(value, path).map((item, index) => assertString(item, `${path}[${index}]`));
+}
+
+function assertBoolean(value: unknown, path: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`${path} must be a boolean`);
+  return value;
 }
 
 function buildHumanPrompt(
@@ -282,15 +446,11 @@ Do not return prose.
 - Dashboards generated by this step must be admin-only unless approved decisions say otherwise.
 - Metric tables must be separate from normal transactional tables.
 - Metric tables must use storageEngine "postgresTimescaleDB" for time-series operational metrics.
+- metricsPlan.storageEngine is required and must be "postgresTimescaleDB".
+- Metric table index items must use string timeColumn, string[] sourceWriteEvents, string[] sourceBaseTables, dimensions[], measures[], aggregationWindows[], and retentionPolicy.
 - Derive metrics from base table updates, lifecycle transitions, and operational risks.
 - Do not update metrics from pages.
 - Metrics must be updated by backend use cases in layer_3_usecases.
 - Use sourceWriteEvents to list the base table updates that feed each metric table.
 - Do not generate TypeScript code.
-
-## Content Memory
-actualDate: 2026-06-05
-userName: Wagner
-taskName: newModule
-flowName: newSolution
 `;

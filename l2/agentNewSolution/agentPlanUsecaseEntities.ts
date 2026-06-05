@@ -5,6 +5,7 @@ import {
   PlannerOutput,
   assertArray,
   assertRecord,
+  assertString,
   createPlannerPromptReadyIntent,
   createPlannerToolSchema,
   createPlannerUpdateStatusIntent,
@@ -55,9 +56,55 @@ const planUsecaseEntitiesToolSchema = createPlannerToolSchema(
     additionalProperties: false,
     required: ['backendArchitecture', 'usecaseEntities', 'usecases', 'controllerRules'],
     properties: {
-      backendArchitecture: { type: 'object', additionalProperties: true },
-      usecaseEntities: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      usecases: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      backendArchitecture: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['pattern', 'layer2Responsibility', 'layer3Responsibility', 'layer1Responsibility'],
+        properties: {
+          pattern: { type: 'string' },
+          layer2Responsibility: { type: 'string' },
+          layer3Responsibility: { type: 'string' },
+          layer1Responsibility: { type: 'string' },
+        },
+      },
+      usecaseEntities: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['usecaseEntityId', 'title', 'purpose', 'sourceTables', 'allowedOperations', 'layer'],
+          properties: {
+            usecaseEntityId: { type: 'string' },
+            title: { type: 'string' },
+            purpose: { type: 'string' },
+            sourceTables: { type: 'array', items: { type: 'string' } },
+            allowedOperations: { type: 'array', items: { type: 'string' } },
+            layer: { const: 'layer_3_usecases' },
+            rulesApplied: { type: 'array', items: { type: 'string' } },
+          },
+        },
+      },
+      usecases: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['usecaseId', 'title', 'purpose', 'actor', 'layer', 'inputEntities', 'outputEntities', 'readsTables', 'writesTables', 'rulesApplied'],
+          properties: {
+            usecaseId: { type: 'string' },
+            title: { type: 'string' },
+            purpose: { type: 'string' },
+            actor: { type: 'string' },
+            layer: { const: 'layer_3_usecases' },
+            inputEntities: { type: 'array', items: { type: 'string' } },
+            outputEntities: { type: 'array', items: { type: 'string' } },
+            readsTables: { type: 'array', items: { type: 'string' } },
+            writesTables: { type: 'array', items: { type: 'string' } },
+            commands: { type: 'array', items: { type: 'string' } },
+            rulesApplied: { type: 'array', items: { type: 'string' } },
+          },
+        },
+      },
       controllerRules: {
         type: 'object',
         additionalProperties: false,
@@ -153,14 +200,60 @@ function normalizePlanUsecaseEntitiesResult(value: unknown): PlanUsecaseEntities
   const result = assertRecord(value, 'result');
   const controllerRules = assertRecord(result.controllerRules, 'result.controllerRules');
   return {
-    backendArchitecture: assertRecord(result.backendArchitecture, 'result.backendArchitecture'),
-    usecaseEntities: assertArray(result.usecaseEntities, 'result.usecaseEntities'),
-    usecases: assertArray(result.usecases, 'result.usecases'),
+    backendArchitecture: normalizeBackendArchitecture(result.backendArchitecture),
+    usecaseEntities: assertArray(result.usecaseEntities, 'result.usecaseEntities').map((item, index) => normalizeUsecaseEntity(item, `result.usecaseEntities[${index}]`)),
+    usecases: assertArray(result.usecases, 'result.usecases').map((item, index) => normalizeUsecase(item, `result.usecases[${index}]`)),
     controllerRules: {
-      bffMustCallUsecases: Boolean(controllerRules.bffMustCallUsecases),
-      bffDirectTableAccessForbidden: Boolean(controllerRules.bffDirectTableAccessForbidden),
+      bffMustCallUsecases: assertBoolean(controllerRules.bffMustCallUsecases, 'result.controllerRules.bffMustCallUsecases'),
+      bffDirectTableAccessForbidden: assertBoolean(controllerRules.bffDirectTableAccessForbidden, 'result.controllerRules.bffDirectTableAccessForbidden'),
     },
   };
+}
+
+function assertBoolean(value: unknown, path: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`${path} must be a boolean`);
+  return value;
+}
+
+function normalizeBackendArchitecture(value: unknown): Record<string, unknown> {
+  const architecture = assertRecord(value, 'result.backendArchitecture');
+  assertString(architecture.pattern, 'result.backendArchitecture.pattern');
+  assertString(architecture.layer2Responsibility, 'result.backendArchitecture.layer2Responsibility');
+  assertString(architecture.layer3Responsibility, 'result.backendArchitecture.layer3Responsibility');
+  assertString(architecture.layer1Responsibility, 'result.backendArchitecture.layer1Responsibility');
+  return architecture;
+}
+
+function normalizeUsecaseEntity(value: unknown, path: string): unknown {
+  const entity = assertRecord(value, path);
+  assertString(entity.usecaseEntityId, `${path}.usecaseEntityId`);
+  assertString(entity.title, `${path}.title`);
+  assertString(entity.purpose, `${path}.purpose`);
+  normalizeStringArray(entity.sourceTables, `${path}.sourceTables`);
+  normalizeStringArray(entity.allowedOperations, `${path}.allowedOperations`);
+  if (entity.layer !== 'layer_3_usecases') throw new Error(`${path}.layer must be layer_3_usecases`);
+  if (entity.rulesApplied !== undefined) normalizeStringArray(entity.rulesApplied, `${path}.rulesApplied`);
+  return entity;
+}
+
+function normalizeUsecase(value: unknown, path: string): unknown {
+  const usecase = assertRecord(value, path);
+  assertString(usecase.usecaseId, `${path}.usecaseId`);
+  assertString(usecase.title, `${path}.title`);
+  assertString(usecase.purpose, `${path}.purpose`);
+  assertString(usecase.actor, `${path}.actor`);
+  if (usecase.layer !== 'layer_3_usecases') throw new Error(`${path}.layer must be layer_3_usecases`);
+  normalizeStringArray(usecase.inputEntities, `${path}.inputEntities`);
+  normalizeStringArray(usecase.outputEntities, `${path}.outputEntities`);
+  normalizeStringArray(usecase.readsTables, `${path}.readsTables`);
+  normalizeStringArray(usecase.writesTables, `${path}.writesTables`);
+  if (usecase.commands !== undefined) normalizeStringArray(usecase.commands, `${path}.commands`);
+  normalizeStringArray(usecase.rulesApplied, `${path}.rulesApplied`);
+  return usecase;
+}
+
+function normalizeStringArray(value: unknown, path: string): string[] {
+  return assertArray(value, path).map((item, index) => assertString(item, `${path}[${index}]`));
 }
 
 function validatePlanUsecaseEntitiesOutput(output: PlanUsecaseEntitiesOutput, hasModuleTables: boolean): void {
@@ -223,10 +316,4 @@ Do not return prose.
 - Only layer_3_usecases may access tables from layer_1_external.
 - BFF commands generated later must be able to reference these use cases by usecaseId.
 - Do not generate TypeScript code.
-
-## Content Memory
-actualDate: 2026-06-05
-userName: Wagner
-taskName: newModule
-flowName: newSolution
 `;

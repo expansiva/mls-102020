@@ -64,10 +64,10 @@ const planMdmToolSchema = createPlannerToolSchema(
           properties: {
             domainId: { type: 'string' },
             title: { type: 'string' },
-            masterEntities: { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }] } },
+            masterEntities: { type: 'array', items: { type: 'string' } },
             sourceOfTruth: { type: 'string' },
-            consumers: { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }] } },
-            governanceRules: { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }] } },
+            consumers: { type: 'array', items: { type: 'string' } },
+            governanceRules: { type: 'array', items: { type: 'string' } },
           },
         },
       },
@@ -160,10 +160,10 @@ function normalizeMdmDomain(value: unknown, path: string): MdmDomainPlan {
   return {
     domainId: assertString(domain.domainId, `${path}.domainId`),
     title: assertString(domain.title, `${path}.title`),
-    masterEntities: assertArray(domain.masterEntities, `${path}.masterEntities`),
+    masterEntities: assertArray(domain.masterEntities, `${path}.masterEntities`).map((item, index) => assertString(item, `${path}.masterEntities[${index}]`)),
     sourceOfTruth: assertString(domain.sourceOfTruth, `${path}.sourceOfTruth`),
-    consumers: assertArray(domain.consumers, `${path}.consumers`),
-    governanceRules: assertArray(domain.governanceRules, `${path}.governanceRules`),
+    consumers: assertArray(domain.consumers, `${path}.consumers`).map((item, index) => assertString(item, `${path}.consumers[${index}]`)),
+    governanceRules: assertArray(domain.governanceRules, `${path}.governanceRules`).map((item, index) => assertString(item, `${path}.governanceRules[${index}]`)),
   };
 }
 
@@ -215,10 +215,4 @@ Do not return prose.
 - Do not hard-code sample fixture entities.
 - Declare sourceOfTruth and consumers.
 - Reference pages, workflows, plugins, agents, usecases, and metric tables that consume the master data when known.
-
-## Content Memory
-actualDate: 2026-06-05
-userName: Wagner
-taskName: newModule
-flowName: newSolution
 `;

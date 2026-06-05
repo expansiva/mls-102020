@@ -631,10 +631,4 @@ Do not return prose.
 - Keep dependencies as recommendationId values from the same output.
 - Use status "needs_input" only when recommendations cannot be safely drafted without another client decision.
 - Use status "failed" only for structural impossibility.
-
-## Content Memory
-actualDate: 2026-06-04
-userName: Wagner
-taskName: newModule
-flowName: newSolution
 `;

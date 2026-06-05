@@ -70,7 +70,7 @@ const blueprintReviewToolSchema = createPlannerToolSchema(
           },
         },
       },
-      recommendedFixes: { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }] } },
+      recommendedFixes: { type: 'array', items: { type: 'string' } },
     },
   }
 );
@@ -153,7 +153,8 @@ function normalizeBlueprintReviewResult(value: unknown): BlueprintReviewResult {
   const issues = assertArray(result.issues, 'result.issues').map((item, index) => normalizeIssue(item, `result.issues[${index}]`));
   return {
     issues,
-    recommendedFixes: assertArray(result.recommendedFixes, 'result.recommendedFixes'),
+    recommendedFixes: assertArray(result.recommendedFixes, 'result.recommendedFixes')
+      .map((item, index) => assertString(item, `result.recommendedFixes[${index}]`)),
   };
 }
 
@@ -205,10 +206,4 @@ Do not return prose.
 - Detect approved capabilities without artifact coverage.
 - Detect entity status changes that contradict declared enums or duplicate another workflow's responsibility.
 - Use severity "error" for blockers and "warning" for future/later items.
-
-## Content Memory
-actualDate: 2026-06-05
-userName: Wagner
-taskName: newModule
-flowName: newSolution
 `;

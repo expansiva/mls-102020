@@ -64,27 +64,99 @@ const planTableDefinitionToolSchema = createPlannerToolSchema(
     properties: {
       tableDefinition: {
         type: 'object',
-        additionalProperties: true,
+        additionalProperties: false,
         required: ['tableId', 'tableName', 'moduleId', 'layer', 'tableKind', 'accessPolicy'],
         properties: {
           tableId: { type: 'string' },
           tableName: { type: 'string' },
           moduleId: { type: 'string' },
+          title: { type: 'string' },
+          purpose: { type: 'string' },
+          ownership: { const: 'moduleOwned' },
+          rootEntity: { type: 'string' },
           layer: { const: 'layer_1_external' },
           tableKind: { const: 'transactional' },
-          accessPolicy: {
-            type: 'object',
-            additionalProperties: true,
-            required: ['directAccessAllowedFor'],
-            properties: {
-              directAccessAllowedFor: { type: 'array', items: { type: 'string' } },
+          columns: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['name', 'type', 'nullable'],
+              properties: {
+                name: { type: 'string' },
+                type: { type: 'string' },
+                nullable: { type: 'boolean' },
+                primaryKey: { type: 'boolean' },
+                default: { anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }] },
+                description: { type: 'string' },
+              },
             },
           },
+          primaryKey: { type: 'array', items: { type: 'string' } },
+          foreignRefs: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['fieldName', 'targetEntity', 'targetOwnership'],
+              properties: {
+                fieldName: { type: 'string' },
+                targetEntity: { type: 'string' },
+                targetOwnership: { enum: ['moduleOwned', 'mdmOwned', 'horizontalOwned', 'pluginOwned', 'external'] },
+                reason: { type: 'string' },
+              },
+            },
+          },
+          indexes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['indexName', 'columns', 'reason'],
+              properties: {
+                indexName: { type: 'string' },
+                columns: { type: 'array', items: { type: 'string' } },
+                unique: { type: 'boolean' },
+                reason: { type: 'string' },
+              },
+            },
+          },
+          detailsColumn: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['enabled'],
+            properties: {
+              enabled: { type: 'boolean' },
+              columnName: { type: 'string' },
+              jsonSchemaRef: { type: 'string' },
+              reason: { type: 'string' },
+            },
+          },
+          metricUpdatePolicy: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['feedsMetrics', 'updatedByLayer'],
+            properties: {
+              feedsMetrics: { type: 'boolean' },
+              metricRefs: { type: 'array', items: { type: 'string' } },
+              updatedByLayer: { const: 'layer_3_usecases' },
+            },
+          },
+          accessPolicy: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['directAccessAllowedFor'],
+            properties: {
+              directAccessAllowedFor: { type: 'array', items: { enum: ['layer_3_usecases'] } },
+              forbiddenFor: { type: 'array', items: { enum: ['pages', 'layer_2_controllers', 'agents'] } },
+            },
+          },
+          rulesApplied: { type: 'array', items: { type: 'string' } },
         },
       },
       defsPlan: {
         type: 'object',
-        additionalProperties: true,
+        additionalProperties: false,
         required: ['fileName', 'exportName', 'saveAsDefs'],
         properties: {
           fileName: { type: 'string' },
@@ -185,11 +257,8 @@ function normalizePlanTableDefinitionResult(value: unknown): PlanTableDefinition
   const tableDefinition = assertRecord(result.tableDefinition, 'result.tableDefinition');
   const defsPlan = assertRecord(result.defsPlan, 'result.defsPlan');
   const tableId = assertString(tableDefinition.tableId, 'result.tableDefinition.tableId');
-  const moduleId = optionalString(tableDefinition.moduleId, 'result.tableDefinition.moduleId')
-    || optionalString(defsPlan.moduleId, 'result.defsPlan.moduleId')
-    || optionalString(tableDefinition.moduleName, 'result.tableDefinition.moduleName');
+  const moduleId = assertString(tableDefinition.moduleId, 'result.tableDefinition.moduleId');
   const accessPolicy = normalizeAccessPolicy(tableDefinition);
-  if (!moduleId) throw new Error('result.tableDefinition.moduleId must be a non-empty string');
 
   return {
     tableDefinition: {
@@ -203,19 +272,19 @@ function normalizePlanTableDefinitionResult(value: unknown): PlanTableDefinition
     },
     defsPlan: {
       fileName: assertString(defsPlan.fileName, 'result.defsPlan.fileName'),
-      exportName: optionalString(defsPlan.exportName, 'result.defsPlan.exportName') || `${tableId}TableDefinition`,
-      saveAsDefs: defsPlan.saveAsDefs === undefined ? true : Boolean(defsPlan.saveAsDefs),
+      exportName: assertString(defsPlan.exportName, 'result.defsPlan.exportName'),
+      saveAsDefs: assertBoolean(defsPlan.saveAsDefs, 'result.defsPlan.saveAsDefs'),
     },
   };
 }
 
 function normalizeAccessPolicy(tableDefinition: Record<string, unknown>): Record<string, unknown> {
-  if (tableDefinition.accessPolicy !== undefined) return assertRecord(tableDefinition.accessPolicy, 'result.tableDefinition.accessPolicy');
-  const directAccess = assertRecord(tableDefinition.directAccess, 'result.tableDefinition.directAccess');
-  const directAccessAllowedFor = Object.entries(directAccess)
-    .filter(([, allowed]) => allowed === true)
-    .map(([layer]) => layer);
-  return { directAccessAllowedFor };
+  return assertRecord(tableDefinition.accessPolicy, 'result.tableDefinition.accessPolicy');
+}
+
+function assertBoolean(value: unknown, path: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`${path} must be a boolean`);
+  return value;
 }
 
 function validatePlanTableDefinitionOutput(output: PlanTableDefinitionOutput): void {
@@ -375,10 +444,4 @@ Do not return prose.
 - Use rule ids; do not write loose rule text.
 - Do not generate TypeScript code.
 - The focused context intentionally omits unrelated entities and artifacts. Do not infer extra tables or capabilities from omitted context.
-
-## Content Memory
-actualDate: 2026-06-05
-userName: Wagner
-taskName: newModule
-flowName: newSolution
 `;

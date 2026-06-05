@@ -17,6 +17,7 @@ import {
 import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { BlueprintReviewOutput, getBlueprintReviewOutput } from '/_102020_/l2/agentNewSolution/agentBlueprintReview.js';
 import { SolutionBlueprintOutput, getSolutionBlueprintOutput } from '/_102020_/l2/agentNewSolution/agentSolutionBlueprint.js';
+import { finalSolutionPlanResultSchema } from '/_102020_/l2/agentNewSolution/agentSolutionPlanSchemas.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -65,45 +66,7 @@ const finalizeSolutionPlanToolSchema = createPlannerToolSchema(
   FINALIZE_SOLUTION_PLAN_TOOL_NAME,
   'Submit the final solution plan after applying blueprint review findings.',
   FINALIZE_SOLUTION_PLAN_STEP_ID,
-  {
-    type: 'object',
-    additionalProperties: false,
-    required: ['module', 'actors', 'capabilities', 'ontology', 'rules', 'relationships', 'userActions', 'approvedArtifacts', 'decisions', 'deferredItems'],
-    properties: {
-      module: { type: 'object', additionalProperties: true },
-      actors: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      capabilities: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      ontology: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['entities'],
-        properties: {
-          entities: { type: 'object', additionalProperties: true },
-        },
-      },
-      rules: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      relationships: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      userActions: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      approvedArtifacts: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['pages', 'workflows', 'plugins', 'agents', 'horizontalModules', 'mdm', 'metricTables', 'metricDashboards', 'usecaseEntities'],
-        properties: {
-          pages: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          workflows: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          plugins: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          agents: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          horizontalModules: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          mdm: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          metricTables: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          metricDashboards: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          usecaseEntities: { type: 'array', items: { type: 'object', additionalProperties: true } },
-        },
-      },
-      decisions: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      deferredItems: { type: 'array', items: { type: 'object', additionalProperties: true } },
-    },
-  }
+  finalSolutionPlanResultSchema
 );
 
 async function beforePromptStep(
@@ -281,10 +244,4 @@ Do not return prose.
 - Keep rules centralized in rules with stable ruleId values.
 - Page definitions and BFF commands must reference rules by ruleId.
 - Do not continue if an error cannot be fixed from available context; return status "needs_input" with questions.
-
-## Content Memory
-actualDate: 2026-06-05
-userName: Wagner
-taskName: newModule
-flowName: newSolution
 `;

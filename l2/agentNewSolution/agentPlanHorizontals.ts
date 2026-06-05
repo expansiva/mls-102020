@@ -242,10 +242,4 @@ Do not return prose.
 - Documents should be planned when the domain needs contracts, signatures, files, certificates, receipts, policies, or generated documents.
 - The priority must follow implementation decisions. If not explicitly decided, use the most conservative priority that keeps the MVP coherent.
 - Return an empty array when no horizontal module is justified.
-
-## Content Memory
-actualDate: 2026-06-05
-userName: Wagner
-taskName: newModule
-flowName: newSolution
 `;

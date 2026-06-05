@@ -72,7 +72,58 @@ const planWorkflowIndexToolSchema = createPlannerToolSchema(
     additionalProperties: false,
     required: ['workflows'],
     properties: {
-      workflows: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      workflows: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'workflowId',
+            'title',
+            'purpose',
+            'executionMode',
+            'createsTask',
+            'priority',
+            'actors',
+            'relatedEntities',
+            'persistenceRefs',
+            'usecaseRefs',
+            'metricRefs',
+            'relatedCapabilities',
+            'rulesApplied',
+            'implementationSuggestions',
+          ],
+          properties: {
+            workflowId: { type: 'string' },
+            title: { type: 'string' },
+            purpose: { type: 'string' },
+            executionMode: { enum: ['documentationOnly', 'uiState', 'entityLifecycle', 'taskWorkflow', 'automation'] },
+            createsTask: { type: 'boolean' },
+            priority: { enum: ['now', 'soon', 'later', 'never'] },
+            actors: { type: 'array', items: { type: 'string' } },
+            relatedEntities: { type: 'array', items: { type: 'string' } },
+            persistenceRefs: { type: 'array', items: { type: 'string' } },
+            usecaseRefs: { type: 'array', items: { type: 'string' } },
+            metricRefs: { type: 'array', items: { type: 'string' } },
+            relatedCapabilities: { type: 'array', items: { type: 'string' } },
+            rulesApplied: { type: 'array', items: { type: 'string' } },
+            implementationSuggestions: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['suggestionId', 'title', 'reason'],
+                properties: {
+                  suggestionId: { type: 'string' },
+                  title: { type: 'string' },
+                  reason: { type: 'string' },
+                  priority: { enum: ['now', 'soon', 'later', 'never'] },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   }
 );
@@ -177,7 +228,7 @@ function normalizeWorkflowIndexItem(value: unknown, path: string): WorkflowIndex
     title: assertString(workflow.title, `${path}.title`),
     purpose: assertString(workflow.purpose, `${path}.purpose`),
     executionMode: assertString(workflow.executionMode, `${path}.executionMode`),
-    createsTask: Boolean(workflow.createsTask),
+    createsTask: assertBoolean(workflow.createsTask, `${path}.createsTask`),
     priority: assertPriority(workflow.priority, `${path}.priority`),
     actors: normalizeStringArray(workflow.actors, `${path}.actors`),
     relatedEntities: normalizeStringArray(workflow.relatedEntities, `${path}.relatedEntities`),
@@ -186,8 +237,23 @@ function normalizeWorkflowIndexItem(value: unknown, path: string): WorkflowIndex
     metricRefs: normalizeStringArray(workflow.metricRefs, `${path}.metricRefs`),
     relatedCapabilities: normalizeStringArray(workflow.relatedCapabilities, `${path}.relatedCapabilities`),
     rulesApplied: normalizeStringArray(workflow.rulesApplied, `${path}.rulesApplied`),
-    implementationSuggestions: assertArray(workflow.implementationSuggestions, `${path}.implementationSuggestions`),
+    implementationSuggestions: assertArray(workflow.implementationSuggestions, `${path}.implementationSuggestions`)
+      .map((item, index) => normalizeImplementationSuggestion(item, `${path}.implementationSuggestions[${index}]`)),
   };
+}
+
+function assertBoolean(value: unknown, path: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`${path} must be a boolean`);
+  return value;
+}
+
+function normalizeImplementationSuggestion(value: unknown, path: string): unknown {
+  const suggestion = assertRecord(value, path);
+  assertString(suggestion.suggestionId, `${path}.suggestionId`);
+  assertString(suggestion.title, `${path}.title`);
+  assertString(suggestion.reason, `${path}.reason`);
+  if (suggestion.priority !== undefined) assertPriority(suggestion.priority, `${path}.priority`);
+  return suggestion;
 }
 
 function validatePlanWorkflowIndexOutput(output: PlanWorkflowIndexOutput): void {
@@ -280,10 +346,4 @@ Do not return prose.
 - Include implementation suggestions such as whether staff confirmation should create a task.
 - Use rule ids; do not write loose rule text.
 - Do not generate TypeScript code.
-
-## Content Memory
-actualDate: 2026-06-05
-userName: Wagner
-taskName: newModule
-flowName: newSolution
 `;
