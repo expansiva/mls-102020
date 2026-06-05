@@ -241,6 +241,9 @@ export function createDynamicAgentStepIntent(
   stepTitle: string,
   args: string,
 ): mls.msg.AgentIntentAddStep {
+  const parentPlanning = (parentStep as any).planning;
+  const dependencyPlanId = parentPlanning?.dynamicSource?.sourcePlanId || parentPlanning?.planId || '';
+
   return {
     type: 'add-step',
     messageId: context.message.orderAt,
@@ -259,7 +262,7 @@ export function createDynamicAgentStepIntent(
       rags: [],
       planning: {
         planId,
-        dependsOn: [(parentStep as any).planning?.planId || ''],
+        dependsOn: dependencyPlanId ? [dependencyPlanId] : [],
         executionMode: 'sequential',
         executionHost: 'client',
       },
