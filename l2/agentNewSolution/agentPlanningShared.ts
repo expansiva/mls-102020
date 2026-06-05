@@ -375,25 +375,25 @@ function normalizeToolArguments<T>(value: unknown, config: PlannerExtractConfig<
 }
 
 function tryNormalizePlannerEnvelope<T>(value: unknown, config: PlannerExtractConfig<T>): PlannerOutput<T> | null {
-  try {
-    const output = parseMaybeJson(value);
-    if (!isRecord(output)) return null;
-    if (!looksLikePlannerEnvelope(output)) return null;
-    if (output.schemaVersion !== undefined && !isKnownSchemaVersion(output.schemaVersion, config)) return null;
-    if (output.result === undefined) return null;
-
-    return {
-      runId: optionalString(output.runId, 'runId') || 'provider-tool-call',
-      stepId: config.stepId,
-      schemaVersion: PLANNER_SCHEMA_VERSION,
-      status: output.status === undefined ? 'ok' : assertPlannerStatus(output.status, 'status'),
-      result: config.normalizeResult(output.result),
-      questions: normalizeStringList(output.questions, 'questions'),
-      trace: normalizeStringList(output.trace, 'trace'),
-    };
-  } catch {
-    return null;
+  const output = parseMaybeJson(value);
+  if (!isRecord(output)) return null;
+  if (!looksLikePlannerEnvelope(output)) return null;
+  if (output.schemaVersion !== undefined && !isKnownSchemaVersion(output.schemaVersion, config)) return null;
+  if (output.stepId !== undefined && !isKnownStepId(output.stepId, config)) {
+    throw new Error(`stepId must be ${config.stepId}`);
   }
+  if (output.result === undefined) return null;
+  validatePlannerResultSchema(output.result, config);
+
+  return {
+    runId: optionalString(output.runId, 'runId') || 'provider-tool-call',
+    stepId: config.stepId,
+    schemaVersion: PLANNER_SCHEMA_VERSION,
+    status: output.status === undefined ? 'ok' : assertPlannerStatus(output.status, 'status'),
+    result: config.normalizeResult(output.result),
+    questions: normalizeStringList(output.questions, 'questions'),
+    trace: normalizeStringList(output.trace, 'trace'),
+  };
 }
 
 function looksLikePlannerEnvelope(value: Record<string, unknown>): boolean {
