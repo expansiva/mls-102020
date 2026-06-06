@@ -245,12 +245,10 @@ async function afterPromptStep(
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
 
-  const intents: mls.msg.AgentIntent[] = [
-    createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined),
-  ];
-
-  if (status === 'completed' && output) intents.push(...createNextWorkflowDefinitionIntent(context, step, output));
-  return intents;
+  const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined);
+  const nextIntents = status === 'completed' && output ? createNextWorkflowDefinitionIntent(context, step, output) : [];
+  if (nextIntents.some(intent => intent.type === 'add-step')) return [...nextIntents, updateIntent];
+  return [updateIntent, ...nextIntents];
 }
 
 export function getPlanWorkflowDefinitionOutputs(context: mls.msg.ExecutionContext): PlanWorkflowDefinitionOutput[] {
