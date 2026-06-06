@@ -407,20 +407,21 @@ function buildPluginInventorySync(moduleName: string, catalog: PluginCatalogDefi
     searchProjects,
     plugins: catalog.plugins.map(plugin => {
       const existing = findExistingPlugin(plugin.pluginId, searchProjects);
+      const existingAsReusablePlugin = existing && !isCurrentPlanDraftPlugin(existing, actualProject);
       return {
         pluginId: plugin.pluginId,
         provider: plugin.provider,
-        resolution: existing ? 'existing' : 'create_draft',
+        resolution: existingAsReusablePlugin ? 'existing' : 'create_draft',
         exists: !!existing,
-        sourceProject: existing?.project,
-        pluginDefsFileRef: existing?.fileRef || buildPluginDefsFileRef(actualProject, plugin.pluginId),
+        sourceProject: existingAsReusablePlugin ? existing.project : undefined,
+        pluginDefsFileRef: existingAsReusablePlugin ? existing.fileRef : buildPluginDefsFileRef(actualProject, plugin.pluginId),
         moduleConnectionDefsFileRef: buildModuleConnectionDefsFileRef(actualProject, moduleName, plugin.pluginId),
       };
     }),
   };
 }
 
-function findExistingPlugin(pluginId: string, searchProjects: number[]): { project: number; fileRef: string } | null {
+function findExistingPlugin(pluginId: string, searchProjects: number[]): { project: number; fileRef: string; status: mls.stor.IFileInfoStatus; inLocalStorage: boolean } | null {
   for (const project of searchProjects) {
     const fileInfo = {
       project,
@@ -430,9 +431,24 @@ function findExistingPlugin(pluginId: string, searchProjects: number[]): { proje
       extension: '.defs.ts',
     };
     const key = mls.stor.getKeyToFile(fileInfo);
-    if (mls.stor.files[key]) return { project, fileRef: buildPluginDefsFileRef(project, pluginId) };
+    const file = mls.stor.files[key];
+    if (file && file.status !== 'deleted') {
+      return {
+        project,
+        fileRef: buildPluginDefsFileRef(project, pluginId),
+        status: file.status,
+        inLocalStorage: file.inLocalStorage,
+      };
+    }
   }
   return null;
+}
+
+function isCurrentPlanDraftPlugin(
+  existing: { project: number; status: mls.stor.IFileInfoStatus; inLocalStorage: boolean },
+  actualProject: number,
+): boolean {
+  return existing.project === actualProject && existing.inLocalStorage && existing.status !== 'nochange';
 }
 
 function getPluginIdFromPluginFolder(folder: string): string | null {
