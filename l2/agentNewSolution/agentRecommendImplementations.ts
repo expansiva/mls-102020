@@ -92,68 +92,57 @@ export const recommendImplementationsToolSchema = {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['type', 'result'],
+      required: ['status', 'result', 'questions', 'trace'],
       properties: {
-        type: { const: 'flexible' },
+        status: { enum: ['ok', 'needs_input', 'failed'] },
         result: {
           type: 'object',
           additionalProperties: false,
-          required: ['runId', 'stepId', 'schemaVersion', 'status', 'result', 'questions', 'trace'],
+          required: ['recommendations'],
           properties: {
-            runId: { type: 'string' },
-            stepId: { const: RECOMMEND_IMPLEMENTATIONS_STEP_ID },
-            schemaVersion: { const: RECOMMEND_IMPLEMENTATIONS_SCHEMA_VERSION },
-            status: { enum: ['ok', 'needs_input', 'failed'] },
-            result: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['recommendations'],
-              properties: {
-                recommendations: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    additionalProperties: false,
-                    required: [
-                      'recommendationId',
-                      'artifactType',
-                      'title',
-                      'description',
-                      'priority',
-                      'defaultPriority',
-                      'reason',
-                      'requiresClientDecision',
-                      'dependencies',
-                    ],
-                    properties: {
-                      recommendationId: { type: 'string' },
-                      artifactType: {
-                        enum: ['page', 'workflow', 'plugin', 'agent', 'horizontalModule', 'mdm', 'ontology', 'metric', 'metricTable', 'usecaseEntity'],
-                      },
-                      title: { type: 'string' },
-                      description: { type: 'string' },
-                      priority: { enum: ['now', 'soon', 'later', 'never'] },
-                      defaultPriority: { enum: ['now', 'soon', 'later', 'never'] },
-                      reason: { type: 'string' },
-                      requiresClientDecision: { type: 'boolean' },
-                      dependencies: {
-                        type: 'array',
-                        items: { type: 'string' },
-                      },
-                    },
+            recommendations: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: [
+                  'recommendationId',
+                  'artifactType',
+                  'title',
+                  'description',
+                  'priority',
+                  'defaultPriority',
+                  'reason',
+                  'requiresClientDecision',
+                  'dependencies',
+                ],
+                properties: {
+                  recommendationId: { type: 'string' },
+                  artifactType: {
+                    enum: ['page', 'workflow', 'plugin', 'agent', 'horizontalModule', 'mdm', 'ontology', 'metric', 'metricTable', 'usecaseEntity'],
+                  },
+                  title: { type: 'string' },
+                  description: { type: 'string' },
+                  priority: { enum: ['now', 'soon', 'later', 'never'] },
+                  defaultPriority: { enum: ['now', 'soon', 'later', 'never'] },
+                  reason: { type: 'string' },
+                  requiresClientDecision: { type: 'boolean' },
+                  dependencies: {
+                    type: 'array',
+                    items: { type: 'string' },
                   },
                 },
               },
             },
-            questions: {
-              type: 'array',
-              items: { type: 'string' },
-            },
-            trace: {
-              type: 'array',
-              items: { type: 'string' },
-            },
           },
+        },
+        questions: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+        trace: {
+          type: 'array',
+          items: { type: 'string' },
         },
       },
     },
@@ -338,6 +327,9 @@ function extractRecommendImplementationsOutput(payload: unknown): RecommendImple
     const outputFromFlexibleResult = tryNormalizeOutput(flexibleResult);
     if (outputFromFlexibleResult) return outputFromFlexibleResult;
 
+    const variableOutputFromFlexibleResult = tryNormalizeVariableOutput(flexibleResult);
+    if (variableOutputFromFlexibleResult) return variableOutputFromFlexibleResult;
+
     const outputFromFlexibleTool = tryExtractToolArguments(flexibleResult);
     if (outputFromFlexibleTool) return outputFromFlexibleTool;
   }
@@ -381,10 +373,29 @@ function normalizeToolArguments(value: unknown): RecommendImplementationsOutput 
   const directOutput = tryNormalizeOutput(args);
   if (directOutput) return directOutput;
 
+  const variableOutput = tryNormalizeVariableOutput(args);
+  if (variableOutput) return variableOutput;
+
   const output = tryNormalizeOutput(parseMaybeJson(args.result));
   if (output) return output;
 
   throw new Error('tool arguments do not contain implementation recommendations output');
+}
+
+function tryNormalizeVariableOutput(value: unknown): RecommendImplementationsOutput | null {
+  const output = parseMaybeJson(value);
+  if (!isRecord(output)) return null;
+  if (output.runId !== undefined || output.stepId !== undefined || output.schemaVersion !== undefined || output.type !== undefined) return null;
+  if (output.status === undefined || output.result === undefined) return null;
+  return normalizeRecommendImplementationsOutput({
+    runId: 'provider-tool-call',
+    stepId: RECOMMEND_IMPLEMENTATIONS_STEP_ID,
+    schemaVersion: RECOMMEND_IMPLEMENTATIONS_SCHEMA_VERSION,
+    status: output.status,
+    result: output.result,
+    questions: output.questions,
+    trace: output.trace,
+  });
 }
 
 function tryNormalizeOutput(value: unknown): RecommendImplementationsOutput | null {
@@ -609,7 +620,7 @@ Use the same language as the user for titles, descriptions, reasons, questions, 
 Use English camelCase identifiers for recommendationId.
 
 ## Tool mode
-Call the "{{toolName}}" tool with the complete structured result.
+Call the "{{toolName}}" tool with the payload variable fields only. Do not include type, runId, stepId, schemaVersion, toolName, or arguments; the harness fills those fields.
 Do not return prose.
 
 ## Rules

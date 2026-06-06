@@ -8,7 +8,7 @@ import {
   assertString,
   createDynamicAgentStepIntent,
   createPlannerPromptReadyIntent,
-  createPlannerToolSchema,
+  createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
   findStepByPlanId,
@@ -53,10 +53,9 @@ export interface PlanTableDefinitionResult {
 
 export type PlanTableDefinitionOutput = PlannerOutput<PlanTableDefinitionResult>;
 
-const planTableDefinitionToolSchema = createPlannerToolSchema(
+const planTableDefinitionToolSchema = createPlannerVariableToolSchema(
   PLAN_TABLE_DEFINITION_TOOL_NAME,
   'Submit one module-owned persistence table definition plan.',
-  PLAN_TABLE_DEFINITION_STEP_ID,
   {
     type: 'object',
     additionalProperties: false,
@@ -422,7 +421,7 @@ Use the same language as the user for titles, descriptions, questions, and trace
 Use snake_case for table names and camelCase for ids.
 
 ## Tool mode
-Call the "{{toolName}}" tool with the complete structured result.
+Call the "{{toolName}}" tool with the payload variable fields only. Do not include type, runId, stepId, schemaVersion, toolName, or arguments; the harness fills those fields.
 Do not return prose.
 
 ## Rules

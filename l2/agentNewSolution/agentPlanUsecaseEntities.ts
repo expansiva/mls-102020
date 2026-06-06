@@ -7,7 +7,7 @@ import {
   assertRecord,
   assertString,
   createPlannerPromptReadyIntent,
-  createPlannerToolSchema,
+  createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
   getPlannerOutput,
@@ -47,10 +47,9 @@ export interface PlanUsecaseEntitiesResult {
 
 export type PlanUsecaseEntitiesOutput = PlannerOutput<PlanUsecaseEntitiesResult>;
 
-const planUsecaseEntitiesToolSchema = createPlannerToolSchema(
+const planUsecaseEntitiesToolSchema = createPlannerVariableToolSchema(
   PLAN_USECASE_ENTITIES_TOOL_NAME,
   'Submit layer_3 usecase entities and usecases planning.',
-  PLAN_USECASE_ENTITIES_STEP_ID,
   {
     type: 'object',
     additionalProperties: false,
@@ -305,7 +304,7 @@ The goal is to create .defs data that will later materialize backend use case fi
 Use the same language as the user for titles, purposes, questions, and trace.
 
 ## Tool mode
-Call the "{{toolName}}" tool with the complete structured result.
+Call the "{{toolName}}" tool with the payload variable fields only. Do not include type, runId, stepId, schemaVersion, toolName, or arguments; the harness fills those fields.
 Do not return prose.
 
 ## Rules

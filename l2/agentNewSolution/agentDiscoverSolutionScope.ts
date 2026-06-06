@@ -119,54 +119,45 @@ export const discoverSolutionScopeToolSchema = {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['type', 'result'],
+      required: ['status', 'result', 'questions', 'trace'],
       properties: {
-        type: { const: 'flexible' },
+        status: { enum: ['ok', 'needs_input', 'failed'] },
         result: {
           type: 'object',
           additionalProperties: false,
-          required: ['runId', 'stepId', 'schemaVersion', 'status', 'result', 'questions', 'trace'],
+          required: ['domain', 'summary', 'actors', 'capabilities', 'artifactSignals', 'businessRisks', 'missingContext'],
           properties: {
-            runId: { type: 'string' },
-            stepId: { const: DISCOVER_SOLUTION_SCOPE_STEP_ID },
-            schemaVersion: { const: DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION },
-            status: { enum: ['ok', 'needs_input', 'failed'] },
-            result: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['domain', 'summary', 'actors', 'capabilities', 'artifactSignals', 'businessRisks', 'missingContext'],
-              properties: {
-                domain: { type: 'string' },
-                summary: { type: 'string' },
-                actors: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    additionalProperties: false,
-                    required: ['actorId', 'description'],
-                    properties: {
-                      actorId: { type: 'string' },
-                      title: { type: 'string' },
-                      description: { type: 'string' },
-                    },
-                  },
+            domain: { type: 'string' },
+            summary: { type: 'string' },
+            actors: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['actorId', 'description'],
+                properties: {
+                  actorId: { type: 'string' },
+                  title: { type: 'string' },
+                  description: { type: 'string' },
                 },
-                capabilities: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    additionalProperties: false,
-                    required: ['capabilityId', 'actor', 'priority'],
-                    properties: {
-                      capabilityId: { type: 'string' },
-                      title: { type: 'string' },
-                      description: { type: 'string' },
-                      actor: { type: 'string' },
-                      priority: { enum: ['now', 'soon', 'later', 'never'] },
-                    },
-                  },
+              },
+            },
+            capabilities: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['capabilityId', 'actor', 'priority'],
+                properties: {
+                  capabilityId: { type: 'string' },
+                  title: { type: 'string' },
+                  description: { type: 'string' },
+                  actor: { type: 'string' },
+                  priority: { enum: ['now', 'soon', 'later', 'never'] },
                 },
-                artifactSignals: {
+              },
+            },
+            artifactSignals: {
                   type: 'object',
                   additionalProperties: false,
                   required: ['pages', 'workflows', 'plugins', 'agents', 'horizontalModules', 'mdm', 'metrics', 'usecases'],
@@ -180,15 +171,13 @@ export const discoverSolutionScopeToolSchema = {
                     metrics: { type: 'array', items: { $ref: '#/$defs/artifactSignal' } },
                     usecases: { type: 'array', items: { $ref: '#/$defs/artifactSignal' } },
                   },
-                },
-                businessRisks: { type: 'array', items: { type: 'string' } },
-                missingContext: { type: 'array', items: { type: 'string' } },
-              },
             },
-            questions: { type: 'array', items: { type: 'string' } },
-            trace: { type: 'array', items: { type: 'string' } },
+            businessRisks: { type: 'array', items: { type: 'string' } },
+            missingContext: { type: 'array', items: { type: 'string' } },
           },
         },
+        questions: { type: 'array', items: { type: 'string' } },
+        trace: { type: 'array', items: { type: 'string' } },
       },
       $defs: {
         artifactSignal: {
@@ -352,6 +341,9 @@ export function extractDiscoverSolutionScopeOutput(payload: unknown): DiscoverSo
     const outputFromFlexibleResult = tryNormalizeOutput(flexibleResult);
     if (outputFromFlexibleResult) return outputFromFlexibleResult;
 
+    const variableOutputFromFlexibleResult = tryNormalizeVariableOutput(flexibleResult);
+    if (variableOutputFromFlexibleResult) return variableOutputFromFlexibleResult;
+
     const outputFromFlexibleTool = tryExtractToolArguments(flexibleResult);
     if (outputFromFlexibleTool) return outputFromFlexibleTool;
   }
@@ -395,10 +387,29 @@ function normalizeToolArguments(value: unknown): DiscoverSolutionScopeOutput {
   const directOutput = tryNormalizeOutput(args);
   if (directOutput) return directOutput;
 
+  const variableOutput = tryNormalizeVariableOutput(args);
+  if (variableOutput) return variableOutput;
+
   const output = tryNormalizeOutput(parseMaybeJson(args.result));
   if (output) return output;
 
   throw new Error('tool arguments do not contain a flexible scope output');
+}
+
+function tryNormalizeVariableOutput(value: unknown): DiscoverSolutionScopeOutput | null {
+  const output = parseMaybeJson(value);
+  if (!isRecord(output)) return null;
+  if (output.runId !== undefined || output.stepId !== undefined || output.schemaVersion !== undefined || output.type !== undefined) return null;
+  if (output.status === undefined || output.result === undefined) return null;
+  return normalizeDiscoverSolutionScopeOutput({
+    runId: 'provider-tool-call',
+    stepId: DISCOVER_SOLUTION_SCOPE_STEP_ID,
+    schemaVersion: DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION,
+    status: output.status,
+    result: output.result,
+    questions: output.questions,
+    trace: output.trace,
+  });
 }
 
 function tryNormalizeOutput(value: unknown): DiscoverSolutionScopeOutput | null {
@@ -671,7 +682,7 @@ Use English camelCase identifiers for domain, actorId, capabilityId, and artifac
 
 ## Tool mode
 
-Call the "{{toolName}}" tool with the complete structured result.
+Call the "{{toolName}}" tool with the payload variable fields only. Do not include type, runId, stepId, schemaVersion, toolName, or arguments; the harness fills those fields.
 Do not return prose.
 
 ## Rules

@@ -10,7 +10,7 @@ import {
   assertString,
   createDynamicAgentStepIntent,
   createPlannerPromptReadyIntent,
-  createPlannerToolSchema,
+  createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
   findStepByPlanId,
@@ -63,10 +63,9 @@ export interface PlanWorkflowIndexResult {
 
 export type PlanWorkflowIndexOutput = PlannerOutput<PlanWorkflowIndexResult>;
 
-const planWorkflowIndexToolSchema = createPlannerToolSchema(
+const planWorkflowIndexToolSchema = createPlannerVariableToolSchema(
   PLAN_WORKFLOW_INDEX_TOOL_NAME,
   'Submit the workflow index for the newSolution plan.',
-  PLAN_WORKFLOW_INDEX_STEP_ID,
   {
     type: 'object',
     additionalProperties: false,
@@ -330,7 +329,7 @@ Use the same language as the user for titles, purposes, suggestions, questions, 
 Use English camelCase identifiers for workflowId.
 
 ## Tool mode
-Call the "{{toolName}}" tool with the complete structured result.
+Call the "{{toolName}}" tool with the payload variable fields only. Do not include type, runId, stepId, schemaVersion, toolName, or arguments; the harness fills those fields.
 Do not return prose.
 
 ## Rules

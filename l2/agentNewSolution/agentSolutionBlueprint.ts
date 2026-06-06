@@ -6,7 +6,7 @@ import {
   assertArray,
   assertRecord,
   createPlannerPromptReadyIntent,
-  createPlannerToolSchema,
+  createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
   getPlannerOutput,
@@ -58,10 +58,9 @@ export interface SolutionBlueprintResult {
 
 export type SolutionBlueprintOutput = PlannerOutput<SolutionBlueprintResult>;
 
-const solutionBlueprintToolSchema = createPlannerToolSchema(
+const solutionBlueprintToolSchema = createPlannerVariableToolSchema(
   SOLUTION_BLUEPRINT_TOOL_NAME,
   'Submit the detailed solution blueprint for the newSolution planner.',
-  SOLUTION_BLUEPRINT_STEP_ID,
   solutionBlueprintResultSchema
 );
 
@@ -216,7 +215,7 @@ Use the same language as the user for labels, descriptions, questions, and trace
 Use English camelCase identifiers for ids and PascalCase for entity names.
 
 ## Tool mode
-Call the "{{toolName}}" tool with the complete structured result.
+Call the "{{toolName}}" tool with the payload variable fields only. Do not include type, runId, stepId, schemaVersion, toolName, or arguments; the harness fills those fields.
 Do not return prose.
 
 ## Result shape

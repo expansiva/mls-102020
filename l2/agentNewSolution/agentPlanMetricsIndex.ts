@@ -10,7 +10,7 @@ import {
   assertString,
   createDynamicAgentStepIntent,
   createPlannerPromptReadyIntent,
-  createPlannerToolSchema,
+  createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
   findStepByPlanId,
@@ -68,10 +68,9 @@ export interface PlanMetricsIndexResult {
 
 export type PlanMetricsIndexOutput = PlannerOutput<PlanMetricsIndexResult>;
 
-const planMetricsIndexToolSchema = createPlannerToolSchema(
+const planMetricsIndexToolSchema = createPlannerVariableToolSchema(
   PLAN_METRICS_INDEX_TOOL_NAME,
   'Submit the module operational metrics index.',
-  PLAN_METRICS_INDEX_STEP_ID,
   {
     type: 'object',
     additionalProperties: false,
@@ -438,7 +437,7 @@ Use the same language as the user for titles, purposes, reasons, questions, and 
 Use English camelCase identifiers for metricTableId and snake_case tableName values.
 
 ## Tool mode
-Call the "{{toolName}}" tool with the complete structured result.
+Call the "{{toolName}}" tool with the payload variable fields only. Do not include type, runId, stepId, schemaVersion, toolName, or arguments; the harness fills those fields.
 Do not return prose.
 
 ## Rules

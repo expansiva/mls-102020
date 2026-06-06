@@ -9,7 +9,7 @@ import {
   assertRecord,
   assertString,
   createPlannerPromptReadyIntent,
-  createPlannerToolSchema,
+  createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
   getPlannerOutput,
@@ -63,10 +63,9 @@ export interface PlanPluginsResult {
 
 export type PlanPluginsOutput = PlannerOutput<PlanPluginsResult>;
 
-const planPluginsToolSchema = createPlannerToolSchema(
+const planPluginsToolSchema = createPlannerVariableToolSchema(
   PLAN_PLUGINS_TOOL_NAME,
   'Submit external plugin planning for the newSolution final plan.',
-  PLAN_PLUGINS_STEP_ID,
   {
     type: 'object',
     additionalProperties: false,
@@ -582,7 +581,7 @@ Plan external plugins from the reduced plugin planning context, implementation d
 Use the same language as the user for reasons, risks, questions, and trace.
 
 ## Tool mode
-Call the "{{toolName}}" tool with the complete structured result.
+Call the "{{toolName}}" tool with the payload variable fields only. Do not include type, runId, stepId, schemaVersion, toolName, or arguments; the harness fills those fields.
 Do not return prose.
 
 ## Rules

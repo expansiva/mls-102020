@@ -7,7 +7,7 @@ import {
   assertRecord,
   assertString,
   createPlannerPromptReadyIntent,
-  createPlannerToolSchema,
+  createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
   getPlannerOutput,
@@ -46,10 +46,9 @@ export interface PlanMDMResult {
 
 export type PlanMDMOutput = PlannerOutput<PlanMDMResult>;
 
-const planMdmToolSchema = createPlannerToolSchema(
+const planMdmToolSchema = createPlannerVariableToolSchema(
   PLAN_MDM_TOOL_NAME,
   'Submit mandatory MDM planning for the newSolution final plan.',
-  PLAN_MDM_STEP_ID,
   {
     type: 'object',
     additionalProperties: false,
@@ -205,7 +204,7 @@ Use the same language as the user for titles, reasons, questions, and trace.
 Use English camelCase identifiers for domainId.
 
 ## Tool mode
-Call the "{{toolName}}" tool with the complete structured result.
+Call the "{{toolName}}" tool with the payload variable fields only. Do not include type, runId, stepId, schemaVersion, toolName, or arguments; the harness fills those fields.
 Do not return prose.
 
 ## Rules

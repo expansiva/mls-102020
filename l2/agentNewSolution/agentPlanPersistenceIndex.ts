@@ -11,7 +11,7 @@ import {
   optionalString,
   createDynamicAgentStepIntent,
   createPlannerPromptReadyIntent,
-  createPlannerToolSchema,
+  createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
   findStepByPlanId,
@@ -71,10 +71,9 @@ export interface PlanPersistenceIndexResult {
 
 export type PlanPersistenceIndexOutput = PlannerOutput<PlanPersistenceIndexResult>;
 
-const planPersistenceIndexToolSchema = createPlannerToolSchema(
+const planPersistenceIndexToolSchema = createPlannerVariableToolSchema(
   PLAN_PERSISTENCE_INDEX_TOOL_NAME,
   'Submit the module-owned persistence table index.',
-  PLAN_PERSISTENCE_INDEX_STEP_ID,
   {
     type: 'object',
     additionalProperties: false,
@@ -380,7 +379,7 @@ Use the same language as the user for titles, purposes, reasons, questions, and 
 Use English camelCase identifiers for tableId and snake_case tableName values.
 
 ## Tool mode
-Call the "{{toolName}}" tool with the complete structured result.
+Call the "{{toolName}}" tool with the payload variable fields only. Do not include type, runId, stepId, schemaVersion, toolName, or arguments; the harness fills those fields.
 Do not return prose.
 
 ## Rules

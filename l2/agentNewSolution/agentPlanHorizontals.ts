@@ -9,7 +9,7 @@ import {
   assertRecord,
   assertString,
   createPlannerPromptReadyIntent,
-  createPlannerToolSchema,
+  createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
   getPlannerOutput,
@@ -49,10 +49,9 @@ export interface PlanHorizontalsResult {
 
 export type PlanHorizontalsOutput = PlannerOutput<PlanHorizontalsResult>;
 
-const planHorizontalsToolSchema = createPlannerToolSchema(
+const planHorizontalsToolSchema = createPlannerVariableToolSchema(
   PLAN_HORIZONTALS_TOOL_NAME,
   'Submit horizontal module planning for the newSolution final plan.',
-  PLAN_HORIZONTALS_STEP_ID,
   {
     type: 'object',
     additionalProperties: false,
@@ -231,7 +230,7 @@ Plan horizontal modules from the final solution plan and horizontal catalog.
 Use the same language as the user for reasons, questions, and trace.
 
 ## Tool mode
-Call the "{{toolName}}" tool with the complete structured result.
+Call the "{{toolName}}" tool with the payload variable fields only. Do not include type, runId, stepId, schemaVersion, toolName, or arguments; the harness fills those fields.
 Do not return prose.
 
 ## Rules
