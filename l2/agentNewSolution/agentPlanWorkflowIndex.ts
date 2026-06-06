@@ -8,7 +8,7 @@ import {
   assertPriority,
   assertRecord,
   assertString,
-  createDynamicAgentStepIntent,
+  createParallelDynamicAgentStepIntent,
   createPlannerPromptReadyIntent,
   createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
@@ -200,7 +200,7 @@ async function afterPromptStep(
     createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined),
   ];
 
-  if (status === 'completed' && output) intents.push(...createFirstWorkflowDefinitionIntent(context, output));
+  if (status === 'completed' && output) intents.push(...createWorkflowDefinitionParallelIntent(context, output));
   return intents;
 }
 
@@ -269,23 +269,24 @@ function validatePlanWorkflowIndexOutput(output: PlanWorkflowIndexOutput): void 
   if (output.status === 'needs_input' && output.questions.length === 0) throw new Error('needs_input workflow index must include questions');
 }
 
-function createFirstWorkflowDefinitionIntent(context: mls.msg.ExecutionContext, output: PlanWorkflowIndexOutput): mls.msg.AgentIntent[] {
+function createWorkflowDefinitionParallelIntent(context: mls.msg.ExecutionContext, output: PlanWorkflowIndexOutput): mls.msg.AgentIntent[] {
   const placeholder = findStepByPlanId(context, 'plan-workflow-definition') as mls.msg.AIAgentStep | null;
   if (!placeholder || placeholder.type !== 'agent' || placeholder.status === 'completed') return [];
 
-  const firstWorkflow = output.result.workflows[0];
-  if (!firstWorkflow) {
+  const workflowIds = output.result.workflows.map(workflow => workflow.workflowId);
+  if (workflowIds.length === 0) {
     return [createPlannerUpdateStatusIntent(context, placeholder, placeholder, 0, 'completed', 'No workflows to define.')];
   }
 
   return [
-    createDynamicAgentStepIntent(
+    createParallelDynamicAgentStepIntent(
       context,
       placeholder,
       'agentPlanWorkflowDefinition',
-      `plan-workflow-definition:${firstWorkflow.workflowId}`,
-      `Plan workflow ${firstWorkflow.workflowId}`,
-      firstWorkflow.workflowId
+      'plan-workflow-definition:parallel',
+      'Plan workflows {{completed}}/{{total}}, errors: {{failed}}',
+      workflowIds,
+      5
     ),
   ];
 }

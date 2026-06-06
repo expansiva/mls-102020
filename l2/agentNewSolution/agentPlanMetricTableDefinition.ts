@@ -16,7 +16,7 @@ import {
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
-import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import { saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getPlanMetricsIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricsIndex.js';
 import type { PlanMetricsIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricsIndex.js';
 import { getPlanPersistenceIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanPersistenceIndex.js';
@@ -40,6 +40,21 @@ export const PLAN_METRIC_TABLE_DEFINITION_TOOL_NAME = 'submitMetricTableDefiniti
 export const PLAN_METRIC_TABLE_DEFINITION_STEP_ID = '15-plan-metric-table-definition';
 const PLAN_METRIC_TABLE_DEFINITION_ALIASES = [PLAN_METRIC_TABLE_DEFINITION_STEP_ID, '15-plan-single-metric-table', 'plan-metric-table-definition'];
 
+export interface MetricTableHypertableIndex {
+  indexName: string;
+  columns: string[];
+  purpose: string;
+  unique?: boolean;
+}
+
+export interface MetricTableHypertable {
+  timeColumn: string;
+  chunkTimeInterval: string;
+  retentionPolicy: string;
+  compressionPolicy?: string;
+  indexes: MetricTableHypertableIndex[];
+}
+
 export interface PlanMetricTableDefinitionResult {
   metricTableDefinition: Record<string, unknown> & {
     metricTableId: string;
@@ -48,6 +63,8 @@ export interface PlanMetricTableDefinitionResult {
     tableKind: string;
     storageEngine: string;
     layer: string;
+    timeColumn: string;
+    hypertable: MetricTableHypertable;
     accessPolicy: Record<string, unknown>;
   };
   defsPlan: {
@@ -70,7 +87,22 @@ const planMetricTableDefinitionToolSchema = createPlannerVariableToolSchema(
       metricTableDefinition: {
         type: 'object',
         additionalProperties: false,
-        required: ['metricTableId', 'tableName', 'moduleId', 'tableKind', 'storageEngine', 'layer', 'accessPolicy'],
+        required: [
+          'metricTableId',
+          'tableName',
+          'moduleId',
+          'tableKind',
+          'storageEngine',
+          'layer',
+          'timeColumn',
+          'columns',
+          'dimensions',
+          'measures',
+          'sourceWriteEvents',
+          'updatePolicy',
+          'accessPolicy',
+          'hypertable',
+        ],
         properties: {
           metricTableId: { type: 'string' },
           tableName: { type: 'string' },
@@ -126,6 +158,31 @@ const planMetricTableDefinitionToolSchema = createPlannerVariableToolSchema(
             },
           },
           sourceWriteEvents: { type: 'array', items: { type: 'string' } },
+          hypertable: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['timeColumn', 'chunkTimeInterval', 'retentionPolicy', 'indexes'],
+            properties: {
+              timeColumn: { type: 'string' },
+              chunkTimeInterval: { type: 'string' },
+              retentionPolicy: { type: 'string' },
+              compressionPolicy: { type: 'string' },
+              indexes: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['indexName', 'columns', 'purpose'],
+                  properties: {
+                    indexName: { type: 'string' },
+                    columns: { type: 'array', items: { type: 'string' } },
+                    purpose: { type: 'string' },
+                    unique: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
           updatePolicy: {
             type: 'object',
             additionalProperties: false,
@@ -225,6 +282,7 @@ async function afterPromptStep(
   }
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
+  if (status === 'completed' && output) await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
 
   const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined);
   const nextIntents = status === 'completed' && output ? createNextMetricTableDefinitionIntent(context, step, output) : [];
@@ -252,6 +310,7 @@ function normalizePlanMetricTableDefinitionResult(value: unknown): PlanMetricTab
   const metricTableDefinition = assertRecord(result.metricTableDefinition, 'result.metricTableDefinition');
   const defsPlan = assertRecord(result.defsPlan, 'result.defsPlan');
   const rawTableKind = assertString(metricTableDefinition.tableKind, 'result.metricTableDefinition.tableKind');
+  const hypertable = assertRecord(metricTableDefinition.hypertable, 'result.metricTableDefinition.hypertable');
   return {
     metricTableDefinition: {
       ...metricTableDefinition,
@@ -261,6 +320,8 @@ function normalizePlanMetricTableDefinitionResult(value: unknown): PlanMetricTab
       tableKind: rawTableKind === 'metric' ? 'metricTimeseries' : rawTableKind,
       storageEngine: assertString(metricTableDefinition.storageEngine, 'result.metricTableDefinition.storageEngine'),
       layer: assertString(metricTableDefinition.layer, 'result.metricTableDefinition.layer'),
+      timeColumn: assertString(metricTableDefinition.timeColumn, 'result.metricTableDefinition.timeColumn'),
+      hypertable: normalizeMetricTableHypertable(hypertable, 'result.metricTableDefinition.hypertable'),
       accessPolicy: assertRecord(metricTableDefinition.accessPolicy, 'result.metricTableDefinition.accessPolicy'),
     },
     defsPlan: {
@@ -269,6 +330,32 @@ function normalizePlanMetricTableDefinitionResult(value: unknown): PlanMetricTab
       saveAsDefs: assertBoolean(defsPlan.saveAsDefs, 'result.defsPlan.saveAsDefs'),
     },
   };
+}
+
+function normalizeMetricTableHypertable(value: Record<string, unknown>, path: string): MetricTableHypertable {
+  return {
+    timeColumn: assertString(value.timeColumn, `${path}.timeColumn`),
+    chunkTimeInterval: assertString(value.chunkTimeInterval, `${path}.chunkTimeInterval`),
+    retentionPolicy: assertString(value.retentionPolicy, `${path}.retentionPolicy`),
+    compressionPolicy: optionalStringValue(value.compressionPolicy),
+    indexes: assertArray(value.indexes, `${path}.indexes`).map((index, i) => normalizeMetricTableHypertableIndex(index, `${path}.indexes[${i}]`)),
+  };
+}
+
+function normalizeMetricTableHypertableIndex(value: unknown, path: string): MetricTableHypertableIndex {
+  const index = assertRecord(value, path);
+  return {
+    indexName: assertString(index.indexName, `${path}.indexName`),
+    columns: assertArray(index.columns, `${path}.columns`).map((column, i) => assertString(column, `${path}.columns[${i}]`)),
+    purpose: assertString(index.purpose, `${path}.purpose`),
+    unique: typeof index.unique === 'boolean' ? index.unique : undefined,
+  };
+}
+
+function optionalStringValue(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string') throw new Error('optional string value must be a string');
+  return value.trim() || undefined;
 }
 
 function assertBoolean(value: unknown, path: string): boolean {
@@ -281,9 +368,29 @@ function validatePlanMetricTableDefinitionOutput(output: PlanMetricTableDefiniti
   if (table.layer !== 'layer_1_external') throw new Error(`metric table ${table.metricTableId} must be in layer_1_external`);
   if (table.tableKind !== 'metricTimeseries') throw new Error(`metric table ${table.metricTableId} must be metricTimeseries`);
   if (table.storageEngine !== 'postgresTimescaleDB') throw new Error(`metric table ${table.metricTableId} must use postgresTimescaleDB`);
+  validateMetricTableHypertable(table);
   const directAccess = assertArray(table.accessPolicy.directAccessAllowedFor, 'metricTableDefinition.accessPolicy.directAccessAllowedFor');
   if (!directAccess.includes('layer_3_usecases')) throw new Error(`metric table ${table.metricTableId} must allow direct access for layer_3_usecases`);
   if (output.status === 'needs_input' && output.questions.length === 0) throw new Error('needs_input metric table definition must include questions');
+}
+
+function validateMetricTableHypertable(table: PlanMetricTableDefinitionResult['metricTableDefinition']): void {
+  if (!table.timeColumn.trim()) throw new Error(`metric table ${table.metricTableId} timeColumn must be a non-empty string`);
+  if (!table.hypertable.timeColumn.trim()) throw new Error(`metric table ${table.metricTableId} hypertable.timeColumn must be a non-empty string`);
+  if (table.hypertable.timeColumn !== table.timeColumn) {
+    throw new Error(`metric table ${table.metricTableId} hypertable.timeColumn must match timeColumn`);
+  }
+  if (!table.hypertable.chunkTimeInterval.trim()) throw new Error(`metric table ${table.metricTableId} hypertable.chunkTimeInterval must be a non-empty string`);
+  if (!table.hypertable.retentionPolicy.trim()) throw new Error(`metric table ${table.metricTableId} hypertable.retentionPolicy must be a non-empty string`);
+  if (table.hypertable.indexes.length === 0) throw new Error(`metric table ${table.metricTableId} hypertable.indexes must include at least one index`);
+
+  let hasTimeIndex = false;
+  for (const index of table.hypertable.indexes) {
+    if (!index.indexName.trim()) throw new Error(`metric table ${table.metricTableId} hypertable indexName must be a non-empty string`);
+    if (index.columns.length === 0) throw new Error(`metric table ${table.metricTableId} hypertable index ${index.indexName} must include columns`);
+    if (index.columns.some(column => column === table.timeColumn)) hasTimeIndex = true;
+  }
+  if (!hasTimeIndex) throw new Error(`metric table ${table.metricTableId} hypertable.indexes must include the timeColumn`);
 }
 
 function createNextMetricTableDefinitionIntent(
@@ -364,6 +471,11 @@ Do not return prose.
 - Metric tables are additional tables; do not replace normal transactional tables.
 - The table must be in layer_1_external, but direct access must be allowed only for layer_3_usecases.
 - Declare the base table updates that feed the metric table.
+- metricTableDefinition must include timeColumn and a hypertable object.
+- hypertable.timeColumn must equal metricTableDefinition.timeColumn.
+- hypertable.chunkTimeInterval must define the TimescaleDB chunk policy, such as "7 days" or another explicit interval.
+- hypertable.retentionPolicy must define the retention window.
+- hypertable.indexes must include at least one index whose columns include the timeColumn, plus dimension indexes when dimensions exist.
 - Declare that pages and BFF controllers cannot update this metric table directly.
 - updatePolicy.updatedByLayer must be layer_3_usecases.
 - defsPlan.fileName should be stable and metric-table-specific, such as tables/{metricTableId}.defs.ts.

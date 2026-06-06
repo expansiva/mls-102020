@@ -14,7 +14,7 @@ import {
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
-import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import { saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getPlanMetricTableDefinitionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanMetricTableDefinition.js';
 import type { PlanMetricTableDefinitionOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricTableDefinition.js';
 import { getPlanMetricsIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricsIndex.js';
@@ -163,11 +163,12 @@ async function afterPromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
+  let output: PlanUsecaseEntitiesOutput | undefined;
 
   try {
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');
-    const output = extractPlanUsecaseEntitiesOutput(payload);
+    output = extractPlanUsecaseEntitiesOutput(payload);
     validatePlanUsecaseEntitiesOutput(output, getPlanPersistenceIndexOutput(context).result.tables.length > 0);
     if (output.status === 'failed') {
       status = 'failed';
@@ -182,6 +183,7 @@ async function afterPromptStep(
   }
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
+  if (status === 'completed' && output) await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
   return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined)];
 }
 

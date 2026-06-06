@@ -6,7 +6,7 @@ import {
   assertArray,
   assertRecord,
   assertString,
-  createDynamicAgentStepIntent,
+  createParallelDynamicAgentStepIntent,
   createPlannerPromptReadyIntent,
   createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
@@ -80,6 +80,9 @@ export interface PageIndexItem {
   rulesApplied: string[];
   bffCommandHints: unknown[];
 }
+
+export type PageFlowRefs = PageIndexItem['flowRefs'];
+type PageFlowRefBucket = keyof PageFlowRefs;
 
 export interface PlanPageIndexResult {
   pages: PageIndexItem[];
@@ -245,7 +248,12 @@ async function afterPromptStep(
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');
     output = extractPlanPageIndexOutput(payload);
-    validatePlanPageIndexOutput(output, getPlanningContextSnapshot(context).initialMetricsRequested, getFinalizeSolutionPlanOutput(context));
+    validatePlanPageIndexOutput(
+      output,
+      getPlanningContextSnapshot(context).initialMetricsRequested,
+      getFinalizeSolutionPlanOutput(context),
+      getPlanWorkflowIndexOutput(context)
+    );
     if (output.status === 'failed') {
       status = 'failed';
       traceMsg = 'agentPlanPageIndex returned status failed';
@@ -264,13 +272,18 @@ async function afterPromptStep(
     createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined),
   ];
 
-  if (status === 'completed' && output) intents.push(...createFirstPageDefinitionIntent(context, output));
+  if (status === 'completed' && output) intents.push(...createPageDefinitionParallelIntent(context, output));
   return intents;
 }
 
 export function getPlanPageIndexOutput(context: mls.msg.ExecutionContext): PlanPageIndexOutput {
   return getPlannerOutput(context, 'agentPlanPageIndex', planPageIndexConfig, output =>
-    validatePlanPageIndexOutput(output, getPlanningContextSnapshot(context).initialMetricsRequested, getFinalizeSolutionPlanOutput(context))
+    validatePlanPageIndexOutput(
+      output,
+      getPlanningContextSnapshot(context).initialMetricsRequested,
+      getFinalizeSolutionPlanOutput(context),
+      getPlanWorkflowIndexOutput(context)
+    )
   );
 }
 
@@ -324,7 +337,12 @@ function normalizeStringArray(value: unknown, path: string): string[] {
   return assertArray(value, path).map((item, index) => assertString(item, `${path}[${index}]`));
 }
 
-function validatePlanPageIndexOutput(output: PlanPageIndexOutput, initialMetricsRequested: boolean, finalPlan: FinalSolutionPlanOutput): void {
+function validatePlanPageIndexOutput(
+  output: PlanPageIndexOutput,
+  initialMetricsRequested: boolean,
+  finalPlan: FinalSolutionPlanOutput,
+  workflowIndex: PlanWorkflowIndexOutput,
+): void {
   const ids = new Set<string>();
   const finalPlanActorIds = getFinalPlanActorIds(finalPlan);
   for (const page of output.result.pages) {
@@ -333,6 +351,7 @@ function validatePlanPageIndexOutput(output: PlanPageIndexOutput, initialMetrics
     if (!finalPlanActorIds.has(page.actor)) {
       throw new Error(`page ${page.pageId} actor must match one of the final plan actorIds: ${page.actor}`);
     }
+    validatePageFlowRefsAgainstWorkflowIndex(page.pageId, page.flowRefs, workflowIndex);
   }
 
   if (output.status === 'ok' && output.result.pages.length === 0) {
@@ -350,6 +369,41 @@ function validatePlanPageIndexOutput(output: PlanPageIndexOutput, initialMetrics
   if (output.status === 'needs_input' && output.questions.length === 0) {
     throw new Error('needs_input page index must include questions');
   }
+}
+
+export function validatePageFlowRefsAgainstWorkflowIndex(pageId: string, flowRefs: PageFlowRefs, workflowIndex: PlanWorkflowIndexOutput): void {
+  const workflowsById = new Map(workflowIndex.result.workflows.map(workflow => [workflow.workflowId, workflow]));
+  const seen = new Map<string, PageFlowRefBucket>();
+  const buckets: Array<{ bucket: PageFlowRefBucket; refs: string[] }> = [
+    { bucket: 'experienceFlows', refs: flowRefs.experienceFlows },
+    { bucket: 'entityLifecycles', refs: flowRefs.entityLifecycles },
+    { bucket: 'taskWorkflows', refs: flowRefs.taskWorkflows },
+    { bucket: 'automations', refs: flowRefs.automations },
+  ];
+
+  for (const { bucket, refs } of buckets) {
+    for (const workflowId of refs) {
+      const previousBucket = seen.get(workflowId);
+      if (previousBucket) throw new Error(`page ${pageId} flowRefs.${bucket} duplicates workflow ${workflowId} already in ${previousBucket}`);
+      seen.set(workflowId, bucket);
+
+      const workflow = workflowsById.get(workflowId);
+      if (!workflow) throw new Error(`page ${pageId} flowRefs.${bucket} references unknown workflow ${workflowId}`);
+
+      const expectedBucket = getFlowRefBucketForExecutionMode(workflow.executionMode);
+      if (bucket !== expectedBucket) {
+        throw new Error(`page ${pageId} flowRefs.${bucket} references workflow ${workflowId} with executionMode=${workflow.executionMode}; expected ${expectedBucket}`);
+      }
+    }
+  }
+}
+
+function getFlowRefBucketForExecutionMode(executionMode: string): PageFlowRefBucket {
+  if (executionMode === 'entityLifecycle') return 'entityLifecycles';
+  if (executionMode === 'taskWorkflow') return 'taskWorkflows';
+  if (executionMode === 'automation') return 'automations';
+  if (executionMode === 'uiState' || executionMode === 'documentationOnly') return 'experienceFlows';
+  throw new Error(`invalid workflow executionMode: ${executionMode}`);
 }
 
 function getFinalPlanActorIds(finalPlan: FinalSolutionPlanOutput): Set<string> {
@@ -373,23 +427,24 @@ function getMetricDashboardActorIds(finalPlan: FinalSolutionPlanOutput, finalPla
   return actorIds;
 }
 
-function createFirstPageDefinitionIntent(context: mls.msg.ExecutionContext, output: PlanPageIndexOutput): mls.msg.AgentIntent[] {
+function createPageDefinitionParallelIntent(context: mls.msg.ExecutionContext, output: PlanPageIndexOutput): mls.msg.AgentIntent[] {
   const placeholder = findStepByPlanId(context, 'plan-page-definition') as mls.msg.AIAgentStep | null;
   if (!placeholder || placeholder.type !== 'agent' || placeholder.status === 'completed') return [];
 
-  const firstPage = output.result.pages[0];
-  if (!firstPage) {
+  const pageIds = output.result.pages.map(page => page.pageId);
+  if (pageIds.length === 0) {
     return [createPlannerUpdateStatusIntent(context, placeholder, placeholder, 0, 'completed', 'No pages to define.')];
   }
 
   return [
-    createDynamicAgentStepIntent(
+    createParallelDynamicAgentStepIntent(
       context,
       placeholder,
       'agentPlanPageDefinition',
-      `plan-page-definition:${firstPage.pageId}`,
-      `Plan page ${firstPage.pageId}`,
-      firstPage.pageId
+      'plan-page-definition:parallel',
+      'Plan pages {{completed}}/{{total}}, errors: {{failed}}',
+      pageIds,
+      5
     ),
   ];
 }
@@ -482,6 +537,9 @@ Do not return prose.
 - Add usecaseHints when they help the later single-page step connect BFF commands to layer_3_usecases.
 - Add metricRefs for pages that display metric tables.
 - If a page needs data from the backend, add command hints with name, purpose, and expected input or output summary.
+- flowRefs must reference only workflow ids from the workflow index.
+- Categorize flowRefs by workflow executionMode exactly: entityLifecycle -> entityLifecycles; taskWorkflow -> taskWorkflows; automation -> automations; uiState/documentationOnly -> experienceFlows.
+- Do not put the same workflow id in more than one flowRefs bucket.
 - Use rule ids; do not write loose rule text.
 - Do not generate materialization details or TypeScript code.
 `;

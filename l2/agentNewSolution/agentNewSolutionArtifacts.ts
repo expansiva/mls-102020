@@ -9,11 +9,41 @@ import {
 
 export { normalizeModuleFolderName };
 
+const PLAN_ARTIFACT_SCHEMA_VERSION = '2026-06-06';
+
 export interface NewSolutionInitialArtifactInfo {
   moduleName?: string;
   requestKind?: string;
   userLanguage?: string;
   userPrompt?: string;
+}
+
+export interface PlanArtifactReference {
+  artifactType: string;
+  artifactId: string;
+  moduleName: string;
+  filePath: string;
+  project: number;
+  level: number;
+  folder: string;
+  shortName: string;
+  extension: string;
+  checksum: string;
+  schemaVersion: string;
+  status: 'draft' | 'not-ready';
+  agentName: string;
+  stepId: number;
+  planId: string;
+  savedAt: string;
+}
+
+interface PlanArtifactCandidate {
+  artifactType: string;
+  artifactId: string;
+  exportName: string;
+  moduleName: string;
+  data: unknown;
+  status?: PlanArtifactReference['status'];
 }
 
 export function reserveAvailableModuleName(requestedName: unknown, fallbackPrompt: string): string {
@@ -71,6 +101,71 @@ export async function saveNewSolutionAgentTracePayload(
   }
 }
 
+export async function saveNewSolutionPlanArtifacts(
+  context: mls.msg.ExecutionContext,
+  agentName: string,
+  step: mls.msg.AIAgentStep,
+  output: unknown,
+): Promise<PlanArtifactReference[]> {
+  try {
+    if (!isRecord(output) || output.status !== 'ok') return [];
+
+    const moduleName = normalizeModuleFolderName(getModuleNameFromPlannerOutput(output) || getInitialModuleName(context), 'module');
+    const planId = readString((step as any).planning?.planId) || '';
+    const candidates = buildPlanArtifactCandidates(agentName, moduleName, output);
+    if (candidates.length === 0) return [];
+
+    const saved: PlanArtifactReference[] = [];
+    for (const candidate of candidates) {
+      const fileInfo = resolvePlanArtifactFileInfo(candidate);
+      const artifact = {
+        schemaVersion: PLAN_ARTIFACT_SCHEMA_VERSION,
+        artifactType: candidate.artifactType,
+        artifactId: candidate.artifactId,
+        moduleName: candidate.moduleName,
+        status: candidate.status || 'draft',
+        source: {
+          agentName,
+          stepId: step.stepId,
+          planId,
+        },
+        data: candidate.data,
+      };
+      const source = fileInfo.extension === '.json'
+        ? `${JSON.stringify(artifact, null, 2)}\n`
+        : buildPlanDefsSource(candidate.exportName, artifact);
+      const checksum = checksumString(stableStringify(artifact));
+
+      await saveStorContent(fileInfo, source, false);
+
+      saved.push({
+        artifactType: candidate.artifactType,
+        artifactId: candidate.artifactId,
+        moduleName: candidate.moduleName,
+        filePath: toPlanArtifactPath(fileInfo),
+        project: fileInfo.project,
+        level: fileInfo.level,
+        folder: fileInfo.folder,
+        shortName: fileInfo.shortName,
+        extension: fileInfo.extension,
+        checksum,
+        schemaVersion: PLAN_ARTIFACT_SCHEMA_VERSION,
+        status: candidate.status || 'draft',
+        agentName,
+        stepId: step.stepId,
+        planId,
+        savedAt: new Date().toISOString(),
+      });
+    }
+
+    await updatePlanArtifactsManifest(moduleName, saved);
+    return saved;
+  } catch (error) {
+    console.warn(`[saveNewSolutionPlanArtifacts] failed for ${agentName}`, error);
+    return [];
+  }
+}
+
 function getInitialModuleName(context: mls.msg.ExecutionContext): string {
   if (!context.task) return 'module';
   const agentStep = getAgentStepByAgentName(context.task, 'agentNewSolution') as mls.msg.AIAgentStep | null;
@@ -116,6 +211,269 @@ function getModuleNameFromPlannerResult(value: unknown): string | undefined {
     || readString(getRecord(record.tableDefinition)?.moduleId)
     || readString(getRecord(record.metricTableDefinition)?.moduleId)
     || readString(getRecord(record.defsPlan)?.moduleId);
+}
+
+function getModuleNameFromPlannerOutput(output: Record<string, unknown>): string | undefined {
+  const result = getRecord(output.result);
+  return getModuleNameFromPlannerResult(result) || getModuleNameFromPlannerResult(output);
+}
+
+function buildPlanArtifactCandidates(agentName: string, moduleName: string, output: Record<string, unknown>): PlanArtifactCandidate[] {
+  const result = getRecord(output.result);
+  if (!result) return [];
+
+  if (agentName === 'agentFinalizeSolutionPlan') {
+    const candidates: PlanArtifactCandidate[] = [
+      {
+        artifactType: 'module',
+        artifactId: moduleName,
+        exportName: 'modulePlan',
+        moduleName,
+        data: result,
+      },
+      {
+        artifactType: 'project',
+        artifactId: 'project',
+        exportName: 'projectPlan',
+        moduleName,
+        data: buildProjectPlanData(moduleName, result),
+      },
+    ];
+
+    const rules = Array.isArray(result.rules) ? result.rules : [];
+    if (rules.length > 0) {
+      candidates.push({
+        artifactType: 'rules',
+        artifactId: `${moduleName}Rules`,
+        exportName: 'rulesPlan',
+        moduleName,
+        data: { moduleName, rules },
+      });
+    }
+    return candidates;
+  }
+
+  if (agentName === 'agentPlanTableDefinition') {
+    const table = getRecord(result.tableDefinition);
+    const id = readString(table?.tableId);
+    if (!table || !id) return [];
+    return [{
+      artifactType: 'table',
+      artifactId: id,
+      exportName: readString(getRecord(result.defsPlan)?.exportName) || `${toExportIdentifier(id)}TablePlan`,
+      moduleName: normalizeModuleFolderName(readString(table.moduleId) || moduleName, moduleName),
+      data: { tableDefinition: table, defsPlan: result.defsPlan },
+    }];
+  }
+
+  if (agentName === 'agentPlanMetricTableDefinition') {
+    const table = getRecord(result.metricTableDefinition);
+    const id = readString(table?.metricTableId);
+    if (!table || !id) return [];
+    return [{
+      artifactType: 'metricTable',
+      artifactId: id,
+      exportName: readString(getRecord(result.defsPlan)?.exportName) || `${toExportIdentifier(id)}MetricTablePlan`,
+      moduleName: normalizeModuleFolderName(readString(table.moduleId) || moduleName, moduleName),
+      data: { metricTableDefinition: table, defsPlan: result.defsPlan },
+    }];
+  }
+
+  if (agentName === 'agentPlanUsecaseEntities') {
+    const usecases = Array.isArray(result.usecases) ? result.usecases : [];
+    return usecases.flatMap((value): PlanArtifactCandidate[] => {
+      const usecase = getRecord(value);
+      const id = readString(usecase?.usecaseId);
+      if (!usecase || !id) return [];
+      return [{
+        artifactType: 'usecase',
+        artifactId: id,
+        exportName: `${toExportIdentifier(id)}UsecasePlan`,
+        moduleName,
+        data: {
+          backendArchitecture: result.backendArchitecture,
+          controllerRules: result.controllerRules,
+          usecase,
+        },
+      }];
+    });
+  }
+
+  if (agentName === 'agentPlanWorkflowDefinition') {
+    const workflow = getRecord(result.workflowDefinition);
+    const id = readString(workflow?.workflowId);
+    if (!workflow || !id) return [];
+    return [{
+      artifactType: 'workflow',
+      artifactId: id,
+      exportName: readString(getRecord(result.defsPlan)?.exportName) || `${toExportIdentifier(id)}WorkflowPlan`,
+      moduleName,
+      data: { workflowDefinition: workflow, defsPlan: result.defsPlan },
+    }];
+  }
+
+  if (agentName === 'agentPlanPageDefinition') {
+    const page = getRecord(result.pageDefinition);
+    const id = readString(page?.pageId);
+    if (!page || !id) return [];
+    return [{
+      artifactType: 'page',
+      artifactId: id,
+      exportName: `${toExportIdentifier(id)}PagePlan`,
+      moduleName,
+      data: { pageDefinition: page, bffCommands: result.bffCommands },
+    }];
+  }
+
+  if (agentName === 'agentPlanPlugins') {
+    const plugins = Array.isArray(result.plugins) ? result.plugins : [];
+    return plugins.flatMap((value): PlanArtifactCandidate[] => {
+      const plugin = getRecord(value);
+      const id = readString(plugin?.pluginId);
+      if (!plugin || !id) return [];
+      const candidates: PlanArtifactCandidate[] = [{
+        artifactType: 'pluginConnection',
+        artifactId: id,
+        exportName: `${toExportIdentifier(id)}PluginConnectionPlan`,
+        moduleName,
+        data: { plugin },
+      }];
+      if (plugin.resolution === 'create_draft') {
+        candidates.push({
+          artifactType: 'pluginDraft',
+          artifactId: id,
+          exportName: `${toExportIdentifier(id)}PluginPlan`,
+          moduleName,
+          data: { plugin },
+        });
+      }
+      return candidates;
+    });
+  }
+
+  return [];
+}
+
+function buildProjectPlanData(moduleName: string, finalPlan: Record<string, unknown>): Record<string, unknown> {
+  return {
+    schemaVersion: PLAN_ARTIFACT_SCHEMA_VERSION,
+    modules: [{
+      moduleName,
+      module: finalPlan.module || null,
+    }],
+  };
+}
+
+function resolvePlanArtifactFileInfo(candidate: PlanArtifactCandidate): Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> {
+  const project = mls.actualProject || 0;
+  const shortName = toSafeShortName(candidate.artifactId);
+
+  if (candidate.artifactType === 'project') {
+    return { project, level: 5, folder: '', shortName: 'project', extension: '.json' };
+  }
+  if (candidate.artifactType === 'module') {
+    return { project, level: 5, folder: candidate.moduleName, shortName: 'module', extension: '.defs.ts' };
+  }
+  if (candidate.artifactType === 'rules') {
+    return { project, level: 5, folder: candidate.moduleName, shortName: 'rules', extension: '.defs.ts' };
+  }
+  if (candidate.artifactType === 'table' || candidate.artifactType === 'metricTable') {
+    return { project, level: 1, folder: `${candidate.moduleName}/layer_1_external`, shortName, extension: '.defs.ts' };
+  }
+  if (candidate.artifactType === 'usecase') {
+    return { project, level: 1, folder: `${candidate.moduleName}/layer_3_usecases`, shortName, extension: '.defs.ts' };
+  }
+  if (candidate.artifactType === 'workflow') {
+    return { project, level: 4, folder: 'workflows', shortName, extension: '.defs.ts' };
+  }
+  if (candidate.artifactType === 'page') {
+    return { project, level: 2, folder: candidate.moduleName, shortName, extension: '.defs.ts' };
+  }
+  if (candidate.artifactType === 'pluginConnection') {
+    return { project, level: 2, folder: `${candidate.moduleName}/plugins`, shortName, extension: '.defs.ts' };
+  }
+  if (candidate.artifactType === 'pluginDraft') {
+    return { project, level: 2, folder: `plugins/${shortName}`, shortName: 'plugin', extension: '.defs.ts' };
+  }
+
+  return { project, level: 2, folder: `${candidate.moduleName}/trace`, shortName, extension: '.defs.ts' };
+}
+
+async function updatePlanArtifactsManifest(moduleName: string, references: PlanArtifactReference[]): Promise<void> {
+  if (references.length === 0) return;
+
+  const fileInfo = {
+    project: mls.actualProject || 0,
+    level: 2,
+    folder: `${moduleName}/trace`,
+    shortName: 'plan-artifacts',
+    extension: '.json',
+  };
+  const key = mls.stor.getKeyToFile(fileInfo);
+  const existingFile = mls.stor.files[key];
+  const existing = existingFile ? parseMaybeJson(await existingFile.getContent()) : undefined;
+  const manifest = isRecord(existing) ? existing : {};
+  const artifacts = Array.isArray(manifest.artifacts) ? manifest.artifacts.filter(isRecord) : [];
+  const byKey = new Map<string, Record<string, unknown>>();
+
+  for (const artifact of artifacts) {
+    const key = `${readString(artifact.artifactType) || ''}:${readString(artifact.artifactId) || ''}:${readString(artifact.filePath) || ''}`;
+    if (key !== '::') byKey.set(key, artifact);
+  }
+  for (const reference of references) {
+    byKey.set(`${reference.artifactType}:${reference.artifactId}:${reference.filePath}`, reference as unknown as Record<string, unknown>);
+  }
+
+  const nextManifest = {
+    schemaVersion: PLAN_ARTIFACT_SCHEMA_VERSION,
+    moduleName,
+    updatedAt: new Date().toISOString(),
+    artifacts: [...byKey.values()].sort((a, b) => String(a.filePath || '').localeCompare(String(b.filePath || ''))),
+  };
+
+  await saveStorContent(fileInfo, JSON.stringify(nextManifest, null, 2), false);
+}
+
+function buildPlanDefsSource(exportName: string, artifact: unknown): string {
+  const safeExportName = toExportIdentifier(exportName || 'planArtifact');
+  const serialized = JSON.stringify(artifact, null, 2);
+  return `export const ${safeExportName} = ${serialized} as const;\n\nexport default ${safeExportName};\n`;
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(',')}}`;
+}
+
+function checksumString(value: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function toPlanArtifactPath(fileInfo: Pick<mls.stor.IFileInfo, 'level' | 'folder' | 'shortName' | 'extension'>): string {
+  const folder = fileInfo.folder ? `${fileInfo.folder}/` : '';
+  return `l${fileInfo.level}/${folder}${fileInfo.shortName}${fileInfo.extension}`;
+}
+
+function toSafeShortName(value: string): string {
+  const safe = value.trim().replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+  return safe || 'artifact';
+}
+
+function toExportIdentifier(value: string): string {
+  const words = value.trim().split(/[^a-zA-Z0-9]+/).filter(Boolean);
+  const joined = words.length > 0
+    ? words.map((word, index) => index === 0 ? word : `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`).join('')
+    : 'planArtifact';
+  const clean = joined.replace(/[^a-zA-Z0-9_$]/g, '');
+  const prefixed = /^[a-zA-Z_$]/.test(clean) ? clean : `_${clean}`;
+  return prefixed || 'planArtifact';
 }
 
 function parseMaybeJson(value: unknown): unknown {

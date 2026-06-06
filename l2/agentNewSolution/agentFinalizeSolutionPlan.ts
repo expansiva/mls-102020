@@ -14,7 +14,7 @@ import {
   getPlanningContextSnapshot,
   hasAcceptedNowArtifact,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
-import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import { saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getBlueprintReviewOutput } from '/_102020_/l2/agentNewSolution/agentBlueprintReview.js';
 import type { BlueprintReviewOutput } from '/_102020_/l2/agentNewSolution/agentBlueprintReview.js';
 import { getSolutionBlueprintOutput } from '/_102020_/l2/agentNewSolution/agentSolutionBlueprint.js';
@@ -108,11 +108,12 @@ async function afterPromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
+  let output: FinalSolutionPlanOutput | undefined;
 
   try {
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');
-    const output = extractFinalizeSolutionPlanOutput(payload);
+    output = extractFinalizeSolutionPlanOutput(payload);
     validateFinalizeSolutionPlanOutput(output, context);
     if (output.status === 'failed') {
       status = 'failed';
@@ -127,6 +128,7 @@ async function afterPromptStep(
   }
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
+  if (status === 'completed' && output) await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
 
   const intents = [
     createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined),

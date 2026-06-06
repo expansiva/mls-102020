@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/agentValidateSolutionCoverage.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { getAgentStepByAgentName, getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import {
   PlannerOutput,
   assertArray,
@@ -220,6 +221,12 @@ async function afterPromptStep(
       traceMsg = 'agentValidateSolutionCoverage returned status failed';
     } else if (output.status === 'needs_input') {
       traceMsg = 'agentValidateSolutionCoverage returned status needs_input; keeping validation draft.';
+    } else {
+      const readinessError = getCoverageReadinessError(output);
+      if (readinessError) {
+        status = 'failed';
+        traceMsg = readinessError;
+      }
     }
   } catch (error) {
     status = 'failed';
@@ -228,7 +235,50 @@ async function afterPromptStep(
   }
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
-  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined)];
+
+  const updateIntents: mls.msg.AgentIntent[] = [
+    createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined),
+  ];
+
+  if (status === 'completed') {
+    // TODO-FINAL-001: close root planning agent for plan-only mode.
+    // Evidence from final.md diagnosis (run30): root step stays waiting_after_prompt,
+    // org-materialization waiting_dependency, orphan frontend hook on completed pageIndex.
+    // Action: upon validate completion, explicitly complete the root `agentNewSolution` step
+    // so the task does not remain `in progress`. Materialization remains 'manual_later'.
+    const rootStep = getAgentStepByAgentName(context.task, 'agentNewSolution');
+    if (rootStep && rootStep.type === 'agent' && rootStep.status !== 'completed') {
+      // Find the actual parent step that owns this root agent step (the one that added it as nextStep).
+      // This is the correct parentStepId to use when updating the root's status.
+      const allSteps = getAllSteps(context.task.iaCompressed?.nextSteps || []);
+      let parentStepIdForRoot: number | undefined;
+      for (const s of allSteps) {
+        const nextSteps = (s as any).nextSteps || [];
+        if (nextSteps.some((ns: any) => ns && ns.stepId === rootStep.stepId)) {
+          parentStepIdForRoot = (s as any).stepId;
+          break;
+        }
+      }
+      // Fallback using the root step's own reported parent (raw structure)
+      if (parentStepIdForRoot === undefined) {
+        parentStepIdForRoot = (rootStep as any).parentStepId || 0;
+      }
+
+      updateIntents.push({
+        type: 'update-status',
+        hookSequential,
+        messageId: context.message.orderAt,
+        threadId: context.message.threadId,
+        taskId: context.task?.PK || '',
+        parentStepId: parentStepIdForRoot ?? parentStep.stepId,
+        stepId: rootStep.stepId,
+        status: 'completed',
+        traceMsg: 'plan-only: root agentNewSolution closed after plan-validate-solution-coverage. Materialization left pending for next task. Orphan hooks for planning steps (e.g. agentPlanPageIndex) should be cleaned by system.',
+      });
+    }
+  }
+
+  return updateIntents;
 }
 
 export function getValidateSolutionCoverageOutput(context: mls.msg.ExecutionContext): ValidateSolutionCoverageOutput {
@@ -291,6 +341,21 @@ function validateValidateSolutionCoverageOutput(output: ValidateSolutionCoverage
   if (output.result.readyToSaveDefs && s.errorCount > 0) {
     throw new Error('readyToSaveDefs cannot be true when errorCount > 0');
   }
+}
+
+function getCoverageReadinessError(output: ValidateSolutionCoverageOutput): string | undefined {
+  if (output.status !== 'ok') return undefined;
+  const summary = output.result.summary;
+  const errorIssues = output.result.issues.filter(issue => issue.severity === 'error');
+  if (output.result.readyToSaveDefs && summary.passed && summary.errorCount === 0 && errorIssues.length === 0) return undefined;
+
+  return [
+    'solution coverage is not ready to save defs',
+    `passed=${summary.passed}`,
+    `errorCount=${summary.errorCount}`,
+    `errorIssues=${errorIssues.length}`,
+    `readyToSaveDefs=${output.result.readyToSaveDefs}`,
+  ].join(', ');
 }
 
 function buildHumanPrompt(
@@ -405,4 +470,3 @@ Return:
 
 If critical information is missing, use status "needs_input" with questions. On unrecoverable structural problems use "failed".
 `;
-

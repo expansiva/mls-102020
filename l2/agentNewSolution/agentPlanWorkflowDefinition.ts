@@ -8,17 +8,15 @@ import {
   assertPriority,
   assertRecord,
   assertString,
-  createDynamicAgentStepIntent,
   createPlannerPromptReadyIntent,
   createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
-  findStepByPlanId,
   getPlannerOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
-import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import { saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getPlanMetricTableDefinitionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanMetricTableDefinition.js';
 import type { PlanMetricTableDefinitionOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricTableDefinition.js';
 import { getPlanTableDefinitionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanTableDefinition.js';
@@ -245,11 +243,10 @@ async function afterPromptStep(
   }
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
+  if (status === 'completed' && output) await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
 
   const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined);
-  const nextIntents = status === 'completed' && output ? createNextWorkflowDefinitionIntent(context, step, output) : [];
-  if (nextIntents.some(intent => intent.type === 'add-step')) return [...nextIntents, updateIntent];
-  return [updateIntent, ...nextIntents];
+  return [updateIntent];
 }
 
 export function getPlanWorkflowDefinitionOutputs(context: mls.msg.ExecutionContext): PlanWorkflowDefinitionOutput[] {
@@ -317,38 +314,6 @@ function validatePlanWorkflowDefinitionOutput(output: PlanWorkflowDefinitionOutp
     if (states.length === 0) throw new Error(`workflow ${workflow.workflowId} must include states`);
     if (transitions.length === 0) throw new Error(`workflow ${workflow.workflowId} must include transitions`);
   }
-}
-
-function createNextWorkflowDefinitionIntent(
-  context: mls.msg.ExecutionContext,
-  currentStep: mls.msg.AIAgentStep,
-  currentOutput: PlanWorkflowDefinitionOutput,
-): mls.msg.AgentIntent[] {
-  const workflowIndex = getPlanWorkflowIndexOutput(context);
-  const covered = new Set(getPlanWorkflowDefinitionOutputs(context).map(output => output.result.workflowDefinition.workflowId));
-  covered.add(currentOutput.result.workflowDefinition.workflowId);
-
-  const nextWorkflow = workflowIndex.result.workflows.find(workflow => !covered.has(workflow.workflowId));
-  const placeholder = findStepByPlanId(context, 'plan-workflow-definition') as mls.msg.AIAgentStep | null;
-  if (!placeholder || placeholder.type !== 'agent') return [];
-
-  if (nextWorkflow) {
-    const insertParent = placeholder.status === 'completed' ? currentStep : placeholder;
-    return [
-      createDynamicAgentStepIntent(
-        context,
-        placeholder,
-        'agentPlanWorkflowDefinition',
-        `plan-workflow-definition:${nextWorkflow.workflowId}`,
-        `Plan workflow ${nextWorkflow.workflowId}`,
-        nextWorkflow.workflowId,
-        insertParent
-      ),
-    ];
-  }
-
-  if (placeholder.status === 'completed') return [];
-  return [createPlannerUpdateStatusIntent(context, placeholder, placeholder, 0, 'completed', 'All dynamic workflow definitions completed.')];
 }
 
 function buildHumanPrompt(

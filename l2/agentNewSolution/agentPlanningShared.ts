@@ -208,6 +208,61 @@ export function createDynamicAgentStepIntent(
   };
 }
 
+export function createParallelDynamicAgentStepIntent(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  agentName: string,
+  planId: string,
+  stepTitle: string,
+  args: string[],
+  maxParallel: number = 5,
+): mls.msg.AgentIntentAddStep {
+  if (!context.task) throw new Error('[createParallelDynamicAgentStepIntent] task invalid');
+  if (args.length === 0) throw new Error('[createParallelDynamicAgentStepIntent] args empty');
+
+  const parentPlanning = (parentStep as any).planning;
+  const dependencyPlanId = parentPlanning?.dynamicSource?.sourcePlanId || parentPlanning?.planId || '';
+
+  return {
+    type: 'add-step',
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task.PK,
+    parentStepId: parentStep.stepId,
+    step: {
+      type: 'agent',
+      stepId: 0,
+      interaction: {
+        input: [{
+          type: 'system',
+          content: `<!-- modelType: codeinstruct -->\nParallel dynamic controller for ${agentName}. Child prompts are prepared by beforePromptStep with one selector arg per slot.`,
+        }],
+        cost: 0,
+        trace: [`queued ${args.length} parallel dynamic args for ${agentName}`],
+        payload: null,
+      },
+      stepTitle,
+      status: 'in_progress',
+      nextSteps: [],
+      agentName,
+      prompt: JSON.stringify({ planId }),
+      rags: [],
+      planning: {
+        planId,
+        dependsOn: dependencyPlanId ? [dependencyPlanId] : [],
+        executionMode: 'parallel_dynamic',
+        executionHost: 'client',
+        dynamicSource: parentPlanning?.dynamicSource,
+      },
+    } as mls.msg.AIAgentStep,
+    executionMode: {
+      type: 'parallel',
+      args,
+      maxParallel,
+    },
+  };
+}
+
 export function getPlanningContextSnapshot(context: mls.msg.ExecutionContext): PlanningContextSnapshot {
   const clarificationAnswer = getRequirementsClarificationAnswer(context);
   return {

@@ -6,17 +6,15 @@ import {
   assertArray,
   assertRecord,
   assertString,
-  createDynamicAgentStepIntent,
   createPlannerPromptReadyIntent,
   createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
-  findStepByPlanId,
   getPlannerOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
-import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import { saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getPlanAgentsOutput } from '/_102020_/l2/agentNewSolution/agentPlanAgents.js';
 import type { PlanAgentsOutput } from '/_102020_/l2/agentNewSolution/agentPlanAgents.js';
 import { getPlanHorizontalsOutput } from '/_102020_/l2/agentNewSolution/agentPlanHorizontals.js';
@@ -27,7 +25,7 @@ import { getPlanMetricTableDefinitionOutputs } from '/_102020_/l2/agentNewSoluti
 import type { PlanMetricTableDefinitionOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricTableDefinition.js';
 import { getPlanMetricsIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricsIndex.js';
 import type { PlanMetricsIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricsIndex.js';
-import { getPlanPageIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanPageIndex.js';
+import { getPlanPageIndexOutput, validatePageFlowRefsAgainstWorkflowIndex } from '/_102020_/l2/agentNewSolution/agentPlanPageIndex.js';
 import type { PageIndexItem, PlanPageIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanPageIndex.js';
 import { getPlanPersistenceIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanPersistenceIndex.js';
 import type { PlanPersistenceIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanPersistenceIndex.js';
@@ -341,7 +339,7 @@ async function afterPromptStep(
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');
     output = extractPlanPageDefinitionOutput(payload);
-    validatePlanPageDefinitionOutput(output, pageSelector);
+    validatePlanPageDefinitionOutput(output, pageSelector, getPlanWorkflowIndexOutput(context));
     if (output.status === 'failed') {
       status = 'failed';
       traceMsg = 'agentPlanPageDefinition returned status failed';
@@ -355,16 +353,15 @@ async function afterPromptStep(
   }
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
+  if (status === 'completed' && output) await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
 
   const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined);
-  const nextIntents = status === 'completed' && output ? createNextPageDefinitionIntent(context, step, output) : [];
-  if (nextIntents.some(intent => intent.type === 'add-step')) return [...nextIntents, updateIntent];
-  return [updateIntent, ...nextIntents];
+  return [updateIntent];
 }
 
 export function getPlanPageDefinitionOutputs(context: mls.msg.ExecutionContext): PlanPageDefinitionOutput[] {
   return getPlannerOutputs(context, 'agentPlanPageDefinition', planPageDefinitionConfig, output =>
-    validatePlanPageDefinitionOutput(output, output.result.pageDefinition.pageId)
+    validatePlanPageDefinitionOutput(output, output.result.pageDefinition.pageId, getPlanWorkflowIndexOutput(context))
   );
 }
 
@@ -491,11 +488,12 @@ function optionalStringValue(value: unknown): string | undefined {
   return undefined;
 }
 
-function validatePlanPageDefinitionOutput(output: PlanPageDefinitionOutput, pageSelector: string): void {
+function validatePlanPageDefinitionOutput(output: PlanPageDefinitionOutput, pageSelector: string, workflowIndex: PlanWorkflowIndexOutput): void {
   const page = output.result.pageDefinition;
   if (!page.pageId || page.pageId !== pageSelector) {
     throw new Error(`pageDefinition.pageId must match selector ${pageSelector}`);
   }
+  validatePageFlowRefsAgainstWorkflowIndex(page.pageId, page.flowRefs, workflowIndex);
   if (output.status === 'needs_input' && output.questions.length === 0) {
     throw new Error('needs_input page definition must include questions');
   }
@@ -504,39 +502,157 @@ function validatePlanPageDefinitionOutput(output: PlanPageDefinitionOutput, page
     if (!Array.isArray(page.pageInputs)) throw new Error('pageDefinition.pageInputs must be an array (even if empty)');
     if (!Array.isArray(page.navigationRefs)) throw new Error('pageDefinition.navigationRefs must be an array (even if empty)');
     if (!Array.isArray(page.sections)) throw new Error('pageDefinition.sections must be present');
+    validateSpecificActionRequiredInputs(page, output.result.bffCommands);
   }
 }
 
-function createNextPageDefinitionIntent(
-  context: mls.msg.ExecutionContext,
-  currentStep: mls.msg.AIAgentStep,
-  currentOutput: PlanPageDefinitionOutput,
-): mls.msg.AgentIntent[] {
-  const pageIndex = getPlanPageIndexOutput(context);
-  const covered = new Set(getPlanPageDefinitionOutputs(context).map(output => output.result.pageDefinition.pageId));
-  covered.add(currentOutput.result.pageDefinition.pageId);
+function validateSpecificActionRequiredInputs(page: PageDefinitionSpec, commands: BffCommandSpec[]): void {
+  const pageLooksSpecific = hasSpecificEntityActionText(buildPageSearchText(page));
+  const requiredIdentifierInputs = page.pageInputs.filter(input => input.required === true && isIdentifierLikePageInput(input));
 
-  const nextPage = pageIndex.result.pages.find(p => !covered.has(p.pageId));
-  const placeholder = findStepByPlanId(context, 'plan-page-definition') as mls.msg.AIAgentStep | null;
-  if (!placeholder || placeholder.type !== 'agent') return [];
+  for (const command of commands) {
+    const commandIdentifierNames = getCommandIdentifierInputNames(command.input);
+    const commandLooksSpecific = hasSpecificEntityActionText(buildCommandSearchText(command));
+    const needsRequiredIdentifier =
+      commandLooksSpecific ||
+      (command.kind !== 'query' && commandIdentifierNames.length > 0) ||
+      (command.kind === 'query' && pageLooksSpecific && commandIdentifierNames.length > 0);
+    if (!needsRequiredIdentifier) continue;
 
-  if (nextPage) {
-    const insertParent = placeholder.status === 'completed' ? currentStep : placeholder;
-    return [
-      createDynamicAgentStepIntent(
-        context,
-        placeholder,
-        'agentPlanPageDefinition',
-        `plan-page-definition:${nextPage.pageId}`,
-        `Plan page ${nextPage.pageId}`,
-        nextPage.pageId,
-        insertParent
-      ),
-    ];
+    if (commandIdentifierNames.length === 0) {
+      if (requiredIdentifierInputs.length === 0) {
+        throw new Error(`page ${page.pageId} command ${command.commandName} requires a required identifier pageInput`);
+      }
+      continue;
+    }
+
+    for (const identifierName of commandIdentifierNames) {
+      const matchingInput = page.pageInputs.find(input => pageInputMatchesIdentifier(input, identifierName));
+      if (!matchingInput || matchingInput.required !== true) {
+        throw new Error(`page ${page.pageId} command ${command.commandName} identifier ${identifierName} must have a matching pageInput with required=true`);
+      }
+    }
+  }
+}
+
+function buildPageSearchText(page: PageDefinitionSpec): string {
+  const sectionText = page.sections.flatMap(section => [
+    section.sectionName,
+    section.mode,
+    ...section.organisms.flatMap(organism => [organism.organismName, organism.purpose, ...organism.userActions]),
+  ]);
+  return normalizeSearchText([
+    page.pageId,
+    page.pageName,
+    page.purpose,
+    ...page.capabilities,
+    ...sectionText,
+  ].join(' '));
+}
+
+function buildCommandSearchText(command: BffCommandSpec): string {
+  return normalizeSearchText([
+    command.commandName,
+    command.purpose,
+    command.kind,
+    ...command.readsEntities,
+    ...command.writesEntities,
+  ].join(' '));
+}
+
+function hasSpecificEntityActionText(text: string): boolean {
+  const keywords = [
+    'detail',
+    'details',
+    'detalhe',
+    'detalhes',
+    'edit',
+    'editar',
+    'update',
+    'atualizar',
+    'atualizacao',
+    'alterar',
+    'modify',
+    'modificar',
+    'status',
+    'cancel',
+    'cancelar',
+    'cancelamento',
+    'refund',
+    'reembolso',
+    'estorno',
+    'lifecycle',
+    'ciclo de vida',
+    'approve',
+    'aprovar',
+    'reject',
+    'rejeitar',
+    'complete',
+    'concluir',
+    'fulfill',
+    'fulfillment',
+    'assign',
+    'atribuir',
+    'close',
+    'fechar',
+    'delete',
+    'deletar',
+    'excluir',
+    'remove',
+    'remover',
+  ];
+  return keywords.some(keyword => text.includes(keyword));
+}
+
+function getCommandIdentifierInputNames(input: Record<string, unknown>): string[] {
+  const names = new Set<string>();
+  collectIdentifierInputNames(input, names);
+  return [...names];
+}
+
+function collectIdentifierInputNames(value: unknown, names: Set<string>): void {
+  if (!value || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    value.forEach(item => collectIdentifierInputNames(item, names));
+    return;
   }
 
-  if (placeholder.status === 'completed') return [];
-  return [createPlannerUpdateStatusIntent(context, placeholder, placeholder, 0, 'completed', 'All dynamic page definitions completed.')];
+  const record = value as Record<string, unknown>;
+  for (const [key, child] of Object.entries(record)) {
+    if (isIdentifierName(key)) names.add(key);
+    if (key === 'properties' && child && typeof child === 'object' && !Array.isArray(child)) {
+      for (const propertyName of Object.keys(child as Record<string, unknown>)) {
+        if (isIdentifierName(propertyName)) names.add(propertyName);
+      }
+    }
+    collectIdentifierInputNames(child, names);
+  }
+}
+
+function isIdentifierLikePageInput(input: PageInputSpec): boolean {
+  return isIdentifierName(input.name) || isIdentifierName(input.fieldRef || '');
+}
+
+function pageInputMatchesIdentifier(input: PageInputSpec, identifierName: string): boolean {
+  const normalizedIdentifier = normalizeIdentifierName(identifierName);
+  return [
+    input.name,
+    input.fieldRef || '',
+    input.description || '',
+  ].some(value => normalizeIdentifierName(value) === normalizedIdentifier || normalizeIdentifierName(value).endsWith(normalizedIdentifier));
+}
+
+function isIdentifierName(value: string): boolean {
+  const normalized = normalizeIdentifierName(value);
+  return normalized === 'id' || normalized.endsWith('id') || normalized.includes('identifier') || normalized.includes('identificador');
+}
+
+function normalizeIdentifierName(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+}
+
+function normalizeSearchText(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
 function buildHumanPrompt(
@@ -626,12 +742,14 @@ Do not return prose.
 - Metric dashboard pages must use the actor declared for metrics in the final plan (commonly an "admin" or back-office actor) and must read metric data only via usecaseRefs.
 - pageInputs describe the page boundary contract (route params, query, session, prior step result, etc.). Use empty array when the page can open standalone.
 - For detail/status/edit/confirmation pages, declare required external identifiers (the id of the main subject or commitment record from the ontology) in pageInputs with appropriate sources (routeParam, previousStepResult, ...). Never use names from any sample domain.
+- If a detail/update/edit/status/cancel/refund/lifecycle BFF command has an identifier input such as {entity}Id, the matching pageInputs entry must exist and must use required: true.
+- If such a BFF command does not expose the identifier name in its input schema, the page must still include at least one required identifier pageInput for the main subject or commitment record.
 - navigationRefs are lightweight references only (direction, pageId, trigger, optional description). Never include inputMapping.
 - Commitment/confirmation pages (booking, order, request, subscription, contract, or the domain-equivalent commitment action) must include selection organisms before the confirm action; selection organisms must read the selected entity fields and the confirm command must write the relationship to the commitment entity. All names must come from the final plan and ontology.
 - Use rule ids from catalogs (e.g. RULE_*) in rulesApplied; never loose rule text.
-- flowRefs must correctly categorize references into experienceFlows / entityLifecycles / taskWorkflows / automations and match existing workflow ids.
+- flowRefs must reference only existing workflow ids and must categorize by workflow executionMode exactly: entityLifecycle -> entityLifecycles; taskWorkflow -> taskWorkflows; automation -> automations; uiState/documentationOnly -> experienceFlows.
+- Do not put the same workflow id in more than one flowRefs bucket.
 - Do not generate frontend code, materialization, or .defs implementation details.
 - defs are produced later; focus on the conceptual page + BFF contract.
 - If information is insufficient for a firm plan, return status "needs_input" with questions.
 `;
-
