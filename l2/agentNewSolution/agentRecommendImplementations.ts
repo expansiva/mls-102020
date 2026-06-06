@@ -450,8 +450,8 @@ function validateRecommendImplementationsOutput(
   }
 
   if (output.status === 'ok' && options.initialMetricsRequested) {
-    if (!hasNowArtifact(recommendations, 'metric')) {
-      throw new Error('initial metrics/dashboard was requested, but no now metric recommendation exists');
+    if (!hasNowArtifact(recommendations, 'metricTable')) {
+      throw new Error('initial metrics/dashboard was requested, but no now metricTable recommendation exists');
     }
     if (!hasNowAdminDashboard(recommendations)) {
       throw new Error('initial metrics/dashboard was requested, but no now admin dashboard page recommendation exists');
@@ -617,7 +617,7 @@ Do not return prose.
 - artifactType must be one of: page, workflow, plugin, agent, horizontalModule, mdm, ontology, metric, metricTable, usecaseEntity.
 - priority and defaultPriority must be now, soon, later, or never.
 - Always include at least one MDM recommendation with priority "now".
-- Include operational metric recommendations with priority "now" when the clarification answer accepted initial metrics/dashboard.
+- Include metricTable recommendations with priority "now" when the clarification answer accepted initial metrics/dashboard.
 - Include an admin dashboard page recommendation with priority "now" when the clarification answer accepted initial metrics/dashboard.
 - Include usecaseEntity planning with priority "now" when the discovered scope contains writes, lifecycle workflows, metric updates, table updates, commands, or backend usecase signals.
 - Include payment plugins only when payment, billing, subscription, checkout, invoice, or financial collection is materially relevant.
