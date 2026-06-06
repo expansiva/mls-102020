@@ -2,6 +2,12 @@
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import { getAgentStepByAgentName } from '/_102027_/l2/aiAgentHelper.js';
+import {
+  normalizeModuleFolderName,
+  reserveModuleNameFromFolders,
+} from '/_102020_/l2/agentNewSolution/agentNewSolutionPlan.js';
+
+export { normalizeModuleFolderName };
 
 export interface NewSolutionInitialArtifactInfo {
   moduleName?: string;
@@ -10,39 +16,8 @@ export interface NewSolutionInitialArtifactInfo {
   userPrompt?: string;
 }
 
-export function normalizeModuleFolderName(value: unknown, fallback: string = 'module'): string {
-  const source = `${typeof value === 'string' && value.trim() ? value : fallback}` || 'module';
-  const ascii = source
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[^a-zA-Z0-9]+/g, ' ')
-    .trim();
-  const words = ascii.split(/\s+/).filter(Boolean);
-  if (words.length === 0) return 'module';
-
-  const camel = words.map((word, index) => {
-    const lower = word.toLowerCase();
-    if (index === 0) return lower;
-    return lower.charAt(0).toUpperCase() + lower.slice(1);
-  }).join('');
-
-  const withoutLeadingDigits = camel.replace(/^[0-9]+/, '');
-  return (withoutLeadingDigits || 'module').slice(0, 60);
-}
-
 export function reserveAvailableModuleName(requestedName: unknown, fallbackPrompt: string): string {
-  const baseName = normalizeModuleFolderName(requestedName, fallbackPrompt);
-  const folders = getExistingModuleFolders();
-
-  if (!hasFolder(folders, baseName)) return baseName;
-
-  for (let index = 2; index < 1000; index += 1) {
-    const candidate = `${baseName}${index}`;
-    if (!hasFolder(folders, candidate)) return candidate;
-  }
-
-  throw new Error(`[reserveAvailableModuleName] no available folder name for ${baseName}`);
+  return reserveModuleNameFromFolders(requestedName, fallbackPrompt, getExistingModuleFolders());
 }
 
 export async function reserveNewSolutionModuleArtifacts(initial: NewSolutionInitialArtifactInfo): Promise<void> {
@@ -166,20 +141,13 @@ function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-function getExistingModuleFolders(): Set<string> {
+export function getExistingModuleFolders(): Set<string> {
   const actualProject = mls.actualProject || 0;
   const folders = Object.values(mls.stor.files)
     .filter(f => f.project === actualProject && f.level !== 3 && f.folder)
     .map(f => f.folder);
 
   return new Set(folders);
-}
-
-function hasFolder(folders: Set<string>, folder: string): boolean {
-  for (const item of folders) {
-    if (item === folder || item.startsWith(`${folder}/`)) return true;
-  }
-  return false;
 }
 
 function getTraceShortName(agentName: string, stepId: number): string {

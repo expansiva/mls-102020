@@ -3,10 +3,19 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAgentStepByAgentName } from '/_102027_/l2/aiAgentHelper.js';
 import {
-  reserveAvailableModuleName,
+  getExistingModuleFolders,
   reserveNewSolutionModuleArtifacts,
   saveNewSolutionAgentTracePayload,
 } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import {
+  normalizeInitialPlan,
+  PLAN_IDS,
+  type InitialNewSolutionPlan,
+  type NewSolutionPlanId,
+} from '/_102020_/l2/agentNewSolution/agentNewSolutionPlan.js';
+
+export { normalizeInitialPlan, PLAN_IDS };
+export type { InitialNewSolutionPlan, NewSolutionPlanId };
 
 export function createAgent(): IAgentAsync {
   return {
@@ -22,35 +31,6 @@ export function createAgent(): IAgentAsync {
 
 type PlannedExecutionMode = 'sequential' | 'parallel_static' | 'parallel_dynamic' | 'manual_later';
 type PlannedExecutionHost = 'client' | 'server' | 'either';
-
-export const PLAN_IDS = [
-  'org-requirements',
-  'org-planner',
-  'org-materialization',
-  'req-discover-scope',
-  'req-clarification-answer',
-  'req-recommend-implementations',
-  'req-implementation-decisions',
-  'plan-solution-blueprint',
-  'plan-blueprint-review',
-  'plan-finalize-solution-plan',
-  'plan-mdm',
-  'plan-horizontals',
-  'plan-plugins',
-  'plan-persistence-index',
-  'plan-table-definition',
-  'plan-metrics-index',
-  'plan-metric-table-definition',
-  'plan-usecase-entities',
-  'plan-workflow-index',
-  'plan-workflow-definition',
-  'plan-agents',
-  'plan-page-index',
-  'plan-page-definition',
-  'plan-validate-solution-coverage',
-] as const;
-
-export type NewSolutionPlanId = typeof PLAN_IDS[number];
 
 type PlannedAIPayload = mls.msg.AIPayload & {
   planning: StepPlanning;
@@ -136,8 +116,7 @@ async function afterPromptStep(
 
   if (payload.type !== 'flexible' || !payload.result) throw new Error(`[afterPromptStep] invalid payload: ${JSON.stringify(payload)}`);
 
-  const initialPlan = normalizeInitialPlan(payload.result);
-  initialPlan.moduleName = reserveAvailableModuleName(initialPlan.moduleName, initialPlan.userPrompt);
+  const initialPlan = normalizeInitialPlan(payload.result, getExistingModuleFolders());
   payload.result.moduleName = initialPlan.moduleName;
   await reserveNewSolutionModuleArtifacts(initialPlan);
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step, initialPlan.moduleName);
@@ -279,18 +258,6 @@ function plannedClarification(
   };
 }
 
-function normalizeInitialPlan(result: InitialNewSolutionPlan): InitialNewSolutionPlan {
-  if (!result || typeof result !== 'object') throw new Error('[normalizeInitialPlan] invalid result');
-  if (!result.userLanguage || typeof result.userLanguage !== 'string') throw new Error('[normalizeInitialPlan] missing userLanguage');
-  if (!['module', 'solution', 'module_solution'].includes(result.requestKind)) throw new Error(`[normalizeInitialPlan] invalid requestKind: ${result.requestKind}`);
-  if (!result.userPrompt || typeof result.userPrompt !== 'string') throw new Error('[normalizeInitialPlan] missing userPrompt');
-  result.moduleName = reserveAvailableModuleName(result.moduleName, result.userPrompt);
-  if (!result.titles || typeof result.titles !== 'object') result.titles = {};
-  if (!Array.isArray(result.todoItems)) result.todoItems = [];
-  if (!Array.isArray(result.openDetails)) result.openDetails = [];
-  return result;
-}
-
 function getLocalizedTitle(initialPlan: InitialNewSolutionPlan, planId: NewSolutionPlanId): string {
   const title = initialPlan.titles?.[planId];
   if (typeof title === 'string' && title.trim().length > 0 && title.trim().length < 140) {
@@ -429,23 +396,6 @@ export type Output =
     result: string;
   };
 
-export interface InitialNewSolutionPlan {
-  userLanguage: string;
-  requestKind: 'module' | 'solution' | 'module_solution';
-  moduleName: string;
-  userPrompt: string;
-  titles: Partial<Record<NewSolutionPlanId, string>>;
-  todoItems: {
-    planId: NewSolutionPlanId;
-    done: boolean;
-    title: string;
-    description: string;
-  }[];
-  openDetails: {
-    title: string;
-    description: string;
-  }[];
-}
 //#endregion
 
 export function getInitialNewSolutionPlan(agent: IAgentMeta, context: mls.msg.ExecutionContext): InitialNewSolutionPlan {
@@ -458,5 +408,8 @@ export function getInitialNewSolutionPlan(agent: IAgentMeta, context: mls.msg.Ex
     throw new Error(`[${agent.agentName}](getInitialNewSolutionPlan) No flexible payload found for this agent.`);
   }
 
-  return normalizeInitialPlan((resultStep as mls.msg.AIFlexibleResultStep).result as InitialNewSolutionPlan);
+  return normalizeInitialPlan(
+    (resultStep as mls.msg.AIFlexibleResultStep).result as InitialNewSolutionPlan,
+    getExistingModuleFolders(),
+  );
 }

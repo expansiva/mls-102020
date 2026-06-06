@@ -83,7 +83,7 @@ const entityFieldSchema = {
 const ontologyEntitySchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['entityId', 'title', 'description', 'kind', 'ownership', 'fields'],
+  required: ['title', 'description'],
   properties: {
     entityId: stringSchema,
     title: stringSchema,

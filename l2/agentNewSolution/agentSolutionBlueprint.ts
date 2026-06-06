@@ -224,7 +224,7 @@ In result, return:
 - module with moduleName, purpose, businessDomain, languages, and visualStyle.
 - actors.
 - capabilities.
-- ontology.entities.
+- ontology.entities as an object map keyed by PascalCase entity id. Each value must include title and description. Include entityId, kind, ownership, fields, statusEnum, lifecycleStates, and rulesApplied only when they are known.
 - centralized rules.
 - relationships.
 - userActions.

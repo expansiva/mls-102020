@@ -147,6 +147,45 @@ Use `status: 'failed'` only when output is invalid or explicitly failed.
 
 Use `cleaner: 'input'` on successful large planner steps when the prompt can be removed after validation.
 
+## Schema Contract Rules
+
+Treat the JSON Schema as the executable contract for the LLM output.
+
+- Every new planner agent must use a specific schema, not a generic object.
+- Prefer `createPlannerToolSchema(...)` from `agentPlanningShared.ts` for planner agents.
+- The schema must include every field later read by the normalizer or validator.
+- Use `required` for mandatory fields.
+- Use `enum` or `const` for closed values such as `artifactType`, `priority`, `tableKind`, `layer`, `storageEngine`, and status-like fields.
+- Use `additionalProperties: false` for every object unless the object is truly a dynamic map.
+- If a dynamic map is needed, use `additionalProperties: <value schema>`, not `true`.
+- Avoid `unknown[]` and open object arrays in tool output. Define item fields explicitly.
+- Do not accept two names for the same concept unless both names are intentionally part of the contract and covered by tests.
+- Do not silently repair wrong enum values. If the contract says `metricTimeseries`, then `metric` must fail.
+- Do not coerce booleans with `Boolean(value)`. Use an explicit boolean assertion so `"false"` fails.
+- Do not coerce missing required fields to defaults after LLM output. Defaults belong in prompt/context before the LLM call, or must be represented explicitly in the schema.
+- Business validators must use the same enum names as the schema. Example: if the flow uses `metricTable`, validation must not look for `metric`.
+
+The normalizer may unwrap payload transport shapes such as `flexible`, `toolName`, `arguments`, and provider `tool_calls`.
+It must not change invalid business values into valid ones.
+
+When an older agent still has a custom schema instead of `createPlannerToolSchema`, keep its schema and manual validator aligned, or migrate it before adding new behavior.
+
+## Testing Contract
+
+For every new planner agent, create or update a companion `.test.ts` file.
+
+Follow:
+
+- `/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/agents/createNewAgentTestSkill.md`
+
+Minimum expectation:
+
+- one canonical valid tool payload passes;
+- one real payload captured from a task passes or fails for the expected reason;
+- one invalid enum/const payload fails;
+- one missing required field fails;
+- one schema-vs-validator business rule is tested.
+
 ## Data Access
 
 Use task helpers and small local readers:
@@ -177,7 +216,11 @@ Before finishing a new agent:
 - `beforePromptStep` returns `prompt_ready`.
 - The planned step starts as `waiting_dependency`, or `waiting_human_input` if it is immediately executable.
 - `afterPromptStep` validates the converted tool-call payload.
+- Tool schema and validator use the same field names, enum values, required fields, and object shape.
+- Schema has no `additionalProperties: true` in output contracts.
+- Normalizers unwrap transport shape only; they do not repair invalid business values.
 - Invalid output marks the step failed instead of silently continuing.
+- A companion `.test.ts` documents valid payloads and important failure cases.
 - No fixture hard-code was added.
 - `pnpm build` passes in `/Volumes/WagnerSSD1/collab/mls-base`.
 

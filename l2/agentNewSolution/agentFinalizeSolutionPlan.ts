@@ -243,5 +243,6 @@ Do not return prose.
 - Do not remove layer_3 usecase planning when BFF commands, writes, lifecycle changes, or metric updates exist.
 - Keep rules centralized in rules with stable ruleId values.
 - Page definitions and BFF commands must reference rules by ruleId.
+- Keep ontology.entities as an object map keyed by PascalCase entity id. Do not require duplicating entityId inside each entity value.
 - Do not continue if an error cannot be fixed from available context; return status "needs_input" with questions.
 `;

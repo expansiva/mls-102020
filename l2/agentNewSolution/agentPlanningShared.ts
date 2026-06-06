@@ -15,7 +15,7 @@ import {
   RequirementsClarificationAnswer,
   getRequirementsClarificationAnswer,
 } from '/_102020_/l2/agentNewSolution/agentNewSolutionRequirements.js';
-import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution/agentNewSolutionPlan.js';
 
 export const PLANNER_SCHEMA_VERSION = '2026-06-02';
 
