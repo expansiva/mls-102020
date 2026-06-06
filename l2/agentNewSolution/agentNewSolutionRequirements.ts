@@ -2,7 +2,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAgentStepByAgentName, getAllSteps, notifyTaskChange } from '/_102027_/l2/aiAgentHelper.js';
-import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import { saveNewSolutionAgentTracePayload, getExistingModuleFolders } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import {
   ImplementationRecommendation,
   RecommendImplementationsOutput,
@@ -475,11 +475,7 @@ function getInitialPlan(context: mls.msg.ExecutionContext): InitialNewSolutionPl
 }
 
 function getExistingProjectFolders(): string[] {
-  return Array.from(new Set(
-    Object.values(mls.stor.files)
-      .filter(f => f.project === mls.actualProject && f.level !== 3 && f.folder)
-      .map(f => f.folder)
-  ));
+  return Array.from(getExistingModuleFolders());
 }
 
 function buildHumanPrompt(initialPlan: InitialNewSolutionPlanSummary): string {
@@ -502,9 +498,8 @@ Keep this clarification intentionally small. Do not ask about architecture, plug
 Use the same language as the user.
 Every question must include a useful default answer in the "answer" field.
 
-Always include one question about whether the user wants an initial metrics/dashboard.
-For Portuguese, this question should be equivalent to "Deseja metricas/dashboard inicial?".
-The default answer should be equivalent to "Sim, metricas basicas operacionais".
+Always include one question about whether the user wants an initial metrics/dashboard for the MVP.
+The question, labels and default answer must be written in the user's language (see userLanguage / "Use the same language as the user"). The meaning must be: "do you want basic operational metrics and an admin dashboard in the first version?" with a positive default.
 
 Already existing modules:
 {{folders}}

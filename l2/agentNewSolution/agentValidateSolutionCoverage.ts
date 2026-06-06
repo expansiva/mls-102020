@@ -1,0 +1,408 @@
+/// <mls fileReference="_102020_/l2/agentNewSolution/agentValidateSolutionCoverage.ts" enhancement="_102027_/l2/enhancementAgent"/>
+
+import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import {
+  PlannerOutput,
+  assertArray,
+  assertRecord,
+  assertString,
+  createPlannerPromptReadyIntent,
+  createPlannerVariableToolSchema,
+  createPlannerUpdateStatusIntent,
+  extractPlannerOutput,
+  getPlannerOutput,
+} from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
+import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
+import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
+import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import { getPlanAgentsOutput } from '/_102020_/l2/agentNewSolution/agentPlanAgents.js';
+import type { PlanAgentsOutput } from '/_102020_/l2/agentNewSolution/agentPlanAgents.js';
+import { getPlanHorizontalsOutput } from '/_102020_/l2/agentNewSolution/agentPlanHorizontals.js';
+import type { PlanHorizontalsOutput } from '/_102020_/l2/agentNewSolution/agentPlanHorizontals.js';
+import { getPlanMDMOutput } from '/_102020_/l2/agentNewSolution/agentPlanMDM.js';
+import type { PlanMDMOutput } from '/_102020_/l2/agentNewSolution/agentPlanMDM.js';
+import { getPlanMetricTableDefinitionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanMetricTableDefinition.js';
+import type { PlanMetricTableDefinitionOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricTableDefinition.js';
+import { getPlanMetricsIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricsIndex.js';
+import type { PlanMetricsIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricsIndex.js';
+import { getPlanPageDefinitionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanPageDefinition.js';
+import type { PlanPageDefinitionOutput } from '/_102020_/l2/agentNewSolution/agentPlanPageDefinition.js';
+import { getPlanPageIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanPageIndex.js';
+import type { PlanPageIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanPageIndex.js';
+import { getPlanPersistenceIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanPersistenceIndex.js';
+import type { PlanPersistenceIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanPersistenceIndex.js';
+import { getPlanPluginsOutput } from '/_102020_/l2/agentNewSolution/agentPlanPlugins.js';
+import type { PlanPluginsOutput } from '/_102020_/l2/agentNewSolution/agentPlanPlugins.js';
+import { getPlanTableDefinitionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanTableDefinition.js';
+import type { PlanTableDefinitionOutput } from '/_102020_/l2/agentNewSolution/agentPlanTableDefinition.js';
+import { getPlanUsecaseEntitiesOutput } from '/_102020_/l2/agentNewSolution/agentPlanUsecaseEntities.js';
+import type { PlanUsecaseEntitiesOutput } from '/_102020_/l2/agentNewSolution/agentPlanUsecaseEntities.js';
+import { getPlanWorkflowDefinitionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanWorkflowDefinition.js';
+import type { PlanWorkflowDefinitionOutput } from '/_102020_/l2/agentNewSolution/agentPlanWorkflowDefinition.js';
+import { getPlanWorkflowIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanWorkflowIndex.js';
+import type { PlanWorkflowIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanWorkflowIndex.js';
+
+export function createAgent(): IAgentAsync {
+  return {
+    agentName: 'agentValidateSolutionCoverage',
+    agentProject: 102020,
+    agentFolder: 'agentNewSolution',
+    agentDescription: 'Validate full solution coverage and readiness to save .defs before materialization',
+    visibility: 'private',
+    beforePromptStep,
+    afterPromptStep,
+  };
+}
+
+export const VALIDATE_SOLUTION_COVERAGE_TOOL_NAME = 'submitSolutionCoverageValidation';
+export const VALIDATE_SOLUTION_COVERAGE_STEP_ID = 'plan-validate-solution-coverage';
+const VALIDATE_SOLUTION_COVERAGE_ALIASES = [VALIDATE_SOLUTION_COVERAGE_STEP_ID, 'validate-solution-coverage', 'plan-validate-solution-coverage'];
+
+export interface ValidationIssue {
+  severity: 'error' | 'warning';
+  code: string;
+  message: string;
+  path: string;
+  evidence: string[];
+}
+
+export interface ValidationSummary {
+  passed: boolean;
+  errorCount: number;
+  warningCount: number;
+}
+
+export interface ChecklistCheckResult {
+  passed: boolean;
+  evidence: string;
+}
+
+export interface ValidateSolutionCoverageResult {
+  summary: ValidationSummary;
+  issues: ValidationIssue[];
+  checklistResults?: Record<string, ChecklistCheckResult>;
+  readyToSaveDefs: boolean;
+}
+
+export type ValidateSolutionCoverageOutput = PlannerOutput<ValidateSolutionCoverageResult>;
+
+const issueSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['severity', 'code', 'message', 'path', 'evidence'],
+  properties: {
+    severity: { enum: ['error', 'warning'] },
+    code: { type: 'string' },
+    message: { type: 'string' },
+    path: { type: 'string' },
+    evidence: { type: 'array', items: { type: 'string' } },
+  },
+};
+
+const checklistResultSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['passed', 'evidence'],
+  properties: {
+    passed: { type: 'boolean' },
+    evidence: { type: 'string' },
+  },
+};
+
+const validateSolutionCoverageToolSchema = createPlannerVariableToolSchema(
+  VALIDATE_SOLUTION_COVERAGE_TOOL_NAME,
+  'Submit final solution coverage validation result with summary, issues, optional checklistResults and readyToSaveDefs flag.',
+  {
+    type: 'object',
+    additionalProperties: false,
+    required: ['summary', 'issues', 'readyToSaveDefs'],
+    properties: {
+      summary: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['passed', 'errorCount', 'warningCount'],
+        properties: {
+          passed: { type: 'boolean' },
+          errorCount: { type: 'number' },
+          warningCount: { type: 'number' },
+        },
+      },
+      issues: { type: 'array', items: issueSchema },
+      checklistResults: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          // dynamic keys like "MDM_REQUIRED"
+        },
+      },
+      readyToSaveDefs: { type: 'boolean' },
+    },
+  }
+);
+
+async function beforePromptStep(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args?: string,
+): Promise<mls.msg.AgentIntent[]> {
+  if (!agent || !step) throw new Error('[agentValidateSolutionCoverage](beforePromptStep) invalid params');
+  if (!context.task) throw new Error(`[${agent.agentName}](beforePromptStep) task invalid`);
+
+  const finalPlan = getFinalizeSolutionPlanOutput(context);
+  const mdm = getPlanMDMOutput(context);
+  const horizontals = getPlanHorizontalsOutput(context);
+  const plugins = getPlanPluginsOutput(context);
+  const persistenceIndex = getPlanPersistenceIndexOutput(context);
+  const tableDefinitions = getPlanTableDefinitionOutputs(context);
+  const metricsIndex = getPlanMetricsIndexOutput(context);
+  const metricTableDefinitions = getPlanMetricTableDefinitionOutputs(context);
+  const usecasePlan = getPlanUsecaseEntitiesOutput(context);
+  const workflowIndex = getPlanWorkflowIndexOutput(context);
+  const workflowDefinitions = getPlanWorkflowDefinitionOutputs(context);
+  const agentsPlan = getPlanAgentsOutput(context);
+  const pageIndex = getPlanPageIndexOutput(context);
+  const pageDefinitions = getPlanPageDefinitionOutputs(context);
+
+  // The acceptance checklist is fixture-specific (run01/expected/...). For real runs it may be absent.
+  // We include prior artifacts; the system prompt + skills instruct generic + fixture rules.
+  const checklistNote = 'Acceptance checklist (fixture-specific) may be provided by harness as final inputFile. Apply hard criteria from it only when domain matches the checklist case; otherwise rely on skills/validation-rules.md, backend-layer-design.md, persistence-table-design.md and output-contracts.md.';
+
+  return [
+    createPlannerPromptReadyIntent(
+      context,
+      parentStep,
+      hookSequential,
+      args || 'plan-validate-solution-coverage',
+      systemPrompt.split('{{toolName}}').join(VALIDATE_SOLUTION_COVERAGE_TOOL_NAME),
+      buildHumanPrompt(
+        finalPlan,
+        mdm,
+        horizontals,
+        plugins,
+        persistenceIndex,
+        tableDefinitions,
+        metricsIndex,
+        metricTableDefinitions,
+        usecasePlan,
+        workflowIndex,
+        workflowDefinitions,
+        agentsPlan,
+        pageIndex,
+        pageDefinitions,
+        checklistNote
+      ),
+      validateSolutionCoverageToolSchema,
+      VALIDATE_SOLUTION_COVERAGE_TOOL_NAME
+    ),
+  ];
+}
+
+async function afterPromptStep(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+): Promise<mls.msg.AgentIntent[]> {
+  let status: mls.msg.AIStepStatus = 'completed';
+  let traceMsg: string | undefined;
+
+  try {
+    const payload = step.interaction?.payload?.[0];
+    if (!payload) throw new Error('missing payload');
+    const output = extractValidateSolutionCoverageOutput(payload);
+    validateValidateSolutionCoverageOutput(output);
+    if (output.status === 'failed') {
+      status = 'failed';
+      traceMsg = 'agentValidateSolutionCoverage returned status failed';
+    } else if (output.status === 'needs_input') {
+      traceMsg = 'agentValidateSolutionCoverage returned status needs_input; keeping validation draft.';
+    }
+  } catch (error) {
+    status = 'failed';
+    traceMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[${agent.agentName}](afterPromptStep) ${traceMsg}`);
+  }
+
+  await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
+  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined)];
+}
+
+export function getValidateSolutionCoverageOutput(context: mls.msg.ExecutionContext): ValidateSolutionCoverageOutput {
+  return getPlannerOutput(context, 'agentValidateSolutionCoverage', validateSolutionCoverageConfig, validateValidateSolutionCoverageOutput);
+}
+
+function extractValidateSolutionCoverageOutput(payload: unknown): ValidateSolutionCoverageOutput {
+  return extractPlannerOutput(payload, validateSolutionCoverageConfig);
+}
+
+const validateSolutionCoverageConfig = {
+  toolName: VALIDATE_SOLUTION_COVERAGE_TOOL_NAME,
+  stepId: VALIDATE_SOLUTION_COVERAGE_STEP_ID,
+  stepIdAliases: VALIDATE_SOLUTION_COVERAGE_ALIASES,
+  normalizeResult: normalizeValidateSolutionCoverageResult,
+};
+
+function normalizeValidateSolutionCoverageResult(value: unknown): ValidateSolutionCoverageResult {
+  const result = assertRecord(value, 'result');
+  const summary = assertRecord(result.summary, 'result.summary');
+  const issues = assertArray(result.issues || [], 'result.issues');
+  const ready = typeof result.readyToSaveDefs === 'boolean' ? result.readyToSaveDefs : false;
+
+  const normalized: ValidateSolutionCoverageResult = {
+    summary: {
+      passed: !!summary.passed,
+      errorCount: typeof summary.errorCount === 'number' ? summary.errorCount : 0,
+      warningCount: typeof summary.warningCount === 'number' ? summary.warningCount : 0,
+    },
+    issues: issues.map((iss, i) => normalizeIssue(iss, `result.issues[${i}]`)),
+    readyToSaveDefs: ready,
+  };
+
+  if (result.checklistResults && typeof result.checklistResults === 'object') {
+    normalized.checklistResults = result.checklistResults as Record<string, ChecklistCheckResult>;
+  }
+  return normalized;
+}
+
+function normalizeIssue(value: unknown, path: string): ValidationIssue {
+  const iss = assertRecord(value, path);
+  return {
+    severity: (assertString(iss.severity, `${path}.severity`) as 'error' | 'warning'),
+    code: assertString(iss.code, `${path}.code`),
+    message: assertString(iss.message, `${path}.message`),
+    path: assertString(iss.path, `${path}.path`),
+    evidence: assertArray(iss.evidence || [], `${path}.evidence`).map((e, i) => assertString(e, `${path}.evidence[${i}]`)),
+  };
+}
+
+function validateValidateSolutionCoverageOutput(output: ValidateSolutionCoverageOutput): void {
+  const s = output.result.summary;
+  if (typeof s.passed !== 'boolean') throw new Error('summary.passed must be boolean');
+  if (typeof s.errorCount !== 'number' || s.errorCount < 0) throw new Error('summary.errorCount must be non-negative number');
+  if (typeof s.warningCount !== 'number' || s.warningCount < 0) throw new Error('summary.warningCount must be non-negative number');
+  if (output.status === 'needs_input' && output.questions.length === 0) {
+    throw new Error('needs_input validation must include questions');
+  }
+  // readyToSaveDefs can only be true when no errors
+  if (output.result.readyToSaveDefs && s.errorCount > 0) {
+    throw new Error('readyToSaveDefs cannot be true when errorCount > 0');
+  }
+}
+
+function buildHumanPrompt(
+  finalPlan: FinalSolutionPlanOutput,
+  mdm: PlanMDMOutput,
+  horizontals: PlanHorizontalsOutput,
+  plugins: PlanPluginsOutput,
+  persistenceIndex: PlanPersistenceIndexOutput,
+  tableDefinitions: PlanTableDefinitionOutput[],
+  metricsIndex: PlanMetricsIndexOutput,
+  metricTableDefinitions: PlanMetricTableDefinitionOutput[],
+  usecasePlan: PlanUsecaseEntitiesOutput,
+  workflowIndex: PlanWorkflowIndexOutput,
+  workflowDefinitions: PlanWorkflowDefinitionOutput[],
+  agentsPlan: PlanAgentsOutput,
+  pageIndex: PlanPageIndexOutput,
+  pageDefinitions: PlanPageDefinitionOutput[],
+  checklistNote: string,
+): string {
+  return `## Final solution plan
+${JSON.stringify(finalPlan, null, 2)}
+
+## MDM plan
+${JSON.stringify(mdm, null, 2)}
+
+## Horizontals plan
+${JSON.stringify(horizontals, null, 2)}
+
+## Plugin plan
+${JSON.stringify(plugins, null, 2)}
+
+## Persistence index
+${JSON.stringify(persistenceIndex, null, 2)}
+
+## Table definitions (all)
+${JSON.stringify(tableDefinitions, null, 2)}
+
+## Metrics index
+${JSON.stringify(metricsIndex, null, 2)}
+
+## Metric table definitions (all)
+${JSON.stringify(metricTableDefinitions, null, 2)}
+
+## Usecase entities plan
+${JSON.stringify(usecasePlan, null, 2)}
+
+## Workflow index
+${JSON.stringify(workflowIndex, null, 2)}
+
+## Workflow definitions (all)
+${JSON.stringify(workflowDefinitions, null, 2)}
+
+## Agents plan
+${JSON.stringify(agentsPlan, null, 2)}
+
+## Page index
+${JSON.stringify(pageIndex, null, 2)}
+
+## Page definitions (all)
+${JSON.stringify(pageDefinitions, null, 2)}
+
+## Checklist / validation guidance
+${checklistNote}
+
+Use skills/validation-rules.md, skills/backend-layer-design.md, skills/persistence-table-design.md, skills/metrics-timescaledb.md and skills/output-contracts.md as the primary contract.
+`;
+}
+
+const systemPrompt = `
+<!-- modelType: codeinstruct -->
+
+You are agentValidateSolutionCoverage for the collab.codes "newSolution" flow.
+Perform a final cross-plan validation of the entire solution before any .defs materialization.
+Use the same language as the user for messages, questions, and trace.
+
+## Tool mode
+Call the "{{toolName}}" tool with only these top-level arguments: status, result, questions, and trace. Put questions and trace beside result, never inside result. Do not include type, runId, stepId, schemaVersion, toolName, or arguments; the harness fills those fields.
+Do not return prose.
+
+## Rules (generic, from validation-rules.md + layer contracts)
+- MDM must be present and complete.
+- Only moduleOwned entities from the final plan may produce new module tables; MDM/horizontal/plugin entities must be excluded from persistence index tables.
+- Each transactional table and each metric table must be emitted as a separate definition with defsPlan.saveAsDefs=true and stable fileName/exportName.
+- details/JSONB columns are allowed only for embedded aggregates that are always read together; frequent filter/lifecycle/status/ref fields must be physical columns.
+- Metric tables must use postgresTimescaleDB, declare timeColumn/hypertable, dimensions, measures, updatePolicy (updatedByLayer: layer_3_usecases), and must not be updated by pages or layer_2.
+- layer_2_controllers (BFF) must always call layer_3_usecases and must never access layer_1_external tables directly (directTableAccessForbidden must be true).
+- Every BFF command must declare usecaseRefs. If a BFF declares readsTables/writesTables for module-owned tables, the corresponding usecaseRefs must be present.
+- Workflows that read/write module-owned data must declare persistenceRefs (table ids).
+- Agents that mutate module-owned data should reference usecases when usecase definitions exist.
+- Page index and every page definition must be consistent (same pageIds, actors from final plan actors).
+- Every page must declare pageInputs (array, possibly empty) and navigationRefs (array, possibly empty).
+- Detail/status/edit/checkout/confirmation pages must declare required external identifiers (the id of the main subject, commitment or resource record) in pageInputs with appropriate sources (routeParam, previousStepResult, ...). The names must be taken from the ontology and page index, never from any sample domain.
+- navigationRefs must be references only; they must not embed inputMapping.
+- Metric dashboard pages must exist for the actor declared in approvedArtifacts.metricDashboards (often an admin or operations role) when initial metrics were requested, and must be restricted to that actor.
+- BFF commands on metric dashboard pages read metric data through usecaseRefs.
+- flowRefs on pages must correctly point at existing workflows and use the right category bucket (entityLifecycles vs taskWorkflows etc.).
+- Rules must be referenced by ruleId (from ruleCatalog); loose rule text is a warning or error depending on impact.
+- Every workflow definition must match its index entry for workflowId/executionMode/createsTask.
+- Workflows with createsTask=true must have populated taskConfig.
+- Ontology enums must be respected: no writes of undeclared enum values.
+- readyToSaveDefs must be true ONLY when there are zero errors (errorCount === 0). Warnings do not block.
+
+## Fixture checklist (when provided)
+When an acceptance-checklist.json is supplied for the current fixture (harness only), treat its requiredChecks as hard criteria for that specific test case. Produce checklistResults entries with code, passed, and concise evidence. For real user runs (no checklist), apply only the generic rules from the skills files. Issues must reference the originating artifact path.
+
+## Output shape
+Return:
+- summary: { passed: boolean, errorCount, warningCount }
+- issues: array of { severity, code, message, path, evidence[] }
+- checklistResults?: object map of code -> { passed, evidence }
+- readyToSaveDefs: boolean (true only if no errors)
+
+If critical information is missing, use status "needs_input" with questions. On unrecoverable structural problems use "failed".
+`;
+

@@ -25,7 +25,7 @@ export async function reserveNewSolutionModuleArtifacts(initial: NewSolutionInit
   const source = `export const initial = ${JSON.stringify({
     moduleName,
     requestKind: initial.requestKind || 'module_solution',
-    userLanguage: initial.userLanguage || 'pt-BR',
+    userLanguage: initial.userLanguage || 'en',
     userPrompt: initial.userPrompt || '',
     createdAt: new Date().toISOString(),
   }, null, 2)} as const;\n`;
@@ -143,11 +143,15 @@ function readString(value: unknown): string | undefined {
 
 export function getExistingModuleFolders(): Set<string> {
   const actualProject = mls.actualProject || 0;
-  const folders = Object.values(mls.stor.files)
-    .filter(f => f.project === actualProject && f.level !== 3 && f.folder)
-    .map(f => f.folder);
+  const topLevel = new Set<string>();
 
-  return new Set(folders);
+  for (const f of Object.values(mls.stor.files)) {
+    if (f.project !== actualProject || f.level === 3 || !f.folder) continue;
+    const firstPart = f.folder.split('/')[0];
+    if (firstPart) topLevel.add(firstPart);
+  }
+
+  return topLevel;
 }
 
 function getTraceShortName(agentName: string, stepId: number): string {

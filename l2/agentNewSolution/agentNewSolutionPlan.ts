@@ -69,10 +69,7 @@ export function normalizeModuleFolderName(value: unknown, fallback: string = 'mo
 }
 
 function hasFolder(folders: Set<string>, folder: string): boolean {
-  for (const item of folders) {
-    if (item === folder || item.startsWith(`${folder}/`)) return true;
-  }
-  return false;
+  return folders.has(folder);
 }
 
 export function reserveModuleNameFromFolders(

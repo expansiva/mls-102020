@@ -232,8 +232,8 @@ In result, return:
 
 ## Rules
 - Do not use hard-coded entities, actions, pages, or workflows from a sample domain.
-- Infer the core commitment of the requested domain, such as reservation, order, request, contract, subscription, appointment, approval, or lifecycle.
-- Every core commitment must reference the selected subject, resource, service, product, or person that makes the commitment meaningful.
+- Infer the core commitment of the requested domain (e.g. booking, order, request, contract, subscription, approval, service request, or similar lifecycle/relationship).
+- Every core commitment must reference the selected subject, resource, service, product, or person that makes the commitment meaningful. Derive names from the prompt and ontology.
 - Include explicit user actions for all required selections, confirmations, and lifecycle changes implied by the domain.
 - Include MDM domains for stable master data such as customers, accounts, products, assets, suppliers, staff, locations, or reusable records.
 - Include operational metric tables and an admin dashboard when initial metrics/dashboard was accepted.

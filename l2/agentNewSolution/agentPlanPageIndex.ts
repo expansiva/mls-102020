@@ -245,7 +245,7 @@ async function afterPromptStep(
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');
     output = extractPlanPageIndexOutput(payload);
-    validatePlanPageIndexOutput(output, getPlanningContextSnapshot(context).initialMetricsRequested);
+    validatePlanPageIndexOutput(output, getPlanningContextSnapshot(context).initialMetricsRequested, getFinalizeSolutionPlanOutput(context));
     if (output.status === 'failed') {
       status = 'failed';
       traceMsg = 'agentPlanPageIndex returned status failed';
@@ -270,7 +270,7 @@ async function afterPromptStep(
 
 export function getPlanPageIndexOutput(context: mls.msg.ExecutionContext): PlanPageIndexOutput {
   return getPlannerOutput(context, 'agentPlanPageIndex', planPageIndexConfig, output =>
-    validatePlanPageIndexOutput(output, getPlanningContextSnapshot(context).initialMetricsRequested)
+    validatePlanPageIndexOutput(output, getPlanningContextSnapshot(context).initialMetricsRequested, getFinalizeSolutionPlanOutput(context))
   );
 }
 
@@ -324,11 +324,15 @@ function normalizeStringArray(value: unknown, path: string): string[] {
   return assertArray(value, path).map((item, index) => assertString(item, `${path}[${index}]`));
 }
 
-function validatePlanPageIndexOutput(output: PlanPageIndexOutput, initialMetricsRequested: boolean): void {
+function validatePlanPageIndexOutput(output: PlanPageIndexOutput, initialMetricsRequested: boolean, finalPlan: FinalSolutionPlanOutput): void {
   const ids = new Set<string>();
+  const finalPlanActorIds = getFinalPlanActorIds(finalPlan);
   for (const page of output.result.pages) {
     if (ids.has(page.pageId)) throw new Error(`duplicate pageId: ${page.pageId}`);
     ids.add(page.pageId);
+    if (!finalPlanActorIds.has(page.actor)) {
+      throw new Error(`page ${page.pageId} actor must match one of the final plan actorIds: ${page.actor}`);
+    }
   }
 
   if (output.status === 'ok' && output.result.pages.length === 0) {
@@ -336,13 +340,37 @@ function validatePlanPageIndexOutput(output: PlanPageIndexOutput, initialMetrics
   }
 
   if (output.status === 'ok' && initialMetricsRequested) {
-    const hasAdminMetricsPage = output.result.pages.some(page => page.actor === 'admin' && page.metricRefs.length > 0);
-    if (!hasAdminMetricsPage) throw new Error('initial metrics dashboard requested, but no admin metric page was planned');
+    const dashboardActorIds = getMetricDashboardActorIds(finalPlan, finalPlanActorIds);
+    const hasMetricDashboardPage = output.result.pages.some(page =>
+      page.metricRefs.length > 0 && (dashboardActorIds.size === 0 || dashboardActorIds.has(page.actor))
+    );
+    if (!hasMetricDashboardPage) throw new Error('initial metrics dashboard requested, but no metric dashboard page was planned for the final plan actor');
   }
 
   if (output.status === 'needs_input' && output.questions.length === 0) {
     throw new Error('needs_input page index must include questions');
   }
+}
+
+function getFinalPlanActorIds(finalPlan: FinalSolutionPlanOutput): Set<string> {
+  return new Set(finalPlan.result.actors.map((actor, index) => {
+    const record = assertRecord(actor, `result.actors[${index}]`);
+    return assertString(record.actorId, `result.actors[${index}].actorId`);
+  }));
+}
+
+function getMetricDashboardActorIds(finalPlan: FinalSolutionPlanOutput, finalPlanActorIds: Set<string>): Set<string> {
+  const actorIds = new Set<string>();
+  finalPlan.result.approvedArtifacts.metricDashboards.forEach((dashboard, index) => {
+    const record = assertRecord(dashboard, `result.approvedArtifacts.metricDashboards[${index}]`);
+    if (record.actor === undefined) return;
+    const actor = assertString(record.actor, `result.approvedArtifacts.metricDashboards[${index}].actor`);
+    if (!finalPlanActorIds.has(actor)) {
+      throw new Error(`metric dashboard actor must match one of the final plan actorIds: ${actor}`);
+    }
+    actorIds.add(actor);
+  });
+  return actorIds;
 }
 
 function createFirstPageDefinitionIntent(context: mls.msg.ExecutionContext, output: PlanPageIndexOutput): mls.msg.AgentIntent[] {
@@ -427,7 +455,7 @@ ${JSON.stringify(agentsPlan, null, 2)}
 }
 
 const systemPrompt = `
-<!-- modelType: codepro -->
+<!-- modelType: codeinstruct -->
 
 You are agentPlanPageIndex for the collab.codes "newSolution" flow.
 Plan only the page index. Do not define full page sections or organisms in this step.
@@ -445,8 +473,9 @@ Do not return prose.
 - Include pages for every now capability that requires user interaction.
 - Include staff or admin pages only when the domain has internal operations, backoffice review, fulfillment, setup, governance, or task workflows.
 - Include admin-only metric dashboard pages when the metrics plan enables initial dashboards or initial metrics dashboard requested is true.
-- Metric dashboard pages must use actor admin.
-- A commitment page such as booking, order, request, subscription, or contract must include the required subject, resource, service, or product selection before confirmation.
+- Every page actor must be one of final solution plan actors[].actorId.
+- Metric dashboard pages must use the actor id declared by approvedArtifacts.metricDashboards[].actor when present; otherwise use the most appropriate actorId from final solution plan actors.
+- A commitment/confirmation page (booking, order, request, subscription, contract, or the domain's equivalent) must include the required subject, resource, service, or product selection before confirmation. The exact terms must come from the final solution plan.
 - Add pageInputHints only when they help the later single-page step infer required page boundary inputs.
 - Add navigationRefs only as lightweight references to related source or destination pages; do not include input mappings.
 - Add persistenceHints only when they help the later single-page step connect BFF commands to module-owned table definitions.

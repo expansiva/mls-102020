@@ -348,7 +348,7 @@ Do not return prose.
 - Include usecaseRefs when workflow transitions must be executed by layer_3_usecases.
 - Include metricRefs when workflow transitions feed operational metrics.
 - Do not include MDM, horizontal, or plugin-owned tables in persistenceRefs.
-- Include implementation suggestions such as whether staff confirmation should create a task.
+- Include implementation suggestions such as whether confirmation by an operations or back-office role should create a task.
 - Use rule ids; do not write loose rule text.
 - Do not generate TypeScript code.
 `;

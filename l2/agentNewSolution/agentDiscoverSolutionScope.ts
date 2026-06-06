@@ -694,7 +694,7 @@ Do not return prose.
 - Differentiate static pages from workflows.
 - Detect external integrations only when the prompt or clarification implies them.
 - Do not use hard-coded domain assumptions. Infer required domain actions from the requested solution.
-- When the domain contains a booking, reservation, order, subscription, approval, service request, rental, or similar commitment, identify the resource, item, or service being committed and the user action that selects or confirms it.
+- When the domain contains a booking, order, request, subscription, approval, service request, or similar commitment (sometimes called reservation or rental in specific domains), identify the main subject/resource/item/service being committed and the user action that selects or confirms it. Use names from the actual prompt and ontology.
 - Use status "needs_input" only when the scope cannot be safely drafted without another client decision; then include questions or missingContext.
 - Use status "failed" only for structural impossibility.
 `;

@@ -636,7 +636,7 @@ Do not return prose.
 - Include finance horizontal recommendations only when accounting, billing, receivables, payables, pricing, invoicing, payment, or reconciliation is relevant.
 - Include notification agent or horizontal recommendations when reminders, alerts, approvals, follow-ups, or operational communication are useful.
 - Do not hard-code providers, priorities, artifact ids, or domain details from examples.
-- Do not recommend agendamento or adocao when the prompt excluded them.
+- Do not recommend concepts that were explicitly excluded in the user prompt or decisions (e.g. specific features like scheduling or adoption in some domains).
 - Set requiresClientDecision to true when the client must choose, approve, defer, or configure the recommendation.
 - Set requiresClientDecision to false for mandatory structural recommendations derived from the scope.
 - Keep dependencies as recommendationId values from the same output.

@@ -65,11 +65,7 @@ async function beforePromptImplicit(
   const normalizedPrompt = (userPrompt || '').trim();
   if (normalizedPrompt.length < 5) throw new Error('invalid prompt');
 
-  const folders = Array.from(new Set(
-    Object.values(mls.stor.files)
-      .filter(f => f.project === mls.actualProject && f.level !== 3 && f.folder)
-      .map(f => f.folder)
-  ));
+  const folders = Array.from(getExistingModuleFolders());
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -263,10 +259,8 @@ function getLocalizedTitle(initialPlan: InitialNewSolutionPlan, planId: NewSolut
   if (typeof title === 'string' && title.trim().length > 0 && title.trim().length < 140) {
     return title.trim();
   }
-  const language = `${initialPlan.userLanguage || ''} ${initialPlan.userPrompt || ''}`.toLowerCase();
-  const fallback = language.includes('pt') || language.includes('portugu')
-    ? fallbackTitlesPt
-    : fallbackTitlesEn;
+  const lang = (initialPlan.userLanguage || '').toLowerCase().trim();
+  const fallback = lang.startsWith('pt') ? fallbackTitlesPt : fallbackTitlesEn;
   return fallback[planId];
 }
 
@@ -371,7 +365,7 @@ Rules:
 - The titles object must include every plan id listed below.
 - Choose a concise moduleName that can be used as l2/{moduleName}; it must be lower camel case, ASCII, and not in Already existing modules.
 - Do not invent agent names, dependencies, selectors, or execution rules. Code owns those.
-- Do not hard-code fixture examples such as rentalTable, vehicleSearchPage, fleet, rental, or reservation.
+- Do not hard-code fixture examples (e.g. specific table names, page ids, or domain entities from any previous test case). Derive everything from the current user prompt, clarifications, and approved artifacts.
 - Every todo item must have done=false.
 - The flow runs client-side for now.
 
