@@ -18,11 +18,15 @@ import {
   getPlannerOutput,
   getPlanningContextSnapshot,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
-import { FinalSolutionPlanOutput, getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
+import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
+import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
-import { PlanHorizontalsOutput, getPlanHorizontalsOutput } from '/_102020_/l2/agentNewSolution/agentPlanHorizontals.js';
-import { PlanMDMOutput, getPlanMDMOutput } from '/_102020_/l2/agentNewSolution/agentPlanMDM.js';
-import { PlanPluginsOutput, getPlanPluginsOutput } from '/_102020_/l2/agentNewSolution/agentPlanPlugins.js';
+import { getPlanHorizontalsOutput } from '/_102020_/l2/agentNewSolution/agentPlanHorizontals.js';
+import type { PlanHorizontalsOutput } from '/_102020_/l2/agentNewSolution/agentPlanHorizontals.js';
+import { getPlanMDMOutput } from '/_102020_/l2/agentNewSolution/agentPlanMDM.js';
+import type { PlanMDMOutput } from '/_102020_/l2/agentNewSolution/agentPlanMDM.js';
+import { getPlanPluginsOutput } from '/_102020_/l2/agentNewSolution/agentPlanPlugins.js';
+import type { PlanPluginsOutput } from '/_102020_/l2/agentNewSolution/agentPlanPlugins.js';
 
 export function createAgent(): IAgentAsync {
   return {

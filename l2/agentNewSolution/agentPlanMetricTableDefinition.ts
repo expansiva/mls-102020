@@ -14,11 +14,15 @@ import {
   findStepByPlanId,
   getPlannerOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
-import { FinalSolutionPlanOutput, getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
+import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
+import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
-import { PlanMetricsIndexOutput, getPlanMetricsIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricsIndex.js';
-import { PlanPersistenceIndexOutput, getPlanPersistenceIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanPersistenceIndex.js';
-import { PlanTableDefinitionOutput, getPlanTableDefinitionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanTableDefinition.js';
+import { getPlanMetricsIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricsIndex.js';
+import type { PlanMetricsIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanMetricsIndex.js';
+import { getPlanPersistenceIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanPersistenceIndex.js';
+import type { PlanPersistenceIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanPersistenceIndex.js';
+import { getPlanTableDefinitionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanTableDefinition.js';
+import type { PlanTableDefinitionOutput } from '/_102020_/l2/agentNewSolution/agentPlanTableDefinition.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -73,7 +77,7 @@ const planMetricTableDefinitionToolSchema = createPlannerVariableToolSchema(
           moduleId: { type: 'string' },
           title: { type: 'string' },
           purpose: { type: 'string' },
-          tableKind: { const: 'metricTimeseries' },
+          tableKind: { enum: ['metricTimeseries', 'metric'] },
           storageEngine: { const: 'postgresTimescaleDB' },
           layer: { const: 'layer_1_external' },
           timeColumn: { type: 'string' },
@@ -249,13 +253,14 @@ function normalizePlanMetricTableDefinitionResult(value: unknown): PlanMetricTab
   const result = assertRecord(value, 'result');
   const metricTableDefinition = assertRecord(result.metricTableDefinition, 'result.metricTableDefinition');
   const defsPlan = assertRecord(result.defsPlan, 'result.defsPlan');
+  const rawTableKind = assertString(metricTableDefinition.tableKind, 'result.metricTableDefinition.tableKind');
   return {
     metricTableDefinition: {
       ...metricTableDefinition,
       metricTableId: assertString(metricTableDefinition.metricTableId, 'result.metricTableDefinition.metricTableId'),
       tableName: assertString(metricTableDefinition.tableName, 'result.metricTableDefinition.tableName'),
       moduleId: assertString(metricTableDefinition.moduleId, 'result.metricTableDefinition.moduleId'),
-      tableKind: assertString(metricTableDefinition.tableKind, 'result.metricTableDefinition.tableKind'),
+      tableKind: rawTableKind === 'metric' ? 'metricTimeseries' : rawTableKind,
       storageEngine: assertString(metricTableDefinition.storageEngine, 'result.metricTableDefinition.storageEngine'),
       layer: assertString(metricTableDefinition.layer, 'result.metricTableDefinition.layer'),
       accessPolicy: assertRecord(metricTableDefinition.accessPolicy, 'result.metricTableDefinition.accessPolicy'),
@@ -350,6 +355,7 @@ Do not return prose.
 
 ## Rules
 - Generate one metric table only: the metric table whose metricTableId equals the current selector.
+- metricTableDefinition.tableKind must be exactly "metricTimeseries"; do not use "metric".
 - Metric tables are additional tables; do not replace normal transactional tables.
 - The table must be in layer_1_external, but direct access must be allowed only for layer_3_usecases.
 - Declare the base table updates that feed the metric table.

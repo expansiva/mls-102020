@@ -18,7 +18,8 @@ import {
   normalizeStringList,
   optionalString,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
-import { FinalSolutionPlanOutput, getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
+import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
+import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import type { PluginCatalogDefinition, PluginCatalogItem } from '/_102020_/l2/agentNewSolution/pluginCatalog.defs.js';
 
 export function createAgent(): IAgentAsync {

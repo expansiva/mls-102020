@@ -2,18 +2,20 @@
 
 import { getAgentStepByAgentName, getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import {
-  DiscoverSolutionScopeOutput,
   getDiscoverSolutionScopeOutput,
   wantsInitialMetricsDashboard,
 } from '/_102020_/l2/agentNewSolution/agentDiscoverSolutionScope.js';
+import type { DiscoverSolutionScopeOutput } from '/_102020_/l2/agentNewSolution/agentDiscoverSolutionScope.js';
 import {
-  RecommendImplementationsOutput,
   getRecommendImplementationsOutput,
 } from '/_102020_/l2/agentNewSolution/agentRecommendImplementations.js';
+import type { RecommendImplementationsOutput } from '/_102020_/l2/agentNewSolution/agentRecommendImplementations.js';
 import {
+  getRequirementsClarificationAnswer,
+} from '/_102020_/l2/agentNewSolution/agentNewSolutionRequirements.js';
+import type {
   ImplementationDecisionResult,
   RequirementsClarificationAnswer,
-  getRequirementsClarificationAnswer,
 } from '/_102020_/l2/agentNewSolution/agentNewSolutionRequirements.js';
 import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution/agentNewSolutionPlan.js';
 import {
