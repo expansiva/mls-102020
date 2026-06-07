@@ -146,6 +146,19 @@ const navigationRefSchema = {
   },
 };
 
+// =============================================================================
+// WARNING — this json schema is MECHANICALLY ENFORCED (x-tool-strict).
+// The systemPrompt of this agent contains <!-- x-tool-strict: true -->: the
+// collab-llm proxy validates the tool call arguments against this schema with
+// ajv and REJECTS any LLM response that violates it (one retry via
+// alternate_alias, then 502 with errorCode TOOL_ARGS_SCHEMA). When changing
+// any schema below:
+//  - keep `required` and `additionalProperties: false` accurate — a field
+//    listed in required will now REJECT responses that omit it;
+//  - keep the schema compatible with ajv draft 2020-12 ($defs/$ref/enum ok);
+//  - keep the TypeScript types/normalizers (PageInputSpec etc.) and the
+//    prompt in sync with the schema.
+// =============================================================================
 const pageInputSchema = {
   type: 'object',
   additionalProperties: false,
@@ -503,7 +516,11 @@ function validatePlanPageDefinitionOutput(output: PlanPageDefinitionOutput, page
     if (!Array.isArray(page.pageInputs)) throw new Error('pageDefinition.pageInputs must be an array (even if empty)');
     if (!Array.isArray(page.navigationRefs)) throw new Error('pageDefinition.navigationRefs must be an array (even if empty)');
     if (!Array.isArray(page.sections)) throw new Error('pageDefinition.sections must be present');
-    validateSpecificActionRequiredInputs(page, output.result.bffCommands);
+    // Note: the heuristic identifier/pageInput cross-check
+    // (validateSpecificActionRequiredInputs) was removed in June 2026 — it
+    // produced false positives on valid plans (e.g. item ids nested in cart
+    // arrays). Structural conformity is now enforced by x-tool-strict (ajv
+    // against the tool schema, in collab-llm).
   }
 }
 
@@ -530,181 +547,6 @@ function normalizeSelector(value: unknown): string {
   const selector = value.trim();
   if (!selector || selector.startsWith('{') || selector.startsWith('[')) return '';
   return selector;
-}
-
-function validateSpecificActionRequiredInputs(page: PageDefinitionSpec, commands: BffCommandSpec[]): void {
-  const pageLooksSpecific = hasSpecificEntityActionText(buildPageSearchText(page));
-  const requiredIdentifierInputs = page.pageInputs.filter(input => input.required === true && isIdentifierLikePageInput(input));
-
-  for (const command of commands) {
-    const commandIdentifierNames = getCommandIdentifierInputNames(command.input);
-    const commandLooksSpecific = hasSpecificEntityActionText(buildCommandSearchText(command));
-    const needsRequiredIdentifier =
-      commandLooksSpecific ||
-      (command.kind === 'query' && pageLooksSpecific && commandIdentifierNames.length > 0);
-    if (!needsRequiredIdentifier) continue;
-
-    if (commandIdentifierNames.length === 0) {
-      if (requiredIdentifierInputs.length === 0) {
-        throw new Error(`page ${page.pageId} command ${command.commandName} requires a required identifier pageInput`);
-      }
-      continue;
-    }
-
-    for (const identifierName of commandIdentifierNames) {
-      if (!shouldRequirePageInputIdentifier(page, command, identifierName)) continue;
-      const matchingInput = page.pageInputs.find(input => pageInputMatchesIdentifier(input, identifierName));
-      if (!matchingInput || matchingInput.required !== true) {
-        throw new Error(`page ${page.pageId} command ${command.commandName} identifier ${identifierName} must have a matching pageInput with required=true`);
-      }
-    }
-  }
-}
-
-function buildPageSearchText(page: PageDefinitionSpec): string {
-  const sectionText = page.sections.flatMap(section => [
-    section.sectionName,
-    section.mode,
-    ...section.organisms.flatMap(organism => [organism.organismName, organism.purpose, ...organism.userActions]),
-  ]);
-  return normalizeSearchText([
-    page.pageId,
-    page.pageName,
-    page.purpose,
-    ...page.capabilities,
-    ...sectionText,
-  ].join(' '));
-}
-
-function buildCommandSearchText(command: BffCommandSpec): string {
-  return normalizeSearchText([
-    command.commandName,
-    command.purpose,
-    command.kind,
-    ...command.readsEntities,
-    ...command.writesEntities,
-  ].join(' '));
-}
-
-function hasSpecificEntityActionText(text: string): boolean {
-  const keywords = [
-    'detail',
-    'details',
-    'detalhe',
-    'detalhes',
-    'edit',
-    'editar',
-    'update',
-    'atualizar',
-    'atualizacao',
-    'alterar',
-    'modify',
-    'modificar',
-    'status',
-    'cancel',
-    'cancelar',
-    'cancelamento',
-    'refund',
-    'reembolso',
-    'estorno',
-    'lifecycle',
-    'ciclo de vida',
-    'approve',
-    'aprovar',
-    'reject',
-    'rejeitar',
-    'complete',
-    'concluir',
-    'fulfill',
-    'fulfillment',
-    'assign',
-    'atribuir',
-    'close',
-    'fechar',
-    'delete',
-    'deletar',
-    'excluir',
-    'remove',
-    'remover',
-  ];
-  return keywords.some(keyword => text.includes(keyword));
-}
-
-function getCommandIdentifierInputNames(input: Record<string, unknown>): string[] {
-  const names = new Set<string>();
-  collectIdentifierInputNames(input, names);
-  return [...names];
-}
-
-function shouldRequirePageInputIdentifier(page: PageDefinitionSpec, command: BffCommandSpec, identifierName: string): boolean {
-  return !isContextualIdentifier(normalizeIdentifierName(identifierName), page, command);
-}
-
-function isContextualIdentifier(normalizedIdentifier: string, page: PageDefinitionSpec, command: BffCommandSpec): boolean {
-  if (['userid', 'usuarioid', 'customerid', 'clienteid', 'sessionid', 'sessaoid', 'tenantid', 'orgid', 'organizationid'].includes(normalizedIdentifier)) {
-    return true;
-  }
-
-  const text = normalizeSearchText([
-    page.pageId,
-    page.pageName,
-    page.purpose,
-    command.commandName,
-    command.purpose,
-    ...command.readsEntities,
-    ...command.writesEntities,
-  ].join(' '));
-
-  if ((normalizedIdentifier === 'cartid' || normalizedIdentifier === 'carrinhoid') && (text.includes('cart') || text.includes('carrinho'))) {
-    return true;
-  }
-
-  return false;
-}
-
-function collectIdentifierInputNames(value: unknown, names: Set<string>): void {
-  if (!value || typeof value !== 'object') return;
-  if (Array.isArray(value)) {
-    value.forEach(item => collectIdentifierInputNames(item, names));
-    return;
-  }
-
-  const record = value as Record<string, unknown>;
-  for (const [key, child] of Object.entries(record)) {
-    if (isIdentifierName(key)) names.add(key);
-    if (key === 'properties' && child && typeof child === 'object' && !Array.isArray(child)) {
-      for (const propertyName of Object.keys(child as Record<string, unknown>)) {
-        if (isIdentifierName(propertyName)) names.add(propertyName);
-      }
-    }
-    collectIdentifierInputNames(child, names);
-  }
-}
-
-function isIdentifierLikePageInput(input: PageInputSpec): boolean {
-  return isIdentifierName(input.name) || isIdentifierName(input.fieldRef || '');
-}
-
-function pageInputMatchesIdentifier(input: PageInputSpec, identifierName: string): boolean {
-  const normalizedIdentifier = normalizeIdentifierName(identifierName);
-  return [
-    input.name,
-    input.fieldRef || '',
-    input.description || '',
-  ].some(value => normalizeIdentifierName(value) === normalizedIdentifier || normalizeIdentifierName(value).endsWith(normalizedIdentifier));
-}
-
-function isIdentifierName(value: string): boolean {
-  const normalized = normalizeIdentifierName(value);
-  return normalized === 'id' || normalized.endsWith('id') || normalized.includes('identifier') || normalized.includes('identificador');
-}
-
-function normalizeIdentifierName(value: string): string {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-}
-
-function normalizeSearchText(value: string): string {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
 function buildHumanPrompt(
@@ -773,6 +615,7 @@ ${JSON.stringify(agentsPlan, null, 2)}
 
 const systemPrompt = `
 <!-- modelType: codeinstruct -->
+<!-- x-tool-strict: true -->
 
 You are agentPlanPageDefinition for the collab.codes "newSolution" flow.
 Plan exactly one page definition and its supporting BFF commands for the current page selector.
