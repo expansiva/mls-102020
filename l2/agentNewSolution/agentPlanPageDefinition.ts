@@ -541,7 +541,6 @@ function validateSpecificActionRequiredInputs(page: PageDefinitionSpec, commands
     const commandLooksSpecific = hasSpecificEntityActionText(buildCommandSearchText(command));
     const needsRequiredIdentifier =
       commandLooksSpecific ||
-      (command.kind !== 'query' && commandIdentifierNames.length > 0) ||
       (command.kind === 'query' && pageLooksSpecific && commandIdentifierNames.length > 0);
     if (!needsRequiredIdentifier) continue;
 
