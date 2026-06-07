@@ -21,6 +21,7 @@ export interface PlannerExtractConfig<T> {
   stepIdAliases?: string[];
   schemaVersion?: typeof PLANNER_SCHEMA_VERSION;
   schemaVersionAliases?: string[];
+  preNormalizeResult?: (value: unknown) => unknown;
   normalizeResult: (value: unknown) => T;
 }
 
@@ -268,9 +269,10 @@ function normalizePlannerResultPayload<T>(
   config: PlannerExtractConfig<T>,
 ): { result: T; questions: string[]; trace: string[] } {
   try {
-    validatePlannerResultSchema(output.result, config);
+    const result = preNormalizePlannerResult(output.result, config);
+    validatePlannerResultSchema(result, config);
     return {
-      result: config.normalizeResult(output.result),
+      result: config.normalizeResult(result),
       questions: normalizeStringList(output.questions, 'questions'),
       trace: normalizeStringList(output.trace, 'trace'),
     };
@@ -285,13 +287,18 @@ function normalizePlannerResultPayload<T>(
       if (key !== 'questions' && key !== 'trace') cleanedResult[key] = value;
     }
 
-    validatePlannerResultSchema(cleanedResult, config);
+    const normalizedCleanedResult = preNormalizePlannerResult(cleanedResult, config);
+    validatePlannerResultSchema(normalizedCleanedResult, config);
     return {
-      result: config.normalizeResult(cleanedResult),
+      result: config.normalizeResult(normalizedCleanedResult),
       questions: normalizeStringList(result.questions, 'result.questions'),
       trace: normalizeStringList(result.trace, 'result.trace'),
     };
   }
+}
+
+function preNormalizePlannerResult<T>(value: unknown, config: PlannerExtractConfig<T>): unknown {
+  return config.preNormalizeResult ? config.preNormalizeResult(value) : value;
 }
 
 function validatePlannerResultSchema<T>(value: unknown, config: PlannerExtractConfig<T>): void {

@@ -66,7 +66,7 @@ const planTableDefinitionToolSchema = createPlannerVariableToolSchema(
       tableDefinition: {
         type: 'object',
         additionalProperties: false,
-        required: ['tableId', 'tableName', 'moduleId', 'layer', 'tableKind', 'accessPolicy'],
+        required: ['tableId', 'tableName', 'moduleId', 'ownership', 'layer', 'tableKind', 'accessPolicy'],
         properties: {
           tableId: { type: 'string' },
           tableName: { type: 'string' },
@@ -249,8 +249,31 @@ const planTableDefinitionConfig = {
   toolName: PLAN_TABLE_DEFINITION_TOOL_NAME,
   stepId: PLAN_TABLE_DEFINITION_STEP_ID,
   stepIdAliases: PLAN_TABLE_DEFINITION_ALIASES,
+  preNormalizeResult: preNormalizePlanTableDefinitionResult,
   normalizeResult: normalizePlanTableDefinitionResult,
 };
+
+function preNormalizePlanTableDefinitionResult(value: unknown): unknown {
+  const result = assertRecord(value, 'result');
+  const tableDefinition = assertRecord(result.tableDefinition, 'result.tableDefinition');
+  const ownership = normalizeTableOwnershipValue(tableDefinition.ownership);
+  if (ownership === tableDefinition.ownership) return value;
+
+  return {
+    ...result,
+    tableDefinition: {
+      ...tableDefinition,
+      ownership,
+    },
+  };
+}
+
+function normalizeTableOwnershipValue(value: unknown): unknown {
+  if (value === 'moduleOwned') return value;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  return record.kind === 'moduleOwned' ? 'moduleOwned' : value;
+}
 
 function normalizePlanTableDefinitionResult(value: unknown): PlanTableDefinitionResult {
   const result = assertRecord(value, 'result');
@@ -266,6 +289,7 @@ function normalizePlanTableDefinitionResult(value: unknown): PlanTableDefinition
       tableId,
       tableName: assertString(tableDefinition.tableName, 'result.tableDefinition.tableName'),
       moduleId,
+      ownership: assertString(tableDefinition.ownership, 'result.tableDefinition.ownership'),
       layer: assertString(tableDefinition.layer, 'result.tableDefinition.layer'),
       tableKind: assertString(tableDefinition.tableKind, 'result.tableDefinition.tableKind'),
       accessPolicy,
@@ -289,6 +313,7 @@ function assertBoolean(value: unknown, path: string): boolean {
 
 function validatePlanTableDefinitionOutput(output: PlanTableDefinitionOutput): void {
   const table = output.result.tableDefinition;
+  if (table.ownership !== 'moduleOwned') throw new Error(`table ${table.tableId} must be moduleOwned`);
   if (table.layer !== 'layer_1_external') throw new Error(`table ${table.tableId} must be in layer_1_external`);
   if (table.tableKind !== 'transactional') throw new Error(`table ${table.tableId} must be transactional`);
   const directAccess = assertArray(table.accessPolicy.directAccessAllowedFor, 'tableDefinition.accessPolicy.directAccessAllowedFor');
@@ -435,6 +460,7 @@ Do not return prose.
 ## Rules
 - Generate one table only: the table whose tableId equals the current selector.
 - The table must be moduleOwned, transactional, and in layer_1_external.
+- Set tableDefinition.ownership exactly to the string "moduleOwned". Do not return an ownership object.
 - tableDefinition.moduleId is required and must equal the module id from persistenceScope/module context.
 - defsPlan.exportName is required and should be a stable camelCase export name, such as {tableId}TableDefinition.
 - defsPlan.saveAsDefs must be true.
