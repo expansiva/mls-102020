@@ -421,6 +421,13 @@ Criterio de aceite:
 - O caminho final e resolvido por `artifactType`, `moduleName`, `artifactId` e mapa local baseado em `archProduction.md`.
 - Isso reduz a dependencia da LLM conhecer `l1/l2/l4/l5` e evita paths relativos inconsistentes como `tables/...` ou `workflows/...`.
 
+**FIX (run 2026-06-08) - tripleslash ausente em .defs.ts de l1/l4/l5**:
+- Sintoma: alguns `.defs.ts` gerados (ex.: l1 `layer_3_usecases/usecaseAddToCart.defs.ts`) saiam SEM o header `/// <mls fileReference=... enhancement="_blank"/>`.
+- Causa: `createStorFile` (libStor) so injeta o tripleslash quando `req.level === 2`, e `verifyNeedAddTripleslach` (libCommom) ainda hardcoda `l2` no path. Os artefatos do writer em l1/l4/l5 nunca recebiam o header.
+- Correcao (contida no writer, sem alterar o stor global): `buildPlanDefsSource` agora recebe o `fileInfo` e prefixa `buildDefsTripleSlash(fileInfo)` -> `/// <mls fileReference="_{project}_/l{level}/{folder}/{shortName}{ext}" enhancement="_blank"/>` com nivel/pasta reais. Para level 2, `verifyNeedAddTripleslach` ve o header ja presente (`startsWith('/// <mls ')`) e nao duplica.
+- Vale para novos arquivos e re-saves (saveStorContent grava o `source` com header diretamente). Arquivos ja gerados em runs antigos nao sao retroativamente corrigidos; basta regerar.
+- Build: `tsc -p tsconfig.frontend.json` ok (sem erros novos).
+
 ### TODO-FINAL-015 - Planejar arquivos de horizontais e MDM
 
 Problema:
@@ -905,6 +912,21 @@ Decisao em aberto:
 Criterio de aceite:
 - Um run que recebe `type:"result"` (ex.: "module already exists") mostra status `failed` E o texto do erro no titulo da task e na mensagem da task, sem necessidade de abrir o payload.
 - Comportamento consistente para qualquer agente que possa retornar `type:"result"` como erro.
+
+**EXECUTED (run 2026-06-08 - cafeFlow)**:
+- Sintoma: no passo 1 (`agentNewSolution`), com payload da LLM valido (`type:"flexible"`), a task ficava `failed` sem explicar o motivo; o step ficava `waiting_after_prompt`.
+- Causa raiz (diagnostico de codigo):
+  1. O step raiz `agentNewSolution` nao tem step-pai que resolva em `getStepById`. Quando o `afterPromptStep` lancava (unica I/O sem try/catch: `reserveNewSolutionModuleArtifacts`), `aiAgentOrchestration.getHookFailureIntents` montava o `update-status failed` com `traceMsg`, MAS so emite quando `step && parentStep` resolvem (linha 313). Para o root, `parentStep` e null -> intent descartado -> step preso em `waiting_after_prompt`, motivo perdido.
+  2. `agentNewSolution.createUpdateStatusIntent` usava `parentStep.stepId` (NPE para o root) e nunca passava `traceMsg` (o caminho `type:"result"` falhava sem motivo).
+  3. Backend `updateStepStatus` (collab-messages) nunca passava `traceMsg` para `updateTaskDetails` -> a mensagem/titulo da task nao carregava o motivo.
+  4. Frontend `collabMessagesChatMessage.renderMessageResultByLanguage` so renderizava `taskResults` quando `taskStatus === 'done'` -> falhas nunca exibiam o motivo.
+- Mudancas (escopo: agente + surfacing TODO-FINAL-028):
+  - `agentNewSolution.afterPromptStep`: corpo inteiro envolvido em try/catch; qualquer falha (inclusive `type:"result"`) retorna `update-status failed` com `traceMsg` = motivo real, auto-direcionado ao proprio step.
+  - `agentNewSolution.createUpdateStatusIntent`: novo parametro `traceMsg`; `parentStepId` agora cai para `step.stepId` quando `parentStep` e null (self-parent; o root e um step `agent`, aceito por `intentUpdateStatus`).
+  - `collab-messages/tasks.ts.updateStepStatus`: nos dois ramos de falha (`newTaskStatus==='failed'` e `status==='failed'`), o `traceMsg` agora vai para `last_update_log` e para `updateTaskDetails({ taskResults: [traceMsg] })`.
+  - `mls-102025/collabMessagesChatMessage.ts`: `renderMessageResultByLanguage` renderiza o motivo tambem para `taskStatus === 'failed'` (classe `.task-failed`); estilo minimo no `.less`.
+- Builds: `tsc -p tsconfig.frontend.json` (mls-base) sem erros novos (erro pre-existente em `agentMaterializeSolution/agentMaterializePage.ts`, fora de escopo); `tsc --build` (collab-messages) ok.
+- Observacao: a causa concreta do throw original (provavelmente a escrita stor de `reserveNewSolutionModuleArtifacts`) agora aparece como `traceMsg` na mensagem da task, permitindo diagnostico no Studio sem abrir o payload.
 
 ### TODO-FINAL-001 - Encerrar a task de planejamento sem materializar (DONE)
 

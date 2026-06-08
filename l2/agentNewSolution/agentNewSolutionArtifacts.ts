@@ -137,7 +137,7 @@ export async function saveNewSolutionPlanArtifacts(
       };
       const source = fileInfo.extension === '.json'
         ? `${JSON.stringify(artifact, null, 2)}\n`
-        : buildPlanDefsSource(candidate.exportName, artifact);
+        : buildPlanDefsSource(candidate.exportName, artifact, fileInfo);
       const checksum = checksumString(stableStringify(artifact));
 
       // TODO-FINAL-015: reference-only candidates (the target module already exists) are recorded
@@ -734,10 +734,26 @@ async function updatePlanArtifactsManifest(moduleName: string, references: PlanA
   await saveStorContent(fileInfo, JSON.stringify(nextManifest, null, 2), false);
 }
 
-function buildPlanDefsSource(exportName: string, artifact: unknown): string {
+function buildPlanDefsSource(
+  exportName: string,
+  artifact: unknown,
+  fileInfo: Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>,
+): string {
   const safeExportName = toExportIdentifier(exportName || 'planArtifact');
   const serialized = JSON.stringify(artifact, null, 2);
-  return `export const ${safeExportName} = ${serialized} as const;\n\nexport default ${safeExportName};\n`;
+  // Every .defs.ts must start with the mls file-reference triple-slash. createStorFile only
+  // injects it for level-2 files (and hardcodes l2 in the path), so l1/l4/l5 artifacts would
+  // otherwise be saved without it. Emit it here with the artifact's real level/folder.
+  const header = buildDefsTripleSlash(fileInfo);
+  return `${header}export const ${safeExportName} = ${serialized} as const;\n\nexport default ${safeExportName};\n`;
+}
+
+function buildDefsTripleSlash(
+  fileInfo: Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>,
+): string {
+  const folder = fileInfo.folder ? `${fileInfo.folder}/` : '';
+  const reference = `_${fileInfo.project}_/l${fileInfo.level}/${folder}${fileInfo.shortName}${fileInfo.extension}`;
+  return `/// <mls fileReference="${reference}" enhancement="_blank"/>\n\n`;
 }
 
 function stableStringify(value: unknown): string {
