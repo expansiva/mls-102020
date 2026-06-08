@@ -9,7 +9,7 @@ import {
   assertRecord,
   assertString,
   optionalString,
-  createDynamicAgentStepIntent,
+  createParallelDynamicAgentStepIntent,
   createHoldIndexForReviewIntents,
   createPlannerPromptReadyIntent,
   createPlannerVariableToolSchema,
@@ -228,7 +228,7 @@ async function afterPromptStep(
     createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined),
   ];
 
-  if (status === 'completed' && output) intents.push(...createFirstTableDefinitionIntent(context, output));
+  if (status === 'completed' && output) intents.push(...createTableDefinitionParallelIntent(context, output));
   return intents;
 }
 
@@ -327,23 +327,26 @@ export function validatePlanPersistenceIndexOutput(output: PlanPersistenceIndexO
   if (output.status === 'needs_input' && output.questions.length === 0) throw new Error('needs_input persistence index must include questions');
 }
 
-export function createFirstTableDefinitionIntent(context: mls.msg.ExecutionContext, output: PlanPersistenceIndexOutput): mls.msg.AgentIntent[] {
+// Table definitions are independent per tableId, so they run in controlled parallel
+// (like metric table / page / workflow definitions), not as a serial chain.
+export function createTableDefinitionParallelIntent(context: mls.msg.ExecutionContext, output: PlanPersistenceIndexOutput): mls.msg.AgentIntent[] {
   const placeholder = findStepByPlanId(context, 'plan-table-definition') as mls.msg.AIAgentStep | null;
   if (!placeholder || placeholder.type !== 'agent' || placeholder.status === 'completed') return [];
 
-  const firstTable = output.result.tables[0];
-  if (!firstTable) {
+  const tableIds = output.result.tables.map(table => table.tableId);
+  if (tableIds.length === 0) {
     return [createPlannerUpdateStatusIntent(context, placeholder, placeholder, 0, 'completed', 'No module-owned transactional tables to define.')];
   }
 
   return [
-    createDynamicAgentStepIntent(
+    createParallelDynamicAgentStepIntent(
       context,
       placeholder,
       'agentPlanTableDefinition',
-      `plan-table-definition:${firstTable.tableId}`,
-      `Plan table ${firstTable.tableId}`,
-      firstTable.tableId
+      'plan-table-definition:parallel',
+      'Plan tables {{completed}}/{{total}}, errors: {{failed}}',
+      tableIds,
+      5
     ),
   ];
 }

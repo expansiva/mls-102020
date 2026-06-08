@@ -112,12 +112,23 @@ export interface PageDefinitionSpec {
   sections: PageSectionSpec[];
 }
 
+export interface BffCommandInputField {
+  name: string;
+  type: string;
+  required: boolean;
+}
+
+export interface BffCommandOutputField {
+  name: string;
+  type: string;
+}
+
 export interface BffCommandSpec {
   commandName: string;
   purpose: string;
   kind: 'query' | 'command' | 'mutation';
-  input: Record<string, unknown>;
-  output: Record<string, unknown>;
+  input: BffCommandInputField[];
+  output: BffCommandOutputField[];
   readsEntities: string[];
   writesEntities: string[];
   readsTables: string[];
@@ -216,8 +227,33 @@ const bffCommandSchema = {
     commandName: { type: 'string' },
     purpose: { type: 'string' },
     kind: { enum: ['query', 'command', 'mutation'] },
-    input: { type: 'object', additionalProperties: true },
-    output: { type: 'object', additionalProperties: true },
+    // Structured typed fields (closed objects) so the schema is strict-ready (x-tool-strict).
+    // Previously free-form objects (additionalProperties:true), which blocked native strict.
+    input: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'type', 'required'],
+        properties: {
+          name: { type: 'string' },
+          type: { type: 'string' },
+          required: { type: 'boolean' },
+        },
+      },
+    },
+    output: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'type'],
+        properties: {
+          name: { type: 'string' },
+          type: { type: 'string' },
+        },
+      },
+    },
     readsEntities: { type: 'array', items: { type: 'string' } },
     writesEntities: { type: 'array', items: { type: 'string' } },
     readsTables: { type: 'array', items: { type: 'string' } },
@@ -356,6 +392,14 @@ async function afterPromptStep(
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');
     output = extractPlanPageDefinitionOutput(payload);
+    // Deterministic id coercion: the selector (from the page index) is authoritative. Each parallel
+    // child's reduced prompt contains ONLY this page's index item, so the generated content is always
+    // for the selector's page — a pageId different from the selector is just a label slip (or a swap
+    // with a sibling). Coerce it to the selector instead of failing the child.
+    if (pageSelector && output.result.pageDefinition.pageId !== pageSelector) {
+      console.warn(`[${agent.agentName}](afterPromptStep) coercing pageId '${output.result.pageDefinition.pageId}' to selector '${pageSelector}'`);
+      output.result.pageDefinition.pageId = pageSelector;
+    }
     validatePlanPageDefinitionOutput(output, pageSelector, getPlanWorkflowIndexOutput(context));
     if (output.status === 'failed') {
       status = 'failed';
@@ -525,8 +569,8 @@ function normalizeBffCommand(value: unknown, path: string): BffCommandSpec {
     commandName: assertString(cmd.commandName, `${path}.commandName`),
     purpose: assertString(cmd.purpose, `${path}.purpose`),
     kind: assertString(cmd.kind, `${path}.kind`) as BffCommandSpec['kind'],
-    input: (cmd.input as Record<string, unknown>) || {},
-    output: (cmd.output as Record<string, unknown>) || {},
+    input: normalizeBffInputFields(cmd.input, `${path}.input`),
+    output: normalizeBffOutputFields(cmd.output, `${path}.output`),
     readsEntities: normalizeStringArray(cmd.readsEntities, `${path}.readsEntities`),
     writesEntities: normalizeStringArray(cmd.writesEntities, `${path}.writesEntities`),
     readsTables: normalizeStringArray(cmd.readsTables, `${path}.readsTables`),
@@ -539,6 +583,27 @@ function normalizeBffCommand(value: unknown, path: string): BffCommandSpec {
     },
     rulesApplied: normalizeStringArray(cmd.rulesApplied, `${path}.rulesApplied`),
   };
+}
+
+function normalizeBffInputFields(value: unknown, path: string): BffCommandInputField[] {
+  return assertArray(value || [], path).map((item, index) => {
+    const field = assertRecord(item, `${path}[${index}]`);
+    return {
+      name: assertString(field.name, `${path}[${index}].name`),
+      type: assertString(field.type, `${path}[${index}].type`),
+      required: !!field.required,
+    };
+  });
+}
+
+function normalizeBffOutputFields(value: unknown, path: string): BffCommandOutputField[] {
+  return assertArray(value || [], path).map((item, index) => {
+    const field = assertRecord(item, `${path}[${index}]`);
+    return {
+      name: assertString(field.name, `${path}[${index}].name`),
+      type: assertString(field.type, `${path}[${index}].type`),
+    };
+  });
 }
 
 function normalizeStringArray(value: unknown, path: string): string[] {
@@ -704,7 +769,8 @@ Do not return prose.
 - Read the matching PageIndexItem for actor, purpose, capabilities, flowRefs, hints, and bffCommandHints.
 - Derive sections/organisms from capabilities, primary user actions, and required selections for commitment pages.
 - Every organism that needs backend data must have at least one corresponding BFF command.
-- BFF commands must declare kind (query/command/mutation), explicit input/output shapes, readsEntities/writesEntities, readsTables/writesTables for module-owned tables, and usecaseRefs.
+- BFF commands must declare kind (query/command/mutation), readsEntities/writesEntities, readsTables/writesTables for module-owned tables, and usecaseRefs.
+- BFF command input/output are arrays of typed fields, not free-form objects: input items are { name, type, required }, output items are { name, type }. Use empty arrays when there are none. Use concise primitive/domain types (string, number, boolean, date, or an entity/enum id).
 - layerContract must be { controllerLayer: "layer_2_controllers", mustCallLayer: "layer_3_usecases", directTableAccessForbidden: true }.
 - Do not put MDM/horizontal/plugin-owned tables in readsTables/writesTables; use mdmRefs/pluginRefs and entity refs instead.
 - Metric dashboard pages must use the actor declared for metrics in the final plan (commonly an "admin" or back-office actor) and must read metric data only via usecaseRefs.

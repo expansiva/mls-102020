@@ -47,6 +47,9 @@ interface PlanArtifactCandidate {
   // TODO-FINAL-015: when true, the target module already exists; record a manifest reference
   // entry but do NOT create/overwrite the file.
   referenceOnly?: boolean;
+  // When true, write `data` directly as the exported value (no metadata envelope). Used by
+  // usecases: `export const useCase = {...} as const` — same variable name in every usecase file.
+  bareExport?: boolean;
 }
 
 export function reserveAvailableModuleName(requestedName: unknown, fallbackPrompt: string): string {
@@ -135,10 +138,13 @@ export async function saveNewSolutionPlanArtifacts(
         },
         data: candidate.data,
       };
+      // `bareExport` candidates (e.g. usecases) write the artifact object DIRECTLY, with a fixed
+      // export name and no metadata envelope: `export const useCase = {...} as const`.
+      const fileValue = candidate.bareExport ? candidate.data : artifact;
       const source = fileInfo.extension === '.json'
-        ? `${JSON.stringify(artifact, null, 2)}\n`
-        : buildPlanDefsSource(candidate.exportName, artifact, fileInfo);
-      const checksum = checksumString(stableStringify(artifact));
+        ? `${JSON.stringify(fileValue, null, 2)}\n`
+        : buildPlanDefsSource(candidate.exportName, fileValue, fileInfo);
+      const checksum = checksumString(stableStringify(fileValue));
 
       // TODO-FINAL-015: reference-only candidates (the target module already exists) are recorded
       // in the manifest but never written, so we don't overwrite an existing module.
@@ -459,16 +465,16 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
       const usecase = getRecord(value);
       const id = readString(usecase?.usecaseId);
       if (!usecase || !id) return [];
+      // The usecase .defs.ts exports the usecase object directly under a fixed name `useCase`
+      // (every usecase file uses the same variable). No metadata envelope, and no global
+      // backendArchitecture/controllerRules — those are not needed per usecase.
       return [{
         artifactType: 'usecase',
         artifactId: id,
-        exportName: `${toExportIdentifier(id)}UsecasePlan`,
+        exportName: 'useCase',
         moduleName,
-        data: {
-          backendArchitecture: result.backendArchitecture,
-          controllerRules: result.controllerRules,
-          usecase,
-        },
+        bareExport: true,
+        data: usecase,
       }];
     });
   }

@@ -6,12 +6,10 @@ import {
   assertArray,
   assertRecord,
   assertString,
-  createDynamicAgentStepIntent,
   createPlannerPromptReadyIntent,
   createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
-  findStepByPlanId,
   getPlannerOutputsWithFileFallback,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
@@ -291,10 +289,9 @@ async function afterPromptStep(
     cleaner = saved.length > 0 ? 'input_output' : 'input';
   }
 
-  const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, cleaner);
-  const nextIntents = status === 'completed' && output ? await createNextMetricTableDefinitionIntent(context, step, output) : [];
-  if (nextIntents.some(intent => intent.type === 'add-step')) return [...nextIntents, updateIntent];
-  return [updateIntent, ...nextIntents];
+  // Parallel fan-out: the metrics index opened all metric-table children at once, so this step
+  // only validates/saves its own table and reports status — it does NOT chain the next one.
+  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, cleaner)];
 }
 
 // TODO-FINAL-010/023: also reads metric table definitions back from saved .defs.ts when the
@@ -407,39 +404,6 @@ function validateMetricTableHypertable(table: PlanMetricTableDefinitionResult['m
     if (index.columns.some(column => column === table.timeColumn)) hasTimeIndex = true;
   }
   if (!hasTimeIndex) throw new Error(`metric table ${table.metricTableId} hypertable.indexes must include the timeColumn`);
-}
-
-async function createNextMetricTableDefinitionIntent(
-  context: mls.msg.ExecutionContext,
-  currentStep: mls.msg.AIAgentStep,
-  currentOutput: PlanMetricTableDefinitionOutput,
-): Promise<mls.msg.AgentIntent[]> {
-  const metricsIndex = getPlanMetricsIndexOutput(context);
-  // covered is computed from saved files + task payloads, correct even after payload cleanup.
-  const covered = new Set((await getPlanMetricTableDefinitionOutputs(context)).map(output => output.result.metricTableDefinition.metricTableId));
-  covered.add(currentOutput.result.metricTableDefinition.metricTableId);
-
-  const nextTable = metricsIndex.result.metricTables.find(table => !covered.has(table.metricTableId));
-  const placeholder = findStepByPlanId(context, 'plan-metric-table-definition') as mls.msg.AIAgentStep | null;
-  if (!placeholder || placeholder.type !== 'agent') return [];
-
-  if (nextTable) {
-    const insertParent = placeholder.status === 'completed' ? currentStep : placeholder;
-    return [
-      createDynamicAgentStepIntent(
-        context,
-        placeholder,
-        'agentPlanMetricTableDefinition',
-        `plan-metric-table-definition:${nextTable.metricTableId}`,
-        `Plan metric table ${nextTable.metricTableId}`,
-        nextTable.metricTableId,
-        insertParent
-      ),
-    ];
-  }
-
-  if (placeholder.status === 'completed') return [];
-  return [createPlannerUpdateStatusIntent(context, placeholder, placeholder, 0, 'completed', 'All dynamic metric table definitions completed.')];
 }
 
 function buildHumanPrompt(

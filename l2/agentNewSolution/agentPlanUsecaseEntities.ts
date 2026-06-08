@@ -138,7 +138,44 @@ export const PLAN_USECASE_ENTITIES_RESULT_SCHEMA: Record<string, unknown> = {
             outputEntities: { type: 'array', items: { type: 'string' } },
             readsTables: { type: 'array', items: TABLE_REF_SCHEMA },
             writesTables: { type: 'array', items: TABLE_REF_SCHEMA },
-            commands: { type: 'array', items: { type: 'string' } },
+            // TODO (usecase commands): each command must declare its input/output as structured
+            // typed fields (not just a name), so the materialization step can generate signatures.
+            commands: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['commandId', 'input', 'output'],
+                properties: {
+                  commandId: { type: 'string' },
+                  input: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['name', 'type', 'required'],
+                      properties: {
+                        name: { type: 'string' },
+                        type: { type: 'string' },
+                        required: { type: 'boolean' },
+                      },
+                    },
+                  },
+                  output: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['name', 'type'],
+                      properties: {
+                        name: { type: 'string' },
+                        type: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
             rulesApplied: { type: 'array', items: { type: 'string' } },
           },
         },
@@ -300,9 +337,28 @@ function normalizeUsecase(value: unknown, path: string): unknown {
   normalizeStringArray(usecase.outputEntities, `${path}.outputEntities`);
   normalizeTableRefArray(usecase.readsTables, `${path}.readsTables`);
   normalizeTableRefArray(usecase.writesTables, `${path}.writesTables`);
-  if (usecase.commands !== undefined) normalizeStringArray(usecase.commands, `${path}.commands`);
+  if (usecase.commands !== undefined) {
+    assertArray(usecase.commands, `${path}.commands`).forEach((cmd, index) => normalizeUsecaseCommand(cmd, `${path}.commands[${index}]`));
+  }
   normalizeStringArray(usecase.rulesApplied, `${path}.rulesApplied`);
   return usecase;
+}
+
+function normalizeUsecaseCommand(value: unknown, path: string): unknown {
+  const command = assertRecord(value, path);
+  assertString(command.commandId, `${path}.commandId`);
+  assertArray(command.input, `${path}.input`).forEach((field, index) => {
+    const record = assertRecord(field, `${path}.input[${index}]`);
+    assertString(record.name, `${path}.input[${index}].name`);
+    assertString(record.type, `${path}.input[${index}].type`);
+    if (typeof record.required !== 'boolean') throw new Error(`${path}.input[${index}].required must be a boolean`);
+  });
+  assertArray(command.output, `${path}.output`).forEach((field, index) => {
+    const record = assertRecord(field, `${path}.output[${index}]`);
+    assertString(record.name, `${path}.output[${index}].name`);
+    assertString(record.type, `${path}.output[${index}].type`);
+  });
+  return command;
 }
 
 function normalizeTableRef(value: unknown, path: string): TableRef {
@@ -384,6 +440,13 @@ Do not return prose.
 - Only layer_3_usecases may access tables from layer_1_external.
 - BFF commands generated later must be able to reference these use cases by usecaseId.
 - Do not generate TypeScript code.
+
+## Usecase commands (input/output)
+Each command in a usecase's commands[] must declare its signature as structured typed fields:
+- commandId: stable camelCase id of the command.
+- input: array of { name, type, required } — the parameters the command receives (empty array when none).
+- output: array of { name, type } — the fields the command returns (empty array when none).
+Use concise primitive/domain types in "type" (e.g. string, number, boolean, date, or an entity/enum id). Do not embed free-form JSON; only the declared fields.
 
 ## Table references (sourceTables, readsTables, writesTables)
 Each entry must be an object { tableName, ownership } — never a plain string.

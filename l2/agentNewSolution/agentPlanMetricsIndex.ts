@@ -8,7 +8,7 @@ import {
   assertPriority,
   assertRecord,
   assertString,
-  createDynamicAgentStepIntent,
+  createParallelDynamicAgentStepIntent,
   createHoldIndexForReviewIntents,
   createPlannerPromptReadyIntent,
   createPlannerVariableToolSchema,
@@ -274,7 +274,7 @@ async function afterPromptStep(
     createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined),
   ];
 
-  if (status === 'completed' && output) intents.push(...createFirstMetricTableDefinitionIntent(context, output));
+  if (status === 'completed' && output) intents.push(...createMetricTableDefinitionParallelIntent(context, output));
   return intents;
 }
 
@@ -386,23 +386,26 @@ export function validatePlanMetricsIndexOutput(output: PlanMetricsIndexOutput, i
   if (output.status === 'needs_input' && output.questions.length === 0) throw new Error('needs_input metrics index must include questions');
 }
 
-export function createFirstMetricTableDefinitionIntent(context: mls.msg.ExecutionContext, output: PlanMetricsIndexOutput): mls.msg.AgentIntent[] {
+// Metric table definitions are independent per metricTableId, so they run in controlled
+// parallel (like page/workflow definitions), not as a serial chain.
+export function createMetricTableDefinitionParallelIntent(context: mls.msg.ExecutionContext, output: PlanMetricsIndexOutput): mls.msg.AgentIntent[] {
   const placeholder = findStepByPlanId(context, 'plan-metric-table-definition') as mls.msg.AIAgentStep | null;
   if (!placeholder || placeholder.type !== 'agent' || placeholder.status === 'completed') return [];
 
-  const firstTable = output.result.metricTables[0];
-  if (!firstTable) {
+  const metricTableIds = output.result.metricTables.map(table => table.metricTableId);
+  if (metricTableIds.length === 0) {
     return [createPlannerUpdateStatusIntent(context, placeholder, placeholder, 0, 'completed', 'No metric tables to define.')];
   }
 
   return [
-    createDynamicAgentStepIntent(
+    createParallelDynamicAgentStepIntent(
       context,
       placeholder,
       'agentPlanMetricTableDefinition',
-      `plan-metric-table-definition:${firstTable.metricTableId}`,
-      `Plan metric table ${firstTable.metricTableId}`,
-      firstTable.metricTableId
+      'plan-metric-table-definition:parallel',
+      'Plan metric tables {{completed}}/{{total}}, errors: {{failed}}',
+      metricTableIds,
+      5
     ),
   ];
 }

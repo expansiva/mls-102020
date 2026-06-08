@@ -579,6 +579,20 @@ Criterio de aceite:
   - `/Volumes/WagnerSSD1/collab/collab-messages`: `pnpm build`
 - Risco residual: ainda nao ha teste automatizado especifico para o fluxo paralelo de `add-step` + `executionMode=parallel`; a validacao feita foi por build e revisao de fluxo.
 
+**EXTENSAO (run 2026-06-08) - metric table E table definitions em paralelo**:
+- Os dois ultimos grupos seriais (`agentPlanMetricTableDefinition` e `agentPlanTableDefinition`) passaram a fan-out paralelo controlado (`maxParallel=5`), igual a page/workflow definitions. Agora TODOS os grupos de definitions independentes rodam em paralelo.
+- `agentPlanMetricsIndex`: `createFirstMetricTableDefinitionIntent` (sequencial) virou `createMetricTableDefinitionParallelIntent` (`createParallelDynamicAgentStepIntent` para todos os `metricTableIds`).
+- `agentPlanPersistenceIndex`: `createFirstTableDefinitionIntent` (sequencial) virou `createTableDefinitionParallelIntent` (todos os `tableIds`).
+- Ambos acionados no caminho normal e via `createChildrenIntents` do critic (TODO-FINAL-024).
+- `agentPlanMetricTableDefinition` e `agentPlanTableDefinition` `afterPromptStep`: removido o encadeamento `createNext...Intent` (e o `covered` set); cada child so valida/salva o seu artefato e retorna `update-status`. Selector vem de `args`/`step.prompt`. Imports orfaos (`createDynamicAgentStepIntent`, `findStepByPlanId`) removidos.
+- Build: `tsc -p tsconfig.frontend.json` ok em mls-base.
+
+**FIX (run 2026-06-08) - pageId/workflowId != selector derrubava o child paralelo**:
+- Sintoma: `pageDefinition.pageId must match selector posOrderCreate` / `posOrderConfirm` (e analogo para workflowId). No fan-out paralelo, cada child recebe um selector (id do index) e seu prompt reduzido contem SO o index item daquele id, entao o conteudo gerado e sempre da pagina/workflow do selector — um id divergente e apenas erro de rotulo do modelo. A validacao estrita derrubava o child (e, sendo `update-status failed`, a task).
+- Correcao deterministica (mesma filosofia do auto-correct de flowRefs): em `agentPlanPageDefinition` e `agentPlanWorkflowDefinition`, no `afterPromptStep`, coage `pageId`/`workflowId` para o selector antes de validar (com `console.warn`). O artefato fica salvo sob o id do selector, consistente com o index/coverage/navigation.
+- `agentPlanMetricTableDefinition`/`agentPlanTableDefinition` nao tem validacao estrita de selector-match (validam sem selector), entao um id divergente nao derruba; no maximo gera mismatch nao-fatal no coverage. Pode receber a mesma coercao depois se aparecer.
+- Build: `tsc -p tsconfig.frontend.json` ok.
+
 ### TODO-FINAL-023 - Criar validacoes incrementais por checkpoint
 
 Problema:
@@ -647,6 +661,12 @@ Criterio de aceite:
 - Diferente das definitions folha, `usecasePlan` e um indice que passa por critic/reparo (TODO-FINAL-024). Seu resultado completo (com `usecaseEntities`) so existe no payload da task ou no `checkpoint-usecasePlan.json` (os artefatos `usecase` salvos sao por-usecase e NAO contem `usecaseEntities`).
 - Limpar o payload exigiria tornar `getPlanUsecaseEntitiesOutput` async com fallback ao checkpoint, o que cascateia para: (a) o helper SINCRONO `getUsecaseIds` em `agentPlanIndexReview.ts` (usado pelos checkpoints de workflow/page via `safe(() => ...)`), e (b) a interface SINCRONA `getCurrentOutput` chamada pelo fluxo critic/reparo recem-criado (3 call sites). Threadear async nesse fluxo novo e ainda sem teste automatizado nao compensa para limpar um unico payload singular.
 - Decisao: manter o payload do usecase por enquanto (`cleaner="input"` no caminho de aprovacao do critic). Reavaliar quando os getters de indice migrarem para leitura por checkpoint de forma coordenada (mesma migracao dos 6 indices).
+
+**AJUSTE (run 2026-06-08) - formato do `.defs.ts` de usecase (l1/.../layer_3_usecases)**:
+- O arquivo do usecase deixou de salvar o envelope com `data: { backendArchitecture, controllerRules, usecase }`. Agora exporta o objeto do usecase diretamente sob um nome fixo: `export const useCase = {...} as const` (todo arquivo de usecase usa a mesma variavel). Implementado via flag `bareExport` no `PlanArtifactCandidate` (writer escreve `data` direto, sem metadados; os metadados/checksum/status ficam so no manifesto).
+- `backendArchitecture` e `controllerRules` (globais, repetidos) nao entram mais em cada arquivo de usecase.
+- Commands do usecase: o schema de `commands` mudou de `string[]` para objetos `{ commandId, input, output }`, com `input: [{name,type,required}]` e `output: [{name,type}]` (campos tipados, objetos fechados, mantem strict). Normalizer, validacao e prompt atualizados para exigir input/output por command.
+- Build: `tsc -p tsconfig.frontend.json` ok.
 
 ### TODO-FINAL-024 - Validar e reparar cada indice com LLM antes das definitions
 
@@ -822,13 +842,24 @@ Criterio de aceite:
   - `not-strict-compatible-for-now` (NAO recebeu, com motivo):
     - `agentFinalizeSolutionPlan` e `agentSolutionBlueprint`: compartilham `ontologySchema` em `agentSolutionPlanSchemas.ts`, onde `ontology.entities` e mapa dinamico (`additionalProperties: ontologyEntitySchema`, sem `properties`); fechar exigiria conhecer os entity ids em tempo de schema, o que nao e possivel.
     - `agentValidateSolutionCoverage`: `checklistResults` usa `additionalProperties: true` (mapa dinamico de codigos de checagem).
-    - `agentPlanPageDefinition`: ja tem o comentario, mas o BFF `input`/`output` sao objetos livres (`additionalProperties: true`); na pratica o strict nativo NAO engata (warning no trace) e so a validacao ajv atua. Mantido como estava; para engatar strict seria preciso fechar os shapes de input/output do BFF.
+    - `agentPlanPageDefinition`: ja tem o comentario; o BFF `input`/`output` eram objetos livres (`additionalProperties: true`) que impediam o strict nativo. RESOLVIDO em 2026-06-08 (ver AJUSTE abaixo): input/output viraram arrays de campos tipados, agora o agente e totalmente strict-ready.
   - `N/A` (nao usam tool schema de planner): `agentNewSolution` (saida JSON flexible), `agentNewSolutionRequirements` (clarification), `agentNewSolutionPlanner` (wrapper sem LLM).
 - Verificacao: todos os 17 strict-ready tem `additionalProperties:false` em todos os objetos do schema (contagem `type:object == additionalProperties:false`, sem mapas nem combinadores). `agentRepairPlanIndex` usa os schemas de indice (todos fechados) e `agentCriticPlanIndex` usa o schema de critica fechado.
 - Build: `tsc -p tsconfig.frontend.json` ok em mls-base.
 - Risco residual: sem teste end-to-end com provider; a eficacia (queda de erro de payload) so e observavel nos traces de execucao real. A incompatibilidade e nao-fatal por design, entao um falso "strict-ready" so geraria warning, nao quebra.
 
+**AJUSTE (run 2026-06-08) - page definition agora strict-ready**:
+- Sintoma no trace: `tool 'submitPageDefinitionPlan': schema not strict-ready (additionalProperties: true not supported in strict mode) — sent without native strict`, e o step falhou (sem strict nativo, o gpt-5.2-codex divergia do schema e o ajv rejeitava).
+- Causa: `bffCommandSchema.input`/`output` eram objetos livres (`{ type:'object', additionalProperties:true }`).
+- Correcao (consistente com o ajuste de commands do usecase): input/output viraram arrays de campos tipados fechados — `input: [{name,type,required}]`, `output: [{name,type}]`. Schema, `BffCommandSpec` (+ `BffCommandInputField`/`BffCommandOutputField`), normalizer (`normalizeBffInputFields`/`normalizeBffOutputFields`) e prompt atualizados.
+- Agora `agentPlanPageDefinition` e totalmente strict-ready: nenhum `additionalProperties:true`, o strict nativo engata e o erro do trace some.
+- Build: `tsc -p tsconfig.frontend.json` ok.
 
+**FIX (run 2026-06-08) - `const` rejeitado pelo provider strict (collab-llm)**:
+- Sintoma: `x-tool-strict: ERROR — provider rejected strict tool schemas (HTTP 400) — retried without native strict` (ex.: `agentPlanMetricTableDefinition`). O schema era strict-ready pelo nosso transformer, mas o provider (azure/gpt-5.2-codex) rejeitava por causa do keyword `const` (OpenAI/Azure structured outputs so aceitam `enum`). Resultado: fallback silencioso para nao-strict em TODO agente que usa `const` (persistence, metrics, usecase, table, metricTable, ...).
+- Correcao no transformer do `collab-llm` (`src/helpers/strictToolSchema.ts`, `transformNode`): converte `const: X` -> `enum: [X]` em qualquer no, inferindo `type` quando ausente (string/boolean/integer/number/null). Semanticamente identico; agora o strict nativo e aceito. `strictIncompatibilityReason` deixa de considerar `const` um problema.
+- Teste adicionado em `src/tests/strictToolSchema.test.ts` (const string/boolean/integer + sem type). Logica validada via transpile standalone (vitest/tsx nao rodam no sandbox por binarios nativos de macOS); `tsc` do collab-llm ok.
+- Requer deploy do `collab-llm`. Beneficia todos os agentes strict de uma vez, sem editar schema por schema.
 
 ### TODO-FINAL-027 - Enriquecer `l4/workflows/*.defs.ts` com metadata explicita de modulos afetados
 
