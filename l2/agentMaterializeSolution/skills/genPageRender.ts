@@ -1,37 +1,55 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeSolution/skills/genPageRender.ts" enhancement="_blank"/>
 
 export const skill = `
-# SKILL: Lit WebComponent Render Generator
+# Lit WebComponent Render Generator
 
-You generate the **WebComponent** TypeScript file — the pure visual layer of a Lit feature.
-You extend a Shared base class and your only job is to generate the \`render()\` method.
-All state, logic, enums, and methods live in the Shared. You never redeclare or invent any of them.
+You generate the **page render** TypeScript file — a Lit 3 WebComponent that extends the Shared base class and only implements \`render()\`.
+All state, methods, and i18n live in the Shared base. You never redeclare or invent them.
 
 ---
 
-## Architecture of the file to generate
+## What you receive
 
-The file has exactly four parts (in this order):
+- \`##User data\`: a JSON object — the **page spec** (Origins pageSpec) with \`pageId\`, \`pageName\`, \`actor\`, \`purpose\`, and \`sections[]\`.
+  Each section has \`sectionName\`, \`mode\` ("view" or "edit"), and \`organisms[]\`.
+  Each organism has \`organismName\`, \`purpose\`, \`userActions[]\`, \`requiredEntities[]\`, \`readsFields[]\`, \`writesFields[]\`.
+- \`##User info\`: a JSON object with at minimum \`moduleName\`, \`device\`, \`type\`, \`project\`, and \`item.outputPath\` (the full output file path).
+- \`##Design System\` (optional): design-system-specific component guidance — follow it for specific component choices and class names.
+
+Extract from \`##User info\`:
+- \`pageName\` = last segment of \`item.outputPath\` without the \`.ts\` extension
+- \`Prefix\` = \`moduleName\` with first letter uppercased (PascalCase — e.g., \`petShopStripe\` → \`PetShopStripe\`)
+- \`PageNamePascal\` = \`pageName\` with first letter uppercased (e.g., \`cartPage\` → \`CartPage\`)
+- \`kebab-module\` = \`moduleName\` in kebab-case (e.g., \`petShopStripe\` → \`pet-shop-stripe\`)
+- \`kebab-page\` = \`pageName\` in kebab-case (e.g., \`cartPage\` → \`cart-page\`)
+
+---
+
+## File structure (in order)
 
 ### 1. MLS file header
-The enhancement is always \`_102027_/l2/enhancementLit.ts\` (NOT \`_blank\`):
+Use \`item.outputPath\` from \`##User info\`, strip leading \`/\`:
 \`\`\`
-/// <mls fileReference="_{projectId}_/l2/{moduleName}/web/desktop/page11/{pageName}.ts" enhancement="_102027_/l2/enhancementLit.ts" />
+/// <mls fileReference="{item.outputPath without leading /}" enhancement="_102027_/l2/enhancementLit.ts" />
 \`\`\`
 
 ### 2. Imports
 \`\`\`typescript
 import { html } from 'lit';
-import { {Prefix}{PageName}Base } from '/_{projectId}_/l2/{moduleName}/web/shared/{pageName}.js';
+import { customElement } from 'lit/decorators.js';
+import { {Prefix}{PageNamePascal}Base } from '/_\${project}_/l2/{moduleName}/web/shared/{pageName}.js';
 \`\`\`
-- Import **only** what is used in the render body
-- If the shared file exports helper functions (e.g. \`formatPrice\`), import them only when referenced in render
-- Do NOT import entity interfaces — they are already available through the base class
+
+- Import the base class from the shared path: \`/_\${project}_/l2/{moduleName}/web/shared/{pageName}.js\`
+  where \`project\`, \`moduleName\`, and \`pageName\` come from \`##User info\`.
+- Import \`html\` and \`customElement\` from Lit.
+- Do NOT import entity interfaces or reactive property types — they come from the base class.
+- Import additional helpers (e.g., \`repeat\` from \`lit/directives/repeat.js\`) only when actually used.
 
 ### 3. Component class
 \`\`\`typescript
-@customElement('{module-name}--web--desktop--page11--{page-name}-{projectId}')
-export class {ModuleName}WebDesktop{PageName}Page extends {ModuleName}{PageName}Base {
+@customElement('{kebab-module}--web--{device}--{type}--{kebab-page}--{project}')
+export class {Prefix}{Device}{Type}{PageNamePascal}Page extends {Prefix}{PageNamePascal}Base {
   render() {
     return html\`
       <!-- full page markup here -->
@@ -39,84 +57,114 @@ export class {ModuleName}WebDesktop{PageName}Page extends {ModuleName}{PageName}
   }
 }
 \`\`\`
-- Tag name: both \`{module-name}\` and \`{page-name}\` in kebab-case
-  - e.g. \`moduleName=pizzaria\`, \`pageName=registroPedido\` → \`pizzaria--web--desktop--page11--registro-pedido-102003\`
+
+Tag name rules:
+- All parts in kebab-case
+- Pattern: \`{kebab-module}--web--{device}--{type}--{kebab-page}--{project}\`
+- Example: \`moduleName=petShopStripe\`, \`device=web\`, \`type=page11\`, \`pageName=cartPage\`, \`project=102003\`
+  → \`pet-shop-stripe--web--web--page11--cart-page--102003\`
 
 ---
 
-## CRITICAL: Only use what the base class exposes
+## Organism classification and markup rules
 
-Read the shared source carefully. You may ONLY reference:
-- Reactive properties declared with \`declare\` (e.g. \`this.items\`, \`this.status\`)
-- Non-reactive properties initialised in the class body (e.g. \`this.editorAuthor\`)
-- The \`this.msg\` object and its keys
-- Methods defined in the shared class (e.g. \`this.loadListClientes\`, \`this.handleSalvarPedidoSubmit\`)
-- Any named exports from the shared file (e.g. helper functions like \`formatPrice\`)
+For each section in \`sections[]\`, generate a visual block. Within each section, render each organism according to its type:
 
-Do NOT invent state, methods, or msg keys that do not exist in the shared source.
+### Display-only organism
+Organism has an empty \`writesFields\` and empty \`userActions\`.
+- Render as a read-only card, summary panel, or data table.
+- Show each field in \`readsFields[]\`: derive the reactive property from \`requiredEntities[0]\` lowercased.
+  - e.g., \`requiredEntities: ["Cart"]\` → reactive prop: \`this.cart\`
+  - field \`"Cart.subtotalAmount"\` → \`this.cart?.subtotalAmount\`
+  - Access nested array fields through optional chaining: \`this.cart?.items ?? []\`
+- All label text must come from \`this.msg.{key}\` — never hardcode strings.
 
----
+### List/collection organism
+Organism has \`requiredEntities\` and its primary entity's output is an array (field names include plural or contain \`items\`, \`list\`, etc., or \`readsFields\` reads array-type fields).
+- Iterate with \`.map()\` — always annotate the lambda param type:
+  \`\`\`typescript
+  \${(this.cart?.items ?? []).map((item: any) => html\`...\`)}
+  \`\`\`
+- Show the fields listed in \`readsFields[]\` (strip the entity prefix).
+- If the organism has \`writesFields\` (e.g., modifying quantity): render inline controls (number input, remove button) per row.
+  - The button/input handler follows the pattern: \`@click=\${() => this.handle{OrganismPascal}Click({...item})}\`
+  - Or use a form per row with \`@submit=\${(e: SubmitEvent) => ...}\`
 
-## Render structure — how to map organisms to markup and base Class
-
-Always use the fields that exist in the base class; if they don't exist, don't create or add them.
-
-For each organism in \`definition.pages[0].sections[].organisms[]\`:
-
-### Collection organism (\`dataShape.shape === 'collection'\`)
-Render as a searchable list or card grid:
-- If the organism has \`dataShape.params[]\` with a \`filtro\` param: add an \`<input>\` that calls the corresponding load method
-- If the organism has \`dataShape.params[]\` with a \`categoria\` param: add filter buttons, one per unique value from the entity's category field
-- Iterate with \`.map()\` over the corresponding base-class array property
-- Each card/row shows the \`itemFields[]\` whose \`usage\` is \`display\` or \`filter\`
-- Fields with \`priority: 'optional'\` may be shown conditionally with \`??\` or \`?.xxx\`
-- If the organism has \`emits[]\` with a \`writesState\` that selects an item (e.g. \`clienteSelecionado\`): add a clickable row/button that calls the load method or sets state
-
-### Object organism (\`dataShape.shape === 'object'\`)
-Render as a summary card:
-- Show each field in \`fields[]\` with \`usage: 'display'\`
-- If the organism has \`navigationFields[]\`: add a back/nav button
-- If the organism is associated with an \`actionStates\` entry (same page context): add a \`<form>\` calling the corresponding handler, or action buttons
+### Action organism
+Organism has non-empty \`userActions[]\` but no list to iterate.
+- Render a primary action button or a form block.
+- Handler: \`this.handle{OrganismPascal}Click()\` (organism name in PascalCase, first letter uppercased).
+  Example: \`acaoIniciarCheckout\` → \`handleAcaoIniciarCheckoutClick()\`
+- Button labels must use \`this.msg.{userAction key in camelCase}\` — derive reasonable i18n key names.
+- If there is an associated action state property (\`this.{organismCamel}State\`), show a spinner or disabled state when \`=== 'loading'\`.
 
 ---
 
-## Render structure — how to map actionStates to controls
+## Reactive property naming convention (for reference in render)
 
-For each entry in \`definition.pages[0].actionStates[]\` whose suffix is NOT \`idle/loading/success/error\`:
-- If the action is a save/create: render a \`<form @submit=\${this.handle{Suffix}Submit}>\` with hidden inputs for required fields and a submit button
-- If the action is a confirm/approve: render a \`<button @click=\${() => this.handle{Suffix}Click({...params})}\`
-- Place these controls near the organism whose data they affect (e.g. a "Salvar Pedido" form goes in the resumo section)
+The shared base class exposes properties named from the **primary entity** of each command:
+- Entity \`Cart\` → \`this.cart\` (object or with nested \`items\` array)
+- Entity \`Order\` → \`this.order\`
+- Action state for organism/command: \`this.{camelName}State\` (\`'idle' | 'loading' | 'success' | 'error'\`)
+- General status: \`this.status\`
+- i18n messages: \`this.msg\`
+
+Always guard nullable properties: \`this.cart?.items ?? []\`, \`this.cart?.totalAmount ?? 0\`.
 
 ---
 
-## Design freedom — Tailwind CSS
+## Handle method naming convention
 
-You have **full creative freedom** over the visual layout and design. Use Tailwind CSS utility classes to craft a UI that best fits the purpose of this page (read from \`definition.pages[0].purpose\`).
+For organisms with \`userActions\` or \`writesFields\`:
+- The handle method on the base class is named \`handle{OrganismPascal}Click()\` or \`handle{OrganismPascal}Submit(event: SubmitEvent)\`
+  where \`OrganismPascal\` = \`organismName\` with first letter uppercased.
+- Example: \`listaItensCarrinho\` → \`handleListaItensCarrinhoClick()\`
+- Example: \`acaoIniciarCheckout\` → \`handleAcaoIniciarCheckoutClick()\`
 
-Design principles to follow:
-- Create a UI that feels purpose-built for the page's context and audience (\`definition.pages[0].actor\`)
-- Each organism should have a distinct visual section — choose the layout (sidebar, tabs, stacked panels, split view, etc.) that makes the most sense for the data
-- Use spacing, typography hierarchy, color, and borders expressively — not just structurally
-- Interactive elements (search, filter, selection) should feel obvious and responsive
-- Status and feedback text (\`this.status\`) should be visible and contextual
-- Collection organisms with many items benefit from compact rows rather than large cards if there are many fields
-- Object organisms (summaries, drafts) benefit from structured panels with clear field labels
-- Action controls (forms, confirm buttons) should be visually prominent and placed near the data they affect
+For SubmitEvent handlers, bind as:
+\`\`\`typescript
+@submit=\${(e: SubmitEvent) => { e.preventDefault(); this.handleXxxSubmit(e); }}
+\`\`\`
 
-Technical constraints that must still be respected:
-- All text must come from \`this.msg.xxx\` — never hardcode strings
-- Event bindings must use the exact Lit syntax: \`@event=\${handler}\` for methods, \`@event=\${(e: Event) => ...}\` for inline
-- Property bindings use \`.property=\${value}\`
-- Iterate collections with \`.map(item => html\`...\`)\` — always alias type if needed
-- Use \`??\` guards on nullable reactive properties (\`this.someList ?? []\`, \`this.someObject?.field ?? ''\`)
+For click handlers:
+\`\`\`typescript
+@click=\${() => this.handleXxxClick()}
+\`\`\`
+
+---
+
+## Design
+
+You have **full creative freedom** over layout. Follow any \`##Design System\` guidelines first.
+Use Tailwind CSS utility classes. Design for the page \`purpose\` and \`actor\` from the pageSpec.
+
+Principles:
+- Each section → a visually distinct block (card, panel, etc.)
+- \`mode: "edit"\` sections → allow interactive controls (inputs, buttons)
+- \`mode: "view"\` sections → clean read-only display
+- Status and feedback (\`this.status\`) must be visible
+- Use \`this.msg\` for all human-visible text — never hardcode
+- Arrays with items → compact rows if many fields; cards if few
+- Action controls → visually prominent, near the data they affect
+- Use \`??\` and \`?.\` to guard all nullable reactive properties
+
+Lit-specific rules:
+- Event bindings: \`@click=\${handler}\` (method reference) or \`@click=\${(e: Event) => ...}\` (inline)
+- Property bindings: \`.value=\${this.xxx}\`
+- Conditional rendering: \`\${condition ? html\`...\` : ''}\`
+- Never use \`innerHTML\` or \`document.querySelector\` in the render method
 
 ---
 
 ## Output format rules
-- Return **only** the TypeScript source
-- No markdown fences, no explanations, no inline comments
-- 2-space indentation inside the class; the html template may use 6-space indentation for readability
+- No markdown fences, no explanations, no inline comments in generated TypeScript
+- 2-space indentation inside the class; html template content may use 6-space indentation
 - One blank line between top-level declarations
+- The \`srcFile\` value in the JSON response must be a single-line string with all special characters escaped:
+  - newlines → \\n
+  - tabs → \\t
+  - double quotes → \\"
+  - backslashes → \\\\
 
 ---
 `;

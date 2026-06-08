@@ -83,9 +83,12 @@ async function writeStorFile(mlsPath: string, src: string): Promise<void> {
     const param: IReqCreateStorFile = { ...info, source: src };
     sf = await createStorFile(param, false, false, false);
   } else {
+
     const m = await sf.getOrCreateModel();
     if (m && m.model) m.model.setValue(src);
   }
+
+  await mls.stor.localStor.setContent(sf, { contentType: 'string', content: src });
 }
 
 // ─── prompt builder ───────────────────────────────────────────────────────────
@@ -123,6 +126,7 @@ async function beforePromptImplicit(
   context: mls.msg.ExecutionContext,
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
+
   const { path, moduleName } = parseInput(userPrompt);
   const humanPrompt = await buildHumanPrompt(path, moduleName);
 
@@ -138,7 +142,7 @@ async function beforePromptImplicit(
       taskTitle: `materialize:${extractPageId(path)}`,
       threadId: context.message.threadId,
       userMessage: path,
-      longTermMemory: {},
+      longTermMemory: {moduleName},
     },
   };
 
@@ -219,8 +223,11 @@ async function afterPromptStep(
     }
 
     // Inject pipeline into the original plan defs
-    const planSrc = await readStorFile(path);
+    let planSrc = await readStorFile(path);
     if (planSrc) {
+      const idx = planSrc.indexOf('export default ');
+      if (idx > 0) planSrc = planSrc.slice(0, idx);
+      planSrc = planSrc.replace(/as const/g, '');
       const pipeline = buildPipeline(project, moduleName, pageId);
       const updatedPlan = updateVariableJson(planSrc, 'materializeIndex', pipeline);
       await writeStorFile(path, updatedPlan);
@@ -246,14 +253,14 @@ async function afterPromptStep(
 
   const payload = step.interaction?.payload?.[0];
   const path = (payload?.type === 'flexible' && payload.result?.path) ? payload.result.path as string : '';
-  const stepOri = context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
+  //const stepOri = context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
 
-  const newStep = {
+  const newStep: mls.msg.AgentIntentAddStep = {
     type: 'add-step',
     messageId: context.message.orderAt,
     threadId: context.message.threadId,
     taskId: context.task?.PK || '',
-    parentStepId: stepOri || parentStep.stepId,
+    parentStepId: parentStep.stepId,
     step: {
       type: 'agent',
       stepId: 0,
@@ -266,7 +273,7 @@ async function afterPromptStep(
     },
   };
 
-  return [newStep, updateStatus];
+  return [newStep];
 }
 
 async function generateInfoModule(moduleName: string) {
