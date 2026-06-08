@@ -362,6 +362,7 @@ export const petShopStripeGetOrderHistoryHandler: BffHandler = async ({ request,
 };
 \`\`\`
 
+
 ## Usecase Import:
 - Use the importPath provided in the usecase contract section
 - Use the functionName from implementation.functionName if present; otherwise derive from the usecaseId (strip "usecase" prefix, camelCase)
