@@ -12,7 +12,7 @@ import {
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
   findStepByPlanId,
-  getPlannerOutputs,
+  getPlannerOutputsWithFileFallback,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
@@ -234,7 +234,7 @@ async function beforePromptStep(
 
   const finalPlan = getFinalizeSolutionPlanOutput(context);
   const persistenceIndex = getPlanPersistenceIndexOutput(context);
-  const tableDefinitions = getPlanTableDefinitionOutputs(context);
+  const tableDefinitions = await getPlanTableDefinitionOutputs(context);
   const metricsIndex = getPlanMetricsIndexOutput(context);
   const metricIndexItem = metricsIndex.result.metricTables.find(table => table.metricTableId === args);
   if (!metricIndexItem) throw new Error(`[${agent.agentName}](beforePromptStep) metric table selector not found: ${args}`);
@@ -282,16 +282,32 @@ async function afterPromptStep(
   }
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
-  if (status === 'completed' && output) await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
 
-  const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined);
-  const nextIntents = status === 'completed' && output ? createNextMetricTableDefinitionIntent(context, step, output) : [];
+  // TODO-FINAL-010/023: clear the full payload only when the .defs.ts was saved; getters and
+  // the covered-set computation now read metric table definitions back from the saved files.
+  let cleaner: 'input' | 'input_output' | undefined;
+  if (status === 'completed' && output) {
+    const saved = await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
+    cleaner = saved.length > 0 ? 'input_output' : 'input';
+  }
+
+  const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, cleaner);
+  const nextIntents = status === 'completed' && output ? await createNextMetricTableDefinitionIntent(context, step, output) : [];
   if (nextIntents.some(intent => intent.type === 'add-step')) return [...nextIntents, updateIntent];
   return [updateIntent, ...nextIntents];
 }
 
-export function getPlanMetricTableDefinitionOutputs(context: mls.msg.ExecutionContext): PlanMetricTableDefinitionOutput[] {
-  return getPlannerOutputs(context, 'agentPlanMetricTableDefinition', planMetricTableDefinitionConfig, validatePlanMetricTableDefinitionOutput);
+// TODO-FINAL-010/023: also reads metric table definitions back from saved .defs.ts when the
+// task payload was cleared with cleaner="input_output".
+export function getPlanMetricTableDefinitionOutputs(context: mls.msg.ExecutionContext): Promise<PlanMetricTableDefinitionOutput[]> {
+  return getPlannerOutputsWithFileFallback(
+    context,
+    'agentPlanMetricTableDefinition',
+    'metricTable',
+    planMetricTableDefinitionConfig,
+    output => output.result.metricTableDefinition.metricTableId,
+    validatePlanMetricTableDefinitionOutput,
+  );
 }
 
 function extractPlanMetricTableDefinitionOutput(payload: unknown): PlanMetricTableDefinitionOutput {
@@ -393,13 +409,14 @@ function validateMetricTableHypertable(table: PlanMetricTableDefinitionResult['m
   if (!hasTimeIndex) throw new Error(`metric table ${table.metricTableId} hypertable.indexes must include the timeColumn`);
 }
 
-function createNextMetricTableDefinitionIntent(
+async function createNextMetricTableDefinitionIntent(
   context: mls.msg.ExecutionContext,
   currentStep: mls.msg.AIAgentStep,
   currentOutput: PlanMetricTableDefinitionOutput,
-): mls.msg.AgentIntent[] {
+): Promise<mls.msg.AgentIntent[]> {
   const metricsIndex = getPlanMetricsIndexOutput(context);
-  const covered = new Set(getPlanMetricTableDefinitionOutputs(context).map(output => output.result.metricTableDefinition.metricTableId));
+  // covered is computed from saved files + task payloads, correct even after payload cleanup.
+  const covered = new Set((await getPlanMetricTableDefinitionOutputs(context)).map(output => output.result.metricTableDefinition.metricTableId));
   covered.add(currentOutput.result.metricTableDefinition.metricTableId);
 
   const nextTable = metricsIndex.result.metricTables.find(table => !covered.has(table.metricTableId));
@@ -455,6 +472,7 @@ ${JSON.stringify(metricsIndex, null, 2)}
 
 const systemPrompt = `
 <!-- modelType: codeinstruct -->
+<!-- x-tool-strict: true -->
 
 You are agentPlanMetricTableDefinition for the collab.codes "newSolution" flow.
 Plan exactly one TimescaleDB metric table definition for the current metric table selector.

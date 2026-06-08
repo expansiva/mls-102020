@@ -185,6 +185,7 @@ ${JSON.stringify(config.buildReviewContext(context), null, 2)}
 
 const systemPrompt = `
 <!-- modelType: codepro -->
+<!-- x-tool-strict: true -->
 
 You are agentRepairPlanIndex for the collab.codes "newSolution" flow.
 Repair ONLY the single plan index provided, using the critique report and the deterministic findings.

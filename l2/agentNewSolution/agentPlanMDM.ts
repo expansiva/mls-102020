@@ -12,7 +12,7 @@ import {
   extractPlannerOutput,
   getPlannerOutput,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
-import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import { saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 
@@ -111,11 +111,12 @@ async function afterPromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
+  let output: PlanMDMOutput | undefined;
 
   try {
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');
-    const output = extractPlanMDMOutput(payload);
+    output = extractPlanMDMOutput(payload);
     validatePlanMDMOutput(output);
     if (output.status === 'failed') {
       status = 'failed';
@@ -130,6 +131,8 @@ async function afterPromptStep(
   }
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
+  // TODO-FINAL-015: persist MDM domains (draft l5/{domainId}/module.defs.ts or manifest reference).
+  if (status === 'completed' && output) await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
   return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined)];
 }
 
@@ -198,6 +201,7 @@ const mdmPolicy = {
 
 const systemPrompt = `
 <!-- modelType: codepro -->
+<!-- x-tool-strict: true -->
 
 You are agentPlanMDM for the collab.codes "newSolution" flow.
 Plan mandatory MDM for the final solution plan.

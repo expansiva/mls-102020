@@ -12,7 +12,7 @@ import {
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
   findStepByPlanId,
-  getPlannerOutputs,
+  getPlannerOutputsWithFileFallback,
   optionalString,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
@@ -229,16 +229,32 @@ async function afterPromptStep(
   }
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
-  if (status === 'completed' && output) await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
 
-  const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined);
-  const nextIntents = status === 'completed' && output ? createNextTableDefinitionIntent(context, step, output) : [];
+  // TODO-FINAL-010/023: clear the full payload only when the .defs.ts was saved; getters and
+  // the covered-set computation now read table definitions back from the saved files.
+  let cleaner: 'input' | 'input_output' | undefined;
+  if (status === 'completed' && output) {
+    const saved = await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
+    cleaner = saved.length > 0 ? 'input_output' : 'input';
+  }
+
+  const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, cleaner);
+  const nextIntents = status === 'completed' && output ? await createNextTableDefinitionIntent(context, step, output) : [];
   if (nextIntents.some(intent => intent.type === 'add-step')) return [...nextIntents, updateIntent];
   return [updateIntent, ...nextIntents];
 }
 
-export function getPlanTableDefinitionOutputs(context: mls.msg.ExecutionContext): PlanTableDefinitionOutput[] {
-  return getPlannerOutputs(context, 'agentPlanTableDefinition', planTableDefinitionConfig, validatePlanTableDefinitionOutput);
+// TODO-FINAL-010/023: also reads table definitions back from saved .defs.ts when the task
+// payload was cleared with cleaner="input_output".
+export function getPlanTableDefinitionOutputs(context: mls.msg.ExecutionContext): Promise<PlanTableDefinitionOutput[]> {
+  return getPlannerOutputsWithFileFallback(
+    context,
+    'agentPlanTableDefinition',
+    'table',
+    planTableDefinitionConfig,
+    output => output.result.tableDefinition.tableId,
+    validatePlanTableDefinitionOutput,
+  );
 }
 
 function extractPlanTableDefinitionOutput(payload: unknown): PlanTableDefinitionOutput {
@@ -344,13 +360,15 @@ function validateMetricUpdatePolicy(table: PlanTableDefinitionResult['tableDefin
   }
 }
 
-function createNextTableDefinitionIntent(
+async function createNextTableDefinitionIntent(
   context: mls.msg.ExecutionContext,
   currentStep: mls.msg.AIAgentStep,
   currentOutput: PlanTableDefinitionOutput,
-): mls.msg.AgentIntent[] {
+): Promise<mls.msg.AgentIntent[]> {
   const persistenceIndex = getPlanPersistenceIndexOutput(context);
-  const covered = new Set(getPlanTableDefinitionOutputs(context).map(output => output.result.tableDefinition.tableId));
+  // covered is computed from saved files + task payloads, so it stays correct even after
+  // the per-table payloads are cleared with cleaner="input_output".
+  const covered = new Set((await getPlanTableDefinitionOutputs(context)).map(output => output.result.tableDefinition.tableId));
   covered.add(currentOutput.result.tableDefinition.tableId);
 
   const nextTable = persistenceIndex.result.tables.find(table => !covered.has(table.tableId));
@@ -470,6 +488,7 @@ function recordHasAnyRef(value: unknown, refs: Set<string>, keys: string[]): boo
 
 const systemPrompt = `
 <!-- modelType: codeinstruct -->
+<!-- x-tool-strict: true -->
 
 You are agentPlanTableDefinition for the collab.codes "newSolution" flow.
 Plan exactly one module-owned persistence table definition for the current table selector.

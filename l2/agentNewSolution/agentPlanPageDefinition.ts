@@ -2,6 +2,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
+  PLANNER_SCHEMA_VERSION,
   PlannerOutput,
   assertArray,
   assertRecord,
@@ -14,7 +15,7 @@ import {
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
-import { saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import { readSavedPlanArtifactDataList, saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getPlanAgentsOutput } from '/_102020_/l2/agentNewSolution/agentPlanAgents.js';
 import type { PlanAgentsOutput } from '/_102020_/l2/agentNewSolution/agentPlanAgents.js';
 import { getPlanHorizontalsOutput } from '/_102020_/l2/agentNewSolution/agentPlanHorizontals.js';
@@ -294,12 +295,12 @@ async function beforePromptStep(
   const horizontals = getPlanHorizontalsOutput(context);
   const plugins = getPlanPluginsOutput(context);
   const persistenceIndex = getPlanPersistenceIndexOutput(context);
-  const tableDefinitions = getPlanTableDefinitionOutputs(context);
+  const tableDefinitions = await getPlanTableDefinitionOutputs(context);
   const metricsIndex = getPlanMetricsIndexOutput(context);
-  const metricTableDefinitions = getPlanMetricTableDefinitionOutputs(context);
+  const metricTableDefinitions = await getPlanMetricTableDefinitionOutputs(context);
   const usecasePlan = getPlanUsecaseEntitiesOutput(context);
   const workflowIndex = getPlanWorkflowIndexOutput(context);
-  const workflowDefinitions = getPlanWorkflowDefinitionOutputs(context);
+  const workflowDefinitions = await getPlanWorkflowDefinitionOutputs(context);
   const agentsPlan = getPlanAgentsOutput(context);
   const pageIndex = getPlanPageIndexOutput(context);
 
@@ -366,16 +367,62 @@ async function afterPromptStep(
   }
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
-  if (status === 'completed' && output) await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
 
-  const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined);
+  // TODO-FINAL-010/023: clear the full payload (input_output) only when the .defs.ts was
+  // actually saved; the coverage validator now reads page definitions back from the saved
+  // files via getPlanPageDefinitionOutputs. If the save produced nothing, keep the payload
+  // (cleaner="input") so the page is not lost from the task.
+  let cleaner: 'input' | 'input_output' | undefined;
+  if (status === 'completed' && output) {
+    const saved = await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
+    cleaner = saved.length > 0 ? 'input_output' : 'input';
+  }
+
+  const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, cleaner);
   return [updateIntent];
 }
 
-export function getPlanPageDefinitionOutputs(context: mls.msg.ExecutionContext): PlanPageDefinitionOutput[] {
-  return getPlannerOutputs(context, 'agentPlanPageDefinition', planPageDefinitionConfig, output =>
-    validatePlanPageDefinitionOutput(output, output.result.pageDefinition.pageId, getPlanWorkflowIndexOutput(context))
-  );
+// TODO-FINAL-010/023: page definition payloads are cleared from the task with
+// cleaner="input_output" once the .defs.ts is saved, so this getter must also read the saved
+// files. Fast path: task payloads (present for not-yet-saved or failed steps). Fallback: the
+// saved page artifacts, reconstructed into PlannerOutput. Merge by pageId, task payload wins.
+export async function getPlanPageDefinitionOutputs(context: mls.msg.ExecutionContext): Promise<PlanPageDefinitionOutput[]> {
+  const workflowIndex = getPlanWorkflowIndexOutput(context);
+  const validate = (output: PlanPageDefinitionOutput) =>
+    validatePlanPageDefinitionOutput(output, output.result.pageDefinition.pageId, workflowIndex);
+
+  const byPageId = new Map<string, PlanPageDefinitionOutput>();
+
+  for (const data of await readSavedPlanArtifactDataList(context, 'page')) {
+    const output = wrapSavedPageDefinitionOutput(data);
+    if (!output) continue;
+    validate(output);
+    byPageId.set(output.result.pageDefinition.pageId, output);
+  }
+
+  // Task payloads override file copies (more recent within the same run).
+  for (const output of getPlannerOutputs(context, 'agentPlanPageDefinition', planPageDefinitionConfig, validate)) {
+    byPageId.set(output.result.pageDefinition.pageId, output);
+  }
+
+  return [...byPageId.values()].sort((a, b) => a.result.pageDefinition.pageId.localeCompare(b.result.pageDefinition.pageId));
+}
+
+function wrapSavedPageDefinitionOutput(data: Record<string, unknown>): PlanPageDefinitionOutput | null {
+  try {
+    return {
+      runId: 'from-file',
+      stepId: PLAN_PAGE_DEFINITION_STEP_ID,
+      schemaVersion: PLANNER_SCHEMA_VERSION,
+      status: 'ok',
+      result: normalizePlanPageDefinitionResult(data),
+      questions: [],
+      trace: [],
+    };
+  } catch (error) {
+    console.warn('[wrapSavedPageDefinitionOutput] could not rebuild a saved page definition', error);
+    return null;
+  }
 }
 
 function extractPlanPageDefinitionOutput(payload: unknown): PlanPageDefinitionOutput {

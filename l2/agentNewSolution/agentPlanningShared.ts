@@ -21,9 +21,11 @@ import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution/agentNe
 import {
   extractPlannerOutput,
   parseMaybeJson,
+  PLANNER_SCHEMA_VERSION as PLANNER_SCHEMA_VERSION_VALUE,
   type PlannerExtractConfig,
   type PlannerOutput,
 } from '/_102020_/l2/agentNewSolution/agentPlanningExtract.js';
+import { readSavedPlanArtifactDataList } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 
 export {
   PLANNER_SCHEMA_VERSION,
@@ -161,6 +163,48 @@ export function getPlannerOutputs<T>(
   }
 
   return outputs;
+}
+
+/**
+ * TODO-FINAL-010/023: read fan-out definition outputs preferring task payloads, falling back
+ * to the saved .defs.ts artifacts when the payload was cleared with cleaner="input_output".
+ * Saved artifacts are reconstructed into PlannerOutput via config.normalizeResult; task payloads
+ * override file copies (more recent within the same run). Results are deduped/sorted by getId.
+ */
+export async function getPlannerOutputsWithFileFallback<T>(
+  context: mls.msg.ExecutionContext,
+  agentName: string,
+  artifactType: string,
+  config: PlannerExtractConfig<T>,
+  getId: (output: PlannerOutput<T>) => string,
+  validate?: (output: PlannerOutput<T>) => void,
+): Promise<PlannerOutput<T>[]> {
+  const byId = new Map<string, PlannerOutput<T>>();
+
+  for (const data of await readSavedPlanArtifactDataList(context, artifactType)) {
+    let output: PlannerOutput<T>;
+    try {
+      output = {
+        runId: 'from-file',
+        stepId: config.stepId,
+        schemaVersion: PLANNER_SCHEMA_VERSION_VALUE,
+        status: 'ok',
+        result: config.normalizeResult(data),
+        questions: [],
+        trace: [],
+      };
+      validate?.(output);
+    } catch {
+      continue;
+    }
+    byId.set(getId(output), output);
+  }
+
+  for (const output of getPlannerOutputs(context, agentName, config, validate)) {
+    byId.set(getId(output), output);
+  }
+
+  return [...byId.values()].sort((a, b) => getId(a).localeCompare(getId(b)));
 }
 
 export function findStepByPlanId(context: mls.msg.ExecutionContext, planId: string): mls.msg.AIPayload | null {

@@ -613,6 +613,7 @@ function normalizeText(value: string): string {
 
 const systemPrompt = `
 <!-- modelType: codeinstruct -->
+<!-- x-tool-strict: true -->
 
 You are agentRecommendImplementations for the collab.codes "newModule" flow.
 Use the discovered scope and clarification answer to recommend implementation artifacts for the next planning decision.

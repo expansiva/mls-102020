@@ -298,6 +298,7 @@ ${JSON.stringify(config.buildReviewContext(context), null, 2)}
 
 const systemPrompt = `
 <!-- modelType: codepro -->
+<!-- x-tool-strict: true -->
 
 You are agentCriticPlanIndex for the collab.codes "newSolution" flow.
 Criticize ONLY the single plan index provided. Do not review other indices or artifacts.

@@ -12,7 +12,7 @@ import {
   createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
-  getPlannerOutputs,
+  getPlannerOutputsWithFileFallback,
   isRecord,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
@@ -43,6 +43,24 @@ export const PLAN_WORKFLOW_DEFINITION_TOOL_NAME = 'submitWorkflowDefinitionPlan'
 export const PLAN_WORKFLOW_DEFINITION_STEP_ID = '18-plan-workflow-definition';
 const PLAN_WORKFLOW_DEFINITION_ALIASES = [PLAN_WORKFLOW_DEFINITION_STEP_ID, 'plan-workflow-definition'];
 
+export type WorkflowScope = 'singleModule' | 'multiModule' | 'multiModuleExternal';
+
+export interface WorkflowPageRefByModule {
+  moduleId: string;
+  pageId: string;
+}
+
+export interface WorkflowEntityRefByModule {
+  moduleId: string;
+  entity: string;
+}
+
+export interface WorkflowWritesArtifact {
+  moduleId: string;
+  artifactType: 'table' | 'metricTable' | 'usecase' | 'page' | 'pluginConnection' | 'workflow';
+  artifactId: string;
+}
+
 export interface PlanWorkflowDefinitionResult {
   workflowDefinition: Record<string, unknown> & {
     workflowId: string;
@@ -50,6 +68,12 @@ export interface PlanWorkflowDefinitionResult {
     purpose: string;
     executionMode: string;
     createsTask: boolean;
+    // TODO-FINAL-027: per-module impact metadata (always present; arrays may be empty).
+    workflowScope: WorkflowScope;
+    moduleRefs: string[];
+    pageRefsByModule: WorkflowPageRefByModule[];
+    entityRefsByModule: WorkflowEntityRefByModule[];
+    writesArtifacts: WorkflowWritesArtifact[];
   };
   defsPlan: {
     fileName: string;
@@ -106,6 +130,11 @@ const planWorkflowDefinitionToolSchema = createPlannerVariableToolSchema(
           'relatedPlugins',
           'rulesApplied',
           'implementationSuggestions',
+          'workflowScope',
+          'moduleRefs',
+          'pageRefsByModule',
+          'entityRefsByModule',
+          'writesArtifacts',
         ],
         properties: {
           workflowId: { type: 'string' },
@@ -163,6 +192,48 @@ const planWorkflowDefinitionToolSchema = createPlannerVariableToolSchema(
               },
             },
           },
+          // TODO-FINAL-027: explicit per-module impact metadata so a future maintenance agent
+          // can read a global l4 workflow and know exactly which modules/pages/entities/artifacts
+          // it touches. Arrays may be empty (single-module workflows), but must be present.
+          workflowScope: { enum: ['singleModule', 'multiModule', 'multiModuleExternal'] },
+          moduleRefs: { type: 'array', items: { type: 'string' } },
+          pageRefsByModule: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['moduleId', 'pageId'],
+              properties: {
+                moduleId: { type: 'string' },
+                pageId: { type: 'string' },
+              },
+            },
+          },
+          entityRefsByModule: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['moduleId', 'entity'],
+              properties: {
+                moduleId: { type: 'string' },
+                entity: { type: 'string' },
+              },
+            },
+          },
+          writesArtifacts: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['moduleId', 'artifactType', 'artifactId'],
+              properties: {
+                moduleId: { type: 'string' },
+                artifactType: { enum: ['table', 'metricTable', 'usecase', 'page', 'pluginConnection', 'workflow'] },
+                artifactId: { type: 'string' },
+              },
+            },
+          },
         },
       },
       defsPlan: {
@@ -197,8 +268,8 @@ async function beforePromptStep(
   if (!workflowIndexItem) throw new Error(`[${agent.agentName}](beforePromptStep) workflow selector not found: ${args}`);
 
   const usecasePlan = getPlanUsecaseEntitiesOutput(context);
-  const tableDefinitions = getPlanTableDefinitionOutputs(context);
-  const metricTableDefinitions = getPlanMetricTableDefinitionOutputs(context);
+  const tableDefinitions = await getPlanTableDefinitionOutputs(context);
+  const metricTableDefinitions = await getPlanMetricTableDefinitionOutputs(context);
 
   return [
     createPlannerPromptReadyIntent(
@@ -244,16 +315,30 @@ async function afterPromptStep(
   }
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
-  if (status === 'completed' && output) await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
 
-  const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined);
+  // TODO-FINAL-010/023: clear the full payload only when the .defs.ts was saved; the coverage
+  // validator and downstream readers now read workflow definitions back from the saved files.
+  let cleaner: 'input' | 'input_output' | undefined;
+  if (status === 'completed' && output) {
+    const saved = await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
+    cleaner = saved.length > 0 ? 'input_output' : 'input';
+  }
+
+  const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, cleaner);
   return [updateIntent];
 }
 
-export function getPlanWorkflowDefinitionOutputs(context: mls.msg.ExecutionContext): PlanWorkflowDefinitionOutput[] {
-  return getPlannerOutputs(context, 'agentPlanWorkflowDefinition', planWorkflowDefinitionConfig, output => {
-    validatePlanWorkflowDefinitionOutput(output, output.result.workflowDefinition.workflowId);
-  });
+// TODO-FINAL-010/023: also reads workflow definitions back from saved .defs.ts when the task
+// payload was cleared with cleaner="input_output".
+export function getPlanWorkflowDefinitionOutputs(context: mls.msg.ExecutionContext): Promise<PlanWorkflowDefinitionOutput[]> {
+  return getPlannerOutputsWithFileFallback(
+    context,
+    'agentPlanWorkflowDefinition',
+    'workflow',
+    planWorkflowDefinitionConfig,
+    output => output.result.workflowDefinition.workflowId,
+    output => validatePlanWorkflowDefinitionOutput(output, output.result.workflowDefinition.workflowId),
+  );
 }
 
 function extractPlanWorkflowDefinitionOutput(payload: unknown): PlanWorkflowDefinitionOutput {
@@ -329,6 +414,15 @@ function normalizePlanWorkflowDefinitionResult(value: unknown): PlanWorkflowDefi
       purpose: assertString(workflowDefinition.purpose, 'result.workflowDefinition.purpose'),
       executionMode: assertString(workflowDefinition.executionMode, 'result.workflowDefinition.executionMode'),
       createsTask: assertBoolean(workflowDefinition.createsTask, 'result.workflowDefinition.createsTask'),
+      // TODO-FINAL-027
+      workflowScope: normalizeWorkflowScope(workflowDefinition.workflowScope),
+      moduleRefs: normalizeStringArray(workflowDefinition.moduleRefs, 'result.workflowDefinition.moduleRefs'),
+      pageRefsByModule: assertArray(workflowDefinition.pageRefsByModule ?? [], 'result.workflowDefinition.pageRefsByModule')
+        .map((item, index) => normalizePageRefByModule(item, `result.workflowDefinition.pageRefsByModule[${index}]`)),
+      entityRefsByModule: assertArray(workflowDefinition.entityRefsByModule ?? [], 'result.workflowDefinition.entityRefsByModule')
+        .map((item, index) => normalizeEntityRefByModule(item, `result.workflowDefinition.entityRefsByModule[${index}]`)),
+      writesArtifacts: assertArray(workflowDefinition.writesArtifacts ?? [], 'result.workflowDefinition.writesArtifacts')
+        .map((item, index) => normalizeWritesArtifact(item, `result.workflowDefinition.writesArtifacts[${index}]`)),
     },
     defsPlan: {
       fileName: assertString(defsPlan.fileName, 'result.defsPlan.fileName'),
@@ -341,6 +435,44 @@ function normalizePlanWorkflowDefinitionResult(value: unknown): PlanWorkflowDefi
 function assertBoolean(value: unknown, path: string): boolean {
   if (typeof value !== 'boolean') throw new Error(`${path} must be a boolean`);
   return value;
+}
+
+// TODO-FINAL-027 helpers
+function normalizeStringArray(value: unknown, path: string): string[] {
+  return assertArray(value ?? [], path).map((item, index) => assertString(item, `${path}[${index}]`));
+}
+
+function normalizeWorkflowScope(value: unknown): WorkflowScope {
+  if (value === 'singleModule' || value === 'multiModule' || value === 'multiModuleExternal') return value;
+  throw new Error(`result.workflowDefinition.workflowScope must be singleModule, multiModule or multiModuleExternal`);
+}
+
+function normalizePageRefByModule(value: unknown, path: string): WorkflowPageRefByModule {
+  const record = assertRecord(value, path);
+  return {
+    moduleId: assertString(record.moduleId, `${path}.moduleId`),
+    pageId: assertString(record.pageId, `${path}.pageId`),
+  };
+}
+
+function normalizeEntityRefByModule(value: unknown, path: string): WorkflowEntityRefByModule {
+  const record = assertRecord(value, path);
+  return {
+    moduleId: assertString(record.moduleId, `${path}.moduleId`),
+    entity: assertString(record.entity, `${path}.entity`),
+  };
+}
+
+function normalizeWritesArtifact(value: unknown, path: string): WorkflowWritesArtifact {
+  const record = assertRecord(value, path);
+  const artifactType = assertString(record.artifactType, `${path}.artifactType`);
+  const allowed = new Set(['table', 'metricTable', 'usecase', 'page', 'pluginConnection', 'workflow']);
+  if (!allowed.has(artifactType)) throw new Error(`${path}.artifactType must be one of ${[...allowed].join(', ')}`);
+  return {
+    moduleId: assertString(record.moduleId, `${path}.moduleId`),
+    artifactType: artifactType as WorkflowWritesArtifact['artifactType'],
+    artifactId: assertString(record.artifactId, `${path}.artifactId`),
+  };
 }
 
 function validatePlanWorkflowDefinitionOutput(output: PlanWorkflowDefinitionOutput, workflowSelector: string): void {
@@ -363,6 +495,17 @@ function validatePlanWorkflowDefinitionOutput(output: PlanWorkflowDefinitionOutp
     const transitions = assertArray(workflow.transitions, 'workflowDefinition.transitions');
     if (states.length === 0) throw new Error(`workflow ${workflow.workflowId} must include states`);
     if (transitions.length === 0) throw new Error(`workflow ${workflow.workflowId} must include transitions`);
+  }
+
+  // TODO-FINAL-027: keep workflowScope coherent with moduleRefs so impact analysis is reliable.
+  if (output.status === 'ok') {
+    const moduleCount = new Set(workflow.moduleRefs).size;
+    if (workflow.workflowScope === 'singleModule' && moduleCount > 1) {
+      throw new Error(`workflow ${workflow.workflowId} is singleModule but moduleRefs has ${moduleCount} modules`);
+    }
+    if ((workflow.workflowScope === 'multiModule' || workflow.workflowScope === 'multiModuleExternal') && moduleCount < 2) {
+      throw new Error(`workflow ${workflow.workflowId} is ${workflow.workflowScope} but moduleRefs has fewer than 2 modules`);
+    }
   }
 }
 
@@ -425,6 +568,7 @@ ${JSON.stringify(metricTableDefinitions, null, 2)}
 
 const systemPrompt = `
 <!-- modelType: codeinstruct -->
+<!-- x-tool-strict: true -->
 
 You are agentPlanWorkflowDefinition for the collab.codes "newSolution" flow.
 Plan exactly one workflow definition for the current workflow selector.
@@ -453,5 +597,14 @@ Do not return prose.
 - defsPlan.exportName should be a stable camelCase export name, such as {workflowId}Def.
 - defsPlan.saveAsDefs must be true.
 - Use rule ids; do not write loose rule text.
+
+## Module-impact metadata (TODO-FINAL-027)
+The workflow is saved as a GLOBAL artifact in l4/workflows. Declare its module impact explicitly so a maintenance agent can compute the blast radius without reading free text:
+- workflowScope: "singleModule" when every page/entity/artifact belongs to the current module; "multiModule" when more than one module participates; "multiModuleExternal" when more than one module participates AND an external integration (plugin) is dominant.
+- moduleRefs: every module id the workflow touches (include the current module). singleModule => exactly one; multiModule/multiModuleExternal => two or more.
+- pageRefsByModule: each related page paired with the moduleId that owns it (reconcile relatedPages with their module).
+- entityRefsByModule: each entity the workflow reads/writes paired with the moduleId where it lives (use this when the same entity name can appear in different modules).
+- writesArtifacts: the modular artifacts the workflow may require changing, each as { moduleId, artifactType, artifactId } (artifactType one of table, metricTable, usecase, page, pluginConnection, workflow).
+- All five fields are required; use empty arrays when nothing applies, but set workflowScope correctly.
 - Do not generate TypeScript code.
 `;

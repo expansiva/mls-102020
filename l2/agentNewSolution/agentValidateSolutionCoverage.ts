@@ -157,15 +157,15 @@ async function beforePromptStep(
   const horizontals = getPlanHorizontalsOutput(context);
   const plugins = getPlanPluginsOutput(context);
   const persistenceIndex = getPlanPersistenceIndexOutput(context);
-  const tableDefinitions = getPlanTableDefinitionOutputs(context);
+  const tableDefinitions = await getPlanTableDefinitionOutputs(context);
   const metricsIndex = getPlanMetricsIndexOutput(context);
-  const metricTableDefinitions = getPlanMetricTableDefinitionOutputs(context);
+  const metricTableDefinitions = await getPlanMetricTableDefinitionOutputs(context);
   const usecasePlan = getPlanUsecaseEntitiesOutput(context);
   const workflowIndex = getPlanWorkflowIndexOutput(context);
-  const workflowDefinitions = getPlanWorkflowDefinitionOutputs(context);
+  const workflowDefinitions = await getPlanWorkflowDefinitionOutputs(context);
   const agentsPlan = getPlanAgentsOutput(context);
   const pageIndex = getPlanPageIndexOutput(context);
-  const pageDefinitions = getPlanPageDefinitionOutputs(context);
+  const pageDefinitions = await getPlanPageDefinitionOutputs(context);
 
   // The acceptance checklist is fixture-specific (run01/expected/...). For real runs it may be absent.
   // We include prior artifacts; the system prompt + skills instruct generic + fixture rules.

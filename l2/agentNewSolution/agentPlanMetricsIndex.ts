@@ -218,7 +218,7 @@ async function beforePromptStep(
 
   const finalPlan = getFinalizeSolutionPlanOutput(context);
   const persistenceIndex = getPlanPersistenceIndexOutput(context);
-  const tableDefinitions = getPlanTableDefinitionOutputs(context);
+  const tableDefinitions = await getPlanTableDefinitionOutputs(context);
   const snapshot = getPlanningContextSnapshot(context);
 
   return [
@@ -442,6 +442,7 @@ ${JSON.stringify(tableDefinitions, null, 2)}
 
 const systemPrompt = `
 <!-- modelType: codepro -->
+<!-- x-tool-strict: true -->
 
 You are agentPlanMetricsIndex for the collab.codes "newSolution" flow.
 Plan only the metrics index for the module.

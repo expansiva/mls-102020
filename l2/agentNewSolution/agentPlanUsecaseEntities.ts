@@ -139,9 +139,9 @@ async function beforePromptStep(
 
   const finalPlan = getFinalizeSolutionPlanOutput(context);
   const persistenceIndex = getPlanPersistenceIndexOutput(context);
-  const tableDefinitions = getPlanTableDefinitionOutputs(context);
+  const tableDefinitions = await getPlanTableDefinitionOutputs(context);
   const metricsIndex = getPlanMetricsIndexOutput(context);
-  const metricTableDefinitions = getPlanMetricTableDefinitionOutputs(context);
+  const metricTableDefinitions = await getPlanMetricTableDefinitionOutputs(context);
 
   return [
     createPlannerPromptReadyIntent(
@@ -315,6 +315,7 @@ ${JSON.stringify(metricTableDefinitions, null, 2)}
 
 const systemPrompt = `
 <!-- modelType: codeinstruct -->
+<!-- x-tool-strict: true -->
   
 You are agentPlanUsecaseEntities for the collab.codes "newSolution" flow.
 Plan entities and use cases for layer_3_usecases.

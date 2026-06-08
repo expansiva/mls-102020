@@ -150,9 +150,9 @@ async function beforePromptStep(
 
   const finalPlan = getFinalizeSolutionPlanOutput(context);
   const persistenceIndex = getPlanPersistenceIndexOutput(context);
-  const tableDefinitions = getPlanTableDefinitionOutputs(context);
+  const tableDefinitions = await getPlanTableDefinitionOutputs(context);
   const metricsIndex = getPlanMetricsIndexOutput(context);
-  const metricTableDefinitions = getPlanMetricTableDefinitionOutputs(context);
+  const metricTableDefinitions = await getPlanMetricTableDefinitionOutputs(context);
   const usecasePlan = getPlanUsecaseEntitiesOutput(context);
 
   return [
@@ -338,6 +338,7 @@ ${JSON.stringify(usecasePlan, null, 2)}
 
 const systemPrompt = `
 <!-- modelType: codepro -->
+<!-- x-tool-strict: true -->
 
 You are agentPlanWorkflowIndex for the collab.codes "newSolution" flow.
 Plan only the workflow index. Do not define full states or transitions in this step.

@@ -199,12 +199,12 @@ async function beforePromptStep(
   const horizontals = getPlanHorizontalsOutput(context);
   const plugins = getPlanPluginsOutput(context);
   const persistenceIndex = getPlanPersistenceIndexOutput(context);
-  const tableDefinitions = getPlanTableDefinitionOutputs(context);
+  const tableDefinitions = await getPlanTableDefinitionOutputs(context);
   const metricsIndex = getPlanMetricsIndexOutput(context);
-  const metricTableDefinitions = getPlanMetricTableDefinitionOutputs(context);
+  const metricTableDefinitions = await getPlanMetricTableDefinitionOutputs(context);
   const usecasePlan = getPlanUsecaseEntitiesOutput(context);
   const workflowIndex = getPlanWorkflowIndexOutput(context);
-  const workflowDefinitions = getPlanWorkflowDefinitionOutputs(context);
+  const workflowDefinitions = await getPlanWorkflowDefinitionOutputs(context);
   const agentsPlan = getPlanAgentsOutput(context);
 
   return [
@@ -520,6 +520,7 @@ ${JSON.stringify(agentsPlan, null, 2)}
 
 const systemPrompt = `
 <!-- modelType: codeinstruct -->
+<!-- x-tool-strict: true -->
 
 You are agentPlanPageIndex for the collab.codes "newSolution" flow.
 Plan only the page index. Do not define full page sections or organisms in this step.

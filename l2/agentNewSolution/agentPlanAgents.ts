@@ -129,7 +129,7 @@ async function beforePromptStep(
   const plugins = getPlanPluginsOutput(context);
   const usecasePlan = getPlanUsecaseEntitiesOutput(context);
   const workflowIndex = getPlanWorkflowIndexOutput(context);
-  const workflowDefinitions = getPlanWorkflowDefinitionOutputs(context);
+  const workflowDefinitions = await getPlanWorkflowDefinitionOutputs(context);
 
   return [
     createPlannerPromptReadyIntent(
@@ -263,6 +263,7 @@ ${JSON.stringify(workflowDefinitions, null, 2)}
 
 const systemPrompt = `
 <!-- modelType: codeinstruct -->
+<!-- x-tool-strict: true -->
 
 You are agentPlanAgents for the collab.codes "newSolution" flow.
 Plan operational agents only where they add value.

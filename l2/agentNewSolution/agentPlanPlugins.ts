@@ -304,12 +304,18 @@ interface PluginInventoryItem {
   sourceProject?: number;
   pluginDefsFileRef: string;
   moduleConnectionDefsFileRef: string;
+  // TODO-FINAL-025: set when this plugin reuses an existing plugin found by integration brand
+  // (e.g. plan asked for "stripePayments" but "stripe" already exists). Recorded for trace.
+  reusedFromPluginId?: string;
 }
 
 interface PluginInventory {
   actualProject: number;
   moduleName: string;
   searchProjects: number[];
+  // TODO-FINAL-025: brand-reuse ambiguities (more than one existing plugin for the same brand);
+  // surfaced to the LLM and persisted by the critic checkpoint healthReport.
+  reuseWarnings: string[];
   plugins: PluginInventoryItem[];
 }
 
@@ -412,54 +418,104 @@ async function buildPluginInventory(moduleName: string, catalog: PluginCatalogDe
 function buildPluginInventorySync(moduleName: string, catalog: PluginCatalogDefinition): PluginInventory {
   const actualProject = getActualProject();
   const searchProjects = getPluginSearchProjects(actualProject);
-  return {
-    actualProject,
-    moduleName,
-    searchProjects,
-    plugins: catalog.plugins.map(plugin => {
-      const existing = findExistingPlugin(plugin.pluginId, searchProjects);
-      const existingAsReusablePlugin = existing && !isCurrentPlanDraftPlugin(existing, actualProject);
-      return {
-        pluginId: plugin.pluginId,
-        provider: plugin.provider,
-        resolution: existingAsReusablePlugin ? 'existing' : 'create_draft',
-        exists: !!existing,
-        sourceProject: existingAsReusablePlugin ? existing.project : undefined,
-        pluginDefsFileRef: existingAsReusablePlugin ? existing.fileRef : buildPluginDefsFileRef(actualProject, plugin.pluginId),
-        moduleConnectionDefsFileRef: buildModuleConnectionDefsFileRef(actualProject, moduleName, plugin.pluginId),
-      };
-    }),
-  };
-}
+  const existingPlugins = scanExistingPlugins(searchProjects).filter(ref => isReusableExistingPlugin(ref, actualProject));
+  const reuseWarnings: string[] = [];
 
-function findExistingPlugin(pluginId: string, searchProjects: number[]): { project: number; fileRef: string; status: mls.stor.IFileInfoStatus; inLocalStorage: boolean } | null {
-  for (const project of searchProjects) {
-    const fileInfo = {
-      project,
-      level: 2,
-      folder: `plugins/${pluginId}`,
-      shortName: 'plugin',
-      extension: '.defs.ts',
-    };
-    const key = mls.stor.getKeyToFile(fileInfo);
-    const file = mls.stor.files[key];
-    if (file && file.status !== 'deleted') {
-      return {
-        project,
-        fileRef: buildPluginDefsFileRef(project, pluginId),
-        status: file.status,
-        inLocalStorage: file.inLocalStorage,
-      };
+  const plugins = catalog.plugins.map((plugin): PluginInventoryItem => {
+    let reuse: ExistingPluginRef | null = existingPlugins.find(ref => ref.pluginId === plugin.pluginId) || null;
+    let reusedFromPluginId: string | undefined;
+
+    // TODO-FINAL-025: no exact plugin file — try to reuse an existing plugin from the same
+    // integration brand (e.g. plan asks for "stripePayments" but "stripe" already exists),
+    // instead of creating a duplicate global draft in l2/plugins.
+    if (!reuse) {
+      const brandMatches = findExistingPluginsByBrand(plugin.pluginId, existingPlugins);
+      if (brandMatches.length === 1) {
+        reuse = brandMatches[0];
+        reusedFromPluginId = brandMatches[0].pluginId;
+      } else if (brandMatches.length > 1) {
+        reuseWarnings.push(`plugin '${plugin.pluginId}': multiple existing plugins share the same integration brand (${brandMatches.map(m => m.pluginId).join(', ')}); not auto-reused, kept as create_draft for manual review`);
+      }
     }
-  }
-  return null;
+
+    if (reusedFromPluginId) {
+      console.warn(`[agentPlanPlugins] reusing existing plugin '${reusedFromPluginId}' for requested '${plugin.pluginId}' (same integration brand)`);
+    }
+
+    return {
+      pluginId: plugin.pluginId,
+      provider: plugin.provider,
+      resolution: reuse ? 'existing' : 'create_draft',
+      exists: !!reuse,
+      sourceProject: reuse ? reuse.project : undefined,
+      pluginDefsFileRef: reuse ? reuse.fileRef : buildPluginDefsFileRef(actualProject, plugin.pluginId),
+      moduleConnectionDefsFileRef: buildModuleConnectionDefsFileRef(actualProject, moduleName, plugin.pluginId),
+      reusedFromPluginId,
+    };
+  });
+
+  return { actualProject, moduleName, searchProjects, reuseWarnings, plugins };
 }
 
-function isCurrentPlanDraftPlugin(
-  existing: { project: number; status: mls.stor.IFileInfoStatus; inLocalStorage: boolean },
-  actualProject: number,
-): boolean {
-  return existing.project === actualProject && existing.inLocalStorage && existing.status !== 'nochange';
+interface ExistingPluginRef {
+  pluginId: string;
+  project: number;
+  fileRef: string;
+  status: mls.stor.IFileInfoStatus;
+  inLocalStorage: boolean;
+}
+
+function scanExistingPlugins(searchProjects: number[]): ExistingPluginRef[] {
+  const byKey = new Map<string, ExistingPluginRef>();
+  for (const file of Object.values(mls.stor.files)) {
+    if (!searchProjects.includes(file.project)) continue;
+    if (file.level !== 2 || file.shortName !== 'plugin' || file.extension !== '.defs.ts') continue;
+    if (file.status === 'deleted') continue;
+    const pluginId = getPluginIdFromPluginFolder(file.folder);
+    if (!pluginId) continue;
+    const key = `${file.project}:${pluginId}`;
+    if (byKey.has(key)) continue;
+    byKey.set(key, {
+      pluginId,
+      project: file.project,
+      fileRef: buildPluginDefsFileRef(file.project, pluginId),
+      status: file.status,
+      inLocalStorage: file.inLocalStorage,
+    });
+  }
+  return [...byKey.values()];
+}
+
+// A plugin draft created earlier in the CURRENT plan is not a reusable "existing" plugin.
+function isReusableExistingPlugin(ref: ExistingPluginRef, actualProject: number): boolean {
+  return !(ref.project === actualProject && ref.inLocalStorage && ref.status !== 'nochange');
+}
+
+// TODO-FINAL-025: brand reuse is intentionally conservative. Two plugins are "the same
+// integration" only when they share the first brand token AND at least one side is the
+// brand-only plugin (its normalized id equals the brand). This matches stripe<->stripePayments
+// but avoids false positives like mailChimp<->mailGun (both share token "mail" but neither is
+// the brand-only "mail" plugin).
+function findExistingPluginsByBrand(requestedPluginId: string, existingPlugins: ExistingPluginRef[]): ExistingPluginRef[] {
+  const brand = pluginBrandToken(requestedPluginId);
+  if (!brand) return [];
+  const requestedKey = normalizePluginKey(requestedPluginId);
+
+  return existingPlugins.filter(ref => {
+    if (ref.pluginId === requestedPluginId) return false;
+    if (pluginBrandToken(ref.pluginId) !== brand) return false;
+    const existingKey = normalizePluginKey(ref.pluginId);
+    return existingKey === brand || requestedKey === brand;
+  });
+}
+
+function pluginBrandToken(pluginId: string): string {
+  const words = toAsciiWords(pluginId);
+  return words.length > 0 ? words[0].toLowerCase() : '';
+}
+
+function normalizePluginKey(pluginId: string): string {
+  return toAsciiWords(pluginId).join('').toLowerCase();
 }
 
 function getPluginIdFromPluginFolder(folder: string): string | null {
@@ -619,6 +675,7 @@ function optionalNumber(value: unknown, path: string): number | undefined {
 
 const systemPrompt = `
 <!-- modelType: codeinstruct -->
+<!-- x-tool-strict: true -->
 
 You are agentPlanPlugins for the collab.codes "newSolution" flow.
 Plan external plugins from the reduced plugin planning context, implementation decisions, plugin catalog, and plugin inventory.
@@ -633,6 +690,8 @@ Do not return prose.
 - Use pluginInventory as the source of truth for resolution, pluginDefsFileRef, moduleConnectionDefsFileRef, and sourceProject.
 - When pluginInventory marks a plugin as existing, return resolution "existing" and preserve sourceProject.
 - When pluginInventory marks a plugin as create_draft, return resolution "create_draft"; the later defs save step will create l2/plugins/{pluginId}/plugin.defs.ts with draft status.
+- Reuse first: when pluginInventory sets resolution "existing" (including reusedFromPluginId, which means an existing plugin from the same integration brand was found, e.g. requested "stripePayments" reusing existing "stripe"), reuse it and never create a duplicate global plugin draft for the same integration.
+- Respect pluginInventory.reuseWarnings: when a brand has more than one existing plugin, do not invent a new draft to "disambiguate"; keep the inventory resolution and leave the ambiguity for review.
 - Every acceptedPluginDecisions item with decidedPriority other than "never" must be planned when it has a matching pluginCatalog/pluginInventory item.
 - Missing l2/plugins/{pluginId}/plugin.defs.ts is not a blocker; use the pluginInventory create_draft resolution instead of asking whether the catalog can be updated.
 - Never return status "ok" with an empty plugins array when acceptedPluginDecisions is not empty.
