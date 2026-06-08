@@ -455,6 +455,13 @@ Resposta: deve ser consultado os módulos existentes, ex "financeiro", e nos art
 - Escopo: a criacao efetiva de cada modulo horizontal/MDM continua sendo uma task futura propria (drafts aqui sao o ponto de partida). Flush nao inventa estrutura fora de `l5/{id}/module.defs.ts` e nunca sobrescreve modulo existente.
 - Build: `tsc -p tsconfig.frontend.json` ok em mls-base.
 
+**EXTENSAO (run 2026-06-08) - referencia MDM no l1 para usecase/mock**:
+- Problema: o plano de MDM (dominios, masterEntities, sourceOfTruth, governanceRules) nao descia para o l1. O persistence index exclui entidades MDM (nao gera tabela), entao a materializacao de usecase e a geracao de mock no l1 nao tinham a referencia das entidades MDM.
+- Solucao: para cada `masterEntity` de cada dominio MDM, o save agora emite tambem um artefato em `l1/{module}/layer_1_external/{Entity}.defs.ts` com `artifactType="mdmEntity"`, flag `generateTable: false` e `ownership: "mdmOwned"`, enriquecido com o shape da ontologia (`fields` de `fieldId/type/required/description`, `title`, `description`) + metadata do dominio (`domainId`, `sourceOfTruth`, `governanceRules`). Granularidade: um arquivo por masterEntity (confirmado com o usuario).
+- Implementacao: `saveNewSolutionPlanArtifacts` ganhou `options.ontologyEntities`; `agentPlanMDM.afterPromptStep` passa `finalPlan.result.ontology.entities`. `buildPlanArtifactCandidates` (branch MDM) gera os candidatos `mdmEntity` alem do draft de modulo l5 (TODO-015). `resolvePlanArtifactFileInfo` mapeia `mdmEntity` -> `l1/{module}/layer_1_external/{Entity}.defs.ts`.
+- O `generateTable:false` sinaliza que NAO e tabela fisica (MDM e acessado em runtime via project 102034 / ctx.data.mdmDocument), mas o shape fica disponivel localmente para mock e materializacao de usecase.
+- Build: `tsc -p tsconfig.frontend.json` ok.
+
 **FIX (run 2026-06-08)**: `agentPlanHorizontals` falhava a task inteira com "horizontalModule was accepted, but horizontalModules output is empty" quando uma decisao aceitava um horizontal fora do catalogo (finance/notifications/documents) — o modelo nao tinha como plana-lo, falha garantida. Esse gate virou advisory (`console.warn`, nao-fatal), coerente com a direcao nao-bloqueante (TODO-FINAL-023/024) e com o fato de horizontais serem criados em task propria depois. Checagens estruturais duras (id fora do catalogo; needs_input sem questions) e o gate obrigatorio de MDM (mdmDomains nao-vazio) permanecem. Observacao do trace: `x-tool-strict: not used` para horizontals nesse run (provider azureai/gpt-5.2-codex) — informativo, nao e a causa; a validacao ajv contra o schema continua ativa.
 
 ### TODO-FINAL-016 - Separar claramente `plan`, `mat1` e `mat2`
