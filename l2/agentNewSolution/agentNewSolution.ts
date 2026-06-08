@@ -103,31 +103,43 @@ async function afterPromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   if (!agent || !context || !step) throw new Error(`[afterPromptStep] invalid params, agent:${!!agent}, context:${!!context}, step:${!!step}`);
 
-  const payload = step.interaction?.payload?.[0] as Output | undefined;
-  if (!payload) throw new Error(`[afterPromptStep] missing payload`);
+  // TODO-FINAL-028: this is the ROOT planning step. It has no resolvable parent step,
+  // so a thrown error here is dropped by the generic orchestration handler (the step
+  // stays waiting_after_prompt and the task fails with no visible reason). Catch any
+  // failure and surface it as a failed update-status with the real reason in traceMsg.
+  try {
+    const payload = step.interaction?.payload?.[0] as Output | undefined;
+    if (!payload) throw new Error(`[afterPromptStep] missing payload`);
 
-  if (payload.type === 'result') {
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed')];
+    if (payload.type === 'result') {
+      const reason = typeof payload.result === 'string' && payload.result.trim()
+        ? payload.result.trim()
+        : 'agentNewSolution returned an error result';
+      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', reason)];
+    }
+
+    if (payload.type !== 'flexible' || !payload.result) throw new Error(`[afterPromptStep] invalid payload: ${JSON.stringify(payload)}`);
+
+    const initialPlan = normalizeInitialPlan(payload.result, getExistingModuleFolders());
+    payload.result.moduleName = initialPlan.moduleName;
+    await reserveNewSolutionModuleArtifacts(initialPlan);
+    await saveNewSolutionAgentTracePayload(context, agent.agentName, step, initialPlan.moduleName);
+
+    const plannedSteps = buildPlannedTree(initialPlan);
+    const addStepIntents: mls.msg.AgentIntentAddStep[] = plannedSteps.map((plannedStep) => ({
+      type: 'add-step',
+      messageId: context.message.orderAt,
+      threadId: context.message.threadId,
+      taskId: context.task?.PK || '',
+      parentStepId: step.stepId,
+      step: plannedStep,
+    }));
+
+    return addStepIntents;
+  } catch (error) {
+    const reason = `[agentNewSolution] ${error instanceof Error ? error.message : String(error)}`;
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', reason)];
   }
-
-  if (payload.type !== 'flexible' || !payload.result) throw new Error(`[afterPromptStep] invalid payload: ${JSON.stringify(payload)}`);
-
-  const initialPlan = normalizeInitialPlan(payload.result, getExistingModuleFolders());
-  payload.result.moduleName = initialPlan.moduleName;
-  await reserveNewSolutionModuleArtifacts(initialPlan);
-  await saveNewSolutionAgentTracePayload(context, agent.agentName, step, initialPlan.moduleName);
-
-  const plannedSteps = buildPlannedTree(initialPlan);
-  const addStepIntents: mls.msg.AgentIntentAddStep[] = plannedSteps.map((plannedStep) => ({
-    type: 'add-step',
-    messageId: context.message.orderAt,
-    threadId: context.message.threadId,
-    taskId: context.task?.PK || '',
-    parentStepId: step.stepId,
-    step: plannedStep,
-  }));
-
-  return addStepIntents;
 }
 
 function createUpdateStatusIntent(
@@ -136,6 +148,7 @@ function createUpdateStatusIntent(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
   status: mls.msg.AIStepStatus,
+  traceMsg?: string,
 ): mls.msg.AgentIntentUpdateStatus {
   return {
     type: 'update-status',
@@ -143,9 +156,12 @@ function createUpdateStatusIntent(
     messageId: context.message.orderAt,
     threadId: context.message.threadId,
     taskId: context.task?.PK || '',
-    parentStepId: parentStep.stepId,
+    // The root step has no resolvable parent; intentUpdateStatus requires an agent
+    // parent, and the root itself is an agent step, so fall back to self-parent.
+    parentStepId: parentStep?.stepId ?? step.stepId,
     stepId: step.stepId,
     status,
+    traceMsg,
   };
 }
 
