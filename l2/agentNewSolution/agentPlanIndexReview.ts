@@ -28,7 +28,7 @@ import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/age
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import {
   PLAN_PERSISTENCE_INDEX_RESULT_SCHEMA,
-  createFirstTableDefinitionIntent,
+  createTableDefinitionParallelIntent,
   getPlanPersistenceIndexOutput,
   planPersistenceIndexConfig,
   validatePlanPersistenceIndexOutput,
@@ -36,7 +36,7 @@ import {
 import type { PlanPersistenceIndexOutput } from '/_102020_/l2/agentNewSolution/agentPlanPersistenceIndex.js';
 import {
   PLAN_METRICS_INDEX_RESULT_SCHEMA,
-  createFirstMetricTableDefinitionIntent,
+  createMetricTableDefinitionParallelIntent,
   getPlanMetricsIndexOutput,
   planMetricsIndexConfig,
   validatePlanMetricsIndexOutput,
@@ -562,7 +562,7 @@ const reviewConfigs: Record<PlanIndexName, PlanIndexReviewConfig> = {
     onApproved: async (context, indexStep, output, healthReport) => {
       await saveNewSolutionIndexCheckpoint(context, 'persistenceIndex', 'agentPlanPersistenceIndex', indexStep, output, healthReport);
     },
-    createChildrenIntents: (context, output) => createFirstTableDefinitionIntent(context, output as PlanPersistenceIndexOutput),
+    createChildrenIntents: (context, output) => createTableDefinitionParallelIntent(context, output as PlanPersistenceIndexOutput),
   },
 
   metricsIndex: {
@@ -592,7 +592,7 @@ const reviewConfigs: Record<PlanIndexName, PlanIndexReviewConfig> = {
     onApproved: async (context, indexStep, output, healthReport) => {
       await saveNewSolutionIndexCheckpoint(context, 'metricsIndex', 'agentPlanMetricsIndex', indexStep, output, healthReport);
     },
-    createChildrenIntents: (context, output) => createFirstMetricTableDefinitionIntent(context, output as PlanMetricsIndexOutput),
+    createChildrenIntents: (context, output) => createMetricTableDefinitionParallelIntent(context, output as PlanMetricsIndexOutput),
   },
 
   workflowIndex: {

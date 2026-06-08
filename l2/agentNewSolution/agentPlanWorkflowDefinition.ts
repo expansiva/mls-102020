@@ -303,6 +303,13 @@ async function afterPromptStep(
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');
     output = extractPlanWorkflowDefinitionOutput(payload);
+    // Deterministic id coercion (same rationale as page definition): each parallel child's prompt
+    // contains only this workflow's index item, so the content is always for the selector — a
+    // workflowId different from the selector is a label slip. Coerce instead of failing the child.
+    if (workflowSelector && output.result.workflowDefinition.workflowId !== workflowSelector) {
+      console.warn(`[${agent.agentName}](afterPromptStep) coercing workflowId '${output.result.workflowDefinition.workflowId}' to selector '${workflowSelector}'`);
+      output.result.workflowDefinition.workflowId = workflowSelector;
+    }
     validatePlanWorkflowDefinitionOutput(output, workflowSelector);
     if (output.status === 'failed') {
       status = 'failed';

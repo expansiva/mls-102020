@@ -6,12 +6,10 @@ import {
   assertArray,
   assertRecord,
   assertString,
-  createDynamicAgentStepIntent,
   createPlannerPromptReadyIntent,
   createPlannerVariableToolSchema,
   createPlannerUpdateStatusIntent,
   extractPlannerOutput,
-  findStepByPlanId,
   getPlannerOutputsWithFileFallback,
   optionalString,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
@@ -238,10 +236,9 @@ async function afterPromptStep(
     cleaner = saved.length > 0 ? 'input_output' : 'input';
   }
 
-  const updateIntent = createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, cleaner);
-  const nextIntents = status === 'completed' && output ? await createNextTableDefinitionIntent(context, step, output) : [];
-  if (nextIntents.some(intent => intent.type === 'add-step')) return [...nextIntents, updateIntent];
-  return [updateIntent, ...nextIntents];
+  // Parallel fan-out: the persistence index opened all table children at once, so this step
+  // only validates/saves its own table and reports status — it does NOT chain the next one.
+  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, cleaner)];
 }
 
 // TODO-FINAL-010/023: also reads table definitions back from saved .defs.ts when the task
@@ -358,40 +355,6 @@ function validateMetricUpdatePolicy(table: PlanTableDefinitionResult['tableDefin
   if (policy.feedsMetrics === true && policy.updatedByLayer !== 'layer_3_usecases') {
     throw new Error(`table ${table.tableId} metricUpdatePolicy.updatedByLayer must be layer_3_usecases when feedsMetrics=true`);
   }
-}
-
-async function createNextTableDefinitionIntent(
-  context: mls.msg.ExecutionContext,
-  currentStep: mls.msg.AIAgentStep,
-  currentOutput: PlanTableDefinitionOutput,
-): Promise<mls.msg.AgentIntent[]> {
-  const persistenceIndex = getPlanPersistenceIndexOutput(context);
-  // covered is computed from saved files + task payloads, so it stays correct even after
-  // the per-table payloads are cleared with cleaner="input_output".
-  const covered = new Set((await getPlanTableDefinitionOutputs(context)).map(output => output.result.tableDefinition.tableId));
-  covered.add(currentOutput.result.tableDefinition.tableId);
-
-  const nextTable = persistenceIndex.result.tables.find(table => !covered.has(table.tableId));
-  const placeholder = findStepByPlanId(context, 'plan-table-definition') as mls.msg.AIAgentStep | null;
-  if (!placeholder || placeholder.type !== 'agent') return [];
-
-  if (nextTable) {
-    const insertParent = placeholder.status === 'completed' ? currentStep : placeholder;
-    return [
-      createDynamicAgentStepIntent(
-        context,
-        placeholder,
-        'agentPlanTableDefinition',
-        `plan-table-definition:${nextTable.tableId}`,
-        `Plan table ${nextTable.tableId}`,
-        nextTable.tableId,
-        insertParent
-      ),
-    ];
-  }
-
-  if (placeholder.status === 'completed') return [];
-  return [createPlannerUpdateStatusIntent(context, placeholder, placeholder, 0, 'completed', 'All dynamic table definitions completed.')];
 }
 
 function buildHumanPrompt(
