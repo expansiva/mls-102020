@@ -2,7 +2,6 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { findPreviousAgentStep } from '/_102027_/l2/aiAgentHelper.js';
-import { getMaterializeOrchestrator } from '/_102020_/l2/agents/newModule/materializeOrchestrator.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -147,10 +146,59 @@ async function buildPrompt(path: string): Promise<string> {
   if (!sf) throw new Error(`[agentMoleculeMapper] File not found: ${path}`);
   const pageSrc = await sf.getContent() as string;
 
-  const orch = getMaterializeOrchestrator(pathNorm);
-  const catalog = await orch.getSkill('_102020_/l2/agents/newModule/catalog.ts');
+  const catalog = buildCatalog(mls.stor.files as Record<string, any>);
 
   return `## Page source\n\`\`\`typescript\n${pageSrc}\n\`\`\`\n\n## Molecule catalog\n${catalog}`;
+}
+
+function buildCatalog(allFiles: Record<string, any>): string {
+
+  const groups = new Map<string, Set<string>>();   // lowercase groupName → variants
+  const camelCaseMap = new Map<string, string>();  // lowercase groupName → camelCase
+
+  for (const sf of Object.values(allFiles)) {
+
+    if (
+      sf.project === 102040 &&
+      sf.level === 2 &&
+      typeof sf.folder === 'string' &&
+      sf.folder.startsWith('molecules/') &&
+      sf.extension === '.ts' &&
+      sf.shortName !== 'index'
+    ) {
+      const groupLower = sf.folder.split('/')[1];
+      if (!groupLower) continue;
+      if (!groups.has(groupLower)) groups.set(groupLower, new Set());
+      groups.get(groupLower)!.add(sf.shortName);
+    }
+
+    if (
+      sf.project === 102020 &&
+      sf.level === 2 &&
+      typeof sf.folder === 'string' &&
+      sf.folder.startsWith('skills/molecules/')
+    ) {
+      const groupCamel = sf.folder.split('/')[2];
+      if (groupCamel) camelCaseMap.set(groupCamel.toLowerCase(), groupCamel);
+    }
+  }
+
+  const lines: string[] = [
+    '# Molecule Catalog — mls-102040',
+    `${groups.size} groups`,
+    '',
+    'Tag convention: {group.toLowerCase()}--{variant}',
+    'Import convention: /_102040_/l2/molecules/{group.toLowerCase()}/{variant}.js',
+    '',
+  ];
+
+  for (const [groupLower, variantsSet] of groups.entries()) {
+    const groupCamel = camelCaseMap.get(groupLower) || groupLower;
+    const variants = [...variantsSet].sort().join(', ');
+    lines.push(`- ${groupCamel}: ${variants}`);
+  }
+
+  return lines.join('\n');
 }
 
 const system1 = `

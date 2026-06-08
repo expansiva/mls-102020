@@ -121,7 +121,7 @@ async function buildPrompt(info: InputInfo): Promise<string> {
   const orch = getMaterializeOrchestrator(pathNorm);
   const usageSections: string[] = [];
   for (const group of info.usedGroups) {
-    const usage = await orch.getSkill(`_102020_/l2/skills/molecules/${group}/usage.ts`);
+    const usage = await orch.getSkill(`_102020_/l2/skills/molecules/${group}/usage.ts`); // camelCase — matches 102020 folder names
     if (usage) usageSections.push(`### ${group}\n${usage}`);
   }
 
@@ -158,10 +158,12 @@ substitution map with the corresponding molecule from mls-102040.
 ## Replacement rules
 
 ### Tags and imports
+- Group names in the map use camelCase (e.g. groupEnterText). When building tags and imports
+  for mls-102040, convert the group name to all lowercase.
 - Replace each mapped element with its molecule custom element using this exact tag format:
-  {group}--{variant}  (example: groupentertext--ml-floating-text-input)
+  {group.toLowerCase()}--{variant}  (example: groupentertext--ml-floating-text-input)
 - Add one import per unique variant at the top of the file, grouped after the existing imports:
-  import '/_102040_/l2/molecules/{group}/{variant}.js';
+  import '/_102040_/l2/molecules/{group.toLowerCase()}/{variant}.js';
 - Do NOT import the same variant twice.
 
 ### API mapping (use the molecule API reference for each group)
