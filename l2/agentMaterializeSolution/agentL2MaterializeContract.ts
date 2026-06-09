@@ -62,7 +62,7 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string
 ): Promise<mls.msg.AgentIntent[]> {
-  debugger;
+
   if (!args) throw new Error(`(${agent.agentName})[beforePromptStep] args invalid`);
 
   console.info('--------agentMaterializeContract--------')
