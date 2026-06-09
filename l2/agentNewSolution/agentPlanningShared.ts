@@ -478,6 +478,53 @@ export function summarizeRecords(items: unknown[] | undefined, keys: string[]): 
   });
 }
 
+/**
+ * TODO-FINAL-030 (R1): compact view of the final solution plan for the index agents' prompts.
+ * Drops the heavy parts (ontology entity `fields` by default, full approvedArtifacts bodies) and
+ * keeps ids/titles/refs — which is all the index agents need to decide scope. Cuts the biggest
+ * input contributor (the full final plan, ~29KB) to a few KB. Pass includeOntologyFields=true
+ * only when a consumer genuinely needs field shapes.
+ */
+export function compactFinalPlan(finalPlanResultValue: unknown, includeOntologyFields: boolean = false): Record<string, unknown> {
+  const finalPlanResult = isRecordValue(finalPlanResultValue) ? finalPlanResultValue : {};
+  const ontology = isRecordValue(finalPlanResult.ontology) ? finalPlanResult.ontology : {};
+  const entities = isRecordValue(ontology.entities) ? ontology.entities : {};
+  const ontologyEntities: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(entities)) {
+    if (!isRecordValue(value)) { ontologyEntities[key] = value; continue; }
+    ontologyEntities[key] = {
+      title: value.title,
+      kind: value.kind,
+      ownership: value.ownership,
+      statusEnum: value.statusEnum,
+      lifecycleStates: value.lifecycleStates,
+      ...(includeOntologyFields ? { fields: value.fields } : {}),
+    };
+  }
+  const approved = isRecordValue(finalPlanResult.approvedArtifacts) ? finalPlanResult.approvedArtifacts : {};
+  const summ = (value: unknown, keys: string[]) => summarizeRecords(Array.isArray(value) ? value : [], keys);
+
+  return {
+    module: finalPlanResult.module,
+    actors: summ(finalPlanResult.actors, ['actorId', 'title']),
+    capabilities: summ(finalPlanResult.capabilities, ['capabilityId', 'title', 'actor', 'priority']),
+    userActions: summ(finalPlanResult.userActions, ['actionId', 'id', 'title', 'actor', 'capabilityId']),
+    rules: summ(finalPlanResult.rules, ['ruleId', 'title']),
+    ontologyEntities,
+    approvedArtifacts: {
+      pages: summ(approved.pages, ['pageId', 'id', 'title', 'actor']),
+      workflows: summ(approved.workflows, ['workflowId', 'id', 'title', 'executionMode']),
+      plugins: summ(approved.plugins, ['pluginId', 'id', 'provider']),
+      agents: summ(approved.agents, ['agentId', 'id', 'title']),
+      horizontalModules: summ(approved.horizontalModules, ['horizontalModuleId', 'id', 'title']),
+      mdm: summ(approved.mdm, ['domainId', 'id', 'title']),
+      metricTables: summ(approved.metricTables, ['metricTableId', 'id', 'title']),
+      metricDashboards: summ(approved.metricDashboards, ['metricDashboardId', 'id', 'title', 'actor']),
+      usecaseEntities: summ(approved.usecaseEntities, ['usecaseEntityId', 'id', 'title']),
+    },
+  };
+}
+
 /** Collect non-empty string values from the given fields of a record into a target set. */
 export function collectStringRefs(record: unknown, fields: string[], target: Set<string>): void {
   if (!isRecordValue(record)) return;

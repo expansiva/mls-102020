@@ -3,14 +3,13 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
 import { updateVariableJson } from '/_102027_/l2/defsAST.js';
-import { findPreviousAgentStep } from '/_102027_/l2/aiAgentHelper.js';
 
 export function createAgent(): IAgentAsync {
   return {
     agentName: 'agentL2MaterializeDefinition',
     agentProject: 102020,
     agentFolder: 'agentMaterializeSolution',
-    agentDescription: 'Expand a page plan .defs.ts into three mat1 specs: shared BFF skill, desktop page spec, and controller contract',
+    agentDescription: 'Split a page plan into three defs files and start L2 materialization',
     visibility: 'public',
     beforePromptImplicit,
     beforePromptStep,
@@ -19,7 +18,6 @@ export function createAgent(): IAgentAsync {
 }
 
 // ─── input ────────────────────────────────────────────────────────────────────
-// Accepts JSON {"path":"...","moduleName":"..."} or two plain lines: path\nmoduleName
 
 interface AgentInput {
   path: string;
@@ -83,39 +81,78 @@ async function writeStorFile(mlsPath: string, src: string): Promise<void> {
     const param: IReqCreateStorFile = { ...info, source: src };
     sf = await createStorFile(param, false, false, false);
   } else {
-
     const m = await sf.getOrCreateModel();
     if (m && m.model) m.model.setValue(src);
   }
-
   await mls.stor.localStor.setContent(sf, { contentType: 'string', content: src });
+}
+
+// ─── template builders ────────────────────────────────────────────────────────
+
+function buildPageDefsFile(fileRef: string, pageSpecJson: string, sharedRef: string): string {
+  const bt = '`';
+  const bt3 = '\\\`\\\`\\\`';
+  return (
+    `/// <mls fileReference="${fileRef}"  enhancement="_blank"/>\n` +
+    `export const skill = ${bt}\n` +
+    `## Pages spec\n` +
+    `${bt3}JSON\n` +
+    `${pageSpecJson}\n` +
+    `${bt3}\n` +
+    `\n` +
+    `## Base Class\n` +
+    `${bt3}JSON\n` +
+    `    [[(${sharedRef})]]\n` +
+    `${bt3}\n` +
+    `${bt};\n`
+  );
+}
+
+function buildSharedDefsFile(fileRef: string, commandsJson: string, contractsRef: string): string {
+  const bt = '`';
+  const bt3 = '\\\`\\\`\\\`';
+  return (
+    `/// <mls fileReference="${fileRef}"  enhancement="_blank"/>\n` +
+    `export const skill = ${bt}\n` +
+    `## Pages spec\n` +
+    `${bt3}JSON\n` +
+    `${commandsJson}\n` +
+    `${bt3}\n` +
+    `\n` +
+    `## Contracts\n` +
+    `${bt3}JSON\n` +
+    `    [[(${contractsRef})]]\n` +
+    `${bt3}\n` +
+    `${bt};\n`
+  );
+}
+
+function buildContractDefsFile(fileRef: string, commandsJson: string): string {
+  const bt = '`';
+  const bt3 = '\\\`\\\`\\\`';
+  return (
+    `/// <mls fileReference="${fileRef}"  enhancement="_blank"/>\n` +
+    `export const skill = ${bt}\n` +
+    `## Pages spec\n` +
+    `${bt3}JSON\n` +
+    `${commandsJson}\n` +
+    `${bt3}\n` +
+    `${bt};\n`
+  );
 }
 
 // ─── prompt builder ───────────────────────────────────────────────────────────
 
-function block(title: string, content: string | null): string {
-  return `## ${title}\n${content ? `\`\`\`ts\n${content}\n\`\`\`` : '_not found_'}`;
-}
-
 async function buildHumanPrompt(path: string, moduleName: string): Promise<string> {
-  const project = extractProject(path);
   const pageId = extractPageId(path);
-
   const planSrc = await readStorFile(path);
   if (!planSrc) throw new Error(`[agentMaterializeDefinition] plan file not found: ${path}`);
-
-  const moduleDefs = await readStorFile(`mls-${project}/l5/${moduleName}/module.defs.ts`);
-  const rulesDefs = await readStorFile(`mls-${project}/l5/${moduleName}/rules.defs.ts`);
-  const designSys = await readStorFile(`mls-${project}/l2/designSystem.ts`);
 
   return [
     `## path\n${path}`,
     `## moduleName\n${moduleName}`,
     `## pageId\n${pageId}`,
-    block('Page plan (.defs.ts)', planSrc),
-    block('Module definition (l5/module.defs.ts)', moduleDefs),
-    block('Module rules (l5/rules.defs.ts)', rulesDefs),
-    block('Design system (l2/designSystem.ts)', designSys),
+    `## Plan source\n\`\`\`ts\n${planSrc}\n\`\`\``,
   ].join('\n\n');
 }
 
@@ -126,7 +163,6 @@ async function beforePromptImplicit(
   context: mls.msg.ExecutionContext,
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
-
   const { path, moduleName } = parseInput(userPrompt);
   const humanPrompt = await buildHumanPrompt(path, moduleName);
 
@@ -142,7 +178,7 @@ async function beforePromptImplicit(
       taskTitle: `materialize:${extractPageId(path)}`,
       threadId: context.message.threadId,
       userMessage: path,
-      longTermMemory: {moduleName},
+      longTermMemory: { moduleName },
     },
   };
 
@@ -155,7 +191,7 @@ async function beforePromptStep(
   agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
-  step: mls.msg.AIAgentStep,
+  _step: mls.msg.AIAgentStep,
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
@@ -199,30 +235,33 @@ async function afterPromptStep(
     }
 
     const result = payload.result as AgentOutput['result'];
-    const { path, moduleName, pageId } = result;
+    const { path, moduleName, pageId, commandsJson, pageSpecJson } = result;
     if (!path || !moduleName || !pageId) throw new Error('AI response missing path, moduleName or pageId');
 
     const project = extractProject(path);
 
+    const contractDefsRef = `_${project}_/l1/${moduleName}/layer_2_controllers/${pageId}.defs.ts`;
+    const sharedDefsRef = `_${project}_/l2/${moduleName}/web/shared/${pageId}.defs.ts`;
+    const pageDefsRef = `_${project}_/l2/${moduleName}/web/desktop/page11/${pageId}.defs.ts`;
+    const sharedRef = `_${project}_/l2/${moduleName}/web/shared/${pageId}.ts`;
+    const contractsRef = `_${project}_/l2/${moduleName}/web/contracts/${pageId}.ts`;
+
     await writeStorFile(
-      `mls-${project}/l2/${moduleName}/web/shared/${pageId}.defs.ts`,
-      result.sharedBffFile,
+      `_${project}_/l2/${moduleName}/web/desktop/page11/${pageId}.defs.ts`,
+      buildPageDefsFile(pageDefsRef, pageSpecJson, sharedRef),
     );
     await writeStorFile(
-      `mls-${project}/l2/${moduleName}/web/desktop/page11/${pageId}.defs.ts`,
-      result.desktopPageFile,
+      `_${project}_/l2/${moduleName}/web/shared/${pageId}.defs.ts`,
+      buildSharedDefsFile(sharedDefsRef, commandsJson, contractsRef),
     );
     await writeStorFile(
-      `mls-${project}/l1/${moduleName}/layer_2_controllers/${pageId}.defs.ts`,
-      result.controllerFile,
+      `_${project}_/l1/${moduleName}/layer_2_controllers/${pageId}.defs.ts`,
+      buildContractDefsFile(contractDefsRef, commandsJson),
     );
 
-    const key = mls.stor.getKeyToFile({ project: mls.actualProject || 0, level: 2, folder: `${moduleName}`, shortName: "module", extension: ".ts" });
-    if (!mls.stor.files[key]) {
-      await generateInfoModule(moduleName);
-    }
+    const key = mls.stor.getKeyToFile({ project: mls.actualProject || 0, level: 2, folder: moduleName, shortName: 'module', extension: '.ts' });
+    if (!mls.stor.files[key]) await generateInfoModule(moduleName);
 
-    // Inject pipeline into the original plan defs
     let planSrc = await readStorFile(path);
     if (planSrc) {
       const idx = planSrc.indexOf('export default ');
@@ -232,6 +271,7 @@ async function afterPromptStep(
       const updatedPlan = updateVariableJson(planSrc, 'materializeIndex', pipeline);
       await writeStorFile(path, updatedPlan);
     }
+
   } catch (err) {
     status = 'failed';
     console.error(`[agentMaterializeDefinition](afterPromptStep)`, err);
@@ -253,7 +293,6 @@ async function afterPromptStep(
 
   const payload = step.interaction?.payload?.[0];
   const path = (payload?.type === 'flexible' && payload.result?.path) ? payload.result.path as string : '';
-  //const stepOri = context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
 
   const newStep: mls.msg.AgentIntentAddStep = {
     type: 'add-step',
@@ -276,9 +315,49 @@ async function afterPromptStep(
   return [newStep];
 }
 
+// ─── pipeline ─────────────────────────────────────────────────────────────────
+
+function buildPipeline(project: number, moduleName: string, pageId: string): object[] {
+  const dt = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const contractDefsRef = `_${project}_/l1/${moduleName}/layer_2_controllers/${pageId}.defs.ts`;
+  const sharedDefsRef = `_${project}_/l2/${moduleName}/web/shared/${pageId}.defs.ts`;
+  const pageDefsRef = `_${project}_/l2/${moduleName}/web/desktop/page11/${pageId}.defs.ts`;
+
+  return [
+    {
+      id: 'contract',
+      agent: 'agentL2MaterializeContract',
+      defsPath: contractDefsRef,
+      skillPath: '_102020_/l2/agentMaterializeSolution/skills/genContract.ts',
+      moduleName,
+      outputPath: `_${project}_/l2/${moduleName}/web/contracts/${pageId}.ts`,
+      dependsOn: [],
+      specUpdatedAt: dt,
+    },
+    {
+      id: 'shared',
+      agent: 'agentL2MaterializeSharedPage',
+      defsPath: sharedDefsRef,
+      moduleName,
+      outputPath: `${pageId}.ts`,
+      dependsOn: ['contract'],
+      specUpdatedAt: dt,
+    },
+    {
+      id: 'page',
+      agent: 'agentL2MaterializePageLit',
+      defsPath: pageDefsRef,
+      moduleName,
+      outputPath: `${pageId}.ts`,
+      dependsOn: ['contract', 'shared'],
+      specUpdatedAt: dt,
+    },
+  ];
+}
+
+// ─── module generator ─────────────────────────────────────────────────────────
+
 async function generateInfoModule(moduleName: string) {
-
-
   const src = `/// <mls fileReference="_${mls.actualProject}_/l2/${moduleName}/module.ts" enhancement="_blank" />
 import type { AuraModuleFrontendDefinition, IPaths, IGenomeConfig } from '/_102029_/l2/contracts/bootstrap.js';
 
@@ -289,11 +368,11 @@ export const moduleGenome: Record<string, IGenomeConfig> = {
     layout: 'standard',
   }
 } as const;
-  
+
 export const skills: IPaths = {
   web: {
     sharedPath: '/_${mls.actualProject}_/l2/${moduleName}/web/shared',
-    sharedSkill: '/_102020_/l2/agents/newModule/skills/genPageShared.ts'
+    sharedSkill: '/_102020_/l2/agentMaterializeSolution/skills/genPageShared.ts'
   }
 }
 
@@ -312,78 +391,25 @@ export const moduleShellPreferences = {
 export const moduleFrontendDefinition: AuraModuleFrontendDefinition = {
   pageTitle: '${moduleName}',
   device: 'desktop',
-  navigation: [
-  ],
-  routes: [
-  ],
+  navigation: [],
+  routes: [],
 };
-`
-
+`;
   await saveFile(`_${mls.actualProject}_/l2/${moduleName}/module.ts`, src);
-
 }
 
 async function saveFile(ref: string, src: string) {
-
   const info = mls.stor.convertFileReferenceToFile(ref);
   const k = mls.stor.getKeyToFile(info);
   let sf = mls.stor.files[k];
-
   if (!sf) {
-    const param: IReqCreateStorFile = {
-      ...info,
-      source: src
-    }
-
+    const param: IReqCreateStorFile = { ...info, source: src };
     sf = await createStorFile(param, true, true, true);
-
   } else {
-
     const m = await sf.getOrCreateModel();
     if (m && m.model) m.model.setValue(src);
-
   }
-
   await mls.stor.localStor.setContent(sf, { contentType: 'string', content: src });
-}
-
-// ─── pipeline ────────────────────────────────────────────────────────────────
-
-function buildPipeline(project: number, moduleName: string, pageId: string): object[] {
-  const dt = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-  const controllerDefsRef = `_${project}_/l1/${moduleName}/layer_2_controllers/${pageId}.defs.ts`;
-  const sharedDefsRef = `_${project}_/l2/${moduleName}/web/shared/${pageId}.defs.ts`;
-  const desktopDefsRef = `_${project}_/l2/${moduleName}/web/desktop/page11/${pageId}.defs.ts`;
-
-  return [
-    {
-      id: 'contracts',
-      agent: 'agentL2MaterializeContracts',
-      defsPath: controllerDefsRef,
-      moduleName,
-      outputPath: `_${project}_/l2/${moduleName}/web/contracts/${pageId}.ts`,
-      dependsOn: [],
-      specUpdatedAt: dt,
-    },
-    {
-      id: 'shared',
-      agent: 'agentL2MaterializePageShared',
-      defsPath: sharedDefsRef,
-      moduleName,
-      outputPath: `_${project}_/l2/${moduleName}/web/shared/${pageId}.ts`,
-      dependsOn: ['contracts'],
-      specUpdatedAt: dt,
-    },
-    {
-      id: 'page',
-      agent: 'agentL2MaterializePage',
-      defsPath: desktopDefsRef,
-      moduleName,
-      outputPath: `_${project}_/l2/${moduleName}/web/desktop/page11/${pageId}.ts`,
-      dependsOn: ['contracts', 'shared'],
-      specUpdatedAt: dt,
-    },
-  ];
 }
 
 // ─── output type ──────────────────────────────────────────────────────────────
@@ -395,9 +421,8 @@ export type AgentOutput = {
     path: string;
     moduleName: string;
     pageId: string;
-    sharedBffFile: string;
-    desktopPageFile: string;
-    controllerFile: string;
+    commandsJson: string;  // JSON string of the BFF commands array (Origins[])
+    pageSpecJson: string;  // JSON string of the page spec object (sections/organisms)
   };
 };
 //#endregion
@@ -405,154 +430,39 @@ export type AgentOutput = {
 // ─── system prompt ────────────────────────────────────────────────────────────
 
 const systemPrompt = `
-<!-- modelType: codereasoning -->
+<!-- modelType: mini -->
+<!-- modelTypeList: geminiChat (2.5 pro), code (grok), deepseekchat, codeflash (gemini), deepseekreasoner, mini (4.1) ou nano (openai), codeinstruct (4.1), codereasoning(gpt5), code2 (kimi 2.5) -->
 
 You are agentL2MaterializeDefinition.
-You receive a page plan (.defs.ts) and must produce three mat1 specification files.
+You receive a page plan source file and must extract two JSON payloads from it.
 
-## Output — return ONLY valid JSON, no markdown fences, no prose outside the JSON
+## Your only job
+
+Read the plan source in ## Plan source and extract:
+
+1. **commandsJson** — the array that describes BFF commands (the Origins commands list).
+   It is an array of objects, each with fields like: commandName, kind, input, output, purpose, readsEntities, writesEntities, usecaseRefs, layerContract, rulesApplied.
+   Find the exported const that holds this array and return its value as a compact JSON string.
+
+2. **pageSpecJson** — the object that describes the page structure (sections and organisms).
+   It is an object with fields like: pageId, pageName, actor, purpose, sections, navigationRefs, capabilities, flowRefs.
+   Find the exported const that holds this object and return its value as a compact JSON string.
+
+If either is not found in the source, return an empty array \`[]\` or empty object \`{}\` for that field.
+
+## Output — return ONLY valid JSON, no markdown fences, no prose
 
 {
   "type": "flexible",
   "result": {
-    "path":            "<echo ## path exactly>",
-    "moduleName":      "<echo ## moduleName exactly>",
-    "pageId":          "<echo ## pageId exactly>",
-    "sharedBffFile":   "<full TypeScript source, escaped as single-line JSON string>",
-    "desktopPageFile": "<full TypeScript source, escaped as single-line JSON string>",
-    "controllerFile":  "<full TypeScript source, escaped as single-line JSON string>"
+    "path":         "<echo ## path exactly>",
+    "moduleName":   "<echo ## moduleName exactly>",
+    "pageId":       "<echo ## pageId exactly>",
+    "commandsJson": "<compact JSON string of the BFF commands array>",
+    "pageSpecJson": "<compact JSON string of the page spec object>"
   }
 }
 
-All source values are single-line JSON strings — escape every special character:
-  newline → \\n  |  tab → \\t  |  double-quote → \\"  |  backslash → \\\\
-
----
-
-## sharedBffFile  →  l2/{moduleName}/web/shared/{pageId}.defs.ts
-
-Full TypeScript skill file:
-
-/// <mls fileReference="_{project}_/l2/{moduleName}/web/shared/{pageId}.defs.ts" enhancement="_blank" />
-export const skill = \`
-# {pageId} — Shared BFF
-
-## Purpose
-<what the page does and who uses it>
-
-## Target Genome
-device: all
-folder: web/shared/
-
-## BFF Commands
-<for each bffCommand from the plan:>
-### {commandName}
-- kind: query | command | mutation
-- execBff call: execBff('{moduleName}.{commandName}', input)
-- input: <exact shape from bffCommand.input>
-- output: <exact shape from bffCommand.output>
-- usecase: <usecaseRefs[0]>
-
-## Shared Files
-- web/shared/{pageId}.ts — BFF call functions (one function per command)
-- web/shared/{pageId}Formatters.ts — display helpers and field formatters
-
-## Page Behaviour
-<BFF call sequence on load, on filter/param change, loading state, error state, empty state>
-
-## Important Data
-<key fields from BFF output that drive the UI>
-
-## Origins
-<paste here the bffCommands array exactly as it appears in the source plan — no changes>
-\`;
-
----
-
-## desktopPageFile  →  l2/{moduleName}/web/desktop/page11/{pageId}.defs.ts
-
-Full TypeScript skill file:
-
-/// <mls fileReference="_{project}_/l2/{moduleName}/web/desktop/page11/{pageId}.defs.ts" enhancement="_blank" />
-export const skill = \`
-# {pageId} — Desktop layout
-
-## Purpose
-<what the page does>
-
-## Target Genome
-device: desktop | layout: page11 | folder: web/desktop/page11/
-
-## Layout
-<overall page structure: which sections go where in the grid>
-
-## Sections
-<for each section from the plan:>
-### {sectionName}
-- mode: view | edit
-- position in layout: <column / row / full-width / etc>
-
-## Organisms
-<for each organism inside each section:>
-### {organismName} ({sectionName})
-- purpose: <from plan>
-- design system component: <closest match based on designSystem.ts>
-- feeds from: {commandName}
-- displays: <readsFields list>
-- writes: <writesFields list>
-- user actions → handlers: <userActions mapped to event handler names>
-
-## State Model
-<per section: loading skeleton, error banner, empty state>
-
-## Navigation
-<outbound links from navigationRefs: target pageId and trigger label>
-
-## Origins
-<paste here the pageDefinition object exactly as it appears in the source plan — no changes>
-\`;
-
----
-
-## controllerFile  →  l1/{moduleName}/layer_2_controllers/{pageId}.defs.ts
-
-Full TypeScript file with a structured const — one entry per bffCommand:
-
-/// <mls fileReference="_{project}_/l1/{moduleName}/layer_2_controllers/{pageId}.defs.ts" enhancement="_blank" />
-export const {pageId}Controllers = {
-  schemaVersion: "2026-06-06",
-  artifactType: "controllerContract",
-  moduleName: "{moduleName}",
-  commands: [
-    {
-      commandName: "{bffCommand.commandName}",
-      routeKey: "{moduleName}.{commandName}",
-      kind: "query | command | mutation",
-      actor: "{pageDefinition.actor}",
-      authRequired: true,
-      inputShape: <exact copy of bffCommand.input — no field changes>,
-      outputShape: <exact copy of bffCommand.output — no field changes>,
-      usecaseBinding: "{bffCommand.usecaseRefs[0]}",
-      layerContract: {
-        mustCallLayer: "layer_3_usecases",
-        directTableAccessForbidden: true
-      }
-    }
-  ]
-} as const;
-
-export default {pageId}Controllers;
-
-Rules for controllerFile:
-- One command entry per bffCommand in the plan — no more, no less
-- inputShape and outputShape are exact copies — do not add, remove or rename fields
-- layerContract is always the fixed value shown above
-- authRequired is true unless actor is explicitly anonymous or public
-
----
-
-## General rules
-- Use the same natural language as the plan for user-facing labels and descriptions
-- Use English camelCase for all TypeScript identifiers
-- The project number in fileReference comes from the ## path header (e.g. mls-102030 → 102030)
+Both commandsJson and pageSpecJson must be valid compact JSON strings (no pretty-printing, no trailing commas).
+Escape any double-quotes inside them with \\" and any backslashes with \\\\.
 `;

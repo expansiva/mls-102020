@@ -9,6 +9,8 @@ import {
   assertRecord,
   assertString,
   optionalString,
+  compactFinalPlan,
+  summarizeRecords,
   createParallelDynamicAgentStepIntent,
   createHoldIndexForReviewIntents,
   createPlannerPromptReadyIntent,
@@ -367,23 +369,22 @@ function buildHumanPrompt(
   pluginPlan: PlanPluginsOutput,
   initialMetricsRequested: boolean,
 ): string {
+  // TODO-FINAL-030 (R1): compact context. The persistence index only needs entity ownership and
+  // who reads/writes what — not the full final plan, ontology fields or full mdm/horizontal/plugin
+  // bodies. Ontology fields are added later in the table definitions.
+  const reduced = {
+    finalPlan: compactFinalPlan(finalPlan.result),
+    mdmDomains: summarizeRecords(mdmPlan.result.mdmDomains, ['domainId', 'title', 'masterEntities']),
+    horizontalModules: summarizeRecords(horizontalPlan.result.horizontalModules, ['horizontalModuleId', 'reusedOntologyRefs']),
+    plugins: summarizeRecords(pluginPlan.result.plugins, ['pluginId', 'provider']),
+    initialMetricsRequested,
+  };
+
   return `## Planned step args
 ${args}
 
-## Final solution plan
-${JSON.stringify(finalPlan, null, 2)}
-
-## MDM plan
-${JSON.stringify(mdmPlan, null, 2)}
-
-## Horizontal plan
-${JSON.stringify(horizontalPlan, null, 2)}
-
-## Plugin plan
-${JSON.stringify(pluginPlan, null, 2)}
-
-## Initial metrics/dashboard requested
-${initialMetricsRequested}
+## Reduced persistence-planning context
+${JSON.stringify(reduced, null, 2)}
 `;
 }
 

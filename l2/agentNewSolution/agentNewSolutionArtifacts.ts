@@ -107,18 +107,25 @@ export async function saveNewSolutionAgentTracePayload(
   }
 }
 
+export interface SavePlanArtifactsOptions {
+  // Ontology entities (PascalCase id -> entity with fields) from the final plan. Used to enrich
+  // MDM l1 reference artifacts with the entity shape for mock/usecase materialization.
+  ontologyEntities?: Record<string, unknown>;
+}
+
 export async function saveNewSolutionPlanArtifacts(
   context: mls.msg.ExecutionContext,
   agentName: string,
   step: mls.msg.AIAgentStep,
   output: unknown,
+  options?: SavePlanArtifactsOptions,
 ): Promise<PlanArtifactReference[]> {
   try {
     if (!isRecord(output) || output.status !== 'ok') return [];
 
     const moduleName = normalizeModuleFolderName(getModuleNameFromPlannerOutput(output) || getInitialModuleName(context), 'module');
     const planId = readString((step as any).planning?.planId) || '';
-    const candidates = buildPlanArtifactCandidates(agentName, moduleName, output);
+    const candidates = buildPlanArtifactCandidates(agentName, moduleName, output, options);
     if (candidates.length === 0) return [];
 
     const saved: PlanArtifactReference[] = [];
@@ -398,7 +405,7 @@ function getModuleNameFromPlannerOutput(output: Record<string, unknown>): string
   return getModuleNameFromPlannerResult(result) || getModuleNameFromPlannerResult(output);
 }
 
-function buildPlanArtifactCandidates(agentName: string, moduleName: string, output: Record<string, unknown>): PlanArtifactCandidate[] {
+function buildPlanArtifactCandidates(agentName: string, moduleName: string, output: Record<string, unknown>, options?: SavePlanArtifactsOptions): PlanArtifactCandidate[] {
   const result = getRecord(output.result);
   if (!result) return [];
 
@@ -540,13 +547,14 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
   if (agentName === 'agentPlanMDM') {
     const domains = Array.isArray(result.mdmDomains) ? result.mdmDomains : [];
     const existingFolders = getExistingModuleFolders();
+    const ontologyEntities = isRecord(options?.ontologyEntities) ? options!.ontologyEntities! : {};
     return domains.flatMap((value): PlanArtifactCandidate[] => {
       const domain = getRecord(value);
       const id = readString(domain?.domainId);
       if (!domain || !id) return [];
       const folder = normalizeModuleFolderName(id, id);
       const referenceOnly = existingFolders.has(folder);
-      return [{
+      const candidates: PlanArtifactCandidate[] = [{
         artifactType: 'mdmDomain',
         artifactId: id,
         exportName: `${toExportIdentifier(id)}MdmModulePlan`,
@@ -561,6 +569,39 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
           domain,
         },
       }];
+
+      // Per-masterEntity l1 reference in the CONSUMING module's layer_1_external. Flagged as MDM
+      // and generateTable:false so it is NOT materialized as a physical table, but the entity
+      // shape (from the ontology) is available for usecase materialization and l1 mock generation.
+      const masterEntities = Array.isArray(domain.masterEntities) ? domain.masterEntities : [];
+      const governanceRules = Array.isArray(domain.governanceRules) ? domain.governanceRules : [];
+      for (const entityValue of masterEntities) {
+        const entityName = readString(entityValue);
+        if (!entityName) continue;
+        const ontologyEntity = getRecord(ontologyEntities[entityName]);
+        candidates.push({
+          artifactType: 'mdmEntity',
+          artifactId: entityName,
+          exportName: `${toExportIdentifier(entityName)}Mdm`,
+          moduleName,
+          data: {
+            kind: 'mdmEntity',
+            entity: entityName,
+            ownership: 'mdmOwned',
+            generateTable: false,
+            moduleId: moduleName,
+            domainId: id,
+            domainTitle: readString(domain.title),
+            sourceOfTruth: readString(domain.sourceOfTruth),
+            governanceRules,
+            title: readString(ontologyEntity?.title) || entityName,
+            description: readString(ontologyEntity?.description),
+            fields: Array.isArray(ontologyEntity?.fields) ? ontologyEntity!.fields : [],
+          },
+        });
+      }
+
+      return candidates;
     });
   }
 
@@ -622,6 +663,10 @@ function resolvePlanArtifactFileInfo(candidate: PlanArtifactCandidate): Pick<mls
     return { project, level: 5, folder: candidate.moduleName, shortName: 'module', extension: '.defs.ts' };
   }
   if (candidate.artifactType === 'table' || candidate.artifactType === 'metricTable') {
+    return { project, level: 1, folder: `${candidate.moduleName}/layer_1_external`, shortName, extension: '.defs.ts' };
+  }
+  // MDM entity reference lives in the consuming module's layer_1_external (generateTable:false).
+  if (candidate.artifactType === 'mdmEntity') {
     return { project, level: 1, folder: `${candidate.moduleName}/layer_1_external`, shortName, extension: '.defs.ts' };
   }
   if (candidate.artifactType === 'usecase') {
