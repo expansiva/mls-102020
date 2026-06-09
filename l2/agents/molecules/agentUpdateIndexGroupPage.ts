@@ -111,11 +111,6 @@ async function afterPromptStep(
         status: 'completed',
     };
 
-    if (context.isTest) {
-        console.info(JSON.stringify(payload.result, null, 2));
-        return [updateStatus];
-    }
-
     const { fileReference, compileOk } = await writeFiles(payload.result);
 
     // ── extract current group from fileReference ──────────────────────────────
@@ -187,8 +182,15 @@ async function afterPromptStep(
 
 // =========================================================================== HELPERS
 
+function cleanPrompt(raw: string): string {
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith('@@')) return trimmed;
+    const spaceIndex = trimmed.indexOf(' ');
+    return spaceIndex < 0 ? '' : trimmed.slice(spaceIndex + 1).trim();
+}
+
 function resolveTargetGroups(agentName: string, userPrompt: string): string[] {
-    const raw = (userPrompt || '').trim().toLowerCase();
+    const raw = cleanPrompt(userPrompt || '').toLowerCase();
 
     if (!raw || raw === 'all') {
         return skillList.map((s) => s.name);
