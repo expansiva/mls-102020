@@ -8,6 +8,8 @@ import {
   assertPriority,
   assertRecord,
   assertString,
+  compactFinalPlan,
+  summarizeRecords,
   createHoldIndexForReviewIntents,
   createParallelDynamicAgentStepIntent,
   createPlannerPromptReadyIntent,
@@ -313,26 +315,23 @@ function buildHumanPrompt(
   metricTableDefinitions: PlanMetricTableDefinitionOutput[],
   usecasePlan: PlanUsecaseEntitiesOutput,
 ): string {
+  // TODO-FINAL-030 (R1): compact context. The workflow index needs capabilities, actors, approved
+  // workflows and the ids of module tables / usecases / metrics it can reference — not the full
+  // final plan, full table/metric definitions or the full usecase plan.
+  const reduced = {
+    finalPlan: compactFinalPlan(finalPlan.result),
+    persistenceTables: summarizeRecords(persistenceIndex.result.tables, ['tableId', 'tableName', 'rootEntity']),
+    metricTables: summarizeRecords(metricsIndex.result.metricTables, ['metricTableId', 'title']),
+    metricTableDefinitions: summarizeRecords(metricTableDefinitions.map(m => m.result.metricTableDefinition), ['metricTableId']),
+    usecases: summarizeRecords(usecasePlan.result.usecases, ['usecaseId', 'title', 'actor']),
+  };
+  void tableDefinitions; // table columns not needed to plan the workflow index
+
   return `## Planned step args
 ${args}
 
-## Final solution plan
-${JSON.stringify(finalPlan, null, 2)}
-
-## Persistence index
-${JSON.stringify(persistenceIndex, null, 2)}
-
-## Table definitions
-${JSON.stringify(tableDefinitions, null, 2)}
-
-## Metrics index
-${JSON.stringify(metricsIndex, null, 2)}
-
-## Metric table definitions
-${JSON.stringify(metricTableDefinitions, null, 2)}
-
-## Usecase plan
-${JSON.stringify(usecasePlan, null, 2)}
+## Reduced workflow-planning context
+${JSON.stringify(reduced, null, 2)}
 `;
 }
 

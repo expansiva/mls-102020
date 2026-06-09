@@ -6,6 +6,8 @@ import {
   assertArray,
   assertRecord,
   assertString,
+  compactFinalPlan,
+  summarizeRecords,
   createHoldIndexForReviewIntents,
   createPlannerPromptReadyIntent,
   createPlannerVariableToolSchema,
@@ -399,23 +401,22 @@ function buildHumanPrompt(
   metricsIndex: PlanMetricsIndexOutput,
   metricTableDefinitions: PlanMetricTableDefinitionOutput[],
 ): string {
+  // TODO-FINAL-030 (R1): compact context. Usecase planning references tables/entities by id/name
+  // and ownership (to mark mdm/horizontal/plugin), and which metrics to update — not the full
+  // final plan, full table columns or full metric table definitions.
+  const reduced = {
+    finalPlan: compactFinalPlan(finalPlan.result),
+    persistenceTables: summarizeRecords(persistenceIndex.result.tables, ['tableId', 'tableName', 'rootEntity', 'sourceEntities', 'embeddedEntities']),
+    excludedEntities: summarizeRecords(persistenceIndex.result.persistenceScope.excludedEntities, ['entityId', 'ownership']),
+    metricTables: summarizeRecords(metricsIndex.result.metricTables, ['metricTableId', 'tableName', 'sourceBaseTables', 'sourceEntities']),
+  };
+  void tableDefinitions; void metricTableDefinitions; // column/hypertable detail not needed here
+
   return `## Planned step args
 ${args}
 
-## Final solution plan
-${JSON.stringify(finalPlan, null, 2)}
-
-## Persistence index
-${JSON.stringify(persistenceIndex, null, 2)}
-
-## Table definitions
-${JSON.stringify(tableDefinitions, null, 2)}
-
-## Metrics index
-${JSON.stringify(metricsIndex, null, 2)}
-
-## Metric table definitions
-${JSON.stringify(metricTableDefinitions, null, 2)}
+## Reduced usecase-planning context
+${JSON.stringify(reduced, null, 2)}
 `;
 }
 

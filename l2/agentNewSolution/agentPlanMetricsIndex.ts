@@ -8,6 +8,8 @@ import {
   assertPriority,
   assertRecord,
   assertString,
+  compactFinalPlan,
+  summarizeRecords,
   createParallelDynamicAgentStepIntent,
   createHoldIndexForReviewIntents,
   createPlannerPromptReadyIntent,
@@ -426,20 +428,21 @@ function buildHumanPrompt(
   tableDefinitions: PlanTableDefinitionOutput[],
   initialMetricsRequested: boolean,
 ): string {
+  // TODO-FINAL-030 (R1): compact context. The metrics index needs approved metrics/dashboards,
+  // capabilities and the base tables to derive metrics from — not the full final plan or full
+  // table definitions (columns). Table summaries (id/name/rootEntity) are enough.
+  const reduced = {
+    initialMetricsRequested,
+    finalPlan: compactFinalPlan(finalPlan.result),
+    persistenceTables: summarizeRecords(persistenceIndex.result.tables, ['tableId', 'tableName', 'rootEntity', 'sourceEntities']),
+    tableDefinitions: summarizeRecords(tableDefinitions.map(t => t.result.tableDefinition), ['tableId', 'tableName', 'rootEntity']),
+  };
+
   return `## Planned step args
 ${args}
 
-## Initial metrics/dashboard requested
-${initialMetricsRequested}
-
-## Final solution plan
-${JSON.stringify(finalPlan, null, 2)}
-
-## Persistence index
-${JSON.stringify(persistenceIndex, null, 2)}
-
-## Table definitions
-${JSON.stringify(tableDefinitions, null, 2)}
+## Reduced metrics-planning context
+${JSON.stringify(reduced, null, 2)}
 `;
 }
 

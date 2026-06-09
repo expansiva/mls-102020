@@ -760,6 +760,61 @@ Criterio de aceite:
 - Restart de um critic/repair falho nao gera "Parent step not found", 409 em loop, nem recursao infinita.
 - O usuario consegue reiniciar o planejamento de um indice de forma consistente.
 
+### TODO-FINAL-030 - Manter a task leve: reduzir inputs e limpar payloads cedo (teto ~400KB)
+
+Problema:
+- A task acumula muito rapido e pode passar ~400KB, ponto em que fica indisponivel. Se o usuario deixa rodando e so volta depois (ex.: 20 min), a task pode nao estar mais acessivel para ver o erro.
+- Baseline medido (run30, `agents/newSolution/run30/tasks2Analise.json`): total ~539KB. O peso esta nos INPUTS (human prompts), nao nos payloads:
+  - inputs: workflowIndex ~112KB, usecaseEntities ~94KB, metricsIndex ~67KB, persistenceIndex ~42KB, coverage ~21KB, pageIndex ~13KB (~349KB).
+  - payloads: finalize ~29KB, usecase ~16KB, pageIndex ~15KB, criticPlanIndex ~10KB, coverage ~8.5KB, metrics/persistence/workflowIndex ~20KB (~104KB).
+- Causa raiz dos inputs: os agentes de INDICE `persistenceIndex/metricsIndex/workflowIndex/usecaseEntities` ainda despejam `finalPlan` completo + todos os outputs anteriores no prompt. A reducao de tokens (TODO-006..009) so cobriu definitions + pageIndex + coverage; os indices grandes ficaram de fora.
+- Causa dos payloads remanescentes: os indices guardam payload (`cleaner="input"`) porque os getters (`getPlanXIndexOutput` via `getPlannerOutputWithRepair`) ainda leem da task; falta fallback por checkpoint.
+
+Decisao/estrategia: limpar CEDO e incrementalmente, nunca tarde. Dois eixos: (A) gerar inputs menores; (B) limpar payloads assim que o consumidor terminou e o artefato/checkpoint ja existe.
+
+Rotinas propostas:
+
+R1 — Reduzir inputs dos 4 indices grandes (maior ganho, baixo risco, so prompt; mesmo padrao de TODO-006..009):
+- `agentPlanPersistenceIndex`, `agentPlanMetricsIndex`, `agentPlanWorkflowIndex`, `agentPlanUsecaseEntities`: trocar o dump completo por um snapshot compacto (final plan compacto + so os refs/ids que o indice precisa). Estimativa: corta a maior parte dos ~315KB de input desses 4.
+
+**EXECUTED R1** (2026-06-08):
+- Helper compartilhado `compactFinalPlan(finalPlan.result, includeOntologyFields=false)` em `agentPlanningShared.ts`: resume modulo/actors/capabilities/userActions/rules + ontologyEntities SEM os `fields` (o grosso) + approvedArtifacts por id/title. Os indices nao precisam de fields (vem nas table definitions depois).
+- `agentPlanPersistenceIndex`: prompt agora envia `{ finalPlan: compact, mdmDomains(summary), horizontalModules(summary), plugins(summary), initialMetricsRequested }` em vez dos planos completos.
+- `agentPlanMetricsIndex`: `{ finalPlan: compact, persistenceTables(summary), tableDefinitions(so ids/nome), initialMetricsRequested }` — dropou table definitions completas.
+- `agentPlanWorkflowIndex`: `{ finalPlan: compact, persistenceTables(summary), metricTables(ids/title), usecases(id/title/actor) }` — dropou final plan completo, table/metric definitions completas e usecase plan completo.
+- `agentPlanUsecaseEntities`: `{ finalPlan: compact, persistenceTables(summary), excludedEntities(id/ownership), metricTables(summary) }` — dropou table/metric definitions completas (usecases referenciam por nome/ownership, nao por coluna).
+- Esperado: corta a maior parte dos ~315KB de input desses 4 (o `fields` da ontologia + dumps completos eram o grosso) e acelera a geracao (prompt menor).
+- Build: `tsc -p tsconfig.frontend.json` ok. R2-R7 (limpeza de payload por checkpoint/cedo) seguem pendentes.
+
+R2 — Garantir limpeza imediata de input no complete: confirmar que TODO step de indice/def completa com `cleaner` (input ja limpa; indices via `approveIndexIntents` usam `input`). Inputs nunca devem sobreviver ao complete do proprio step.
+
+R3 — Fallback por checkpoint nos getters de indice (pre-requisito para limpar payload de indice):
+- `getPlanPersistenceIndexOutput/getPlanMetricsIndexOutput/getPlanWorkflowIndexOutput/getPlanPageIndexOutput` (e `getPlanUsecaseEntitiesOutput`): quando o payload da task nao existir, ler do `checkpoint-{indexName}.json` (ja gravado por `saveNewSolutionIndexCheckpoint`, TODO-023). Espelha o que ja foi feito para definitions folha (fallback por arquivo).
+
+R4 — Limpeza de payload de indice apos consumidores (cedo):
+- Apos o fan-out de table definitions completar -> limpar payload do `persistenceIndex`.
+- Apos metric table definitions -> limpar `metricsIndex`.
+- Apos workflow definitions -> limpar `workflowIndex`.
+- Apos page definitions -> limpar `pageIndex`.
+- `usecasePlan` -> apos workflowIndex/defs + pageIndex/defs + coverage; persistir o plano completo em checkpoint e limpar.
+- Mecanismo: emitir `update-status` com `cleaner="input_output"` no step (ja completo) do indice quando o pai do fan-out completa. `intentUpdateStatus` ja re-limpa step completo (mesmo status + cleaner). Disparo no ponto de conclusao do parent paralelo (orquestracao) ou via o agente que fecha o grupo.
+
+R5 — `finalize` plan payload (~29KB, consumido por quase todos):
+- E o backbone. Persistir em `l5/{module}/module.defs.ts` (ja salvo) e dar fallback por arquivo em `getFinalizeSolutionPlanOutput`; entao limpar o payload da task no fim (apos o ultimo consumidor / na coverage).
+
+R6 — Coverage valida o PERSISTIDO, nao a task:
+- `agentValidateSolutionCoverage` deve montar o snapshot a partir do manifesto + checkpoints + `.defs` salvos (nao dos payloads da task). Assim todos os payloads de indice/plan podem ser limpos ANTES da coverage. Alinhado com TODO-023/024 (coverage = relatorio nao-bloqueante).
+
+R7 — Telemetria opcional de tamanho:
+- Helper para estimar bytes da task em pontos-chave (apos cada grupo) e logar/trace, para detectar regressao de tamanho cedo.
+
+Ordem recomendada: R1 (ganho imediato, isolado) -> R3 -> R4/R5 -> R6 -> R2/R7. R1 sozinho provavelmente ja traz a task para baixo de 400KB no pico; R3-R6 garantem que ela encolhe ao longo do fluxo.
+
+Criterio de aceite:
+- Pico de tamanho da task fica com folga abaixo de 400KB num modulo realista (ex.: petShop/barbershop com ~5 dominios, ~5 workflows, ~10 paginas).
+- Indices/plan payloads nao permanecem na task depois que seus consumidores terminaram; coverage roda sobre artefatos persistidos.
+- Retry/coverage/materializacao continuam funcionando lendo de checkpoint/arquivo (nada quebra por payload ausente).
+
 ### TODO-FINAL-025 - Reaproveitar plugins existentes e evitar drafts duplicados em `l2/plugins`
 
 Problema:
@@ -1032,5 +1087,6 @@ Criterio de aceite:
 10. Completar mapeamento/metadata de artefatos plan, incluindo workflow global com refs de modulo: `TODO-FINAL-013` (obsoleto, coberto pelo writer/014), `TODO-FINAL-015` (feito), `TODO-FINAL-016` (feito/ja cumprido), `TODO-FINAL-027` (feito).
 11. Criar testes e politica de trace: `TODO-FINAL-017`, `TODO-FINAL-018`.
 12. Consolidar regras transversais: `TODO-FINAL-019`, `TODO-FINAL-020`.
+13. Manter a task leve (teto ~400KB): `TODO-FINAL-030` — reduzir inputs dos indices (R1, maior ganho) + limpar payloads cedo via checkpoint/arquivo (R3-R6).
 
 Resposta: um exemplo de módule dentro do <module>/l2, pode ser achada em /Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/agents/newSolution/run30/module.ts
