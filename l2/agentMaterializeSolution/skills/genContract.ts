@@ -71,14 +71,36 @@ Apply these rules recursively to every key/value in \`inputShape\` and \`outputS
 - Key does NOT end with \`?\` → required: \`cartId: ...\`
 
 ### Value type mapping
-| Shape value | TypeScript type |
-|---|---|
-| \`"string"\` | \`string\` |
-| \`"number"\` | \`number\` |
-| \`"boolean"\` | \`boolean\` |
-| \`"A|B|C"\` (pipe-separated literals) | \`'A' | 'B' | 'C'\` |
-| Nested plain object \`{ ... }\` | Inline object type \`{ field: type; ... }\` — apply these rules recursively |
-| Array with one object element \`[{ ... }]\` | \`Array<{ field: type; ... }>\` — apply these rules recursively to the element |
+
+You are generating **TypeScript** — not JSON Schema, not OpenAPI, not SQL. Use only native TypeScript primitive types.
+
+| Shape value | TypeScript type | Reason |
+|---|---|---|
+| \`"string"\` | \`string\` | |
+| \`"number"\` | \`number\` | |
+| \`"boolean"\` | \`boolean\` | |
+| \`"A|B|C"\` (pipe-separated literals) | \`'A' | 'B' | 'C'\` | union literal |
+| Nested plain object \`{ ... }\` | Inline object type \`{ field: type; ... }\` | apply rules recursively |
+| Array with one object element \`[{ ... }]\` | \`Array<{ field: type; ... }>\` | apply rules recursively to the element |
+
+**Non-TypeScript schema types — always map to a TypeScript primitive:**
+
+| Shape value | TypeScript type | Never write |
+|---|---|---|
+| \`"date"\` | \`string\` | ~~Date~~ |
+| \`"dateTime"\` / \`"datetime"\` / \`"date-time"\` | \`string\` | ~~Date~~ |
+| \`"time"\` | \`string\` | ~~Date~~ |
+| \`"uuid"\` / \`"guid"\` | \`string\` | ~~UUID~~ |
+| \`"email"\` | \`string\` | ~~Email~~ |
+| \`"url"\` / \`"uri"\` | \`string\` | ~~URL~~ |
+| \`"integer"\` / \`"int"\` / \`"int32"\` / \`"int64"\` | \`number\` | ~~Integer~~ ~~int~~ |
+| \`"float"\` / \`"double"\` / \`"decimal"\` | \`number\` | ~~Float~~ ~~Decimal~~ |
+| \`"bigint"\` / \`"long"\` | \`number\` | ~~BigInt~~ (unless explicitly required) |
+| \`"any"\` / \`"object"\` / \`"json"\` | \`unknown\` | ~~any~~ (prefer \`unknown\`) |
+| \`"void"\` / \`"null"\` | \`null\` | |
+| \`"array"\` (untyped) | \`unknown[]\` | |
+
+**Rule**: if the shape value does not appear in either table above and is not a pipe-separated union, map it to \`string\` — do not invent a type.
 
 ### Nesting
 For nested objects and array items, keep the type inline (do NOT generate extra named interfaces for sub-shapes). Apply the same optionality and type rules recursively to every nested field.

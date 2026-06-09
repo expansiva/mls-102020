@@ -7,6 +7,7 @@ import { convertFileNameToTag, convertTagToFileName } from '/_102027_/l2/utils.j
 import { getMaterializeOrchestrator } from '/_102020_/l2/agentMaterializeSolution/materializeOrchestrator.js';
 import { addModuleNav, addModuleRoute } from '/_102020_/l2/newModule/astModuleFront.js';
 import { addNav, addPage } from '/_102020_/l2/newModule/astIndex.js';
+import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -290,15 +291,18 @@ async function getSkill(info: { path: string, item: any, project?: number }, mod
   const genome = mod.moduleGenome[genomeKey];
   if (!genome) throw new Error(`[agentL2MaterializePageLit] no genome config for key "${genomeKey}"`);
 
-  const prj = await import(`/_${project}_/l2/project.js`) as any;
-  if (!prj || !prj.projectConfig) throw new Error('[agentL2MaterializePageLit] Not found projectConfig');
+  /*const prj = await import(`/_${project}_/l2/project.js`) as any;
+  if (!prj || !prj.projectConfig) throw new Error('[agentL2MaterializePageLit] Not found projectConfig');*/
 
-  if (!prj.projectConfig.layouts) throw new Error('[agentL2MaterializePageLit] Not found projectConfig layout dont config');
+  const prj = await getConfigProject(mls.actualProject || 0) as any;
+  if (!prj ) throw new Error('[agentL2MaterializePageLit] Not found projectConfig');
 
-  const layout = Object.values(prj.projectConfig.layouts).find((v: any) => v.name === genome.layout) as any;
+  if (!prj.layouts) throw new Error('[agentL2MaterializePageLit] Not found projectConfig layout dont config');
+
+  const layout = Object.values(prj.layouts).find((v: any) => v.name === genome.layout) as any;
   if (!layout) throw new Error('[agentL2MaterializePageLit] Not found projectConfig layout dont config to:' + genome.layout);
 
-  const designSystem = Object.values(prj.projectConfig.designSystems).find((ds: any) => ds.name === genome.designSystem) as any;
+  const designSystem = Object.values(prj.designSystems).find((ds: any) => ds.name === genome.designSystem) as any;
   if (!designSystem) throw new Error('[agentL2MaterializePageLit] Not found projectConfig designSystem dont config to:' + genome.designSystem);
 
   const fileName = info.item.outputPath.startsWith('/') ? info.item.outputPath.slice(1) : info.item.outputPath;
