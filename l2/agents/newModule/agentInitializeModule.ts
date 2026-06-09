@@ -3,7 +3,8 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAgentStepByAgentName } from "/_102027_/l2/aiAgentHelper.js";
-import { prepareClarificationElement } from "/_102027_/l2/aiAgentOrchestration.js";
+import { finishClarification } from "/_102027_/l2/aiAgentOrchestration.js";
+import '/_102025_/l2/widgetQuestionsForClarification.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -118,7 +119,34 @@ async function beforeClarificationStep(
   };
 
   const intentsToClarification: mls.msg.AgentIntent[] = [newStep, updateStatus];
-  const div = await prepareClarificationElement(agent, context, step.stepId, parentStep.stepId, intentsToClarification, json);
+
+  // Build the clarification widget locally (it lives in mls-102025, the production
+  // frontend) and wire it to the shared orchestration via finishClarification.
+  let ret: any = json;
+  if (typeof json === 'string') ret = JSON.parse(json || '');
+  const clarificationValue = {
+    taskId: context.task.PK,
+    stepId: 0,
+    title: ret.title,
+    legends: ret.legends || [],
+    userLanguage: ret.userLanguage || '',
+    questions: ret.questions,
+  };
+
+  const div = document.createElement('div');
+  const clariEl = document.createElement('widget-questions-for-clarification-102025');
+
+  clariEl.addEventListener('clarification-finish', (e: Event) => {
+    const { detail } = e as CustomEvent<{ value: unknown; action: 'continue' | 'cancel' }>;
+    const { value, action } = detail;
+    const normalizedValue =
+      value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+    finishClarification(agent, step.stepId, parentStep.stepId, intentsToClarification, context, normalizedValue, action);
+  });
+
+  (clariEl as any).value = clarificationValue;
+  clariEl.setAttribute('mode', 'new');
+  div.appendChild(clariEl);
   return div;
 
 }

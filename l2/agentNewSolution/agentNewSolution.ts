@@ -2,6 +2,21 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAgentStepByAgentName } from '/_102027_/l2/aiAgentHelper.js';
+import {
+  getExistingModuleFolders,
+  reserveNewSolutionModuleArtifacts,
+  saveNewSolutionAgentTracePayload,
+  saveTraceMemorySeed,
+} from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import {
+  normalizeInitialPlan,
+  PLAN_IDS,
+  type InitialNewSolutionPlan,
+  type NewSolutionPlanId,
+} from '/_102020_/l2/agentNewSolution/agentNewSolutionPlan.js';
+
+export { normalizeInitialPlan, PLAN_IDS };
+export type { InitialNewSolutionPlan, NewSolutionPlanId };
 
 export function createAgent(): IAgentAsync {
   return {
@@ -17,35 +32,6 @@ export function createAgent(): IAgentAsync {
 
 type PlannedExecutionMode = 'sequential' | 'parallel_static' | 'parallel_dynamic' | 'manual_later';
 type PlannedExecutionHost = 'client' | 'server' | 'either';
-
-export const PLAN_IDS = [
-  'org-requirements',
-  'org-planner',
-  'org-materialization',
-  'req-discover-scope',
-  'req-clarification-answer',
-  'req-recommend-implementations',
-  'req-implementation-decisions',
-  'plan-solution-blueprint',
-  'plan-blueprint-review',
-  'plan-finalize-solution-plan',
-  'plan-mdm',
-  'plan-horizontals',
-  'plan-plugins',
-  'plan-persistence-index',
-  'plan-table-definition',
-  'plan-metrics-index',
-  'plan-metric-table-definition',
-  'plan-usecase-entities',
-  'plan-workflow-index',
-  'plan-workflow-definition',
-  'plan-agents',
-  'plan-page-index',
-  'plan-page-definition',
-  'plan-validate-solution-coverage',
-] as const;
-
-export type NewSolutionPlanId = typeof PLAN_IDS[number];
 
 type PlannedAIPayload = mls.msg.AIPayload & {
   planning: StepPlanning;
@@ -80,11 +66,7 @@ async function beforePromptImplicit(
   const normalizedPrompt = (userPrompt || '').trim();
   if (normalizedPrompt.length < 5) throw new Error('invalid prompt');
 
-  const folders = Array.from(new Set(
-    Object.values(mls.stor.files)
-      .filter(f => f.project === mls.actualProject && f.level !== 3 && f.folder)
-      .map(f => f.folder)
-  ));
+  const folders = Array.from(getExistingModuleFolders());
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -106,6 +88,9 @@ async function beforePromptImplicit(
       longTermMemory: {
         taskName: 'newModule',
         flowName: 'newSolution',
+        // TODO-FINAL-018: trace policy flag (not sent to LLM — `_` prefix). All planning agents
+        // consult it via shouldSaveTrace before writing trace files. Default true.
+        ...saveTraceMemorySeed(),
       },
     }
   };
@@ -122,27 +107,43 @@ async function afterPromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   if (!agent || !context || !step) throw new Error(`[afterPromptStep] invalid params, agent:${!!agent}, context:${!!context}, step:${!!step}`);
 
-  const payload = step.interaction?.payload?.[0] as Output | undefined;
-  if (!payload) throw new Error(`[afterPromptStep] missing payload`);
+  // TODO-FINAL-028: this is the ROOT planning step. It has no resolvable parent step,
+  // so a thrown error here is dropped by the generic orchestration handler (the step
+  // stays waiting_after_prompt and the task fails with no visible reason). Catch any
+  // failure and surface it as a failed update-status with the real reason in traceMsg.
+  try {
+    const payload = step.interaction?.payload?.[0] as Output | undefined;
+    if (!payload) throw new Error(`[afterPromptStep] missing payload`);
 
-  if (payload.type === 'result') {
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed')];
+    if (payload.type === 'result') {
+      const reason = typeof payload.result === 'string' && payload.result.trim()
+        ? payload.result.trim()
+        : 'agentNewSolution returned an error result';
+      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', reason)];
+    }
+
+    if (payload.type !== 'flexible' || !payload.result) throw new Error(`[afterPromptStep] invalid payload: ${JSON.stringify(payload)}`);
+
+    const initialPlan = normalizeInitialPlan(payload.result, getExistingModuleFolders());
+    payload.result.moduleName = initialPlan.moduleName;
+    await reserveNewSolutionModuleArtifacts(initialPlan);
+    await saveNewSolutionAgentTracePayload(context, agent.agentName, step, initialPlan.moduleName);
+
+    const plannedSteps = buildPlannedTree(initialPlan);
+    const addStepIntents: mls.msg.AgentIntentAddStep[] = plannedSteps.map((plannedStep) => ({
+      type: 'add-step',
+      messageId: context.message.orderAt,
+      threadId: context.message.threadId,
+      taskId: context.task?.PK || '',
+      parentStepId: step.stepId,
+      step: plannedStep,
+    }));
+
+    return addStepIntents;
+  } catch (error) {
+    const reason = `[agentNewSolution] ${error instanceof Error ? error.message : String(error)}`;
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', reason)];
   }
-
-  if (payload.type !== 'flexible' || !payload.result) throw new Error(`[afterPromptStep] invalid payload: ${JSON.stringify(payload)}`);
-
-  const initialPlan = normalizeInitialPlan(payload.result);
-  const plannedSteps = buildPlannedTree(initialPlan);
-  const addStepIntents: mls.msg.AgentIntentAddStep[] = plannedSteps.map((plannedStep) => ({
-    type: 'add-step',
-    messageId: context.message.orderAt,
-    threadId: context.message.threadId,
-    taskId: context.task?.PK || '',
-    parentStepId: step.stepId,
-    step: plannedStep,
-  }));
-
-  return addStepIntents;
 }
 
 function createUpdateStatusIntent(
@@ -151,6 +152,7 @@ function createUpdateStatusIntent(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
   status: mls.msg.AIStepStatus,
+  traceMsg?: string,
 ): mls.msg.AgentIntentUpdateStatus {
   return {
     type: 'update-status',
@@ -158,9 +160,12 @@ function createUpdateStatusIntent(
     messageId: context.message.orderAt,
     threadId: context.message.threadId,
     taskId: context.task?.PK || '',
-    parentStepId: parentStep.stepId,
+    // The root step has no resolvable parent; intentUpdateStatus requires an agent
+    // parent, and the root itself is an agent step, so fall back to self-parent.
+    parentStepId: parentStep?.stepId ?? step.stepId,
     stepId: step.stepId,
     status,
+    traceMsg,
   };
 }
 
@@ -211,7 +216,7 @@ function buildPlannedTree(initialPlan: InitialNewSolutionPlan): PlannedAgentStep
   ];
 
   return [
-    plannedAgent('org-requirements', 'agentNewSolutionRequirements', title('org-requirements'), [], 'sequential', undefined, requirementsChildren, 'pending'),
+    plannedAgent('org-requirements', 'agentNewSolutionRequirements', title('org-requirements'), [], 'sequential', undefined, requirementsChildren, 'waiting_human_input'),
     plannedAgent('org-planner', 'agentNewSolutionPlanner', title('org-planner'), ['org-requirements'], 'sequential', undefined, plannerChildren),
     plannedAgent('org-materialization', 'agentNewSolutionMaterialization', title('org-materialization'), ['plan-validate-solution-coverage'], 'manual_later'),
   ];
@@ -269,26 +274,13 @@ function plannedClarification(
   };
 }
 
-function normalizeInitialPlan(result: InitialNewSolutionPlan): InitialNewSolutionPlan {
-  if (!result || typeof result !== 'object') throw new Error('[normalizeInitialPlan] invalid result');
-  if (!result.userLanguage || typeof result.userLanguage !== 'string') throw new Error('[normalizeInitialPlan] missing userLanguage');
-  if (!['module', 'solution', 'module_solution'].includes(result.requestKind)) throw new Error(`[normalizeInitialPlan] invalid requestKind: ${result.requestKind}`);
-  if (!result.userPrompt || typeof result.userPrompt !== 'string') throw new Error('[normalizeInitialPlan] missing userPrompt');
-  if (!result.titles || typeof result.titles !== 'object') result.titles = {};
-  if (!Array.isArray(result.todoItems)) result.todoItems = [];
-  if (!Array.isArray(result.openDetails)) result.openDetails = [];
-  return result;
-}
-
 function getLocalizedTitle(initialPlan: InitialNewSolutionPlan, planId: NewSolutionPlanId): string {
   const title = initialPlan.titles?.[planId];
   if (typeof title === 'string' && title.trim().length > 0 && title.trim().length < 140) {
     return title.trim();
   }
-  const language = `${initialPlan.userLanguage || ''} ${initialPlan.userPrompt || ''}`.toLowerCase();
-  const fallback = language.includes('pt') || language.includes('portugu')
-    ? fallbackTitlesPt
-    : fallbackTitlesEn;
+  const lang = (initialPlan.userLanguage || '').toLowerCase().trim();
+  const fallback = lang.startsWith('pt') ? fallbackTitlesPt : fallbackTitlesEn;
   return fallback[planId];
 }
 
@@ -347,7 +339,7 @@ const fallbackTitlesPt: Record<NewSolutionPlanId, string> = {
 };
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codepro -->
 
 You initialize the collab.codes "newModule" task.
 
@@ -366,6 +358,7 @@ If the prompt is valid, return only:
   "result": {
     "userLanguage": "ISO language code, such as pt-BR or en",
     "requestKind": "module | solution | module_solution",
+    "moduleName": "short unused folder name for the module, lower camel case, for example petshop",
     "userPrompt": "copy of the user prompt",
     "titles": {
       "plan id from the list": "localized user-facing title"
@@ -390,8 +383,9 @@ If the prompt is valid, return only:
 Rules:
 - Return valid JSON only.
 - The titles object must include every plan id listed below.
+- Choose a concise moduleName that can be used as l2/{moduleName}; it must be lower camel case, ASCII, and not in Already existing modules.
 - Do not invent agent names, dependencies, selectors, or execution rules. Code owns those.
-- Do not hard-code fixture examples such as rentalTable, vehicleSearchPage, fleet, rental, or reservation.
+- Do not hard-code fixture examples (e.g. specific table names, page ids, or domain entities from any previous test case). Derive everything from the current user prompt, clarifications, and approved artifacts.
 - Every todo item must have done=false.
 - The flow runs client-side for now.
 
@@ -416,22 +410,6 @@ export type Output =
     result: string;
   };
 
-export interface InitialNewSolutionPlan {
-  userLanguage: string;
-  requestKind: 'module' | 'solution' | 'module_solution';
-  userPrompt: string;
-  titles: Partial<Record<NewSolutionPlanId, string>>;
-  todoItems: {
-    planId: NewSolutionPlanId;
-    done: boolean;
-    title: string;
-    description: string;
-  }[];
-  openDetails: {
-    title: string;
-    description: string;
-  }[];
-}
 //#endregion
 
 export function getInitialNewSolutionPlan(agent: IAgentMeta, context: mls.msg.ExecutionContext): InitialNewSolutionPlan {
@@ -444,5 +422,8 @@ export function getInitialNewSolutionPlan(agent: IAgentMeta, context: mls.msg.Ex
     throw new Error(`[${agent.agentName}](getInitialNewSolutionPlan) No flexible payload found for this agent.`);
   }
 
-  return normalizeInitialPlan((resultStep as mls.msg.AIFlexibleResultStep).result as InitialNewSolutionPlan);
+  return normalizeInitialPlan(
+    (resultStep as mls.msg.AIFlexibleResultStep).result as InitialNewSolutionPlan,
+    getExistingModuleFolders(),
+  );
 }

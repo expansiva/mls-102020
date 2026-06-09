@@ -2,6 +2,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAgentStepByAgentName, getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
+import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -18,6 +19,8 @@ export function createAgent(): IAgentAsync {
 export const DISCOVER_SOLUTION_SCOPE_TOOL_NAME = 'submitSolutionScopeDraft';
 export const DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION = '2026-06-02';
 export const DISCOVER_SOLUTION_SCOPE_STEP_ID = '03-discover-scope';
+const DISCOVER_SOLUTION_SCOPE_STEP_ID_ALIASES = [DISCOVER_SOLUTION_SCOPE_STEP_ID, 'req-discover-scope'];
+const DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION_ALIASES = [DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION, '1.0'];
 
 type ScopeStatus = 'ok' | 'needs_input' | 'failed';
 type Priority = 'now' | 'soon' | 'later' | 'never';
@@ -31,7 +34,7 @@ interface InitialNewSolutionPlanSummary {
   openDetails?: unknown[];
 }
 
-interface RequirementsClarificationAnswer {
+export interface RequirementsClarificationAnswer {
   title: string;
   userLanguage: string;
   answers: Record<string, string | boolean | string[]>;
@@ -116,54 +119,45 @@ export const discoverSolutionScopeToolSchema = {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['type', 'result'],
+      required: ['status', 'result', 'questions', 'trace'],
       properties: {
-        type: { const: 'flexible' },
+        status: { enum: ['ok', 'needs_input', 'failed'] },
         result: {
           type: 'object',
           additionalProperties: false,
-          required: ['runId', 'stepId', 'schemaVersion', 'status', 'result', 'questions', 'trace'],
+          required: ['domain', 'summary', 'actors', 'capabilities', 'artifactSignals', 'businessRisks', 'missingContext'],
           properties: {
-            runId: { type: 'string' },
-            stepId: { const: DISCOVER_SOLUTION_SCOPE_STEP_ID },
-            schemaVersion: { const: DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION },
-            status: { enum: ['ok', 'needs_input', 'failed'] },
-            result: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['domain', 'summary', 'actors', 'capabilities', 'artifactSignals', 'businessRisks', 'missingContext'],
-              properties: {
-                domain: { type: 'string' },
-                summary: { type: 'string' },
-                actors: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    additionalProperties: false,
-                    required: ['actorId', 'description'],
-                    properties: {
-                      actorId: { type: 'string' },
-                      title: { type: 'string' },
-                      description: { type: 'string' },
-                    },
-                  },
+            domain: { type: 'string' },
+            summary: { type: 'string' },
+            actors: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['actorId', 'description'],
+                properties: {
+                  actorId: { type: 'string' },
+                  title: { type: 'string' },
+                  description: { type: 'string' },
                 },
-                capabilities: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    additionalProperties: false,
-                    required: ['capabilityId', 'actor', 'priority'],
-                    properties: {
-                      capabilityId: { type: 'string' },
-                      title: { type: 'string' },
-                      description: { type: 'string' },
-                      actor: { type: 'string' },
-                      priority: { enum: ['now', 'soon', 'later', 'never'] },
-                    },
-                  },
+              },
+            },
+            capabilities: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['capabilityId', 'actor', 'priority'],
+                properties: {
+                  capabilityId: { type: 'string' },
+                  title: { type: 'string' },
+                  description: { type: 'string' },
+                  actor: { type: 'string' },
+                  priority: { enum: ['now', 'soon', 'later', 'never'] },
                 },
-                artifactSignals: {
+              },
+            },
+            artifactSignals: {
                   type: 'object',
                   additionalProperties: false,
                   required: ['pages', 'workflows', 'plugins', 'agents', 'horizontalModules', 'mdm', 'metrics', 'usecases'],
@@ -177,15 +171,13 @@ export const discoverSolutionScopeToolSchema = {
                     metrics: { type: 'array', items: { $ref: '#/$defs/artifactSignal' } },
                     usecases: { type: 'array', items: { $ref: '#/$defs/artifactSignal' } },
                   },
-                },
-                businessRisks: { type: 'array', items: { type: 'string' } },
-                missingContext: { type: 'array', items: { type: 'string' } },
-              },
             },
-            questions: { type: 'array', items: { type: 'string' } },
-            trace: { type: 'array', items: { type: 'string' } },
+            businessRisks: { type: 'array', items: { type: 'string' } },
+            missingContext: { type: 'array', items: { type: 'string' } },
           },
         },
+        questions: { type: 'array', items: { type: 'string' } },
+        trace: { type: 'array', items: { type: 'string' } },
       },
       $defs: {
         artifactSignal: {
@@ -230,6 +222,11 @@ async function beforePromptStep(
     parentStepId: parentStep.stepId,
     systemPrompt: buildSystemPrompt(),
     humanPrompt: buildHumanPrompt(args, initialPlan, clarificationAnswer),
+    tools: [discoverSolutionScopeToolSchema as unknown as mls.msg.LLMTool],
+    toolChoice: {
+      type: 'function',
+      function: { name: DISCOVER_SOLUTION_SCOPE_TOOL_NAME },
+    },
   };
 
   return [continueIntent];
@@ -246,15 +243,22 @@ async function afterPromptStep(
 
   const payload = step.interaction?.payload?.[0] as Output | undefined;
   let status: mls.msg.AIStepStatus = 'completed';
+  let traceMsg: string | undefined;
 
   try {
     if (!payload) throw new Error('missing payload');
     const output = extractDiscoverSolutionScopeOutput(payload);
     const requirementsAnswer = context.task ? getRequirementsClarificationAnswer(context) : undefined;
     validateDiscoverSolutionScopeOutput(output, { initialMetricsRequested: wantsInitialMetricsDashboard(requirementsAnswer) });
-    if (output.status !== 'ok') status = 'failed';
+    if (output.status === 'failed') {
+      status = 'failed';
+      traceMsg = 'agentDiscoverSolutionScope returned status failed';
+    } else if (output.status === 'needs_input') {
+      traceMsg = 'agentDiscoverSolutionScope returned status needs_input; keeping the validated draft and continuing with questions/missingContext.';
+    }
   } catch (error) {
-    console.error(`[${agent.agentName}](afterPromptStep) ${error instanceof Error ? error.message : error}`);
+    traceMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[${agent.agentName}](afterPromptStep) ${traceMsg}`);
     status = 'failed';
   }
 
@@ -267,16 +271,17 @@ async function afterPromptStep(
     parentStepId: parentStep.stepId,
     stepId: step.stepId,
     status,
+    traceMsg,
   };
 
   if (status === 'completed') updateStatus.cleaner = 'input';
+  await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
   return [updateStatus];
 }
 
 function buildSystemPrompt(): string {
   return systemPrompt
-    .split('{{toolName}}').join(DISCOVER_SOLUTION_SCOPE_TOOL_NAME)
-    .replace('{{toolSchema}}', JSON.stringify(discoverSolutionScopeToolSchema, null, 2));
+    .split('{{toolName}}').join(DISCOVER_SOLUTION_SCOPE_TOOL_NAME);
 }
 
 function buildHumanPrompt(
@@ -322,7 +327,7 @@ function createActorFromString(value: string): SolutionScopeActor {
   };
 }
 
-function extractDiscoverSolutionScopeOutput(payload: unknown): DiscoverSolutionScopeOutput {
+export function extractDiscoverSolutionScopeOutput(payload: unknown): DiscoverSolutionScopeOutput {
   const value = parseMaybeJson(payload);
   if (!isRecord(value)) throw new Error('tool payload must be an object');
 
@@ -335,6 +340,9 @@ function extractDiscoverSolutionScopeOutput(payload: unknown): DiscoverSolutionS
     const flexibleResult = parseMaybeJson(value.result);
     const outputFromFlexibleResult = tryNormalizeOutput(flexibleResult);
     if (outputFromFlexibleResult) return outputFromFlexibleResult;
+
+    const variableOutputFromFlexibleResult = tryNormalizeVariableOutput(flexibleResult);
+    if (variableOutputFromFlexibleResult) return variableOutputFromFlexibleResult;
 
     const outputFromFlexibleTool = tryExtractToolArguments(flexibleResult);
     if (outputFromFlexibleTool) return outputFromFlexibleTool;
@@ -379,18 +387,35 @@ function normalizeToolArguments(value: unknown): DiscoverSolutionScopeOutput {
   const directOutput = tryNormalizeOutput(args);
   if (directOutput) return directOutput;
 
-  if (args.type === 'flexible') {
-    const output = tryNormalizeOutput(parseMaybeJson(args.result));
-    if (output) return output;
-  }
+  const variableOutput = tryNormalizeVariableOutput(args);
+  if (variableOutput) return variableOutput;
+
+  const output = tryNormalizeOutput(parseMaybeJson(args.result));
+  if (output) return output;
 
   throw new Error('tool arguments do not contain a flexible scope output');
+}
+
+function tryNormalizeVariableOutput(value: unknown): DiscoverSolutionScopeOutput | null {
+  const output = parseMaybeJson(value);
+  if (!isRecord(output)) return null;
+  if (output.runId !== undefined || output.stepId !== undefined || output.schemaVersion !== undefined || output.type !== undefined) return null;
+  if (output.status === undefined || output.result === undefined) return null;
+  return normalizeDiscoverSolutionScopeOutput({
+    runId: 'provider-tool-call',
+    stepId: DISCOVER_SOLUTION_SCOPE_STEP_ID,
+    schemaVersion: DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION,
+    status: output.status,
+    result: output.result,
+    questions: output.questions,
+    trace: output.trace,
+  });
 }
 
 function tryNormalizeOutput(value: unknown): DiscoverSolutionScopeOutput | null {
   const output = parseMaybeJson(value);
   if (!isRecord(output)) return null;
-  if (output.stepId !== DISCOVER_SOLUTION_SCOPE_STEP_ID || output.schemaVersion !== DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION) return null;
+  if (!isKnownScopeStepId(output.stepId) || !isKnownScopeSchemaVersion(output.schemaVersion)) return null;
   return normalizeDiscoverSolutionScopeOutput(output);
 }
 
@@ -400,8 +425,8 @@ function normalizeDiscoverSolutionScopeOutput(value: Record<string, unknown>): D
 
   return {
     runId: assertString(value.runId, 'runId'),
-    stepId: assertConst(value.stepId, DISCOVER_SOLUTION_SCOPE_STEP_ID, 'stepId'),
-    schemaVersion: assertConst(value.schemaVersion, DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION, 'schemaVersion'),
+    stepId: normalizeScopeStepId(value.stepId, 'stepId'),
+    schemaVersion: normalizeScopeSchemaVersion(value.schemaVersion, 'schemaVersion'),
     status: assertStatus(value.status, 'status'),
     result: {
       domain: assertString(result.domain, 'result.domain'),
@@ -421,9 +446,27 @@ function normalizeDiscoverSolutionScopeOutput(value: Record<string, unknown>): D
       businessRisks: assertStringArray(result.businessRisks, 'result.businessRisks'),
       missingContext: assertStringArray(result.missingContext, 'result.missingContext'),
     },
-    questions: assertStringArray(value.questions, 'questions'),
-    trace: assertStringArray(value.trace, 'trace'),
+    questions: normalizeStringList(value.questions, 'questions'),
+    trace: normalizeStringList(value.trace, 'trace'),
   };
+}
+
+function isKnownScopeStepId(value: unknown): boolean {
+  return DISCOVER_SOLUTION_SCOPE_STEP_ID_ALIASES.includes(value as string);
+}
+
+function isKnownScopeSchemaVersion(value: unknown): boolean {
+  return DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION_ALIASES.includes(value as string);
+}
+
+function normalizeScopeStepId(value: unknown, path: string): typeof DISCOVER_SOLUTION_SCOPE_STEP_ID {
+  if (isKnownScopeStepId(value)) return DISCOVER_SOLUTION_SCOPE_STEP_ID;
+  throw new Error(`${path} must be ${DISCOVER_SOLUTION_SCOPE_STEP_ID}`);
+}
+
+function normalizeScopeSchemaVersion(value: unknown, path: string): typeof DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION {
+  if (isKnownScopeSchemaVersion(value)) return DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION;
+  throw new Error(`${path} must be ${DISCOVER_SOLUTION_SCOPE_SCHEMA_VERSION}`);
 }
 
 function validateDiscoverSolutionScopeOutput(
@@ -518,7 +561,7 @@ function getRequirementsClarificationAnswer(context: mls.msg.ExecutionContext): 
   return parsed;
 }
 
-function wantsInitialMetricsDashboard(answer?: RequirementsClarificationAnswer): boolean {
+export function wantsInitialMetricsDashboard(answer?: RequirementsClarificationAnswer): boolean {
   const raw = answer?.answers?.initialMetricsDashboard;
   if (raw === undefined) return false;
   if (raw === false) return false;
@@ -583,9 +626,32 @@ function assertStringArray(value: unknown, path: string): string[] {
   return value.map((item, index) => assertString(item, `${path}[${index}]`));
 }
 
-function assertConst<T extends string>(value: unknown, expected: T, path: string): T {
-  if (value !== expected) throw new Error(`${path} must be ${expected}`);
-  return expected;
+function normalizeStringList(value: unknown, path: string): string[] {
+  if (value === undefined || value === null) return [];
+  if (Array.isArray(value)) return value.map((item, index) => normalizeStringListItem(item, `${path}[${index}]`));
+  if (isRecord(value)) {
+    return Object.entries(value).map(([key, item]) => {
+      const normalized = normalizeStringListItem(item, `${path}.${key}`);
+      return normalized || key;
+    });
+  }
+  return [assertString(value, path)];
+}
+
+function normalizeStringListItem(value: unknown, path: string): string {
+  if (typeof value === 'string') return assertString(value, path);
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (isRecord(value)) {
+    const parts = [
+      optionalString(value.title, `${path}.title`),
+      optionalString(value.question, `${path}.question`),
+      optionalString(value.description, `${path}.description`),
+      optionalString(value.reason, `${path}.reason`),
+    ].filter((item): item is string => !!item);
+    if (parts.length > 0) return parts.join(' - ');
+    return JSON.stringify(value);
+  }
+  throw new Error(`${path} must be a string-compatible value`);
 }
 
 function assertStatus(value: unknown, path: string): ScopeStatus {
@@ -605,6 +671,7 @@ function optionalPriority(value: unknown, path: string): Priority | undefined {
 
 const systemPrompt = `
 <!-- modelType: codeinstruct -->
+<!-- x-tool-strict: true -->
 
 You are agentDiscoverSolutionScope for the collab.codes "newModule" flow.
 
@@ -616,59 +683,20 @@ Use English camelCase identifiers for domain, actorId, capabilityId, and artifac
 
 ## Tool mode
 
-Behave as if you are calling the tool "{{toolName}}".
-The current message interface still expects a JSON payload, so encode the tool call in this exact shape:
-
-{
-  "type": "flexible",
-  "result": {
-    "toolName": "{{toolName}}",
-    "arguments": {
-      "type": "flexible",
-      "result": {
-        "runId": "run01",
-        "stepId": "03-discover-scope",
-        "schemaVersion": "2026-06-02",
-        "status": "ok",
-        "result": {
-          "domain": "",
-          "summary": "",
-          "actors": [],
-          "capabilities": [],
-          "artifactSignals": {
-            "pages": [],
-            "workflows": [],
-            "plugins": [],
-            "agents": [],
-            "horizontalModules": [],
-            "mdm": [],
-            "metrics": [],
-            "usecases": []
-          },
-          "businessRisks": [],
-          "missingContext": []
-        },
-        "questions": [],
-        "trace": []
-      }
-    }
-  }
-}
-
-## Tool schema
-
-{{toolSchema}}
+Call the "{{toolName}}" tool with only these top-level arguments: status, result, questions, and trace. Put questions and trace beside result, never inside result. Do not include type, runId, stepId, schemaVersion, toolName, or arguments; the harness fills those fields.
+Do not return prose.
 
 ## Rules
 
-- Return only valid JSON. Do not use markdown fences.
+- The tool arguments must satisfy the provided schema.
+- Always include result.summary: a short (1-3 sentence) overview of the requested solution, in the user's language. Never omit it, even when status is "needs_input".
 - MDM is mandatory. Always include at least one MDM signal and explain why it is needed.
 - If the clarification answer requests initial metrics/dashboard, include metrics and admin dashboard signals.
 - Identify backend use case needs when the solution has writes, lifecycle transitions, BFF commands, metric updates, or aggregate maintenance.
 - Differentiate static pages from workflows.
 - Detect external integrations only when the prompt or clarification implies them.
 - Do not use hard-coded domain assumptions. Infer required domain actions from the requested solution.
-- When the domain contains a booking, reservation, order, subscription, approval, service request, rental, or similar commitment, identify the resource, item, or service being committed and the user action that selects or confirms it.
+- When the domain contains a booking, order, request, subscription, approval, service request, or similar commitment (sometimes called reservation or rental in specific domains), identify the main subject/resource/item/service being committed and the user action that selects or confirms it. Use names from the actual prompt and ontology.
 - Use status "needs_input" only when the scope cannot be safely drafted without another client decision; then include questions or missingContext.
 - Use status "failed" only for structural impossibility.
 `;
