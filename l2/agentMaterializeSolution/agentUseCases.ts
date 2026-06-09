@@ -31,11 +31,19 @@ async function beforePromptImplicit(
     userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
 
-    const data = JSON.parse(userPrompt) as { moduleName: string };
-    const { moduleName } = data;
+    const data = JSON.parse(userPrompt) as { moduleName: string; usecaseId?: string };
+    const { moduleName, usecaseId } = data;
 
-    const items = await getUsecaseStepArgs(moduleName);
-    if (items.length === 0) throw new Error(`No .defs.ts files found in layer_3_usecases for module: ${moduleName}`);
+    const allItems = await getUsecaseStepArgs(moduleName);
+    const items = usecaseId
+        ? allItems.filter((item) => item.usecaseId === usecaseId)
+        : allItems;
+
+    if (items.length === 0) throw new Error(
+        usecaseId
+            ? `Usecase "${usecaseId}" not found in layer_3_usecases for module: ${moduleName}`
+            : `No .defs.ts files found in layer_3_usecases for module: ${moduleName}`
+    );
 
     const inputs: mls.msg.IAMessageInputType[] = [
         { type: "system", content: systemPrompt }
