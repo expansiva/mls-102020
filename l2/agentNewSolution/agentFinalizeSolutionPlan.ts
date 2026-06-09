@@ -264,6 +264,7 @@ ${snapshot.initialMetricsRequested}
 
 const systemPrompt = `
 <!-- modelType: codeinstruct -->
+<!-- x-tool-strict: true -->
 
 You are agentFinalizeSolutionPlan for the collab.codes "newSolution" flow.
 Apply the blueprint review and produce the final solution plan.
