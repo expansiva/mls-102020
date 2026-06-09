@@ -10,9 +10,10 @@ All state, all methods, and all i18n live in the base class. You NEVER invent na
 
 ## What you receive
 
-- \`##User data\`: the **page spec** JSON — \`pageId\`, \`pageName\`, \`actor\`, \`purpose\`, \`sections[]\`.
+- \`##User data\`: the **page spec** JSON — \`pageId\`, \`pageName\`, \`actor\`, \`purpose\`, \`sections[]\`, \`navigationRefs[]\`.
   Each section: \`sectionName\`, \`mode\`, \`organisms[]\`.
   Each organism: \`organismName\`, \`purpose\`, \`userActions[]\`, \`requiredEntities[]\`, \`readsFields[]\`, \`writesFields[]\`.
+  Each navigationRef: \`direction\` ("inbound" | "outbound"), \`pageId\`, \`trigger\`.
 - \`##User info\`: JSON with \`moduleName\`, \`device\`, \`type\`, \`project\`, \`item.outputPath\`.
 - \`##Base Class\`: the **full TypeScript source** of the Shared base class that this component will extend.
 - \`##Design System\` (optional): component and styling guidelines.
@@ -40,16 +41,27 @@ Scan every method whose name starts with \`handle\`. Record exact name and param
 handleSaveClienteSubmit(event: SubmitEvent)
 handleCancelCadastroClick()
 handleValidateCpfCnhClick()
+handleNavigateToProductServiceDetailPageClick(params?: Record<string, unknown>)
+handleNavigateToCatalogPageClick(params?: Record<string, unknown>)
 ...
 \`\`\`
 
 ### List 3 — i18n keys
 Read \`const message_en = { ... }\`. Record every key.
 \`\`\`
-brand, pageTitle, save, saving, confirm, confirming, labelNome, statusReady, ...
+brand, pageTitle, save, saving, confirm, confirming, labelNome, statusReady,
+navigateToProductServiceDetailPage, navigateToCatalogPage, ...
 \`\`\`
 
-These three lists are the ONLY names you may use inside \`render()\`.
+### List 4 — Outbound navigation targets
+Read \`navigationRefs\` from \`##User data\`. Record only \`direction: "outbound"\` entries.
+\`\`\`
+outbound: productServiceDetailPage  trigger: "Selecionar item"
+outbound: catalogPage               trigger: "Explorar catálogo"
+...
+\`\`\`
+
+These four lists are the ONLY names and targets you may use inside \`render()\`.
 If a name is not in one of these lists it does not exist — do not use it.
 
 ---
@@ -121,9 +133,44 @@ export class {ClassName} extends {Prefix}{PageNamePascal}Base {
 \`\`\`
 
 The decision tree for every interactive element:
-1. Does \`##Base Class\` have a \`handle*\` method that fits this action? → Rule A
-2. Is this a local state mutation (toggling, input binding) with no dedicated handler? → Rule B
-3. Neither → do not add interactivity (the feature does not exist in the base)
+1. Is this a **navigation action** (outbound navigationRef trigger)? → Rule C (see below)
+2. Does \`##Base Class\` have a \`handle*\` method that fits this action? → Rule A
+3. Is this a local state mutation (toggling, input binding) with no dedicated handler? → Rule B
+4. Neither → do not add interactivity (the feature does not exist in the base)
+
+### Rule C — outbound navigation (always state-driven, never \`href\` routing)
+
+Navigation is triggered **only** by calling \`handleNavigateTo{PageIdPascal}Click\` from List 2.
+Never use \`<a href="...">\` for intra-app navigation.
+
+**Case 1 — navigation from a standalone element (no item context):**
+Use Rule A (direct method reference, no parens):
+\`\`\`typescript
+<button @click=\${this.handleNavigateToCatalogPageClick}>
+  \${this.msg.navigateToCatalogPage}
+</button>
+\`\`\`
+
+**Case 2 — navigation from inside a collection (item has context data to pass):**
+Use an inline arrow to forward the relevant item fields as params:
+\`\`\`typescript
+\${(this.items ?? []).map((item: any) => html\`
+  <div>
+    ...item fields...
+    <button @click=\${() => this.handleNavigateToProductServiceDetailPageClick({ itemId: item.itemId })}>
+      \${this.msg.navigateToProductServiceDetailPage}
+    </button>
+  </div>
+\`)}
+\`\`\`
+
+**How to find which organisms trigger navigation:**
+Cross-reference List 4 (outbound targets) with organism \`userActions[]\`:
+- If an organism's \`userActions\` contains text matching (or semantically equivalent to) a \`trigger\`, that organism owns the navigation button.
+- If no organism matches, render the navigation button as a standalone CTA in the most logical section.
+
+**Inbound navigationRefs require no render code** — the page receives incoming context via
+\`consumeExpectedNavigationLoad()\` in the base class \`connectedCallback\`.
 
 ---
 
@@ -131,6 +178,8 @@ The decision tree for every interactive element:
 
 Use \`##User data\` sections and organisms to understand what to show and where.
 Use \`##Base Class\` lists to decide exactly how to show it.
+
+**Before mapping organisms**, scan List 4 for outbound navigation targets and mark which organisms own them (match \`trigger\` against \`userActions\`). Navigation buttons are part of those organisms — they are not separate sections.
 
 ### Read-only organism (\`writesFields\` empty, \`userActions\` empty)
 Render a display panel. For each field in \`readsFields\`:
@@ -147,12 +196,22 @@ Render a display panel. For each field in \`readsFields\`:
 ### Form organism (\`writesFields\` non-empty)
 - Find the \`handleXxxSubmit\` method in List 2 that matches this form's action → bind with Rule A
 - Bind each input to the matching reactive prop from List 1 → Rule B for \`@input\`
-- Submit button: \`?disabled=\${saveBusy}\`, label: \`\${saveBusy ? this.msg.saving : this.msg.save}\`
+- Submit button: \`?disabled=\${saveBusy}\`, label must use two distinct keys:
+  \`\`\`typescript
+  \${saveBusy ? this.msg.{commandName}Loading : this.msg.{commandName}Label}
+  \`\`\`
+  NEVER put the same \`this.msg.*\` key in both branches of any ternary — that renders the condition useless.
 
 ### Action organism (\`userActions\` non-empty, no form)
 - Find the \`handleXxxClick\` in List 2 that matches the action → bind with Rule A
 - \`?disabled=\${actionBusy}\`
-- Label: from List 3 matching the action purpose
+- Button label **must** use a ternary with **two distinct keys** from List 3:
+  \`\`\`typescript
+  \${actionBusy ? this.msg.{commandName}Loading : this.msg.{commandName}Label}
+  \`\`\`
+  - \`{commandName}Label\` → the idle/default label (e.g. "Confirmar Pedido")
+  - \`{commandName}Loading\` → the in-progress label (e.g. "Confirmando...")
+  - NEVER use the same key in both branches of the ternary — that makes the condition useless.
 
 ---
 

@@ -438,28 +438,80 @@ You receive a page plan source file and must extract two JSON payloads from it.
 
 ## Your only job
 
-Read the plan source in ## Plan source and extract:
+Read the plan source in ## Plan source. Locate the exported const that holds the page plan object.
+Inside it, find:
+- \`data.pageDefinition\` — the page structure object
+- \`data.bffCommands\` — the BFF commands array
 
-1. **commandsJson** — the array that describes BFF commands (the Origins commands list).
-   It is an array of objects, each with fields like: commandName, kind, input, output, purpose, readsEntities, writesEntities, usecaseRefs, layerContract, rulesApplied.
-   Find the exported const that holds this array and return its value as a compact JSON string.
+Then produce exactly two output fields as described below.
 
-2. **pageSpecJson** — the object that describes the page structure (sections and organisms).
-   It is an object with fields like: pageId, pageName, actor, purpose, sections, navigationRefs, capabilities, flowRefs.
-   Find the exported const that holds this object and return its value as a compact JSON string.
+---
 
-If either is not found in the source, return an empty array \`[]\` or empty object \`{}\` for that field.
+## Output field 1 — commandsJson
+
+A JSON object with two keys:
+
+\`\`\`
+{
+  "commands":       <the full data.bffCommands array, copied verbatim>,
+  "navigationRefs": <the data.pageDefinition.navigationRefs array, copied verbatim>
+}
+\`\`\`
+
+Rules:
+- Copy \`data.bffCommands\` **exactly as it appears** in the source — do not rename, reorder, or omit any field.
+- Copy \`data.pageDefinition.navigationRefs\` **exactly as it appears** — do not summarize or transform.
+- If \`bffCommands\` is absent, use \`[]\`.
+- If \`navigationRefs\` is absent, use \`[]\`.
+
+This payload is consumed by the Shared base class generator (genPageShared).
+It needs the full BFF command shapes to generate load/action methods,
+and the navigationRefs to generate outbound navigation handlers.
+
+---
+
+## Output field 2 — pageSpecJson
+
+A JSON object built from \`data.pageDefinition\`, keeping only the fields the render generator needs:
+
+| Field | Copy rule |
+|---|---|
+| \`pageId\` | verbatim |
+| \`pageName\` | verbatim |
+| \`actor\` | verbatim |
+| \`purpose\` | verbatim |
+| \`sections\` | **verbatim — do not alter any organism, userAction, readsFields, or writesFields** |
+| \`navigationRefs\` | **verbatim — do not alter direction, pageId, or trigger** |
+
+**Omit** all other fields from \`data.pageDefinition\`: \`capabilities\`, \`flowRefs\`, \`pluginRefs\`,
+\`mdmRefs\`, \`pageInputs\`. They are not used by the render generator and add noise.
+
+This payload is consumed by the page render generator (genPageRender).
+It uses \`sections\` and \`organisms\` to decide what to render, and \`navigationRefs\` to wire navigation buttons.
+
+---
+
+## Critical: verbatim copy
+
+Both payloads must preserve every value from the source JSON character-for-character.
+Do NOT rephrase strings, reorder array items, change field names, or drop nested fields
+inside \`sections\`, \`organisms\`, or \`navigationRefs\`.
+
+If the source uses Portuguese strings, keep them in Portuguese.
+If a field value is an empty array \`[]\`, keep it as \`[]\`.
+
+---
 
 ## Output — return ONLY valid JSON, no markdown fences, no prose
 
 {
   "type": "flexible",
   "result": {
-    "path":         "<echo ## path exactly>",
-    "moduleName":   "<echo ## moduleName exactly>",
-    "pageId":       "<echo ## pageId exactly>",
-    "commandsJson": "<compact JSON string of the BFF commands array>",
-    "pageSpecJson": "<compact JSON string of the page spec object>"
+    "path":          "<echo ## path exactly>",
+    "moduleName":    "<echo ## moduleName exactly>",
+    "pageId":        "<echo ## pageId exactly>",
+    "commandsJson":  "<compact JSON string: {commands:[...], navigationRefs:[...]}>",
+    "pageSpecJson":  "<compact JSON string: {pageId, pageName, actor, purpose, sections, navigationRefs}>"
   }
 }
 

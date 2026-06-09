@@ -66,9 +66,31 @@ Separate each interface with one blank line.
 
 Apply these rules recursively to every key/value in \`inputShape\` and \`outputShape\`:
 
-### Field name optionality
-- Key ends with \`?\` (e.g. \`"cartId?"\`) → strip the \`?\` from the name and mark as optional: \`cartId?: ...\`
-- Key does NOT end with \`?\` → required: \`cartId: ...\`
+### Field optionality — check BOTH key AND value
+
+**Step 1 — key optionality:**
+- Key ends with \`?\` (e.g. \`"cartId?"\`) → strip the \`?\` from the key name, field is optional
+
+**Step 2 — value optionality:**
+- Value string ends with \`?\` (e.g. \`"string?"\`, \`"uuid?"\`, \`"date?"\`, \`"string[]?"\`) → field is optional, strip the trailing \`?\` from the value before mapping the type
+
+If **either** step marks the field optional → emit \`fieldName?: type\`.
+If neither applies → emit \`fieldName: type\` (required).
+
+Examples:
+- \`"cartId?": "string"\` → \`cartId?: string\` (key-level)
+- \`"statusFilter": "string[]?"\` → \`statusFilter?: string[]\` (value-level)
+- \`"orderStatus": "string?"\` → \`orderStatus?: string\` (value-level)
+- \`"page": "number?"\` → \`page?: number\` (value-level)
+
+### JSON Schema-style type descriptor
+
+If a value is a plain object that contains **only** a \`"type"\` key (no \`"items"\`, \`"properties"\`, \`"fields"\` or other structural keys), treat the \`"type"\` value as the type string and apply the normal type-mapping rules to it:
+- \`{ "type": "string" }\` → \`string\`
+- \`{ "type": "string[]" }\` → \`string[]\`
+- \`{ "type": "number", "required": false }\` → treat as \`number\` (ignore \`required\`, set optional on the field key instead)
+
+If the object has more than just \`"type"\` (e.g. also has \`"fields"\` or \`"items"\`), it is a nested shape — recurse into it normally (see Nesting below).
 
 ### Value type mapping
 
@@ -79,6 +101,9 @@ You are generating **TypeScript** — not JSON Schema, not OpenAPI, not SQL. Use
 | \`"string"\` | \`string\` | |
 | \`"number"\` | \`number\` | |
 | \`"boolean"\` | \`boolean\` | |
+| \`"string[]"\` | \`string[]\` | primitive array |
+| \`"number[]"\` | \`number[]\` | primitive array |
+| \`"boolean[]"\` | \`boolean[]\` | primitive array |
 | \`"A|B|C"\` (pipe-separated literals) | \`'A' | 'B' | 'C'\` | union literal |
 | Nested plain object \`{ ... }\` | Inline object type \`{ field: type; ... }\` | apply rules recursively |
 | Array with one object element \`[{ ... }]\` | \`Array<{ field: type; ... }>\` | apply rules recursively to the element |
@@ -91,11 +116,13 @@ You are generating **TypeScript** — not JSON Schema, not OpenAPI, not SQL. Use
 | \`"dateTime"\` / \`"datetime"\` / \`"date-time"\` | \`string\` | ~~Date~~ |
 | \`"time"\` | \`string\` | ~~Date~~ |
 | \`"uuid"\` / \`"guid"\` | \`string\` | ~~UUID~~ |
+| \`"uuid[]"\` | \`string[]\` | ~~UUID[]~~ |
 | \`"email"\` | \`string\` | ~~Email~~ |
 | \`"url"\` / \`"uri"\` | \`string\` | ~~URL~~ |
 | \`"integer"\` / \`"int"\` / \`"int32"\` / \`"int64"\` | \`number\` | ~~Integer~~ ~~int~~ |
 | \`"float"\` / \`"double"\` / \`"decimal"\` | \`number\` | ~~Float~~ ~~Decimal~~ |
 | \`"bigint"\` / \`"long"\` | \`number\` | ~~BigInt~~ (unless explicitly required) |
+| \`"timestamptz"\` / \`"timestamp"\` | \`string\` | ~~Date~~ |
 | \`"any"\` / \`"object"\` / \`"json"\` | \`unknown\` | ~~any~~ (prefer \`unknown\`) |
 | \`"void"\` / \`"null"\` | \`null\` | |
 | \`"array"\` (untyped) | \`unknown[]\` | |
