@@ -330,6 +330,30 @@ function applyHorizontalsPostProcessing(output: PlanHorizontalsOutput, context: 
         extra.languages = Array.isArray(languages) ? languages.filter((item): item is string => typeof item === 'string') : [];
       }
     }
+
+    // C-07 (todo5 / E-10): decision ↔ artifact coherence. A horizontal the user decided
+    // 'never' (or rejected) must not be persisted as a contradiction-free 'now' draft: stamp
+    // decidedPriority/dismissed from the implementation decisions and coerce priority, so the
+    // saved l5/{id}/module.defs.ts tells the truth (e.g. authRoles/i18n decided never in the
+    // propertyFlowCrm run but saved with priority 'now').
+    try {
+      const decisions = getPlanningContextSnapshot(context).implementationDecisions;
+      for (const module of output.result.horizontalModules) {
+        const decision = decisions.decisions.find(item =>
+          item.artifactType === 'horizontalModule'
+          && normalizeHorizontalModuleId(item.recommendationId) === module.horizontalModuleId);
+        if (!decision) continue;
+        const extra = module as HorizontalModulePlan & { decidedPriority?: string; dismissed?: boolean };
+        extra.decidedPriority = decision.decidedPriority;
+        if (decision.decidedPriority === 'never' || !decision.accepted) {
+          extra.dismissed = true;
+        } else if (decision.decidedPriority !== module.priority) {
+          module.priority = decision.decidedPriority as Priority;
+        }
+      }
+    } catch (error) {
+      console.warn('[agentPlanHorizontals] decision coherence stamping skipped (C-07):', error);
+    }
   } catch (error) {
     console.warn('[agentPlanHorizontals] post-processing skipped (T-012):', error);
   }

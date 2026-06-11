@@ -287,5 +287,6 @@ Do not return prose.
 - Page definitions and BFF commands must reference rules by ruleId.
 - Keep ontology.entities as an object map keyed by PascalCase entity id. Do not require duplicating entityId inside each entity value.
 - Every entity must keep a populated fields list (each field with fieldId, type, required, and description). Never drop or empty fields during finalization; entities owned by the solution (moduleOwned/mdmOwned) without fields are invalid.
+- DECISIONS REQUIRE EVIDENCE: every decision's reason must cite something that actually exists in the inputs (a blueprint artifact, a review issue, or an accepted implementation decision). Never justify a decision with an approval or artifact that is not present — e.g. do not claim a page "was already approved" unless it appears in approvedArtifacts. affectedArtifacts must list real artifact ids from this plan.
 - Do not continue if an error cannot be fixed from available context; return status "needs_input" with questions.
 `;

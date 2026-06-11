@@ -17,6 +17,8 @@ import {
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import {
+  getApprovedModuleName,
+  readNewSolutionProcess,
   readSavedPlanArtifactDataList,
   saveNewSolutionAgentTracePayload,
   saveNewSolutionPlanArtifacts,
@@ -176,6 +178,7 @@ async function beforePromptStep(
   const agentsPlan = getPlanAgentsOutput(context);
   const pageIndex = getPlanPageIndexOutput(context);
   const pageDefinitions = await getPlanPageDefinitionOutputs(context);
+  const coverageExtras = await buildCoverageExtras(context);
 
   // T-010: workflows are defined BEFORE pages, so relatedPages cannot be filled at generation
   // time (E-013). Deterministic backfill (no LLM) now that all page definitions exist; the
@@ -208,6 +211,7 @@ async function beforePromptStep(
         agentsPlan,
         pageIndex,
         pageDefinitions,
+        coverageExtras,
         checklistNote
       ),
       validateSolutionCoverageToolSchema,
@@ -305,10 +309,12 @@ export async function refreshSolutionHealthReport(
     const agentsPlan = getPlanAgentsOutput(context);
     const pageIndex = getPlanPageIndexOutput(context);
     const pageDefinitions = await getPlanPageDefinitionOutputs(context);
+    const coverageExtras = await buildCoverageExtras(context);
 
     const snapshot = buildCoverageSnapshot(
       finalPlan, mdm, horizontals, plugins, persistenceIndex, tableDefinitions, metricsIndex,
       metricTableDefinitions, usecasePlan, workflowIndex, workflowDefinitions, agentsPlan, pageIndex, pageDefinitions,
+      coverageExtras,
     );
     const issues = snapshot.deterministicIssues;
     const errorCount = issues.filter(issue => issue.severity === 'error').length;
@@ -324,6 +330,10 @@ export async function refreshSolutionHealthReport(
       refreshedBy: 'agentNewSolutionFinal (T-016 deterministic re-validation)',
     };
     await saveNewSolutionPlanHealthReport(context, 'agentValidateSolutionCoverage', step, healthReport);
+    // E-08 (todo5): the process run was written at the coverage step with the then-current
+    // (possibly stale) report. Sync it with the refreshed one so l5/{module}/process.defs.ts
+    // never contradicts plan-health-report.json, and surface incomplete artifacts (B-02/B-03).
+    await syncProcessRunAfterRefresh(context, healthReport, pageDefinitions);
     // E2-005: informative only (the resume screen already shows the report) — keep out of warn/error.
     console.log(`[refreshSolutionHealthReport] plan-health-report refreshed: ${errorCount} error(s), ${warningCount} warning(s)`);
   } catch (error) {
@@ -446,6 +456,49 @@ function applyDecisionRevisions(context: mls.msg.ExecutionContext, decisions: un
   } catch (error) {
     console.warn('[agentValidateSolutionCoverage](applyDecisionRevisions) skipped', error);
     return decisions;
+  }
+}
+
+/**
+ * B-02/B-03 + E-08 (todo5): after the deterministic re-validation, update the permanent process
+ * run so (a) its healthReport matches the refreshed plan-health-report.json (no contradictory
+ * snapshots), and (b) every INCOMPLETE page definition surfaces its pending questions to the user
+ * (openDetails) and leaves a 'recoverIncomplete' next step a later run/agent can pick up.
+ * Knowledge must never die in trace files.
+ */
+async function syncProcessRunAfterRefresh(
+  context: mls.msg.ExecutionContext,
+  healthReport: unknown,
+  pageDefinitions: PlanPageDefinitionOutput[],
+): Promise<void> {
+  try {
+    const moduleName = getApprovedModuleName(context);
+    if (!moduleName) return;
+    const process = await readNewSolutionProcess(moduleName);
+    const run = process?.runs.find(r => r && r.runId === 'newSolution');
+    if (!run) return;
+
+    run.healthReport = healthReport;
+    run.openDetails = Array.isArray(run.openDetails) ? run.openDetails : [];
+    run.nextSteps = Array.isArray(run.nextSteps) ? run.nextSteps : [];
+
+    for (const definition of pageDefinitions) {
+      if (definition.status !== 'needs_input' || definition.questions.length === 0) continue;
+      const pageId = definition.result.pageDefinition.pageId;
+      const title = `faltou: ${pageId}`;
+      const description = definition.questions.join(' | ');
+      if (!run.openDetails.some(detail => detail.title === title)) {
+        run.openDetails.push({ title, description });
+      }
+      const id = `recoverIncomplete:page:${pageId}`;
+      if (!run.nextSteps.some(stepItem => stepItem.id === id)) {
+        run.nextSteps.push({ id, kind: 'recoverIncomplete', title: pageId, description, status: 'pending' });
+      }
+    }
+
+    await saveNewSolutionProcessRun(context, run);
+  } catch (error) {
+    console.warn('[syncProcessRunAfterRefresh] skipped:', error);
   }
 }
 
@@ -577,6 +630,7 @@ function buildHumanPrompt(
   agentsPlan: PlanAgentsOutput,
   pageIndex: PlanPageIndexOutput,
   pageDefinitions: PlanPageDefinitionOutput[],
+  extras: CoverageExtras,
   checklistNote: string,
 ): string {
   // send a compact coverage snapshot (ids, counts, cross-ref matrix and
@@ -586,6 +640,7 @@ function buildHumanPrompt(
   const snapshot = buildCoverageSnapshot(
     finalPlan, mdm, horizontals, plugins, persistenceIndex, tableDefinitions, metricsIndex,
     metricTableDefinitions, usecasePlan, workflowIndex, workflowDefinitions, agentsPlan, pageIndex, pageDefinitions,
+    extras,
   );
 
   return `## Coverage snapshot (compact: ids, counts, cross-refs)
@@ -616,6 +671,7 @@ function buildCoverageSnapshot(
   agentsPlan: PlanAgentsOutput,
   pageIndex: PlanPageIndexOutput,
   pageDefinitions: PlanPageDefinitionOutput[],
+  extras: CoverageExtras,
 ): { snapshot: Record<string, unknown>; deterministicIssues: ValidationIssue[] } {
   const fp = finalPlan.result;
 
@@ -638,9 +694,94 @@ function buildCoverageSnapshot(
     issues.push({ severity, code, message, path, evidence: [] });
 
   // Page index vs page definitions consistency.
+  // C-04 (todo5 / E-01): a missing definition for a page that covers a priority-now capability is
+  // an ERROR (core page; blocks readyToSaveDefs), not a warning — the lost leadsKanban and
+  // negociosPropostas were key screens of the prompt and the run still finished "passed".
+  const capabilityPriority = new Map<string, string>();
+  for (const value of fp.capabilities) {
+    if (!value || typeof value !== 'object') continue;
+    const cap = value as Record<string, unknown>;
+    const id = typeof cap.capabilityId === 'string' ? cap.capabilityId : (typeof cap.id === 'string' ? cap.id : '');
+    if (id && typeof cap.priority === 'string') capabilityPriority.set(id, cap.priority);
+  }
   for (const page of pageIndex.result.pages) {
-    if (!pageDefinitions.some(d => d.result.pageDefinition.pageId === page.pageId)) {
-      addIssue('warning', 'page.def.missing', `page ${page.pageId} is in the index but has no definition`, `pageIndex.${page.pageId}`);
+    const definition = pageDefinitions.find(d => d.result.pageDefinition.pageId === page.pageId);
+    if (!definition) {
+      const coversNow = page.capabilities.some(id => capabilityPriority.get(id) === 'now');
+      addIssue(
+        coversNow ? 'error' : 'warning',
+        'page.def.missing',
+        `page ${page.pageId} is in the index but has no definition${coversNow ? ' (covers a priority-now capability — core page)' : ''}`,
+        `pageIndex.${page.pageId}`,
+      );
+    } else if (definition.status === 'needs_input') {
+      // B-01: incomplete definitions are saved with pendingQuestions; surface them as errors so
+      // the run never reports "passed" while a page is a placeholder.
+      addIssue('error', 'page.def.incomplete', `page ${page.pageId} definition is incomplete; pending questions: ${definition.questions.join(' | ')}`, `pageDefinition.${page.pageId}`);
+    }
+  }
+
+  // C-03a (todo5 / E-05): every usecase must have its usecaseCommands artifact (the signature
+  // fan-out). 18 usecases vs 15 commands passed silently in the propertyFlowCrm run.
+  if (extras.usecaseCommandIds.size > 0) {
+    for (const usecase of usecases) {
+      const uid = usecase.usecaseId as string;
+      if (uid && !extras.usecaseCommandIds.has(uid)) {
+        addIssue('error', 'usecase.commands.missing', `usecase ${uid} has no usecaseCommands artifact (command signatures were never saved)`, `usecase.${uid}`);
+      }
+    }
+  }
+
+  // C-03b (todo5 / E-06): a page whose bffCommands are all writes (no kind:"query") and that
+  // references no metrics has no data source to render (e.g. an agenda with only
+  // schedule/reschedule/cancel commands).
+  for (const pd of pageDefinitions) {
+    const page = pd.result.pageDefinition;
+    const commands = pd.result.bffCommands;
+    if (!page.pageId || commands.length === 0) continue;
+    const hasQuery = commands.some(cmd => cmd.kind === 'query');
+    const indexItem = pageIndex.result.pages.find(p => p.pageId === page.pageId);
+    if (!hasQuery && (indexItem?.metricRefs || []).length === 0) {
+      addIssue('error', 'page.readCommand.missing', `page ${page.pageId} declares only write bffCommands (no kind:"query") and no metricRefs — it has no data source to display`, `pageDefinition.${page.pageId}`);
+    }
+  }
+
+  // A-05 (todo5): entity-first field ↔ column mapping. The layer_4 entity defs is canonical;
+  // every field must map to a physical column (or the table's details JSONB), and orphan
+  // columns indicate drift. Deterministic, warning-level (details usage is a design choice).
+  const snakeCase = (value: string) => value.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+  const tableDefByName = new Map<string, Record<string, unknown>>();
+  for (const table of tables) {
+    const record = table as Record<string, unknown>;
+    for (const key of ['tableId', 'tableName']) {
+      const name = typeof record[key] === 'string' ? record[key] as string : '';
+      if (name) tableDefByName.set(name, record);
+    }
+  }
+  for (const entity of extras.entityDefs) {
+    const entityId = typeof entity.entityId === 'string' ? entity.entityId : '';
+    const fields = Array.isArray(entity.fields) ? entity.fields : [];
+    if (!entityId || fields.length === 0) continue;
+    for (const bindingValue of (Array.isArray(entity.storage) ? entity.storage : [])) {
+      if (!bindingValue || typeof bindingValue !== 'object') continue;
+      const binding = bindingValue as Record<string, unknown>;
+      if (binding.kind !== 'moduleTable') continue;
+      const table = tableDefByName.get(typeof binding.tableName === 'string' ? binding.tableName : '')
+        || tableDefByName.get(typeof binding.tableId === 'string' ? binding.tableId : '');
+      if (!table) continue;
+      const columns = new Set(asArray(table.columns)
+        .map(col => (col && typeof col === 'object' ? (col as Record<string, unknown>).name : undefined))
+        .filter((name): name is string => typeof name === 'string'));
+      if (columns.size === 0) continue;
+      const detailsEnabled = columns.has('details')
+        || (!!table.detailsColumn && typeof table.detailsColumn === 'object' && (table.detailsColumn as Record<string, unknown>).enabled === true);
+      for (const fieldValue of fields) {
+        const fieldId = fieldValue && typeof fieldValue === 'object' ? (fieldValue as Record<string, unknown>).fieldId : undefined;
+        if (typeof fieldId !== 'string' || !fieldId) continue;
+        if (!columns.has(snakeCase(fieldId)) && !columns.has(fieldId) && !detailsEnabled) {
+          addIssue('warning', 'entity.fieldColumn.unmapped', `entity ${entityId} field ${fieldId} maps to no column of table ${String(binding.tableName || binding.tableId)} (and the table has no details JSONB)`, `entity.${entityId}.fields.${fieldId}`);
+        }
+      }
     }
   }
   for (const page of pages) {
@@ -764,6 +905,30 @@ function buildCoverageSnapshot(
 
 function asStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+}
+
+// C-03/A-05 (todo5): saved artifacts the deterministic coverage checks need beyond the in-task
+// outputs — usecaseCommands ids (commands fan-out completeness) and layer_4 entity defs
+// (field ↔ column mapping). Best-effort: missing files just shrink the checks.
+interface CoverageExtras {
+  usecaseCommandIds: Set<string>;
+  entityDefs: Record<string, unknown>[];
+}
+
+async function buildCoverageExtras(context: mls.msg.ExecutionContext): Promise<CoverageExtras> {
+  const usecaseCommandIds = new Set<string>();
+  let entityDefs: Record<string, unknown>[] = [];
+  try {
+    for (const data of await readSavedPlanArtifactDataList(context, 'usecaseCommands')) {
+      const def = data.usecaseDefinition;
+      const id = def && typeof def === 'object' ? (def as Record<string, unknown>).usecaseId : undefined;
+      if (typeof id === 'string' && id) usecaseCommandIds.add(id);
+    }
+    entityDefs = await readSavedPlanArtifactDataList(context, 'entity');
+  } catch (error) {
+    console.warn('[buildCoverageExtras] best-effort load failed', error);
+  }
+  return { usecaseCommandIds, entityDefs };
 }
 
 /**

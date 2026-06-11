@@ -30,7 +30,7 @@ export interface PlanArtifactReference {
   extension: string;
   checksum: string;
   schemaVersion: string;
-  status: 'draft' | 'not-ready' | 'frozen' | 'report' | 'reference';
+  status: 'draft' | 'not-ready' | 'frozen' | 'report' | 'reference' | 'incomplete';
   agentName: string;
   stepId: number;
   planId: string;
@@ -184,7 +184,15 @@ export interface EntityCatalogMetricTable {
   dimensions?: unknown[];
   measures?: unknown[];
 }
-export interface EntityCatalogMdmEntity { entity: string; fields: unknown[] }
+export interface EntityCatalogMdmEntity {
+  entity: string;
+  fields: unknown[];
+  // Entity-first contract (todo5 A-02): MDM governance metadata moved from the removed
+  // layer_1 mdmEntity refs into the layer_4 entity defs storage[kind='mdm'] block.
+  domainId?: string;
+  governanceRules?: unknown[];
+  sourceOfTruth?: string;
+}
 export interface EntityCatalog {
   ontologyEntities: Record<string, unknown>;
   tables: EntityCatalogTable[];
@@ -206,6 +214,18 @@ export interface SavePlanArtifactsOptions {
   entityCatalog?: EntityCatalog;
 }
 
+// B-01 (todo5): per-item definition fan-outs whose needs_input output is still saved as an
+// INCOMPLETE artifact (status 'incomplete' + pendingQuestions inside data). Knowledge is never
+// silently dropped: the saved file carries the questions so a later run/agent can recover it.
+// Index/plan agents are NOT in this set — their needs_input has its own clarification loop.
+const INCOMPLETE_SAVE_AGENTS = new Set([
+  'agentPlanPageDefinition',
+  'agentPlanUsecaseDefinition',
+  'agentPlanWorkflowDefinition',
+  'agentPlanMetricTableDefinition',
+  'agentPlanTableDefinition',
+]);
+
 export async function saveNewSolutionPlanArtifacts(
   context: mls.msg.ExecutionContext,
   agentName: string,
@@ -214,7 +234,12 @@ export async function saveNewSolutionPlanArtifacts(
   options?: SavePlanArtifactsOptions,
 ): Promise<PlanArtifactReference[]> {
   try {
-    if (!isRecord(output) || output.status !== 'ok') return [];
+    if (!isRecord(output)) return [];
+    const incomplete = output.status === 'needs_input' && INCOMPLETE_SAVE_AGENTS.has(agentName);
+    if (output.status !== 'ok' && !incomplete) return [];
+    const pendingQuestions = incomplete && Array.isArray(output.questions)
+      ? output.questions.filter((q): q is string => typeof q === 'string' && !!q.trim())
+      : [];
 
     // Single authoritative folder for the run (approved name). Do NOT re-derive from the step's own
     // LLM payload — that caused divergent module folders when agents disagreed on casing.
@@ -226,7 +251,13 @@ export async function saveNewSolutionPlanArtifacts(
     const saved: PlanArtifactReference[] = [];
     for (const candidate of candidates) {
       const fileInfo = resolvePlanArtifactFileInfo(candidate);
-      const status = candidate.referenceOnly ? 'reference' : (candidate.status || 'draft');
+      const status = candidate.referenceOnly ? 'reference' : (incomplete ? 'incomplete' : (candidate.status || 'draft'));
+      // B-01: incomplete artifacts embed the open questions INSIDE data, so file readers
+      // (coverage validator, future recovery agents, materializers rendering a "faltou: ..."
+      // placeholder) see them without needing the task payload.
+      const candidateData = incomplete && isRecord(candidate.data)
+        ? { ...candidate.data, pendingQuestions }
+        : candidate.data;
       const artifact = {
         schemaVersion: PLAN_ARTIFACT_SCHEMA_VERSION,
         artifactType: candidate.artifactType,
@@ -238,11 +269,11 @@ export async function saveNewSolutionPlanArtifacts(
           stepId: step.stepId,
           planId,
         },
-        data: candidate.data,
+        data: candidateData,
       };
       // `bareExport` candidates (e.g. usecases) write the artifact object DIRECTLY, with a fixed
       // export name and no metadata envelope: `export const useCase = {...} as const`.
-      const fileValue = candidate.bareExport ? candidate.data : artifact;
+      const fileValue = candidate.bareExport ? candidateData : artifact;
       const source = fileInfo.extension === '.json'
         ? `${JSON.stringify(fileValue, null, 2)}\n`
         : buildPlanDefsSource(candidate.exportName, fileValue, fileInfo);
@@ -265,7 +296,9 @@ export async function saveNewSolutionPlanArtifacts(
         artifactType: candidate.artifactType,
         artifactId: candidate.artifactId,
         moduleName: candidate.moduleName,
-        filePath: toPlanArtifactPath(fileInfo),
+        // A-06 (todo5): reference-only artifacts are never written, so the manifest must not
+        // claim a filePath that does not exist on disk.
+        filePath: candidate.referenceOnly ? '' : toPlanArtifactPath(fileInfo),
         project: fileInfo.project,
         level: fileInfo.level,
         folder: fileInfo.folder,
@@ -455,7 +488,9 @@ export async function saveNewSolutionPlanHealthReport(
 
 export const PROCESS_SCHEMA_VERSION = '2026-06-08';
 
-export type NewSolutionProcessNextStepKind = 'horizontalModule' | 'plugin' | 'materialize';
+// 'recoverIncomplete' (todo5 B-02/B-03): pointer to an artifact saved with status 'incomplete'
+// (pendingQuestions inside) so a later run/agent can produce the missing knowledge and redo it.
+export type NewSolutionProcessNextStepKind = 'horizontalModule' | 'plugin' | 'materialize' | 'recoverIncomplete';
 export type NewSolutionProcessNextStepStatus = 'pending' | 'taskOpened' | 'dismissed';
 
 export interface NewSolutionProcessNextStep {
@@ -837,6 +872,17 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
 
     const layer1FileRef = (shortName: string) => `_${project}_/l1/${moduleName}/layer_1_external/${toSafeShortName(shortName)}.defs.ts`;
 
+    // Entity-first contract: MDM storage has NO layer_1 fileRef (no l1 artifact exists for
+    // master data); it carries the governance metadata instead (skills architecture.md rule 5).
+    const mdmStorage = (mdmEntity: EntityCatalogMdmEntity): Record<string, unknown> => ({
+      kind: 'mdm',
+      moduleRef: '102034',
+      entity: mdmEntity.entity,
+      ...(mdmEntity.domainId ? { domainId: mdmEntity.domainId } : {}),
+      ...(mdmEntity.sourceOfTruth ? { sourceOfTruth: mdmEntity.sourceOfTruth } : {}),
+      ...(mdmEntity.governanceRules && mdmEntity.governanceRules.length > 0 ? { governanceRules: mdmEntity.governanceRules } : {}),
+    });
+
     const resolveStorage = (tableName: string, ownership: string): Record<string, unknown> => {
       const table = tableByName.get(tableName);
       if (table) return { kind: 'moduleTable', tableId: table.tableId, tableName: table.tableName, fileRef: layer1FileRef(table.tableId) };
@@ -849,7 +895,7 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
         return { kind: 'existingModule', moduleRef: existing.moduleId, tableId: existing.tableId, tableName: existing.tableName, fileRef: existing.fileRef };
       }
       const mdmEntity = mdmByKey.get(tableName) || mdmByKey.get(tableName.toLowerCase());
-      if (mdmEntity) return { kind: 'mdm', moduleRef: '102034', entity: mdmEntity.entity, fileRef: layer1FileRef(mdmEntity.entity) };
+      if (mdmEntity) return mdmStorage(mdmEntity);
       console.warn(`[buildPlanArtifactCandidates] layer_4 storage not resolved for table '${tableName}' (ownership: ${ownership || '?'})`);
       return { kind: 'unknown', tableName, ownership };
     };
@@ -929,12 +975,14 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
         }
       }
       registerEntityTables(entityId, tableNames);
-      // shape only when the group maps to ONE ontology entity (single table); multi-table groups
-      // keep storage refs only (each table defs carries its own physical shape).
-      const single = storage.length === 1 ? storage[0] : undefined;
-      const ontologyId = single?.kind === 'moduleTable'
-        ? tableByName.get(tableNames[0])?.rootEntity
-        : single?.kind === 'mdm' ? readString(single.entity) : undefined;
+      // A-03 (todo5): the entity defs is the canonical domain shape — fields are REQUIRED for
+      // every entity, including multi-table groups (e.g. base entity + its metric table). The
+      // shape comes from the group's PRIMARY binding: the first moduleTable's rootEntity or the
+      // first mdm entity (metric tables carry no domain shape).
+      const primary = storage.find(binding => binding.kind === 'moduleTable' || binding.kind === 'mdm');
+      const ontologyId = primary?.kind === 'moduleTable'
+        ? tableByName.get(readString(primary.tableName) || '')?.rootEntity
+        : primary?.kind === 'mdm' ? readString(primary.entity) : undefined;
       const usecaseRefs = usecases
         .map(item => getRecord(item))
         .filter((usecase): usecase is Record<string, unknown> => !!usecase && usecaseTouchesEntityTables(usecase, sourceTables))
@@ -1030,7 +1078,7 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
           layer: 'layer_4_entities',
           ...shapeFromOntology(mdmEntity.entity),
           sourceTables: [{ tableName: mdmEntity.entity, ownership: 'mdmOwned' }],
-          storage: [{ kind: 'mdm', moduleRef: '102034', entity: mdmEntity.entity, fileRef: layer1FileRef(mdmEntity.entity) }],
+          storage: [mdmStorage(mdmEntity)],
           allowedOperations: someUsecaseWrites(names) ? ['read', 'list', 'update'] : ['read', 'list'],
           rulesApplied: [],
           usecaseRefs: usecaseIdsTouching(names),
@@ -1150,37 +1198,12 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
         },
       }];
 
-      // Per-masterEntity l1 reference in the CONSUMING module's layer_1_external. Flagged as MDM
-      // and generateTable:false so it is NOT materialized as a physical table, but the entity
-      // shape (from the ontology) is available for usecase materialization and l1 mock generation.
-      const masterEntities = Array.isArray(domain.masterEntities) ? domain.masterEntities : [];
-      const governanceRules = Array.isArray(domain.governanceRules) ? domain.governanceRules : [];
-      for (const entityValue of masterEntities) {
-        const entityName = readString(entityValue);
-        if (!entityName) continue;
-        const ontologyEntity = getRecord(ontologyEntities[entityName]);
-        candidates.push({
-          artifactType: 'mdmEntity',
-          artifactId: entityName,
-          exportName: `${toExportIdentifier(entityName)}Mdm`,
-          moduleName,
-          data: {
-            kind: 'mdmEntity',
-            entity: entityName,
-            ownership: 'mdmOwned',
-            generateTable: false,
-            moduleId: moduleName,
-            domainId: id,
-            ...(infraModuleRef ? { infrastructureModuleRef: infraModuleRef } : {}), // T-003
-            domainTitle: readString(domain.title),
-            sourceOfTruth: readString(domain.sourceOfTruth),
-            governanceRules,
-            title: readString(ontologyEntity?.title) || entityName,
-            description: readString(ontologyEntity?.description),
-            fields: Array.isArray(ontologyEntity?.fields) ? ontologyEntity!.fields : [],
-          },
-        });
-      }
+      // Entity-first contract (todo5 A-02 / skills architecture.md rule 5): MDM master data has
+      // NO artifact in layer_1_external anymore. The canonical shape (fields) and the governance
+      // metadata (domainId, governanceRules, sourceOfTruth) live in the layer_4 entity defs
+      // (storage[kind='mdm'] block), written by the agentPlanUsecaseEntities writer via the
+      // entity catalog. The previous per-masterEntity 'mdmEntity' l1 refs were removed here.
+      void ontologyEntities;
 
       return candidates;
     });
