@@ -141,7 +141,7 @@ async function afterPromptStep(
     taskId: context.task?.PK || '',
     parentStepId: parentStep.stepId,
     stepId: step.stepId,
-    //cleaner: 'input_output',
+    cleaner: 'input_output',
     status
   };
 
@@ -167,7 +167,7 @@ async function processOutput(context: mls.msg.ExecutionContext, output: any, age
   await withLock(`module:${moduleName}`, () => addModuleRoutes(context, info.shortName, tag));
   await withLock(`index:${moduleName}`, () => addIndexPage(context, info.shortName, tag));
 
-  const stepOri = context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
+  const stepOri = parentStep.stepId;//context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
 
 
   const newSteps: mls.msg.AgentIntentAddStep[] = [];

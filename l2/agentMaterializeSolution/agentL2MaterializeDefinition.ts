@@ -299,7 +299,7 @@ async function afterPromptStep(
     messageId: context.message.orderAt,
     threadId: context.message.threadId,
     taskId: context.task?.PK || '',
-    parentStepId: parentStep.stepId,
+    parentStepId: step.stepId,
     step: {
       type: 'agent',
       stepId: 0,
@@ -350,6 +350,22 @@ function buildPipeline(project: number, moduleName: string, pageId: string): obj
       moduleName,
       outputPath: `${pageId}.ts`,
       dependsOn: ['contract', 'shared'],
+      specUpdatedAt: dt,
+    },
+    {
+      id: 'review',
+      agent: 'agentL2MaterializeReview',
+
+      pathContractDefs: sharedDefsRef,
+      pathSharedDefs: sharedDefsRef,
+      pathPageDefs: pageDefsRef,
+      pathContract: `_${project}_/l2/${moduleName}/web/contracts/${pageId}.ts`,
+      pathShared: `_${project}_/l2/${moduleName}/web/shared/${pageId}.ts`,
+      pathPage: `_${project}_/l2/${moduleName}/[device]/[deviceType]/[type]/${pageId}.ts`,
+
+      moduleName,
+      outputPath: `${pageId}.ts`,
+      dependsOn: ['contract', 'shared', 'page'],
       specUpdatedAt: dt,
     },
   ];
@@ -430,7 +446,7 @@ export type AgentOutput = {
 // ─── system prompt ────────────────────────────────────────────────────────────
 
 const systemPrompt = `
-<!-- modelType: mini -->
+<!-- modelType: codeinstruct -->
 <!-- modelTypeList: geminiChat (2.5 pro), code (grok), deepseekchat, codeflash (gemini), deepseekreasoner, mini (4.1) ou nano (openai), codeinstruct (4.1), codereasoning(gpt5), code2 (kimi 2.5) -->
 
 You are agentL2MaterializeDefinition.

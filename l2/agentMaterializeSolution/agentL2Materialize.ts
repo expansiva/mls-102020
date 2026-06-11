@@ -125,7 +125,7 @@ async function processOutput(context: mls.msg.ExecutionContext, output: any, age
 
   const orch = getMaterializeOrchestrator(output.path);
   const group = orch.groupByAgent(output.itens)
-  const stepOri = context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
+  const stepOri = parentStep.stepId; //context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
   const newSteps: mls.msg.AgentIntentAddStep[] = [];
 
   Object.keys(group).forEach((g) => {
