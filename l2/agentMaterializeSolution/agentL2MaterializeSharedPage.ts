@@ -3,6 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js'
 import { findPreviousAgentStep } from '/_102027_/l2/aiAgentHelper.js';
 import { getMaterializeOrchestrator } from '/_102020_/l2/agentMaterializeSolution/materializeOrchestrator.js';
+import { collabImport } from '/_102027_/l2/collabImport.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -121,7 +122,7 @@ async function afterPromptStep(
     taskId: context.task?.PK || '',
     parentStepId: parentStep.stepId,
     stepId: step.stepId,
-    //cleaner: 'input_output',
+    cleaner: 'input_output',
     status
   };
 
@@ -137,7 +138,7 @@ async function processOutput(context: mls.msg.ExecutionContext, output: any, age
   const ref = output.outputPath.startsWith('/') ? output.outputPath.slice(1) : output.outputPath;
   await orch.createStorFile(ref, parseAISource(output.srcFile));
 
-  const stepOri = context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
+  const stepOri = parentStep.stepId;//context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
 
   const newSteps: mls.msg.AgentIntentAddStep[] = [];
 
@@ -172,7 +173,9 @@ async function processOutput(context: mls.msg.ExecutionContext, output: any, age
 async function getSkill(info: { path: string, item: any, project?: number }, moduleName: string, device: string): Promise<string> {
 
   const project = info.project || 0;
-  const mod = await import(`/_${project}_/l2/${moduleName}/module.js`) as any;
+  const pt = `_${project}_/l2/${moduleName}/module.ts`
+  const params = mls.stor.convertFileReferenceToFile(pt) as any;
+  const mod = await collabImport(params) as any;
   if (!mod || !mod.moduleGenome) throw new Error('[agentL2MaterializeSharedPage] Not found moduleGenome');
 
   const deviceSkills = mod.skills[device];

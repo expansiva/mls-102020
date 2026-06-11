@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/agentRepairPlanIndex.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// TODO-FINAL-024
+// 
 // Generic repair agent for plan indices. One repair run per index, parameterized by the
 // index name in the step args. It receives the current index, the critique report (LLM
 // critique payload or the deterministic local findings), the index contract/schema and a
@@ -20,6 +20,7 @@ import {
   findParentStepOfStep,
   parsePlanIndexReviewArgs,
   repairPlanIndexToolName,
+  resolveIndexStepForReview,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import {
   PlanIndexLocalFindings,
@@ -55,7 +56,9 @@ async function beforePromptStep(
 
   const reviewArgs = parsePlanIndexReviewArgs(args || step.prompt);
   const config = getPlanIndexReviewConfig(reviewArgs.indexName);
-  const indexStep = parentStep; // repair steps are direct children of the index step
+  // Repair steps are designed as direct children of the index step, but the hook's parentStep
+  // is not always the real parent (task5 incident) — resolve the index step defensively.
+  const indexStep = resolveIndexStepForReview(context, parentStep, config.sourceAgentName);
 
   const output = config.getCurrentOutput(context);
   const localFindings = config.runLocalCheckpoint(context, output);
@@ -87,7 +90,7 @@ async function afterPromptStep(
 
   const reviewArgs = parsePlanIndexReviewArgs(step.prompt);
   const config = getPlanIndexReviewConfig(reviewArgs.indexName);
-  const indexStep = parentStep;
+  const indexStep = resolveIndexStepForReview(context, parentStep, config.sourceAgentName);
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
 

@@ -267,7 +267,7 @@ async function afterPromptStep(
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
 
-  // TODO-FINAL-023/024: hold the step open and run critic/repair before metric table definitions.
+  // /024: hold the step open and run critic/repair before metric table definitions.
   if (status === 'completed' && output && output.status === 'ok') {
     return createHoldIndexForReviewIntents(context, parentStep, step, hookSequential, 'metricsIndex');
   }
@@ -281,8 +281,59 @@ async function afterPromptStep(
 }
 
 export function getPlanMetricsIndexOutput(context: mls.msg.ExecutionContext): PlanMetricsIndexOutput {
-  // TODO-FINAL-024: prefer the latest repaired index when a repair step exists.
-  return getPlannerOutputWithRepair(context, 'agentPlanMetricsIndex', 'metricsIndex', planMetricsIndexConfig, output => validatePlanMetricsIndexOutput(output, getPlanningContextSnapshot(context).initialMetricsRequested));
+  // prefer the latest repaired index when a repair step exists.
+  const output = getPlannerOutputWithRepair(context, 'agentPlanMetricsIndex', 'metricsIndex', planMetricsIndexConfig, item => validatePlanMetricsIndexOutput(item, getPlanningContextSnapshot(context).initialMetricsRequested));
+  applyMetricsRelationshipDimensions(output, context); // mechanical T-013 auto-fix (idempotent)
+  return output;
+}
+
+/**
+ * Mechanical T-013 auto-fix (task5 incident): every direct ontology relationship of a metric
+ * table's source entities must appear as a dimension. Instead of burning critic/repair LLM
+ * attempts on a formulaic addition, insert the missing FK dimension deterministically. Applied
+ * on read (original, repaired and checkpoint consumers all see the same enriched index).
+ */
+function applyMetricsRelationshipDimensions(output: PlanMetricsIndexOutput, context: mls.msg.ExecutionContext): void {
+  if (output.status !== 'ok') return;
+  try {
+    const finalPlan = getFinalizeSolutionPlanOutput(context);
+    const relationships = finalPlan.result.relationships.filter((rel): rel is Record<string, unknown> => !!rel && typeof rel === 'object');
+    if (relationships.length === 0) return;
+
+    const token = (value: string) => value.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const toSnake = (value: string) => value.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+
+    for (const table of output.result.metricTables) {
+      const sourceEntities = new Set(table.sourceEntities);
+      if (sourceEntities.size === 0) continue;
+      const dimensionTokens: string[] = [];
+      for (const dimension of table.dimensions) {
+        if (!dimension || typeof dimension !== 'object') continue;
+        for (const key of ['dimensionId', 'column']) {
+          const value = (dimension as Record<string, unknown>)[key];
+          if (typeof value === 'string' && value.trim()) dimensionTokens.push(token(value));
+        }
+      }
+      for (const rel of relationships) {
+        const from = typeof rel.fromEntity === 'string' ? rel.fromEntity : '';
+        const to = typeof rel.toEntity === 'string' ? rel.toEntity : '';
+        if (!from || !to || !sourceEntities.has(from)) continue;
+        const relatedToken = token(to);
+        if (!relatedToken || dimensionTokens.some(item => item.includes(relatedToken))) continue;
+        const column = `${toSnake(to)}_id`;
+        table.dimensions.push({
+          dimensionId: `${to.charAt(0).toLowerCase()}${to.slice(1)}Id`,
+          column,
+          type: 'text',
+          description: `FK dimension derived from ontology relationship ${String(rel.relationshipId || '')} (${from} -> ${to})`.trim(),
+        });
+        dimensionTokens.push(token(column));
+        console.log(`[agentPlanMetricsIndex] added missing relationship dimension ${column} to ${table.metricTableId} (mechanical T-013 fix)`);
+      }
+    }
+  } catch {
+    // final plan unavailable: skip enrichment (checkpoint check will surface real gaps)
+  }
 }
 
 function extractPlanMetricsIndexOutput(payload: unknown): PlanMetricsIndexOutput {
@@ -300,6 +351,29 @@ export function normalizePlanMetricsIndexResult(value: unknown): PlanMetricsInde
   const result = assertRecord(value, 'result');
   const metricsPlan = assertRecord(result.metricsPlan, 'result.metricsPlan');
   const metricTables = assertArray(result.metricTables, 'result.metricTables').map((item, index) => normalizeMetricTableIndexItem(item, `result.metricTables[${index}]`));
+  const dashboardPages = assertArray(result.dashboardPages, 'result.dashboardPages').map((item, index) => normalizeDashboardPage(item, `result.dashboardPages[${index}]`));
+
+  // Mechanical normalization (task5 incident): widgets often reference the PHYSICAL tableName
+  // (snake_case) instead of the canonical metricTableId — remap deterministically instead of
+  // burning critic/repair attempts on it. Runs on every extraction (original and repaired).
+  const idByTableName = new Map<string, string>();
+  for (const table of metricTables) {
+    if (table.tableName) idByTableName.set(table.tableName, table.metricTableId);
+  }
+  for (const page of dashboardPages) {
+    if (!page || typeof page !== 'object') continue;
+    const widgets = (page as Record<string, unknown>).widgets;
+    if (!Array.isArray(widgets)) continue;
+    for (const widget of widgets) {
+      if (!widget || typeof widget !== 'object') continue;
+      const record = widget as Record<string, unknown>;
+      const source = record.sourceMetricTable;
+      if (typeof source === 'string' && idByTableName.has(source)) {
+        record.sourceMetricTable = idByTableName.get(source);
+      }
+    }
+  }
+
   return {
     metricsPlan: {
       ...metricsPlan,
@@ -307,7 +381,7 @@ export function normalizePlanMetricsIndexResult(value: unknown): PlanMetricsInde
       storageEngine: assertString(metricsPlan.storageEngine, 'result.metricsPlan.storageEngine'),
     },
     metricTables,
-    dashboardPages: assertArray(result.dashboardPages, 'result.dashboardPages').map((item, index) => normalizeDashboardPage(item, `result.dashboardPages[${index}]`)),
+    dashboardPages,
   };
 }
 
@@ -428,7 +502,7 @@ function buildHumanPrompt(
   tableDefinitions: PlanTableDefinitionOutput[],
   initialMetricsRequested: boolean,
 ): string {
-  // TODO-FINAL-030 (R1): compact context. The metrics index needs approved metrics/dashboards,
+  // compact context. The metrics index needs approved metrics/dashboards,
   // capabilities and the base tables to derive metrics from — not the full final plan or full
   // table definitions (columns). Table summaries (id/name/rootEntity) are enough.
   const reduced = {

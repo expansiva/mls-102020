@@ -13,6 +13,8 @@ import {
   getPlannerOutput,
   getPlanningContextSnapshot,
   hasAcceptedNowArtifact,
+  readPlatformSkill,
+  withPlatformSkill,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { solutionBlueprintResultSchema } from '/_102020_/l2/agentNewSolution/agentSolutionPlanSchemas.js';
@@ -78,13 +80,14 @@ async function beforePromptStep(
   if (!context.task) throw new Error(`[${agent.agentName}](beforePromptStep) task invalid`);
 
   const snapshot = getPlanningContextSnapshot(context);
+  const platformSkill = await readPlatformSkill();
   return [
     createPlannerPromptReadyIntent(
       context,
       parentStep,
       hookSequential,
       args,
-      systemPrompt.split('{{toolName}}').join(SOLUTION_BLUEPRINT_TOOL_NAME),
+      withPlatformSkill(systemPrompt.split('{{toolName}}').join(SOLUTION_BLUEPRINT_TOOL_NAME), platformSkill),
       buildHumanPrompt(args, snapshot),
       solutionBlueprintToolSchema,
       SOLUTION_BLUEPRINT_TOOL_NAME
@@ -239,6 +242,7 @@ In result, return:
 - Include explicit user actions for all required selections, confirmations, and lifecycle changes implied by the domain.
 - Include MDM domains for stable master data such as customers, accounts, products, assets, suppliers, staff, locations, or reusable records.
 - Every entity owned by the solution (ownership moduleOwned or mdmOwned) must declare its full field list: fieldId, type, required, and description for each field. An entity without fields cannot be materialized and is invalid.
+- When the request MAINTAINS or EXTENDS an existing module, entities already persisted by that module are ownership "existingModuleOwned" — never moduleOwned (would duplicate the table) and never mdmOwned (reserved for shared master data).
 - Include operational metric tables and an admin dashboard when initial metrics/dashboard was accepted.
 - Include layer_3 usecase entities when the solution has BFF commands, writes, lifecycle changes, or metric updates.
 - Backend layer rules must be respected: BFF is layer_2, use cases are layer_3, real tables are layer_1.

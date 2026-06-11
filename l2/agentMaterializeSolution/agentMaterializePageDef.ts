@@ -1,15 +1,31 @@
-/// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentL2MaterializeDefinition.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
+/// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentMaterializePageDef.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
-import { updateVariableJson } from '/_102027_/l2/defsAST.js';
+import { convertFileNameToTag } from '/_102027_/l2/utils.js';
+import { addModuleNav, addModuleRoute } from '/_102020_/l2/agentMaterializeSolution/ast/astModuleFront.js';
+import { addNav, addPage } from '/_102020_/l2/agentMaterializeSolution/ast/astIndex.js';
+import { addRoute, addImport } from '/_102020_/l2/agentMaterializeSolution/ast/astRouter.js';
+
+// ─── mutex ────────────────────────────────────────────────────────────────────
+
+const _lockQueue: Map<string, Promise<void>> = new Map();
+
+async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = _lockQueue.get(key) ?? Promise.resolve();
+  let resolve!: () => void;
+  _lockQueue.set(key, new Promise<void>(r => { resolve = r; }));
+  await prev;
+  try { return await fn(); }
+  finally { resolve(); }
+}
 
 export function createAgent(): IAgentAsync {
   return {
-    agentName: 'agentL2MaterializeDefinition',
+    agentName: 'agentMaterializePageDef',
     agentProject: 102020,
     agentFolder: 'agentMaterializeSolution',
-    agentDescription: 'Split a page plan into three defs files and start L2 materialization',
+    agentDescription: 'Split a page plan into three mat1 defs (each with its own pipeline) and populate module singletons',
     visibility: 'public',
     beforePromptImplicit,
     beforePromptStep,
@@ -30,13 +46,13 @@ function parseInput(raw: string): AgentInput {
     const parsed = JSON.parse(trimmed) as Record<string, unknown>;
     const path = parsed['path'];
     const moduleName = parsed['moduleName'];
-    if (typeof path !== 'string' || !path) throw new Error('[agentMaterializeDefinition] missing "path"');
-    if (typeof moduleName !== 'string' || !moduleName) throw new Error('[agentMaterializeDefinition] missing "moduleName"');
+    if (typeof path !== 'string' || !path) throw new Error('[agentMaterializePageDef] missing "path"');
+    if (typeof moduleName !== 'string' || !moduleName) throw new Error('[agentMaterializePageDef] missing "moduleName"');
     return { path, moduleName };
   }
   const lines = trimmed.split(/[\n\r]+/).map(s => s.trim()).filter(Boolean);
-  if (!lines[0]) throw new Error('[agentMaterializeDefinition] path is required');
-  if (!lines[1]) throw new Error('[agentMaterializeDefinition] moduleName is required');
+  if (!lines[0]) throw new Error('[agentMaterializePageDef] path is required');
+  if (!lines[1]) throw new Error('[agentMaterializePageDef] moduleName is required');
   return { path: lines[0], moduleName: lines[1] };
 }
 
@@ -46,22 +62,15 @@ function extractPageId(path: string): string {
 }
 
 function extractProject(path: string): number {
-  const m = path.match(/mls-(\d+)/);
+  const m = path.match(/_(\d+)_/);
   return m ? parseInt(m[1], 10) : (mls.actualProject || 0);
 }
 
 // ─── stor helpers ─────────────────────────────────────────────────────────────
 
-function toRef(mlsPath: string): string {
-  const norm = mlsPath.trim().replace(/^\/+/, '');
-  const m = norm.match(/^mls-(\d+)\/(.+)/);
-  if (m) return `_${m[1]}_/${m[2]}`;
-  return norm;
-}
-
-async function readStorFile(mlsPath: string): Promise<string | null> {
+async function readStorFile(ref: string): Promise<string | null> {
   try {
-    const info = mls.stor.convertFileReferenceToFile(toRef(mlsPath));
+    const info = mls.stor.convertFileReferenceToFile(ref);
     if (!info) return null;
     const sf = mls.stor.files[mls.stor.getKeyToFile(info)];
     if (!sf) return null;
@@ -72,14 +81,14 @@ async function readStorFile(mlsPath: string): Promise<string | null> {
   }
 }
 
-async function writeStorFile(mlsPath: string, src: string): Promise<void> {
-  const info = mls.stor.convertFileReferenceToFile(toRef(mlsPath));
-  if (!info) throw new Error(`[agentMaterializeDefinition] cannot resolve: ${mlsPath}`);
+async function writeStorFile(ref: string, src: string): Promise<void> {
+  const info = mls.stor.convertFileReferenceToFile(ref);
+  if (!info) throw new Error(`[agentMaterializePageDef] cannot resolve: ${ref}`);
   const key = mls.stor.getKeyToFile(info);
   let sf = mls.stor.files[key];
   if (!sf) {
     const param: IReqCreateStorFile = { ...info, source: src };
-    sf = await createStorFile(param, false, false, false);
+    sf = await createStorFile(param, true, true, true);
   } else {
     const m = await sf.getOrCreateModel();
     if (m && m.model) m.model.setValue(src);
@@ -87,9 +96,9 @@ async function writeStorFile(mlsPath: string, src: string): Promise<void> {
   await mls.stor.localStor.setContent(sf, { contentType: 'string', content: src });
 }
 
-// ─── template builders ────────────────────────────────────────────────────────
+// ─── defs template builders ───────────────────────────────────────────────────
 
-function buildPageDefsFile(fileRef: string, pageSpecJson: string, sharedRef: string): string {
+function buildContractDefsFile(fileRef: string, commandsJson: string, pipeline: object[]): string {
   const bt = '`';
   const bt3 = '\\\`\\\`\\\`';
   return (
@@ -97,18 +106,14 @@ function buildPageDefsFile(fileRef: string, pageSpecJson: string, sharedRef: str
     `export const skill = ${bt}\n` +
     `## Pages spec\n` +
     `${bt3}JSON\n` +
-    `${pageSpecJson}\n` +
+    `${commandsJson}\n` +
     `${bt3}\n` +
-    `\n` +
-    `## Base Class\n` +
-    `${bt3}JSON\n` +
-    `    [[(${sharedRef})]]\n` +
-    `${bt3}\n` +
-    `${bt};\n`
+    `${bt};\n` +
+    `\nexport const materializeIndex = ${JSON.stringify(pipeline, null, 2)};\n`
   );
 }
 
-function buildSharedDefsFile(fileRef: string, commandsJson: string, contractsRef: string): string {
+function buildSharedDefsFile(fileRef: string, commandsJson: string, contractsRef: string, pipeline: object[]): string {
   const bt = '`';
   const bt3 = '\\\`\\\`\\\`';
   return (
@@ -123,11 +128,12 @@ function buildSharedDefsFile(fileRef: string, commandsJson: string, contractsRef
     `${bt3}JSON\n` +
     `    [[(${contractsRef})]]\n` +
     `${bt3}\n` +
-    `${bt};\n`
+    `${bt};\n` +
+    `\nexport const materializeIndex = ${JSON.stringify(pipeline, null, 2)};\n`
   );
 }
 
-function buildContractDefsFile(fileRef: string, commandsJson: string): string {
+function buildPageDefsFile(fileRef: string, pageSpecJson: string, sharedRef: string, pipeline: object[]): string {
   const bt = '`';
   const bt3 = '\\\`\\\`\\\`';
   return (
@@ -135,10 +141,55 @@ function buildContractDefsFile(fileRef: string, commandsJson: string): string {
     `export const skill = ${bt}\n` +
     `## Pages spec\n` +
     `${bt3}JSON\n` +
-    `${commandsJson}\n` +
+    `${pageSpecJson}\n` +
     `${bt3}\n` +
-    `${bt};\n`
+    `\n` +
+    `## Base Class\n` +
+    `${bt3}JSON\n` +
+    `    [[(${sharedRef})]]\n` +
+    `${bt3}\n` +
+    `${bt};\n` +
+    `\nexport const materializeIndex = ${JSON.stringify(pipeline, null, 2)};\n`
   );
+}
+
+// ─── pipeline builders ────────────────────────────────────────────────────────
+
+function buildContractPipeline(project: number, moduleName: string, pageId: string): object[] {
+  return [{
+    id: 'contract',
+    agent: 'agentL2MaterializeContract',
+    defsPath: `_${project}_/l1/${moduleName}/layer_2_controllers/${pageId}.defs.ts`,
+    skillPath: '_102020_/l2/agentMaterializeSolution/skills/genContract.ts',
+    moduleName,
+    outputPath: `_${project}_/l2/${moduleName}/web/contracts/${pageId}.ts`,
+    dependsOn: [],
+    specUpdatedAt: new Date().toISOString(),
+  }];
+}
+
+function buildSharedPipeline(project: number, moduleName: string, pageId: string): object[] {
+  return [{
+    id: 'shared',
+    agent: 'agentL2MaterializeSharedPage',
+    defsPath: `_${project}_/l2/${moduleName}/web/shared/${pageId}.defs.ts`,
+    moduleName,
+    outputPath: `_${project}_/l2/${moduleName}/web/shared/${pageId}.ts`,
+    dependsOn: [],
+    specUpdatedAt: new Date().toISOString(),
+  }];
+}
+
+function buildPagePipeline(project: number, moduleName: string, pageId: string): object[] {
+  return [{
+    id: 'page',
+    agent: 'agentL2MaterializePageLit',
+    defsPath: `_${project}_/l2/${moduleName}/web/desktop/page11/${pageId}.defs.ts`,
+    moduleName,
+    outputPath: `_${project}_/l2/${moduleName}/web/desktop/page11/${pageId}.ts`,
+    dependsOn: [],
+    specUpdatedAt: new Date().toISOString(),
+  }];
 }
 
 // ─── prompt builder ───────────────────────────────────────────────────────────
@@ -146,8 +197,7 @@ function buildContractDefsFile(fileRef: string, commandsJson: string): string {
 async function buildHumanPrompt(path: string, moduleName: string): Promise<string> {
   const pageId = extractPageId(path);
   const planSrc = await readStorFile(path);
-  if (!planSrc) throw new Error(`[agentMaterializeDefinition] plan file not found: ${path}`);
-
+  if (!planSrc) throw new Error(`[agentMaterializePageDef] plan file not found: ${path}`);
   return [
     `## path\n${path}`,
     `## moduleName\n${moduleName}`,
@@ -175,7 +225,7 @@ async function beforePromptImplicit(
         { type: 'system', content: systemPrompt },
         { type: 'human', content: humanPrompt },
       ],
-      taskTitle: `materialize:${extractPageId(path)}`,
+      taskTitle: `def:${extractPageId(path)}`,
       threadId: context.message.threadId,
       userMessage: path,
       longTermMemory: { moduleName },
@@ -230,9 +280,8 @@ async function afterPromptStep(
 
   try {
     const payload = step.interaction?.payload?.[0];
-    if (!payload || payload.type !== 'flexible' || !payload.result) {
+    if (!payload || payload.type !== 'flexible' || !payload.result)
       throw new Error('missing or invalid flexible payload');
-    }
 
     const result = payload.result as AgentOutput['result'];
     const { path, moduleName, pageId, commandsJson, pageSpecJson } = result;
@@ -240,41 +289,89 @@ async function afterPromptStep(
 
     const project = extractProject(path);
 
+    // ─── file refs ───────────────────────────────────────────────────────────
     const contractDefsRef = `_${project}_/l1/${moduleName}/layer_2_controllers/${pageId}.defs.ts`;
-    const sharedDefsRef = `_${project}_/l2/${moduleName}/web/shared/${pageId}.defs.ts`;
-    const pageDefsRef = `_${project}_/l2/${moduleName}/web/desktop/page11/${pageId}.defs.ts`;
-    const sharedRef = `_${project}_/l2/${moduleName}/web/shared/${pageId}.ts`;
-    const contractsRef = `_${project}_/l2/${moduleName}/web/contracts/${pageId}.ts`;
+    const sharedDefsRef   = `_${project}_/l2/${moduleName}/web/shared/${pageId}.defs.ts`;
+    const pageDefsRef     = `_${project}_/l2/${moduleName}/web/desktop/page11/${pageId}.defs.ts`;
+    const contractsRef    = `_${project}_/l2/${moduleName}/web/contracts/${pageId}.ts`;
+    const sharedRef       = `_${project}_/l2/${moduleName}/web/shared/${pageId}.ts`;
 
+    // ─── create 3 mat1 defs, each with its own pipeline ──────────────────────
     await writeStorFile(
-      `_${project}_/l2/${moduleName}/web/desktop/page11/${pageId}.defs.ts`,
-      buildPageDefsFile(pageDefsRef, pageSpecJson, sharedRef),
+      contractDefsRef,
+      buildContractDefsFile(contractDefsRef, commandsJson, buildContractPipeline(project, moduleName, pageId)),
     );
     await writeStorFile(
-      `_${project}_/l2/${moduleName}/web/shared/${pageId}.defs.ts`,
-      buildSharedDefsFile(sharedDefsRef, commandsJson, contractsRef),
+      sharedDefsRef,
+      buildSharedDefsFile(sharedDefsRef, commandsJson, contractsRef, buildSharedPipeline(project, moduleName, pageId)),
     );
     await writeStorFile(
-      `_${project}_/l1/${moduleName}/layer_2_controllers/${pageId}.defs.ts`,
-      buildContractDefsFile(contractDefsRef, commandsJson),
+      pageDefsRef,
+      buildPageDefsFile(pageDefsRef, pageSpecJson, sharedRef, buildPagePipeline(project, moduleName, pageId)),
     );
 
-    const key = mls.stor.getKeyToFile({ project: mls.actualProject || 0, level: 2, folder: moduleName, shortName: 'module', extension: '.ts' });
-    if (!mls.stor.files[key]) await generateInfoModule(moduleName);
+    // ─── compute page tag from the future .ts output path ────────────────────
+    const pageOutputRef = `_${project}_/l2/${moduleName}/web/desktop/page11/${pageId}.ts`;
+    const fileInfo = mls.stor.convertFileReferenceToFile(pageOutputRef);
+    if (!fileInfo.project) (fileInfo as any).project = project;
+    const pageTag  = convertFileNameToTag(fileInfo);
+    const entrypoint = `/_${project}_/l2/${moduleName}/web/desktop/page11/${pageId}.js`;
 
-    let planSrc = await readStorFile(path);
-    if (planSrc) {
-      const idx = planSrc.indexOf('export default ');
-      if (idx > 0) planSrc = planSrc.slice(0, idx);
-      planSrc = planSrc.replace(/as const/g, '');
-      const pipeline = buildPipeline(project, moduleName, pageId);
-      const updatedPlan = updateVariableJson(planSrc, 'materializeIndex', pipeline);
-      await writeStorFile(path, updatedPlan);
+    // ─── update module.ts ────────────────────────────────────────────────────
+    const moduleRef = `_${project}_/l2/${moduleName}/module.ts`;
+    await withLock(`module:${moduleName}`, async () => {
+      let src = await readStorFile(moduleRef) ?? '';
+      src = addModuleNav(src, {
+        id: pageId,
+        label: pageId,
+        href: `/${moduleName}/${pageId}`,
+        description: pageId,
+      });
+      src = addModuleRoute(src, {
+        path: `/${moduleName}/${pageId}`,
+        aliases: [],
+        entrypoint,
+        tag: pageTag,
+        title: pageId,
+      });
+      await writeStorFile(moduleRef, src);
+    });
+
+    // ─── update index.ts ─────────────────────────────────────────────────────
+    const indexRef = `_${project}_/l2/${moduleName}/index.ts`;
+    await withLock(`index:${moduleName}`, async () => {
+      let src = await readStorFile(indexRef) ?? '';
+      src = addNav(src, { label: pageId, href: `/${moduleName}/${pageId}` });
+      src = addPage(src, {
+        path: `/${moduleName}/${pageId}`,
+        title: pageId,
+        tagName: pageTag,
+        loader: entrypoint,
+      });
+      await writeStorFile(indexRef, src);
+    });
+
+    // ─── update router.ts ────────────────────────────────────────────────────
+    const routerRef = `_${project}_/l1/${moduleName}/layer_2_controllers/router.ts`;
+    const commands = (JSON.parse(commandsJson) as { commands: Array<{ commandName: string }> }).commands ?? [];
+    if (commands.length > 0) {
+      await withLock(`router:${moduleName}`, async () => {
+        let src = await readStorFile(routerRef) ?? '';
+        const importPath = `/_${project}_/l1/${moduleName}/layer_2_controllers/${pageId}.js`;
+        const handlerNames: string[] = [];
+        for (const cmd of commands) {
+          const handlerName = `${pageId}${cmd.commandName.charAt(0).toUpperCase()}${cmd.commandName.slice(1)}Handler`;
+          handlerNames.push(handlerName);
+          src = addRoute(src, `${moduleName}.${pageId}.${cmd.commandName}`, handlerName);
+        }
+        src = addImport(src, { kind: 'value', names: handlerNames, from: importPath });
+        await writeStorFile(routerRef, src);
+      });
     }
 
   } catch (err) {
     status = 'failed';
-    console.error(`[agentMaterializeDefinition](afterPromptStep)`, err);
+    console.error(`[agentMaterializePageDef](afterPromptStep)`, err);
   }
 
   const updateStatus: mls.msg.AgentIntentUpdateStatus = {
@@ -289,143 +386,7 @@ async function afterPromptStep(
     status,
   };
 
-  if (status === 'failed') return [updateStatus];
-
-  const payload = step.interaction?.payload?.[0];
-  const path = (payload?.type === 'flexible' && payload.result?.path) ? payload.result.path as string : '';
-
-  const newStep: mls.msg.AgentIntentAddStep = {
-    type: 'add-step',
-    messageId: context.message.orderAt,
-    threadId: context.message.threadId,
-    taskId: context.task?.PK || '',
-    parentStepId: step.stepId,
-    step: {
-      type: 'agent',
-      stepId: 0,
-      interaction: null,
-      status: 'waiting_human_input',
-      nextSteps: [],
-      agentName: 'agentL2Materialize',
-      prompt: path,
-      rags: [],
-    },
-  };
-
-  return [newStep];
-}
-
-// ─── pipeline ─────────────────────────────────────────────────────────────────
-
-function buildPipeline(project: number, moduleName: string, pageId: string): object[] {
-  const dt = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-  const contractDefsRef = `_${project}_/l1/${moduleName}/layer_2_controllers/${pageId}.defs.ts`;
-  const sharedDefsRef = `_${project}_/l2/${moduleName}/web/shared/${pageId}.defs.ts`;
-  const pageDefsRef = `_${project}_/l2/${moduleName}/web/desktop/page11/${pageId}.defs.ts`;
-
-  return [
-    {
-      id: 'contract',
-      agent: 'agentL2MaterializeContract',
-      defsPath: contractDefsRef,
-      skillPath: '_102020_/l2/agentMaterializeSolution/skills/genContract.ts',
-      moduleName,
-      outputPath: `_${project}_/l2/${moduleName}/web/contracts/${pageId}.ts`,
-      dependsOn: [],
-      specUpdatedAt: dt,
-    },
-    {
-      id: 'shared',
-      agent: 'agentL2MaterializeSharedPage',
-      defsPath: sharedDefsRef,
-      moduleName,
-      outputPath: `${pageId}.ts`,
-      dependsOn: ['contract'],
-      specUpdatedAt: dt,
-    },
-    {
-      id: 'page',
-      agent: 'agentL2MaterializePageLit',
-      defsPath: pageDefsRef,
-      moduleName,
-      outputPath: `${pageId}.ts`,
-      dependsOn: ['contract', 'shared'],
-      specUpdatedAt: dt,
-    },
-    {
-      id: 'review',
-      agent: 'agentL2MaterializeReview',
-
-      pathContractDefs: sharedDefsRef,
-      pathSharedDefs: sharedDefsRef,
-      pathPageDefs: pageDefsRef,
-      pathContract: `_${project}_/l2/${moduleName}/web/contracts/${pageId}.ts`,
-      pathShared: `_${project}_/l2/${moduleName}/web/shared/${pageId}.ts`,
-      pathPage: `_${project}_/l2/${moduleName}/[device]/[deviceType]/[type]/${pageId}.ts`,
-
-      moduleName,
-      outputPath: `${pageId}.ts`,
-      dependsOn: ['contract', 'shared', 'page'],
-      specUpdatedAt: dt,
-    },
-  ];
-}
-
-// ─── module generator ─────────────────────────────────────────────────────────
-
-async function generateInfoModule(moduleName: string) {
-  const src = `/// <mls fileReference="_${mls.actualProject}_/l2/${moduleName}/module.ts" enhancement="_blank" />
-import type { AuraModuleFrontendDefinition, IPaths, IGenomeConfig } from '/_102029_/l2/contracts/bootstrap.js';
-
-export const moduleGenome: Record<string, IGenomeConfig> = {
-  'web/desktop/page11': {
-    designSystem: 'default',
-    device: 'desktop',
-    layout: 'standard',
-  }
-} as const;
-
-export const skills: IPaths = {
-  web: {
-    sharedPath: '/_${mls.actualProject}_/l2/${moduleName}/web/shared',
-    sharedSkill: '/_102020_/l2/agentMaterializeSolution/skills/genPageShared.ts'
-  }
-}
-
-export const moduleStates = {
-} as const;
-
-export const moduleShellPreferences = {
-  layout: {
-    asideMode: {
-      desktop: 'inline',
-      mobile: 'fullscreen',
-    },
-  },
-} as const;
-
-export const moduleFrontendDefinition: AuraModuleFrontendDefinition = {
-  pageTitle: '${moduleName}',
-  device: 'desktop',
-  navigation: [],
-  routes: [],
-};
-`;
-  await saveFile(`_${mls.actualProject}_/l2/${moduleName}/module.ts`, src);
-}
-
-async function saveFile(ref: string, src: string) {
-  const info = mls.stor.convertFileReferenceToFile(ref);
-  const k = mls.stor.getKeyToFile(info);
-  let sf = mls.stor.files[k];
-  if (!sf) {
-    const param: IReqCreateStorFile = { ...info, source: src };
-    sf = await createStorFile(param, true, true, true);
-  } else {
-    const m = await sf.getOrCreateModel();
-    if (m && m.model) m.model.setValue(src);
-  }
-  await mls.stor.localStor.setContent(sf, { contentType: 'string', content: src });
+  return [updateStatus];
 }
 
 // ─── output type ──────────────────────────────────────────────────────────────
@@ -437,8 +398,8 @@ export type AgentOutput = {
     path: string;
     moduleName: string;
     pageId: string;
-    commandsJson: string;  // JSON string of the BFF commands array (Origins[])
-    pageSpecJson: string;  // JSON string of the page spec object (sections/organisms)
+    commandsJson: string;
+    pageSpecJson: string;
   };
 };
 //#endregion
@@ -449,7 +410,7 @@ const systemPrompt = `
 <!-- modelType: codeinstruct -->
 <!-- modelTypeList: geminiChat (2.5 pro), code (grok), deepseekchat, codeflash (gemini), deepseekreasoner, mini (4.1) ou nano (openai), codeinstruct (4.1), codereasoning(gpt5), code2 (kimi 2.5) -->
 
-You are agentL2MaterializeDefinition.
+You are agentMaterializePageDef.
 You receive a page plan source file and must extract two JSON payloads from it.
 
 ## Your only job
@@ -480,15 +441,11 @@ Rules:
 - If \`bffCommands\` is absent, use \`[]\`.
 - If \`navigationRefs\` is absent, use \`[]\`.
 
-This payload is consumed by the Shared base class generator (genPageShared).
-It needs the full BFF command shapes to generate load/action methods,
-and the navigationRefs to generate outbound navigation handlers.
-
 ---
 
 ## Output field 2 — pageSpecJson
 
-A JSON object built from \`data.pageDefinition\`, keeping only the fields the render generator needs:
+A JSON object built from \`data.pageDefinition\`, keeping only:
 
 | Field | Copy rule |
 |---|---|
@@ -497,24 +454,17 @@ A JSON object built from \`data.pageDefinition\`, keeping only the fields the re
 | \`actor\` | verbatim |
 | \`purpose\` | verbatim |
 | \`sections\` | **verbatim — do not alter any organism, userAction, readsFields, or writesFields** |
-| \`navigationRefs\` | **verbatim — do not alter direction, pageId, or trigger** |
+| \`navigationRefs\` | **verbatim** |
 
-**Omit** all other fields from \`data.pageDefinition\`: \`capabilities\`, \`flowRefs\`, \`pluginRefs\`,
-\`mdmRefs\`, \`pageInputs\`. They are not used by the render generator and add noise.
-
-This payload is consumed by the page render generator (genPageRender).
-It uses \`sections\` and \`organisms\` to decide what to render, and \`navigationRefs\` to wire navigation buttons.
+**Omit** all other fields: \`capabilities\`, \`flowRefs\`, \`pluginRefs\`, \`mdmRefs\`, \`pageInputs\`.
 
 ---
 
 ## Critical: verbatim copy
 
 Both payloads must preserve every value from the source JSON character-for-character.
-Do NOT rephrase strings, reorder array items, change field names, or drop nested fields
-inside \`sections\`, \`organisms\`, or \`navigationRefs\`.
-
+Do NOT rephrase strings, reorder array items, change field names, or drop nested fields.
 If the source uses Portuguese strings, keep them in Portuguese.
-If a field value is an empty array \`[]\`, keep it as \`[]\`.
 
 ---
 

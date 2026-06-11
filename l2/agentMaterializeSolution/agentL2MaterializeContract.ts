@@ -122,12 +122,12 @@ async function afterPromptStep(
     taskId: context.task?.PK || '',
     parentStepId: parentStep.stepId,
     stepId: step.stepId,
-    //cleaner: 'input_output',
+    cleaner: 'input_output',
     status
   };
 
   return [...intents, updateStatus];
-
+  
 }
 
 async function processOutput(context: mls.msg.ExecutionContext, output: any, agent: IAgentMeta, parentStep: mls.msg.AIAgentStep): Promise<mls.msg.AgentIntent[]> {
@@ -139,7 +139,7 @@ async function processOutput(context: mls.msg.ExecutionContext, output: any, age
   const orch = getMaterializeOrchestrator(output.path);
   await orch.createStorFile(interfaceOutputPath, parseAISource(output.interfaceFile));
 
-  const stepOri = context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
+  const stepOri = parentStep.stepId;//context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
 
   const newSteps: mls.msg.AgentIntentAddStep[] = [];
 

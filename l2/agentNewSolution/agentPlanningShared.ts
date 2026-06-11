@@ -166,7 +166,7 @@ export function getPlannerOutputs<T>(
 }
 
 /**
- * TODO-FINAL-010/023: read fan-out definition outputs preferring task payloads, falling back
+ * read fan-out definition outputs preferring task payloads, falling back
  * to the saved .defs.ts artifacts when the payload was cleared with cleaner="input_output".
  * Saved artifacts are reconstructed into PlannerOutput via config.normalizeResult; task payloads
  * override file copies (more recent within the same run). Results are deduped/sorted by getId.
@@ -307,6 +307,29 @@ export function createParallelDynamicAgentStepIntent(
   };
 }
 
+// Platform baseline skill — capabilities the platform already provides (auth/RBAC, i18n,
+// multi-tenant, file storage, LLM proxy, ...). Injected into the decision agents' system prompt so
+// they reference these instead of (re)planning modules/horizontals for them. Read once from
+// l2/agentNewSolution/skills/platform.md in the agent project (102020); cached for the session.
+let _platformSkillCache: string | null = null;
+export async function readPlatformSkill(): Promise<string> {
+  if (_platformSkillCache !== null) return _platformSkillCache;
+  try {
+    const key = mls.stor.getKeyToFile({ project: 102020, level: 2, folder: 'agentNewSolution/skills', shortName: 'platform', extension: '.md' });
+    const file = mls.stor.files[key];
+    const raw = file ? await file.getContent() : '';
+    _platformSkillCache = typeof raw === 'string' ? raw : '';
+  } catch {
+    _platformSkillCache = '';
+  }
+  return _platformSkillCache;
+}
+
+/** Appends the platform baseline to a system prompt (no-op when the skill file is missing). */
+export function withPlatformSkill(systemPrompt: string, platformSkill: string): string {
+  return platformSkill ? `${systemPrompt}\n\n${platformSkill}` : systemPrompt;
+}
+
 //#region T-006: parallel_dynamic fan-out reconciliation (E-007/E-008)
 
 export const MAX_FAN_OUT_RECONCILE_ROUNDS = 2;
@@ -376,7 +399,7 @@ export function reconcileParallelDynamicFanOut(
 
 //#endregion
 
-// TODO-FINAL-023 / TODO-FINAL-024: critic/repair checkpoint support for plan indices.
+// critic/repair checkpoint support for plan indices.
 export const CRITIC_PLAN_INDEX_AGENT_NAME = 'agentCriticPlanIndex';
 export const REPAIR_PLAN_INDEX_AGENT_NAME = 'agentRepairPlanIndex';
 export const MAX_PLAN_INDEX_CRITIC_ATTEMPTS = 3; // initial critic + up to 2 repair/critic rounds
@@ -402,6 +425,28 @@ export function parsePlanIndexReviewArgs(args: string | undefined): PlanIndexRev
 export function repairPlanIndexToolName(indexName: string): string {
   const safe = indexName.replace(/[^a-zA-Z0-9]/g, '');
   return `submitRepaired${safe.charAt(0).toUpperCase()}${safe.slice(1)}`;
+}
+
+/**
+ * Resolves the INDEX step for a critic/repair child. The hooks' parentStep is trusted only when
+ * it really is the index step (same agentName); otherwise the step is found by the source agent
+ * name. Defense for orchestration variants where afterPromptStep hooks carried the step itself
+ * as parent (server-side scheduler) — that nested review steps under each other and deadlocked
+ * the approval loop (task5 metricsIndex incident, 2026-06-11).
+ */
+export function resolveIndexStepForReview(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  sourceAgentName: string,
+): mls.msg.AIAgentStep {
+  if (parentStep && parentStep.type === 'agent' && parentStep.agentName === sourceAgentName) return parentStep;
+  if (!context.task) return parentStep;
+  const found = getAgentStepByAgentName(context.task, sourceAgentName) as mls.msg.AIAgentStep | null;
+  if (found && found.type === 'agent') {
+    console.warn(`[resolveIndexStepForReview] hook parentStep (${parentStep?.stepId}/${parentStep?.agentName}) is not the index step; resolved ${sourceAgentName} -> step ${found.stepId}`);
+    return found;
+  }
+  return parentStep;
 }
 
 /**
@@ -443,7 +488,7 @@ export function createHoldIndexForReviewIntents(
       indexStep,
       hookSequential,
       'in_progress',
-      `index generated; waiting critic/repair checkpoint for ${indexName} (TODO-FINAL-023/024)`,
+      `index generated; waiting critic/repair checkpoint for ${indexName}`,
     ),
     createPlanIndexReviewStepIntent(context, indexStep, CRITIC_PLAN_INDEX_AGENT_NAME, indexName, 1, `Review ${indexName} (critic 1)`),
   ];
@@ -473,7 +518,14 @@ export function findLatestPlanIndexReviewStep(
     if (step.type !== 'agent') continue;
     const agentStep = step as mls.msg.AIAgentStep;
     if (agentStep.agentName !== agentName) continue;
-    if (onlyCompleted && agentStep.status !== 'completed') continue;
+    if (onlyCompleted && agentStep.status !== 'completed') {
+      // A repair/critic may be held in_progress by the orchestrator's delayed-completion rule
+      // even though its payload is final — accept it when the payload exists (task5 incident:
+      // critics revalidated the ORIGINAL index because repairs never reached 'completed').
+      // Failed steps are never accepted: their payload was rejected by validation.
+      const hasPayload = !!agentStep.interaction?.payload?.length;
+      if (agentStep.status === 'failed' || !hasPayload) continue;
+    }
     try {
       const args = parsePlanIndexReviewArgs(agentStep.prompt);
       if (args.indexName !== indexName) continue;
@@ -487,7 +539,7 @@ export function findLatestPlanIndexReviewStep(
 }
 
 /**
- * TODO-FINAL-024: read a plan index output preferring the latest completed repaired version.
+ * read a plan index output preferring the latest completed repaired version.
  * Falls back to the original index agent payload when no repair step exists.
  */
 export function getPlannerOutputWithRepair<T>(
@@ -519,7 +571,7 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-// TODO-FINAL-006..009: token-reduction helpers. Each definition/index agent only needs the
+// ..009: token-reduction helpers. Each definition/index agent only needs the
 // artifacts its selector references, not the full plan. These build reduced, per-item context.
 
 /** Keep only records whose id (any of `keys`) is in `ids`. Non-records are dropped. */
@@ -548,7 +600,7 @@ export function summarizeRecords(items: unknown[] | undefined, keys: string[]): 
 }
 
 /**
- * TODO-FINAL-030 (R1): compact view of the final solution plan for the index agents' prompts.
+ * (R1): compact view of the final solution plan for the index agents' prompts.
  * Drops the heavy parts (ontology entity `fields` by default, full approvedArtifacts bodies) and
  * keeps ids/titles/refs — which is all the index agents need to decide scope. Cuts the biggest
  * input contributor (the full final plan, ~29KB) to a few KB. Pass includeOntologyFields=true
@@ -595,7 +647,7 @@ export function compactFinalPlan(finalPlanResultValue: unknown, includeOntologyF
 }
 
 /**
- * TODO-FINAL-019: single source for the actor contract. All agents/validators compare against
+ * single source for the actor contract. All agents/validators compare against
  * `finalPlan.result.actors[].actorId` — never hard-coded names ("admin", "administrator", ...)
  * or translations. This keeps the flow language-agnostic (pt-BR/en-US/...). Pass the actors array.
  */

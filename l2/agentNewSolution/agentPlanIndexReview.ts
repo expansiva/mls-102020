@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/agentPlanIndexReview.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// TODO-FINAL-023 / TODO-FINAL-024
+// 
 // Per-index review configuration used by agentCriticPlanIndex and agentRepairPlanIndex.
 // Each plan index has its own contract, schema, deterministic checkpoint, minimal context
 // and continuation (fan-out) logic. One critic LLM call and one repair LLM call per index,
@@ -25,6 +25,9 @@ import {
   saveNewSolutionIndexCheckpoint,
   saveNewSolutionPlanArtifacts,
 } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import type { EntityCatalogMdmEntity, SavePlanArtifactsOptions } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import { readExistingModuleTables } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import { getPlanMDMOutput } from '/_102020_/l2/agentNewSolution/agentPlanMDM.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import {
@@ -68,6 +71,7 @@ import {
 import type { PlanPluginsOutput } from '/_102020_/l2/agentNewSolution/agentPlanPlugins.js';
 import {
   PLAN_USECASE_ENTITIES_RESULT_SCHEMA,
+  createUsecaseDefinitionParallelIntent,
   getPlanUsecaseEntitiesOutput,
   planUsecaseEntitiesConfig,
   validatePlanUsecaseEntitiesOutput,
@@ -243,7 +247,7 @@ function getFinalPlanSafe(context: mls.msg.ExecutionContext): FinalSolutionPlanO
 }
 
 function getActorIds(context: mls.msg.ExecutionContext): Set<string> {
-  // TODO-FINAL-019: single source of the actor contract (shared getActorIdSet).
+  // single source of the actor contract (shared getActorIdSet).
   return getActorIdSet(getFinalPlanSafe(context)?.result.actors);
 }
 
@@ -367,7 +371,7 @@ function metricWriteLooksJustified(
 
 //#endregion
 
-//#region per-index local checkpoints (TODO-FINAL-023 deterministic validations)
+//#region per-index local checkpoints
 
 function checkpointPersistenceIndex(context: mls.msg.ExecutionContext, output: PlanPersistenceIndexOutput): PlanIndexLocalFindings {
   const errors: PlanIndexHealthFinding[] = [];
@@ -491,8 +495,10 @@ function checkpointWorkflowIndex(context: mls.msg.ExecutionContext, output: Plan
         errors.push(finding('error', 'workflow.actorUnknown', `workflow ${workflow.workflowId} actor ${actor} is not a final plan actorId`, path));
       }
     }
+    // E2-001: persistenceRefs may contain metric table ids (T-009 superset contract) — validate
+    // against module tables UNION metric tables, never against transactional tables only.
     for (const ref of workflow.persistenceRefs) {
-      if (tableIds.size > 0 && !tableIds.has(ref)) {
+      if (tableIds.size > 0 && !tableIds.has(ref) && !metricTableOnlyIds.has(ref)) {
         errors.push(finding('error', 'workflow.persistenceRef.unknown', `workflow ${workflow.workflowId} references unknown module table ${ref}`, path));
       }
     }
@@ -613,6 +619,19 @@ function checkpointUsecasePlan(context: mls.msg.ExecutionContext, output: PlanUs
     metricTableByName.set(table.tableName, table);
   }
 
+  // layer_4_entities coverage: tables owned by some usecaseEntity group (their sourceTables).
+  // Every table a usecase touches should belong to a group — the group becomes the
+  // layer_4_entities/{Entity}.defs.ts contract and feeds usecase.entityRefs (layer4.md §8).
+  const entityCoveredTables = new Set<string>();
+  for (const entityValue of output.result.usecaseEntities) {
+    if (!isRecord(entityValue)) continue;
+    const sourceTables = Array.isArray(entityValue.sourceTables) ? entityValue.sourceTables : [];
+    for (const tableValue of sourceTables) {
+      const name = typeof tableValue === 'string' ? tableValue : (isRecord(tableValue) && typeof tableValue.tableName === 'string' ? tableValue.tableName : '');
+      if (name) entityCoveredTables.add(name);
+    }
+  }
+
   // Usecase table refs may be plain strings (legacy) or { tableName, ownership } objects.
   const toTableRef = (value: unknown): { name: string; ownership: string } | null => {
     if (typeof value === 'string' && value.trim()) return { name: value.trim(), ownership: '' };
@@ -636,6 +655,11 @@ function checkpointUsecasePlan(context: mls.msg.ExecutionContext, output: PlanUs
 
     for (const ref of [...reads, ...writes]) {
       if (!ref) continue;
+      // layer_4_entities coverage: a usecase table with no owning usecaseEntity group means the
+      // derived entityRefs/contract will miss it (warning so the critic/repair adds the coverage).
+      if (entityCoveredTables.size > 0 && !entityCoveredTables.has(ref.name)) {
+        warnings.push(finding('warning', 'usecase.entityCoverage.missing', `usecase ${usecaseId} touches table ${ref.name}, which is not in any usecaseEntity sourceTables (no layer_4 entity will own it)`, path));
+      }
       const isWrite = writes.some(write => write && write.name === ref.name);
       const metricTable = metricTableByName.get(ref.name);
       if (metricTable) {
@@ -744,7 +768,7 @@ const reviewConfigs: Record<PlanIndexName, PlanIndexReviewConfig> = {
 - executionMode must reflect reality: documentationOnly, uiState, entityLifecycle, taskWorkflow or automation.
 - createsTask must be true only for workflows that create or coordinate tasks for staff/managers/agents.
 - actors must come from final plan actorIds, never invented or translated names.
-- persistenceRefs only for module-owned tables; usecaseRefs when layer_3 executes transitions; metricRefs when transitions feed metrics.
+- persistenceRefs is the persistence SUPERSET (T-009): module-owned table ids PLUS the metric table ids the workflow writes. A metric table a workflow feeds MUST appear in BOTH persistenceRefs and metricRefs — do NOT flag a metric table present in persistenceRefs as an error. Do not include MDM/horizontal/plugin tables in persistenceRefs. usecaseRefs when layer_3 executes transitions; metricRefs lists the metric tables fed.
 - No unnecessary workflows: each workflow must map to multi-step state, coordination, approval, fulfillment, reminders, integration or scheduled automation.`,
     resultSchema: PLAN_WORKFLOW_INDEX_RESULT_SCHEMA,
     getCurrentOutput: context => getPlanWorkflowIndexOutput(context),
@@ -820,7 +844,7 @@ const reviewConfigs: Record<PlanIndexName, PlanIndexReviewConfig> = {
     skipCriticWhen: output => (output as PlanPluginsOutput).result.plugins.length === 0,
     onApproved: async (context, indexStep, output, healthReport) => {
       await saveNewSolutionIndexCheckpoint(context, 'pluginPlan', 'agentPlanPlugins', indexStep, output, healthReport);
-      // TODO-FINAL-011: incremental plan artifacts now persist the approved (possibly repaired) plugin plan.
+      // incremental plan artifacts now persist the approved (possibly repaired) plugin plan.
       await saveNewSolutionPlanArtifacts(context, 'agentPlanPlugins', indexStep, output);
     },
     createChildrenIntents: () => [],
@@ -856,12 +880,66 @@ const reviewConfigs: Record<PlanIndexName, PlanIndexReviewConfig> = {
     },
     onApproved: async (context, indexStep, output, healthReport) => {
       await saveNewSolutionIndexCheckpoint(context, 'usecasePlan', 'agentPlanUsecaseEntities', indexStep, output, healthReport);
-      // TODO-FINAL-011: incremental plan artifacts now persist the approved (possibly repaired) usecase plan.
-      await saveNewSolutionPlanArtifacts(context, 'agentPlanUsecaseEntities', indexStep, output);
+      // incremental plan artifacts now persist the approved (possibly repaired) usecase plan.
+      // A1–A3 (layer4.md §8): the entity catalog lets the writer gap-fill and enrich the
+      // layer_4_entities defs deterministically (fields, storage binding, naming).
+      await saveNewSolutionPlanArtifacts(context, 'agentPlanUsecaseEntities', indexStep, output, await buildEntityCatalogOptions(context));
     },
-    createChildrenIntents: () => [],
+    createChildrenIntents: (context, output) => createUsecaseDefinitionParallelIntent(context, output as PlanUsecaseEntitiesOutput),
   },
 };
+
+/**
+ * A1–A3 (layer4.md §8): catalog consumed by the layer_4_entities writer — built from the frozen
+ * plan outputs available at usecasePlan approval time (persistence + metrics indices, MDM plan,
+ * final plan ontology). Best-effort: missing sources just shrink the catalog.
+ */
+async function buildEntityCatalogOptions(context: mls.msg.ExecutionContext): Promise<SavePlanArtifactsOptions> {
+  const finalPlan = getFinalPlanSafe(context);
+  const persistence = safe(() => getPlanPersistenceIndexOutput(context));
+  const metrics = safe(() => getPlanMetricsIndexOutput(context));
+  const mdm = safe(() => getPlanMDMOutput(context));
+  const ontologyEntities = finalPlan?.result.ontology.entities || {};
+  // A5: tables of OTHER existing modules (maintenance/extension runs).
+  const moduleName = typeof finalPlan?.result.module.moduleName === 'string' ? finalPlan.result.module.moduleName as string : '';
+  const existingTables = moduleName ? await readExistingModuleTables(moduleName).catch(() => []) : [];
+
+  const mdmEntities: EntityCatalogMdmEntity[] = [];
+  const seen = new Set<string>();
+  for (const domain of mdm?.result.mdmDomains || []) {
+    for (const value of domain.masterEntities) {
+      const entity = typeof value === 'string' ? value : '';
+      if (!entity || seen.has(entity)) continue;
+      seen.add(entity);
+      const ontologyEntity = ontologyEntities[entity];
+      const fields = ontologyEntity && typeof ontologyEntity === 'object' && Array.isArray((ontologyEntity as Record<string, unknown>).fields)
+        ? (ontologyEntity as Record<string, unknown>).fields as unknown[]
+        : [];
+      mdmEntities.push({ entity, fields });
+    }
+  }
+
+  return {
+    entityCatalog: {
+      ontologyEntities,
+      tables: (persistence?.result.tables || []).map(table => ({
+        tableId: table.tableId,
+        tableName: table.tableName,
+        rootEntity: table.rootEntity,
+      })),
+      metricTables: (metrics?.result.metricTables || []).map(metric => ({
+        metricTableId: metric.metricTableId,
+        tableName: metric.tableName,
+        sourceEntities: metric.sourceEntities,
+        timeColumn: metric.timeColumn,
+        dimensions: metric.dimensions,
+        measures: metric.measures,
+      })),
+      mdmEntities,
+      existingTables,
+    },
+  };
+}
 
 export function getPlanIndexReviewConfig(indexName: string): PlanIndexReviewConfig {
   const config = reviewConfigs[indexName as PlanIndexName];

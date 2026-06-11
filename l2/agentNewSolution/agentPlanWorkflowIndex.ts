@@ -201,7 +201,7 @@ async function afterPromptStep(
 
   await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
 
-  // TODO-FINAL-023/024: hold the step open and run critic/repair before workflow definitions.
+  // /024: hold the step open and run critic/repair before workflow definitions.
   if (status === 'completed' && output && output.status === 'ok') {
     return createHoldIndexForReviewIntents(context, parentStep, step, hookSequential, 'workflowIndex');
   }
@@ -215,7 +215,7 @@ async function afterPromptStep(
 }
 
 export function getPlanWorkflowIndexOutput(context: mls.msg.ExecutionContext): PlanWorkflowIndexOutput {
-  // TODO-FINAL-024: prefer the latest repaired index when a repair step exists.
+  // prefer the latest repaired index when a repair step exists.
   return getPlannerOutputWithRepair(context, 'agentPlanWorkflowIndex', 'workflowIndex', planWorkflowIndexConfig, validatePlanWorkflowIndexOutput);
 }
 
@@ -315,7 +315,7 @@ function buildHumanPrompt(
   metricTableDefinitions: PlanMetricTableDefinitionOutput[],
   usecasePlan: PlanUsecaseEntitiesOutput,
 ): string {
-  // TODO-FINAL-030 (R1): compact context. The workflow index needs capabilities, actors, approved
+  // compact context. The workflow index needs capabilities, actors, approved
   // workflows and the ids of module tables / usecases / metrics it can reference — not the full
   // final plan, full table/metric definitions or the full usecase plan.
   const reduced = {
@@ -354,9 +354,9 @@ Do not return prose.
 - Do not hard-code workflow ids from a sample domain.
 - Create workflow ids from capabilities and lifecycle concepts in the final solution plan.
 - Include a workflow when the domain has multi-step state, cross-page user progress, staff coordination, approval, fulfillment, reminders, external integration, or scheduled automation.
-- Include persistenceRefs with table ids from module-owned table definitions when the workflow depends on local persisted state.
+- persistenceRefs is the persistence SUPERSET (T-009): the module-owned table ids the workflow depends on PLUS the metric table ids it writes. When a workflow feeds a metric table, that metric table id MUST appear in BOTH persistenceRefs and metricRefs.
 - Include usecaseRefs when workflow transitions must be executed by layer_3_usecases.
-- Include metricRefs when workflow transitions feed operational metrics.
+- Include metricRefs with the metric table ids whose measures the workflow's transitions feed.
 - Do not include MDM, horizontal, or plugin-owned tables in persistenceRefs.
 - Include implementation suggestions such as whether confirmation by an operations or back-office role should create a task.
 - Use rule ids; do not write loose rule text.

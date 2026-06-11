@@ -210,7 +210,7 @@ async function saveFile(fileReference: string, content: string): Promise<void> {
             status: 'new'
         }, true, true, true);
     } else {
-        const file = await mls.stor.addOrUpdateFile({ ...fileInfo, content, extension: '.ts', versionRef: new Date().toISOString() });
+        const file = files.ts//await mls.stor.addOrUpdateFile({ ...fileInfo, content, extension: '.ts', versionRef: new Date().toISOString() });
         if (!file) throw new Error(`[saveFile] addOrUpdateFile failed: ${fileReference}`);
         const model = await file.getOrCreateModel();
         model.model.setValue(content);
@@ -256,7 +256,7 @@ async function updatePersistenceFile(
             status: 'new'
         }, true, true, true);
     } else {
-        const file = await mls.stor.addOrUpdateFile({ ...fileInfo, content: updatedContent, extension: '.ts', versionRef: new Date().toISOString() });
+        const file = files.ts//await mls.stor.addOrUpdateFile({ ...fileInfo, content: updatedContent, extension: '.ts', versionRef: new Date().toISOString() });
         if (!file) throw new Error(`[updatePersistenceFile] addOrUpdateFile failed`);
         const model = await file.getOrCreateModel();
         model.model.setValue(updatedContent);
