@@ -158,7 +158,7 @@ async function afterPromptStep(
           interaction: null,
           status: 'waiting_human_input',
           nextSteps: [],
-          agentName: 'agentL2MaterializeDefinition',
+          agentName: 'agentMaterializePageDef',
           prompt: JSON.stringify({ moduleName, path }),
           stepTitle: 'Creating page:' + f.shortName,
           rags: [],
