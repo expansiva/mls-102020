@@ -8,6 +8,7 @@ import { getMaterializeOrchestrator } from '/_102020_/l2/agentMaterializeSolutio
 import { addModuleNav, addModuleRoute } from '/_102020_/l2/agentMaterializeSolution/ast/astModuleFront.js';
 import { addNav, addPage } from '/_102020_/l2/agentMaterializeSolution/ast/astIndex.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { collabImport } from '/_102027_/l2/collabImport.js';
 
 // ─── mutex ────────────────────────────────────────────────────────────────────
 
@@ -305,8 +306,10 @@ async function saveFile(ref: string, src: string) {
 async function getSkill(info: { path: string, item: any, project?: number }, moduleName: string, device: string, type: string): Promise<string> {
 
   const project = info.project || 0;
-
-  const mod = await import(`/_${project}_/l2/${moduleName}/module.js`) as any;
+  const pt = `_${project}_/l2/${moduleName}/module.ts`
+  const params = mls.stor.convertFileReferenceToFile(pt) as any;
+  const mod = await collabImport(params) as any;
+  //const mod = await import(`/_${project}_/l2/${moduleName}/module.js`) as any;
   if (!mod || !mod.moduleGenome) throw new Error('[agentL2MaterializePageLit] Not found moduleGenome');
 
   const genomeKey = Object.keys(mod.moduleGenome as Record<string, unknown>).find(k => k.startsWith(`${device}/`) && k.endsWith(`/${type}`));
