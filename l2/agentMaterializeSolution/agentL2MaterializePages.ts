@@ -144,12 +144,14 @@ async function afterPromptStep(
     if (defsPaths.length === 0) throw new Error(`[agentL2MaterializePages] no .defs.ts files found for module: ${moduleName}`);
 
     for (const path of defsPaths) {
+      const f = mls.stor.convertFileReferenceToFile(path);
       const newStep: mls.msg.AgentIntentAddStep = {
         type: 'add-step',
         messageId: context.message.orderAt,
         threadId: context.message.threadId,
         taskId: context.task?.PK || '',
         parentStepId: parentStep.stepId,
+        stepTitle: 'Creating page:' + f.shortName,
         step: {
           type: 'agent',
           stepId: 0,
@@ -158,6 +160,7 @@ async function afterPromptStep(
           nextSteps: [],
           agentName: 'agentL2MaterializeDefinition',
           prompt: JSON.stringify({ moduleName, path }),
+          stepTitle: 'Creating page:' + f.shortName,
           rags: [],
         },
       };

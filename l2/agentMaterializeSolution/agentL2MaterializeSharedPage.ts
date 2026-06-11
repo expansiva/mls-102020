@@ -121,7 +121,7 @@ async function afterPromptStep(
     taskId: context.task?.PK || '',
     parentStepId: parentStep.stepId,
     stepId: step.stepId,
-    //cleaner: 'input_output',
+    cleaner: 'input_output',
     status
   };
 
@@ -137,7 +137,7 @@ async function processOutput(context: mls.msg.ExecutionContext, output: any, age
   const ref = output.outputPath.startsWith('/') ? output.outputPath.slice(1) : output.outputPath;
   await orch.createStorFile(ref, parseAISource(output.srcFile));
 
-  const stepOri = context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
+  const stepOri = parentStep.stepId;//context.task ? (findPreviousAgentStep(context.task, parentStep.stepId))?.stepId : parentStep.stepId;
 
   const newSteps: mls.msg.AgentIntentAddStep[] = [];
 
