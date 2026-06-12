@@ -17,8 +17,10 @@ import {
   getPlannerOutputWithRepair,
   getPlanningContextSnapshot,
   summarizeRecords,
+  hydrateNewSolutionOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
+import { getPlanUserJourneysOutputSafe } from '/_102020_/l2/agentNewSolution/agentPlanUserJourneys.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getPlanAgentsOutput } from '/_102020_/l2/agentNewSolution/agentPlanAgents.js';
@@ -191,6 +193,7 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !step) throw new Error('[agentPlanPageIndex](beforePromptStep) invalid params');
   if (!args) throw new Error(`[${agent.agentName}](beforePromptStep) args invalid`);
   if (!context.task) throw new Error(`[${agent.agentName}](beforePromptStep) task invalid`);
@@ -219,6 +222,8 @@ async function beforePromptStep(
       buildHumanPrompt(
         args,
         planningContext.initialMetricsRequested,
+        // F-03: journeys drive page discovery (empty for runs created before F-01 existed).
+        getPlanUserJourneysOutputSafe(context)?.result.journeys ?? [],
         finalPlan,
         mdm,
         horizontals,
@@ -245,6 +250,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
   let output: PlanPageIndexOutput | undefined;
@@ -466,6 +472,7 @@ export function createPageDefinitionParallelIntent(context: mls.msg.ExecutionCon
 function buildHumanPrompt(
   args: string,
   initialMetricsRequested: boolean,
+  journeys: unknown[],
   finalPlan: FinalSolutionPlanOutput,
   mdm: PlanMDMOutput,
   horizontals: PlanHorizontalsOutput,
@@ -499,6 +506,9 @@ function buildHumanPrompt(
       dashboards: summarizeRecords(metricsIndex.result.dashboardPages, ['metricDashboardId', 'title', 'actor', 'accessPolicy']),
     },
     persistenceTables: summarizeRecords(persistenceIndex.result.tables, ['tableId', 'title', 'rootEntity']),
+    // F-03 (enriquecimentoFluxo): journeys are the PRIMARY page-discovery input — full steps
+    // included (intent/action/entities/pageHint/outcome), not summaries.
+    userJourneys: journeys,
     usecases: summarizeRecords(usecasePlan.result.usecases, ['usecaseId', 'title', 'actor']),
     plugins: summarizeRecords(plugins.result.plugins, ['pluginId', 'provider', 'reason']),
     mdmDomains: summarizeRecords(mdm.result.mdmDomains, ['domainId', 'title']),
@@ -520,6 +530,9 @@ const systemPrompt = `
 
 You are agentPlanPageIndex for the collab.codes "newSolution" flow.
 Plan only the page index. Do not define full page sections or organisms in this step.
+Derive the pages PRIMARILY from the user journeys: every journey step must map to a page in the
+index (use the step pageHints as candidate pageIds). Capabilities/userActions are secondary
+context. A journey that walks a kanban/tracker/agenda/POS surface REQUIRES that page to exist.
 Use the same language as the user for page names, purposes, questions, and trace.
 Use English camelCase identifiers for pageId and command hint names.
 

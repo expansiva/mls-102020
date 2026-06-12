@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/agentNewSolutionFinal.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { hydrateNewSolutionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getAgentStepByAgentName } from '/_102027_/l2/aiAgentHelper.js';
 import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution/agentNewSolutionPlan.js';
 import { refreshSolutionHealthReport } from '/_102020_/l2/agentNewSolution/agentValidateSolutionCoverage.js';
@@ -61,6 +62,7 @@ async function beforePromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !context || !parentStep || !step) throw new Error('[agentNewSolutionFinal](beforePromptStep) invalid params');
   if (!context.task) throw new Error('[agentNewSolutionFinal](beforePromptStep) task invalid');
 
@@ -94,6 +96,7 @@ async function beforeClarificationStep(
   hookSequential: number,
   _json: unknown,
 ): Promise<HTMLElement> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!context.task) throw new Error('[agentNewSolutionFinal](beforeClarificationStep) invalid task');
 
   await import('/_102020_/l2/agentNewSolution/widgetNewSolutionResume.js');

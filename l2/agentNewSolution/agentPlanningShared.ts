@@ -25,7 +25,12 @@ import {
   type PlannerExtractConfig,
   type PlannerOutput,
 } from '/_102020_/l2/agentNewSolution/agentPlanningExtract.js';
-import { readSavedPlanArtifactDataList } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import {
+  getApprovedModuleName,
+  readAllNewSolutionStepOutputs,
+  readSavedPlanArtifactDataList,
+} from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import type { NewSolutionStepOutputRecord } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 
 export {
   PLANNER_SCHEMA_VERSION,
@@ -123,6 +128,46 @@ export function createPlannerUpdateStatusIntent(
   return intent;
 }
 
+//#region F-06: canonical step-output hydration cache
+// The task keeps only orchestration + in-flight payloads; completed payloads are cleaned
+// (cleaner 'input_output') AFTER the canonical copy in l2/{module}/outputs/ is verified.
+// Sync getters stay sync: hooks call hydrateNewSolutionOutputs(context) (async, once per task)
+// and the getters fall back to this cache when a step payload is no longer in the task.
+
+const hydratedOutputsByTask = new WeakMap<object, NewSolutionStepOutputRecord[]>();
+
+/** Loads every canonical output of the run into the per-task cache. Never throws; safe to call
+ * at the start of any hook (no-op when the task or the approved module name do not exist yet). */
+export async function hydrateNewSolutionOutputs(context: mls.msg.ExecutionContext): Promise<void> {
+  try {
+    if (!context.task) return;
+    const moduleName = getApprovedModuleName(context);
+    if (!moduleName) return;
+    const records = await readAllNewSolutionStepOutputs(moduleName);
+    hydratedOutputsByTask.set(context.task as object, records);
+  } catch (error) {
+    console.warn('[hydrateNewSolutionOutputs] skipped:', error);
+  }
+}
+
+function getHydratedRecords(context: mls.msg.ExecutionContext): NewSolutionStepOutputRecord[] {
+  if (!context.task) return [];
+  return hydratedOutputsByTask.get(context.task as object) || [];
+}
+
+/** Latest hydrated payload for an agent (optionally pinned to a stepId). */
+function getHydratedPayload(context: mls.msg.ExecutionContext, agentName: string, stepId?: number): unknown {
+  let best: NewSolutionStepOutputRecord | undefined;
+  for (const record of getHydratedRecords(context)) {
+    if (record.agentName !== agentName) continue;
+    if (stepId !== undefined && record.stepId === stepId) return record.payload;
+    if (!best || record.stepId > best.stepId) best = record;
+  }
+  return stepId !== undefined ? undefined : best?.payload;
+}
+
+//#endregion
+
 export function getPlannerOutput<T>(
   context: mls.msg.ExecutionContext,
   agentName: string,
@@ -134,8 +179,9 @@ export function getPlannerOutput<T>(
   const agentStep = getAgentStepByAgentName(context.task, agentName) as mls.msg.AIAgentStep | null;
   if (!agentStep) throw new Error(`[getPlannerOutput] ${agentName} step not found`);
 
-  const payload = agentStep.interaction?.payload?.[0];
-  if (!payload) throw new Error(`[getPlannerOutput] ${agentName} payload not found`);
+  // F-06: payload-first (in-flight steps), canonical outputs cache as fallback (cleaned steps).
+  const payload = agentStep.interaction?.payload?.[0] ?? getHydratedPayload(context, agentName, agentStep.stepId) ?? getHydratedPayload(context, agentName);
+  if (!payload) throw new Error(`[getPlannerOutput] ${agentName} payload not found (task and outputs/ both empty — was hydrateNewSolutionOutputs awaited?)`);
 
   const output = extractPlannerOutput(payload, config);
   validate?.(output);
@@ -155,7 +201,8 @@ export function getPlannerOutputs<T>(
 
   for (const step of allSteps) {
     if (step.type !== 'agent' || (step as mls.msg.AIAgentStep).agentName !== agentName) continue;
-    const payload = step.interaction?.payload?.[0];
+    // F-06: cleaned steps fall back to their canonical output (matched by stepId).
+    const payload = step.interaction?.payload?.[0] ?? getHydratedPayload(context, agentName, step.stepId);
     if (!payload) continue;
     const output = extractPlannerOutput(payload, config);
     validate?.(output);
@@ -305,6 +352,29 @@ export function createParallelDynamicAgentStepIntent(
       maxParallel,
     },
   };
+}
+
+// Platform baseline skill — capabilities the platform already provides (auth/RBAC, i18n,
+// multi-tenant, file storage, LLM proxy, ...). Injected into the decision agents' system prompt so
+// they reference these instead of (re)planning modules/horizontals for them. Read once from
+// l2/agentNewSolution/skills/platform.md in the agent project (102020); cached for the session.
+let _platformSkillCache: string | null = null;
+export async function readPlatformSkill(): Promise<string> {
+  if (_platformSkillCache !== null) return _platformSkillCache;
+  try {
+    const key = mls.stor.getKeyToFile({ project: 102020, level: 2, folder: 'agentNewSolution/skills', shortName: 'platform', extension: '.md' });
+    const file = mls.stor.files[key];
+    const raw = file ? await file.getContent() : '';
+    _platformSkillCache = typeof raw === 'string' ? raw : '';
+  } catch {
+    _platformSkillCache = '';
+  }
+  return _platformSkillCache;
+}
+
+/** Appends the platform baseline to a system prompt (no-op when the skill file is missing). */
+export function withPlatformSkill(systemPrompt: string, platformSkill: string): string {
+  return platformSkill ? `${systemPrompt}\n\n${platformSkill}` : systemPrompt;
 }
 
 //#region T-006: parallel_dynamic fan-out reconciliation (E-007/E-008)
@@ -527,7 +597,9 @@ export function getPlannerOutputWithRepair<T>(
   validate?: (output: PlannerOutput<T>) => void,
 ): PlannerOutput<T> {
   const repairStep = findLatestPlanIndexReviewStep(context, REPAIR_PLAN_INDEX_AGENT_NAME, indexName, true);
-  const repairPayload = repairStep?.interaction?.payload?.[0];
+  // F-06: cleaned repair steps fall back to the canonical output (matched by stepId).
+  const repairPayload = repairStep?.interaction?.payload?.[0]
+    ?? (repairStep ? getHydratedPayload(context, REPAIR_PLAN_INDEX_AGENT_NAME, repairStep.stepId) : undefined);
 
   if (repairPayload) {
     const repairConfig: PlannerExtractConfig<T> = {

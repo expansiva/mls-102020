@@ -4,7 +4,6 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   PlannerOutput,
   assertArray,
-  assertOntologyEntityFields,
   assertRecord,
   createPlannerPromptReadyIntent,
   createPlannerVariableToolSchema,
@@ -15,11 +14,13 @@ import {
   getPlannerOutput,
   getPlanningContextSnapshot,
   hasAcceptedNowArtifact,
+  hydrateNewSolutionOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getBlueprintReviewOutput } from '/_102020_/l2/agentNewSolution/agentBlueprintReview.js';
 import type { BlueprintReviewOutput } from '/_102020_/l2/agentNewSolution/agentBlueprintReview.js';
 import { getSolutionBlueprintOutput } from '/_102020_/l2/agentNewSolution/agentSolutionBlueprint.js';
+import { createEntityDefinitionParallelIntent } from '/_102020_/l2/agentNewSolution/agentPlanEntityDefinition.js';
 import type { SolutionBlueprintOutput } from '/_102020_/l2/agentNewSolution/agentSolutionBlueprint.js';
 import { finalSolutionPlanResultSchema } from '/_102020_/l2/agentNewSolution/agentSolutionPlanSchemas.js';
 
@@ -86,6 +87,7 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !step) throw new Error('[agentFinalizeSolutionPlan](beforePromptStep) invalid params');
   if (!args) throw new Error(`[${agent.agentName}](beforePromptStep) args invalid`);
   if (!context.task) throw new Error(`[${agent.agentName}](beforePromptStep) task invalid`);
@@ -114,6 +116,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
   let output: FinalSolutionPlanOutput | undefined;
@@ -140,12 +143,20 @@ async function afterPromptStep(
   // (downstream index validators are the hard gates); surfaces drift early via console.warn.
   if (status === 'completed' && output && output.status === 'ok') warnFinalizeActorConsistency(output);
 
-  await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
+  const canonicalSaved = await saveNewSolutionAgentTracePayload(context, agent.agentName, step); // F-06
   if (status === 'completed' && output) await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
 
-  const intents = [
-    createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined),
-  ];
+  const intents: mls.msg.AgentIntent[] = [];
+
+  // F-02: spawn the per-entity ontology enrichment fan-out (one child per map entity) BEFORE
+  // completing this step, so the placeholder keeps a non-terminal child (orchestration constraint).
+  if (status === 'completed' && output && output.status === 'ok') {
+    intents.push(...createEntityDefinitionParallelIntent(context, output));
+  }
+
+  intents.push(
+    createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? (canonicalSaved ? 'input_output' : 'input') : undefined),
+  );
 
   if (status === 'completed') {
     const blueprintStep = findStepByPlanId(context, 'plan-solution-blueprint') as mls.msg.AIAgentStep | null;
@@ -206,7 +217,8 @@ function normalizeFinalSolutionPlanResult(value: unknown): FinalSolutionPlanResu
 function validateFinalizeSolutionPlanOutput(output: FinalSolutionPlanOutput, context: mls.msg.ExecutionContext): void {
   const snapshot = getPlanningContextSnapshot(context);
   if (output.status === 'ok' && output.result.approvedArtifacts.mdm.length === 0) throw new Error('final solution plan must keep MDM');
-  if (output.status === 'ok') assertOntologyEntityFields(output.result.ontology.entities, 'final solution plan'); // T-001
+  // T-001 moved to the per-entity definition fan-out (F-02): the final plan keeps the slim
+  // ontology MAP; canonical fields live in the plan-entity-definition artifacts.
   if (output.status === 'ok' && snapshot.initialMetricsRequested) {
     if (output.result.approvedArtifacts.metricTables.length === 0) throw new Error('initial metrics requested, but final plan has no metricTables');
     if (output.result.approvedArtifacts.metricDashboards.length === 0) throw new Error('initial metrics requested, but final plan has no metricDashboards');
@@ -286,6 +298,7 @@ Do not return prose.
 - Keep rules centralized in rules with stable ruleId values.
 - Page definitions and BFF commands must reference rules by ruleId.
 - Keep ontology.entities as an object map keyed by PascalCase entity id. Do not require duplicating entityId inside each entity value.
-- Every entity must keep a populated fields list (each field with fieldId, type, required, and description). Never drop or empty fields during finalization; entities owned by the solution (moduleOwned/mdmOwned) without fields are invalid.
+- The ontology is a MAP: keep every entity's title/description/ownership (and statusEnum/lifecycleStates when present). Do NOT invent or expand field lists here — fields are detailed later by the per-entity definition stage; preserve any fields that the blueprint already declared, unchanged.
+- DECISIONS REQUIRE EVIDENCE: every decision's reason must cite something that actually exists in the inputs (a blueprint artifact, a review issue, or an accepted implementation decision). Never justify a decision with an approval or artifact that is not present — e.g. do not claim a page "was already approved" unless it appears in approvedArtifacts. affectedArtifacts must list real artifact ids from this plan.
 - Do not continue if an error cannot be fixed from available context; return status "needs_input" with questions.
 `;

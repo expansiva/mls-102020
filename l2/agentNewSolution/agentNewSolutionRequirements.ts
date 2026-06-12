@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/agentNewSolutionRequirements.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { hydrateNewSolutionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getAgentStepByAgentName, getAllSteps, notifyTaskChange } from '/_102027_/l2/aiAgentHelper.js';
 import {
   saveNewSolutionAgentTracePayload,
@@ -36,6 +37,7 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!args) throw new Error(`(${agent.agentName})[beforePromptStep] args invalid`);
   if (!context.task) throw new Error(`(${agent.agentName})[beforePromptStep] task invalid`);
 
@@ -66,6 +68,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !context || !step) throw new Error(`[afterPromptStep] invalid params`);
 
   const payload = step.interaction?.payload?.[0] as Output | undefined;
@@ -92,6 +95,7 @@ async function beforeClarificationStep(
   hookSequential: number,
   json: any,
 ): Promise<HTMLElement> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!context.task) throw new Error(`[beforeClarificationStep] invalid task: undefined`);
 
   await import('/_102025_/l2/widgetQuestionsForClarification.js');

@@ -11,6 +11,7 @@ import {
   createPlannerVariableToolSchema,
   extractPlannerOutput,
   getPlannerOutput,
+  hydrateNewSolutionOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getSolutionBlueprintOutput } from '/_102020_/l2/agentNewSolution/agentSolutionBlueprint.js';
@@ -85,6 +86,7 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !step) throw new Error('[agentBlueprintReview](beforePromptStep) invalid params');
   if (!args) throw new Error(`[${agent.agentName}](beforePromptStep) args invalid`);
   if (!context.task) throw new Error(`[${agent.agentName}](beforePromptStep) task invalid`);
@@ -111,6 +113,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
 
@@ -131,8 +134,8 @@ async function afterPromptStep(
     console.error(`[${agent.agentName}](afterPromptStep) ${traceMsg}`);
   }
 
-  await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
-  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined)];
+  const canonicalSaved = await saveNewSolutionAgentTracePayload(context, agent.agentName, step); // F-06
+  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? (canonicalSaved ? 'input_output' : 'input') : undefined)];
 }
 
 export function getBlueprintReviewOutput(context: mls.msg.ExecutionContext): BlueprintReviewOutput {
@@ -221,4 +224,10 @@ Use status "needs_input" only when the review itself cannot be completed without
 - Detect approved capabilities without artifact coverage.
 - Detect entity status changes that contradict declared enums or duplicate another workflow's responsibility.
 - Use severity "error" for blockers and "warning" for future/later items.
+- The blueprint is a slim MAP: entities carry title/description/ownership only. Do NOT flag missing entity fields/enums as issues — they are detailed by a later per-entity stage. Review the MAP: missing entities, wrong ownership, missing relationships, capability coverage.
+- recommendedFixes MUST be expressible in the final solution plan tool schema — the finalize agent
+  applies them literally under strict schema validation. Discrete values of one FIELD go in that
+  field's "enum" array; entity lifecycle goes in entity-level "statusEnum"/"lifecycleStates".
+  Never recommend adding properties the plan schema does not allow (this broke the simCafeFlow
+  run: "add statusEnum to Order.paymentStatus" forced invalid entity-level keys on Order).
 `;

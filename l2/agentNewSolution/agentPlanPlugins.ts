@@ -18,6 +18,7 @@ import {
   hasAcceptedArtifact,
   normalizeStringList,
   optionalString,
+  hydrateNewSolutionOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
@@ -128,6 +129,7 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !step) throw new Error('[agentPlanPlugins](beforePromptStep) invalid params');
   if (!args) throw new Error(`[${agent.agentName}](beforePromptStep) args invalid`);
   if (!context.task) throw new Error(`[${agent.agentName}](beforePromptStep) task invalid`);
@@ -158,6 +160,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
   let output: PlanPluginsOutput | undefined;
@@ -179,7 +182,7 @@ async function afterPromptStep(
     console.error(`[${agent.agentName}](afterPromptStep) ${traceMsg}`);
   }
 
-  await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
+  const canonicalSaved = await saveNewSolutionAgentTracePayload(context, agent.agentName, step); // F-06
 
   // /024: hold the step open and run critic/repair before approving the plugin plan.
   // The incremental artifact save moves to the critic approval path (possibly with a repaired plan).
@@ -189,7 +192,7 @@ async function afterPromptStep(
 
   if (status === 'completed' && output) await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
 
-  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined)];
+  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? (canonicalSaved ? 'input_output' : 'input') : undefined)];
 }
 
 export function getPlanPluginsOutput(context: mls.msg.ExecutionContext): PlanPluginsOutput {

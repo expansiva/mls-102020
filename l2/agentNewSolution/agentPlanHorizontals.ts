@@ -16,6 +16,9 @@ import {
   getPlannerOutput,
   getPlanningContextSnapshot,
   hasAcceptedArtifact,
+  readPlatformSkill,
+  withPlatformSkill,
+  hydrateNewSolutionOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
@@ -86,19 +89,21 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !step) throw new Error('[agentPlanHorizontals](beforePromptStep) invalid params');
   if (!args) throw new Error(`[${agent.agentName}](beforePromptStep) args invalid`);
   if (!context.task) throw new Error(`[${agent.agentName}](beforePromptStep) task invalid`);
 
   const finalPlan = getFinalizeSolutionPlanOutput(context);
   const snapshot = getPlanningContextSnapshot(context);
+  const platformSkill = await readPlatformSkill();
   return [
     createPlannerPromptReadyIntent(
       context,
       parentStep,
       hookSequential,
       args,
-      systemPrompt.split('{{toolName}}').join(PLAN_HORIZONTALS_TOOL_NAME),
+      withPlatformSkill(systemPrompt.split('{{toolName}}').join(PLAN_HORIZONTALS_TOOL_NAME), platformSkill),
       buildHumanPrompt(args, finalPlan, snapshot),
       planHorizontalsToolSchema,
       PLAN_HORIZONTALS_TOOL_NAME
@@ -113,6 +118,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
   let output: PlanHorizontalsOutput | undefined;
@@ -134,13 +140,13 @@ async function afterPromptStep(
     console.error(`[${agent.agentName}](afterPromptStep) ${traceMsg}`);
   }
 
-  await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
+  const canonicalSaved = await saveNewSolutionAgentTracePayload(context, agent.agentName, step); // F-06
   // persist horizontal modules (draft l5/{id}/module.defs.ts or manifest reference).
   if (status === 'completed' && output) {
     applyHorizontalsPostProcessing(output, context); // T-012
     await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
   }
-  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined)];
+  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? (canonicalSaved ? 'input_output' : 'input') : undefined)];
 }
 
 export function getPlanHorizontalsOutput(context: mls.msg.ExecutionContext): PlanHorizontalsOutput {
@@ -326,6 +332,30 @@ function applyHorizontalsPostProcessing(output: PlanHorizontalsOutput, context: 
         const languages = (finalPlan.result.module as Record<string, unknown>).languages;
         extra.languages = Array.isArray(languages) ? languages.filter((item): item is string => typeof item === 'string') : [];
       }
+    }
+
+    // C-07 (todo5 / E-10): decision ↔ artifact coherence. A horizontal the user decided
+    // 'never' (or rejected) must not be persisted as a contradiction-free 'now' draft: stamp
+    // decidedPriority/dismissed from the implementation decisions and coerce priority, so the
+    // saved l5/{id}/module.defs.ts tells the truth (e.g. authRoles/i18n decided never in the
+    // propertyFlowCrm run but saved with priority 'now').
+    try {
+      const decisions = getPlanningContextSnapshot(context).implementationDecisions;
+      for (const module of output.result.horizontalModules) {
+        const decision = decisions.decisions.find(item =>
+          item.artifactType === 'horizontalModule'
+          && normalizeHorizontalModuleId(item.recommendationId) === module.horizontalModuleId);
+        if (!decision) continue;
+        const extra = module as HorizontalModulePlan & { decidedPriority?: string; dismissed?: boolean };
+        extra.decidedPriority = decision.decidedPriority;
+        if (decision.decidedPriority === 'never' || !decision.accepted) {
+          extra.dismissed = true;
+        } else if (decision.decidedPriority !== module.priority) {
+          module.priority = decision.decidedPriority as Priority;
+        }
+      }
+    } catch (error) {
+      console.warn('[agentPlanHorizontals] decision coherence stamping skipped (C-07):', error);
     }
   } catch (error) {
     console.warn('[agentPlanHorizontals] post-processing skipped (T-012):', error);

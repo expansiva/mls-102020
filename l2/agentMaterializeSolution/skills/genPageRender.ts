@@ -15,46 +15,45 @@ All state, all methods, and all i18n live in the base class. You NEVER invent na
   Each organism: \`organismName\`, \`purpose\`, \`userActions[]\`, \`requiredEntities[]\`, \`readsFields[]\`, \`writesFields[]\`.
   Each navigationRef: \`direction\` ("inbound" | "outbound"), \`pageId\`, \`trigger\`.
 - \`##User info\`: JSON with \`moduleName\`, \`device\`, \`type\`, \`project\`, \`item.outputPath\`.
-- \`##Base Class\`: the **full TypeScript source** of the Shared base class that this component will extend.
+- \`##Base Class\`: the **shared defs spec** — the \`commands\` + \`navigationRefs\` JSON that was used to generate the shared base class. Use it to derive the base class structure (properties, methods, i18n keys).
 - \`##Design System\` (optional): component and styling guidelines.
 
 ---
 
-## MANDATORY FIRST STEP — inventory the base class
+## MANDATORY FIRST STEP — derive base class structure from the shared defs
 
-Read \`##Base Class\` completely. Build three lists before writing any render code:
+You do NOT receive the compiled base class source. \`##Base Class\` contains the **shared defs spec** (commands + navigationRefs JSON). From it, derive the four lists deterministically before writing any render code.
+
+Naming conventions (same as the shared generator uses):
+- \`Prefix\` = moduleName first letter uppercased (e.g. \`petShopStripe\` → \`PetShopStripe\`)
+- \`PageNamePascal\` = pageName first letter uppercased
+- \`CommandPascal\` = commandName first letter uppercased
+- \`PageIdPascal\` = pageId first letter uppercased
+
+The base class is: \`{Prefix}{PageNamePascal}Base\` in \`/_\${project}_/l2/{moduleName}/web/shared/{pageName}.js\`
 
 ### List 1 — Reactive properties
-Scan every \`@property()\` declaration. Record exact name and type.
-\`\`\`
-this.nome          : string
-this.cpf           : string
-this.save          : 'idle'|'loading'|'success'|'error'
-this.formDirty     : boolean
-this.status        : string
-...
-\`\`\`
+Derive from \`commands\` in \`##Base Class\`:
+- For each **query** command (\`kind: "query"\`): each top-level key of its \`output\` shape becomes a property
+  - Array value \`[{...}]\` → \`{key}: any[] = []\`
+  - Object / primitive value → \`{key}: any = undefined\`
+- For each **command** (\`kind: "command"\`): \`{commandName}State: 'idle'|'loading'|'success'|'error'\`
+- Always present: \`status: string\`
 
 ### List 2 — Handler methods
-Scan every method whose name starts with \`handle\`. Record exact name and parameter list.
-\`\`\`
-handleSaveClienteSubmit(event: SubmitEvent)
-handleCancelCadastroClick()
-handleValidateCpfCnhClick()
-handleNavigateToProductServiceDetailPageClick(params?: Record<string, unknown>)
-handleNavigateToCatalogPageClick(params?: Record<string, unknown>)
-...
-\`\`\`
+Derive from \`commands\` and \`navigationRefs\` in \`##Base Class\`:
+- For each command (\`kind: "command"\`): \`handle{CommandPascal}Click()\`
+- For each outbound navigationRef: \`handleNavigateTo{PageIdPascal}Click(params?: Record<string, unknown>)\`
 
 ### List 3 — i18n keys
-Read \`const message_en = { ... }\`. Record every key.
-\`\`\`
-brand, pageTitle, save, saving, confirm, confirming, labelNome, statusReady,
-navigateToProductServiceDetailPage, navigateToCatalogPage, ...
-\`\`\`
+Derive using these exact patterns:
+- Always: \`brand\`, \`pageTitle\`, \`loaded\`, \`couldNotLoad\`
+- Per query command: \`loading{CommandPascal}\`
+- Per command: \`{commandName}Label\`, \`{commandName}Loading\`, \`couldNot{CommandPascal}\`
+- Per outbound navigationRef: \`navigateTo{PageIdPascal}\`
 
 ### List 4 — Outbound navigation targets
-Read \`navigationRefs\` from \`##User data\`. Record only \`direction: "outbound"\` entries.
+From \`navigationRefs\` in \`##Base Class\`: entries with \`direction: "outbound"\`.
 \`\`\`
 outbound: productServiceDetailPage  trigger: "Selecionar item"
 outbound: catalogPage               trigger: "Explorar catálogo"
@@ -62,7 +61,7 @@ outbound: catalogPage               trigger: "Explorar catálogo"
 \`\`\`
 
 These four lists are the ONLY names and targets you may use inside \`render()\`.
-If a name is not in one of these lists it does not exist — do not use it.
+Do not use any name not derivable by the rules above.
 
 ---
 

@@ -16,8 +16,10 @@ import {
   pickRecordsByIds,
   reconcileParallelDynamicFanOut,
   summarizeRecords,
+  hydrateNewSolutionOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
+import { getEnrichedOntologyEntities } from '/_102020_/l2/agentNewSolution/agentPlanEntityDefinition.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import { readSavedPlanArtifactDataList, saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getPlanAgentsOutput } from '/_102020_/l2/agentNewSolution/agentPlanAgents.js';
@@ -326,11 +328,16 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !step) throw new Error('[agentPlanPageDefinition](beforePromptStep) invalid params');
   if (!args) throw new Error(`[${agent.agentName}](beforePromptStep) page selector args invalid`);
   if (!context.task) throw new Error(`[${agent.agentName}](beforePromptStep) task invalid`);
 
   const finalPlan = getFinalizeSolutionPlanOutput(context);
+  // F-02 (enriquecimentoFluxo): overlay the per-entity definitions on the slim ontology map
+  // (canonical fields/enums live in plan-entity-definition artifacts, not in the final plan).
+  finalPlan.result.ontology.entities = await getEnrichedOntologyEntities(context);
+
   const mdm = getPlanMDMOutput(context);
   const horizontals = getPlanHorizontalsOutput(context);
   const plugins = getPlanPluginsOutput(context);
@@ -384,6 +391,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
   let output: PlanPageDefinitionOutput | undefined;
@@ -407,7 +415,11 @@ async function afterPromptStep(
       status = 'failed';
       traceMsg = 'agentPlanPageDefinition returned status failed';
     } else if (output.status === 'needs_input') {
-      traceMsg = 'agentPlanPageDefinition returned status needs_input; keeping page definition draft.';
+      // B-01 (todo5): needs_input no longer drops the page — the partial definition is saved as
+      // an INCOMPLETE artifact (status 'incomplete' + pendingQuestions in data) so the knowledge
+      // survives and a later run/agent can recover it. The coverage validator reports it as an
+      // error; the final resume surfaces the questions to the user.
+      traceMsg = `agentPlanPageDefinition returned needs_input; saving INCOMPLETE page definition with ${output.questions.length} pending question(s).`;
     }
   } catch (error) {
     status = 'failed';
@@ -509,13 +521,18 @@ export async function getPlanPageDefinitionOutputs(context: mls.msg.ExecutionCon
 
 function wrapSavedPageDefinitionOutput(data: Record<string, unknown>): PlanPageDefinitionOutput | null {
   try {
+    // B-01: artifacts saved from a needs_input child carry pendingQuestions inside data; rebuild
+    // them as needs_input outputs so the coverage validator can flag the page as incomplete.
+    const pendingQuestions = Array.isArray(data.pendingQuestions)
+      ? data.pendingQuestions.filter((q): q is string => typeof q === 'string' && !!q)
+      : [];
     return {
       runId: 'from-file',
       stepId: PLAN_PAGE_DEFINITION_STEP_ID,
       schemaVersion: PLANNER_SCHEMA_VERSION,
-      status: 'ok',
+      status: pendingQuestions.length > 0 ? 'needs_input' : 'ok',
       result: normalizePlanPageDefinitionResult(data),
-      questions: [],
+      questions: pendingQuestions,
       trace: [],
     };
   } catch (error) {

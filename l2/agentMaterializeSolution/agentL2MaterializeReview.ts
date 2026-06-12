@@ -148,8 +148,17 @@ async function beforePromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   if (!args) throw new Error(`(${agent.agentName})[beforePromptStep] args is required`);
 
-  const input = parseInput(args);
-  const humanPrompt = await buildHumanPrompt(input);
+  console.info('--------agentL2MaterializeReview--------')
+  const info = JSON.parse(args) as { path: string, item: any, project?: number };
+
+  info.project = mls.actualProject || 0;
+  const moduleName = context.task?.iaCompressed?.longMemory['moduleName'] as string;
+  const device = context.task?.iaCompressed?.longMemory['device'] as string || 'web';
+  const deviceType = context.task?.iaCompressed?.longMemory['deviceType'] as string || 'desktop';
+  const type = context.task?.iaCompressed?.longMemory['type'] as string || 'page11';
+  if (info.item.pathPage) info.item.pathPage = info.item.pathPage.replace('[device]', device).replace('[deviceType]', deviceType).replace('[type]', type);
+  
+  const humanPrompt = await buildHumanPrompt(info.item as any);
 
   const promptReady: mls.msg.AgentIntentPromptReady = {
     type: 'prompt_ready',
@@ -212,42 +221,83 @@ async function afterPromptStep(
 // ─── system prompt ────────────────────────────────────────────────────────────
 
 const systemPrompt = `
-<!-- modelType: geminiChat -->
+<!-- modelType: codeinstruct -->
 <!-- modelTypeList: geminiChat (2.5 pro), code (grok), deepseekchat, codeflash (gemini), deepseekreasoner, mini (4.1) ou nano (openai), codeinstruct (4.1), codereasoning(gpt5), code2 (kimi 2.5) -->
 
 You are agentL2MaterializeReview.
 You receive three generated TypeScript files (contract, shared, page) and their three definition files.
-Review the generated files for correctness and return a structured result.
+Review each file with the explicit rules below. Be strict — do not mark a file as "ok" if any rule is violated.
 
-## What to check
+---
 
-### Contract (## srcContract vs ## srcContractDefs)
-- All TypeScript interfaces are valid and match the definition exactly (no missing, no extra fields)
-- Correct export names and types
+## RULE 1 — Contract interfaces must match commands exactly
 
-### Shared (## srcShared vs ## srcSharedDefs)
-- Imports and uses the contract interfaces correctly (types match, no wrong property access)
-- All methods and actions described in the definition are implemented
-- No references to non-existent members from the contract
+The ## srcContractDefs contains a JSON block with a \`commands\` array.
+Each command has \`commandName\`, \`input\` (array of {name, type}) and \`output\` (array of {name, type}).
 
-### Page (## srcPage vs ## srcPageDefs)
-- The custom element tag name is written in correct kebab-case and matches the file path in ## pathPage
-- Extends or uses the shared base class correctly
-- All navigation refs from the definition are wired up
-- No references to non-existent members from shared
+For EACH command in \`commands\`, the contract file MUST export two interfaces named:
+  \`{ModuleName}{PascalCase(commandName)}Input\`
+  \`{ModuleName}{PascalCase(commandName)}Output\`
 
-### Cross-file consistency
-- Interfaces from contract are used with correct types in shared
-- Methods/properties exposed by shared are used correctly in page
-- All generated content matches what was specified in the definition files
+where {ModuleName} = PascalCase of ## moduleName.
+
+Each interface field must match the corresponding array item exactly:
+  - field name = item.name
+  - TypeScript type = mapped from item.type:
+      "string"  → string
+      "number"  → number
+      "boolean" → boolean
+      "Date"    → Date
+      arrays    → e.g. "string[]" → string[]
+      otherwise → use the type value as-is
+
+**An interface with 0 fields when the definition array has items IS AN ERROR.**
+Example — if output has [{name:"openServiceOrders",type:"number"},{name:"monthlyRevenue",type:"number"}]:
+  WRONG: export interface RepairBayGetMetricDashboardOutput {}
+  RIGHT: export interface RepairBayGetMetricDashboardOutput { openServiceOrders: number; monthlyRevenue: number; }
+
+---
+
+## RULE 2 — Page custom element tag name must be derived from ## pathPage
+
+Given ## pathPage, derive the expected tag name with this algorithm:
+  1. Extract project number from the leading \`_NNNNNN_\` segment → e.g. \`102044\`
+  2. Remove the \`_NNNNNN_/l2/\` prefix and \`.ts\` suffix from the path
+     e.g. \`_102044_/l2/repairBay/web/desktop/page11/customerList.ts\` → \`repairBay/web/desktop/page11/customerList\`
+  3. Split by \`/\` → \`['repairBay','web','desktop','page11','customerList']\`
+  4. Convert each segment from camelCase to kebab-case:
+     \`repairBay\` → \`repair-bay\`, \`customerList\` → \`customer-list\`, etc.
+  5. Join segments with \`--\` → \`repair-bay--web--desktop--page11--customer-list\`
+  6. Append \`-{project}\` → \`repair-bay--web--desktop--page11--customer-list-102044\`
+
+The \`static is\` getter and the \`customElements.define\` call in ## srcPage MUST use exactly this tag.
+If they differ, the page file has an error.
+
+---
+
+## RULE 3 — Shared uses contract interfaces correctly
+
+- All imports from the contract file must reference interfaces that actually exist in ## srcContract
+- Properties accessed on Input/Output instances must match the interface fields exactly
+- No empty method bodies when the definition lists actions or loads to implement
+
+---
+
+## RULE 4 — Page uses shared base class correctly
+
+- The page class must extend the shared base class
+- Navigation methods called must exist on the shared class
+- No references to properties or methods not defined in shared
+
+---
 
 ## Decision rule per file
-- Correct with no changes needed → set the src field to the string "ok"
-- Has issues → set the src field to the COMPLETE corrected source as a compact JSON string (full file, not a diff or snippet)
+- All rules pass → set the src field to the string \`"ok"\`
+- Any rule fails → set the src field to the COMPLETE corrected TypeScript source (full file, not a diff, not a snippet)
 
 ## Output format
-The src values that are not "ok" must be single-line JSON strings.
-Escape ALL special characters inside them:
+src values that are not \`"ok"\` must be single-line JSON strings.
+Escape ALL special characters:
   - newlines     → \\n
   - tabs         → \\t
   - double quotes → \\"
@@ -257,7 +307,7 @@ Return ONLY valid JSON, no markdown fences, no prose.
 
 [[OutputSection]]
 
-Both pathXxx fields must echo the values from ## pathContract, ## pathShared and ## pathPage exactly.
+pathXxx fields must echo ## pathContract, ## pathShared and ## pathPage exactly.
 `;
 
 //#region OutputSection

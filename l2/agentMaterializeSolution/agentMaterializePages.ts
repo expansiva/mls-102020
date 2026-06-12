@@ -1,11 +1,11 @@
-/// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentL2MaterializePages.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
+/// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentMaterializePages.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { IFileInfoBase } from '/_102020_/l2/utils.js';
 
 export function createAgent(): IAgentAsync {
   return {
-    agentName: 'agentL2MaterializePages',
+    agentName: 'agentMaterializePages',
     agentProject: 102020,
     agentFolder: 'agentMaterializeSolution',
     agentDescription: 'Find all .defs.ts files in a module and trigger agentL2MaterializeDefinition for each',
@@ -27,11 +27,11 @@ function parseInput(raw: string): AgentInput {
   if (trimmed.startsWith('{')) {
     const parsed = JSON.parse(trimmed) as Record<string, unknown>;
     const moduleName = parsed['moduleName'];
-    if (typeof moduleName !== 'string' || !moduleName) throw new Error('[agentL2MaterializePages] missing "moduleName"');
+    if (typeof moduleName !== 'string' || !moduleName) throw new Error('[agentMaterializePages] missing "moduleName"');
     return { moduleName };
   }
   const line = trimmed.split(/[\n\r]+/).map(s => s.trim()).filter(Boolean)[0];
-  if (!line) throw new Error('[agentL2MaterializePages] moduleName is required');
+  if (!line) throw new Error('[agentMaterializePages] moduleName is required');
   return { moduleName: line };
 }
 
@@ -59,7 +59,7 @@ async function beforePromptImplicit(
   const { moduleName } = parseInput(userPrompt);
   const defsPaths = scanDefsFiles(moduleName);
 
-  if (defsPaths.length === 0) throw new Error(`[agentL2MaterializePages] no .defs.ts files found for module: ${moduleName}`);
+  if (defsPaths.length === 0) throw new Error(`[agentMaterializePages] no .defs.ts files found for module: ${moduleName}`);
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -139,10 +139,10 @@ async function afterPromptStep(
   try {
     const payload = step.interaction?.payload?.[0];
     const moduleName = (payload?.type === 'flexible' ? (payload.result as any)?.moduleName : '') as string;
-    if (!moduleName) throw new Error('[agentL2MaterializePages] missing moduleName in step payload');
+    if (!moduleName) throw new Error('[agentMaterializePages] missing moduleName in step payload');
 
     const defsPaths = scanDefsFiles(moduleName);
-    if (defsPaths.length === 0) throw new Error(`[agentL2MaterializePages] no .defs.ts files found for module: ${moduleName}`);
+    if (defsPaths.length === 0) throw new Error(`[agentMaterializePages] no .defs.ts files found for module: ${moduleName}`);
 
     for (const path of defsPaths) {
       const f = mls.stor.convertFileReferenceToFile(path);
@@ -152,7 +152,7 @@ async function afterPromptStep(
         threadId: context.message.threadId,
         taskId: context.task?.PK || '',
         parentStepId: parentStep.stepId,
-        stepTitle: 'Creating page:' + f.shortName,
+        stepTitle: 'Defining page:' + f.shortName,
         step: {
           type: 'agent',
           stepId: 0,
@@ -161,7 +161,7 @@ async function afterPromptStep(
           nextSteps: [],
           agentName: 'agentMaterializePageDef',
           prompt: JSON.stringify({ moduleName, path }),
-          stepTitle: 'Creating page:' + f.shortName,
+          stepTitle: 'Defining page:' + f.shortName,
           rags: [],
         },
       };
@@ -169,7 +169,7 @@ async function afterPromptStep(
     }
   } catch (err) {
     updateStatus.status = 'failed';
-    console.error(`[agentL2MaterializePages](afterPromptStep)`, err);
+    console.error(`[agentMaterializePages](afterPromptStep)`, err);
     return [updateStatus];
   }
 
