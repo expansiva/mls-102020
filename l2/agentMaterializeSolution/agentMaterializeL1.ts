@@ -100,7 +100,7 @@ async function beforePromptImplicit(
       ],
       taskTitle: `materialize-l1:project-${project}`,
       threadId: context.message.threadId,
-      userMessage: userPrompt || `project:${project}`,
+      userMessage: userPrompt || `@@${agent.agentName} project:${project}`,
     },
   };
 
