@@ -360,7 +360,7 @@ async function afterPromptStep(
         const importPath = `/_${project}_/l1/${moduleName}/layer_2_controllers/${pageId}.js`;
         const handlerNames: string[] = [];
         for (const cmd of commands) {
-          const handlerName = `${pageId}${cmd.commandName.charAt(0).toUpperCase()}${cmd.commandName.slice(1)}Handler`;
+          const handlerName = `${moduleName}${pageId.charAt(0).toUpperCase()}${pageId.slice(1)}${cmd.commandName.charAt(0).toUpperCase()}${cmd.commandName.slice(1)}Handler`;
           handlerNames.push(handlerName);
           src = addRoute(src, `${moduleName}.${pageId}.${cmd.commandName}`, handlerName);
         }
