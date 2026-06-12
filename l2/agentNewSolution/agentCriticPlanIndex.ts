@@ -27,6 +27,7 @@ import {
   findParentStepOfStep,
   parsePlanIndexReviewArgs,
   resolveIndexStepForReview,
+  hydrateNewSolutionOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import {
   PLAN_INDEX_CRITIQUE_TOOL_NAME,
@@ -65,6 +66,7 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !step) throw new Error('[agentCriticPlanIndex](beforePromptStep) invalid params');
   if (!context.task) throw new Error(`[${agent.agentName}](beforePromptStep) task invalid`);
 
@@ -152,6 +154,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!context.task) throw new Error(`[${agent.agentName}](afterPromptStep) task invalid`);
 
   const reviewArgs = parsePlanIndexReviewArgs(step.prompt);

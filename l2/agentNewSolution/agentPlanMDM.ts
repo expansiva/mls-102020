@@ -13,6 +13,7 @@ import {
   getPlannerOutput,
   readPlatformSkill,
   withPlatformSkill,
+  hydrateNewSolutionOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
@@ -139,6 +140,7 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !step) throw new Error('[agentPlanMDM](beforePromptStep) invalid params');
   if (!args) throw new Error(`[${agent.agentName}](beforePromptStep) args invalid`);
   if (!context.task) throw new Error(`[${agent.agentName}](beforePromptStep) task invalid`);
@@ -167,6 +169,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
   let output: PlanMDMOutput | undefined;
@@ -188,7 +191,7 @@ async function afterPromptStep(
     console.error(`[${agent.agentName}](afterPromptStep) ${traceMsg}`);
   }
 
-  await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
+  const canonicalSaved = await saveNewSolutionAgentTracePayload(context, agent.agentName, step); // F-06
   // persist MDM domains (draft l5/{domainId}/module.defs.ts or manifest reference)
   // + per-masterEntity l1 reference (generateTable:false) enriched with the ontology entity shape,
   // so usecase materialization and l1 mock generation can use the MDM entities.
@@ -211,7 +214,7 @@ async function afterPromptStep(
       });
     }
   }
-  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined)];
+  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? (canonicalSaved ? 'input_output' : 'input') : undefined)];
 }
 
 // T-002: every masterEntity must resolve to an ontology entity with at least one field,

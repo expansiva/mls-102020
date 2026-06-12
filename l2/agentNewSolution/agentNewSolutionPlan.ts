@@ -11,6 +11,10 @@ export const PLAN_IDS = [
   'plan-solution-blueprint',
   'plan-blueprint-review',
   'plan-finalize-solution-plan',
+  // F-01/F-02/F-04 (enriquecimentoFluxo): user journeys, per-entity ontology enrichment fan-out
+  // and cross-page UI consolidation.
+  'plan-user-journeys',
+  'plan-entity-definition',
   'plan-mdm',
   'plan-horizontals',
   'plan-plugins',
@@ -25,6 +29,7 @@ export const PLAN_IDS = [
   'plan-agents',
   'plan-page-index',
   'plan-page-definition',
+  'plan-ui-consolidation',
   'plan-validate-solution-coverage',
   'final-resume',
 ] as const;
