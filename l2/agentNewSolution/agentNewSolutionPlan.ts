@@ -54,7 +54,15 @@ export interface InitialNewSolutionPlan {
   }[];
 }
 
+// Temp run folder (2026-06-12): writes before the LLM confirms the module name go here.
+// Lives in this file so normalizeModuleFolderName can preserve it (the camelCase normalization
+// would otherwise mangle '_traceTemp' into 'traceTemp').
+export const TEMP_MODULE_FOLDER = '_traceTemp';
+
 export function normalizeModuleFolderName(value: unknown, fallback: string = 'module'): string {
+  if (value === TEMP_MODULE_FOLDER || fallback === TEMP_MODULE_FOLDER) {
+    if (value === TEMP_MODULE_FOLDER || (typeof value !== 'string' || !value.trim())) return TEMP_MODULE_FOLDER;
+  }
   const source = `${typeof value === 'string' && value.trim() ? value : fallback}` || 'module';
   const ascii = source
     .normalize('NFD')

@@ -1,8 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { createStorFile, deleteFile } from '/_102027_/l2/libStor.js';
-import { getAgentStepByAgentName } from '/_102027_/l2/aiAgentHelper.js';
+import { getAgentStepByAgentName, getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import {
+  TEMP_MODULE_FOLDER,
   normalizeModuleFolderName,
   reserveModuleNameFromFolders,
 } from '/_102020_/l2/agentNewSolution/agentNewSolutionPlan.js';
@@ -56,7 +57,7 @@ export function reserveAvailableModuleName(requestedName: unknown, fallbackPromp
   return reserveModuleNameFromFolders(requestedName, fallbackPrompt, getExistingModuleFolders());
 }
 
-export async function reserveNewSolutionModuleArtifacts(initial: NewSolutionInitialArtifactInfo): Promise<void> {
+export async function reserveNewSolutionModuleArtifacts(initial: NewSolutionInitialArtifactInfo, folderOverride?: string): Promise<void> {
   const moduleName = normalizeModuleFolderName(initial.moduleName, initial.userPrompt || 'module');
   const source = `export const initial = ${JSON.stringify({
     moduleName,
@@ -69,7 +70,9 @@ export async function reserveNewSolutionModuleArtifacts(initial: NewSolutionInit
   await saveStorContent({
     project: mls.actualProject || 0,
     level: 2,
-    folder: moduleName,
+    // Temp-folder naming: the reservation is written to _traceTemp until the blueprint confirms
+    // the real name (migrateTempModuleFolder moves it).
+    folder: folderOverride || moduleName,
     shortName: 'module',
     extension: '.defs.ts',
   }, source, false);
@@ -651,7 +654,9 @@ export async function saveNewSolutionProcessRun(
   context: mls.msg.ExecutionContext,
   run: NewSolutionProcessRun,
 ): Promise<void> {
-  const moduleName = normalizeModuleFolderName(getInitialModuleName(context), 'module');
+  // Temp-folder naming: the run folder is the CONFIRMED name (the root's tentative name may
+  // differ from what the blueprint confirmed).
+  const moduleName = getApprovedModuleName(context) || normalizeModuleFolderName(getInitialModuleName(context), 'module');
   await writeNewSolutionProcessRun(moduleName, run);
 }
 
@@ -738,30 +743,102 @@ export function getInitialModuleName(context: mls.msg.ExecutionContext): string 
   return result?.moduleName || normalizeModuleFolderName(undefined, result?.userPrompt || 'module');
 }
 
+// Temp-folder naming (2026-06-12): the user's free-text clarification answer ("sim cafeShow",
+// "yes, call it cafeShow", any language) is NEVER used as a folder name — affirmation words are
+// impossible to enumerate across languages. Until the blueprint LLM interprets the answer and
+// confirms the real name, every write goes to l2/_traceTemp; agentSolutionBlueprint then records
+// the confirmed name (result step planId 'module-name-final'), copies _traceTemp into the final
+// folder and deletes the temp (deleting is cheap on collab.codes; renaming is not).
+export { TEMP_MODULE_FOLDER } from '/_102020_/l2/agentNewSolution/agentNewSolutionPlan.js';
+export const MODULE_NAME_FINAL_PLAN_ID = 'module-name-final';
+
 /**
- * The module name APPROVED by the user in the requirements clarification (req-clarification-answer).
- * Returns null until that clarification is answered — before that point the run has no final module
- * name, so nothing must be written to disk (no trace, no reservation). When the clarification answer
- * omits a module name, it falls back to the root's tentative name (LLM suggestion / prompt default).
- * This is the single authoritative source for the run's folder, eliminating the divergence caused by
- * each step re-deriving the name from its own LLM payload.
+ * The module folder for the current run.
+ * 1. LLM-confirmed name (result step 'module-name-final', written by agentSolutionBlueprint).
+ * 2. Clarification answered but name not yet confirmed -> TEMP_MODULE_FOLDER (writes are migrated
+ *    by migrateTempModuleFolder once the name is confirmed).
+ * 3. null before the clarification — nothing must be written to disk yet.
  */
 export function getApprovedModuleName(context: mls.msg.ExecutionContext): string | null {
   if (!context.task) return null;
+
+  // 1. confirmed name recorded after the blueprint interpreted the user's answer.
+  const allSteps = getAllSteps(context.task.iaCompressed?.nextSteps);
+  const finalStep = allSteps.find(item =>
+    item.type === 'result'
+    && (item as { planning?: { planId?: string } }).planning?.planId === MODULE_NAME_FINAL_PLAN_ID
+    && (item as mls.msg.AIResultStep).result
+  ) as mls.msg.AIResultStep | undefined;
+  if (finalStep?.result) {
+    try {
+      const parsed = parseMaybeJson(finalStep.result);
+      const name = isRecord(parsed) ? readString(parsed.moduleName) : undefined;
+      if (name) return normalizeModuleFolderName(name, 'module');
+    } catch {
+      // fall through to the temp folder
+    }
+  }
+
+  // 2. clarification answered: writes go to the temp folder until the name is confirmed.
   const reqStep = getAgentStepByAgentName(context.task, 'agentNewSolutionRequirements') as mls.msg.AIAgentStep | null;
   const answerStep = (reqStep?.nextSteps || []).find(s =>
     s.type === 'result' && (s as { planning?: { planId?: string } }).planning?.planId === 'req-clarification-answer'
   ) as mls.msg.AIResultStep | undefined;
-  if (!answerStep?.result) return null;
+  if (answerStep?.result) return TEMP_MODULE_FOLDER;
 
-  let chosen: string | undefined;
-  try {
-    const parsed = parseMaybeJson(answerStep.result);
-    if (isRecord(parsed) && isRecord(parsed.answers)) chosen = readString(parsed.answers.moduleName);
-  } catch {
-    chosen = undefined;
+  return null;
+}
+
+/** Deletes every level-2 file under _traceTemp (leftovers of a previous/aborted run). */
+export async function purgeTempModuleFolder(): Promise<number> {
+  const project = mls.actualProject || 0;
+  let removed = 0;
+  for (const file of Object.values(mls.stor.files)) {
+    if (file.project !== project || file.level !== 2) continue;
+    if (file.folder !== TEMP_MODULE_FOLDER && !file.folder.startsWith(`${TEMP_MODULE_FOLDER}/`)) continue;
+    try {
+      await deleteFile(file);
+      removed += 1;
+    } catch (error) {
+      console.warn(`[purgeTempModuleFolder] failed to delete ${file.folder}/${file.shortName}`, error);
+    }
   }
-  return normalizeModuleFolderName(chosen || getInitialModuleName(context), 'module');
+  if (removed > 0) console.log(`[purgeTempModuleFolder] removed ${removed} leftover temp file(s)`);
+  return removed;
+}
+
+/**
+ * Copies every _traceTemp file into the confirmed module folder and deletes the temp copies.
+ * Idempotent and best-effort: a file that fails to copy is kept in the temp folder.
+ */
+export async function migrateTempModuleFolder(finalModuleName: string): Promise<number> {
+  const project = mls.actualProject || 0;
+  const finalFolder = normalizeModuleFolderName(finalModuleName, 'module');
+  let migrated = 0;
+  for (const file of Object.values(mls.stor.files)) {
+    if (file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
+    if (file.folder !== TEMP_MODULE_FOLDER && !file.folder.startsWith(`${TEMP_MODULE_FOLDER}/`)) continue;
+    try {
+      const content = await file.getContent();
+      if (typeof content !== 'string') continue;
+      const targetFolder = file.folder === TEMP_MODULE_FOLDER
+        ? finalFolder
+        : `${finalFolder}${file.folder.slice(TEMP_MODULE_FOLDER.length)}`;
+      await saveStorContent({
+        project,
+        level: 2,
+        folder: targetFolder,
+        shortName: file.shortName,
+        extension: file.extension,
+      }, content, false);
+      await deleteFile(file);
+      migrated += 1;
+    } catch (error) {
+      console.warn(`[migrateTempModuleFolder] failed for ${file.folder}/${file.shortName}`, error);
+    }
+  }
+  console.log(`[migrateTempModuleFolder] migrated ${migrated} file(s) from ${TEMP_MODULE_FOLDER} to ${finalFolder}`);
+  return migrated;
 }
 
 /** Authoritative module folder for the current run: the approved name once the clarification is

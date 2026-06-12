@@ -7,8 +7,10 @@ import {
   saveNewSolutionAgentTracePayload,
   getExistingModuleFolders,
   getInitialModuleName,
+  purgeTempModuleFolder,
   reserveNewSolutionModuleArtifacts,
   normalizeModuleFolderName,
+  TEMP_MODULE_FOLDER,
 } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import {
   ImplementationRecommendation,
@@ -178,41 +180,31 @@ async function applyClarificationResult(
 ): Promise<void> {
   if (!context.task) throw new Error(`[${agent.agentName}](applyClarificationResult) task invalid`);
 
-  // The module name is FINALIZED here (first clarification). Use the user's answer, falling back to
-  // the root's tentative name (LLM suggestion / prompt default) when the answer omits it. Validate
-  // it against existing folders: if it already exists, abort the task instead of creating a
-  // duplicate. Only after this is the module reserved and trace/artifacts start being written.
-  let finalModuleName: string | undefined;
-  let collisionMsg: string | undefined;
-  if (action === 'continue') {
-    const tentative = getInitialModuleName(context);
-    finalModuleName = normalizeModuleFolderName(readModuleNameAnswer(value) || tentative, tentative);
-    if (getExistingModuleFolders().has(finalModuleName)) {
-      const lang = (value.userLanguage || '').toLowerCase();
-      collisionMsg = lang.startsWith('pt')
-        ? `O módulo "${finalModuleName}" já existe. Escolha outro nome para o módulo.`
-        : `Module "${finalModuleName}" already exists. Please choose a different module name.`;
-    }
-  }
-
-  // A name collision turns the approval into a failure (aborts the task with a clear reason).
-  const effectiveAction: 'continue' | 'cancel' = collisionMsg ? 'cancel' : action;
-  const status: mls.msg.AIStepStatus = effectiveAction === 'continue' ? 'completed' : 'failed';
+  // Temp-folder naming (2026-06-12): the module name is NOT finalized here anymore. The user's
+  // free-text answer ("sim cafeShow", any language) is kept RAW for the blueprint LLM to
+  // interpret; writes start in l2/_traceTemp and agentSolutionBlueprint confirms the real name,
+  // migrates the temp folder and records it (result step 'module-name-final'). Sanitizing the
+  // answer here was rejected: filler words cannot be enumerated across languages.
+  const status: mls.msg.AIStepStatus = action === 'continue' ? 'completed' : 'failed';
   const intents: mls.msg.AgentIntent[] = [
-    createUpdateStatusIntent(context, parentStep, step, hookSequential, status, collisionMsg),
+    createUpdateStatusIntent(context, parentStep, step, hookSequential, status),
   ];
 
-  if (effectiveAction === 'continue' && finalModuleName) {
+  if (action === 'continue') {
     const initialPlan = getInitialPlan(context);
+    // Clean leftovers of a previous/aborted run, then reserve the initial module info in the
+    // temp folder (migrated to the confirmed name by the blueprint step).
+    await purgeTempModuleFolder();
     await reserveNewSolutionModuleArtifacts({
-      moduleName: finalModuleName,
+      moduleName: getInitialModuleName(context),
       requestKind: initialPlan.requestKind,
       userLanguage: initialPlan.userLanguage,
       userPrompt: initialPlan.userPrompt,
-    });
+    }, TEMP_MODULE_FOLDER);
 
+    // The answer is stored AS GIVEN (raw): answers.moduleName is the user's text, interpreted by
+    // the blueprint LLM together with the tentative suggestion.
     const answerResult = normalizeClarificationAnswer(value);
-    answerResult.answers.moduleName = finalModuleName; // authoritative name for the whole run
     const plannedAnswerStep = findStepByPlanId(context.task, 'req-clarification-answer');
 
     intents.unshift(createClarificationAnswerResultIntent(context, parentStep, answerResult));
@@ -237,7 +229,7 @@ async function applyClarificationResult(
   notifyTaskChange(context);
 
   const queueFrontEnd = context.task.iaCompressed?.queueFrontEnd || [];
-  const hasHookToContinue = effectiveAction === 'continue' && queueFrontEnd.some(hook => hook.type !== 'pooling');
+  const hasHookToContinue = action === 'continue' && queueFrontEnd.some(hook => hook.type !== 'pooling');
 
   if (mls.isTraceAgent) {
     console.log(

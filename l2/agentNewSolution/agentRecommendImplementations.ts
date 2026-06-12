@@ -3,7 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAgentStepByAgentName, getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
-import { readPlatformSkill, withPlatformSkill, hydrateNewSolutionOutputs, } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
+import { getHydratedStepPayload, readPlatformSkill, withPlatformSkill, hydrateNewSolutionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import {
   DiscoverSolutionScopeOutput,
   RequirementsClarificationAnswer,
@@ -306,8 +306,11 @@ export function getRecommendImplementationsOutput(context: mls.msg.ExecutionCont
   const agentStep = getAgentStepByAgentName(context.task, 'agentRecommendImplementations') as mls.msg.AIAgentStep | null;
   if (!agentStep) throw new Error('[getRecommendImplementationsOutput] recommendations agent step not found');
 
-  const payload = agentStep.interaction?.payload?.[0] as Output | undefined;
-  if (!payload) throw new Error('[getRecommendImplementationsOutput] recommendations payload not found');
+  // F-06: payload-first; cleaned payloads fall back to the canonical outputs/ cache.
+  const payload = (agentStep.interaction?.payload?.[0]
+    ?? getHydratedStepPayload(context, 'agentRecommendImplementations', agentStep.stepId)
+    ?? getHydratedStepPayload(context, 'agentRecommendImplementations')) as Output | undefined;
+  if (!payload) throw new Error('[getRecommendImplementationsOutput] payload not found (task and outputs/ both empty — was hydrateNewSolutionOutputs awaited?)');
 
   const output = extractRecommendImplementationsOutput(payload);
   validateRecommendImplementationsOutput(output, {

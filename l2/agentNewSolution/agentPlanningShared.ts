@@ -155,6 +155,15 @@ function getHydratedRecords(context: mls.msg.ExecutionContext): NewSolutionStepO
   return hydratedOutputsByTask.get(context.task as object) || [];
 }
 
+/**
+ * Public accessor for CUSTOM getters that read step payloads directly (outside getPlannerOutput).
+ * Without this fallback a cleaned payload makes them throw "payload not found" (regression seen
+ * on getDiscoverSolutionScopeOutput at the recommend-implementations step, 2026-06-12).
+ */
+export function getHydratedStepPayload(context: mls.msg.ExecutionContext, agentName: string, stepId?: number): unknown {
+  return getHydratedPayload(context, agentName, stepId);
+}
+
 /** Latest hydrated payload for an agent (optionally pinned to a stepId). */
 function getHydratedPayload(context: mls.msg.ExecutionContext, agentName: string, stepId?: number): unknown {
   let best: NewSolutionStepOutputRecord | undefined;

@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/agentDiscoverSolutionScope.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { hydrateNewSolutionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
+import { getHydratedStepPayload, hydrateNewSolutionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getAgentStepByAgentName, getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 
@@ -710,8 +710,11 @@ export function getDiscoverSolutionScopeOutput(context: mls.msg.ExecutionContext
   const agentStep = getAgentStepByAgentName(context.task, 'agentDiscoverSolutionScope') as mls.msg.AIAgentStep | null;
   if (!agentStep) throw new Error('[getDiscoverSolutionScopeOutput] scope agent step not found');
 
-  const payload = agentStep.interaction?.payload?.[0] as Output | undefined;
-  if (!payload) throw new Error('[getDiscoverSolutionScopeOutput] scope payload not found');
+  // F-06: payload-first; cleaned payloads fall back to the canonical outputs/ cache.
+  const payload = (agentStep.interaction?.payload?.[0]
+    ?? getHydratedStepPayload(context, 'agentDiscoverSolutionScope', agentStep.stepId)
+    ?? getHydratedStepPayload(context, 'agentDiscoverSolutionScope')) as Output | undefined;
+  if (!payload) throw new Error('[getDiscoverSolutionScopeOutput] payload not found (task and outputs/ both empty — was hydrateNewSolutionOutputs awaited?)');
 
   const output = extractDiscoverSolutionScopeOutput(payload);
   validateDiscoverSolutionScopeOutput(output, {
