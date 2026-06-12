@@ -137,8 +137,9 @@ async function afterPromptStep(
   };
 
   try {
-    const moduleName = context.task?.iaCompressed?.longMemory['moduleName'] as string;
-    if (!moduleName) throw new Error('[agentL2MaterializePages] missing moduleName in longMemory');
+    const payload = step.interaction?.payload?.[0];
+    const moduleName = (payload?.type === 'flexible' ? (payload.result as any)?.moduleName : '') as string;
+    if (!moduleName) throw new Error('[agentL2MaterializePages] missing moduleName in step payload');
 
     const defsPaths = scanDefsFiles(moduleName);
     if (defsPaths.length === 0) throw new Error(`[agentL2MaterializePages] no .defs.ts files found for module: ${moduleName}`);
