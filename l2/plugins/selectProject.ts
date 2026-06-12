@@ -4,7 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { setProjectDetails, loadPluginProject, openElementInServiceDetails, deleteLocalProject } from '/_102027_/l2/libCommom.js';
-import { getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
+import { getAuraState, setAuraState, saveAuraProject, deleteAuraProject } from '/_102020_/l2/auraState.js';
 import { convertFileToTag } from '/_102020_/l2/utils';
 import '/_102020_/l2/plugins/navHeader.js';
 
@@ -115,6 +115,7 @@ export class PluginSelectProject extends StateLitElement {
     @state() private _openCategories: Set<string> = new Set();
     @state() private _pluginsLoading: boolean = false;
     @state() private _selectedPlugin: string | null = null;
+    @state() private _isDeletingLocal: boolean = false;
 
     willUpdate(changed: Map<string, unknown>) {
         if (changed.has('value') || changed.has('selectedOrg')) {
@@ -262,13 +263,21 @@ export class PluginSelectProject extends StateLitElement {
                             ${isLocal
                                 ? html`<button
                                     class="
+                                        flex items-center gap-1.5
                                         text-sm px-2.5 py-1 rounded
                                         bg-red-500 dark:bg-red-600 text-white
                                         hover:bg-red-600 dark:hover:bg-red-500
                                         transition-colors whitespace-nowrap cursor-pointer
+                                        disabled:opacity-50 disabled:cursor-not-allowed
                                     "
+                                    ?disabled=${this._isDeletingLocal}
                                     @click=${this._onDeleteLocalProject}
-                                >${this.msg.deleteLocalBtn}</button>`
+                                >
+                                    ${this._isDeletingLocal
+                                        ? html`<span class="inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>`
+                                        : nothing}
+                                    ${this.msg.deleteLocalBtn}
+                                </button>`
                                 : nothing}
                         </div>`
                     : nothing}
@@ -278,9 +287,16 @@ export class PluginSelectProject extends StateLitElement {
     }
 
     private async _onDeleteLocalProject() {
+        if (this._isDeletingLocal) return;
         if (!confirm(this.msg.deleteLocalConfirm)) return;
-        await deleteLocalProject();
-        window.location.reload();
+        this._isDeletingLocal = true;
+        try {
+            await deleteLocalProject();
+            deleteAuraProject(mls.stor.LOCALPROJECTNUMBER);
+            window.location.reload();
+        } catch (e) {
+            this._isDeletingLocal = false;
+        }
     }
 
     private _renderSelectedProjectDetail(project: IProject, org: IOrg) {
