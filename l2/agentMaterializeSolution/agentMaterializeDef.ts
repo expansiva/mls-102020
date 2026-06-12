@@ -323,7 +323,7 @@ async function writeStorFile(ref: string, src: string): Promise<void> {
 function buildSystemPrompt(type: DefType): string {
   const model = type === 'contract' ? 'codeinstruct' : 'codereasoning';
   return `
-<!-- modelType: ${model} -->
+<!-- modelType: codeinstruct -->
 <!-- modelTypeList: geminiChat (2.5 pro), code (grok), deepseekchat, codeflash (gemini), deepseekreasoner, mini (4.1) ou nano (openai), codeinstruct (4.1), codereasoning(gpt5), code2 (kimi 2.5) -->
 
 You must return ONLY a valid JSON object. No preamble, no explanation, no markdown
