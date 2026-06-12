@@ -197,12 +197,15 @@ async function afterPromptStep(
   // so usecase materialization and l1 mock generation can use the MDM entities.
   if (status === 'completed' && output) {
     const ontologyEntities = getFinalizeSolutionPlanOutput(context).result.ontology.entities;
-    // T-002: hard gate — an mdmEntity candidate with fields: [] would materialize an empty
-    // {Entity}.defs.ts (E-001). Fail the step instead of saving silently.
-    const missing = output.status === 'ok' ? findMasterEntitiesWithoutFields(output.result.mdmDomains, ontologyEntities) : [];
+    // T-002 superseded by F-02 (blueprint slim, regression run cafeFlow 2026-06-12): the final
+    // plan ontology is a MAP without fields — the canonical fields are produced by the
+    // plan-entity-definition fan-out (schema enforces min 1 field) which runs in PARALLEL with
+    // this step. The remaining hard gate here is existence: every masterEntity must be a real
+    // ontology entity (catches invented names).
+    const missing = output.status === 'ok' ? findMasterEntitiesMissingFromOntology(output.result.mdmDomains, ontologyEntities) : [];
     if (missing.length > 0) {
       status = 'failed';
-      traceMsg = `agentPlanMDM: master entities without ontology fields (cannot materialize .defs.ts): ${missing.join(', ')}`;
+      traceMsg = `agentPlanMDM: master entities not present in the final plan ontology: ${missing.join(', ')}`;
       console.error(`[${agent.agentName}](afterPromptStep) ${traceMsg}`);
     } else {
       // T-003: when the shared MDM infrastructure exists, domain candidates are saved as
@@ -217,17 +220,16 @@ async function afterPromptStep(
   return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? (canonicalSaved ? 'input_output' : 'input') : undefined)];
 }
 
-// T-002: every masterEntity must resolve to an ontology entity with at least one field,
-// since the mdmEntity candidate copies its shape from ontologyEntity.fields.
-function findMasterEntitiesWithoutFields(domains: MdmDomainPlan[], ontologyEntities: Record<string, unknown>): string[] {
+// Every masterEntity must exist in the final plan ontology MAP. Field completeness is no longer
+// checked here (blueprint slim): it is guaranteed by the plan-entity-definition fan-out (F-02),
+// whose strict schema requires at least one field per entity.
+function findMasterEntitiesMissingFromOntology(domains: MdmDomainPlan[], ontologyEntities: Record<string, unknown>): string[] {
   const missing: string[] = [];
   for (const domain of domains) {
     for (const entityValue of domain.masterEntities) {
       const entityName = typeof entityValue === 'string' ? entityValue : '';
       if (!entityName) continue;
-      const entity = ontologyEntities[entityName];
-      const fields = entity && typeof entity === 'object' ? (entity as Record<string, unknown>).fields : undefined;
-      if (!Array.isArray(fields) || fields.length === 0) missing.push(`${domain.domainId}.${entityName}`);
+      if (!ontologyEntities[entityName]) missing.push(`${domain.domainId}.${entityName}`);
     }
   }
   return missing;
