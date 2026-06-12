@@ -3,7 +3,8 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { hydrateNewSolutionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getAgentStepByAgentName } from '/_102027_/l2/aiAgentHelper.js';
-import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution/agentNewSolutionPlan.js';
+import { normalizeModuleFolderName, TEMP_MODULE_FOLDER } from '/_102020_/l2/agentNewSolution/agentNewSolutionPlan.js';
+import { getApprovedModuleName } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { refreshSolutionHealthReport } from '/_102020_/l2/agentNewSolution/agentValidateSolutionCoverage.js';
 
 export function createAgent(): IAgentAsync {
@@ -121,6 +122,10 @@ async function beforeClarificationStep(
 
 function getModuleId(context: mls.msg.ExecutionContext): string {
   if (!context.task) return 'module';
+  // Temp-folder naming: prefer the LLM-confirmed run name; the root payload only carries the
+  // TENTATIVE suggestion and may differ from the confirmed folder.
+  const approved = getApprovedModuleName(context);
+  if (approved && approved !== TEMP_MODULE_FOLDER) return approved;
   const rootStep = getAgentStepByAgentName(context.task, 'agentNewSolution') as mls.msg.AIAgentStep | null;
   const payload = rootStep?.interaction?.payload?.[0] as mls.msg.AIFlexibleResultStep | undefined;
   const result = payload?.type === 'flexible' && payload.result && typeof payload.result === 'object'

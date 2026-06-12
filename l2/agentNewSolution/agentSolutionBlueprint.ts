@@ -15,8 +15,17 @@ import {
   readPlatformSkill,
   withPlatformSkill,
   hydrateNewSolutionOutputs,
+  coerceOntologyEnumArrays,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
-import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import {
+  MODULE_NAME_FINAL_PLAN_ID,
+  TEMP_MODULE_FOLDER,
+  getApprovedModuleName,
+  getInitialModuleName,
+  migrateTempModuleFolder,
+  reserveAvailableModuleName,
+  saveNewSolutionAgentTracePayload,
+} from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { solutionBlueprintResultSchema } from '/_102020_/l2/agentNewSolution/agentSolutionPlanSchemas.js';
 
 export function createAgent(): IAgentAsync {
@@ -106,11 +115,12 @@ async function afterPromptStep(
   await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
+  let output: SolutionBlueprintOutput | undefined;
 
   try {
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');
-    const output = extractSolutionBlueprintOutput(payload);
+    output = extractSolutionBlueprintOutput(payload);
     validateSolutionBlueprintOutput(output, context);
     if (output.status === 'failed') {
       status = 'failed';
@@ -125,7 +135,63 @@ async function afterPromptStep(
   }
 
   const canonicalSaved = await saveNewSolutionAgentTracePayload(context, agent.agentName, step); // F-06
-  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? (canonicalSaved ? 'input_output' : 'input') : undefined)];
+
+  const intents: mls.msg.AgentIntent[] = [];
+
+  // Temp-folder naming (2026-06-12): THIS is where the module name becomes final. The LLM has
+  // interpreted the user's free-text clarification answer (any language) and emitted
+  // module.moduleName; confirm it (collision-suffix against existing folders), migrate every
+  // _traceTemp file to the confirmed folder and record the name for getApprovedModuleName.
+  // Idempotency guard: a blueprint re-run must NOT reserve a second folder (suffix drift) when
+  // the name was already confirmed by a previous completion.
+  const alreadyConfirmed = getApprovedModuleName(context);
+  if (status === 'completed' && output && output.status === 'ok' && (!alreadyConfirmed || alreadyConfirmed === TEMP_MODULE_FOLDER)) {
+    try {
+      const requested = (output.result.module as Record<string, unknown>).moduleName;
+      const finalName = reserveAvailableModuleName(requested, getInitialModuleName(context));
+      await migrateTempModuleFolder(finalName);
+      intents.push(createModuleNameFinalResultIntent(context, parentStep, finalName));
+      console.log(`[${agent.agentName}] module name confirmed: ${finalName}`);
+    } catch (error) {
+      // Non-fatal: writes keep going to _traceTemp; the name can be confirmed manually later.
+      console.warn(`[${agent.agentName}] module name confirmation failed (writes stay in ${TEMP_MODULE_FOLDER}):`, error);
+    }
+  }
+
+  intents.push(createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? (canonicalSaved ? 'input_output' : 'input') : undefined));
+  return intents;
+}
+
+/** Records the LLM-confirmed module name as a result step (planId 'module-name-final') — the
+ * single source read by getApprovedModuleName from this point on. Exported so the finalize step
+ * can confirm the name as a FALLBACK when this hook failed after the LLM succeeded. */
+export function createModuleNameFinalResultIntent(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  moduleName: string,
+): mls.msg.AgentIntentAddStep {
+  return {
+    type: 'add-step',
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    parentStepId: parentStep.stepId,
+    step: {
+      type: 'result',
+      stepId: 0,
+      interaction: null,
+      stepTitle: `Module name: ${moduleName}`,
+      status: 'completed',
+      nextSteps: [],
+      result: JSON.stringify({ moduleName }),
+      planning: {
+        planId: MODULE_NAME_FINAL_PLAN_ID,
+        dependsOn: ['plan-solution-blueprint'],
+        executionMode: 'manual_later',
+        executionHost: 'client',
+      },
+    } as mls.msg.AIResultStep,
+  };
 }
 
 export function getSolutionBlueprintOutput(context: mls.msg.ExecutionContext): SolutionBlueprintOutput {
@@ -139,6 +205,7 @@ function extractSolutionBlueprintOutput(payload: unknown): SolutionBlueprintOutp
 const solutionBlueprintConfig = {
   toolName: SOLUTION_BLUEPRINT_TOOL_NAME,
   stepId: SOLUTION_BLUEPRINT_STEP_ID,
+  preNormalizeResult: coerceOntologyEnumArrays,
   stepIdAliases: SOLUTION_BLUEPRINT_ALIASES,
   normalizeResult: normalizeSolutionBlueprintResult,
 };
@@ -216,6 +283,7 @@ ${snapshot.initialMetricsRequested}
 
 const systemPrompt = `
 <!-- modelType: codeinstruct -->
+<!-- x-tool-strict: true -->
 
 You are agentSolutionBlueprint for the collab.codes "newSolution" flow.
 Create a detailed solution blueprint from the prompt, clarification, discovered scope, recommendations, and approved implementation decisions.
@@ -231,7 +299,8 @@ In result, return:
 - module with moduleName, purpose, businessDomain, languages, and visualStyle.
 - actors.
 - capabilities.
-- ontology.entities as an object map keyed by PascalCase entity id. The blueprint is a MAP, not the detailed model: each value includes title, description and ownership (plus entityId/kind/statusEnum/lifecycleStates when already known). Do NOT detail fields here — the complete field list (with per-field enums) is produced later by the per-entity definition stage. Focus the effort on getting the entity LIST, ownership and relationships right.
+- module.moduleName: the user's clarification answer is FREE TEXT in their language and may mix affirmation words with the name (e.g. "sim cafeShow" means "yes, cafeShow"). Interpret it: extract the intended name; when the answer only confirms, keep the suggested/tentative name. The name must be a single camelCase identifier — never include affirmation/filler words.
+- ontology.entities as an object map keyed by PascalCase entity id. The blueprint is a MAP, not the detailed model: each value includes title, description and ownership (plus entityId/kind/statusEnum/lifecycleStates when already known; statusEnum and lifecycleStates, when present, are ARRAYS of strings — never a single string). Do NOT detail fields here — the complete field list (with per-field enums) is produced later by the per-entity definition stage. Focus the effort on getting the entity LIST, ownership and relationships right.
 - centralized rules.
 - relationships.
 - userActions.

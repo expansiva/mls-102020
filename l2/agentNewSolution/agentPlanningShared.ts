@@ -155,6 +155,15 @@ function getHydratedRecords(context: mls.msg.ExecutionContext): NewSolutionStepO
   return hydratedOutputsByTask.get(context.task as object) || [];
 }
 
+/**
+ * Public accessor for CUSTOM getters that read step payloads directly (outside getPlannerOutput).
+ * Without this fallback a cleaned payload makes them throw "payload not found" (regression seen
+ * on getDiscoverSolutionScopeOutput at the recommend-implementations step, 2026-06-12).
+ */
+export function getHydratedStepPayload(context: mls.msg.ExecutionContext, agentName: string, stepId?: number): unknown {
+  return getHydratedPayload(context, agentName, stepId);
+}
+
 /** Latest hydrated payload for an agent (optionally pinned to a stepId). */
 function getHydratedPayload(context: mls.msg.ExecutionContext, agentName: string, stepId?: number): unknown {
   let best: NewSolutionStepOutputRecord | undefined;
@@ -727,6 +736,35 @@ export function assertOntologyEntityFields(entities: Record<string, unknown>, so
   if (missing.length > 0) {
     throw new Error(`${source}: ontology entities missing fields (mdmOwned/moduleOwned entities must declare at least one field): ${missing.join(', ')}`);
   }
+}
+
+/**
+ * Deterministic coercion for ontology entity enum-ish fields (statusEnum/lifecycleStates):
+ * models occasionally emit a single STRING instead of a string array, failing the local schema
+ * validation ("result.ontology.entities.X.statusEnum must be an array", run cafeShow 2026-06-12).
+ * A lone string is wrapped into [string]; other invalid types are dropped with a warning.
+ * Used as preNormalizeResult by the blueprint and finalize configs.
+ */
+export function coerceOntologyEnumArrays(value: unknown): unknown {
+  if (!isRecordValue(value)) return value;
+  const ontology = isRecordValue(value.ontology) ? value.ontology : undefined;
+  const entities = ontology && isRecordValue(ontology.entities) ? ontology.entities : undefined;
+  if (!entities) return value;
+  for (const [entityId, entityValue] of Object.entries(entities)) {
+    if (!isRecordValue(entityValue)) continue;
+    for (const key of ['statusEnum', 'lifecycleStates']) {
+      const current = entityValue[key];
+      if (current === undefined || Array.isArray(current)) continue;
+      if (typeof current === 'string' && current.trim()) {
+        console.warn(`[coerceOntologyEnumArrays] ${entityId}.${key} was a string; wrapped into an array`);
+        entityValue[key] = [current.trim()];
+      } else {
+        console.warn(`[coerceOntologyEnumArrays] ${entityId}.${key} had invalid type ${typeof current}; dropped`);
+        delete entityValue[key];
+      }
+    }
+  }
+  return value;
 }
 
 /** Collect non-empty string values from the given fields of a record into a target set. */

@@ -106,6 +106,13 @@ export function saveAuraProject(): void {
     writeStore(store);
 }
 
+export function deleteAuraProject(project: number): void {
+    const store = readStore();
+    if (!store[project]) return;
+    delete store[project];
+    writeStore(store);
+}
+
 export function loadAuraProject(project: number | null): IAuraProjectEntry | null {
     if (!project) return null;
     const store = readStore();
