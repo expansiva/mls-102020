@@ -17,32 +17,25 @@ It never renders, never registers a custom element, and never dispatches events.
     Each entry has \`direction\` ("inbound" | "outbound"), \`pageId\`, and \`trigger\`.
   If \`##User data\` is a plain array (legacy), treat it as \`commands\` with an empty \`navigationRefs\`.
 - \`##User info\`: a JSON object with at minimum \`moduleName\`, \`device\`, \`project\`, and \`item.outputPath\` (the full output file path).
-- \`##Contracts\`: the **full TypeScript source** of the contracts file that the shared class may import from.
 
 Extract \`pageName\` from the last segment of \`item.outputPath\` (strip the leading path and the \`.ts\` extension).
 
 ---
 
-## MANDATORY FIRST STEP — inventory the contracts file
+## MANDATORY FIRST STEP — derive contract interface names from commands
 
-Read \`##Contracts\` completely before writing any code.
+You do NOT receive the contracts file. Derive every interface name directly from the \`commands\` array using the same deterministic convention the contract generator uses:
 
-Scan every \`export interface\` declaration and record the exact name:
-\`\`\`
-PetShopStripeGetCartInput
-PetShopStripeGetCartOutput
-PetShopStripeUpdateCartInput
-PetShopStripeUpdateCartOutput
-...
-\`\`\`
+| Name | Rule | Example (moduleName = \`petShopStripe\`, commandName = \`getCart\`) |
+|---|---|---|
+| \`Prefix\` | moduleName with first letter uppercased (rest unchanged) | \`PetShopStripe\` |
+| \`CommandPascal\` | commandName with first letter uppercased | \`GetCart\` |
+| Input interface | \`{Prefix}{CommandPascal}Input\` | \`PetShopStripeGetCartInput\` |
+| Output interface | \`{Prefix}{CommandPascal}Output\` | \`PetShopStripeGetCartOutput\` |
 
-This list is the **only** source of interface names you may import or reference.
+Build the full list from every entry in \`commands\`. These interfaces **will exist** in the contracts file when the system runs — never fall back to \`any\` for command input/output types.
 
-**Rules:**
-- If \`##Contracts\` contains exported interfaces → import and use only names from this list.
-- If \`##Contracts\` is empty, missing, or contains no \`export interface\` declarations → do NOT write a contracts import line; use \`any\` for all types that would otherwise reference a contract interface.
-- NEVER invent an interface name. If a name does not appear in the list above, it does not exist.
-- MANDATORY: import **both** the Input and Output interface for every command that has both in the contracts file. If an Input interface exists for a command, use it as the \`params\` type — never write an inline type when the interface is available.
+**CRITICAL: never use \`any\` for a type that corresponds to a command's input or output. Always use the derived interface name.**
 
 ---
 
@@ -196,16 +189,15 @@ import { subscribe, unsubscribe, getState, setState } from '/_102029_/l2/collabS
 // contracts import — see rules below
 \`\`\`
 
-**Contracts import rules (apply AFTER reading the MANDATORY FIRST STEP list):**
+**Contracts import (always emit when there are commands):**
 
-- If the list has at least one interface → add:
-  \`\`\`typescript
-  import type { InterfaceA, InterfaceB } from '/_{project}_/l2/{moduleName}/{device}/contracts/{pageName}.js';
-  \`\`\`
-  Include ONLY names that appear in the list AND are actually referenced in the class body.
-  The path is built from \`project\`, \`moduleName\`, \`device\`, and \`pageName\` (from \`##User info\`).
-
-- If the list is empty → omit the contracts import line entirely.
+Using the derived interface names from MANDATORY FIRST STEP, add:
+\`\`\`typescript
+import type { InterfaceA, InterfaceB } from '/_{project}_/l2/{moduleName}/web/contracts/{pageName}.js';
+\`\`\`
+Include all interface names that are actually referenced in the class body.
+The path uses \`project\`, \`moduleName\`, and \`pageName\` from \`##User info\`.
+Omit this line only if there are zero commands.
 
 Import \`initState\` only if there are action state keys to initialize.
 
@@ -248,15 +240,12 @@ This applies to every string in \`message_pt\` and \`message_en\`.
 ### 4. Reactive properties
 
 For each top-level key in the \`output\` of every **query** command, declare a reactive property.
-To determine the TypeScript type, look up the matching interface from the MANDATORY FIRST STEP list:
+Use the derived Output interface from MANDATORY FIRST STEP (e.g. command \`getCart\` → \`{Prefix}GetCartOutput\`):
 
-- If there is an interface whose name contains the command name in PascalCase and ends with \`Output\`
-  (e.g., command \`getCart\` → look for \`...GetCartOutput\` in the list):
-  - Array value \`[{...}]\` → \`@property() {key}: InterfaceName['key'] = [];\`
-  - Object value \`{...}\` → \`@property() {key}: InterfaceName['key'] | undefined = undefined;\`
-- If NO matching interface is found in the list → use \`any\`:
-  - Array value → \`@property() {key}: any[] = [];\`
-  - Object value → \`@property() {key}: any = undefined;\`
+- Array value \`[{...}]\` → \`@property() {key}: {Prefix}{CommandPascal}Output['{key}'] = [];\`
+- Object value \`{...}\` → \`@property() {key}: {Prefix}{CommandPascal}Output['{key}'] | undefined = undefined;\`
+
+The derived interface always exists — never use \`any[]\` or \`any\` as a fallback here.
 
 For each **command** entry:
 - \`@property() {commandName}State: 'idle' | 'loading' | 'success' | 'error' = 'idle';\`
@@ -354,8 +343,9 @@ Substitution rules:
 Before writing the final output, verify each of the following. Fix anything that fails.
 
 **A. Contracts**
-- [ ] Every command that has an Input interface in ##Contracts has it imported AND used as the params type
-- [ ] Every command that has an Output interface in ##Contracts has it imported
+- [ ] Every command has a derived Input and Output interface name (MANDATORY FIRST STEP convention applied)
+- [ ] All derived interface names used in the class body are imported from the contracts path
+- [ ] NO command uses \`any\` where a derived interface name must be used
 
 **B. Navigation (check per outbound entry from MANDATORY SECOND STEP)**
 - [ ] \`message_pt\` contains key \`navigateTo{PageIdPascal}\` with the trigger text in Portuguese
@@ -372,32 +362,18 @@ If ANY of the navigation checks fail → add the missing code before outputting.
 
 ## Method parameter typing
 
-For each load/action method, type the \`params\` argument using the MANDATORY FIRST STEP list:
+For each load/action method, always use the derived interface names from MANDATORY FIRST STEP.
+Every command will have a matching Input and Output interface — never fall back to \`any\` or inline shapes:
 
-- If the list has an interface matching the command input (name contains command in PascalCase + \`Input\`):
-  \`\`\`typescript
-  async getCart(params: PetShopStripeGetCartInput, options?: BffClientOptions): Promise<void>
-  async updateCart(params: PetShopStripeUpdateCartInput, signal?: AbortSignal): Promise<void>
-  \`\`\`
-- If NO matching input interface is found → use an inline type derived from the \`input\` shape, or \`any\`:
-  \`\`\`typescript
-  async getCart(params: any, options?: BffClientOptions): Promise<void>
-  \`\`\`
-
-For \`execBff\` generic type parameter — use the matching Output interface if it exists in the list, otherwise \`any\`:
 \`\`\`typescript
-const response = await execBff<PetShopStripeGetCartOutput>(...)  // interface exists in list
-const response = await execBff<any>(...)                         // no interface in list
+async load{CommandPascal}(params?: {Prefix}{CommandPascal}Input, options?: BffClientOptions): Promise<void>
+async {commandName}(params: {Prefix}{CommandPascal}Input, signal?: AbortSignal): Promise<void>
 \`\`\`
 
-## Shape → inline TypeScript type mapping (fallback when no interface)
-
-When no matching interface is found and you must write an inline type from an \`input\`/\`output\` shape:
-- \`"string"\` → \`string\`; \`"number"\` → \`number\`; \`"boolean"\` → \`boolean\`
-- \`"A|B"\` → \`'A' | 'B'\`
-- Key ending with \`?\` → optional field (\`?: type\`)
-- Nested object → inline \`{ field: type }\`
-- Array element \`[{...}]\` → \`Array<{ field: type }>\`
+For \`execBff\` generic type parameter — always use the derived Output interface:
+\`\`\`typescript
+const response = await execBff<{Prefix}{CommandPascal}Output>('{moduleName}.{pageName}.{commandName}', ...)
+\`\`\`
 
 ---
 

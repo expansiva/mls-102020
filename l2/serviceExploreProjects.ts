@@ -3,6 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
+import { checkIfHasLocalProject, getLocalProjectName } from '/_102027_/l2/libCommom.js';
 import { AuraInitState, getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
@@ -138,6 +139,9 @@ const DISABLED_CONFIG = (key: string): IKnobConfig => ({
     disabled: true,
 });
 
+const LOCAL_ORG_KEY = 'local-projects';
+const LOCAL_ORG_NAME = 'Local Projects';
+
 // ─── Service ─────────────────────────────────────────────────────────
 
 @customElement('service-explore-projects-102020')
@@ -192,15 +196,17 @@ export class ServiceExploreProjects102020 extends ServiceBase {
         this._orgs = orgs;
         this._orgConfig = this._buildOrgConfig(orgs);
 
+        const isLocalActual = mls.actualProject === mls.stor.LOCALPROJECTNUMBER;
         const actualOrgIndex: number | null = mls?.l5?.actualOrg ?? null;
-        const matchedPos = actualOrgIndex !== null
+        let matchedPos = actualOrgIndex !== null
             ? orgs.findIndex(o => o.index === actualOrgIndex)
             : -1;
+        if (isLocalActual) matchedPos = orgs.findIndex(o => o.key === LOCAL_ORG_KEY);
         this._setKnobValue('organization', matchedPos >= 0 ? matchedPos + 1 : 0);
 
         if (matchedPos >= 0) {
             const org = orgs[matchedPos];
-            const actualProjectId: number | null = getAuraState().actualProject;
+            const actualProjectId: number | null = isLocalActual ? mls.stor.LOCALPROJECTNUMBER : getAuraState().actualProject;
             const matchedProjectPos = actualProjectId !== null
                 ? org.projects.findIndex(p => p.project === actualProjectId)
                 : -1;
@@ -257,7 +263,20 @@ export class ServiceExploreProjects102020 extends ServiceBase {
             if (prj.length <= 0) return;
             result.push({ name, created_at, description, key: org, index, projects: prj });
         });
+        if (checkIfHasLocalProject()) result.unshift(this._buildLocalOrg());
         return result;
+    }
+
+    // Virtual organization, in memory only — the local project belongs to no real org.
+    private _buildLocalOrg(): IOrg {
+        return {
+            name: LOCAL_ORG_NAME,
+            created_at: '',
+            description: 'Local test projects (browser only)',
+            key: LOCAL_ORG_KEY,
+            index: -1,
+            projects: [{ project: mls.stor.LOCALPROJECTNUMBER, name: getLocalProjectName() || 'Local', doSelect: true }],
+        };
     }
 
     private _buildOrgConfig(orgs: IOrg[]): IKnobConfig {

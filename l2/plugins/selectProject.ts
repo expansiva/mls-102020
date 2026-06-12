@@ -3,7 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
-import { setProjectDetails, loadPluginProject, openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
+import { setProjectDetails, loadPluginProject, openElementInServiceDetails, deleteLocalProject } from '/_102027_/l2/libCommom.js';
 import { getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
 import { convertFileToTag } from '/_102020_/l2/utils';
 import '/_102020_/l2/plugins/navHeader.js';
@@ -25,6 +25,8 @@ const message_en = {
     searchPlaceholder: 'Search projects…',
     loadingPlugins: 'Loading plugins…',
     noPlugins: 'No configuration plugins found for this project.',
+    deleteLocalBtn: 'Delete local project',
+    deleteLocalConfirm: 'Delete the local project? This action cannot be undone.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -44,6 +46,8 @@ const messages: Record<string, MessageType> = {
         searchPlaceholder: 'Buscar projetos…',
         loadingPlugins: 'Carregando plugins…',
         noPlugins: 'Nenhum plugin de configuração encontrado para este projeto.',
+        deleteLocalBtn: 'Excluir projeto local',
+        deleteLocalConfirm: 'Excluir o projeto local? Esta ação não pode ser desfeita.',
     },
     es: {
         title: 'Proyecto',
@@ -60,6 +64,8 @@ const messages: Record<string, MessageType> = {
         searchPlaceholder: 'Buscar proyectos…',
         loadingPlugins: 'Cargando plugins…',
         noPlugins: 'No se encontraron plugins de configuración para este proyecto.',
+        deleteLocalBtn: 'Eliminar proyecto local',
+        deleteLocalConfirm: '¿Eliminar el proyecto local? Esta acción no se puede deshacer.',
     },
 };
 /// **collab_i18n_end**
@@ -114,7 +120,7 @@ export class PluginSelectProject extends StateLitElement {
         if (changed.has('value') || changed.has('selectedOrg')) {
             this._search = '';
             const project = this._selectedProject;
-            if (project) this._loadPlugins(project.project);
+            if (project && project.project !== mls.stor.LOCALPROJECTNUMBER) this._loadPlugins(project.project);
             else { this._pluginsByCategory = {}; this._openCategories = new Set(); }
         }
     }
@@ -215,6 +221,7 @@ export class PluginSelectProject extends StateLitElement {
         const project = this._selectedProject;
         const org = this.selectedOrg!;
         const max = (org?.projects.length ?? 0) + 1;
+        const isLocal = project?.project === mls.stor.LOCALPROJECTNUMBER;
         return html`
             <div class="flex flex-col gap-3">
                 <plugins--nav-header-102020
@@ -227,37 +234,58 @@ export class PluginSelectProject extends StateLitElement {
                     @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
                 ></plugins--nav-header-102020>
                 ${project
-                    ? getAuraState().actualProject === project.project
-                        ? html`<span class="
-                            self-end text-sm px-2 py-0.5 rounded-full font-medium
-                            bg-emerald-100 dark:bg-emerald-900/30
-                            text-emerald-600 dark:text-emerald-400
-                        ">${this.msg.actualProject}</span>`
-                        : html`<button
-                            class="
-                                self-end text-sm px-2.5 py-1 rounded
-                                bg-indigo-500 dark:bg-indigo-600 text-white
-                                hover:bg-indigo-600 dark:hover:bg-indigo-500
-                                transition-colors whitespace-nowrap cursor-pointer
-                            "
-                            @click=${() => {
-                                saveAuraProject();
-                                mls.setActualProject(project.project);
-                                const orgIndex = mls.l5.getProjectOrgIndex(project.project);
-                                mls.l5.setActualOrg(orgIndex);
-                                setProjectDetails(project.project);
-                                setAuraState('actualProject', project.project);
-                                window.location.reload();
-                            }}
-                        >${this.msg.selectBtn}</button>`
+                    ? html`
+                        <div class="flex items-center gap-2 self-end">
+                            ${getAuraState().actualProject === project.project || mls.actualProject === project.project
+                                ? html`<span class="
+                                    text-sm px-2 py-0.5 rounded-full font-medium
+                                    bg-emerald-100 dark:bg-emerald-900/30
+                                    text-emerald-600 dark:text-emerald-400
+                                ">${this.msg.actualProject}</span>`
+                                : html`<button
+                                    class="
+                                        text-sm px-2.5 py-1 rounded
+                                        bg-indigo-500 dark:bg-indigo-600 text-white
+                                        hover:bg-indigo-600 dark:hover:bg-indigo-500
+                                        transition-colors whitespace-nowrap cursor-pointer
+                                    "
+                                    @click=${() => {
+                                        saveAuraProject();
+                                        mls.setActualProject(project.project);
+                                        const orgIndex = mls.l5.getProjectOrgIndex(project.project);
+                                        mls.l5.setActualOrg(orgIndex);
+                                        setProjectDetails(project.project);
+                                        setAuraState('actualProject', project.project);
+                                        window.location.reload();
+                                    }}
+                                >${this.msg.selectBtn}</button>`}
+                            ${isLocal
+                                ? html`<button
+                                    class="
+                                        text-sm px-2.5 py-1 rounded
+                                        bg-red-500 dark:bg-red-600 text-white
+                                        hover:bg-red-600 dark:hover:bg-red-500
+                                        transition-colors whitespace-nowrap cursor-pointer
+                                    "
+                                    @click=${this._onDeleteLocalProject}
+                                >${this.msg.deleteLocalBtn}</button>`
+                                : nothing}
+                        </div>`
                     : nothing}
                 ${project ? this._renderSelectedProjectDetail(project, org) : nothing}
             </div>
         `;
     }
 
+    private async _onDeleteLocalProject() {
+        if (!confirm(this.msg.deleteLocalConfirm)) return;
+        await deleteLocalProject();
+        window.location.reload();
+    }
+
     private _renderSelectedProjectDetail(project: IProject, org: IOrg) {
-        const isActual = getAuraState().actualProject === project.project;
+        const isLocal = project.project === mls.stor.LOCALPROJECTNUMBER;
+        const isActual = getAuraState().actualProject === project.project && !isLocal;
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
                 <div class="flex items-center gap-2">
@@ -416,7 +444,15 @@ export class PluginSelectProject extends StateLitElement {
         `;
     }
 
+    private _createProjectImported = false;
+    private _ensureCreateProjectPlugin() {
+        if (this._createProjectImported) return;
+        this._createProjectImported = true;
+        import('/_100554_/l2/pluginCreateProject.js').catch(() => { this._createProjectImported = false; });
+    }
+
     private _renderCustom() {
+        this._ensureCreateProjectPlugin();
         const max = (this.selectedOrg?.projects.length ?? 0) + 1;
         return html`
             <div class="flex flex-col gap-3">
@@ -429,6 +465,7 @@ export class PluginSelectProject extends StateLitElement {
                     .max=${max}
                     @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
                 ></plugins--nav-header-102020>
+                <plugin-create-project-100554></plugin-create-project-100554>
             </div>
         `;
     }
@@ -464,6 +501,7 @@ export class PluginSelectProject extends StateLitElement {
         const org = this.selectedOrg!;
         const clickable = selectValue !== undefined;
         const isActive = mls.actualProject === project.project;
+        const isLocal = project.project === mls.stor.LOCALPROJECTNUMBER;
         return html`
             <div
                 class="
@@ -484,6 +522,7 @@ export class PluginSelectProject extends StateLitElement {
                 <span class="text-sm text-gray-400 dark:text-gray-600 font-mono">${org.name}</span>
                 <span class="text-gray-300 dark:text-gray-700">/</span>
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300" style="max-width:150px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${project.name}</span>
+                ${isLocal ? html`<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-medium">local</span>` : nothing}
                 <span class="ml-auto text-sm font-mono text-gray-400 dark:text-gray-600">#${project.project}</span>
             </div>
         `;
