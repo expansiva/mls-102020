@@ -205,7 +205,7 @@
       ],
       "output": {
         "result": "entityDefinition (fields completos)",
-        "savedArtifact": "l2/{module}/ontology/{entityId}.defs.ts (ontologyEntity); consumido via getEnrichedOntologyEntities por entityCatalog e prompts de table/page/workflow definition"
+        "savedArtifact": "l5/{module}/ontology/{entityId}.defs.ts (ontologyEntity); consumido via getEnrichedOntologyEntities por entityCatalog e prompts de table/page/workflow definition"
       }
     },
     {
@@ -222,7 +222,7 @@
       ],
       "output": {
         "result": "journeys[] (journeyId, actor, capabilityIds, steps[intent/action/entities/pageHint/outcome])",
-        "savedArtifact": "l2/{module}/journeys.defs.ts (userJourneys)"
+        "savedArtifact": "l5/{module}/journeys.defs.ts (userJourneys)"
       }
     },
     {
@@ -431,7 +431,7 @@
       ],
       "output": {
         "result": "PlanUsecaseDefinitionResult { usecaseDefinition { usecaseId, commands[] } }",
-        "savedArtifact": "l1/{module}/layer_3_usecases/{usecaseId}-commands.defs.ts (para materializacao futura)"
+        "savedArtifact": "merged into l1/{module}/layer_3_usecases/{usecaseId}.defs.ts (campo commands — single-file layer_3, sem -commands.defs.ts)"
       }
     },
     {
@@ -563,7 +563,7 @@
       ],
       "output": {
         "result": "sharedComponents[] + namingFixes[] + notes[]",
-        "savedArtifact": "l2/{module}/uiConsolidation.defs.ts (uiConsolidation)"
+        "savedArtifact": "l5/{module}/uiConsolidation.defs.ts (uiConsolidation)"
       }
     },
     {

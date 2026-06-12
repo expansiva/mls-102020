@@ -761,29 +761,46 @@ function buildCoverageSnapshot(
       if (name) tableDefByName.set(name, record);
     }
   }
+  // N-01 (analise2): multi-table entity groups compare fields against the UNION of the group's
+  // module-table columns — checking each table separately produced false positives (primary
+  // entity fields "missing" from the group's secondary tables, e.g. CardapioEntity vs
+  // menu_item_ingredient in the cafeFlow run).
   for (const entity of extras.entityDefs) {
     const entityId = typeof entity.entityId === 'string' ? entity.entityId : '';
     const fields = Array.isArray(entity.fields) ? entity.fields : [];
     if (!entityId || fields.length === 0) continue;
+
+    const groupColumns = new Set<string>();
+    const groupTableNames: string[] = [];
+    let detailsEnabled = false;
+    let hasMdmOrUnknownStorage = false;
     for (const bindingValue of (Array.isArray(entity.storage) ? entity.storage : [])) {
       if (!bindingValue || typeof bindingValue !== 'object') continue;
       const binding = bindingValue as Record<string, unknown>;
-      if (binding.kind !== 'moduleTable') continue;
+      if (binding.kind !== 'moduleTable') {
+        // mdm/existingModule storage carries fields outside the module tables — never flag those groups.
+        if (binding.kind !== 'metricTable') hasMdmOrUnknownStorage = true;
+        continue;
+      }
       const table = tableDefByName.get(typeof binding.tableName === 'string' ? binding.tableName : '')
         || tableDefByName.get(typeof binding.tableId === 'string' ? binding.tableId : '');
       if (!table) continue;
-      const columns = new Set(asArray(table.columns)
-        .map(col => (col && typeof col === 'object' ? (col as Record<string, unknown>).name : undefined))
-        .filter((name): name is string => typeof name === 'string'));
-      if (columns.size === 0) continue;
-      const detailsEnabled = columns.has('details')
+      groupTableNames.push(String(binding.tableName || binding.tableId));
+      for (const col of asArray(table.columns)) {
+        const name = col && typeof col === 'object' ? (col as Record<string, unknown>).name : undefined;
+        if (typeof name === 'string') groupColumns.add(name);
+      }
+      detailsEnabled = detailsEnabled
+        || groupColumns.has('details')
         || (!!table.detailsColumn && typeof table.detailsColumn === 'object' && (table.detailsColumn as Record<string, unknown>).enabled === true);
-      for (const fieldValue of fields) {
-        const fieldId = fieldValue && typeof fieldValue === 'object' ? (fieldValue as Record<string, unknown>).fieldId : undefined;
-        if (typeof fieldId !== 'string' || !fieldId) continue;
-        if (!columns.has(snakeCase(fieldId)) && !columns.has(fieldId) && !detailsEnabled) {
-          addIssue('warning', 'entity.fieldColumn.unmapped', `entity ${entityId} field ${fieldId} maps to no column of table ${String(binding.tableName || binding.tableId)} (and the table has no details JSONB)`, `entity.${entityId}.fields.${fieldId}`);
-        }
+    }
+    if (groupColumns.size === 0 || detailsEnabled || hasMdmOrUnknownStorage) continue;
+
+    for (const fieldValue of fields) {
+      const fieldId = fieldValue && typeof fieldValue === 'object' ? (fieldValue as Record<string, unknown>).fieldId : undefined;
+      if (typeof fieldId !== 'string' || !fieldId) continue;
+      if (!groupColumns.has(snakeCase(fieldId)) && !groupColumns.has(fieldId)) {
+        addIssue('warning', 'entity.fieldColumn.unmapped', `entity ${entityId} field ${fieldId} maps to no column of the group tables (${groupTableNames.join(', ')}) and none has a details JSONB`, `entity.${entityId}.fields.${fieldId}`);
       }
     }
   }
@@ -922,6 +939,12 @@ async function buildCoverageExtras(context: mls.msg.ExecutionContext): Promise<C
   const usecaseCommandIds = new Set<string>();
   let entityDefs: Record<string, unknown>[] = [];
   try {
+    // Single-file layer_3 contract: commands live INSIDE the usecase defs ('usecase' artifacts
+    // with non-empty commands). Legacy '-commands' artifacts (old runs) still count.
+    for (const data of await readSavedPlanArtifactDataList(context, 'usecase')) {
+      const id = typeof data.usecaseId === 'string' ? data.usecaseId : undefined;
+      if (id && Array.isArray(data.commands) && data.commands.length > 0) usecaseCommandIds.add(id);
+    }
     for (const data of await readSavedPlanArtifactDataList(context, 'usecaseCommands')) {
       const def = data.usecaseDefinition;
       const id = def && typeof def === 'object' ? (def as Record<string, unknown>).usecaseId : undefined;

@@ -199,6 +199,12 @@ async function buildUsecaseFanOutReconcileIntents(
       .map(u => (u && typeof u.usecaseId === 'string') ? u.usecaseId : '')
       .filter(Boolean);
     const savedSelectors = new Set<string>();
+    // Single-file layer_3 contract: commands are merged into the usecase defs ('usecase'
+    // artifacts with a non-empty commands array). Legacy '-commands' artifacts still count.
+    for (const data of await readSavedPlanArtifactDataList(context, 'usecase')) {
+      const id = typeof data.usecaseId === 'string' ? data.usecaseId : undefined;
+      if (id && Array.isArray(data.commands) && data.commands.length > 0) savedSelectors.add(id);
+    }
     for (const data of await readSavedPlanArtifactDataList(context, 'usecaseCommands')) {
       const def = data.usecaseDefinition;
       const id = def && typeof def === 'object' ? (def as Record<string, unknown>).usecaseId : undefined;
@@ -212,11 +218,29 @@ async function buildUsecaseFanOutReconcileIntents(
 }
 
 export function getPlanUsecaseDefinitionOutputs(context: mls.msg.ExecutionContext): Promise<PlanUsecaseDefinitionOutput[]> {
+  // Single-file layer_3 contract: the saved artifact is the usecase defs itself (bare useCase
+  // with merged commands). The adapter config rebuilds the { usecaseDefinition } wrapper from it;
+  // usecases whose commands fan-out has not run yet (no commands) are skipped by the normalizer
+  // throw. Legacy '-commands' artifacts are NOT read anymore (they only exist in old runs whose
+  // task payloads still carry the outputs).
+  const fileConfig = {
+    ...planUsecaseDefinitionConfig,
+    normalizeResult: (value: unknown): PlanUsecaseDefinitionResult => {
+      const record = value as Record<string, unknown>;
+      if (record && typeof record === 'object' && record.usecaseDefinition !== undefined) {
+        return planUsecaseDefinitionConfig.normalizeResult(value);
+      }
+      if (!record || typeof record !== 'object' || !Array.isArray(record.commands) || record.commands.length === 0) {
+        throw new Error('usecase defs without merged commands (fan-out pending)');
+      }
+      return planUsecaseDefinitionConfig.normalizeResult({ usecaseDefinition: { usecaseId: record.usecaseId, commands: record.commands } });
+    },
+  };
   return getPlannerOutputsWithFileFallback(
     context,
     'agentPlanUsecaseDefinition',
-    'usecaseCommands',
-    planUsecaseDefinitionConfig,
+    'usecase',
+    fileConfig,
     output => output.result.usecaseDefinition.usecaseId,
     validatePlanUsecaseDefinitionOutput,
   );

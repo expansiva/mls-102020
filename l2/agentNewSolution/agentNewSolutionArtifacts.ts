@@ -335,8 +335,15 @@ export async function saveNewSolutionPlanArtifacts(
     // LLM payload — that caused divergent module folders when agents disagreed on casing.
     const moduleName = runModuleName(context);
     const planId = readString((step as any).planning?.planId) || '';
-    const candidates = buildPlanArtifactCandidates(agentName, moduleName, output, options);
+    let candidates = buildPlanArtifactCandidates(agentName, moduleName, output, options);
     if (candidates.length === 0) return [];
+
+    // Single-file layer_3 contract (2026-06-12): usecase command signatures are MERGED into the
+    // existing l1/{module}/layer_3_usecases/{usecaseId}.defs.ts (field `commands`) instead of a
+    // separate {usecaseId}-commands.defs.ts — one usecase, one file.
+    if (agentName === 'agentPlanUsecaseDefinition') {
+      candidates = await Promise.all(candidates.map(candidate => mergeUsecaseCommandsCandidate(moduleName, candidate)));
+    }
 
     const saved: PlanArtifactReference[] = [];
     for (const candidate of candidates) {
@@ -1020,7 +1027,8 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
 
   if (agentName === 'agentPlanUsecaseDefinition') {
     // Per-usecase command signatures (input/output), produced by the parallel usecase-definition
-    // fan-out. Persisted for the future materialization step; not consumed by the planning flow.
+    // fan-out. This RAW candidate is transformed by mergeUsecaseCommandsCandidate into an update
+    // of the usecase's own defs file (single-file layer_3 contract) before saving.
     const def = getRecord(result.usecaseDefinition);
     const id = readString(def?.usecaseId);
     if (!def || !id) return [];
@@ -1455,6 +1463,51 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
   return [];
 }
 
+/**
+ * Single-file layer_3 contract: transforms the raw usecase-commands candidate into an UPDATE of
+ * the usecase's own defs file — reads l1/{module}/layer_3_usecases/{usecaseId}.defs.ts (written
+ * by the usecasePlan writer) and merges the detailed `commands` into the bare useCase object.
+ * Falls back to writing the usecaseDefinition itself when the base file is missing.
+ */
+async function mergeUsecaseCommandsCandidate(moduleName: string, candidate: PlanArtifactCandidate): Promise<PlanArtifactCandidate> {
+  const def = getRecord(getRecord(candidate.data)?.usecaseDefinition) || {};
+  const commands = Array.isArray(def.commands) ? def.commands : [];
+
+  let base: Record<string, unknown> | undefined;
+  try {
+    const fileInfo = {
+      project: mls.actualProject || 0,
+      level: 1,
+      folder: `${moduleName}/layer_3_usecases`,
+      shortName: toSafeShortName(candidate.artifactId),
+      extension: '.defs.ts',
+    };
+    const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+    if (file) {
+      const raw = await file.getContent();
+      if (typeof raw === 'string') {
+        const parsed = parsePlanArtifactSource(raw, '.defs.ts');
+        if (isRecord(parsed)) base = parsed;
+      }
+    }
+  } catch (error) {
+    console.warn(`[mergeUsecaseCommandsCandidate] could not read base usecase defs for ${candidate.artifactId}`, error);
+  }
+  if (!base) {
+    console.warn(`[mergeUsecaseCommandsCandidate] base usecase defs missing for ${candidate.artifactId}; writing the definition standalone`);
+    base = { ...def };
+  }
+
+  return {
+    artifactType: 'usecase',
+    artifactId: candidate.artifactId,
+    exportName: 'useCase',
+    moduleName,
+    bareExport: true,
+    data: { ...base, commands },
+  };
+}
+
 // layer_4_entities helpers: usecase table refs may be strings (legacy) or { tableName, ownership }.
 function usecaseTableNames(usecase: Record<string, unknown>): Set<string> {
   const names = new Set<string>();
@@ -1555,22 +1608,23 @@ function resolvePlanArtifactFileInfo(candidate: PlanArtifactCandidate): Pick<mls
   if (candidate.artifactType === 'mdmEntity') {
     return { project, level: 1, folder: `${candidate.moduleName}/layer_1_external`, shortName, extension: '.defs.ts' };
   }
-  // F-02: canonical ontology entity definitions live in their own folder (NOT trace — they are
-  // plan content, not debug; `clear traces` must never delete them).
+  // F-01/F-02/F-04 (2026-06-12): planning content lives in l5 next to module/rules/process —
+  // NOT in l2 (which keeps pages + trace/outputs only) and NOT in l1 (materializable backend
+  // defs). Readers follow the manifest, so old runs with these artifacts in l2 keep working.
   if (candidate.artifactType === 'ontologyEntity') {
-    return { project, level: 2, folder: `${candidate.moduleName}/ontology`, shortName, extension: '.defs.ts' };
+    return { project, level: 5, folder: `${candidate.moduleName}/ontology`, shortName, extension: '.defs.ts' };
   }
-  // F-01: user journeys (plan content; survives clear traces).
   if (candidate.artifactType === 'userJourneys') {
-    return { project, level: 2, folder: candidate.moduleName, shortName: 'journeys', extension: '.defs.ts' };
+    return { project, level: 5, folder: candidate.moduleName, shortName: 'journeys', extension: '.defs.ts' };
   }
-  // F-04: cross-page UI consolidation report (consumed by materialization).
   if (candidate.artifactType === 'uiConsolidation') {
-    return { project, level: 2, folder: candidate.moduleName, shortName: 'uiConsolidation', extension: '.defs.ts' };
+    return { project, level: 5, folder: candidate.moduleName, shortName: 'uiConsolidation', extension: '.defs.ts' };
   }
   if (candidate.artifactType === 'usecase') {
     return { project, level: 1, folder: `${candidate.moduleName}/layer_3_usecases`, shortName, extension: '.defs.ts' };
   }
+  // Legacy path only: usecaseCommands candidates are merged into the usecase defs before saving
+  // (single-file layer_3 contract); this branch remains for old manifest entries.
   if (candidate.artifactType === 'usecaseCommands') {
     return { project, level: 1, folder: `${candidate.moduleName}/layer_3_usecases`, shortName: `${shortName}-commands`, extension: '.defs.ts' };
   }

@@ -331,7 +331,9 @@ function applyMetricsRelationshipDimensions(output: PlanMetricsIndexOutput, cont
           description: `FK dimension derived from ontology relationship ${String(rel.relationshipId || '')} (${from} -> ${to})`.trim(),
         });
         dimensionTokens.push(token(column));
-        console.log(`[agentPlanMetricsIndex] added missing relationship dimension ${column} to ${table.metricTableId} (mechanical T-013 fix)`);
+        // No logging here: this enrichment runs on every getPlanMetricsIndexOutput read (many
+        // consumers re-extract the raw payload), so a log would fire hundreds of times. The fix
+        // is a silent, idempotent, deterministic auto-correct.
       }
     }
   } catch {
