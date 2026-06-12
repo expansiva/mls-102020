@@ -15,6 +15,7 @@ import {
   readPlatformSkill,
   withPlatformSkill,
   hydrateNewSolutionOutputs,
+  coerceOntologyEnumArrays,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import {
   MODULE_NAME_FINAL_PLAN_ID,
@@ -162,8 +163,9 @@ async function afterPromptStep(
 }
 
 /** Records the LLM-confirmed module name as a result step (planId 'module-name-final') — the
- * single source read by getApprovedModuleName from this point on. */
-function createModuleNameFinalResultIntent(
+ * single source read by getApprovedModuleName from this point on. Exported so the finalize step
+ * can confirm the name as a FALLBACK when this hook failed after the LLM succeeded. */
+export function createModuleNameFinalResultIntent(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
   moduleName: string,
@@ -203,6 +205,7 @@ function extractSolutionBlueprintOutput(payload: unknown): SolutionBlueprintOutp
 const solutionBlueprintConfig = {
   toolName: SOLUTION_BLUEPRINT_TOOL_NAME,
   stepId: SOLUTION_BLUEPRINT_STEP_ID,
+  preNormalizeResult: coerceOntologyEnumArrays,
   stepIdAliases: SOLUTION_BLUEPRINT_ALIASES,
   normalizeResult: normalizeSolutionBlueprintResult,
 };
@@ -280,6 +283,7 @@ ${snapshot.initialMetricsRequested}
 
 const systemPrompt = `
 <!-- modelType: codeinstruct -->
+<!-- x-tool-strict: true -->
 
 You are agentSolutionBlueprint for the collab.codes "newSolution" flow.
 Create a detailed solution blueprint from the prompt, clarification, discovered scope, recommendations, and approved implementation decisions.
@@ -296,7 +300,7 @@ In result, return:
 - actors.
 - capabilities.
 - module.moduleName: the user's clarification answer is FREE TEXT in their language and may mix affirmation words with the name (e.g. "sim cafeShow" means "yes, cafeShow"). Interpret it: extract the intended name; when the answer only confirms, keep the suggested/tentative name. The name must be a single camelCase identifier — never include affirmation/filler words.
-- ontology.entities as an object map keyed by PascalCase entity id. The blueprint is a MAP, not the detailed model: each value includes title, description and ownership (plus entityId/kind/statusEnum/lifecycleStates when already known). Do NOT detail fields here — the complete field list (with per-field enums) is produced later by the per-entity definition stage. Focus the effort on getting the entity LIST, ownership and relationships right.
+- ontology.entities as an object map keyed by PascalCase entity id. The blueprint is a MAP, not the detailed model: each value includes title, description and ownership (plus entityId/kind/statusEnum/lifecycleStates when already known; statusEnum and lifecycleStates, when present, are ARRAYS of strings — never a single string). Do NOT detail fields here — the complete field list (with per-field enums) is produced later by the per-entity definition stage. Focus the effort on getting the entity LIST, ownership and relationships right.
 - centralized rules.
 - relationships.
 - userActions.

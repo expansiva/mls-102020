@@ -15,11 +15,20 @@ import {
   getPlanningContextSnapshot,
   hasAcceptedNowArtifact,
   hydrateNewSolutionOutputs,
+  coerceOntologyEnumArrays,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
-import { saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
+import {
+  TEMP_MODULE_FOLDER,
+  getApprovedModuleName,
+  getInitialModuleName,
+  migrateTempModuleFolder,
+  reserveAvailableModuleName,
+  saveNewSolutionAgentTracePayload,
+  saveNewSolutionPlanArtifacts,
+} from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getBlueprintReviewOutput } from '/_102020_/l2/agentNewSolution/agentBlueprintReview.js';
 import type { BlueprintReviewOutput } from '/_102020_/l2/agentNewSolution/agentBlueprintReview.js';
-import { getSolutionBlueprintOutput } from '/_102020_/l2/agentNewSolution/agentSolutionBlueprint.js';
+import { createModuleNameFinalResultIntent, getSolutionBlueprintOutput } from '/_102020_/l2/agentNewSolution/agentSolutionBlueprint.js';
 import { createEntityDefinitionParallelIntent } from '/_102020_/l2/agentNewSolution/agentPlanEntityDefinition.js';
 import type { SolutionBlueprintOutput } from '/_102020_/l2/agentNewSolution/agentSolutionBlueprint.js';
 import { finalSolutionPlanResultSchema } from '/_102020_/l2/agentNewSolution/agentSolutionPlanSchemas.js';
@@ -148,6 +157,22 @@ async function afterPromptStep(
 
   const intents: mls.msg.AgentIntent[] = [];
 
+  // Temp-folder naming FALLBACK: normally agentSolutionBlueprint confirms the module name and
+  // migrates _traceTemp. If that hook failed after the LLM succeeded (e.g. extraction error on a
+  // retry) the run may reach finalize still on the temp folder — confirm from THIS output.
+  const alreadyConfirmed = getApprovedModuleName(context);
+  if (status === 'completed' && output && output.status === 'ok' && (!alreadyConfirmed || alreadyConfirmed === TEMP_MODULE_FOLDER)) {
+    try {
+      const requested = (output.result.module as Record<string, unknown>).moduleName;
+      const finalName = reserveAvailableModuleName(requested, getInitialModuleName(context));
+      await migrateTempModuleFolder(finalName);
+      intents.push(createModuleNameFinalResultIntent(context, parentStep, finalName));
+      console.log(`[${agent.agentName}] module name confirmed (fallback): ${finalName}`);
+    } catch (error) {
+      console.warn(`[${agent.agentName}] module name fallback confirmation failed:`, error);
+    }
+  }
+
   // F-02: spawn the per-entity ontology enrichment fan-out (one child per map entity) BEFORE
   // completing this step, so the placeholder keeps a non-terminal child (orchestration constraint).
   if (status === 'completed' && output && output.status === 'ok') {
@@ -179,6 +204,7 @@ function extractFinalizeSolutionPlanOutput(payload: unknown): FinalSolutionPlanO
 const finalizeSolutionPlanConfig = {
   toolName: FINALIZE_SOLUTION_PLAN_TOOL_NAME,
   stepId: FINALIZE_SOLUTION_PLAN_STEP_ID,
+  preNormalizeResult: coerceOntologyEnumArrays,
   stepIdAliases: FINALIZE_SOLUTION_PLAN_ALIASES,
   normalizeResult: normalizeFinalSolutionPlanResult,
 };
