@@ -17,8 +17,10 @@ import {
   isRecord,
   pickRecordsByIds,
   reconcileParallelDynamicFanOut,
+  hydrateNewSolutionOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
+import { getEnrichedOntologyEntities } from '/_102020_/l2/agentNewSolution/agentPlanEntityDefinition.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import { readSavedPlanArtifactDataList, saveNewSolutionAgentTracePayload, saveNewSolutionPlanArtifacts } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getPlanMetricTableDefinitionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanMetricTableDefinition.js';
@@ -268,11 +270,16 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !step) throw new Error('[agentPlanWorkflowDefinition](beforePromptStep) invalid params');
   if (!args) throw new Error(`[${agent.agentName}](beforePromptStep) workflow selector args invalid`);
   if (!context.task) throw new Error(`[${agent.agentName}](beforePromptStep) task invalid`);
 
   const finalPlan = getFinalizeSolutionPlanOutput(context);
+  // F-02 (enriquecimentoFluxo): overlay the per-entity definitions on the slim ontology map
+  // (canonical fields/enums live in plan-entity-definition artifacts, not in the final plan).
+  finalPlan.result.ontology.entities = await getEnrichedOntologyEntities(context);
+
   const workflowIndex = getPlanWorkflowIndexOutput(context);
   const workflowIndexItem = workflowIndex.result.workflows.find(workflow => workflow.workflowId === args);
   if (!workflowIndexItem) throw new Error(`[${agent.agentName}](beforePromptStep) workflow selector not found: ${args}`);
@@ -302,6 +309,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
   let output: PlanWorkflowDefinitionOutput | undefined;

@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/agentNewSolutionPlanner.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { hydrateNewSolutionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -20,6 +21,7 @@ async function beforePromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !context || !parentStep || !step) throw new Error('[agentNewSolutionPlanner](beforePromptStep) invalid params');
   if (!context.task) throw new Error('[agentNewSolutionPlanner](beforePromptStep) task invalid');
 

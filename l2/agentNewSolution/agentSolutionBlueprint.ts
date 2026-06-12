@@ -4,7 +4,6 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   PlannerOutput,
   assertArray,
-  assertOntologyEntityFields,
   assertRecord,
   createPlannerPromptReadyIntent,
   createPlannerVariableToolSchema,
@@ -15,6 +14,7 @@ import {
   hasAcceptedNowArtifact,
   readPlatformSkill,
   withPlatformSkill,
+  hydrateNewSolutionOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { solutionBlueprintResultSchema } from '/_102020_/l2/agentNewSolution/agentSolutionPlanSchemas.js';
@@ -75,6 +75,7 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !step) throw new Error('[agentSolutionBlueprint](beforePromptStep) invalid params');
   if (!args) throw new Error(`[${agent.agentName}](beforePromptStep) args invalid`);
   if (!context.task) throw new Error(`[${agent.agentName}](beforePromptStep) task invalid`);
@@ -102,6 +103,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
 
@@ -122,8 +124,8 @@ async function afterPromptStep(
     console.error(`[${agent.agentName}](afterPromptStep) ${traceMsg}`);
   }
 
-  await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
-  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined)];
+  const canonicalSaved = await saveNewSolutionAgentTracePayload(context, agent.agentName, step); // F-06
+  return [createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? (canonicalSaved ? 'input_output' : 'input') : undefined)];
 }
 
 export function getSolutionBlueprintOutput(context: mls.msg.ExecutionContext): SolutionBlueprintOutput {
@@ -173,7 +175,8 @@ function normalizeSolutionBlueprintResult(value: unknown): SolutionBlueprintResu
 
 function validateSolutionBlueprintOutput(output: SolutionBlueprintOutput, context: mls.msg.ExecutionContext): void {
   if (output.status === 'ok' && output.result.artifactPlan.mdm.length === 0) throw new Error('solution blueprint must include MDM artifact plan');
-  if (output.status === 'ok') assertOntologyEntityFields(output.result.ontology.entities, 'solution blueprint'); // T-001
+  // T-001 moved to the per-entity definition fan-out (F-02): the blueprint is a slim MAP and no
+  // longer carries the canonical fields. assertOntologyEntityFields is enforced there.
   const snapshot = getPlanningContextSnapshot(context);
   if (output.status === 'ok' && snapshot.initialMetricsRequested) {
     if (output.result.artifactPlan.metricTables.length === 0) throw new Error('initial metrics requested, but blueprint has no metricTables');
@@ -228,7 +231,7 @@ In result, return:
 - module with moduleName, purpose, businessDomain, languages, and visualStyle.
 - actors.
 - capabilities.
-- ontology.entities as an object map keyed by PascalCase entity id. Each value must include title, description, and fields. fields must list every known attribute of the entity, each with fieldId (camelCase), type, required, and description — never return an empty fields array. Include entityId, kind, ownership, statusEnum, lifecycleStates, and rulesApplied only when they are known.
+- ontology.entities as an object map keyed by PascalCase entity id. The blueprint is a MAP, not the detailed model: each value includes title, description and ownership (plus entityId/kind/statusEnum/lifecycleStates when already known). Do NOT detail fields here — the complete field list (with per-field enums) is produced later by the per-entity definition stage. Focus the effort on getting the entity LIST, ownership and relationships right.
 - centralized rules.
 - relationships.
 - userActions.
@@ -241,7 +244,7 @@ In result, return:
 - Every core commitment must reference the selected subject, resource, service, product, or person that makes the commitment meaningful. Derive names from the prompt and ontology.
 - Include explicit user actions for all required selections, confirmations, and lifecycle changes implied by the domain.
 - Include MDM domains for stable master data such as customers, accounts, products, assets, suppliers, staff, locations, or reusable records.
-- Every entity owned by the solution (ownership moduleOwned or mdmOwned) must declare its full field list: fieldId, type, required, and description for each field. An entity without fields cannot be materialized and is invalid.
+- Every entity owned by the solution (ownership moduleOwned or mdmOwned) must declare its ownership explicitly. Field lists are NOT required here (detailed later per entity); when you already know a few key fields you MAY include them, but never let field detailing reduce the breadth of the entity map.
 - When the request MAINTAINS or EXTENDS an existing module, entities already persisted by that module are ownership "existingModuleOwned" — never moduleOwned (would duplicate the table) and never mdmOwned (reserved for shared master data).
 - Include operational metric tables and an admin dashboard when initial metrics/dashboard was accepted.
 - Include layer_3 usecase entities when the solution has BFF commands, writes, lifecycle changes, or metric updates.

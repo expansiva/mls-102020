@@ -3,7 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAgentStepByAgentName, getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { saveNewSolutionAgentTracePayload } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
-import { readPlatformSkill, withPlatformSkill } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
+import { readPlatformSkill, withPlatformSkill, hydrateNewSolutionOutputs, } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import {
   DiscoverSolutionScopeOutput,
   RequirementsClarificationAnswer,
@@ -158,6 +158,7 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!args) throw new Error(`(${agent.agentName})[beforePromptStep] args invalid`);
   if (!context.task) throw new Error(`(${agent.agentName})[beforePromptStep] task invalid`);
 
@@ -193,6 +194,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !context || !step) throw new Error(`[afterPromptStep] invalid params`);
 
   const payload = step.interaction?.payload?.[0] as Output | undefined;
@@ -234,8 +236,8 @@ async function afterPromptStep(
     traceMsg,
   };
 
-  if (status === 'completed') updateStatus.cleaner = 'input';
-  await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
+  const canonicalSaved = await saveNewSolutionAgentTracePayload(context, agent.agentName, step); // F-06
+  if (status === 'completed') updateStatus.cleaner = canonicalSaved ? 'input_output' : 'input'; // F-06
   return [updateStatus];
 }
 

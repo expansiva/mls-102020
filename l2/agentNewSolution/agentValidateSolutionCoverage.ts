@@ -13,6 +13,7 @@ import {
   extractPlannerOutput,
   getPlannerOutput,
   summarizeRecords,
+  hydrateNewSolutionOutputs,
 } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
@@ -161,6 +162,7 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !step) throw new Error('[agentValidateSolutionCoverage](beforePromptStep) invalid params');
   if (!context.task) throw new Error(`[${agent.agentName}](beforePromptStep) task invalid`);
 
@@ -227,6 +229,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
   let output: ValidateSolutionCoverageOutput | undefined;
@@ -256,7 +259,7 @@ async function afterPromptStep(
     console.error(`[${agent.agentName}](afterPromptStep) ${traceMsg}`);
   }
 
-  await saveNewSolutionAgentTracePayload(context, agent.agentName, step);
+  const canonicalSaved = await saveNewSolutionAgentTracePayload(context, agent.agentName, step); // F-06
   if (status === 'completed' && output && output.status === 'ok') {
     const healthReport = {
       summary: output.result.summary,
@@ -271,7 +274,7 @@ async function afterPromptStep(
   }
 
   const updateIntents: mls.msg.AgentIntent[] = [
-    createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? 'input' : undefined),
+    createPlannerUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg, status === 'completed' ? (canonicalSaved ? 'input_output' : 'input') : undefined),
   ];
 
   // NOTE: the root agentNewSolution is intentionally NOT closed here anymore. The flow now continues

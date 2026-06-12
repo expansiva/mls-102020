@@ -29,6 +29,8 @@ import type { EntityCatalogMdmEntity, SavePlanArtifactsOptions } from '/_102020_
 import { readExistingModuleTables } from '/_102020_/l2/agentNewSolution/agentNewSolutionArtifacts.js';
 import { getPlanMDMOutput } from '/_102020_/l2/agentNewSolution/agentPlanMDM.js';
 import { getFinalizeSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
+import { getEnrichedOntologyEntities } from '/_102020_/l2/agentNewSolution/agentPlanEntityDefinition.js';
+import { getPlanUserJourneysOutputSafe } from '/_102020_/l2/agentNewSolution/agentPlanUserJourneys.js';
 import type { FinalSolutionPlanOutput } from '/_102020_/l2/agentNewSolution/agentFinalizeSolutionPlan.js';
 import {
   PLAN_PERSISTENCE_INDEX_RESULT_SCHEMA,
@@ -592,6 +594,24 @@ function checkpointPageIndex(context: mls.msg.ExecutionContext, output: PlanPage
     }
   });
 
+  // F-03 (enriquecimentoFluxo): journey coverage — every user journey must be served by at least
+  // one page (capability intersection or pageHint match). A journey with no page means a missing
+  // work surface (the class of gap that lost leadsKanban/negociosPropostas).
+  const journeys = getPlanUserJourneysOutputSafe(context)?.result.journeys || [];
+  if (journeys.length > 0) {
+    const pageCapabilities = new Map<string, Set<string>>();
+    for (const page of output.result.pages) pageCapabilities.set(page.pageId, new Set(page.capabilities));
+    for (const journey of journeys) {
+      const hintIds = new Set(journey.steps.map(item => item.pageHint || '').filter(Boolean));
+      const servedByHint = [...hintIds].some(hint => pageIds.has(hint));
+      const servedByCapability = journey.capabilityIds.some(capabilityId =>
+        [...pageCapabilities.values()].some(set => set.has(capabilityId)));
+      if (!servedByHint && !servedByCapability) {
+        warnings.push(finding('warning', 'page.journeyCoverage.missing', `journey ${journey.journeyId} (${journey.title}) is not served by any page in the index — a work surface is missing`, `journeys.${journey.journeyId}`));
+      }
+    }
+  }
+
   return { errors, warnings };
 }
 
@@ -960,7 +980,9 @@ async function buildEntityCatalogOptions(context: mls.msg.ExecutionContext): Pro
   const persistence = safe(() => getPlanPersistenceIndexOutput(context));
   const metrics = safe(() => getPlanMetricsIndexOutput(context));
   const mdm = safe(() => getPlanMDMOutput(context));
-  const ontologyEntities = finalPlan?.result.ontology.entities || {};
+  // F-02: prefer the enriched per-entity definitions (canonical fields) over the slim map.
+  const ontologyEntities = await getEnrichedOntologyEntities(context).catch(() => finalPlan?.result.ontology.entities || {})
+    ?? finalPlan?.result.ontology.entities ?? {};
   // A5: tables of OTHER existing modules (maintenance/extension runs).
   const moduleName = typeof finalPlan?.result.module.moduleName === 'string' ? finalPlan.result.module.moduleName as string : '';
   const existingTables = moduleName ? await readExistingModuleTables(moduleName).catch(() => []) : [];

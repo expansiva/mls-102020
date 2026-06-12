@@ -68,7 +68,7 @@ const capabilitySchema = {
   },
 };
 
-const entityFieldSchema = {
+export const entityFieldSchema = {
   type: 'object',
   additionalProperties: false,
   required: ['fieldId', 'type', 'required', 'description'],
@@ -85,12 +85,15 @@ const entityFieldSchema = {
   },
 };
 
-// T-001: fields is required (min 1) — entities without a declared shape cannot be
-// materialized into .defs.ts downstream (see mls-102045 analiseErros E-001).
-const ontologyEntitySchema = {
+// Blueprint slim (enriquecimentoFluxo I-01): the blueprint/final plan ontology is a MAP —
+// title/description/ownership per entity. `fields` became OPTIONAL here: the canonical complete
+// shape (fields with per-field enum, statusEnum, lifecycle) is produced by the per-entity
+// plan-entity-definition fan-out (F-02), which enforces the old T-001 (fields min 1) on its own
+// strict schema. When fields ARE present here (legacy runs / small solutions) they remain valid.
+export const ontologyEntitySchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['title', 'description', 'fields'],
+  required: ['title', 'description'],
   properties: {
     entityId: stringSchema,
     title: stringSchema,

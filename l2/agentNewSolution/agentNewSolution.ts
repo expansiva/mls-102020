@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/agentNewSolution.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { hydrateNewSolutionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
 import { getAgentStepByAgentName } from '/_102027_/l2/aiAgentHelper.js';
 import {
   getExistingModuleFolders,
@@ -103,6 +104,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  await hydrateNewSolutionOutputs(context); // F-06: outputs/ cache for cleaned payloads
   if (!agent || !context || !step) throw new Error(`[afterPromptStep] invalid params, agent:${!!agent}, context:${!!context}, step:${!!step}`);
 
   // this is the ROOT planning step. It has no resolvable parent step,
@@ -183,10 +185,23 @@ function buildPlannedTree(initialPlan: InitialNewSolutionPlan): PlannedAgentStep
     plannedAgent('plan-solution-blueprint', 'agentSolutionBlueprint', title('plan-solution-blueprint'), ['req-implementation-decisions'], 'sequential'),
     plannedAgent('plan-blueprint-review', 'agentBlueprintReview', title('plan-blueprint-review'), ['plan-solution-blueprint'], 'sequential'),
     plannedAgent('plan-finalize-solution-plan', 'agentFinalizeSolutionPlan', title('plan-finalize-solution-plan'), ['plan-blueprint-review'], 'sequential'),
+    // F-01 (enriquecimentoFluxo): user journeys per actor/capability — primary input for the page
+    // index (pages emerge from journey steps, not from capability inference).
+    plannedAgent('plan-user-journeys', 'agentPlanUserJourneys', title('plan-user-journeys'), ['plan-finalize-solution-plan'], 'parallel_static'),
+    // F-02: per-entity ontology enrichment fan-out (fields/enums/lifecycle). The blueprint is a
+    // slim MAP; the canonical entity shapes are produced here, one child per entity (spawned by
+    // agentFinalizeSolutionPlan once the final plan is approved).
+    plannedAgent('plan-entity-definition', 'agentPlanEntityDefinition', title('plan-entity-definition'), ['plan-finalize-solution-plan'], 'parallel_dynamic', {
+      sourcePlanId: 'plan-finalize-solution-plan',
+      selectorField: 'entityId',
+      argsField: 'entityId',
+    }),
     plannedAgent('plan-mdm', 'agentPlanMDM', title('plan-mdm'), ['plan-finalize-solution-plan'], 'parallel_static'),
     plannedAgent('plan-horizontals', 'agentPlanHorizontals', title('plan-horizontals'), ['plan-finalize-solution-plan'], 'parallel_static'),
     plannedAgent('plan-plugins', 'agentPlanPlugins', title('plan-plugins'), ['plan-finalize-solution-plan'], 'parallel_static'),
-    plannedAgent('plan-persistence-index', 'agentPlanPersistenceIndex', title('plan-persistence-index'), ['plan-mdm', 'plan-horizontals', 'plan-plugins'], 'sequential'),
+    // F-02: persistence (and the table-definition fan-out it spawns) needs the enriched entity
+    // shapes to derive columns — gate on plan-entity-definition.
+    plannedAgent('plan-persistence-index', 'agentPlanPersistenceIndex', title('plan-persistence-index'), ['plan-mdm', 'plan-horizontals', 'plan-plugins', 'plan-entity-definition'], 'sequential'),
     plannedAgent('plan-table-definition', 'agentPlanTableDefinition', title('plan-table-definition'), ['plan-persistence-index'], 'parallel_dynamic', {
       sourcePlanId: 'plan-persistence-index',
       selectorField: 'tableId',
@@ -219,13 +234,17 @@ function buildPlannedTree(initialPlan: InitialNewSolutionPlan): PlannedAgentStep
       argsField: 'workflowId',
     }),
     plannedAgent('plan-agents', 'agentPlanAgents', title('plan-agents'), ['plan-plugins', 'plan-usecase-entities', 'plan-workflow-definition'], 'sequential'),
-    plannedAgent('plan-page-index', 'agentPlanPageIndex', title('plan-page-index'), ['plan-metrics-index', 'plan-workflow-index', 'plan-agents'], 'sequential'),
+    // F-03: the page index consumes the user journeys (primary input for page discovery).
+    plannedAgent('plan-page-index', 'agentPlanPageIndex', title('plan-page-index'), ['plan-metrics-index', 'plan-workflow-index', 'plan-agents', 'plan-user-journeys'], 'sequential'),
     plannedAgent('plan-page-definition', 'agentPlanPageDefinition', title('plan-page-definition'), ['plan-page-index'], 'parallel_dynamic', {
       sourcePlanId: 'plan-page-index',
       selectorField: 'pageId',
       argsField: 'pageId',
     }),
-    plannedAgent('plan-validate-solution-coverage', 'agentValidateSolutionCoverage', title('plan-validate-solution-coverage'), ['plan-mdm', 'plan-horizontals', 'plan-plugins', 'plan-persistence-index', 'plan-table-definition', 'plan-metrics-index', 'plan-metric-table-definition', 'plan-usecase-entities', 'plan-usecase-definition', 'plan-workflow-definition', 'plan-agents', 'plan-page-definition'], 'sequential'),
+    // F-04: cross-page UI consolidation (shared organisms, naming consistency) after the page
+    // definitions land and before the coverage validation.
+    plannedAgent('plan-ui-consolidation', 'agentPlanUiConsolidation', title('plan-ui-consolidation'), ['plan-page-definition'], 'sequential'),
+    plannedAgent('plan-validate-solution-coverage', 'agentValidateSolutionCoverage', title('plan-validate-solution-coverage'), ['plan-mdm', 'plan-horizontals', 'plan-plugins', 'plan-persistence-index', 'plan-table-definition', 'plan-metrics-index', 'plan-metric-table-definition', 'plan-usecase-entities', 'plan-usecase-definition', 'plan-workflow-definition', 'plan-agents', 'plan-page-definition', 'plan-entity-definition', 'plan-user-journeys', 'plan-ui-consolidation'], 'sequential'),
   ];
 
   // The former materialization step is now the "Final data" (Dados finais) resume screen:
@@ -332,8 +351,11 @@ const fallbackTitlesEn: Record<NewSolutionPlanId, string> = {
   'plan-workflow-index': 'Plan workflow index',
   'plan-workflow-definition': 'Plan workflow definitions',
   'plan-agents': 'Plan operational agents',
+  'plan-user-journeys': 'Plan user journeys',
+  'plan-entity-definition': 'Detail ontology entities',
   'plan-page-index': 'Plan page index',
   'plan-page-definition': 'Plan page definitions',
+  'plan-ui-consolidation': 'Consolidate UI components',
   'plan-validate-solution-coverage': 'Validate solution coverage',
   'final-resume': 'Final planning summary',
 };
@@ -361,8 +383,11 @@ const fallbackTitlesPt: Record<NewSolutionPlanId, string> = {
   'plan-workflow-index': 'Planejar indice de workflows',
   'plan-workflow-definition': 'Planejar definicoes de workflows',
   'plan-agents': 'Planejar agentes operacionais',
+  'plan-user-journeys': 'Planejar jornadas de usuario',
+  'plan-entity-definition': 'Detalhar entidades da ontologia',
   'plan-page-index': 'Planejar indice de paginas',
   'plan-page-definition': 'Planejar definicoes de paginas',
+  'plan-ui-consolidation': 'Consolidar componentes de UI',
   'plan-validate-solution-coverage': 'Validar cobertura da solucao',
   'final-resume': 'Resumo final do planejamento',
 };
