@@ -221,4 +221,9 @@ Use status "needs_input" only when the review itself cannot be completed without
 - Detect approved capabilities without artifact coverage.
 - Detect entity status changes that contradict declared enums or duplicate another workflow's responsibility.
 - Use severity "error" for blockers and "warning" for future/later items.
+- recommendedFixes MUST be expressible in the final solution plan tool schema — the finalize agent
+  applies them literally under strict schema validation. Discrete values of one FIELD go in that
+  field's "enum" array; entity lifecycle goes in entity-level "statusEnum"/"lifecycleStates".
+  Never recommend adding properties the plan schema does not allow (this broke the simCafeFlow
+  run: "add statusEnum to Order.paymentStatus" forced invalid entity-level keys on Order).
 `;

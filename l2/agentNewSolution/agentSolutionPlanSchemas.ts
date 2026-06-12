@@ -77,6 +77,11 @@ const entityFieldSchema = {
     type: stringSchema,
     required: booleanSchema,
     description: stringSchema,
+    // Allowed discrete values of THIS field (e.g. paymentStatus: pendente/pago/cancelado).
+    // Without it, review fixes like "add an enum to Order.paymentStatus" were inexpressible and
+    // forced the finalize model to invent entity-level keys, violating additionalProperties
+    // (simCafeFlow run, 2026-06-11). Entity-level lifecycle stays in statusEnum/lifecycleStates.
+    enum: stringArraySchema,
   },
 };
 

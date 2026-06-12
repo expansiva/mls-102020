@@ -411,6 +411,7 @@ Do not return prose.
 
 ## Rules
 - Create usecase entities for module-owned aggregate entities that are read or written by BFF commands, workflows, agents, or metrics.
+- READ COVERAGE (mandatory): every entity/table that any usecase WRITES must also have a read-only usecase (list/search with empty writesTables). Pages that list or display the entity can only reference approved usecases — a written entity without a read usecase makes those pages impossible to define later. Example: criarLead/moverLead exist ⇒ listarLeads must exist too.
 - Include metric table update responsibilities in the use cases that write base transactional tables.
 - If an aggregate has child data stored in details, maintain the parent and child data in the same use case.
 - layer_2_controllers must always call layer_3_usecases.

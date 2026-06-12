@@ -127,8 +127,8 @@ async function afterPromptStep(
         }
     };
 
-    //return [newStep, updateStatus];
-    return [newStep];
+    return [newStep, updateStatus];
+    //return [newStep];
 }
 
 async function updateExistingDefs(skill: string, fileReference: string, group: string): Promise<void> {

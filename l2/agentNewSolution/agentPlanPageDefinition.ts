@@ -407,7 +407,11 @@ async function afterPromptStep(
       status = 'failed';
       traceMsg = 'agentPlanPageDefinition returned status failed';
     } else if (output.status === 'needs_input') {
-      traceMsg = 'agentPlanPageDefinition returned status needs_input; keeping page definition draft.';
+      // B-01 (todo5): needs_input no longer drops the page — the partial definition is saved as
+      // an INCOMPLETE artifact (status 'incomplete' + pendingQuestions in data) so the knowledge
+      // survives and a later run/agent can recover it. The coverage validator reports it as an
+      // error; the final resume surfaces the questions to the user.
+      traceMsg = `agentPlanPageDefinition returned needs_input; saving INCOMPLETE page definition with ${output.questions.length} pending question(s).`;
     }
   } catch (error) {
     status = 'failed';
@@ -509,13 +513,18 @@ export async function getPlanPageDefinitionOutputs(context: mls.msg.ExecutionCon
 
 function wrapSavedPageDefinitionOutput(data: Record<string, unknown>): PlanPageDefinitionOutput | null {
   try {
+    // B-01: artifacts saved from a needs_input child carry pendingQuestions inside data; rebuild
+    // them as needs_input outputs so the coverage validator can flag the page as incomplete.
+    const pendingQuestions = Array.isArray(data.pendingQuestions)
+      ? data.pendingQuestions.filter((q): q is string => typeof q === 'string' && !!q)
+      : [];
     return {
       runId: 'from-file',
       stepId: PLAN_PAGE_DEFINITION_STEP_ID,
       schemaVersion: PLANNER_SCHEMA_VERSION,
-      status: 'ok',
+      status: pendingQuestions.length > 0 ? 'needs_input' : 'ok',
       result: normalizePlanPageDefinitionResult(data),
-      questions: [],
+      questions: pendingQuestions,
       trace: [],
     };
   } catch (error) {

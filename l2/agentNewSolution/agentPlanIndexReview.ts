@@ -531,6 +531,13 @@ function checkpointPageIndex(context: mls.msg.ExecutionContext, output: PlanPage
   const pluginIds = getPluginIds(context);
   const metricIds = new Set([...getMetricTableIds(context), ...getMetricDashboardIds(context)]);
   const pageIds = new Set(output.result.pages.map(page => page.pageId));
+  // C-02: usecases with empty writesTables are the read/query usecases a display page can use.
+  const queryUsecaseIds = new Set<string>();
+  for (const usecase of safe(() => getPlanUsecaseEntitiesOutput(context))?.result.usecases || []) {
+    if (!isRecord(usecase) || typeof usecase.usecaseId !== 'string') continue;
+    const writes = Array.isArray(usecase.writesTables) ? usecase.writesTables : [];
+    if (writes.length === 0) queryUsecaseIds.add(usecase.usecaseId);
+  }
 
   output.result.pages.forEach((page, index) => {
     const path = `pages[${index}]`;
@@ -567,6 +574,21 @@ function checkpointPageIndex(context: mls.msg.ExecutionContext, output: PlanPage
       if (pluginIds.size > 0 && !pluginIds.has(ref)) {
         warnings.push(finding('warning', 'page.pluginRef.unknown', `page ${page.pageId} references unknown plugin ${ref}`, path));
       }
+    }
+    // C-02 (todo5 / E-03): SUFFICIENCY, not just referential validity — a page whose usecase
+    // hints are all WRITE usecases has no data source (the 053 critic approved leadsKanban with
+    // only criarLead/moverLeadKanban). Pages fed by metrics (metricRefs) are exempt.
+    const hintedUsecases = [
+      ...page.usecaseHints,
+      ...page.bffCommandHints.map(hint => (isRecord(hint) && typeof hint.name === 'string' ? hint.name : '')).filter(Boolean),
+    ];
+    if (
+      queryUsecaseIds.size > 0
+      && hintedUsecases.length > 0
+      && !hintedUsecases.some(hint => queryUsecaseIds.has(hint))
+      && page.metricRefs.length === 0
+    ) {
+      warnings.push(finding('warning', 'page.readUsecase.missing', `page ${page.pageId} hints only write usecases (${hintedUsecases.join(', ')}) and no metricRefs — it has no read/query data source; add a read usecase hint`, path));
     }
   });
 
@@ -695,6 +717,43 @@ function checkpointUsecasePlan(context: mls.msg.ExecutionContext, output: PlanUs
     warnings.push(finding('warning', 'usecase.metrics.noWriter', 'metric tables exist, but no usecase declares writes to any metric table'));
   }
 
+  // C-01 (todo5 / E-02): READ COVERAGE — every base/MDM table written by some usecase must also
+  // be readable by a pure-read usecase (writesTables empty), or the pages that list/display the
+  // entity will have no data source (root cause of the lost leadsKanban/negociosPropostas pages:
+  // Lead/Negocio/Visita had writers but no listar*/buscar* usecase). This runs while the
+  // usecasePlan is still OPEN — the only point where the repair is cheap. The finding is
+  // mechanical: the repair agent may add the missing read usecase (the finding justifies it).
+  {
+    const writersByTable = new Map<string, string[]>();
+    const pureReadTables = new Set<string>();
+    for (const usecase of output.result.usecases) {
+      if (!isRecord(usecase)) continue;
+      const usecaseId = typeof usecase.usecaseId === 'string' ? usecase.usecaseId : '?';
+      const reads = (Array.isArray(usecase.readsTables) ? usecase.readsTables : []).map(toTableRef);
+      const writes = (Array.isArray(usecase.writesTables) ? usecase.writesTables : []).map(toTableRef);
+      const externalOwned = (ownership: string) => ownership.includes('plugin') || ownership.includes('horizontal') || ownership === 'existingModuleOwned';
+      for (const ref of writes) {
+        if (!ref || metricTableByName.has(ref.name) || externalOwned(ref.ownership)) continue;
+        const list = writersByTable.get(ref.name) || [];
+        list.push(usecaseId);
+        writersByTable.set(ref.name, list);
+      }
+      if (writes.filter(Boolean).length === 0) {
+        for (const ref of reads) {
+          if (ref && !metricTableByName.has(ref.name)) pureReadTables.add(ref.name);
+        }
+      }
+    }
+    for (const [tableName, writers] of writersByTable) {
+      if (pureReadTables.has(tableName)) continue;
+      errors.push(finding(
+        'error',
+        'usecase.readCoverage.missing',
+        `table ${tableName} is written by ${writers.join(', ')} but no read-only usecase (empty writesTables) reads it; add a list/search usecase so pages can display the entity`,
+      ));
+    }
+  }
+
   return { errors, warnings };
 }
 
@@ -798,6 +857,7 @@ const reviewConfigs: Record<PlanIndexName, PlanIndexReviewConfig> = {
 - Metric dashboard pages must exist when initial metrics were requested, restricted to the declared dashboard actor.
 - flowRefs must reference existing workflows in the bucket matching their executionMode.
 - usecaseHints and bffCommandHints[].name must reference usecaseIds that exist in the approved usecase plan; a page referencing a missing usecase is an error (T-007, never approve it).
+- SUFFICIENCY of hints, not only validity: a page that DISPLAYS data (list, kanban, agenda, tracker, dashboard, or an editor that loads an existing record) must hint at least one read/query usecase (a usecase with empty writesTables) or reference metrics; a display page whose hints are all write usecases has no data source and must be flagged as an error.
 - A page input may be an object that contains the identifier internally; that is an acceptable modeling choice (warning at most), not an error.`,
     resultSchema: PLAN_PAGE_INDEX_RESULT_SCHEMA,
     getCurrentOutput: context => getPlanPageIndexOutput(context),
@@ -858,6 +918,7 @@ const reviewConfigs: Record<PlanIndexName, PlanIndexReviewConfig> = {
 - Every module-owned table write (from pages/BFF, workflows, agents) must be covered by a usecase.
 - Lifecycle transitions must be executed by usecases; check coverage of entity lifecycles.
 - BFF commands must be able to reference these usecases by usecaseId; missing obvious read/write usecases is an error.
+- READ COVERAGE: every entity/table that usecases write must ALSO have a read-only usecase (list/search, empty writesTables) — pages that list or display the entity can only reference approved usecases, so a written entity without a read usecase makes its pages impossible to define later (error).
 - Usecases that write base transactional tables must also update the related metric tables.
 - A usecase may write a metric table only when the write maps to one of its measures/sourceWriteEvents; purely descriptive edits (notes, comments) must not write metric tables (T-014).
 - Only layer_3_usecases accesses layer_1_external tables.`,
@@ -907,6 +968,7 @@ async function buildEntityCatalogOptions(context: mls.msg.ExecutionContext): Pro
   const mdmEntities: EntityCatalogMdmEntity[] = [];
   const seen = new Set<string>();
   for (const domain of mdm?.result.mdmDomains || []) {
+    const domainRecord = domain as unknown as Record<string, unknown>;
     for (const value of domain.masterEntities) {
       const entity = typeof value === 'string' ? value : '';
       if (!entity || seen.has(entity)) continue;
@@ -915,7 +977,15 @@ async function buildEntityCatalogOptions(context: mls.msg.ExecutionContext): Pro
       const fields = ontologyEntity && typeof ontologyEntity === 'object' && Array.isArray((ontologyEntity as Record<string, unknown>).fields)
         ? (ontologyEntity as Record<string, unknown>).fields as unknown[]
         : [];
-      mdmEntities.push({ entity, fields });
+      // A-02 (todo5): governance metadata travels with the catalog into the layer_4 entity defs
+      // storage[kind='mdm'] block (the layer_1 mdmEntity ref files no longer exist).
+      mdmEntities.push({
+        entity,
+        fields,
+        domainId: typeof domainRecord.domainId === 'string' ? domainRecord.domainId : undefined,
+        sourceOfTruth: typeof domainRecord.sourceOfTruth === 'string' ? domainRecord.sourceOfTruth : undefined,
+        governanceRules: Array.isArray(domainRecord.governanceRules) ? domainRecord.governanceRules : undefined,
+      });
     }
   }
 
@@ -963,6 +1033,7 @@ export const MECHANICAL_FINDING_CODES = new Set([
   'page.usecaseHint.missing',
   'page.bffCommandHint.usecaseMissing',
   'usecase.writesTable.missing',
+  'usecase.readCoverage.missing',
   'usecase.metricWrite.noMeasure',
   'metrics.dimensions.missingRelationship',
   'metrics.widget.sourceUnknown',

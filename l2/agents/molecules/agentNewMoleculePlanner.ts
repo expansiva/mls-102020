@@ -236,7 +236,7 @@ async function getBaseMolecule() {
 }
 
 const system1 = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codepro -->
 
 You are a requirements analyst responsible for defining the functional and visual requirements of a new web component (molecule) that will be built following an existing group contract.
 

@@ -24,6 +24,7 @@ const NEXT_STEP_AGENTS: Record<NewSolutionProcessNextStepKind, string> = {
   horizontalModule: '',
   plugin: '',
   materialize: '',
+  recoverIncomplete: '',
 };
 
 // Texts longer than this (in bytes) are collapsed behind a "see more" toggle.
