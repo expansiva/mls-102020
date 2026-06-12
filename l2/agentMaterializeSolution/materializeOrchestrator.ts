@@ -120,15 +120,23 @@ export class MaterializeOrchestrator {
 
     public async getSkill(path: string): Promise<string> {
 
-        let module: any;
         if (path.startsWith('/')) path = path.slice(1);
         const f = mls.stor.convertFileReferenceToFile(path);
         if (!f) return '';
 
+        // .md skills — read raw content and process template references
+        if (path.endsWith('.md')) {
+            const ref = mls.stor.convertFileReferenceToFile(path);
+            const key = mls.stor.getKeyToFile(ref);
+            const sf = mls.stor.files[key];
+            if (!sf) return '';
+            const content = await sf.getContent() as string;
+            return await this.processTemplate(content);
+        }
+
+        let module: any;
         try {
-
             module = await collabImport(f as any);
-
         } catch (err) {
             module = await this.getModuleByBuild(path);
         }

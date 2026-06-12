@@ -86,16 +86,16 @@ export const shared: IPaths = {
 
 export const skills: ISkill = {
   layer1: {
-    skillPath:  [],
+    skillPath:  ['_102021_/l2/skills/layer_1.md'],
   },
   layer2: {
-    skillPath:  [],
+    skillPath:  ['_102021_/l2/skills/layer_2.md'],
   },
   layer3: {
-    skillPath:  [],
+    skillPath:  ['_102021_/l2/skills/layer_3.md'],
   },
   layer4: {
-    skillPath:  [],
+    skillPath:  ['_102021_/l2/skills/layer_4.md'],
   },
   contract: {
     skillPath: ["_102020_/l2/agentMaterializeSolution/skills/genContract.ts"],
