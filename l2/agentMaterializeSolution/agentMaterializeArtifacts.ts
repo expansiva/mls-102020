@@ -3,13 +3,26 @@
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import type {
   PipelineItem,
-  PipelineItemType,
   ProjectJson,
-  ScannedDefFile,
-  ScannedDefType,
+  ScannedDefsFile,
+  L1LayerFolder,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
 
 declare const mls: any;
+
+// ─── Path helpers ─────────────────────────────────────────────────────────────
+
+/** _102043_/l1/cafeFlow/layer_4_entities/pedidoEntity.defs.ts */
+export function toMlsPath(
+  project: number,
+  level: number,
+  folder: string,
+  shortName: string,
+  extension: string,
+): string {
+  const folderPart = folder ? `${folder}/` : '';
+  return `_${project}_/l${level}/${folderPart}${shortName}${extension}`;
+}
 
 // ─── project.json ─────────────────────────────────────────────────────────────
 
@@ -21,9 +34,9 @@ export async function readProjectJson(): Promise<ProjectJson | null> {
     const file = (mls.stor.files as Record<string, any>)[key];
     if (!file || file.status === 'deleted') return null;
     const raw = await file.getContent();
-    const parsed = parseMaybeJson(raw);
-    if (!isRecord(parsed) || !Array.isArray(parsed.modules)) return null;
-    return parsed as unknown as ProjectJson;
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!parsed || !Array.isArray(parsed.modules)) return null;
+    return parsed as ProjectJson;
   } catch (err) {
     console.warn('[agentMaterializeArtifacts] readProjectJson failed', err);
     return null;
@@ -32,207 +45,202 @@ export async function readProjectJson(): Promise<ProjectJson | null> {
 
 // ─── Scan ─────────────────────────────────────────────────────────────────────
 
-export function scanModuleDefsFiles(project: number, moduleName: string): ScannedDefFile[] {
-  const result: ScannedDefFile[] = [];
+const L1_LAYERS: L1LayerFolder[] = ['layer_1_external', 'layer_4_entities', 'layer_3_usecases'];
+
+export function scanL1DefsFiles(project: number, moduleName: string): ScannedDefsFile[] {
+  const result: ScannedDefsFile[] = [];
   try {
-    for (const f of Object.values(mls.stor.files as Record<string, any>)) {
-      if (f.project !== project) continue;
-      if (f.status === 'deleted') continue;
-      if (f.extension !== '.defs.ts') continue;
-      if (f.level !== 1 && f.level !== 2) continue;
-
-      const folder: string = f.folder || '';
-      // Accept only files directly inside the module folder or a known sub-layer
-      if (folder !== moduleName && !folder.startsWith(`${moduleName}/`)) continue;
-
-      const type = classifyDefFile(f.level as number, folder, f.shortName as string);
-      if (!type) continue;
-
-      result.push({
-        project,
-        level: f.level,
-        folder,
-        shortName: f.shortName,
-        filePath: toFilePath(project, f.level, folder, f.shortName, '.defs.ts'),
-        moduleName,
-        type,
-        layer: f.level === 1 ? 'l1' : 'l2',
-      });
+    for (const layer of L1_LAYERS) {
+      const folder = `${moduleName}/${layer}`;
+      for (const f of Object.values(mls.stor.files as Record<string, any>)) {
+        if (f.project !== project) continue;
+        if (f.level !== 1) continue;
+        if (f.folder !== folder) continue;
+        if (f.extension !== '.defs.ts') continue;
+        if (f.status === 'deleted') continue;
+        result.push({
+          project,
+          level: 1,
+          folder,
+          shortName: f.shortName,
+          moduleName,
+          mlsPath: toMlsPath(project, 1, folder, f.shortName, '.defs.ts'),
+        });
+      }
     }
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] scanModuleDefsFiles failed', err);
+    console.warn('[agentMaterializeArtifacts] scanL1DefsFiles failed', err);
   }
   return result;
 }
 
-export function classifyDefFile(level: number, folder: string, shortName: string): ScannedDefType | null {
-  if (level === 1) {
-    if (folder.includes('/layer_1_external')) return 'layer_1_external';
-    if (folder.includes('/layer_4_entities')) return 'layer_4_entities';
-    if (folder.includes('/layer_3_usecases')) return 'layer_3_usecases';
-    if (folder.includes('/layer_2_controllers')) return 'layer_2_controllers';
-    return null;
+export function scanL2PageDefsFiles(project: number, moduleName: string): ScannedDefsFile[] {
+  const result: ScannedDefsFile[] = [];
+  try {
+    const SKIP = new Set(['layer_2_contracts', 'project']);
+    for (const f of Object.values(mls.stor.files as Record<string, any>)) {
+      if (f.project !== project) continue;
+      if (f.level !== 2) continue;
+      if (f.folder !== moduleName) continue;
+      if (f.extension !== '.defs.ts') continue;
+      if (f.status === 'deleted') continue;
+      if (SKIP.has(f.shortName as string)) continue;
+      result.push({
+        project,
+        level: 2,
+        folder: moduleName,
+        shortName: f.shortName,
+        moduleName,
+        mlsPath: toMlsPath(project, 2, moduleName, f.shortName, '.defs.ts'),
+      });
+    }
+  } catch (err) {
+    console.warn('[agentMaterializeArtifacts] scanL2PageDefsFiles failed', err);
   }
-  if (level === 2) {
-    // Only files directly in the module folder (not trace/, outputs/, plugins/)
-    const parts = folder.split('/');
-    if (parts.length !== 1) return null;
-    if (shortName === 'layer_2_contracts') return 'l2_layer2contracts';
-    // Ignore non-page defs (project.defs.ts etc.)
-    if (shortName === 'project') return null;
-    return 'l2_page';
-  }
-  return null;
+  return result;
 }
 
-// ─── Path helpers ─────────────────────────────────────────────────────────────
+// ─── Dep layer listing ────────────────────────────────────────────────────────
 
-export function toFilePath(
+// Returns the .defs.ts MLS paths for the dependency layer of a given L1 layer.
+// Used to show the LLM what's available so it can decide which files to reference.
+export function listDepLayerPaths(
+  project: number,
+  moduleName: string,
+  forLayer: L1LayerFolder,
+): string[] {
+  const depLayer: Partial<Record<L1LayerFolder, L1LayerFolder>> = {
+    layer_4_entities: 'layer_1_external',
+    layer_3_usecases: 'layer_4_entities',
+  };
+  const dep = depLayer[forLayer];
+  if (!dep) return [];
+  const folder = `${moduleName}/${dep}`;
+  const result: string[] = [];
+  try {
+    for (const f of Object.values(mls.stor.files as Record<string, any>)) {
+      if (f.project !== project) continue;
+      if (f.level !== 1) continue;
+      if (f.folder !== folder) continue;
+      if (f.extension !== '.defs.ts') continue;
+      if (f.status === 'deleted') continue;
+      result.push(toMlsPath(project, 1, folder, f.shortName, '.defs.ts'));
+    }
+  } catch (err) {
+    console.warn('[agentMaterializeArtifacts] listDepLayerPaths failed', err);
+  }
+  return result;
+}
+
+// ─── File content reader ──────────────────────────────────────────────────────
+
+export async function getFileContent(
   project: number,
   level: number,
   folder: string,
   shortName: string,
   extension: string,
-): string {
-  const folderPart = folder ? `${folder}/` : '';
-  return `${project}/l${level}/${folderPart}${shortName}${extension}`;
-}
-
-export function typeToFileInfo(
-  moduleName: string,
-  shortName: string,
-  type: ScannedDefType,
-): { level: number; folder: string } {
-  switch (type) {
-    case 'layer_1_external':    return { level: 1, folder: `${moduleName}/layer_1_external` };
-    case 'layer_4_entities':    return { level: 1, folder: `${moduleName}/layer_4_entities` };
-    case 'layer_3_usecases':    return { level: 1, folder: `${moduleName}/layer_3_usecases` };
-    case 'layer_2_controllers': return { level: 1, folder: `${moduleName}/layer_2_controllers` };
-    case 'l2_page':             return { level: 2, folder: moduleName };
-    case 'l2_layer2contracts':  return { level: 2, folder: moduleName };
+): Promise<string | null> {
+  try {
+    const fileInfo = { project, level, folder, shortName, extension };
+    const key = mls.stor.getKeyToFile(fileInfo);
+    const file = (mls.stor.files as Record<string, any>)[key];
+    if (!file || file.status === 'deleted') return null;
+    return String(await file.getContent());
+  } catch (err) {
+    console.warn('[agentMaterializeArtifacts] getFileContent failed', err);
+    return null;
   }
 }
 
-export function computeOutputPath(
+// ─── Append pipeline to existing .defs.ts ────────────────────────────────────
+
+export async function appendPipelineToFile(
   project: number,
-  moduleName: string,
+  level: number,
+  folder: string,
   shortName: string,
-  type: PipelineItemType,
-): string {
-  switch (type) {
-    case 'layer_1_external':
-      return toFilePath(project, 1, `${moduleName}/layer_1_external`, shortName, '.ts');
-    case 'layer_4_entities':
-      return toFilePath(project, 1, `${moduleName}/layer_4_entities`, shortName, '.ts');
-    case 'layer_3_usecases':
-      return toFilePath(project, 1, `${moduleName}/layer_3_usecases`, shortName, '.ts');
-    case 'layer_2_controllers':
-      return toFilePath(project, 1, `${moduleName}/layer_2_controllers`, shortName, '.ts');
-    case 'l2_page':
-      return toFilePath(project, 2, `${moduleName}/web/desktop/${shortName}`, shortName, '.ts');
-    case 'l2_shared':
-      return toFilePath(project, 2, `${moduleName}/web/desktop/${shortName}`, `${shortName}.shared`, '.ts');
-    case 'l2_contract':
-      return toFilePath(project, 2, `${moduleName}/web/desktop/${shortName}`, `${shortName}.contract`, '.ts');
-    case 'l2_layer2contracts':
-      return toFilePath(project, 2, `${moduleName}/web/contracts`, shortName, '.ts');
-  }
-}
-
-export function makeItemId(shortName: string, type: PipelineItemType): string {
-  return `${shortName}__${type}`;
-}
-
-// ─── Dependency layer lookup ──────────────────────────────────────────────────
-
-// Returns files from the layer that `forType` depends on.
-export function getAvailableDepFiles(
-  project: number,
-  moduleName: string,
-  forType: ScannedDefType,
-): ScannedDefFile[] {
-  const depType = dependencyLayerOf(forType);
-  if (!depType) return [];
-  return scanModuleDefsFiles(project, moduleName).filter(f => f.type === depType);
-}
-
-function dependencyLayerOf(type: ScannedDefType): ScannedDefType | null {
-  switch (type) {
-    case 'layer_4_entities':    return 'layer_1_external';
-    case 'layer_3_usecases':    return 'layer_4_entities';
-    case 'layer_2_controllers': return 'layer_3_usecases';
-    default: return null;
-  }
-}
-
-// ─── Save pipeline ─────────────────────────────────────────────────────────────
-
-export async function saveMaterializePipeline(
-  moduleName: string,
   items: PipelineItem[],
 ): Promise<boolean> {
   try {
-    const project = mls.actualProject || 0;
-    const fileInfo = {
-      project,
-      level: 5,
-      folder: moduleName,
-      shortName: 'materialize-pipeline',
-      extension: '.json',
-    };
-    const source = `${JSON.stringify(items, null, 2)}\n`;
-    await saveStorContent(fileInfo, source, false);
-
-    // Read-back verify (F-06 pattern)
+    const fileInfo = { project, level, folder, shortName, extension: '.defs.ts' };
     const key = mls.stor.getKeyToFile(fileInfo);
     const file = (mls.stor.files as Record<string, any>)[key];
-    if (!file) return false;
-    const readBack = await file.getContent();
-    return typeof readBack === 'string' && readBack.length === source.length;
+    if (!file || file.status === 'deleted') return false;
+
+    const existing = String(await file.getContent());
+    if (existing.includes('export const pipeline')) return true; // already done
+
+    const pipelineSrc = `\nexport const pipeline = ${JSON.stringify(items, null, 2)} as const;\n`;
+    const newContent = existing.trimEnd() + '\n' + pipelineSrc;
+
+    await mls.stor.localStor.setContent(file, { contentType: 'string', content: newContent });
+
+    // Read-back verify
+    const readBack = String(await file.getContent());
+    return readBack.includes('export const pipeline');
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] saveMaterializePipeline failed', err);
+    console.warn('[agentMaterializeArtifacts] appendPipelineToFile failed', err);
     return false;
   }
 }
 
-// ─── Internal helpers ─────────────────────────────────────────────────────────
+// ─── Create new .defs.ts file ─────────────────────────────────────────────────
 
-export async function saveStorContent(
-  fileInfo: { project: number; level: number; folder: string; shortName: string; extension: string },
-  source: string,
-  needCreateModel: boolean,
-): Promise<void> {
-  const key = mls.stor.getKeyToFile(fileInfo);
-  let storFile = (mls.stor.files as Record<string, any>)[key];
-  if (!storFile) {
-    storFile = await createStorFile({ ...fileInfo, source }, needCreateModel, needCreateModel, false);
-  } else if (needCreateModel) {
-    const model = await storFile.getOrCreateModel();
-    if (model?.model) model.model.setValue(source);
+export async function createDefsFile(
+  project: number,
+  level: number,
+  folder: string,
+  shortName: string,
+  definitionJson: unknown,
+  items: PipelineItem[],
+): Promise<boolean> {
+  try {
+    const fileRef = toMlsPath(project, level, folder, shortName, '.defs.ts');
+    const defStr = JSON.stringify(definitionJson, null, 2);
+    const source = [
+      `/// <mls fileReference="${fileRef}" enhancement="_blank"/>`,
+      ``,
+      `export const definition = \``,
+      `## Definition`,
+      `\`\`\`JSON`,
+      defStr,
+      `\`\`\``,
+      `\`;`,
+      ``,
+      `export const pipeline = ${JSON.stringify(items, null, 2)} as const;`,
+      ``,
+    ].join('\n');
+
+    const fileInfo = { project, level, folder, shortName, extension: '.defs.ts' };
+    const key = mls.stor.getKeyToFile(fileInfo);
+    let storFile = (mls.stor.files as Record<string, any>)[key];
+
+    if (!storFile) {
+      storFile = await createStorFile({ ...fileInfo, source }, false, false, false);
+    }
+    await mls.stor.localStor.setContent(storFile, { contentType: 'string', content: source });
+
+    // Read-back verify
+    const readBack = String(await storFile.getContent());
+    return readBack.includes('export const pipeline');
+  } catch (err) {
+    console.warn('[agentMaterializeArtifacts] createDefsFile failed', err);
+    return false;
   }
-  await mls.stor.localStor.setContent(storFile, { contentType: 'string', content: source });
 }
 
 // ─── Tool call payload extractor ─────────────────────────────────────────────
 
-/**
- * Extracts typed arguments from a tool call payload.
- * The framework wraps tool call results in one of:
- *   { toolName, arguments: { ... } }          — direct format
- *   { type: 'flexible', result: { toolName, arguments } } — flexible wrapper
- *   { tool_calls: [{ function: { name, arguments } }] }   — OpenAI format
- */
 export function extractToolCallArgs<T>(raw: unknown, toolName: string): T | null {
   const v = parseMaybeJson(raw);
   if (!isRecord(v)) return null;
 
-  // Direct: { toolName, arguments }
   if (v.toolName === toolName) {
     const args = parseMaybeJson(v.arguments);
     return isRecord(args) ? (args as unknown as T) : null;
   }
 
-  // Flexible wrapper: { type: 'flexible', result: { toolName, arguments } }
   if (v.type === 'flexible' && v.result !== undefined) {
     const result = parseMaybeJson(v.result);
     if (isRecord(result) && result.toolName === toolName) {
@@ -241,7 +249,6 @@ export function extractToolCallArgs<T>(raw: unknown, toolName: string): T | null
     }
   }
 
-  // OpenAI format: { tool_calls: [{ function: { name, arguments } }] }
   if (Array.isArray(v.tool_calls)) {
     const call = (v.tool_calls as unknown[]).find(
       (item) => isRecord(item) && isRecord((item as any).function) && (item as any).function.name === toolName,

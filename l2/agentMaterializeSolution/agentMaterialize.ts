@@ -3,9 +3,9 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   readProjectJson,
-  scanModuleDefsFiles,
+  scanL1DefsFiles,
+  scanL2PageDefsFiles,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
-import type { ScannedDefFile } from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
 
 declare const mls: any;
 
@@ -14,27 +14,29 @@ export function createAgent(): IAgentAsync {
     agentName: 'agentMaterialize',
     agentProject: 102020,
     agentFolder: 'agentMaterializeSolution',
-    agentDescription: 'Build materialize pipeline for all modules in a project',
+    agentDescription: 'Add pipeline exports to L1 .defs.ts and create L2 sub-files for all modules',
     visibility: 'public',
     beforePromptImplicit,
     afterPromptStep,
   };
 }
 
-// ─── Output type ──────────────────────────────────────────────────────────────
+// ─── Step arg types ────────────────────────────────────────────────────────────
 
-//#region OutputSection
-export type Output =
-  | { type: 'flexible'; result: MaterializeBootstrapResult }
-  | { type: 'result'; result: string };
-
-export interface MaterializeBootstrapResult {
-  status: 'ok' | 'failed';
-  notes: string[];
+export interface L1StepArgs {
+  planId: string;
+  moduleName: string;
+  shortName: string;
+  layerFolder: string;
 }
-//#endregion
 
-// ─── Entry point ──────────────────────────────────────────────────────────────
+export interface L2StepArgs {
+  planId: string;
+  moduleName: string;
+  shortName: string;
+}
+
+// ─── Bootstrap ────────────────────────────────────────────────────────────────
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -44,20 +46,19 @@ async function beforePromptImplicit(
   const project = mls.actualProject || 0;
   const projectJson = await readProjectJson();
 
-  if (!projectJson || !Array.isArray(projectJson.modules) || projectJson.modules.length === 0) {
-    throw new Error(
-      `[agentMaterialize] l5/project.json not found or has no modules in project ${project}`,
-    );
+  if (!projectJson?.modules?.length) {
+    throw new Error(`[agentMaterialize] l5/project.json not found or empty in project ${project}`);
   }
 
-  const moduleSummaries = projectJson.modules.map(mod => {
-    const scanned = scanModuleDefsFiles(project, mod.moduleName);
-    const l1 = scanned.filter(f => f.layer === 'l1');
-    const l2 = scanned.filter(f => f.layer === 'l2');
+  const summaries = projectJson.modules.map(mod => {
+    const l1 = scanL1DefsFiles(project, mod.moduleName);
+    const l2 = scanL2PageDefsFiles(project, mod.moduleName);
     return {
       moduleName: mod.moduleName,
-      l1Files: l1.map(f => `${f.type}/${f.shortName}`),
-      l2Files: l2.map(f => `${f.type}/${f.shortName}`),
+      l1Count: l1.length,
+      l1Files: l1.map(f => `${f.folder.split('/').pop()}/${f.shortName}`),
+      l2Count: l2.length,
+      l2Files: l2.map(f => f.shortName),
     };
   });
 
@@ -68,89 +69,80 @@ async function beforePromptImplicit(
       agentName: agent.agentName,
       inputAI: [
         { type: 'system', content: systemPrompt },
-        { type: 'human', content: buildHumanPrompt(moduleSummaries) },
+        { type: 'human', content: buildHumanPrompt(summaries) },
       ],
-      taskTitle: 'materializePipeline',
+      taskTitle: 'materialize',
       threadId: context.message.threadId,
       userMessage: context.message.content,
-      longTermMemory: {
-        taskName: 'materializePipeline',
-        flowName: 'materialize',
-      },
+      longTermMemory: { taskName: 'materialize', flowName: 'materialize' },
     },
   };
 
   return [addMessageAI];
 }
 
-// ─── After LLM responds ────────────────────────────────────────────────────────
+// ─── After LLM confirms — create all child steps ──────────────────────────────
 
 async function afterPromptStep(
   _agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
-  parentStep: mls.msg.AIAgentStep,
+  _parentStep: mls.msg.AIAgentStep,
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
   try {
-    const payload = step.interaction?.payload?.[0] as Output | undefined;
+    const payload = step.interaction?.payload?.[0] as any;
     if (!payload) throw new Error('[agentMaterialize] missing payload');
 
     if (payload.type === 'result') {
-      return [createUpdateStatus(context, parentStep, step, hookSequential, 'failed', payload.result)];
+      return [mkFail(context, _parentStep, step, hookSequential, String(payload.result))];
     }
-
-    if (payload.type !== 'flexible' || !payload.result) {
-      throw new Error(`[agentMaterialize] unexpected payload: ${JSON.stringify(payload)}`);
-    }
-
-    if (payload.result.status === 'failed') {
-      const notes = payload.result.notes?.join('; ') || 'bootstrap reported failed';
-      return [createUpdateStatus(context, parentStep, step, hookSequential, 'failed', notes)];
+    if (payload.type !== 'flexible' || payload.result?.status === 'failed') {
+      const msg = payload.result?.notes?.join('; ') || 'bootstrap failed';
+      return [mkFail(context, _parentStep, step, hookSequential, msg)];
     }
 
     const project = mls.actualProject || 0;
     const projectJson = await readProjectJson();
-    if (!projectJson) throw new Error('[agentMaterialize] project.json unavailable in afterPromptStep');
+    if (!projectJson) throw new Error('[agentMaterialize] project.json unavailable');
 
-    const addStepIntents: mls.msg.AgentIntentAddStep[] = [];
+    const intents: mls.msg.AgentIntentAddStep[] = [];
 
     for (const mod of projectJson.modules) {
       const { moduleName } = mod;
-      const scanned = scanModuleDefsFiles(project, moduleName);
 
-      // L1 non-external files need LLM dependency resolution before assembly
-      const l1NonExternal = scanned.filter(
-        f => f.layer === 'l1' && f.type !== 'layer_1_external',
-      );
-
-      const resolvePlanIds: string[] = [];
-      for (const file of l1NonExternal) {
-        const planId = `mat-resolve-${toSafeId(moduleName)}-${toSafeId(file.shortName)}`;
-        resolvePlanIds.push(planId);
-        addStepIntents.push(buildResolveStep(context, step, planId, moduleName, file));
+      // One step per L1 .defs.ts file (add pipeline)
+      for (const file of scanL1DefsFiles(project, moduleName)) {
+        const layerFolder = file.folder.split('/').pop() || '';
+        const planId = `mat-l1-${safe(moduleName)}-${safe(file.shortName)}-${safe(layerFolder)}`;
+        const args: L1StepArgs = { planId, moduleName, shortName: file.shortName, layerFolder };
+        intents.push(mkStep(context, step, planId, `L1 pipeline: ${moduleName}/${layerFolder}/${file.shortName}`, 'agentMaterializeL1', args));
       }
 
-      // One assemble step per module — waits for all its resolve deps
-      const assemblePlanId = `mat-assemble-${toSafeId(moduleName)}`;
-      addStepIntents.push(buildAssembleStep(context, step, assemblePlanId, moduleName, resolvePlanIds));
+      // One step per L2 page .defs.ts file (create sub-files)
+      for (const file of scanL2PageDefsFiles(project, moduleName)) {
+        const planId = `mat-l2-${safe(moduleName)}-${safe(file.shortName)}`;
+        const args: L2StepArgs = { planId, moduleName, shortName: file.shortName };
+        intents.push(mkStep(context, step, planId, `L2 files: ${moduleName}/${file.shortName}`, 'agentMaterializeL2', args));
+      }
     }
 
-    return addStepIntents;
+    return intents;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    return [createUpdateStatus(context, parentStep, step, hookSequential, 'failed', msg)];
+    return [mkFail(context, _parentStep, step, hookSequential, msg)];
   }
 }
 
-// ─── Step builders ─────────────────────────────────────────────────────────────
+// ─── Builders ─────────────────────────────────────────────────────────────────
 
-function buildResolveStep(
+function mkStep(
   context: mls.msg.ExecutionContext,
   rootStep: mls.msg.AIAgentStep,
   planId: string,
-  moduleName: string,
-  file: ScannedDefFile,
+  title: string,
+  agentName: string,
+  args: L1StepArgs | L2StepArgs,
 ): mls.msg.AgentIntentAddStep {
   return {
     type: 'add-step',
@@ -162,87 +154,23 @@ function buildResolveStep(
       type: 'agent',
       stepId: 0,
       interaction: null,
-      stepTitle: `Resolve deps: ${moduleName}/${file.shortName}`,
-      // waiting_human_input: server immediately enqueues a beforePromptStep hook for this step.
-      // waiting_dependency with dependsOn:[] is never activated (no event fires to trigger evaluation).
-      // pending skips beforePromptStep entirely and tries continueBeforePrompt with null interaction.
+      stepTitle: title,
       status: 'waiting_human_input',
       nextSteps: [],
-      agentName: 'agentMaterializeResolveDeps',
-      prompt: JSON.stringify({ planId, moduleName, shortName: file.shortName, type: file.type }),
+      agentName,
+      prompt: JSON.stringify(args),
       rags: [],
-      planning: {
-        planId,
-        dependsOn: [],
-        executionMode: 'parallel_static',
-        executionHost: 'client',
-      },
+      planning: { planId, dependsOn: [], executionMode: 'parallel_static', executionHost: 'client' },
     } as any,
   };
 }
 
-function buildAssembleStep(
-  context: mls.msg.ExecutionContext,
-  rootStep: mls.msg.AIAgentStep,
-  planId: string,
-  moduleName: string,
-  dependsOn: string[],
-): mls.msg.AgentIntentAddStep {
-  return {
-    type: 'add-step',
-    messageId: context.message.orderAt,
-    threadId: context.message.threadId,
-    taskId: context.task?.PK || '',
-    parentStepId: rootStep.stepId,
-    step: {
-      type: 'agent',
-      stepId: 0,
-      interaction: null,
-      stepTitle: `Assemble pipeline: ${moduleName}`,
-      status: 'waiting_dependency',
-      nextSteps: [],
-      agentName: 'agentMaterializeAssemble',
-      prompt: JSON.stringify({ planId, moduleName }),
-      rags: [],
-      planning: {
-        planId,
-        dependsOn,
-        executionMode: 'sequential',
-        executionHost: 'client',
-      },
-    } as any,
-  };
-}
-
-// ─── Prompt builders ───────────────────────────────────────────────────────────
-
-function buildHumanPrompt(
-  summaries: Array<{ moduleName: string; l1Files: string[]; l2Files: string[] }>,
-): string {
-  const lines: string[] = ['# Materialize Bootstrap Scan', ''];
-  for (const s of summaries) {
-    lines.push(`## Module: ${s.moduleName}`);
-    lines.push(`L1 (${s.l1Files.length} files): ${s.l1Files.join(', ') || '(none)'}`);
-    lines.push(`L2 (${s.l2Files.length} files): ${s.l2Files.join(', ') || '(none)'}`);
-    lines.push('');
-  }
-  lines.push('Confirm the scan and return your response as described.');
-  return lines.join('\n');
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function toSafeId(name: string): string {
-  return name.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
-}
-
-function createUpdateStatus(
+function mkFail(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
   step: mls.msg.AIAgentStep,
   hookSequential: number,
-  status: mls.msg.AIStepStatus,
-  traceMsg?: string,
+  traceMsg: string,
 ): mls.msg.AgentIntentUpdateStatus {
   return {
     type: 'update-status',
@@ -252,43 +180,41 @@ function createUpdateStatus(
     taskId: context.task?.PK || '',
     parentStepId: parentStep?.stepId ?? step.stepId,
     stepId: step.stepId,
-    status,
+    status: 'failed',
     traceMsg,
   };
 }
 
-// ─── System prompt ─────────────────────────────────────────────────────────────
-
-const systemPrompt = `
-<!-- modelType: codepro -->
-
-You initialize the collab.codes "materializePipeline" task.
-
-You receive a scan of all .defs.ts files found in a project and confirm the scan is valid before pipeline generation begins.
-
-If the scan is invalid or the project has no usable modules, return only:
-{
-  "type": "result",
-  "result": "A short error message explaining what is wrong"
+function safe(name: string): string {
+  return name.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
 }
 
-If the scan is valid, return only:
-{
-  "type": "flexible",
-  "result": {
-    "status": "ok",
-    "notes": ["optional observations about the scan, e.g. empty modules or anomalies"]
+// ─── Prompts ──────────────────────────────────────────────────────────────────
+
+const systemPrompt = `<!-- modelType: codepro -->
+
+You initialize the "materialize" task.
+
+You receive a scan of .defs.ts files found in a project and confirm the scan is valid.
+
+If valid, return:
+{"type":"flexible","result":{"status":"ok","notes":[]}}
+
+If invalid (no modules, no files), return:
+{"type":"result","result":"Short error message"}
+
+Return valid JSON only — no markdown, no prose outside the JSON.`;
+
+function buildHumanPrompt(
+  summaries: Array<{ moduleName: string; l1Count: number; l1Files: string[]; l2Count: number; l2Files: string[] }>,
+): string {
+  const lines = ['# Materialize Scan', ''];
+  for (const s of summaries) {
+    lines.push(`## Module: ${s.moduleName}`);
+    lines.push(`L1 files (${s.l1Count}): ${s.l1Files.join(', ') || '(none)'}`);
+    lines.push(`L2 pages (${s.l2Count}): ${s.l2Files.join(', ') || '(none)'}`);
+    lines.push('');
   }
+  lines.push('Confirm the scan and return your response.');
+  return lines.join('\n');
 }
-
-Rules:
-- Return valid JSON only — no markdown, no prose outside the JSON.
-- status must be "ok" if at least one module has .defs.ts files to process.
-- status must be "failed" only if all modules are completely empty or something is critically wrong.
-- notes is an array of short strings; use it for warnings or observations, not errors.
-- Do not invent module names, file names, or paths. Evaluate only what was provided.
-
-## Output format
-Return only valid JSON in the following structure:
-[[OutputSection]]
-`;
