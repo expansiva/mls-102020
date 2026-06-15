@@ -85,7 +85,12 @@ export const shared: IPaths = {
 }
 
 export const skills: ISkill = {
-  layer1: {
+  definition:{
+    skillPath:  ['_102034_'],
+  },
+  architecture: {
+    skillPath:  ['_102021_/l2/skills/architecture.md'],
+  },layer1: {
     skillPath:  ['_102021_/l2/skills/layer_1.md'],
   },
   layer2: {

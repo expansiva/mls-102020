@@ -126,11 +126,31 @@ async function resolveSkills(input: AgentInput, project: number): Promise<SkillC
     throw new Error(`[agentMaterializeLayer] skills.${skillKey}.skillPath is empty in module.ts for ${moduleName}`);
 
   const orch = getMaterializeOrchestrator(pathDefs);
+
+  // Layer skill
   const skillTexts = await Promise.all(skillPaths.map((p: string) => orch.getSkill(p)));
   const skillSection = skillTexts
     .filter(Boolean)
     .map((s, i) => skillPaths.length === 1 ? `##Skill\n${s}` : `##Skill ${i + 1}\n${s}`)
     .join('\n\n');
+
+  // Architecture skill (optional — loaded same way as layer skills via getSkill)
+  const architecturePaths: string[] = mod.skills?.architecture?.skillPath ?? [];
+  const architectureTexts = architecturePaths.length > 0
+    ? await Promise.all(architecturePaths.map((p: string) => orch.getSkill(p)))
+    : [];
+  const architectureSection = architectureTexts.filter(Boolean).join('\n\n');
+
+  // Definition content (optional — each skillPath entry is a mls.editor.models key)
+  const definitionKeys: string[] = mod.skills?.definition?.skillPath ?? [];
+  const definitionTexts = definitionKeys
+    .map((key: string) => {
+      try {
+        return (mls as any).editor?.models?.[key]?.ts?.model?.getValue() as string | undefined;
+      } catch { return undefined; }
+    })
+    .filter(Boolean) as string[];
+  const definitionSection = definitionTexts.join('\n\n');
 
   const defsContent = await readDefsContent(pathDefs);
   const fileId = getFileId(pathDefs);
@@ -145,10 +165,12 @@ async function resolveSkills(input: AgentInput, project: number): Promise<SkillC
     item: { id: fileId, outputPath, defsPath: pathDefs },
   };
 
-  return {
-    prompt: `${skillSection}\n\n##User data\n${defsContent}\n\n##User info\n${JSON.stringify(info)}`,
-    outputPath,
-  };
+  let prompt = skillSection;
+  if (architectureSection) prompt += `\n\n##Architecture\n${architectureSection}`;
+  if (definitionSection) prompt += `\n\n##Definition\n${definitionSection}`;
+  prompt += `\n\n##User data\n${defsContent}\n\n##User info\n${JSON.stringify(info)}`;
+
+  return { prompt, outputPath };
 }
 
 // ─── beforePromptImplicit ─────────────────────────────────────────────────────
