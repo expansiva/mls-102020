@@ -84,19 +84,49 @@ Every \`execBff\` call uses:
 
 ### Query methods (kind: "query")
 
+Use the correct template based on the output shape (Case A vs Case B from Section 4):
+
+**Case A — output is a raw array \`[{...}]\`** (one reactive property \`{propName}\` typed \`Output[]\`):
 \`\`\`typescript
-async load{CommandPascal}(params?: {...input shape...}, options?: BffClientOptions): Promise<void> {
+async load{CommandPascal}(params?: {Prefix}{CommandPascal}Input, options?: BffClientOptions): Promise<void> {
   if ((window as any).mls) {
-    // stub each top-level key in output with realistic data
-    this.someKey = { /* realistic stub */ };
-    setState('ui.{pageName}.someKey', this.someKey);
+    this.{propName} = [ /* 2–3 realistic stub items */ ] as {Prefix}{CommandPascal}Output[];
+    setState('ui.{pageName}.{propName}', this.{propName});
     this.status = this.msg.loaded;
     return;
   }
-  const response = await execBff<{CommandPascal}Output>(
+  const response = await execBff<{Prefix}{CommandPascal}Output[]>(
     '{moduleName}.{pageName}.{commandName}',
-    params ?? {},
-    options
+    params ?? ({} as {Prefix}{CommandPascal}Input),
+    options,
+  );
+  if (!response.ok || !response.data) {
+    if (options?.mode === 'blocking') {
+      throw (response.error ?? { code: 'UNEXPECTED_ERROR', message: this.msg.couldNotLoad }) satisfies AuraNormalizedError;
+    }
+    this.status = this.msg.couldNotLoad;
+    return;
+  }
+  this.{propName} = response.data;
+  setState('ui.{pageName}.{propName}', this.{propName});
+  this.status = this.msg.loaded;
+}
+\`\`\`
+
+**Case B — output is an object with named keys**:
+\`\`\`typescript
+async load{CommandPascal}(params?: {Prefix}{CommandPascal}Input, options?: BffClientOptions): Promise<void> {
+  if ((window as any).mls) {
+    // stub each top-level key in output with realistic data
+    this.{key} = { /* realistic stub */ };
+    setState('ui.{pageName}.{key}', this.{key});
+    this.status = this.msg.loaded;
+    return;
+  }
+  const response = await execBff<{Prefix}{CommandPascal}Output>(
+    '{moduleName}.{pageName}.{commandName}',
+    params ?? ({} as {Prefix}{CommandPascal}Input),
+    options,
   );
   if (!response.ok || !response.data) {
     if (options?.mode === 'blocking') {
@@ -106,8 +136,8 @@ async load{CommandPascal}(params?: {...input shape...}, options?: BffClientOptio
     return;
   }
   // assign each top-level output key to the matching reactive property
-  this.someKey = response.data.someKey;
-  setState('ui.{pageName}.someKey', this.someKey);
+  this.{key} = response.data.{key};
+  setState('ui.{pageName}.{key}', this.{key});
   this.status = this.msg.loaded;
 }
 \`\`\`
@@ -239,13 +269,35 @@ This applies to every string in \`message_pt\` and \`message_en\`.
 
 ### 4. Reactive properties
 
-For each top-level key in the \`output\` of every **query** command, declare a reactive property.
-Use the derived Output interface from MANDATORY FIRST STEP (e.g. command \`getCart\` → \`{Prefix}GetCartOutput\`):
+**Classify each query command as Case A or Case B before writing any property:**
 
-- Array value \`[{...}]\` → \`@property() {key}: {Prefix}{CommandPascal}Output['{key}'] = [];\`
-- Object value \`{...}\` → \`@property() {key}: {Prefix}{CommandPascal}Output['{key}'] | undefined = undefined;\`
+| Case | Signal | How to identify |
+|---|---|---|
+| **Case A — list** | commandName starts with \`listar\` / \`buscar\` / \`getAll\` / \`list\` | Output interface describes **one item** in a collection |
+| **Case B — structured** | commandName starts with \`obter\` / \`get\` / \`calcular\` / or has explicitly array-valued keys in \`output\` | Output interface has named keys that are the actual result |
 
-The derived interface always exists — never use \`any[]\` or \`any\` as a fallback here.
+> **CRITICAL — never explode item fields into individual properties.**
+> For a \`listar*\` command whose output is \`{ menuItemId, nome, preco, ... }\`, those are fields of ONE item.
+> **Do not** create \`@property() menuItemId\`, \`@property() nome\`, etc.
+> **Do** create one single property \`@property() itensCardapio: CafeFlowListarItensCardapioOutput[] = []\`.
+> Exploding fields into separate properties is ALWAYS WRONG for list commands.
+
+**Case A — list command (output represents one item):**
+- Declare **one** reactive property for the whole collection
+- Property name: strip leading verb (\`listar\`/\`buscar\`/\`getAll\`/\`list\`) and camelCase the remainder
+  (e.g. \`listarItensCardapio\` → \`itensCardapio\`, \`listarCategorias\` → \`categorias\`)
+- Type: \`{Prefix}{CommandPascal}Output[]\` — never \`Output[fieldName]\` or \`Output\`
+- Default: \`= []\`
+- State key: \`'ui.{pageName}.{propName}'\` (one key for the whole list)
+- In the load method: use \`execBff<{Prefix}{CommandPascal}Output[]>\`, assign \`this.{propName} = response.data;\`
+
+**Case B — structured result (output has named composite keys):**
+- Declare one property per top-level key of \`output\`
+- Array-valued key → \`@property() {key}: {Prefix}{CommandPascal}Output['{key}'] = [];\`
+- Object/primitive key → \`@property() {key}: {Prefix}{CommandPascal}Output['{key}'] | undefined = undefined;\`
+- In the load method: use \`execBff<{Prefix}{CommandPascal}Output>\`, assign \`this.{key} = response.data.{key};\`
+
+The derived interface always exists — never fall back to \`any[]\` or \`any\`.
 
 For each **command** entry:
 - \`@property() {commandName}State: 'idle' | 'loading' | 'success' | 'error' = 'idle';\`

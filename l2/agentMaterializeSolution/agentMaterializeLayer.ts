@@ -280,7 +280,7 @@ async function afterPromptStep(
 // ─── system prompt ────────────────────────────────────────────────────────────
 
 const systemPrompt = `
-<!-- modelType: code 2 -->
+<!-- modelType: code2 -->
 <!-- modelTypeList: geminiChat (2.5 pro), code (grok), deepseekchat, codeflash (gemini), deepseekreasoner, mini (4.1) ou nano (openai), codeinstruct (4.1), codereasoning(gpt5), code2 (kimi 2.5) -->
 
 You must return ONLY a valid JSON object. No preamble, no explanation, no markdown

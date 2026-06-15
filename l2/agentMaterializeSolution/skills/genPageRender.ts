@@ -25,20 +25,38 @@ All state, all methods, and all i18n live in the base class. You NEVER invent na
 You do NOT receive the compiled base class source. \`##Base Class\` contains the **shared defs spec** (commands + navigationRefs JSON). From it, derive the four lists deterministically before writing any render code.
 
 Naming conventions (same as the shared generator uses):
+- \`FileName\` = **last path segment of \`item.outputPath\` without the \`.ts\` extension**
+  (e.g. \`/_102043_/l2/cafeFlow/web/render/consultaEstoque.ts\` → \`consultaEstoque\`)
 - \`Prefix\` = moduleName first letter uppercased (e.g. \`petShopStripe\` → \`PetShopStripe\`)
-- \`PageNamePascal\` = pageName first letter uppercased
+- \`PageNamePascal\` = \`FileName\` first letter uppercased (e.g. \`consultaEstoque\` → \`ConsultaEstoque\`)
 - \`CommandPascal\` = commandName first letter uppercased
 - \`PageIdPascal\` = pageId first letter uppercased
 
-The base class is: \`{Prefix}{PageNamePascal}Base\` in \`/_\${project}_/l2/{moduleName}/web/shared/{pageName}.js\`
+> **CRITICAL — never use \`pageName\` as an identifier.**
+> \`pageName\` is a human-readable label and may contain spaces, accents, or special characters
+> (e.g. \`"Consulta de Estoque"\`, \`"Relatório de Fechamento"\`).
+> Using it directly produces invalid TypeScript such as \`extends Consulta Estoque Base\`
+> or a broken custom-element tag. **Always derive \`PageNamePascal\` from \`FileName\`.**
+
+The base class is: \`{Prefix}{PageNamePascal}Base\` in \`/_\${project}_/l2/{moduleName}/web/shared/{FileName}.js\`
 
 ### List 1 — Reactive properties
 Derive from \`commands\` in \`##Base Class\`:
-- For each **query** command (\`kind: "query"\`): each top-level key of its \`output\` shape becomes a property
-  - Array value \`[{...}]\` → \`{key}: any[] = []\`
-  - Object / primitive value → \`{key}: any = undefined\`
+
+- For each **query** command (\`kind: "query"\`):
+  - **If commandName starts with \`listar\` / \`buscar\` / \`getAll\` / \`list\`** → **one** array property for the whole list.
+    Property name = commandName with leading verb stripped (e.g. \`listarItensCardapio\` → \`itensCardapio\`).
+    Type: array (\`= []\`). **Never explode item fields into separate properties.**
+  - **Otherwise** (structured result) → one property per top-level key of \`output\`
+    - Array-valued key → \`{key}: any[] = []\`
+    - Object/primitive key → \`{key}: any = undefined\`
+
 - For each **command** (\`kind: "command"\`): \`{commandName}State: 'idle'|'loading'|'success'|'error'\`
 - Always present: \`status: string\`
+
+> **CRITICAL:** For \`listar*\` queries, the shared base class has ONE array property (e.g. \`itensCardapio\`),
+> not a separate property for each item field (\`menuItemId\`, \`nome\`, etc.).
+> Iterating must use that single array property: \`(this.itensCardapio ?? []).map(...)\`.
 
 ### List 2 — Handler methods
 Derive from \`commands\` and \`navigationRefs\` in \`##Base Class\`:
@@ -77,10 +95,11 @@ Do not use any name not derivable by the rules above.
 \`\`\`typescript
 import { html } from 'lit';
 import { customElement } from 'lit/decorators.js';
-import { {Prefix}{PageNamePascal}Base } from '/_\${project}_/l2/{moduleName}/web/shared/{pageName}.js';
+import { {Prefix}{PageNamePascal}Base } from '/_\${project}_/l2/{moduleName}/web/shared/{FileName}.js';
 \`\`\`
+- \`FileName\` = last segment of \`item.outputPath\` without \`.ts\` — use this in the import path, **never \`pageName\`**
 - \`Prefix\` = \`moduleName\` first letter uppercased (e.g., \`locadora\` → \`Locadora\`)
-- \`PageNamePascal\` = filename without \`.ts\`, first letter uppercased
+- \`PageNamePascal\` = \`FileName\` first letter uppercased — use this in the class/base name, **never \`pageName\`**
 - No other imports unless a Lit directive (e.g., \`repeat\`) is genuinely needed
 
 ### 3. Class
