@@ -7,6 +7,7 @@ import {
   computeOutputPath,
   makeItemId,
   saveMaterializePipeline,
+  extractToolCallArgs,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import type {
   PipelineItem,
@@ -76,7 +77,7 @@ async function beforePromptStep(
   const project = mls.actualProject || 0;
 
   // 1. Collect resolve-deps outputs for this module from sibling steps
-  const allSteps = getAllSteps(context.task);
+  const allSteps = getAllSteps(context.task?.iaCompressed?.nextSteps);
   const resolvedMap = collectResolvedDeps(allSteps, moduleName);
 
   // 2. Scan all .defs.ts for this module
@@ -113,7 +114,9 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
-  const payload = step.interaction?.payload?.[0] as AssembleOutput | undefined;
+  // Tool call payload is wrapped: { toolName, arguments: { ... } } or OpenAI format
+  const raw = step.interaction?.payload?.[0] as any;
+  const payload = extractToolCallArgs<AssembleOutput>(raw, TOOL_NAME);
 
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;

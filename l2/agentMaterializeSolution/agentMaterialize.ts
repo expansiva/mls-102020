@@ -163,7 +163,10 @@ function buildResolveStep(
       stepId: 0,
       interaction: null,
       stepTitle: `Resolve deps: ${moduleName}/${file.shortName}`,
-      status: 'waiting_dependency',
+      // waiting_human_input: server immediately enqueues a beforePromptStep hook for this step.
+      // waiting_dependency with dependsOn:[] is never activated (no event fires to trigger evaluation).
+      // pending skips beforePromptStep entirely and tries continueBeforePrompt with null interaction.
+      status: 'waiting_human_input',
       nextSteps: [],
       agentName: 'agentMaterializeResolveDeps',
       prompt: JSON.stringify({ planId, moduleName, shortName: file.shortName, type: file.type }),

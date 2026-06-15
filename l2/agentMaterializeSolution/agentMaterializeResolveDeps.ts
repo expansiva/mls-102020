@@ -5,6 +5,7 @@ import {
   getAvailableDepFiles,
   typeToFileInfo,
   toFilePath,
+  extractToolCallArgs,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import type { ScannedDefType } from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
 
@@ -123,7 +124,9 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
-  const payload = step.interaction?.payload?.[0] as ResolveOutput | undefined;
+  // Tool call payload is wrapped: { toolName, arguments: { ... } } or OpenAI format
+  const raw = step.interaction?.payload?.[0] as any;
+  const payload = extractToolCallArgs<ResolveOutput>(raw, TOOL_NAME);
 
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;

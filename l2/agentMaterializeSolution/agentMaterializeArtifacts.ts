@@ -213,6 +213,49 @@ export async function saveStorContent(
   await mls.stor.localStor.setContent(storFile, { contentType: 'string', content: source });
 }
 
+// ─── Tool call payload extractor ─────────────────────────────────────────────
+
+/**
+ * Extracts typed arguments from a tool call payload.
+ * The framework wraps tool call results in one of:
+ *   { toolName, arguments: { ... } }          — direct format
+ *   { type: 'flexible', result: { toolName, arguments } } — flexible wrapper
+ *   { tool_calls: [{ function: { name, arguments } }] }   — OpenAI format
+ */
+export function extractToolCallArgs<T>(raw: unknown, toolName: string): T | null {
+  const v = parseMaybeJson(raw);
+  if (!isRecord(v)) return null;
+
+  // Direct: { toolName, arguments }
+  if (v.toolName === toolName) {
+    const args = parseMaybeJson(v.arguments);
+    return isRecord(args) ? (args as unknown as T) : null;
+  }
+
+  // Flexible wrapper: { type: 'flexible', result: { toolName, arguments } }
+  if (v.type === 'flexible' && v.result !== undefined) {
+    const result = parseMaybeJson(v.result);
+    if (isRecord(result) && result.toolName === toolName) {
+      const args = parseMaybeJson(result.arguments);
+      return isRecord(args) ? (args as unknown as T) : null;
+    }
+  }
+
+  // OpenAI format: { tool_calls: [{ function: { name, arguments } }] }
+  if (Array.isArray(v.tool_calls)) {
+    const call = (v.tool_calls as unknown[]).find(
+      (item) => isRecord(item) && isRecord((item as any).function) && (item as any).function.name === toolName,
+    );
+    if (isRecord(call)) {
+      const fn = (call as any).function;
+      const args = parseMaybeJson(fn.arguments);
+      return isRecord(args) ? (args as unknown as T) : null;
+    }
+  }
+
+  return null;
+}
+
 function parseMaybeJson(raw: unknown): unknown {
   if (typeof raw !== 'string') return raw;
   try { return JSON.parse(raw); } catch { return null; }
