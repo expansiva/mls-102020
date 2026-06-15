@@ -3,11 +3,10 @@
 import { html, css } from 'lit';
 import { customElement, property, state, query } from 'lit/decorators.js';
 import { globalState, setState, initState, getState, subscribe, unsubscribe } from '/_102027_/l2/collabState.js';
-import { getPath } from '/_102027_/l2/utils.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { getTokensCss, getTokensLess, removeTokensFromSource } from '/_102027_/l2/designSystemBase.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { getLastOpenedFiles, saveOpenedFile } from '/_102027_/l2/libCommom.js';
+import { getLastOpenedFiles } from '/_102027_/l2/libCommom.js';
 import { compileStyleUsingStorFile } from '/_102027_/l2/libCompileStyle.js';
 import { createModel } from '/_102027_/l2/libModel.js';
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
@@ -252,15 +251,20 @@ export class ServicePreview extends ServiceBase {
     this.light = !this.light;
     if (!mls.actual[this.level].left || !this.watch) return this.light;
 
-    const htmlEl: HTMLHtmlElement | undefined = this.getIframePreviewHTML();
-    if (htmlEl) {
-      if (this.light) {
-        htmlEl.removeAttribute('data-theme');
-        htmlEl.classList.remove('dark');
-      } else {
-        htmlEl.setAttribute('data-theme', 'dark');
-        htmlEl.classList.add('dark');
+    if (this._previewMode === 'shared') {
+      const htmlEl: HTMLHtmlElement | undefined = this.getIframePreviewHTML();
+      if (htmlEl) {
+        if (this.light) {
+          htmlEl.removeAttribute('data-theme');
+          htmlEl.classList.remove('dark');
+        } else {
+          htmlEl.setAttribute('data-theme', 'dark');
+          htmlEl.classList.add('dark');
+        }
       }
+    } else {
+      // Isolated (opaque origin): via postMessage.
+      this._postToPreview({ type: 'setDarkMode', dark: !this.light });
     }
 
     this.onStyleChanged();
@@ -290,8 +294,12 @@ export class ServicePreview extends ServiceBase {
     if (hasLang === -1) {
       await this.setLanguages();
     }
-    const htmlEl: HTMLHtmlElement | undefined = this.getIframePreviewHTML();
-    if (htmlEl) htmlEl.lang = lang;
+    if (this._previewMode === 'shared') {
+      const htmlEl: HTMLHtmlElement | undefined = this.getIframePreviewHTML();
+      if (htmlEl) htmlEl.lang = lang;
+    } else {
+      this._postToPreview({ type: 'setLang', lang });
+    }
     this.lang = lang;
     const variation = Object.values(this.languages).findIndex((item) => item.acronym === lang)
     globalState.globalVariation = !isNaN(variation) ? variation : 0;
@@ -456,7 +464,28 @@ export class ServicePreview extends ServiceBase {
 
   }
 
+  private _creatingPreview = false;
+
   private createPreview() {
+    // Re-entrancy guard: loading file infos below can fire FileAction events
+    // that would call createPreview() again -> infinite iframe recreation.
+    if (this._creatingPreview) return;
+    this._createPreviewAsync().catch((e: any) => {
+      console.error('[servicePreview] createPreview failed:', e);
+      this.loading = false;
+    });
+  }
+
+  private async _createPreviewAsync() {
+    this._creatingPreview = true;
+    try {
+      await this._doCreatePreview();
+    } finally {
+      this._creatingPreview = false;
+    }
+  }
+
+  private async _doCreatePreview() {
 
     this.initStatesPreview();
     this.initStatesPreviewL3();
@@ -465,6 +494,15 @@ export class ServicePreview extends ServiceBase {
     const container = this.querySelector('#preview-container') as HTMLElement;
     if (!container) return;
     container.innerHTML = '';
+    this.loading = true;
+
+    // Load the CURRENT file infos before deciding the mode (sandbox/src cannot
+    // change after load). Uses a loader that does NOT fire FileAction events
+    // (setLastOpenedFile would re-enter createPreview).
+    await this._ensureActualFilesForMode();
+
+    const mode = this._resolvePreviewMode();
+    this._previewMode = mode;
 
     const wrapper = document.createElement('div');
     wrapper.classList.add('preview-wrapper');
@@ -472,41 +510,248 @@ export class ServicePreview extends ServiceBase {
 
     const iframe = document.createElement('iframe');
     iframe.classList.add('preview-iframe');
-    iframe.src = '/_102020_servicePreview';
 
-    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+    if (mode === 'shared') {
+      // SHARED mode (same-origin): access to parent.mls etc.
+      // NO process isolation (a loop can freeze — mitigated by
+      // Layer 1 / the notify circuit breaker).
+      iframe.src = '/_102020_servicePreview';
+      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+    } else {
+      // ISOLATED mode (opaque origin): a freeze does NOT freeze the app.
+      iframe.setAttribute('sandbox', 'allow-scripts');
+    }
 
     wrapper.appendChild(iframe);
     container.appendChild(wrapper);
-
     (window as any).preview.iframe = iframe;
 
-    iframe.addEventListener('load', async () => {
-
-      try {
-        await this.writePreviewContent(iframe);
-      } catch (e: any) {
-        console.error('[servicePreview] writePreviewContent error:', e);
-      } finally {
-        this.loading = false;
-      }
-
-      // Apply current dark/light state and language to the new iframe
-      const htmlEl = iframe.contentDocument?.querySelector('html');
-      if (htmlEl) {
-        htmlEl.lang = this.lang;
-        if (!this.light) {
-          htmlEl.setAttribute('data-theme', 'dark');
-          htmlEl.classList.add('dark');
-        }
-      }
-
-    });
-
     this.configureTools(true);
-    this.loading = true;
     if (this.actualFiles && this.actualFiles.html) this.setModel(this.actualFiles.html);
 
+    if (mode === 'shared') {
+      iframe.addEventListener('load', async () => {
+        try {
+          await this.writePreviewContent(iframe);
+        } catch (e: any) {
+          console.error('[servicePreview] writePreviewContent error:', e);
+        } finally {
+          this.loading = false;
+        }
+        const htmlEl = iframe.contentDocument?.querySelector('html');
+        if (htmlEl) {
+          htmlEl.lang = this.lang;
+          if (!this.light) {
+            htmlEl.setAttribute('data-theme', 'dark');
+            htmlEl.classList.add('dark');
+          }
+        }
+      });
+    } else {
+      this._startWatchdog(iframe);
+      await this._renderIsolated(iframe);
+    }
+  }
+
+  /**
+   * Decides the preview mode per file:
+   *  B) explicit flag in .html  -> <meta name="mls-preview" content="shared|isolated">
+   *  A) by .ts enhancement      -> enhancementAgent* => shared
+   *  default                    -> isolated (safe)
+   */
+  private _resolvePreviewMode(): 'shared' | 'isolated' {
+    // B) explicit override
+    const html = this.actualFiles?.htmlContent || '';
+    const flag = html.match(/<meta\s+name=["']mls-preview["']\s+content=["'](shared|isolated)["']/i);
+    if (flag) return (flag[1].toLowerCase() === 'shared') ? 'shared' : 'isolated';
+
+    // A) by enhancement — read the PREVIEWED file's .ts content (per-file,
+    // loaded by getFiles({loadContent:true})). Do NOT use a monaco model:
+    // setActualModels() only sets actualModels.ts once and never refreshes it,
+    // so it would return a stale file's source (e.g. the open editor file).
+    const tsSrc = this.actualFiles?.tsContent || '';
+    if (/enhancement\s*=\s*["'][^"']*enhancementAgent/i.test(tsSrc)) return 'shared';
+
+    return 'isolated';
+  }
+
+  /**
+   * Loads actualFiles/actualModels for the current file WITHOUT calling
+   * setLastOpenedFile() — that path fires FileAction events which would
+   * re-enter createPreview() and recreate the iframe in a loop.
+   * mls.actual is already set by the caller (onServiceClick) or by the
+   * FileAction that triggered this preview.
+   */
+  private async _ensureActualFilesForMode() {
+    if (this.level === 2) {
+      if (!mls.actual[this.level].left) return;
+      const { project, shortName, folder } = mls.actual[this.level].left as mls.stor.IFileInfo;
+      this.project = project;
+      this.shortName = shortName;
+      this.folder = folder;
+    }
+
+    if (this.level === 3 || this.level === 4) {
+      const base = mls.actual[this.level].getStorFileBase();
+      let { project, shortName, folder } = base;
+      if (!project || !shortName) {
+        AuraInitState();
+        const page = getAuraState().actualPage;
+        if (page) {
+          project = page.project;
+          shortName = page.shortName;
+          folder = page.folder ?? '';
+        }
+      }
+      this.project = project;
+      this.shortName = shortName;
+      this.folder = folder;
+    }
+
+    await this.setActualFiles(this.project, this.shortName, this.folder);
+    await this.setActualModels();
+  }
+
+  // ===========================================================================
+  // PHASE 1 — Isolated render (srcdoc + opaque origin) + watchdog
+  // ===========================================================================
+
+  private async _renderIsolated(iframe: HTMLIFrameElement) {
+
+    // setActualFileInfos() was already called by _createPreviewAsync before
+    // resolving the mode, so actualFiles/actualModels are up to date.
+    if (!this.actualFiles || !this.actualFiles.html || !this.actualFiles.htmlContent) {
+      iframe.srcdoc = `<!DOCTYPE html><body style="font-family:sans-serif;color:#888;padding:24px">.html não encontrado/vazio: ${this.page}</body>`;
+      this.loading = false;
+      return;
+    }
+
+    const ret = await getDependenciesByHtml(this.actualFiles.html, this.actualFiles.htmlContent, this.actualTheme, true);
+    const aura = new PreviewModeAura(ret, iframe, String(this.level), false, this.actualFiles.html, this.actualModels);
+    const styles = await this._getCompiledStyles();
+    const srcdoc = await aura.buildSrcdoc(this.actualFiles.htmlContent, styles);
+
+    iframe.srcdoc = srcdoc;
+    this.loading = false;
+  }
+
+  private async _getCompiledStyles(): Promise<{ id: string; css: string }[]> {
+    const out: { id: string; css: string }[] = [];
+    try {
+      const id = convertFileToTag({ project: this.project, shortName: this.shortName, folder: this.folder });
+      const less = await compileStyleUsingStorFile(this.shortName, this.project, this.folder, this.actualTheme);
+      if (less) out.push({ id, css: less });
+      const tokens = await getTokensCss(this.project, this.actualTheme);
+      if (tokens) out.push({ id: this.getIdTokens(), css: tokens });
+    } catch (e: any) {
+      console.info('Erro _getCompiledStyles: ' + (e?.message || e));
+    }
+    return out;
+  }
+
+  private _previewMode: 'shared' | 'isolated' = 'isolated';
+
+  // ---- Watchdog: heartbeat ping/pong + automatic recovery ----
+  private _pingTimer: any = null;
+  private _checkTimer: any = null;
+  private _lastPong = 0;
+  private _gotFirstContact = false;
+  private _onPreviewMessage: ((e: MessageEvent) => void) | null = null;
+  private _onVisibility: (() => void) | null = null;
+
+  private _startWatchdog(iframe: HTMLIFrameElement) {
+    this._stopWatchdog();
+    this._lastPong = performance.now();
+    this._gotFirstContact = false;
+
+    this._onPreviewMessage = (e: MessageEvent) => {
+      const d: any = e.data || {};
+      if (d.type === 'pong' || d.type === 'ready') {
+        this._lastPong = performance.now();
+        this._gotFirstContact = true;
+        if (d.type === 'ready') this._applyIframeViewState(iframe);
+      }
+    };
+    window.addEventListener('message', this._onPreviewMessage);
+
+    // In the background the browser throttles timers (ping/pong nearly stop).
+    // When the tab becomes visible again, reset the heartbeat clock to avoid
+    // a false-positive "loop" detection.
+    this._onVisibility = () => {
+      if (!document.hidden) this._lastPong = performance.now();
+    };
+    document.addEventListener('visibilitychange', this._onVisibility);
+
+    let id = 0;
+    this._pingTimer = setInterval(() => {
+      try { iframe.contentWindow?.postMessage({ type: 'ping', id: ++id }, '*'); } catch (e) { }
+    }, 1000);
+
+    this._checkTimer = setInterval(() => {
+      // Do not evaluate while the tab is hidden (throttled timers => false positive).
+      if (document.hidden) return;
+      // Only flag a loop after the first contact (avoids a false positive on a
+      // heavy initial render that hasn't sent 'ready' yet).
+      if (this._gotFirstContact && performance.now() - this._lastPong > 2500) {
+        console.warn('[servicePreview] preview frozen (no heartbeat) — loop detected in the component.');
+        this._showHangMessage();
+      }
+    }, 500);
+  }
+
+  /**
+   * Infinite loop detected: stops the watchdog (no auto-recreation), removes
+   * the frozen iframe and shows a message in place of the preview, with a
+   * manual reload option.
+   */
+  private _showHangMessage() {
+    this._stopWatchdog();
+
+    const container = this.querySelector('#preview-container') as HTMLElement;
+    if (!container) return;
+    container.innerHTML = '';
+    if ((window as any).preview) (window as any).preview.iframe = undefined;
+    this.loading = false;
+
+    const box = document.createElement('div');
+    box.style.cssText = 'padding:24px;font-family:system-ui,sans-serif;display:flex;flex-direction:column;gap:12px;align-items:flex-start;';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-weight:600;font-size:14px;color:#b91c1c;';
+    title.textContent = '⚠️ Loop infinito detectado no componente';
+    const desc = document.createElement('div');
+    desc.style.cssText = 'font-size:12px;color:#555;max-width:520px;';
+    desc.textContent = 'O componente entrou em um laço que travaria a página. A execução foi isolada e interrompida. Corrija o componente e recarregue o preview.';
+    const btn = document.createElement('button');
+    btn.textContent = 'Recarregar preview';
+    btn.style.cssText = 'padding:6px 12px;cursor:pointer;';
+    btn.addEventListener('click', () => this.createPreview());
+
+    box.appendChild(title);
+    box.appendChild(desc);
+    box.appendChild(btn);
+    container.appendChild(box);
+  }
+
+  private _stopWatchdog() {
+    if (this._pingTimer) clearInterval(this._pingTimer);
+    if (this._checkTimer) clearInterval(this._checkTimer);
+    if (this._onPreviewMessage) window.removeEventListener('message', this._onPreviewMessage);
+    if (this._onVisibility) document.removeEventListener('visibilitychange', this._onVisibility);
+    this._pingTimer = this._checkTimer = this._onPreviewMessage = this._onVisibility = null;
+  }
+
+  private _applyIframeViewState(iframe: HTMLIFrameElement) {
+    try {
+      iframe.contentWindow?.postMessage({ type: 'setLang', lang: this.lang }, '*');
+      iframe.contentWindow?.postMessage({ type: 'setDarkMode', dark: !this.light }, '*');
+    } catch (e) { }
+  }
+
+  private _postToPreview(msg: any) {
+    try {
+      const iframe = (window as any).preview?.iframe as HTMLIFrameElement | undefined;
+      iframe?.contentWindow?.postMessage(msg, '*');
+    } catch (e) { }
   }
 
   private async writePreviewContent(iframe: HTMLIFrameElement) {
@@ -579,16 +824,12 @@ export class ServicePreview extends ServiceBase {
 
   private clearPreview() {
 
+    // Opaque origin: cannot touch contentDocument; just remove the iframe.
+    this._stopWatchdog();
     const container = this.querySelector('#preview-container') as HTMLElement;
     if (!container) return;
-    if ((window as any).preview &&
-      (window as any).preview.iframe &&
-      (window as any).preview.iframe.contentDocument
-    ) {
-      (window as any).preview.iframe.contentDocument.body.innerHTML = '';
-    }
     container.innerHTML = '';
-    (window as any).preview.iframe = undefined;
+    if ((window as any).preview) (window as any).preview.iframe = undefined;
     this.configureTools(false);
   }
 
@@ -656,24 +897,29 @@ export class ServicePreview extends ServiceBase {
 
   private async addStyles() {
 
-    const iframeHtml = (window as any).preview.iframe?.contentDocument
-    if (!iframeHtml || !iframeHtml) return;
+    const iframe = (window as any).preview?.iframe as HTMLIFrameElement | undefined;
+    if (!iframe) return;
+
     const id = convertFileToTag({ project: this.project, shortName: this.shortName, folder: this.folder });
-
-    const oldStyle = iframeHtml.head.querySelector(`style[id=${id}]`);
-    const newStyle = document.createElement('style');
     const newLess = await compileStyleUsingStorFile(this.shortName, this.project, this.folder, this.actualTheme);
-
-    if (newLess) {
-      newStyle.id = id;
-      newStyle.textContent = newLess;
-      iframeHtml.head.appendChild(newStyle);
-      if (oldStyle) oldStyle.remove();
-    }
-
     const tokens = await getTokensCss(this.project, this.actualTheme);
-    this.mountTokens(tokens || '');
 
+    if (this._previewMode === 'shared') {
+      const iframeHtml = iframe.contentDocument;
+      if (!iframeHtml) return;
+      if (newLess) {
+        const oldStyle = iframeHtml.head.querySelector(`style[id=${id}]`);
+        const newStyle = document.createElement('style');
+        newStyle.id = id;
+        newStyle.textContent = newLess;
+        iframeHtml.head.appendChild(newStyle);
+        if (oldStyle) oldStyle.remove();
+      }
+      this.mountTokens(tokens || '');
+    } else {
+      if (newLess) this._postToPreview({ type: 'setStyle', id, css: newLess });
+      this._postToPreview({ type: 'setStyle', id: this.getIdTokens(), css: tokens || '' });
+    }
   }
 
   private mountTokens(tokens: string): void {
