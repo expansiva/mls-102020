@@ -1,12 +1,14 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentMaterializeGen.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { collabImport } from '/_102027_/l2/collabImport.js';
 import {
   getContentByMlsPath,
   parseDefinitionFromContent,
   parseMlsPath,
   saveGeneratedTs,
   extractToolCallArgs,
+  loadModuleByBuild,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import type { GenStepArgs } from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
 
@@ -68,10 +70,10 @@ async function beforePromptStep(
   if (!defsContent) throw new Error(`[agentMaterializeGen] .defs.ts not found: ${defPath}`);
   const definition = parseDefinitionFromContent(defsContent);
 
-  // Load skill files
+  // Load skill content — .ts files export a `skill` string; .md files are read raw
   const skillSections: string[] = [];
   for (const sp of skillPaths) {
-    const content = await getContentByMlsPath(sp);
+    const content = await loadSkillContent(sp);
     if (content) skillSections.push(`<!-- skill: ${sp} -->\n${content}`);
   }
 
@@ -138,6 +140,32 @@ async function afterPromptStep(
   )];
 }
 
+// ─── Skill loader ─────────────────────────────────────────────────────────────
+
+async function loadSkillContent(skillPath: string): Promise<string> {
+  const clean = skillPath.startsWith('/') ? skillPath.slice(1) : skillPath;
+
+  if (clean.endsWith('.md')) {
+    return await getContentByMlsPath(clean) ?? '';
+  }
+
+  // .ts skill: try collabImport → read .skill export
+  const f = mls.stor.convertFileReferenceToFile(clean);
+  if (!f) return '';
+
+  let mod: any;
+  try {
+    mod = await collabImport(f);
+  } catch {
+    mod = await loadModuleByBuild(clean);
+  }
+
+  if (typeof mod?.skill === 'string') return mod.skill;
+
+  // Last resort: raw file content
+  return await getContentByMlsPath(clean) ?? '';
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function mkStatus(
@@ -192,11 +220,7 @@ function buildHumanPrompt(
   depSections: string[],
   outputPath: string,
 ): string {
-  const lines: string[] = [
-    `## Definition`,
-    ``,
-    definition,
-  ];
+  const lines: string[] = ['## Definition', '', definition];
 
   if (depSections.length) {
     lines.push('', '## Context Files', '');
@@ -204,6 +228,5 @@ function buildHumanPrompt(
   }
 
   lines.push('', `Generate the file \`${outputPath}\` and call ${TOOL_NAME} with the complete code.`);
-
   return lines.join('\n');
 }

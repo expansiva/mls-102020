@@ -1,12 +1,13 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentMaterializeL2.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { collabImport } from '/_102027_/l2/collabImport.js';
 import {
   readProjectJson,
   scanL2DefsWithPipeline,
   getFileModified,
-  getContentByMlsPath,
   toMlsPath,
+  loadModuleByBuild,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import type {
   GenStepArgs,
@@ -28,8 +29,6 @@ export function createAgent(): IAgentAsync {
     afterPromptStep,
   };
 }
-
-// ─── Candidate: a .defs.ts that needs .ts generation ─────────────────────────
 
 interface Candidate {
   folder: string;
@@ -53,7 +52,13 @@ async function beforePromptImplicit(
   const summaries = [];
   for (const mod of projectJson.modules) {
     const candidates = await findCandidates(project, mod.moduleName);
-    summaries.push({ moduleName: mod.moduleName, count: candidates.length });
+    const byType = groupByType(candidates, mod.moduleName);
+    summaries.push({
+      moduleName: mod.moduleName,
+      contracts: byType.contract.length,
+      shared: byType.shared.length,
+      pages: byType.page.length,
+    });
   }
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
@@ -75,7 +80,7 @@ async function beforePromptImplicit(
   return [addMessageAI];
 }
 
-// ─── After LLM confirms — create generation steps ────────────────────────────
+// ─── After LLM confirms — create all generation steps ────────────────────────
 
 async function afterPromptStep(
   _agent: IAgentMeta,
@@ -92,8 +97,7 @@ async function afterPromptStep(
       return [mkFail(context, _parentStep, step, hookSequential, String(payload.result))];
     }
     if (payload.type !== 'flexible' || payload.result?.status === 'failed') {
-      const msg = payload.result?.notes?.join('; ') || 'scan confirmation failed';
-      return [mkFail(context, _parentStep, step, hookSequential, msg)];
+      return [mkFail(context, _parentStep, step, hookSequential, payload.result?.notes?.join('; ') || 'scan failed')];
     }
 
     const project = mls.actualProject || 0;
@@ -104,24 +108,35 @@ async function afterPromptStep(
 
     for (const mod of projectJson.modules) {
       const { moduleName } = mod;
-      const moduleTsPath = toMlsPath(project, 2, moduleName, 'module', '.ts');
-      const moduleTsContent = await getContentByMlsPath(moduleTsPath) ?? '';
+      const moduleExports = await loadModuleExports(project, moduleName);
       const candidates = await findCandidates(project, moduleName);
 
+      // Determine which planIds we'll actually create (subset that needs generation)
+      const createdPlanIds = new Set<string>();
       for (const c of candidates) {
-        const fileType = detectFileType(c.folder, moduleName);
-        if (!fileType) continue;
-        const skillPaths = resolveSkillPaths(fileType, moduleTsContent, projectJson);
-        const planId = `gen-l2-${safe(moduleName)}-${safe(c.shortName)}-${fileType}`;
+        const ft = detectFileType(c.folder, moduleName);
+        if (ft) createdPlanIds.add(makePlanId(moduleName, c.shortName, ft));
+      }
+
+      for (const c of candidates) {
+        const ft = detectFileType(c.folder, moduleName);
+        if (!ft) continue;
+
+        const planId = makePlanId(moduleName, c.shortName, ft);
         const defPath = toMlsPath(project, 2, c.folder, c.shortName, '.defs.ts');
-        const args: GenStepArgs = {
-          planId,
-          defPath,
-          pipelineItem: c.pipeline[0],
-          skillPaths,
-          fileType,
+        const skillPaths = resolveSkillPaths(ft, moduleExports, projectJson);
+
+        // Dependency chain: contract → shared → page
+        const potentialDeps: Record<L2FileType, string[]> = {
+          contract: [],
+          shared:   [makePlanId(moduleName, c.shortName, 'contract')],
+          page:     [makePlanId(moduleName, c.shortName, 'contract'), makePlanId(moduleName, c.shortName, 'shared')],
         };
-        intents.push(mkStep(context, step, planId, `Gen ${fileType}: ${moduleName}/${c.shortName}`, args));
+        // Only depend on steps that are actually being created in this run
+        const dependsOn = potentialDeps[ft].filter(id => createdPlanIds.has(id));
+
+        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths, fileType: ft };
+        intents.push(mkStep(context, step, planId, `Gen ${ft}: ${moduleName}/${c.shortName}`, args, dependsOn));
       }
     }
 
@@ -139,10 +154,22 @@ async function findCandidates(project: number, moduleName: string): Promise<Cand
   return all.filter(({ folder, shortName }) => {
     const defMod = getFileModified(project, 2, folder, shortName, '.defs.ts');
     const tsMod  = getFileModified(project, 2, folder, shortName, '.ts');
-    if (tsMod === null) return true;        // no .ts yet
-    if (defMod === null) return false;      // can't determine — skip
-    return defMod > tsMod;                  // .defs.ts is newer
+    if (tsMod === null) return true;
+    if (defMod === null) return false;
+    return defMod > tsMod;
   });
+}
+
+function groupByType(
+  candidates: Candidate[],
+  moduleName: string,
+): Record<L2FileType, Candidate[]> {
+  const result: Record<L2FileType, Candidate[]> = { contract: [], shared: [], page: [] };
+  for (const c of candidates) {
+    const ft = detectFileType(c.folder, moduleName);
+    if (ft) result[ft].push(c);
+  }
+  return result;
 }
 
 // ─── File type detection ──────────────────────────────────────────────────────
@@ -155,54 +182,53 @@ function detectFileType(folder: string, moduleName: string): L2FileType | null {
   return null;
 }
 
-// ─── Skill resolution ─────────────────────────────────────────────────────────
+// ─── Skill resolution (via collabImport module exports) ───────────────────────
 
 function resolveSkillPaths(
   fileType: L2FileType,
-  moduleTsContent: string,
+  moduleExports: any,
   projectJson: ProjectJson,
 ): string[] {
-  if (fileType === 'contract') return extractContractSkillPaths(moduleTsContent);
-  if (fileType === 'shared')   return extractSharedSkillPath(moduleTsContent);
+  if (!moduleExports) return [];
+  if (fileType === 'contract') {
+    return moduleExports.skills?.contract?.skillPath ?? [];
+  }
+  if (fileType === 'shared') {
+    const p = moduleExports.shared?.web?.sharedSkill as string | undefined;
+    return p ? [p] : [];
+  }
   if (fileType === 'page') {
-    const genome = extractGenomeConfig(moduleTsContent, 'web/desktop/page11');
+    const genome = moduleExports.moduleGenome?.['web/desktop/page11'];
+    if (!genome) return [];
     const paths: string[] = [];
-    if (genome.layout) {
-      const lp = projectJson.layouts?.[genome.layout]?.skillPath ?? [];
-      paths.push(...lp);
-    }
-    if (genome.designSystem) {
-      const dp = projectJson.designSystems?.[genome.designSystem]?.skillPath ?? [];
-      paths.push(...dp);
-    }
+    if (genome.layout)       paths.push(...(projectJson.layouts?.[genome.layout]?.skillPath ?? []));
+    if (genome.designSystem) paths.push(...(projectJson.designSystems?.[genome.designSystem]?.skillPath ?? []));
     return paths;
   }
   return [];
 }
 
-function extractContractSkillPaths(content: string): string[] {
-  const match = content.match(/\bcontract\s*:\s*\{[^}]*skillPath\s*:\s*\[([\s\S]*?)\]/);
-  if (!match) return [];
-  return (match[1].match(/['"`]([^'"`]+)['"`]/g) ?? []).map(s => s.slice(1, -1));
+// ─── Module loader (collabImport → esbuild fallback) ─────────────────────────
+
+async function loadModuleExports(project: number, moduleName: string): Promise<any> {
+  const path = toMlsPath(project, 2, moduleName, 'module', '.ts');
+  const f = mls.stor.convertFileReferenceToFile(path);
+  if (!f) return null;
+  try {
+    return await collabImport(f);
+  } catch {
+    return await loadModuleByBuild(path);
+  }
 }
 
-function extractSharedSkillPath(content: string): string[] {
-  const match = content.match(/sharedSkill\s*:\s*['"`]([^'"`]+)['"`]/);
-  return match ? [match[1]] : [];
+// ─── ID helpers ───────────────────────────────────────────────────────────────
+
+function makePlanId(moduleName: string, shortName: string, ft: L2FileType): string {
+  return `gen-l2-${safe(moduleName)}-${safe(shortName)}-${ft}`;
 }
 
-function extractGenomeConfig(
-  content: string,
-  subfolder: string,
-): { layout?: string; designSystem?: string } {
-  const escaped = subfolder.replace(/\//g, '\\/');
-  const re = new RegExp(`['"\`]${escaped}['"\`]\\s*:\\s*\\{([^}]+)\\}`);
-  const match = content.match(re);
-  if (!match) return {};
-  const block = match[1];
-  const layout       = block.match(/\blayout\s*:\s*['"`]([^'"`]+)['"`]/)?.[1];
-  const designSystem = block.match(/\bdesignSystem\s*:\s*['"`]([^'"`]+)['"`]/)?.[1];
-  return { layout, designSystem };
+function safe(s: string): string {
+  return s.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
 }
 
 // ─── Builders ─────────────────────────────────────────────────────────────────
@@ -213,6 +239,7 @@ function mkStep(
   planId: string,
   title: string,
   args: GenStepArgs,
+  dependsOn: string[],
 ): mls.msg.AgentIntentAddStep {
   return {
     type: 'add-step',
@@ -225,12 +252,12 @@ function mkStep(
       stepId: 0,
       interaction: null,
       stepTitle: title,
-      status: 'waiting_human_input',
+      status: 'waiting_dependency',
       nextSteps: [],
       agentName: 'agentMaterializeGen',
       prompt: JSON.stringify(args),
       rags: [],
-      planning: { planId, dependsOn: [], executionMode: 'parallel_static', executionHost: 'client' },
+      planning: { planId, dependsOn, executionMode: 'parallel_static', executionHost: 'client' },
     } as any,
   };
 }
@@ -255,10 +282,6 @@ function mkFail(
   };
 }
 
-function safe(s: string): string {
-  return s.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
-}
-
 // ─── Prompts ──────────────────────────────────────────────────────────────────
 
 const systemPrompt = `<!-- modelType: codepro -->
@@ -274,13 +297,14 @@ If nothing to generate, return:
 Return valid JSON only.`;
 
 function buildHumanPrompt(
-  summaries: Array<{ moduleName: string; count: number }>,
+  summaries: Array<{ moduleName: string; contracts: number; shared: number; pages: number }>,
 ): string {
   const lines = ['# L2 Generation Scan', ''];
   for (const s of summaries) {
-    lines.push(`Module: ${s.moduleName} — ${s.count} file(s) need generation`);
+    lines.push(`## Module: ${s.moduleName}`);
+    lines.push(`  contracts: ${s.contracts}, shared: ${s.shared}, pages: ${s.pages}`);
   }
-  const total = summaries.reduce((n, s) => n + s.count, 0);
+  const total = summaries.reduce((n, s) => n + s.contracts + s.shared + s.pages, 0);
   lines.push('', `Total: ${total} file(s) to generate.`);
   lines.push('Confirm and return your response.');
   return lines.join('\n');

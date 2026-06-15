@@ -231,6 +231,44 @@ export async function createDefsFile(
   }
 }
 
+// ─── esbuild helpers (shared, used by agentMaterializeL2 and agentMaterializeGen) ──
+
+export async function getEsbuild(): Promise<any> {
+  const w = window as any;
+  const url = 'https://cdn.jsdelivr.net/npm/esbuild-wasm@0.25.4/esm/browser.js';
+  if (!w.__esbuildInstance) w.__esbuildInstance = import(url);
+  const esbuild = await w.__esbuildInstance;
+  if (!w.__esbuildReady) {
+    w.__esbuildReady = esbuild.initialize({
+      wasmURL: 'https://cdn.jsdelivr.net/npm/esbuild-wasm@0.25.4/esbuild.wasm',
+    });
+  }
+  await w.__esbuildReady;
+  return esbuild;
+}
+
+export async function loadModuleByBuild(path: string): Promise<any> {
+  try {
+    const info = mls.stor.convertFileReferenceToFile(path);
+    if (!info) return null;
+    const key = mls.stor.getKeyToFile(info);
+    const sf = (mls.stor.files as Record<string, mls.stor.IFileInfo>)[key];
+    if (!sf) return null;
+    const src = await sf.getContent() as string;
+    const esbuild = await getEsbuild();
+    const result = await esbuild.transform(src, { loader: 'ts', format: 'esm', target: 'esnext' });
+    const blob = new Blob([result.code], { type: 'text/javascript' });
+    const blobUrl = URL.createObjectURL(blob);
+    try {
+      return await import(blobUrl);
+    } finally {
+      URL.revokeObjectURL(blobUrl);
+    }
+  } catch {
+    return null;
+  }
+}
+
 // ─── Fase 2: Generation helpers ──────────────────────────────────────────────
 
 /** Extract the `pipeline` array from a .defs.ts content string. */
