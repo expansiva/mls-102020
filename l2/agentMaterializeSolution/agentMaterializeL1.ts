@@ -165,7 +165,31 @@ async function afterPromptStep(
 
   if (tasks.length === 0) return [updateStatus];
 
-  const parallelPlanId = `materialize-l1-layers:project-${project}`;
+  const newSteps: mls.msg.AgentIntentAddStep[] = tasks.map(task => {
+    const fileId = task.defsPath.split('/').pop()?.replace(/\.defs\.ts$/, '') ?? '';
+    return {
+      type: 'add-step' as const,
+      messageId: context.message.orderAt,
+      threadId: context.message.threadId,
+      taskId: context.task?.PK || '',
+      parentStepId: parentStep.stepId,
+      stepTitle: `${task.layer}:${fileId}`,
+      step: {
+        type: 'agent' as const,
+        stepId: 0,
+        interaction: null,
+        status: 'waiting_human_input' as const,
+        nextSteps: [],
+        agentName: 'agentMaterializeLayer',
+        prompt: JSON.stringify({ pathDefs: task.defsPath, moduleName: task.moduleName, layer: task.layer }),
+        rags: [],
+      },
+    };
+  });
+
+  return [...newSteps, updateStatus];
+
+  /*const parallelPlanId = `materialize-l1-layers:project-${project}`;
   const dispatch: mls.msg.AgentIntentAddStep = {
     type: 'add-step',
     messageId: context.message.orderAt,
@@ -176,7 +200,7 @@ async function afterPromptStep(
       type: 'agent',
       stepId: 0,
       interaction: {
-        input: [{ type: 'system', content: '<!-- modelType: codeinstruct -->' }],
+        input: [{ type: 'system', content: '<!-- modelType: code2 -->' }],
         cost: 0,
         trace: [`queued ${tasks.length} parallel layers for agentMaterializeLayer`],
         payload: null,
@@ -205,7 +229,7 @@ async function afterPromptStep(
     },
   };
 
-  return [dispatch, updateStatus];
+  return [dispatch, updateStatus];*/
 }
 
 // ─── system prompt ────────────────────────────────────────────────────────────
