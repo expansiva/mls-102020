@@ -219,6 +219,111 @@ export class PreviewModeAura {
         return result;
     }
 
+    // =========================================================================
+    // PHASE 1 — Isolated render (opaque-origin iframe, via srcdoc)
+    // Builds a COMPLETE HTML document as a string (without touching contentDocument).
+    // =========================================================================
+
+    /**
+     * Builds the full srcdoc for an opaque-origin iframe.
+     * @param bodyHtml  the component HTML (this.actualFiles.htmlContent).
+     * @param extraStyles  compiled styles (component less, tokens) keyed by id.
+     */
+    public async buildSrcdoc(bodyHtml: string, extraStyles: { id: string; css: string }[] = []): Promise<string> {
+        if (!this.json || !this.file) return '';
+        await this.loadEsbuild();
+
+        const find = this.findWidgetsFromString(bodyHtml);
+        const auraWidgets = this.getImportsAuraWigetsPlayGround();
+        const result = await this._buildJS([...find, ...auraWidgets]);
+        let bundleJs = result?.outputFiles?.[0]?.text || '';
+        // Prevents a "</script>" inside the bundle from closing the srcdoc <script>.
+        bundleJs = bundleJs.replace(/<\/(script)/gi, '<\\/$1');
+
+        const head = [
+            this.strImportMap(this.json),
+            this.strLinks(this.json),
+            this.strTailwindDarkMode(),
+            this.json.tokens ? `<style id="${this.getIdTokens(this.file)}">${this.json.tokens}</style>` : '',
+            this.json.globalCss ? `<style id="global_css" type="text/tailwindcss">${this.json.globalCss}</style>` : '',
+            ...extraStyles.map(s => `<style id="${s.id}">${s.css}</style>`),
+        ].filter(Boolean).join('\n');
+
+        return `<!DOCTYPE html><html><head><meta charset="utf-8">
+${head}
+</head><body>
+${bodyHtml}
+${this.strRuntimeShim(this.level || '2')}
+${this.strBootstrap()}
+<script type="module">${bundleJs}</script>
+</body></html>`;
+    }
+
+    private findWidgetsFromString(htmlContent: string): string[] {
+        const div = document.createElement('div');
+        div.innerHTML = htmlContent;
+        return this.findWidgets(div);
+    }
+
+    private strImportMap(info: IJSONDependence): string {
+        if (!info.importsMap || info.importsMap.length <= 0) return '';
+        return `<script type="importmap">{"imports": { ${info.importsMap.join(',\n')} } }</script>`;
+    }
+
+    private strLinks(info: IJSONDependence): string {
+        if (!info.importsLinks || info.importsLinks.length <= 0) return '';
+        return info.importsLinks.map(l => `<link rel="${l.rel}" href="${l.ref}">`).join('\n');
+    }
+
+    private strTailwindDarkMode(): string {
+        const hasTailwind = this.json?.importsJs.some(u => u.includes('tailwindcss'));
+        if (!hasTailwind) return '';
+        return `<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>`;
+    }
+
+    /**
+     * Runtime shim for the opaque origin: it CANNOT read parent.* (would throw
+     * SecurityError). Uses the iframe's native fetch and local stubs.
+     */
+    private strRuntimeShim(level: string): string {
+        return `<script>
+window['litDisableBundleWarning']=true;
+window['collabActualLevel']=${level};
+window['mls']=window['mls']||{};
+window['globalVariation']=window['globalVariation']||0;
+window['originalDefine']=customElements.define.bind(customElements);
+customElements.define=function(n,c,o){if(!customElements.get(n))return window['originalDefine'](n,c,o);};
+</script>`;
+    }
+
+    /**
+     * Bootstrap inside the iframe: answers the heartbeat (ping->pong) and applies
+     * dynamic updates from the parent via postMessage (dark/lang/style).
+     */
+    private strBootstrap(): string {
+        return `<script>
+(function(){
+  window.addEventListener('message', function(e){
+    var d = e.data || {};
+    if (d.type === 'ping') { parent.postMessage({type:'pong', id:d.id}, '*'); return; }
+    if (d.type === 'setDarkMode') {
+      var h = document.documentElement;
+      if (d.dark) { h.classList.add('dark'); h.setAttribute('data-theme','dark'); }
+      else { h.classList.remove('dark'); h.removeAttribute('data-theme'); }
+    }
+    if (d.type === 'setLang') { document.documentElement.lang = d.lang || 'en'; }
+    if (d.type === 'setStyle') {
+      var id = d.id || 'dyn-style';
+      var el = document.getElementById(id);
+      if (!el) { el = document.createElement('style'); el.id = id; document.head.appendChild(el); }
+      el.textContent = d.css || '';
+    }
+  });
+  parent.postMessage({type:'ready'}, '*');
+})();
+</script>`;
+    }
+
     private parseImportsMap(importsArray: string[]) {
         return Object.fromEntries(
             importsArray.map(str => {

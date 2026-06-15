@@ -7,7 +7,7 @@
 
 import { html, TemplateResult, LitElement } from 'lit';
 import { customElement, property, state, query } from 'lit/decorators.js';
-import { initState, setState } from '/_102027_/l2/collabState.js';
+import { setState } from '/_102029_/l2/collabState.js';
 
 declare const hljs: any;
 
