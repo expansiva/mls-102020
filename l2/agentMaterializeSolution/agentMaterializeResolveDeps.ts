@@ -160,12 +160,15 @@ const DEP_LAYER_LABEL: Record<string, string> = {
 
 function buildSystemPrompt(type: ScannedDefType): string {
   const depLabel = DEP_LAYER_LABEL[type] || 'dependency layer';
-  return [
-    `You are analyzing a TypeScript definition file (.defs.ts) to determine which ${depLabel} files it depends on.`,
-    'Inspect the file content: look for referenced entity names, table IDs, type imports, use case names, and any explicit identifiers that match files in the provided list.',
-    'Return ONLY the files from the available list that this definition actually uses or references.',
-    `Call ${TOOL_NAME} with the result. Return an empty dependsFiles array if none apply.`,
-  ].join(' ');
+  return `<!-- modelType: codeinstruct -->
+
+You analyze a TypeScript definition file (.defs.ts) to determine which ${depLabel} files it depends on.
+
+Inspect the file content: look for referenced entity names, table IDs, type imports, use case names, and any explicit identifiers that match files in the provided list.
+
+Return ONLY the files from the available list that this definition actually uses or references.
+
+Call ${TOOL_NAME} with the result. Return an empty dependsFiles array if none apply.`;
 }
 
 function buildHumanPrompt(

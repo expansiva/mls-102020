@@ -25,51 +25,107 @@ export function createAgent(): IAgentAsync {
     agentDescription: 'Assemble materialize.pipeline.json from resolved dependencies',
     visibility: 'private',
     beforePromptStep,
+    afterPromptStep,
   };
 }
+
+const TOOL_NAME = 'submitAssembleResult';
 
 interface AssembleArgs {
   planId: string;
   moduleName: string;
 }
 
-// beforePromptStep does all the work without an LLM call.
-// Returns update-status directly — no afterPromptStep needed.
+// Tool output returned by the LLM (minimal confirmation)
+interface AssembleOutput {
+  moduleName: string;
+  status: 'ok' | 'failed';
+  notes: string[];
+}
+
+const assembleToolSchema = {
+  type: 'function',
+  function: {
+    name: TOOL_NAME,
+    description: 'Confirm the materialize pipeline assembly result.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['moduleName', 'status', 'notes'],
+      properties: {
+        moduleName: { type: 'string' },
+        status: { enum: ['ok', 'failed'] },
+        notes: { type: 'array', items: { type: 'string' } },
+      },
+    },
+  },
+} as const;
+
+// beforePromptStep: do all assembly work, then hand summary to LLM for confirmation
 async function beforePromptStep(
-  agent: IAgentMeta,
+  _agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
   step: mls.msg.AIAgentStep,
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  if (!args) throw new Error(`[agentMaterializeAssemble] missing args`);
+
+  const { moduleName }: AssembleArgs = JSON.parse(args);
+  const project = mls.actualProject || 0;
+
+  // 1. Collect resolve-deps outputs for this module from sibling steps
+  const allSteps = getAllSteps(context.task);
+  const resolvedMap = collectResolvedDeps(allSteps, moduleName);
+
+  // 2. Scan all .defs.ts for this module
+  const scanned = scanModuleDefsFiles(project, moduleName);
+
+  // 3. Build pipeline items
+  const items = buildPipelineItems(project, moduleName, scanned, resolvedMap);
+
+  // 4. Save pipeline with read-back verify (F-06)
+  const saved = await saveMaterializePipeline(moduleName, items);
+
+  // 5. Pass summary to LLM for a lightweight confirmation call
+  const intent: mls.msg.AgentIntentPromptReady = {
+    type: 'prompt_ready',
+    args,
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    hookSequential,
+    parentStepId: parentStep.stepId,
+    systemPrompt: systemPrompt,
+    humanPrompt: buildHumanPrompt(moduleName, items, saved),
+    tools: [assembleToolSchema as unknown as mls.msg.LLMTool],
+    toolChoice: { type: 'function', function: { name: TOOL_NAME } },
+  };
+
+  return [intent];
+}
+
+async function afterPromptStep(
+  _agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+): Promise<mls.msg.AgentIntent[]> {
+  const payload = step.interaction?.payload?.[0] as AssembleOutput | undefined;
+
   let status: mls.msg.AIStepStatus = 'completed';
   let traceMsg: string | undefined;
 
-  try {
-    if (!args) throw new Error('[agentMaterializeAssemble] missing args');
-    const { moduleName }: AssembleArgs = JSON.parse(args);
-    const project = mls.actualProject || 0;
-
-    // 1. Collect resolve-deps outputs for this module from sibling steps
-    const allSteps = getAllSteps(context.task);
-    const resolvedMap = collectResolvedDeps(allSteps, moduleName);
-
-    // 2. Scan all .defs.ts for this module
-    const scanned = scanModuleDefsFiles(project, moduleName);
-
-    // 3. Build pipeline items
-    const items = buildPipelineItems(project, moduleName, scanned, resolvedMap);
-
-    // 4. Save pipeline with read-back verify
-    const saved = await saveMaterializePipeline(moduleName, items);
-    if (!saved) throw new Error(`[agentMaterializeAssemble] failed to write pipeline for ${moduleName}`);
-
-    traceMsg = `pipeline saved: ${items.length} items for module ${moduleName}`;
-  } catch (error) {
+  if (!payload) {
     status = 'failed';
-    traceMsg = error instanceof Error ? error.message : String(error);
-    console.error(`[agentMaterializeAssemble] ${traceMsg}`);
+    traceMsg = '[agentMaterializeAssemble] missing payload';
+  } else if (payload.status === 'failed') {
+    status = 'failed';
+    traceMsg = payload.notes?.join('; ') || 'assemble reported failed';
+  } else {
+    traceMsg = payload.notes?.length ? payload.notes.join('; ') : undefined;
   }
 
   const updateStatus: mls.msg.AgentIntentUpdateStatus = {
@@ -82,6 +138,7 @@ async function beforePromptStep(
     stepId: step.stepId,
     status,
     traceMsg,
+    cleaner: status === 'completed' ? 'input_output' : undefined,
   };
 
   return [updateStatus];
@@ -131,7 +188,6 @@ function buildPipelineItems(
 
     if (file.type === 'l2_page') {
       // One source .defs.ts → 3 separate pipeline items.
-      // contract has no dependsOn siblings (only its own defPath as context).
       // page and shared depend on contract being generated first.
       const contractId = makeItemId(file.shortName, 'l2_contract');
       items.push(makeItem(project, moduleName, file.shortName, file.filePath, 'l2_contract', [file.filePath], []));
@@ -140,7 +196,7 @@ function buildPipelineItems(
       continue;
     }
 
-    // L1 item — dependency files come from the resolve-deps LLM step
+    // L1 item — dependency files resolved by agentMaterializeResolveDeps
     const l1Type = file.type as PipelineItemType;
     const dependsFiles = resolvedMap.get(file.shortName) || [];
     const dependsOn = dependsFiles.map(defPathToItemId).filter(Boolean);
@@ -170,6 +226,38 @@ function makeItem(
     dependsOn,
     agent: 'agentMaterializeDef',
   };
+}
+
+// ─── Prompt builders ───────────────────────────────────────────────────────────
+
+const systemPrompt = `<!-- modelType: codeinstruct -->
+
+You confirm the result of a materialize pipeline assembly.
+
+You receive a summary of what was assembled and saved. Verify the summary is coherent and call ${TOOL_NAME}.
+
+Set status to "ok" if the pipeline was saved with a positive item count.
+Set status to "failed" only if itemCount is 0 or savedOk is false.
+Add short notes for any anomalies you observe.`;
+
+function buildHumanPrompt(moduleName: string, items: PipelineItem[], savedOk: boolean): string {
+  const byType: Record<string, number> = {};
+  for (const item of items) {
+    byType[item.type] = (byType[item.type] || 0) + 1;
+  }
+  const breakdown = Object.entries(byType)
+    .map(([type, count]) => `  ${type}: ${count}`)
+    .join('\n');
+
+  return [
+    `## Assembly result for module: ${moduleName}`,
+    ``,
+    `totalItems: ${items.length}`,
+    `savedOk: ${savedOk}`,
+    ``,
+    `## Items by type`,
+    breakdown || '  (none)',
+  ].join('\n');
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

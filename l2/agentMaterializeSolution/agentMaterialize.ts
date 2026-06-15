@@ -21,56 +21,25 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-const TOOL_NAME = 'submitMaterializeBootstrap';
+// ─── Output type ──────────────────────────────────────────────────────────────
 
-interface BootstrapModuleResult {
-  moduleName: string;
-  l1FileCount: number;
-  l2FileCount: number;
-  status: 'ok' | 'empty' | 'missing';
-}
+//#region OutputSection
+export type Output =
+  | { type: 'flexible'; result: MaterializeBootstrapResult }
+  | { type: 'result'; result: string };
 
-interface BootstrapOutput {
+export interface MaterializeBootstrapResult {
   status: 'ok' | 'failed';
-  modules: BootstrapModuleResult[];
   notes: string[];
 }
+//#endregion
 
-const bootstrapToolSchema = {
-  type: 'function',
-  function: {
-    name: TOOL_NAME,
-    description: 'Confirm the materialize bootstrap scan result.',
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['status', 'modules', 'notes'],
-      properties: {
-        status: { enum: ['ok', 'failed'] },
-        modules: {
-          type: 'array',
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['moduleName', 'l1FileCount', 'l2FileCount', 'status'],
-            properties: {
-              moduleName: { type: 'string' },
-              l1FileCount: { type: 'number' },
-              l2FileCount: { type: 'number' },
-              status: { enum: ['ok', 'empty', 'missing'] },
-            },
-          },
-        },
-        notes: { type: 'array', items: { type: 'string' } },
-      },
-    },
-  },
-} as const;
+// ─── Entry point ──────────────────────────────────────────────────────────────
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
-  userPrompt: string,
+  _userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
   const project = mls.actualProject || 0;
   const projectJson = await readProjectJson();
@@ -98,8 +67,8 @@ async function beforePromptImplicit(
       action: 'addMessageAI',
       agentName: agent.agentName,
       inputAI: [
-        { type: 'system', content: buildSystemPrompt() },
-        { type: 'human', content: buildBootstrapHumanPrompt(moduleSummaries) },
+        { type: 'system', content: systemPrompt },
+        { type: 'human', content: buildHumanPrompt(moduleSummaries) },
       ],
       taskTitle: 'materializePipeline',
       threadId: context.message.threadId,
@@ -114,20 +83,30 @@ async function beforePromptImplicit(
   return [addMessageAI];
 }
 
+// ─── After LLM responds ────────────────────────────────────────────────────────
+
 async function afterPromptStep(
-  agent: IAgentMeta,
+  _agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
   try {
-    const payload = step.interaction?.payload?.[0] as any;
+    const payload = step.interaction?.payload?.[0] as Output | undefined;
     if (!payload) throw new Error('[agentMaterialize] missing payload');
 
-    const output = extractBootstrapOutput(payload);
-    if (output.status === 'failed') {
-      return [createUpdateStatus(context, parentStep, step, hookSequential, 'failed', 'bootstrap returned failed')];
+    if (payload.type === 'result') {
+      return [createUpdateStatus(context, parentStep, step, hookSequential, 'failed', payload.result)];
+    }
+
+    if (payload.type !== 'flexible' || !payload.result) {
+      throw new Error(`[agentMaterialize] unexpected payload: ${JSON.stringify(payload)}`);
+    }
+
+    if (payload.result.status === 'failed') {
+      const notes = payload.result.notes?.join('; ') || 'bootstrap reported failed';
+      return [createUpdateStatus(context, parentStep, step, hookSequential, 'failed', notes)];
     }
 
     const project = mls.actualProject || 0;
@@ -140,7 +119,7 @@ async function afterPromptStep(
       const { moduleName } = mod;
       const scanned = scanModuleDefsFiles(project, moduleName);
 
-      // L1 non-external files need LLM dependency resolution
+      // L1 non-external files need LLM dependency resolution before assembly
       const l1NonExternal = scanned.filter(
         f => f.layer === 'l1' && f.type !== 'layer_1_external',
       );
@@ -234,16 +213,7 @@ function buildAssembleStep(
 
 // ─── Prompt builders ───────────────────────────────────────────────────────────
 
-function buildSystemPrompt(): string {
-  return [
-    'You are the materialize bootstrap agent.',
-    'You receive a scan of all .defs.ts files found in a project and confirm each module is ready for pipeline generation.',
-    `Call ${TOOL_NAME} with your assessment.`,
-    'Mark a module as "ok" if it has files, "empty" if no defs were found, or "missing" if it is in project.json but completely absent.',
-  ].join(' ');
-}
-
-function buildBootstrapHumanPrompt(
+function buildHumanPrompt(
   summaries: Array<{ moduleName: string; l1Files: string[]; l2Files: string[] }>,
 ): string {
   const lines: string[] = ['# Materialize Bootstrap Scan', ''];
@@ -253,20 +223,11 @@ function buildBootstrapHumanPrompt(
     lines.push(`L2 (${s.l2Files.length} files): ${s.l2Files.join(', ') || '(none)'}`);
     lines.push('');
   }
-  lines.push('Confirm the status of each module and report any anomalies in notes.');
+  lines.push('Confirm the scan and return your response as described.');
   return lines.join('\n');
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function extractBootstrapOutput(payload: any): BootstrapOutput {
-  const result = payload?.result ?? payload;
-  if (result && typeof result === 'object' && !Array.isArray(result)) return result as BootstrapOutput;
-  if (typeof result === 'string') {
-    try { return JSON.parse(result); } catch { /* fall through */ }
-  }
-  return { status: 'failed', modules: [], notes: ['could not parse payload'] };
-}
 
 function toSafeId(name: string): string {
   return name.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
@@ -292,3 +253,39 @@ function createUpdateStatus(
     traceMsg,
   };
 }
+
+// ─── System prompt ─────────────────────────────────────────────────────────────
+
+const systemPrompt = `
+<!-- modelType: codepro -->
+
+You initialize the collab.codes "materializePipeline" task.
+
+You receive a scan of all .defs.ts files found in a project and confirm the scan is valid before pipeline generation begins.
+
+If the scan is invalid or the project has no usable modules, return only:
+{
+  "type": "result",
+  "result": "A short error message explaining what is wrong"
+}
+
+If the scan is valid, return only:
+{
+  "type": "flexible",
+  "result": {
+    "status": "ok",
+    "notes": ["optional observations about the scan, e.g. empty modules or anomalies"]
+  }
+}
+
+Rules:
+- Return valid JSON only — no markdown, no prose outside the JSON.
+- status must be "ok" if at least one module has .defs.ts files to process.
+- status must be "failed" only if all modules are completely empty or something is critically wrong.
+- notes is an array of short strings; use it for warnings or observations, not errors.
+- Do not invent module names, file names, or paths. Evaluate only what was provided.
+
+## Output format
+Return only valid JSON in the following structure:
+[[OutputSection]]
+`;
