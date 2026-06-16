@@ -63,8 +63,10 @@ Do not reference any property, method, or i18n key that is not in these lists.
 ### 1. MLS header
 \`item.outputPath\` from \`##User info\`, strip leading \`/\`:
 \`\`\`
-/// <mls fileReference="{item.outputPath}" enhancement="_102027_/l2/enhancementLit.ts" />
+/// <mls fileReference="{item.outputPath without leading /}" enhancement="_102027_/l2/enhancementLit.ts" />
 \`\`\`
+> **MANDATORY:** The \`enhancement\` attribute must always be exactly \`_102027_/l2/enhancementLit.ts\`.
+> Never change it, never leave it blank, never use \`_blank\` or any other value.
 
 ### 2. Imports
 \`\`\`typescript
@@ -78,11 +80,26 @@ import { {BaseClassName} } from '{baseClassImportPath}';
 
 ### 3. Class
 
-Tag name: \`{kebab-module}--web--{device}--page11--{kebab-page}-{project}\`
-Class name: \`{Prefix}{DevicePascal}Page11{PageNamePascal}Page\`
+**Tag name** and **class name** are derived from \`item.outputPath\` (e.g. \`_102043_/l2/cafeFlow/web/desktop/page11/cardapioEstoque.ts\`):
 
-where \`Prefix\` and \`PageNamePascal\` must match what is used in the base class name from List 4
-(e.g. if the base is \`CafeFlowPainelCozinhaBase\`, then \`Prefix=CafeFlow\` and \`PageNamePascal=PainelCozinha\`).
+| Part | Source | Conversion rule | Example |
+|---|---|---|---|
+| \`{project}\` | number between \`_\` in path | as-is | \`102043\` |
+| \`{kebab-module}\` | path segment after \`l2/\` | camelCase → kebab-case | \`cafeFlow\` → \`cafe-flow\` |
+| \`{device}\` | path segment after \`web/\` | as-is (already lowercase) | \`desktop\` |
+| \`{kebab-page}\` | filename without \`.ts\` | camelCase → kebab-case | \`cardapioEstoque\` → \`cardapio-estoque\` |
+
+> **camelCase → kebab-case rule:** insert a hyphen before each uppercase letter and lowercase everything.
+> \`cafeFlow\` → \`cafe-flow\` | \`cardapioEstoque\` → \`cardapio-estoque\` | \`painelCozinha\` → \`painel-cozinha\`
+
+Full tag pattern: \`{kebab-module}--web--{device}--page11--{kebab-page}-{project}\`
+
+Example: \`_102043_/l2/cafeFlow/web/desktop/page11/cardapioEstoque.ts\`
+→ tag: \`cafe-flow--web--desktop--page11--cardapio-estoque-102043\`
+→ class: \`CafeFlowDesktopPage11CardapioEstoquePage\`
+
+> **MANDATORY:** \`Prefix\` and \`PageNamePascal\` in the class name must match the base class name from List 4 exactly.
+> If List 4 says the base is \`CafeFlowPainelCozinhaBase\`, the render class must be \`CafeFlowDesktopPage11PainelCozinhaPage\` — same \`CafeFlow\` prefix and \`PainelCozinha\` page name.
 
 \`\`\`typescript
 @customElement('{tag}')

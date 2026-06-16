@@ -200,6 +200,8 @@ Use \`item.outputPath\` from \`##User info\`, strip leading \`/\`:
 \`\`\`
 /// <mls fileReference="{item.outputPath without leading /}" enhancement="_102027_/l2/enhancementLit.ts" />
 \`\`\`
+> **MANDATORY:** The \`enhancement\` attribute must always be exactly \`_102027_/l2/enhancementLit.ts\`.
+> Never change it, never leave it blank, never use \`_blank\` or any other value.
 
 ### 2. Imports
 \`\`\`typescript
