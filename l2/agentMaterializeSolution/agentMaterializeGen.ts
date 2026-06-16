@@ -66,7 +66,7 @@ async function beforePromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   if (!args) throw new Error('[agentMaterializeGen] missing args');
 
-  const { defPath, pipelineItem, skillPaths }: GenStepArgs = JSON.parse(args);
+  const { defPath, pipelineItem, skillPaths, visualStyle }: GenStepArgs = JSON.parse(args);
 
   // Read .defs.ts and extract definition
   const defsContent = await getContentByMlsPath(defPath);
@@ -115,7 +115,7 @@ async function beforePromptStep(
     hookSequential,
     parentStepId: parentStep.stepId,
     systemPrompt: buildSystemPrompt(skillSections, pipelineItem.outputPath),
-    humanPrompt: buildHumanPrompt(definition, contextSections, pipelineItem.outputPath, resolvedRules),
+    humanPrompt: buildHumanPrompt(definition, contextSections, pipelineItem.outputPath, resolvedRules, visualStyle),
     tools: [toolSchema as unknown as mls.msg.LLMTool],
     toolChoice: { type: 'function', function: { name: TOOL_NAME } },
   };
@@ -256,6 +256,7 @@ function buildHumanPrompt(
   depSections: string[],
   outputPath: string,
   resolvedRules?: Record<string, unknown>[],
+  visualStyle?: Record<string, unknown>,
 ): string {
   const lines: string[] = ['## Definition', '', definition];
 
@@ -263,6 +264,13 @@ function buildHumanPrompt(
     lines.push('', '## Business Rules', '');
     lines.push('```json');
     lines.push(JSON.stringify(resolvedRules, null, 2));
+    lines.push('```');
+  }
+
+  if (visualStyle) {
+    lines.push('', '## Visual Style', '');
+    lines.push('```json');
+    lines.push(JSON.stringify(visualStyle, null, 2));
     lines.push('```');
   }
 

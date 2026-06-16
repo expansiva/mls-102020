@@ -134,10 +134,11 @@ async function afterPromptStep(
 
       // Group 3: pages — wait for ALL shared (fallback to ALL contracts if no shared)
       const pageDep = sharedPlanIds.length > 0 ? sharedPlanIds : contractPlanIds;
+      const visualStyle = mod.module?.visualStyle;
       for (const c of byType.page) {
         const planId = makePlanId(moduleName, c.shortName, 'page');
         const defPath = toMlsPath(project, 2, c.folder, c.shortName, '.defs.ts');
-        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('page', moduleExports, projectJson), fileType: 'page' };
+        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('page', moduleExports, projectJson), fileType: 'page', visualStyle };
         intents.push(mkStep(context, step, planId, `Gen page: ${moduleName}/${c.shortName}`, args, pageDep));
       }
     }

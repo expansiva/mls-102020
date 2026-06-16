@@ -46,6 +46,7 @@ export interface GenStepArgs {
   pipelineItem: PipelineItem;
   skillPaths: string[];  // already resolved
   fileType: L1FileType | L2FileType;
+  visualStyle?: VisualStyle; // only populated for page fileType
 }
 
 export interface ParsedMlsPath {
@@ -58,8 +59,17 @@ export interface ParsedMlsPath {
 
 // ─── project.json ─────────────────────────────────────────────────────────────
 
+export interface VisualStyle {
+  tone?: string;
+  layout?: string;
+  palette?: string[];
+}
+
 export interface ProjectModuleRef {
   moduleName: string;
+  module?: {
+    visualStyle?: VisualStyle;
+  };
 }
 
 export interface LayoutEntry {
