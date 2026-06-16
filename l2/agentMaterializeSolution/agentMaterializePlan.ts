@@ -17,7 +17,12 @@ export interface PipelineItem {
 export type L1LayerFolder =
   | 'layer_1_external'
   | 'layer_4_entities'
-  | 'layer_3_usecases';
+  | 'layer_3_usecases'
+  | 'layer_2_controllers';
+
+// ─── Fase 2: L1 generation ────────────────────────────────────────────────────
+
+export type L1FileType = 'layer1' | 'layer4' | 'layer3' | 'layer2';
 
 // ─── Scanned file descriptor ──────────────────────────────────────────────────
 
@@ -39,7 +44,7 @@ export interface GenStepArgs {
   defPath: string;       // MLS path of the .defs.ts
   pipelineItem: PipelineItem;
   skillPaths: string[];  // already resolved
-  fileType: L2FileType;
+  fileType: L1FileType | L2FileType;
 }
 
 export interface ParsedMlsPath {

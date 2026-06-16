@@ -46,7 +46,7 @@ export async function readProjectJson(): Promise<ProjectJson | null> {
 
 // ─── Scan ─────────────────────────────────────────────────────────────────────
 
-const L1_LAYERS: L1LayerFolder[] = ['layer_1_external', 'layer_4_entities', 'layer_3_usecases'];
+const L1_LAYERS: L1LayerFolder[] = ['layer_1_external', 'layer_4_entities', 'layer_3_usecases', 'layer_2_controllers'];
 
 export function scanL1DefsFiles(project: number, moduleName: string): ScannedDefsFile[] {
   const result: ScannedDefsFile[] = [];
@@ -71,6 +71,32 @@ export function scanL1DefsFiles(project: number, moduleName: string): ScannedDef
     }
   } catch (err) {
     console.warn('[agentMaterializeArtifacts] scanL1DefsFiles failed', err);
+  }
+  return result;
+}
+
+export async function scanL1DefsWithPipeline(
+  project: number,
+  moduleName: string,
+): Promise<Array<{ folder: string; shortName: string; pipeline: PipelineItem[] }>> {
+  const result: Array<{ folder: string; shortName: string; pipeline: PipelineItem[] }> = [];
+  try {
+    for (const layer of L1_LAYERS) {
+      const folder = `${moduleName}/${layer}`;
+      for (const f of Object.values(mls.stor.files as Record<string, any>)) {
+        if (f.project !== project) continue;
+        if (f.level !== 1) continue;
+        if (f.folder !== folder) continue;
+        if (f.extension !== '.defs.ts') continue;
+        if (f.status === 'deleted') continue;
+        const content = String(await f.getContent());
+        const pipeline = parsePipelineFromContent(content);
+        if (!pipeline || pipeline.length === 0) continue;
+        result.push({ folder, shortName: f.shortName as string, pipeline });
+      }
+    }
+  } catch (err) {
+    console.warn('[agentMaterializeArtifacts] scanL1DefsWithPipeline failed', err);
   }
   return result;
 }

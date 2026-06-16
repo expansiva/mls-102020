@@ -162,7 +162,7 @@ function buildItem(
     defPath: toMlsPath(project, level, folder, shortName, '.defs.ts'),
     dependsFiles,
     dependsOn,
-    agent: 'agentMaterializeDef',
+    agent: 'agentMaterializeGen',
   };
 }
 

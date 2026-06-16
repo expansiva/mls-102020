@@ -1,29 +1,28 @@
-/// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentMaterializeL2.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentMaterializeL1.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { collabImport } from '/_102027_/l2/collabImport.js';
 import {
   readProjectJson,
-  scanL2DefsWithPipeline,
+  scanL1DefsWithPipeline,
   getFileModified,
   toMlsPath,
   loadModuleByBuild,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import type {
   GenStepArgs,
-  L2FileType,
+  L1FileType,
   PipelineItem,
-  ProjectJson,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
 
 declare const mls: any;
 
 export function createAgent(): IAgentAsync {
   return {
-    agentName: 'agentMaterializeL2',
+    agentName: 'agentMaterializeL1',
     agentProject: 102020,
     agentFolder: 'agentMaterializeSolution',
-    agentDescription: 'Generate L2 .ts files from .defs.ts pipeline definitions',
+    agentDescription: 'Generate L1 .ts files from .defs.ts pipeline definitions',
     visibility: 'public',
     beforePromptImplicit,
     afterPromptStep,
@@ -46,7 +45,7 @@ async function beforePromptImplicit(
   const project = mls.actualProject || 0;
   const projectJson = await readProjectJson();
   if (!projectJson?.modules?.length) {
-    throw new Error('[agentMaterializeL2] l5/project.json not found or empty');
+    throw new Error('[agentMaterializeL1] l5/project.json not found or empty');
   }
 
   const summaries = [];
@@ -55,9 +54,10 @@ async function beforePromptImplicit(
     const byType = groupByType(candidates, mod.moduleName);
     summaries.push({
       moduleName: mod.moduleName,
-      contracts: byType.contract.length,
-      shared: byType.shared.length,
-      pages: byType.page.length,
+      layer1: byType.layer1.length,
+      layer4: byType.layer4.length,
+      layer3: byType.layer3.length,
+      layer2: byType.layer2.length,
     });
   }
 
@@ -70,10 +70,10 @@ async function beforePromptImplicit(
         { type: 'system', content: systemPrompt },
         { type: 'human', content: buildHumanPrompt(summaries) },
       ],
-      taskTitle: 'materialize-l2',
+      taskTitle: 'materialize-l1',
       threadId: context.message.threadId,
       userMessage: context.message.content,
-      longTermMemory: { taskName: 'materialize-l2', flowName: 'materialize-l2' },
+      longTermMemory: { taskName: 'materialize-l1', flowName: 'materialize-l1' },
     },
   };
 
@@ -91,7 +91,7 @@ async function afterPromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   try {
     const payload = step.interaction?.payload?.[0] as any;
-    if (!payload) throw new Error('[agentMaterializeL2] missing payload');
+    if (!payload) throw new Error('[agentMaterializeL1] missing payload');
 
     if (payload.type === 'result') {
       return [mkFail(context, _parentStep, step, hookSequential, String(payload.result))];
@@ -102,7 +102,7 @@ async function afterPromptStep(
 
     const project = mls.actualProject || 0;
     const projectJson = await readProjectJson();
-    if (!projectJson) throw new Error('[agentMaterializeL2] project.json unavailable');
+    if (!projectJson) throw new Error('[agentMaterializeL1] project.json unavailable');
 
     const intents: mls.msg.AgentIntentAddStep[] = [];
 
@@ -113,32 +113,46 @@ async function afterPromptStep(
       const byType = groupByType(candidates, moduleName);
 
       // Pre-compute planId arrays — used as group barriers
-      const contractPlanIds = byType.contract.map(c => makePlanId(moduleName, c.shortName, 'contract'));
-      const sharedPlanIds   = byType.shared.map(c => makePlanId(moduleName, c.shortName, 'shared'));
+      const layer1PlanIds = byType.layer1.map(c => makePlanId(moduleName, c.shortName, 'layer1'));
+      const layer4PlanIds = byType.layer4.map(c => makePlanId(moduleName, c.shortName, 'layer4'));
+      const layer3PlanIds = byType.layer3.map(c => makePlanId(moduleName, c.shortName, 'layer3'));
 
-      // Group 1: contracts — start immediately (waiting_human_input triggers beforePromptStep right away)
-      for (const c of byType.contract) {
-        const planId = makePlanId(moduleName, c.shortName, 'contract');
-        const defPath = toMlsPath(project, 2, c.folder, c.shortName, '.defs.ts');
-        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('contract', moduleExports, projectJson), fileType: 'contract' };
-        intents.push(mkStep(context, step, planId, `Gen contract: ${moduleName}/${c.shortName}`, args, [], 'waiting_human_input'));
+      // Group 1: layer_1_external — start immediately
+      for (const c of byType.layer1) {
+        const planId = makePlanId(moduleName, c.shortName, 'layer1');
+        const defPath = toMlsPath(project, 1, c.folder, c.shortName, '.defs.ts');
+        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('layer1', moduleExports), fileType: 'layer1' };
+        intents.push(mkStep(context, step, planId, `Gen layer1: ${moduleName}/${c.shortName}`, args, [], 'waiting_human_input'));
       }
 
-      // Group 2: shared — wait for ALL contracts to complete
-      for (const c of byType.shared) {
-        const planId = makePlanId(moduleName, c.shortName, 'shared');
-        const defPath = toMlsPath(project, 2, c.folder, c.shortName, '.defs.ts');
-        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('shared', moduleExports, projectJson), fileType: 'shared' };
-        intents.push(mkStep(context, step, planId, `Gen shared: ${moduleName}/${c.shortName}`, args, contractPlanIds));
+      // Group 2: layer_4_entities — wait for ALL layer1
+      const dep4 = layer1PlanIds.length > 0 ? layer1PlanIds : [];
+      for (const c of byType.layer4) {
+        const planId = makePlanId(moduleName, c.shortName, 'layer4');
+        const defPath = toMlsPath(project, 1, c.folder, c.shortName, '.defs.ts');
+        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('layer4', moduleExports), fileType: 'layer4' };
+        const status = dep4.length > 0 ? 'waiting_dependency' : 'waiting_human_input';
+        intents.push(mkStep(context, step, planId, `Gen layer4: ${moduleName}/${c.shortName}`, args, dep4, status));
       }
 
-      // Group 3: pages — wait for ALL shared (fallback to ALL contracts if no shared)
-      const pageDep = sharedPlanIds.length > 0 ? sharedPlanIds : contractPlanIds;
-      for (const c of byType.page) {
-        const planId = makePlanId(moduleName, c.shortName, 'page');
-        const defPath = toMlsPath(project, 2, c.folder, c.shortName, '.defs.ts');
-        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('page', moduleExports, projectJson), fileType: 'page' };
-        intents.push(mkStep(context, step, planId, `Gen page: ${moduleName}/${c.shortName}`, args, pageDep));
+      // Group 3: layer_3_usecases — wait for ALL layer4 (fallback layer1)
+      const dep3 = layer4PlanIds.length > 0 ? layer4PlanIds : layer1PlanIds;
+      for (const c of byType.layer3) {
+        const planId = makePlanId(moduleName, c.shortName, 'layer3');
+        const defPath = toMlsPath(project, 1, c.folder, c.shortName, '.defs.ts');
+        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('layer3', moduleExports), fileType: 'layer3' };
+        const status = dep3.length > 0 ? 'waiting_dependency' : 'waiting_human_input';
+        intents.push(mkStep(context, step, planId, `Gen layer3: ${moduleName}/${c.shortName}`, args, dep3, status));
+      }
+
+      // Group 4: layer_2_controllers — wait for ALL layer3 (fallback layer4)
+      const dep2 = layer3PlanIds.length > 0 ? layer3PlanIds : layer4PlanIds;
+      for (const c of byType.layer2) {
+        const planId = makePlanId(moduleName, c.shortName, 'layer2');
+        const defPath = toMlsPath(project, 1, c.folder, c.shortName, '.defs.ts');
+        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('layer2', moduleExports), fileType: 'layer2' };
+        const status = dep2.length > 0 ? 'waiting_dependency' : 'waiting_human_input';
+        intents.push(mkStep(context, step, planId, `Gen layer2: ${moduleName}/${c.shortName}`, args, dep2, status));
       }
     }
 
@@ -152,10 +166,10 @@ async function afterPromptStep(
 // ─── Candidate detection ──────────────────────────────────────────────────────
 
 async function findCandidates(project: number, moduleName: string): Promise<Candidate[]> {
-  const all = await scanL2DefsWithPipeline(project, moduleName);
+  const all = await scanL1DefsWithPipeline(project, moduleName);
   return all.filter(({ folder, shortName }) => {
-    const defMod = getFileModified(project, 2, folder, shortName, '.defs.ts');
-    const tsMod  = getFileModified(project, 2, folder, shortName, '.ts');
+    const defMod = getFileModified(project, 1, folder, shortName, '.defs.ts');
+    const tsMod  = getFileModified(project, 1, folder, shortName, '.ts');
     if (tsMod === null) return true;
     if (defMod === null) return false;
     return defMod > tsMod;
@@ -165,8 +179,8 @@ async function findCandidates(project: number, moduleName: string): Promise<Cand
 function groupByType(
   candidates: Candidate[],
   moduleName: string,
-): Record<L2FileType, Candidate[]> {
-  const result: Record<L2FileType, Candidate[]> = { contract: [], shared: [], page: [] };
+): Record<L1FileType, Candidate[]> {
+  const result: Record<L1FileType, Candidate[]> = { layer1: [], layer4: [], layer3: [], layer2: [] };
   for (const c of candidates) {
     const ft = detectFileType(c.folder, moduleName);
     if (ft) result[ft].push(c);
@@ -176,44 +190,20 @@ function groupByType(
 
 // ─── File type detection ──────────────────────────────────────────────────────
 
-function detectFileType(folder: string, moduleName: string): L2FileType | null {
+function detectFileType(folder: string, moduleName: string): L1FileType | null {
   const rel = folder.slice(moduleName.length + 1); // strip "cafeFlow/"
-  if (rel.startsWith('web/contracts')) return 'contract';
-  if (rel.startsWith('web/shared'))    return 'shared';
-  if (rel.startsWith('web/desktop'))   return 'page';
+  if (rel === 'layer_1_external')    return 'layer1';
+  if (rel === 'layer_4_entities')    return 'layer4';
+  if (rel === 'layer_3_usecases')    return 'layer3';
+  if (rel === 'layer_2_controllers') return 'layer2';
   return null;
 }
 
-// ─── Skill resolution (via collabImport module exports) ───────────────────────
+// ─── Skill resolution (from module.ts ISkill export) ─────────────────────────
 
-function resolveSkillPaths(
-  fileType: L2FileType,
-  moduleExports: any,
-  projectJson: ProjectJson,
-): string[] {
+function resolveSkillPaths(fileType: L1FileType, moduleExports: any): string[] {
   if (!moduleExports) return [];
-  if (fileType === 'contract') {
-    return moduleExports.skills?.contract?.skillPath ?? [];
-  }
-  if (fileType === 'shared') {
-    const p = moduleExports.shared?.web?.sharedSkill as string | undefined;
-    return p ? [p] : [];
-  }
-  if (fileType === 'page') {
-    const genome = moduleExports.moduleGenome?.['web/desktop/page11'];
-    if (!genome) return [];
-    const paths: string[] = [];
-    if (genome.layout) {
-      const entry = Object.values(projectJson.layouts ?? {}).find(l => l.name === genome.layout);
-      if (entry?.skill) paths.push(entry.skill);
-    }
-    if (genome.designSystem) {
-      const entry = Object.values(projectJson.designSystems ?? {}).find(d => d.name === genome.designSystem);
-      if (entry?.skill) paths.push(entry.skill);
-    }
-    return paths;
-  }
-  return [];
+  return moduleExports.skills?.[fileType]?.skillPath ?? [];
 }
 
 // ─── Module loader (collabImport → esbuild fallback) ─────────────────────────
@@ -231,8 +221,8 @@ async function loadModuleExports(project: number, moduleName: string): Promise<a
 
 // ─── ID helpers ───────────────────────────────────────────────────────────────
 
-function makePlanId(moduleName: string, shortName: string, ft: L2FileType): string {
-  return `gen-l2-${safe(moduleName)}-${safe(shortName)}-${ft}`;
+function makePlanId(moduleName: string, shortName: string, ft: L1FileType): string {
+  return `gen-l1-${safe(moduleName)}-${safe(shortName)}-${ft}`;
 }
 
 function safe(s: string): string {
@@ -295,25 +285,25 @@ function mkFail(
 
 const systemPrompt = `<!-- modelType: codepro -->
 
-You confirm the L2 generation scan.
+You confirm the L1 generation scan.
 
 If files were found, return:
 {"type":"flexible","result":{"status":"ok","notes":[]}}
 
 If nothing to generate, return:
-{"type":"result","result":"No L2 files need generation"}
+{"type":"result","result":"No L1 files need generation"}
 
 Return valid JSON only.`;
 
 function buildHumanPrompt(
-  summaries: Array<{ moduleName: string; contracts: number; shared: number; pages: number }>,
+  summaries: Array<{ moduleName: string; layer1: number; layer4: number; layer3: number; layer2: number }>,
 ): string {
-  const lines = ['# L2 Generation Scan', ''];
+  const lines = ['# L1 Generation Scan', ''];
   for (const s of summaries) {
     lines.push(`## Module: ${s.moduleName}`);
-    lines.push(`  contracts: ${s.contracts}, shared: ${s.shared}, pages: ${s.pages}`);
+    lines.push(`  layer_1_external: ${s.layer1}, layer_4_entities: ${s.layer4}, layer_3_usecases: ${s.layer3}, layer_2_controllers: ${s.layer2}`);
   }
-  const total = summaries.reduce((n, s) => n + s.contracts + s.shared + s.pages, 0);
+  const total = summaries.reduce((n, s) => n + s.layer1 + s.layer4 + s.layer3 + s.layer2, 0);
   lines.push('', `Total: ${total} file(s) to generate.`);
   lines.push('Confirm and return your response.');
   return lines.join('\n');
