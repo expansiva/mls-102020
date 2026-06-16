@@ -180,7 +180,7 @@ function groupByType(
   candidates: Candidate[],
   moduleName: string,
 ): Record<L1FileType, Candidate[]> {
-  const result: Record<L1FileType, Candidate[]> = { layer1: [], layer4: [], layer3: [], layer2: [] };
+  const result: Record<L1FileType, Candidate[]> = { layer1: [], layer4: [], layer3: [], layer2: [], rulesApplied: [] };
   for (const c of candidates) {
     const ft = detectFileType(c.folder, moduleName);
     if (ft) result[ft].push(c);
@@ -202,7 +202,7 @@ function detectFileType(folder: string, moduleName: string): L1FileType | null {
 // ─── Skill resolution (from module.ts ISkill export) ─────────────────────────
 
 // File types that require the project-level definition as additional context
-const NEEDS_DEFINITION: L1FileType[] = ['layer4'];
+const NEEDS_DEFINITION: L1FileType[] = ['layer1', 'layer4'];
 
 function resolveSkillPaths(fileType: L1FileType, moduleExports: any): string[] {
   if (!moduleExports) return [];

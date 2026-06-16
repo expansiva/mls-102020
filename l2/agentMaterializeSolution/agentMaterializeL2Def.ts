@@ -7,6 +7,7 @@ import {
   createDefsFile,
   listDepLayerPaths,
   extractToolCallArgs,
+  extractJsonArrayField,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import type { PipelineItem } from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
 
@@ -168,12 +169,13 @@ async function afterPromptStep(
   const errors: string[] = [];
 
   // 1. L1 controller
+  const controllerRules = extractJsonArrayField(JSON.stringify(out.controllerDefinition), 'rulesApplied');
   const ok1 = await createDefsFile(
     project, 1, `${moduleName}/layer_2_controllers`, shortName,
     out.controllerDefinition,
     [mkItem(`${shortName}__layer_2_controllers`, 'layer_2_controllers',
       controllerOutputPath, project, 1, `${moduleName}/layer_2_controllers`, shortName,
-      out.controllerDependsFiles || [], [])],
+      out.controllerDependsFiles || [], [], controllerRules)],
   );
   if (!ok1) errors.push('controller');
 
@@ -188,12 +190,13 @@ async function afterPromptStep(
   if (!ok2) errors.push('contract');
 
   // 3. L2 shared
+  const sharedRules = extractJsonArrayField(JSON.stringify(out.sharedDefinition), 'rulesApplied');
   const ok3 = await createDefsFile(
     project, 2, `${moduleName}/web/shared`, shortName,
     out.sharedDefinition,
     [mkItem(`${shortName}__l2_shared`, 'l2_shared',
       sharedOutputPath, project, 2, `${moduleName}/web/shared`, shortName,
-      sharedDependsFiles, [])],
+      sharedDependsFiles, [], sharedRules)],
   );
   if (!ok3) errors.push('shared');
 
@@ -227,6 +230,7 @@ function mkItem(
   shortName: string,
   dependsFiles: string[],
   dependsOn: string[],
+  rulesApplied?: string[],
 ): PipelineItem {
   return {
     id,
@@ -235,6 +239,7 @@ function mkItem(
     defPath: toMlsPath(project, level, folder, shortName, '.defs.ts'),
     dependsFiles,
     dependsOn,
+    ...(rulesApplied && rulesApplied.length > 0 ? { rulesApplied } : {}),
     agent: 'agentMaterializeGen',
   };
 }

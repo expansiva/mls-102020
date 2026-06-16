@@ -421,6 +421,43 @@ export async function saveGeneratedTs(
   }
 }
 
+/**
+ * Load rules.defs.ts for a module, filter by ruleIds and return the matched rule objects.
+ * File: _<project>_/l5/<moduleName>/rules.defs.ts — exports `rulesPlan` with `data.rules[]`.
+ */
+export async function loadRulesForIds(
+  project: number,
+  moduleName: string,
+  ruleIds: string[],
+): Promise<Record<string, unknown>[]> {
+  if (!ruleIds.length) return [];
+  const path = toMlsPath(project, 5, moduleName, 'rules', '.defs.ts');
+  const content = await getContentByMlsPath(path);
+  if (!content) return [];
+  try {
+    const match = content.match(/export\s+const\s+rulesPlan\s*=\s*([\s\S]*?)\s+as\s+const\s*;/);
+    if (!match) return [];
+    const plan = JSON.parse(match[1]);
+    const allRules: Record<string, unknown>[] = plan?.data?.rules ?? [];
+    return allRules.filter(r => ruleIds.includes(r['ruleId'] as string));
+  } catch {
+    return [];
+  }
+}
+
+/** Extract all unique string values from every JSON array field named `fieldName` in `content`. */
+export function extractJsonArrayField(content: string, fieldName: string): string[] {
+  const vals = new Set<string>();
+  const blockRe = new RegExp(`"${fieldName}"\\s*:\\s*\\[([\\s\\S]*?)\\]`, 'g');
+  let block: RegExpExecArray | null;
+  while ((block = blockRe.exec(content)) !== null) {
+    const valRe = /"([^"]+)"/g;
+    let val: RegExpExecArray | null;
+    while ((val = valRe.exec(block[1])) !== null) vals.add(val[1]);
+  }
+  return [...vals];
+}
+
 export async function saveGeneratedHtml(
   project: number,
   level: number,

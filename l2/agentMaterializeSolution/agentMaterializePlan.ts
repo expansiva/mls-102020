@@ -9,6 +9,7 @@ export interface PipelineItem {
   defPath: string;      // _102043_/l1/cafeFlow/layer_4_entities/pedidoEntity.defs.ts
   dependsFiles: string[]; // already-generated .ts files the executor needs as context
   dependsOn: string[];    // pipeline item IDs that must complete before this one
+  rulesApplied?: string[]; // business rules gathered from the definition (if any)
   agent: string;
 }
 
@@ -22,7 +23,7 @@ export type L1LayerFolder =
 
 // ─── Fase 2: L1 generation ────────────────────────────────────────────────────
 
-export type L1FileType = 'layer1' | 'layer4' | 'layer3' | 'layer2';
+export type L1FileType = 'layer1' | 'layer4' | 'layer3' | 'layer2' | 'rulesApplied';
 
 // ─── Scanned file descriptor ──────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ export interface GenStepArgs {
   pipelineItem: PipelineItem;
   skillPaths: string[];  // already resolved
   fileType: L1FileType | L2FileType;
+  visualStyle?: VisualStyle; // only populated for page fileType
 }
 
 export interface ParsedMlsPath {
@@ -57,8 +59,17 @@ export interface ParsedMlsPath {
 
 // ─── project.json ─────────────────────────────────────────────────────────────
 
+export interface VisualStyle {
+  tone?: string;
+  layout?: string;
+  palette?: string[];
+}
+
 export interface ProjectModuleRef {
   moduleName: string;
+  module?: {
+    visualStyle?: VisualStyle;
+  };
 }
 
 export interface LayoutEntry {

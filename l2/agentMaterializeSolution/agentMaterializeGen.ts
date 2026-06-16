@@ -11,6 +11,7 @@ import {
   saveGeneratedHtml,
   extractToolCallArgs,
   loadModuleByBuild,
+  loadRulesForIds,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import type { GenStepArgs } from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
 
@@ -65,12 +66,22 @@ async function beforePromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   if (!args) throw new Error('[agentMaterializeGen] missing args');
 
-  const { defPath, pipelineItem, skillPaths }: GenStepArgs = JSON.parse(args);
+  const { defPath, pipelineItem, skillPaths, visualStyle }: GenStepArgs = JSON.parse(args);
 
   // Read .defs.ts and extract definition
   const defsContent = await getContentByMlsPath(defPath);
   if (!defsContent) throw new Error(`[agentMaterializeGen] .defs.ts not found: ${defPath}`);
   const definition = parseDefinitionFromContent(defsContent);
+
+  // Load full rule definitions when rulesApplied is populated
+  let resolvedRules: Record<string, unknown>[] = [];
+  if (pipelineItem.rulesApplied?.length) {
+    const parsed = parseMlsPath(defPath);
+    if (parsed) {
+      const moduleName = parsed.folder.split('/')[0];
+      resolvedRules = await loadRulesForIds(parsed.project, moduleName, pipelineItem.rulesApplied);
+    }
+  }
 
   // Load skill content — .ts/.md paths go to system prompt; project refs (_digits_) go to context
   const skillSections: string[] = [];
@@ -104,7 +115,7 @@ async function beforePromptStep(
     hookSequential,
     parentStepId: parentStep.stepId,
     systemPrompt: buildSystemPrompt(skillSections, pipelineItem.outputPath),
-    humanPrompt: buildHumanPrompt(definition, contextSections, pipelineItem.outputPath),
+    humanPrompt: buildHumanPrompt(definition, contextSections, pipelineItem.outputPath, resolvedRules, visualStyle),
     tools: [toolSchema as unknown as mls.msg.LLMTool],
     toolChoice: { type: 'function', function: { name: TOOL_NAME } },
   };
@@ -244,8 +255,24 @@ function buildHumanPrompt(
   definition: string,
   depSections: string[],
   outputPath: string,
+  resolvedRules?: Record<string, unknown>[],
+  visualStyle?: Record<string, unknown>,
 ): string {
   const lines: string[] = ['## Definition', '', definition];
+
+  if (resolvedRules && resolvedRules.length > 0) {
+    lines.push('', '## Business Rules', '');
+    lines.push('```json');
+    lines.push(JSON.stringify(resolvedRules, null, 2));
+    lines.push('```');
+  }
+
+  if (visualStyle) {
+    lines.push('', '## Visual Style', '');
+    lines.push('```json');
+    lines.push(JSON.stringify(visualStyle, null, 2));
+    lines.push('```');
+  }
 
   if (depSections.length) {
     lines.push('', '## Context Files', '');
