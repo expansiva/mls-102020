@@ -2,11 +2,13 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { collabImport } from '/_102027_/l2/collabImport.js';
+import { convertFileNameToTag } from '/_102027_/l2/utils.js';
 import {
   getContentByMlsPath,
   parseDefinitionFromContent,
   parseMlsPath,
   saveGeneratedTs,
+  saveGeneratedHtml,
   extractToolCallArgs,
   loadModuleByBuild,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
@@ -70,11 +72,18 @@ async function beforePromptStep(
   if (!defsContent) throw new Error(`[agentMaterializeGen] .defs.ts not found: ${defPath}`);
   const definition = parseDefinitionFromContent(defsContent);
 
-  // Load skill content — .ts files export a `skill` string; .md files are read raw
+  // Load skill content — .ts/.md paths go to system prompt; project refs (_digits_) go to context
   const skillSections: string[] = [];
+  const defContextSections: string[] = [];
   for (const sp of skillPaths) {
-    const content = await loadSkillContent(sp);
-    if (content) skillSections.push(`<!-- skill: ${sp} -->\n${content}`);
+    const clean = sp.startsWith('/') ? sp.slice(1) : sp;
+    if (/^_\d+_$/.test(clean)) {
+      const content = await loadProjectDefinition(clean);
+      if (content) defContextSections.push(`### Project Definition (${clean})\n\`\`\`typescript\n${content}\n\`\`\``);
+    } else {
+      const content = await loadSkillContent(sp);
+      if (content) skillSections.push(`<!-- skill: ${sp} -->\n${content}`);
+    }
   }
 
   // Load dependsFiles as context
@@ -83,6 +92,8 @@ async function beforePromptStep(
     const content = await getContentByMlsPath(dep);
     if (content) depSections.push(`### ${dep}\n\`\`\`typescript\n${content}\n\`\`\``);
   }
+
+  const contextSections = [...defContextSections, ...depSections];
 
   const intent: mls.msg.AgentIntentPromptReady = {
     type: 'prompt_ready',
@@ -93,7 +104,7 @@ async function beforePromptStep(
     hookSequential,
     parentStepId: parentStep.stepId,
     systemPrompt: buildSystemPrompt(skillSections, pipelineItem.outputPath),
-    humanPrompt: buildHumanPrompt(definition, depSections, pipelineItem.outputPath),
+    humanPrompt: buildHumanPrompt(definition, contextSections, pipelineItem.outputPath),
     tools: [toolSchema as unknown as mls.msg.LLMTool],
     toolChoice: { type: 'function', function: { name: TOOL_NAME } },
   };
@@ -110,7 +121,7 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
-  const { pipelineItem }: GenStepArgs = JSON.parse(step.prompt || '{}');
+  const { pipelineItem, fileType }: GenStepArgs = JSON.parse(step.prompt || '{}');
 
   const raw = step.interaction?.payload?.[0] as any;
   const out = extractToolCallArgs<ToolOutput>(raw, TOOL_NAME);
@@ -132,6 +143,12 @@ async function afterPromptStep(
 
   const ok = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, code);
 
+  // Pages also need a companion .html file with the web component tag
+  if (ok && fileType === 'page') {
+    const tag = convertFileNameToTag({ shortName: parsed.shortName, project: parsed.project, folder: parsed.folder });
+    await saveGeneratedHtml(parsed.project, parsed.level, parsed.folder, parsed.shortName, `<${tag}></${tag}>`);
+  }
+
   return [mkStatus(
     context, parentStep, step, hookSequential,
     ok ? 'completed' : 'failed',
@@ -141,6 +158,14 @@ async function afterPromptStep(
 }
 
 // ─── Skill loader ─────────────────────────────────────────────────────────────
+
+/** Fetches the TypeScript content of a project definition reference (e.g. '_102034_'). */
+async function loadProjectDefinition(projectRef: string): Promise<string> {
+  const models = (mls as any).editor?.models;
+  if (!models?.[projectRef]) return '';
+  if (!models[projectRef].ts) return '';
+  return models[projectRef].ts.model?.getValue?.() ?? '';
+}
 
 async function loadSkillContent(skillPath: string): Promise<string> {
   const clean = skillPath.startsWith('/') ? skillPath.slice(1) : skillPath;

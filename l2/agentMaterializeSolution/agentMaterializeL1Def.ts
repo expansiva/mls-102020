@@ -94,6 +94,16 @@ async function beforePromptStep(
     return [mkDone(context, parentStep, step, hookSequential, ok ? 'completed' : 'failed', ok ? undefined : 'append failed')];
   }
 
+  // layer_2_controllers — deterministic: usecaseRefs in the definition JSON are the dependsFiles
+  if (layerFolder === 'layer_2_controllers') {
+    const refs = extractUsecaseRefs(content);
+    const usecaseDeps = refs.map(ref => toMlsPath(project, 1, `${moduleName}/layer_3_usecases`, ref, '.ts'));
+    const outputPath = lowerFirstFilename(toMlsPath(project, 1, folder, shortName, '.ts'));
+    const item = buildItem(shortName, layerFolder, outputPath, project, 1, folder, usecaseDeps, []);
+    const ok = await appendPipelineToFile(project, 1, folder, shortName, [item]);
+    return [mkDone(context, parentStep, step, hookSequential, ok ? 'completed' : 'failed', ok ? undefined : 'append failed')];
+  }
+
   // layer_4_entities → needs layer_1_external .ts files
   // layer_3_usecases → needs layer_4_entities .ts files
   // layer_2_controllers (if ever here) → needs layer_3_usecases .ts files
@@ -192,6 +202,21 @@ function mkDone(
 /** _102043_/l1/cafeFlow/layer_4_entities/pedidoEntity.defs.ts → .ts */
 function defsToTs(mlsPath: string): string {
   return mlsPath.replace(/\.defs\.ts$/, '.ts');
+}
+
+/** Collect all unique usecaseRefs values from a layer_2_controllers defs content. */
+function extractUsecaseRefs(content: string): string[] {
+  const refs = new Set<string>();
+  const blockRe = /"usecaseRefs"\s*:\s*\[([\s\S]*?)\]/g;
+  let block;
+  while ((block = blockRe.exec(content)) !== null) {
+    const valRe = /"([^"]+)"/g;
+    let val;
+    while ((val = valRe.exec(block[1])) !== null) {
+      refs.add(val[1]);
+    }
+  }
+  return [...refs];
 }
 
 /** Ensures the filename segment of an MLS path starts with a lowercase letter. */

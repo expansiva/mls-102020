@@ -201,9 +201,17 @@ function detectFileType(folder: string, moduleName: string): L1FileType | null {
 
 // ─── Skill resolution (from module.ts ISkill export) ─────────────────────────
 
+// File types that require the project-level definition as additional context
+const NEEDS_DEFINITION: L1FileType[] = ['layer4'];
+
 function resolveSkillPaths(fileType: L1FileType, moduleExports: any): string[] {
   if (!moduleExports) return [];
-  return moduleExports.skills?.[fileType]?.skillPath ?? [];
+  const paths: string[] = [...(moduleExports.skills?.[fileType]?.skillPath ?? [])];
+  if (NEEDS_DEFINITION.includes(fileType)) {
+    const defPaths: string[] = moduleExports.skills?.definition?.skillPath ?? [];
+    paths.push(...defPaths);
+  }
+  return paths;
 }
 
 // ─── Module loader (collabImport → esbuild fallback) ─────────────────────────

@@ -137,8 +137,9 @@ export function listDepLayerPaths(
   forLayer: L1LayerFolder,
 ): string[] {
   const depLayer: Partial<Record<L1LayerFolder, L1LayerFolder>> = {
-    layer_4_entities: 'layer_1_external',
-    layer_3_usecases: 'layer_4_entities',
+    layer_4_entities:    'layer_1_external',
+    layer_3_usecases:    'layer_4_entities',
+    layer_2_controllers: 'layer_3_usecases',
   };
   const dep = depLayer[forLayer];
   if (!dep) return [];
@@ -230,9 +231,9 @@ export async function createDefsFile(
       ``,
       `export const definition = \``,
       `## Definition`,
-      `\`\`\`JSON`,
+      '\\`\\`\\`JSON',
       defStr,
-      `\`\`\``,
+      '\\`\\`\\`',
       `\`;`,
       ``,
       `export const pipeline = ${JSON.stringify(items, null, 2)} as const;`,
@@ -416,6 +417,28 @@ export async function saveGeneratedTs(
     return true;
   } catch (err) {
     console.warn('[agentMaterializeArtifacts] saveGeneratedTs failed', err);
+    return false;
+  }
+}
+
+export async function saveGeneratedHtml(
+  project: number,
+  level: number,
+  folder: string,
+  shortName: string,
+  content: string,
+): Promise<boolean> {
+  try {
+    const fileInfo = { project, level, folder, shortName, extension: '.html' };
+    const key = mls.stor.getKeyToFile(fileInfo);
+    let file = (mls.stor.files as Record<string, any>)[key];
+    if (!file) {
+      file = await createStorFile({ ...fileInfo, source: content }, false, false, false);
+    }
+    await mls.stor.localStor.setContent(file, { contentType: 'string', content });
+    return true;
+  } catch (err) {
+    console.warn('[agentMaterializeArtifacts] saveGeneratedHtml failed', err);
     return false;
   }
 }
