@@ -142,8 +142,14 @@ export class ServiceProject102020 extends ServiceBase {
         const project = getAuraState().actualProject;
         if (!project) return;
         try {
-            const mod = await import(`/_${project}_/l2/project.js`);
-            const modules: IModule[] = mod?.projectConfig?.modules ?? [];
+            const config: any = await getConfigProject(project);
+            const rawModules: any[] = config?.modules ?? [];
+            // project.json modules are `{ moduleName, module: { moduleName, businessDomain, … } }`.
+            // `name` is the identifier (folder / actualModule); `path` is the secondary display line.
+            const modules: IModule[] = rawModules.map((m: any) => ({
+                name: m.moduleName ?? m.name ?? '',
+                path: m.path ?? m.module?.businessDomain ?? m.module?.moduleName ?? '',
+            }));
             this._modules = modules;
             this._moduleConfig = this._buildModuleConfig(modules);
             const actualModule = getAuraState().actualModule;

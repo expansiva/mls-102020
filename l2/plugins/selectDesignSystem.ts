@@ -3,7 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
-import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { dsSections, dsAxisList, type IDsAxisEntry, type IDsSection } from '/_102020_/l2/designSystemAuraBase.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
@@ -30,6 +30,8 @@ const message_en = {
     rules: 'rules',
     noRules: 'nothing configured',
     save: 'Save design system',
+    saving: 'Saving…',
+    saveError: 'Could not save the design system.',
     savedTitle: 'Design system ready',
     savedDesc: 'Only the groups you configured are part of this design system; everything else stays unconfigured.',
     sections: {
@@ -75,6 +77,8 @@ const messages: Record<string, MessageType> = {
         rules: 'regras',
         noRules: 'nada configurado',
         save: 'Salvar design system',
+        saving: 'Salvando…',
+        saveError: 'Não foi possível salvar o design system.',
         savedTitle: 'Design system pronto',
         savedDesc: 'Só os grupos que você configurou fazem parte deste design system; o resto fica sem configuração.',
         sections: {
@@ -117,6 +121,8 @@ const messages: Record<string, MessageType> = {
         rules: 'reglas',
         noRules: 'nada configurado',
         save: 'Guardar design system',
+        saving: 'Guardando…',
+        saveError: 'No se pudo guardar el design system.',
         savedTitle: 'Design system listo',
         savedDesc: 'Solo los grupos que configuraste forman parte de este design system; el resto queda sin configurar.',
         sections: {
@@ -147,6 +153,8 @@ interface IDsEntry {
     key: number;
     name: string;
     skill: string;
+    description: string;
+    rules: Record<string, string>;
 }
 
 interface INewDs {
@@ -154,6 +162,9 @@ interface INewDs {
     description: string;
     rules: Record<string, string>;
 }
+
+// Skill used by the materialization agent to render a page from this DS.
+const DS_SKILL = '_102020_/l2/agentMaterializeSolution/skills/genPageDS.ts';
 
 // ─── Component ───────────────────────────────────────────────────────
 
@@ -173,10 +184,15 @@ export class PluginSelectDesignSystem extends StateLitElement {
     // (it does NOT inherit a default — each DS stands on its own).
     @state() private _axisValues: Record<string, string> = {};
     @state() private _addedSections: Set<string> = new Set();
-    @state() private _openSections: Set<string> = new Set(dsSections.filter(s => s.primary).map(s => s.key));
+    @state() private _openSections: Set<string> = new Set();
     @state() private _showAddMenu: boolean = false;
     @state() private _nameError: boolean = false;
     @state() private _savedDs: INewDs | null = null;
+    @state() private _saving: boolean = false;
+    @state() private _saveError: string = '';
+    // Which DS the form is currently populated for: an entry key (edit), the
+    // custom key (new), or null (not yet synced).
+    @state() private _editingKey: number | null = null;
 
     connectedCallback() {
         super.connectedCallback();
@@ -186,9 +202,64 @@ export class PluginSelectDesignSystem extends StateLitElement {
     willUpdate(changed: Map<string, unknown>) {
         if (changed.has('projectId')) {
             this._entries = [];
+            this._editingKey = null;
             if (this.projectId) this._loadDsConfig(this.projectId);
             else this._dispatchConfig();
         }
+        if (changed.has('value')) this._editingKey = null;
+        this._syncForm();
+    }
+
+    /** Populate the editable form for the current target (new DS or selected DS). */
+    private _syncForm(): void {
+        if (!this.projectId || this._loading) return;
+        if (this._isCustom) {
+            if (this._editingKey !== this._customKey) {
+                this._resetForm();
+                this._editingKey = this._customKey;
+            }
+        } else if (this.value !== null && this.value > 0) {
+            const entry = this._selectedEntry;
+            if (entry && this._editingKey !== entry.key) {
+                this._loadFormFromEntry(entry);
+                this._editingKey = entry.key;
+            }
+        }
+    }
+
+    private _resetForm(): void {
+        this._dsName = '';
+        this._dsDesc = '';
+        this._axisValues = {};
+        this._addedSections = new Set();
+        this._openSections = new Set();
+        this._showAddMenu = false;
+        this._savedDs = null;
+        this._nameError = false;
+        this._saveError = '';
+        this._saving = false;
+    }
+
+    private _loadFormFromEntry(entry: IDsEntry): void {
+        const rules = entry.rules ?? {};
+        this._dsName = entry.name;
+        this._dsDesc = entry.description ?? '';
+        this._axisValues = { ...rules };
+        // Reveal any non-primary section that already holds a rule.
+        const added = new Set<string>();
+        for (const axis of dsAxisList) {
+            if (axis.key in rules) {
+                const sec = dsSections.find(s => s.key === axis.section);
+                if (sec && !sec.primary) added.add(sec.key);
+            }
+        }
+        this._addedSections = added;
+        this._openSections = new Set();
+        this._showAddMenu = false;
+        this._savedDs = null;
+        this._nameError = false;
+        this._saveError = '';
+        this._saving = false;
     }
 
     private get msg(): MessageType {
@@ -214,9 +285,15 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this.requestUpdate();
         try {
             const config = await getConfigProject(projectId);
-            const dsMap = (config?.designSystems ?? {}) as unknown as Record<string, { name: string; skill: string }>;
+            const dsMap = (config?.designSystems ?? {}) as unknown as Record<string, { name: string; skill?: string; description?: string; rules?: Record<string, string> }>;
             const keys = Object.keys(dsMap).map(Number).sort((a, b) => a - b);
-            this._entries = keys.map(k => ({ key: k, name: dsMap[k].name, skill: dsMap[k].skill ?? '' }));
+            this._entries = keys.map(k => ({
+                key: k,
+                name: dsMap[k].name,
+                skill: dsMap[k].skill ?? '',
+                description: dsMap[k].description ?? '',
+                rules: dsMap[k].rules ?? {},
+            }));
         } catch {
             this._entries = [];
         }
@@ -303,17 +380,13 @@ export class PluginSelectDesignSystem extends StateLitElement {
                     .max=${max}
                     @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
                 ></plugins--nav-header-102020>
-                <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex items-center gap-2">
-                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">${entry.name}</span>
-                    <span class="ml-auto text-xs font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500">#${entry.key}</span>
-                </div>
+                ${this._renderDsForm()}
             </div>
         `;
     }
 
     private _renderCustom() {
         const max = this._customKey;
-        const visible = dsSections.filter(s => s.primary || this._addedSections.has(s.key));
         return html`
             <div class="flex flex-col gap-3">
                 <plugins--nav-header-102020
@@ -325,28 +398,44 @@ export class PluginSelectDesignSystem extends StateLitElement {
                     .max=${max}
                     @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
                 ></plugins--nav-header-102020>
-
-                ${this._renderNameField()}
-                ${this._renderDescField()}
-
-                <div class="flex flex-col gap-2.5">
-                    ${visible.map(sec => this._renderSectionDetails(sec))}
-                </div>
-
-                ${this._renderAddMore()}
-
-                <button
-                    class="
-                        self-start mt-1 text-sm px-3 py-1.5 rounded-md
-                        bg-indigo-500 dark:bg-indigo-600 text-white
-                        hover:bg-indigo-600 dark:hover:bg-indigo-500
-                        transition-colors cursor-pointer
-                    "
-                    @click=${() => this._onSave()}
-                >${this.msg.save}</button>
-
-                ${this._savedDs ? this._renderSavedPreview(this._savedDs) : nothing}
+                ${this._renderDsForm()}
             </div>
+        `;
+    }
+
+    // ─── Editable DS form (shared by "new" and "selected/edit") ───────
+
+    private _renderDsForm() {
+        const visible = dsSections.filter(s => s.primary || this._addedSections.has(s.key));
+        return html`
+            ${this._renderNameField()}
+            ${this._renderDescField()}
+
+            <div class="flex flex-col gap-2.5">
+                ${visible.map(sec => this._renderSectionDetails(sec))}
+            </div>
+
+            ${this._renderAddMore()}
+
+            <button
+                class="
+                    self-start mt-1 text-sm px-3 py-1.5 rounded-md
+                    bg-indigo-500 dark:bg-indigo-600 text-white
+                    hover:bg-indigo-600 dark:hover:bg-indigo-500
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                    transition-colors cursor-pointer
+                "
+                ?disabled=${this._saving}
+                @click=${() => this._onSave()}
+            >${this._saving ? this.msg.saving : this.msg.save}</button>
+
+            ${this._saveError
+                ? html`<div class="rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 px-2.5 py-1.5">
+                    <span class="text-xs text-red-600 dark:text-red-400">${this._saveError}</span>
+                </div>`
+                : nothing}
+
+            ${this._savedDs ? this._renderSavedPreview(this._savedDs) : nothing}
         `;
     }
 
@@ -511,7 +600,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
             <div class="rounded-lg border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/10 px-3 py-2.5 flex flex-col gap-1.5">
                 <div class="flex items-center gap-2">
                     <span class="text-sm font-semibold text-emerald-700 dark:text-emerald-300">${this.msg.savedTitle}</span>
-                    <span class="ml-auto text-xs font-mono px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">#${this._customKey}</span>
+                    <span class="ml-auto text-xs font-mono px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">#${this._editingKey ?? this._customKey}</span>
                 </div>
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-200">${ds.name}</span>
                 ${ds.description
@@ -558,23 +647,64 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._savedDs = null;
     }
 
-    private _onSave(): void {
+    private async _onSave(): Promise<void> {
         const name = this._dsName.trim();
         if (!name) { this._nameError = true; return; }
+        if (!this.projectId || this._saving) return;
 
         // Each DS stands on its own: store ONLY the axes the user configured.
         // Unconfigured axes are simply absent — no inheritance from a default DS.
         const rules: Record<string, string> = { ...this._axisValues };
-
         const ds: INewDs = { name, description: this._dsDesc.trim(), rules };
-        this._savedDs = ds;
 
-        console.log('[selectDesignSystem] new design system', ds);
+        const key = this._editingKey ?? this._customKey;
+        const isNew = key === this._customKey;
+
+        this._saving = true;
+        this._saveError = '';
+        try {
+            await this._persistDs(this.projectId, key, ds);
+        } catch (err) {
+            console.error('[selectDesignSystem] failed to save design system', err);
+            this._saveError = this.msg.saveError;
+            this._saving = false;
+            return;
+        }
+
+        // Refresh the list/labels from the just-written config and keep this DS in view.
+        await this._loadDsConfig(this.projectId);
+        this._editingKey = key;
+        this._savedDs = ds;
+        this._saving = false;
+
+        console.log('[selectDesignSystem]', isNew ? 'created' : 'updated', 'design system', key, ds);
         this.dispatchEvent(new CustomEvent('save-ds', {
-            detail: { ds },
+            detail: { key, isNew, ds },
             bubbles: true,
             composed: true,
         }));
+    }
+
+    /** Write the DS into `project.json` → `designSystems[key]` (merging into an existing entry). */
+    private async _persistDs(projectId: number, key: number, ds: INewDs): Promise<void> {
+        const config: any = await getConfigProject(projectId);
+        if (!config) throw new Error('project config not found');
+
+        const current = config.designSystems;
+        const designSystems: Record<string, any> =
+            (current && typeof current === 'object' && !Array.isArray(current)) ? current : {};
+
+        const existing = designSystems[key] ?? {};
+        designSystems[key] = {
+            ...existing,
+            name: ds.name,
+            description: ds.description,
+            skill: existing.skill ?? DS_SKILL,
+            rules: ds.rules,
+        };
+        config.designSystems = designSystems;
+
+        await updateConfigProject(projectId, config);
     }
 
     // ─── Shared helpers ───────────────────────────────────────────────
