@@ -24,6 +24,9 @@ export type DsSectionKey =
 export interface IDsSection {
     key: DsSectionKey;
     label: string;
+    desc: string;
+    /** one of the few sections shown up-front; the rest are added on demand. */
+    primary?: boolean;
 }
 
 export interface IDsAxisDef {
@@ -37,15 +40,15 @@ export interface IDsAxisDef {
     essential?: boolean;
 }
 
-export const dsSections = [
-    { key: 'transversal',   label: 'General' },
-    { key: 'input',         label: 'Input' },
-    { key: 'selection',     label: 'Selection' },
-    { key: 'navigation',    label: 'Navigation' },
-    { key: 'feedback',      label: 'Feedback & status' },
-    { key: 'action',        label: 'Action & content' },
-    { key: 'visualization', label: 'Visualization' },
-] as const satisfies readonly IDsSection[];
+export const dsSections: readonly IDsSection[] = [
+    { key: 'transversal',   label: 'General',           desc: 'Defaults that apply across the whole interface.', primary: true },
+    { key: 'input',         label: 'Input',             desc: 'How users type and edit values.', primary: true },
+    { key: 'selection',     label: 'Selection',         desc: 'How users choose from a set of options.', primary: true },
+    { key: 'navigation',    label: 'Navigation',        desc: 'How users move between areas and steps.' },
+    { key: 'feedback',      label: 'Feedback & status', desc: 'How the interface responds and reports status.' },
+    { key: 'action',        label: 'Action & content',  desc: 'Actions, ratings and expandable content.' },
+    { key: 'visualization', label: 'Visualization',     desc: 'How collections and data are displayed.' },
+];
 
 // Keyed by axis name (DSDefinition.md §4). `as const` preserves the literal value
 // types so molecule declarations can be validated against the exact allowed set.
