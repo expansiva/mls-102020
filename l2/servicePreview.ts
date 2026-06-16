@@ -565,6 +565,11 @@ export class ServicePreview extends ServiceBase {
     const flag = html.match(/<meta\s+name=["']mls-preview["']\s+content=["'](shared|isolated)["']/i);
     if (flag) return (flag[1].toLowerCase() === 'shared') ? 'shared' : 'isolated';
 
+    // L3/L4 visual editor needs direct DOM access to the iframe (selection,
+    // inspection, inline editing) -> always shared. Loop protection there
+    // relies on Layer 1 (the notify circuit breaker).
+    if (this.level === 3 || this.level === 4) return 'shared';
+
     // A) by enhancement — read the PREVIEWED file's .ts content (per-file,
     // loaded by getFiles({loadContent:true})). Do NOT use a monaco model:
     // setActualModels() only sets actualModels.ts once and never refreshes it,

@@ -464,7 +464,7 @@ export class PluginSelectProject extends StateLitElement {
     private _ensureCreateProjectPlugin() {
         if (this._createProjectImported) return;
         this._createProjectImported = true;
-        import('/_100554_/l2/pluginCreateProject.js').catch(() => { this._createProjectImported = false; });
+        import('/_102020_/l2/plugins/pluginCreateProjectAura.js').catch(() => { this._createProjectImported = false; });
     }
 
     private _renderCustom() {
@@ -481,7 +481,7 @@ export class PluginSelectProject extends StateLitElement {
                     .max=${max}
                     @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
                 ></plugins--nav-header-102020>
-                <plugin-create-project-100554></plugin-create-project-100554>
+                <plugins--plugin-create-project-aura-102020></plugins--plugin-create-project-aura-102020>
             </div>
         `;
     }
