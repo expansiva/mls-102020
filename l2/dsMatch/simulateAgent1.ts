@@ -1,19 +1,20 @@
 /// <mls fileReference="_102020_/l2/dsMatch/simulateAgent1.ts" enhancement="_blank" />
 
-// Fase B simulation (non-LLM half). Validates that, against a REAL page defs,
-// we can: load the PagePlan, extract organisms, build the group list, and assemble
-// the Agent1 prompt. It does NOT call the LLM — it prints the prompt to eyeball.
+// Fase B simulation (non-LLM half). Validates that, against a REAL page, we can:
+// load the rendered .ts, load the .defs.ts, extract organisms, build the group list,
+// and assemble the Agent1 prompt. It does NOT call the LLM — it prints the prompt.
 //
-// Run inside the app runtime (needs `mls.stor`):
+// Run inside the app runtime (needs `mls.stor`). Pass the page .ts path:
 //   import { simulateAgent1 } from '/_102020_/l2/dsMatch/simulateAgent1.js';
-//   await simulateAgent1('_102043_/l2/cafeFlow/menuManagement.defs.ts');
+//   await simulateAgent1('_102043_/l2/cafeFlow/web/desktop/page11/menuManagement.ts');
 
 import { runAgent1Tests } from '/_102020_/l2/dsMatch/agent1.test.js';
-import { loadPagePlan, extractOrganisms, buildAgent1HumanPrompt } from '/_102020_/l2/dsMatch/agent1.js';
+import { loadPageSource, loadPageDefs, extractOrganisms, buildAgent1HumanPrompt } from '/_102020_/l2/dsMatch/agent1.js';
 import { buildGroupList } from '/_102020_/l2/dsMatch/groupCatalog.js';
 
 export interface Agent1SimReport {
     path: string;
+    renderedSourceFound: boolean;
     organismCount: number;
     groupCount: number;
     organismNames: string[];
@@ -21,7 +22,7 @@ export interface Agent1SimReport {
 }
 
 export async function simulateAgent1(
-    path = '_102043_/l2/cafeFlow/menuManagement.defs.ts',
+    path = '_102043_/l2/cafeFlow/menuManagement.ts',
 ): Promise<Agent1SimReport> {
 
     // Pure tests first.
@@ -32,18 +33,21 @@ export async function simulateAgent1(
         console.log(`FAIL  agent1 pure tests — ${String(err?.message ?? err)}`);
     }
 
-    const pagePlan = await loadPagePlan(path);
-    const organisms = extractOrganisms(pagePlan);
+    const pageSource = await loadPageSource(path);
+    const defs = await loadPageDefs(path);
+    const organisms = extractOrganisms(defs);
     const groups = await buildGroupList();
-    const prompt = buildAgent1HumanPrompt(path, pagePlan, groups);
+    const prompt = buildAgent1HumanPrompt(path, pageSource, organisms, groups);
 
     console.log(`\n=== Agent1 simulation — ${path} ===`);
+    console.log(`Rendered .ts found: ${pageSource ? 'yes' : 'NO (page not materialized yet)'}`);
     console.log(`Organisms: ${organisms.length}  |  Groups available: ${groups.length}`);
-    console.log(`Organism names: ${organisms.map(o => o.organismName).join(', ')}`);
+    console.log(`Organism names: ${organisms.map(o => o.organismName).join(', ') || '(none)'}`);
     console.log(`\n----- PROMPT (human) -----\n${prompt}\n--------------------------`);
 
     return {
         path,
+        renderedSourceFound: !!pageSource,
         organismCount: organisms.length,
         groupCount: groups.length,
         organismNames: organisms.map(o => o.organismName),

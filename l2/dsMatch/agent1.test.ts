@@ -67,6 +67,20 @@ export function runAgent1Tests(): { passed: number } {
         passed++;
     }
 
+    // 2b. Tolerant of other defs shapes: `export default` and `definition`-string.
+    {
+        const moduleWithDefault = { default: fakePlan, menuPagePlan: fakePlan };
+        assert(extractOrganisms(moduleWithDefault).length === 2, 'default export shape not handled');
+
+        const defsString = {
+            definition: '## Definition\n```JSON\n{"sections":[{"sectionName":"S","organisms":[{"organismName":"o1","purpose":"p"}]}]}\n```',
+            pipeline: [],
+        };
+        const orgs = extractOrganisms(defsString);
+        assert(orgs.length === 1 && orgs[0].organismName === 'o1', 'definition-string shape not handled');
+        passed++;
+    }
+
     // 3. validateAgent1Output: drop unknown groups, dedupe, keep order, drop nameless.
     {
         const valid = new Set(['groupEnterText', 'groupEnterNumber', 'groupViewData']);
@@ -94,13 +108,23 @@ export function runAgent1Tests(): { passed: number } {
         passed++;
     }
 
-    // 5. buildAgent1HumanPrompt smoke: includes page path, organism and group list.
+    // 5. buildAgent1HumanPrompt smoke: includes path, rendered source, organism, group list.
     {
-        const prompt = buildAgent1HumanPrompt('cafe/menu.defs.ts', fakePlan, groups);
-        assert(prompt.includes('cafe/menu.defs.ts'), 'prompt missing page path');
+        const organisms = extractOrganisms(fakePlan);
+        const pageSource = '<molecules--placeholder></molecules--placeholder> <input type="text">';
+        const prompt = buildAgent1HumanPrompt('cafe/menu.ts', pageSource, organisms, groups);
+        assert(prompt.includes('cafe/menu.ts'), 'prompt missing page path');
+        assert(prompt.includes(pageSource), 'prompt missing rendered .ts source');
+        assert(prompt.includes('Rendered page'), 'prompt missing rendered-page section');
         assert(prompt.includes('form'), 'prompt missing organism');
         assert(prompt.includes('groupEnterText: Enter free-form text.'), 'prompt missing group list');
-        assert(prompt.includes('bffCommands'), 'prompt missing field evidence');
+        passed++;
+    }
+
+    // 6. buildAgent1HumanPrompt without rendered source → falls back gracefully.
+    {
+        const prompt = buildAgent1HumanPrompt('cafe/menu.ts', '', extractOrganisms(fakePlan), groups);
+        assert(prompt.includes('not available'), 'missing-source fallback not shown');
         passed++;
     }
 

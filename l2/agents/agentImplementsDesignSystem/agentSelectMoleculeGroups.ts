@@ -1,7 +1,9 @@
 /// <mls fileReference="_102020_/l2/agents/agentImplementsDesignSystem/agentSelectMoleculeGroups.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
 
 // Fase B — Agent1: per-organism molecule-GROUP selection (LLM).
-// For one page (.defs.ts), decides which molecule groups each organism needs.
+// Runs after creative-mode generation, so the page is materialized: reads the
+// rendered .ts (primary — the actual HTML) plus the .defs.ts organism structure,
+// and decides which molecule groups each organism needs.
 // Variant choice is NOT done here — that is deterministic (matchVariant, Fase A/C).
 //
 // One page per invocation (input `{ path }`). Fan-out across pages is the
@@ -10,7 +12,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { buildGroupList } from '/_102020_/l2/dsMatch/groupCatalog.js';
-import { loadPagePlan, buildAgent1HumanPrompt, validateAgent1Output, type Agent1Output } from '/_102020_/l2/dsMatch/agent1.js';
+import { loadPageSource, loadPageDefs, extractOrganisms, buildAgent1HumanPrompt, validateAgent1Output, type Agent1Output } from '/_102020_/l2/dsMatch/agent1.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -121,9 +123,12 @@ async function afterPromptStep(
 }
 
 async function buildPrompt(path: string): Promise<string> {
-  const pagePlan = await loadPagePlan(path);
+  // Primary input: the rendered .ts (the actual UI). Secondary: organisms from .defs.ts.
+  const pageSource = await loadPageSource(path);
+  const defs = await loadPageDefs(path);
+  const organisms = extractOrganisms(defs);
   const groups = await buildGroupList();
-  return buildAgent1HumanPrompt(path, pagePlan, groups);
+  return buildAgent1HumanPrompt(path, pageSource, organisms, groups);
 }
 
 function countDropped(raw: any, validated: Agent1Output): number {
@@ -142,9 +147,12 @@ You must return ONLY a valid JSON object. No preamble, no explanation, no markdo
 fences, no text before or after the JSON. Start your response with { and end with }
 
 ## Task
-For each organism of the page, decide which molecule GROUPS its UI needs. Map an
-organism to a group only when the group's purpose DIRECTLY and OBVIOUSLY matches a
-UI need implied by the organism's purpose, userActions and fields.
+You are given the page's RENDERED source (a Lit component with HTML + Tailwind that
+the creative-mode generator produced) and its organism structure. For each organism,
+decide which molecule GROUPS are needed to replace the hand-built UI elements that
+belong to it. Base the decision on the ACTUAL elements in the rendered HTML (inputs,
+selects, tables, buttons, etc.), mapped to the organism they sit in.
+Map a group only when its purpose DIRECTLY and OBVIOUSLY matches a real UI element.
 
 ## Rules
 - Before adding a group, ask: "Does this organism clearly need this kind of UI?" If

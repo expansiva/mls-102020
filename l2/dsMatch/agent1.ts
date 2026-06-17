@@ -1,13 +1,15 @@
 /// <mls fileReference="_102020_/l2/dsMatch/agent1.ts" enhancement="_blank" />
 
-// Fase B pure core — extract organisms from a PagePlan, build the Agent1 human
-// prompt, and validate the LLM output. These are pure/testable; the IAgentAsync
-// wrapper that actually calls the LLM lives in
-// agents/newModule/agentSelectMoleculeGroups.ts.
+// Fase B pure core — load a page (rendered .ts + structural .defs.ts), build the
+// Agent1 human prompt, and validate the LLM output. These are pure/testable; the
+// IAgentAsync wrapper that actually calls the LLM lives in
+// agents/agentImplementsDesignSystem/agentSelectMoleculeGroups.ts.
 //
-// Decision D7: the structural truth is the page `.defs.ts` (the PagePlan object).
-// Pages here are not materialized yet, so there is no rendered `.ts` to use as
-// extra evidence; bffCommands I/O is included instead as field-type evidence.
+// Decision D7 (revised): Agent1 runs AFTER creative-mode generation, so the page
+// is already materialized. The PRIMARY input is the rendered `.ts` (the actual
+// HTML/Tailwind the creative LLM produced) — that is the real basis for knowing
+// which UI elements exist. The `.defs.ts` is sent too, for the organism structure
+// (so the output can be grouped per organism).
 
 import { collabImport } from '/_102027_/l2/collabImport.js';
 import { renderGroupList, type GroupInfo } from '/_102020_/l2/dsMatch/groupCatalog.js';
@@ -33,34 +35,51 @@ export interface Agent1Output {
     perOrganism: Agent1PerOrganism[];
 }
 
-/**
- * Load a PagePlan object from a `.defs.ts` path. Supports the `export default`
- * plan and any `*PagePlan` named export.
- */
-export async function loadPagePlan(path: string): Promise<any> {
-    const pathNorm = path.startsWith('/') ? path.slice(1) : path;
-    const f = mls.stor.convertFileReferenceToFile(pathNorm);
-    const key = mls.stor.getKeyToFile(f);
-    const sf = mls.stor.files[key];
-    if (!sf) throw new Error(`[agent1] page defs not found: ${path}`);
+// ─── loaders (runtime: need mls.stor) ───────────────────────────────────────
 
-    const mod = await collabImport({
-        project: sf.project,
-        folder: sf.folder,
-        shortName: sf.shortName,
-        extension: '.defs.ts',
-    });
-    if (!mod) throw new Error(`[agent1] could not import page defs: ${path}`);
-
-    if (mod.default) return mod.default;
-    const planKey = Object.keys(mod).find(k => k.endsWith('PagePlan'));
-    if (planKey) return mod[planKey];
-    throw new Error(`[agent1] no PagePlan export in ${path}`);
+/** File info for a page path, regardless of which extension was passed. */
+function fileInfo(path: string): any {
+    const norm = path.startsWith('/') ? path.slice(1) : path;
+    return mls.stor.convertFileReferenceToFile(norm);
 }
 
-/** Flatten `data.pageDefinition.sections[].organisms[]` into a typed list. */
-export function extractOrganisms(pagePlan: any): OrganismInfo[] {
-    const sections = pagePlan?.data?.pageDefinition?.sections;
+/**
+ * Load the rendered page source (the `.ts` Lit component). PRIMARY input.
+ * Returns '' (with a warning) if the page is not materialized yet.
+ */
+export async function loadPageSource(path: string): Promise<string> {
+    const f = fileInfo(path);
+    if (!f) return '';
+    const key = mls.stor.getKeyToFiles(f.project, 2, f.shortName, f.folder, '.ts');
+    const sf = mls.stor.files[key];
+    if (!sf) { console.warn(`[agent1] rendered .ts not found: ${path}`); return ''; }
+    const content = await sf.getContent();
+    return typeof content === 'string' ? content : '';
+}
+
+/** Load the page `.defs.ts` module (any export shape). Best-effort: null on failure. */
+export async function loadPageDefs(path: string): Promise<any> {
+    const f = fileInfo(path);
+    if (!f) return null;
+    try {
+        return await collabImport({ project: f.project, folder: f.folder, shortName: f.shortName, extension: '.defs.ts' });
+    } catch (err) {
+        console.warn(`[agent1] defs not loadable: ${path}`, err);
+        return null;
+    }
+}
+
+// ─── organism extraction (defs may come in a few shapes) ─────────────────────
+
+/**
+ * Flatten organisms from a page defs. Tolerant of:
+ *   - PagePlan module/object: `data.pageDefinition.sections[].organisms[]`
+ *   - page11 defs: `export const definition` (string with a ```JSON block: { sections:[...] })`
+ *   - a plain plan object already at the root.
+ */
+export function extractOrganisms(defs: any): OrganismInfo[] {
+    const root = unwrapPlan(defs);
+    const sections = root?.data?.pageDefinition?.sections ?? root?.sections;
     if (!Array.isArray(sections)) return [];
 
     const out: OrganismInfo[] = [];
@@ -82,21 +101,40 @@ export function extractOrganisms(pagePlan: any): OrganismInfo[] {
     return out;
 }
 
-/** Compact field-type evidence from bffCommands (commandName + input/output shapes). */
-export function extractFieldEvidence(pagePlan: any): string {
-    const cmds = pagePlan?.data?.bffCommands;
-    if (!Array.isArray(cmds) || cmds.length === 0) return '';
-    const lines = cmds.map((c: any) =>
-        `- ${c.commandName} (${c.kind}): input=${JSON.stringify(c.input ?? {})} output=${JSON.stringify(c.output ?? {})}`
-    );
-    return lines.join('\n');
+function unwrapPlan(defs: any): any {
+    if (!defs || typeof defs !== 'object') return defs;
+    // page11 defs: a `definition` string holding a JSON block.
+    if (typeof defs.definition === 'string') {
+        const parsed = parseDefinitionJson(defs.definition);
+        if (parsed) return parsed;
+    }
+    // module with `export default <plan>`.
+    if (defs.default) return defs.default;
+    // module with a `*PagePlan` named export.
+    const planKey = Object.keys(defs).find(k => k.endsWith('PagePlan'));
+    if (planKey) return defs[planKey];
+    return defs;
 }
 
-/** Build the human prompt for one page. */
-export function buildAgent1HumanPrompt(path: string, pagePlan: any, groups: GroupInfo[]): string {
-    const organisms = extractOrganisms(pagePlan);
-    const evidence = extractFieldEvidence(pagePlan);
+/** Extract and parse the JSON block from a `definition` string. */
+function parseDefinitionJson(s: string): any | null {
+    const fence = s.match(/```(?:json|JSON)?\s*([\s\S]*?)```/);
+    const jsonText = fence ? fence[1] : s;
+    const start = jsonText.indexOf('{');
+    const end = jsonText.lastIndexOf('}');
+    if (start < 0 || end < 0) return null;
+    try { return JSON.parse(jsonText.slice(start, end + 1)); } catch { return null; }
+}
 
+// ─── prompt + validation (pure) ──────────────────────────────────────────────
+
+/** Build the human prompt for one page: rendered .ts (primary) + organism structure + group list. */
+export function buildAgent1HumanPrompt(
+    path: string,
+    pageSource: string,
+    organisms: OrganismInfo[],
+    groups: GroupInfo[],
+): string {
     const organismBlocks = organisms.map(o => [
         `### ${o.organismName}  (section: ${o.sectionName})`,
         `purpose: ${o.purpose}`,
@@ -104,15 +142,16 @@ export function buildAgent1HumanPrompt(path: string, pagePlan: any, groups: Grou
         `requiredEntities: ${o.requiredEntities.join(', ') || '—'}`,
         `readsFields: ${o.readsFields.join(', ') || '—'}`,
         `writesFields: ${o.writesFields.join(', ') || '—'}`,
-        `rulesApplied: ${o.rulesApplied.join(', ') || '—'}`,
     ].join('\n')).join('\n\n');
 
     const parts = [
         `## Page\n${path}`,
-        `## Organisms\n${organismBlocks || '(none)'}`,
-        evidence ? `## Field-type evidence (bffCommands)\n${evidence}` : '',
+        pageSource
+            ? `## Rendered page (Lit component — HTML + Tailwind). This is the real UI to map.\n\`\`\`typescript\n${pageSource}\n\`\`\``
+            : `## Rendered page\n(not available — fall back to the organism structure below)`,
+        `## Page structure (organisms)\n${organismBlocks || '(none)'}`,
         `## Molecule groups (choose from these only)\n${renderGroupList(groups)}`,
-    ].filter(Boolean);
+    ];
 
     return parts.join('\n\n');
 }
