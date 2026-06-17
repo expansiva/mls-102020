@@ -79,12 +79,28 @@ async function afterPromptStep(
     const project = mls.actualProject || 0;
     const item = buildWorkItem(project, a.module, a.layout, a.ds, a.page!, a.device);
 
-    if (!context.isTest) await saveFile(item.defsDestino, out.srcFile);
+    // The LLM returns ONLY the clean merged defs. We append the molecule metadata exports
+    // here, deterministically, by reading them from the NEW defs BEFORE we overwrite it
+    // (so the terminal can record which molecules the page used). Guarded so we never
+    // duplicate if the model already emitted them.
+    let finalSrc = out.srcFile;
+    if (!finalSrc.includes('export const moleculeAssignments')) {
+      const tail = extractAssignmentsTail(await readRawSource(item.defsDestino));
+      if (tail) finalSrc = `${finalSrc.replace(/\s*$/, '')}\n\n${tail}\n`;
+    }
+
+    if (!context.isTest) await saveFile(item.defsDestino, finalSrc);
 
     return [mkCompleted(context, parentStep, step, hookSequential)];
   } catch (error) {
     return [mkFail(context, parentStep, step, hookSequential, `[agentGenDefs2] ${error instanceof Error ? error.message : String(error)}`)];
   }
+}
+
+/** The molecule metadata exports from the NEW defs (moleculeAssignments + usagePaths). */
+function extractAssignmentsTail(novoSource: string): string {
+  const idx = novoSource.indexOf('export const moleculeAssignments');
+  return idx >= 0 ? novoSource.slice(idx).trim() : '';
 }
 
 const system1 = `
@@ -108,9 +124,9 @@ Produce the FINAL page defs for the new design system, given the ORIGINAL page d
 - Repoint the first line /// <mls fileReference=...> and any outputPath/defPath from
   page11 to the Output path's folder (page{layout}{ds}); keep the page name the same.
 - Keep the loose JSON-ish formatting of the original definition.
-- PRESERVE, at the END of the output file, the exact "export const moleculeAssignments = ..."
-  and "export const usagePaths = ..." statements from the resolved-molecules input,
-  unchanged. (They are read later to record which molecules the pages used.)
+- Output ONLY the merged defs (header + definition + pipeline). Do NOT re-emit the
+  resolved-molecules input, its header, or its moleculeAssignments/usagePaths exports —
+  those are appended later by code.
 
 ## Output format
 [[OutputSection]]
