@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.ts" enhancement="_blank"/>
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import type {
@@ -422,9 +422,12 @@ export async function saveGeneratedTs(
   try {
     const fileInfo = { project, level, folder, shortName, extension: '.ts' };
     const key = mls.stor.getKeyToFile(fileInfo);
-    let file = (mls.stor.files as Record<string, any>)[key];
+    let file = (mls.stor.files as Record<string, any>)[key] as mls.stor.IFileInfo;
     if (!file) {
       file = await createStorFile({ ...fileInfo, source: content }, false, false, false);
+    } else {
+      const model = await file.getOrCreateModel();
+      if (model) model.model.setValue(content);
     }
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
     return true;
@@ -549,7 +552,7 @@ export async function getDtsForFile(
   shortName: string,
 ): Promise<string> {
   try {
-    const key = mls.editor.getKeyModel(project, shortName, folder, level) + '.ts';
+    const key = mls.editor.getKeyModel(project, shortName, folder, level);
     let modelTS = mls.editor.models[key]?.ts;
 
     if (!modelTS) {
