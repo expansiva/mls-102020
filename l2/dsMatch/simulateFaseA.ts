@@ -11,7 +11,8 @@
 //
 // It logs a readable report and returns it. `checks[].ok === false` flags a problem.
 
-import { dsAxisKeys } from '/_102020_/l2/designSystemAuraBase.js';
+import { dsAxisKeys, dsDefaults, isValidAxisValue } from '/_102020_/l2/designSystemAuraBase.js';
+import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { readDsRules } from '/_102020_/l2/dsMatch/readDsRules.js';
 import { buildMoleculeCatalog } from '/_102020_/l2/dsMatch/buildMoleculeCatalog.js';
 import { matchVariant } from '/_102020_/l2/dsMatch/matchVariant.js';
@@ -60,12 +61,22 @@ export async function simulateFaseA(project = 102043, dsIndex: number | string =
         resolvedKeys.length === dsAxisKeys.length,
         `${resolvedKeys.length}/${dsAxisKeys.length} axes`,
     );
-    // Sanity for mls-102043 DS 2 ("ERP Compact"): these rules exist in project.json.
-    if (project === 102043 && String(dsIndex) === '2') {
-        check('A1: ds2 density=compact', resolvedDs.density === 'compact', resolvedDs.density);
-        check('A1: ds2 labelPlacement=floating', resolvedDs.labelPlacement === 'floating', resolvedDs.labelPlacement);
-        check('A1: ds2 feedback=toast', resolvedDs.feedback === 'toast', resolvedDs.feedback);
-    }
+    // DS-agnostic verification (no hardcoded values):
+    //   - every valid axis the DS declares must be reflected in the resolved DS;
+    //   - every axis the DS does NOT declare must equal its vocabulary default.
+    const liveRules = await readLiveRules(project, dsIndex);
+    const defaults = dsDefaults();
+    const declaredCount = Object.keys(liveRules).length;
+
+    const declaredReflected = Object.entries(liveRules)
+        .filter(([axis, value]) => typeof value === 'string' && isValidAxisValue(axis, value))
+        .every(([axis, value]) => resolvedDs[axis as keyof ResolvedDs] === value);
+    check('A1: declared rules reflected', declaredReflected, `${declaredCount} declared rule(s)`);
+
+    const undeclaredDefaulted = dsAxisKeys.every(
+        axis => (axis in liveRules) || resolvedDs[axis] === defaults[axis],
+    );
+    check('A1: undeclared axes use defaults', undeclaredDefaulted);
 
     // ── A2: buildMoleculeCatalog ──────────────────────────────────────────────
     const catalog = await buildMoleculeCatalog(true);
@@ -112,6 +123,14 @@ export async function simulateFaseA(project = 102043, dsIndex: number | string =
 
     logReport(report);
     return report;
+}
+
+/** Read the raw (as-declared) rules of a DS from project.json, for verification. */
+async function readLiveRules(project: number, dsIndex: number | string): Promise<Record<string, string>> {
+    const config: any = await getConfigProject(project);
+    const ds = config?.designSystems?.[String(dsIndex)];
+    const rules = ds?.rules;
+    return (rules && typeof rules === 'object') ? rules : {};
 }
 
 function logReport(r: FaseAReport): void {
