@@ -89,6 +89,7 @@ export async function scanL1DefsWithPipeline(
         if (f.folder !== folder) continue;
         if (f.extension !== '.defs.ts') continue;
         if (f.status === 'deleted') continue;
+        if (f.shortName === 'module' || f.shortName === 'index') continue;
         const content = String(await f.getContent());
         const pipeline = parsePipelineFromContent(content);
         if (!pipeline || pipeline.length === 0) continue;
@@ -395,6 +396,7 @@ export async function scanL2DefsWithPipeline(
       if (f.level !== 2) continue;
       if (f.extension !== '.defs.ts') continue;
       if (f.status === 'deleted') continue;
+      if (f.shortName === 'module' || f.shortName === 'index') continue;
       const folder = f.folder as string;
       if (folder === moduleName) continue;
       if (!folder.startsWith(prefix)) continue;

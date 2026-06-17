@@ -145,8 +145,8 @@ export function buildConfig(project: number, moduleName: string): string {
               "tag": "client-header-${project}"
             },
             "brand": {
-              "name": "Cafe Flow",
-              "logoText": "CF",
+              "name": "${moduleName}",
+              "logoText": "${moduleName.substring(0, 2).toUpperCase()}",
               "environmentLabel": "Producao"
             }
           },
@@ -197,8 +197,8 @@ export function buildConfig(project: number, moduleName: string): string {
       "type": "client",
       "modules": [
         {
-          "moduleId": "cafeFlow",
-          "basePath": "/cafe-flow",
+          "moduleId": "${moduleName}",
+          "basePath": "/${moduleName}",
           "shellMode": "spa",
           "backendRouter": "./_${project}_/l1/${moduleName}/layer_2_controllers/router.js",
           "navigation": [],
@@ -221,7 +221,7 @@ export function buildConfig(project: number, moduleName: string): string {
       ],
       "persistenceModules": [
         {
-          "moduleId": "cafeFlow",
+          "moduleId": "${moduleName}",
           "persistenceEntrypoint": "./_${project}_/l1/${moduleName}/persistence.js"
         }
       ]

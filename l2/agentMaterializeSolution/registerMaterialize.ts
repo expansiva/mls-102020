@@ -29,6 +29,20 @@ import {
   addPage as addCollabPage,
 } from '/_102020_/l2/agentMaterializeSolution/ast/astCollab.js';
 
+// ─── File-level mutex ─────────────────────────────────────────────────────────
+// Serializes concurrent read-modify-write operations on the same file.
+// Each file path gets its own promise chain; different files run in parallel.
+
+const fileLocks = new Map<string, Promise<void>>();
+
+function withLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
+  const prev = fileLocks.get(path) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>(res => { release = res; });
+  fileLocks.set(path, current);
+  return prev.then(() => fn()).finally(() => release());
+}
+
 // ─── Controller registration ──────────────────────────────────────────────────
 
 interface RouterEntry {
@@ -47,28 +61,30 @@ function extractRouterEntries(source: string): RouterEntry[] {
   return results;
 }
 
-export async function registerController(
+export function registerController(
   project: number,
   moduleName: string,
   generatedSource: string,
 ): Promise<void> {
   const entries = extractRouterEntries(generatedSource);
-  if (!entries.length) return;
+  if (!entries.length) return Promise.resolve();
 
   const routerPath = toMlsPath(project, 1, `${moduleName}/layer_2_controllers`, 'router', '.ts');
-  const routerSource = await getContentByMlsPath(routerPath);
-  if (!routerSource) return;
 
-  let updated = routerSource;
-  for (const { routeKey, handlerName, importPath } of entries) {
-    updated = addImport(updated, { kind: 'value', names: [handlerName], from: importPath });
-    updated = addRoute(updated, routeKey, handlerName);
-  }
+  return withLock(routerPath, async () => {
+    const routerSource = await getContentByMlsPath(routerPath);
+    if (!routerSource) return;
 
-  if (updated === routerSource) return;
+    let updated = routerSource;
+    for (const { routeKey, handlerName, importPath } of entries) {
+      updated = addImport(updated, { kind: 'value', names: [handlerName], from: importPath });
+      updated = addRoute(updated, routeKey, handlerName);
+    }
 
-  const p = parseMlsPath(routerPath);
-  if (p) await saveGeneratedTs(p.project, p.level, p.folder, p.shortName, updated);
+    if (updated === routerSource) return;
+    const p = parseMlsPath(routerPath);
+    if (p) await saveGeneratedTs(p.project, p.level, p.folder, p.shortName, updated);
+  });
 }
 
 // ─── Page registration ────────────────────────────────────────────────────────
@@ -87,12 +103,14 @@ export async function registerPage(
   const label = toLabel(shortName);
   const loader = '/' + outputPath.replace(/\.ts$/, '.js');
 
-  await updateModuleTs(project, moduleName, shortName, href, label, loader, tag);
-  await updateIndexTs(project, moduleName, href, label, loader, tag);
-  await updateCollabConfig(project, moduleName, shortName, outputPath, href, label, tag);
+  await Promise.all([
+    updateModuleTs(project, moduleName, shortName, href, label, loader, tag),
+    updateIndexTs(project, moduleName, href, label, loader, tag),
+    updateCollabConfig(project, moduleName, shortName, outputPath, href, label, tag),
+  ]);
 }
 
-async function updateModuleTs(
+function updateModuleTs(
   project: number,
   moduleName: string,
   shortName: string,
@@ -102,19 +120,22 @@ async function updateModuleTs(
   tag: string,
 ): Promise<void> {
   const path = toMlsPath(project, 2, moduleName, 'module', '.ts');
-  const source = await getContentByMlsPath(path);
-  if (!source) return;
 
-  let updated = source;
-  updated = addModuleNav(updated, { id: shortName, label, href, description: label });
-  updated = addModuleRoute(updated, { path: href, aliases: [], entrypoint: loader, tag, title: label });
+  return withLock(path, async () => {
+    const source = await getContentByMlsPath(path);
+    if (!source) return;
 
-  if (updated === source) return;
-  const p = parseMlsPath(path);
-  if (p) await saveGeneratedTs(p.project, p.level, p.folder, p.shortName, updated);
+    let updated = source;
+    updated = addModuleNav(updated, { id: shortName, label, href, description: label });
+    updated = addModuleRoute(updated, { path: href, aliases: [], entrypoint: loader, tag, title: label });
+
+    if (updated === source) return;
+    const p = parseMlsPath(path);
+    if (p) await saveGeneratedTs(p.project, p.level, p.folder, p.shortName, updated);
+  });
 }
 
-async function updateIndexTs(
+function updateIndexTs(
   project: number,
   moduleName: string,
   href: string,
@@ -123,19 +144,22 @@ async function updateIndexTs(
   tag: string,
 ): Promise<void> {
   const path = toMlsPath(project, 2, moduleName, 'index', '.ts');
-  const source = await getContentByMlsPath(path);
-  if (!source) return;
 
-  let updated = source;
-  updated = addNav(updated, { label, href });
-  updated = addPage(updated, { path: href, title: label, tagName: tag, loader });
+  return withLock(path, async () => {
+    const source = await getContentByMlsPath(path);
+    if (!source) return;
 
-  if (updated === source) return;
-  const p = parseMlsPath(path);
-  if (p) await saveGeneratedTs(p.project, p.level, p.folder, p.shortName, updated);
+    let updated = source;
+    updated = addNav(updated, { label, href });
+    updated = addPage(updated, { path: href, title: label, tagName: tag, loader });
+
+    if (updated === source) return;
+    const p = parseMlsPath(path);
+    if (p) await saveGeneratedTs(p.project, p.level, p.folder, p.shortName, updated);
+  });
 }
 
-async function updateCollabConfig(
+function updateCollabConfig(
   project: number,
   moduleName: string,
   shortName: string,
@@ -145,55 +169,58 @@ async function updateCollabConfig(
   tag: string,
 ): Promise<void> {
   const configPath = toMlsPath(project, 0, '', 'config', '.json');
-  const configSource = await getContentByMlsPath(configPath);
-  if (!configSource) return;
 
-  const projectId = String(project);
-  // source/definition as relative paths (strip leading _xxx_/)
-  const relPath = outputPath.replace(/^_\d+_\//, '');
-  const source = relPath;
-  const definition = relPath.replace(/\.ts$/, '.defs.ts');
+  return withLock(configPath, async () => {
+    const configSource = await getContentByMlsPath(configPath);
+    if (!configSource) return;
 
-  let updated = configSource;
-  updated = addNavigation(updated, projectId, moduleName, {
-    id: shortName,
-    label,
-    href,
-    description: label,
+    const projectId = String(project);
+    const relPath = outputPath.replace(/^_\d+_\//, '');
+
+    let updated = configSource;
+    updated = addNavigation(updated, projectId, moduleName, {
+      id: shortName,
+      label,
+      href,
+      description: label,
+    });
+    updated = addCollabPage(updated, projectId, moduleName, {
+      pageId: shortName,
+      route: href,
+      source: relPath,
+      definition: relPath.replace(/\.ts$/, '.defs.ts'),
+      componentTag: tag,
+    });
+
+    if (updated === configSource) return;
+    await saveGeneratedJson(project, 0, '', 'config', updated);
   });
-  updated = addCollabPage(updated, projectId, moduleName, {
-    pageId: shortName,
-    route: href,
-    source,
-    definition,
-    componentTag: tag,
-  });
-
-  if (updated === configSource) return;
-  await saveGeneratedJson(project, 0, '', 'config', updated);
 }
 
 // ─── Layer1 (persistence) registration ───────────────────────────────────────
 
-export async function registerLayer1(
+export function registerLayer1(
   project: number,
   moduleName: string,
   generatedSource: string,
   outputPath: string,
 ): Promise<void> {
   const varName = extractTableDefVarName(generatedSource);
-  if (!varName) return;
+  if (!varName) return Promise.resolve();
 
   const importPath = '/' + outputPath.replace(/\.ts$/, '.js');
   const persistencePath = toMlsPath(project, 1, `${moduleName}/layer_1_external`, 'persistence', '.ts');
-  const persistenceSource = await getContentByMlsPath(persistencePath);
-  if (!persistenceSource) return;
 
-  const updated = addTableDef(persistenceSource, varName, importPath);
-  if (updated === persistenceSource) return;
+  return withLock(persistencePath, async () => {
+    const persistenceSource = await getContentByMlsPath(persistencePath);
+    if (!persistenceSource) return;
 
-  const p = parseMlsPath(persistencePath);
-  if (p) await saveGeneratedTs(p.project, p.level, p.folder, p.shortName, updated);
+    const updated = addTableDef(persistenceSource, varName, importPath);
+    if (updated === persistenceSource) return;
+
+    const p = parseMlsPath(persistencePath);
+    if (p) await saveGeneratedTs(p.project, p.level, p.folder, p.shortName, updated);
+  });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
