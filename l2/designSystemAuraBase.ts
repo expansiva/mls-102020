@@ -68,7 +68,7 @@ export const dsAxes = {
     numberInput:    { label: 'Number input',   section: 'input', values: ['input', 'stepper', 'slider'],              default: 'input', groups: ['groupEnterNumber'] },
     dateInput:      { label: 'Date input',     section: 'input', values: ['calendar-popover', 'inline-calendar', 'compact', 'shortcuts', 'masked'], default: 'calendar-popover', groups: ['groupEnterDate', 'groupEnterDatetime'] },
     timeInput:      { label: 'Time input',     section: 'input', values: ['clock', 'scroll-picker', 'duration'],      default: 'clock', groups: ['groupEnterTime'] },
-    intervalInput:  { label: 'Interval input', section: 'input', values: ['dual-calendar', 'drag', 'presets', 'timeline', 'slider'], default: 'dual-calendar', groups: ['groupEnterDateInterval', 'groupEnterDatetimeInterval', 'groupEnterTimeInterval'] },
+    intervalInput:  { label: 'Interval input', section: 'input', values: ['dual-calendar', 'drag', 'presets', 'timeline', 'slider', 'fields', 'duration'], default: 'dual-calendar', groups: ['groupEnterDateInterval', 'groupEnterDatetimeInterval', 'groupEnterTimeInterval'] },
 
     // ── seleção ──
     selectOne:      { label: 'Select one',  section: 'selection', values: ['dropdown', 'radio', 'segmented', 'cards', 'listbox', 'slider', 'dial'], default: 'dropdown', essential: true, groups: ['groupSelectOne'] },
@@ -81,7 +81,7 @@ export const dsAxes = {
     steps:          { label: 'Steps',              section: 'navigation', values: ['horizontal', 'vertical'], default: 'horizontal', groups: ['groupNavigateSteps'] },
 
     // ── feedback / status ──
-    feedback:       { label: 'User feedback', section: 'feedback', values: ['toast', 'banner', 'inline'], default: 'inline', essential: true, groups: ['groupNotifyUser'] },
+    feedback:       { label: 'User feedback', section: 'feedback', values: ['toast', 'banner', 'inline', 'modal'], default: 'inline', essential: true, groups: ['groupNotifyUser'] },
     progress:       { label: 'Progress',      section: 'feedback', values: ['linear', 'circular', 'segmented', 'spinner'], default: 'linear', groups: ['groupShowProgress'] },
 
     // ── ação / rating / expand / search ──
@@ -94,8 +94,8 @@ export const dsAxes = {
     // ── visualização ──
     recordsView:    { label: 'Records view', section: 'visualization', values: ['table', 'grid', 'list', 'kanban', 'calendar', 'timeline'], default: 'table', essential: true, groups: ['groupViewData', 'groupViewTable'] },
     cardLayout:     { label: 'Card layout',  section: 'visualization', values: ['horizontal', 'vertical', 'media', 'profile'], default: 'vertical', groups: ['groupViewCard'] },
-    metric:         { label: 'Metric',       section: 'visualization', values: ['big-number', 'gauge'], default: 'big-number', groups: ['groupViewMetric'] },
-    hierarchy:      { label: 'Hierarchy',    section: 'visualization', values: ['tree', 'orgchart'], default: 'tree', groups: ['groupViewHierarchy'] },
+    metric:         { label: 'Metric',       section: 'visualization', values: ['big-number', 'gauge', 'sparkline'], default: 'big-number', groups: ['groupViewMetric'] },
+    hierarchy:      { label: 'Hierarchy',    section: 'visualization', values: ['tree', 'orgchart', 'mindmap'], default: 'tree', groups: ['groupViewHierarchy'] },
 } as const satisfies Record<string, IDsAxisDef>;
 
 // ─── Derived types ───────────────────────────────────────────────────────────
