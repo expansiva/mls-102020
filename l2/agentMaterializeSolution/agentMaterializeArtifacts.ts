@@ -469,6 +469,28 @@ export function extractJsonArrayField(content: string, fieldName: string): strin
   return [...vals];
 }
 
+export async function saveGeneratedJson(
+  project: number,
+  level: number,
+  folder: string,
+  shortName: string,
+  content: string,
+): Promise<boolean> {
+  try {
+    const fileInfo = { project, level, folder, shortName, extension: '.json' };
+    const key = mls.stor.getKeyToFile(fileInfo);
+    let file = (mls.stor.files as Record<string, any>)[key];
+    if (!file) {
+      file = await createStorFile({ ...fileInfo, source: content }, false, false, false);
+    }
+    await mls.stor.localStor.setContent(file, { contentType: 'string', content });
+    return true;
+  } catch (err) {
+    console.warn('[agentMaterializeArtifacts] saveGeneratedJson failed', err);
+    return false;
+  }
+}
+
 export async function saveGeneratedHtml(
   project: number,
   level: number,
@@ -489,6 +511,62 @@ export async function saveGeneratedHtml(
     console.warn('[agentMaterializeArtifacts] saveGeneratedHtml failed', err);
     return false;
   }
+}
+
+/**
+ * Returns the first-level import paths from compilerResults.imports for a .ts file,
+ * filtered to imports belonging to the same project.
+ */
+export function getFileImports(
+  project: number,
+  level: number,
+  folder: string,
+  shortName: string,
+): string[] {
+  try {
+    const key = mls.editor.getKeyModel(project, shortName, folder, level) + '.ts';
+    const imports: string[] = mls.editor.models[key]?.ts?.compilerResults?.imports ?? [];
+    return imports.filter((imp) => {
+      const parsed = parseMlsPath(imp);
+      return parsed !== null && parsed.project === project;
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Returns the .d.ts declaration for a .ts file.
+ * Tries prodDTS from the editor model (compiling on demand if needed).
+ * Falls back to raw .ts content if no model is available or compile fails.
+ */
+export async function getDtsForFile(
+  project: number,
+  level: number,
+  folder: string,
+  shortName: string,
+): Promise<string> {
+  try {
+    const key = mls.editor.getKeyModel(project, shortName, folder, level) + '.ts';
+    let modelTS = mls.editor.models[key]?.ts;
+
+    if (!modelTS) {
+      const iModels = await mls.editor.addModels(project, shortName, folder, level);
+      modelTS = iModels?.ts;
+    }
+
+    if (modelTS) {
+      if (!modelTS.compilerResults?.prodDTS) {
+        await mls.l2.typescript.compile(modelTS);
+      }
+      const dts = modelTS.compilerResults?.prodDTS;
+      if (dts) return dts;
+    }
+  } catch (err) {
+    console.warn('[agentMaterializeArtifacts] getDtsForFile compile failed, falling back', err);
+  }
+
+  return await getContentByMlsPath(toMlsPath(project, level, folder, shortName, '.ts')) ?? '';
 }
 
 // ─── Tool call payload extractor ─────────────────────────────────────────────

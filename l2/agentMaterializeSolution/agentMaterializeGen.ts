@@ -1,18 +1,24 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentMaterializeGen.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { collabImport } from '/_102027_/l2/collabImport.js';
 import { convertFileNameToTag } from '/_102027_/l2/utils.js';
 import {
   getContentByMlsPath,
-  parseDefinitionFromContent,
+  parsePipelineFromContent,
   parseMlsPath,
   saveGeneratedTs,
   saveGeneratedHtml,
   extractToolCallArgs,
-  loadModuleByBuild,
-  loadRulesForIds,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
+import {
+  buildGenContext,
+  resolveFileType,
+} from '/_102020_/l2/agentMaterializeSolution/contextMaterialize.js';
+import {
+  registerController,
+  registerLayer1,
+  registerPage,
+} from '/_102020_/l2/agentMaterializeSolution/registerMaterialize.js';
 import type { GenStepArgs } from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
 
 declare const mls: any;
@@ -66,45 +72,8 @@ async function beforePromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   if (!args) throw new Error('[agentMaterializeGen] missing args');
 
-  const { defPath, pipelineItem, skillPaths, visualStyle }: GenStepArgs = JSON.parse(args);
-
-  // Read .defs.ts and extract definition
-  const defsContent = await getContentByMlsPath(defPath);
-  if (!defsContent) throw new Error(`[agentMaterializeGen] .defs.ts not found: ${defPath}`);
-  const definition = parseDefinitionFromContent(defsContent);
-
-  // Load full rule definitions when rulesApplied is populated
-  let resolvedRules: Record<string, unknown>[] = [];
-  if (pipelineItem.rulesApplied?.length) {
-    const parsed = parseMlsPath(defPath);
-    if (parsed) {
-      const moduleName = parsed.folder.split('/')[0];
-      resolvedRules = await loadRulesForIds(parsed.project, moduleName, pipelineItem.rulesApplied);
-    }
-  }
-
-  // Load skill content — .ts/.md paths go to system prompt; project refs (_digits_) go to context
-  const skillSections: string[] = [];
-  const defContextSections: string[] = [];
-  for (const sp of skillPaths) {
-    const clean = sp.startsWith('/') ? sp.slice(1) : sp;
-    if (/^_\d+_$/.test(clean)) {
-      const content = await loadProjectDefinition(clean);
-      if (content) defContextSections.push(`### Project Definition (${clean})\n\`\`\`typescript\n${content}\n\`\`\``);
-    } else {
-      const content = await loadSkillContent(sp);
-      if (content) skillSections.push(`<!-- skill: ${sp} -->\n${content}`);
-    }
-  }
-
-  // Load dependsFiles as context
-  const depSections: string[] = [];
-  for (const dep of pipelineItem.dependsFiles) {
-    const content = await getContentByMlsPath(dep);
-    if (content) depSections.push(`### ${dep}\n\`\`\`typescript\n${content}\n\`\`\``);
-  }
-
-  const contextSections = [...defContextSections, ...depSections];
+  const { defPath }: GenStepArgs = JSON.parse(args);
+  const ctx = await buildGenContext(defPath);
 
   const intent: mls.msg.AgentIntentPromptReady = {
     type: 'prompt_ready',
@@ -114,8 +83,8 @@ async function beforePromptStep(
     taskId: context.task?.PK || '',
     hookSequential,
     parentStepId: parentStep.stepId,
-    systemPrompt: buildSystemPrompt(skillSections, pipelineItem.outputPath),
-    humanPrompt: buildHumanPrompt(definition, contextSections, pipelineItem.outputPath, resolvedRules, visualStyle),
+    systemPrompt: buildSystemPrompt(ctx.skillSections, ctx.pipelineItem.outputPath),
+    humanPrompt: buildHumanPrompt(ctx.definition, ctx.contextSections, ctx.pipelineItem.outputPath, ctx.resolvedRules, ctx.visualStyle),
     tools: [toolSchema as unknown as mls.msg.LLMTool],
     toolChoice: { type: 'function', function: { name: TOOL_NAME } },
   };
@@ -132,7 +101,17 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
-  const { pipelineItem, fileType }: GenStepArgs = JSON.parse(step.prompt || '{}');
+  const { defPath }: GenStepArgs = JSON.parse(step.prompt || '{}');
+
+  const defsContent = defPath ? await getContentByMlsPath(defPath) : null;
+  const pipeline = defsContent ? parsePipelineFromContent(defsContent) : null;
+  const pipelineItem = pipeline?.[0];
+
+  if (!pipelineItem) {
+    return [mkStatus(context, parentStep, step, hookSequential, 'failed', 'pipeline not found in defs')];
+  }
+
+  const fileType = resolveFileType(pipelineItem.type);
 
   const raw = step.interaction?.payload?.[0] as any;
   const out = extractToolCallArgs<ToolOutput>(raw, TOOL_NAME);
@@ -146,7 +125,6 @@ async function afterPromptStep(
     return [mkStatus(context, parentStep, step, hookSequential, 'failed', `invalid outputPath: ${pipelineItem.outputPath}`)];
   }
 
-  // Ensure fileReference header is present
   const header = `/// <mls fileReference="${pipelineItem.outputPath}" enhancement="_blank"/>`;
   const code = out.code.trimStart().startsWith('///')
     ? out.code
@@ -154,10 +132,17 @@ async function afterPromptStep(
 
   const ok = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, code);
 
-  // Pages also need a companion .html file with the web component tag
-  if (ok && fileType === 'page') {
-    const tag = convertFileNameToTag({ shortName: parsed.shortName, project: parsed.project, folder: parsed.folder });
-    await saveGeneratedHtml(parsed.project, parsed.level, parsed.folder, parsed.shortName, `<${tag}></${tag}>`);
+  if (ok) {
+    const moduleName = parsed.folder.split('/')[0];
+    if (fileType === 'layer1') {
+      await registerLayer1(parsed.project, moduleName, code, pipelineItem.outputPath);
+    } else if (fileType === 'layer2') {
+      await registerController(parsed.project, moduleName, code);
+    } else if (fileType === 'page') {
+      const tag = convertFileNameToTag({ shortName: parsed.shortName, project: parsed.project, folder: parsed.folder });
+      await saveGeneratedHtml(parsed.project, parsed.level, parsed.folder, parsed.shortName, `<${tag}></${tag}>`);
+      await registerPage(parsed.project, moduleName, parsed.shortName, pipelineItem.outputPath);
+    }
   }
 
   return [mkStatus(
@@ -166,40 +151,6 @@ async function afterPromptStep(
     ok ? undefined : 'saveGeneratedTs failed',
     ok ? 'input_output' : undefined,
   )];
-}
-
-// ─── Skill loader ─────────────────────────────────────────────────────────────
-
-/** Fetches the TypeScript content of a project definition reference (e.g. '_102034_'). */
-async function loadProjectDefinition(projectRef: string): Promise<string> {
-  const models = (mls as any).editor?.models;
-  if (!models?.[projectRef]) return '';
-  if (!models[projectRef].ts) return '';
-  return models[projectRef].ts.model?.getValue?.() ?? '';
-}
-
-async function loadSkillContent(skillPath: string): Promise<string> {
-  const clean = skillPath.startsWith('/') ? skillPath.slice(1) : skillPath;
-
-  if (clean.endsWith('.md')) {
-    return await getContentByMlsPath(clean) ?? '';
-  }
-
-  // .ts skill: try collabImport → read .skill export
-  const f = mls.stor.convertFileReferenceToFile(clean);
-  if (!f) return '';
-
-  let mod: any;
-  try {
-    mod = await collabImport(f);
-  } catch {
-    mod = await loadModuleByBuild(clean);
-  }
-
-  if (typeof mod?.skill === 'string') return mod.skill;
-
-  // Last resort: raw file content
-  return await getContentByMlsPath(clean) ?? '';
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -253,10 +204,10 @@ ${skills}`;
 
 function buildHumanPrompt(
   definition: string,
-  depSections: string[],
+  contextSections: string[],
   outputPath: string,
   resolvedRules?: Record<string, unknown>[],
-  visualStyle?: Record<string, unknown>,
+  visualStyle?: object,
 ): string {
   const lines: string[] = ['## Definition', '', definition];
 
@@ -274,9 +225,9 @@ function buildHumanPrompt(
     lines.push('```');
   }
 
-  if (depSections.length) {
+  if (contextSections.length) {
     lines.push('', '## Context Files', '');
-    lines.push(...depSections);
+    lines.push(...contextSections);
   }
 
   lines.push('', `Generate the file \`${outputPath}\` and call ${TOOL_NAME} with the complete code.`);

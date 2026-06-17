@@ -7,6 +7,8 @@ import {
   scanL2PageDefsFiles,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 
+import { buildModuleTs, buildIndexTs, buildRouterTs, buildPersistenceTs, buildConfig } from '/_102020_/l2/agentMaterializeSolution/templateMaterialize.js';
+
 import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
 
 export function createAgent(): IAgentAsync {
@@ -208,108 +210,8 @@ async function ensureSingletons(project: number, moduleName: string): Promise<vo
   await ensureFile(`_${project}_/l2/${moduleName}/index.ts`,                           buildIndexTs(project, moduleName));
   await ensureFile(`_${project}_/l1/${moduleName}/layer_2_controllers/router.ts`,      buildRouterTs(project, moduleName));
   await ensureFile(`_${project}_/l1/${moduleName}/layer_1_external/persistence.ts`,    buildPersistenceTs(project, moduleName));
+  await ensureFile(`_${project}_/l0/config.json`,         buildConfig(project, moduleName));
 }
-
-// ─── templates ────────────────────────────────────────────────────────────────
-
-function buildModuleTs(project: number, moduleName: string): string {
-  return `/// <mls fileReference="_${project}_/l2/${moduleName}/module.ts" enhancement="_blank" />
-import type { AuraModuleFrontendDefinition, IPaths, ISkill, IGenomeConfig } from '/_102029_/l2/contracts/bootstrap.js';
-
-export const moduleGenome: Record<string, IGenomeConfig> = {
-  'web/desktop/page11': {
-    designSystem: 'default',
-    device: 'desktop',
-    layout: 'standard',
-  }
-} as const;
-
-export const shared: IPaths = {
-  web: {
-    sharedPath: '/_${project}_/l2/${moduleName}/web/shared',
-    sharedSkill: '/_102020_/l2/agentMaterializeSolution/skills/genPageShared.ts'
-  }
-}
-
-export const skills: ISkill = {
-  definition:{
-    skillPath:  ['_102034_'],
-  },
-  architecture: {
-    skillPath:  ['_102021_/l2/skills/architecture.md'],
-  },
-  layer1: {
-    skillPath:  ['_102021_/l2/skills/layer_1.md'],
-  },
-  layer2: {
-    skillPath:  ['_102021_/l2/skills/layer_2.md'],
-  },
-  layer3: {
-    skillPath:  ['_102021_/l2/skills/layer_3.md'],
-  },
-  layer4: {
-    skillPath:  ['_102021_/l2/skills/layer_4.md'],
-  },
-  contract: {
-    skillPath: ["_102020_/l2/agentMaterializeSolution/skills/genContract.ts"],
-  }
-}
-
-export const moduleStates = {} as const;
-
-export const moduleShellPreferences = {
-  layout: {
-    asideMode: { desktop: 'inline', mobile: 'fullscreen' },
-  },
-} as const;
-
-export const moduleFrontendDefinition: AuraModuleFrontendDefinition = {
-  pageTitle: '${moduleName}',
-  device: 'desktop',
-  navigation: [],
-  routes: [],
-};
-`;
-}
-
-function buildIndexTs(project: number, moduleName: string): string {
-  return `/// <mls fileReference="_${project}_/l2/${moduleName}/index.ts" enhancement="_blank" />
-import { bootstrapCollabApp } from '/_102033_/l2/core/bootstrap.js';
-
-void bootstrapCollabApp({
-  projectId: '${project}',
-  appId: '${moduleName}',
-  title: 'Collab Test · ${moduleName}',
-  shellMode: 'spa',
-  navigation: [
-    { label: 'Monitor', href: '/monitor' },
-  ],
-  pages: [],
-});
-`;
-}
-
-function buildRouterTs(project: number, moduleName: string): string {
-  const fnName = `create${moduleName.charAt(0).toUpperCase()}${moduleName.slice(1)}Router`;
-  return `/// <mls fileReference="_${project}_/l1/${moduleName}/layer_2_controllers/router.ts" enhancement="_blank" />
-import type { BffHandler } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
-
-export function ${fnName}(): Map<string, BffHandler> {
-  return new Map<string, BffHandler>([
-  ]);
-}
-`;
-}
-
-function buildPersistenceTs(project: number, moduleName: string): string {
-  return `/// <mls fileReference="_${project}_/l1/${moduleName}/layer_1_external/persistence.ts" enhancement="_blank" />
-import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
-
-export const tableDefinitions: TableDefinition[] = [
-];
-`;
-}
-
 
 // ─── Prompts ──────────────────────────────────────────────────────────────────
 

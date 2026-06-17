@@ -1,13 +1,11 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentMaterializeL1.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { collabImport } from '/_102027_/l2/collabImport.js';
 import {
   readProjectJson,
   scanL1DefsWithPipeline,
   getFileModified,
   toMlsPath,
-  loadModuleByBuild,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import type {
   GenStepArgs,
@@ -108,7 +106,6 @@ async function afterPromptStep(
 
     for (const mod of projectJson.modules) {
       const { moduleName } = mod;
-      const moduleExports = await loadModuleExports(project, moduleName);
       const candidates = await findCandidates(project, moduleName);
       const byType = groupByType(candidates, moduleName);
 
@@ -121,8 +118,8 @@ async function afterPromptStep(
       for (const c of byType.layer1) {
         const planId = makePlanId(moduleName, c.shortName, 'layer1');
         const defPath = toMlsPath(project, 1, c.folder, c.shortName, '.defs.ts');
-        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('layer1', moduleExports), fileType: 'layer1' };
-        intents.push(mkStep(context, step, planId, `Gen layer1: ${moduleName}/${c.shortName}`, args, [], 'waiting_human_input'));
+        const args: GenStepArgs = { planId, defPath };
+        intents.push(mkStep(context, step, planId, `Gen layer1: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, [], 'waiting_human_input'));
       }
 
       // Group 2: layer_4_entities — wait for ALL layer1
@@ -130,9 +127,9 @@ async function afterPromptStep(
       for (const c of byType.layer4) {
         const planId = makePlanId(moduleName, c.shortName, 'layer4');
         const defPath = toMlsPath(project, 1, c.folder, c.shortName, '.defs.ts');
-        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('layer4', moduleExports), fileType: 'layer4' };
+        const args: GenStepArgs = { planId, defPath };
         const status = dep4.length > 0 ? 'waiting_dependency' : 'waiting_human_input';
-        intents.push(mkStep(context, step, planId, `Gen layer4: ${moduleName}/${c.shortName}`, args, dep4, status));
+        intents.push(mkStep(context, step, planId, `Gen layer4: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, dep4, status));
       }
 
       // Group 3: layer_3_usecases — wait for ALL layer4 (fallback layer1)
@@ -140,9 +137,9 @@ async function afterPromptStep(
       for (const c of byType.layer3) {
         const planId = makePlanId(moduleName, c.shortName, 'layer3');
         const defPath = toMlsPath(project, 1, c.folder, c.shortName, '.defs.ts');
-        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('layer3', moduleExports), fileType: 'layer3' };
+        const args: GenStepArgs = { planId, defPath };
         const status = dep3.length > 0 ? 'waiting_dependency' : 'waiting_human_input';
-        intents.push(mkStep(context, step, planId, `Gen layer3: ${moduleName}/${c.shortName}`, args, dep3, status));
+        intents.push(mkStep(context, step, planId, `Gen layer3: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, dep3, status));
       }
 
       // Group 4: layer_2_controllers — wait for ALL layer3 (fallback layer4)
@@ -150,9 +147,9 @@ async function afterPromptStep(
       for (const c of byType.layer2) {
         const planId = makePlanId(moduleName, c.shortName, 'layer2');
         const defPath = toMlsPath(project, 1, c.folder, c.shortName, '.defs.ts');
-        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('layer2', moduleExports), fileType: 'layer2' };
+        const args: GenStepArgs = { planId, defPath };
         const status = dep2.length > 0 ? 'waiting_dependency' : 'waiting_human_input';
-        intents.push(mkStep(context, step, planId, `Gen layer2: ${moduleName}/${c.shortName}`, args, dep2, status));
+        intents.push(mkStep(context, step, planId, `Gen layer2: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, dep2, status));
       }
     }
 
@@ -199,34 +196,6 @@ function detectFileType(folder: string, moduleName: string): L1FileType | null {
   return null;
 }
 
-// ─── Skill resolution (from module.ts ISkill export) ─────────────────────────
-
-// File types that require the project-level definition as additional context
-const NEEDS_DEFINITION: L1FileType[] = ['layer1', 'layer4'];
-
-function resolveSkillPaths(fileType: L1FileType, moduleExports: any): string[] {
-  if (!moduleExports) return [];
-  const paths: string[] = [...(moduleExports.skills?.[fileType]?.skillPath ?? [])];
-  if (NEEDS_DEFINITION.includes(fileType)) {
-    const defPaths: string[] = moduleExports.skills?.definition?.skillPath ?? [];
-    paths.push(...defPaths);
-  }
-  return paths;
-}
-
-// ─── Module loader (collabImport → esbuild fallback) ─────────────────────────
-
-async function loadModuleExports(project: number, moduleName: string): Promise<any> {
-  const path = toMlsPath(project, 2, moduleName, 'module', '.ts');
-  const f = mls.stor.convertFileReferenceToFile(path);
-  if (!f) return null;
-  try {
-    return await collabImport(f);
-  } catch {
-    return await loadModuleByBuild(path);
-  }
-}
-
 // ─── ID helpers ───────────────────────────────────────────────────────────────
 
 function makePlanId(moduleName: string, shortName: string, ft: L1FileType): string {
@@ -244,6 +213,7 @@ function mkStep(
   rootStep: mls.msg.AIAgentStep,
   planId: string,
   title: string,
+  agentName: string,
   args: GenStepArgs,
   dependsOn: string[],
   status: mls.msg.AIStepStatus = 'waiting_dependency',
@@ -261,7 +231,7 @@ function mkStep(
       stepTitle: title,
       status,
       nextSteps: [],
-      agentName: args.pipelineItem.agent,
+      agentName,
       prompt: JSON.stringify(args),
       rags: [],
       planning: { planId, dependsOn, executionMode: 'parallel_static', executionHost: 'client' },

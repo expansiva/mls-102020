@@ -42,11 +42,7 @@ export type L2FileType = 'contract' | 'shared' | 'page';
 
 export interface GenStepArgs {
   planId: string;
-  defPath: string;       // MLS path of the .defs.ts
-  pipelineItem: PipelineItem;
-  skillPaths: string[];  // already resolved
-  fileType: L1FileType | L2FileType;
-  visualStyle?: VisualStyle; // only populated for page fileType
+  defPath: string; // MLS path of the .defs.ts — Gen resolves everything else from here
 }
 
 export interface ParsedMlsPath {

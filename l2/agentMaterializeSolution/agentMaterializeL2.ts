@@ -1,19 +1,16 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentMaterializeL2.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { collabImport } from '/_102027_/l2/collabImport.js';
 import {
   readProjectJson,
   scanL2DefsWithPipeline,
   getFileModified,
   toMlsPath,
-  loadModuleByBuild,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import type {
   GenStepArgs,
   L2FileType,
   PipelineItem,
-  ProjectJson,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
 
 declare const mls: any;
@@ -108,7 +105,6 @@ async function afterPromptStep(
 
     for (const mod of projectJson.modules) {
       const { moduleName } = mod;
-      const moduleExports = await loadModuleExports(project, moduleName);
       const candidates = await findCandidates(project, moduleName);
       const byType = groupByType(candidates, moduleName);
 
@@ -116,30 +112,29 @@ async function afterPromptStep(
       const contractPlanIds = byType.contract.map(c => makePlanId(moduleName, c.shortName, 'contract'));
       const sharedPlanIds   = byType.shared.map(c => makePlanId(moduleName, c.shortName, 'shared'));
 
-      // Group 1: contracts — start immediately (waiting_human_input triggers beforePromptStep right away)
+      // Group 1: contracts — start immediately
       for (const c of byType.contract) {
         const planId = makePlanId(moduleName, c.shortName, 'contract');
         const defPath = toMlsPath(project, 2, c.folder, c.shortName, '.defs.ts');
-        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('contract', moduleExports, projectJson), fileType: 'contract' };
-        intents.push(mkStep(context, step, planId, `Gen contract: ${moduleName}/${c.shortName}`, args, [], 'waiting_human_input'));
+        const args: GenStepArgs = { planId, defPath };
+        intents.push(mkStep(context, step, planId, `Gen contract: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, [], 'waiting_human_input'));
       }
 
       // Group 2: shared — wait for ALL contracts to complete
       for (const c of byType.shared) {
         const planId = makePlanId(moduleName, c.shortName, 'shared');
         const defPath = toMlsPath(project, 2, c.folder, c.shortName, '.defs.ts');
-        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('shared', moduleExports, projectJson), fileType: 'shared' };
-        intents.push(mkStep(context, step, planId, `Gen shared: ${moduleName}/${c.shortName}`, args, contractPlanIds));
+        const args: GenStepArgs = { planId, defPath };
+        intents.push(mkStep(context, step, planId, `Gen shared: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, contractPlanIds));
       }
 
       // Group 3: pages — wait for ALL shared (fallback to ALL contracts if no shared)
       const pageDep = sharedPlanIds.length > 0 ? sharedPlanIds : contractPlanIds;
-      const visualStyle = mod.module?.visualStyle;
       for (const c of byType.page) {
         const planId = makePlanId(moduleName, c.shortName, 'page');
         const defPath = toMlsPath(project, 2, c.folder, c.shortName, '.defs.ts');
-        const args: GenStepArgs = { planId, defPath, pipelineItem: c.pipeline[0], skillPaths: resolveSkillPaths('page', moduleExports, projectJson), fileType: 'page', visualStyle };
-        intents.push(mkStep(context, step, planId, `Gen page: ${moduleName}/${c.shortName}`, args, pageDep));
+        const args: GenStepArgs = { planId, defPath };
+        intents.push(mkStep(context, step, planId, `Gen page: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, pageDep));
       }
     }
 
@@ -185,51 +180,6 @@ function detectFileType(folder: string, moduleName: string): L2FileType | null {
   return null;
 }
 
-// ─── Skill resolution (via collabImport module exports) ───────────────────────
-
-function resolveSkillPaths(
-  fileType: L2FileType,
-  moduleExports: any,
-  projectJson: ProjectJson,
-): string[] {
-  if (!moduleExports) return [];
-  if (fileType === 'contract') {
-    return moduleExports.skills?.contract?.skillPath ?? [];
-  }
-  if (fileType === 'shared') {
-    const p = moduleExports.shared?.web?.sharedSkill as string | undefined;
-    return p ? [p] : [];
-  }
-  if (fileType === 'page') {
-    const genome = moduleExports.moduleGenome?.['web/desktop/page11'];
-    if (!genome) return [];
-    const paths: string[] = [];
-    if (genome.layout) {
-      const entry = Object.values(projectJson.layouts ?? {}).find(l => l.name === genome.layout);
-      if (entry?.skill) paths.push(entry.skill);
-    }
-    if (genome.designSystem) {
-      const entry = Object.values(projectJson.designSystems ?? {}).find(d => d.name === genome.designSystem);
-      if (entry?.skill) paths.push(entry.skill);
-    }
-    return paths;
-  }
-  return [];
-}
-
-// ─── Module loader (collabImport → esbuild fallback) ─────────────────────────
-
-async function loadModuleExports(project: number, moduleName: string): Promise<any> {
-  const path = toMlsPath(project, 2, moduleName, 'module', '.ts');
-  const f = mls.stor.convertFileReferenceToFile(path);
-  if (!f) return null;
-  try {
-    return await collabImport(f);
-  } catch {
-    return await loadModuleByBuild(path);
-  }
-}
-
 // ─── ID helpers ───────────────────────────────────────────────────────────────
 
 function makePlanId(moduleName: string, shortName: string, ft: L2FileType): string {
@@ -247,6 +197,7 @@ function mkStep(
   rootStep: mls.msg.AIAgentStep,
   planId: string,
   title: string,
+  agentName: string,
   args: GenStepArgs,
   dependsOn: string[],
   status: mls.msg.AIStepStatus = 'waiting_dependency',
@@ -264,7 +215,7 @@ function mkStep(
       stepTitle: title,
       status,
       nextSteps: [],
-      agentName: args.pipelineItem.agent,
+      agentName,
       prompt: JSON.stringify(args),
       rags: [],
       planning: { planId, dependsOn, executionMode: 'parallel_static', executionHost: 'client' },
