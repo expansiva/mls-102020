@@ -11,7 +11,6 @@ import {
   loadModuleByBuild,
   loadRulesForIds,
   getDtsForFile,
-  getFileImports,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import type {
   PipelineItem,
@@ -33,6 +32,21 @@ export interface GenContext {
   contextSections: string[];  // def-context + dep blocks for the human prompt
   resolvedRules: Record<string, unknown>[];
   visualStyle?: VisualStyle;
+}
+
+// ─── Import extractor ────────────────────────────────────────────────────────
+
+function extractDtsImportPaths(dts: string, project: number): string[] {
+  const found: string[] = [];
+  const re = /from\s+'([^']+)'/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(dts)) !== null) {
+    let imp = m[1];
+    if (imp.startsWith('/')) imp = imp.slice(1);
+    const p = parseMlsPath(imp);
+    if (p && p.project === project) found.push(imp);
+  }
+  return [...new Set(found)];
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
@@ -91,27 +105,27 @@ ${content}`);
   const seen = new Set<string>();
   const depSections: string[] = [];
 
-  async function addDep(path: string): Promise<void> {
+  async function addDep(path: string, followImports = false): Promise<void> {
     if (seen.has(path)) return;
     seen.add(path);
     const p = parseMlsPath(path);
     const content = p
       ? await getDtsForFile(p.project, p.level, p.folder, p.shortName)
       : await getContentByMlsPath(path) ?? '';
-    if (content) depSections.push(`### ${path}
+    if (!content) return;
+    depSections.push(`### ${path}
 \`\`\`typescript
 ${content}
 \`\`\``);
-  }
-
-  for (const dep of pipelineItem.dependsFiles) {
-    await addDep(dep);
-    const p = parseMlsPath(dep);
-    if (p) {
-      for (const imp of getFileImports(p.project, p.level, p.folder, p.shortName)) {
+    if (followImports && p) {
+      for (const imp of extractDtsImportPaths(content, p.project)) {
         await addDep(imp);
       }
     }
+  }
+
+  for (const dep of pipelineItem.dependsFiles) {
+    await addDep(dep, true);
   }
 
   return {
