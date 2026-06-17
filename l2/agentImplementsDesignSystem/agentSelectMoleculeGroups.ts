@@ -1,24 +1,24 @@
-/// <mls fileReference="_102020_/l2/agents/agentImplementsDesignSystem/agentSelectMoleculeGroups.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
+/// <mls fileReference="_102020_/l2/agentImplementsDesignSystem/agentSelectMoleculeGroups.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
 
 // Fase B — Agent1: per-organism molecule-GROUP selection (LLM).
 // Runs after creative-mode generation, so the page is materialized: reads the
-// rendered .ts (primary — the actual HTML) plus the .defs.ts organism structure,
-// and decides which molecule groups each organism needs.
+// rendered .ts (primary — the actual HTML) plus the .defs.ts `definition` text
+// (raw, not parsed) for the organism structure, and decides which molecule groups
+// each organism needs.
 // Variant choice is NOT done here — that is deterministic (matchVariant, Fase A/C).
 //
 // One page per invocation (input `{ path }`). Fan-out across pages is the
-// orchestrator's job (Fase E / integration), which lists the page defs and invokes
-// this agent per page in parallel — consistent with the stateless IAgentAsync model.
+// orchestrator's job (Fase E / integration), consistent with the stateless model.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { buildGroupList } from '/_102020_/l2/dsMatch/groupCatalog.js';
-import { loadPageSource, loadPageDefs, extractOrganisms, buildAgent1HumanPrompt, validateAgent1Output, type Agent1Output } from '/_102020_/l2/dsMatch/agent1.js';
+import { loadPageSource, loadPageDefinitionText, buildAgent1HumanPrompt, validateAgent1Output, type Agent1Output } from '/_102020_/l2/dsMatch/agent1.js';
 
 export function createAgent(): IAgentAsync {
   return {
     agentName: "agentSelectMoleculeGroups",
     agentProject: 102020,
-    agentFolder: "agents/agentImplementsDesignSystem",
+    agentFolder: "agentImplementsDesignSystem",
     agentDescription: "Selects which molecule groups each organism of a page needs (Fase B / Agent1)",
     visibility: "public",
     beforePromptImplicit,
@@ -123,12 +123,11 @@ async function afterPromptStep(
 }
 
 async function buildPrompt(path: string): Promise<string> {
-  // Primary input: the rendered .ts (the actual UI). Secondary: organisms from .defs.ts.
+  // Primary input: the rendered .ts (the actual UI). Secondary: raw defs `definition` text.
   const pageSource = await loadPageSource(path);
-  const defs = await loadPageDefs(path);
-  const organisms = extractOrganisms(defs);
+  const definitionText = await loadPageDefinitionText(path);
   const groups = await buildGroupList();
-  return buildAgent1HumanPrompt(path, pageSource, organisms, groups);
+  return buildAgent1HumanPrompt(path, pageSource, definitionText, groups);
 }
 
 function countDropped(raw: any, validated: Agent1Output): number {
@@ -148,17 +147,18 @@ fences, no text before or after the JSON. Start your response with { and end wit
 
 ## Task
 You are given the page's RENDERED source (a Lit component with HTML + Tailwind that
-the creative-mode generator produced) and its organism structure. For each organism,
-decide which molecule GROUPS are needed to replace the hand-built UI elements that
-belong to it. Base the decision on the ACTUAL elements in the rendered HTML (inputs,
-selects, tables, buttons, etc.), mapped to the organism they sit in.
+the creative-mode generator produced) and the page definition (sections, organisms,
+fields). For each organism, decide which molecule GROUPS are needed to replace the
+hand-built UI elements that belong to it. Base the decision on the ACTUAL elements in
+the rendered HTML (inputs, selects, tables, buttons, etc.), mapped to the organism
+they sit in. Use the organismName values from the page definition.
 Map a group only when its purpose DIRECTLY and OBVIOUSLY matches a real UI element.
 
 ## Rules
 - Before adding a group, ask: "Does this organism clearly need this kind of UI?" If
   it requires any rationalization or indirect reasoning, the answer is NO — omit it.
-- An organism may need several groups (e.g. a form with text + number + date inputs),
-  one group, or none. A shorter accurate answer beats a longer wrong one.
+- An organism may need several groups, one group, or none. A shorter accurate answer
+  beats a longer wrong one.
 - Choose group names EXACTLY as listed under "Molecule groups" (camelCase). Never
   invent a group. If no listed group fits a need, omit it.
 - Do NOT pick a group as a generic fallback. Omission is correct when nothing fits.
