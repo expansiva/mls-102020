@@ -4,14 +4,16 @@
 // `module.ts` moduleGenome. Module-level + ONCE + deterministic (no LLM). Triggered
 // by the DerivationTracker when all pages finished (Fase 2 / agentGenDefs).
 //
-// NOTE: the page folder uses indices (page{layout}{ds}); the genome VALUE uses NAMES
+// The page folder uses indices (page{layout}{ds}); the genome VALUE uses NAMES
 // (designSystems[ds].name, layouts[layout].name) read from project.json.
 //
-// The module.ts file does not exist in the repo yet, so the in-place edit path is
-// best-effort (uses defsAST.updateVariableJson). buildGenomeEntry is pure/tested.
+// We do NOT use defsAST here: the moduleGenome literal is loose TS (single quotes,
+// unquoted keys, `: Record<...>`, `as const`) that defeats JSON-based helpers — that
+// caused a DUPLICATED `export const moduleGenome` block. Instead we MERGE the entry
+// into the existing object literal via text surgery (upsertModuleGenome), preserving
+// the existing entries, the type annotation and `as const`.
 
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { getVariableJson, updateVariableJson } from '/_102027_/l2/defsAST.js';
 import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
 import { DEFAULT_DEVICE } from '/_102020_/l2/dsMatch/derivePaths.js';
 
@@ -35,8 +37,37 @@ export function buildGenomeEntry(
 }
 
 /**
+ * Pure: upsert one entry into an existing `export const moduleGenome = { ... }`
+ * object literal, preserving everything else. Returns null if no moduleGenome
+ * declaration is found (caller decides to create one).
+ */
+export function upsertModuleGenome(src: string, key: string, value: object): string | null {
+    const loc = locateGenomeObject(src);
+    if (!loc) return null;
+
+    const before = src.slice(0, loc.open + 1); // ends with '{'
+    const inner = src.slice(loc.open + 1, loc.close);
+    const after = src.slice(loc.close);        // starts with '}'
+
+    const valueText = indentBlock(JSON.stringify(value, null, 2), '  ');
+
+    if (keyExists(inner, key)) {
+        const replaced = replaceEntryValue(inner, key, valueText);
+        if (replaced == null) return null;
+        return before + replaced + after;
+    }
+
+    const entry = `  ${JSON.stringify(key)}: ${valueText}`;
+    const innerTrimEnd = inner.replace(/\s+$/, '');
+    const sep = innerTrimEnd.length === 0 ? '' : (innerTrimEnd.endsWith(',') ? '' : ',');
+    const newInner = `${innerTrimEnd}${sep}\n${entry}\n`;
+    return before + newInner + after;
+}
+
+/**
  * Read/ensure the moduleGenome entry for page{layout}{ds} in {module}/module.ts.
- * Idempotent. Creates module.ts from a template if it does not exist yet.
+ * Idempotent. Creates module.ts from a template if it does not exist; appends a
+ * moduleGenome export if the file exists without one.
  */
 export async function registerPageGenome(
     project: number,
@@ -52,17 +83,15 @@ export async function registerPageGenome(
 
     const entry = buildGenomeEntry(layout, ds, dsName, layoutName, device);
     const moduleRef = `_${project}_/l2/${module}/module.ts`;
-
     const existingSrc = await readSource(moduleRef);
 
     let newSrc: string;
     if (!existingSrc) {
-        // No module.ts yet → create from a minimal template carrying this entry.
         newSrc = moduleTemplate(moduleRef, { [entry.key]: entry.value });
     } else {
-        const genome = safeGetGenome(existingSrc);
-        genome[entry.key] = entry.value; // idempotent
-        newSrc = updateVariableJson(existingSrc, 'moduleGenome', genome);
+        const merged = upsertModuleGenome(existingSrc, entry.key, entry.value);
+        // File exists but has no moduleGenome → append a declaration (don't clobber).
+        newSrc = merged ?? `${existingSrc.replace(/\s*$/, '')}\n\nexport const moduleGenome: Record<string, IGenomeConfig> = ${JSON.stringify({ [entry.key]: entry.value }, null, 2)} as const;\n`;
     }
 
     await saveFile(moduleRef, newSrc);
@@ -70,15 +99,59 @@ export async function registerPageGenome(
     return entry;
 }
 
-// ─── helpers ──────────────────────────────────────────────────────────────
+// ─── pure text helpers ──────────────────────────────────────────────────────
 
-function safeGetGenome(src: string): Record<string, any> {
-    try {
-        const g = getVariableJson<Record<string, any>>(src, 'moduleGenome');
-        return (g && typeof g === 'object') ? g : {};
-    } catch {
-        return {};
+function locateGenomeObject(src: string): { open: number; close: number } | null {
+    const m = src.match(/export\s+const\s+moduleGenome\b[^=]*=\s*/);
+    if (!m || m.index == null) return null;
+    const open = src.indexOf('{', m.index + m[0].length);
+    if (open < 0) return null;
+    const close = findMatchingBrace(src, open);
+    if (close < 0) return null;
+    return { open, close };
+}
+
+/** Index of the '}' matching the '{' at `open`, skipping string literals. */
+function findMatchingBrace(s: string, open: number): number {
+    let depth = 0;
+    for (let i = open; i < s.length; i++) {
+        const c = s[i];
+        if (c === '"' || c === "'" || c === '`') { i = skipString(s, i, c); continue; }
+        if (c === '{') depth++;
+        else if (c === '}') { depth--; if (depth === 0) return i; }
     }
+    return -1;
+}
+
+function skipString(s: string, i: number, quote: string): number {
+    for (let j = i + 1; j < s.length; j++) {
+        if (s[j] === '\\') { j++; continue; }
+        if (s[j] === quote) return j;
+    }
+    return s.length;
+}
+
+function keyExists(inner: string, key: string): boolean {
+    return new RegExp(`(['"\`]?)${escapeRegex(key)}\\1\\s*:`).test(inner);
+}
+
+function replaceEntryValue(inner: string, key: string, valueText: string): string | null {
+    const m = new RegExp(`(['"\`]?)${escapeRegex(key)}\\1\\s*:\\s*`).exec(inner);
+    if (!m || m.index == null) return null;
+    const valStart = inner.indexOf('{', m.index + m[0].length);
+    if (valStart < 0) return null;
+    const valEnd = findMatchingBrace(inner, valStart);
+    if (valEnd < 0) return null;
+    return inner.slice(0, valStart) + valueText + inner.slice(valEnd + 1);
+}
+
+/** Indent every line except the first by `pad` (to nest a JSON object under a key). */
+function indentBlock(json: string, pad: string): string {
+    return json.split('\n').map((l, i) => (i === 0 ? l : pad + l)).join('\n');
+}
+
+function escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function moduleTemplate(moduleRef: string, genome: Record<string, any>): string {
@@ -92,6 +165,8 @@ function moduleTemplate(moduleRef: string, genome: Record<string, any>): string 
         '',
     ].join('\n');
 }
+
+// ─── runtime IO ───────────────────────────────────────────────────────────
 
 async function readSource(ref: string): Promise<string> {
     const norm = ref.startsWith('/') ? ref.slice(1) : ref;
