@@ -529,7 +529,7 @@ export function getFileImports(
   shortName: string,
 ): string[] {
   try {
-    const key = mls.editor.getKeyModel(project, shortName, folder, level) + '.ts';
+    const key = mls.editor.getKeyModel(project, shortName, folder, level);
     const imports: string[] = mls.editor.models[key]?.ts?.compilerResults?.imports ?? [];
     return imports
       .map(imp => imp.startsWith('/') ? imp.slice(1) : imp)
