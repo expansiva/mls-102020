@@ -119,7 +119,7 @@ async function afterPromptStep(
         const planId = makePlanId(moduleName, c.shortName, 'layer1');
         const defPath = toMlsPath(project, 1, c.folder, c.shortName, '.defs.ts');
         const args: GenStepArgs = { planId, defPath };
-        intents.push(mkStep(context, step, planId, `Gen layer1: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, [], 'waiting_human_input'));
+        intents.push(mkStep(context, step, planId, `Gen layer1: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, []));
       }
 
       // Group 2: layer_4_entities — wait for ALL layer1
@@ -128,8 +128,7 @@ async function afterPromptStep(
         const planId = makePlanId(moduleName, c.shortName, 'layer4');
         const defPath = toMlsPath(project, 1, c.folder, c.shortName, '.defs.ts');
         const args: GenStepArgs = { planId, defPath };
-        const status = dep4.length > 0 ? 'waiting_dependency' : 'waiting_human_input';
-        intents.push(mkStep(context, step, planId, `Gen layer4: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, dep4, status));
+        intents.push(mkStep(context, step, planId, `Gen layer4: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, dep4));
       }
 
       // Group 3: layer_3_usecases — wait for ALL layer4 (fallback layer1)
@@ -138,8 +137,7 @@ async function afterPromptStep(
         const planId = makePlanId(moduleName, c.shortName, 'layer3');
         const defPath = toMlsPath(project, 1, c.folder, c.shortName, '.defs.ts');
         const args: GenStepArgs = { planId, defPath };
-        const status = dep3.length > 0 ? 'waiting_dependency' : 'waiting_human_input';
-        intents.push(mkStep(context, step, planId, `Gen layer3: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, dep3, status));
+        intents.push(mkStep(context, step, planId, `Gen layer3: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, dep3));
       }
 
       // Group 4: layer_2_controllers — wait for ALL layer3 (fallback layer4)
@@ -148,8 +146,7 @@ async function afterPromptStep(
         const planId = makePlanId(moduleName, c.shortName, 'layer2');
         const defPath = toMlsPath(project, 1, c.folder, c.shortName, '.defs.ts');
         const args: GenStepArgs = { planId, defPath };
-        const status = dep2.length > 0 ? 'waiting_dependency' : 'waiting_human_input';
-        intents.push(mkStep(context, step, planId, `Gen layer2: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, dep2, status));
+        intents.push(mkStep(context, step, planId, `Gen layer2: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, dep2));
       }
     }
 
@@ -216,8 +213,8 @@ function mkStep(
   agentName: string,
   args: GenStepArgs,
   dependsOn: string[],
-  status: mls.msg.AIStepStatus = 'waiting_dependency',
 ): mls.msg.AgentIntentAddStep {
+  const status: mls.msg.AIStepStatus = dependsOn.length > 0 ? 'waiting_dependency' : 'waiting_human_input';
   return {
     type: 'add-step',
     messageId: context.message.orderAt,

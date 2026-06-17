@@ -133,15 +133,19 @@ async function afterPromptStep(
   const ok = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, code);
 
   if (ok) {
-    const moduleName = parsed.folder.split('/')[0];
-    if (fileType === 'layer1') {
-      await registerLayer1(parsed.project, moduleName, code, pipelineItem.outputPath);
-    } else if (fileType === 'layer2') {
-      await registerController(parsed.project, moduleName, code);
-    } else if (fileType === 'page') {
-      const tag = convertFileNameToTag({ shortName: parsed.shortName, project: parsed.project, folder: parsed.folder });
-      await saveGeneratedHtml(parsed.project, parsed.level, parsed.folder, parsed.shortName, `<${tag}></${tag}>`);
-      await registerPage(parsed.project, moduleName, parsed.shortName, pipelineItem.outputPath);
+    try {
+      const moduleName = parsed.folder.split('/')[0];
+      if (fileType === 'layer1') {
+        await registerLayer1(parsed.project, moduleName, code, pipelineItem.outputPath);
+      } else if (fileType === 'layer2') {
+        await registerController(parsed.project, moduleName, code);
+      } else if (fileType === 'page') {
+        const tag = convertFileNameToTag({ shortName: parsed.shortName, project: parsed.project, folder: parsed.folder });
+        await saveGeneratedHtml(parsed.project, parsed.level, parsed.folder, parsed.shortName, `<${tag}></${tag}>`);
+        await registerPage(parsed.project, moduleName, parsed.shortName, pipelineItem.outputPath);
+      }
+    } catch (err) {
+      console.warn('[agentMaterializeGen] post-generation registration failed', err);
     }
   }
 

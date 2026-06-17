@@ -117,7 +117,7 @@ async function afterPromptStep(
         const planId = makePlanId(moduleName, c.shortName, 'contract');
         const defPath = toMlsPath(project, 2, c.folder, c.shortName, '.defs.ts');
         const args: GenStepArgs = { planId, defPath };
-        intents.push(mkStep(context, step, planId, `Gen contract: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, [], 'waiting_human_input'));
+        intents.push(mkStep(context, step, planId, `Gen contract: ${moduleName}/${c.shortName}`, c.pipeline[0].agent, args, []));
       }
 
       // Group 2: shared — wait for ALL contracts to complete
@@ -200,8 +200,8 @@ function mkStep(
   agentName: string,
   args: GenStepArgs,
   dependsOn: string[],
-  status: mls.msg.AIStepStatus = 'waiting_dependency',
 ): mls.msg.AgentIntentAddStep {
+  const status: mls.msg.AIStepStatus = dependsOn.length > 0 ? 'waiting_dependency' : 'waiting_human_input';
   return {
     type: 'add-step',
     messageId: context.message.orderAt,

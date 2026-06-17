@@ -2,7 +2,7 @@
 
 import { convertFileNameToTag } from '/_102027_/l2/utils.js';
 import {
-  getContentByMlsPath,
+  getFileContent,
   saveGeneratedTs,
   saveGeneratedJson,
   parseMlsPath,
@@ -72,7 +72,7 @@ export function registerController(
   const routerPath = toMlsPath(project, 1, `${moduleName}/layer_2_controllers`, 'router', '.ts');
 
   return withLock(routerPath, async () => {
-    const routerSource = await getContentByMlsPath(routerPath);
+    const routerSource = await getFileContent(project, 1, `${moduleName}/layer_2_controllers`, 'router', '.ts');
     if (!routerSource) return;
 
     let updated = routerSource;
@@ -122,7 +122,7 @@ function updateModuleTs(
   const path = toMlsPath(project, 2, moduleName, 'module', '.ts');
 
   return withLock(path, async () => {
-    const source = await getContentByMlsPath(path);
+    const source = await getFileContent(project, 2, moduleName, 'module', '.ts');
     if (!source) return;
 
     let updated = source;
@@ -146,7 +146,7 @@ function updateIndexTs(
   const path = toMlsPath(project, 2, moduleName, 'index', '.ts');
 
   return withLock(path, async () => {
-    const source = await getContentByMlsPath(path);
+    const source = await getFileContent(project, 2, moduleName, 'index', '.ts');
     if (!source) return;
 
     let updated = source;
@@ -171,7 +171,7 @@ function updateCollabConfig(
   const configPath = toMlsPath(project, 0, '', 'config', '.json');
 
   return withLock(configPath, async () => {
-    const configSource = await getContentByMlsPath(configPath);
+    const configSource = await getFileContent(project, 0, '', 'config', '.json');
     if (!configSource) return;
 
     const projectId = String(project);
@@ -212,7 +212,7 @@ export function registerLayer1(
   const persistencePath = toMlsPath(project, 1, `${moduleName}/layer_1_external`, 'persistence', '.ts');
 
   return withLock(persistencePath, async () => {
-    const persistenceSource = await getContentByMlsPath(persistencePath);
+    const persistenceSource = await getFileContent(project, 1, `${moduleName}/layer_1_external`, 'persistence', '.ts');
     if (!persistenceSource) return;
 
     const updated = addTableDef(persistenceSource, varName, importPath);
