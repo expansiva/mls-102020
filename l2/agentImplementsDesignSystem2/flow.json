@@ -1,0 +1,50 @@
+{
+  "flowId": "agentImplementsDesignSystem2",
+  "schemaVersion": "2026-06-17",
+  "description": "Aplica um design system a um modulo: deriva page{layout}{ds} a partir de page11. Modelo de grupos em barreira (à la agentNewSolution / agentsgrouping.md): o orquestrador enumera as paginas e cria 1 step por pagina por grupo, com dependsOn ligando os grupos. O barrier do step 'register' (dependsOn TODOS os gen) é como sabemos que todas as paginas terminaram — nativo do framework, sem tracker em memoria.",
+  "entry": "{ module, layout, ds, device? }  (device default 'desktop')",
+  "source": {
+    "orchestrator": "_102020_/l2/agentImplementsDesignSystem2/agentImplementsDesignSystem2.ts (buildPlannedTree em afterPromptStep)",
+    "planning": "_102020_/l2/agentImplementsDesignSystem2/planning.ts (mkAgentStep/makePlanId/parseStepArgs/saveFile)",
+    "deterministicCore": "_102020_/l2/dsMatch/* (derivePaths, groupCatalog, agent1, readDsRules, buildMoleculeCatalog, resolveMolecules, registerPageGenome)"
+  },
+  "steps": [
+    {
+      "planId": "(root)",
+      "agentName": "agentImplementsDesignSystem2",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": [],
+      "initialStatus": "waiting_human_input",
+      "goal": "Orquestrador. beforePromptImplicit confirma o request (LLM minimo); afterPromptStep lista as paginas de page11 e cria os steps select/gen/register."
+    },
+    {
+      "planId": "select:<page>",
+      "agentName": "agentSelectGroups2",
+      "type": "agent",
+      "executionMode": "parallel_static",
+      "dependsOn": [],
+      "initialStatus": "waiting_human_input",
+      "goal": "Fase B+C. LLM escolhe grupos por organismo (lê .ts renderizado + definition); resolveMolecules+assign (determinístico); grava page{layout}{ds}/<page>.defs.ts com moleculeAssignments + usagePaths.",
+      "perPage": true
+    },
+    {
+      "planId": "gen:<page>",
+      "agentName": "agentGenDefs2",
+      "type": "agent",
+      "executionMode": "parallel_static",
+      "dependsOn": ["select:<page>"],
+      "goal": "Fase E. LLM monta o defs FINAL (origem page11 + moleculeAssignments), sem re-escolher molécula; grava page{layout}{ds}/<page>.defs.ts.",
+      "perPage": true
+    },
+    {
+      "planId": "register",
+      "agentName": "agentRegisterGenome2",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": ["gen:<page> (TODAS as paginas)"],
+      "goal": "Terminal, SEM LLM (so beforePromptStep -> completed). Registra 'web/{device}/page{layout}{ds}' no module.ts UMA vez (merge via upsertModuleGenome, preserva page11).",
+      "barrier": "dependsOn de TODOS os gen = 'sabe quando todas as paginas terminaram'"
+    }
+  ]
+}
