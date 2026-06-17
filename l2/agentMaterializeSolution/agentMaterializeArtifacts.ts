@@ -552,7 +552,7 @@ export async function getDtsForFile(
   shortName: string,
 ): Promise<string> {
   try {
-    const key = mls.editor.getKeyModel(project, shortName, folder, level) + '.ts';
+    const key = mls.editor.getKeyModel(project, shortName, folder, level);
     let modelTS = mls.editor.models[key]?.ts;
 
     if (!modelTS) {
