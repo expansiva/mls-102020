@@ -118,7 +118,7 @@ export function collectUsagePaths(assignment: PageAssignment, resolved: Resolved
 export async function persistResolvedMolecules(
     project: number,
     dsIndex: number | string,
-    resolved: ResolvedMolecules,
+    resolved: Record<string, unknown>, // the table to write (slim or full)
     catalogVersion?: string,
 ): Promise<void> {
     const config: any = await getConfigProject(project);

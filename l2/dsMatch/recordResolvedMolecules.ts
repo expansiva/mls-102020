@@ -21,6 +21,16 @@ export interface DsResolution {
     catalogVersion: string;
 }
 
+/** What actually gets written on the DS: only `project` + `tag` per group (slim). */
+export type SlimResolvedMolecules = Record<string, { project: number; tag: string }>;
+
+/** Project the rich resolution table down to { project, tag } per group (for persistence). */
+export function toSlimTable(resolved: ResolvedMolecules): SlimResolvedMolecules {
+    const slim: SlimResolvedMolecules = {};
+    for (const [group, m] of Object.entries(resolved)) slim[group] = { project: m.project, tag: m.tag };
+    return slim;
+}
+
 /**
  * Pure: deterministic signature of the catalog (count + hash of tag+layoutConfig).
  * Changes whenever a molecule is added/removed or its candidacy (layoutConfig) changes.
@@ -50,7 +60,7 @@ export async function recordResolvedMolecules(project: number, dsIndex: number |
     const dsRules = await readDsRules(project, dsIndex);
     const catalog = await buildMoleculeCatalog();
     const resolution = buildDsResolution(dsRules, catalog);
-    await persistResolvedMolecules(project, dsIndex, resolution.resolvedMolecules, resolution.catalogVersion);
+    await persistResolvedMolecules(project, dsIndex, toSlimTable(resolution.resolvedMolecules), resolution.catalogVersion);
     return resolution;
 }
 
@@ -108,7 +118,7 @@ export async function recordUsedMolecules(
     const catalog = await buildMoleculeCatalog();
     const resolvedMolecules = resolveMolecules(dsRules, catalog, usedGroups); // ONLY used groups
     const catalogVersion = catalogSignature(catalog);
-    await persistResolvedMolecules(project, ds, resolvedMolecules, catalogVersion);
+    await persistResolvedMolecules(project, ds, toSlimTable(resolvedMolecules), catalogVersion); // persist slim: { project, tag }
     return { resolvedMolecules, catalogVersion };
 }
 
