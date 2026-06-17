@@ -1,25 +1,39 @@
 /// <mls fileReference="_102020_/l2/agentImplementsDesignSystem/agentSelectMoleculeGroups.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
 
-// Fase B — Agent1: per-organism molecule-GROUP selection (LLM).
-// Runs after creative-mode generation, so the page is materialized: reads the
-// rendered .ts (primary — the actual HTML) plus the .defs.ts `definition` text
-// (raw, not parsed) for the organism structure, and decides which molecule groups
-// each organism needs.
-// Variant choice is NOT done here — that is deterministic (matchVariant, Fase A/C).
+// Fase B + C — Agent1: per-page molecule selection.
 //
-// One page per invocation (input `{ path }`). Fan-out across pages is the
-// orchestrator's job (Fase E / integration), consistent with the stateless model.
+// Entry: { module, layout, ds }. It SELF-FANS over the pages of the origin folder
+// (page11) using executionMode parallel — same pattern as agentAddLanguage (a
+// separate parent cannot spawn a different child agent; executionMode multiplies
+// THIS agent). One parallel run per page:
+//
+//   beforePromptStep(<page .ts>) → prompt: rendered .ts + raw definition + groups
+//   LLM                          → groups per organism                     [Fase B]
+//   afterPromptStep:
+//      resolveMolecules + assign  (deterministic — keeps pages consistent)  [Fase C]
+//      WRITE page{layout}{ds}/<page>.defs.ts   ← survives the parallel batch
+//
+// The written file is consumed later by agentGenDefs (Fase E), which weaves the
+// resolved molecules into the final defs. Variant choice stays here (deterministic);
+// the LLM there only assembles.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
 import { buildGroupList } from '/_102020_/l2/dsMatch/groupCatalog.js';
-import { loadPageSource, loadPageDefinitionText, buildAgent1HumanPrompt, validateAgent1Output, type Agent1Output } from '/_102020_/l2/dsMatch/agent1.js';
+import { loadPageSource, loadPageDefinitionText, buildAgent1HumanPrompt, validateAgent1Output } from '/_102020_/l2/dsMatch/agent1.js';
+import { readDsRules } from '/_102020_/l2/dsMatch/readDsRules.js';
+import { buildMoleculeCatalog } from '/_102020_/l2/dsMatch/buildMoleculeCatalog.js';
+import { resolveMolecules, assignMoleculesToPage, collectUsedGroups, collectUsagePaths } from '/_102020_/l2/dsMatch/resolveMolecules.js';
+import { listWorkItems, buildWorkItem, DEFAULT_DEVICE } from '/_102020_/l2/dsMatch/derivePaths.js';
+
+interface EntryArgs { module: string; layout: number | string; ds: number | string; device?: string; }
 
 export function createAgent(): IAgentAsync {
   return {
     agentName: "agentSelectMoleculeGroups",
     agentProject: 102020,
     agentFolder: "agentImplementsDesignSystem",
-    agentDescription: "Selects which molecule groups each organism of a page needs (Fase B / Agent1)",
+    agentDescription: "Select molecule groups per organism and write the new page defs (Fase B+C)",
     visibility: "public",
     beforePromptImplicit,
     beforePromptStep,
@@ -33,22 +47,29 @@ async function beforePromptImplicit(
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
 
-  const info = JSON.parse(userPrompt) as { path: string };
-  const prompt = await buildPrompt(info.path);
+  const { module, layout, ds, device } = JSON.parse(userPrompt) as EntryArgs;
+  if (!module || layout == null || ds == null) throw new Error(`(${agent.agentName}) entry needs { module, layout, ds }`);
+
+  const project = mls.actualProject || 0;
+  const dev = device || DEFAULT_DEVICE;
+  const items = listWorkItems(project, module, layout, ds, dev);
+  if (items.length === 0) throw new Error(`(${agent.agentName}) no pages found in ${module}/web/${dev}/page11`);
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: "add-message-ai",
     request: {
       action: 'addMessageAI',
       agentName: agent.agentName,
-      inputAI: [
-        { type: 'system', content: system1 },
-        { type: 'human', content: prompt },
-      ],
+      inputAI: [{ type: 'system', content: system1 }],
       taskTitle: agent.agentDescription,
       threadId: context.message.threadId,
-      userMessage: info.path,
-      longTermMemory: { path: info.path, onlyStep: "true" },
+      userMessage: `Apply DS ${ds} (layout ${layout}) to ${module}`,
+      // Task-level memory survives parallel batching; afterPromptStep reads it.
+      longTermMemory: { module, layout: String(layout), ds: String(ds), device: dev },
+    },
+    executionMode: {
+      type: 'parallel',
+      args: items.map(i => i.tsOrigem), // one run per page; arg = origin .ts ref
     },
   };
 
@@ -65,9 +86,9 @@ async function beforePromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
 
   if (!args) throw new Error(`(${agent.agentName})[beforePromptStep] args invalid`);
+  const tsOrigem = args; // origin .ts file reference
 
-  const info = JSON.parse(args) as { path: string };
-  const prompt = await buildPrompt(info.path);
+  const prompt = await buildPrompt(tsOrigem);
 
   const continueParallel: mls.msg.AgentIntentPromptReady = {
     type: "prompt_ready",
@@ -98,15 +119,35 @@ async function afterPromptStep(
   if (payload?.type !== 'flexible' || !payload.result) {
     throw new Error(`(${agent.agentName}) [afterPromptStep] invalid payload: ${JSON.stringify(payload)}`);
   }
-
-  // Validate the LLM output against the valid group set (drops hallucinated groups).
   const raw = payload.result as Output['result'];
+
+  // Recover the run parameters from task-level memory + the echoed origin path.
+  const lm = (context.task?.iaCompressed?.longMemory || {}) as Record<string, string>;
+  const module = lm['module'];
+  const layout = lm['layout'];
+  const ds = lm['ds'];
+  const device = lm['device'] || DEFAULT_DEVICE;
+  if (!module || layout == null || ds == null) throw new Error(`(${agent.agentName}) missing run params in longMemory`);
+
+  const project = mls.actualProject || 0;
+  const page = pageShortName(raw.path);
+  const item = buildWorkItem(project, module, layout, ds, page, device);
+
+  // Deterministic resolution (Fase C): groups → molecules for THIS DS.
+  const dsRules = await readDsRules(project, ds);
+  const catalog = await buildMoleculeCatalog();
   const groups = await buildGroupList();
   const validGroups = new Set(groups.map(g => g.group));
-  const validated: Agent1Output = validateAgent1Output(raw, validGroups, raw.path);
 
-  const dropped = countDropped(raw, validated);
-  if (dropped > 0) console.warn(`(${agent.agentName}) dropped ${dropped} unknown group(s) from ${validated.path}`);
+  const validated = validateAgent1Output(raw, validGroups, raw.path);
+  const resolved = resolveMolecules(dsRules, catalog, collectUsedGroups([validated]));
+  const assignment = assignMoleculesToPage(validated, resolved);
+  const usagePaths = collectUsagePaths(assignment, resolved);
+
+  // Persist the new defs into the destination folder (survives the parallel batch).
+  if (!context.isTest) {
+    await saveFile(item.defsDestino, buildNovoDefs(item.defsDestino, assignment.organisms, usagePaths));
+  }
 
   const updateStatus: mls.msg.AgentIntentUpdateStatus = {
     type: 'update-status',
@@ -122,25 +163,53 @@ async function afterPromptStep(
   return [updateStatus];
 }
 
-async function buildPrompt(path: string): Promise<string> {
-  // Primary input: the rendered .ts (the actual UI). Secondary: raw defs `definition` text.
-  const pageSource = await loadPageSource(path);
-  const definitionText = await loadPageDefinitionText(path);
+async function buildPrompt(tsOrigem: string): Promise<string> {
+  const pageSource = await loadPageSource(tsOrigem);
+  const definitionText = await loadPageDefinitionText(tsOrigem);
   const groups = await buildGroupList();
-  return buildAgent1HumanPrompt(path, pageSource, definitionText, groups);
+  return buildAgent1HumanPrompt(tsOrigem, pageSource, definitionText, groups);
 }
 
-function countDropped(raw: any, validated: Agent1Output): number {
-  const rawCount = Array.isArray(raw?.perOrganism)
-    ? raw.perOrganism.reduce((n: number, o: any) => n + (Array.isArray(o?.groups) ? o.groups.length : 0), 0)
-    : 0;
-  const keptCount = validated.perOrganism.reduce((n, o) => n + o.groups.length, 0);
-  return Math.max(0, rawCount - keptCount);
+function pageShortName(ref: string): string {
+  const norm = ref.startsWith('/') ? ref.slice(1) : ref;
+  const f = mls.stor.convertFileReferenceToFile(norm);
+  return f?.shortName || '';
+}
+
+/** The intermediate "novo defs": resolved molecule assignments for agentGenDefs to weave. */
+function buildNovoDefs(defsRef: string, organisms: unknown, usagePaths: string[]): string {
+  const cleanRef = defsRef.startsWith('/') ? defsRef.slice(1) : defsRef;
+  const header = `/// <mls fileReference="${cleanRef}" enhancement="_blank"/>`;
+  return [
+    header,
+    '',
+    '// Generated by agentSelectMoleculeGroups (Fase B+C). Molecule choices are resolved',
+    '// deterministically for this design system. Consumed by agentGenDefs (Fase E),',
+    '// which weaves them into the final page defs.',
+    '',
+    `export const moleculeAssignments = ${JSON.stringify(organisms, null, 2)} as const;`,
+    '',
+    `export const usagePaths = ${JSON.stringify(usagePaths, null, 2)} as const;`,
+    '',
+  ].join('\n');
+}
+
+async function saveFile(ref: string, src: string): Promise<void> {
+  const info = mls.stor.convertFileReferenceToFile(ref);
+  const key = mls.stor.getKeyToFile(info);
+  let sf = mls.stor.files[key];
+  if (!sf) {
+    const param: IReqCreateStorFile = { ...info, source: src };
+    sf = await createStorFile(param, true, true, true);
+  } else {
+    const m = await sf.getOrCreateModel();
+    if (m && m.model) m.model.setValue(src);
+  }
+  await mls.stor.localStor.setContent(sf, { contentType: 'string', content: src });
 }
 
 const system1 = `
-<!-- modelType: codereasoning -->
-<!-- modelTypeList: geminiChat (2.5 pro), code (grok), deepseekchat, codeflash (gemini), deepseekreasoner, mini (4.1) ou nano (openai), codeinstruct (4.1), codereasoning(gpt5), code2 (kimi 2.5) -->
+<!-- modelType: codeinstruct -->
 
 You must return ONLY a valid JSON object. No preamble, no explanation, no markdown
 fences, no text before or after the JSON. Start your response with { and end with }
@@ -164,6 +233,7 @@ Map a group only when its purpose DIRECTLY and OBVIOUSLY matches a real UI eleme
 - Do NOT pick a group as a generic fallback. Omission is correct when nothing fits.
 - Decide GROUPS only — do NOT pick a specific variant/molecule (that is done later,
   deterministically, from the design system).
+- Echo back the page path exactly as given under "## Page".
 
 ## Output format
 
@@ -175,7 +245,7 @@ Map a group only when its purpose DIRECTLY and OBVIOUSLY matches a real UI eleme
 export type Output = {
   type: "flexible";
   result: {
-    path: string;
+    path: string; // echo the page path from "## Page"
     perOrganism: Array<{
       organismName: string;
       groups: string[]; // camelCase, exactly as listed in the prompt
