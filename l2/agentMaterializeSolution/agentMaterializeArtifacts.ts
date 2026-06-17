@@ -531,10 +531,12 @@ export function getFileImports(
   try {
     const key = mls.editor.getKeyModel(project, shortName, folder, level) + '.ts';
     const imports: string[] = mls.editor.models[key]?.ts?.compilerResults?.imports ?? [];
-    return imports.filter((imp) => {
-      const parsed = parseMlsPath(imp);
-      return parsed !== null && parsed.project === project;
-    });
+    return imports
+      .map(imp => imp.startsWith('/') ? imp.slice(1) : imp)
+      .filter((imp) => {
+        const parsed = parseMlsPath(imp);
+        return parsed !== null && parsed.project === project;
+      });
   } catch {
     return [];
   }

@@ -202,7 +202,8 @@ async function ensureFile(ref: string, src: string): Promise<void> {
   const key = mls.stor.getKeyToFile(info);
   if (mls.stor.files[key]) return;
   const param: IReqCreateStorFile = { ...info, source: src };
-  await createStorFile(param, true, true, true);
+  const file = await createStorFile(param, true, true, true);
+  await mls.stor.localStor.setContent(file, { contentType: 'string', content:src });
 }
 
 async function ensureSingletons(project: number, moduleName: string): Promise<void> {
