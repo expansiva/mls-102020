@@ -9,6 +9,7 @@ import {
   saveGeneratedTs,
   saveGeneratedHtml,
   extractToolCallArgs,
+  compileAndGetErrors,
 } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import {
   buildGenContext,
@@ -146,6 +147,34 @@ async function afterPromptStep(
       }
     } catch (err) {
       console.warn('[agentMaterializeGen] post-generation registration failed', err);
+    }
+  }
+
+  if (ok) {
+    const compileErrors = await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName);
+    if (compileErrors.length > 0) {
+      const fixArgs = JSON.stringify({ outputPath: pipelineItem.outputPath, defPath, errors: compileErrors });
+      const planId = `fix-${parsed.shortName.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()}`;
+      const addStep: mls.msg.AgentIntentAddStep = {
+        type: 'add-step',
+        messageId: context.message.orderAt,
+        threadId: context.message.threadId,
+        taskId: context.task?.PK || '',
+        parentStepId: step.stepId,
+        step: {
+          type: 'agent',
+          stepId: 0,
+          interaction: null,
+          stepTitle: `Fix: ${parsed.shortName}`,
+          status: 'waiting_human_input',
+          nextSteps: [],
+          agentName: 'agentMaterializeFix',
+          prompt: fixArgs,
+          rags: [],
+          planning: { planId, dependsOn: [], executionMode: 'parallel_static', executionHost: 'client' },
+        } as any,
+      };
+      return [addStep];
     }
   }
 

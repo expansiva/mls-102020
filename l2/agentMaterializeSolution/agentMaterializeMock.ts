@@ -11,6 +11,9 @@ import {
 
 declare const mls: any;
 
+// Stores args between beforePromptImplicit and afterPromptStep (step.prompt is not reliable for implicit flow)
+const _implicitArgs = new Map<string, MockStepArgs>();
+
 export function createAgent(): IAgentAsync {
   return {
     agentName: 'agentMaterializeMock',
@@ -59,23 +62,25 @@ const toolSchema = {
 } as const;
 
 // ─── beforePromptImplicit ─────────────────────────────────────────────────────
-// Entry point when the agent is invoked directly (not as a child step).
-// User prompt must contain the moduleName: '{"moduleName":"locadora"}' or just 'locadora'
+// Bootstrap step: scans files, confirms count, then afterPromptStep creates
+// the real gen step (which uses beforePromptStep + tools).
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
   _userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  const project = (mls.actualProject as number) || 0;
-  const moduleName = parseModuleName(_userPrompt);
+  const extracted = extractArgsFromPrompt(_userPrompt);
+  const project = typeof extracted.project === 'number' ? extracted.project : (mls.actualProject as number) || 0;
+  const moduleName = extracted.moduleName ?? '';
 
   if (!moduleName) {
-    throw new Error('[agentMaterializeMock] moduleName not found. Send: {"moduleName":"yourModule"} or just the module name.');
+    throw new Error('[agentMaterializeMock] moduleName not found. Send: @@MaterializeMock {"project":102043,"moduleName":"yourModule"}');
   }
 
-  const outputPath = toMlsPath(project, 1, `${moduleName}/layer_2_controllers`, 'mock', '.ts');
-  const sections = await collectDefsSections(project, moduleName);
+  const defs = scanL1DefsFiles(project, moduleName);
+
+  _implicitArgs.set(context.message.threadId, { project, moduleName });
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -83,22 +88,20 @@ async function beforePromptImplicit(
       action: 'addMessageAI',
       agentName: agent.agentName,
       inputAI: [
-        { type: 'system', content: buildSystemPrompt(outputPath) },
-        { type: 'human', content: buildHumanPrompt(sections, outputPath) },
+        { type: 'system', content: BOOTSTRAP_SYSTEM },
+        { type: 'human', content: buildBootstrapPrompt(project, moduleName, defs.length) },
       ],
-      tools: [toolSchema as unknown as mls.msg.LLMTool],
-      toolChoice: { type: 'function', function: { name: TOOL_NAME } },
       taskTitle: 'generate-mock',
       threadId: context.message.threadId,
       userMessage: JSON.stringify({ project, moduleName } satisfies MockStepArgs),
-    } as any,
+    },
   };
 
   return [addMessageAI];
 }
 
 // ─── beforePromptStep ─────────────────────────────────────────────────────────
-// Entry point when invoked as a child step with args: { project, moduleName }
+// Real gen step: loads all .defs.ts and sends to LLM with forced tool call.
 
 async function beforePromptStep(
   _agent: IAgentMeta,
@@ -132,6 +135,9 @@ async function beforePromptStep(
 }
 
 // ─── afterPromptStep ──────────────────────────────────────────────────────────
+// Handles two cases:
+//   1. Tool call response (from beforePromptStep) → save the generated code
+//   2. Flexible/text response (from beforePromptImplicit) → create the gen step
 
 async function afterPromptStep(
   _agent: IAgentMeta,
@@ -140,29 +146,66 @@ async function afterPromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
-  const { project, moduleName } = resolveArgs(step.prompt);
-  const outputPath = toMlsPath(project, 1, `${moduleName}/layer_2_controllers`, 'mock', '.ts');
-
   const raw = step.interaction?.payload?.[0] as any;
-  const out = extractToolCallArgs<ToolOutput>(raw, TOOL_NAME);
 
-  if (!out?.code) {
-    return [mkStatus(context, parentStep, step, hookSequential, 'failed', 'missing generated code')];
+  // Case 1: tool call → save generated code
+  const out = extractToolCallArgs<ToolOutput>(raw, TOOL_NAME);
+  if (out?.code) {
+    const { project, moduleName } = resolveArgs(step.prompt);
+    const outputPath = toMlsPath(project, 1, `${moduleName}/layer_2_controllers`, 'mock', '.ts');
+
+    const header = `/// <mls fileReference="${outputPath}" enhancement="_blank"/>`;
+    const code = out.code.trimStart().startsWith('///') ? out.code : `${header}\n\n${out.code}`;
+
+    const ok = await saveGeneratedTs(project, 1, `${moduleName}/layer_2_controllers`, 'mock', code);
+    return [mkStatus(context, parentStep, step, hookSequential,
+      ok ? 'completed' : 'failed',
+      ok ? undefined : 'saveGeneratedTs failed',
+      ok ? 'input_output' : undefined,
+    )];
   }
 
-  const header = `/// <mls fileReference="${outputPath}" enhancement="_blank"/>`;
-  const code = out.code.trimStart().startsWith('///')
-    ? out.code
-    : `${header}\n\n${out.code}`;
+  // Case 2: bootstrap response → create the real gen step
+  if (raw?.type === 'result') {
+    _implicitArgs.delete(context.message.threadId);
+    return [mkStatus(context, parentStep, step, hookSequential, 'failed', String(raw.result))];
+  }
 
-  const ok = await saveGeneratedTs(project, 1, `${moduleName}/layer_2_controllers`, 'mock', code);
+  const stored = _implicitArgs.get(context.message.threadId);
+  _implicitArgs.delete(context.message.threadId);
 
-  return [mkStatus(
-    context, parentStep, step, hookSequential,
-    ok ? 'completed' : 'failed',
-    ok ? undefined : 'saveGeneratedTs failed',
-    ok ? 'input_output' : undefined,
-  )];
+  const fallback = resolveArgs(step.prompt);
+  const project = stored?.project ?? fallback.project;
+  const moduleName = stored?.moduleName ?? fallback.moduleName;
+
+  if (!moduleName) {
+    return [mkStatus(context, parentStep, step, hookSequential, 'failed', 'could not resolve moduleName')];
+  }
+
+  const genArgs = JSON.stringify({ project, moduleName } satisfies MockStepArgs);
+  const planId = `mock-gen-${moduleName.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()}`;
+
+  const addStep: mls.msg.AgentIntentAddStep = {
+    type: 'add-step',
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    parentStepId: step.stepId,
+    step: {
+      type: 'agent',
+      stepId: 0,
+      interaction: null,
+      stepTitle: `Generate mock: ${moduleName}`,
+      status: 'waiting_human_input',
+      nextSteps: [],
+      agentName: 'agentMaterializeMock',
+      prompt: genArgs,
+      rags: [],
+      planning: { planId, dependsOn: [], executionMode: 'parallel_static', executionHost: 'client' },
+    } as any,
+  };
+
+  return [addStep];
 }
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -182,25 +225,27 @@ async function collectDefsSections(project: number, moduleName: string): Promise
   return sections;
 }
 
-function parseModuleName(prompt: string): string {
+function extractArgsFromPrompt(prompt: string): Partial<MockStepArgs> {
   const trimmed = prompt.trim();
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (typeof parsed?.moduleName === 'string') return parsed.moduleName;
-  } catch {}
-  if (/^[a-zA-Z][a-zA-Z0-9_]*$/.test(trimmed)) return trimmed;
-  return '';
+  // Extract JSON block from the prompt (handles "@@Cmd {...}" prefix format)
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    try {
+      return JSON.parse(trimmed.slice(start, end + 1));
+    } catch {}
+  }
+  // Fallback: plain module name
+  if (/^[a-zA-Z][a-zA-Z0-9_]*$/.test(trimmed)) return { moduleName: trimmed };
+  return {};
 }
 
 function resolveArgs(stepPrompt: string | undefined): MockStepArgs {
-  try {
-    const parsed = JSON.parse(stepPrompt || '{}');
-    const project = typeof parsed.project === 'number' ? parsed.project : (mls.actualProject as number) || 0;
-    const moduleName = typeof parsed.moduleName === 'string' ? parsed.moduleName : parseModuleName(stepPrompt || '');
-    return { project, moduleName };
-  } catch {
-    return { project: (mls.actualProject as number) || 0, moduleName: parseModuleName(stepPrompt || '') };
-  }
+  const extracted = extractArgsFromPrompt(stepPrompt || '');
+  return {
+    project: typeof extracted.project === 'number' ? extracted.project : (mls.actualProject as number) || 0,
+    moduleName: typeof extracted.moduleName === 'string' ? extracted.moduleName : '',
+  };
 }
 
 function mkStatus(
@@ -218,7 +263,7 @@ function mkStatus(
     messageId: context.message.orderAt,
     threadId: context.message.threadId,
     taskId: context.task?.PK || '',
-    parentStepId: parentStep.stepId,
+    parentStepId: parentStep?.stepId ?? step.stepId,
     stepId: step.stepId,
     status,
     traceMsg,
@@ -226,7 +271,27 @@ function mkStatus(
   };
 }
 
-// ─── Prompts ──────────────────────────────────────────────────────────────────
+// ─── Bootstrap prompts ────────────────────────────────────────────────────────
+
+const BOOTSTRAP_SYSTEM = `<!-- modelType: codepro -->
+You confirm a mock generation scan.
+If files were found, return: {"type":"flexible","result":{"status":"ok"}}
+If no files, return: {"type":"result","result":"No layer_1 .defs.ts files found"}
+Return valid JSON only.`;
+
+function buildBootstrapPrompt(project: number, moduleName: string, defsCount: number): string {
+  return [
+    `## Mock generation scan`,
+    ``,
+    `Project: ${project}`,
+    `Module: ${moduleName}`,
+    `Layer_1 .defs.ts files found: ${defsCount}`,
+    ``,
+    `Confirm and return your response.`,
+  ].join('\n');
+}
+
+// ─── Generation prompts ───────────────────────────────────────────────────────
 
 function buildSystemPrompt(outputPath: string): string {
   return `<!-- modelType: codeinstruct -->

@@ -57,7 +57,7 @@ const toolSchema = {
         dependsFiles: {
           type: 'array',
           items: { type: 'string' },
-          description: 'MLS .ts paths (already-generated) that the executor needs as context',
+          description: 'MLS .d.ts paths the executor needs as context (e.g. _102043_/l1/cafeFlow/layer_4_entities/pedidoEntity.d.ts). Use .d.ts extension only — outputPath stays .ts',
         },
       },
     },
@@ -99,7 +99,7 @@ async function beforePromptStep(
   if (layerFolder === 'layer_2_controllers') {
     const refs  = extractJsonArrayField(content, 'usecaseRefs');
     const rules = extractJsonArrayField(content, 'rulesApplied');
-    const usecaseDeps = refs.map(ref => toMlsPath(project, 1, `${moduleName}/layer_3_usecases`, ref, '.ts'));
+    const usecaseDeps = refs.map(ref => toMlsPath(project, 1, `${moduleName}/layer_3_usecases`, ref, '.d.ts'));
     const outputPath = lowerFirstFilename(toMlsPath(project, 1, folder, shortName, '.ts'));
     const item = buildItem(shortName, layerFolder, outputPath, project, 1, folder, usecaseDeps, [], rules);
     const ok = await appendPipelineToFile(project, 1, folder, shortName, [item]);
@@ -205,9 +205,9 @@ function mkDone(
   };
 }
 
-/** _102043_/l1/cafeFlow/layer_4_entities/pedidoEntity.defs.ts → .ts */
+/** _102043_/l1/cafeFlow/layer_4_entities/pedidoEntity.defs.ts → .d.ts */
 function defsToTs(mlsPath: string): string {
-  return mlsPath.replace(/\.defs\.ts$/, '.ts');
+  return mlsPath.replace(/\.defs\.ts$/, '.d.ts');
 }
 
 /** Ensures the filename segment of an MLS path starts with a lowercase letter. */
@@ -235,11 +235,12 @@ Path format: _<project>_/l<level>/<folder>/<FileName><ext>
 
 You must provide:
 - outputPath: the .ts file to be generated (derive from materialization/className metadata in the content)
-- dependsFiles: .ts files from ${depLabel[layerFolder] || 'dependency layer'} that the executor needs as context
+- dependsFiles: definition paths from ${depLabel[layerFolder] || 'dependency layer'} that the executor needs as context
   - Only include files this artifact actually references or uses
-  - Use the .ts output path, not .defs.ts
+  - Use .d.ts extension for dependsFiles (e.g. _102043_/l1/cafeFlow/layer_4_entities/pedidoEntity.d.ts)
+  - outputPath remains .ts — only dependsFiles use .d.ts
 
-Available dependency .ts files:
+Available dependency .d.ts files:
 ${depTsPaths.length ? depTsPaths.map(p => `  ${p}`).join('\n') : '  (none)'}
 
 dependsOn is always [].

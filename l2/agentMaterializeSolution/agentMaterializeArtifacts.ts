@@ -411,7 +411,7 @@ export async function scanL2DefsWithPipeline(
   return result;
 }
 
-/** Save (create or overwrite) a generated .ts file. */
+/** Save (create or overwrite) a generated .ts file and force a recompile. */
 export async function saveGeneratedTs(
   project: number,
   level: number,
@@ -430,10 +430,32 @@ export async function saveGeneratedTs(
       if (model) model.model.setValue(content);
     }
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
+    if (!shortName.endsWith('.defs')) compileGeneratedTs(project, level, folder, shortName);
     return true;
   } catch (err) {
     console.warn('[agentMaterializeArtifacts] saveGeneratedTs failed', err);
     return false;
+  }
+}
+
+function compileGeneratedTs(project: number, level: number, folder: string, shortName: string): void {
+  try {
+    const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
+    let modelBase = mls.editor.models[editorKey];
+    if (!modelBase) {
+      mls.editor.addModels(project, shortName, folder, level).then((m: any) => {
+        if (!m) return;
+        const modelTs = m?.ts;
+        if (modelTs && modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
+        mls.l2.typescript.compileAndPostProcess(m, true, true);
+      }).catch(() => {});
+      return;
+    }
+    const modelTs = modelBase?.ts;
+    if (modelTs && modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
+    mls.l2.typescript.compileAndPostProcess(modelBase, true, true);
+  } catch (err) {
+    console.warn('[agentMaterializeArtifacts] compileGeneratedTs failed', err);
   }
 }
 
@@ -538,6 +560,32 @@ export function getFileImports(
         return parsed !== null && parsed.project === project;
       });
   } catch {
+    return [];
+  }
+}
+
+/** Compile a generated .ts file and return any compiler errors. */
+export async function compileAndGetErrors(
+  project: number,
+  level: number,
+  folder: string,
+  shortName: string,
+): Promise<string[]> {
+  try {
+    const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
+    let modelBase = mls.editor.models[editorKey];
+    if (!modelBase) {
+      modelBase = await mls.editor.addModels(project, shortName, folder, level);
+    }
+    if (!modelBase) return [];
+    const modelTs = modelBase?.ts;
+    if (!modelTs) return [];
+    if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
+    await mls.l2.typescript.compile(modelTs);
+    const errors: any[] = modelTs.compilerResults?.errors ?? [];
+    return errors.map((e: any) => (typeof e === 'string' ? e : JSON.stringify(e)));
+  } catch (err) {
+    console.warn('[agentMaterializeArtifacts] compileAndGetErrors failed', err);
     return [];
   }
 }

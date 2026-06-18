@@ -49,6 +49,23 @@ function extractDtsImportPaths(dts: string, project: number): string[] {
   return [...new Set(found)];
 }
 
+// ─── Module var loader ────────────────────────────────────────────────────────
+
+async function loadVarFromModule(mlsPath: string, varName: string): Promise<string> {
+  const clean = mlsPath.startsWith('/') ? mlsPath.slice(1) : mlsPath;
+  const f = mls.stor.convertFileReferenceToFile(clean);
+  if (!f) return '';
+  let mod: any = null;
+  try {
+    mod = await collabImport(f);
+  } catch {
+    mod = await loadModuleByBuild(clean);
+  }
+  if (!mod) return '';
+  const value = mod[varName];
+  return typeof value === 'string' ? value : '';
+}
+
 // ─── Entry point ─────────────────────────────────────────────────────────────
 
 export async function buildGenContext(defPath: string): Promise<GenContext> {
@@ -72,7 +89,8 @@ export async function buildGenContext(defPath: string): Promise<GenContext> {
   const moduleExports = await loadModuleExports(project, moduleName);
 
   // Skills
-  const skillPaths = resolveSkillPaths(fileType, moduleExports, projectJson);
+  const genomeKey = folder.slice(moduleName.length + 1); // e.g. "web/desktop/page11"
+  const skillPaths = resolveSkillPaths(fileType, moduleExports, projectJson, genomeKey);
   const skillSections: string[] = [];
   const defContextSections: string[] = [];
   for (const sp of skillPaths) {
@@ -101,25 +119,44 @@ ${content}`);
     resolvedRules = await loadRulesForIds(project, moduleName, pipelineItem.rulesApplied);
   }
 
-  // dependsFiles — prefer .d.ts; include first-level same-project imports; deduplicate
+  // dependsFiles — three modes based on path suffix:
+  //   .d.ts       → compiled definition via getDtsForFile
+  //   .ts         → raw source via getContentByMlsPath
+  //   .ts?varName → import module (collabImport → esbuild fallback), access module[varName]
   const seen = new Set<string>();
   const depSections: string[] = [];
 
-  async function addDep(path: string, followImports = false): Promise<void> {
-    if (seen.has(path)) return;
-    seen.add(path);
-    const p = parseMlsPath(path);
-    const content = p
-      ? await getDtsForFile(p.project, p.level, p.folder, p.shortName)
-      : await getContentByMlsPath(path) ?? '';
+  async function addDep(rawPath: string, followImports = false): Promise<void> {
+    if (seen.has(rawPath)) return;
+    seen.add(rawPath);
+
+    const qIdx = rawPath.indexOf('?');
+    const mlsPath = qIdx !== -1 ? rawPath.slice(0, qIdx) : rawPath;
+    const query = qIdx !== -1 ? rawPath.slice(qIdx + 1) : undefined;
+    // Supports both "?skill" and "?key=skill" formats
+    const eqIdx = query !== undefined ? query.indexOf('=') : -1;
+    const varName = query !== undefined
+      ? (eqIdx !== -1 ? query.slice(eqIdx + 1) : query)
+      : undefined;
+
+    const p = parseMlsPath(mlsPath);
+    let content = '';
+
+    if (varName !== undefined) {
+      content = await loadVarFromModule(mlsPath, varName);
+    } else if (mlsPath.endsWith('.d.ts')) {
+      if (p) content = await getDtsForFile(p.project, p.level, p.folder, p.shortName) ?? '';
+      else content = await getContentByMlsPath(mlsPath) ?? '';
+    } else {
+      content = await getContentByMlsPath(mlsPath) ?? '';
+    }
+
     if (!content) return;
-    depSections.push(`### ${path}
-\`\`\`typescript
-${content}
-\`\`\``);
-    if (followImports && p) {
+    depSections.push(`### ${rawPath}\n\`\`\`typescript\n${content}\n\`\`\``);
+
+    if (followImports && p && mlsPath.endsWith('.d.ts')) {
       for (const imp of extractDtsImportPaths(content, p.project)) {
-        await addDep(imp);
+        await addDep(imp.replace(/\.js$/, '.d.ts'));
       }
     }
   }
@@ -162,6 +199,7 @@ function resolveSkillPaths(
   fileType: L1FileType | L2FileType,
   moduleExports: any,
   projectJson: ProjectJson | null,
+  genomeKey?: string,
 ): string[] {
   if (!moduleExports) return [];
 
@@ -173,7 +211,7 @@ function resolveSkillPaths(
   }
 
   if (fileType === 'page') {
-    const genome = moduleExports.moduleGenome?.['web/desktop/page11'];
+    const genome = moduleExports.moduleGenome?.[genomeKey ?? 'web/desktop/page11'];
     if (!genome) return [];
     const paths: string[] = [];
     if (genome.layout && projectJson) {

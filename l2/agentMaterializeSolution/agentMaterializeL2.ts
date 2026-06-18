@@ -138,6 +138,7 @@ async function afterPromptStep(
       }
     }
 
+    if (!intents.length) return [mkComplete(context, _parentStep, step, hookSequential, 'nothing to generate')];
     return intents;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -239,6 +240,26 @@ function mkFail(
     parentStepId: parentStep?.stepId ?? step.stepId,
     stepId: step.stepId,
     status: 'failed',
+    traceMsg,
+  };
+}
+
+function mkComplete(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  traceMsg?: string,
+): mls.msg.AgentIntentUpdateStatus {
+  return {
+    type: 'update-status',
+    hookSequential,
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    parentStepId: parentStep?.stepId ?? step.stepId,
+    stepId: step.stepId,
+    status: 'completed',
     traceMsg,
   };
 }
