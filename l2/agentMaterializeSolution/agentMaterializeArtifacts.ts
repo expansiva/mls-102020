@@ -572,6 +572,11 @@ export async function compileAndGetErrors(
   shortName: string,
 ): Promise<string[]> {
   try {
+    // Ensure Monaco model exists and capture it (required before compile)
+    const storKey = mls.stor.getKeyToFile({ project, level, folder, shortName, extension: '.ts' });
+    const file = (mls.stor.files as Record<string, any>)[storKey];
+    const storModel = file ? await file.getOrCreateModel() : null;
+
     const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
     let modelBase = mls.editor.models[editorKey];
     if (!modelBase) {
@@ -580,6 +585,9 @@ export async function compileAndGetErrors(
     if (!modelBase) return [];
     const modelTs = modelBase?.ts;
     if (!modelTs) return [];
+    // Bridge: assign the Monaco model if the editor model doesn't have it yet
+    if (!modelTs.model && storModel?.model) modelTs.model = storModel.model;
+    if (!modelTs.model) return [];
     if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
     await mls.l2.typescript.compile(modelTs);
     const errors: any[] = modelTs.compilerResults?.errors ?? [];

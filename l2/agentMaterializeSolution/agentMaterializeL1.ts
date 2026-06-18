@@ -94,7 +94,13 @@ async function afterPromptStep(
     if (payload.type === 'result') {
       return [mkFail(context, _parentStep, step, hookSequential, String(payload.result))];
     }
-    if (payload.type !== 'flexible' || payload.result?.status === 'failed') {
+    if (payload.type !== 'flexible') {
+      return [mkFail(context, _parentStep, step, hookSequential, 'scan failed')];
+    }
+    if (payload.result?.status === 'nothing') {
+      return [mkComplete(context, _parentStep, step, hookSequential, 'nothing to generate')];
+    }
+    if (payload.result?.status === 'failed') {
       return [mkFail(context, _parentStep, step, hookSequential, payload.result?.notes?.join('; ') || 'scan failed')];
     }
 
@@ -287,7 +293,7 @@ If files were found, return:
 {"type":"flexible","result":{"status":"ok","notes":[]}}
 
 If nothing to generate, return:
-{"type":"result","result":"No L1 files need generation"}
+{"type":"flexible","result":{"status":"nothing"}}
 
 Return valid JSON only.`;
 
