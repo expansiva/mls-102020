@@ -372,6 +372,9 @@ export function parseMlsPath(mlsPath: string): ParsedMlsPath | null {
   if (filename.endsWith('.defs.ts')) {
     shortName = filename.slice(0, -'.defs.ts'.length);
     extension = '.defs.ts';
+  } else if (filename.endsWith('.d.ts')) {
+    shortName = filename.slice(0, -'.d.ts'.length);
+    extension = '.d.ts';
   } else {
     const dot = filename.lastIndexOf('.');
     shortName = dot >= 0 ? filename.slice(0, dot) : filename;
@@ -629,7 +632,11 @@ export async function getDtsForFile(
     console.warn('[agentMaterializeArtifacts] getDtsForFile compile failed, falling back', err);
   }
 
-  return await getContentByMlsPath(toMlsPath(project, level, folder, shortName, '.ts')) ?? '';
+  return (
+    await getContentByMlsPath(toMlsPath(project, level, folder, shortName, '.d.ts')) ??
+    await getContentByMlsPath(toMlsPath(project, level, folder, shortName, '.ts')) ??
+    ''
+  );
 }
 
 // ─── Tool call payload extractor ─────────────────────────────────────────────

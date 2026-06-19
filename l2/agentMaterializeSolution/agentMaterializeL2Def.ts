@@ -178,7 +178,7 @@ async function afterPromptStep(
   const controllerRules = extractJsonArrayField(JSON.stringify(out.controllerDefinition), 'rulesApplied');
   const controllerUsecaseRefs = extractJsonArrayField(JSON.stringify(out.controllerDefinition), 'usecaseRefs');
   const controllerDependsFiles = controllerUsecaseRefs.map(ref =>
-    toMlsPath(project, 1, `${moduleName}/layer_3_usecases`, ref, '.ts'),
+    toMlsPath(project, 1, `${moduleName}/layer_3_usecases`, ref, '.d.ts'),
   );
   const ok1 = await createDefsFile(
     project, 1, `${moduleName}/layer_2_controllers`, shortName,
