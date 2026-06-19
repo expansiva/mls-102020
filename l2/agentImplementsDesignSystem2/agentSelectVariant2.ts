@@ -11,7 +11,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { buildWorkItem } from '/_102020_/l2/dsMatch/derivePaths.js';
-import { readDsRules, readConfiguredAxisKeys } from '/_102020_/l2/dsMatch/readDsRules.js';
+import { resolveRulesForPage } from '/_102020_/l2/dsMatch/resolveRulesForPage.js';
 import { buildMoleculeCatalog } from '/_102020_/l2/dsMatch/buildMoleculeCatalog.js';
 import { loadPageSource, loadPageDefinitionText } from '/_102020_/l2/dsMatch/agent1.js';
 import { loadGroupSelections, computeOrganismCandidates, buildVariantHumanPrompt, validateVariantPicks } from '/_102020_/l2/dsMatch/agent2.js';
@@ -44,10 +44,9 @@ async function beforePromptStep(
   const item = buildWorkItem(project, a.module, a.layout, a.ds, a.page!, a.device);
 
   const selections = await loadGroupSelections(item.defsDestino);
-  const dsRules = await readDsRules(project, a.ds);
-  const configuredAxes = await readConfiguredAxisKeys(project, a.ds);
+  const { rules, configuredAxes } = await resolveRulesForPage(project, a.module, a.page!, a.ds); // cascade project→module→page
   const catalog = await buildMoleculeCatalog();
-  const candidates = computeOrganismCandidates(selections, dsRules, configuredAxes, catalog);
+  const candidates = computeOrganismCandidates(selections, rules, configuredAxes, catalog);
 
   const pageSource = await loadPageSource(item.tsOrigem);
   const definitionText = await loadPageDefinitionText(item.tsOrigem);
@@ -86,10 +85,9 @@ async function afterPromptStep(
 
     // Recompute the candidate set to validate the LLM picks against it.
     const selections = await loadGroupSelections(item.defsDestino);
-    const dsRules = await readDsRules(project, a.ds);
-    const configuredAxes = await readConfiguredAxisKeys(project, a.ds);
+    const { rules, configuredAxes } = await resolveRulesForPage(project, a.module, a.page!, a.ds);
     const catalog = await buildMoleculeCatalog();
-    const candidates = computeOrganismCandidates(selections, dsRules, configuredAxes, catalog);
+    const candidates = computeOrganismCandidates(selections, rules, configuredAxes, catalog);
 
     const validated = validateVariantPicks(payload.result, candidates, item.defsDestino);
 

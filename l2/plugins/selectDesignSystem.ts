@@ -5,7 +5,11 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { dsSections, dsAxisList, type IDsAxisEntry, type IDsSection } from '/_102020_/l2/designSystemAuraBase.js';
+import { effectiveRulesProvenance, UNSET, type RuleSource } from '/_102020_/l2/dsMatch/resolveRulesForPage.js';
 import '/_102020_/l2/plugins/navHeader.js';
+
+// Scope this plugin configures: project (l6), a module (l5), or a page (l3).
+type DsScope = 'project' | 'module' | 'page';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -25,6 +29,8 @@ const message_en = {
     descLabel: 'Description',
     descPlaceholder: 'What this design system is for (optional)',
     notSet: 'Not set',
+    inheritLabel: 'Inherit',
+    unsetRule: 'Remove (unset)',
     addMore: 'Configure another group',
     rule: 'rule',
     rules: 'rules',
@@ -72,6 +78,8 @@ const messages: Record<string, MessageType> = {
         descLabel: 'Descrição',
         descPlaceholder: 'Para que serve este design system (opcional)',
         notSet: 'Não configurar',
+        inheritLabel: 'Herdar',
+        unsetRule: 'Remover (unset)',
         addMore: 'Configurar outro grupo',
         rule: 'regra',
         rules: 'regras',
@@ -116,6 +124,8 @@ const messages: Record<string, MessageType> = {
         descLabel: 'Descripción',
         descPlaceholder: 'Para qué sirve este design system (opcional)',
         notSet: 'Sin configurar',
+        inheritLabel: 'Heredar',
+        unsetRule: 'Quitar (unset)',
         addMore: 'Configurar otro grupo',
         rule: 'regla',
         rules: 'reglas',
@@ -154,7 +164,9 @@ interface IDsEntry {
     name: string;
     skill: string;
     description: string;
-    rules: Record<string, string>;
+    rules: Record<string, string>;                                  // project-level rules
+    moduleOverrides: Record<string, Record<string, string>>;        // [module] → partial
+    pageOverrides: Record<string, Record<string, string>>;          // ["{module}/{page}"] → partial
 }
 
 interface INewDs {
@@ -173,9 +185,17 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     @property({ attribute: false }) projectId: number | null = null;
     @property({ attribute: false }) value: number | null = null;
+    // Granularity: 'project' (l6) edits ds.rules; 'module' (l5) edits moduleOverrides[module];
+    // 'page' (l3) edits pageOverrides["{module}/{page}"]. Defaults to project (back-compat).
+    @property({ attribute: false }) scope: DsScope = 'project';
+    @property({ attribute: false }) module: string | null = null;
+    @property({ attribute: false }) page: string | null = null;
 
     @state() private _entries: IDsEntry[] = [];
     @state() private _loading: boolean = false;
+    // Effective values inherited from PARENT scopes (axis → {value, source}); shown so the user
+    // sees what an override/unset would change. Empty at project scope.
+    @state() private _inherited: Record<string, { value: string; source: RuleSource }> = {};
 
     // ─── New design system form ──────────────────────────────────────
     @state() private _dsName: string = '';
@@ -206,8 +226,29 @@ export class PluginSelectDesignSystem extends StateLitElement {
             if (this.projectId) this._loadDsConfig(this.projectId);
             else this._dispatchConfig();
         }
-        if (changed.has('value')) this._editingKey = null;
+        if (changed.has('value') || changed.has('scope') || changed.has('module') || changed.has('page')) {
+            this._editingKey = null; // force the form to reload for the new scope/target
+        }
         this._syncForm();
+    }
+
+    private get _isProjectScope(): boolean { return this.scope !== 'module' && this.scope !== 'page'; }
+
+    /** Page-override key: "{module}/{page}". */
+    private get _scopeKey(): string { return `${this.module ?? ''}/${this.page ?? ''}`; }
+
+    /** The partial this scope edits (its own bucket on the DS). */
+    private _scopeBucket(entry: IDsEntry): Record<string, string> {
+        if (this.scope === 'module') return entry.moduleOverrides[this.module ?? ''] ?? {};
+        if (this.scope === 'page') return entry.pageOverrides[this._scopeKey] ?? {};
+        return entry.rules;
+    }
+
+    /** Effective values inherited from the PARENT scopes (project for module; project+module for page). */
+    private _computeInherited(entry: IDsEntry): Record<string, { value: string; source: RuleSource }> {
+        if (this.scope === 'module') return effectiveRulesProvenance(entry.rules).effective;
+        if (this.scope === 'page') return effectiveRulesProvenance(entry.rules, entry.moduleOverrides[this.module ?? '']).effective;
+        return {};
     }
 
     /** Populate the editable form for the current target (new DS or selected DS). */
@@ -231,6 +272,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._dsName = '';
         this._dsDesc = '';
         this._axisValues = {};
+        this._inherited = {};
         this._addedSections = new Set();
         this._openSections = new Set();
         this._showAddMenu = false;
@@ -241,14 +283,15 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     private _loadFormFromEntry(entry: IDsEntry): void {
-        const rules = entry.rules ?? {};
+        const bucket = this._scopeBucket(entry); // this scope's own partial (rules / moduleOverrides / pageOverrides)
         this._dsName = entry.name;
         this._dsDesc = entry.description ?? '';
-        this._axisValues = { ...rules };
+        this._axisValues = { ...bucket };
+        this._inherited = this._computeInherited(entry);
         // Reveal any non-primary section that already holds a rule.
         const added = new Set<string>();
         for (const axis of dsAxisList) {
-            if (axis.key in rules) {
+            if (axis.key in bucket) {
                 const sec = dsSections.find(s => s.key === axis.section);
                 if (sec && !sec.primary) added.add(sec.key);
             }
@@ -285,7 +328,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this.requestUpdate();
         try {
             const config = await getConfigProject(projectId);
-            const dsMap = (config?.designSystems ?? {}) as unknown as Record<string, { name: string; skill?: string; description?: string; rules?: Record<string, string> }>;
+            const dsMap = (config?.designSystems ?? {}) as unknown as Record<string, { name: string; skill?: string; description?: string; rules?: Record<string, string>; moduleOverrides?: Record<string, Record<string, string>>; pageOverrides?: Record<string, Record<string, string>> }>;
             const keys = Object.keys(dsMap).map(Number).sort((a, b) => a - b);
             this._entries = keys.map(k => ({
                 key: k,
@@ -293,6 +336,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 skill: dsMap[k].skill ?? '',
                 description: dsMap[k].description ?? '',
                 rules: dsMap[k].rules ?? {},
+                moduleOverrides: dsMap[k].moduleOverrides ?? {},
+                pageOverrides: dsMap[k].pageOverrides ?? {},
             }));
         } catch {
             this._entries = [];
@@ -407,9 +452,11 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     private _renderDsForm() {
         const visible = dsSections.filter(s => s.primary || this._addedSections.has(s.key));
+        // Name/description identify the DS itself → only editable at project scope.
+        // module/page scopes edit OVERRIDES of an existing DS, so they hide these fields.
         return html`
-            ${this._renderNameField()}
-            ${this._renderDescField()}
+            ${this._isProjectScope ? this._renderNameField() : nothing}
+            ${this._isProjectScope ? this._renderDescField() : nothing}
 
             <div class="flex flex-col gap-2.5">
                 ${visible.map(sec => this._renderSectionDetails(sec))}
@@ -533,19 +580,29 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     private _renderAxis(axis: IDsAxisEntry) {
-        const current = this._axisValues[axis.key]; // undefined = unconfigured
+        const current = this._axisValues[axis.key];                 // value set at THIS scope, UNSET, or undefined
+        const inherited = this._isProjectScope ? undefined : this._inherited[axis.key]; // from parent scopes
+        const isUnset = current === UNSET;
         return html`
             <div class="flex flex-col gap-1">
-                <span class="text-xs font-medium text-gray-600 dark:text-gray-300">${axis.label}</span>
+                <div class="flex items-baseline gap-2">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">${axis.label}</span>
+                    ${inherited
+                        ? html`<span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.inheritLabel}: ${this._humanize(inherited.value)} <span class="opacity-60">(${inherited.source})</span></span>`
+                        : nothing}
+                </div>
                 <div class="flex flex-wrap gap-1.5">
-                    ${this._renderClearChip(axis, current === undefined)}
+                    ${this._renderClearChip(axis, current === undefined, inherited?.value)}
                     ${axis.values.map(v => this._renderValueChip(axis, v, current === v))}
+                    ${inherited ? this._renderUnsetChip(axis, isUnset) : nothing}
                 </div>
             </div>
         `;
     }
 
-    private _renderClearChip(axis: IDsAxisEntry, selected: boolean) {
+    private _renderClearChip(axis: IDsAxisEntry, selected: boolean, inheritedValue?: string) {
+        // At a child scope, "not set here" means INHERIT the parent value.
+        const label = (!this._isProjectScope && inheritedValue !== undefined) ? this.msg.inheritLabel : this.msg.notSet;
         return html`
             <button
                 class="text-xs px-2 py-1 rounded-md border border-dashed transition-colors cursor-pointer
@@ -553,7 +610,20 @@ export class PluginSelectDesignSystem extends StateLitElement {
                         ? 'border-gray-400 dark:border-gray-500 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium'
                         : 'border-gray-200 dark:border-gray-800 bg-transparent text-gray-400 dark:text-gray-600 hover:border-gray-300 dark:hover:border-gray-600'}"
                 @click=${() => this._clearAxis(axis.key)}
-            >${this.msg.notSet}</button>
+            >${label}</button>
+        `;
+    }
+
+    /** Only shown at child scopes when there is an inherited value: writes the UNSET sentinel (relax). */
+    private _renderUnsetChip(axis: IDsAxisEntry, selected: boolean) {
+        return html`
+            <button
+                class="text-xs px-2 py-1 rounded-md border transition-colors cursor-pointer
+                    ${selected
+                        ? 'border-red-400 dark:border-red-500 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-medium'
+                        : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 hover:border-red-300 dark:hover:border-red-600'}"
+                @click=${() => this._setAxis(axis.key, UNSET)}
+            >${this.msg.unsetRule}</button>
         `;
     }
 
@@ -649,7 +719,9 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     private async _onSave(): Promise<void> {
         const name = this._dsName.trim();
-        if (!name) { this._nameError = true; return; }
+        // Name identifies the DS — required only at project scope. module/page scopes save
+        // overrides for an existing DS (its name stays).
+        if (this._isProjectScope && !name) { this._nameError = true; return; }
         if (!this.projectId || this._saving) return;
 
         // Each DS stands on its own: store ONLY the axes the user configured.
@@ -685,7 +757,13 @@ export class PluginSelectDesignSystem extends StateLitElement {
         }));
     }
 
-    /** Write the DS into `project.json` → `designSystems[key]` (merging into an existing entry). */
+    /**
+     * Write into `project.json` → `designSystems[key]`, in the bucket for the current scope:
+     *   project → rules (+ name/description/skill)
+     *   module  → moduleOverrides[module]
+     *   page    → pageOverrides["{module}/{page}"]
+     * Merges into the existing entry (never clobbers the other buckets/identity).
+     */
     private async _persistDs(projectId: number, key: number, ds: INewDs): Promise<void> {
         const config: any = await getConfigProject(projectId);
         if (!config) throw new Error('project config not found');
@@ -695,13 +773,26 @@ export class PluginSelectDesignSystem extends StateLitElement {
             (current && typeof current === 'object' && !Array.isArray(current)) ? current : {};
 
         const existing = designSystems[key] ?? {};
-        designSystems[key] = {
-            ...existing,
-            name: ds.name,
-            description: ds.description,
-            skill: existing.skill ?? DS_SKILL,
-            rules: ds.rules,
-        };
+
+        if (this.scope === 'module') {
+            if (!this.module) throw new Error('module scope requires a module');
+            const moduleOverrides = { ...(existing.moduleOverrides ?? {}) };
+            moduleOverrides[this.module] = ds.rules;
+            designSystems[key] = { ...existing, moduleOverrides };
+        } else if (this.scope === 'page') {
+            if (!this.module || !this.page) throw new Error('page scope requires module and page');
+            const pageOverrides = { ...(existing.pageOverrides ?? {}) };
+            pageOverrides[this._scopeKey] = ds.rules;
+            designSystems[key] = { ...existing, pageOverrides };
+        } else {
+            designSystems[key] = {
+                ...existing,
+                name: ds.name,
+                description: ds.description,
+                skill: existing.skill ?? DS_SKILL,
+                rules: ds.rules,
+            };
+        }
         config.designSystems = designSystems;
 
         await updateConfigProject(projectId, config);
