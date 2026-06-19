@@ -7,7 +7,7 @@ import { catalogSignature, buildDsResolution } from '/_102020_/l2/dsMatch/record
 import type { ResolvedDs, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
 
 function entry(group: string, variant: string, layoutConfig: Record<string, string>): MoleculeCatalogEntry {
-    return { project: 102040, group, variant, tag: `${group.toLowerCase()}--${variant}`, layoutConfig, objective: `obj-${variant}`, usagePath: `_102020_/l2/skills/molecules/${group}/usage.ts` };
+    return { project: 102040, group, variant, tag: `${group.toLowerCase()}--${variant}`, layoutConfig, objective: `obj-${variant}`, description: `desc-${variant}`, usagePath: `_102020_/l2/skills/molecules/${group}/usage.ts` };
 }
 function ds(rules: Record<string, string>): ResolvedDs { return rules as ResolvedDs; }
 function assert(cond: boolean, msg: string): void { if (!cond) throw new Error(`[recordResolvedMolecules.test] FAIL: ${msg}`); }

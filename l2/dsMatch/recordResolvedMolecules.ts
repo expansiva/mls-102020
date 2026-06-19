@@ -67,43 +67,42 @@ export async function recordResolvedMolecules(project: number, dsIndex: number |
 // ─── record ONLY the molecules the pages actually used (flow terminal step) ──
 
 /**
- * Distinct groups actually used across the derived pages, read from each page's
- * `moleculeAssignments` export (written by the select step). Structured (collabImport),
- * no text parsing. Pages without the export contribute nothing (warned).
+ * The molecules the pages ACTUALLY used, read from each page's `moleculeAssignments`
+ * export (written by Agent2 — the LLM's per-page choice). Structured (collabImport), no
+ * text parsing. Keyed by group → { project, tag } (slim). Since the choice is now per
+ * page (LLM), we record what was used, NOT a deterministic re-resolution.
  */
-export async function collectUsedGroupsFromPages(
+export async function collectUsedMoleculesFromPages(
     project: number,
     module: string,
     layout: number | string,
     ds: number | string,
     device: string,
-): Promise<string[]> {
+): Promise<SlimResolvedMolecules> {
     const items = listWorkItems(project, module, layout, ds, device);
-    const groups = new Set<string>();
+    const out: SlimResolvedMolecules = {};
     for (const item of items) {
         const ref = item.defsDestino.startsWith('/') ? item.defsDestino.slice(1) : item.defsDestino;
         const f = mls.stor.convertFileReferenceToFile(ref);
         try {
             const mod = await collabImport({ project: f.project, folder: f.folder, shortName: f.shortName, extension: '.defs.ts' });
-            const assignments = (mod && (mod as any).moleculeAssignments) as Array<{ molecules?: Array<{ group?: string }> }> | undefined;
-            if (Array.isArray(assignments)) {
-                for (const org of assignments) {
-                    for (const m of (org?.molecules || [])) if (m?.group) groups.add(m.group);
+            const assignments = (mod && (mod as any).moleculeAssignments) as Array<{ molecules?: Array<{ project?: number; group?: string; tag?: string }> }> | undefined;
+            if (!Array.isArray(assignments)) { console.warn(`[collectUsedMoleculesFromPages] no moleculeAssignments in ${item.page}`); continue; }
+            for (const org of assignments) {
+                for (const m of (org?.molecules || [])) {
+                    if (m?.group && m?.tag && !out[m.group]) out[m.group] = { project: m.project ?? 0, tag: m.tag };
                 }
-            } else {
-                console.warn(`[collectUsedGroupsFromPages] no moleculeAssignments in ${item.page}`);
             }
         } catch (err) {
-            console.warn(`[collectUsedGroupsFromPages] skip ${item.page}`, err);
+            console.warn(`[collectUsedMoleculesFromPages] skip ${item.page}`, err);
         }
     }
-    return [...groups].sort();
+    return out;
 }
 
 /**
- * Flow terminal step: record on the DS ONLY the molecules the pages actually used.
- * Reads the used groups from the generated page defs, resolves them deterministically
- * (project/variant/matched/specificity) and persists designSystems[ds].resolvedMolecules.
+ * Flow terminal step: record on the DS ONLY the molecules the pages actually used
+ * (the LLM's per-page choices), as the slim `{ project, tag }` table + catalogVersion.
  * @param project the project that holds the module + DS (e.g. 102043)
  */
 export async function recordUsedMolecules(
@@ -112,14 +111,11 @@ export async function recordUsedMolecules(
     layout: number | string,
     ds: number | string,
     device = 'desktop',
-): Promise<DsResolution> {
-    const usedGroups = await collectUsedGroupsFromPages(project, module, layout, ds, device);
-    const dsRules = await readDsRules(project, ds);
-    const catalog = await buildMoleculeCatalog();
-    const resolvedMolecules = resolveMolecules(dsRules, catalog, usedGroups); // ONLY used groups
-    const catalogVersion = catalogSignature(catalog);
-    await persistResolvedMolecules(project, ds, toSlimTable(resolvedMolecules), catalogVersion); // persist slim: { project, tag }
-    return { resolvedMolecules, catalogVersion };
+): Promise<{ resolvedMolecules: SlimResolvedMolecules; catalogVersion: string }> {
+    const used = await collectUsedMoleculesFromPages(project, module, layout, ds, device);
+    const catalogVersion = catalogSignature(await buildMoleculeCatalog());
+    await persistResolvedMolecules(project, ds, used, catalogVersion);
+    return { resolvedMolecules: used, catalogVersion };
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────

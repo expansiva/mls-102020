@@ -20,6 +20,7 @@ function entry(group: string, variant: string, layoutConfig: Record<string, stri
         tag: `${group.toLowerCase()}--${variant}`,
         layoutConfig,
         objective: `obj-${variant}`,
+        description: `desc-${variant}`,
         usagePath: `_102020_/l2/skills/molecules/${group}/usage.ts`,
     };
 }
@@ -60,12 +61,20 @@ export function runResolveMoleculesTests(): { passed: number } {
         passed++;
     }
 
-    // 3. resolveMolecules: fallback recorded when nothing matches.
+    // 3. No match (and no wildcard) → group is OMITTED (no fallback, no assignment).
     {
         const resolved = resolveMolecules(ds({ labelPlacement: 'top', feedback: 'inline' }), catalog);
         assert(resolved['groupEnterText'].variant === 'ml-enter-text', 'text should pick wildcard');
-        assert(resolved['groupNotifyUser'].matched === false, 'notify should be fallback (no inline molecule)');
-        assert(resolved['groupNotifyUser'].variant === 'ml-toast', 'fallback = first in catalog order');
+        assert(resolved['groupNotifyUser'] === undefined, 'notify must be omitted (no inline molecule, no fallback)');
+        passed++;
+    }
+
+    // 3b. (2) Gating: a group is skipped when the DS configured no axis governing it.
+    {
+        // feedback configured → groupNotifyUser eligible; groupEnterText NOT (labelPlacement not configured).
+        const resolved = resolveMolecules(ds({ feedback: 'toast' }), catalog, undefined, new Set(['feedback']));
+        assert(!!resolved['groupNotifyUser'], 'groupNotifyUser should resolve (feedback configured)');
+        assert(resolved['groupEnterText'] === undefined, 'groupEnterText should be skipped (labelPlacement not configured)');
         passed++;
     }
 

@@ -41,6 +41,17 @@ export interface AssignedMolecule { project: number; group: string; tag: string;
 export interface OrganismAssignment { organismName: string; molecules: AssignedMolecule[]; }
 export interface PageAssignment { path: string; organisms: OrganismAssignment[]; }
 
+/** True if any candidacy axis used by the group's molecules was explicitly configured in the DS. */
+function groupHasConfiguredAxis(group: string, catalog: MoleculeCatalogEntry[], configuredAxes: Set<string>): boolean {
+    for (const m of catalog) {
+        if (m.group !== group) continue;
+        for (const axis of Object.keys(m.layoutConfig)) {
+            if (configuredAxes.has(axis)) return true;
+        }
+    }
+    return false;
+}
+
 /** Distinct groups Agent1 selected across all pages, sorted. */
 export function collectUsedGroups(outputs: Agent1Output[]): string[] {
     const set = new Set<string>();
@@ -55,11 +66,17 @@ export function collectUsedGroups(outputs: Agent1Output[]): string[] {
 /**
  * Resolve one molecule per group for the DS (DSDefinition §2, deterministic).
  * @param groups optional subset to resolve; defaults to every distinct group in the catalog.
+ * @param configuredAxes optional set of axis keys the DS configured EXPLICITLY. When given,
+ *        a group is only resolved if at least one of its molecules' candidacy axes
+ *        (layoutConfig keys) was explicitly configured — otherwise the DS has no opinion on
+ *        that group and we DON'T swap the organism (it keeps its original UI). Groups with no
+ *        DS axis at all (chart/media/locate/scancode) are therefore never auto-assigned.
  */
 export function resolveMolecules(
     dsRules: ResolvedDs,
     catalog: MoleculeCatalogEntry[],
     groups?: string[],
+    configuredAxes?: Set<string>,
 ): ResolvedMolecules {
     const target = (groups && groups.length)
         ? [...new Set(groups)]
@@ -67,8 +84,12 @@ export function resolveMolecules(
 
     const out: ResolvedMolecules = {};
     for (const group of target) {
+        // (2) Gate: only assign when the DS explicitly configured an axis that governs this group.
+        if (configuredAxes && !groupHasConfiguredAxis(group, catalog, configuredAxes)) {
+            continue;
+        }
         const r = matchVariant(group, dsRules, catalog);
-        if (!r) { console.warn(`[resolveMolecules] no molecules for group '${group}' (skipped)`); continue; }
+        if (!r) continue; // (1) nothing matches → no assignment (keep original UI)
         out[group] = {
             project: r.entry.project,
             group,

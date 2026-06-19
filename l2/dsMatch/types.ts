@@ -31,8 +31,11 @@ export interface MoleculeCatalogEntry {
      * Values already validated against the vocabulary by `buildMoleculeCatalog`.
      */
     layoutConfig: Record<string, string>;
-    /** First line of the skill's `# Objective` (for prompts/inspection). */
+    /** First line of the skill's `# Objective` (short label / molecule `purpose`). */
     objective: string;
+    /** Full `.defs.ts` skill text (Objective + Responsibilities + Constraints) — fed to the
+     *  variant-selection LLM (Agent2) so it can choose the best component for the page. */
+    description: string;
     /** Usage skill for materialization (group in camelCase). */
     usagePath: string;
 }

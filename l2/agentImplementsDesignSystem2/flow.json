@@ -25,7 +25,16 @@
       "executionMode": "parallel_static",
       "dependsOn": [],
       "initialStatus": "waiting_human_input",
-      "goal": "Fase B+C. LLM escolhe grupos por organismo (lê .ts renderizado + definition); resolveMolecules+assign (determinístico); grava page{layout}{ds}/<page>.defs.ts com moleculeAssignments + usagePaths.",
+      "goal": "Agent1. LLM escolhe os GRUPOS por organismo (lê .ts renderizado + definition); grava page{layout}{ds}/<page>.defs.ts com `groupSelections`. NÃO escolhe variante.",
+      "perPage": true
+    },
+    {
+      "planId": "variant:<page>",
+      "agentName": "agentSelectVariant2",
+      "type": "agent",
+      "executionMode": "parallel_static",
+      "dependsOn": ["select:<page>"],
+      "goal": "Agent2. Filtra as variantes de cada grupo compatíveis com o DS (filterCompatibleVariants: DS silencioso no eixo → todas válidas) e o LLM escolhe a MELHOR variante para a página usando as descrições .defs + o contexto da página; grava `moleculeAssignments` (+ usagePaths) com project/tag/purpose/import.",
       "perPage": true
     },
     {
@@ -33,7 +42,7 @@
       "agentName": "agentGenDefs2",
       "type": "agent",
       "executionMode": "parallel_static",
-      "dependsOn": ["select:<page>"],
+      "dependsOn": ["variant:<page>"],
       "goal": "Fase E. LLM monta o defs FINAL (origem page11 + moleculeAssignments), sem re-escolher molécula; grava page{layout}{ds}/<page>.defs.ts.",
       "perPage": true
     },

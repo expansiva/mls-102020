@@ -61,6 +61,7 @@ export async function buildMoleculeCatalog(force = false): Promise<MoleculeCatal
                 variant: sf.shortName,
                 layoutConfig: sanitizeLayoutConfig(mod.layoutConfig, ref),
                 objective: parseObjective(skill),
+                description: skill, // full .defs skill (Objective/Responsibilities/Constraints) for Agent2
                 usagePath: `_102020_/l2/skills/molecules/${group}/usage.ts`,
             });
         } catch (err) {

@@ -95,16 +95,23 @@ async function afterPromptStep(
 
     const intents: mls.msg.AgentIntentAddStep[] = [];
 
-    // Group A — select groups + resolve + write the new defs (one per page).
+    // Group A — Agent1: pick the molecule GROUPS per organism (writes groupSelections).
     for (const page of pages) {
-      intents.push(mkAgentStep(context, step, makePlanId('select', page), `Select: ${page}`,
+      intents.push(mkAgentStep(context, step, makePlanId('select', page), `Select groups: ${page}`,
         'agentSelectGroups2', baseArgs(page), [], 'waiting_human_input', 'parallel_static'));
     }
 
-    // Group B — assemble the final defs (one per page), each waits on its own select.
+    // Group B — Agent2: pick the VARIANT per organism from the DS-compatible candidates
+    // (writes moleculeAssignments). Each waits on its own select.
+    for (const page of pages) {
+      intents.push(mkAgentStep(context, step, makePlanId('variant', page), `Pick variant: ${page}`,
+        'agentSelectVariant2', baseArgs(page), [makePlanId('select', page)], 'waiting_dependency', 'parallel_static'));
+    }
+
+    // Group C — assemble the final defs. Each waits on its own variant.
     for (const page of pages) {
       intents.push(mkAgentStep(context, step, makePlanId('gen', page), `Gen defs: ${page}`,
-        'agentGenDefs2', baseArgs(page), [makePlanId('select', page)], 'waiting_dependency', 'parallel_static'));
+        'agentGenDefs2', baseArgs(page), [makePlanId('variant', page)], 'waiting_dependency', 'parallel_static'));
     }
 
     // Terminal — register the variation in module.ts ONCE, after EVERY gen completes.

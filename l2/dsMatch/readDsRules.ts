@@ -43,3 +43,19 @@ export async function readDsRules(project: number, dsIndex: number | string): Pr
 
     return resolved;
 }
+
+/**
+ * The axis keys the DS configured EXPLICITLY (the raw `rules`, not the defaults).
+ * Used to gate assignment: only swap an organism for a molecule when the DS actually
+ * expressed a preference for an axis that governs that molecule's group.
+ */
+export async function readConfiguredAxisKeys(project: number, dsIndex: number | string): Promise<Set<string>> {
+    const config: any = await getConfigProject(project);
+    const ds = config?.designSystems?.[String(dsIndex)];
+    const rules = (ds?.rules && typeof ds.rules === 'object') ? ds.rules : {};
+    const set = new Set<string>();
+    for (const [axis, value] of Object.entries(rules)) {
+        if (typeof value === 'string' && isValidAxisValue(axis, value)) set.add(axis);
+    }
+    return set;
+}

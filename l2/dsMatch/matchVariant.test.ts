@@ -8,7 +8,7 @@ import { matchVariant, type MatchResult } from '/_102020_/l2/dsMatch/matchVarian
 import type { ResolvedDs, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
 
 function entry(group: string, variant: string, layoutConfig: Record<string, string>): MoleculeCatalogEntry {
-    return { project: 102040, group, variant, tag: `${group.toLowerCase()}--${variant}`, layoutConfig, objective: '', usagePath: '' };
+    return { project: 102040, group, variant, tag: `${group.toLowerCase()}--${variant}`, layoutConfig, objective: '', description: '', usagePath: '' };
 }
 
 function ds(rules: Record<string, string>): ResolvedDs {
@@ -68,11 +68,10 @@ export function runMatchVariantTests(): { passed: number } {
         passed++;
     }
 
-    // 5. Fallback: a group where nothing matches AND there is no wildcard.
+    // 5. Nothing matches AND no wildcard → null (NO assignment, no arbitrary fallback).
     {
         const r = matchVariant('groupNotifyUser', ds({ feedback: 'inline' }), catalog);
-        assert(tag(r) === 'ml-toast', `fallback expected the group's first (ml-toast), got ${tag(r)}`);
-        assert(r!.matched === false, 'fallback should be matched=false');
+        assert(r === null, `no match should return null, got ${tag(r)}`);
         passed++;
     }
 
