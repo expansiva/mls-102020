@@ -552,6 +552,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                     <plugins--select-design-system-102020
                         .projectId=${this._selectedProject?.project ?? null}
                         .value=${this._dsValue}
+                        .scope=${'project'}
                     ></plugins--select-design-system-102020>
                 `;
             case 'language':

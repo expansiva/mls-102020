@@ -566,13 +566,24 @@ export class ServiceGenome102020 extends ServiceBase {
                         .pageFile=${this._currentPageFile}
                     ></plugins--select-layout-102020>
                 `;
-            case 'designSystem':
+            case 'designSystem': {
+                // Genome configures the CURRENT page's overrides. module = first folder
+                // segment (same rule as _trySetActualModule), page = file shortName —
+                // together they form the pageOverrides key "{module}/{page}".
+                const folder = this._currentPageFile?.folder ?? '';
+                const mod = folder.split('/')[0] || null;
+                const page = this._currentPageFile?.shortName ?? null;
+                const scope = (mod && page) ? 'page' : 'project';
                 return html`
                     <plugins--select-design-system-102020
                         .projectId=${getAuraState().actualProject}
                         .value=${this._dsValue}
+                        .scope=${scope}
+                        .module=${mod}
+                        .page=${page}
                     ></plugins--select-design-system-102020>
                 `;
+            }
             case 'molecules':
                 return html`
                     <plugins--select-molecule-102020
