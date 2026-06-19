@@ -109,9 +109,9 @@ export function buildConfig(project: number, moduleName: string): string {
     "pwa": "./_102033_/l2/shared/pwa/index.html"
   },
   "publication": {
-    "defaultTarget": "local",
+    "defaultTarget": "web",
     "targets": {
-      "local": {
+      "web": {
         "assetBaseUrl": "",
         "serveStaticFromServer": true,
         "minify": false,
@@ -140,9 +140,9 @@ export function buildConfig(project: number, moduleName: string): string {
         "profiles": {
           "production": {
             "renderer": {
-              "entrypoint": "/_${project}_/l2/shell/clientHeader.js",
-              "source": "l2/shell/clientHeader.ts",
-              "tag": "client-header-${project}"
+              "entrypoint": "/_102033_/l2/shared/layout/aura-header.js",
+              "source": "../mls-102033/l2/shared/layout/aura-header.ts",
+              "tag": "collab-aura-header"
             },
             "brand": {
               "name": "${moduleName}",
@@ -170,9 +170,9 @@ export function buildConfig(project: number, moduleName: string): string {
         "profiles": {
           "collabMessages": {
             "renderer": {
-              "entrypoint": "/_${project}_/l2/shell/collabMessagesAside.js",
-              "source": "l2/shell/collabMessagesAside.ts",
-              "tag": "collab-messages-aside-${project}"
+              "entrypoint": "/_102033_/l2/shared/layout/aura-aside.js",
+              "source": "../mls-102033/l2/shared/layout/aura-aside.ts",
+              "tag": "collab-aura-aside"
             },
             "widthPx": 375,
             "component": "collab-messages-102025",
@@ -268,12 +268,12 @@ export function buildConfig(project: number, moduleName: string): string {
         }
       ]
     },
-    "102029": {
-      "root": "../mls-102029",
+    "102027": {
+      "root": "../mls-102027",
       "type": "lib"
     },
-    "102025": {
-      "root": "../mls-102025",
+    "102029": {
+      "root": "../mls-102029",
       "type": "lib"
     },
     "102036": {

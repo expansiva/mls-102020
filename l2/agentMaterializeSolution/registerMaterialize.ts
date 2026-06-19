@@ -104,8 +104,8 @@ export async function registerPage(
   const loader = '/' + outputPath.replace(/\.ts$/, '.js');
 
   await Promise.all([
-    updateModuleTs(project, moduleName, shortName, href, label, loader, tag),
-    updateIndexTs(project, moduleName, href, label, loader, tag),
+    //updateModuleTs(project, moduleName, shortName, href, label, loader, tag),
+    //updateIndexTs(project, moduleName, href, label, loader, tag),
     updateCollabConfig(project, moduleName, shortName, outputPath, href, label, tag),
   ]);
 }
