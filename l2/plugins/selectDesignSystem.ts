@@ -40,6 +40,18 @@ const message_en = {
     saveError: 'Could not save the design system.',
     savedTitle: 'Design system ready',
     savedDesc: 'Only the groups you configured are part of this design system; everything else stays unconfigured.',
+    scopeBannerModule: 'You are configuring the MODULE level. These rules apply only to this module and override the project defaults.',
+    scopeBannerPage: 'You are configuring the PAGE level. These rules apply only to this page and override the module and project defaults.',
+    emptyModuleTitle: 'No module-specific configuration',
+    emptyModuleDesc: 'This module inherits everything from the project. Add an override to change rules just for this module.',
+    emptyPageTitle: 'No page-specific configuration',
+    emptyPageDesc: 'This page inherits from the module and the project. Add an override to change rules just for this page.',
+    addModuleConfig: 'Add module configuration',
+    addPageConfig: 'Add page configuration',
+    inheritedTitle: 'Inherited (read-only)',
+    inheritedFromProject: 'From project',
+    inheritedFromModule: 'From module',
+    inheritedLevelEmpty: 'Nothing configured at this level.',
     sections: {
         transversal: 'General',
         input: 'Input',
@@ -89,6 +101,18 @@ const messages: Record<string, MessageType> = {
         saveError: 'Não foi possível salvar o design system.',
         savedTitle: 'Design system pronto',
         savedDesc: 'Só os grupos que você configurou fazem parte deste design system; o resto fica sem configuração.',
+        scopeBannerModule: 'Você está configurando o nível MÓDULO. Estas regras valem só para este módulo e sobrescrevem os padrões do projeto.',
+        scopeBannerPage: 'Você está configurando o nível PÁGINA. Estas regras valem só para esta página e sobrescrevem os padrões do módulo e do projeto.',
+        emptyModuleTitle: 'Sem configuração específica do módulo',
+        emptyModuleDesc: 'Este módulo herda tudo do projeto. Adicione uma sobrescrita para mudar regras apenas neste módulo.',
+        emptyPageTitle: 'Sem configuração específica da página',
+        emptyPageDesc: 'Esta página herda do módulo e do projeto. Adicione uma sobrescrita para mudar regras apenas nesta página.',
+        addModuleConfig: 'Adicionar configuração do módulo',
+        addPageConfig: 'Adicionar configuração da página',
+        inheritedTitle: 'Herdado (somente leitura)',
+        inheritedFromProject: 'Do projeto',
+        inheritedFromModule: 'Do módulo',
+        inheritedLevelEmpty: 'Nada configurado neste nível.',
         sections: {
             transversal: 'Geral',
             input: 'Entrada',
@@ -135,6 +159,18 @@ const messages: Record<string, MessageType> = {
         saveError: 'No se pudo guardar el design system.',
         savedTitle: 'Design system listo',
         savedDesc: 'Solo los grupos que configuraste forman parte de este design system; el resto queda sin configurar.',
+        scopeBannerModule: 'Estás configurando el nivel MÓDULO. Estas reglas aplican solo a este módulo y sobrescriben los valores del proyecto.',
+        scopeBannerPage: 'Estás configurando el nivel PÁGINA. Estas reglas aplican solo a esta página y sobrescriben los valores del módulo y del proyecto.',
+        emptyModuleTitle: 'Sin configuración específica del módulo',
+        emptyModuleDesc: 'Este módulo hereda todo del proyecto. Agrega una sobrescritura para cambiar reglas solo en este módulo.',
+        emptyPageTitle: 'Sin configuración específica de la página',
+        emptyPageDesc: 'Esta página hereda del módulo y del proyecto. Agrega una sobrescritura para cambiar reglas solo en esta página.',
+        addModuleConfig: 'Agregar configuración del módulo',
+        addPageConfig: 'Agregar configuración de la página',
+        inheritedTitle: 'Heredado (solo lectura)',
+        inheritedFromProject: 'Del proyecto',
+        inheritedFromModule: 'Del módulo',
+        inheritedLevelEmpty: 'Nada configurado en este nivel.',
         sections: {
             transversal: 'General',
             input: 'Entrada',
@@ -213,6 +249,9 @@ export class PluginSelectDesignSystem extends StateLitElement {
     // Which DS the form is currently populated for: an entry key (edit), the
     // custom key (new), or null (not yet synced).
     @state() private _editingKey: number | null = null;
+    // At a child scope (module/page) with no own override yet: true once the user opts to
+    // start configuring this level, revealing the editable form over the empty state.
+    @state() private _editingScope: boolean = false;
 
     connectedCallback() {
         super.connectedCallback();
@@ -223,11 +262,13 @@ export class PluginSelectDesignSystem extends StateLitElement {
         if (changed.has('projectId')) {
             this._entries = [];
             this._editingKey = null;
+            this._editingScope = false;
             if (this.projectId) this._loadDsConfig(this.projectId);
             else this._dispatchConfig();
         }
         if (changed.has('value') || changed.has('scope') || changed.has('module') || changed.has('page')) {
             this._editingKey = null; // force the form to reload for the new scope/target
+            this._editingScope = false; // a new target re-evaluates its own empty/configured state
         }
         this._syncForm();
     }
@@ -450,20 +491,88 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     // ─── Editable DS form (shared by "new" and "selected/edit") ───────
 
+    /** True when the current child scope already has its own override bucket persisted. */
+    private get _scopeHasOwnConfig(): boolean {
+        const entry = this._selectedEntry;
+        if (!entry) return false;
+        return Object.keys(this._scopeBucket(entry)).length > 0;
+    }
+
     private _renderDsForm() {
+        // Project scope (l6) edits the DS identity + its base rules — the original form.
+        // Module/page scopes edit only THIS level's override and surface the parent levels
+        // read-only below, so the user can see the granularity they're configuring.
+        return this._isProjectScope ? this._renderProjectForm() : this._renderScopedForm();
+    }
+
+    // ── Project scope: identity + base rules (editable) ───────────────
+    private _renderProjectForm() {
         const visible = dsSections.filter(s => s.primary || this._addedSections.has(s.key));
-        // Name/description identify the DS itself → only editable at project scope.
-        // module/page scopes edit OVERRIDES of an existing DS, so they hide these fields.
         return html`
-            ${this._isProjectScope ? this._renderNameField() : nothing}
-            ${this._isProjectScope ? this._renderDescField() : nothing}
+            ${this._renderNameField()}
+            ${this._renderDescField()}
 
             <div class="flex flex-col gap-2.5">
                 ${visible.map(sec => this._renderSectionDetails(sec))}
             </div>
 
             ${this._renderAddMore()}
+            ${this._renderSaveButton()}
+            ${this._renderSaveFeedback()}
+        `;
+    }
 
+    // ── Module/page scope: own override (editable) + parents (read-only) ──
+    private _renderScopedForm() {
+        const showEditable = this._scopeHasOwnConfig || this._editingScope;
+        return html`
+            ${this._renderScopeBanner()}
+            ${showEditable ? this._renderScopeEditable() : this._renderScopeEmpty()}
+            ${this._renderInheritedLevels()}
+        `;
+    }
+
+    private _renderScopeBanner() {
+        const text = this.scope === 'page' ? this.msg.scopeBannerPage : this.msg.scopeBannerModule;
+        return html`
+            <div class="rounded-lg border border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10 px-3 py-2">
+                <span class="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">${text}</span>
+            </div>
+        `;
+    }
+
+    private _renderScopeEditable() {
+        const visible = dsSections.filter(s => s.primary || this._addedSections.has(s.key));
+        return html`
+            <div class="flex flex-col gap-2.5">
+                ${visible.map(sec => this._renderSectionDetails(sec))}
+            </div>
+
+            ${this._renderAddMore()}
+            ${this._renderSaveButton()}
+            ${this._renderSaveFeedback()}
+        `;
+    }
+
+    private _renderScopeEmpty() {
+        const isPage = this.scope === 'page';
+        const title = isPage ? this.msg.emptyPageTitle : this.msg.emptyModuleTitle;
+        const desc = isPage ? this.msg.emptyPageDesc : this.msg.emptyModuleDesc;
+        const btn = isPage ? this.msg.addPageConfig : this.msg.addModuleConfig;
+        return html`
+            <div class="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 px-3 py-5 flex flex-col items-center gap-2 text-center">
+                <span class="text-sm font-semibold text-gray-600 dark:text-gray-300">${title}</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed max-w-xs">${desc}</span>
+                <button
+                    class="mt-1 text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 transition-colors cursor-pointer flex items-center gap-1"
+                    @click=${() => { this._editingScope = true; this.requestUpdate(); }}
+                ><span class="text-sm leading-none">+</span> ${btn}</button>
+            </div>
+        `;
+    }
+
+    private _renderSaveButton() {
+        return html`
             <button
                 class="
                     self-start mt-1 text-sm px-3 py-1.5 rounded-md
@@ -475,7 +584,11 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 ?disabled=${this._saving}
                 @click=${() => this._onSave()}
             >${this._saving ? this.msg.saving : this.msg.save}</button>
+        `;
+    }
 
+    private _renderSaveFeedback() {
+        return html`
             ${this._saveError
                 ? html`<div class="rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 px-2.5 py-1.5">
                     <span class="text-xs text-red-600 dark:text-red-400">${this._saveError}</span>
@@ -483,6 +596,61 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 : nothing}
 
             ${this._savedDs ? this._renderSavedPreview(this._savedDs) : nothing}
+        `;
+    }
+
+    // ── Read-only parent levels (project for module; project+module for page) ──
+    private _inheritedLevels(): { title: string; rules: Record<string, string> }[] {
+        const entry = this._selectedEntry;
+        if (!entry) return [];
+        const levels: { title: string; rules: Record<string, string> }[] = [
+            { title: this.msg.inheritedFromProject, rules: entry.rules ?? {} },
+        ];
+        if (this.scope === 'page') {
+            const mod = this.module ?? '';
+            levels.push({
+                title: `${this.msg.inheritedFromModule}${mod ? ` · ${mod}` : ''}`,
+                rules: entry.moduleOverrides[mod] ?? {},
+            });
+        }
+        return levels;
+    }
+
+    private _renderInheritedLevels() {
+        const levels = this._inheritedLevels();
+        if (!levels.length) return nothing;
+        return html`
+            <div class="flex flex-col gap-2 mt-1 pt-3 border-t border-gray-100 dark:border-gray-800/70">
+                <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">${this.msg.inheritedTitle}</span>
+                ${levels.map(l => this._renderReadonlyLevel(l.title, l.rules))}
+            </div>
+        `;
+    }
+
+    private _renderReadonlyLevel(title: string, rules: Record<string, string>) {
+        const entries = Object.entries(rules);
+        return html`
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-1.5">
+                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400">${title}</span>
+                ${entries.length
+                    ? html`<div class="flex flex-wrap gap-1">
+                        ${entries.map(([k, v]) => this._renderReadonlyChip(k, v))}
+                    </div>`
+                    : html`<span class="text-[11px] text-gray-400 dark:text-gray-600 italic">${this.msg.inheritedLevelEmpty}</span>`}
+            </div>
+        `;
+    }
+
+    private _renderReadonlyChip(axisKey: string, value: string) {
+        const axis = dsAxisList.find(a => String(a.key) === axisKey);
+        const label = axis?.label ?? axisKey;
+        const isUnset = value === UNSET;
+        const display = isUnset ? this.msg.unsetRule : this._humanize(value);
+        return html`
+            <span class="text-[10px] px-1.5 py-0.5 rounded ${isUnset
+                ? 'bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 line-through'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'}"
+            >${label}: ${display}</span>
         `;
     }
 
