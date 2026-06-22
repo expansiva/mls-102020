@@ -12,7 +12,6 @@
 // See resolveRulesForPage for the cascade and recordResolvedMolecules for catalogVersion.
 
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { collabImport } from '/_102027_/l2/collabImport.js';
 import { resolveRulesForPage } from '/_102020_/l2/dsMatch/resolveRulesForPage.js';
 import { pageRef, DEFAULT_DEVICE } from '/_102020_/l2/dsMatch/derivePaths.js';
 
@@ -93,9 +92,26 @@ export async function buildPageDsStamp(
 
 /** Read the `dsVersion` export from a defs file location (null if absent/unreadable). */
 async function readStampFromDefs(defsFile: { project: number; folder: string; shortName: string }): Promise<PageDsStamp | null> {
+    // Read the raw .defs.ts source from the stor (not collabImport): collabImport serves the
+    // compiled .defs.js at a cache-busterless URL, which can lag a just-written source.
     try {
-        const mod = await collabImport({ project: defsFile.project, folder: defsFile.folder, shortName: defsFile.shortName, extension: '.defs.ts' });
-        const v = (mod as any)?.dsVersion;
+        const info = { project: defsFile.project, level: 2, folder: defsFile.folder, shortName: defsFile.shortName, extension: '.defs.ts' };
+        const key = mls.stor.getKeyToFile(info as any);
+        const sf = (mls.stor.files as Record<string, any>)[key];
+        if (!sf) return null;
+        const content = await sf.getContent();
+        return parseDsVersion(typeof content === 'string' ? content : '');
+    } catch {
+        return null;
+    }
+}
+
+/** Parse the `export const dsVersion = { ... } as const;` object from raw source. */
+function parseDsVersion(content: string): PageDsStamp | null {
+    const m = content.match(/export\s+const\s+dsVersion\s*=\s*(\{[\s\S]*?\})\s+as\s+const\s*;/);
+    if (!m) return null;
+    try {
+        const v = JSON.parse(m[1]);
         return v && typeof v === 'object' ? v as PageDsStamp : null;
     } catch {
         return null;

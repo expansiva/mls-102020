@@ -9,7 +9,6 @@
 // A `catalogVersion` signature is stored alongside so staleness can be detected when the
 // molecule catalog changes (recompute when it differs).
 
-import { collabImport } from '/_102027_/l2/collabImport.js';
 import { readDsRules } from '/_102020_/l2/dsMatch/readDsRules.js';
 import { buildMoleculeCatalog } from '/_102020_/l2/dsMatch/buildMoleculeCatalog.js';
 import { resolveMolecules, persistResolvedMolecules, type ResolvedMolecules } from '/_102020_/l2/dsMatch/resolveMolecules.js';
@@ -68,9 +67,13 @@ export async function recordResolvedMolecules(project: number, dsIndex: number |
 
 /**
  * The molecules the pages ACTUALLY used, read from each page's `moleculeAssignments`
- * export (written by Agent2 — the LLM's per-page choice). Structured (collabImport), no
- * text parsing. Keyed by group → { project, tag } (slim). Since the choice is now per
- * page (LLM), we record what was used, NOT a deterministic re-resolution.
+ * export (written by Agent2 — the LLM's per-page choice). Keyed by group → { project, tag }
+ * (slim). Since the choice is now per page (LLM), we record what was used, NOT a
+ * deterministic re-resolution.
+ *
+ * Reads the RAW .defs.ts source from the stor (not collabImport): this runs right after
+ * the agent saved the defs, and collabImport serves the compiled `.defs.js` at a fixed,
+ * cache-busterless URL — which lags the just-written source and would miss the export.
  */
 export async function collectUsedMoleculesFromPages(
     project: number,
@@ -82,11 +85,9 @@ export async function collectUsedMoleculesFromPages(
     const items = listWorkItems(project, module, layout, ds, device);
     const out: SlimResolvedMolecules = {};
     for (const item of items) {
-        const ref = item.defsDestino.startsWith('/') ? item.defsDestino.slice(1) : item.defsDestino;
-        const f = mls.stor.convertFileReferenceToFile(ref);
         try {
-            const mod = await collabImport({ project: f.project, folder: f.folder, shortName: f.shortName, extension: '.defs.ts' });
-            const assignments = (mod && (mod as any).moleculeAssignments) as Array<{ molecules?: Array<{ project?: number; group?: string; tag?: string }> }> | undefined;
+            const content = await readDefsSource(item.defsDestino);
+            const assignments = parseMoleculeAssignments(content);
             if (!Array.isArray(assignments)) { console.warn(`[collectUsedMoleculesFromPages] no moleculeAssignments in ${item.page}`); continue; }
             for (const org of assignments) {
                 for (const m of (org?.molecules || [])) {
@@ -98,6 +99,26 @@ export async function collectUsedMoleculesFromPages(
         }
     }
     return out;
+}
+
+/** Read raw .defs.ts source from the stor (current saved content — no compile/cache lag). */
+async function readDefsSource(ref: string): Promise<string> {
+    const norm = ref.startsWith('/') ? ref.slice(1) : ref;
+    const info = mls.stor.convertFileReferenceToFile(norm);
+    const key = mls.stor.getKeyToFile(info);
+    const sf = (mls.stor.files as Record<string, any>)[key];
+    if (!sf) return '';
+    const content = await sf.getContent();
+    return typeof content === 'string' ? content : '';
+}
+
+/** Parse the `export const moleculeAssignments = [...] as const;` array from raw source. */
+function parseMoleculeAssignments(
+    content: string,
+): Array<{ molecules?: Array<{ project?: number; group?: string; tag?: string }> }> | null {
+    const m = content.match(/export\s+const\s+moleculeAssignments\s*=\s*(\[[\s\S]*?\])\s+as\s+const\s*;/);
+    if (!m) return null;
+    try { return JSON.parse(m[1]); } catch { return null; }
 }
 
 /**
