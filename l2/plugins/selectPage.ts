@@ -233,6 +233,20 @@ export class PluginSelectPage extends StateLitElement {
 
         this._dispatchConfig();
         this.requestUpdate();
+        this._autoSelectActivePage();
+    }
+
+    // Re-fire the select event for the page already active in the state, so the
+    // preview repaints when this component (re)loads.
+    private _autoSelectActivePage(): void {
+        const activePage = getAuraState().actualPage;
+        if (!activePage) return;
+        const index = this._pages.findIndex(p =>
+            p.file.shortName === activePage.shortName &&
+            p.file.project === activePage.project
+        );
+        if (index < 0) return;
+        this._dispatchSelect(index + 1);
     }
 
     private _fileExists(project: number | null, level: number, folder: string, shortName: string): boolean {
