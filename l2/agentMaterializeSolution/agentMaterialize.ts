@@ -7,7 +7,7 @@ import {
   scanL2PageDefsFiles,
   getContentByMlsPath,
   parsePipelineFromContent,
-} from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
+} from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
 
 import { buildModuleTs, buildIndexTs, buildRouterTs, buildPersistenceTs, buildConfig } from '/_102020_/l2/agentMaterializeSolution/templateMaterialize.js';
 

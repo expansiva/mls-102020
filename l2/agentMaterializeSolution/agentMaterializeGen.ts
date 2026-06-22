@@ -10,7 +10,7 @@ import {
   saveGeneratedHtml,
   extractToolCallArgs,
   compileAndGetErrors,
-} from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
+} from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
 import {
   buildGenContext,
   resolveFileType,
@@ -20,7 +20,7 @@ import {
   registerLayer1,
   registerPage,
 } from '/_102020_/l2/agentMaterializeSolution/registerMaterialize.js';
-import type { GenStepArgs } from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
+import type { GenStepArgs } from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
 
 declare const mls: any;
 
