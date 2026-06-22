@@ -9,6 +9,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { buildWorkItem } from '/_102020_/l2/dsMatch/derivePaths.js';
+import { buildPageDsStamp, renderDsVersionExport } from '/_102020_/l2/dsMatch/dsVersion.js';
 import { parseStepArgs, readRawSource, saveFile, mkCompleted, mkFail } from '/_102020_/l2/agentImplementsDesignSystem2/planning.js';
 
 export function createAgent(): IAgentAsync {
@@ -89,7 +90,15 @@ async function afterPromptStep(
       if (tail) finalSrc = `${finalSrc.replace(/\s*$/, '')}\n\n${tail}\n`;
     }
 
-    if (!context.isTest) await saveFile(item.defsDestino, finalSrc);
+    if (!context.isTest) {
+      // Stamp the DS version (effective rules hash + catalog) this page was generated
+      // under, so staleness can be detected when the DS or catalog later changes.
+      if (!finalSrc.includes('export const dsVersion')) {
+        const stamp = await buildPageDsStamp(project, a.module, a.ds, a.page!, new Date().toISOString());
+        finalSrc = `${finalSrc.replace(/\s*$/, '')}\n\n${renderDsVersionExport(stamp)}\n`;
+      }
+      await saveFile(item.defsDestino, finalSrc);
+    }
 
     return [mkCompleted(context, parentStep, step, hookSequential)];
   } catch (error) {
@@ -130,8 +139,8 @@ Produce the FINAL page defs for the new design system, given the ORIGINAL page d
   page11 to the Output path's folder (page{layout}{ds}); keep the page name the same.
 - Keep the loose JSON-ish formatting of the original definition.
 - Output ONLY the merged defs (header + definition + pipeline). Do NOT re-emit the
-  resolved-molecules input, its header, or its moleculeAssignments/usagePaths exports —
-  those are appended later by code.
+  resolved-molecules input, its header, or its moleculeAssignments/usagePaths/dsVersion
+  exports — those are appended later by code.
 
 ## Output format
 [[OutputSection]]
