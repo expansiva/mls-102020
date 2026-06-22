@@ -4,6 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getAuraState } from '/_102020_/l2/auraState.js';
+import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -146,29 +147,38 @@ export class PluginSelectPage extends StateLitElement {
 
         this._activeDevice = activeDevicePath ? (DEVICE_LABELS[activeDevicePath] ?? null) : null;
 
-        let routes: any[] = [];
+        // Pages now live in the project config.json (l0). Read the stor content
+        // and pull the frontend pages for the selected module.
+        let pages: any[] = [];
         try {
-            const mod = await import(`/_${project}_/l2/${modulePath}/module.js?t=${Date.now()}`);
-            routes = mod?.moduleFrontendDefinition?.routes ?? [];
+            const content = await getContentByMlsPath(`_${project}_/l0/config.json`);
+            if (!content) throw new Error('config.json not found');
+            const config = JSON.parse(content);
+            const moduleDef = config?.projects?.[String(project)]?.modules
+                ?.find((m: any) => m.moduleId === modulePath);
+            pages = moduleDef?.frontend?.pages ?? [];
         } catch {
             this._dispatchConfig();
             this.requestUpdate();
             return;
         }
 
-        const entrypointPrefix = `/_${project}_/l2/`;
         const pageMap = new Map<string, { devices: Set<string>; file: mls.stor.IFileInfo }>();
 
-        for (const route of routes) {
-            const entrypoint: string = route.entrypoint ?? '';
-            if (!entrypoint.startsWith(entrypointPrefix)) continue;
+        for (const page of pages) {
+            // source: e.g. "l2/cafeFlow/web/desktop/page11/dashboardGerente.ts"
+            const source: string = page.source ?? '';
+            const relative = source.replace(/^\.?\//, '').replace(/\.ts$/, '');
+            const levelMatch = relative.match(/^l(\d+)\/(.+)$/);
+            if (!levelMatch) continue;
 
-            const relative = entrypoint.slice(entrypointPrefix.length).replace(/\.js$/, '');
-            const lastSlash = relative.lastIndexOf('/');
+            const level = parseInt(levelMatch[1], 10);
+            const afterLevel = levelMatch[2];
+            const lastSlash = afterLevel.lastIndexOf('/');
             if (lastSlash < 0) continue;
 
-            const folder = relative.substring(0, lastSlash);
-            const shortName = relative.substring(lastSlash + 1);
+            const folder = afterLevel.substring(0, lastSlash);
+            const shortName = afterLevel.substring(lastSlash + 1);
             if (!shortName) continue;
 
             let devicePath: string | null = null;
@@ -179,11 +189,12 @@ export class PluginSelectPage extends StateLitElement {
 
             if (activeDevicePath && devicePath !== activeDevicePath) continue;
 
-            if (!pageMap.has(shortName)) {
-                const file = { project, folder, shortName, level: 2, extension: '.ts' } as mls.stor.IFileInfo;
-                pageMap.set(shortName, { devices: new Set(), file });
+            const name = page.pageId || shortName;
+            if (!pageMap.has(name)) {
+                const file = { project, folder, shortName, level, extension: '.ts' } as mls.stor.IFileInfo;
+                pageMap.set(name, { devices: new Set(), file });
             }
-            pageMap.get(shortName)!.devices.add(devicePath);
+            pageMap.get(name)!.devices.add(devicePath);
         }
 
         this._pages = Array.from(pageMap.entries())
