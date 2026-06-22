@@ -139,6 +139,136 @@ this.dispatchEvent(new CustomEvent('change', {
 
 ---
 
+## 7.1 Portal — Floating Panel Rendering (dropdown implementations)
+
+> The dropdown panel MUST be rendered outside the component tree, in \`<body>\`,
+> using the **portal pattern** with \`litRender\`. This prevents the panel from
+> being clipped or hidden behind sibling elements when any ancestor uses
+> \`backdrop-filter\`, \`transform\`, \`overflow: hidden\`, or explicit \`z-index\`
+> (all of which create new CSS stacking contexts).
+
+### Import
+
+\\\`\\\`\\\`typescript
+import { render as litRender } from 'lit';
+\\\`\\\`\\\`
+
+### Required members
+
+| Member | Visibility | Description |
+|--------|------------|-------------|
+| \`portalContainer\` | \`protected\` | \`HTMLDivElement \\| null\` — the portal element appended to \`<body>\` |
+| \`portalClassName\` | \`protected\` | \`string\` — CSS class added to the portal (empty by default; subclasses set it for scoped styling, e.g. \`'glass-msd-portal'\`) |
+| \`getPortalTemplate()\` | \`protected\` | Returns \`TemplateResult\` with the panel content. Subclasses override this to render themed variants |
+
+### Lifecycle integration
+
+| Hook | Action |
+|------|--------|
+| \`openPanel()\` / \`toggleOpen()\` | Call \`createPortal()\` after setting \`isOpen = true\` |
+| \`closePanel()\` | Call \`destroyPortal()\` |
+| \`disconnectedCallback()\` | Call \`destroyPortal()\` for cleanup |
+| \`updated()\` | When \`isOpen && portalContainer\`: call \`renderPortalContent()\` + \`updatePanelPosition()\` to keep portal in sync with reactive state |
+
+### Portal methods
+
+\\\`\\\`\\\`typescript
+private createPortal() {
+  if (this.portalContainer) return;
+  this.portalContainer = document.createElement('div');
+  if (this.portalClassName) this.portalContainer.classList.add(this.portalClassName);
+  document.body.appendChild(this.portalContainer);
+  this.updatePanelPosition();
+  this.renderPortalContent();
+  window.addEventListener('scroll', this.boundUpdatePosition, true);
+  window.addEventListener('resize', this.boundUpdatePosition);
+}
+
+private destroyPortal() {
+  if (!this.portalContainer) return;
+  window.removeEventListener('scroll', this.boundUpdatePosition, true);
+  window.removeEventListener('resize', this.boundUpdatePosition);
+  this.portalContainer.remove();
+  this.portalContainer = null;
+}
+
+private updatePanelPosition() {
+  if (!this.portalContainer) return;
+  const trigger = this.querySelector('button[role="combobox"]') as HTMLElement;
+  if (!trigger) return;
+  const rect = trigger.getBoundingClientRect();
+  Object.assign(this.portalContainer.style, {
+    position: 'fixed',
+    top: \\\`\\\${rect.bottom + 8}px\\\`,
+    left: \\\`\\\${rect.left}px\\\`,
+    width: \\\`\\\${rect.width}px\\\`,
+    zIndex: '9999',
+  });
+}
+
+private renderPortalContent() {
+  if (!this.portalContainer) return;
+  litRender(this.getPortalTemplate(), this.portalContainer);
+}
+\\\`\\\`\\\`
+
+### Focus management — critical for multi-select
+
+Since the panel stays open while the user selects multiple items, focus moves
+between the component and the portal frequently. Handlers that check focus
+ownership must include the portal:
+
+\\\`\\\`\\\`typescript
+// handleFocusOut — do NOT close when focus moves to portal
+if (!related || (!this.contains(related) && !this.portalContainer?.contains(related))) {
+  this.closePanel();
+}
+
+// handleDocumentClick — do NOT close when clicking inside portal
+if (!target || (!this.contains(target) && !this.portalContainer?.contains(target))) {
+  this.closePanel();
+}
+\\\`\\\`\\\`
+
+### DOM queries — search in portal
+
+Methods that query elements inside the panel must search the portal container:
+
+\\\`\\\`\\\`typescript
+// focusSearchInput
+const container = this.portalContainer || this;
+const input = container.querySelector('input[data-search]');
+
+// moveOptionFocus / focusActiveItem
+const container = this.portalContainer || this;
+const options = container.querySelectorAll('[data-option]');
+\\\`\\\`\\\`
+
+### render() — no inline panel
+
+The main \`render()\` method must **not** include the panel template. The panel
+is rendered exclusively via \`renderPortalContent()\` into the portal container.
+
+### CSS — shared selector for portal
+
+Panel styles must work both inside the component and in the body-level portal.
+Use a shared selector in the \`.less\` file:
+
+\\\`\\\`\\\`less
+my-component,
+.my-portal-class {
+  .panel { /* panel styles */ }
+  .item  { /* item styles */ }
+}
+\\\`\\\`\\\`
+
+### Reference implementations
+
+- \`mls-102040/l2/molecules/groupselectmany/ml-multi-select-dropdown.ts\`
+- \`mls-102040/l2/molecules/groupselectmany/ml-popover-multi-select.ts\`
+
+---
+
 ## 8. Validation Rules
 
 | Rule | Behavior |
@@ -199,5 +329,6 @@ this.dispatchEvent(new CustomEvent('change', {
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
+| 1.1.0 | 2026-06-22 | Added §7.1 Portal — floating panel must render in \`<body>\` via \`litRender\` to escape CSS stacking contexts; documented focus management and DOM query patterns for portal |
 
 `;
