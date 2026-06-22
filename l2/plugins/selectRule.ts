@@ -4,6 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getAuraState } from '/_102020_/l2/auraState.js';
+import { loadModuleByBuild } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -133,7 +134,19 @@ export class PluginSelectRule extends StateLitElement {
         const project = getAuraState().actualProject;
 
         try {
-            const mod = await import(`/_${project}_/l5/${modulePath}/rules.defs.js`);
+            let mod: any = null;
+            // 1st option: module already compiled/in cache
+            try {
+                mod = await import(`/_${project}_/l5/${modulePath}/rules.defs.js`);
+            } catch {
+                mod = null;
+            }
+            // 2nd option: file not in cache yet — read the stor file content
+            // and compile it via esbuild.
+            if (!Array.isArray(mod?.rulesPlan?.data?.rules) && !Array.isArray(mod?.default?.data?.rules)) {
+                mod = await loadModuleByBuild(`_${project}_/l5/${modulePath}/rules.defs.ts`);
+            }
+
             const plan: any = mod?.rulesPlan ?? mod?.default ?? {};
             const rulesArr: any[] = Array.isArray(plan?.data?.rules) ? plan.data.rules : [];
             this._rules = rulesArr.map((r) => ({
