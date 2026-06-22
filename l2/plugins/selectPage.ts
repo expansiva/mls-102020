@@ -23,6 +23,8 @@ const message_en = {
     searchPlaceholder: 'Search pages…',
     inDevelopment: 'In development',
     devices: 'Devices',
+    notCreated: 'Pages have not been created for this layout / design system combination.',
+    generatePages: 'Generate pages',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -41,6 +43,8 @@ const messages: Record<string, MessageType> = {
         searchPlaceholder: 'Buscar páginas…',
         inDevelopment: 'Em desenvolvimento',
         devices: 'Dispositivos',
+        notCreated: 'As páginas não foram criadas para esta combinação de layout / design system.',
+        generatePages: 'Gerar páginas',
     },
     es: {
         title: 'Páginas',
@@ -56,6 +60,8 @@ const messages: Record<string, MessageType> = {
         searchPlaceholder: 'Buscar páginas…',
         inDevelopment: 'En desarrollo',
         devices: 'Dispositivos',
+        notCreated: 'Las páginas no se han creado para esta combinación de layout / design system.',
+        generatePages: 'Generar páginas',
     },
 };
 /// **collab_i18n_end**
@@ -101,6 +107,7 @@ export class PluginSelectPage extends StateLitElement {
     @state() private _pages: IPageEntry[] = [];
     @state() private _search: string = '';
     @state() private _activeDevice: string | null = null;
+    @state() private _pagesNotCreated: boolean = false;
 
     connectedCallback() {
         super.connectedCallback();
@@ -140,6 +147,7 @@ export class PluginSelectPage extends StateLitElement {
 
     private async _loadPages(): Promise<void> {
         this._pages = [];
+        this._pagesNotCreated = false;
         const modulePath = this._modulePath;
         if (!modulePath) {
             this._dispatchConfig();
@@ -150,6 +158,12 @@ export class PluginSelectPage extends StateLitElement {
         const activeDevicePath = getAuraState().actualDevice;
 
         this._activeDevice = activeDevicePath ? (DEVICE_LABELS[activeDevicePath] ?? null) : null;
+
+        // The page variation folder is page<layout><designSystem> (e.g. page11 =
+        // layout 1, DS 1). Build it from the current aura selection.
+        const layout = getAuraState().actualLayout ?? 1;
+        const ds = getAuraState().actualDesignSystem ?? 1;
+        const variation = `page${layout}${ds}`;
 
         // Pages now live in the project config.json (l0). Read the stor content
         // and pull the frontend pages for the selected module.
@@ -168,6 +182,7 @@ export class PluginSelectPage extends StateLitElement {
         }
 
         const pageMap = new Map<string, { devices: Set<string>; file: mls.stor.IFileInfo }>();
+        let candidateCount = 0;
 
         for (const page of pages) {
             // source: e.g. "l2/cafeFlow/web/desktop/page11/dashboardGerente.ts"
@@ -181,17 +196,24 @@ export class PluginSelectPage extends StateLitElement {
             const lastSlash = afterLevel.lastIndexOf('/');
             if (lastSlash < 0) continue;
 
-            const folder = afterLevel.substring(0, lastSlash);
+            const rawFolder = afterLevel.substring(0, lastSlash);
             const shortName = afterLevel.substring(lastSlash + 1);
             if (!shortName) continue;
 
             let devicePath: string | null = null;
             for (const dp of Object.values(DEVICE_SUB_PATHS)) {
-                if (folder.includes(`/${dp}/`) || folder.endsWith(`/${dp}`)) { devicePath = dp; break; }
+                if (rawFolder.includes(`/${dp}/`) || rawFolder.endsWith(`/${dp}`)) { devicePath = dp; break; }
             }
             if (!devicePath) continue;
 
             if (activeDevicePath && devicePath !== activeDevicePath) continue;
+
+            // Swap the source's variation segment (e.g. page11) for the current one.
+            const folder = rawFolder.replace(/page\d+(\/|$)/, `${variation}$1`);
+            candidateCount++;
+
+            // Only surface pages that actually exist for this layout/DS combination.
+            if (!this._fileExists(project, level, folder, shortName)) continue;
 
             const name = page.pageId || shortName;
             if (!pageMap.has(name)) {
@@ -205,8 +227,22 @@ export class PluginSelectPage extends StateLitElement {
             .map(([name, { devices, file }]) => ({ name, devices: Array.from(devices).sort(), file }))
             .sort((a, b) => a.name.localeCompare(b.name));
 
+        // Config lists pages for this module/device, but none exist for the
+        // current variation → offer to generate them.
+        this._pagesNotCreated = candidateCount > 0 && this._pages.length === 0;
+
         this._dispatchConfig();
         this.requestUpdate();
+    }
+
+    private _fileExists(project: number | null, level: number, folder: string, shortName: string): boolean {
+        try {
+            const key = mls.stor.getKeyToFile({ project, level, folder, shortName, extension: '.ts' });
+            const file = (mls.stor.files as Record<string, any>)[key];
+            return !!file && file.status !== 'deleted';
+        } catch {
+            return false;
+        }
     }
 
     private _dispatchConfig() {
@@ -229,6 +265,7 @@ export class PluginSelectPage extends StateLitElement {
 
     render() {
         if (!this._modulePath) return this._renderNoModule();
+        if (this._pagesNotCreated) return this._renderNotCreated();
         if (this._isAll) return this._renderAll();
         if (this._isCustom) return this._renderCustom();
         return this._renderSelected();
@@ -389,6 +426,35 @@ export class PluginSelectPage extends StateLitElement {
         `;
     }
 
+    private _renderNotCreated() {
+        return html`
+            <div class="flex flex-col gap-3">
+                ${this._renderHeader()}
+
+                ${this._activeDevice ? html`
+                    <div class="flex items-center gap-1.5 px-1">
+                        <div class="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></div>
+                        <span class="text-xs text-indigo-600 dark:text-indigo-400 font-medium">${this._activeDevice}</span>
+                    </div>
+                ` : nothing}
+
+                <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5">
+                    <span class="text-sm text-amber-600 dark:text-amber-400">${this.msg.notCreated}</span>
+                </div>
+
+                <button
+                    class="
+                        self-start text-sm px-3 py-1.5 rounded
+                        bg-indigo-500 dark:bg-indigo-600 text-white
+                        hover:bg-indigo-600 dark:hover:bg-indigo-500
+                        transition-colors whitespace-nowrap cursor-pointer
+                    "
+                    @click=${() => this._dispatchGenerate()}
+                >${this.msg.generatePages}</button>
+            </div>
+        `;
+    }
+
     // ─── Shared helpers ───────────────────────────────────────────────
 
     private _renderPageCard(page: IPageEntry, selectValue: number, isActive = false) {
@@ -423,6 +489,19 @@ export class PluginSelectPage extends StateLitElement {
         const entry = value > 0 && value <= this._pages.length ? this._pages[value - 1] : null;
         this.dispatchEvent(new CustomEvent('select-page', {
             detail: { value, file: entry?.file ?? null },
+            bubbles: true,
+            composed: true,
+        }));
+    }
+
+    private _dispatchGenerate() {
+        this.dispatchEvent(new CustomEvent('generate-pages', {
+            detail: {
+                module: this._modulePath,
+                device: getAuraState().actualDevice,
+                layout: getAuraState().actualLayout,
+                designSystem: getAuraState().actualDesignSystem,
+            },
             bubbles: true,
             composed: true,
         }));
