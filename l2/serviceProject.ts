@@ -239,8 +239,12 @@ export class ServiceProject102020 extends ServiceBase {
             }
             case 'designSystem':
                 this._dsValue = value;
-                setAuraState('actualDesignSystem', value);
-                saveAuraProject();
+                // Skip 0 (the "All" listing) and the "+" slot (add DS); only real DS persist.
+                if (value !== null && value > 0 && value <= this._dsConfig.max
+                    && this._dsConfig.labels[value] !== '+') {
+                    setAuraState('actualDesignSystem', value);
+                    saveAuraProject();
+                }
                 break;
             case 'device':
                 this._deviceValue = value;

@@ -4,6 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getAuraState } from '/_102020_/l2/auraState.js';
+import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -22,6 +23,8 @@ const message_en = {
     searchPlaceholder: 'Search pages…',
     inDevelopment: 'In development',
     devices: 'Devices',
+    notCreated: 'Pages have not been created for this layout / design system combination.',
+    generatePages: 'Generate pages',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -40,6 +43,8 @@ const messages: Record<string, MessageType> = {
         searchPlaceholder: 'Buscar páginas…',
         inDevelopment: 'Em desenvolvimento',
         devices: 'Dispositivos',
+        notCreated: 'As páginas não foram criadas para esta combinação de layout / design system.',
+        generatePages: 'Gerar páginas',
     },
     es: {
         title: 'Páginas',
@@ -55,6 +60,8 @@ const messages: Record<string, MessageType> = {
         searchPlaceholder: 'Buscar páginas…',
         inDevelopment: 'En desarrollo',
         devices: 'Dispositivos',
+        notCreated: 'Las páginas no se han creado para esta combinación de layout / design system.',
+        generatePages: 'Generar páginas',
     },
 };
 /// **collab_i18n_end**
@@ -100,6 +107,7 @@ export class PluginSelectPage extends StateLitElement {
     @state() private _pages: IPageEntry[] = [];
     @state() private _search: string = '';
     @state() private _activeDevice: string | null = null;
+    @state() private _pagesNotCreated: boolean = false;
 
     connectedCallback() {
         super.connectedCallback();
@@ -133,8 +141,13 @@ export class PluginSelectPage extends StateLitElement {
         return this.selectedModule?.path ?? getAuraState().actualModule ?? null;
     }
 
+    private get _moduleName(): string | null {
+        return this.selectedModule?.name ?? getAuraState().actualModule ?? null;
+    }
+
     private async _loadPages(): Promise<void> {
         this._pages = [];
+        this._pagesNotCreated = false;
         const modulePath = this._modulePath;
         if (!modulePath) {
             this._dispatchConfig();
@@ -146,52 +159,104 @@ export class PluginSelectPage extends StateLitElement {
 
         this._activeDevice = activeDevicePath ? (DEVICE_LABELS[activeDevicePath] ?? null) : null;
 
-        let routes: any[] = [];
+        // The page variation folder is page<layout><designSystem> (e.g. page11 =
+        // layout 1, DS 1). Build it from the current aura selection.
+        const layout = getAuraState().actualLayout ?? 1;
+        const ds = getAuraState().actualDesignSystem ?? 1;
+        const variation = `page${layout}${ds}`;
+
+        // Pages now live in the project config.json (l0). Read the stor content
+        // and pull the frontend pages for the selected module.
+        let pages: any[] = [];
         try {
-            const mod = await import(`/_${project}_/l2/${modulePath}/module.js?t=${Date.now()}`);
-            routes = mod?.moduleFrontendDefinition?.routes ?? [];
+            const content = await getContentByMlsPath(`_${project}_/l0/config.json`);
+            if (!content) throw new Error('config.json not found');
+            const config = JSON.parse(content);
+            const moduleDef = config?.projects?.[String(project)]?.modules
+                ?.find((m: any) => m.moduleId === modulePath);
+            pages = moduleDef?.frontend?.pages ?? [];
         } catch {
             this._dispatchConfig();
             this.requestUpdate();
             return;
         }
 
-        const entrypointPrefix = `/_${project}_/l2/`;
         const pageMap = new Map<string, { devices: Set<string>; file: mls.stor.IFileInfo }>();
+        let candidateCount = 0;
 
-        for (const route of routes) {
-            const entrypoint: string = route.entrypoint ?? '';
-            if (!entrypoint.startsWith(entrypointPrefix)) continue;
+        for (const page of pages) {
+            // source: e.g. "l2/cafeFlow/web/desktop/page11/dashboardGerente.ts"
+            const source: string = page.source ?? '';
+            const relative = source.replace(/^\.?\//, '').replace(/\.ts$/, '');
+            const levelMatch = relative.match(/^l(\d+)\/(.+)$/);
+            if (!levelMatch) continue;
 
-            const relative = entrypoint.slice(entrypointPrefix.length).replace(/\.js$/, '');
-            const lastSlash = relative.lastIndexOf('/');
+            const level = parseInt(levelMatch[1], 10);
+            const afterLevel = levelMatch[2];
+            const lastSlash = afterLevel.lastIndexOf('/');
             if (lastSlash < 0) continue;
 
-            const folder = relative.substring(0, lastSlash);
-            const shortName = relative.substring(lastSlash + 1);
+            const rawFolder = afterLevel.substring(0, lastSlash);
+            const shortName = afterLevel.substring(lastSlash + 1);
             if (!shortName) continue;
 
             let devicePath: string | null = null;
             for (const dp of Object.values(DEVICE_SUB_PATHS)) {
-                if (folder.includes(`/${dp}/`) || folder.endsWith(`/${dp}`)) { devicePath = dp; break; }
+                if (rawFolder.includes(`/${dp}/`) || rawFolder.endsWith(`/${dp}`)) { devicePath = dp; break; }
             }
             if (!devicePath) continue;
 
             if (activeDevicePath && devicePath !== activeDevicePath) continue;
 
-            if (!pageMap.has(shortName)) {
-                const file = { project, folder, shortName, level: 2, extension: '.ts' } as mls.stor.IFileInfo;
-                pageMap.set(shortName, { devices: new Set(), file });
+            // Swap the source's variation segment (e.g. page11) for the current one.
+            const folder = rawFolder.replace(/page\d+(\/|$)/, `${variation}$1`);
+            candidateCount++;
+
+            // Only surface pages that actually exist for this layout/DS combination.
+            if (!this._fileExists(project, level, folder, shortName)) continue;
+
+            const name = page.pageId || shortName;
+            if (!pageMap.has(name)) {
+                const file = { project, folder, shortName, level, extension: '.ts' } as mls.stor.IFileInfo;
+                pageMap.set(name, { devices: new Set(), file });
             }
-            pageMap.get(shortName)!.devices.add(devicePath);
+            pageMap.get(name)!.devices.add(devicePath);
         }
 
         this._pages = Array.from(pageMap.entries())
             .map(([name, { devices, file }]) => ({ name, devices: Array.from(devices).sort(), file }))
             .sort((a, b) => a.name.localeCompare(b.name));
 
+        // Config lists pages for this module/device, but none exist for the
+        // current variation → offer to generate them.
+        this._pagesNotCreated = candidateCount > 0 && this._pages.length === 0;
+
         this._dispatchConfig();
         this.requestUpdate();
+        this._autoSelectActivePage();
+    }
+
+    // Re-fire the select event for the page already active in the state, so the
+    // preview repaints when this component (re)loads.
+    private _autoSelectActivePage(): void {
+        const activePage = getAuraState().actualPage;
+        if (!activePage) return;
+        const index = this._pages.findIndex(p =>
+            p.file.shortName === activePage.shortName &&
+            p.file.project === activePage.project
+        );
+        if (index < 0) return;
+        this._dispatchSelect(index + 1);
+    }
+
+    private _fileExists(project: number | null, level: number, folder: string, shortName: string): boolean {
+        try {
+            const key = mls.stor.getKeyToFile({ project, level, folder, shortName, extension: '.ts' });
+            const file = (mls.stor.files as Record<string, any>)[key];
+            return !!file && file.status !== 'deleted';
+        } catch {
+            return false;
+        }
     }
 
     private _dispatchConfig() {
@@ -213,7 +278,8 @@ export class PluginSelectPage extends StateLitElement {
     createRenderRoot() { return this; }
 
     render() {
-        if (!this.selectedModule) return this._renderNoModule();
+        if (!this._modulePath) return this._renderNoModule();
+        if (this._pagesNotCreated) return this._renderNotCreated();
         if (this._isAll) return this._renderAll();
         if (this._isCustom) return this._renderCustom();
         return this._renderSelected();
@@ -269,7 +335,7 @@ export class PluginSelectPage extends StateLitElement {
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
                 <div class="flex items-baseline gap-1">
-                    <span class="text-xs text-gray-400 dark:text-gray-500">${this.selectedModule?.name}/</span>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">${this._moduleName}/</span>
                     <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">${page.name}</span>
                 </div>
                 <div class="flex items-center gap-1 flex-wrap">
@@ -374,6 +440,35 @@ export class PluginSelectPage extends StateLitElement {
         `;
     }
 
+    private _renderNotCreated() {
+        return html`
+            <div class="flex flex-col gap-3">
+                ${this._renderHeader()}
+
+                ${this._activeDevice ? html`
+                    <div class="flex items-center gap-1.5 px-1">
+                        <div class="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></div>
+                        <span class="text-xs text-indigo-600 dark:text-indigo-400 font-medium">${this._activeDevice}</span>
+                    </div>
+                ` : nothing}
+
+                <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5">
+                    <span class="text-sm text-amber-600 dark:text-amber-400">${this.msg.notCreated}</span>
+                </div>
+
+                <button
+                    class="
+                        self-start text-sm px-3 py-1.5 rounded
+                        bg-indigo-500 dark:bg-indigo-600 text-white
+                        hover:bg-indigo-600 dark:hover:bg-indigo-500
+                        transition-colors whitespace-nowrap cursor-pointer
+                    "
+                    @click=${() => this._dispatchGenerate()}
+                >${this.msg.generatePages}</button>
+            </div>
+        `;
+    }
+
     // ─── Shared helpers ───────────────────────────────────────────────
 
     private _renderPageCard(page: IPageEntry, selectValue: number, isActive = false) {
@@ -390,7 +485,7 @@ export class PluginSelectPage extends StateLitElement {
             >
                 ${isActive ? html`<div class="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 shrink-0"></div>` : nothing}
                 <div class="flex-1 flex items-baseline gap-1 min-w-0">
-                    <span class="text-[10px] text-gray-400 dark:text-gray-600 shrink-0">${this.selectedModule?.name}/</span>
+                    <span class="text-[10px] text-gray-400 dark:text-gray-600 shrink-0">${this._moduleName}/</span>
                     <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">${page.name}</span>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
@@ -408,6 +503,19 @@ export class PluginSelectPage extends StateLitElement {
         const entry = value > 0 && value <= this._pages.length ? this._pages[value - 1] : null;
         this.dispatchEvent(new CustomEvent('select-page', {
             detail: { value, file: entry?.file ?? null },
+            bubbles: true,
+            composed: true,
+        }));
+    }
+
+    private _dispatchGenerate() {
+        this.dispatchEvent(new CustomEvent('generate-pages', {
+            detail: {
+                module: this._modulePath,
+                device: getAuraState().actualDevice,
+                layout: getAuraState().actualLayout,
+                designSystem: getAuraState().actualDesignSystem,
+            },
             bubbles: true,
             composed: true,
         }));

@@ -270,6 +270,11 @@ export class PluginSelectDesignSystem extends StateLitElement {
             this._editingKey = null; // force the form to reload for the new scope/target
             this._editingScope = false; // a new target re-evaluates its own empty/configured state
         }
+        // The knob range depends on scope (project exposes the extra "+" slot), so
+        // recompute it when the scope changes without a project reload.
+        if (changed.has('scope') && this.projectId && !this._loading) {
+            this._dispatchConfig();
+        }
         this._syncForm();
     }
 
@@ -355,8 +360,22 @@ export class PluginSelectDesignSystem extends StateLitElement {
         return this._entries[this._entries.length - 1].key + 1;
     }
 
+    /** Highest existing entry key (entries are sorted ascending), or 0 when none. */
+    private get _lastEntryKey(): number {
+        return this._entries.length ? this._entries[this._entries.length - 1].key : 0;
+    }
+
+    /** Top of the selectable range: includes the "+" slot only at project scope (l6). */
+    private get _maxValue(): number {
+        return this._isProjectScope ? this._customKey : this._lastEntryKey;
+    }
+
     private get _isAll(): boolean { return this.value === 0; }
-    private get _isCustom(): boolean { return this.value !== null && this.value === this._customKey; }
+    // Adding a new DS is only allowed at project scope (l6). Module (l5) and
+    // page (l3) scopes only edit rules for existing design systems.
+    private get _isCustom(): boolean {
+        return this._isProjectScope && this.value !== null && this.value === this._customKey;
+    }
     private get _selectedEntry(): IDsEntry | null {
         if (this.value === null || this.value <= 0) return null;
         return this._entries.find(e => e.key === this.value) ?? null;
@@ -391,9 +410,10 @@ export class PluginSelectDesignSystem extends StateLitElement {
     private _dispatchConfig(): void {
         const labels: Record<number, string> = { 0: 'All' };
         this._entries.forEach(e => { labels[e.key] = e.name; });
-        labels[this._customKey] = '+';
+        // The "+" (new DS) slot only exists at project scope (l6).
+        if (this._isProjectScope) labels[this._customKey] = '+';
         this.dispatchEvent(new CustomEvent('ds-config', {
-            detail: { min: 0, max: this._customKey, labels },
+            detail: { min: 0, max: this._maxValue, labels },
             bubbles: true,
             composed: true,
         }));
@@ -430,7 +450,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     private _renderAll() {
-        const max = this._customKey;
+        const max = this._maxValue;
         return html`
             <div class="flex flex-col gap-3">
                 <plugins--nav-header-102020
@@ -453,7 +473,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     private _renderSelected() {
         const entry = this._selectedEntry;
-        const max = this._customKey;
+        const max = this._maxValue;
         if (!entry) return nothing;
         return html`
             <div class="flex flex-col gap-3">
@@ -472,7 +492,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     private _renderCustom() {
-        const max = this._customKey;
+        const max = this._maxValue;
         return html`
             <div class="flex flex-col gap-3">
                 <plugins--nav-header-102020

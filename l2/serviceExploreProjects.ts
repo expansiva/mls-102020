@@ -360,6 +360,11 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                 break;
             case 'designSystem':
                 this._dsValue = value;
+                if (value !== null && value > 0 && value <= this._dsConfig.max
+                    && this._dsConfig.labels[value] !== '+') {
+                    setAuraState('actualDesignSystem', value);
+                    saveAuraProject();
+                }
                 break;
             case 'language': {
                 this._langValue = value;

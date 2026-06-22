@@ -4,11 +4,12 @@ import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { getState, setState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
-import { AuraInitState, getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
+import { AuraInitState, getAuraState, setAuraState, saveAuraProject, IAuraPage } from '/_102020_/l2/auraState.js';
 import { skills as listOfGroups } from '/_102020_/l2/skills/molecules/index.js';
 import { replaceComponentTag } from '/_102020_/l2/previewTextEditor.js';
 import { convertFileToTag, isPageFile } from '/_102020_/l2/utils.js';
-import { getLastOpenedFiles } from '/_102027_/l2/libCommom.js';
+import { getLastOpenedFiles, saveOpenedFile } from '/_102027_/l2/libCommom.js';
+import { createModel } from '/_102027_/l2/libModel.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
@@ -181,7 +182,8 @@ export class ServiceGenome102020 extends ServiceBase {
     private _onDsConfig(e: CustomEvent) {
         this._dsConfig = { key: 'designSystem', min: e.detail.min, max: e.detail.max, labels: e.detail.labels };
         const actualDs = getAuraState().actualDesignSystem;
-        if (actualDs !== null && actualDs > 0 && actualDs < e.detail.max) {
+        if (actualDs !== null && actualDs > 0 && actualDs <= e.detail.max
+            && e.detail.labels[actualDs] !== '+') {
             this._dsValue = actualDs;
         } else if (this._dsValue === null || this._dsValue > this._dsConfig.max) {
             this._dsValue = 0;
@@ -345,13 +347,18 @@ export class ServiceGenome102020 extends ServiceBase {
                 if (value !== null && value > 0 && value <= this._layoutConfig.max) {
                     setAuraState('actualLayout', value);
                     saveAuraProject();
+                    this._repaintPageForCombination();
                 }
                 break;
             case 'designSystem':
                 this._dsValue = value;
-                if (value !== null && value > 0 && value < this._dsConfig.max) {
+                // The "+" slot (new DS, only at project scope) must not be persisted;
+                // every real DS up to and including max is a valid selection.
+                if (value !== null && value > 0 && value <= this._dsConfig.max
+                    && this._dsConfig.labels[value] !== '+') {
                     setAuraState('actualDesignSystem', value);
                     saveAuraProject();
+                    this._repaintPageForCombination();
                 }
                 break;
             case 'molecules':
@@ -417,6 +424,66 @@ export class ServiceGenome102020 extends ServiceBase {
         }
         this._isPageContext = isPageFile(file.folder ?? '');
 
+    }
+
+    // ─── Repaint preview on layout/DS change ──────────────────────────
+
+    /** Current page file with its variation segment (page<L><D>) set to the current layout/DS. */
+    private _variationPageFile(): mls.stor.IFileInfo | null {
+        const base = this._currentPageFile;
+        if (!base || !base.folder) return null;
+        if (!/page\d+(\/|$)/.test(base.folder)) return null; // no variation segment to swap
+        const layout = getAuraState().actualLayout ?? 1;
+        const ds = getAuraState().actualDesignSystem ?? 1;
+        const folder = base.folder.replace(/page\d+(\/|$)/, `page${layout}${ds}$1`);
+        return { ...base, folder } as mls.stor.IFileInfo;
+    }
+
+    /** If the page exists for the current layout/DS combination, open it so the preview repaints. */
+    private async _repaintPageForCombination(): Promise<void> {
+        const file = this._variationPageFile();
+        if (!file) return;
+        // Already showing this combination → nothing to repaint.
+        if (this._currentPageFile && file.folder === this._currentPageFile.folder) return;
+        const storFiles = await mls.stor.getFiles({ project: file.project, shortName: file.shortName, folder: file.folder, loadContent: false });
+        if (!storFiles.ts) return; // combination not generated → keep the current preview
+        await this._openPage(file, storFiles);
+    }
+
+    /** Open a page into the preview — mirrors servicePage._setActualPage. */
+    private async _openPage(file: mls.stor.IFileInfo, storFiles?: any): Promise<void> {
+        let name = `_${file.project}_${file.shortName}`;
+        if (file.folder) name = `_${file.project}_${file.folder}/${file.shortName}`;
+        for (const lv of [3, 4]) {
+            mls.actual[lv].setFullName(name);
+            mls.actual[lv][this.position as ('right' | 'left')] = file;
+        }
+
+        const files = storFiles ?? await mls.stor.getFiles({ project: file.project, shortName: file.shortName, folder: file.folder, loadContent: false });
+        if ([1, 2, 3, 4].includes(mls.actualLevel) && files.ts) await createModel(files.ts);
+        if ([2, 3, 4].includes(mls.actualLevel) && files.less) await createModel(files.less);
+        if ([2, 3, 4].includes(mls.actualLevel) && files.html) await createModel(files.html);
+
+        saveOpenedFile(file.project, 4, mls.actual[4].getFullName());
+        saveOpenedFile(file.project, 3, mls.actual[3].getFullName());
+
+        const pageRef: IAuraPage = { project: file.project, shortName: file.shortName, folder: file.folder, level: file.level, extension: file.extension };
+        setAuraState('actualPage', pageRef);
+        saveAuraProject();
+
+        this._updateCurrentPage(file);
+
+        const params: any = {
+            action: 'open',
+            level: 4,
+            project: file.project,
+            shortName: file.shortName,
+            extension: file.extension,
+            folder: file.folder,
+            position: this.position,
+        };
+        mls.events.fire([mls.actualLevel], ['FileAction'], JSON.stringify(params), 0);
+        this.requestUpdate();
     }
 
     private _onFileActionGenome = async (ev: mls.events.IEvent) => {
