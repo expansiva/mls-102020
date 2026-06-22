@@ -8,8 +8,8 @@ import {
   listDepLayerPaths,
   extractToolCallArgs,
   extractJsonArrayField,
-} from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
-import type { PipelineItem, L1LayerFolder } from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
+} from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
+import type { PipelineItem, L1LayerFolder } from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
 
 declare const mls: any;
 
@@ -100,8 +100,9 @@ async function beforePromptStep(
     const refs  = extractJsonArrayField(content, 'usecaseRefs');
     const rules = extractJsonArrayField(content, 'rulesApplied');
     const usecaseDeps = refs.map(ref => toMlsPath(project, 1, `${moduleName}/layer_3_usecases`, ref, '.d.ts'));
+    const contractPath = toMlsPath(project, 2, `${moduleName}/web/contracts`, shortName, '.ts');
     const outputPath = lowerFirstFilename(toMlsPath(project, 1, folder, shortName, '.ts'));
-    const item = buildItem(shortName, layerFolder, outputPath, project, 1, folder, usecaseDeps, [], rules);
+    const item = buildItem(shortName, layerFolder, outputPath, project, 1, folder, [...usecaseDeps, contractPath], [], rules);
     const ok = await appendPipelineToFile(project, 1, folder, shortName, [item]);
     return [mkDone(context, parentStep, step, hookSequential, ok ? 'completed' : 'failed', ok ? undefined : 'append failed')];
   }

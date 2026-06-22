@@ -11,14 +11,14 @@ import {
   loadModuleByBuild,
   loadRulesForIds,
   getDtsForFile,
-} from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
+} from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
 import type {
   PipelineItem,
   L1FileType,
   L2FileType,
   ProjectJson,
   VisualStyle,
-} from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
+} from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
 
 declare const mls: any;
 
@@ -63,7 +63,11 @@ async function loadVarFromModule(mlsPath: string, varName: string): Promise<stri
   }
   if (!mod) return '';
   const value = mod[varName];
-  return typeof value === 'string' ? value : '';
+  if (typeof value === 'string') return value;
+  if (value !== null && value !== undefined) {
+    try { return JSON.stringify(value, null, 2); } catch {}
+  }
+  return '';
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
@@ -78,7 +82,7 @@ export async function buildGenContext(defPath: string): Promise<GenContext> {
   const defsContent = await getContentByMlsPath(defPath);
   if (!defsContent) throw new Error(`[contextMaterialize] .defs.ts not found: ${defPath}`);
 
-  const definition = parseDefinitionFromContent(defsContent);
+  const definition = (await loadVarFromModule(defPath, 'definition')) || parseDefinitionFromContent(defsContent);
   const pipeline = parsePipelineFromContent(defsContent);
   if (!pipeline?.length) throw new Error(`[contextMaterialize] no pipeline in: ${defPath}`);
   const pipelineItem = pipeline[0];

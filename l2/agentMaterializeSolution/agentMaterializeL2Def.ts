@@ -8,8 +8,8 @@ import {
   listDepLayerPaths,
   extractToolCallArgs,
   extractJsonArrayField,
-} from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
-import type { PipelineItem } from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
+} from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
+import type { PipelineItem } from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
 
 declare const mls: any;
 

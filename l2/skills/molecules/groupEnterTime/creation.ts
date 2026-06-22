@@ -128,6 +128,53 @@ this.dispatchEvent(new CustomEvent('change', {
 
 ---
 
+## 6.1 Portal — Time Picker Panel Rendering
+
+> The time picker panel MUST be rendered outside the component tree, in \`<body>\`,
+> using the **portal pattern** with \`litRender\`. This prevents the panel from
+> being clipped or hidden behind sibling elements when any ancestor uses
+> \`backdrop-filter\`, \`transform\`, \`overflow: hidden\`, or explicit \`z-index\`
+> (all of which create new CSS stacking contexts).
+>
+> This applies only to popup time picker implementations. Inline variants
+> (always visible, no \`isOpen\`) do not need a portal.
+
+### Import
+
+\\\`\\\`\\\`typescript
+import { render as litRender } from 'lit';
+\\\`\\\`\\\`
+
+### Required members
+
+| Member | Visibility | Description |
+|--------|------------|-------------|
+| \`portalContainer\` | \`protected\` | \`HTMLDivElement \\| null\` — the portal element appended to \`<body>\` |
+| \`portalClassName\` | \`protected\` | \`string\` — CSS class added to the portal (subclasses set it for scoped styling) |
+| \`getPortalTemplate()\` | \`protected\` | Returns \`TemplateResult\` with the time picker content. Subclasses override this to render themed variants |
+
+### Lifecycle integration
+
+| Hook | Action |
+|------|--------|
+| \`openPanel()\` | Call \`createPortal()\` after setting \`isOpen = true\` |
+| \`closePanel()\` | Call \`destroyPortal()\` |
+| \`disconnectedCallback()\` | Call \`destroyPortal()\` for cleanup |
+| \`updated()\` | When \`isOpen && portalContainer\`: call \`renderPortalContent()\` + \`updatePanelPosition()\` |
+
+### Scrollable columns inside portal
+
+Time pickers typically contain scrollable columns (hours, minutes, seconds).
+The \`overflow-auto\` must be on the **inner column containers**, not on the
+portal container itself. The portal container has no overflow — it just
+positions the panel.
+
+### Reference implementation
+
+\`mls-102040/l2/molecules/groupselectone/ml-card-selector.ts\` (same portal pattern)
+
+---
+
 ## 7. Error Handling
 
 | \`error\` value | Behavior |
@@ -208,5 +255,6 @@ this.dispatchEvent(new CustomEvent('change', {
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-17 | Initial creation reference |
+| 1.1.0 | 2026-06-22 | Added §6.1 Portal — time picker panel must render in \`<body>\` via \`litRender\`; scrollable columns inside portal |
 
 `;

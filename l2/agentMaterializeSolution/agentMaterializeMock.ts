@@ -7,7 +7,7 @@ import {
   saveGeneratedTs,
   extractToolCallArgs,
   toMlsPath,
-} from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
+} from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
 
 declare const mls: any;
 
@@ -19,7 +19,7 @@ export function createAgent(): IAgentAsync {
     agentName: 'agentMaterializeMock',
     agentProject: 102020,
     agentFolder: 'agentMaterializeSolution',
-    agentDescription: 'Generate layer_2_controllers/mock.ts from all layer_1 .defs.ts files in a module',
+    agentDescription: 'Generate layer_1_external/mock.ts with SeedDefinition[] from module table definitions',
     visibility: 'public',
     beforePromptImplicit,
     beforePromptStep,
@@ -78,7 +78,7 @@ async function beforePromptImplicit(
     throw new Error('[agentMaterializeMock] moduleName not found. Send: @@MaterializeMock {"project":102043,"moduleName":"yourModule"}');
   }
 
-  const defs = scanL1DefsFiles(project, moduleName);
+  const fileCount = countInputFiles(project, moduleName);
 
   _implicitArgs.set(context.message.threadId, { project, moduleName });
 
@@ -89,7 +89,7 @@ async function beforePromptImplicit(
       agentName: agent.agentName,
       inputAI: [
         { type: 'system', content: BOOTSTRAP_SYSTEM },
-        { type: 'human', content: buildBootstrapPrompt(project, moduleName, defs.length) },
+        { type: 'human', content: buildBootstrapPrompt(project, moduleName, fileCount) },
       ],
       taskTitle: 'generate-mock',
       threadId: context.message.threadId,
@@ -114,7 +114,7 @@ async function beforePromptStep(
   if (!args) throw new Error('[agentMaterializeMock] missing args');
 
   const { project, moduleName }: MockStepArgs = JSON.parse(args);
-  const outputPath = toMlsPath(project, 1, `${moduleName}/layer_2_controllers`, 'mock', '.ts');
+  const outputPath = toMlsPath(project, 1, `${moduleName}/layer_1_external`, 'mock', '.ts');
   const sections = await collectDefsSections(project, moduleName);
 
   const intent: mls.msg.AgentIntentPromptReady = {
@@ -152,12 +152,12 @@ async function afterPromptStep(
   const out = extractToolCallArgs<ToolOutput>(raw, TOOL_NAME);
   if (out?.code) {
     const { project, moduleName } = resolveArgs(step.prompt);
-    const outputPath = toMlsPath(project, 1, `${moduleName}/layer_2_controllers`, 'mock', '.ts');
+    const outputPath = toMlsPath(project, 1, `${moduleName}/layer_1_external`, 'mock', '.ts');
 
     const header = `/// <mls fileReference="${outputPath}" enhancement="_blank"/>`;
     const code = out.code.trimStart().startsWith('///') ? out.code : `${header}\n\n${out.code}`;
 
-    const ok = await saveGeneratedTs(project, 1, `${moduleName}/layer_2_controllers`, 'mock', code);
+    const ok = await saveGeneratedTs(project, 1, `${moduleName}/layer_1_external`, 'mock', code);
     return [mkStatus(context, parentStep, step, hookSequential,
       ok ? 'completed' : 'failed',
       ok ? undefined : 'saveGeneratedTs failed',
@@ -210,18 +210,47 @@ async function afterPromptStep(
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-async function collectDefsSections(project: number, moduleName: string): Promise<string[]> {
-  const defs = scanL1DefsFiles(project, moduleName);
-  if (!defs.length) throw new Error(`[agentMaterializeMock] no .defs.ts found for project=${project} module=${moduleName}`);
+function scanL1LayerFiles(project: number, moduleName: string, layer: string): Array<{ mlsPath: string; shortName: string }> {
+  const result: Array<{ mlsPath: string; shortName: string }> = [];
+  const folder = `${moduleName}/${layer}`;
+  try {
+    for (const f of Object.values(mls.stor.files as Record<string, any>)) {
+      if (f.project !== project) continue;
+      if (f.level !== 1) continue;
+      if (f.folder !== folder) continue;
+      if (f.extension !== '.ts') continue;
+      if (f.status === 'deleted') continue;
+      result.push({ shortName: f.shortName, mlsPath: toMlsPath(project, 1, folder, f.shortName, '.ts') });
+    }
+  } catch {}
+  return result;
+}
 
+function countInputFiles(project: number, moduleName: string): number {
+  const defs = scanL1DefsFiles(project, moduleName);
+  const layerFiles = scanL1LayerFiles(project, moduleName, 'layer_1_external');
+  return defs.length + layerFiles.length;
+}
+
+async function collectDefsSections(project: number, moduleName: string): Promise<string[]> {
   const sections: string[] = [];
+
+  // Format B: .defs.ts files
+  const defs = scanL1DefsFiles(project, moduleName);
   for (const d of defs) {
     const content = await getContentByMlsPath(d.mlsPath);
-    if (!content) continue;
-    sections.push(`### ${d.mlsPath}\n\`\`\`typescript\n${content}\n\`\`\``);
+    if (content) sections.push(`### ${d.mlsPath}\n\`\`\`typescript\n${content}\n\`\`\``);
   }
 
-  if (!sections.length) throw new Error('[agentMaterializeMock] all .defs.ts were empty or unreadable');
+  // Format A: persistence.ts + individual table files in layer_1_external
+  const l1Files = scanL1LayerFiles(project, moduleName, 'layer_1_external');
+  for (const f of l1Files) {
+    if (f.shortName === 'mock') continue;
+    const content = await getContentByMlsPath(f.mlsPath);
+    if (content) sections.push(`### ${f.mlsPath}\n\`\`\`typescript\n${content}\n\`\`\``);
+  }
+
+  if (!sections.length) throw new Error(`[agentMaterializeMock] no layer_1 files found for project=${project} module=${moduleName}`);
   return sections;
 }
 
@@ -276,16 +305,16 @@ function mkStatus(
 const BOOTSTRAP_SYSTEM = `<!-- modelType: codepro -->
 You confirm a mock generation scan.
 If files were found, return: {"type":"flexible","result":{"status":"ok"}}
-If no files, return: {"type":"result","result":"No layer_1 .defs.ts files found"}
+If no files, return: {"type":"result","result":"No layer_1 files found"}
 Return valid JSON only.`;
 
-function buildBootstrapPrompt(project: number, moduleName: string, defsCount: number): string {
+function buildBootstrapPrompt(project: number, moduleName: string, fileCount: number): string {
   return [
     `## Mock generation scan`,
     ``,
     `Project: ${project}`,
     `Module: ${moduleName}`,
-    `Layer_1 .defs.ts files found: ${defsCount}`,
+    `Layer_1 files found: ${fileCount}`,
     ``,
     `Confirm and return your response.`,
   ].join('\n');
@@ -296,10 +325,9 @@ function buildBootstrapPrompt(project: number, moduleName: string, defsCount: nu
 function buildSystemPrompt(outputPath: string): string {
   return `<!-- modelType: codeinstruct -->
 
-You generate a \`mock.ts\` file for a module's \`layer_2_controllers\`.
+You generate a \`mock.ts\` file for a module's \`layer_1_external\`.
 
-The mock provides in-memory repositories for ALL entities/tables in the module.
-It is used during development when \`USE_MOCK = true\`.
+The file exports \`seedDefinitions: SeedDefinition[]\` — an ordered array of tables with seed records used to populate the database on first deploy.
 
 Target file: ${outputPath}
 
@@ -307,23 +335,16 @@ Target file: ${outputPath}
 
 ## Input
 
-You receive one or more .defs.ts files from the module's layer_1. Two formats are possible:
+You receive the module's \`persistence.ts\` and individual table definition files from \`layer_1_external\`.
 
-### Format A — persistence.ts
-A single file exporting \`tableDefinitions: TableDefinition[]\` where each entry has:
-- \`repositoryName\`: string key for the store (e.g. \`"locadoraVeiculo"\`)
-- \`columns[]\`: array of \`{ name: string, postgresType: 'TEXT' | 'INTEGER' | 'BOOLEAN' | ... }\`
-- \`primaryKey[]\`: string[] — column names used as identity key in upsert
+Each table definition file exports a \`TableDefinition\` with:
+- \`tableName\`: the actual postgres table name (snake_case)
+- \`columns[]\`: array of \`{ name, postgresType, nullable }\`
+- \`primaryKey[]\`: string[]
 
-### Format B — individual entity + table defs
-Multiple files:
-- \`layer_4_entities/*.defs.ts\`: exports \`entity\` with \`entity.fields[]\` (\`fieldId\`, \`type\`, \`required\`), \`entity.entityId\`, optional \`entity.statusEnum[]\`
-- \`layer_1_external/*.defs.ts\`: exports a table definition with \`data.tableDefinition\`:
-  - \`tableId\`: base name — combine with moduleName to get repositoryName
-  - \`moduleName\`: prefix → repositoryName = \`moduleName\` + PascalCase(\`tableId\`)
-  - \`columns[]\`: \`{ name, type, nullable, primaryKey? }\`
-  - \`primaryKey[]\`: string[]
-- \`layer_3_usecases/*.defs.ts\`: use only for domain context, not for generating repositories
+The \`persistence.ts\` exports \`tableDefinitions: TableDefinition[]\` listing all tables in the module.
+
+You may also receive \`.defs.ts\` files — use them only for domain context (status enums, field names).
 
 ---
 
@@ -331,86 +352,61 @@ Multiple files:
 
 \`\`\`typescript
 /// <mls fileReference="${outputPath}" enhancement="_blank"/>
-export const USE_MOCK = true;
+import type { SeedDefinition } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
 
-const mockStore = {
-  repositoryName: [...sample data...] as any[],
-};
-
-export function getMock{RepositoryPascal}Repository() {
-  const store = mockStore.{repositoryName};
-  return {
-    async findMany(): Promise<any[]> {
-      return store;
-    },
-    async findOne({ where }: { where: Record<string, any> }): Promise<any> {
-      return store.find((item: any) =>
-        Object.entries(where).every(([k, v]) => (item as Record<string, any>)[k] === v)
-      );
-    },
-    async upsert({ record }: { record: any }): Promise<void> {
-      const idx = store.findIndex((item: any) => item.{primaryKeyField} === record.{primaryKeyField});
-      if (idx >= 0) store[idx] = record;
-      else store.push(record);
-    },
-  };
-}
+export const seedDefinitions: SeedDefinition[] = [
+  {
+    tableName: 'table_name',
+    records: [
+      { col1: 'value1', col2: 'value2' },
+      { col1: 'value3', col2: 'value4' },
+    ],
+  },
+  // ... one entry per table, ordered by FK dependency
+];
 \`\`\`
 
 ---
 
-## Naming rules
+## FK ordering rule
 
-| Source | repositoryName | Function name |
-|---|---|---|
-| Format A | use \`repositoryName\` from TableDefinition directly | \`getMock\` + PascalCase(repositoryName) + \`Repository\` |
-| Format B | \`moduleName\` + PascalCase(\`tableId\`) | \`getMock\` + PascalCase(repositoryName) + \`Repository\` |
-
-PascalCase: uppercase only the first character of the whole string.
-Example: \`locadoraVeiculo\` → \`getMockLocadoraVeiculoRepository\`.
+The array order IS the insertion order. A table that references another via FK must come AFTER the referenced table.
+Analyze FK relationships from column names (e.g. \`shift_id\` references \`shifts\`, \`order_id\` references \`orders\`).
+Tables with no FK dependencies come first.
 
 ---
 
 ## Sample data rules
 
-Generate **2 records** per entity/table with realistic domain values. Use different values between records.
+Generate **2 records** per table with realistic domain values. Use different values between the two records.
 
-| Type | Example values |
+| postgresType | Rule |
 |---|---|
-| TEXT / string | Meaningful short strings relevant to the domain |
-| INTEGER / number | Different reasonable integers |
-| BOOLEAN / boolean | \`true\` for record 1, \`false\` for record 2 |
-| uuid | Short ids: \`"id-001"\`, \`"id-002"\` |
-| datetime / date | ISO strings: \`"2026-01-15T10:00:00Z"\`, \`"2026-03-20T14:30:00Z"\` |
-| text | Short domain-relevant sentence |
-| enum | First value for record 1, second value for record 2 (or first if only one) |
-| status / record_status | \`"active"\` for both records |
+| UUID | Use format \`xxxxxxxx-0000-0000-0000-xxxxxxxxxxxx\` — define named constants at the top of the file for reuse across tables. Example: \`const SHIFT_1 = '11111111-0000-0000-0000-000000000001'\` |
+| TEXT | Meaningful short string relevant to the domain |
+| INTEGER / NUMERIC | Different reasonable integers |
+| BOOLEAN | \`true\` for record 1, \`false\` for record 2 |
+| TIMESTAMPTZ / TIMESTAMP | ISO strings: \`"2026-06-19T08:00:00Z"\` |
+| JSONB | \`null\` if nullable, otherwise a minimal relevant object |
 
----
-
-## Upsert identity field
-
-Use the **first primary key field** from the schema:
-- Format A: \`primaryKey[0]\`
-- Format B: first column with \`primaryKey: true\`, OR first value in \`primaryKey[]\`
+UUID FK columns (e.g. \`shift_id\`, \`order_id\`) must reference the UUID constant of the corresponding parent record.
 
 ---
 
 ## Output rules
 
 - First line MUST be: \`/// <mls fileReference="${outputPath}" enhancement="_blank"/>\`
-- \`export const USE_MOCK = true;\`
-- \`const mockStore\` must NOT be exported
-- All factory functions must be exported
-- No imports — mock is fully self-contained
+- Import: \`import type { SeedDefinition } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';\`
+- Export only \`seedDefinitions\`
+- UUID seed constants defined at the top, before \`seedDefinitions\`
+- No \`USE_MOCK\`, no \`mockStore\`, no repository factory functions
 - No inline comments
-- 2-space indentation
-- One blank line between factory functions`;
+- 2-space indentation`;
 }
 
 function buildHumanPrompt(sections: string[], outputPath: string): string {
   return [
-    '## Layer_1 .defs.ts files',
+    '## Layer_1 table definition files',
     '',
     ...sections,
     '',

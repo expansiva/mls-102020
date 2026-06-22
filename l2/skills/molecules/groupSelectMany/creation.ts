@@ -25,15 +25,17 @@ export const skill = `
 | \`Label\` | No | Label displayed above or beside the field |
 | \`Helper\` | No | Help text displayed below the field |
 | \`Trigger\` | No | Custom content for the trigger button (for dropdown implementations) |
-| \`Item\` | Yes | Defines one selectable option. Attributes: \`value\` (required), \`disabled\` |
+| \`Item\` | Yes | Defines one selectable option (one **row** in \`table\`). Attributes: \`value\` (required), \`disabled\` |
+| \`Cell\` | No | \`table\` only — A data cell inside an \`Item\`, one per column, in column order |
+| \`Column\` | No | \`table\` only — A single column header, direct child of the component, in column order |
 | \`Group\` | No | Groups items under a named heading. Attribute: \`label\` |
 | \`Empty\` | No | Content shown when no items are available |
 
 \`\`\`typescript
-slotTags = ['Label', 'Helper', 'Trigger', 'Item', 'Group', 'Empty'];
+slotTags = ['Label', 'Helper', 'Trigger', 'Item', 'Cell', 'Column', 'Group', 'Empty'];
 \`\`\`
 
-### Slot Hierarchy
+### Slot Hierarchy — \`dropdown\` (default)
 
 \`\`\`
 component (root)
@@ -42,6 +44,23 @@ component (root)
 ├── <Group>
 │   └── <Item value="..." disabled>
 ├── <Item>
+├── <Empty>
+└── <Helper>
+\`\`\`
+
+### Slot Hierarchy — \`table\`
+
+\`\`\`
+component (root)
+├── <Label>
+├── <Column>Name</Column>
+├── <Column>Price</Column>
+├── <Item value="basic">
+│   ├── <Cell>Basic</Cell>
+│   └── <Cell>$10</Cell>
+├── <Item value="pro">
+│   ├── <Cell>Pro</Cell>
+│   └── <Cell>$20</Cell>
 ├── <Empty>
 └── <Helper>
 \`\`\`
@@ -324,11 +343,91 @@ my-component,
 
 ---
 
-## 12. Changelog
+## 13. Variants
+
+The component may be implemented in different layout variants. **All variants share the
+same value contract** (§4): a comma-separated string of selected \`Item\` \`value\` attributes.
+Only rendering and a11y differ.
+
+| Layout | When to use |
+|--------|-------------|
+| \`dropdown\` | Many options, compact footprint — trigger + popover panel (default) |
+| \`checkbox\` | A handful of options that benefit from being all visible — always-visible checkbox group |
+| \`table\` | Each option has **multiple comparable attributes** and the user picks several rows — always-visible table with checkboxes |
+
+### 13.1 \`table\` variant — details
+
+Reference implementation: \`_102040_/l2/molecules/groupselectmany/ml-table-multi-select\`
+
+**Markup**
+
+\`\`\`html
+<component required max-selection="3">
+  <Label>Select plans</Label>
+  <Column>Plan</Column>
+  <Column>Price</Column>
+  <Column>Seats</Column>
+  <Item value="basic">
+    <Cell>Basic</Cell>
+    <Cell>$10/mo</Cell>
+    <Cell>3</Cell>
+  </Item>
+  <Item value="pro">
+    <Cell>Pro</Cell>
+    <Cell>$25/mo</Cell>
+    <Cell>10</Cell>
+  </Item>
+  <Item value="enterprise" disabled>
+    <Cell>Enterprise</Cell>
+    <Cell>Contact us</Cell>
+    <Cell>Unlimited</Cell>
+  </Item>
+  <Empty>No plans available</Empty>
+  <Helper>Choose up to 3 plans to compare.</Helper>
+</component>
+\`\`\`
+
+**Rendering**
+
+- Render a \`<table>\`. \`<thead>\` has one \`<th>\` per \`Column\` slot, plus a leading
+  \`<th>\` with a "Select All" checkbox.
+- \`<tbody>\` has one \`<tr>\` per \`Item\`. The first \`<td>\` holds
+  \`<input type="checkbox">\`; the remaining \`<td>\`s render the \`Cell\` contents in order.
+- A row is checked when its \`Item\` \`value\` is in the selected set.
+- Clicking the row (or its checkbox) toggles the item in/out of the selection.
+- The "Select All" checkbox uses \`.indeterminate\` when some (not all) are selected.
+- When \`maxSelection\` is reached, unchecked items are disabled.
+- \`Item\` with \`disabled\`: checkbox disabled, row not selectable.
+- If \`searchable\`, filter rows by their visible cell text.
+- View mode (\`isEditing=false\`): render selected items' cells as static text.
+
+**Selection handler**
+
+\`\`\`typescript
+private handleRowToggle(item: { value: string; disabled: boolean }) {
+  if (this.disabled || this.readonly || item.disabled) return;
+  const selected = this.getSelectedSet();
+  if (selected.has(item.value)) {
+    selected.delete(item.value);
+  } else {
+    if (this.maxSelection > 0 && selected.size >= this.maxSelection) return;
+    selected.add(item.value);
+  }
+  this.value = Array.from(selected).join(',');
+  this.dispatchEvent(new CustomEvent('change', {
+    bubbles: true, composed: true, detail: { value: this.value },
+  }));
+}
+\`\`\`
+
+---
+
+## 14. Changelog
 
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
 | 1.1.0 | 2026-06-22 | Added §7.1 Portal — floating panel must render in \`<body>\` via \`litRender\` to escape CSS stacking contexts; documented focus management and DOM query patterns for portal |
+| 1.2.0 | 2026-06-22 | Added \`Cell\`/\`Column\` slot tags; added §13 Variants with \`table\` variant (checkbox table with Select All, keyed by Item value) |
 
 `;

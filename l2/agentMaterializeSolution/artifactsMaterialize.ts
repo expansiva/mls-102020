@@ -1,15 +1,91 @@
-/// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentMaterializeSolution/artifactsMaterialize.ts" enhancement="_blank"/>
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
-import type {
-  PipelineItem,
-  ProjectJson,
-  ScannedDefsFile,
-  L1LayerFolder,
-  ParsedMlsPath,
-} from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
 
-declare const mls: any;
+
+// ─── Pipeline item — embedded in each .defs.ts as `export const pipeline` ─────
+
+export interface PipelineItem {
+  id: string;
+  type: string;
+  outputPath: string;   // _102043_/l1/cafeFlow/layer_4_entities/PedidoEntity.ts
+  defPath: string;      // _102043_/l1/cafeFlow/layer_4_entities/pedidoEntity.defs.ts
+  dependsFiles: string[]; // already-generated .ts files the executor needs as context
+  dependsOn: string[];    // pipeline item IDs that must complete before this one
+  rulesApplied?: string[]; // business rules gathered from the definition (if any)
+  agent: string;
+}
+
+// ─── L1 layer folders scanned for existing .defs.ts ──────────────────────────
+
+export type L1LayerFolder =
+  | 'layer_1_external'
+  | 'layer_4_entities'
+  | 'layer_3_usecases'
+  | 'layer_2_controllers';
+
+// ─── Fase 2: L1 generation ────────────────────────────────────────────────────
+
+export type L1FileType = 'layer1' | 'layer4' | 'layer3' | 'layer2' | 'rulesApplied';
+
+// ─── Scanned file descriptor ──────────────────────────────────────────────────
+
+export interface ScannedDefsFile {
+  project: number;
+  level: number;
+  folder: string;      // e.g. "cafeFlow/layer_4_entities"
+  shortName: string;   // e.g. "pedidoEntity"
+  moduleName: string;
+  mlsPath: string;     // _102043_/l1/cafeFlow/layer_4_entities/pedidoEntity.defs.ts
+}
+
+// ─── Fase 2: L2 generation ────────────────────────────────────────────────────
+
+export type L2FileType = 'contract' | 'shared' | 'page';
+
+export interface GenStepArgs {
+  planId: string;
+  defPath: string; // MLS path of the .defs.ts — Gen resolves everything else from here
+}
+
+export interface ParsedMlsPath {
+  project: number;
+  level: number;
+  folder: string;
+  shortName: string;
+  extension: string;
+}
+
+// ─── project.json ─────────────────────────────────────────────────────────────
+
+export interface VisualStyle {
+  tone?: string;
+  layout?: string;
+  palette?: string[];
+}
+
+export interface ProjectModuleRef {
+  moduleName: string;
+  module?: {
+    visualStyle?: VisualStyle;
+  };
+}
+
+export interface LayoutEntry {
+  name: string;
+  skill: string;
+}
+
+export interface DesignSystemEntry {
+  name: string;
+  skill: string;
+}
+
+export interface ProjectJson {
+  modules: ProjectModuleRef[];
+  layouts?: Record<string, LayoutEntry>;
+  designSystems?: Record<string, DesignSystemEntry>;
+}
 
 // ─── Path helpers ─────────────────────────────────────────────────────────────
 
@@ -39,7 +115,7 @@ export async function readProjectJson(): Promise<ProjectJson | null> {
     if (!parsed || !Array.isArray(parsed.modules)) return null;
     return parsed as ProjectJson;
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] readProjectJson failed', err);
+    console.warn('[artifactsMaterialize] readProjectJson failed', err);
     return null;
   }
 }
@@ -70,7 +146,7 @@ export function scanL1DefsFiles(project: number, moduleName: string): ScannedDef
       }
     }
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] scanL1DefsFiles failed', err);
+    console.warn('[artifactsMaterialize] scanL1DefsFiles failed', err);
   }
   return result;
 }
@@ -97,7 +173,7 @@ export async function scanL1DefsWithPipeline(
       }
     }
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] scanL1DefsWithPipeline failed', err);
+    console.warn('[artifactsMaterialize] scanL1DefsWithPipeline failed', err);
   }
   return result;
 }
@@ -123,15 +199,13 @@ export function scanL2PageDefsFiles(project: number, moduleName: string): Scanne
       });
     }
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] scanL2PageDefsFiles failed', err);
+    console.warn('[artifactsMaterialize] scanL2PageDefsFiles failed', err);
   }
   return result;
 }
 
 // ─── Dep layer listing ────────────────────────────────────────────────────────
 
-// Returns the .defs.ts MLS paths for the dependency layer of a given L1 layer.
-// Used to show the LLM what's available so it can decide which files to reference.
 export function listDepLayerPaths(
   project: number,
   moduleName: string,
@@ -156,7 +230,7 @@ export function listDepLayerPaths(
       result.push(toMlsPath(project, 1, folder, f.shortName, '.defs.ts'));
     }
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] listDepLayerPaths failed', err);
+    console.warn('[artifactsMaterialize] listDepLayerPaths failed', err);
   }
   return result;
 }
@@ -177,7 +251,7 @@ export async function getFileContent(
     if (!file || file.status === 'deleted') return null;
     return String(await file.getContent());
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] getFileContent failed', err);
+    console.warn('[artifactsMaterialize] getFileContent failed', err);
     return null;
   }
 }
@@ -209,7 +283,7 @@ export async function appendPipelineToFile(
     const readBack = String(await file.getContent());
     return readBack.includes('export const pipeline');
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] appendPipelineToFile failed', err);
+    console.warn('[artifactsMaterialize] appendPipelineToFile failed', err);
     return false;
   }
 }
@@ -230,12 +304,7 @@ export async function createDefsFile(
     const source = [
       `/// <mls fileReference="${fileRef}" enhancement="_blank"/>`,
       ``,
-      `export const definition = \``,
-      `## Definition`,
-      '\\`\\`\\`JSON',
-      defStr,
-      '\\`\\`\\`',
-      `\`;`,
+      `export const definition = ${defStr};`,
       ``,
       `export const pipeline = ${JSON.stringify(items, null, 2)} as const;`,
       ``,
@@ -254,7 +323,7 @@ export async function createDefsFile(
     const readBack = String(await storFile.getContent());
     return readBack.includes('export const pipeline');
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] createDefsFile failed', err);
+    console.warn('[artifactsMaterialize] createDefsFile failed', err);
     return false;
   }
 }
@@ -409,7 +478,7 @@ export async function scanL2DefsWithPipeline(
       result.push({ project, level: 2, folder, shortName: f.shortName as string, pipeline });
     }
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] scanL2DefsWithPipeline failed', err);
+    console.warn('[artifactsMaterialize] scanL2DefsWithPipeline failed', err);
   }
   return result;
 }
@@ -436,7 +505,7 @@ export async function saveGeneratedTs(
     if (!shortName.endsWith('.defs')) compileGeneratedTs(project, level, folder, shortName);
     return true;
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] saveGeneratedTs failed', err);
+    console.warn('[artifactsMaterialize] saveGeneratedTs failed', err);
     return false;
   }
 }
@@ -458,7 +527,7 @@ function compileGeneratedTs(project: number, level: number, folder: string, shor
     if (modelTs && modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
     mls.l2.typescript.compileAndPostProcess(modelBase, true, true);
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] compileGeneratedTs failed', err);
+    console.warn('[artifactsMaterialize] compileGeneratedTs failed', err);
   }
 }
 
@@ -516,7 +585,7 @@ export async function saveGeneratedJson(
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
     return true;
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] saveGeneratedJson failed', err);
+    console.warn('[artifactsMaterialize] saveGeneratedJson failed', err);
     return false;
   }
 }
@@ -538,7 +607,7 @@ export async function saveGeneratedHtml(
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
     return true;
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] saveGeneratedHtml failed', err);
+    console.warn('[artifactsMaterialize] saveGeneratedHtml failed', err);
     return false;
   }
 }
@@ -596,7 +665,7 @@ export async function compileAndGetErrors(
     const errors: any[] = modelTs.compilerResults?.errors ?? [];
     return errors.map((e: any) => (typeof e === 'string' ? e : JSON.stringify(e)));
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] compileAndGetErrors failed', err);
+    console.warn('[artifactsMaterialize] compileAndGetErrors failed', err);
     return [];
   }
 }
@@ -629,7 +698,7 @@ export async function getDtsForFile(
       if (dts) return dts;
     }
   } catch (err) {
-    console.warn('[agentMaterializeArtifacts] getDtsForFile compile failed, falling back', err);
+    console.warn('[artifactsMaterialize] getDtsForFile compile failed, falling back', err);
   }
 
   return (

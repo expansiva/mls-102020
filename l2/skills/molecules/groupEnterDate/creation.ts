@@ -128,6 +128,117 @@ this.dispatchEvent(new CustomEvent('change', {
 
 ---
 
+## 6.1 Portal — Calendar Panel Rendering
+
+> The calendar panel MUST be rendered outside the component tree, in \`<body>\`,
+> using the **portal pattern** with \`litRender\`. This prevents the calendar from
+> being clipped or hidden behind sibling elements when any ancestor uses
+> \`backdrop-filter\`, \`transform\`, \`overflow: hidden\`, or explicit \`z-index\`
+> (all of which create new CSS stacking contexts).
+>
+> This applies only to popup calendar implementations. Inline calendar variants
+> (always visible, no \`isOpen\`) do not need a portal.
+
+### Import
+
+\\\`\\\`\\\`typescript
+import { render as litRender } from 'lit';
+\\\`\\\`\\\`
+
+### Required members
+
+| Member | Visibility | Description |
+|--------|------------|-------------|
+| \`portalContainer\` | \`protected\` | \`HTMLDivElement \\| null\` — the portal element appended to \`<body>\` |
+| \`portalClassName\` | \`protected\` | \`string\` — CSS class added to the portal (subclasses set it for scoped styling) |
+| \`getPortalTemplate()\` | \`protected\` | Returns \`TemplateResult\` with the calendar panel content. Subclasses override this to render themed variants |
+
+### Lifecycle integration
+
+| Hook | Action |
+|------|--------|
+| \`openPanel()\` | Call \`createPortal()\` after setting \`isOpen = true\` |
+| \`closePanel()\` | Call \`destroyPortal()\` |
+| \`disconnectedCallback()\` | Call \`destroyPortal()\` for cleanup |
+| \`updated()\` | When \`isOpen && portalContainer\`: call \`renderPortalContent()\` + \`updatePanelPosition()\` — this keeps the calendar in sync when \`viewMonth\`/\`viewYear\` change (month navigation) |
+
+### Portal methods
+
+\\\`\\\`\\\`typescript
+private createPortal() {
+  if (this.portalContainer) return;
+  this.portalContainer = document.createElement('div');
+  if (this.portalClassName) this.portalContainer.classList.add(this.portalClassName);
+  document.body.appendChild(this.portalContainer);
+  this.updatePanelPosition();
+  this.renderPortalContent();
+  window.addEventListener('scroll', this.boundUpdatePosition, true);
+  window.addEventListener('resize', this.boundUpdatePosition);
+}
+
+private destroyPortal() { /* same pattern */ }
+
+private updatePanelPosition() {
+  if (!this.portalContainer) return;
+  const trigger = this.querySelector('button, input') as HTMLElement;
+  if (!trigger) return;
+  const rect = trigger.getBoundingClientRect();
+  Object.assign(this.portalContainer.style, {
+    position: 'fixed',
+    top: \\\`\\\${rect.bottom + 8}px\\\`,
+    left: \\\`\\\${rect.left}px\\\`,
+    zIndex: '9999',
+  });
+  // Note: width is NOT set to trigger width — the calendar has its own
+  // natural width which is typically wider than the input field.
+}
+\\\`\\\`\\\`
+
+### Keyboard navigation in portal
+
+The calendar has its own keyboard navigation (arrows for days, month
+navigation). The \`@keydown\` handler must be attached to the portal
+template so it works when focus is inside the portal:
+
+\\\`\\\`\\\`typescript
+protected getPortalTemplate(): TemplateResult {
+  return html\\\`
+    <div role="dialog" aria-modal="true" @keydown=\\\${this.handleCalendarKeyDown}>
+      ... calendar grid ...
+    </div>
+  \\\`;
+}
+\\\`\\\`\\\`
+
+### Outside click — include portal
+
+\\\`\\\`\\\`typescript
+if (!this.contains(target) && !this.portalContainer?.contains(target)) {
+  this.closePanel();
+}
+\\\`\\\`\\\`
+
+### render() — no inline calendar
+
+The main \`render()\` includes only the input trigger, label, helper, and error.
+The calendar panel is rendered exclusively via \`renderPortalContent()\`.
+
+### CSS — shared selector for portal
+
+\\\`\\\`\\\`less
+my-component,
+.my-portal-class {
+  .calendar-panel { /* panel styles */ }
+  .calendar-day   { /* day cell styles */ }
+}
+\\\`\\\`\\\`
+
+### Reference implementation
+
+\`mls-102040/l2/molecules/groupselectone/ml-card-selector.ts\` (same portal pattern)
+
+---
+
 ## 7. Error Handling
 
 | \`error\` value | Behavior |
@@ -200,5 +311,6 @@ this.dispatchEvent(new CustomEvent('change', {
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-17 | Initial creation reference |
+| 1.1.0 | 2026-06-22 | Added §6.1 Portal — calendar panel must render in \`<body>\` via \`litRender\`; calendar width independent of trigger; keyboard navigation in portal |
 
 `

@@ -6,7 +6,7 @@ import {
   parseMlsPath,
   saveGeneratedTs,
   extractToolCallArgs,
-} from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
+} from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
 import { buildGenContext } from '/_102020_/l2/agentMaterializeSolution/contextMaterialize.js';
 
 declare const mls: any;

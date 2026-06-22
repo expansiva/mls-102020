@@ -161,6 +161,62 @@ this.dispatchEvent(new CustomEvent('change', {
 
 ---
 
+## 7.1 Portal — Calendar Panel Rendering
+
+> The range calendar panel MUST be rendered outside the component tree, in
+> \`<body>\`, using the **portal pattern** with \`litRender\`. This prevents the
+> panel from being clipped or hidden behind sibling elements when any ancestor
+> uses \`backdrop-filter\`, \`transform\`, \`overflow: hidden\`, or explicit \`z-index\`
+> (all of which create new CSS stacking contexts).
+>
+> This applies only to popup calendar implementations. Inline variants
+> (always visible, no \`isOpen\`) do not need a portal.
+
+### Import
+
+\\\`\\\`\\\`typescript
+import { render as litRender } from 'lit';
+\\\`\\\`\\\`
+
+### Required members
+
+| Member | Visibility | Description |
+|--------|------------|-------------|
+| \`portalContainer\` | \`protected\` | \`HTMLDivElement \\| null\` — the portal element appended to \`<body>\` |
+| \`portalClassName\` | \`protected\` | \`string\` — CSS class added to the portal (subclasses set it for scoped styling) |
+| \`getPortalTemplate()\` | \`protected\` | Returns \`TemplateResult\` with the range calendar content. Subclasses override this to render themed variants |
+
+### Lifecycle integration
+
+| Hook | Action |
+|------|--------|
+| \`openPanel()\` | Call \`createPortal()\` after setting \`isOpen = true\` |
+| \`closePanel()\` | Call \`destroyPortal()\` |
+| \`disconnectedCallback()\` | Call \`destroyPortal()\` for cleanup |
+| \`updated()\` | When \`isOpen && portalContainer\`: call \`renderPortalContent()\` + \`updatePanelPosition()\` — this is critical for the range picker because \`hoverDate\`, \`selectingEnd\`, and month navigation all trigger frequent re-renders of the portal content |
+
+### Width — independent of trigger
+
+The dual-month calendar is typically much wider than the trigger inputs.
+Do not constrain the portal width to the trigger's \`rect.width\`. Let the
+panel use its natural width, aligned to the trigger's left edge:
+
+\\\`\\\`\\\`typescript
+Object.assign(this.portalContainer.style, {
+  position: 'fixed',
+  top: \\\`\\\${rect.bottom + 8}px\\\`,
+  left: \\\`\\\${rect.left}px\\\`,
+  // width NOT set — calendar uses natural width
+  zIndex: '9999',
+});
+\\\`\\\`\\\`
+
+### Reference implementation
+
+\`mls-102040/l2/molecules/groupselectone/ml-card-selector.ts\` (same portal pattern)
+
+---
+
 ## 8. Error Handling
 
 | \`error\` value | Behavior |
@@ -234,6 +290,7 @@ this.dispatchEvent(new CustomEvent('change', {
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-17 | Initial creation reference |
+| 1.1.0 | 2026-06-22 | Added §7.1 Portal — range calendar must render in \`<body>\` via \`litRender\`; width independent of trigger; frequent re-renders for hover preview |
 
 
 `

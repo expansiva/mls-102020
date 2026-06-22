@@ -6,12 +6,12 @@ import {
   scanL1DefsWithPipeline,
   getFileModified,
   toMlsPath,
-} from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
+} from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
 import type {
   GenStepArgs,
   L1FileType,
   PipelineItem,
-} from '/_102020_/l2/agentMaterializeSolution/agentMaterializePlan.js';
+} from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
 
 declare const mls: any;
 

@@ -44,21 +44,34 @@ Use the \`interfaceOutputPath\` value from \`##User info\`, stripping the leadin
 /// <mls fileReference="{interfaceOutputPath without leading /}" enhancement="_blank" />
 \`\`\`
 
-### 2. One pair of interfaces per command, in the order commands appear
+### 2. One pair of types per command, in the order commands appear
 
-For each command generate two \`export interface\` blocks:
+For each command generate an Input interface and an Output type. Separate each top-level declaration with one blank line.
 
+**Input** — always a plain interface:
 \`\`\`typescript
 export interface {Prefix}{CommandPascal}Input {
-  // fields derived from command.inputShape
-}
-
-export interface {Prefix}{CommandPascal}Output {
-  // fields derived from command.outputShape
+  // fields derived from command.inputShape / input[]
 }
 \`\`\`
 
-Separate each interface with one blank line.
+**Output** — infer from context whether it returns a single item or a collection:
+
+If the output is clearly a **collection** (command name starts with \`listar\`, \`list\`, \`buscar\`, \`getAll\`, \`fetch\`; or \`purpose\` describes loading/listing multiple items), generate a named item interface + array type alias:
+\`\`\`typescript
+export interface {Prefix}{CommandPascal}OutputItem {
+  // fields
+}
+
+export type {Prefix}{CommandPascal}Output = {Prefix}{CommandPascal}OutputItem[];
+\`\`\`
+
+Otherwise (single item — create, update, get by id, etc.) generate a plain interface:
+\`\`\`typescript
+export interface {Prefix}{CommandPascal}Output {
+  // fields
+}
+\`\`\`
 
 ---
 
