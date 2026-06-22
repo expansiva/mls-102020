@@ -62,6 +62,7 @@ interface IModule {
 
 interface IRuleEntry {
     id: string;
+    title: string;
     kind: string;
     description: string;
     scope: string[];
@@ -71,10 +72,10 @@ interface IRuleEntry {
 // ─── Constants ───────────────────────────────────────────────────────
 
 const KIND_STYLES: Record<string, string> = {
-    policy:     'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/40',
-    domain:     'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40',
-    constraint: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/40',
-    behavior:   'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800/40',
+    layer_1: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/40',
+    layer_2: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40',
+    layer_3: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/40',
+    layer_4: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800/40',
 };
 const KIND_DEFAULT = 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700';
 
@@ -132,13 +133,15 @@ export class PluginSelectRule extends StateLitElement {
         const project = getAuraState().actualProject;
 
         try {
-            const mod = await import(`/_${project}_/l2/${modulePath}/module.defs.js`);
-            const rulesMap: Record<string, any> = mod?.ontology?.rules ?? {};
-            this._rules = Object.entries(rulesMap).map(([id, r]) => ({
-                id,
-                kind: r.kind ?? 'unknown',
+            const mod = await import(`/_${project}_/l5/${modulePath}/rules.defs.js`);
+            const plan: any = mod?.rulesPlan ?? mod?.default ?? {};
+            const rulesArr: any[] = Array.isArray(plan?.data?.rules) ? plan.data.rules : [];
+            this._rules = rulesArr.map((r) => ({
+                id: r.ruleId ?? '',
+                title: r.title ?? r.ruleId ?? '',
+                kind: r.layer ?? 'unknown',
                 description: r.description ?? '',
-                scope: Array.isArray(r.scope) ? r.scope : [],
+                scope: Array.isArray(r.appliesTo) ? r.appliesTo : [],
                 acceptanceCriteria: Array.isArray(r.acceptanceCriteria) ? r.acceptanceCriteria : [],
             }));
         } catch {
@@ -152,7 +155,7 @@ export class PluginSelectRule extends StateLitElement {
 
     private _dispatchConfig() {
         const labels: Record<number, string> = { 0: 'All' };
-        this._rules.forEach((r, i) => { labels[i + 1] = r.id; });
+        this._rules.forEach((r, i) => { labels[i + 1] = r.title; });
         this.dispatchEvent(new CustomEvent('rule-config', {
             detail: { min: 0, max: this._rules.length, labels },
             bubbles: true,
@@ -206,7 +209,7 @@ export class PluginSelectRule extends StateLitElement {
             .map((r, i) => ({ r, selectValue: i + 1 }))
             .filter(({ r }) =>
                 (!this._kindFilter || r.kind === this._kindFilter) &&
-                (!q || r.id.toLowerCase().includes(q) || r.description.toLowerCase().includes(q))
+                (!q || r.id.toLowerCase().includes(q) || r.title.toLowerCase().includes(q) || r.description.toLowerCase().includes(q))
             );
 
         return html`
@@ -267,7 +270,7 @@ export class PluginSelectRule extends StateLitElement {
         const max = this._rules.length;
         return html`
             <div class="flex flex-col gap-3">
-                ${this._renderHeader(this.value ?? 0, max, rule?.id ?? '')}
+                ${this._renderHeader(this.value ?? 0, max, rule?.title ?? '')}
                 ${rule ? this._renderRuleDetail(rule) : nothing}
             </div>
         `;
@@ -288,8 +291,9 @@ export class PluginSelectRule extends StateLitElement {
             >
                 <div class="flex items-center gap-2">
                     <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded border ${kindStyle}">${rule.kind}</span>
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">${rule.id}</span>
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">${rule.title}</span>
                 </div>
+                <span class="text-[10px] font-mono text-gray-400 dark:text-gray-600 truncate">${rule.id}</span>
                 <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2">${rule.description}</p>
                 ${rule.scope.length > 0 ? html`
                     <div class="flex flex-wrap gap-1">
@@ -311,8 +315,9 @@ export class PluginSelectRule extends StateLitElement {
 
                     <div class="flex items-center gap-2">
                         <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded border ${kindStyle}">${rule.kind}</span>
-                        <span class="text-xs font-mono text-gray-400 dark:text-gray-500 truncate">${rule.id}</span>
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">${rule.title}</span>
                     </div>
+                    <span class="text-xs font-mono text-gray-400 dark:text-gray-500 truncate">${rule.id}</span>
 
                     <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">${rule.description}</p>
 
