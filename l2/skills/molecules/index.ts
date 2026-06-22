@@ -11,7 +11,7 @@ export const skills = [
     },
     {
         name: 'groupSelectMany',
-        description: 'Allows the user to select one or more options from a list. Value is a comma-separated string of selected item values. Supports searchable filtering, min/max selection limits, grouped items, and disabled options. Implementations include checkbox group, chips/tags, multi-select dropdown, dual list (transfer list), card grid with selection, and toggle group.',
+        description: 'Allows the user to select one or more options from a list. Value is a comma-separated string of selected item values. Supports searchable filtering, min/max selection limits, grouped items, and disabled options. Implementations include checkbox group, chips/tags, multi-select dropdown, dual list (transfer list), card grid with selection, toggle group, and table (checkbox rows with column headers for comparing attributes).',
         skillReference: '/_102020_/l2/skills/molecules/groupSelectMany/creation',
         skillUsageReference: '/_102020_/l2/skills/molecules/groupSelectMany/usage',
     },

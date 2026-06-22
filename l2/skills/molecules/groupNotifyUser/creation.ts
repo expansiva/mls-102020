@@ -102,6 +102,67 @@ When \`duration > 0\` and \`visible=true\`:
 
 ---
 
+## 6.1 Portal — Notification Rendering
+
+> Positioned notifications (\`position\` is not empty) MUST be rendered outside
+> the component tree, in \`<body>\`, using the **portal pattern** with \`litRender\`.
+> This ensures the notification appears at the correct screen position regardless
+> of where the component is in the DOM, and avoids being clipped or hidden by
+> ancestor stacking contexts.
+>
+> When \`position\` is empty (inline notification), no portal is needed — render
+> directly inside the component.
+
+### Import
+
+\\\`\\\`\\\`typescript
+import { render as litRender } from 'lit';
+\\\`\\\`\\\`
+
+### Key difference from other groups
+
+Unlike dropdowns and pickers, notifications do NOT position relative to a
+trigger element. They use **fixed screen coordinates** based on the \`position\`
+property:
+
+\\\`\\\`\\\`typescript
+private updatePanelPosition() {
+  if (!this.portalContainer || !this.position) return;
+  const styles: Record<string, string> = {
+    position: 'fixed', zIndex: '9999',
+  };
+  if (this.position.includes('top'))    styles.top = '1rem';
+  if (this.position.includes('bottom')) styles.bottom = '1rem';
+  if (this.position.includes('right'))  styles.right = '1rem';
+  if (this.position.includes('left'))   styles.left = '1rem';
+  if (!this.position.includes('left') && !this.position.includes('right')) {
+    styles.left = '50%';
+    styles.transform = 'translateX(-50%)';
+  }
+  Object.assign(this.portalContainer.style, styles);
+}
+\\\`\\\`\\\`
+
+### Lifecycle integration
+
+| Hook | Action |
+|------|--------|
+| When \`visible\` becomes \`true\` and \`position\` is set | Call \`createPortal()\` |
+| When \`visible\` becomes \`false\` | Call \`destroyPortal()\` (after exit animation) |
+| \`disconnectedCallback()\` | Call \`destroyPortal()\` for cleanup |
+| Auto-dismiss timeout fires | Call \`destroyPortal()\` after emitting \`dismiss\` |
+
+### No scroll/resize listeners needed
+
+Since positioned notifications use fixed screen coordinates (not relative to
+a trigger), scroll and resize listeners are not needed — the position is static.
+
+### Reference implementation
+
+\`mls-102040/l2/molecules/groupselectone/ml-card-selector.ts\` (portal creation/destruction pattern)
+
+---
+
 ## 7. Type Semantics
 
 | Type | Usage |
@@ -142,5 +203,6 @@ The type drives the visual styling (colors, default icon). The component does no
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
+| 1.1.0 | 2026-06-22 | Added §6.1 Portal — positioned notifications must render in \`<body>\` via \`litRender\`; fixed screen coordinates instead of trigger-relative; no scroll/resize listeners needed |
 
 `;

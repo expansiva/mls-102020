@@ -195,6 +195,63 @@ this.dispatchEvent(new CustomEvent('search', {
 
 ---
 
+## 6.1 Portal — Suggestions Panel Rendering
+
+> The address suggestions panel MUST be rendered outside the component tree, in
+> \`<body>\`, using the **portal pattern** with \`litRender\`. This prevents the
+> panel from being clipped or hidden behind sibling elements when any ancestor
+> uses \`backdrop-filter\`, \`transform\`, \`overflow: hidden\`, or explicit \`z-index\`
+> (all of which create new CSS stacking contexts).
+>
+> Only the suggestions dropdown goes into the portal. The search input and the
+> map preview (when \`showMap=true\`) stay inside the component.
+
+### Import
+
+\\\`\\\`\\\`typescript
+import { render as litRender } from 'lit';
+\\\`\\\`\\\`
+
+### Required members
+
+| Member | Visibility | Description |
+|--------|------------|-------------|
+| \`portalContainer\` | \`protected\` | \`HTMLDivElement \\| null\` — the portal element appended to \`<body>\` |
+| \`portalClassName\` | \`protected\` | \`string\` — CSS class added to the portal (subclasses set it for scoped styling) |
+| \`getPortalTemplate()\` | \`protected\` | Returns \`TemplateResult\` with the suggestions panel content. Subclasses override this to render themed variants |
+
+### Lifecycle integration
+
+| Hook | Action |
+|------|--------|
+| When \`isOpen\` becomes \`true\` | Call \`createPortal()\` |
+| When \`isOpen\` becomes \`false\` | Call \`destroyPortal()\` |
+| \`disconnectedCallback()\` | Call \`destroyPortal()\` for cleanup |
+| \`updated()\` | When \`isOpen && portalContainer\`: call \`renderPortalContent()\` + \`updatePanelPosition()\` — re-renders when new suggestions arrive from the page |
+
+### Positioning — relative to search input
+
+\\\`\\\`\\\`typescript
+private updatePanelPosition() {
+  const input = this.querySelector('input[role="combobox"]') as HTMLElement;
+  if (!input) return;
+  const rect = input.getBoundingClientRect();
+  Object.assign(this.portalContainer.style, {
+    position: 'fixed',
+    top: \\\`\\\${rect.bottom + 4}px\\\`,
+    left: \\\`\\\${rect.left}px\\\`,
+    width: \\\`\\\${rect.width}px\\\`,
+    zIndex: '9999',
+  });
+}
+\\\`\\\`\\\`
+
+### Reference implementation
+
+\`mls-102040/l2/molecules/groupselectone/ml-card-selector.ts\` (same portal pattern)
+
+---
+
 ## 7. Validation Rules
 
 | Rule | Behavior |
@@ -253,4 +310,5 @@ this.dispatchEvent(new CustomEvent('search', {
 |---------|------|-------------|
 | 1.0.0 | 2026-04-20 | Initial creation reference |
 | 1.1.0 | 2026-04-21 | Suggestions via Slot Tags; value simplified to "lat,lng" string |
+| 1.2.0 | 2026-06-22 | Added §6.1 Portal — suggestions panel must render in \`<body>\` via \`litRender\`; map preview stays inline |
 `;

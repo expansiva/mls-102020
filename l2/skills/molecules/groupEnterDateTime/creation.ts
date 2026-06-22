@@ -131,6 +131,57 @@ this.dispatchEvent(new CustomEvent('change', {
 
 ---
 
+## 6.1 Portal — Picker Panel Rendering
+
+> The datetime picker panel (calendar + time selector) MUST be rendered outside
+> the component tree, in \`<body>\`, using the **portal pattern** with \`litRender\`.
+> This prevents the panel from being clipped or hidden behind sibling elements
+> when any ancestor uses \`backdrop-filter\`, \`transform\`, \`overflow: hidden\`, or
+> explicit \`z-index\` (all of which create new CSS stacking contexts).
+>
+> This applies only to popup picker implementations. Inline variants
+> (always visible, no \`isOpen\`) do not need a portal.
+
+### Import
+
+\\\`\\\`\\\`typescript
+import { render as litRender } from 'lit';
+\\\`\\\`\\\`
+
+### Required members
+
+| Member | Visibility | Description |
+|--------|------------|-------------|
+| \`portalContainer\` | \`protected\` | \`HTMLDivElement \\| null\` — the portal element appended to \`<body>\` |
+| \`portalClassName\` | \`protected\` | \`string\` — CSS class added to the portal (subclasses set it for scoped styling) |
+| \`getPortalTemplate()\` | \`protected\` | Returns \`TemplateResult\` with the combined date+time picker content. Subclasses override this to render themed variants |
+
+### Lifecycle integration
+
+| Hook | Action |
+|------|--------|
+| \`openPanel()\` | Call \`createPortal()\` after setting \`isOpen = true\` |
+| \`closePanel()\` | Call \`destroyPortal()\` |
+| \`disconnectedCallback()\` | Call \`destroyPortal()\` for cleanup |
+| \`updated()\` | When \`isOpen && portalContainer\`: call \`renderPortalContent()\` + \`updatePanelPosition()\` — keeps calendar navigation and time changes in sync |
+
+### Composite panel — single portal
+
+Both the calendar and the time selector live inside the **same portal
+container**. Do not create separate portals for date and time sections.
+
+### Width and positioning
+
+The datetime picker panel is typically wider than the trigger input.
+Do not constrain the portal width to the trigger's \`rect.width\`.
+Let the panel use its natural width, aligned to the trigger's left edge.
+
+### Reference implementation
+
+\`mls-102040/l2/molecules/groupselectone/ml-card-selector.ts\` (same portal pattern)
+
+---
+
 ## 7. Error Handling
 
 | \`error\` value | Behavior |
@@ -212,6 +263,7 @@ combined   → "YYYY-MM-DDTHH:mm:00"
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-04-17 | Initial creation reference |
+| 1.1.0 | 2026-06-22 | Added §6.1 Portal — composite date+time picker panel must render in \`<body>\` via \`litRender\`; single portal for both sections |
 
 
 `

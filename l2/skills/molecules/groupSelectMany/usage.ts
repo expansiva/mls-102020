@@ -10,14 +10,16 @@ export const skill = `
 
 ## Slot Tags
 
-| Tag | Description |
-|-----|-------------|
-| \`Label\` | Label displayed above or beside the field |
-| \`Helper\` | Descriptive text shown below the field when there is no error |
-| \`Trigger\` | Custom content for the trigger button (dropdown implementations) |
-| \`Item\` | One selectable option. Attributes: \`value\` (required), \`disabled\` |
-| \`Group\` | Groups items under a named heading. Attribute: \`label\` |
-| \`Empty\` | Content shown when no items are available |
+| Tag | Used by variant | Description |
+|-----|-----------------|-------------|
+| \`Label\` | all | Label displayed above or beside the field |
+| \`Helper\` | all | Descriptive text shown below the field when there is no error |
+| \`Trigger\` | \`dropdown\` only | Custom content for the trigger button |
+| \`Item\` | all | One selectable option (one **row** in \`table\`). Attributes: \`value\` (required), \`disabled\` |
+| \`Cell\` | \`table\` only | A data cell inside an \`Item\`, one per column, in column order |
+| \`Column\` | \`table\` only | A single column header, direct child of the component, in column order |
+| \`Group\` | \`dropdown\`, \`checkbox\` | Groups items under a named heading. Attribute: \`label\` |
+| \`Empty\` | all | Content shown when no items are available |
 
 ---
 
@@ -74,6 +76,49 @@ export const skill = `
   <Item value="execute">Execute</Item>
   <Item value="admin" disabled>Admin (restricted)</Item>
 </molecules--checkbox-group-102020>
+\`\`\`
+
+### Table variant (compare and select multiple rows)
+
+> Use the \`table\` variant when each option has several comparable attributes. Declare
+> column headers as flat \`<Column>\` children (in order), then one \`<Item value="...">\` per
+> row with one \`<Cell>\` per column. Selecting a row toggles that \`Item\`'s \`value\` in the
+> comma-separated string.
+
+\`\`\`html
+<groupselectmany--ml-table-multi-select
+  value="{{ui.form.selectedPlans}}"
+  error="{{ui.form.plansError}}"
+  name="plans"
+  max-selection="3"
+  required>
+  <Label>Select plans to compare</Label>
+  <Column>Plan</Column>
+  <Column>Price</Column>
+  <Column>Seats</Column>
+  <Item value="basic">
+    <Cell>Basic</Cell>
+    <Cell>$10/mo</Cell>
+    <Cell>3</Cell>
+  </Item>
+  <Item value="pro">
+    <Cell>Pro</Cell>
+    <Cell>$25/mo</Cell>
+    <Cell>10</Cell>
+  </Item>
+  <Item value="business">
+    <Cell>Business</Cell>
+    <Cell>$50/mo</Cell>
+    <Cell>25</Cell>
+  </Item>
+  <Item value="enterprise" disabled>
+    <Cell>Enterprise</Cell>
+    <Cell>Contact us</Cell>
+    <Cell>Unlimited</Cell>
+  </Item>
+  <Empty>No plans available</Empty>
+  <Helper>Choose up to 3 plans.</Helper>
+</groupselectmany--ml-table-multi-select>
 \`\`\`
 
 `;
