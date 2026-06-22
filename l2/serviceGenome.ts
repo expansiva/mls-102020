@@ -443,6 +443,8 @@ export class ServiceGenome102020 extends ServiceBase {
     private async _repaintPageForCombination(): Promise<void> {
         const file = this._variationPageFile();
         if (!file) return;
+        // Already showing this combination → nothing to repaint.
+        if (this._currentPageFile && file.folder === this._currentPageFile.folder) return;
         const storFiles = await mls.stor.getFiles({ project: file.project, shortName: file.shortName, folder: file.folder, loadContent: false });
         if (!storFiles.ts) return; // combination not generated → keep the current preview
         await this._openPage(file, storFiles);

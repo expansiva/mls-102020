@@ -126,21 +126,27 @@ export class PluginSelectLayout extends StateLitElement {
 
         const project = getAuraState().actualProject;
         const modulePrefix = getAuraState().actualModule ?? '';
-        if (!modulePrefix) return;
+        if (!project || !modulePrefix) return;
 
         const folder = this.pageFile.folder ?? '';
-        const genomeKey = folder.substring(modulePrefix.length + 1);
+        const genomeKey = folder.substring(modulePrefix.length + 1); // e.g. "web/desktop/page11"
         if (!genomeKey) return;
 
-        try {
-            const mod = await import(`/_${project}_/l2/${modulePrefix}/module.js`);
-            const genome: Record<string, any> = mod?.moduleGenome ?? {};
-            const entry = genome[genomeKey];
-            if (!entry) return;
-            this._layoutOptions = this._layoutOptions.map(o => ({ ...o, enabled: o.name === entry.layout }));
-            const enabled = this._layoutOptions.find(o => o.enabled);
-            if (enabled) this._dispatchSelect(enabled.value);
-        } catch { /* no genome */ }
+        const parts = genomeKey.split('/');
+        const pageSeg = parts[parts.length - 1];        // "page11"
+        const dsDigit = pageSeg.replace(/^page\d/, ''); // DS digit(s), e.g. "1"
+        const deviceParts = parts.slice(0, -1);         // ["web","desktop"]
+        const shortName = this.pageFile.shortName;
+
+        // A layout is "created" for this page when its page<layout><ds> variation
+        // file exists in the stor.
+        const checked = await Promise.all(this._layoutOptions.map(async (o) => {
+            const variation = `page${o.value}${dsDigit}`;
+            const varFolder = [modulePrefix, ...deviceParts, variation].join('/');
+            const storFiles = await mls.stor.getFiles({ project, shortName, folder: varFolder, loadContent: false });
+            return { ...o, enabled: !!storFiles.ts };
+        }));
+        this._layoutOptions = checked;
 
         // @ts-ignore
         this.requestUpdate();
