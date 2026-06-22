@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentMaterialize.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102020_/l2/agentMaterializeSolution/agentPrepareDefs.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
@@ -7,7 +7,7 @@ import {
   scanL2PageDefsFiles,
   getContentByMlsPath,
   parsePipelineFromContent,
-} from '/_102020_/l2/agentMaterializeSolution/artifactsMaterialize.js';
+} from '/_102027_/l2/agentMaterializeSolution/artifactsMaterialize.js';
 
 import { buildModuleTs, buildIndexTs, buildRouterTs, buildPersistenceTs, buildConfig } from '/_102020_/l2/agentMaterializeSolution/templateMaterialize.js';
 
@@ -15,7 +15,7 @@ import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
 
 export function createAgent(): IAgentAsync {
   return {
-    agentName: 'agentMaterialize',
+    agentName: 'agentPrepareDefs',
     agentProject: 102020,
     agentFolder: 'agentMaterializeSolution',
     agentDescription: 'Add pipeline exports to L1 .defs.ts and create L2 sub-files for all modules',
@@ -51,7 +51,7 @@ async function beforePromptImplicit(
   const projectJson = await readProjectJson();
 
   if (!projectJson?.modules?.length) {
-    throw new Error(`[agentMaterialize] l5/project.json not found or empty in project ${project}`);
+    throw new Error(`[agentPrepareDefs] l5/project.json not found or empty in project ${project}`);
   }
 
   const summaries = projectJson.modules.map(mod => {
@@ -100,7 +100,7 @@ async function afterPromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   try {
     const payload = step.interaction?.payload?.[0] as any;
-    if (!payload) throw new Error('[agentMaterialize] missing payload');
+    if (!payload) throw new Error('[agentPrepareDefs] missing payload');
 
     if (payload.type === 'result') {
       return [mkFail(context, _parentStep, step, hookSequential, String(payload.result))];
@@ -112,7 +112,7 @@ async function afterPromptStep(
 
     const project = mls.actualProject || 0;
     const projectJson = await readProjectJson();
-    if (!projectJson) throw new Error('[agentMaterialize] project.json unavailable');
+    if (!projectJson) throw new Error('[agentPrepareDefs] project.json unavailable');
 
     const intents: mls.msg.AgentIntentAddStep[] = [];
 
