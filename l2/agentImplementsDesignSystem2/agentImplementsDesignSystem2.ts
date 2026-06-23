@@ -1,6 +1,8 @@
 /// <mls fileReference="_102020_/l2/agentImplementsDesignSystem2/agentImplementsDesignSystem2.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// Orchestrator (barrier-group model, à la agentNewSolution). Entry: { module, layout, ds }.
+// Orchestrator (barrier-group model, à la agentNewSolution).
+// Entry: { module, layout, ds, device?, pages? }. `pages` (optional) restricts the run to a
+// subset (e.g. one page for "Refazer página"); omitted/empty → all pages of the module.
 //
 // beforePromptImplicit → minimal LLM confirmation (validates the request).
 // afterPromptStep      → builds the planned tree of child steps with barriers:
@@ -16,7 +18,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { listWorkItems, DEFAULT_DEVICE } from '/_102020_/l2/dsMatch/derivePaths.js';
 import { mkAgentStep, mkFail, makePlanId, type StepArgs } from '/_102020_/l2/agentImplementsDesignSystem2/planning.js';
 
-interface EntryArgs { module: string; layout: number | string; ds: number | string; device?: string; }
+interface EntryArgs { module: string; layout: number | string; ds: number | string; device?: string; pages?: string[]; }
 
 export function createAgent(): IAgentAsync {
   return {
@@ -36,9 +38,11 @@ async function beforePromptImplicit(
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
 
-  const { module, layout, ds, device } = JSON.parse(userPrompt) as EntryArgs;
+  const { module, layout, ds, device, pages } = JSON.parse(userPrompt) as EntryArgs;
   if (!module || layout == null || ds == null) throw new Error(`(${agent.agentName}) entry needs { module, layout, ds }`);
   const dev = device || DEFAULT_DEVICE;
+  // Optional subset: keep only non-empty strings; empty → all pages.
+  const targetPages = Array.isArray(pages) ? pages.filter(p => typeof p === 'string' && p) : [];
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -47,12 +51,15 @@ async function beforePromptImplicit(
       agentName: agent.agentName,
       inputAI: [
         { type: 'system', content: system1 },
-        { type: 'human', content: JSON.stringify({ module, layout, ds, device: dev }) },
+        { type: 'human', content: JSON.stringify({ module, layout, ds, device: dev, pages: targetPages }) },
       ],
-      taskTitle: `Implement DS ${ds} (layout ${layout}) on ${module}`,
+      taskTitle: targetPages.length
+        ? `Regenerate ${targetPages.length} page(s) · DS ${ds} on ${module}`
+        : `Implement DS ${ds} (layout ${layout}) on ${module}`,
       threadId: context.message.threadId,
       userMessage: context.message.content,
-      longTermMemory: { module, layout: String(layout), ds: String(ds), device: dev },
+      // longMemory is string-only → the subset is JSON-encoded and parsed back in afterPromptStep.
+      longTermMemory: { module, layout: String(layout), ds: String(ds), device: dev, pages: JSON.stringify(targetPages) },
     },
   };
 
@@ -87,8 +94,17 @@ async function afterPromptStep(
     if (!module || layout == null || ds == null) throw new Error('missing run params in longMemory');
 
     const project = mls.actualProject || 0;
-    const pages = listWorkItems(project, module, layout, ds, device).map(i => i.page);
-    if (pages.length === 0) throw new Error(`no pages found in ${module}/web/${device}/page11`);
+    let requested: string[] = [];
+    try { requested = JSON.parse(lm['pages'] || '[]'); } catch { requested = []; }
+
+    const allPages = listWorkItems(project, module, layout, ds, device).map(i => i.page);
+    // `pages` subset (validated against the page11 folder) → that subset; empty → all.
+    const pages = requested.length ? allPages.filter(p => requested.includes(p)) : allPages;
+    if (pages.length === 0) {
+      throw new Error(requested.length
+        ? `none of the requested pages [${requested.join(', ')}] exist in ${module}/web/${device}/page11`
+        : `no pages found in ${module}/web/${device}/page11`);
+    }
 
     const baseArgs = (page?: string): StepArgs => ({ module, layout, ds, device, page });
     const genIds = pages.map(p => makePlanId('gen', p));
@@ -129,8 +145,8 @@ const system1 = `
 <!-- modelType: codeinstruct -->
 
 You validate a design-system derivation request. The human message is a JSON object
-{ module, layout, ds, device }. If it is a well-formed request to apply a design system
-to a module, return ONLY:
+{ module, layout, ds, device, pages } (pages is an optional subset; empty = all pages).
+If it is a well-formed request to apply a design system to a module, return ONLY:
 {"type":"flexible","result":{"status":"ok"}}
 
 If it is clearly invalid, return ONLY:

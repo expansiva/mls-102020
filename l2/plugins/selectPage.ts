@@ -6,6 +6,12 @@ import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getAuraState } from '/_102020_/l2/auraState.js';
 import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
 import { pageDsCheckByDefs, restampPage, type PageDsCheck } from '/_102020_/l2/dsMatch/dsVersion.js';
+import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
+import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
+import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
+import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
+import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
+import { setTask, getTask, subscribeTaskManager } from '/_102020_/l2/taskManager.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -37,6 +43,9 @@ const message_en = {
     staleReasonIncompatible: 'A molecule it uses is no longer compatible.',
     staleReasonNoStamp: 'The page predates DS versioning.',
     regeneratePage: 'Regenerate page',
+    regenerating: 'Starting…',
+    regenerated: 'Task started',
+    followTask: 'Follow task',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -68,6 +77,9 @@ const messages: Record<string, MessageType> = {
         staleReasonIncompatible: 'Uma molécula usada ficou incompatível.',
         staleReasonNoStamp: 'A página é anterior ao versionamento do DS.',
         regeneratePage: 'Refazer página',
+        regenerating: 'Iniciando…',
+        regenerated: 'Task iniciada',
+        followTask: 'Acompanhar task',
     },
     es: {
         title: 'Páginas',
@@ -96,6 +108,9 @@ const messages: Record<string, MessageType> = {
         staleReasonIncompatible: 'Una molécula usada ya no es compatible.',
         staleReasonNoStamp: 'La página es anterior al versionado del DS.',
         regeneratePage: 'Regenerar página',
+        regenerating: 'Iniciando…',
+        regenerated: 'Tarea iniciada',
+        followTask: 'Seguir tarea',
     },
 };
 /// **collab_i18n_end**
@@ -147,9 +162,19 @@ export class PluginSelectPage extends StateLitElement {
     // page currently being re-stamped (disables its button).
     @state() private _busyPage: string | null = null;
 
+    private _threadCache = new Map<string, Promise<any>>();
+    private _taskInfoByName = new Map<string, { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }>();
+    private _unsubTasks: (() => void) | undefined;
+
     connectedCallback() {
         super.connectedCallback();
+        this._unsubTasks = subscribeTaskManager(() => this.requestUpdate());
         this._loadPages();
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        this._unsubTasks?.();
     }
 
     willUpdate(changed: Map<string, unknown>) {
@@ -470,6 +495,8 @@ export class PluginSelectPage extends StateLitElement {
             'no-stamp': this.msg.staleReasonNoStamp,
         }[check.staleReason ?? 'no-stamp'];
         const mol = check.staleMolecule;
+        const task = getTask(`regenerate:${page.name}`);
+        const running = task?.status === 'running';
         return html`
             <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5 flex flex-col gap-2">
                 <span class="text-xs font-semibold text-amber-700 dark:text-amber-300">${this.msg.staleIntro}</span>
@@ -477,9 +504,20 @@ export class PluginSelectPage extends StateLitElement {
                 ${mol ? html`<span class="text-[10px] font-mono text-gray-400 dark:text-gray-500 truncate">${mol.tag}</span>` : nothing}
                 <button
                     class="self-start text-sm px-3 py-1.5 rounded-md bg-amber-500 dark:bg-amber-600 text-white hover:bg-amber-600 dark:hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                    ?disabled=${this._busyPage === page.name}
+                    ?disabled=${running}
                     @click=${() => this._onRegenerate(page)}
-                >${this.msg.regeneratePage}</button>
+                >${running ? this.msg.regenerating : this.msg.regeneratePage}</button>
+                ${task ? html`
+                    <div class="flex items-center gap-2 text-xs">
+                        ${task.status === 'running' ? html`<span class="text-indigo-500 dark:text-indigo-400 italic">${this.msg.regenerating}</span>` : nothing}
+                        ${task.status === 'done' ? html`<span class="text-emerald-600 dark:text-emerald-400">✓ ${this.msg.regenerated}</span>` : nothing}
+                        ${task.status === 'error' ? html`<span class="text-red-500 dark:text-red-400 truncate">${task.message ?? 'error'}</span>` : nothing}
+                        ${this._taskInfoByName.get(page.name)?.task ? html`
+                            <button class="ml-auto text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
+                                @click=${() => this._openTask(page.name)}>${this.msg.followTask}</button>
+                        ` : nothing}
+                    </div>
+                ` : nothing}
             </div>
         `;
     }
@@ -504,19 +542,75 @@ export class PluginSelectPage extends StateLitElement {
         await this._loadPageStatus();
     }
 
-    private _onRegenerate(page: IPageEntry) {
-        this.dispatchEvent(new CustomEvent('regenerate-page', {
-            detail: {
-                module: this._modulePath,
-                page: page.name,
-                file: page.file,
-                layout: getAuraState().actualLayout,
-                designSystem: getAuraState().actualDesignSystem,
-                device: getAuraState().actualDevice,
-            },
-            bubbles: true,
-            composed: true,
-        }));
+    // Regenerate this single page through the DS-implementation agent (pages: [page]).
+    private async _onRegenerate(page: IPageEntry) {
+        const module = this._modulePath;
+        const layout = getAuraState().actualLayout;
+        const ds = getAuraState().actualDesignSystem;
+        if (!module || layout == null || ds == null) return;
+        // The agent's `device` is the segment after web/ (e.g. 'desktop'); aura stores 'web/desktop'.
+        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
+
+        const taskKey = `regenerate:${page.name}`;
+        if (getTask(taskKey)?.status === 'running') return;
+
+        const prompt = JSON.stringify({ module, layout, ds, device, pages: [page.name] });
+        setTask(taskKey, { status: 'running', startedAt: Date.now() });
+        try {
+            await this._executeAgent('agentImplementsDesignSystem2', prompt, (data) => this._taskInfoByName.set(page.name, data));
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
+        } catch (e: any) {
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: e?.message });
+        }
+        this.requestUpdate();
+    }
+
+    private async _executeAgent(
+        agentName: string,
+        prompt: string,
+        onTaskCreated?: (data: { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }) => void,
+    ): Promise<{ taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }> {
+        const fullName = '_102020_/l2/servicePage';
+        let threadPromise = this._threadCache.get(fullName);
+        if (!threadPromise) {
+            threadPromise = (async () => {
+                let thread = await getThreadByName(fullName);
+                if (!thread) thread = await createThread(fullName, [], 'company');
+                return thread;
+            })();
+            this._threadCache.set(fullName, threadPromise);
+        }
+        const thread = await threadPromise;
+        const userId = getUserId();
+        const threadId = thread?.threadId;
+        if (!userId || !threadId) return { taskId: '' };
+
+        const moduleAgent = await loadAgent(agentName);
+        if (!moduleAgent) throw new Error('Invalid agent');
+        const context = getTemporaryContext(threadId, userId, prompt);
+
+        let taskId = '';
+        let task: mls.msg.TaskData | undefined;
+        let message: mls.msg.Message | undefined;
+        for await (const event of executeBeforePromptStream(moduleAgent, context)) {
+            if (event.type === 'task-created') {
+                taskId = event.taskId; task = event.task; message = event.message;
+                onTaskCreated?.({ taskId, task, message });
+            }
+        }
+        return { taskId, task, message };
+    }
+
+    private async _openTask(pageName: string) {
+        const info = this._taskInfoByName.get(pageName);
+        if (!info?.task) return;
+        await import('/_102025_/l2/collabMessagesTaskInfo.js');
+        const el = document.createElement('collab-messages-task-info-102025');
+        el.setAttribute('messageId', info.message?.createAt ?? '');
+        if (info.task.PK) el.setAttribute('taskId', info.task.PK);
+        (el as any)['task'] = info.task;
+        (el as any)['message'] = info.message;
+        openElementInServiceDetails(el);
     }
 
     private _renderAll() {
