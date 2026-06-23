@@ -555,16 +555,24 @@ export class PluginSelectPage extends StateLitElement {
         const taskKey = `regenerate:${page.name}`;
         if (getTask(taskKey)?.status === 'running') return;
 
-        const prompt = JSON.stringify({ module, layout, ds, device, pages: [page.name] });
+        const materialize = true; // the button regenerates the rendered .ts page too
+        const prompt = JSON.stringify({ module, layout, ds, device, pages: [page.name], materialize });
         // Pause the preview while the agent rewrites the defs (avoids repaint thrash); restore after.
         const prevPause = getState('preview.pausePreview');
         setState('preview.pausePreview', true);
         setTask(taskKey, { status: 'running', startedAt: Date.now() });
         try {
+            // 1) DS-implementation: rewrite the page defs (page{layout}{ds}/<page>.defs.ts).
             await this._executeAgent('agentImplementsDesignSystem2', prompt, (data) => {
                 this._taskInfoByName.set(page.name, data);
                 this.requestUpdate(); // surface "Follow task" as soon as the task exists
             });
+            // 2) Materialize: read the now-stale defs and generate the .ts page. Unpause first
+            //    so the .ts write repaints the preview with the new result.
+            if (materialize) {
+                setState('preview.pausePreview', prevPause ?? false);
+                await this._executeAgent('agentMaterializeL2', '{}');
+            }
             setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
         } catch (e: any) {
             setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: e?.message });

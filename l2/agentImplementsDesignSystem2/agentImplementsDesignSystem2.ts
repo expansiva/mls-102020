@@ -18,7 +18,10 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { listWorkItems, DEFAULT_DEVICE } from '/_102020_/l2/dsMatch/derivePaths.js';
 import { mkAgentStep, mkFail, makePlanId, type StepArgs } from '/_102020_/l2/agentImplementsDesignSystem2/planning.js';
 
-interface EntryArgs { module: string; layout: number | string; ds: number | string; device?: string; pages?: string[]; }
+// `materialize` (default true) is a contract flag for the CALLER: after this flow writes the
+// page defs, the caller runs agentMaterializeL2 to generate the .ts (false → skip). This
+// orchestrator only produces defs; agentMaterializeL2 is a top-level, project-wide flow.
+interface EntryArgs { module: string; layout: number | string; ds: number | string; device?: string; pages?: string[]; materialize?: boolean; }
 
 export function createAgent(): IAgentAsync {
   return {
