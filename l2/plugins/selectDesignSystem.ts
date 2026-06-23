@@ -52,6 +52,8 @@ const message_en = {
     inheritedFromProject: 'From project',
     inheritedFromModule: 'From module',
     inheritedLevelEmpty: 'Nothing configured at this level.',
+    configuredOne: 'rule configured',
+    configuredMany: 'rules configured',
     sections: {
         transversal: 'General',
         input: 'Input',
@@ -113,6 +115,8 @@ const messages: Record<string, MessageType> = {
         inheritedFromProject: 'Do projeto',
         inheritedFromModule: 'Do módulo',
         inheritedLevelEmpty: 'Nada configurado neste nível.',
+        configuredOne: 'regra configurada',
+        configuredMany: 'regras configuradas',
         sections: {
             transversal: 'Geral',
             input: 'Entrada',
@@ -171,6 +175,8 @@ const messages: Record<string, MessageType> = {
         inheritedFromProject: 'Del proyecto',
         inheritedFromModule: 'Del módulo',
         inheritedLevelEmpty: 'Nada configurado en este nivel.',
+        configuredOne: 'regla configurada',
+        configuredMany: 'reglas configuradas',
         sections: {
             transversal: 'General',
             input: 'Entrada',
@@ -525,9 +531,22 @@ export class PluginSelectDesignSystem extends StateLitElement {
         return this._isProjectScope ? this._renderProjectForm() : this._renderScopedForm();
     }
 
+    /**
+     * Sections shown in the editable form.
+     * - Project (l6): primary sections always + any the user added (the full base form).
+     * - Module/page (l3/l5): ONLY sections that already hold a rule at this scope, plus any
+     *   the user explicitly added — keeps the override UI clean; the rest live behind "+".
+     */
+    private get _visibleSections(): IDsSection[] {
+        if (this._isProjectScope) {
+            return dsSections.filter(s => s.primary || this._addedSections.has(s.key));
+        }
+        return dsSections.filter(s => this._sectionRuleCount(s.key) > 0 || this._addedSections.has(s.key));
+    }
+
     // ── Project scope: identity + base rules (editable) ───────────────
     private _renderProjectForm() {
-        const visible = dsSections.filter(s => s.primary || this._addedSections.has(s.key));
+        const visible = this._visibleSections;
         return html`
             ${this._renderNameField()}
             ${this._renderDescField()}
@@ -562,7 +581,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     private _renderScopeEditable() {
-        const visible = dsSections.filter(s => s.primary || this._addedSections.has(s.key));
+        const visible = this._visibleSections;
         return html`
             <div class="flex flex-col gap-2.5">
                 ${visible.map(sec => this._renderSectionDetails(sec))}
@@ -649,15 +668,24 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     private _renderReadonlyLevel(title: string, rules: Record<string, string>) {
         const entries = Object.entries(rules);
+        const count = entries.length;
+        const countLabel = `${count} ${count === 1 ? this.msg.configuredOne : this.msg.configuredMany}`;
         return html`
-            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-1.5">
-                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400">${title}</span>
-                ${entries.length
-                    ? html`<div class="flex flex-wrap gap-1">
-                        ${entries.map(([k, v]) => this._renderReadonlyChip(k, v))}
-                    </div>`
-                    : html`<span class="text-[11px] text-gray-400 dark:text-gray-600 italic">${this.msg.inheritedLevelEmpty}</span>`}
-            </div>
+            <details class="group rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 overflow-hidden">
+                <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none px-3 py-2 flex items-center gap-2">
+                    <svg class="w-3 h-3 shrink-0 text-gray-400 dark:text-gray-500 transition-transform group-open:rotate-90"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    <span class="text-xs font-semibold text-gray-500 dark:text-gray-400">${title}</span>
+                    <span class="text-[11px] text-gray-400 dark:text-gray-500">(${countLabel})</span>
+                </summary>
+                <div class="px-3 pb-2.5 pt-2 border-t border-gray-100 dark:border-gray-800/70">
+                    ${count
+                        ? html`<div class="flex flex-wrap gap-1">
+                            ${entries.map(([k, v]) => this._renderReadonlyChip(k, v))}
+                        </div>`
+                        : html`<span class="text-[11px] text-gray-400 dark:text-gray-600 italic">${this.msg.inheritedLevelEmpty}</span>`}
+                </div>
+            </details>
         `;
     }
 
@@ -828,7 +856,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     private _renderAddMore() {
-        const remaining = dsSections.filter(s => !s.primary && !this._addedSections.has(s.key));
+        const visible = new Set(this._visibleSections.map(s => s.key));
+        const remaining = dsSections.filter(s => !visible.has(s.key));
         if (!remaining.length) return nothing;
         return html`
             <div class="flex flex-col gap-2">

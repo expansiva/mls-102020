@@ -44,22 +44,14 @@ export function runDsVersionTests(): { passed: number } {
         passed++;
     }
 
-    // ── parseUsedMolecules ────────────────────────────────────────────────────
+    // ── parseUsedMolecules (flat, unique by project|tag) ──────────────────────
     {
-        // Flat form (new canonical) — unique list, no organismName.
         const flat = `export const moleculeAssignments = ${JSON.stringify([
             { project: 102040, group: 'g1', tag: 'ml-toast' },
+            { project: 102040, group: 'g1', tag: 'ml-toast' }, // repeated
             { project: 102041, group: 'g2', tag: 'ml-grid' },
         ], null, 2)} as const;`;
-        assert(parseUsedMolecules(flat).length === 2, 'flat form → 2 molecules');
-
-        // Legacy per-organism form (with repetition) — flattened + deduped.
-        const perOrg = `export const moleculeAssignments = ${JSON.stringify([
-            { organismName: 'A', molecules: [{ project: 102040, group: 'g1', tag: 'ml-toast' }] },
-            { organismName: 'B', molecules: [{ project: 102040, group: 'g1', tag: 'ml-toast' }, { project: 102041, group: 'g2', tag: 'ml-grid' }] },
-        ], null, 2)} as const;`;
-        assert(parseUsedMolecules(perOrg).length === 2, 'per-organism form → dedupe to 2');
-
+        assert(parseUsedMolecules(flat).length === 2, 'should dedupe to 2 molecules');
         assert(parseUsedMolecules('nothing here').length === 0, 'missing export → empty');
         passed++;
     }

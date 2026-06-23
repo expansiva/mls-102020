@@ -88,25 +88,17 @@ export function parseDsVersion(content: string): PageDsStamp | null {
     }
 }
 
-/**
- * Parse the page's used molecules from its `moleculeAssignments` export, unique by
- * project|tag. Accepts the flat form (`[{project,tag,...}]`) and the legacy per-organism
- * form (`[{organismName, molecules:[...]}]`).
- */
+/** Parse the page's used molecules from its (flat) `moleculeAssignments` export, unique by project|tag. */
 export function parseUsedMolecules(content: string): UsedMolecule[] {
     const m = content.match(/export\s+const\s+moleculeAssignments\s*=\s*(\[[\s\S]*?\])\s+as\s+const\s*;/);
     if (!m) return [];
-    let arr: Array<{ project?: number; tag?: string; molecules?: Array<{ project?: number; tag?: string }> }>;
+    let arr: Array<{ project?: number; tag?: string }>;
     try { arr = JSON.parse(m[1]); } catch { return []; }
     const out = new Map<string, UsedMolecule>();
-    const add = (mol?: { project?: number; tag?: string }) => {
-        if (!mol?.tag) return;
+    for (const mol of arr ?? []) {
+        if (!mol?.tag) continue;
         const project = typeof mol.project === 'number' ? mol.project : 0;
         out.set(`${project}|${mol.tag}`, { project, tag: mol.tag });
-    };
-    for (const item of arr ?? []) {
-        if (Array.isArray(item?.molecules)) item.molecules.forEach(add); // per-organism (legacy)
-        else add(item);                                                  // flat
     }
     return [...out.values()];
 }
