@@ -6,9 +6,10 @@ import {
     effectiveRulesSignature,
     moleculeContentSignature,
     parseUsedMolecules,
-    decidePageDsStatus,
+    decidePageDsCheck,
     renderDsVersionExport,
     type PageDsStamp,
+    type UsedMolecule,
 } from '/_102020_/l2/dsMatch/dsVersion.js';
 import type { MoleculeCatalogEntry, ResolvedDs } from '/_102020_/l2/dsMatch/types.js';
 
@@ -56,12 +57,12 @@ export function runDsVersionTests(): { passed: number } {
         passed++;
     }
 
-    // ── decidePageDsStatus ────────────────────────────────────────────────────
+    // ── decidePageDsCheck ─────────────────────────────────────────────────────
     const catalog: MoleculeCatalogEntry[] = [
         mol(102040, 'groupNotifyUser', 'ml-toast', { feedback: 'toast' }, 'v1'),
         mol(102041, 'groupViewData', 'ml-grid', { recordsView: 'grid' }, 'v1'), // different source project
     ];
-    const used = [{ project: 102040, tag: 'ml-toast' }];
+    const used: UsedMolecule[] = [{ project: 102040, tag: 'ml-toast', group: 'groupNotifyUser' }];
     const rules = ds({ feedback: 'toast' });
     const configuredAxes = new Set(['feedback']);
     const freshStamp: PageDsStamp = {
@@ -71,39 +72,43 @@ export function runDsVersionTests(): { passed: number } {
     const base = { used, catalog, rules, configuredAxes, currentRulesHash: effectiveRulesSignature({ feedback: 'toast' }) };
 
     // 4. No stamp → stale.
-    { assert(decidePageDsStatus({ ...base, stamp: null }) === 'stale', 'no stamp → stale'); passed++; }
+    { const r = decidePageDsCheck({ ...base, stamp: null }); assert(r.status === 'stale' && r.staleReason === 'no-stamp', 'no stamp → stale'); passed++; }
 
     // 5. Everything matches → fresh.
-    { assert(decidePageDsStatus({ ...base, stamp: freshStamp }) === 'fresh', 'all unchanged → fresh'); passed++; }
+    { assert(decidePageDsCheck({ ...base, stamp: freshStamp }).status === 'fresh', 'all unchanged → fresh'); passed++; }
 
-    // 6. Rules changed → stale.
-    { assert(decidePageDsStatus({ ...base, stamp: { ...freshStamp, rulesHash: 'different' } }) === 'stale', 'rules change → stale'); passed++; }
+    // 6. Rules changed → stale (reason 'rules').
+    { const r = decidePageDsCheck({ ...base, stamp: { ...freshStamp, rulesHash: 'different' } }); assert(r.status === 'stale' && r.staleReason === 'rules', 'rules change → stale'); passed++; }
 
-    // 7. Used molecule removed → stale.
-    { assert(decidePageDsStatus({ ...base, catalog: [catalog[1]], stamp: freshStamp }) === 'stale', 'removed used molecule → stale'); passed++; }
+    // 7. Used molecule removed → stale (reason + offending molecule).
+    {
+        const r = decidePageDsCheck({ ...base, catalog: [catalog[1]], stamp: freshStamp });
+        assert(r.status === 'stale' && r.staleReason === 'molecule-removed' && r.staleMolecule?.tag === 'ml-toast', 'removed → stale');
+        passed++;
+    }
 
     // 8. Used molecule no longer compatible (DS now wants feedback=banner) → stale.
     {
-        const rules2 = ds({ feedback: 'banner' });
-        const status = decidePageDsStatus({
-            ...base, rules: rules2, currentRulesHash: effectiveRulesSignature({ feedback: 'banner' }),
+        const r = decidePageDsCheck({
+            ...base, rules: ds({ feedback: 'banner' }), currentRulesHash: effectiveRulesSignature({ feedback: 'banner' }),
             stamp: { ...freshStamp, rulesHash: effectiveRulesSignature({ feedback: 'banner' }) },
         });
-        assert(status === 'stale', 'incompatible used molecule → stale');
+        assert(r.status === 'stale' && r.staleReason === 'molecule-incompatible', 'incompatible → stale');
         passed++;
     }
 
     // 9. Unrelated molecule (other project, not used) changed → still fresh.
     {
         const catalog2 = [catalog[0], mol(102041, 'groupViewData', 'ml-grid', { recordsView: 'grid' }, 'v2-changed')];
-        assert(decidePageDsStatus({ ...base, catalog: catalog2, stamp: freshStamp }) === 'fresh', 'unrelated change → fresh');
+        assert(decidePageDsCheck({ ...base, catalog: catalog2, stamp: freshStamp }).status === 'fresh', 'unrelated change → fresh');
         passed++;
     }
 
-    // 10. Used molecule changed (still present + compatible) → review.
+    // 10. Used molecule changed (still present + compatible) → review, lists the molecule.
     {
         const catalog2 = [mol(102040, 'groupNotifyUser', 'ml-toast', { feedback: 'toast' }, 'v2-changed'), catalog[1]];
-        assert(decidePageDsStatus({ ...base, catalog: catalog2, stamp: freshStamp }) === 'review', 'used molecule changed → review');
+        const r = decidePageDsCheck({ ...base, catalog: catalog2, stamp: freshStamp });
+        assert(r.status === 'review' && r.changed.length === 1 && r.changed[0].tag === 'ml-toast', 'used molecule changed → review');
         passed++;
     }
 

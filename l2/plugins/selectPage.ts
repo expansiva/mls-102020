@@ -5,7 +5,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getAuraState } from '/_102020_/l2/auraState.js';
 import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
-import { pageDsStatusByDefs, type PageDsStatus } from '/_102020_/l2/dsMatch/dsVersion.js';
+import { pageDsCheckByDefs, restampPage, type PageDsCheck } from '/_102020_/l2/dsMatch/dsVersion.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -28,6 +28,15 @@ const message_en = {
     generatePages: 'Generate pages',
     outdated: 'Outdated',
     review: 'Review',
+    reviewIntro: 'Molecules used by this page changed since it was generated:',
+    markReviewed: 'Mark as reviewed',
+    saving: 'Saving…',
+    staleIntro: 'The selection no longer reflects the design system:',
+    staleReasonRules: "The page's rules changed.",
+    staleReasonRemoved: 'A molecule it uses was removed.',
+    staleReasonIncompatible: 'A molecule it uses is no longer compatible.',
+    staleReasonNoStamp: 'The page predates DS versioning.',
+    regeneratePage: 'Regenerate page',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -50,6 +59,15 @@ const messages: Record<string, MessageType> = {
         generatePages: 'Gerar páginas',
         outdated: 'Desatualizada',
         review: 'Revisar',
+        reviewIntro: 'Moléculas usadas por esta página mudaram desde a geração:',
+        markReviewed: 'Marcar como revisada',
+        saving: 'Salvando…',
+        staleIntro: 'A seleção não reflete mais o design system:',
+        staleReasonRules: 'As regras da página mudaram.',
+        staleReasonRemoved: 'Uma molécula usada foi removida.',
+        staleReasonIncompatible: 'Uma molécula usada ficou incompatível.',
+        staleReasonNoStamp: 'A página é anterior ao versionamento do DS.',
+        regeneratePage: 'Refazer página',
     },
     es: {
         title: 'Páginas',
@@ -69,6 +87,15 @@ const messages: Record<string, MessageType> = {
         generatePages: 'Generar páginas',
         outdated: 'Desactualizada',
         review: 'Revisar',
+        reviewIntro: 'Las moléculas usadas por esta página cambiaron desde su generación:',
+        markReviewed: 'Marcar como revisada',
+        saving: 'Guardando…',
+        staleIntro: 'La selección ya no refleja el design system:',
+        staleReasonRules: 'Las reglas de la página cambiaron.',
+        staleReasonRemoved: 'Una molécula usada fue eliminada.',
+        staleReasonIncompatible: 'Una molécula usada ya no es compatible.',
+        staleReasonNoStamp: 'La página es anterior al versionado del DS.',
+        regeneratePage: 'Regenerar página',
     },
 };
 /// **collab_i18n_end**
@@ -115,9 +142,10 @@ export class PluginSelectPage extends StateLitElement {
     @state() private _search: string = '';
     @state() private _activeDevice: string | null = null;
     @state() private _pagesNotCreated: boolean = false;
-    // page name → DS-version status: 'stale' (needs re-materialize), 'review' (a used
-    // molecule changed but the selection is still valid), or 'fresh' (omitted).
-    @state() private _statusByName: Record<string, PageDsStatus> = {};
+    // page name → DS-version check: status ('stale' | 'review' | 'fresh') + what changed / why.
+    @state() private _checkByName: Record<string, PageDsCheck> = {};
+    // page currently being re-stamped (disables its button).
+    @state() private _busyPage: string | null = null;
 
     connectedCallback() {
         super.connectedCallback();
@@ -247,35 +275,35 @@ export class PluginSelectPage extends StateLitElement {
         this._loadPageStatus();
     }
 
-    // Compute each page's DS-version status (stale / review / fresh). Only meaningful for
-    // non-default design systems (the default DS / origin pages carry no stamp).
+    // Compute each page's DS-version check (stale / review / fresh + details). Only meaningful
+    // for non-default design systems (the default DS / origin pages carry no stamp).
     private async _loadPageStatus(): Promise<void> {
-        this._statusByName = {};
+        this._checkByName = {};
         const module = this._modulePath;
         const ds = getAuraState().actualDesignSystem ?? 1;
         if (!module || !ds || ds <= 1 || this._pages.length === 0) return;
 
         const results = await Promise.all(this._pages.map(async (p) => {
             try {
-                const status = await pageDsStatusByDefs(
+                const check = await pageDsCheckByDefs(
                     { project: p.file.project, folder: p.file.folder ?? '', shortName: p.file.shortName },
                     module,
                     ds,
                 );
-                return [p.name, status] as const;
+                return [p.name, check] as const;
             } catch {
-                return [p.name, 'fresh'] as const;
+                return [p.name, null] as const;
             }
         }));
 
-        const map: Record<string, PageDsStatus> = {};
-        for (const [name, status] of results) map[name] = status;
-        this._statusByName = map;
+        const map: Record<string, PageDsCheck> = {};
+        for (const [name, check] of results) if (check) map[name] = check;
+        this._checkByName = map;
         this.requestUpdate();
     }
 
     private _renderStatusBadge(pageName: string) {
-        const status = this._statusByName[pageName];
+        const status = this._checkByName[pageName]?.status;
         if (status === 'stale') return html`
             <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
                 ${this.msg.outdated}
@@ -399,7 +427,96 @@ export class PluginSelectPage extends StateLitElement {
                     `)}
                 </div>
             </div>
+            ${this._renderDsVersionPanel(page)}
         `;
+    }
+
+    // ─── DS-version panel (review / stale) ────────────────────────────
+
+    private _renderDsVersionPanel(page: IPageEntry) {
+        const check = this._checkByName[page.name];
+        if (!check) return nothing;
+        if (check.status === 'review') return this._renderReviewPanel(page, check);
+        if (check.status === 'stale') return this._renderStalePanel(page, check);
+        return nothing;
+    }
+
+    private _renderReviewPanel(page: IPageEntry, check: PageDsCheck) {
+        return html`
+            <div class="rounded-lg border border-sky-200 dark:border-sky-800/40 bg-sky-50 dark:bg-sky-900/10 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-sky-700 dark:text-sky-300">${this.msg.reviewIntro}</span>
+                <div class="flex flex-col gap-1.5">
+                    ${check.changed.map(m => html`
+                        <div class="flex flex-col">
+                            <span class="text-xs text-gray-700 dark:text-gray-300">${this._humanizeGroup(m.group)}</span>
+                            <span class="text-[10px] font-mono text-gray-400 dark:text-gray-500 truncate">${m.tag}</span>
+                        </div>
+                    `)}
+                </div>
+                <button
+                    class="self-start text-sm px-3 py-1.5 rounded-md bg-sky-500 dark:bg-sky-600 text-white hover:bg-sky-600 dark:hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    ?disabled=${this._busyPage === page.name}
+                    @click=${() => this._onMarkReviewed(page)}
+                >${this._busyPage === page.name ? this.msg.saving : this.msg.markReviewed}</button>
+            </div>
+        `;
+    }
+
+    private _renderStalePanel(page: IPageEntry, check: PageDsCheck) {
+        const reason = {
+            'rules': this.msg.staleReasonRules,
+            'molecule-removed': this.msg.staleReasonRemoved,
+            'molecule-incompatible': this.msg.staleReasonIncompatible,
+            'no-stamp': this.msg.staleReasonNoStamp,
+        }[check.staleReason ?? 'no-stamp'];
+        const mol = check.staleMolecule;
+        return html`
+            <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-amber-700 dark:text-amber-300">${this.msg.staleIntro}</span>
+                <span class="text-xs text-amber-600 dark:text-amber-400">${reason}</span>
+                ${mol ? html`<span class="text-[10px] font-mono text-gray-400 dark:text-gray-500 truncate">${mol.tag}</span>` : nothing}
+                <button
+                    class="self-start text-sm px-3 py-1.5 rounded-md bg-amber-500 dark:bg-amber-600 text-white hover:bg-amber-600 dark:hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    ?disabled=${this._busyPage === page.name}
+                    @click=${() => this._onRegenerate(page)}
+                >${this.msg.regeneratePage}</button>
+            </div>
+        `;
+    }
+
+    private _humanizeGroup(group: string): string {
+        return group.replace(/^group/, '').replace(/([A-Z])/g, ' $1').trim() || group;
+    }
+
+    private async _onMarkReviewed(page: IPageEntry) {
+        const module = this._modulePath;
+        const ds = getAuraState().actualDesignSystem ?? 1;
+        if (!module || !ds) return;
+        this._busyPage = page.name;
+        this.requestUpdate();
+        await restampPage(
+            { project: page.file.project, folder: page.file.folder ?? '', shortName: page.file.shortName },
+            module,
+            ds,
+            new Date().toISOString(),
+        );
+        this._busyPage = null;
+        await this._loadPageStatus();
+    }
+
+    private _onRegenerate(page: IPageEntry) {
+        this.dispatchEvent(new CustomEvent('regenerate-page', {
+            detail: {
+                module: this._modulePath,
+                page: page.name,
+                file: page.file,
+                layout: getAuraState().actualLayout,
+                designSystem: getAuraState().actualDesignSystem,
+                device: getAuraState().actualDevice,
+            },
+            bubbles: true,
+            composed: true,
+        }));
     }
 
     private _renderAll() {

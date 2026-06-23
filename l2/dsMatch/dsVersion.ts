@@ -9,13 +9,12 @@
 //   - a molecule it used was removed, OR
 //   - a molecule it used is no longer COMPATIBLE with the page's effective rules.
 // When a used molecule merely CHANGED (still present + compatible) the selection is still
-// valid — we flag "review" (informational), not "stale".
+// valid — we flag "review" (informational) and list which molecules changed.
 //
 // Everything is per page, so the invalidation radius equals the influence radius of the
-// change. The stamp stores `rulesHash` (the page doesn't otherwise record its rules) and a
-// per-used-molecule content signature `moleculesSeen` (to detect "review"); molecule
-// presence/compatibility is recomputed live (no global catalog version, no cross-project
-// invalidation). See resolveRulesForPage (cascade) and filterCompatibleVariants.
+// change. The stamp stores `rulesHash` and a per-used-molecule content signature
+// `moleculesSeen`; presence/compatibility is recomputed live (no global catalog version, no
+// cross-project invalidation). See resolveRulesForPage and filterCompatibleVariants.
 
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { resolveRulesForPage } from '/_102020_/l2/dsMatch/resolveRulesForPage.js';
@@ -25,9 +24,18 @@ import { filterCompatibleVariants } from '/_102020_/l2/dsMatch/filterVariants.js
 import type { ResolvedDs, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
 
 export type PageDsStatus = 'fresh' | 'review' | 'stale';
+export type StaleReason = 'no-stamp' | 'rules' | 'molecule-removed' | 'molecule-incompatible';
 
 /** A molecule a page used, identified across projects by (project, tag). */
-export interface UsedMolecule { project: number; tag: string; }
+export interface UsedMolecule { project: number; tag: string; group: string; }
+
+/** Rich result of a page status check — drives the UI (what changed / why stale). */
+export interface PageDsCheck {
+    status: PageDsStatus;
+    changed: UsedMolecule[];             // review: used molecules whose definition changed
+    staleReason: StaleReason | null;     // stale: why
+    staleMolecule: UsedMolecule | null;  // stale (removed/incompatible): the offending molecule
+}
 
 /** What gets stamped on each generated page defs as `export const dsVersion`. */
 export interface PageDsStamp {
@@ -40,21 +48,12 @@ export interface PageDsStamp {
 
 // ─── pure: signatures ─────────────────────────────────────────────────────────
 
-/**
- * Deterministic hash of a page's configured DS rules (axis → value). Canonical form:
- * sorted "axis=value" pairs joined by "\n", then FNV-1a. Order-independent; only the
- * axes that actually drive generation feed it (vocabulary defaults never change).
- */
+/** Deterministic hash of a page's configured DS rules (sorted "axis=value", FNV-1a). */
 export function effectiveRulesSignature(rules: Record<string, string>): string {
-    const serialized = Object.keys(rules).sort().map(k => `${k}=${rules[k]}`).join('\n');
-    return hash(serialized);
+    return hash(Object.keys(rules).sort().map(k => `${k}=${rules[k]}`).join('\n'));
 }
 
-/**
- * Content signature of a molecule's DEFINITION (its `.defs.ts` skill text). Every relevant
- * change to a molecule is reflected in its defs, so this captures "the molecule changed"
- * for the `review` signal. Candidacy (layoutConfig) is handled by compatibility, not here.
- */
+/** Content signature of a molecule's DEFINITION (its `.defs.ts` skill text). */
 export function moleculeContentSignature(entry: MoleculeCatalogEntry): string {
     return hash(entry.description ?? '');
 }
@@ -92,13 +91,13 @@ export function parseDsVersion(content: string): PageDsStamp | null {
 export function parseUsedMolecules(content: string): UsedMolecule[] {
     const m = content.match(/export\s+const\s+moleculeAssignments\s*=\s*(\[[\s\S]*?\])\s+as\s+const\s*;/);
     if (!m) return [];
-    let arr: Array<{ project?: number; tag?: string }>;
+    let arr: Array<{ project?: number; tag?: string; group?: string }>;
     try { arr = JSON.parse(m[1]); } catch { return []; }
     const out = new Map<string, UsedMolecule>();
     for (const mol of arr ?? []) {
         if (!mol?.tag) continue;
         const project = typeof mol.project === 'number' ? mol.project : 0;
-        out.set(`${project}|${mol.tag}`, { project, tag: mol.tag });
+        out.set(`${project}|${mol.tag}`, { project, tag: mol.tag, group: typeof mol.group === 'string' ? mol.group : '' });
     }
     return [...out.values()];
 }
@@ -112,36 +111,38 @@ export function parseUsedMolecules(content: string): UsedMolecule[] {
  *   fresh  → nothing changed.
  * Pure — the runtime wrappers gather the inputs.
  */
-export function decidePageDsStatus(params: {
+export function decidePageDsCheck(params: {
     stamp: PageDsStamp | null;
     used: UsedMolecule[];
     catalog: MoleculeCatalogEntry[];
     rules: ResolvedDs;
     configuredAxes: Set<string>;
     currentRulesHash: string;
-}): PageDsStatus {
+}): PageDsCheck {
     const { stamp, used, catalog, rules, configuredAxes, currentRulesHash } = params;
-    if (!stamp) return 'stale';
-    if (stamp.rulesHash !== currentRulesHash) return 'stale';
+    const fresh: PageDsCheck = { status: 'fresh', changed: [], staleReason: null, staleMolecule: null };
+
+    if (!stamp) return { ...fresh, status: 'stale', staleReason: 'no-stamp' };
+    if (stamp.rulesHash !== currentRulesHash) return { ...fresh, status: 'stale', staleReason: 'rules' };
 
     const byKey = new Map(catalog.map(m => [`${m.project}|${m.tag}`, m]));
-    let review = false;
+    const changed: UsedMolecule[] = [];
     for (const u of used) {
         const key = `${u.project}|${u.tag}`;
         const entry = byKey.get(key);
-        if (!entry) return 'stale'; // used molecule removed → must repick
+        if (!entry) return { ...fresh, status: 'stale', staleReason: 'molecule-removed', staleMolecule: u };
 
         const compatible = filterCompatibleVariants(entry.group, rules, configuredAxes, catalog)
             .some(m => m.project === entry.project && m.tag === entry.tag);
-        if (!compatible) return 'stale'; // selection now violates the DS
+        if (!compatible) return { ...fresh, status: 'stale', staleReason: 'molecule-incompatible', staleMolecule: u };
 
         const seen = stamp.moleculesSeen?.[key];
-        if (seen === undefined || seen !== moleculeContentSignature(entry)) review = true;
+        if (seen === undefined || seen !== moleculeContentSignature(entry)) changed.push(u);
     }
-    return review ? 'review' : 'fresh';
+    return changed.length ? { ...fresh, status: 'review', changed } : fresh;
 }
 
-// ─── runtime: build / read / compare ──────────────────────────────────────────
+// ─── runtime: build / read / write / check ─────────────────────────────────────
 
 /** The configured axis→value map for a page (only axes set across the cascade, post-unset). */
 function configuredFrom(rules: ResolvedDs, configuredAxes: Set<string>): Record<string, string> {
@@ -150,12 +151,16 @@ function configuredFrom(rules: ResolvedDs, configuredAxes: Set<string>): Record<
     return out;
 }
 
+function defsStorFile(defsFile: { project: number; folder: string; shortName: string }): mls.stor.IFileInfo | undefined {
+    const info = { project: defsFile.project, level: 2, folder: defsFile.folder, shortName: defsFile.shortName, extension: '.defs.ts' };
+    const key = mls.stor.getKeyToFile(info as any);
+    return (mls.stor.files as Record<string, any>)[key];
+}
+
 /** Read the raw .defs.ts source from the stor (current saved content — no compile/cache lag). */
 async function readDefsContent(defsFile: { project: number; folder: string; shortName: string }): Promise<string> {
     try {
-        const info = { project: defsFile.project, level: 2, folder: defsFile.folder, shortName: defsFile.shortName, extension: '.defs.ts' };
-        const key = mls.stor.getKeyToFile(info as any);
-        const sf = (mls.stor.files as Record<string, any>)[key];
+        const sf = defsStorFile(defsFile);
         if (!sf) return '';
         const content = await sf.getContent();
         return typeof content === 'string' ? content : '';
@@ -197,18 +202,18 @@ export async function buildPageDsStamp(
     };
 }
 
-/** Page status given its defs file location (project/folder/shortName). */
-export async function pageDsStatusByDefs(
+/** Full status check for a page given its defs file location (project/folder/shortName). */
+export async function pageDsCheckByDefs(
     defsFile: { project: number; folder: string; shortName: string },
     module: string,
     ds: number | string,
-): Promise<PageDsStatus> {
+): Promise<PageDsCheck> {
     const content = await readDefsContent(defsFile);
     const stamp = parseDsVersion(content);
-    if (!stamp) return 'stale';
+    if (!stamp) return { status: 'stale', changed: [], staleReason: 'no-stamp', staleMolecule: null };
     const { rules, configuredAxes } = await resolveRulesForPage(defsFile.project, module, defsFile.shortName, ds);
     const catalog = await buildMoleculeCatalog();
-    return decidePageDsStatus({
+    return decidePageDsCheck({
         stamp,
         used: parseUsedMolecules(content),
         catalog,
@@ -230,7 +235,7 @@ export async function pageDsStatus(
     const ref = pageRef(project, module, layout, ds, page, '.defs.ts', device);
     const norm = ref.startsWith('/') ? ref.slice(1) : ref;
     const f = mls.stor.convertFileReferenceToFile(norm);
-    return pageDsStatusByDefs({ project: f.project, folder: f.folder, shortName: f.shortName }, module, ds);
+    return (await pageDsCheckByDefs({ project: f.project, folder: f.folder, shortName: f.shortName }, module, ds)).status;
 }
 
 /** True when the page must be re-materialized (status 'stale'). For the materialize trigger. */
@@ -243,4 +248,34 @@ export async function isPageStale(
     device = DEFAULT_DEVICE,
 ): Promise<boolean> {
     return (await pageDsStatus(project, module, layout, ds, page, device)) === 'stale';
+}
+
+/**
+ * "Mark as reviewed": re-stamp the page's `dsVersion` with the CURRENT signatures (no
+ * regeneration). Clears the `review` flag honestly — the page genuinely uses these molecule
+ * versions now. Returns false if the file/stamp can't be read or written.
+ */
+export async function restampPage(
+    defsFile: { project: number; folder: string; shortName: string },
+    module: string,
+    ds: number | string,
+    generatedAt: string,
+): Promise<boolean> {
+    const content = await readDefsContent(defsFile);
+    if (!content || !/export\s+const\s+dsVersion\s*=/.test(content)) return false;
+    const stamp = await buildPageDsStamp(defsFile.project, module, ds, defsFile.shortName, generatedAt, content);
+    const next = content.replace(
+        /export\s+const\s+dsVersion\s*=\s*\{[\s\S]*?\}\s+as\s+const\s*;/,
+        renderDsVersionExport(stamp),
+    );
+    try {
+        const sf = defsStorFile(defsFile);
+        if (!sf) return false;
+        const m = await sf.getOrCreateModel();
+        if (m && m.model) m.model.setValue(next);
+        await mls.stor.localStor.setContent(sf, { contentType: 'string', content: next });
+        return true;
+    } catch {
+        return false;
+    }
 }
