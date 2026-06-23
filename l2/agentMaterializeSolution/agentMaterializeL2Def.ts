@@ -8,8 +8,10 @@ import {
   listDepLayerPaths,
   extractToolCallArgs,
   extractJsonArrayField,
+  loadModuleByBuild,
+  readProjectJson,
 } from '/_102027_/l2/agentMaterializeSolution/artifactsMaterialize.js';
-import type { PipelineItem } from '/_102027_/l2/agentMaterializeSolution/artifactsMaterialize.js';
+import type { PipelineItem, ProjectJson } from '/_102027_/l2/agentMaterializeSolution/artifactsMaterialize.js';
 
 declare const mls: any;
 
@@ -164,13 +166,31 @@ async function afterPromptStep(
   const pageOutputPath       = `${base}/l2/${moduleName}/web/desktop/page11/${shortName}.ts`;
 
   // ── Deterministic dependsFiles per file ─────────────────────────────────────
-  // controller → layer_3_usecases it calls (LLM-determined, backend only)
-  // contract   → [] (frontend is isolated from backend)
-  // shared     → contract .ts only
-  // page       → shared .ts + contract .ts
   const contractDependsFiles: string[] = [];
   const sharedDependsFiles   = [contractOutputPath];
   const pageDependsFiles     = [sharedOutputPath, contractOutputPath];
+
+  // ── Load module.ts and projectJson for skills ────────────────────────────────
+  const moduleTs = await loadModuleByBuild(toMlsPath(project, 2, moduleName, 'module', '.ts'));
+  const projectJson: ProjectJson | null = await readProjectJson();
+
+  const controllerSkills: string[] = moduleTs?.skills?.layer2?.skillPath ?? [];
+  const contractSkills: string[]   = moduleTs?.skills?.contract?.skillPath ?? [];
+  const sharedSkill: string | undefined = moduleTs?.shared?.web?.sharedSkill;
+  const sharedSkills: string[] = sharedSkill ? [sharedSkill] : [];
+
+  const genome = moduleTs?.moduleGenome?.['web/desktop/page11'];
+  const pageSkills: string[] = [];
+  if (genome?.layout && projectJson) {
+    const entry = Object.values(projectJson.layouts ?? {}).find((l: any) => l.name === genome.layout);
+    if ((entry as any)?.skill) pageSkills.push((entry as any).skill);
+  }
+  if (genome?.designSystem && projectJson) {
+    const entry = Object.values(projectJson.designSystems ?? {}).find((d: any) => d.name === genome.designSystem);
+    if ((entry as any)?.skill) pageSkills.push((entry as any).skill);
+  }
+
+  const pageVisualStyle = projectJson?.modules.find(m => m.moduleName === moduleName)?.module?.visualStyle;
 
   const errors: string[] = [];
 
@@ -183,12 +203,17 @@ async function afterPromptStep(
     ),
     contractOutputPath,
   ];
+  const controllerRulesPath = controllerRules.length > 0 ? toMlsPath(project, 5, moduleName, 'rules', '.defs.ts') : undefined;
   const ok1 = await createDefsFile(
     project, 1, `${moduleName}/layer_2_controllers`, shortName,
     out.controllerDefinition,
     [mkItem(`${shortName}__layer_2_controllers`, 'layer_2_controllers',
       controllerOutputPath, project, 1, `${moduleName}/layer_2_controllers`, shortName,
-      controllerDependsFiles, [], controllerRules)],
+      controllerDependsFiles, [], controllerRules, {
+        skills: controllerSkills,
+        afterSaveBackEnd: '_102021_/l2/agentMaterializeSolution/registerBackEnd.ts?registerController',
+        rulesPath: controllerRulesPath,
+      })],
   );
   if (!ok1) errors.push('controller');
 
@@ -198,18 +223,19 @@ async function afterPromptStep(
     out.contractDefinition,
     [mkItem(`${shortName}__l2_contract`, 'l2_contract',
       contractOutputPath, project, 2, `${moduleName}/web/contracts`, shortName,
-      contractDependsFiles, [])],
+      contractDependsFiles, [], undefined, { skills: contractSkills })],
   );
   if (!ok2) errors.push('contract');
 
   // 3. L2 shared
   const sharedRules = extractJsonArrayField(JSON.stringify(out.sharedDefinition), 'rulesApplied');
+  const sharedRulesPath = sharedRules.length > 0 ? toMlsPath(project, 5, moduleName, 'rules', '.defs.ts') : undefined;
   const ok3 = await createDefsFile(
     project, 2, `${moduleName}/web/shared`, shortName,
     out.sharedDefinition,
     [mkItem(`${shortName}__l2_shared`, 'l2_shared',
       sharedOutputPath, project, 2, `${moduleName}/web/shared`, shortName,
-      sharedDependsFiles, [], sharedRules)],
+      sharedDependsFiles, [], sharedRules, { skills: sharedSkills, rulesPath: sharedRulesPath })],
   );
   if (!ok3) errors.push('shared');
 
@@ -219,7 +245,11 @@ async function afterPromptStep(
     out.pageDefinition,
     [mkItem(`${shortName}__l2_page`, 'l2_page',
       pageOutputPath, project, 2, `${moduleName}/web/desktop/page11`, shortName,
-      pageDependsFiles, [])],
+      pageDependsFiles, [], undefined, {
+        skills: pageSkills,
+        afterSaveFrontEnd: '_102020_/l2/agentMaterializeSolution/registerFrontEnd.ts?registerPage',
+        visualStyle: pageVisualStyle as Record<string, unknown> | undefined,
+      })],
   );
   if (!ok4) errors.push('page');
 
@@ -233,6 +263,14 @@ async function afterPromptStep(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+interface MkItemOpts {
+  skills?: string[];
+  afterSaveBackEnd?: string;
+  afterSaveFrontEnd?: string;
+  visualStyle?: Record<string, unknown>;
+  rulesPath?: string;
+}
+
 function mkItem(
   id: string,
   type: string,
@@ -244,6 +282,7 @@ function mkItem(
   dependsFiles: string[],
   dependsOn: string[],
   rulesApplied?: string[],
+  opts?: MkItemOpts,
 ): PipelineItem {
   return {
     id,
@@ -252,6 +291,11 @@ function mkItem(
     defPath: toMlsPath(project, level, folder, shortName, '.defs.ts'),
     dependsFiles,
     dependsOn,
+    skills: opts?.skills ?? [],
+    ...(opts?.afterSaveBackEnd ? { afterSaveBackEnd: opts.afterSaveBackEnd } : {}),
+    ...(opts?.afterSaveFrontEnd ? { afterSaveFrontEnd: opts.afterSaveFrontEnd } : {}),
+    ...(opts?.visualStyle ? { visualStyle: opts.visualStyle } : {}),
+    ...(opts?.rulesPath ? { rulesPath: opts.rulesPath } : {}),
     ...(rulesApplied && rulesApplied.length > 0 ? { rulesApplied } : {}),
     agent: 'agentMaterializeGen',
   };
@@ -282,7 +326,7 @@ function mkStatus(
 // ─── Prompts ──────────────────────────────────────────────────────────────────
 
 function buildSystemPrompt(project: number, moduleName: string, shortName: string): string {
-  return `<!-- modelType: codeinstruct -->
+  return `<!-- modelType: codeinstruct2 -->
 
 You extract and organize data from a L2 page .defs.ts to produce definitions for 4 derived files.
 
