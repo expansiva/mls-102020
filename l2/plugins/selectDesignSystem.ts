@@ -560,7 +560,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
     private _renderRoleRow(role: IRole, i: number) {
         return html`
             <div class="grid grid-cols-[58px_1fr_1fr_18px] gap-1.5 items-center">
-                <input class="min-w-0 text-[11px] font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none"
+                <input class="min-w-0 text-[11px]! font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none"
                     .value=${role.name} placeholder="token"
                     @input=${(e: Event) => { role.name = (e.target as HTMLInputElement).value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'); }} />
                 ${this._colorField(role, 'light')}
@@ -579,7 +579,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                     <input type="color" class="absolute inset-0 opacity-0 cursor-pointer" .value=${hex}
                         @input=${(e: Event) => { role[variant] = (e.target as HTMLInputElement).value.toUpperCase(); this.requestUpdate(); }} />
                 </label>
-                <input class="w-full min-w-0 text-[10px] font-mono uppercase text-gray-600 dark:text-gray-400 bg-transparent border-0 outline-none p-0"
+                <input class="w-full min-w-0 text-[10px]! font-mono uppercase text-gray-600 dark:text-gray-400 bg-transparent border-0 outline-none p-0"
                     .value=${hex}
                     @change=${(e: Event) => { const v = (e.target as HTMLInputElement).value; if (/^#[0-9a-fA-F]{6}$/.test(v)) { role[variant] = v.toUpperCase(); this.requestUpdate(); } }} />
             </div>
@@ -626,7 +626,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         return html`
             <div class="flex flex-col gap-1.5">
                 <label class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${label}</label>
-                <select class="min-w-0 text-[11px] px-1.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400"
+                <select class="min-w-0 text-[11px]! px-1.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400"
                     @change=${(e: Event) => onPick((e.target as HTMLSelectElement).value)}>
                     ${options.map(o => html`<option ?selected=${o === current}>${o}</option>`)}
                 </select>
@@ -655,7 +655,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
             <div class="flex flex-col gap-1">
                 <label class="text-[11px] font-semibold text-gray-600 dark:text-gray-300">${this.msg.nameLabel}</label>
                 <input type="text"
-                    class="w-full text-[11px] px-2.5 py-1.5 rounded-md border bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400
+                    class="w-full text-[11px]! px-2.5 py-1.5 rounded-md border bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400
                         ${this._nameError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'}"
                     placeholder=${this.msg.namePlaceholder} .value=${this._name}
                     @input=${(e: Event) => { this._name = (e.target as HTMLInputElement).value; this._nameError = false; }} />
@@ -669,7 +669,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
             <div class="flex flex-col gap-1">
                 <label class="text-[11px] font-semibold text-gray-600 dark:text-gray-300">${this.msg.descLabel}</label>
                 <textarea rows="2"
-                    class="w-full text-[11px] px-2.5 py-1.5 rounded-md resize-y border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    class="w-full text-[11px]! px-2.5 py-1.5 rounded-md resize-y border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                     placeholder=${this.msg.descPlaceholder} .value=${this._desc}
                     @input=${(e: Event) => { this._desc = (e.target as HTMLTextAreaElement).value; }}></textarea>
             </div>
