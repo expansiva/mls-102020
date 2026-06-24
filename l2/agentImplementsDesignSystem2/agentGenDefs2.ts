@@ -11,7 +11,12 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { buildWorkItem } from '/_102020_/l2/dsMatch/derivePaths.js';
 import { buildPageDsStamp, renderDsVersionExport } from '/_102020_/l2/dsMatch/dsVersion.js';
 import { dsGlobalCssRef } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
+import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { parseStepArgs, readRawSource, saveFile, mkCompleted, mkFail } from '/_102020_/l2/agentImplementsDesignSystem2/planning.js';
+
+// Defaults when the layout/DS entry in project.json declares no `skill`.
+const DEFAULT_LAYOUT_SKILL = '_102020_/l2/agentMaterializeSolution/skills/genPageRender.ts';
+const DEFAULT_DS_SKILL = '_102020_/l2/agentMaterializeSolution/skills/genPageDS.ts';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -96,6 +101,11 @@ async function afterPromptStep(
     // (same ref the generator writes to — single source of truth). Not done by the LLM.
     finalSrc = addGlobalCssDependency(finalSrc, dsGlobalCssRef(project));
 
+    // Override the pipeline `skills` with the CURRENT layout + DS skills from project.json
+    // (page11 carries the defaults; this page uses the configured layout/DS render skills).
+    const skills = await resolvePageSkills(project, a.layout, a.ds);
+    finalSrc = setPipelineSkills(finalSrc, skills);
+
     if (!context.isTest) {
       // Stamp the DS version (effective rules hash + used-molecules hash) this page was
       // generated under, so staleness can be detected when the DS rules or the molecules
@@ -141,6 +151,22 @@ function buildAssignmentsTail(novoSource: string): string {
   const up = novoSource.match(/export\s+const\s+usagePaths\s*=\s*(\[[\s\S]*?\])\s+as\s+const\s*;/);
   if (up) lines.push('', `export const usagePaths = ${up[1]} as const;`);
   return lines.join('\n');
+}
+
+/** Resolve the render skills for this page: [layout skill, DS skill] from project.json. */
+async function resolvePageSkills(project: number, layout: number | string, ds: number | string): Promise<string[]> {
+  const config: any = await getConfigProject(project);
+  const layoutSkill = config?.layouts?.[String(layout)]?.skill || DEFAULT_LAYOUT_SKILL;
+  const dsSkill = config?.designSystems?.[String(ds)]?.skill || DEFAULT_DS_SKILL;
+  return [layoutSkill, dsSkill];
+}
+
+/** Replace EVERY pipeline `skills` array with the given list (full override). */
+function setPipelineSkills(src: string, skills: string[]): string {
+  const arr = skills.filter(Boolean);
+  if (!arr.length) return src;
+  const body = arr.map(s => `    "${s}"`).join(',\n');
+  return src.replace(/("skills"\s*:\s*\[)[\s\S]*?(\])/g, `$1\n${body}\n  $2`);
 }
 
 /**
