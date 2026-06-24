@@ -5,7 +5,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getAuraState } from '/_102020_/l2/auraState.js';
 import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
-import { pageDsCheckByDefs, restampPage, type PageDsCheck } from '/_102020_/l2/dsMatch/dsVersion.js';
+import { pageDsCheckByDefs, restampPage, layoutHasRules, type PageDsCheck } from '/_102020_/l2/dsMatch/dsVersion.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
@@ -306,14 +306,19 @@ export class PluginSelectPage extends StateLitElement {
     private async _loadPageStatus(): Promise<void> {
         this._checkByName = {};
         const module = this._modulePath;
+        const project = getAuraState().actualProject;
+        const layout = getAuraState().actualLayout ?? 1;
         const ds = getAuraState().actualDesignSystem ?? 1;
-        if (!module || !ds || ds <= 1 || this._pages.length === 0) return;
+        if (!module || !project || this._pages.length === 0) return;
+        // Gate (L6): only check staleness when the layout actually has rules configured.
+        if (!(await layoutHasRules(project, layout))) return;
 
         const results = await Promise.all(this._pages.map(async (p) => {
             try {
                 const check = await pageDsCheckByDefs(
                     { project: p.file.project, folder: p.file.folder ?? '', shortName: p.file.shortName },
                     module,
+                    layout,
                     ds,
                 );
                 return [p.name, check] as const;
@@ -529,13 +534,15 @@ export class PluginSelectPage extends StateLitElement {
 
     private async _onMarkReviewed(page: IPageEntry) {
         const module = this._modulePath;
+        const layout = getAuraState().actualLayout ?? 1;
         const ds = getAuraState().actualDesignSystem ?? 1;
-        if (!module || !ds) return;
+        if (!module) return;
         this._busyPage = page.name;
         this.requestUpdate();
         await restampPage(
             { project: page.file.project, folder: page.file.folder ?? '', shortName: page.file.shortName },
             module,
+            layout,
             ds,
             new Date().toISOString(),
         );

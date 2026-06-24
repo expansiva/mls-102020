@@ -96,7 +96,7 @@ async function afterPromptStep(
       // generated under, so staleness can be detected when the DS rules or the molecules
       // it uses later change. Built from finalSrc (which already carries moleculeAssignments).
       if (!finalSrc.includes('export const dsVersion')) {
-        const stamp = await buildPageDsStamp(project, a.module, a.ds, a.page!, new Date().toISOString(), finalSrc);
+        const stamp = await buildPageDsStamp(project, a.module, a.layout, a.ds, a.page!, new Date().toISOString(), finalSrc);
         finalSrc = `${finalSrc.replace(/\s*$/, '')}\n\n${renderDsVersionExport(stamp)}\n`;
       }
       await saveFile(item.defsDestino, finalSrc);

@@ -44,7 +44,7 @@ async function beforePromptStep(
   const item = buildWorkItem(project, a.module, a.layout, a.ds, a.page!, a.device);
 
   const selections = await loadGroupSelections(item.defsDestino);
-  const { rules, configuredAxes } = await resolveRulesForPage(project, a.module, a.page!, a.ds); // cascade project→module→page
+  const { rules, configuredAxes } = await resolveRulesForPage(project, a.module, a.page!, a.layout); // layout rule cascade base→module→page
   const catalog = await buildMoleculeCatalog();
   const candidates = computeOrganismCandidates(selections, rules, configuredAxes, catalog);
 
@@ -85,7 +85,7 @@ async function afterPromptStep(
 
     // Recompute the candidate set to validate the LLM picks against it.
     const selections = await loadGroupSelections(item.defsDestino);
-    const { rules, configuredAxes } = await resolveRulesForPage(project, a.module, a.page!, a.ds);
+    const { rules, configuredAxes } = await resolveRulesForPage(project, a.module, a.page!, a.layout);
     const catalog = await buildMoleculeCatalog();
     const candidates = computeOrganismCandidates(selections, rules, configuredAxes, catalog);
 

@@ -1,17 +1,17 @@
 /// <mls fileReference="_102020_/l2/dsMatch/resolveRulesForPage.ts" enhancement="_blank" />
 
-// G1 — DS rule cascade: project → module → page (per page file).
-// All three live centrally in project.json under designSystems[ds]:
-//   rules           (project, today)
+// G1 — Layout rule cascade: base → module → page (per page file).
+// All three live centrally in project.json under layouts[layout]:
+//   rules           (layout base)
 //   moduleOverrides : { [module]: Partial<rules> }
 //   pageOverrides   : { ["{module}/{pageName}"]: Partial<rules> }
 //
 // The more specific level wins. A value of "unset" at any level REMOVES the axis from the
 // configured set (relaxing it — the filter then imposes no constraint on that axis).
-// Only valid axis values survive (invalid ones are ignored, like readDsRules).
+// Only valid axis values survive (invalid ones are ignored).
 //
-// `resolveRulesForPage` returns { rules, configuredAxes } in one pass — drop-in for the
-// project-level readDsRules + readConfiguredAxisKeys used by Agent2 (filterCompatibleVariants).
+// `resolveRulesForPage` returns { rules, configuredAxes } in one pass — what Agent2
+// (filterCompatibleVariants) and the staleness check consume.
 
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { dsDefaults, isValidAxisValue, type DsAxisKey } from '/_102020_/l2/designSystemAuraBase.js';
@@ -92,30 +92,30 @@ export function effectiveRulesProvenance(
 
 // ─── runtime ────────────────────────────────────────────────────────────────
 
-/** Read the project/module/page buckets of a DS from project.json. */
-async function readDsBuckets(project: number, dsIndex: number | string, module: string, page: string): Promise<{
-    projectRules: Record<string, string>;
+/** Read the base/module/page rule buckets of a LAYOUT from project.json. */
+async function readLayoutBuckets(project: number, layout: number | string, module: string, page: string): Promise<{
+    baseRules: Record<string, string>;
     moduleOverride?: Record<string, string>;
     pageOverride?: Record<string, string>;
 }> {
     const config: any = await getConfigProject(project);
-    const ds = config?.designSystems?.[String(dsIndex)];
-    if (!ds) throw new Error(`[resolveRulesForPage] designSystem '${dsIndex}' not found in project ${project}`);
+    const lay = config?.layouts?.[String(layout)];
+    if (!lay) throw new Error(`[resolveRulesForPage] layout '${layout}' not found in project ${project}`);
     return {
-        projectRules: (ds.rules && typeof ds.rules === 'object') ? ds.rules : {},
-        moduleOverride: ds.moduleOverrides?.[module],
-        pageOverride: ds.pageOverrides?.[`${module}/${page}`],
+        baseRules: (lay.rules && typeof lay.rules === 'object') ? lay.rules : {},
+        moduleOverride: lay.moduleOverrides?.[module],
+        pageOverride: lay.pageOverrides?.[`${module}/${page}`],
     };
 }
 
-/** Resolve the effective DS rules + configured axes for a specific page (cascade). */
+/** Resolve the effective layout rules + configured axes for a specific page (cascade). */
 export async function resolveRulesForPage(
     project: number,
     module: string,
     page: string,
-    dsIndex: number | string,
+    layout: number | string,
 ): Promise<EffectiveRules> {
-    const { projectRules, moduleOverride, pageOverride } = await readDsBuckets(project, dsIndex, module, page);
-    const configured = mergeRuleLevels(projectRules, moduleOverride, pageOverride);
+    const { baseRules, moduleOverride, pageOverride } = await readLayoutBuckets(project, layout, module, page);
+    const configured = mergeRuleLevels(baseRules, moduleOverride, pageOverride);
     return { rules: toResolvedDs(configured), configuredAxes: new Set(Object.keys(configured)) };
 }

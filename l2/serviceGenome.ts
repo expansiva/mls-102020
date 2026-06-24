@@ -14,7 +14,7 @@ import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
 import '/_102020_/l2/plugins/selectLayout.js';
-import '/_102020_/l2/plugins/selectDesignSystem.js';
+import '/_102020_/l2/plugins/selectLayoutRules.js';
 import '/_102020_/l2/plugins/selectMolecule.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -26,6 +26,7 @@ const message_en = {
     molecules: 'Molecules',
     noPageSelected: 'No page selected',
     notAPage: 'Current file is not a page',
+    dsStylingSoon: 'Design System will configure styling (colors, fonts). Coming soon.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -37,6 +38,7 @@ const messages: Record<string, MessageType> = {
         molecules: 'Moléculas',
         noPageSelected: 'Nenhuma página selecionada',
         notAPage: 'O arquivo atual não é uma página',
+        dsStylingSoon: 'O Design System vai configurar a estilização (cores, fontes). Em breve.',
     },
     es: {
         svcTitle: 'Genome',
@@ -45,6 +47,7 @@ const messages: Record<string, MessageType> = {
         molecules: 'Moléculas',
         noPageSelected: 'Ninguna página seleccionada',
         notAPage: 'El archivo actual no es una página',
+        dsStylingSoon: 'El Design System configurará la estilización (colores, fuentes). Próximamente.',
     },
 };
 /// **collab_i18n_end**
@@ -626,31 +629,36 @@ export class ServiceGenome102020 extends ServiceBase {
             </div>
         `;
         switch (this._selectedKnob) {
-            case 'layout':
-                return html`
-                    <plugins--select-layout-102020
-                        .value=${this._layoutValue}
-                        .pageFile=${this._currentPageFile}
-                    ></plugins--select-layout-102020>
-                `;
-            case 'designSystem': {
-                // Genome configures the CURRENT page's overrides. module = first folder
-                // segment (same rule as _trySetActualModule), page = file shortName —
-                // together they form the pageOverrides key "{module}/{page}".
+            case 'layout': {
+                // Rules now live on the LAYOUT. Picker (structure) + the rule cascade editor
+                // for the selected layout (scope base/module/page chosen inside the editor).
                 const folder = this._currentPageFile?.folder ?? '';
                 const mod = folder.split('/')[0] || null;
                 const page = this._currentPageFile?.shortName ?? null;
-                const scope = (mod && page) ? 'page' : 'project';
                 return html`
-                    <plugins--select-design-system-102020
-                        .projectId=${getAuraState().actualProject}
-                        .value=${this._dsValue}
-                        .scope=${scope}
-                        .module=${mod}
-                        .page=${page}
-                    ></plugins--select-design-system-102020>
+                    <div class="flex flex-col gap-4">
+                        <plugins--select-layout-102020
+                            .value=${this._layoutValue}
+                            .pageFile=${this._currentPageFile}
+                        ></plugins--select-layout-102020>
+                        ${this._layoutValue && this._layoutValue > 0 ? html`
+                            <plugins--select-layout-rules-102020
+                                .projectId=${getAuraState().actualProject}
+                                .layout=${this._layoutValue}
+                                .module=${mod}
+                                .page=${page}
+                            ></plugins--select-layout-rules-102020>
+                        ` : nothing}
+                    </div>
                 `;
             }
+            case 'designSystem':
+                // Phase B will turn the DS into a styling editor (colors/fonts). Placeholder for now.
+                return html`
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
+                        <span class="text-sm text-gray-400 dark:text-gray-500">${this.msg.dsStylingSoon}</span>
+                    </div>
+                `;
             case 'molecules':
                 return html`
                     <plugins--select-molecule-102020
