@@ -191,7 +191,7 @@ async function afterPromptStep(
     if ((entry as any)?.skill) pageSkills.push((entry as any).skill);
   }
 
-  const pageVisualStyle = projectJson?.modules.find(m => m.moduleName === moduleName)?.module?.visualStyle;
+  const pageVisualStyle = undefined;//projectJson?.modules.find(m => m.moduleName === moduleName)?.module?.visualStyle;
 
   const errors: string[] = [];
 
