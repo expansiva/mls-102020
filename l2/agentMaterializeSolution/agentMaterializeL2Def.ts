@@ -166,8 +166,9 @@ async function afterPromptStep(
   const pageOutputPath       = `${base}/l2/${moduleName}/web/desktop/page11/${shortName}.ts`;
 
   // ── Deterministic dependsFiles per file ─────────────────────────────────────
+  const pageDefsPath = `${base}/l2/${moduleName}/web/desktop/page11/${shortName}.defs.ts`;
   const contractDependsFiles: string[] = [];
-  const sharedDependsFiles   = [contractOutputPath];
+  const sharedDependsFiles   = [contractOutputPath, pageDefsPath];
   const pageDependsFiles     = [sharedOutputPath, contractOutputPath];
 
   // ── Load module.ts and projectJson for skills ────────────────────────────────
