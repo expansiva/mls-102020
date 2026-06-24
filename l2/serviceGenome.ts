@@ -160,10 +160,13 @@ export class ServiceGenome102020 extends ServiceBase {
 
         const labels: Record<number, string> = { 0: 'All' };
         keys.forEach(k => { labels[k] = layoutsMap[k].name; });
+        // Last slot = "+ Add layout".
+        const addSlot = keys[keys.length - 1] + 1;
+        labels[addSlot] = '+';
 
-        this._layoutConfig = { key: 'layout', min: 0, max: keys[keys.length - 1], labels };
+        this._layoutConfig = { key: 'layout', min: 0, max: addSlot, labels };
         const stateLayout = getAuraState().actualLayout;
-        this._layoutValue = (stateLayout !== null && stateLayout <= this._layoutConfig.max) ? stateLayout : 0;
+        this._layoutValue = (stateLayout !== null && stateLayout > 0 && stateLayout < addSlot) ? stateLayout : 0;
         // @ts-ignore
         this.requestUpdate();
     }
@@ -347,7 +350,8 @@ export class ServiceGenome102020 extends ServiceBase {
         switch (key) {
             case 'layout':
                 this._layoutValue = value;
-                if (value !== null && value > 0 && value <= this._layoutConfig.max) {
+                // Real layouts only (1..max-1); the last slot (max) is "+ Add layout".
+                if (value !== null && value > 0 && value < this._layoutConfig.max) {
                     setAuraState('actualLayout', value);
                     saveAuraProject();
                     this._repaintPageForCombination();
@@ -370,6 +374,13 @@ export class ServiceGenome102020 extends ServiceBase {
                 return;
         }
         this.requestUpdate();
+    }
+
+    private async _onLayoutCreated(value: number) {
+        // A new layout was persisted to project.json. Rebuild the layout knob so it
+        // includes the new entry (and a fresh "+ Add" slot), then select it.
+        await this._initLayoutKnob();
+        this._setKnobValue('layout', value);
     }
 
     private _onKnobChange(key: string, e: CustomEvent) {
@@ -609,6 +620,7 @@ export class ServiceGenome102020 extends ServiceBase {
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col gap-3 px-4 py-4 flex-1"
                     @select-layout=${(e: CustomEvent) => this._setKnobValue('layout', e.detail.value)}
+                    @layout-created=${(e: CustomEvent) => this._onLayoutCreated(e.detail.value)}
                     @select-molecule=${(e: CustomEvent) => this._setKnobValue('molecules', e.detail.value)}
                     @molecule-replace-mode=${(e: CustomEvent) => { this._moleculeReplaceMode = e.detail.value; this.requestUpdate(); }}
                     @ds-config=${(e: CustomEvent) => this._onDsConfig(e)}
@@ -635,18 +647,22 @@ export class ServiceGenome102020 extends ServiceBase {
                 const folder = this._currentPageFile?.folder ?? '';
                 const mod = folder.split('/')[0] || null;
                 const page = this._currentPageFile?.shortName ?? null;
+                // Real layout = 1..max-1; the last slot (max) is "+ Add layout" (handled inside
+                // selectLayout). Layout 1 is the default → its rules are read-only.
+                const isRealLayout = !!this._layoutValue && this._layoutValue > 0 && this._layoutValue < this._layoutConfig.max;
                 return html`
                     <div class="flex flex-col gap-4">
                         <plugins--select-layout-102020
                             .value=${this._layoutValue}
                             .pageFile=${this._currentPageFile}
                         ></plugins--select-layout-102020>
-                        ${this._layoutValue && this._layoutValue > 0 ? html`
+                        ${isRealLayout ? html`
                             <plugins--select-layout-rules-102020
                                 .projectId=${getAuraState().actualProject}
                                 .layout=${this._layoutValue}
                                 .module=${mod}
                                 .page=${page}
+                                .readOnly=${this._layoutValue === 1}
                             ></plugins--select-layout-rules-102020>
                         ` : nothing}
                     </div>

@@ -19,6 +19,8 @@ type RulesScope = 'project' | 'module' | 'page'; // 'project' = layout base
 const message_en = {
     needsLayout: 'Select a layout first to configure its rules.',
     loading: 'Loading…',
+    componentRulesHeader: 'Rules for components',
+    readOnlyNote: 'Default layout — read only.',
     tabLayout: 'Layout (base)',
     tabModule: 'Module',
     tabPage: 'Page',
@@ -69,6 +71,8 @@ const messages: Record<string, MessageType> = {
     pt: {
         needsLayout: 'Selecione um layout primeiro para configurar suas regras.',
         loading: 'Carregando…',
+        componentRulesHeader: 'Rules for components',
+        readOnlyNote: 'Layout default — somente leitura.',
         tabLayout: 'Layout (base)',
         tabModule: 'Módulo',
         tabPage: 'Página',
@@ -116,6 +120,8 @@ const messages: Record<string, MessageType> = {
     es: {
         needsLayout: 'Seleccione un layout primero para configurar sus reglas.',
         loading: 'Cargando…',
+        componentRulesHeader: 'Rules for components',
+        readOnlyNote: 'Layout por defecto — solo lectura.',
         tabLayout: 'Layout (base)',
         tabModule: 'Módulo',
         tabPage: 'Página',
@@ -172,6 +178,12 @@ export class PluginSelectLayoutRules extends StateLitElement {
     @property({ attribute: false }) layout: number | null = null;
     @property({ attribute: false }) module: string | null = null;
     @property({ attribute: false }) page: string | null = null;
+    // Default layout → rules are read-only (view only).
+    @property({ attribute: false }) readOnly: boolean = false;
+    // Draft mode (used by the "Add layout" form): no config load/persist, base scope only,
+    // emits `rules-changed` so the parent can save the new layout in one go.
+    @property({ attribute: false }) draft: boolean = false;
+    @property({ attribute: false }) initialRules: Record<string, string> = {};
 
     // Scope is chosen internally via the toggle (the layout is fixed by the parent knob).
     @state() private _scope: RulesScope = 'project';
@@ -191,6 +203,10 @@ export class PluginSelectLayoutRules extends StateLitElement {
     @state() private _editingScope: boolean = false;
 
     willUpdate(changed: Map<string, unknown>) {
+        if (this.draft) {
+            if (changed.has('draft') || changed.has('initialRules')) this._initDraft();
+            return;
+        }
         if (changed.has('module') || changed.has('page')) {
             // Clamp the scope if the context no longer supports it.
             if (this._scope === 'page' && (!this.module || !this.page)) this._scope = 'project';
@@ -294,12 +310,71 @@ export class PluginSelectLayoutRules extends StateLitElement {
     // ─── Render ───────────────────────────────────────────────────────
 
     render() {
-        if (!this.projectId || this.layout == null) return this._renderNotice(this.msg.needsLayout);
-        if (this._loading) return html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.loading}</span>`;
+        if (!this.projectId || (!this.draft && this.layout == null)) return this._renderNotice(this.msg.needsLayout);
+        const header = html`<span class="text-sm font-semibold text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-1.5">${this.msg.componentRulesHeader}</span>`;
+        if (this._loading) return html`<div class="flex flex-col gap-3">${header}<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.loading}</span></div>`;
         return html`
             <div class="flex flex-col gap-3">
-                ${this._renderScopeToggle()}
-                ${this._isBaseScope ? this._renderBaseForm() : this._renderScopedForm()}
+                ${header}
+                ${this.draft
+                    ? this._renderDraftForm()
+                    : this.readOnly
+                        ? this._renderReadOnly()
+                        : html`${this._renderScopeToggle()}${this._isBaseScope ? this._renderBaseForm() : this._renderScopedForm()}`}
+            </div>
+        `;
+    }
+
+    private _initDraft(): void {
+        this._scope = 'project';
+        this._axisValues = { ...(this.initialRules ?? {}) };
+        this._inherited = {};
+        const added = new Set<string>();
+        for (const axis of layoutAxisList) {
+            if (axis.key in this._axisValues) {
+                const sec = layoutSections.find(s => s.key === axis.section);
+                if (sec && !sec.primary) added.add(sec.key);
+            }
+        }
+        this._addedSections = added;
+        this._openSections = new Set();
+        this._showAddMenu = false;
+        this._loading = false;
+        this.requestUpdate();
+    }
+
+    private _emitDraft(): void {
+        if (!this.draft) return;
+        this.dispatchEvent(new CustomEvent('rules-changed', {
+            detail: { rules: { ...this._axisValues } },
+            bubbles: true,
+            composed: true,
+        }));
+    }
+
+    /** Draft (new-layout) editor: base rules only, no save (the parent's form saves). */
+    private _renderDraftForm() {
+        return html`
+            <div class="flex flex-col gap-2.5">
+                ${this._visibleSections.map(sec => this._renderSectionDetails(sec))}
+            </div>
+            ${this._renderAddMore()}
+        `;
+    }
+
+    /** Read-only view (default layout): the layout's rules as read-only chips, no editing. */
+    private _renderReadOnly() {
+        const levels: { title: string; rules: Record<string, string> }[] = [
+            { title: this.msg.tabLayout, rules: this._rules ?? {} },
+        ];
+        for (const [mod, r] of Object.entries(this._moduleOverrides)) levels.push({ title: `${this.msg.tabModule} · ${mod}`, rules: r });
+        for (const [key, r] of Object.entries(this._pageOverrides)) levels.push({ title: `${this.msg.tabPage} · ${key}`, rules: r });
+        return html`
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 px-3 py-2">
+                <span class="text-xs text-gray-500 dark:text-gray-400">${this.msg.readOnlyNote}</span>
+            </div>
+            <div class="flex flex-col gap-2">
+                ${levels.map(l => this._renderReadonlyLevel(l.title, l.rules))}
             </div>
         `;
     }
@@ -609,6 +684,7 @@ export class PluginSelectLayoutRules extends StateLitElement {
     private _setAxis(key: string, value: string): void {
         this._axisValues = { ...this._axisValues, [key]: value };
         this._saved = false;
+        this._emitDraft();
     }
 
     private _clearAxis(key: string): void {
@@ -617,6 +693,7 @@ export class PluginSelectLayoutRules extends StateLitElement {
         delete next[key];
         this._axisValues = next;
         this._saved = false;
+        this._emitDraft();
     }
 
     private async _onSave(): Promise<void> {
