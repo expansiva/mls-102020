@@ -35,7 +35,9 @@ export interface DsTokens {
     elevation?: string;                              // applied via Tailwind classes
 }
 
-const GLOBAL_CSS_REF = (project: number) => `_${project}_/l2/styles/global.css`;
+/** Canonical file reference of the project-wide DS stylesheet (single source of truth:
+ *  both the writer and the page-defs `dependsFiles` entry use this). */
+export const dsGlobalCssRef = (project: number): string => `_${project}_/l2/styles/global.css`;
 
 // Color role → CSS var name (most roles map 1:1; `background` shortens to `bg`).
 const COLOR_VAR_ALIAS: Record<string, string> = { background: 'bg' };
@@ -138,14 +140,14 @@ export async function buildGlobalCss(project: number): Promise<string> {
         ? config.designSystems
         : {};
     const css = renderGlobalCss(designSystems);
-    await writeFileByRef(GLOBAL_CSS_REF(project), css);
+    await writeFileByRef(dsGlobalCssRef(project), css);
     return css;
 }
 
 /** Read the generated DS stylesheet for the preview (empty string when absent). */
 export async function readDsGlobalCss(project: number): Promise<string> {
     try {
-        const info = mls.stor.convertFileReferenceToFile(GLOBAL_CSS_REF(project));
+        const info = mls.stor.convertFileReferenceToFile(dsGlobalCssRef(project));
         const key = mls.stor.getKeyToFile(info);
         const sf = mls.stor.files[key];
         if (!sf) return '';

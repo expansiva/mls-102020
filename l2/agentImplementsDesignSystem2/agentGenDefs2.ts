@@ -10,6 +10,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { buildWorkItem } from '/_102020_/l2/dsMatch/derivePaths.js';
 import { buildPageDsStamp, renderDsVersionExport } from '/_102020_/l2/dsMatch/dsVersion.js';
+import { dsGlobalCssRef } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
 import { parseStepArgs, readRawSource, saveFile, mkCompleted, mkFail } from '/_102020_/l2/agentImplementsDesignSystem2/planning.js';
 
 export function createAgent(): IAgentAsync {
@@ -91,6 +92,10 @@ async function afterPromptStep(
       if (tail) finalSrc = `${finalSrc.replace(/\s*$/, '')}\n\n${tail}\n`;
     }
 
+    // Deterministically add the project-wide DS stylesheet to the pipeline's dependsFiles
+    // (same ref the generator writes to — single source of truth). Not done by the LLM.
+    finalSrc = addGlobalCssDependency(finalSrc, dsGlobalCssRef(project));
+
     if (!context.isTest) {
       // Stamp the DS version (effective rules hash + used-molecules hash) this page was
       // generated under, so staleness can be detected when the DS rules or the molecules
@@ -136,6 +141,21 @@ function buildAssignmentsTail(novoSource: string): string {
   const up = novoSource.match(/export\s+const\s+usagePaths\s*=\s*(\[[\s\S]*?\])\s+as\s+const\s*;/);
   if (up) lines.push('', `export const usagePaths = ${up[1]} as const;`);
   return lines.join('\n');
+}
+
+/**
+ * Append the project-wide DS stylesheet ref to EVERY pipeline `dependsFiles` array
+ * that does not already contain it. Plain style dependency (no `?key=skill` suffix).
+ * Tolerant of empty and non-empty arrays; preserves existing entries.
+ */
+function addGlobalCssDependency(src: string, ref: string): string {
+  if (src.includes(ref)) return src;
+  return src.replace(/("dependsFiles"\s*:\s*\[)([\s\S]*?)(\])/g, (_full, open: string, body: string, close: string) => {
+    const trimmed = body.replace(/\s+$/, '');
+    if (trimmed.trim() === '') return `${open}\n    "${ref}"\n  ${close}`;
+    const needsComma = !/,\s*$/.test(trimmed);
+    return `${open}${trimmed}${needsComma ? ',' : ''}\n    "${ref}"\n  ${close}`;
+  });
 }
 
 const system1 = `
