@@ -140,7 +140,7 @@ You are generating **TypeScript** — not JSON Schema, not OpenAPI, not SQL. Use
 | \`"void"\` / \`"null"\` | \`null\` | |
 | \`"array"\` (untyped) | \`unknown[]\` | |
 
-**Rule**: if the shape value does not appear in either table above and is not a pipe-separated union, map it to \`string\` — do not invent a type.
+**Rule**: if the shape value does not appear in either table above and is not a pipe-separated union, map it to \`any\` — the interface definition was not provided in context, do not invent a type.
 
 ### Nesting
 For nested objects and array items, keep the type inline (do NOT generate extra named interfaces for sub-shapes). Apply the same optionality and type rules recursively to every nested field.

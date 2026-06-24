@@ -233,6 +233,24 @@ Import \`initState\` only if there are action state keys to initialize.
 
 ### 3. i18n block
 
+#### MANDATORY THIRD STEP — read layout from page .defs.ts for i18n keys
+
+The page \`.defs.ts\` file is provided in \`##Context Files\`. Open it and read the \`definition.layout\` object.
+Use its content to derive ALL UI-facing i18n keys — do NOT invent labels from command names alone.
+
+Derivation rules (apply to every element in \`layout.sections[].children[]\`):
+- \`section title\` → \`{sectionIdCamel}Title: '...'\` — use the section \`title\` value in Portuguese/English
+- \`{ type:"table", title, columns }\` → one key per column: \`col{ColumnPascal}: '...'\` — human-readable column header
+- \`{ type:"filter", fields }\` → one key per field: \`filter{FieldPascal}Label: '...'\` — field label
+- \`{ type:"form", title, fields, submitLabel }\`:
+  - one key per field: \`{fieldCamel}Label: '...'\` — form field label
+  - one key for the submit button: \`{formIdCamel}Submit: '{submitLabel}'\` — use the \`submitLabel\` value verbatim
+
+All label text must be in natural language (Portuguese for \`message_pt\`, English for \`message_en\`).
+If the layout is absent or the file is not in \`##Context Files\`, fall back to deriving labels from command names only.
+
+---
+
 Wrap with \`/// **collab_i18n_start**\` / \`/// **collab_i18n_end**\`:
 
 \`\`\`typescript
@@ -246,15 +264,14 @@ const message_pt = {
   // one idle label per command:     {commandName}Label: '...'
   // one loading label per command:  {commandName}Loading: '...'
   // one error label per command:    couldNot{CommandPascal}: '...'
+  // ── LAYOUT-DERIVED KEYS from MANDATORY THIRD STEP ──
+  // section titles, column headers, filter field labels, form field labels, submit buttons
   // ── FOR EACH OUTBOUND ENTRY from MANDATORY SECOND STEP — one key per entry ──
   // navigateTo{PageIdPascal}: '{trigger text verbatim from navigationRef}'
   //
-  // EXAMPLE — if outbound list has "productServiceDetailPage / Repetir compra ou agendar serviço":
-  //   navigateToProductServiceDetailPage: 'Repetir compra ou agendar serviço'
-  //
   // Do NOT omit these keys. The render layer uses them as button labels.
 };
-const message_en = { /* same keys, in English — including every navigateTo* key */ };
+const message_en = { /* same keys, in English — including every navigateTo* and layout-derived key */ };
 type MessageType = typeof message_en;
 const messages: { [key: string]: MessageType } = { en: message_en, pt: message_pt };
 /// **collab_i18n_end**

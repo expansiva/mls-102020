@@ -78,7 +78,7 @@ const toolSchema = {
         },
         pageDefinition: {
           type: 'object',
-          description: 'Original pageDefinition sections/organisms data — copied verbatim',
+          description: 'UI layout tree derived from pageDefinition sections+organisms and bffCommands. Must contain: pageId, pageName, actor, purpose, capabilities (copied verbatim) plus a "layout" key with a JSON tree of concrete UI elements (sections → children of tables/forms/lists with labels and field names in Portuguese)',
         },
         controllerDependsFiles: {
           type: 'array',
@@ -166,15 +166,16 @@ async function afterPromptStep(
   const pageOutputPath       = `${base}/l2/${moduleName}/web/desktop/page11/${shortName}.ts`;
 
   // ── Deterministic dependsFiles per file ─────────────────────────────────────
+  const pageDefsPath = `${base}/l2/${moduleName}/web/desktop/page11/${shortName}.defs.ts`;
   const contractDependsFiles: string[] = [];
-  const sharedDependsFiles   = [contractOutputPath];
+  const sharedDependsFiles   = [contractOutputPath, pageDefsPath];
   const pageDependsFiles     = [sharedOutputPath, contractOutputPath];
 
   // ── Load module.ts and projectJson for skills ────────────────────────────────
   const moduleTs = await loadModuleByBuild(toMlsPath(project, 2, moduleName, 'module', '.ts'));
   const projectJson: ProjectJson | null = await readProjectJson();
 
-  const controllerSkills: string[] = moduleTs?.skills?.layer2?.skillPath ?? [];
+  const controllerSkills: string[] = await loadModuleSkills(project, moduleName, 'layer2');
   const contractSkills: string[]   = moduleTs?.skills?.contract?.skillPath ?? [];
   const sharedSkill: string | undefined = moduleTs?.shared?.web?.sharedSkill;
   const sharedSkills: string[] = sharedSkill ? [sharedSkill] : [];
@@ -263,6 +264,22 @@ async function afterPromptStep(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+const NEEDS_DEFINITION = new Set(['layer2']);
+
+async function loadModuleSkills(project: number, moduleName: string, skillKey: string): Promise<string[]> {
+  const path = toMlsPath(project, 2, moduleName, 'module', '.ts');
+  const mod = await loadModuleByBuild(path);
+  if (!mod) return [];
+  const base: string[] = mod.skills?.[skillKey]?.skillPath ?? [];
+  if (NEEDS_DEFINITION.has(skillKey)) {
+    const defPaths: string[] = (mod.skills?.definition?.skillPath ?? []).map((p: string) =>
+      /^_\d+_$/.test(p) ? `${p}.d.ts` : p,
+    );
+    return [...base, ...defPaths];
+  }
+  return base;
+}
+
 interface MkItemOpts {
   skills?: string[];
   afterSaveBackEnd?: string;
@@ -343,7 +360,28 @@ Files to produce:
    Content: ALL bffCommands + navigationRefs from the source, copied verbatim
 
 4. pageDefinition — L2 page (_${project}_/l2/${moduleName}/web/desktop/page11/${shortName}.defs.ts)
-   Content: the pageDefinition (sections + organisms) from the source, copied verbatim
+   Content: a UI layout definition derived from the source. DO NOT copy sections/organisms verbatim.
+   Build a JSON object with:
+   - pageId, pageName, actor, purpose, capabilities — copied verbatim from pageDefinition
+   - layout: a JSON tree that describes the actual UI structure, as follows:
+     - Each section becomes a node with "title" and "children" array
+     - Each organism in that section becomes one or more concrete UI elements in "children":
+       * Organisms whose userActions contain "filtrar", "listar", "exibir" → { type:"table", title:"<purpose>", columns:[<output field names from the matching bffCommand>] }
+       * Organisms whose userActions contain "criar", "editar", "atualizar", "cadastrar", "registrar" → { type:"form", title:"<purpose>", fields:[<input field names from the matching bffCommand>], submitLabel:"<action label in Portuguese>" }
+       * Organisms that combine filter+list → two children: a filter object { type:"filter", fields:[...] } and a table
+       * Alert/history organisms → { type:"table", title:"<purpose>", columns:[<output field names>] }
+     - Match each organism to its bffCommand via the command whose usecaseRefs overlap with the organism's userActions
+     - All labels and text in Portuguese
+   Example structure:
+   { "pageId":"...", "pageName":"...", "actor":"...", "purpose":"...", "capabilities":[...],
+     "layout": { "sections": [
+       { "title":"Gestão de cardápio", "children": [
+         { "type":"filter", "fields":["categoriaId","disponivel"] },
+         { "type":"table", "title":"Itens do cardápio", "columns":["menuItemId","nome","preco","categoriaId","ativo"] },
+         { "type":"form", "title":"Cadastro/edição de item", "fields":["nome","preco","categoriaId","ativo"], "submitLabel":"Salvar item" }
+       ]}
+     ]}
+   }
 
 Additionally provide:
 - controllerDependsFiles: the layer_3_usecases .ts paths (not .defs.ts) that this controller calls
@@ -369,7 +407,8 @@ function buildHumanPrompt(
     `## Available layer_3_usecases .ts files`,
     usecaseTsPaths.length ? usecaseTsPaths.join('\n') : '(none)',
     ``,
-    `Extract the 4 definitions verbatim from the source content.`,
+    `Extract controllerDefinition, contractDefinition, sharedDefinition verbatim from the source content.`,
+    `For pageDefinition: derive the UI layout tree as instructed in the system prompt (do NOT copy sections/organisms verbatim).`,
     `For controllerDependsFiles: look at usecaseRefs in each bffCommand and match to the available list above.`,
   ].join('\n');
 }
