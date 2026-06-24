@@ -13,6 +13,8 @@ import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
 import { loadAgent, executeBeforePrompt } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
+import { languages } from '/_102027_/l2/collabLanguages.js';
+
 
 import { getDependenciesByHtml } from '/_102020_/l2/buildFile.js';
 
@@ -560,6 +562,10 @@ export class ServicePreview extends ServiceBase {
    *  default                    -> isolated (safe)
    */
   private _resolvePreviewMode(): 'shared' | 'isolated' {
+
+    return 'shared';
+    // TODO: Change language dont work in mode 'isolated', for now return only 'shared' mode;
+      /*
     // B) explicit override
     const html = this.actualFiles?.htmlContent || '';
     const flag = html.match(/<meta\s+name=["']mls-preview["']\s+content=["'](shared|isolated)["']/i);
@@ -578,6 +584,7 @@ export class ServicePreview extends ServiceBase {
     if (/enhancement\s*=\s*["'][^"']*enhancementAgent/i.test(tsSrc)) return 'shared';
 
     return 'isolated';
+    */
   }
 
   /**
@@ -842,6 +849,7 @@ export class ServicePreview extends ServiceBase {
   // Languages
 
   private async setLanguages() {
+
     const project = mls.actualProject;
 
     if (!project) {
@@ -860,6 +868,7 @@ export class ServicePreview extends ServiceBase {
           this.languages[`${entry.name}`] = {
             acronym: entry.language,
             name: entry.name,
+
           }
         });
       }
@@ -867,9 +876,10 @@ export class ServicePreview extends ServiceBase {
 
     const languagesOptions = Object.keys(this.languages).map((lg) => {
       const obj = this.languages[lg];
+      const icon = languages.find((lang) => lang.code === obj.acronym)?.svg || '';
       const newOpt: IOptions = {
         text: obj.name,
-        class: `collab-flags ${obj.acronym}`
+        icon,
       }
       return newOpt;
     });
@@ -877,7 +887,8 @@ export class ServicePreview extends ServiceBase {
     if (this.menu.tools.languages) this.menu.tools.languages.options = languagesOptions;
 
     AuraInitState();
-    const stateLang = getAuraState().actualLanguage;
+    const stateLang = getAuraState().actualLanguage || document.documentElement.lang?.split('-')[0] || undefined;
+    console.info(stateLang)
     if (stateLang) {
       const idx = Object.values(this.languages).findIndex(l => l.acronym === stateLang);
       if (idx >= 0) {
