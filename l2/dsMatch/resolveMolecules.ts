@@ -17,7 +17,7 @@
 // deterministic table.
 
 import { matchVariant } from '/_102020_/l2/dsMatch/matchVariant.js';
-import type { ResolvedDs, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
+import type { ResolvedLayoutRules, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
 import type { Agent1Output } from '/_102020_/l2/dsMatch/agent1.js';
 
 export interface ResolvedMolecule {
@@ -70,7 +70,7 @@ export function collectUsedGroups(outputs: Agent1Output[]): string[] {
  *        DS axis at all (chart/media/locate/scancode) are therefore never auto-assigned.
  */
 export function resolveMolecules(
-    dsRules: ResolvedDs,
+    dsRules: ResolvedLayoutRules,
     catalog: MoleculeCatalogEntry[],
     groups?: string[],
     configuredAxes?: Set<string>,

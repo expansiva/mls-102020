@@ -10,7 +10,6 @@ import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import '/_102027_/l2/collabSelectKnob.js';
 import '/_102020_/l2/plugins/selectOrganization.js';
 import '/_102020_/l2/plugins/selectProject.js';
-import '/_102020_/l2/plugins/selectDesignSystem.js';
 import '/_102020_/l2/plugins/selectLanguage.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -553,12 +552,12 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                     ></plugins--select-project-102020>
                 `;
             case 'designSystem':
+                // Rules moved to the Layout (edited in the Genome). The DS will become a styling
+                // editor (Phase B) — placeholder for now.
                 return html`
-                    <plugins--select-design-system-102020
-                        .projectId=${this._selectedProject?.project ?? null}
-                        .value=${this._dsValue}
-                        .scope=${'project'}
-                    ></plugins--select-design-system-102020>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
+                        <span class="text-sm text-gray-400 dark:text-gray-500">${this.msg.dsScenarioDesc}</span>
+                    </div>
                 `;
             case 'language':
                 return html`

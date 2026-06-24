@@ -14,8 +14,8 @@
 // (filterCompatibleVariants) and the staleness check consume.
 
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { dsDefaults, isValidAxisValue, type DsAxisKey } from '/_102020_/l2/designSystemAuraBase.js';
-import type { ResolvedDs } from '/_102020_/l2/dsMatch/types.js';
+import { layoutRuleDefaults, isValidAxisValue, type LayoutAxisKey } from '/_102020_/l2/designSystemAuraBase.js';
+import type { ResolvedLayoutRules } from '/_102020_/l2/dsMatch/types.js';
 
 /** Sentinel value that removes an inherited rule (relax the axis). Not a valid axis value. */
 export const UNSET = 'unset';
@@ -25,7 +25,7 @@ export interface AxisProvenance { value: string; source: RuleSource; }
 
 export interface EffectiveRules {
     /** every axis at its default, with the cascade applied on top. */
-    rules: ResolvedDs;
+    rules: ResolvedLayoutRules;
     /** axes explicitly configured across the cascade, minus those `unset` by a more specific level. */
     configuredAxes: Set<string>;
 }
@@ -67,10 +67,10 @@ export function mergeRuleLevels(
     return out;
 }
 
-/** Pure: fill every unset axis with the vocabulary default → full ResolvedDs. */
-export function toResolvedDs(configured: Record<string, string>): ResolvedDs {
-    const resolved = dsDefaults() as ResolvedDs;
-    for (const [axis, value] of Object.entries(configured)) resolved[axis as DsAxisKey] = value;
+/** Pure: fill every unset axis with the vocabulary default → full ResolvedLayoutRules. */
+export function toResolvedLayoutRules(configured: Record<string, string>): ResolvedLayoutRules {
+    const resolved = layoutRuleDefaults() as ResolvedLayoutRules;
+    for (const [axis, value] of Object.entries(configured)) resolved[axis as LayoutAxisKey] = value;
     return resolved;
 }
 
@@ -117,5 +117,5 @@ export async function resolveRulesForPage(
 ): Promise<EffectiveRules> {
     const { baseRules, moduleOverride, pageOverride } = await readLayoutBuckets(project, layout, module, page);
     const configured = mergeRuleLevels(baseRules, moduleOverride, pageOverride);
-    return { rules: toResolvedDs(configured), configuredAxes: new Set(Object.keys(configured)) };
+    return { rules: toResolvedLayoutRules(configured), configuredAxes: new Set(Object.keys(configured)) };
 }

@@ -1,10 +1,10 @@
 /// <mls fileReference="_102020_/l2/dsMatch/resolveRulesForPage.test.ts" enhancement="_blank" />
 
-// Tests for the pure cascade core (mergeRuleLevels, toResolvedDs, effectiveRulesProvenance).
+// Tests for the pure cascade core (mergeRuleLevels, toResolvedLayoutRules, effectiveRulesProvenance).
 // No mls runtime. Exposes `runResolveRulesForPageTests()`.
 
-import { mergeRuleLevels, toResolvedDs, effectiveRulesProvenance, UNSET } from '/_102020_/l2/dsMatch/resolveRulesForPage.js';
-import { dsDefaults } from '/_102020_/l2/designSystemAuraBase.js';
+import { mergeRuleLevels, toResolvedLayoutRules, effectiveRulesProvenance, UNSET } from '/_102020_/l2/dsMatch/resolveRulesForPage.js';
+import { layoutRuleDefaults } from '/_102020_/l2/designSystemAuraBase.js';
 
 function assert(cond: boolean, msg: string): void { if (!cond) throw new Error(`[resolveRulesForPage.test] FAIL: ${msg}`); }
 
@@ -55,10 +55,10 @@ export function runResolveRulesForPageTests(): { passed: number } {
         passed++;
     }
 
-    // 5. toResolvedDs fills defaults; configured overrides default.
+    // 5. toResolvedLayoutRules fills defaults; configured overrides default.
     {
-        const resolved = toResolvedDs({ recordsView: 'grid' });
-        const defs = dsDefaults();
+        const resolved = toResolvedLayoutRules({ recordsView: 'grid' });
+        const defs = layoutRuleDefaults();
         assert(resolved.recordsView === 'grid', 'configured value applied');
         assert(resolved.feedback === defs.feedback, 'unconfigured axis falls to default');
         assert(Object.keys(resolved).length === Object.keys(defs).length, 'all axes present');

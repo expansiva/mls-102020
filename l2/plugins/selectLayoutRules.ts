@@ -9,7 +9,7 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { dsSections, dsAxisList, type IDsAxisEntry, type IDsSection } from '/_102020_/l2/designSystemAuraBase.js';
+import { layoutSections, layoutAxisList, type ILayoutAxisEntry, type ILayoutSection } from '/_102020_/l2/designSystemAuraBase.js';
 import { effectiveRulesProvenance, UNSET, type RuleSource } from '/_102020_/l2/dsMatch/resolveRulesForPage.js';
 
 type RulesScope = 'project' | 'module' | 'page'; // 'project' = layout base
@@ -275,9 +275,9 @@ export class PluginSelectLayoutRules extends StateLitElement {
         this._axisValues = { ...bucket };
         this._inherited = this._computeInherited();
         const added = new Set<string>();
-        for (const axis of dsAxisList) {
+        for (const axis of layoutAxisList) {
             if (axis.key in bucket) {
-                const sec = dsSections.find(s => s.key === axis.section);
+                const sec = layoutSections.find(s => s.key === axis.section);
                 if (sec && !sec.primary) added.add(sec.key);
             }
         }
@@ -309,9 +309,9 @@ export class PluginSelectLayoutRules extends StateLitElement {
     }
 
     /** Sections shown: base scope → primary + added; module/page → only configured + added. */
-    private get _visibleSections(): IDsSection[] {
-        if (this._isBaseScope) return dsSections.filter(s => s.primary || this._addedSections.has(s.key));
-        return dsSections.filter(s => this._sectionRuleCount(s.key) > 0 || this._addedSections.has(s.key));
+    private get _visibleSections(): ILayoutSection[] {
+        if (this._isBaseScope) return layoutSections.filter(s => s.primary || this._addedSections.has(s.key));
+        return layoutSections.filter(s => this._sectionRuleCount(s.key) > 0 || this._addedSections.has(s.key));
     }
 
     private _renderBaseForm() {
@@ -446,7 +446,7 @@ export class PluginSelectLayoutRules extends StateLitElement {
     }
 
     private _renderReadonlyChip(axisKey: string, value: string) {
-        const axis = dsAxisList.find(a => String(a.key) === axisKey);
+        const axis = layoutAxisList.find(a => String(a.key) === axisKey);
         const label = axis?.label ?? axisKey;
         const isUnset = value === UNSET;
         const display = isUnset ? this.msg.unsetRule : this._humanize(value);
@@ -458,14 +458,14 @@ export class PluginSelectLayoutRules extends StateLitElement {
         `;
     }
 
-    private _sectionAxes(secKey: string): readonly IDsAxisEntry[] {
-        return dsAxisList.filter(a => a.section === secKey);
+    private _sectionAxes(secKey: string): readonly ILayoutAxisEntry[] {
+        return layoutAxisList.filter(a => a.section === secKey);
     }
     private _sectionRuleCount(secKey: string): number {
         return this._sectionAxes(secKey).filter(a => a.key in this._axisValues).length;
     }
 
-    private _renderSectionDetails(sec: IDsSection) {
+    private _renderSectionDetails(sec: ILayoutSection) {
         const open = this._openSections.has(sec.key);
         const label = this.msg.sections[sec.key] ?? sec.label;
         const desc = this.msg.sectionDescs[sec.key] ?? sec.desc;
@@ -500,7 +500,7 @@ export class PluginSelectLayoutRules extends StateLitElement {
         `;
     }
 
-    private _renderAxis(axis: IDsAxisEntry) {
+    private _renderAxis(axis: ILayoutAxisEntry) {
         const current = this._axisValues[axis.key];
         const inherited = this._isBaseScope ? undefined : this._inherited[axis.key];
         const isUnset = current === UNSET;
@@ -521,7 +521,7 @@ export class PluginSelectLayoutRules extends StateLitElement {
         `;
     }
 
-    private _renderClearChip(axis: IDsAxisEntry, selected: boolean, inheritedValue?: string) {
+    private _renderClearChip(axis: ILayoutAxisEntry, selected: boolean, inheritedValue?: string) {
         const label = (!this._isBaseScope && inheritedValue !== undefined) ? this.msg.inheritLabel : this.msg.notSet;
         return html`
             <button
@@ -534,7 +534,7 @@ export class PluginSelectLayoutRules extends StateLitElement {
         `;
     }
 
-    private _renderUnsetChip(axis: IDsAxisEntry, selected: boolean) {
+    private _renderUnsetChip(axis: ILayoutAxisEntry, selected: boolean) {
         return html`
             <button
                 class="text-xs px-2 py-1 rounded-md border transition-colors cursor-pointer
@@ -546,7 +546,7 @@ export class PluginSelectLayoutRules extends StateLitElement {
         `;
     }
 
-    private _renderValueChip(axis: IDsAxisEntry, value: string, selected: boolean) {
+    private _renderValueChip(axis: ILayoutAxisEntry, value: string, selected: boolean) {
         return html`
             <button
                 class="text-xs px-2 py-1 rounded-md border transition-colors cursor-pointer
@@ -560,7 +560,7 @@ export class PluginSelectLayoutRules extends StateLitElement {
 
     private _renderAddMore() {
         const visible = new Set(this._visibleSections.map(s => s.key));
-        const remaining = dsSections.filter(s => !visible.has(s.key));
+        const remaining = layoutSections.filter(s => !visible.has(s.key));
         if (!remaining.length) return nothing;
         return html`
             <div class="flex flex-col gap-2">

@@ -8,7 +8,6 @@ import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
 import '/_102020_/l2/plugins/selectModule.js';
-import '/_102020_/l2/plugins/selectDesignSystem.js';
 import '/_102020_/l2/plugins/selectDevice.js';
 import '/_102020_/l2/plugins/selectAssetsComponents.js';
 import '/_102020_/l2/plugins/selectAssetsPlugins.js';
@@ -22,6 +21,7 @@ const message_en = {
     designSystem: 'Design System',
     device: 'Device',
     assets: 'Assets',
+    dsStylingSoon: 'Design System will configure styling (colors, fonts). Rules are now set on the Layout (in the Genome). Coming soon.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -32,6 +32,7 @@ const messages: Record<string, MessageType> = {
         designSystem: 'Design System',
         device: 'Dispositivo',
         assets: 'Assets',
+        dsStylingSoon: 'O Design System vai configurar a estilização (cores, fontes). As rules agora ficam no Layout (no Genome). Em breve.',
     },
     es: {
         svcTitle: 'Proyecto',
@@ -39,6 +40,7 @@ const messages: Record<string, MessageType> = {
         designSystem: 'Design System',
         device: 'Dispositivo',
         assets: 'Assets',
+        dsStylingSoon: 'El Design System configurará la estilización (colores, fuentes). Las reglas ahora se definen en el Layout (en el Genome). Próximamente.',
     },
 };
 /// **collab_i18n_end**
@@ -383,19 +385,14 @@ export class ServiceProject102020 extends ServiceBase {
                         @select-module=${(e: CustomEvent) => this._setKnobValue('module', e.detail.value)}
                     ></plugins--select-module-102020>
                 `;
-            case 'designSystem': {
-                // Project service configures the SELECTED module's overrides; with no module
-                // selected ("All") it falls back to editing the project-level base rules.
-                const mod = this._selectedModule?.name ?? null;
+            case 'designSystem':
+                // Rules moved to the Layout (edited in the Genome). The DS becomes a styling
+                // editor in Phase B — placeholder for now.
                 return html`
-                    <plugins--select-design-system-102020
-                        .projectId=${getAuraState().actualProject}
-                        .value=${this._dsValue}
-                        .scope=${mod ? 'module' : 'project'}
-                        .module=${mod}
-                    ></plugins--select-design-system-102020>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
+                        <span class="text-sm text-gray-400 dark:text-gray-500">${this.msg.dsStylingSoon}</span>
+                    </div>
                 `;
-            }
             case 'device':
                 return html`
                     <plugins--select-device-102020

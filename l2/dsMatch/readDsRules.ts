@@ -1,58 +1,58 @@
 /// <mls fileReference="_102020_/l2/dsMatch/readDsRules.ts" enhancement="_blank" />
 
-// Fase A1 — resolve the DS axes of a project's design system.
+// Resolve the rule axes of a project's LAYOUT (base rules).
 // Reads project.json via libProjectConfig and fills undeclared axes with the
-// vocabulary `default` (DSDefinition.md §2.4: an undeclared axis falls back to its default).
+// vocabulary `default` (an undeclared axis falls back to its default).
 
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { dsDefaults, isValidAxisValue, type DsAxisKey } from '/_102020_/l2/designSystemAuraBase.js';
-import type { ResolvedDs } from '/_102020_/l2/dsMatch/types.js';
+import { layoutRuleDefaults, isValidAxisValue, type LayoutAxisKey } from '/_102020_/l2/designSystemAuraBase.js';
+import type { ResolvedLayoutRules } from '/_102020_/l2/dsMatch/types.js';
 
 /**
- * @param project  project number (e.g. 102043)
- * @param dsIndex  design system index in `designSystems` (e.g. 2 or "2")
- * @returns every axis resolved (DS rules layered over the vocabulary defaults)
+ * @param project project number (e.g. 102043)
+ * @param layout  layout index in `layouts` (e.g. 1 or "1")
+ * @returns every axis resolved (layout base rules layered over the vocabulary defaults)
  */
-export async function readDsRules(project: number, dsIndex: number | string): Promise<ResolvedDs> {
+export async function readLayoutRules(project: number, layout: number | string): Promise<ResolvedLayoutRules> {
 
     const config: any = await getConfigProject(project);
-    if (!config) throw new Error(`[readDsRules] project config not found: ${project}`);
+    if (!config) throw new Error(`[readLayoutRules] project config not found: ${project}`);
 
-    const designSystems = config.designSystems;
-    if (!designSystems || typeof designSystems !== 'object') {
-        throw new Error(`[readDsRules] no 'designSystems' in project ${project}`);
+    const layouts = config.layouts;
+    if (!layouts || typeof layouts !== 'object') {
+        throw new Error(`[readLayoutRules] no 'layouts' in project ${project}`);
     }
 
-    const key = String(dsIndex);
-    const ds = (designSystems as Record<string, any>)[key];
-    if (!ds) throw new Error(`[readDsRules] designSystem '${key}' not found in project ${project}`);
+    const key = String(layout);
+    const lay = (layouts as Record<string, any>)[key];
+    if (!lay) throw new Error(`[readLayoutRules] layout '${key}' not found in project ${project}`);
 
     const rules: Record<string, string> =
-        (ds.rules && typeof ds.rules === 'object') ? ds.rules : {};
+        (lay.rules && typeof lay.rules === 'object') ? lay.rules : {};
 
-    // Start from every axis at its default, then override with the DS's valid rules.
-    const resolved = dsDefaults() as ResolvedDs;
+    // Start from every axis at its default, then override with the layout's valid rules.
+    const resolved = layoutRuleDefaults() as ResolvedLayoutRules;
     for (const [axis, value] of Object.entries(rules)) {
         if (typeof value !== 'string') continue;
         if (!isValidAxisValue(axis, value)) {
-            console.warn(`[readDsRules] ${project}/ds${key}: ignoring invalid axis value ${axis}=${String(value)}`);
+            console.warn(`[readLayoutRules] ${project}/layout${key}: ignoring invalid axis value ${axis}=${String(value)}`);
             continue;
         }
-        resolved[axis as DsAxisKey] = value;
+        resolved[axis as LayoutAxisKey] = value;
     }
 
     return resolved;
 }
 
 /**
- * The axis keys the DS configured EXPLICITLY (the raw `rules`, not the defaults).
- * Used to gate assignment: only swap an organism for a molecule when the DS actually
+ * The axis keys the LAYOUT configured EXPLICITLY (the raw base `rules`, not the defaults).
+ * Used to gate assignment: only swap an organism for a molecule when the layout actually
  * expressed a preference for an axis that governs that molecule's group.
  */
-export async function readConfiguredAxisKeys(project: number, dsIndex: number | string): Promise<Set<string>> {
+export async function readConfiguredAxisKeys(project: number, layout: number | string): Promise<Set<string>> {
     const config: any = await getConfigProject(project);
-    const ds = config?.designSystems?.[String(dsIndex)];
-    const rules = (ds?.rules && typeof ds.rules === 'object') ? ds.rules : {};
+    const lay = config?.layouts?.[String(layout)];
+    const rules = (lay?.rules && typeof lay.rules === 'object') ? lay.rules : {};
     const set = new Set<string>();
     for (const [axis, value] of Object.entries(rules)) {
         if (typeof value === 'string' && isValidAxisValue(axis, value)) set.add(axis);

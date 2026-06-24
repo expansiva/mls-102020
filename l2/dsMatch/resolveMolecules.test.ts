@@ -10,7 +10,7 @@ import {
     assignMoleculesToPage,
     collectUsagePaths,
 } from '/_102020_/l2/dsMatch/resolveMolecules.js';
-import type { ResolvedDs, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
+import type { ResolvedLayoutRules, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
 import type { Agent1Output } from '/_102020_/l2/dsMatch/agent1.js';
 
 function entry(group: string, variant: string, layoutConfig: Record<string, string>): MoleculeCatalogEntry {
@@ -25,7 +25,7 @@ function entry(group: string, variant: string, layoutConfig: Record<string, stri
     };
 }
 
-function ds(rules: Record<string, string>): ResolvedDs { return rules as ResolvedDs; }
+function ds(rules: Record<string, string>): ResolvedLayoutRules { return rules as ResolvedLayoutRules; }
 
 function assert(cond: boolean, msg: string): void {
     if (!cond) throw new Error(`[resolveMolecules.test] FAIL: ${msg}`);

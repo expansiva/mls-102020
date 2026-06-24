@@ -4,7 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { dsSections, dsAxisList, type IDsAxisEntry, type IDsSection } from '/_102020_/l2/designSystemAuraBase.js';
+import { layoutSections, layoutAxisList, type ILayoutAxisEntry, type ILayoutSection } from '/_102020_/l2/designSystemAuraBase.js';
 import { effectiveRulesProvenance, UNSET, type RuleSource } from '/_102020_/l2/dsMatch/resolveRulesForPage.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
@@ -342,9 +342,9 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._inherited = this._computeInherited(entry);
         // Reveal any non-primary section that already holds a rule.
         const added = new Set<string>();
-        for (const axis of dsAxisList) {
+        for (const axis of layoutAxisList) {
             if (axis.key in bucket) {
-                const sec = dsSections.find(s => s.key === axis.section);
+                const sec = layoutSections.find(s => s.key === axis.section);
                 if (sec && !sec.primary) added.add(sec.key);
             }
         }
@@ -537,11 +537,11 @@ export class PluginSelectDesignSystem extends StateLitElement {
      * - Module/page (l3/l5): ONLY sections that already hold a rule at this scope, plus any
      *   the user explicitly added — keeps the override UI clean; the rest live behind "+".
      */
-    private get _visibleSections(): IDsSection[] {
+    private get _visibleSections(): ILayoutSection[] {
         if (this._isProjectScope) {
-            return dsSections.filter(s => s.primary || this._addedSections.has(s.key));
+            return layoutSections.filter(s => s.primary || this._addedSections.has(s.key));
         }
-        return dsSections.filter(s => this._sectionRuleCount(s.key) > 0 || this._addedSections.has(s.key));
+        return layoutSections.filter(s => this._sectionRuleCount(s.key) > 0 || this._addedSections.has(s.key));
     }
 
     // ── Project scope: identity + base rules (editable) ───────────────
@@ -690,7 +690,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     private _renderReadonlyChip(axisKey: string, value: string) {
-        const axis = dsAxisList.find(a => String(a.key) === axisKey);
+        const axis = layoutAxisList.find(a => String(a.key) === axisKey);
         const label = axis?.label ?? axisKey;
         const isUnset = value === UNSET;
         const display = isUnset ? this.msg.unsetRule : this._humanize(value);
@@ -747,15 +747,15 @@ export class PluginSelectDesignSystem extends StateLitElement {
         `;
     }
 
-    private _sectionAxes(secKey: string): readonly IDsAxisEntry[] {
-        return dsAxisList.filter(a => a.section === secKey);
+    private _sectionAxes(secKey: string): readonly ILayoutAxisEntry[] {
+        return layoutAxisList.filter(a => a.section === secKey);
     }
 
     private _sectionRuleCount(secKey: string): number {
         return this._sectionAxes(secKey).filter(a => a.key in this._axisValues).length;
     }
 
-    private _renderSectionDetails(sec: IDsSection) {
+    private _renderSectionDetails(sec: ILayoutSection) {
         const open = this._openSections.has(sec.key);
         const label = this.msg.sections[sec.key] ?? sec.label;
         const desc = this.msg.sectionDescs[sec.key] ?? sec.desc;
@@ -795,7 +795,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         `;
     }
 
-    private _renderAxis(axis: IDsAxisEntry) {
+    private _renderAxis(axis: ILayoutAxisEntry) {
         const current = this._axisValues[axis.key];                 // value set at THIS scope, UNSET, or undefined
         const inherited = this._isProjectScope ? undefined : this._inherited[axis.key]; // from parent scopes
         const isUnset = current === UNSET;
@@ -816,7 +816,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         `;
     }
 
-    private _renderClearChip(axis: IDsAxisEntry, selected: boolean, inheritedValue?: string) {
+    private _renderClearChip(axis: ILayoutAxisEntry, selected: boolean, inheritedValue?: string) {
         // At a child scope, "not set here" means INHERIT the parent value.
         const label = (!this._isProjectScope && inheritedValue !== undefined) ? this.msg.inheritLabel : this.msg.notSet;
         return html`
@@ -831,7 +831,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     /** Only shown at child scopes when there is an inherited value: writes the UNSET sentinel (relax). */
-    private _renderUnsetChip(axis: IDsAxisEntry, selected: boolean) {
+    private _renderUnsetChip(axis: ILayoutAxisEntry, selected: boolean) {
         return html`
             <button
                 class="text-xs px-2 py-1 rounded-md border transition-colors cursor-pointer
@@ -843,7 +843,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         `;
     }
 
-    private _renderValueChip(axis: IDsAxisEntry, value: string, selected: boolean) {
+    private _renderValueChip(axis: ILayoutAxisEntry, value: string, selected: boolean) {
         return html`
             <button
                 class="text-xs px-2 py-1 rounded-md border transition-colors cursor-pointer
@@ -857,7 +857,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     private _renderAddMore() {
         const visible = new Set(this._visibleSections.map(s => s.key));
-        const remaining = dsSections.filter(s => !visible.has(s.key));
+        const remaining = layoutSections.filter(s => !visible.has(s.key));
         if (!remaining.length) return nothing;
         return html`
             <div class="flex flex-col gap-2">

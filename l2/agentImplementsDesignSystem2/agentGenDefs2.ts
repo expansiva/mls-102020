@@ -95,7 +95,7 @@ async function afterPromptStep(
       // Stamp the DS version (effective rules hash + used-molecules hash) this page was
       // generated under, so staleness can be detected when the DS rules or the molecules
       // it uses later change. Built from finalSrc (which already carries moleculeAssignments).
-      if (!finalSrc.includes('export const dsVersion')) {
+      if (!finalSrc.includes('export const pageVersion')) {
         const stamp = await buildPageDsStamp(project, a.module, a.layout, a.ds, a.page!, new Date().toISOString(), finalSrc);
         finalSrc = `${finalSrc.replace(/\s*$/, '')}\n\n${renderDsVersionExport(stamp)}\n`;
       }
@@ -165,7 +165,7 @@ Produce the FINAL page defs for the new design system, given the ORIGINAL page d
   page11 to the Output path's folder (page{layout}{ds}); keep the page name the same.
 - Keep the loose JSON-ish formatting of the original definition.
 - Output ONLY the merged defs (header + definition + pipeline). Do NOT re-emit the
-  resolved-molecules input, its header, or its moleculeAssignments/usagePaths/dsVersion
+  resolved-molecules input, its header, or its moleculeAssignments/usagePaths/pageVersion
   exports — those are appended later by code.
 
 ## Output format
