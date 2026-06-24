@@ -79,10 +79,10 @@ async function beforePromptImplicit(
         { type: 'system', content: systemPrompt },
         { type: 'human', content: buildHumanPrompt(summaries) },
       ],
-      taskTitle: 'materialize',
+      taskTitle: 'preparing-defs',
       threadId: context.message.threadId,
       userMessage: context.message.content,
-      longTermMemory: { taskName: 'materialize', flowName: 'materialize' },
+      longTermMemory: { taskName: 'preparing-defs', flowName: 'preparing-defs' },
     },
   };
 
@@ -260,7 +260,7 @@ Return valid JSON only — no markdown, no prose outside the JSON.`;
 function buildHumanPrompt(
   summaries: Array<{ moduleName: string; l1Count: number; l1Files: string[]; l2Count: number; l2Files: string[] }>,
 ): string {
-  const lines = ['# Materialize Scan', ''];
+  const lines = ['# Preparing Definition Scan', ''];
   for (const s of summaries) {
     lines.push(`## Module: ${s.moduleName}`);
     lines.push(`L1 files (${s.l1Count}): ${s.l1Files.join(', ') || '(none)'}`);
