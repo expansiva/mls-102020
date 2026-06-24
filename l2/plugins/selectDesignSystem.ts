@@ -28,6 +28,9 @@ const message_en = {
     nameLabel: 'Name',
     namePlaceholder: 'e.g. sunset',
     nameRequired: 'Give the design system a name.',
+    descLabel: 'Description',
+    descPlaceholder: 'What this design system is for (optional)',
+    defaultNote: 'The default design system has no styling tokens — only its name and description.',
     startFrom: 'Start from',
     custom: 'Custom',
     paletteTitle: 'Palette',
@@ -73,6 +76,9 @@ const messages: Record<string, MessageType> = {
         nameLabel: 'Nome',
         namePlaceholder: 'ex.: sunset',
         nameRequired: 'Dê um nome ao design system.',
+        descLabel: 'Descrição',
+        descPlaceholder: 'Para que serve este design system (opcional)',
+        defaultNote: 'O design system padrão não tem tokens de estilização — apenas nome e descrição.',
         startFrom: 'Começar de',
         custom: 'Custom',
         paletteTitle: 'Paleta',
@@ -115,6 +121,9 @@ const messages: Record<string, MessageType> = {
         nameLabel: 'Nombre',
         namePlaceholder: 'ej.: sunset',
         nameRequired: 'Dale un nombre al design system.',
+        descLabel: 'Descripción',
+        descPlaceholder: 'Para qué sirve este design system (opcional)',
+        defaultNote: 'El design system por defecto no tiene tokens de estilización — solo nombre y descripción.',
         startFrom: 'Empezar desde',
         custom: 'Custom',
         paletteTitle: 'Paleta',
@@ -149,7 +158,7 @@ const messages: Record<string, MessageType> = {
 
 // ─── Types & option vocab ─────────────────────────────────────────────
 
-interface IDsEntry { key: number; name: string; skill: string; tokens: DsTokens; }
+interface IDsEntry { key: number; name: string; description: string; skill: string; tokens: DsTokens; }
 interface IRole { name: string; light: string; dark: string; }
 
 // Token'd design systems render through the token-aware skill.
@@ -236,6 +245,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     // ── working token model (edit + add share it) ─────────────────────
     @state() private _name = '';
+    @state() private _desc = '';
     @state() private _skill = DS_SKILL_DEFAULT;
     @state() private _palette: string[] = [];
     @state() private _roles: IRole[] = [];
@@ -288,6 +298,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
             this._entries = Object.keys(dsMap).map(Number).sort((a, b) => a - b).map(k => ({
                 key: k,
                 name: dsMap[k].name,
+                description: (dsMap[k] as any).description ?? '',
                 skill: dsMap[k].skill ?? DS_SKILL_DEFAULT,
                 tokens: dsMap[k].tokens ?? {},
             }));
@@ -299,19 +310,26 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     // ── form sync ──────────────────────────────────────────────────────
+    /** The default DS (lowest key, conventionally 1) carries no styling — name + description only. */
+    private get _isDefaultDs(): boolean {
+        const entry = this._selectedEntry;
+        return !!entry && this._entries.length > 0 && entry.key === this._entries[0].key;
+    }
+
     private _syncForm(): void {
         if (!this.projectId || this._loading) return;
         if (this._isAdd) {
-            if (this._editingKey !== this._customKey) { this._loadDraft(PRESETS.earthy, '', null); this._editingKey = this._customKey; }
+            if (this._editingKey !== this._customKey) { this._loadDraft(PRESETS.earthy, '', '', null); this._editingKey = this._customKey; }
         } else if (this.value !== null && this.value > 0) {
             const entry = this._selectedEntry;
             if (entry && this._editingKey !== entry.key) { this._loadFromEntry(entry); this._editingKey = entry.key; }
         }
     }
 
-    private _loadDraft(tokens: DsTokens, name: string, preset: string | null): void {
+    private _loadDraft(tokens: DsTokens, name: string, desc: string, preset: string | null): void {
         const t = clone(tokens);
         this._name = name;
+        this._desc = desc;
         this._skill = DS_SKILL_DEFAULT;
         this._palette = [...(t.palette ?? [])];
         this._roles = Object.entries(t.color ?? {}).map(([n, v]) => ({ name: n, light: v.light, dark: v.dark }));
@@ -324,7 +342,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     private _loadFromEntry(entry: IDsEntry): void {
-        this._loadDraft(entry.tokens, entry.name, null);
+        this._loadDraft(entry.tokens, entry.name, entry.description, null);
         this._skill = entry.skill || DS_SKILL_DEFAULT;
     }
 
@@ -357,16 +375,19 @@ export class PluginSelectDesignSystem extends StateLitElement {
         return html`
             <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-400 dark:hover:border-indigo-500 p-3 flex flex-col gap-2 cursor-pointer transition-colors"
                 @click=${() => this._dispatchSelect(entry.key)}>
-                <div class="flex items-center gap-2">
-                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">${entry.name}</span>
-                    <span class="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500">.${dsClassName(entry.name)}</span>
+                <div class="flex items-center gap-1.5 min-w-0">
+                    <span class="text-xs font-semibold text-gray-700 dark:text-gray-200 truncate">${entry.name}</span>
+                    <span class="ml-auto shrink-0 text-[9px] font-mono px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500">.${dsClassName(entry.name)}</span>
                 </div>
+                ${entry.description
+                    ? html`<span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug line-clamp-2">${entry.description}</span>`
+                    : nothing}
                 <div class="flex h-6 rounded-md overflow-hidden border border-black/5">
                     ${palette.length
                         ? palette.map(c => html`<span class="flex-1" style="background:${c}"></span>`)
                         : html`<span class="flex-1 bg-gray-100 dark:bg-gray-800"></span>`}
                 </div>
-                <div class="flex gap-2.5 flex-wrap text-[11px] text-gray-400 dark:text-gray-500">
+                <div class="flex gap-2 flex-wrap text-[10px] text-gray-400 dark:text-gray-500">
                     <span>${tokenCount} ${this.msg.tokensSuffix}</span>
                     ${entry.tokens.shape?.radius ? html`<span>radius ${entry.tokens.shape.radius}</span>` : nothing}
                     ${entry.tokens.density ? html`<span>${entry.tokens.density}</span>` : nothing}
@@ -389,10 +410,24 @@ export class PluginSelectDesignSystem extends StateLitElement {
     private _renderEdit() {
         const entry = this._selectedEntry;
         if (!entry) return nothing;
+        // The default DS has no styling tokens — only identity (name + description).
+        if (this._isDefaultDs) {
+            return html`
+                <div class="flex flex-col gap-3">
+                    ${this._navHeader(entry.name, this.msg.desc, this.value ?? 0)}
+                    ${this._renderDefaultNote()}
+                    ${this._renderNameField()}
+                    ${this._renderDescField()}
+                    ${this._saveError ? this._renderSaveError() : nothing}
+                    ${this._renderSave(this.msg.save)}
+                </div>
+            `;
+        }
         return html`
             <div class="flex flex-col gap-3">
                 ${this._navHeader(entry.name, this.msg.desc, this.value ?? 0)}
                 ${this._renderNameField()}
+                ${this._renderDescField()}
                 ${this._renderEditor()}
                 ${this._renderSave(this.msg.save)}
             </div>
@@ -405,9 +440,18 @@ export class PluginSelectDesignSystem extends StateLitElement {
             <div class="flex flex-col gap-3">
                 ${this._navHeader(this.msg.addTitle, this.msg.addDesc, this._customKey)}
                 ${this._renderNameField()}
+                ${this._renderDescField()}
                 ${this._renderPresetPicker()}
                 ${this._renderEditor()}
                 ${this._renderSave(this.msg.create)}
+            </div>
+        `;
+    }
+
+    private _renderDefaultNote() {
+        return html`
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2">
+                <span class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">${this.msg.defaultNote}</span>
             </div>
         `;
     }
@@ -442,7 +486,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     private _selectPreset(key: string): void {
         const keepName = this._name.trim();
-        this._loadDraft(PRESETS[key], keepName || (key === 'custom' ? '' : key), key);
+        const keepDesc = this._desc;
+        this._loadDraft(PRESETS[key], keepName || (key === 'custom' ? '' : key), keepDesc, key);
     }
 
     // ── the editor (palette + colors + typography + shape + elevation) ──
@@ -455,10 +500,12 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 ${this._renderShapeSection()}
                 ${this._renderElevationSection()}
             </div>
-            ${this._saveError
-                ? html`<div class="rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 px-2.5 py-1.5"><span class="text-xs text-red-600 dark:text-red-400">${this._saveError}</span></div>`
-                : nothing}
+            ${this._saveError ? this._renderSaveError() : nothing}
         `;
+    }
+
+    private _renderSaveError() {
+        return html`<div class="rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 px-2.5 py-1.5"><span class="text-[11px] text-red-600 dark:text-red-400">${this._saveError}</span></div>`;
     }
 
     private _section(title: string, tag: string | null, open: boolean, body: unknown) {
@@ -499,7 +546,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     private _renderColorsSection() {
         return this._section(this.msg.colorsTitle, this.msg.colorsTag, true, html`
-            <div class="grid grid-cols-[88px_1fr_1fr_24px] gap-2 items-center text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 px-0.5">
+            <div class="grid grid-cols-[58px_1fr_1fr_18px] gap-1.5 items-center text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 px-0.5">
                 <span>${this.msg.tokenCol}</span><span>${this.msg.light}</span><span>${this.msg.dark}</span><span></span>
             </div>
             <div class="flex flex-col gap-1.5">
@@ -512,13 +559,13 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     private _renderRoleRow(role: IRole, i: number) {
         return html`
-            <div class="grid grid-cols-[88px_1fr_1fr_24px] gap-2 items-center">
-                <input class="text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-2 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none"
+            <div class="grid grid-cols-[58px_1fr_1fr_18px] gap-1.5 items-center">
+                <input class="min-w-0 text-[11px] font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none"
                     .value=${role.name} placeholder="token"
                     @input=${(e: Event) => { role.name = (e.target as HTMLInputElement).value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'); }} />
                 ${this._colorField(role, 'light')}
                 ${this._colorField(role, 'dark')}
-                <button class="text-gray-400 hover:text-red-500 text-base cursor-pointer rounded h-6"
+                <button class="text-gray-400 hover:text-red-500 text-base cursor-pointer rounded h-6 leading-none"
                     @click=${() => { this._roles = this._roles.filter((_, j) => j !== i); }}>×</button>
             </div>
         `;
@@ -527,12 +574,12 @@ export class PluginSelectDesignSystem extends StateLitElement {
     private _colorField(role: IRole, variant: 'light' | 'dark') {
         const hex = role[variant];
         return html`
-            <div class="flex items-center gap-1.5 border border-gray-200 dark:border-gray-700 rounded-md px-1.5 py-1 bg-white dark:bg-gray-900">
-                <label class="relative w-4.5 h-4.5 rounded border border-black/10 overflow-hidden cursor-pointer shrink-0" style="background:${hex}">
+            <div class="flex items-center gap-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-md px-1 py-1 bg-white dark:bg-gray-900">
+                <label class="relative w-4 h-4 rounded border border-black/10 overflow-hidden cursor-pointer shrink-0" style="background:${hex}">
                     <input type="color" class="absolute inset-0 opacity-0 cursor-pointer" .value=${hex}
                         @input=${(e: Event) => { role[variant] = (e.target as HTMLInputElement).value.toUpperCase(); this.requestUpdate(); }} />
                 </label>
-                <input class="w-full text-[11px] font-mono uppercase text-gray-600 dark:text-gray-400 bg-transparent border-0 outline-none p-0"
+                <input class="w-full min-w-0 text-[10px] font-mono uppercase text-gray-600 dark:text-gray-400 bg-transparent border-0 outline-none p-0"
                     .value=${hex}
                     @change=${(e: Event) => { const v = (e.target as HTMLInputElement).value; if (/^#[0-9a-fA-F]{6}$/.test(v)) { role[variant] = v.toUpperCase(); this.requestUpdate(); } }} />
             </div>
@@ -579,7 +626,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         return html`
             <div class="flex flex-col gap-1.5">
                 <label class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${label}</label>
-                <select class="text-xs px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400"
+                <select class="min-w-0 text-[11px] px-1.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400"
                     @change=${(e: Event) => onPick((e.target as HTMLSelectElement).value)}>
                     ${options.map(o => html`<option ?selected=${o === current}>${o}</option>`)}
                 </select>
@@ -606,13 +653,25 @@ export class PluginSelectDesignSystem extends StateLitElement {
     private _renderNameField() {
         return html`
             <div class="flex flex-col gap-1">
-                <label class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.nameLabel}</label>
+                <label class="text-[11px] font-semibold text-gray-600 dark:text-gray-300">${this.msg.nameLabel}</label>
                 <input type="text"
-                    class="w-full text-sm px-2.5 py-1.5 rounded-md border bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400
+                    class="w-full text-[11px] px-2.5 py-1.5 rounded-md border bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400
                         ${this._nameError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'}"
                     placeholder=${this.msg.namePlaceholder} .value=${this._name}
                     @input=${(e: Event) => { this._name = (e.target as HTMLInputElement).value; this._nameError = false; }} />
-                ${this._nameError ? html`<span class="text-xs text-red-500 dark:text-red-400">${this.msg.nameRequired}</span>` : nothing}
+                ${this._nameError ? html`<span class="text-[11px] text-red-500 dark:text-red-400">${this.msg.nameRequired}</span>` : nothing}
+            </div>
+        `;
+    }
+
+    private _renderDescField() {
+        return html`
+            <div class="flex flex-col gap-1">
+                <label class="text-[11px] font-semibold text-gray-600 dark:text-gray-300">${this.msg.descLabel}</label>
+                <textarea rows="2"
+                    class="w-full text-[11px] px-2.5 py-1.5 rounded-md resize-y border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    placeholder=${this.msg.descPlaceholder} .value=${this._desc}
+                    @input=${(e: Event) => { this._desc = (e.target as HTMLTextAreaElement).value; }}></textarea>
             </div>
         `;
     }
@@ -649,12 +708,13 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
         const isNew = this._isAdd;
         const key = isNew ? this._customKey : (this._selectedEntry?.key ?? this._customKey);
-        const tokens = this._buildTokens();
+        // The default DS keeps only identity (no styling tokens are written).
+        const tokens = this._isDefaultDs ? null : this._buildTokens();
 
         this._saving = true;
         this._saveError = '';
         try {
-            await this._persist(this.projectId, key, name, this._skill || DS_SKILL_DEFAULT, tokens);
+            await this._persist(this.projectId, key, name, this._desc.trim(), this._skill || DS_SKILL_DEFAULT, tokens);
             // Regenerate the project-wide stylesheet so servicePreview reflects the change.
             await buildGlobalCss(this.projectId);
         } catch (err) {
@@ -677,14 +737,17 @@ export class PluginSelectDesignSystem extends StateLitElement {
         }
     }
 
-    private async _persist(projectId: number, key: number, name: string, skill: string, tokens: DsTokens): Promise<void> {
+    private async _persist(projectId: number, key: number, name: string, description: string, skill: string, tokens: DsTokens | null): Promise<void> {
         const config: any = await getConfigProject(projectId);
         if (!config) throw new Error('project config not found');
         const current = config.designSystems;
         const designSystems: Record<string, any> =
             (current && typeof current === 'object' && !Array.isArray(current)) ? current : {};
         const existing = designSystems[key] ?? {};
-        designSystems[key] = { ...existing, name, skill, tokens };
+        // tokens === null → default DS: keep identity only, leave any existing tokens untouched.
+        designSystems[key] = tokens === null
+            ? { ...existing, name, description, skill }
+            : { ...existing, name, description, skill, tokens };
         config.designSystems = designSystems;
         await updateConfigProject(projectId, config);
     }
