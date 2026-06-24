@@ -11,6 +11,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { registerPageGenome } from '/_102020_/l2/dsMatch/registerPageGenome.js';
+import { buildGlobalCss } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
 import { parseStepArgs, mkCompleted, mkFail } from '/_102020_/l2/agentImplementsDesignSystem2/planning.js';
 
 export function createAgent(): IAgentAsync {
@@ -39,6 +40,8 @@ async function beforePromptStep(
     if (!context.isTest) {
       // Register the new variation in module.ts.
       await registerPageGenome(project, a.module, a.layout, a.ds, a.device);
+      // Regenerate the project-wide DS stylesheet from designSystems[*].tokens (Phase B).
+      await buildGlobalCss(project);
     }
     return [mkCompleted(context, parentStep, step, hookSequential)];
   } catch (error) {

@@ -17,6 +17,7 @@ import { languages } from '/_102027_/l2/collabLanguages.js';
 
 
 import { getDependenciesByHtml } from '/_102020_/l2/buildFile.js';
+import { readDsGlobalCss } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
 
 import '/_102025_/l2/collabMessagesPrompt.js';
 
@@ -655,6 +656,9 @@ export class ServicePreview extends ServiceBase {
       if (less) out.push({ id, css: less });
       const tokens = await getTokensCss(this.project, this.actualTheme);
       if (tokens) out.push({ id: this.getIdTokens(), css: tokens });
+      // Aura per-DS stylesheet (Phase B): class-scoped `--ds-*` variables.
+      const dsGlobal = await readDsGlobalCss(this.project);
+      if (dsGlobal) out.push({ id: this.getIdDsGlobal(), css: dsGlobal });
     } catch (e: any) {
       console.info('Erro _getCompiledStyles: ' + (e?.message || e));
     }
@@ -919,6 +923,7 @@ export class ServicePreview extends ServiceBase {
     const id = convertFileToTag({ project: this.project, shortName: this.shortName, folder: this.folder });
     const newLess = await compileStyleUsingStorFile(this.shortName, this.project, this.folder, this.actualTheme);
     const tokens = await getTokensCss(this.project, this.actualTheme);
+    const dsGlobal = await readDsGlobalCss(this.project);
 
     if (this._previewMode === 'shared') {
       const iframeHtml = iframe.contentDocument;
@@ -932,10 +937,23 @@ export class ServicePreview extends ServiceBase {
         if (oldStyle) oldStyle.remove();
       }
       this.mountTokens(tokens || '');
+      this._mountStyleById(iframeHtml, this.getIdDsGlobal(), dsGlobal || '');
     } else {
       if (newLess) this._postToPreview({ type: 'setStyle', id, css: newLess });
       this._postToPreview({ type: 'setStyle', id: this.getIdTokens(), css: tokens || '' });
+      this._postToPreview({ type: 'setStyle', id: this.getIdDsGlobal(), css: dsGlobal || '' });
     }
+  }
+
+  /** Replace (or create) a <style id=…> in the shared iframe head. */
+  private _mountStyleById(iframeHtml: Document, id: string, css: string): void {
+    const old = iframeHtml.head.querySelector(`style[id=${id}]`);
+    if (old) old.remove();
+    if (!css) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = css;
+    iframeHtml.head.appendChild(style);
   }
 
   private mountTokens(tokens: string): void {
@@ -964,6 +982,10 @@ export class ServicePreview extends ServiceBase {
 
   private getIdTokens() {
     return '_' + this.project + '_ds_tokens';
+  }
+
+  private getIdDsGlobal() {
+    return '_' + this.project + '_ds_global';
   }
 
   // Editor 
