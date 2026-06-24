@@ -15,6 +15,7 @@ import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import '/_102027_/l2/collabSelectKnob.js';
 import '/_102020_/l2/plugins/selectLayout.js';
 import '/_102020_/l2/plugins/selectLayoutRules.js';
+import '/_102020_/l2/plugins/selectDesignSystem.js';
 import '/_102020_/l2/plugins/selectMolecule.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -383,6 +384,13 @@ export class ServiceGenome102020 extends ServiceBase {
         this._setKnobValue('layout', value);
     }
 
+    private async _onDsCreated(value: number) {
+        // A new design system was persisted. Rebuild the DS knob (new entry + fresh "+"
+        // slot), then select it.
+        await this._initDsKnob();
+        this._setKnobValue('designSystem', value);
+    }
+
     private _onKnobChange(key: string, e: CustomEvent) {
         this._selectedKnob = key;
         this._setKnobValue(key, e.detail.value);
@@ -625,6 +633,7 @@ export class ServiceGenome102020 extends ServiceBase {
                     @molecule-replace-mode=${(e: CustomEvent) => { this._moleculeReplaceMode = e.detail.value; this.requestUpdate(); }}
                     @ds-config=${(e: CustomEvent) => this._onDsConfig(e)}
                     @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
+                    @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}
                 >
                     ${this._renderContextStatusArea()}
                 </div>
@@ -669,11 +678,13 @@ export class ServiceGenome102020 extends ServiceBase {
                 `;
             }
             case 'designSystem':
-                // Phase B will turn the DS into a styling editor (colors/fonts). Placeholder for now.
+                // Phase B — DS = styling. The editor reads/writes designSystems[ds].tokens and
+                // regenerates global.css on save. Knob: 0=All, 1..N=edit, last=Add.
                 return html`
-                    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
-                        <span class="text-sm text-gray-400 dark:text-gray-500">${this.msg.dsStylingSoon}</span>
-                    </div>
+                    <plugins--select-design-system-102020
+                        .projectId=${getAuraState().actualProject}
+                        .value=${this._dsValue}
+                    ></plugins--select-design-system-102020>
                 `;
             case 'molecules':
                 return html`
