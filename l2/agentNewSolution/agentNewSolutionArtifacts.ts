@@ -1164,11 +1164,14 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
       });
     };
 
+    // lowerFirst is shared by the LLM-group naming (analise10 T2) and the gap-fill below.
+    const lowerFirst = (value: string) => value ? value.charAt(0).toLowerCase() + value.slice(1) : value;
+
     // ---- 1. groups planned by the LLM (enriched with shape + storage) ----------------------
     for (const value of usecaseEntities) {
       const entity = getRecord(value);
-      const entityId = readString(entity?.usecaseEntityId);
-      if (!entity || !entityId) continue;
+      const usecaseEntityId = readString(entity?.usecaseEntityId);
+      if (!entity || !usecaseEntityId) continue;
       const sourceTables = Array.isArray(entity.sourceTables) ? entity.sourceTables : [];
       const tableNames: string[] = [];
       const storage: Record<string, unknown>[] = [];
@@ -1186,7 +1189,6 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
           if (alias) coveredTables.add(alias);
         }
       }
-      registerEntityTables(entityId, tableNames);
       // A-03 (todo5): the entity defs is the canonical domain shape — fields are REQUIRED for
       // every entity, including multi-table groups (e.g. base entity + its metric table). The
       // shape comes from the group's PRIMARY binding: the first moduleTable's rootEntity or the
@@ -1195,6 +1197,21 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
       const ontologyId = primary?.kind === 'moduleTable'
         ? tableByName.get(readString(primary.tableName) || '')?.rootEntity
         : primary?.kind === 'mdm' ? readString(primary.entity) : undefined;
+      // analise10 T2: name the entity from the canonical ontology rootEntity (same convention as
+      // the deterministic gap-fill below), not from the LLM's free-text usecaseEntityId — so a
+      // group the LLM called 'pedidoEntity' becomes 'order'/OrderEntity, aligned with the ontology
+      // and the table's rootEntity. Fall back to the LLM id when no ontology root resolves or the
+      // canonical id was already taken by another group.
+      let entityId = ontologyId ? lowerFirst(ontologyId) : usecaseEntityId;
+      if (entityId !== usecaseEntityId && usedEntityIds.has(entityId)) entityId = usecaseEntityId;
+      // analise10 T3: explicit aggregate -> ontology map, so a reference by ANY covered ontology
+      // entity id (e.g. 'Order', 'OrderStatusHistory') resolves to this layer_4 entity.
+      const ontologyEntityRefs = [...new Set(storage.map(binding => {
+        if (binding.kind === 'moduleTable') return tableByName.get(readString(binding.tableName) || '')?.rootEntity;
+        if (binding.kind === 'mdm') return readString(binding.entity);
+        return undefined;
+      }).filter((id): id is string => !!id))];
+      registerEntityTables(entityId, tableNames);
       const usecaseRefs = usecases
         .map(item => getRecord(item))
         .filter((usecase): usecase is Record<string, unknown> => !!usecase && usecaseTouchesEntityTables(usecase, sourceTables))
@@ -1206,6 +1223,7 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
         purpose: readString(entity.purpose) || '',
         layer: 'layer_4_entities',
         ...shapeFromOntology(ontologyId),
+        ...(ontologyEntityRefs.length > 0 ? { ontologyEntities: ontologyEntityRefs } : {}),
         sourceTables,
         storage,
         allowedOperations: Array.isArray(entity.allowedOperations) ? entity.allowedOperations : [],
@@ -1215,7 +1233,6 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
     }
 
     // ---- 2. deterministic gap-fill (A1): one entity per uncovered table/metric/MDM ---------
-    const lowerFirst = (value: string) => value ? value.charAt(0).toLowerCase() + value.slice(1) : value;
     if (catalog) {
       for (const table of catalog.tables) {
         if (coveredTables.has(table.tableName) || coveredTables.has(table.tableId)) continue;
