@@ -870,6 +870,9 @@ function buildCoverageSnapshot(
     if (record.priority === 'never') return;
     const rawId = record.horizontalModuleId ?? record.artifactId ?? record.signal;
     const id = normalizeHorizontalModuleId(rawId);
+    // analise11 T12: auth, audit, monitoring and notifications are platform-provided — the module
+    // must not spend budget on them, so never flag them as a missing artifact.
+    if (id && /notificac|notification|audit|monitor|observab|telemetr|logging|auth|permission/i.test(id)) return;
     if (!id || !plannedHorizontalIds.has(id)) {
       addIssue('error', 'horizontal.artifact.missing', `approved horizontal module ${String(rawId || `#${i}`)} produced no plan item/artifact`, `approvedArtifacts.horizontalModules[${i}]`);
     }
@@ -903,7 +906,9 @@ function buildCoverageSnapshot(
     const checkEntityRefs = (refs: unknown, subject: string, path: string) => {
       for (const ref of asStrings(refs)) {
         if (!knownEntityKeys.has(normEntityKey(ref))) {
-          addIssue('warning', 'entity.ref.unknown', `${subject} references unknown entity ${ref}`, path);
+          // analise10 T7: refs are now derived deterministically from the tables (T5), so a healthy
+          // run resolves all of them — an unresolved ref is a real defect, not noise.
+          addIssue('error', 'entity.ref.unknown', `${subject} references unknown entity ${ref}`, path);
         }
       }
     };
@@ -1058,7 +1063,7 @@ function asArray(value: unknown): unknown[] {
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codeawsfast -->
 
 You are agentValidateSolutionCoverage for the collab.codes "newSolution" flow.
 Perform a final cross-plan validation of the entire solution before any .defs materialization.

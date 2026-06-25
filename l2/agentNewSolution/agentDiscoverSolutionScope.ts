@@ -673,7 +673,7 @@ function optionalPriority(value: unknown, path: string): Priority | undefined {
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codereasoning -->
 <!-- x-tool-strict: true -->
 
 You are agentDiscoverSolutionScope for the collab.codes "newModule" flow.
@@ -700,6 +700,7 @@ Do not return prose.
 - Detect external integrations only when the prompt or clarification implies them.
 - Do not use hard-coded domain assumptions. Infer required domain actions from the requested solution.
 - When the domain contains a booking, order, request, subscription, approval, service request, or similar commitment (sometimes called reservation or rental in specific domains), identify the main subject/resource/item/service being committed and the user action that selects or confirms it. Use names from the actual prompt and ontology.
+- (T12) Authentication, authorization/roles, audit, monitoring/observability, and notifications are PLATFORM-PROVIDED. Do not raise them as solution signals or scope for this module (treat as priority never).
 - Use status "needs_input" only when the scope cannot be safely drafted without another client decision; then include questions or missingContext.
 - Use status "failed" only for structural impossibility.
 `;

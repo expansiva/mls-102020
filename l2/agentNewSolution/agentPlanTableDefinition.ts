@@ -486,7 +486,7 @@ function recordHasAnyRef(value: unknown, refs: Set<string>, keys: string[]): boo
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codefast -->
 <!-- x-tool-strict: true -->
 
 You are agentPlanTableDefinition for the collab.codes "newSolution" flow.

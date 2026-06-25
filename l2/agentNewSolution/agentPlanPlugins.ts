@@ -677,7 +677,7 @@ function optionalNumber(value: unknown, path: string): number | undefined {
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codepro -->
 <!-- x-tool-strict: true -->
 
 You are agentPlanPlugins for the collab.codes "newSolution" flow.

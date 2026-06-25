@@ -335,7 +335,7 @@ ${JSON.stringify(config.buildReviewContext(context), null, 2)}
 }
 
 const systemPrompt = `
-<!-- modelType: codepro -->
+<!-- modelType: codereasoning -->
 <!-- x-tool-strict: true -->
 
 You are agentCriticPlanIndex for the collab.codes "newSolution" flow.

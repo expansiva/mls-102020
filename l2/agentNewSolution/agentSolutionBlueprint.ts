@@ -282,7 +282,7 @@ ${snapshot.initialMetricsRequested}
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codereasoning -->
 <!-- x-tool-strict: true -->
 
 You are agentSolutionBlueprint for the collab.codes "newSolution" flow.

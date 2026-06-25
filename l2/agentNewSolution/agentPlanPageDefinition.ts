@@ -435,7 +435,15 @@ async function afterPromptStep(
   // (cleaner="input") so the page is not lost from the task.
   let cleaner: 'input' | 'input_output' | undefined;
   if (status === 'completed' && output) {
-    const saved = await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output);
+    // analise10 T5: give the writer the tableName/tableId -> rootEntity map so it derives the page's
+    // descriptive entity refs from the tables (canonical ids), not the LLM's free-text group ids.
+    const tableRootEntities: Record<string, string> = {};
+    try {
+      for (const t of getPlanPersistenceIndexOutput(context).result.tables) {
+        if (t.rootEntity) { tableRootEntities[t.tableName] = t.rootEntity; tableRootEntities[t.tableId] = t.rootEntity; }
+      }
+    } catch { /* best-effort: no map -> writer keeps the LLM refs */ }
+    const saved = await saveNewSolutionPlanArtifacts(context, agent.agentName, step, output, { tableRootEntities });
     cleaner = saved.length > 0 ? 'input_output' : 'input';
   }
 
@@ -856,5 +864,8 @@ Do not return prose.
 - Do not put the same workflow id in more than one flowRefs bucket.
 - Do not generate frontend code, materialization, or .defs implementation details.
 - defs are produced later; focus on the conceptual page + BFF contract.
+- (T13) Every entity the page displays must have a read (query) BFF command backed by an EXISTING usecase; if the needed read usecase is missing, reuse the closest existing one instead of returning needs_input.
+- (T11) For multi-step commitment flows, prefer a focused sequence (selection -> review -> confirm) expressed as ordered sections/organisms (wizard), keeping each step simple.
+- (T12) Never reference platform-provided concerns (authentication, audit, monitoring, notifications) as entities, commands, or organisms — the platform handles them.
 - If information is insufficient for a firm plan, return status "needs_input" with questions.
 `;
