@@ -8,6 +8,7 @@ import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
 import '/_102020_/l2/plugins/selectModule.js';
+import '/_102020_/l2/plugins/selectDesignSystem.js';
 import '/_102020_/l2/plugins/selectDevice.js';
 import '/_102020_/l2/plugins/selectAssetsComponents.js';
 import '/_102020_/l2/plugins/selectAssetsPlugins.js';
@@ -21,7 +22,6 @@ const message_en = {
     designSystem: 'Design System',
     device: 'Device',
     assets: 'Assets',
-    dsStylingSoon: 'Design System will configure styling (colors, fonts). Rules are now set on the Layout (in the Genome). Coming soon.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -32,7 +32,6 @@ const messages: Record<string, MessageType> = {
         designSystem: 'Design System',
         device: 'Dispositivo',
         assets: 'Assets',
-        dsStylingSoon: 'O Design System vai configurar a estilização (cores, fontes). As rules agora ficam no Layout (no Genome). Em breve.',
     },
     es: {
         svcTitle: 'Proyecto',
@@ -40,7 +39,6 @@ const messages: Record<string, MessageType> = {
         designSystem: 'Design System',
         device: 'Dispositivo',
         assets: 'Assets',
-        dsStylingSoon: 'El Design System configurará la estilización (colores, fuentes). Las reglas ahora se definen en el Layout (en el Genome). Próximamente.',
     },
 };
 /// **collab_i18n_end**
@@ -168,6 +166,13 @@ export class ServiceProject102020 extends ServiceBase {
         }
         this._initDsConfig(project);
         this.requestUpdate();
+    }
+
+    private async _onDsCreated(value: number) {
+        // New DS persisted: rebuild the knob (new entry + fresh "+" slot), then select it.
+        const project = getAuraState().actualProject;
+        if (project != null) await this._initDsConfig(project);
+        this._setKnobValue('designSystem', value);
     }
 
     private async _initDsConfig(projectId: number): Promise<void> {
@@ -366,6 +371,7 @@ export class ServiceProject102020 extends ServiceBase {
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col gap-3 px-4 py-4 flex-1"
                     @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
+                    @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}
                     @ds-config=${(e: CustomEvent) => { this._dsConfig = { key: 'designSystem', min: e.detail.min, max: e.detail.max, labels: e.detail.labels }; this.requestUpdate(); }}
                     @select-assets=${(e: CustomEvent) => this._setKnobValue('assets', e.detail.value)}
                 >
@@ -386,12 +392,12 @@ export class ServiceProject102020 extends ServiceBase {
                     ></plugins--select-module-102020>
                 `;
             case 'designSystem':
-                // Rules moved to the Layout (edited in the Genome). The DS becomes a styling
-                // editor in Phase B — placeholder for now.
+                // Phase B — DS = styling. Same tokens editor as the genome (project-wide tokens).
                 return html`
-                    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
-                        <span class="text-sm text-gray-400 dark:text-gray-500">${this.msg.dsStylingSoon}</span>
-                    </div>
+                    <plugins--select-design-system-102020
+                        .projectId=${getAuraState().actualProject}
+                        .value=${this._dsValue}
+                    ></plugins--select-design-system-102020>
                 `;
             case 'device':
                 return html`

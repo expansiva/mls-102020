@@ -27,7 +27,6 @@ const message_en = {
     molecules: 'Molecules',
     noPageSelected: 'No page selected',
     notAPage: 'Current file is not a page',
-    dsStylingSoon: 'Design System will configure styling (colors, fonts). Coming soon.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -39,7 +38,6 @@ const messages: Record<string, MessageType> = {
         molecules: 'Moléculas',
         noPageSelected: 'Nenhuma página selecionada',
         notAPage: 'O arquivo atual não é uma página',
-        dsStylingSoon: 'O Design System vai configurar a estilização (cores, fontes). Em breve.',
     },
     es: {
         svcTitle: 'Genome',
@@ -48,7 +46,6 @@ const messages: Record<string, MessageType> = {
         molecules: 'Moléculas',
         noPageSelected: 'Ninguna página seleccionada',
         notAPage: 'El archivo actual no es una página',
-        dsStylingSoon: 'El Design System configurará la estilización (colores, fuentes). Próximamente.',
     },
 };
 /// **collab_i18n_end**
