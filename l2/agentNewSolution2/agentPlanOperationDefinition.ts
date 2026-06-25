@@ -16,6 +16,7 @@ import {
   getPlannerOutputs,
   normalizeStringList,
   optionalString,
+  resolveCapabilityInfo,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import { operationFileInfo, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
@@ -23,6 +24,7 @@ import { operationDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/
 import { getOperationIndex } from '/_102020_/l2/agentNewSolution2/agentPlanOperationIndex.js';
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
 import { getEnrichedOntology } from '/_102020_/l2/agentNewSolution2/agentNs2EntityDefinition.js';
+import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finalize.js';
 
 const AGENT_NAME = 'agentPlanOperationDefinition';
 const TOOL_NAME = 'submitOperationDefinition';
@@ -37,6 +39,9 @@ export interface OperationDefinition {
   writes: string[];
   rulesApplied: string[];
   story: { actor: string; goal: string; soThat?: string; steps: string[]; outcome: string };
+  // Mechanically attached at save (not from the LLM): the capability this operation realizes + its
+  // priority — makes the operation the source of truth for "which feature + phase" it covers.
+  capability?: { capabilityId: string; title: string; actor?: string; priority?: string };
 }
 export interface OperationDefinitionResult { operationDefinition: OperationDefinition }
 export type OperationDefinitionOutput = PlannerOutput<OperationDefinitionResult>;
@@ -76,7 +81,11 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   }
   if (status === 'completed' && output && output.status === 'ok') {
     try {
-      await saveDefsArtifact(operationFileInfo(output.result.operationDefinition.operationId), `operation${capitalize(output.result.operationDefinition.operationId)}`, output.result.operationDefinition);
+      const def = output.result.operationDefinition;
+      // Attach the realized capability (id + title + priority) deterministically.
+      const capabilityId = getBehaviorIndex(context).result.operations.find(o => o.operationId === def.operationId)?.capabilityId;
+      def.capability = capabilityId ? resolveCapabilityInfo([capabilityId], getFinalizeOutput(context).result.capabilities as unknown[])[0] : undefined;
+      await saveDefsArtifact(operationFileInfo(def.operationId), `operation${capitalize(def.operationId)}`, def);
     } catch (error) {
       console.warn(`[${AGENT_NAME}] save failed for ${selector}`, error);
     }

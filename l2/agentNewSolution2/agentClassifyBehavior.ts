@@ -33,7 +33,7 @@ const AGENT_NAME = 'agentClassifyBehavior';
 const TOOL_NAME = 'submitBehaviorIndex';
 
 export interface Story { actor: string; goal: string; soThat?: string; steps: string[]; outcome: string }
-export interface WorkflowClassItem { workflowId: string; title: string; actor: string; entities: string[]; capabilityIds: string[]; story: Story }
+export interface WorkflowClassItem { workflowId: string; title: string; actor: string; entities: string[]; capabilityIds: string[]; operationIds: string[]; story: Story }
 export interface OperationClassItem { operationId: string; title: string; actor: string; entity: string; kind: 'create' | 'update' | 'delete' | 'query' | 'view'; capabilityId: string; story: Story }
 export interface BehaviorIndex { workflows: WorkflowClassItem[]; operations: OperationClassItem[] }
 export type BehaviorIndexOutput = PlannerOutput<BehaviorIndex>;
@@ -85,9 +85,13 @@ async function checkReferences(context: mls.msg.ExecutionContext, index: Behavio
   const checkEntity = (ref: string, where: string) => { if (!isKnownEntityRef(ref, knownEntities)) warnings.push(`${where}: unknown entity ref '${ref}'`); };
   const checkActor = (ref: string, where: string) => { if (ref && knownActors.size > 0 && !knownActors.has(ref)) warnings.push(`${where}: unknown actor '${ref}'`); };
 
+  const opIds = new Set(index.operations.map(o => o.operationId));
   for (const w of index.workflows) {
     checkActor(w.actor, `workflow ${w.workflowId}`);
     for (const e of w.entities) checkEntity(e, `workflow ${w.workflowId}`);
+    // item 4: workflow -> operation link must resolve and stateful workflows should orchestrate ops.
+    for (const opId of w.operationIds) if (!opIds.has(opId)) warnings.push(`workflow ${w.workflowId}: operationId '${opId}' is not in operations[]`);
+    if (w.operationIds.length === 0) warnings.push(`workflow ${w.workflowId}: no operations orchestrated (stateful workflow with zero operations is a smell)`);
   }
   for (const o of index.operations) {
     checkActor(o.actor, `operation ${o.operationId}`);
@@ -124,6 +128,7 @@ function normalizeResult(value: unknown): BehaviorIndex {
       actor: assertString(w.actor, `result.workflows[${index}].actor`),
       entities: normalizeStringList(w.entities, `result.workflows[${index}].entities`),
       capabilityIds: normalizeStringList(w.capabilityIds, `result.workflows[${index}].capabilityIds`),
+      operationIds: normalizeStringList(w.operationIds, `result.workflows[${index}].operationIds`),
       story: normalizeStory(w.story, `result.workflows[${index}].story`),
     };
   });
@@ -147,14 +152,17 @@ const systemPrompt = `
 <!-- x-tool-strict: true -->
 
 You are ${AGENT_NAME} for the collab.codes "newSolution2" flow (Stage 1 — the heart of it).
-Classify EVERY priority-now capability/user-action into exactly one of:
+Classify EVERY capability that is NOT priority "never" (i.e. now AND soon AND later) into exactly one of:
 - a Workflow: stateful, triggered, spanning time and/or multiple actors (a request/order/approval lifecycle).
 - an Operation: a direct action of ONE actor on ONE entity (create/update/delete/query/view; dashboards = query/view).
+Do NOT drop soon/later capabilities — they must be classified too (their priority is carried by the
+capability and used later to phase the work). Key screens the user asked for (e.g. dashboards, AI
+summaries) are often "soon": classify them as query/view operations (AI ones call the platform LLM proxy).
 
 Call the "{{toolName}}" tool with: status, result, questions, trace. Do not return prose.
 
 In result:
-- workflows[]: { workflowId, title, actor, entities[], capabilityIds[], story }.
+- workflows[]: { workflowId, title, actor, entities[], capabilityIds[], operationIds[], story }.
 - operations[]: { operationId, title, actor, entity, kind, capabilityId, story }.
 - story = { actor, goal, soThat?, steps[], outcome } — derive it from the clarification/scope; this
   absorbs the user journey (do NOT emit a separate journeys artifact).
@@ -162,12 +170,13 @@ In result:
 Rules:
 - Use canonical ONTOLOGY entity ids for entities/entity (the provided ids), never aggregate/group names.
 - Use actorId values for actors.
-- Every priority-now capability must be owned by exactly one workflow or operation.
+- Every capability that is not "never" must be owned by exactly one workflow or operation.
 - Emit Operations for managing master-data / MDM entities (create/update/delete/query) even when the
   capability is implicit (e.g. manage categories, manage tables).
-- Besides standalone operations, also emit Operations for the discrete reusable actions performed
-  INSIDE a workflow (e.g. create/update an entity, change a status) so each workflow can later
-  orchestrate them — a stateful workflow should rarely end up with zero operations.
+- workflow.operationIds: list the discrete reusable actions the workflow orchestrates AND emit each of
+  those as an Operation in operations[] (e.g. createStockMovement, updateKitchenStatus,
+  cancelOrderAndReconcile). A stateful workflow must NOT have an empty operationIds — every workflow
+  step that creates/updates/changes-status of an entity is an Operation it orchestrates.
 - camelCase workflowId/operationId.
 
 `;

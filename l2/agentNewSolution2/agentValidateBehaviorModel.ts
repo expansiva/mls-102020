@@ -65,15 +65,20 @@ export async function computeBehaviorHealthReport(context: mls.msg.ExecutionCont
   const actorRef = (ref: string, where: string) => { if (ref && knownActors.size > 0 && !knownActors.has(ref)) warnings.push({ severity: 'warning', code: 'actor.unknown', message: `${where}: unknown actor '${ref}'` }); };
   const ruleRefs = (refs: string[], where: string) => { for (const r of refs) if (knownRules.size > 0 && !knownRules.has(r)) warnings.push({ severity: 'warning', code: 'rule.unknown', message: `${where}: unknown rule '${r}'` }); };
 
-  // Capability coverage: each priority-now capability owned by exactly one workflow or operation.
+  // Capability coverage: every non-"never" capability should be owned by exactly one workflow or
+  // operation. priority-now unowned is a hard error; soon/later unowned is a (non-blocking) warning.
   const ownerCount = new Map<string, number>();
   for (const w of behavior.workflows) for (const c of w.capabilityIds) ownerCount.set(c, (ownerCount.get(c) || 0) + 1);
   for (const o of behavior.operations) ownerCount.set(o.capabilityId, (ownerCount.get(o.capabilityId) || 0) + 1);
   for (const cap of fp.capabilities as { capabilityId?: string; priority?: string }[]) {
-    if (cap.priority !== 'now' || !cap.capabilityId) continue;
+    if (cap.priority === 'never' || !cap.capabilityId) continue;
     const count = ownerCount.get(cap.capabilityId) || 0;
-    if (count === 0) errors.push({ severity: 'error', code: 'capability.unowned', message: `capability '${cap.capabilityId}' is not owned by any workflow or operation` });
-    else if (count > 1) warnings.push({ severity: 'warning', code: 'capability.multiowned', message: `capability '${cap.capabilityId}' is owned by ${count} behaviors` });
+    if (count === 0) {
+      if (cap.priority === 'now') errors.push({ severity: 'error', code: 'capability.unowned', message: `capability '${cap.capabilityId}' (now) is not owned by any workflow or operation` });
+      else warnings.push({ severity: 'warning', code: 'capability.unowned.deferred', message: `capability '${cap.capabilityId}' (${cap.priority}) is not owned by any workflow or operation` });
+    } else if (count > 1) {
+      warnings.push({ severity: 'warning', code: 'capability.multiowned', message: `capability '${cap.capabilityId}' is owned by ${count} behaviors` });
+    }
   }
 
   // Workflow integrity.

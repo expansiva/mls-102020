@@ -35,9 +35,10 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   if (!context.task) throw new Error('[agentNewSolution2Final] task invalid');
+  // This agent is wired ONLY to the final-resume step (the org-handoff container is a separate
+  // no-LLM agent so it does not expose openStepView). The planId guard stays defensive.
   const planId = (step as { planning?: { planId?: string } }).planning?.planId;
   if (planId === 'final-resume') return autoFinish(context, parentStep, step, hookSequential);
-  // org-handoff container: just open the children.
   return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed')];
 }
 

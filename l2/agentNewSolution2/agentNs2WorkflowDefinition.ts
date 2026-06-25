@@ -17,6 +17,7 @@ import {
   isRecord,
   normalizeStringList,
   optionalString,
+  resolveCapabilityInfo,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import { readWorkflowDefs, saveAgentTrace, saveDefsArtifact, workflowFileInfo } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
@@ -24,6 +25,7 @@ import { workflowDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/n
 import { getWorkflowIndex } from '/_102020_/l2/agentNewSolution2/agentNs2WorkflowIndex.js';
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
 import { getEnrichedOntology } from '/_102020_/l2/agentNewSolution2/agentNs2EntityDefinition.js';
+import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finalize.js';
 
 const AGENT_NAME = 'agentNs2WorkflowDefinition';
 const TOOL_NAME = 'submitWorkflowDefinition';
@@ -41,6 +43,9 @@ export interface WorkflowDefinition {
   entities: string[];
   rulesApplied: string[];
   story: { actor: string; goal: string; soThat?: string; steps: string[]; outcome: string };
+  // Mechanically attached at save (not from the LLM): the capabilities this workflow realizes, with
+  // their priority — makes the workflow the source of truth for "which feature + phase" it covers.
+  capabilities?: { capabilityId: string; title: string; actor?: string; priority?: string }[];
 }
 export interface WorkflowDefinitionResult { workflowDefinition: WorkflowDefinition }
 export type WorkflowDefinitionOutput = PlannerOutput<WorkflowDefinitionResult>;
@@ -86,7 +91,11 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   }
   if (status === 'completed' && output && output.status === 'ok') {
     try {
-      await saveDefsArtifact(workflowFileInfo(output.result.workflowDefinition.workflowId), `workflow${capitalize(output.result.workflowDefinition.workflowId)}`, output.result.workflowDefinition);
+      const def = output.result.workflowDefinition;
+      // Attach the realized capabilities (id + title + priority) deterministically.
+      const capabilityIds = getBehaviorIndex(context).result.workflows.find(w => w.workflowId === def.workflowId)?.capabilityIds || [];
+      def.capabilities = resolveCapabilityInfo(capabilityIds, getFinalizeOutput(context).result.capabilities as unknown[]);
+      await saveDefsArtifact(workflowFileInfo(def.workflowId), `workflow${capitalize(def.workflowId)}`, def);
     } catch (error) {
       console.warn(`[${AGENT_NAME}] save failed for ${selector}`, error);
     }

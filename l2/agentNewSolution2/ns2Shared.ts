@@ -225,6 +225,24 @@ export function summarizeRecords(items: unknown[] | undefined, keys: string[]): 
   });
 }
 
+/** Resolve capability ids against the (finalize) capabilities list into compact info to attach to a
+ * workflow/operation: { capabilityId, title, actor, priority }. Deterministic; unknown ids kept id-only. */
+export function resolveCapabilityInfo(ids: string[], capabilities: unknown[]): { capabilityId: string; title: string; actor?: string; priority?: string }[] {
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const c of Array.isArray(capabilities) ? capabilities : []) {
+    if (isRecord(c) && typeof c.capabilityId === 'string') byId.set(c.capabilityId, c);
+  }
+  return ids.filter(Boolean).map(id => {
+    const c = byId.get(id);
+    return {
+      capabilityId: id,
+      title: (c && typeof c.title === 'string' ? c.title : id),
+      actor: c && typeof c.actor === 'string' ? c.actor : undefined,
+      priority: c && typeof c.priority === 'string' ? c.priority : undefined,
+    };
+  });
+}
+
 export function getActorIdSet(actors: unknown): Set<string> {
   const ids = new Set<string>();
   if (!Array.isArray(actors)) return ids;

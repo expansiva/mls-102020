@@ -59,7 +59,18 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     if (output.status === 'failed') { status = 'failed'; traceMsg = `${AGENT_NAME} returned failed`; }
     else {
       const known = getOntologyEntityIdSet(await getEnrichedOntology(context));
-      for (const w of output.result.workflows) for (const e of w.entities) if (!isKnownEntityRef(e, known)) warnings.push(`workflow ${w.workflowId}: unknown entity ref '${e}'`);
+      // item 4: the classification is the authority for workflow->operation links. If the index left
+      // operationIds empty, fill them deterministically from the classified workflow so the link is
+      // never lost during re-derivation.
+      const classified = getBehaviorIndex(context).result.workflows;
+      for (const w of output.result.workflows) {
+        if (w.operationIds.length === 0) {
+          const src = classified.find(c => c.workflowId === w.workflowId);
+          if (src && src.operationIds.length > 0) w.operationIds = [...src.operationIds];
+        }
+        if (w.operationIds.length === 0) warnings.push(`workflow ${w.workflowId}: no orchestrated operations`);
+        for (const e of w.entities) if (!isKnownEntityRef(e, known)) warnings.push(`workflow ${w.workflowId}: unknown entity ref '${e}'`);
+      }
     }
   } catch (error) {
     status = 'failed';

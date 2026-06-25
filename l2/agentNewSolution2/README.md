@@ -8,9 +8,10 @@ artifacts.
 
 ## What it freezes (l4 = BUSINESS)
 
-- `l4/{module}/module.defs.ts` — module meta, ontology MAP, relationships, approved refs.
-  **No `capabilities`** (planning scaffolding, absorbed into workflows/operations) and **no `actors`**
-  (moved to `l4/actors`).
+- `l4/{module}/module.defs.ts` — module meta, **`designContext`** (initial prompt + userLanguage +
+  openDetails + priority decisions, so Stage 2 has the original intent), ontology MAP, relationships,
+  approved refs. **No top-level `capabilities`** (realized — with priority — on each workflow/operation)
+  and **no `actors`** (moved to `l4/actors`).
 - `l4/{module}/ontology/{EntityId}.defs.ts` — canonical entities (fields, enums, lifecycle).
 - `l4/actors/{module}Actors.defs.ts` — authorization roster: each actor + a JWT role scope
   `{module}:{actorId}` (e.g. `cafeFlow:managerOwner`) the runtime can enforce later.
@@ -44,9 +45,9 @@ from them, never authored directly.
 | plan-workflow-definition | agentNs2WorkflowDefinition | fan-out (1/workflow) |
 | plan-operation-index | agentPlanOperationIndex | **new** — spawns operation fan-out |
 | plan-operation-definition | agentPlanOperationDefinition | **new** — fan-out (1/operation) |
-| org-handoff | agentNewSolution2Final | container |
+| org-handoff | agentNewSolution2Handoff | no-LLM container (separate from Final so only final-resume shows the "open summary" link) |
 | behavior-validate | agentValidateBehaviorModel | **new** — deterministic, non-blocking, reads saved l4 files |
-| final-resume | agentNewSolution2Final | **auto-finish** (no clarification): freezes run + journeys, cleans, completes |
+| final-resume | agentNewSolution2Final | **auto-finish** (no clarification): freezes run + journeys, cleans, completes; openStepView shows the summary |
 
 ## Plumbing (self-contained, no imports from the old agentNewSolution)
 
@@ -77,7 +78,14 @@ from them, never authored directly.
   `l4/.../*.defs.ts` via `ns2Artifacts.read{OntologyEntities,WorkflowDefs,OperationDefs}` — never the
   task payloads.
 - **Actors as authz roster.** Actors are persisted to `l4/actors/{module}Actors.defs.ts` with a JWT
-  `roleScope` (`{module}:{actorId}`); `capabilities` are not persisted (scaffolding).
+  `roleScope` (`{module}:{actorId}`).
+- **Capabilities realized on behaviors (no standalone artifact).** Each workflow carries
+  `capabilities[]` and each operation carries `capability` (id + title + priority), attached
+  mechanically at save — so workflows/operations are the source of truth for "which feature + phase".
+  The priority rationale also lives in `module.defs.ts.designContext.decisions`.
+- **Full behavior coverage.** Classification covers every non-`never` capability (now/soon/later), so
+  user-requested key screens that landed as `soon` (dashboards, AI) still become operations → pages.
+  Each stateful workflow must list `operationIds`; the index fills them from the classification if empty.
 - **JSON-schema-first.** Each agent forces one tool call; the schema is both sent to collab-llm and
   re-validated locally by ns2Extract.
 

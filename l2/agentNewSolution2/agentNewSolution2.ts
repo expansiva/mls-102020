@@ -157,7 +157,7 @@ function buildPlannedTree(initialPlan: InitialNewSolution2Plan): PlannedAgentSte
     agentStep('org-requirements', 'agentNewSolution2Requirements', title('org-requirements'), [], 'sequential', undefined, requirementsChildren, 'waiting_human_input'),
     agentStep('org-domain', 'agentNewSolution2Domain', title('org-domain'), ['org-requirements'], 'sequential', undefined, domainChildren),
     agentStep('org-behavior', 'agentNewSolution2Behavior', title('org-behavior'), ['org-domain'], 'sequential', undefined, behaviorChildren),
-    agentStep('org-handoff', 'agentNewSolution2Final', title('org-handoff'), ['plan-workflow-definition', 'plan-operation-definition'], 'sequential', undefined, handoffChildren),
+    agentStep('org-handoff', 'agentNewSolution2Handoff', title('org-handoff'), ['plan-workflow-definition', 'plan-operation-definition'], 'sequential', undefined, handoffChildren),
   ];
 }
 

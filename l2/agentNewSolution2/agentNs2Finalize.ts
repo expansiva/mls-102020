@@ -27,7 +27,7 @@ import {
   saveAgentTrace,
   saveDefsArtifact,
 } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
-import { isRecord, optionalString } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
+import { getInitialPlanSummary, isRecord, optionalString } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { finalizeResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getBlueprintOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Blueprint.js';
 import { getBlueprintReviewOutput } from '/_102020_/l2/agentNewSolution2/agentNs2BlueprintReview.js';
@@ -93,11 +93,13 @@ async function persistDomain(context: mls.msg.ExecutionContext, result: Finalize
   const moduleName = getApprovedModuleName(context);
   if (!moduleName) { console.warn(`[${AGENT_NAME}] no confirmed module name; skipping l4 writes`); return; }
   try {
-    // module.defs.ts is the slim structural artifact. capabilities are NOT persisted (they are
-    // planning scaffolding absorbed into workflows/operations as their `story`); actors are persisted
-    // separately in l4/actors as the authorization roster.
+    // module.defs.ts is the slim structural artifact. capabilities are NOT persisted as a top-level
+    // list (they are realized — with priority — on each workflow/operation); actors live in l4/actors.
+    // designContext carries the ORIGINAL intent for Stage 2: the user's prompt, language, open details
+    // and the priority decisions (so the page generator knows what was requested and what was deferred).
     await saveDefsArtifact(moduleDefsFileInfo(moduleName), `${moduleName}Module`, {
       module: result.module,
+      designContext: buildDesignContext(context),
       ontology: { entities: result.ontology.entities }, // slim MAP; canonical shapes in l4/{module}/ontology
       relationships: result.relationships,
       approvedArtifacts: result.approvedArtifacts,
@@ -116,6 +118,30 @@ async function persistDomain(context: mls.msg.ExecutionContext, result: Finalize
   } catch (error) {
     console.warn(`[${AGENT_NAME}] persistDomain failed`, error);
   }
+}
+
+/** Durable design intent for Stage 2: the user's prompt + language + open details + priority decisions. */
+function buildDesignContext(context: mls.msg.ExecutionContext): Record<string, unknown> {
+  let initialPrompt = '';
+  let userLanguage = '';
+  let openDetails: unknown[] = [];
+  try {
+    const plan = getInitialPlanSummary(context);
+    initialPrompt = typeof plan.userPrompt === 'string' ? plan.userPrompt : '';
+    userLanguage = typeof plan.userLanguage === 'string' ? plan.userLanguage : '';
+    openDetails = Array.isArray(plan.openDetails) ? plan.openDetails : [];
+  } catch { /* tolerate */ }
+  let decisions: Record<string, unknown>[] = [];
+  try {
+    decisions = getImplementationDecisionResult(context).decisions.map(d => ({
+      recommendationId: d.recommendationId,
+      artifactType: d.artifactType,
+      title: d.title,
+      decidedPriority: d.decidedPriority,
+      accepted: d.accepted,
+    }));
+  } catch { /* decisions may be absent */ }
+  return { initialPrompt, userLanguage, openDetails, decisions };
 }
 
 /** Actor roster for authz: each actor + a stable JWT role scope `{module}:{actorId}`. */
