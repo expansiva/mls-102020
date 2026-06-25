@@ -59,16 +59,12 @@ Your only job is to **add that class to the page's root element**:
 > per-element rework. Editing a token only regenerates \`global.css\`; this page does
 > not change.
 
-> **Fallbacks:** when referencing a variable, include the token's value as a fallback
-> so the page still renders if the stylesheet has not loaded yet:
-> \`bg-[var(--ds-bg,#F6F1EB)]\`, \`text-[color:var(--ds-text,#3B2F2F)]\`.
 
 ---
 
 ## 3. Step 2 — Apply the tokens with Tailwind
 
-Reference the variables through Tailwind **arbitrary values**, always with the
-token's value as a fallback. Never write a bare hex without the variable.
+Reference the variables through Tailwind **arbitrary values**
 
 ### Color → utility
 
@@ -193,8 +189,7 @@ Apply the design system **on the slot tags and their children**:
 - Derive hover/active/disabled from the same role (opacity), not a new color.
 
 ### ❌ Never
-- Hardcode a bare hex in a class (\`bg-[#C85A2A]\`) — use \`var(--ds-primary)\`. A hex is
-  only allowed **inside a variable fallback** (\`var(--ds-primary,#C85A2A)\`).
+- Hardcode a bare hex in a class (\`bg-[#C85A2A]\`) — use \`var(--ds-primary)\`. 
 - Consume \`palette[i]\` directly — use the semantic \`color\` roles.
 - Mix radii/shadows/fonts not present in the tokens.
 - Restyle a molecule's internals — theme only its slots.
