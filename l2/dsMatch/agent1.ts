@@ -58,7 +58,7 @@ export async function loadPageDefinitionText(path: string): Promise<string> {
     if (!f) return '';
     try {
         const mod = await collabImport({ project: f.project, folder: f.folder, shortName: f.shortName, extension: '.defs.ts' });
-        if (mod && typeof mod.definition === 'string') return mod.definition;
+       if (mod && mod.definition) return JSON.stringify(mod.definition);
         console.warn(`[agent1] page defs has no string 'definition' export: ${path}`);
         return '';
     } catch (err) {

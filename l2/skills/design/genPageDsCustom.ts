@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/skills/desingsystem/genPageDsCustom.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/skills/design/genPageDsCustom.ts" enhancement="_blank"/>
 
 export const skill = `
 # SKILL: Apply the Design System (custom tokens)
@@ -59,16 +59,12 @@ Your only job is to **add that class to the page's root element**:
 > per-element rework. Editing a token only regenerates \`global.css\`; this page does
 > not change.
 
-> **Fallbacks:** when referencing a variable, include the token's value as a fallback
-> so the page still renders if the stylesheet has not loaded yet:
-> \`bg-[var(--ds-bg,#F6F1EB)]\`, \`text-[color:var(--ds-text,#3B2F2F)]\`.
 
 ---
 
 ## 3. Step 2 — Apply the tokens with Tailwind
 
-Reference the variables through Tailwind **arbitrary values**, always with the
-token's value as a fallback. Never write a bare hex without the variable.
+Reference the variables through Tailwind **arbitrary values**
 
 ### Color → utility
 
@@ -88,8 +84,13 @@ token's value as a fallback. Never write a bare hex without the variable.
 
 ### Typography → utility
 
-- **Headings/titles:** \`font-[var(--ds-font-display)]\` + heading weight + \`tracking\` from token.
-- **Body/labels:** \`font-[var(--ds-font-body)]\` + body weight.
+> **Font family — Tailwind v4 requires the \`family-name:\` type hint.** A bare
+> \`font-[var(--ds-font-display)]\` does NOT emit \`font-family\` (Tailwind can't tell if
+> \`font-[…]\` means family, size or weight). Always write \`font-[family-name:var(--ds-font-…)]\`.
+> Do NOT add a font fallback in the class — the variable already carries family + fallback.
+
+- **Headings/titles:** \`font-[family-name:var(--ds-font-display)]\` + heading weight + \`tracking\` from token.
+- **Body/labels:** \`font-[family-name:var(--ds-font-body)]\` + body weight.
 - **Size scale** (from \`typography.scale\`) — pick the row, apply consistently:
 
 | scale | body | label | heading |
@@ -158,10 +159,10 @@ Apply the design system **on the slot tags and their children**:
   .isEditing=\${true}
   class="bg-[var(--ds-surface)] border border-[color:var(--ds-border)] rounded-lg shadow-sm">
   <CardHeader class="p-4 border-b border-[color:var(--ds-border)]">
-    <CardTitle class="font-[var(--ds-font-display)] text-lg font-semibold tracking-tight text-[color:var(--ds-text)]">
+    <CardTitle class="font-[family-name:var(--ds-font-display)] text-lg font-semibold tracking-tight text-[color:var(--ds-text)]">
       \${this.msg.criarOuAtualizarItemEstoqueLabel}
     </CardTitle>
-    <CardDescription class="font-[var(--ds-font-body)] text-sm text-[color:var(--ds-muted)]">
+    <CardDescription class="font-[family-name:var(--ds-font-body)] text-sm text-[color:var(--ds-muted)]">
       \${this.msg.loadingListarItensEstoque}
     </CardDescription>
   </CardHeader>
@@ -193,8 +194,7 @@ Apply the design system **on the slot tags and their children**:
 - Derive hover/active/disabled from the same role (opacity), not a new color.
 
 ### ❌ Never
-- Hardcode a bare hex in a class (\`bg-[#C85A2A]\`) — use \`var(--ds-primary)\`. A hex is
-  only allowed **inside a variable fallback** (\`var(--ds-primary,#C85A2A)\`).
+- Hardcode a bare hex in a class (\`bg-[#C85A2A]\`) — use \`var(--ds-primary)\`. 
 - Consume \`palette[i]\` directly — use the semantic \`color\` roles.
 - Mix radii/shadows/fonts not present in the tokens.
 - Restyle a molecule's internals — theme only its slots.

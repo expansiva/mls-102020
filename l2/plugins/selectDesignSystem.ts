@@ -4,7 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { buildGlobalCss, dsClassName, type DsTokens, type DsColorRole } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
+import { buildGlobalCss, dsClassName, type DsTokens, type DsColorRole, type DsFont } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // Phase B — DESIGN SYSTEM = STYLING. This plugin presents and edits the visual tokens
@@ -45,6 +45,17 @@ const message_en = {
     typography: 'Typography',
     displayFont: 'Display font',
     bodyFont: 'Body font',
+    fontsTag: 'fonts · roles',
+    addFont: '+ Add font',
+    fontRolePlaceholder: 'role (e.g. display)',
+    fontSource: 'Source',
+    fontFamily: 'Family',
+    fontFamilyPlaceholder: 'Type any Google font…',
+    fontFallback: 'Fallback',
+    fontWeights: 'Weights',
+    fontUrl: 'Font URL',
+    fontUrlPlaceholder: 'https://…/font.css',
+    fontUrlHint: 'Stylesheet URL (@import) or a font file. External domains must be reachable.',
     scale: 'Scale',
     headingWeight: 'Heading weight',
     tracking: 'Tracking',
@@ -93,6 +104,17 @@ const messages: Record<string, MessageType> = {
         typography: 'Tipografia',
         displayFont: 'Fonte de display',
         bodyFont: 'Fonte de corpo',
+        fontsTag: 'fontes · papéis',
+        addFont: '+ Adicionar fonte',
+        fontRolePlaceholder: 'papel (ex.: display)',
+        fontSource: 'Origem',
+        fontFamily: 'Família',
+        fontFamilyPlaceholder: 'Digite qualquer fonte do Google…',
+        fontFallback: 'Fallback',
+        fontWeights: 'Pesos',
+        fontUrl: 'URL da fonte',
+        fontUrlPlaceholder: 'https://…/font.css',
+        fontUrlHint: 'URL de stylesheet (@import) ou arquivo de fonte. O domínio externo precisa estar acessível.',
         scale: 'Escala',
         headingWeight: 'Peso do título',
         tracking: 'Tracking',
@@ -138,6 +160,17 @@ const messages: Record<string, MessageType> = {
         typography: 'Tipografía',
         displayFont: 'Fuente display',
         bodyFont: 'Fuente de cuerpo',
+        fontsTag: 'fuentes · roles',
+        addFont: '+ Agregar fuente',
+        fontRolePlaceholder: 'rol (ej.: display)',
+        fontSource: 'Origen',
+        fontFamily: 'Familia',
+        fontFamilyPlaceholder: 'Escribe cualquier fuente de Google…',
+        fontFallback: 'Fallback',
+        fontWeights: 'Pesos',
+        fontUrl: 'URL de la fuente',
+        fontUrlPlaceholder: 'https://…/font.css',
+        fontUrlHint: 'URL de stylesheet (@import) o archivo de fuente. El dominio externo debe ser accesible.',
         scale: 'Escala',
         headingWeight: 'Peso del título',
         tracking: 'Tracking',
@@ -162,9 +195,19 @@ interface IDsEntry { key: number; name: string; description: string; skill: stri
 interface IRole { name: string; light: string; dark: string; }
 
 // Token'd design systems render through the token-aware skill.
-const DS_SKILL_DEFAULT = '_102020_/l2/skills/desingsystem/genPageDsCustom.ts';
+const DS_SKILL_DEFAULT = '_102020_/l2/skills/design/genPageDsCustom.ts';
 
-const FONTS = ['Fraunces, serif', 'Space Grotesk, sans-serif', 'Inter, sans-serif', 'Georgia, serif'];
+// Font sourcing. The curated Google list is only a SUGGESTION — the family field is a
+// combobox, so any Google Fonts family works by name. `custom` covers anything else (URL).
+const FONT_SOURCES = ['system', 'google', 'custom'];
+const GOOGLE_FONTS = [
+    'Inter', 'Roboto', 'DM Sans', 'Manrope', 'Work Sans', 'Plus Jakarta Sans', 'Source Sans 3',
+    'Space Grotesk', 'Bricolage Grotesque', 'Fraunces', 'Playfair Display', 'Lora', 'Merriweather',
+    'JetBrains Mono', 'IBM Plex Mono',
+];
+const SYSTEM_FONTS = ['system-ui', 'Georgia', 'Times New Roman', 'Arial', 'Helvetica', 'Verdana', 'Courier New'];
+const FALLBACKS = ['sans-serif', 'serif', 'monospace'];
+
 const SCALES = ['compact', 'comfortable', 'spacious'];
 const WEIGHTS = ['400', '500', '600', '700'];
 const TRACKINGS = ['tight', 'normal', 'wide'];
@@ -183,7 +226,10 @@ const PRESETS: Record<string, DsTokens> = {
             text: { light: '#3B2F2F', dark: '#F6F1EB' }, muted: { light: '#8A7F75', dark: '#A89A8C' },
             border: { light: '#E4DACE', dark: '#3A322B' }, success: { light: '#2E7D32', dark: '#4CAF50' }, danger: { light: '#C0392B', dark: '#E57368' },
         },
-        typography: { fontDisplay: 'Fraunces, serif', fontBody: 'Inter, sans-serif', scale: 'comfortable', weightHeading: '600', tracking: 'tight' },
+        typography: { fonts: [
+            { name: 'display', source: 'google', family: 'Fraunces', weights: [400, 600, 700], fallback: 'serif' },
+            { name: 'body', source: 'google', family: 'Inter', weights: [400, 500], fallback: 'sans-serif' },
+        ], scale: 'comfortable', weightHeading: '600', tracking: 'tight' },
         shape: { radius: 'lg', borderWidth: '1' }, density: 'cozy', elevation: 'soft',
     },
     ocean: {
@@ -194,7 +240,10 @@ const PRESETS: Record<string, DsTokens> = {
             text: { light: '#0F172A', dark: '#E2E8F0' }, muted: { light: '#64748B', dark: '#94A3B8' },
             border: { light: '#BAE6FD', dark: '#1E293B' }, success: { light: '#16A34A', dark: '#4ADE80' }, danger: { light: '#DC2626', dark: '#F87171' },
         },
-        typography: { fontDisplay: 'Space Grotesk, sans-serif', fontBody: 'Inter, sans-serif', scale: 'compact', weightHeading: '600', tracking: 'normal' },
+        typography: { fonts: [
+            { name: 'display', source: 'google', family: 'Space Grotesk', weights: [400, 600, 700], fallback: 'sans-serif' },
+            { name: 'body', source: 'google', family: 'Inter', weights: [400, 500], fallback: 'sans-serif' },
+        ], scale: 'compact', weightHeading: '600', tracking: 'normal' },
         shape: { radius: 'md', borderWidth: '1' }, density: 'compact', elevation: 'strong',
     },
     minimal: {
@@ -205,7 +254,10 @@ const PRESETS: Record<string, DsTokens> = {
             text: { light: '#111827', dark: '#F9FAFB' }, muted: { light: '#6B7280', dark: '#9CA3AF' },
             border: { light: '#E5E7EB', dark: '#262626' }, success: { light: '#10B981', dark: '#34D399' }, danger: { light: '#EF4444', dark: '#F87171' },
         },
-        typography: { fontDisplay: 'Inter, sans-serif', fontBody: 'Inter, sans-serif', scale: 'comfortable', weightHeading: '600', tracking: 'normal' },
+        typography: { fonts: [
+            { name: 'display', source: 'google', family: 'Inter', weights: [400, 600], fallback: 'sans-serif' },
+            { name: 'body', source: 'google', family: 'Inter', weights: [400, 500], fallback: 'sans-serif' },
+        ], scale: 'comfortable', weightHeading: '600', tracking: 'normal' },
         shape: { radius: 'sm', borderWidth: '1' }, density: 'comfortable', elevation: 'none',
     },
     vibrant: {
@@ -216,7 +268,10 @@ const PRESETS: Record<string, DsTokens> = {
             text: { light: '#1E1B2E', dark: '#F3E8FF' }, muted: { light: '#8B7FA3', dark: '#B6A9CC' },
             border: { light: '#EDE0FB', dark: '#3A2E52' }, success: { light: '#10B981', dark: '#34D399' }, danger: { light: '#E11D48', dark: '#FB7185' },
         },
-        typography: { fontDisplay: 'Space Grotesk, sans-serif', fontBody: 'Inter, sans-serif', scale: 'spacious', weightHeading: '700', tracking: 'tight' },
+        typography: { fonts: [
+            { name: 'display', source: 'google', family: 'Space Grotesk', weights: [400, 700], fallback: 'sans-serif' },
+            { name: 'body', source: 'google', family: 'Inter', weights: [400, 500], fallback: 'sans-serif' },
+        ], scale: 'spacious', weightHeading: '700', tracking: 'tight' },
         shape: { radius: 'full', borderWidth: '0' }, density: 'cozy', elevation: 'strong',
     },
     custom: {
@@ -225,7 +280,10 @@ const PRESETS: Record<string, DsTokens> = {
             primary: { light: '#3B82F6', dark: '#60A5FA' }, background: { light: '#FFFFFF', dark: '#0B0B0B' },
             surface: { light: '#FFFFFF', dark: '#171717' }, text: { light: '#111111', dark: '#F5F5F5' }, border: { light: '#E5E7EB', dark: '#262626' },
         },
-        typography: { fontDisplay: 'Inter, sans-serif', fontBody: 'Inter, sans-serif', scale: 'comfortable', weightHeading: '600', tracking: 'normal' },
+        typography: { fonts: [
+            { name: 'display', source: 'system', family: 'system-ui', fallback: 'sans-serif' },
+            { name: 'body', source: 'system', family: 'system-ui', fallback: 'sans-serif' },
+        ], scale: 'comfortable', weightHeading: '600', tracking: 'normal' },
         shape: { radius: 'md', borderWidth: '1' }, density: 'cozy', elevation: 'soft',
     },
 };
@@ -249,7 +307,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
     @state() private _skill = DS_SKILL_DEFAULT;
     @state() private _palette: string[] = [];
     @state() private _roles: IRole[] = [];
-    @state() private _typography: NonNullable<DsTokens['typography']> = {};
+    @state() private _fonts: DsFont[] = [];                                   // dynamic font roles
+    @state() private _typography: NonNullable<DsTokens['typography']> = {};   // scale / weightHeading / tracking
     @state() private _shape: NonNullable<DsTokens['shape']> = {};
     @state() private _density = 'cozy';
     @state() private _elevation = 'soft';
@@ -333,7 +392,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._skill = DS_SKILL_DEFAULT;
         this._palette = [...(t.palette ?? [])];
         this._roles = Object.entries(t.color ?? {}).map(([n, v]) => ({ name: n, light: v.light, dark: v.dark }));
-        this._typography = { ...(t.typography ?? {}) };
+        this._fonts = this._fontsFromTokens(t.typography);
+        this._typography = { scale: t.typography?.scale, weightHeading: t.typography?.weightHeading, tracking: t.typography?.tracking };
         this._shape = { ...(t.shape ?? {}) };
         this._density = t.density ?? 'cozy';
         this._elevation = t.elevation ?? 'soft';
@@ -344,6 +404,15 @@ export class PluginSelectDesignSystem extends StateLitElement {
     private _loadFromEntry(entry: IDsEntry): void {
         this._loadDraft(entry.tokens, entry.name, entry.description, null);
         this._skill = entry.skill || DS_SKILL_DEFAULT;
+    }
+
+    /** Font roles from the tokens (new `fonts[]`), falling back to legacy fontDisplay/fontBody. */
+    private _fontsFromTokens(t?: DsTokens['typography']): DsFont[] {
+        if (t && Array.isArray(t.fonts) && t.fonts.length) return t.fonts.map(f => ({ ...f, weights: f.weights ? [...f.weights] : undefined }));
+        const legacy: DsFont[] = [];
+        if (t?.fontDisplay) legacy.push({ name: 'display', source: 'system', family: t.fontDisplay });
+        if (t?.fontBody) legacy.push({ name: 'body', source: 'system', family: t.fontBody });
+        return legacy;
     }
 
     createRenderRoot() { return this; }
@@ -493,6 +562,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
     // ── the editor (palette + colors + typography + shape + elevation) ──
     private _renderEditor() {
         return html`
+            <datalist id="ds-google-fonts">${GOOGLE_FONTS.map(f => html`<option value=${f}></option>`)}</datalist>
             <div class="flex flex-col gap-2.5">
                 ${this._renderPaletteSection()}
                 ${this._renderColorsSection()}
@@ -592,17 +662,89 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     private _renderTypographySection() {
         const t = this._typography;
-        return this._section(this.msg.typography, null, false, html`
-            <div class="grid grid-cols-2 gap-3">
-                ${this._renderSelect(this.msg.displayFont, FONTS, t.fontDisplay ?? FONTS[0], v => { this._typography = { ...t, fontDisplay: v }; })}
-                ${this._renderSelect(this.msg.bodyFont, FONTS, t.fontBody ?? FONTS[2], v => { this._typography = { ...t, fontBody: v }; })}
+        return this._section(this.msg.typography, this.msg.fontsTag, false, html`
+            <div class="flex flex-col gap-2">
+                ${this._fonts.map((f, i) => this._renderFontCard(f, i))}
             </div>
-            ${this._renderSegField(this.msg.scale, SCALES, t.scale ?? 'comfortable', v => { this._typography = { ...this._typography, scale: v }; })}
-            <div class="grid grid-cols-2 gap-3">
-                ${this._renderSelect(this.msg.headingWeight, WEIGHTS, t.weightHeading ?? '600', v => { this._typography = { ...this._typography, weightHeading: v }; })}
-                ${this._renderSelect(this.msg.tracking, TRACKINGS, t.tracking ?? 'normal', v => { this._typography = { ...this._typography, tracking: v }; })}
+            <button class="self-start text-xs font-semibold px-3 py-1.5 rounded-md border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors cursor-pointer"
+                @click=${() => this._addFont()}>${this.msg.addFont}</button>
+
+            <div class="border-t border-gray-100 dark:border-gray-800/70 pt-3 flex flex-col gap-3">
+                ${this._renderSegField(this.msg.scale, SCALES, t.scale ?? 'comfortable', v => { this._typography = { ...this._typography, scale: v }; })}
+                <div class="grid grid-cols-2 gap-3">
+                    ${this._renderSelect(this.msg.headingWeight, WEIGHTS, t.weightHeading ?? '600', v => { this._typography = { ...this._typography, weightHeading: v }; })}
+                    ${this._renderSelect(this.msg.tracking, TRACKINGS, t.tracking ?? 'normal', v => { this._typography = { ...this._typography, tracking: v }; })}
+                </div>
             </div>
         `);
+    }
+
+    private _renderFontCard(font: DsFont, i: number) {
+        const source = font.source ?? 'system';
+        return html`
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2.5 flex flex-col gap-2">
+                <div class="flex items-center gap-2">
+                    <input class="min-w-0 flex-1 text-[11px]! font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 rounded px-2 py-1 border border-transparent focus:border-indigo-400 outline-none"
+                        .value=${font.name} placeholder=${this.msg.fontRolePlaceholder}
+                        @input=${(e: Event) => { font.name = (e.target as HTMLInputElement).value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'); }} />
+                    <span class="text-[9px] font-mono text-gray-400 dark:text-gray-500">--ds-font-${font.name || '?'}</span>
+                    <button class="text-gray-400 hover:text-red-500 text-base leading-none cursor-pointer"
+                        @click=${() => { this._fonts = this._fonts.filter((_, j) => j !== i); }}>×</button>
+                </div>
+
+                ${this._renderSegField(this.msg.fontSource, FONT_SOURCES, source, v => { font.source = v as DsFont['source']; this.requestUpdate(); })}
+
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.fontFamily}</label>
+                        ${source === 'system'
+                            ? this._renderInlineSelect(SYSTEM_FONTS, font.family, v => { font.family = v; this.requestUpdate(); })
+                            : html`<input class="min-w-0 text-[11px]! px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400"
+                                list=${source === 'google' ? 'ds-google-fonts' : nothing}
+                                .value=${font.family} placeholder=${this.msg.fontFamilyPlaceholder}
+                                @input=${(e: Event) => { font.family = (e.target as HTMLInputElement).value; this.requestUpdate(); }} />`}
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.fontFallback}</label>
+                        ${this._renderInlineSelect(FALLBACKS, font.fallback ?? 'sans-serif', v => { font.fallback = v; this.requestUpdate(); })}
+                    </div>
+                </div>
+
+                ${source !== 'system' ? html`
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.fontWeights}</label>
+                        <input class="text-[11px]! px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400"
+                            .value=${(font.weights ?? []).join(', ')} placeholder="400, 600, 700"
+                            @change=${(e: Event) => { font.weights = this._parseWeights((e.target as HTMLInputElement).value); }} />
+                    </div>` : nothing}
+
+                ${source === 'custom' ? html`
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.fontUrl}</label>
+                        <input class="text-[11px]! px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400 font-mono"
+                            .value=${font.url ?? ''} placeholder=${this.msg.fontUrlPlaceholder}
+                            @input=${(e: Event) => { font.url = (e.target as HTMLInputElement).value.trim() || undefined; }} />
+                        <span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug">${this.msg.fontUrlHint}</span>
+                    </div>` : nothing}
+            </div>
+        `;
+    }
+
+    private _renderInlineSelect(options: string[], current: string | undefined, onPick: (v: string) => void) {
+        return html`
+            <select class="min-w-0 text-[11px]! px-1.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400"
+                @change=${(e: Event) => onPick((e.target as HTMLSelectElement).value)}>
+                ${options.map(o => html`<option ?selected=${o === current}>${o}</option>`)}
+            </select>
+        `;
+    }
+
+    private _parseWeights(raw: string): number[] {
+        return raw.split(/[,\s]+/).map(s => parseInt(s, 10)).filter(n => Number.isFinite(n) && n > 0);
+    }
+
+    private _addFont(): void {
+        this._fonts = [...this._fonts, { name: '', source: 'google', family: '', weights: [400], fallback: 'sans-serif' }];
     }
 
     private _renderShapeSection() {
@@ -691,10 +833,20 @@ export class PluginSelectDesignSystem extends StateLitElement {
             if (!n) continue;
             color[n] = { light: r.light, dark: r.dark };
         }
+        const fonts: DsFont[] = this._fonts
+            .filter(f => f.name.trim() && f.family.trim())
+            .map(f => {
+                const out: DsFont = { name: f.name.trim(), source: f.source ?? 'system', family: f.family.trim() };
+                if (f.fallback) out.fallback = f.fallback;
+                if (f.source !== 'system' && f.weights?.length) out.weights = [...f.weights];
+                if (f.source === 'custom' && f.url) out.url = f.url;
+                if (f.source === 'custom' && f.faces?.length) out.faces = f.faces;
+                return out;
+            });
         return {
             palette: [...this._palette],
             color,
-            typography: { ...this._typography },
+            typography: { fonts, scale: this._typography.scale, weightHeading: this._typography.weightHeading, tracking: this._typography.tracking },
             shape: { ...this._shape },
             density: this._density,
             elevation: this._elevation,

@@ -472,6 +472,27 @@ export class ServiceGenome102020 extends ServiceBase {
         await this._openPage(file, storFiles);
     }
 
+    /**
+     * Force the CURRENT page to re-render (e.g. after a DS save changed global.css).
+     * Unlike _repaintPageForCombination, this has no "same folder" guard — it re-fires
+     * the open action for the page already in view so the preview rebuilds (and re-reads
+     * the regenerated global.css via buildFile).
+     */
+    private _repaintCurrentPage(): void {
+        const file = this._currentPageFile;
+        if (!file) return;
+        const params: any = {
+            action: 'open',
+            level: mls.actualLevel,
+            project: file.project,
+            shortName: file.shortName,
+            extension: file.extension,
+            folder: file.folder,
+            position: this.position,
+        };
+        mls.events.fire([mls.actualLevel], ['FileAction'], JSON.stringify(params), 0);
+    }
+
     /** Open a page into the preview — mirrors servicePage._setActualPage. */
     private async _openPage(file: mls.stor.IFileInfo, storFiles?: any): Promise<void> {
         let name = `_${file.project}_${file.shortName}`;
@@ -497,7 +518,7 @@ export class ServiceGenome102020 extends ServiceBase {
 
         const params: any = {
             action: 'open',
-            level: 4,
+            level: mls.actualLevel,
             project: file.project,
             shortName: file.shortName,
             extension: file.extension,
@@ -634,6 +655,7 @@ export class ServiceGenome102020 extends ServiceBase {
                     @ds-config=${(e: CustomEvent) => this._onDsConfig(e)}
                     @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
                     @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}
+                    @save-ds=${() => this._repaintCurrentPage()}
                 >
                     ${this._renderContextStatusArea()}
                 </div>
