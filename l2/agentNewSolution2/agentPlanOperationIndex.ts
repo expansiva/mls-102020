@@ -41,7 +41,8 @@ export function createAgent(): IAgentAsync {
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   if (!args) throw new Error(`[${AGENT_NAME}] args invalid`);
   const behavior = getBehaviorIndex(context).result;
-  const human = `## Classified operations\n${JSON.stringify(behavior.operations.map(o => ({ operationId: o.operationId, title: o.title, actor: o.actor, entity: o.entity, kind: o.kind })), null, 2)}\n\n## Workflows (their orchestrated operationIds are already covered)\n${JSON.stringify(behavior.workflows.map(w => ({ workflowId: w.workflowId, title: w.title })), null, 2)}\n\n## Ontology entity ids\n${JSON.stringify(Object.keys(getEnrichedOntology(context)), null, 2)}\n`;
+  const ontologyIds = Object.keys(await getEnrichedOntology(context));
+  const human = `## Classified operations\n${JSON.stringify(behavior.operations.map(o => ({ operationId: o.operationId, title: o.title, actor: o.actor, entity: o.entity, kind: o.kind })), null, 2)}\n\n## Workflows (their orchestrated operationIds are already covered)\n${JSON.stringify(behavior.workflows.map(w => ({ workflowId: w.workflowId, title: w.title })), null, 2)}\n\n## Ontology entity ids\n${JSON.stringify(ontologyIds, null, 2)}\n`;
   return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), human, toolSchema, TOOL_NAME)];
 }
 
@@ -56,7 +57,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     output = extractPlannerOutput(payload, config);
     if (output.status === 'failed') { status = 'failed'; traceMsg = `${AGENT_NAME} returned failed`; }
     else {
-      const known = getOntologyEntityIdSet(getEnrichedOntology(context));
+      const known = getOntologyEntityIdSet(await getEnrichedOntology(context));
       for (const o of output.result.operations) if (!isKnownEntityRef(o.entity, known)) warnings.push(`operation ${o.operationId}: unknown entity ref '${o.entity}'`);
     }
   } catch (error) {

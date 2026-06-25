@@ -33,7 +33,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   if (!context.task) throw new Error('[agentValidateBehaviorModel] task invalid');
   let summary = 'behavior model validated';
   try {
-    const report = computeBehaviorHealthReport(context);
+    const report = await computeBehaviorHealthReport(context);
     await saveBehaviorHealthReport(context, report);
     summary = `passed=${report.passed} errors=${report.errors.length} warnings=${report.warnings.length}`;
   } catch (error) {
@@ -44,13 +44,14 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', summary)];
 }
 
-/** Pure, reusable so the final resume can render the same report from the live payloads. */
-export function computeBehaviorHealthReport(context: mls.msg.ExecutionContext): BehaviorHealthReport {
+/** Reusable so the final step can render the same report. Reads workflow/operation/ontology defs
+ * from the SAVED l4 files (fan-out payloads are deleted by then). */
+export async function computeBehaviorHealthReport(context: mls.msg.ExecutionContext): Promise<BehaviorHealthReport> {
   const fp = getFinalizeOutput(context).result;
-  const ontology = getEnrichedOntology(context);
+  const ontology = await getEnrichedOntology(context);
   const behavior = getBehaviorIndex(context).result;
-  const workflowDefs = getWorkflowDefinitions(context);
-  const operationDefs = getOperationDefinitions(context);
+  const workflowDefs = await getWorkflowDefinitions(context);
+  const operationDefs = await getOperationDefinitions(context);
 
   const knownEntities = getOntologyEntityIdSet(ontology);
   const knownActors = getActorIdSet(fp.actors);

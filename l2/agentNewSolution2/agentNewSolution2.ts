@@ -148,7 +148,9 @@ function buildPlannedTree(initialPlan: InitialNewSolution2Plan): PlannedAgentSte
 
   const handoffChildren: PlannedStep[] = [
     agentStep('behavior-validate', 'agentValidateBehaviorModel', title('behavior-validate'), ['org-handoff'], 'sequential'),
-    clarification('final-resume', title('final-resume'), ['behavior-validate']),
+    // Auto-finish (no blocking clarification): writes the run record + derived journeys, cleans
+    // traces/inputs/outputs, completes the task. The summary is viewable later via openStepView.
+    agentStep('final-resume', 'agentNewSolution2Final', title('final-resume'), ['behavior-validate'], 'sequential'),
   ];
 
   return [

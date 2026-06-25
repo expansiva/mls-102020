@@ -19,7 +19,7 @@ import {
   optionalString,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
-import { saveAgentTrace, saveDefsArtifact, workflowFileInfo } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import { readWorkflowDefs, saveAgentTrace, saveDefsArtifact, workflowFileInfo } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { workflowDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getWorkflowIndex } from '/_102020_/l2/agentNewSolution2/agentNs2WorkflowIndex.js';
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
@@ -58,7 +58,13 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   const behavior = getBehaviorIndex(context).result;
   const story = behavior.workflows.find(w => w.workflowId === args)?.story;
   const operations = behavior.operations.filter(o => indexItem.operationIds.includes(o.operationId)).map(o => ({ operationId: o.operationId, title: o.title, entity: o.entity, kind: o.kind }));
-  const reduced = { selector: args, indexItem, story, orchestratedOperations: operations, ontologyEntityIds: Object.keys(getEnrichedOntology(context)) };
+  const ontology = await getEnrichedOntology(context);
+  // Lifecycle of the workflow's entities, so states can be aligned to the entity (not generic).
+  const entityLifecycles = indexItem.entities.map(id => {
+    const e = isRecord(ontology[id]) ? ontology[id] as Record<string, unknown> : {};
+    return { entity: id, lifecycleStates: e.lifecycleStates, statusEnum: e.statusEnum };
+  });
+  const reduced = { selector: args, indexItem, story, orchestratedOperations: operations, entityLifecycles, ontologyEntityIds: Object.keys(ontology) };
   return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), `## Workflow selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
 }
 
@@ -89,8 +95,17 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   return [createUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg)];
 }
 
-export function getWorkflowDefinitions(context: mls.msg.ExecutionContext): WorkflowDefinition[] {
-  return getPlannerOutputs(context, AGENT_NAME, config).filter(o => o.status === 'ok').map(o => o.result.workflowDefinition);
+/** Reads the GLOBAL l4/workflows/*.defs.ts (fan-out children are deleted); in-task payloads override. */
+export async function getWorkflowDefinitions(context: mls.msg.ExecutionContext): Promise<WorkflowDefinition[]> {
+  const byId = new Map<string, WorkflowDefinition>();
+  for (const d of await readWorkflowDefs()) {
+    const id = typeof d.workflowId === 'string' ? d.workflowId : '';
+    if (id) byId.set(id, d as unknown as WorkflowDefinition);
+  }
+  for (const o of getPlannerOutputs(context, AGENT_NAME, config)) {
+    if (o.status === 'ok') byId.set(o.result.workflowDefinition.workflowId, o.result.workflowDefinition);
+  }
+  return [...byId.values()];
 }
 
 const config: PlannerExtractConfig<WorkflowDefinitionResult> = { toolName: TOOL_NAME, normalizeResult };
@@ -144,5 +159,8 @@ rulesApplied[] (ruleIds), and the embedded story { actor, goal, soThat?, steps[]
 Rules:
 - workflowId must equal the selector.
 - transitions reference declared states; entities/operationIds reference provided ids only.
+- states must reflect the lifecycle of the workflow's PRIMARY entity: when that entity declares
+  lifecycleStates/statusEnum in the reduced context, reuse those exact state names instead of
+  inventing generic ones (open/closed/submitted), so the workflow and the entity stay aligned.
 
 `;

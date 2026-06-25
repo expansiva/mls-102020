@@ -188,12 +188,62 @@ export function workflowFileInfo(workflowId: string): FileInfo {
 export function operationFileInfo(operationId: string): FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: 'operations', shortName: toSafeShortName(operationId), extension: '.defs.ts' };
 }
+// Actors live in their own GLOBAL folder so they double as the authorization roster: each actor maps
+// to a JWT role scope `{module}:{actorId}` (e.g. cafeFlow:managerOwner) the runtime can enforce later.
+export function actorsFileInfo(moduleName: string): FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: 'actors', shortName: `${toSafeShortName(moduleName)}Actors`, extension: '.defs.ts' };
+}
+// Derived, read-only consolidation of the embedded workflow/operation stories (NOT a source artifact).
+export function journeysFileInfo(moduleName: string): FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: normalizeModuleFolderName(moduleName, 'module'), shortName: 'journeys', extension: '.defs.ts' };
+}
 
 /** Writes an `export const {name} = {...} as const;` defs artifact and returns its display path. */
 export async function saveDefsArtifact(fileInfo: FileInfo, exportName: string, data: unknown): Promise<string> {
   const source = buildDefsSource(exportName, data, fileInfo);
   await saveStorContent(fileInfo, source, false);
   return toDisplayPath(fileInfo);
+}
+
+// ── file-fallback readers ────────────────────────────────────────────────────────
+// Parallel fan-out children are pre-allocated, reused and DELETED by the backend after completion
+// (see mls.d.ts AgentIntentParallelSteps §7.1). Therefore consumers that run AFTER a fan-out must read
+// the SAVED .defs.ts artifacts, never the task payloads. These readers are that source of truth.
+
+async function readDefsObjectsInFolder(level: number, folder: string): Promise<Record<string, unknown>[]> {
+  const project = mls.actualProject || 0;
+  const out: Record<string, unknown>[] = [];
+  for (const file of Object.values(mls.stor.files)) {
+    if (file.project !== project || file.level !== level || file.folder !== folder) continue;
+    if (file.status === 'deleted' || file.extension !== '.defs.ts') continue;
+    try {
+      const parsed = parseDefsSource(await file.getContent() as string);
+      if (isRecord(parsed)) out.push(parsed);
+    } catch {
+      // unreadable artifact: skip
+    }
+  }
+  return out;
+}
+
+/** l4/{module}/ontology/*.defs.ts -> { entityId: canonicalEntityDef }. */
+export async function readOntologyEntities(moduleName: string): Promise<Record<string, Record<string, unknown>>> {
+  const map: Record<string, Record<string, unknown>> = {};
+  for (const def of await readDefsObjectsInFolder(4, `${normalizeModuleFolderName(moduleName, 'module')}/ontology`)) {
+    const id = readString(def.entityId);
+    if (id) map[id] = def;
+  }
+  return map;
+}
+
+/** l4/workflows/*.defs.ts -> workflow definition objects. */
+export async function readWorkflowDefs(): Promise<Record<string, unknown>[]> {
+  return readDefsObjectsInFolder(4, 'workflows');
+}
+
+/** l4/operations/*.defs.ts -> operation definition objects. */
+export async function readOperationDefs(): Promise<Record<string, unknown>[]> {
+  return readDefsObjectsInFolder(4, 'operations');
 }
 
 /** Merge l5/project.json: preserve every top-level field, add/replace this module + dedupe deps. */

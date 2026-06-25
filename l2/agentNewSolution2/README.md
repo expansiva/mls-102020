@@ -8,15 +8,22 @@ artifacts.
 
 ## What it freezes (l4 = BUSINESS)
 
-- `l4/{module}/module.defs.ts` — actors, capabilities, ontology MAP, relationships, approved refs.
+- `l4/{module}/module.defs.ts` — module meta, ontology MAP, relationships, approved refs.
+  **No `capabilities`** (planning scaffolding, absorbed into workflows/operations) and **no `actors`**
+  (moved to `l4/actors`).
 - `l4/{module}/ontology/{EntityId}.defs.ts` — canonical entities (fields, enums, lifecycle).
+- `l4/actors/{module}Actors.defs.ts` — authorization roster: each actor + a JWT role scope
+  `{module}:{actorId}` (e.g. `cafeFlow:managerOwner`) the runtime can enforce later.
 - `l4/rules/{module}Rules.defs.ts` — global rules.
-- `l4/workflows/{workflowId}.defs.ts` — global workflows (with embedded story).
+- `l4/workflows/{workflowId}.defs.ts` — global workflows (states aligned to the entity lifecycle, with embedded story).
 - `l4/operations/{operationId}.defs.ts` — global operations = intent-level BFF contract (with story).
+- `l4/{module}/journeys.defs.ts` — **derived, read-only** consolidation of the stories embedded in
+  workflows/operations (a view, not a source).
 - `l5/project.json` (merge), `l5/{module}/process.defs.ts` (run record).
 
-Never produced here: pages, per-page bffCommands, tables/persistence, layer_3/4 backend, metrics,
-`journeys.defs.ts` (user stories are absorbed into each workflow/operation `story`).
+Never produced here: pages, per-page bffCommands, tables/persistence, layer_3/4 backend, metrics.
+User stories live as the embedded `story` on each workflow/operation; `journeys.defs.ts` is derived
+from them, never authored directly.
 
 ## Tree (planId → agent)
 
@@ -37,9 +44,9 @@ Never produced here: pages, per-page bffCommands, tables/persistence, layer_3/4 
 | plan-workflow-definition | agentNs2WorkflowDefinition | fan-out (1/workflow) |
 | plan-operation-index | agentPlanOperationIndex | **new** — spawns operation fan-out |
 | plan-operation-definition | agentPlanOperationDefinition | **new** — fan-out (1/operation) |
-| org-handoff | agentNewSolution2Final | container + final summary |
-| behavior-validate | agentValidateBehaviorModel | **new** — deterministic, non-blocking |
-| final-resume | agentNewSolution2Final | summary; on finish freezes the run |
+| org-handoff | agentNewSolution2Final | container |
+| behavior-validate | agentValidateBehaviorModel | **new** — deterministic, non-blocking, reads saved l4 files |
+| final-resume | agentNewSolution2Final | **auto-finish** (no clarification): freezes run + journeys, cleans, completes |
 
 ## Plumbing (self-contained, no imports from the old agentNewSolution)
 
@@ -61,8 +68,16 @@ Never produced here: pages, per-page bffCommands, tables/persistence, layer_3/4 
 - **Deterministic ref-integrity instead of the 3-file LLM critic loop.** Index agents normalize ids
   and check that every reference resolves to a canonical ontology id (the analise11/12 guardrail);
   unresolved refs become warnings, never a hard fail. A checkpoint is frozen per index.
-- **Cleaning at finish only.** Payloads stay in the task during the run (no hydration cache); on
-  "Encerrar" the final agent clears traces and cleans every completed step's inputs/outputs.
+- **Automatic finish.** No blocking final clarification: after validate, `final-resume` runs in a
+  hook (`beforePromptStep`) that writes the run record + derived journeys, clears traces, cleans the
+  task inputs/outputs and completes the task. The summary is re-openable via `openStepView`. (Doing
+  the finish in a hook — not a UI event handler — avoids the silent-stall failure mode.)
+- **File-fallback after fan-outs.** Parallel fan-out children are pre-allocated, reused and deleted by
+  the backend, so consumers that run after a fan-out (validate, journeys) read the SAVED
+  `l4/.../*.defs.ts` via `ns2Artifacts.read{OntologyEntities,WorkflowDefs,OperationDefs}` — never the
+  task payloads.
+- **Actors as authz roster.** Actors are persisted to `l4/actors/{module}Actors.defs.ts` with a JWT
+  `roleScope` (`{module}:{actorId}`); `capabilities` are not persisted (scaffolding).
 - **JSON-schema-first.** Each agent forces one tool call; the schema is both sent to collab-llm and
   re-validated locally by ns2Extract.
 

@@ -47,7 +47,7 @@ export function createAgent(): IAgentAsync {
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   if (!args) throw new Error(`[${AGENT_NAME}] args invalid`);
   const fp = getFinalizeOutput(context).result;
-  const ontology = getEnrichedOntology(context);
+  const ontology = await getEnrichedOntology(context);
   const clarification = getRequirementsClarificationAnswer(context);
   const capabilities = summarizeRecords(fp.capabilities as unknown[], ['capabilityId', 'title', 'actor', 'priority', 'behaviorHint']).filter(c => (c as { priority?: string }).priority !== 'never');
   const human = `## Actors\n${JSON.stringify(summarizeRecords(fp.actors as unknown[], ['actorId', 'title']), null, 2)}\n\n## Capabilities (own each one)\n${JSON.stringify(capabilities, null, 2)}\n\n## Ontology entity ids\n${JSON.stringify(Object.keys(ontology), null, 2)}\n\n## Rules\n${JSON.stringify(summarizeRecords(fp.rules as unknown[], ['ruleId', 'title']), null, 2)}\n\n## Clarification (source for stories)\n${JSON.stringify(clarification, null, 2)}\n`;
@@ -64,7 +64,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     if (!payload) throw new Error('missing payload');
     output = extractPlannerOutput(payload, config);
     if (output.status === 'failed') { status = 'failed'; traceMsg = `${AGENT_NAME} returned failed`; }
-    else warnings.push(...checkReferences(context, output.result));
+    else warnings.push(...(await checkReferences(context, output.result)));
   } catch (error) {
     status = 'failed';
     traceMsg = error instanceof Error ? error.message : String(error);
@@ -76,10 +76,10 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
 }
 
 /** Deterministic, non-blocking ref integrity: unknown entity ids and uncovered capabilities -> warnings. */
-function checkReferences(context: mls.msg.ExecutionContext, index: BehaviorIndex): string[] {
+async function checkReferences(context: mls.msg.ExecutionContext, index: BehaviorIndex): Promise<string[]> {
   const warnings: string[] = [];
   const fp = getFinalizeOutput(context).result;
-  const knownEntities = getOntologyEntityIdSet(getEnrichedOntology(context));
+  const knownEntities = getOntologyEntityIdSet(await getEnrichedOntology(context));
   const knownActors = getActorIdSet(fp.actors);
 
   const checkEntity = (ref: string, where: string) => { if (!isKnownEntityRef(ref, knownEntities)) warnings.push(`${where}: unknown entity ref '${ref}'`); };
@@ -163,6 +163,11 @@ Rules:
 - Use canonical ONTOLOGY entity ids for entities/entity (the provided ids), never aggregate/group names.
 - Use actorId values for actors.
 - Every priority-now capability must be owned by exactly one workflow or operation.
+- Emit Operations for managing master-data / MDM entities (create/update/delete/query) even when the
+  capability is implicit (e.g. manage categories, manage tables).
+- Besides standalone operations, also emit Operations for the discrete reusable actions performed
+  INSIDE a workflow (e.g. create/update an entity, change a status) so each workflow can later
+  orchestrate them — a stateful workflow should rarely end up with zero operations.
 - camelCase workflowId/operationId.
 
 `;

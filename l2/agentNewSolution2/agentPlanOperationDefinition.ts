@@ -18,7 +18,7 @@ import {
   optionalString,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
-import { operationFileInfo, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import { operationFileInfo, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { operationDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getOperationIndex } from '/_102020_/l2/agentNewSolution2/agentPlanOperationIndex.js';
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
@@ -52,7 +52,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   const indexItem = getOperationIndex(context).result.operations.find(o => o.operationId === args);
   if (!indexItem) throw new Error(`[${AGENT_NAME}] operation selector not in index: ${args}`);
   const story = getBehaviorIndex(context).result.operations.find(o => o.operationId === args)?.story;
-  const ontology = getEnrichedOntology(context);
+  const ontology = await getEnrichedOntology(context);
   const entityShape = ontology[indexItem.entity];
   const reduced = { selector: args, indexItem, story, entityShape, ontologyEntityIds: Object.keys(ontology) };
   return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), `## Operation selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
@@ -85,8 +85,17 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   return [createUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg)];
 }
 
-export function getOperationDefinitions(context: mls.msg.ExecutionContext): OperationDefinition[] {
-  return getPlannerOutputs(context, AGENT_NAME, config).filter(o => o.status === 'ok').map(o => o.result.operationDefinition);
+/** Reads the GLOBAL l4/operations/*.defs.ts (fan-out children are deleted); in-task payloads override. */
+export async function getOperationDefinitions(context: mls.msg.ExecutionContext): Promise<OperationDefinition[]> {
+  const byId = new Map<string, OperationDefinition>();
+  for (const d of await readOperationDefs()) {
+    const id = typeof d.operationId === 'string' ? d.operationId : '';
+    if (id) byId.set(id, d as unknown as OperationDefinition);
+  }
+  for (const o of getPlannerOutputs(context, AGENT_NAME, config)) {
+    if (o.status === 'ok') byId.set(o.result.operationDefinition.operationId, o.result.operationDefinition);
+  }
+  return [...byId.values()];
 }
 
 const config: PlannerExtractConfig<OperationDefinitionResult> = { toolName: TOOL_NAME, normalizeResult };

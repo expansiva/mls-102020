@@ -42,7 +42,8 @@ export function createAgent(): IAgentAsync {
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   if (!args) throw new Error(`[${AGENT_NAME}] args invalid`);
   const behavior = getBehaviorIndex(context).result;
-  const human = `## Classified workflows\n${JSON.stringify(behavior.workflows, null, 2)}\n\n## Classified operations (for orchestration refs)\n${JSON.stringify(behavior.operations.map(o => ({ operationId: o.operationId, title: o.title, entity: o.entity, kind: o.kind })), null, 2)}\n\n## Ontology entity ids\n${JSON.stringify(Object.keys(getEnrichedOntology(context)), null, 2)}\n`;
+  const ontologyIds = Object.keys(await getEnrichedOntology(context));
+  const human = `## Classified workflows\n${JSON.stringify(behavior.workflows, null, 2)}\n\n## Classified operations (for orchestration refs)\n${JSON.stringify(behavior.operations.map(o => ({ operationId: o.operationId, title: o.title, entity: o.entity, kind: o.kind })), null, 2)}\n\n## Ontology entity ids\n${JSON.stringify(ontologyIds, null, 2)}\n`;
   return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), human, toolSchema, TOOL_NAME)];
 }
 
@@ -57,7 +58,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     output = extractPlannerOutput(payload, config);
     if (output.status === 'failed') { status = 'failed'; traceMsg = `${AGENT_NAME} returned failed`; }
     else {
-      const known = getOntologyEntityIdSet(getEnrichedOntology(context));
+      const known = getOntologyEntityIdSet(await getEnrichedOntology(context));
       for (const w of output.result.workflows) for (const e of w.entities) if (!isKnownEntityRef(e, known)) warnings.push(`workflow ${w.workflowId}: unknown entity ref '${e}'`);
     }
   } catch (error) {
@@ -123,5 +124,8 @@ operationIds[] (the operations this workflow orchestrates — from the classifie
 Rules:
 - Keep workflowId stable with the classification.
 - entities use canonical ontology ids; operationIds reference classified operations.
+- Populate operationIds with the operations this workflow orchestrates — match by the entity it acts
+  on and the action intent. Avoid leaving operationIds empty when the workflow performs CRUD-like or
+  status-changing steps; a stateful workflow with no operations is a smell.
 
 `;
