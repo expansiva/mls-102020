@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/skills/desingsystem/genPageDsCustom.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/skills/design/genPageDsCustom.ts" enhancement="_blank"/>
 
 export const skill = `
 # SKILL: Apply the Design System (custom tokens)
@@ -84,8 +84,13 @@ Reference the variables through Tailwind **arbitrary values**
 
 ### Typography → utility
 
-- **Headings/titles:** \`font-[var(--ds-font-display)]\` + heading weight + \`tracking\` from token.
-- **Body/labels:** \`font-[var(--ds-font-body)]\` + body weight.
+> **Font family — Tailwind v4 requires the \`family-name:\` type hint.** A bare
+> \`font-[var(--ds-font-display)]\` does NOT emit \`font-family\` (Tailwind can't tell if
+> \`font-[…]\` means family, size or weight). Always write \`font-[family-name:var(--ds-font-…)]\`.
+> Do NOT add a font fallback in the class — the variable already carries family + fallback.
+
+- **Headings/titles:** \`font-[family-name:var(--ds-font-display)]\` + heading weight + \`tracking\` from token.
+- **Body/labels:** \`font-[family-name:var(--ds-font-body)]\` + body weight.
 - **Size scale** (from \`typography.scale\`) — pick the row, apply consistently:
 
 | scale | body | label | heading |
@@ -154,10 +159,10 @@ Apply the design system **on the slot tags and their children**:
   .isEditing=\${true}
   class="bg-[var(--ds-surface)] border border-[color:var(--ds-border)] rounded-lg shadow-sm">
   <CardHeader class="p-4 border-b border-[color:var(--ds-border)]">
-    <CardTitle class="font-[var(--ds-font-display)] text-lg font-semibold tracking-tight text-[color:var(--ds-text)]">
+    <CardTitle class="font-[family-name:var(--ds-font-display)] text-lg font-semibold tracking-tight text-[color:var(--ds-text)]">
       \${this.msg.criarOuAtualizarItemEstoqueLabel}
     </CardTitle>
-    <CardDescription class="font-[var(--ds-font-body)] text-sm text-[color:var(--ds-muted)]">
+    <CardDescription class="font-[family-name:var(--ds-font-body)] text-sm text-[color:var(--ds-muted)]">
       \${this.msg.loadingListarItensEstoque}
     </CardDescription>
   </CardHeader>

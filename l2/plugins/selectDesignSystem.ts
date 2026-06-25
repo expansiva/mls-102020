@@ -195,7 +195,7 @@ interface IDsEntry { key: number; name: string; description: string; skill: stri
 interface IRole { name: string; light: string; dark: string; }
 
 // Token'd design systems render through the token-aware skill.
-const DS_SKILL_DEFAULT = '_102020_/l2/skills/desingsystem/genPageDsCustom.ts';
+const DS_SKILL_DEFAULT = '_102020_/l2/skills/design/genPageDsCustom.ts';
 
 // Font sourcing. The curated Google list is only a SUGGESTION — the family field is a
 // combobox, so any Google Fonts family works by name. `custom` covers anything else (URL).
