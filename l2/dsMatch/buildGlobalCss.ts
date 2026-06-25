@@ -195,42 +195,22 @@ export function renderGlobalCss(designSystems: Record<string, { name?: string; t
 
 // ─── stor I/O ────────────────────────────────────────────────────────────────────
 
-/** Create or overwrite a file by file reference (mirrors planning.saveFile). */
+/**
+ * Create or overwrite the generated stylesheet. This is NOT an editor-managed file
+ * (a .css has no monaco model), so content is written straight to the local store —
+ * the same mechanism updateConfigProject uses for project.json.
+ *   - new file  → createStorFile (which persists the initial content)
+ *   - existing  → localStor.setContent (overwrite)
+ */
 async function writeFileByRef(ref: string, src: string): Promise<void> {
     const info = mls.stor.convertFileReferenceToFile(ref);
     const key = mls.stor.getKeyToFile(info);
-    let sf = mls.stor.files[key];
+    const sf = mls.stor.files[key];
     if (!sf) {
-        sf = await createStorFile({ ...info, source: src } as any, true, true, true);
-        await mls.stor.localStor.setContent(sf, { contentType: 'string', content: src });
-    } else {
-        await createOrGetModel(sf, 'json', src, sf.project);
+        await createStorFile({ ...info, source: src } as any, false);
+        return;
     }
-}
-
-async function createOrGetModel(stor: mls.stor.IFileInfo, editorType: string, src: string, project: number) {
-    const uri = getUri(`l5_project-config_${project}}`);
-    let model1 = monaco.editor.getModel(uri);
-    if (!model1) {
-        model1 = monaco.editor.createModel(src, editorType, uri);
-        setEventsModel(stor, model1);
-    } else {
-        model1.setValue(src);
-    }
-    return model1;
-}
-function getUri(shortFN: string): monaco.Uri {
-    return monaco.Uri.parse(`file://server/${shortFN}}.ts`);
-}
-
-function setEventsModel(stor: mls.stor.IFileInfo, model: monaco.editor.ITextModel) {
-    model.onDidChangeContent(async (event) => {
-        const val = model.getValue();
-        await mls.stor.localStor.setContent(stor, {
-            contentType: 'string',
-            content: val
-        });
-    });
+    await mls.stor.localStor.setContent(sf, { contentType: 'string', content: src });
 }
 
 /**
