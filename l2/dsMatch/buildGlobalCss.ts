@@ -19,12 +19,34 @@ import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 
 // ─── Token shape (the contract adopted on designSystems[ds].tokens) ──────────────
 export interface DsColorRole { light: string; dark: string; }
+
+/** A custom @font-face entry (self-hosted / arbitrary URL). */
+export interface DsFontFace { weight?: number; style?: string; src: string; }
+
+/**
+ * One font ROLE. `name` is the role (display, body, mono, …) → emitted as `--ds-font-<name>`.
+ * `source` decides how the family is LOADED:
+ *   - system: already installed (no load)
+ *   - google: loaded via `@import` from Google Fonts (URL derived from family + weights)
+ *   - custom: loaded from `url` (a stylesheet @import) or `faces` (@font-face blocks)
+ */
+export interface DsFont {
+    name: string;
+    source?: 'system' | 'google' | 'custom';
+    family: string;
+    weights?: number[];
+    fallback?: string;                               // serif | sans-serif | monospace | …
+    url?: string;                                    // custom: stylesheet URL to @import
+    faces?: DsFontFace[];                            // custom: @font-face sources
+}
+
 export interface DsTokens {
     palette?: string[];                              // authoring-only; never emitted
     color?: Record<string, DsColorRole>;
     typography?: {
-        fontDisplay?: string;
-        fontBody?: string;
+        fonts?: DsFont[];                            // dynamic font roles (preferred)
+        fontDisplay?: string;                        // legacy fallback (string family)
+        fontBody?: string;                           // legacy fallback (string family)
         scale?: string;                              // applied via Tailwind classes by the render skill
         weightHeading?: string;
         weightBody?: string;
@@ -65,17 +87,73 @@ function borderWidthLength(value: string | undefined): string | null {
     return /^\d+$/.test(v) ? `${v}px` : v;
 }
 
-/** Theme-independent vars (fonts, shape) — emitted only in the light/base block. */
-function staticVars(tokens: DsTokens): string[] {
-    const out: string[] = [];
+/** CSS family value with fallback (family quoted when it contains spaces). */
+function fontFamilyValue(family: string, fallback?: string): string {
+    const fam = /\s/.test(family) ? `'${family}'` : family;
+    return fallback ? `${fam}, ${fallback}` : fam;
+}
+
+/** Font vars (`--ds-font-<role>`) from the dynamic fonts list, or the legacy display/body. */
+function fontVars(tokens: DsTokens): string[] {
     const t = tokens.typography ?? {};
+    if (Array.isArray(t.fonts) && t.fonts.length) {
+        return t.fonts
+            .filter(f => f && f.name && f.family)
+            .map(f => `--ds-font-${f.name}: ${fontFamilyValue(f.family, f.fallback)};`);
+    }
+    const out: string[] = [];
     if (t.fontDisplay) out.push(`--ds-font-display: ${t.fontDisplay};`);
     if (t.fontBody) out.push(`--ds-font-body: ${t.fontBody};`);
+    return out;
+}
+
+/** Theme-independent vars (fonts, shape) — emitted only in the light/base block. */
+function staticVars(tokens: DsTokens): string[] {
+    const out: string[] = [...fontVars(tokens)];
     const radius = tokens.shape?.radius;
     if (radius && RADIUS_LENGTH[radius] != null) out.push(`--ds-radius: ${RADIUS_LENGTH[radius]};`);
     const bw = borderWidthLength(tokens.shape?.borderWidth);
     if (bw) out.push(`--ds-border-w: ${bw};`);
     return out;
+}
+
+/** Build the Google Fonts css2 import URL from a family + weights. */
+function googleImportUrl(family: string, weights?: number[]): string {
+    const fam = family.trim().replace(/\s+/g, '+');
+    const w = (weights && weights.length) ? `:wght@${[...weights].sort((a, b) => a - b).join(';')}` : '';
+    return `https://fonts.googleapis.com/css2?family=${fam}${w}&display=swap`;
+}
+
+/**
+ * Font-loading CSS gathered across ALL design systems: `@import` lines (google + custom URLs)
+ * and `@font-face` blocks (custom self-hosted sources). Emitted ONCE at the top of global.css.
+ * @import must precede every rule, so this block is placed before the `.ds-*` blocks.
+ */
+function collectFontLoads(designSystems: Record<string, { tokens?: DsTokens }>): string {
+    const imports = new Set<string>();
+    const faces: string[] = [];
+    for (const ds of Object.values(designSystems ?? {})) {
+        const fonts = ds?.tokens?.typography?.fonts;
+        if (!Array.isArray(fonts)) continue;
+        for (const f of fonts) {
+            if (!f || !f.family) continue;
+            if (f.source === 'google') {
+                imports.add(googleImportUrl(f.family, f.weights));
+            } else if (f.source === 'custom') {
+                if (f.url) imports.add(f.url);
+                for (const face of f.faces ?? []) {
+                    if (!face?.src) continue;
+                    const parts = [`font-family: '${f.family}';`, `src: url('${face.src}') format('woff2');`];
+                    if (face.weight) parts.push(`font-weight: ${face.weight};`);
+                    if (face.style) parts.push(`font-style: ${face.style};`);
+                    faces.push(`@font-face { ${parts.join(' ')} }`);
+                }
+            }
+            // system: nothing to load
+        }
+    }
+    const lines = [...[...imports].map(u => `@import url('${u}');`), ...faces];
+    return lines.join('\n');
 }
 
 /** Color vars for one variant ('light' | 'dark'). */
@@ -103,6 +181,7 @@ export function tokensToCss(name: string, tokens: DsTokens): string {
 /** Build the full stylesheet string from a project's designSystems map. */
 export function renderGlobalCss(designSystems: Record<string, { name?: string; tokens?: DsTokens }>): string {
     const header = '/* AUTO-GENERATED by dsMatch/buildGlobalCss — do not edit by hand. */';
+    const fontLoads = collectFontLoads(designSystems);   // @import / @font-face — must come first
     const entries = Object.entries(designSystems ?? {})
         .filter(([, ds]) => ds && ds.tokens && typeof ds.tokens === 'object')
         .sort(([a], [b]) => Number(a) - Number(b));
@@ -111,7 +190,7 @@ export function renderGlobalCss(designSystems: Record<string, { name?: string; t
         .map(([, ds]) => tokensToCss(ds.name ?? 'default', ds.tokens as DsTokens))
         .filter(Boolean);
 
-    return [header, ...blocks].join('\n\n') + '\n';
+    return [header, fontLoads, ...blocks].filter(Boolean).join('\n\n') + '\n';
 }
 
 // ─── stor I/O ────────────────────────────────────────────────────────────────────
