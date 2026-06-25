@@ -789,6 +789,7 @@ const reviewConfigs: Record<PlanIndexName, PlanIndexReviewConfig> = {
     contractFocus: `
 - Ownership must be moduleOwned only; MDM, horizontal and plugin-owned entities belong in excludedEntities, never in tables.
 - tableKind must be transactional; metric tables are planned in the metrics index, not here.
+- The boolean flag persistenceScope.metricsTablesRequired MUST stay true when initial metrics/dashboard was requested. It only SIGNALS that metric tables are needed (they are planned later in the metrics index); it is NOT a metric table planned here and is NEVER a violation. Do not flag it as an error and never ask to set it false.
 - Every table must be really necessary: derived from final plan approvedArtifacts, ontology, workflows or usecase signals. No invented feature tables.
 - Tables that nobody reads or writes are suspicious; check readsByArtifacts/writesByArtifacts.
 - Embedded entities should use the details column pattern only when read together with the root and without independent lifecycle.`,
