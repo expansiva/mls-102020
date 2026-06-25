@@ -205,8 +205,19 @@ async function afterPromptStep(
   }
 
   if (reviewArgs.attempt >= MAX_PLAN_INDEX_CRITIC_ATTEMPTS) {
+    // analise11: the critic/repair loop (LLM) did not converge within the budget. A nitpicky critic
+    // must NOT kill the whole generation — accept the last repaired index and DOWNGRADE the remaining
+    // critic errors to warnings (non-blocking). They stay visible in the health report and the
+    // coverage validator still runs; later definition steps can refine what remains. Deterministic
+    // local errors keep their own hard path (see the local-checkpoint branch above).
     const summary = critique!.result.errors.map(item => `${item.code}: ${item.message}`).join('; ');
-    return failIndexIntents(context, indexStep, step, hookSequential, `critic rejected ${reviewArgs.indexName} after ${reviewArgs.attempt} attempts: ${summary}`);
+    healthReport.criticWarnings = [
+      ...healthReport.criticWarnings,
+      ...critiqueFindingsToHealth(critique!.result.errors, 'warning'),
+    ];
+    healthReport.criticErrors = [];
+    healthReport.notes.push(`critic did not converge in ${reviewArgs.attempt} attempts; approved with ${critique!.result.errors.length} unresolved finding(s) downgraded to warnings: ${summary}`);
+    return approveIndexIntents(context, config, indexStep, step, hookSequential, output, healthReport);
   }
 
   // Add the repair step BEFORE completing this critic step, so the index step always keeps
@@ -335,7 +346,7 @@ ${JSON.stringify(config.buildReviewContext(context), null, 2)}
 }
 
 const systemPrompt = `
-<!-- modelType: codepro -->
+<!-- modelType: codereasoning -->
 <!-- x-tool-strict: true -->
 
 You are agentCriticPlanIndex for the collab.codes "newSolution" flow.
@@ -349,6 +360,7 @@ Do not return prose.
 ## How to classify findings
 - "errors": contract violations, broken references, scope decisions that child definition agents cannot fix later (wrong ownership, missing approved artifact, invented item, wrong actor, wrong executionMode, wrong resolution).
 - "warnings": acceptable modeling choices, style issues, or improvements that must NOT block the flow. Example: a page input modeled as an object that contains the identifier internally is acceptable when its contract is clear.
+- Raise an "error" ONLY for a concrete, verifiable violation you can point to in the provided index/context. If a concern is speculative or conditional (uses words like "may", "if", "ensure", "possibly", "unclear", "ambiguous", "could", "consider") OR can still be fixed/detailed by a LATER definition step (e.g. FK dimensions, field-level details, naming polish), classify it as a "warning", never an "error". When unsure, prefer "warning".
 - approved must be true only when errors is empty.
 - Do not invent new scope; judge the index against the provided contract focus and minimal context only.
 - Repeat the deterministic local findings only if you confirm them; never contradict deterministic reference checks.

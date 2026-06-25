@@ -242,7 +242,7 @@ function normalizePlanUiConsolidationResult(value: unknown): PlanUiConsolidation
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codefast -->
 <!-- x-tool-strict: true -->
 
 You are agentPlanUiConsolidation for the collab.codes "newSolution" flow.

@@ -525,7 +525,7 @@ ${JSON.stringify(snapshot, null, 2)}
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codereasoning -->
 <!-- x-tool-strict: true -->
 
 You are agentPlanPageIndex for the collab.codes "newSolution" flow.
@@ -561,5 +561,10 @@ Do not return prose.
 - Categorize flowRefs by workflow executionMode exactly: entityLifecycle -> entityLifecycles; taskWorkflow -> taskWorkflows; automation -> automations; uiState/documentationOnly -> experienceFlows.
 - Do not put the same workflow id in more than one flowRefs bucket.
 - Use rule ids; do not write loose rule text.
+- (T10) For each module-owned transactional entity, plan the standard screens that apply: a list (or a board/tracker when the entity has a status lifecycle) AND a detail screen; for metric sets, a dashboard. Do not collapse these into a single page.
+- (T11) One page = one capability/concern. Do NOT merge unrelated capabilities into a single page (e.g. menu management and inventory management must be separate pages). Split dense multi-mode flows (view + edit + confirm) into focused pages or a step wizard.
+- (T13) Every priority-now capability must yield at least one page or explicit action surface — none may be silently dropped.
+- (T14) Balance pages across actors: frontline/operational actors get their own focused screens (list, capture/new, detail), not just the manager. Include domain-configuration pages (catalogs, parameters) when the domain owns that data.
+- (T12) Do NOT create pages for platform-provided concerns: authentication, authorization/roles, audit, monitoring/observability, and notifications are provided by the platform; never spend page budget on them.
 - Do not generate materialization details or TypeScript code.
 `;

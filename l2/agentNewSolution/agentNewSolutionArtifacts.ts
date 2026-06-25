@@ -301,6 +301,24 @@ export interface SavePlanArtifactsOptions {
   mdmInfrastructureModuleRef?: string;
   // A1–A3: catalog used by the layer_4 entity generation (gap-fill + fields + storage binding).
   entityCatalog?: EntityCatalog;
+  // analise10 T5: physical tableName/tableId -> ontology rootEntity. Used to DERIVE the descriptive
+  // entity refs (bffCommands.readsEntities/writesEntities, organism.requiredEntities) from the tables
+  // the command touches, instead of trusting the LLM's free-text (which drifts to group ids like
+  // 'menuEntity'). Passed by agentPlanPageDefinition (which already has the persistence index).
+  tableRootEntities?: Record<string, string>;
+}
+
+// analise10 T5: map a list of physical table names to their canonical ontology rootEntity ids,
+// deduped. Unknown tables (e.g. metric tables) are skipped — they carry no domain entity ref.
+function tablesToEntityRefs(tableNames: unknown, tableRootEntities: Record<string, string>): string[] {
+  if (!Array.isArray(tableNames)) return [];
+  const out: string[] = [];
+  for (const value of tableNames) {
+    const name = typeof value === 'string' ? value : readString(getRecord(value)?.tableName);
+    const root = name ? tableRootEntities[name] : undefined;
+    if (root && !out.includes(root)) out.push(root);
+  }
+  return out;
 }
 
 // B-01 (todo5): per-item definition fan-outs whose needs_input output is still saved as an
@@ -1164,11 +1182,14 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
       });
     };
 
+    // lowerFirst is shared by the LLM-group naming (analise10 T2) and the gap-fill below.
+    const lowerFirst = (value: string) => value ? value.charAt(0).toLowerCase() + value.slice(1) : value;
+
     // ---- 1. groups planned by the LLM (enriched with shape + storage) ----------------------
     for (const value of usecaseEntities) {
       const entity = getRecord(value);
-      const entityId = readString(entity?.usecaseEntityId);
-      if (!entity || !entityId) continue;
+      const usecaseEntityId = readString(entity?.usecaseEntityId);
+      if (!entity || !usecaseEntityId) continue;
       const sourceTables = Array.isArray(entity.sourceTables) ? entity.sourceTables : [];
       const tableNames: string[] = [];
       const storage: Record<string, unknown>[] = [];
@@ -1186,7 +1207,6 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
           if (alias) coveredTables.add(alias);
         }
       }
-      registerEntityTables(entityId, tableNames);
       // A-03 (todo5): the entity defs is the canonical domain shape — fields are REQUIRED for
       // every entity, including multi-table groups (e.g. base entity + its metric table). The
       // shape comes from the group's PRIMARY binding: the first moduleTable's rootEntity or the
@@ -1195,6 +1215,21 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
       const ontologyId = primary?.kind === 'moduleTable'
         ? tableByName.get(readString(primary.tableName) || '')?.rootEntity
         : primary?.kind === 'mdm' ? readString(primary.entity) : undefined;
+      // analise10 T2: name the entity from the canonical ontology rootEntity (same convention as
+      // the deterministic gap-fill below), not from the LLM's free-text usecaseEntityId — so a
+      // group the LLM called 'pedidoEntity' becomes 'order'/OrderEntity, aligned with the ontology
+      // and the table's rootEntity. Fall back to the LLM id when no ontology root resolves or the
+      // canonical id was already taken by another group.
+      let entityId = ontologyId ? lowerFirst(ontologyId) : usecaseEntityId;
+      if (entityId !== usecaseEntityId && usedEntityIds.has(entityId)) entityId = usecaseEntityId;
+      // analise10 T3: explicit aggregate -> ontology map, so a reference by ANY covered ontology
+      // entity id (e.g. 'Order', 'OrderStatusHistory') resolves to this layer_4 entity.
+      const ontologyEntityRefs = [...new Set(storage.map(binding => {
+        if (binding.kind === 'moduleTable') return tableByName.get(readString(binding.tableName) || '')?.rootEntity;
+        if (binding.kind === 'mdm') return readString(binding.entity);
+        return undefined;
+      }).filter((id): id is string => !!id))];
+      registerEntityTables(entityId, tableNames);
       const usecaseRefs = usecases
         .map(item => getRecord(item))
         .filter((usecase): usecase is Record<string, unknown> => !!usecase && usecaseTouchesEntityTables(usecase, sourceTables))
@@ -1206,6 +1241,7 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
         purpose: readString(entity.purpose) || '',
         layer: 'layer_4_entities',
         ...shapeFromOntology(ontologyId),
+        ...(ontologyEntityRefs.length > 0 ? { ontologyEntities: ontologyEntityRefs } : {}),
         sourceTables,
         storage,
         allowedOperations: Array.isArray(entity.allowedOperations) ? entity.allowedOperations : [],
@@ -1215,7 +1251,6 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
     }
 
     // ---- 2. deterministic gap-fill (A1): one entity per uncovered table/metric/MDM ---------
-    const lowerFirst = (value: string) => value ? value.charAt(0).toLowerCase() + value.slice(1) : value;
     if (catalog) {
       for (const table of catalog.tables) {
         if (coveredTables.has(table.tableName) || coveredTables.has(table.tableId)) continue;
@@ -1299,6 +1334,17 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
     }
 
     // ---- 3. usecases with derived entityRefs ------------------------------------------------
+    // analise10 T5: map this usecase's table refs to canonical ontology rootEntity ids.
+    const rootsOfTableRefs = (refs: unknown): string[] => {
+      if (!Array.isArray(refs)) return [];
+      const out: string[] = [];
+      for (const r of refs) {
+        const n = typeof r === 'string' ? r : readString(getRecord(r)?.tableName);
+        const root = n ? tableByName.get(n)?.rootEntity : undefined;
+        if (root && !out.includes(root)) out.push(root);
+      }
+      return out;
+    };
     const usecaseCandidates = usecases.flatMap((value): PlanArtifactCandidate[] => {
       const usecase = getRecord(value);
       const id = readString(usecase?.usecaseId);
@@ -1306,6 +1352,14 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
       // Derived layer_4 references: entities whose tables intersect this usecase's
       // reads/writesTables. The L3 materializer imports the entity contracts from these refs.
       const entityRefs = collectUsecaseEntityRefs(usecase, entityIdsByTable);
+      // analise10 T5: derive input/output entity refs from the usecase's tables (canonical ontology
+      // ids) instead of the LLM's free-text. A query usecase (no writes) outputs what it reads.
+      const reads = rootsOfTableRefs(usecase.readsTables);
+      const writes = rootsOfTableRefs(usecase.writesTables);
+      const derived: Record<string, unknown> = {};
+      if (reads.length > 0) derived.inputEntities = reads;
+      const outputs = writes.length > 0 ? writes : reads;
+      if (outputs.length > 0) derived.outputEntities = outputs;
       // The usecase .defs.ts exports the usecase object directly under a fixed name `useCase`
       // (every usecase file uses the same variable). No metadata envelope, and no global
       // backendArchitecture/controllerRules — those are not needed per usecase.
@@ -1315,7 +1369,7 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
         exportName: 'useCase',
         moduleName,
         bareExport: true,
-        data: entityRefs.length > 0 ? { ...usecase, entityRefs } : usecase,
+        data: { ...usecase, ...derived, ...(entityRefs.length > 0 ? { entityRefs } : {}) },
       }];
     });
 
@@ -1339,12 +1393,43 @@ function buildPlanArtifactCandidates(agentName: string, moduleName: string, outp
     const page = getRecord(result.pageDefinition);
     const id = readString(page?.pageId);
     if (!page || !id) return [];
+    const bffCommands = Array.isArray(result.bffCommands) ? result.bffCommands : [];
+    // analise10 T5: derive descriptive entity refs from the tables/fields each command/organism
+    // touches (canonical ontology ids), replacing the LLM's free-text refs that drift to group ids
+    // like 'menuEntity'. Best-effort: when the map is absent, the LLM's refs are kept.
+    const tableRoots = options?.tableRootEntities || {};
+    if (Object.keys(tableRoots).length > 0) {
+      for (const value of bffCommands) {
+        const cmd = getRecord(value);
+        if (!cmd) continue;
+        const reads = tablesToEntityRefs(cmd.readsTables, tableRoots);
+        const writes = tablesToEntityRefs(cmd.writesTables, tableRoots);
+        if (reads.length > 0) cmd.readsEntities = reads;
+        if (writes.length > 0) cmd.writesEntities = writes;
+      }
+      // organisms: derive requiredEntities from dotted readsFields/writesFields prefixes
+      // ("Order.orderId" -> "Order"); keep the existing value when no field carries a prefix.
+      for (const sectionValue of (Array.isArray(page.sections) ? page.sections : [])) {
+        const section = getRecord(sectionValue);
+        for (const orgValue of (Array.isArray(section?.organisms) ? section!.organisms : [])) {
+          const org = getRecord(orgValue);
+          if (!org) continue;
+          const prefixes: string[] = [];
+          for (const f of [...(Array.isArray(org.readsFields) ? org.readsFields : []), ...(Array.isArray(org.writesFields) ? org.writesFields : [])]) {
+            const s = typeof f === 'string' ? f : '';
+            const dot = s.indexOf('.');
+            if (dot > 0) { const p = s.slice(0, dot); if (!prefixes.includes(p)) prefixes.push(p); }
+          }
+          if (prefixes.length > 0) org.requiredEntities = prefixes;
+        }
+      }
+    }
     return [{
       artifactType: 'page',
       artifactId: id,
       exportName: `${toExportIdentifier(id)}PagePlan`,
       moduleName,
-      data: { pageDefinition: page, bffCommands: result.bffCommands },
+      data: { pageDefinition: page, bffCommands },
     }];
   }
 

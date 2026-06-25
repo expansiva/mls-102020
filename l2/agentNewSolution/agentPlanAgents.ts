@@ -265,7 +265,7 @@ ${JSON.stringify(workflowDefinitions, null, 2)}
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codepro -->
 <!-- x-tool-strict: true -->
 
 You are agentPlanAgents for the collab.codes "newSolution" flow.
