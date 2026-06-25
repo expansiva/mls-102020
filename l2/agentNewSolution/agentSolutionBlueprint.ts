@@ -300,7 +300,7 @@ In result, return:
 - actors.
 - capabilities.
 - module.moduleName: the user's clarification answer is FREE TEXT in their language and may mix affirmation words with the name (e.g. "sim cafeShow" means "yes, cafeShow"). Interpret it: extract the intended name; when the answer only confirms, keep the suggested/tentative name. The name must be a single camelCase identifier — never include affirmation/filler words.
-- ontology.entities as an object map keyed by PascalCase entity id. The blueprint is a MAP, not the detailed model: each value includes title, description and ownership (plus entityId/kind/statusEnum/lifecycleStates when already known; statusEnum and lifecycleStates, when present, are ARRAYS of strings — never a single string). Do NOT detail fields here — the complete field list (with per-field enums) is produced later by the per-entity definition stage. Focus the effort on getting the entity LIST, ownership and relationships right.
+- ontology.entities as an object map keyed by PascalCase entity id. The blueprint is a MAP, not the detailed model: each value includes title, description and ownership (plus entityId/kind/statusEnum/lifecycleStates when already known; statusEnum and lifecycleStates, when present, are ARRAYS of strings — never a single string). Do NOT detail fields here — the complete field list (with per-field enums) is produced later by the per-entity definition stage. Focus the effort on getting the entity LIST, ownership and relationships right. ontology.entities holds ONLY persistent DATA/domain entities (kind core / mdm / event / metric / supporting). NEVER place use-cases, workflows, actions or queries here — no kind "usecase", and no verb-named or "Uc"/"UseCase"-prefixed ids (e.g. UcCreateOrder, UcQueryKitchenQueue). Use-cases belong to artifactPlan.usecaseEntities, never to ontology.entities.
 - centralized rules.
 - relationships.
 - userActions.
@@ -316,7 +316,7 @@ In result, return:
 - Every entity owned by the solution (ownership moduleOwned or mdmOwned) must declare its ownership explicitly. Field lists are NOT required here (detailed later per entity); when you already know a few key fields you MAY include them, but never let field detailing reduce the breadth of the entity map.
 - When the request MAINTAINS or EXTENDS an existing module, entities already persisted by that module are ownership "existingModuleOwned" — never moduleOwned (would duplicate the table) and never mdmOwned (reserved for shared master data).
 - Include operational metric tables and an admin dashboard when initial metrics/dashboard was accepted.
-- Include layer_3 usecase entities when the solution has BFF commands, writes, lifecycle changes, or metric updates.
+- List layer_3 usecase entities in artifactPlan.usecaseEntities when the solution has BFF commands, writes, lifecycle changes, or metric updates. These are NOT data entities: never add them to ontology.entities, never give them kind "usecase" there, and never name an ontology entity with a verb or a "Uc"/"UseCase" prefix (e.g. UcCreateOrder). ontology.entities holds only persistent data nouns.
 - Backend layer rules must be respected: BFF is layer_2, use cases are layer_3, real tables are layer_1.
 - Do not make payments, scheduling, adoption, or unrelated features part of the MVP when the prompt or decisions excluded them.
 - Use rules with stable ruleId values. Do not leave rule text loose in pages.
