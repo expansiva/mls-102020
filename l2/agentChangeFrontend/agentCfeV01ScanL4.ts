@@ -2,14 +2,12 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
-  CfeV01PageCandidate,
   CfeV01StepArgs,
   createAddStepIntent,
   createAgentStepPayload,
+  createParallelAgentStepIntent,
   createUpdateStatusIntent,
   logPrefix,
-  pagePlanId,
-  phasePlanId,
   readCreateScanResult,
 } from '/_102020_/l2/agentChangeFrontend/cfeV01Shared.js';
 
@@ -43,11 +41,22 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       ];
     }
 
-    const intents: mls.msg.AgentIntent[] = scan.pages.map(page => createAddStepIntent(context, parentStep, createPageContainer(page)));
+    const pageArgs = scan.pages.map(page => JSON.stringify({ page, phase: 'page' } satisfies CfeV01StepArgs));
+    const intents: mls.msg.AgentIntent[] = [
+      createParallelAgentStepIntent(
+        context,
+        parentStep,
+        'v01-page-fanout',
+        'agentCfeV01PageConsole',
+        'v0.1 paginas {{completed}}/{{total}}, falhas {{failed}}',
+        pageArgs,
+        5,
+      ),
+    ];
     intents.push(createAddStepIntent(context, parentStep, createFinalStep({
       scan: { project: scan.project, moduleNames: scan.moduleNames, pageCount: scan.pages.length, ownerCount: pendingOwners },
       phase: 'final',
-    }, scan.pages.map(page => phasePlanId('config', page)))));
+    }, ['v01-page-fanout'])));
     intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Queued ${scan.pages.length} page console test(s).`));
     return intents;
   } catch (error) {
@@ -55,35 +64,6 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     console.error(`${logPrefix(agent)} failed: ${message}`);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
-}
-
-function createPageContainer(page: CfeV01PageCandidate): mls.msg.AIAgentStep {
-  return createAgentStepPayload(
-    pagePlanId(page),
-    'agentCfeV01PageConsole',
-    `v0.1 pagina ${page.pageId}`,
-    { page, phase: 'page' },
-    ['v01-scan-l4'],
-    'parallel_static',
-    [
-      createChildStep(page, 'contract', ['v01-scan-l4']),
-      createChildStep(page, 'shared', [phasePlanId('contract', page)]),
-      createChildStep(page, 'layout', [phasePlanId('shared', page)]),
-      createChildStep(page, 'config', [phasePlanId('layout', page)]),
-    ],
-    'waiting_dependency',
-  );
-}
-
-function createChildStep(page: CfeV01PageCandidate, phase: NonNullable<CfeV01StepArgs['phase']>, dependsOn: string[]): mls.msg.AIAgentStep {
-  return createAgentStepPayload(
-    phasePlanId(phase, page),
-    'agentCfeV01PageChildConsole',
-    `v0.1 ${phase} ${page.pageId}`,
-    { page, phase },
-    dependsOn,
-    'sequential',
-  );
 }
 
 function createFinalStep(args: CfeV01StepArgs, dependsOn: string[]): mls.msg.AIAgentStep {

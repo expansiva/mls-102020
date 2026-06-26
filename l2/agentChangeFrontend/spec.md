@@ -495,7 +495,7 @@ Antes de gerar arquivos, a implementação inicial criada para teste faz somente
 
 - `agentChangeFrontend` inicia o fluxo v0.1;
 - `agentCfeV01ScanL4` lê `l4`, encontra owners com `statusFrontend = toCreate` e monta páginas candidatas;
-- cria um container paralelo por página, com filhos `contract -> shared -> layout -> config`;
+- cria um fan-out `parallel_dynamic` com `executionMode: { type: "parallel" }`, que deve gerar `progress`; cada página paralela cria filhos `contract -> shared -> layout -> config`;
 - `agentCfeV01PageConsole` imprime no console a página que seria criada;
 - `agentCfeV01PageChildConsole` imprime no console cada fase por página;
 - `agentCfeV01FinalConsole` imprime o resumo após a barreira final;

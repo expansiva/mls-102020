@@ -28,7 +28,7 @@
     "v0.1Test": [
       "Implemented now only to test the autonomous l4 scan and page parallelism with children.",
       "Reads l4 workflows/operations/modules/ontology and computes candidate pages.",
-      "Creates one parallel_static page container per candidate page, each with child steps contract -> shared -> layout -> config.",
+      "Creates one parallel_dynamic fan-out parent with executionMode { type: 'parallel' }, so the runtime adds progress. Each dynamic page item then creates child steps contract -> shared -> layout -> config.",
       "Each page/container/child logs to console what would be created.",
       "Does not write .defs.ts, config.json, .ts, .html or statusFrontend."
     ],

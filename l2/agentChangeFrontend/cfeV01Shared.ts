@@ -150,6 +150,37 @@ export function createAddStepIntent(
   };
 }
 
+export function createParallelAgentStepIntent(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  planId: string,
+  agentName: string,
+  stepTitle: string,
+  args: string[],
+  maxParallel = 5,
+): mls.msg.AgentIntentAddStep {
+  const step = createAgentStepPayload(
+    planId,
+    agentName,
+    stepTitle,
+    { phase: 'page' },
+    [],
+    'parallel_dynamic',
+    [],
+    'in_progress',
+  );
+  step.interaction = {
+    input: [{ type: 'system', content: '<!-- modelType: codefast -->' }],
+    cost: 0,
+    trace: [`queued ${args.length} parallel args for ${agentName}`],
+    payload: null,
+  };
+  return {
+    ...createAddStepIntent(context, parentStep, step),
+    executionMode: { type: 'parallel', args, maxParallel },
+  };
+}
+
 export function parseStepArgs(prompt: string | undefined): CfeV01StepArgs {
   if (!prompt) return {};
   const parsed = JSON.parse(prompt);
