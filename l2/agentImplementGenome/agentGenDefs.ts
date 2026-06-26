@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentImplementsDesignSystem2/agentGenDefs2.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102020_/l2/agentImplementGenome/agentGenDefs.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 // Group B executor (Fase E). One per page; waits on its own select step.
 // beforePromptStep → prompt (ORIGIN defs page11 + NEW defs with moleculeAssignments).
@@ -12,7 +12,7 @@ import { buildWorkItem } from '/_102020_/l2/dsMatch/derivePaths.js';
 import { buildPageDsStamp, renderDsVersionExport } from '/_102020_/l2/dsMatch/dsVersion.js';
 import { dsGlobalCssRef } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { parseStepArgs, readRawSource, saveFile, mkCompleted, mkFail } from '/_102020_/l2/agentImplementsDesignSystem2/planning.js';
+import { parseStepArgs, readRawSource, saveFile, mkCompleted, mkFail } from '/_102020_/l2/agentImplementGenome/planning.js';
 
 // Defaults when the layout/DS entry in project.json declares no `skill`.
 const DEFAULT_LAYOUT_SKILL = '_102020_/l2/agentMaterializeSolution/skills/genPageRender.ts';
@@ -20,9 +20,9 @@ const DEFAULT_DS_SKILL = '_102020_/l2/agentMaterializeSolution/skills/genPageDS.
 
 export function createAgent(): IAgentAsync {
   return {
-    agentName: 'agentGenDefs2',
+    agentName: 'agentGenDefs',
     agentProject: 102020,
-    agentFolder: 'agentImplementsDesignSystem2',
+    agentFolder: 'agentImplementGenome',
     agentDescription: 'Assemble the final page defs from origin defs + resolved molecules (Fase E)',
     visibility: 'private',
     beforePromptStep,
@@ -97,9 +97,9 @@ async function afterPromptStep(
       if (tail) finalSrc = `${finalSrc.replace(/\s*$/, '')}\n\n${tail}\n`;
     }
 
-    // Deterministically add the project-wide DS stylesheet to the pipeline's dependsFiles
+    // Deterministically add THIS page's DS stylesheet to the pipeline's dependsFiles
     // (same ref the generator writes to — single source of truth). Not done by the LLM.
-    finalSrc = addGlobalCssDependency(finalSrc, dsGlobalCssRef(project));
+    finalSrc = addGlobalCssDependency(finalSrc, dsGlobalCssRef(project, a.ds));
 
     // Override the pipeline `skills` with the CURRENT layout + DS skills from project.json
     // (page11 carries the defaults; this page uses the configured layout/DS render skills).
@@ -119,7 +119,7 @@ async function afterPromptStep(
 
     return [mkCompleted(context, parentStep, step, hookSequential)];
   } catch (error) {
-    return [mkFail(context, parentStep, step, hookSequential, `[agentGenDefs2] ${error instanceof Error ? error.message : String(error)}`)];
+    return [mkFail(context, parentStep, step, hookSequential, `[agentGenDefs] ${error instanceof Error ? error.message : String(error)}`)];
   }
 }
 

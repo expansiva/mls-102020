@@ -36,29 +36,27 @@ The design system is an object on \`designSystems[ds].tokens\` with this exact s
 
 ---
 
-## 2. Step 1 — Apply the design-system class
+## 2. Step 1 — Nothing to set up: the variables are global
 
-**Do NOT emit a \`<style>\` block with the token values.** The \`--ds-*\` variables are
-already defined, project-wide, in a generated stylesheet (\`_<project>_/l2/styles/global.css\`)
-under a class per design system: \`.ds-<dsName>\` (light) and \`.dark .ds-<dsName>\` (dark).
+**Do NOT emit a \`<style>\` block, and do NOT add any wrapper class.** The \`--ds-*\`
+variables are already defined on \`:root\` by this page's design-system stylesheet
+(\`_<project>_/l2/styles/<ds>/global.css\`), which the page's pipeline loads. Each page
+has exactly ONE design system, so the variables are simply available everywhere.
 
-Your only job is to **add that class to the page's root element**:
+Your only job is to **reference them** with \`var(--ds-*)\`:
 
 \`\`\`html
-<!-- dsName comes from the design system applied to this page, e.g. "default" -->
-<div class="ds-default bg-[var(--ds-bg)] text-[color:var(--ds-text)] min-h-screen">
+<div class="bg-[var(--ds-bg)] text-[color:var(--ds-text)] min-h-screen">
   <!-- the whole page goes here -->
 </div>
 \`\`\`
 
-> **Why a class (not a baked \`<style>\`):** these components render into the
-> **light DOM** (\`createRenderRoot() { return this; }\`), so the \`--ds-*\` variables
-> defined on \`.ds-<dsName>\` **cascade into every child — including the molecules
-> and their slot tags**. One class at the root themes the whole tree. Dark mode is
-> the host \`.dark\` toggle; \`.dark .ds-<dsName>\` swaps the values automatically — no
-> per-element rework. Editing a token only regenerates \`global.css\`; this page does
-> not change.
-
+> **Why it just works:** the stylesheet defines \`:root { --ds-*: … }\` (light) and
+> \`:root.dark { … }\` (dark). Because these components render into the **light DOM**
+> (\`createRenderRoot() { return this; }\`), the \`:root\` variables **cascade into every
+> child — including the molecules and their slot tags**. Dark mode is the host \`.dark\`
+> toggle on \`<html>\`; \`:root.dark\` swaps the values automatically — no per-element
+> rework. Editing a token only regenerates that stylesheet; this page does not change.
 
 ---
 
@@ -205,7 +203,7 @@ Apply the design system **on the slot tags and their children**:
 ## 6. Output checklist
 
 Before finishing, confirm:
-- [ ] The page root carries \`class="ds-<dsName>"\` (NO inline \`<style>\` token block).
+- [ ] NO inline \`<style>\` token block and NO \`ds-*\` wrapper class — variables come from \`:root\`.
 - [ ] Page background, surfaces, text, borders all use role variables (with fallbacks).
 - [ ] Headings use \`fontDisplay\`; body uses \`fontBody\`; sizes follow the \`scale\` row.
 - [ ] Radius, density and elevation are uniform and match the tokens.

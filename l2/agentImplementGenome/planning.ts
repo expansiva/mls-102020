@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentImplementsDesignSystem2/planning.ts" enhancement="_blank" />
+/// <mls fileReference="_102020_/l2/agentImplementGenome/planning.ts" enhancement="_blank" />
 
 // Shared planning helpers for the barrier-group orchestration (see
 // skills/desingsystem/agentsgrouping.md and the agentNewSolution model).

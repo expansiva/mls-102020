@@ -570,7 +570,7 @@ export class PluginSelectPage extends StateLitElement {
         setTask(taskKey, { status: 'running', startedAt: Date.now() });
         try {
             // 1) DS-implementation: rewrite the page defs (page{layout}{ds}/<page>.defs.ts).
-            await this._executeAgent('agentImplementsDesignSystem2', prompt, (data) => {
+            await this._executeAgent('agentImplementGenome', prompt, (data) => {
                 this._taskInfoByName.set(page.name, data);
                 this.requestUpdate(); // surface "Follow task" as soon as the task exists
             });
