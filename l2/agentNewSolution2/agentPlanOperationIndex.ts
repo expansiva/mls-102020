@@ -58,6 +58,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     output = extractPlannerOutput(payload, config);
     if (output.status === 'failed') { status = 'failed'; traceMsg = `${AGENT_NAME} returned failed`; }
     else {
+      unionWorkflowOperations(context, output.result.operations);
       const known = getOntologyEntityIdSet(await getEnrichedOntology(context));
       for (const o of output.result.operations) if (!isKnownEntityRef(o.entity, known)) warnings.push(`operation ${o.operationId}: unknown entity ref '${o.entity}'`);
     }
@@ -86,7 +87,48 @@ function spawnDefinitions(context: mls.msg.ExecutionContext, result: OperationIn
 }
 
 export function getOperationIndex(context: mls.msg.ExecutionContext): OperationIndexOutput {
-  return getPlannerOutput(context, AGENT_NAME, config);
+  const output = getPlannerOutput(context, AGENT_NAME, config);
+  unionWorkflowOperations(context, output.result.operations);
+  return output;
+}
+
+/** item-4 backstop: every operationId a workflow orchestrates must exist as an operation. The LLM index
+ * sometimes omits a few; synthesize their index entries deterministically (entity/kind inferred from the
+ * id + the workflow's entities) so the definition fan-out generates real defs and no workflow operationId
+ * dangles (the validator's workflow.operation.unknown error). Applied at read-time AND before spawning,
+ * so the index, the fan-out, and the per-operation definition agent all see the same union. */
+function unionWorkflowOperations(context: mls.msg.ExecutionContext, operations: OperationIndexItem[]): void {
+  let behavior: ReturnType<typeof getBehaviorIndex>['result'] | null;
+  try { behavior = getBehaviorIndex(context).result; } catch { return; }
+  const existing = new Set(operations.map(o => o.operationId));
+  for (const w of behavior.workflows) {
+    for (const opId of (w.operationIds || [])) {
+      if (!opId || existing.has(opId)) continue;
+      existing.add(opId);
+      operations.push({ operationId: opId, title: humanizeId(opId), actor: w.actor, entity: pickEntityForOp(opId, w.entities), kind: inferOperationKind(opId) });
+    }
+  }
+}
+
+function humanizeId(id: string): string {
+  const spaced = id.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim();
+  return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : id;
+}
+
+function inferOperationKind(id: string): OperationIndexItem['kind'] {
+  const s = id.toLowerCase();
+  if (/^(view|list|get|show|generate|report|browse|search)/.test(s) || s.includes('dashboard') || s.includes('summary') || s.includes('report')) return 'query';
+  if (/^(create|add|record|open|register|start)/.test(s)) return 'create';
+  if (/^(delete|remove|cancel|archive|deprecate|void)/.test(s)) return 'delete';
+  return 'update';
+}
+
+/** Best-effort entity for a synthesized op: the workflow entity whose name appears in the id, else the
+ * workflow's first entity. Both are canonical ontology ids, so the ref resolves for the validator. */
+function pickEntityForOp(opId: string, entities: string[]): string {
+  const s = opId.toLowerCase();
+  const match = (entities || []).find(e => { const name = e.split(':').pop() || e; return !!name && s.includes(name.toLowerCase()); });
+  return match || (entities && entities[0]) || '';
 }
 
 const config: PlannerExtractConfig<OperationIndexResult> = { toolName: TOOL_NAME, normalizeResult };

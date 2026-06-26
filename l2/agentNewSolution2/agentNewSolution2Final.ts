@@ -109,7 +109,13 @@ function storyOf(def: Record<string, unknown>): Record<string, unknown> {
   return { actor: optionalString(s.actor) || '', goal: optionalString(s.goal) || '', soThat: optionalString(s.soThat) || '', steps: Array.isArray(s.steps) ? s.steps : [], outcome: optionalString(s.outcome) || '' };
 }
 
-/** One cleaner update-status per completed agent/result step that still carries a payload. */
+/** One cleaner update-status per completed AGENT step that still carries interaction weight (input,
+ * payload OR trace). The runtime 'input_output' cleaner nulls input+payload and clears the step trace
+ * — the trace (LLM logs, biggest on parallel fan-out parents) is what scales the finished task, so
+ * cleaning every completed step keeps it well under the size budget while the durable model stays in
+ * l4 and the run summary in l5. Result/tool steps are skipped: the runtime rejects update-status for
+ * non-agent steps, and their small result strings are already persisted into designContext / the run
+ * record. Failed steps are left intact for debugging (only 'completed' steps are cleaned). */
 function buildCleanupIntents(context: mls.msg.ExecutionContext, hookSequential: number, skipStepId: number): mls.msg.AgentIntent[] {
   if (!context.task) return [];
   const steps = getAllSteps(context.task.iaCompressed?.nextSteps);
@@ -117,9 +123,10 @@ function buildCleanupIntents(context: mls.msg.ExecutionContext, hookSequential: 
   const intents: mls.msg.AgentIntent[] = [];
   for (const s of steps) {
     if (s.stepId === skipStepId) continue;
-    if (s.type !== 'agent' && s.type !== 'result') continue;
+    if (s.type !== 'agent') continue;
     if (s.status !== 'completed') continue;
-    if (!(s.interaction?.payload?.length)) continue;
+    const i = s.interaction;
+    if (!i || !(i.input?.length || i.payload?.length || i.trace?.length)) continue;
     intents.push({
       type: 'update-status',
       hookSequential,

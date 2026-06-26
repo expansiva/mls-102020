@@ -89,8 +89,12 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   if (status === 'completed' && output && output.status === 'ok') {
     try {
       const def = output.result.operationDefinition;
-      // Attach the realized capability (id + title + priority) deterministically.
-      const capabilityId = getBehaviorIndex(context).result.operations.find(o => o.operationId === def.operationId)?.capabilityId;
+      // Attach the realized capability (id + title + priority) deterministically. A classified operation
+      // carries its own capabilityId; an operation synthesized from a workflow's operationIds inherits the
+      // capability of the workflow that orchestrates it.
+      const behavior = getBehaviorIndex(context).result;
+      const capabilityId = behavior.operations.find(o => o.operationId === def.operationId)?.capabilityId
+        ?? behavior.workflows.find(w => (w.operationIds || []).includes(def.operationId))?.capabilityIds[0];
       def.capability = capabilityId ? resolveCapabilityInfo([capabilityId], getFinalizeOutput(context).result.capabilities as unknown[])[0] : undefined;
       def.statusFrontend = EXPERIENCE_STATUS_INITIAL; // agentChangeFrontend picks up statusFrontend != 'done'
       def.statusBackend = EXPERIENCE_STATUS_INITIAL;   // agentChangeBackend picks up statusBackend != 'done'
