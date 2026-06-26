@@ -40,8 +40,8 @@ async function beforePromptStep(
     if (!context.isTest) {
       // Register the new variation in module.ts.
       await registerPageGenome(project, a.module, a.layout, a.ds, a.device);
-      // Regenerate the project-wide DS stylesheet from designSystems[*].tokens (Phase B).
-      await buildGlobalCss(project);
+      // Regenerate THIS run's DS stylesheet (styles/<ds>/global.css) from its tokens (Phase B).
+      await buildGlobalCss(project, a.ds);
     }
     return [mkCompleted(context, parentStep, step, hookSequential)];
   } catch (error) {

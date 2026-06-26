@@ -97,9 +97,9 @@ async function afterPromptStep(
       if (tail) finalSrc = `${finalSrc.replace(/\s*$/, '')}\n\n${tail}\n`;
     }
 
-    // Deterministically add the project-wide DS stylesheet to the pipeline's dependsFiles
+    // Deterministically add THIS page's DS stylesheet to the pipeline's dependsFiles
     // (same ref the generator writes to — single source of truth). Not done by the LLM.
-    finalSrc = addGlobalCssDependency(finalSrc, dsGlobalCssRef(project));
+    finalSrc = addGlobalCssDependency(finalSrc, dsGlobalCssRef(project, a.ds));
 
     // Override the pipeline `skills` with the CURRENT layout + DS skills from project.json
     // (page11 carries the defaults; this page uses the configured layout/DS render skills).

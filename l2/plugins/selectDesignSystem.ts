@@ -4,7 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { buildGlobalCss, dsClassName, type DsTokens, type DsColorRole, type DsFont } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
+import { buildGlobalCss, type DsTokens, type DsColorRole, type DsFont } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // Phase B — DESIGN SYSTEM = STYLING. This plugin presents and edits the visual tokens
@@ -446,7 +446,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 @click=${() => this._dispatchSelect(entry.key)}>
                 <div class="flex items-center gap-1.5 min-w-0">
                     <span class="text-xs font-semibold text-gray-700 dark:text-gray-200 truncate">${entry.name}</span>
-                    <span class="ml-auto shrink-0 text-[9px] font-mono px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500">.${dsClassName(entry.name)}</span>
+                    <span class="ml-auto shrink-0 text-[9px] font-mono px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500">styles/${entry.key}</span>
                 </div>
                 ${entry.description
                     ? html`<span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug line-clamp-2">${entry.description}</span>`
@@ -867,8 +867,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._saveError = '';
         try {
             await this._persist(this.projectId, key, name, this._desc.trim(), this._skill || DS_SKILL_DEFAULT, tokens);
-            // Regenerate the project-wide stylesheet so servicePreview reflects the change.
-            await buildGlobalCss(this.projectId);
+            // Regenerate this DS's stylesheet (styles/<ds>/global.css) so servicePreview reflects it.
+            await buildGlobalCss(this.projectId, key);
         } catch (err) {
             console.error('[selectDesignSystem] save failed', err);
             this._saveError = this.msg.saveError;
