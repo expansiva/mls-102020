@@ -18,6 +18,8 @@ import {
   normalizeStringList,
   optionalString,
   resolveCapabilityInfo,
+  EXPERIENCE_STATUS_INITIAL,
+  type ExperienceStatus,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import { readWorkflowDefs, saveAgentTrace, saveDefsArtifact, workflowFileInfo } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
@@ -46,6 +48,11 @@ export interface WorkflowDefinition {
   // Mechanically attached at save (not from the LLM): the capabilities this workflow realizes, with
   // their priority — makes the workflow the source of truth for "which feature + phase" it covers.
   capabilities?: { capabilityId: string; title: string; actor?: string; priority?: string }[];
+  // Independent reconciler statuses: agentChangeFrontend reads/writes statusFrontend, agentChangeBackend
+  // reads/writes statusBackend. Each is toCreate|toUpdate|toRemove|inProgress|done; both seeded
+  // 'toCreate' on creation. Decoupling them avoids the single-status ambiguity between the two stages.
+  statusFrontend?: ExperienceStatus;
+  statusBackend?: ExperienceStatus;
 }
 export interface WorkflowDefinitionResult { workflowDefinition: WorkflowDefinition }
 export type WorkflowDefinitionOutput = PlannerOutput<WorkflowDefinitionResult>;
@@ -95,6 +102,8 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       // Attach the realized capabilities (id + title + priority) deterministically.
       const capabilityIds = getBehaviorIndex(context).result.workflows.find(w => w.workflowId === def.workflowId)?.capabilityIds || [];
       def.capabilities = resolveCapabilityInfo(capabilityIds, getFinalizeOutput(context).result.capabilities as unknown[]);
+      def.statusFrontend = EXPERIENCE_STATUS_INITIAL; // agentChangeFrontend picks up statusFrontend != 'done'
+      def.statusBackend = EXPERIENCE_STATUS_INITIAL;   // agentChangeBackend picks up statusBackend != 'done'
       await saveDefsArtifact(workflowFileInfo(def.workflowId), `workflow${capitalize(def.workflowId)}`, def);
     } catch (error) {
       console.warn(`[${AGENT_NAME}] save failed for ${selector}`, error);

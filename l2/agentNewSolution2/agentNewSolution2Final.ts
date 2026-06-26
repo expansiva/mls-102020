@@ -54,11 +54,15 @@ async function autoFinish(context: mls.msg.ExecutionContext, parentStep: mls.msg
   try { await writeProcessRun(moduleName, buildRun(context, report, moduleName)); } catch (error) { console.warn(`[${AGENT_NAME}] writeProcessRun failed`, error); }
   try { await clearRunArtifacts(moduleName); } catch (error) { console.warn(`[${AGENT_NAME}] clearRunArtifacts failed`, error); }
 
-  // Complete final-resume (cleaning its payload), clean every other completed step, complete the root.
-  const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, 'completed', 'input_output')];
-  intents.push(...buildCleanupIntents(context, hookSequential, step.stepId));
+  // Complete final-resume (cleaning its payload), then the org-handoff container, then the root, and
+  // clean every other completed step. We complete the container explicitly (its sibling behavior-
+  // validate is already terminal and final-resume is completed in this same batch) so the task never
+  // hangs on a passive parent waiting to auto-complete.
   const rootStep = getAgentStepByAgentName(context.task!, ROOT_AGENT_NAME) as mls.msg.AIAgentStep | null;
+  const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, 'completed', 'input_output')];
+  if (rootStep && parentStep && parentStep.stepId !== rootStep.stepId) intents.push(updateStatus(context, rootStep, parentStep, hookSequential, 'completed'));
   if (rootStep) intents.push(updateStatus(context, rootStep, rootStep, hookSequential, 'completed'));
+  intents.push(...buildCleanupIntents(context, hookSequential, step.stepId));
   return intents;
 }
 

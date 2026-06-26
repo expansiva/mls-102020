@@ -17,6 +17,8 @@ import {
   normalizeStringList,
   optionalString,
   resolveCapabilityInfo,
+  EXPERIENCE_STATUS_INITIAL,
+  type ExperienceStatus,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import { operationFileInfo, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
@@ -42,6 +44,11 @@ export interface OperationDefinition {
   // Mechanically attached at save (not from the LLM): the capability this operation realizes + its
   // priority — makes the operation the source of truth for "which feature + phase" it covers.
   capability?: { capabilityId: string; title: string; actor?: string; priority?: string };
+  // Independent reconciler statuses: agentChangeFrontend reads/writes statusFrontend, agentChangeBackend
+  // reads/writes statusBackend. Each is toCreate|toUpdate|toRemove|inProgress|done; both seeded
+  // 'toCreate' on creation. Decoupling them avoids the single-status ambiguity between the two stages.
+  statusFrontend?: ExperienceStatus;
+  statusBackend?: ExperienceStatus;
 }
 export interface OperationDefinitionResult { operationDefinition: OperationDefinition }
 export type OperationDefinitionOutput = PlannerOutput<OperationDefinitionResult>;
@@ -85,6 +92,8 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       // Attach the realized capability (id + title + priority) deterministically.
       const capabilityId = getBehaviorIndex(context).result.operations.find(o => o.operationId === def.operationId)?.capabilityId;
       def.capability = capabilityId ? resolveCapabilityInfo([capabilityId], getFinalizeOutput(context).result.capabilities as unknown[])[0] : undefined;
+      def.statusFrontend = EXPERIENCE_STATUS_INITIAL; // agentChangeFrontend picks up statusFrontend != 'done'
+      def.statusBackend = EXPERIENCE_STATUS_INITIAL;   // agentChangeBackend picks up statusBackend != 'done'
       await saveDefsArtifact(operationFileInfo(def.operationId), `operation${capitalize(def.operationId)}`, def);
     } catch (error) {
       console.warn(`[${AGENT_NAME}] save failed for ${selector}`, error);

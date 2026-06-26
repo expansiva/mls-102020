@@ -18,6 +18,7 @@ import {
   getOntologyEntityIdSet,
   getPlannerOutput,
   isKnownEntityRef,
+  parallelProgressTitle,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import { saveAgentTrace, saveIndexCheckpoint } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
@@ -81,7 +82,7 @@ function spawnDefinitions(context: mls.msg.ExecutionContext, result: OperationIn
   if (!placeholder || placeholder.type !== 'agent' || placeholder.status === 'completed') return [];
   const ids = result.operations.map(o => o.operationId).filter(Boolean);
   if (ids.length === 0) return [createUpdateStatusIntent(context, placeholder, placeholder, 0, 'completed', 'No operations to define.')];
-  return [createParallelDynamicAgentStepIntent(context, placeholder, 'agentPlanOperationDefinition', 'plan-operation-definition:parallel', 'Define operations', ids, 5)];
+  return [createParallelDynamicAgentStepIntent(context, placeholder, 'agentPlanOperationDefinition', 'plan-operation-definition:parallel', parallelProgressTitle(context, 'Definindo operações', 'Defining operations'), ids, 5)];
 }
 
 export function getOperationIndex(context: mls.msg.ExecutionContext): OperationIndexOutput {

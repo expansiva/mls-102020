@@ -147,7 +147,11 @@ function buildPlannedTree(initialPlan: InitialNewSolution2Plan): PlannedAgentSte
   ];
 
   const handoffChildren: PlannedStep[] = [
-    agentStep('behavior-validate', 'agentValidateBehaviorModel', title('behavior-validate'), ['org-handoff'], 'sequential'),
+    // IMPORTANT: behavior-validate must depend on the SAME upstream as the org-handoff container, NOT
+    // on org-handoff itself. A passive container only completes once its children are terminal, so a
+    // child that depends on its own container deadlocks (the child waits for the parent, the parent
+    // waits for the child). Gating on the upstream lets validate run and the container auto-complete.
+    agentStep('behavior-validate', 'agentValidateBehaviorModel', title('behavior-validate'), ['plan-workflow-definition', 'plan-operation-definition'], 'sequential'),
     // Auto-finish (no blocking clarification): writes the run record + derived journeys, cleans
     // traces/inputs/outputs, completes the task. The summary is viewable later via openStepView.
     agentStep('final-resume', 'agentNewSolution2Final', title('final-resume'), ['behavior-validate'], 'sequential'),

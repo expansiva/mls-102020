@@ -27,7 +27,7 @@ import {
   saveAgentTrace,
   saveDefsArtifact,
 } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
-import { getInitialPlanSummary, isRecord, optionalString } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
+import { getInitialPlanSummary, isRecord, optionalString, parallelProgressTitle } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { finalizeResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getBlueprintOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Blueprint.js';
 import { getBlueprintReviewOutput } from '/_102020_/l2/agentNewSolution2/agentNs2BlueprintReview.js';
@@ -165,7 +165,7 @@ function spawnEntityFanOut(context: mls.msg.ExecutionContext, result: FinalizeRe
   if (entityIds.length === 0) {
     return [createUpdateStatusIntent(context, placeholder, placeholder, 0, 'completed', 'No ontology entities to detail.')];
   }
-  return [createParallelDynamicAgentStepIntent(context, placeholder, 'agentNs2EntityDefinition', 'plan-entity-definition:parallel', 'Detail ontology entities', entityIds, 5)];
+  return [createParallelDynamicAgentStepIntent(context, placeholder, 'agentNs2EntityDefinition', 'plan-entity-definition:parallel', parallelProgressTitle(context, 'Detalhando entidades', 'Detailing entities'), entityIds, 5)];
 }
 
 export function getFinalizeOutput(context: mls.msg.ExecutionContext): FinalizeOutput {

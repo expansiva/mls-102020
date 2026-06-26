@@ -19,6 +19,7 @@ import {
   getPlannerOutput,
   isKnownEntityRef,
   normalizeStringList,
+  parallelProgressTitle,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import { saveAgentTrace, saveIndexCheckpoint } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
@@ -93,7 +94,7 @@ function spawnDefinitions(context: mls.msg.ExecutionContext, result: WorkflowInd
   if (!placeholder || placeholder.type !== 'agent' || placeholder.status === 'completed') return [];
   const ids = result.workflows.map(w => w.workflowId).filter(Boolean);
   if (ids.length === 0) return [createUpdateStatusIntent(context, placeholder, placeholder, 0, 'completed', 'No workflows to define.')];
-  return [createParallelDynamicAgentStepIntent(context, placeholder, 'agentNs2WorkflowDefinition', 'plan-workflow-definition:parallel', 'Define workflows', ids, 5)];
+  return [createParallelDynamicAgentStepIntent(context, placeholder, 'agentNs2WorkflowDefinition', 'plan-workflow-definition:parallel', parallelProgressTitle(context, 'Definindo workflows', 'Defining workflows'), ids, 5)];
 }
 
 export function getWorkflowIndex(context: mls.msg.ExecutionContext): WorkflowIndexOutput {

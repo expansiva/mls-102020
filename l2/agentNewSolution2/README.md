@@ -69,6 +69,11 @@ from them, never authored directly.
 - **Deterministic ref-integrity instead of the 3-file LLM critic loop.** Index agents normalize ids
   and check that every reference resolves to a canonical ontology id (the analise11/12 guardrail);
   unresolved refs become warnings, never a hard fail. A checkpoint is frozen per index.
+- **Container dependency invariant.** A passive (no-LLM) container only completes once its children
+  are terminal, so **a child must never `dependsOn` its own container** (that deadlocks: parent waits
+  for child, child waits for parent). Children gate on the SAME upstream planIds the container gates
+  on. This is why `behavior-validate` depends on `[plan-workflow-definition, plan-operation-definition]`,
+  not on `org-handoff`. `final-resume` then auto-completes the container + root explicitly as a safety net.
 - **Automatic finish.** No blocking final clarification: after validate, `final-resume` runs in a
   hook (`beforePromptStep`) that writes the run record + derived journeys, clears traces, cleans the
   task inputs/outputs and completes the task. The summary is re-openable via `openStepView`. (Doing
@@ -83,6 +88,11 @@ from them, never authored directly.
   `capabilities[]` and each operation carries `capability` (id + title + priority), attached
   mechanically at save — so workflows/operations are the source of truth for "which feature + phase".
   The priority rationale also lives in `module.defs.ts.designContext.decisions`.
+- **Per-stage owner status for Stage 2/3.** Each persisted workflow/operation carries TWO independent
+  statuses — `statusFrontend` and `statusBackend` (each `toCreate|toUpdate|toRemove|inProgress|done`),
+  both seeded `toCreate`. `agentChangeFrontend` reads/writes `statusFrontend`; `agentChangeBackend`
+  reads/writes `statusBackend`. Each reconciler processes owners whose own status `!= done` and flips
+  it independently (no single-status ambiguity). Stage 1 leaves an explicit per-stage to-do list.
 - **Full behavior coverage.** Classification covers every non-`never` capability (now/soon/later), so
   user-requested key screens that landed as `soon` (dashboards, AI) still become operations → pages.
   Each stateful workflow must list `operationIds`; the index fills them from the classification if empty.
