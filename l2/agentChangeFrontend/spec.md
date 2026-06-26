@@ -500,3 +500,15 @@ Antes de gerar arquivos, a implementação inicial criada para teste faz somente
 - `agentCfeV01PageChildConsole` imprime no console cada fase por página;
 - `agentCfeV01FinalConsole` imprime o resumo após a barreira final;
 - não grava `.defs.ts`, não grava `config.json`, não altera `statusFrontend` e não materializa nada.
+
+## Implementação create-v1
+
+Após validar o paralelo, a implementação real inicial para `toCreate` está dividida assim:
+
+- `agentChangeFrontend` inicia o fluxo create-only;
+- `agentCfeCreateScanL4` lê o `l4`, encontra owners com `statusFrontend = toCreate`, cria o fan-out real `create-page-fanout` e agenda a finalização;
+- `agentCfeCreatePage` gera, para uma página, os três arquivos finais: `web/contracts/{page}.defs.ts`, `web/shared/{page}.defs.ts` e `web/desktop/page11/{page}.defs.ts`;
+- `agentCfeCreateFinalize` atualiza `l0/config.json`, grava `l2/{module}/trace/frontend-create-report.json` e muda os owners gerados para `statusFrontend = done`;
+- `cfeCreateShared` concentra leitura do L4, geração determinística dos comandos/layout base, merge do config e atualização de status.
+
+Esta primeira versão real ainda é determinística: usa a heurística testada de páginas por workflow e por operação standalone. O refinamento com LLM/schema-first para layout e agrupamento mais inteligente fica como próximo incremento, sem bloquear o teste create real.
