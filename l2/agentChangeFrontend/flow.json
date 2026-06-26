@@ -28,9 +28,10 @@
     "createV1ImplementedNow": [
       "agentChangeFrontend now starts the create-only real flow instead of the v0.1 console flow.",
       "agentCfeCreateScanL4 reads l4 owners with statusFrontend = toCreate and creates a real parallel fan-out with progress.",
-      "agentCfeCreatePage generates web/contracts, web/shared and web/desktop/page11 .defs.ts for one page.",
-      "agentCfeCreateFinalize writes l0/config.json, writes a trace report and marks generated owners statusFrontend = done.",
-      "This first create implementation is deterministic. LLM/schema-first layout refinement remains the next implementation increment."
+      "agentCfeCreatePage generates web/contracts and web/shared deterministically, then calls an LLM with a strict tool schema to generate web/desktop/page11 semantic layout defs for one page.",
+      "agentCfeCreatePage writes l2/{module}/trace/frontend-create-pages/{page}.json as inProgress/done so finalize does not accept stale page defs from an older run.",
+      "agentCfeCreateFinalize writes l0/config.json, writes a trace report and marks generated owners statusFrontend = done only for pages with marker status done.",
+      "The page11 layout keeps the section -> organism structure and enriches it with stable ids, molecules, field/column/action references, i18n keys and data bindings."
     ],
     "v0.1Test": [
       "Implemented now only to test the autonomous l4 scan and page parallelism with children.",
@@ -496,7 +497,7 @@
     {
       "agentName": "agentCfeCreatePage",
       "file": "l2/agentChangeFrontend/agentCfeCreatePage.ts",
-      "role": "Creates the three final .defs.ts files for one page."
+      "role": "For one page, writes contract/shared deterministically, asks the LLM for schema-validated page11 layout, validates references, and writes the page .defs.ts."
     },
     {
       "agentName": "agentCfeCreateFinalize",
@@ -506,7 +507,7 @@
     {
       "agentName": "cfeCreateShared",
       "file": "l2/agentChangeFrontend/cfeCreateShared.ts",
-      "role": "Shared deterministic L4 reader, defs writer, config merger and status updater."
+      "role": "Shared L4 reader, contract/shared defs writer, layout schema/validator, page defs writer, config merger and status updater."
     }
   ],
   "fallbackFlatPageStep": {

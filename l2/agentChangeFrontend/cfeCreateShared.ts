@@ -1,6 +1,17 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/cfeCreateShared.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
+import {
+  assertArray,
+  assertRecord,
+  assertString,
+  createPlannerToolSchema,
+  extractPlannerOutput,
+  normalizeStringList,
+  optionalString,
+  type PlannerExtractConfig,
+  type PlannerOutput,
+} from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 
 type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
 type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
@@ -63,6 +74,223 @@ interface CfeCreateContext {
   pages: CfePagePlan[];
 }
 
+export interface CfePreparedPage {
+  project: number;
+  page: CfePagePlan;
+  operations: CfeOperationDef[];
+  commands: Record<string, unknown>[];
+  navigationRefs: unknown[];
+  baseDefinition: Record<string, unknown>;
+  visualStyle: unknown;
+  promptContext: Record<string, unknown>;
+}
+
+interface CfeLayoutAction {
+  id: string;
+  action: string;
+  labelKey: string;
+  order: number;
+  displayHint?: string;
+}
+
+interface CfeLayoutField {
+  id: string;
+  field: string;
+  labelKey: string;
+  order: number;
+  required?: boolean;
+  inputType?: string;
+  format?: string;
+  source?: string;
+}
+
+interface CfeLayoutMolecule {
+  id: string;
+  type: string;
+  order: number;
+  titleKey?: string;
+  source?: string;
+  binding?: string;
+  action?: string;
+  submitAction?: string;
+  emptyKey?: string;
+  displayHint?: string;
+  fields: CfeLayoutField[];
+  columns: CfeLayoutField[];
+  filters: CfeLayoutField[];
+  toolbar: CfeLayoutAction[];
+  rowActions: CfeLayoutAction[];
+  actions: CfeLayoutAction[];
+}
+
+interface CfeLayoutOrganism {
+  id: string;
+  type: string;
+  organismName: string;
+  titleKey: string;
+  purpose: string;
+  userActions: string[];
+  requiredEntities: string[];
+  readsFields: string[];
+  writesFields: string[];
+  rulesApplied: string[];
+  order: number;
+  molecules: CfeLayoutMolecule[];
+}
+
+interface CfeLayoutSection {
+  id: string;
+  type: 'section' | 'sectionTab';
+  sectionName: string;
+  titleKey: string;
+  mode: string;
+  order: number;
+  organisms: CfeLayoutOrganism[];
+}
+
+export interface CfePageLayoutDefinition {
+  pageId: string;
+  layoutId: string;
+  sections: CfeLayoutSection[];
+  i18n: Record<string, string>;
+  dataBindings: { id: string; source: string; entity?: string; command?: string; description?: string }[];
+}
+
+export interface CfePageLayoutResult { pageLayout: CfePageLayoutDefinition }
+export type CfePageLayoutOutput = PlannerOutput<CfePageLayoutResult>;
+
+const CFE_LAYOUT_TOOL_NAME = 'submitCfePageLayout';
+
+const strSchema = { type: 'string' } as const;
+const boolSchema = { type: 'boolean' } as const;
+const intSchema = { type: 'integer' } as const;
+const strArraySchema = { type: 'array', items: strSchema } as const;
+
+const layoutActionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'action', 'labelKey', 'order'],
+  properties: {
+    id: strSchema,
+    action: strSchema,
+    labelKey: strSchema,
+    order: intSchema,
+    displayHint: strSchema,
+  },
+} as const;
+
+const layoutFieldSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'field', 'labelKey', 'order'],
+  properties: {
+    id: strSchema,
+    field: strSchema,
+    labelKey: strSchema,
+    order: intSchema,
+    required: boolSchema,
+    inputType: strSchema,
+    format: strSchema,
+    source: strSchema,
+  },
+} as const;
+
+const layoutMoleculeSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'type', 'order', 'fields', 'columns', 'filters', 'toolbar', 'rowActions', 'actions'],
+  properties: {
+    id: strSchema,
+    type: strSchema,
+    order: intSchema,
+    titleKey: strSchema,
+    source: strSchema,
+    binding: strSchema,
+    action: strSchema,
+    submitAction: strSchema,
+    emptyKey: strSchema,
+    displayHint: strSchema,
+    fields: { type: 'array', items: layoutFieldSchema },
+    columns: { type: 'array', items: layoutFieldSchema },
+    filters: { type: 'array', items: layoutFieldSchema },
+    toolbar: { type: 'array', items: layoutActionSchema },
+    rowActions: { type: 'array', items: layoutActionSchema },
+    actions: { type: 'array', items: layoutActionSchema },
+  },
+} as const;
+
+const layoutOrganismSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'type', 'organismName', 'titleKey', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'molecules'],
+  properties: {
+    id: strSchema,
+    type: strSchema,
+    organismName: strSchema,
+    titleKey: strSchema,
+    purpose: strSchema,
+    userActions: strArraySchema,
+    requiredEntities: strArraySchema,
+    readsFields: strArraySchema,
+    writesFields: strArraySchema,
+    rulesApplied: strArraySchema,
+    order: intSchema,
+    molecules: { type: 'array', minItems: 1, items: layoutMoleculeSchema },
+  },
+} as const;
+
+const layoutSectionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'type', 'sectionName', 'titleKey', 'mode', 'order', 'organisms'],
+  properties: {
+    id: strSchema,
+    type: { enum: ['section', 'sectionTab'] },
+    sectionName: strSchema,
+    titleKey: strSchema,
+    mode: strSchema,
+    order: intSchema,
+    organisms: { type: 'array', minItems: 1, items: layoutOrganismSchema },
+  },
+} as const;
+
+export const cfePageLayoutResultSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['pageLayout'],
+  properties: {
+    pageLayout: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['pageId', 'layoutId', 'sections', 'i18n', 'dataBindings'],
+      properties: {
+        pageId: strSchema,
+        layoutId: strSchema,
+        sections: { type: 'array', minItems: 1, items: layoutSectionSchema },
+        i18n: { type: 'object', additionalProperties: strSchema },
+        dataBindings: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'source'],
+            properties: {
+              id: strSchema,
+              source: strSchema,
+              entity: strSchema,
+              command: strSchema,
+              description: strSchema,
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+export const cfePageLayoutToolSchema = createPlannerToolSchema(CFE_LAYOUT_TOOL_NAME, 'Submit the semantic layout for one frontend page.', cfePageLayoutResultSchema as unknown as Record<string, unknown>);
+export const cfePageLayoutToolName = CFE_LAYOUT_TOOL_NAME;
+
 export async function readCreateContext(): Promise<CfeCreateContext> {
   const project = mls.actualProject || 0;
   const modules = new Map<string, { moduleName: string; visualStyle?: unknown; entityIds: Set<string> }>();
@@ -112,20 +340,50 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
 }
 
 export async function generatePageDefs(page: CfePagePlan): Promise<void> {
+  const prepared = await preparePageCreate(page);
+  await saveContractSharedDefs(prepared);
+  await savePageLayoutDefs(prepared, deterministicLayoutFromBase(prepared));
+}
+
+export async function preparePageCreate(page: CfePagePlan): Promise<CfePreparedPage> {
   const context = await readCreateContext();
   const operations = page.operationIds.map(id => context.operations.get(id) || syntheticOperation(page, id, context.project));
   const commands = operations.map(operation => commandFromOperation(operation, context.entities));
   const navigationRefs: unknown[] = [];
+  const baseDefinition = pageDefinition(page, operations);
+  const visualStyle = context.moduleVisualStyle[page.moduleName];
+  const promptContext = buildLayoutPromptContext(context, page, operations, commands, baseDefinition, visualStyle);
+  return { project: context.project, page, operations, commands, navigationRefs, baseDefinition, visualStyle, promptContext };
+}
 
-  await saveFrontendDefs(contractFileInfo(context.project, page), 'definition', commands, contractPipeline(context.project, page));
-  await saveFrontendDefs(sharedFileInfo(context.project, page), 'definition', { bffCommands: commands, navigationRefs }, sharedPipeline(context.project, page, commands));
-  await saveFrontendDefs(pageFileInfo(context.project, page), 'definition', pageDefinition(page, operations), pagePipeline(context.project, page, context.moduleVisualStyle[page.moduleName]));
+export async function saveContractSharedDefs(prepared: CfePreparedPage): Promise<void> {
+  await savePageCreateMarker(prepared, 'inProgress');
+  await saveFrontendDefs(contractFileInfo(prepared.project, prepared.page), 'definition', prepared.commands, contractPipeline(prepared.project, prepared.page));
+  await saveFrontendDefs(sharedFileInfo(prepared.project, prepared.page), 'definition', { bffCommands: prepared.commands, navigationRefs: prepared.navigationRefs }, sharedPipeline(prepared.project, prepared.page, prepared.commands));
+}
+
+export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Promise<void> {
+  validatePageLayout(prepared, layout);
+  const definition = {
+    ...prepared.baseDefinition,
+    sections: layout.sections,
+    layout: {
+      id: layout.layoutId,
+      type: 'page',
+      sections: layout.sections,
+    },
+    i18n: layout.i18n,
+    dataBindings: layout.dataBindings,
+  };
+  await saveFrontendDefs(pageFileInfo(prepared.project, prepared.page), 'definition', definition, pagePipeline(prepared.project, prepared.page, prepared.visualStyle));
+  await savePageCreateMarker(prepared, 'done');
 }
 
 export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[] }> {
   const context = await readCreateContext();
-  const validPages = context.pages.filter(page => hasGeneratedDefs(context.project, page));
-  const skippedPages = context.pages.filter(page => !hasGeneratedDefs(context.project, page)).map(page => page.pageId);
+  const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) })));
+  const validPages = checkedPages.filter(item => item.ok).map(item => item.page);
+  const skippedPages = checkedPages.filter(item => !item.ok).map(item => item.page.pageId);
   await updateConfigJson(context, validPages);
   const ownersDone = await updateOwnerStatuses(context, validPages.flatMap(page => page.ownerIds), 'done');
   await saveCreateReport(context.project, validPages, ownersDone, skippedPages);
@@ -151,6 +409,32 @@ export function createUpdateStatusIntent(context: mls.msg.ExecutionContext, pare
     stepId: step.stepId,
     status,
     traceMsg,
+  };
+}
+
+export function createPromptReadyIntent(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args: string,
+  systemPrompt: string,
+  humanPrompt: string,
+  toolSchema: mls.msg.LLMTool,
+  toolName: string,
+): mls.msg.AgentIntentPromptReady {
+  if (!context.task) throw new Error('[createPromptReadyIntent] task invalid');
+  return {
+    type: 'prompt_ready',
+    args,
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task.PK,
+    hookSequential,
+    parentStepId: parentStep.stepId,
+    systemPrompt,
+    humanPrompt,
+    tools: [toolSchema],
+    toolChoice: { type: 'function', function: { name: toolName } },
   };
 }
 
@@ -180,6 +464,366 @@ export function createAddStepIntent(context: mls.msg.ExecutionContext, parentSte
   };
   if (args) intent.executionMode = { type: 'parallel', args, maxParallel: 5 };
   return intent;
+}
+
+export function extractCfePageLayoutOutput(payload: unknown): CfePageLayoutOutput {
+  return extractPlannerOutput(payload, cfePageLayoutConfig);
+}
+
+const cfePageLayoutConfig: PlannerExtractConfig<CfePageLayoutResult> = {
+  toolName: CFE_LAYOUT_TOOL_NAME,
+  normalizeResult: normalizeCfePageLayoutResult,
+};
+
+function normalizeCfePageLayoutResult(value: unknown): CfePageLayoutResult {
+  const result = assertRecord(value, 'result');
+  const pageLayout = assertRecord(result.pageLayout, 'result.pageLayout');
+  return {
+    pageLayout: {
+      pageId: assertString(pageLayout.pageId, 'result.pageLayout.pageId'),
+      layoutId: assertString(pageLayout.layoutId, 'result.pageLayout.layoutId'),
+      sections: assertArray(pageLayout.sections, 'result.pageLayout.sections').map((item, index) => normalizeLayoutSection(item, `sections[${index}]`)),
+      i18n: normalizeI18n(pageLayout.i18n),
+      dataBindings: assertArray(pageLayout.dataBindings, 'result.pageLayout.dataBindings').map((item, index) => normalizeDataBinding(item, `dataBindings[${index}]`)),
+    },
+  };
+}
+
+function normalizeLayoutSection(value: unknown, path: string): CfeLayoutSection {
+  const section = assertRecord(value, path);
+  return {
+    id: assertString(section.id, `${path}.id`),
+    type: assertString(section.type, `${path}.type`) === 'sectionTab' ? 'sectionTab' : 'section',
+    sectionName: assertString(section.sectionName, `${path}.sectionName`),
+    titleKey: assertString(section.titleKey, `${path}.titleKey`),
+    mode: assertString(section.mode, `${path}.mode`),
+    order: normalizeOrder(section.order, `${path}.order`),
+    organisms: assertArray(section.organisms, `${path}.organisms`).map((item, index) => normalizeLayoutOrganism(item, `${path}.organisms[${index}]`)),
+  };
+}
+
+function normalizeLayoutOrganism(value: unknown, path: string): CfeLayoutOrganism {
+  const organism = assertRecord(value, path);
+  return {
+    id: assertString(organism.id, `${path}.id`),
+    type: assertString(organism.type, `${path}.type`),
+    organismName: assertString(organism.organismName, `${path}.organismName`),
+    titleKey: assertString(organism.titleKey, `${path}.titleKey`),
+    purpose: assertString(organism.purpose, `${path}.purpose`),
+    userActions: normalizeStringList(organism.userActions, `${path}.userActions`),
+    requiredEntities: normalizeStringList(organism.requiredEntities, `${path}.requiredEntities`),
+    readsFields: normalizeStringList(organism.readsFields, `${path}.readsFields`),
+    writesFields: normalizeStringList(organism.writesFields, `${path}.writesFields`),
+    rulesApplied: normalizeStringList(organism.rulesApplied, `${path}.rulesApplied`),
+    order: normalizeOrder(organism.order, `${path}.order`),
+    molecules: assertArray(organism.molecules, `${path}.molecules`).map((item, index) => normalizeLayoutMolecule(item, `${path}.molecules[${index}]`)),
+  };
+}
+
+function normalizeLayoutMolecule(value: unknown, path: string): CfeLayoutMolecule {
+  const molecule = assertRecord(value, path);
+  return {
+    id: assertString(molecule.id, `${path}.id`),
+    type: assertString(molecule.type, `${path}.type`),
+    order: normalizeOrder(molecule.order, `${path}.order`),
+    titleKey: optionalString(molecule.titleKey),
+    source: optionalString(molecule.source),
+    binding: optionalString(molecule.binding),
+    action: optionalString(molecule.action),
+    submitAction: optionalString(molecule.submitAction),
+    emptyKey: optionalString(molecule.emptyKey),
+    displayHint: optionalString(molecule.displayHint),
+    fields: normalizeLayoutFields(molecule.fields, `${path}.fields`),
+    columns: normalizeLayoutFields(molecule.columns, `${path}.columns`),
+    filters: normalizeLayoutFields(molecule.filters, `${path}.filters`),
+    toolbar: normalizeLayoutActions(molecule.toolbar, `${path}.toolbar`),
+    rowActions: normalizeLayoutActions(molecule.rowActions, `${path}.rowActions`),
+    actions: normalizeLayoutActions(molecule.actions, `${path}.actions`),
+  };
+}
+
+function normalizeLayoutFields(value: unknown, path: string): CfeLayoutField[] {
+  return assertArray(value, path).map((item, index) => {
+    const field = assertRecord(item, `${path}[${index}]`);
+    return {
+      id: assertString(field.id, `${path}[${index}].id`),
+      field: assertString(field.field, `${path}[${index}].field`),
+      labelKey: assertString(field.labelKey, `${path}[${index}].labelKey`),
+      order: normalizeOrder(field.order, `${path}[${index}].order`),
+      required: field.required === true,
+      inputType: optionalString(field.inputType),
+      format: optionalString(field.format),
+      source: optionalString(field.source),
+    };
+  });
+}
+
+function normalizeLayoutActions(value: unknown, path: string): CfeLayoutAction[] {
+  return assertArray(value, path).map((item, index) => {
+    const action = assertRecord(item, `${path}[${index}]`);
+    return {
+      id: assertString(action.id, `${path}[${index}].id`),
+      action: assertString(action.action, `${path}[${index}].action`),
+      labelKey: assertString(action.labelKey, `${path}[${index}].labelKey`),
+      order: normalizeOrder(action.order, `${path}[${index}].order`),
+      displayHint: optionalString(action.displayHint),
+    };
+  });
+}
+
+function normalizeDataBinding(value: unknown, path: string): { id: string; source: string; entity?: string; command?: string; description?: string } {
+  const binding = assertRecord(value, path);
+  return {
+    id: assertString(binding.id, `${path}.id`),
+    source: assertString(binding.source, `${path}.source`),
+    entity: optionalString(binding.entity),
+    command: optionalString(binding.command),
+    description: optionalString(binding.description),
+  };
+}
+
+function normalizeI18n(value: unknown): Record<string, string> {
+  const record = assertRecord(value, 'result.pageLayout.i18n');
+  const normalized: Record<string, string> = {};
+  for (const [key, item] of Object.entries(record)) normalized[key] = assertString(item, `i18n.${key}`);
+  return normalized;
+}
+
+function normalizeOrder(value: unknown, path: string): number {
+  if (typeof value === 'number' && Number.isInteger(value)) return value;
+  if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
+  throw new Error(`${path} must be an integer`);
+}
+
+function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[], baseDefinition: Record<string, unknown>, visualStyle: unknown): Record<string, unknown> {
+  const entityIds = new Set([...page.entityIds, ...operations.flatMap(operationEntities), ...commands.flatMap(command => [...readStringArray(command.readsEntities), ...readStringArray(command.writesEntities)])]);
+  const entities = Array.from(entityIds).map(entityId => context.entities.get(entityId)).filter(Boolean).map(entity => ({
+    entityId: entity!.entityId,
+    title: entity!.title,
+    fields: entity!.fields,
+    rulesApplied: entity!.rulesApplied,
+  }));
+  const workflows = page.ownerIds
+    .filter(id => id.startsWith('workflow:'))
+    .map(id => context.workflows.get(id.slice('workflow:'.length))?.data)
+    .filter(Boolean);
+  return {
+    page,
+    baseDefinition,
+    visualStyle,
+    workflows,
+    operations: operations.map(operation => ({
+      operationId: operation.operationId,
+      title: operation.title,
+      actor: operation.actor,
+      entity: operation.entity,
+      kind: operation.kind,
+      reads: operation.reads,
+      writes: operation.writes,
+      rulesApplied: operation.rulesApplied,
+      story: operation.data.story,
+      capability: operation.capability,
+    })),
+    contract: { bffCommands: commands },
+    shared: { bffCommands: commands, availableActions: commands.map(command => command.commandName).filter(Boolean) },
+    ontology: { entities },
+    layoutRules: [
+      'Keep the section -> organism structure. Do not replace it with generic components.',
+      'Each section, organism, molecule, field, column and action needs a stable id and explicit order.',
+      'Each operation must appear in at least one organism.userActions entry.',
+      'Use molecules for visual composition: form, groupviewtable.mlDataTable, summaryPanel, statusTimeline, actionBar or another semantic type.',
+      'Use labelKey/titleKey/emptyKey for all visible text and declare those keys in i18n.',
+      'Do not emit HTML, CSS, DOM slots or raw web-component markup.',
+      'Only reference actions from shared.availableActions.',
+      'Only reference fields from contract inputs/outputs or ontology fields.',
+    ],
+  };
+}
+
+function validatePageLayout(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): void {
+  if (layout.pageId !== prepared.page.pageId) throw new Error(`layout pageId ${layout.pageId} does not match ${prepared.page.pageId}`);
+  const ids = new Set<string>();
+  const i18nKeys = new Set(Object.keys(layout.i18n));
+  const actions = new Set(prepared.commands.map(command => readString(command.commandName)).filter(Boolean));
+  const expectedActions = new Set(prepared.page.operationIds);
+  const seenActions = new Set<string>();
+  const fields = allowedLayoutFields(prepared);
+
+  registerId(ids, layout.layoutId, 'layout.layoutId');
+  for (const section of layout.sections) {
+    registerId(ids, section.id, `section:${section.sectionName}`);
+    assertI18nKey(i18nKeys, section.titleKey, `${section.id}.titleKey`);
+    if (section.organisms.length === 0) throw new Error(`${section.id} must have organisms`);
+    for (const organism of section.organisms) {
+      registerId(ids, organism.id, `organism:${organism.organismName}`);
+      assertI18nKey(i18nKeys, organism.titleKey, `${organism.id}.titleKey`);
+      for (const action of organism.userActions) {
+        if (!actions.has(action)) throw new Error(`${organism.id}.userActions references unknown action ${action}`);
+        seenActions.add(action);
+      }
+      for (const entity of organism.requiredEntities) {
+        if (entity && !prepared.page.entityIds.includes(entity) && !prepared.operations.some(operation => operationEntities(operation).includes(entity))) {
+          throw new Error(`${organism.id}.requiredEntities references unknown entity ${entity}`);
+        }
+      }
+      if (organism.molecules.length === 0) throw new Error(`${organism.id} must have molecules`);
+      for (const molecule of organism.molecules) validateMolecule(ids, i18nKeys, actions, fields, molecule);
+    }
+  }
+  for (const action of expectedActions) {
+    if (!seenActions.has(action)) throw new Error(`layout does not represent operation ${action}`);
+  }
+}
+
+function validateMolecule(ids: Set<string>, i18nKeys: Set<string>, actions: Set<string>, fields: Set<string>, molecule: CfeLayoutMolecule): void {
+  registerId(ids, molecule.id, `molecule:${molecule.id}`);
+  if (molecule.titleKey) assertI18nKey(i18nKeys, molecule.titleKey, `${molecule.id}.titleKey`);
+  if (molecule.emptyKey) assertI18nKey(i18nKeys, molecule.emptyKey, `${molecule.id}.emptyKey`);
+  for (const action of [molecule.action, molecule.submitAction].filter(Boolean) as string[]) assertAction(actions, action, molecule.id);
+  for (const field of [...molecule.fields, ...molecule.columns, ...molecule.filters]) {
+    registerId(ids, field.id, `field:${field.id}`);
+    assertI18nKey(i18nKeys, field.labelKey, `${field.id}.labelKey`);
+    if (!fields.has(field.field)) throw new Error(`${field.id}.field references unknown field ${field.field}`);
+  }
+  for (const action of [...molecule.toolbar, ...molecule.rowActions, ...molecule.actions]) {
+    registerId(ids, action.id, `action:${action.id}`);
+    assertI18nKey(i18nKeys, action.labelKey, `${action.id}.labelKey`);
+    assertAction(actions, action.action, action.id);
+  }
+}
+
+function assertAction(actions: Set<string>, action: string, path: string): void {
+  if (!actions.has(action)) throw new Error(`${path} references unknown action ${action}`);
+}
+
+function assertI18nKey(i18nKeys: Set<string>, key: string, path: string): void {
+  if (!i18nKeys.has(key)) throw new Error(`${path} references missing i18n key ${key}`);
+}
+
+function registerId(ids: Set<string>, id: string, path: string): void {
+  if (ids.has(id)) throw new Error(`duplicate layout id ${id} at ${path}`);
+  ids.add(id);
+}
+
+function allowedLayoutFields(prepared: CfePreparedPage): Set<string> {
+  const allowed = new Set<string>();
+  for (const operation of prepared.operations) {
+    for (const ref of [...fieldRefs(operation.reads), ...fieldRefs(operation.writes)]) {
+      allowed.add(ref);
+      allowed.add(ref.split('.')[1] || ref);
+    }
+  }
+  for (const command of prepared.commands) {
+    const commandName = readString(command.commandName);
+    for (const field of [...commandFields(command.input), ...commandFields(command.output)]) {
+      allowed.add(field);
+      if (commandName) {
+        allowed.add(`${commandName}.${field}`);
+        allowed.add(`${commandName}.input.${field}`);
+        allowed.add(`${commandName}.output.${field}`);
+      }
+    }
+  }
+  for (const entityId of unique([...prepared.page.entityIds, ...prepared.operations.flatMap(operationEntities)])) {
+    const entity = prepared.promptContext.ontology && isRecord(prepared.promptContext.ontology)
+      ? (prepared.promptContext.ontology.entities as unknown[] | undefined)?.find(item => isRecord(item) && item.entityId === entityId) as Record<string, unknown> | undefined
+      : undefined;
+    const fields = Array.isArray(entity?.fields) ? entity.fields : [];
+    for (const field of fields) {
+      if (!isRecord(field)) continue;
+      const fieldId = readString(field.fieldId);
+      if (!fieldId) continue;
+      allowed.add(fieldId);
+      allowed.add(`${entityId}.${fieldId}`);
+    }
+  }
+  return allowed;
+}
+
+function commandFields(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(item => isRecord(item) ? readString(item.name) : '').filter(Boolean);
+}
+
+function deterministicLayoutFromBase(prepared: CfePreparedPage): CfePageLayoutDefinition {
+  const i18n: Record<string, string> = {};
+  const sectionId = `section.${prepared.page.pageId}.main`;
+  const sectionTitleKey = `${sectionId}.title`;
+  i18n[sectionTitleKey] = prepared.page.pageName;
+  const organisms = prepared.operations.map((operation, index) => deterministicOrganism(prepared, operation, index, i18n));
+  return {
+    pageId: prepared.page.pageId,
+    layoutId: `page.${prepared.page.pageId}`,
+    sections: [{
+      id: sectionId,
+      type: 'section',
+      sectionName: prepared.page.pageName,
+      titleKey: sectionTitleKey,
+      mode: prepared.operations.some(op => op.kind !== 'query' && op.kind !== 'view') ? 'edit' : 'view',
+      order: 10,
+      organisms,
+    }],
+    i18n,
+    dataBindings: prepared.commands.map(command => ({
+      id: `binding.${prepared.page.pageId}.${readString(command.commandName)}`,
+      source: `bff.${readString(command.commandName)}`,
+      command: readString(command.commandName),
+      description: readString(command.purpose),
+    })),
+  };
+}
+
+function deterministicOrganism(prepared: CfePreparedPage, operation: CfeOperationDef, index: number, i18n: Record<string, string>): CfeLayoutOrganism {
+  const command = prepared.commands.find(item => item.commandName === operation.operationId) || {};
+  const isQuery = command.kind === 'query';
+  const organismId = `organism.${prepared.page.pageId}.${operation.operationId}`;
+  const organismTitleKey = `${organismId}.title`;
+  i18n[organismTitleKey] = operation.title || humanizeId(operation.operationId);
+  const moleculeId = `molecule.${prepared.page.pageId}.${operation.operationId}.${isQuery ? 'table' : 'form'}`;
+  const moleculeTitleKey = `${moleculeId}.title`;
+  const emptyKey = `${moleculeId}.empty`;
+  i18n[moleculeTitleKey] = operation.title || humanizeId(operation.operationId);
+  i18n[emptyKey] = 'Nenhum registro encontrado';
+  const fields = commandFields(command.input).map((field, fieldIndex) => deterministicField(`${moleculeId}.field.${field}`, field, fieldIndex, i18n));
+  const columns = commandFields(command.output).map((field, fieldIndex) => deterministicField(`${moleculeId}.column.${field}`, field, fieldIndex, i18n));
+  const actionKey = `${moleculeId}.action.${operation.operationId}`;
+  i18n[actionKey] = operation.title || humanizeId(operation.operationId);
+  return {
+    id: organismId,
+    type: isQuery ? 'queryResult' : 'commandForm',
+    organismName: toPascalCase(operation.operationId),
+    titleKey: organismTitleKey,
+    purpose: operation.title || humanizeId(operation.operationId),
+    userActions: [operation.operationId],
+    requiredEntities: operationEntities(operation),
+    readsFields: fieldRefs(operation.reads),
+    writesFields: fieldRefs(operation.writes),
+    rulesApplied: operation.rulesApplied,
+    order: (index + 1) * 10,
+    molecules: [{
+      id: moleculeId,
+      type: isQuery ? 'groupviewtable.mlDataTable' : 'form',
+      order: 10,
+      titleKey: moleculeTitleKey,
+      source: `bff.${operation.operationId}`,
+      binding: `binding.${prepared.page.pageId}.${operation.operationId}`,
+      submitAction: isQuery ? undefined : operation.operationId,
+      action: isQuery ? operation.operationId : undefined,
+      emptyKey,
+      fields: isQuery ? [] : fields,
+      columns: isQuery ? columns : [],
+      filters: isQuery ? fields : [],
+      toolbar: [],
+      rowActions: isQuery ? [{ id: `${moleculeId}.rowAction.${operation.operationId}`, action: operation.operationId, labelKey: actionKey, order: 10 }] : [],
+      actions: isQuery ? [] : [{ id: `${moleculeId}.action.${operation.operationId}`, action: operation.operationId, labelKey: actionKey, order: 10 }],
+    }],
+  };
+}
+
+function deterministicField(id: string, field: string, index: number, i18n: Record<string, string>): CfeLayoutField {
+  const labelKey = `${id}.label`;
+  i18n[labelKey] = humanizeId(field);
+  return { id, field, labelKey, order: (index + 1) * 10 };
 }
 
 function buildPagePlans(workflows: Map<string, CfeWorkflowDef>, operations: Map<string, CfeOperationDef>, moduleFallback: string): CfePagePlan[] {
@@ -355,16 +999,31 @@ async function saveCreateReport(project: number, pages: CfePagePlan[], ownersDon
   }
 }
 
-function hasGeneratedDefs(project: number, page: CfePagePlan): boolean {
-  return [contractFileInfo(project, page), sharedFileInfo(project, page), pageFileInfo(project, page)].every(fileInfo => {
+async function savePageCreateMarker(prepared: CfePreparedPage, status: 'inProgress' | 'done'): Promise<void> {
+  const fileInfo = pageCreateMarkerFileInfo(prepared.project, prepared.page);
+  await saveStorContent(fileInfo, `${JSON.stringify({
+    savedAt: new Date().toISOString(),
+    status,
+    pageId: prepared.page.pageId,
+    moduleName: prepared.page.moduleName,
+    agent: 'agentCfeCreatePage',
+  }, null, 2)}\n`);
+}
+
+async function hasGeneratedDefs(project: number, page: CfePagePlan): Promise<boolean> {
+  const defsExist = [contractFileInfo(project, page), sharedFileInfo(project, page), pageFileInfo(project, page)].every(fileInfo => {
     const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
     return !!file && file.status !== 'deleted';
   });
+  if (!defsExist) return false;
+  const marker = await readJsonFile(pageCreateMarkerFileInfo(project, page));
+  return isRecord(marker) && marker.status === 'done';
 }
 
 function contractFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/contracts`, shortName: page.pageId, extension: '.defs.ts' }; }
 function sharedFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/shared`, shortName: page.pageId, extension: '.defs.ts' }; }
 function pageFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/page11`, shortName: page.pageId, extension: '.defs.ts' }; }
+function pageCreateMarkerFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/trace/frontend-create-pages`, shortName: page.pageId, extension: '.json' }; }
 
 function operationFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string): CfeOperationDef | null {
   const operationId = readString(data.operationId);

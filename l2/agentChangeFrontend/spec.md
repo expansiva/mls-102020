@@ -507,8 +507,9 @@ Após validar o paralelo, a implementação real inicial para `toCreate` está d
 
 - `agentChangeFrontend` inicia o fluxo create-only;
 - `agentCfeCreateScanL4` lê o `l4`, encontra owners com `statusFrontend = toCreate`, cria o fan-out real `create-page-fanout` e agenda a finalização;
-- `agentCfeCreatePage` gera, para uma página, os três arquivos finais: `web/contracts/{page}.defs.ts`, `web/shared/{page}.defs.ts` e `web/desktop/page11/{page}.defs.ts`;
+- `agentCfeCreatePage` gera `web/contracts/{page}.defs.ts` e `web/shared/{page}.defs.ts` de forma determinística, chama LLM com JSON schema/tool strict para o layout semântico e grava `web/desktop/page11/{page}.defs.ts`;
+- `agentCfeCreatePage` também grava `l2/{module}/trace/frontend-create-pages/{page}.json` como `inProgress` no início e `done` só depois do layout validado, para evitar que uma página antiga seja aceita por engano;
 - `agentCfeCreateFinalize` atualiza `l0/config.json`, grava `l2/{module}/trace/frontend-create-report.json` e muda os owners gerados para `statusFrontend = done`;
-- `cfeCreateShared` concentra leitura do L4, geração determinística dos comandos/layout base, merge do config e atualização de status.
+- `cfeCreateShared` concentra leitura do L4, geração determinística dos comandos, schema/validação do layout, gravação dos `.defs.ts`, merge do config e atualização de status.
 
-Esta primeira versão real ainda é determinística: usa a heurística testada de páginas por workflow e por operação standalone. O refinamento com LLM/schema-first para layout e agrupamento mais inteligente fica como próximo incremento, sem bloquear o teste create real.
+O layout LLM deve manter a estrutura de `sections -> organisms` e enriquecer cada organismo com `molecules`, `id` estável, `order`, `labelKey/titleKey/emptyKey`, referências a actions do shared, campos do contrato/ontologia e `dataBindings`. Se a saída falhar no schema ou na validação semântica, a página não é marcada como concluída.
