@@ -1,281 +1,84 @@
 {
   "flowId": "agentNewSolution2",
-  "schemaVersion": "2026-06-25",
-  "description": "FORWARD DESIGN (spec) of agentNewSolution2 — Stage 1 of the split newModule flow. This agent lives in master frontend (102020) and is meant to be called by agentNewSolution. It delivers ONLY the durable business model (the 'behavior contract'): ontology + rules + workflows + operations. It STOPS before screens/BFF (Stage 2) and before backend persistence/implementation (Stage 3). Built on the learnings of analise10/11/12 and todo/newModuleFluxos.md (Workflow/Operation as the single generation + maintenance principle).",
+  "schemaVersion": "2026-06-25-impl",
+  "description": "REVERSE-ENGINEERED from the implemented code (replaces the earlier forward-design spec). Stage 1 of the split newModule flow: it delivers ONLY the durable business model (the 'behavior contract') = ontology + rules + workflows + operations, plus the actor authorization roster. It STOPS before screens/BFF (Stage 2) and backend persistence/implementation (Stage 3), which start as SEPARATE tasks that read only the frozen l4 artifacts.",
   "source": {
-    "kind": "design-spec (not yet reverse-engineered from code)",
-    "basedOn": [
-      "_102020_/l2/agentNewSolution/flow.json (structure reference)",
-      "todo/newModuleFluxos.md (Workflow/Operation model)",
-      "mls-102049-temp/analise10.md, analise11.md, analise12.md (lessons)"
-    ],
-    "calledBy": "agentNewSolution (agentNewSolution stays untouched for now)"
+    "tree": "_102020_/l2/agentNewSolution2/agentNewSolution2.ts (buildPlannedTree)",
+    "writer": "_102020_/l2/agentNewSolution2/ns2Artifacts.ts",
+    "schemas": "_102020_/l2/agentNewSolution2/ns2Schemas.ts (strict JSON schemas; collab-llm enforces, ns2Extract re-validates)",
+    "plumbing": "_102020_/l2/agentNewSolution2/ns2Shared.ts + ns2Extract.ts + ns2Snapshot.ts"
   },
   "conventions": {
-    "stageBoundary": "Stage 1 delivers the BEHAVIOR MODEL only: ontology + rules + workflows + operations. It does NOT produce pages, per-page bffCommands, tables, persistence, layer_3/layer_4 backend, or metric tables. Those belong to Stage 2 (Experience) and Stage 3 (Backend), which are SEPARATE tasks depending only on the permanent artifacts produced here.",
-    "layerPlacement": "l4 = BUSINESS. l5 = PROJECT DATA only (monitoring, project.json, infra). Therefore: ontology and the module structural map move to l4 (module-scoped); workflows, operations and rules live in l4 (global, outside the module, because they may span modules/horizontals).",
+    "selfContained": "Everything lives in l2/agentNewSolution2/. No imports from the legacy agentNewSolution (which will be deleted).",
+    "agentNaming": "Regenerated reused agents are renamed agentNs2* (clean, focused prompts). The four NEW agents keep their plain names. Containers are agentNewSolution2*.",
+    "layerPlacement": "l4 = BUSINESS. module map + ontology are module-scoped (l4/{module}); rules/workflows/operations/actors are GLOBAL (may span modules). l5 = project data only.",
     "artifactPaths": {
-      "moduleStructural": "l4/{module}/module.defs.ts  (actors, capabilities, ontology MAP — slim)",
-      "ontologyEntity": "l4/{module}/ontology/{EntityId}.defs.ts  (canonical entity: fields, enums, lifecycle)",
-      "rules": "l4/rules/{ruleSetId}.defs.ts  (GLOBAL, shared across modules)",
-      "workflow": "l4/workflows/{workflowId}.defs.ts  (GLOBAL, outside the module)",
-      "operation": "l4/operations/{operationId}.defs.ts  (GLOBAL, outside the module)",
-      "projectData": "l5/project.json  (project dependencies / infra only — NOT business)"
+      "moduleStructural": "l4/{module}/module.defs.ts  (module meta, designContext [initial prompt + userLanguage + openDetails + priority decisions, for Stage 2], ontology MAP, relationships, approvedArtifacts). NO top-level capabilities (realized — with priority — on each workflow/operation). NO actors (see actors).",
+      "ontologyEntity": "l4/{module}/ontology/{EntityId}.defs.ts  (canonical entity: fields, per-field enum, status/lifecycle, rulesApplied)",
+      "actors": "l4/actors/{module}Actors.defs.ts  (authorization roster: each actor + roleScope '{module}:{actorId}' for JWT, e.g. cafeFlow:managerOwner)",
+      "rules": "l4/rules/{module}Rules.defs.ts  (GLOBAL rule set)",
+      "workflow": "l4/workflows/{workflowId}.defs.ts  (GLOBAL; states/transitions/operationIds/entities/rulesApplied + embedded story)",
+      "operation": "l4/operations/{operationId}.defs.ts  (GLOBAL; intent-level BFF contract: actor/entity/kind/reads/writes/rulesApplied + embedded story)",
+      "journeys": "l4/{module}/journeys.defs.ts  (DERIVED, read-only: consolidation of the stories embedded in workflows/operations — not a source artifact)",
+      "projectData": "l5/project.json (module + dependency merge), l5/{module}/process.defs.ts (run record)",
+      "trace": "l4/{module}/trace/NNN-agent.json (per-agent debug), l4/trace/checkpoint-{index}.json (frozen indices), l4/trace/behavior-health-report.json (kept across cleanup)"
     },
-    "userStories": "User stories / journeys are TRANSIENT input. They are absorbed into each Workflow and Operation as an embedded `story` block (actor, goal, soThat, steps, outcome) so the module is rich, not enxuto. NO journeys.defs.ts artifact is produced (fix vs mls-102048 where l5/{module}/journeys.defs.ts existed).",
-    "idSpace": "All entity references (operation.reads/writes, workflow.entities, etc.) MUST use canonical ONTOLOGY entity ids, qualified with the module when cross-module (e.g. cafeFlow:Order). NEVER aggregate/group names (e.g. OrderAggregate, menuEntity) — root cause of the entity.ref.unknown drift in analise11/analise12.",
-    "ontologyIsDataOnly": "ontology.entities contain ONLY persistent DATA nouns (kind core/mdm/event/metric/supporting). NEVER use-cases/workflows/operations/queries as ontology entities (no Uc*/verb-named entities) — blueprint guard from analise11.",
-    "rulesDestination": "rules are saved to l4/rules — NEVER to trace/_traceTemp (bug observed in mls-102048).",
-    "executionModes": "sequential | parallel_static | parallel_dynamic",
-    "criticLoop": "Index steps (workflowIndex, operationIndex) keep the critic/repair loop, but with the analise11 hardening: deterministic errors stay hard; on critic non-convergence the index is accepted with remaining LLM findings downgraded to warnings (never hard-fail the task).",
-    "newTaskHandoff": "This whole flow is ONE task. Stage 2 (Experience) and Stage 3 (Backend) start as NEW tasks that read ONLY the permanent l4 artifacts produced here. Maintenance re-runs this stage scoped to a single Workflow / Operation / Entity (blast-radius from dependsFiles / impact graph).",
-    "newAgents": "agentClassifyBehavior, agentPlanOperationIndex, agentPlanOperationDefinition and agentValidateBehaviorModel are NEW (the Operation concept did not exist before). The other agentName values reuse existing planning agents from agentNewSolution."
+    "userStories": "User stories/journeys are TRANSIENT input absorbed into each Workflow and Operation as an embedded `story` block (actor, goal, soThat, steps, outcome). The l4/{module}/journeys.defs.ts file is DERIVED from those stories for visibility; it is never authored directly (avoids the drift seen with a separate journeys source).",
+    "ownerStatusForStage2": "Each persisted workflow/operation carries TWO independent reconciler statuses — `statusFrontend` and `statusBackend` (each toCreate|toUpdate|toRemove|inProgress|done) — both seeded 'toCreate' on creation. agentChangeFrontend reads/writes statusFrontend; agentChangeBackend reads/writes statusBackend. Each reconciler processes owners whose own status != 'done' and flips it independently (no single-status ambiguity between the two stages). So Stage 1 leaves an explicit per-stage to-do list with progress tracking, not just the source model.",
+    "capabilitiesAsRealized": "There is NO standalone capabilities artifact. Each Workflow carries `capabilities[]` and each Operation carries `capability` (capabilityId + title + priority), attached mechanically at save from the classification + final plan. So workflows/operations are the source of truth for which feature (and phase: now/soon/later) each behavior realizes. The full priority rationale also lives in module.defs.ts.designContext.decisions.",
+    "behaviorScope": "agentClassifyBehavior classifies EVERY capability that is not priority 'never' (now AND soon AND later) — not just 'now'. This ensures user-requested key screens that landed as 'soon' (e.g. dashboards, AI summaries) still become operations and therefore get pages in Stage 2. Priority travels with the artifact so Stage 2 can phase the work.",
+    "workflowOperationLink": "agentClassifyBehavior emits workflow.operationIds AND the corresponding operations; agentNs2WorkflowIndex deterministically fills any empty operationIds from the classification. A stateful workflow with zero operations is flagged as a warning.",
+    "idSpace": "All entity references use canonical ONTOLOGY entity ids (the ontology map keys), qualified with the module when cross-module (e.g. cafeFlow:Order). NEVER aggregate/group names.",
+    "ontologyIsDataOnly": "ontology.entities are persistent DATA nouns only (kind core/mdm/event/metric/supporting). NEVER use-cases/workflows/queries; no Uc*/verb-named ids (blueprint guard).",
+    "verification": "No LLM critic/repair loop. Index agents run DETERMINISTIC reference-integrity checks (ids must resolve to canonical ontology ids; unresolved -> warnings, never a hard fail) and freeze a checkpoint. agentValidateBehaviorModel produces a non-blocking coverage/integrity report.",
+    "fanOutReads": "Parallel fan-out children are pre-allocated, reused and DELETED after completion (mls.d.ts AgentIntentParallelSteps §7.1). Therefore consumers that run AFTER a fan-out read the SAVED l4 .defs.ts files (file-fallback), never the task payloads. See ns2Artifacts.read{OntologyEntities,WorkflowDefs,OperationDefs}.",
+    "finish": "AUTOMATIC. There is no blocking final clarification. After agentValidateBehaviorModel, the final-resume step (an agent, not a clarification) writes l5/{module}/process.defs.ts + the derived journeys, clears traces, CLEANS the task inputs/outputs, and completes the task. The Stage-1 summary is viewable any time via openStepView (rebuilt from the persisted report).",
+    "newTaskHandoff": "Stage 2 (Experience) and Stage 3 (Backend) are NEW tasks reading only the frozen l4 artifacts. process.defs.ts records them as pending next-steps."
   },
   "treeOverview": [
-    "org-requirements (container; clarification + discovery + recommend + decisions)",
+    "org-requirements (agentNewSolution2Requirements; first clarification + scope/recommend + decisions)",
     "org-domain (container; blueprint -> review -> finalize -> per-entity ontology + mdm/horizontals/plugins refs)",
-    "org-behavior (container; classify capabilities into Workflow|Operation, then define workflows and operations)",
-    "org-handoff (container; validate the behavior model, freeze artifacts, finish the task; optional resume screen)"
+    "org-behavior (container; classify into Workflow|Operation, then index+define workflows and operations)",
+    "org-handoff (container; validate the model, then auto-finish: freeze run + journeys, clean, complete)"
   ],
   "steps": [
-    {
-      "planId": "org-requirements",
-      "agentName": "agentNewSolution2Requirements",
-      "type": "agent",
-      "executionMode": "sequential",
-      "dependsOn": [],
-      "goal": "Container for the requirements phase (clarification + discovery + recommendations + decisions).",
-      "input": ["root prompt, titles, todoItems, openDetails"],
-      "output": { "result": "container", "savedArtifact": null }
-    },
-    {
-      "planId": "req-clarification-answer",
-      "agentName": "agentNewSolution2Requirements (clarification)",
-      "type": "clarification",
-      "executionMode": "sequential",
-      "dependsOn": ["org-requirements"],
-      "goal": "First clarification with the user (small, no architecture).",
-      "output": { "result": "RequirementsClarification (answers)", "savedArtifact": null }
-    },
-    {
-      "planId": "req-discover-scope",
-      "agentName": "agentDiscoverSolutionScope",
-      "type": "agent",
-      "executionMode": "sequential",
-      "dependsOn": ["req-clarification-answer"],
-      "goal": "Identify scope and signals. Platform-provided concerns (auth, audit, monitoring, notifications) are out of scope (analise11 T12).",
-      "output": { "result": "discoverScope (scope + signals by category)", "savedArtifact": null }
-    },
-    {
-      "planId": "req-recommend-implementations",
-      "agentName": "agentRecommendImplementations",
-      "type": "agent",
-      "executionMode": "sequential",
-      "dependsOn": ["req-discover-scope"],
-      "goal": "Recommend artifacts at the BEHAVIOR level only: ontology entities, workflows, operations, MDM, horizontals, agents. Do NOT recommend pages or tables (later stages).",
-      "output": { "result": "recommendations (priority now/soon/later/never)", "savedArtifact": null }
-    },
-    {
-      "planId": "req-implementation-decisions",
-      "agentName": "agentNewSolution2Requirements (clarification)",
-      "type": "clarification",
-      "executionMode": "sequential",
-      "dependsOn": ["req-recommend-implementations"],
-      "goal": "User accepts/defers recommendations.",
-      "output": { "result": "implementationDecisions", "savedArtifact": null }
-    },
+    { "planId": "org-requirements", "agentName": "agentNewSolution2Requirements", "type": "agent", "executionMode": "sequential", "dependsOn": [], "initialStatus": "waiting_human_input", "goal": "Requirements container; renders the first clarification and the implementation decisions (shared widget-questions-for-clarification-102025). Module name answer kept RAW for the blueprint to interpret." },
+    { "planId": "req-clarification-answer", "agentName": "agentNewSolution2Requirements (clarification)", "type": "clarification", "executionMode": "sequential", "dependsOn": ["org-requirements"], "goal": "First small clarification (no architecture)." },
+    { "planId": "req-discover-scope", "agentName": "agentNs2DiscoverScope", "type": "agent", "executionMode": "sequential", "dependsOn": ["req-clarification-answer"], "goal": "Behavior-level scope/signals (workflows/operations/mdm/horizontals/plugins/agents). Platform concerns out of scope." },
+    { "planId": "req-recommend-implementations", "agentName": "agentNs2Recommend", "type": "agent", "executionMode": "sequential", "dependsOn": ["req-discover-scope"], "goal": "Prioritized recommendations (now/soon/later/never). Behavior level only — never pages/tables." },
+    { "planId": "req-implementation-decisions", "agentName": "agentNewSolution2Requirements (clarification)", "type": "clarification", "executionMode": "sequential", "dependsOn": ["req-recommend-implementations"], "goal": "User accepts/defers recommendations." },
 
-    {
-      "planId": "org-domain",
-      "agentName": "agentNewSolution2Domain",
-      "type": "agent",
-      "executionMode": "sequential",
-      "dependsOn": ["org-requirements"],
-      "goal": "Container (no LLM) for the domain phase (ontology + rules).",
-      "output": { "result": "container", "savedArtifact": null }
-    },
-    {
-      "planId": "plan-solution-blueprint",
-      "agentName": "agentSolutionBlueprint",
-      "type": "agent",
-      "executionMode": "sequential",
-      "dependsOn": ["req-implementation-decisions"],
-      "goal": "Generate the blueprint: module, actors, capabilities, ontology MAP, rules, relationships, and a behavior hint per capability (process vs direct action). GUARD: ontology.entities are data nouns only — never use-cases/workflows (analise11).",
-      "output": { "result": "solutionBlueprint", "savedArtifact": null }
-    },
-    {
-      "planId": "plan-blueprint-review",
-      "agentName": "agentBlueprintReview",
-      "type": "agent",
-      "executionMode": "sequential",
-      "dependsOn": ["plan-solution-blueprint"],
-      "goal": "Detect domain/coverage gaps before specialized plans.",
-      "output": { "result": "blueprintReview (findings)", "savedArtifact": null }
-    },
-    {
-      "planId": "plan-finalize-solution-plan",
-      "agentName": "agentFinalizeSolutionPlan",
-      "type": "agent",
-      "executionMode": "sequential",
-      "dependsOn": ["plan-blueprint-review"],
-      "goal": "Apply the review and freeze the final plan (source of truth for the behavior plans).",
-      "output": {
-        "result": "FinalSolutionPlan { module, actors, capabilities, ontology MAP, rules, relationships, decisions }",
-        "savedArtifact": [
-          "l4/{module}/module.defs.ts  (structural: actors, capabilities, ontology MAP — slim; canonical entity shapes live in l4/{module}/ontology/*)",
-          "l4/rules/{ruleSetId}.defs.ts  (GLOBAL rules)",
-          "l5/project.json  (project registration / deps only — merge, not overwrite)"
-        ]
-      }
-    },
-    {
-      "planId": "plan-entity-definition",
-      "agentName": "agentPlanEntityDefinition",
-      "type": "agent",
-      "executionMode": "parallel_dynamic",
-      "dependsOn": ["plan-finalize-solution-plan"],
-      "dynamicSource": { "sourcePlanId": "plan-finalize-solution-plan", "selectorField": "entityId", "argsField": "entityId" },
-      "goal": "Per-entity canonical shape (fields with per-field enum, statusEnum, lifecycle).",
-      "output": { "result": "entityDefinition", "savedArtifact": "l4/{module}/ontology/{entityId}.defs.ts (ontologyEntity)" }
-    },
-    {
-      "planId": "plan-mdm",
-      "agentName": "agentPlanMDM",
-      "type": "agent",
-      "executionMode": "parallel_static",
-      "dependsOn": ["plan-finalize-solution-plan"],
-      "goal": "Plan MDM domains as references to the shared MDM infra (102034) when it exists.",
-      "output": { "result": "mdmDomains[]", "savedArtifact": ["l5/{domainId}/module.defs.ts (reference)", "l5/project.json (dependency merge)"] }
-    },
-    {
-      "planId": "plan-horizontals",
-      "agentName": "agentPlanHorizontals",
-      "type": "agent",
-      "executionMode": "parallel_static",
-      "dependsOn": ["plan-finalize-solution-plan"],
-      "goal": "Plan horizontal modules (reference if exists; draft otherwise). Notifications/audit/monitoring are platform-provided and NOT planned here (analise11 T12).",
-      "output": { "result": "horizontalModules[]", "savedArtifact": "l5/{horizontalModuleId}/module.defs.ts (reference|draft)" }
-    },
-    {
-      "planId": "plan-plugins",
-      "agentName": "agentPlanPlugins",
-      "type": "agent",
-      "executionMode": "parallel_static",
-      "dependsOn": ["plan-finalize-solution-plan"],
-      "goal": "Plan external plugins (reuse existing by brand before drafting).",
-      "output": { "result": "plugins[]", "savedArtifact": "l2/{module}/plugins/{pluginId}.defs.ts (pluginConnection)" },
-      "criticRepair": { "index": "pluginPlan", "checkpoint": "l2/{module}/trace/checkpoint-pluginPlan.json" }
-    },
+    { "planId": "org-domain", "agentName": "agentNewSolution2Domain", "type": "agent", "executionMode": "sequential", "dependsOn": ["org-requirements"], "goal": "No-LLM container for the domain phase (ontology + rules)." },
+    { "planId": "plan-solution-blueprint", "agentName": "agentNs2Blueprint", "type": "agent", "executionMode": "sequential", "dependsOn": ["req-implementation-decisions"], "goal": "Blueprint: module, actors, capabilities (each with behaviorHint workflow|operation|either), ontology MAP (data nouns only), rules, relationships, behavior plan. CONFIRMS the module name (records 'module-name-final').", "savedArtifact": "result step module-name-final" },
+    { "planId": "plan-blueprint-review", "agentName": "agentNs2BlueprintReview", "type": "agent", "executionMode": "sequential", "dependsOn": ["plan-solution-blueprint"], "goal": "Non-blocking domain/coverage findings." },
+    { "planId": "plan-finalize-solution-plan", "agentName": "agentNs2Finalize", "type": "agent", "executionMode": "sequential", "dependsOn": ["plan-blueprint-review"], "goal": "Freeze the domain plan and write the durable domain artifacts; spawn the per-entity ontology fan-out.", "savedArtifact": ["l4/{module}/module.defs.ts (no capabilities/actors)", "l4/actors/{module}Actors.defs.ts (actors + roleScope)", "l4/rules/{module}Rules.defs.ts", "l5/project.json (merge)"] },
+    { "planId": "plan-entity-definition", "agentName": "agentNs2EntityDefinition", "type": "agent", "executionMode": "parallel_dynamic", "dependsOn": ["plan-finalize-solution-plan"], "dynamicSource": { "sourcePlanId": "plan-finalize-solution-plan", "selectorField": "entityId", "argsField": "entityId" }, "goal": "Per-entity canonical shape.", "savedArtifact": "l4/{module}/ontology/{entityId}.defs.ts" },
+    { "planId": "plan-mdm", "agentName": "agentNs2Mdm", "type": "agent", "executionMode": "parallel_static", "dependsOn": ["plan-finalize-solution-plan"], "goal": "MDM domains as references; merges l5/project.json dependency on shared infra (102034) when used." },
+    { "planId": "plan-horizontals", "agentName": "agentNs2Horizontals", "type": "agent", "executionMode": "parallel_static", "dependsOn": ["plan-finalize-solution-plan"], "goal": "Horizontal module references (platform-provided concerns excluded)." },
+    { "planId": "plan-plugins", "agentName": "agentNs2Plugins", "type": "agent", "executionMode": "parallel_static", "dependsOn": ["plan-finalize-solution-plan"], "goal": "External plugin references (reuse existing by brand)." },
 
-    {
-      "planId": "org-behavior",
-      "agentName": "agentNewSolution2Behavior",
-      "type": "agent",
-      "executionMode": "sequential",
-      "dependsOn": ["org-domain"],
-      "goal": "Container (no LLM) for the behavior phase (workflows + operations) — the heart of Stage 1.",
-      "output": { "result": "container", "savedArtifact": null }
-    },
-    {
-      "planId": "plan-behavior-classification",
-      "agentName": "agentClassifyBehavior",
-      "type": "agent",
-      "executionMode": "sequential",
-      "dependsOn": ["plan-finalize-solution-plan", "plan-entity-definition"],
-      "goal": "NEW. Classify every priority-now capability/user-action into a Workflow (stateful, triggered, multi-actor over time) OR an Operation (direct action of one actor on one entity: create/update/query/view). Absorb the user stories here as the source for each owner's `story` (NOT persisted as journeys). Output the behavior index (workflowIds + operationIds, each with its story and the ontology entities it touches).",
-      "input": ["final plan (capabilities, actors, ontology, rules)", "user stories (transient)"],
-      "output": { "result": "behaviorIndex { workflows[], operations[] } (with stories)", "savedArtifact": "checkpoint after approval" }
-    },
-    {
-      "planId": "plan-workflow-index",
-      "agentName": "agentPlanWorkflowIndex",
-      "type": "agent",
-      "executionMode": "sequential",
-      "dependsOn": ["plan-behavior-classification"],
-      "goal": "Index of workflows to detail (executionMode, trigger, actors, refs).",
-      "output": { "result": "workflowIndex { workflows[] }", "savedArtifact": "checkpoint after approval" },
-      "criticRepair": { "index": "workflowIndex", "checkpoint": "l4/trace/checkpoint-workflowIndex.json" }
-    },
-    {
-      "planId": "plan-workflow-definition",
-      "agentName": "agentPlanWorkflowDefinition",
-      "type": "agent",
-      "executionMode": "parallel_dynamic",
-      "dependsOn": ["plan-workflow-index"],
-      "dynamicSource": { "sourcePlanId": "plan-workflow-index", "selectorField": "workflowId" },
-      "goal": "Per workflow: full definition — trigger, actors, states, transitions, the operationIds it orchestrates, ontology entities touched, rulesApplied, and the embedded `story` (absorbed user story). Entity refs use canonical ontology ids only.",
-      "output": { "result": "workflowDefinition", "savedArtifact": "l4/workflows/{workflowId}.defs.ts (GLOBAL)" }
-    },
-    {
-      "planId": "plan-operation-index",
-      "agentName": "agentPlanOperationIndex",
-      "type": "agent",
-      "executionMode": "sequential",
-      "dependsOn": ["plan-behavior-classification"],
-      "goal": "NEW. Index of operations to detail — direct actions on entities not owned by a workflow step (CRUD + query/view, including dashboards as query/view operations).",
-      "output": { "result": "operationIndex { operations[] }", "savedArtifact": "checkpoint after approval" },
-      "criticRepair": { "index": "operationIndex", "checkpoint": "l4/trace/checkpoint-operationIndex.json" }
-    },
-    {
-      "planId": "plan-operation-definition",
-      "agentName": "agentPlanOperationDefinition",
-      "type": "agent",
-      "executionMode": "parallel_dynamic",
-      "dependsOn": ["plan-operation-index"],
-      "dynamicSource": { "sourcePlanId": "plan-operation-index", "selectorField": "operationId" },
-      "goal": "NEW. Per operation: operationId, title, actor, entity (ontology), kind (create|update|delete|query|view), reads/writes (ontology entities/fields), rulesApplied, and the embedded `story`. This IS the intent-level BFF contract (no tables, no per-page bffCommands). Entity refs use canonical ontology ids only.",
-      "output": { "result": "operationDefinition", "savedArtifact": "l4/operations/{operationId}.defs.ts (GLOBAL)" }
-    },
+    { "planId": "org-behavior", "agentName": "agentNewSolution2Behavior", "type": "agent", "executionMode": "sequential", "dependsOn": ["org-domain"], "goal": "No-LLM container for the behavior phase (workflows + operations) — the heart of Stage 1." },
+    { "planId": "plan-behavior-classification", "agentName": "agentClassifyBehavior", "type": "agent", "executionMode": "sequential", "dependsOn": ["plan-finalize-solution-plan", "plan-entity-definition"], "goal": "NEW. Classify EVERY non-'never' capability (now/soon/later) into a Workflow or Operation; emit workflow.operationIds + the operations they orchestrate; absorb the user stories as each owner's embedded `story`. Deterministic ref check + checkpoint.", "savedArtifact": "l4/trace/checkpoint-behaviorIndex.json" },
+    { "planId": "plan-workflow-index", "agentName": "agentNs2WorkflowIndex", "type": "agent", "executionMode": "sequential", "dependsOn": ["plan-behavior-classification"], "goal": "Index workflows (executionMode, trigger, actors, entities, orchestrated operationIds). Deterministic ref check + checkpoint; spawns the definition fan-out.", "savedArtifact": "l4/trace/checkpoint-workflowIndex.json" },
+    { "planId": "plan-workflow-definition", "agentName": "agentNs2WorkflowDefinition", "type": "agent", "executionMode": "parallel_dynamic", "dependsOn": ["plan-workflow-index"], "dynamicSource": { "sourcePlanId": "plan-workflow-index", "selectorField": "workflowId", "argsField": "workflowId" }, "goal": "Per-workflow definition; states aligned to the primary entity's lifecycle; capabilities[] attached mechanically.", "savedArtifact": "l4/workflows/{workflowId}.defs.ts" },
+    { "planId": "plan-operation-index", "agentName": "agentPlanOperationIndex", "type": "agent", "executionMode": "sequential", "dependsOn": ["plan-behavior-classification"], "goal": "NEW. Index operations (CRUD + query/view; dashboards as query/view). Deterministic ref check + checkpoint; spawns the definition fan-out.", "savedArtifact": "l4/trace/checkpoint-operationIndex.json" },
+    { "planId": "plan-operation-definition", "agentName": "agentPlanOperationDefinition", "type": "agent", "executionMode": "parallel_dynamic", "dependsOn": ["plan-operation-index"], "dynamicSource": { "sourcePlanId": "plan-operation-index", "selectorField": "operationId", "argsField": "operationId" }, "goal": "NEW. Per-operation intent-level BFF contract (reads/writes/rulesApplied + story); capability attached mechanically.", "savedArtifact": "l4/operations/{operationId}.defs.ts" },
 
-    {
-      "planId": "org-handoff",
-      "agentName": "agentNewSolution2Final",
-      "type": "agent",
-      "executionMode": "sequential",
-      "dependsOn": ["plan-workflow-definition", "plan-operation-definition"],
-      "goal": "Container. Validate the behavior model and freeze it as the permanent handoff for Stage 2 (Experience) and Stage 3 (Backend).",
-      "output": { "result": "container", "savedArtifact": null }
-    },
-    {
-      "planId": "behavior-validate",
-      "agentName": "agentValidateBehaviorModel",
-      "type": "agent",
-      "executionMode": "sequential",
-      "dependsOn": ["org-handoff"],
-      "goal": "NEW. Non-blocking coverage/integrity report for Stage 1: every priority-now capability is owned by exactly one Workflow or Operation; every entity ref resolves to a canonical ontology id (no aggregate names); rules referenced exist; every workflow's orchestrated operationIds exist. Deterministic; warnings do not block.",
-      "output": { "result": "behaviorHealthReport { passed, errors, warnings }", "savedArtifact": "l4/trace/behavior-health-report.json" }
-    },
-    {
-      "planId": "final-resume",
-      "agentName": "agentNewSolution2Final",
-      "type": "clarification",
-      "executionMode": "sequential",
-      "dependsOn": ["behavior-validate"],
-      "goal": "OPTIONAL summary screen. The task finishes once the behavior model is frozen (analise11 T17: finish early; viewing the resume is optional; traces are not cleared at finish). On finish it can open the next-stage tasks (Experience / Backend) that depend only on the frozen l4 artifacts.",
-      "output": { "result": "resume-finish (open next-stage tasks)", "savedArtifact": "l5/project.json (process run)" }
-    }
+    { "planId": "org-handoff", "agentName": "agentNewSolution2Handoff", "type": "agent", "executionMode": "sequential", "dependsOn": ["plan-workflow-definition", "plan-operation-definition"], "goal": "No-LLM container; opens validate + final-resume. SEPARATE from agentNewSolution2Final so only final-resume exposes openStepView (avoids a duplicate 'open summary' link)." },
+    { "planId": "behavior-validate", "agentName": "agentValidateBehaviorModel", "type": "agent", "executionMode": "sequential", "dependsOn": ["plan-workflow-definition", "plan-operation-definition"], "goal": "NEW. Deterministic, NON-blocking coverage/integrity report read from the SAVED l4 files. NOTE: depends on the SAME upstream as org-handoff (NOT on org-handoff) — a child must never depend on its passive container or the container deadlocks (parent waits for children, child waits for parent).", "savedArtifact": "l4/trace/behavior-health-report.json" },
+    { "planId": "final-resume", "agentName": "agentNewSolution2Final", "type": "agent", "executionMode": "sequential", "dependsOn": ["behavior-validate"], "goal": "AUTO-FINISH (no clarification): write l5/{module}/process.defs.ts + derived l4/{module}/journeys.defs.ts, clear traces, clean task inputs/outputs, complete the task. Summary viewable via openStepView.", "savedArtifact": ["l5/{module}/process.defs.ts", "l4/{module}/journeys.defs.ts (derived)"] }
   ],
   "handoffArtifacts": {
-    "description": "What Stage 1 freezes and what Stage 2/3 consume — nothing else.",
     "produces": [
-      "l4/{module}/module.defs.ts (actors, capabilities, ontology map)",
+      "l4/{module}/module.defs.ts (module meta + ontology map + relationships + approvedArtifacts)",
       "l4/{module}/ontology/*.defs.ts (canonical entities)",
+      "l4/actors/{module}Actors.defs.ts (authorization roster with roleScope)",
       "l4/rules/*.defs.ts (global rules)",
-      "l4/workflows/*.defs.ts (global workflows, with embedded stories)",
-      "l4/operations/*.defs.ts (global operations = intent-level BFF contract, with embedded stories)"
+      "l4/workflows/*.defs.ts (global workflows, embedded stories)",
+      "l4/operations/*.defs.ts (global operations = intent-level BFF contract, embedded stories)",
+      "l4/{module}/journeys.defs.ts (derived consolidation of stories)"
     ],
-    "explicitlyNotProduced": [
-      "pages / screens", "per-page bffCommands", "tables / persistence index", "layer_3 / layer_4 backend", "metric tables", "journeys.defs.ts"
-    ],
-    "consumedBy": [
-      "Stage 2 Experience (screens + concrete BFF wiring) — separate task, master frontend",
-      "Stage 3 Backend (persistence + implementation) — separate task, master backend"
-    ]
-  },
-  "openDecisions": [
-    "Operation schema: confirm final fields (proposal: operationId, title, actor, entity, kind, reads[], writes[], rulesApplied[], story{actor,goal,soThat,steps[],outcome}).",
-    "Cross-module entity id qualification format (e.g. cafeFlow:Order) for global workflows/operations referencing another module's ontology.",
-    "Whether agentNewSolution2 reuses the existing requirements/blueprint agents as-is or needs thin wrappers (here assumed reuse).",
-    "MDM/horizontal/plugin refs currently stay in l5/{id}/module.defs.ts + project.json deps (not moved to l4); confirm."
-  ]
+    "explicitlyNotProduced": ["pages / screens", "per-page bffCommands", "tables / persistence", "layer_3 / layer_4 backend", "metric tables", "capabilities (not persisted)"],
+    "consumedBy": ["Stage 2 Experience (separate task)", "Stage 3 Backend (separate task)"]
+  }
 }

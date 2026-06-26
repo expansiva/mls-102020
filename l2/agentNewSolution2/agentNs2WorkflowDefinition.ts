@@ -17,13 +17,17 @@ import {
   isRecord,
   normalizeStringList,
   optionalString,
+  resolveCapabilityInfo,
+  EXPERIENCE_STATUS_INITIAL,
+  type ExperienceStatus,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
-import { saveAgentTrace, saveDefsArtifact, workflowFileInfo } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import { readWorkflowDefs, saveAgentTrace, saveDefsArtifact, workflowFileInfo } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { workflowDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getWorkflowIndex } from '/_102020_/l2/agentNewSolution2/agentNs2WorkflowIndex.js';
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
 import { getEnrichedOntology } from '/_102020_/l2/agentNewSolution2/agentNs2EntityDefinition.js';
+import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finalize.js';
 
 const AGENT_NAME = 'agentNs2WorkflowDefinition';
 const TOOL_NAME = 'submitWorkflowDefinition';
@@ -41,6 +45,14 @@ export interface WorkflowDefinition {
   entities: string[];
   rulesApplied: string[];
   story: { actor: string; goal: string; soThat?: string; steps: string[]; outcome: string };
+  // Mechanically attached at save (not from the LLM): the capabilities this workflow realizes, with
+  // their priority — makes the workflow the source of truth for "which feature + phase" it covers.
+  capabilities?: { capabilityId: string; title: string; actor?: string; priority?: string }[];
+  // Independent reconciler statuses: agentChangeFrontend reads/writes statusFrontend, agentChangeBackend
+  // reads/writes statusBackend. Each is toCreate|toUpdate|toRemove|inProgress|done; both seeded
+  // 'toCreate' on creation. Decoupling them avoids the single-status ambiguity between the two stages.
+  statusFrontend?: ExperienceStatus;
+  statusBackend?: ExperienceStatus;
 }
 export interface WorkflowDefinitionResult { workflowDefinition: WorkflowDefinition }
 export type WorkflowDefinitionOutput = PlannerOutput<WorkflowDefinitionResult>;
@@ -58,7 +70,13 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   const behavior = getBehaviorIndex(context).result;
   const story = behavior.workflows.find(w => w.workflowId === args)?.story;
   const operations = behavior.operations.filter(o => indexItem.operationIds.includes(o.operationId)).map(o => ({ operationId: o.operationId, title: o.title, entity: o.entity, kind: o.kind }));
-  const reduced = { selector: args, indexItem, story, orchestratedOperations: operations, ontologyEntityIds: Object.keys(getEnrichedOntology(context)) };
+  const ontology = await getEnrichedOntology(context);
+  // Lifecycle of the workflow's entities, so states can be aligned to the entity (not generic).
+  const entityLifecycles = indexItem.entities.map(id => {
+    const e = isRecord(ontology[id]) ? ontology[id] as Record<string, unknown> : {};
+    return { entity: id, lifecycleStates: e.lifecycleStates, statusEnum: e.statusEnum };
+  });
+  const reduced = { selector: args, indexItem, story, orchestratedOperations: operations, entityLifecycles, ontologyEntityIds: Object.keys(ontology) };
   return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), `## Workflow selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
 }
 
@@ -80,7 +98,13 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   }
   if (status === 'completed' && output && output.status === 'ok') {
     try {
-      await saveDefsArtifact(workflowFileInfo(output.result.workflowDefinition.workflowId), `workflow${capitalize(output.result.workflowDefinition.workflowId)}`, output.result.workflowDefinition);
+      const def = output.result.workflowDefinition;
+      // Attach the realized capabilities (id + title + priority) deterministically.
+      const capabilityIds = getBehaviorIndex(context).result.workflows.find(w => w.workflowId === def.workflowId)?.capabilityIds || [];
+      def.capabilities = resolveCapabilityInfo(capabilityIds, getFinalizeOutput(context).result.capabilities as unknown[]);
+      def.statusFrontend = EXPERIENCE_STATUS_INITIAL; // agentChangeFrontend picks up statusFrontend != 'done'
+      def.statusBackend = EXPERIENCE_STATUS_INITIAL;   // agentChangeBackend picks up statusBackend != 'done'
+      await saveDefsArtifact(workflowFileInfo(def.workflowId), `workflow${capitalize(def.workflowId)}`, def);
     } catch (error) {
       console.warn(`[${AGENT_NAME}] save failed for ${selector}`, error);
     }
@@ -89,8 +113,17 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   return [createUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg)];
 }
 
-export function getWorkflowDefinitions(context: mls.msg.ExecutionContext): WorkflowDefinition[] {
-  return getPlannerOutputs(context, AGENT_NAME, config).filter(o => o.status === 'ok').map(o => o.result.workflowDefinition);
+/** Reads the GLOBAL l4/workflows/*.defs.ts (fan-out children are deleted); in-task payloads override. */
+export async function getWorkflowDefinitions(context: mls.msg.ExecutionContext): Promise<WorkflowDefinition[]> {
+  const byId = new Map<string, WorkflowDefinition>();
+  for (const d of await readWorkflowDefs()) {
+    const id = typeof d.workflowId === 'string' ? d.workflowId : '';
+    if (id) byId.set(id, d as unknown as WorkflowDefinition);
+  }
+  for (const o of getPlannerOutputs(context, AGENT_NAME, config)) {
+    if (o.status === 'ok') byId.set(o.result.workflowDefinition.workflowId, o.result.workflowDefinition);
+  }
+  return [...byId.values()];
 }
 
 const config: PlannerExtractConfig<WorkflowDefinitionResult> = { toolName: TOOL_NAME, normalizeResult };
@@ -144,5 +177,8 @@ rulesApplied[] (ruleIds), and the embedded story { actor, goal, soThat?, steps[]
 Rules:
 - workflowId must equal the selector.
 - transitions reference declared states; entities/operationIds reference provided ids only.
+- states must reflect the lifecycle of the workflow's PRIMARY entity: when that entity declares
+  lifecycleStates/statusEnum in the reduced context, reuse those exact state names instead of
+  inventing generic ones (open/closed/submitted), so the workflow and the entity stay aligned.
 
 `;

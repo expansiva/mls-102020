@@ -19,6 +19,7 @@ import {
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import {
+  actorsFileInfo,
   getApprovedModuleName,
   mergeProjectJson,
   moduleDefsFileInfo,
@@ -26,6 +27,7 @@ import {
   saveAgentTrace,
   saveDefsArtifact,
 } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import { getInitialPlanSummary, isRecord, optionalString, parallelProgressTitle } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { finalizeResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getBlueprintOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Blueprint.js';
 import { getBlueprintReviewOutput } from '/_102020_/l2/agentNewSolution2/agentNs2BlueprintReview.js';
@@ -91,14 +93,19 @@ async function persistDomain(context: mls.msg.ExecutionContext, result: Finalize
   const moduleName = getApprovedModuleName(context);
   if (!moduleName) { console.warn(`[${AGENT_NAME}] no confirmed module name; skipping l4 writes`); return; }
   try {
+    // module.defs.ts is the slim structural artifact. capabilities are NOT persisted as a top-level
+    // list (they are realized — with priority — on each workflow/operation); actors live in l4/actors.
+    // designContext carries the ORIGINAL intent for Stage 2: the user's prompt, language, open details
+    // and the priority decisions (so the page generator knows what was requested and what was deferred).
     await saveDefsArtifact(moduleDefsFileInfo(moduleName), `${moduleName}Module`, {
       module: result.module,
-      actors: result.actors,
-      capabilities: result.capabilities,
+      designContext: buildDesignContext(context),
       ontology: { entities: result.ontology.entities }, // slim MAP; canonical shapes in l4/{module}/ontology
       relationships: result.relationships,
       approvedArtifacts: result.approvedArtifacts,
     });
+    // Actors -> l4/actors/{module}Actors.defs.ts, each with a JWT role scope `{module}:{actorId}`.
+    await saveDefsArtifact(actorsFileInfo(moduleName), `${moduleName}Actors`, { moduleName, actors: buildActorRoster(moduleName, result.actors) });
     if (result.rules.length > 0) {
       await saveDefsArtifact(ruleSetFileInfo(`${moduleName}Rules`), `${moduleName}Rules`, { ruleSetId: `${moduleName}Rules`, rules: result.rules });
     }
@@ -113,6 +120,43 @@ async function persistDomain(context: mls.msg.ExecutionContext, result: Finalize
   }
 }
 
+/** Durable design intent for Stage 2: the user's prompt + language + open details + priority decisions. */
+function buildDesignContext(context: mls.msg.ExecutionContext): Record<string, unknown> {
+  let initialPrompt = '';
+  let userLanguage = '';
+  let openDetails: unknown[] = [];
+  try {
+    const plan = getInitialPlanSummary(context);
+    initialPrompt = typeof plan.userPrompt === 'string' ? plan.userPrompt : '';
+    userLanguage = typeof plan.userLanguage === 'string' ? plan.userLanguage : '';
+    openDetails = Array.isArray(plan.openDetails) ? plan.openDetails : [];
+  } catch { /* tolerate */ }
+  let decisions: Record<string, unknown>[] = [];
+  try {
+    decisions = getImplementationDecisionResult(context).decisions.map(d => ({
+      recommendationId: d.recommendationId,
+      artifactType: d.artifactType,
+      title: d.title,
+      decidedPriority: d.decidedPriority,
+      accepted: d.accepted,
+    }));
+  } catch { /* decisions may be absent */ }
+  return { initialPrompt, userLanguage, openDetails, decisions };
+}
+
+/** Actor roster for authz: each actor + a stable JWT role scope `{module}:{actorId}`. */
+function buildActorRoster(moduleName: string, actors: unknown[]): Record<string, unknown>[] {
+  return (Array.isArray(actors) ? actors : []).filter(isRecord).map(actor => {
+    const actorId = optionalString(actor.actorId) || '';
+    return {
+      actorId,
+      title: optionalString(actor.title) || actorId,
+      description: optionalString(actor.description) || '',
+      roleScope: actorId ? `${moduleName}:${actorId}` : '',
+    };
+  }).filter(a => a.actorId);
+}
+
 /** Spawn one fan-out child per ontology entity into the planned 'plan-entity-definition' placeholder. */
 function spawnEntityFanOut(context: mls.msg.ExecutionContext, result: FinalizeResult): mls.msg.AgentIntent[] {
   const placeholder = findStepByPlanId(context, 'plan-entity-definition') as mls.msg.AIAgentStep | null;
@@ -121,7 +165,7 @@ function spawnEntityFanOut(context: mls.msg.ExecutionContext, result: FinalizeRe
   if (entityIds.length === 0) {
     return [createUpdateStatusIntent(context, placeholder, placeholder, 0, 'completed', 'No ontology entities to detail.')];
   }
-  return [createParallelDynamicAgentStepIntent(context, placeholder, 'agentNs2EntityDefinition', 'plan-entity-definition:parallel', 'Detail ontology entities', entityIds, 5)];
+  return [createParallelDynamicAgentStepIntent(context, placeholder, 'agentNs2EntityDefinition', 'plan-entity-definition:parallel', parallelProgressTitle(context, 'Detalhando entidades', 'Detailing entities'), entityIds, 5)];
 }
 
 export function getFinalizeOutput(context: mls.msg.ExecutionContext): FinalizeOutput {

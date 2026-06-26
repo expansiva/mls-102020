@@ -179,6 +179,16 @@ export function getResultByPlanId<T>(context: mls.msg.ExecutionContext, planId: 
   return isRecord(parsed) ? (parsed as T) : null;
 }
 
+/** Progress title for a parallel_dynamic fan-out. The runtime substitutes {{completed}}/{{total}}/
+ * {{failed}} live, so the step shows e.g. "Detalhando entidades 3/10, falhas 0". Localized by the
+ * run's userLanguage (pt vs en). */
+export function parallelProgressTitle(context: mls.msg.ExecutionContext, ptLabel: string, enLabel: string): string {
+  let lang = '';
+  try { lang = String(getInitialPlanSummary(context).userLanguage || '').toLowerCase(); } catch { /* default en */ }
+  const isPt = lang.startsWith('pt');
+  return isPt ? `${ptLabel} {{completed}}/{{total}}, falhas {{failed}}` : `${enLabel} {{completed}}/{{total}}, errors: {{failed}}`;
+}
+
 export function getInitialPlanSummary(context: mls.msg.ExecutionContext): Record<string, unknown> {
   if (!context.task) throw new Error('[getInitialPlanSummary] task invalid');
   const rootStep = getAgentStepByAgentName(context.task, ROOT_AGENT_NAME) as mls.msg.AIAgentStep | null;
@@ -222,6 +232,30 @@ export function summarizeRecords(items: unknown[] | undefined, keys: string[]): 
     const out: Record<string, unknown> = {};
     for (const key of keys) if (item[key] !== undefined) out[key] = item[key];
     return Object.keys(out).length > 0 ? out : item;
+  });
+}
+
+// Experience/build status carried ON each owner (workflow/operation), consumed by the reconciler
+// agents (agentChangeFrontend / agentChangeBackend per their spec): they process owners whose status
+// is != 'done' and flip it as they go. Stage 1 (greenfield) seeds every owner as 'toCreate'.
+export type ExperienceStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
+export const EXPERIENCE_STATUS_INITIAL: ExperienceStatus = 'toCreate';
+
+/** Resolve capability ids against the (finalize) capabilities list into compact info to attach to a
+ * workflow/operation: { capabilityId, title, actor, priority }. Deterministic; unknown ids kept id-only. */
+export function resolveCapabilityInfo(ids: string[], capabilities: unknown[]): { capabilityId: string; title: string; actor?: string; priority?: string }[] {
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const c of Array.isArray(capabilities) ? capabilities : []) {
+    if (isRecord(c) && typeof c.capabilityId === 'string') byId.set(c.capabilityId, c);
+  }
+  return ids.filter(Boolean).map(id => {
+    const c = byId.get(id);
+    return {
+      capabilityId: id,
+      title: (c && typeof c.title === 'string' ? c.title : id),
+      actor: c && typeof c.actor === 'string' ? c.actor : undefined,
+      priority: c && typeof c.priority === 'string' ? c.priority : undefined,
+    };
   });
 }
 

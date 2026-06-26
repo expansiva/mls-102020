@@ -16,13 +16,17 @@ import {
   getPlannerOutputs,
   normalizeStringList,
   optionalString,
+  resolveCapabilityInfo,
+  EXPERIENCE_STATUS_INITIAL,
+  type ExperienceStatus,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
-import { operationFileInfo, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import { operationFileInfo, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { operationDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getOperationIndex } from '/_102020_/l2/agentNewSolution2/agentPlanOperationIndex.js';
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
 import { getEnrichedOntology } from '/_102020_/l2/agentNewSolution2/agentNs2EntityDefinition.js';
+import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finalize.js';
 
 const AGENT_NAME = 'agentPlanOperationDefinition';
 const TOOL_NAME = 'submitOperationDefinition';
@@ -37,6 +41,14 @@ export interface OperationDefinition {
   writes: string[];
   rulesApplied: string[];
   story: { actor: string; goal: string; soThat?: string; steps: string[]; outcome: string };
+  // Mechanically attached at save (not from the LLM): the capability this operation realizes + its
+  // priority — makes the operation the source of truth for "which feature + phase" it covers.
+  capability?: { capabilityId: string; title: string; actor?: string; priority?: string };
+  // Independent reconciler statuses: agentChangeFrontend reads/writes statusFrontend, agentChangeBackend
+  // reads/writes statusBackend. Each is toCreate|toUpdate|toRemove|inProgress|done; both seeded
+  // 'toCreate' on creation. Decoupling them avoids the single-status ambiguity between the two stages.
+  statusFrontend?: ExperienceStatus;
+  statusBackend?: ExperienceStatus;
 }
 export interface OperationDefinitionResult { operationDefinition: OperationDefinition }
 export type OperationDefinitionOutput = PlannerOutput<OperationDefinitionResult>;
@@ -52,7 +64,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   const indexItem = getOperationIndex(context).result.operations.find(o => o.operationId === args);
   if (!indexItem) throw new Error(`[${AGENT_NAME}] operation selector not in index: ${args}`);
   const story = getBehaviorIndex(context).result.operations.find(o => o.operationId === args)?.story;
-  const ontology = getEnrichedOntology(context);
+  const ontology = await getEnrichedOntology(context);
   const entityShape = ontology[indexItem.entity];
   const reduced = { selector: args, indexItem, story, entityShape, ontologyEntityIds: Object.keys(ontology) };
   return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), `## Operation selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
@@ -76,7 +88,17 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   }
   if (status === 'completed' && output && output.status === 'ok') {
     try {
-      await saveDefsArtifact(operationFileInfo(output.result.operationDefinition.operationId), `operation${capitalize(output.result.operationDefinition.operationId)}`, output.result.operationDefinition);
+      const def = output.result.operationDefinition;
+      // Attach the realized capability (id + title + priority) deterministically. A classified operation
+      // carries its own capabilityId; an operation synthesized from a workflow's operationIds inherits the
+      // capability of the workflow that orchestrates it.
+      const behavior = getBehaviorIndex(context).result;
+      const capabilityId = behavior.operations.find(o => o.operationId === def.operationId)?.capabilityId
+        ?? behavior.workflows.find(w => (w.operationIds || []).includes(def.operationId))?.capabilityIds[0];
+      def.capability = capabilityId ? resolveCapabilityInfo([capabilityId], getFinalizeOutput(context).result.capabilities as unknown[])[0] : undefined;
+      def.statusFrontend = EXPERIENCE_STATUS_INITIAL; // agentChangeFrontend picks up statusFrontend != 'done'
+      def.statusBackend = EXPERIENCE_STATUS_INITIAL;   // agentChangeBackend picks up statusBackend != 'done'
+      await saveDefsArtifact(operationFileInfo(def.operationId), `operation${capitalize(def.operationId)}`, def);
     } catch (error) {
       console.warn(`[${AGENT_NAME}] save failed for ${selector}`, error);
     }
@@ -85,8 +107,17 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   return [createUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg)];
 }
 
-export function getOperationDefinitions(context: mls.msg.ExecutionContext): OperationDefinition[] {
-  return getPlannerOutputs(context, AGENT_NAME, config).filter(o => o.status === 'ok').map(o => o.result.operationDefinition);
+/** Reads the GLOBAL l4/operations/*.defs.ts (fan-out children are deleted); in-task payloads override. */
+export async function getOperationDefinitions(context: mls.msg.ExecutionContext): Promise<OperationDefinition[]> {
+  const byId = new Map<string, OperationDefinition>();
+  for (const d of await readOperationDefs()) {
+    const id = typeof d.operationId === 'string' ? d.operationId : '';
+    if (id) byId.set(id, d as unknown as OperationDefinition);
+  }
+  for (const o of getPlannerOutputs(context, AGENT_NAME, config)) {
+    if (o.status === 'ok') byId.set(o.result.operationDefinition.operationId, o.result.operationDefinition);
+  }
+  return [...byId.values()];
 }
 
 const config: PlannerExtractConfig<OperationDefinitionResult> = { toolName: TOOL_NAME, normalizeResult };

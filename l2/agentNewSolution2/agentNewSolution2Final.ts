@@ -1,14 +1,27 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution2/agentNewSolution2Final.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// Handoff container + final summary for Stage 1. The container (org-handoff) completes to open its
-// children (behavior-validate -> final-resume). final-resume shows the Stage-1 summary and, on finish,
-// freezes the run: writes l5/{module}/process.defs.ts, records the next-stage steps the client chose,
-// clears traces, and CLEANS the task inputs/outputs. The permanent l4 artifacts stay.
+// Handoff for Stage 1. Two roles, distinguished by planId:
+//  - org-handoff (container): completing it opens behavior-validate + final-resume.
+//  - final-resume (agent): AUTO-FINISH — no blocking clarification. It writes the run record
+//    (l5/{module}/process.defs.ts), derives l4/{module}/journeys.defs.ts from the workflow/operation
+//    stories, clears traces, CLEANS the task inputs/outputs, and completes the task. The Stage-1
+//    summary stays viewable afterwards via openStepView (rebuilt from the persisted report).
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { getAgentStepByAgentName, getAllSteps, notifyTaskChange } from '/_102027_/l2/aiAgentHelper.js';
-import { createUpdateStatusIntent, getInitialPlanSummary } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
-import { clearRunArtifacts, getApprovedModuleName, readBehaviorHealthReport, writeProcessRun, type ProcessNextStep, type ProcessRun } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import { getAgentStepByAgentName, getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
+import { createUpdateStatusIntent, getInitialPlanSummary, isRecord, optionalString } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
+import {
+  clearRunArtifacts,
+  getApprovedModuleName,
+  journeysFileInfo,
+  readBehaviorHealthReport,
+  readOperationDefs,
+  readWorkflowDefs,
+  saveDefsArtifact,
+  writeProcessRun,
+  type ProcessNextStep,
+  type ProcessRun,
+} from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution2/ns2Plan.js';
 import { computeBehaviorHealthReport, type BehaviorHealthReport } from '/_102020_/l2/agentNewSolution2/agentValidateBehaviorModel.js';
 import { getImplementationDecisionResult } from '/_102020_/l2/agentNewSolution2/agentNewSolution2Requirements.js';
@@ -17,113 +30,110 @@ const AGENT_NAME = 'agentNewSolution2Final';
 const ROOT_AGENT_NAME = 'agentNewSolution2';
 
 export function createAgent(): IAgentAsync {
-  return { agentName: AGENT_NAME, agentProject: 102020, agentFolder: 'agentNewSolution2', agentDescription: 'Stage-1 handoff: validate, freeze and summarize the behavior model', visibility: 'private', beforePromptStep, beforeClarificationStep, openStepView };
+  return { agentName: AGENT_NAME, agentProject: 102020, agentFolder: 'agentNewSolution2', agentDescription: 'Stage-1 handoff: freeze, record the run and finish automatically', visibility: 'private', beforePromptStep, openStepView };
 }
 
-// No-LLM container: completing it opens behavior-validate + final-resume.
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   if (!context.task) throw new Error('[agentNewSolution2Final] task invalid');
+  // This agent is wired ONLY to the final-resume step (the org-handoff container is a separate
+  // no-LLM agent so it does not expose openStepView). The planId guard stays defensive.
+  const planId = (step as { planning?: { planId?: string } }).planning?.planId;
+  if (planId === 'final-resume') return autoFinish(context, parentStep, step, hookSequential);
   return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed')];
 }
 
-async function beforeClarificationStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIClarificationStep, hookSequential: number): Promise<HTMLElement> {
-  if (!context.task) throw new Error('[beforeClarificationStep] invalid task');
-  await import('/_102025_/l2/widgetQuestionsForClarification.js');
+/** The whole finish runs inside this hook and returns intents — no UI round-trip, so it cannot
+ * silently stall the way a clarification handler could. */
+async function autoFinish(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
+  const moduleName = getApprovedModuleName(context) || normalizeModuleFolderName(String((getInitialPlanSummary(context).moduleName) || 'module'), 'module');
 
   let report: BehaviorHealthReport | undefined;
-  try { report = computeBehaviorHealthReport(context); } catch { /* payloads may be gone on re-open */ }
+  try { report = await computeBehaviorHealthReport(context); } catch (error) { console.warn(`[${AGENT_NAME}] health report failed`, error); }
 
-  const div = document.createElement('div');
-  const el = document.createElement('widget-questions-for-clarification-102025');
-  (el as unknown as { value: unknown }).value = {
-    taskId: context.task.PK,
-    stepId: step.stepId,
-    title: 'Resumo da Etapa 1 — modelo de comportamento',
-    legends: buildLegends(report),
-    userLanguage: '',
-    questions: {
-      openExperience: { type: 'select', question: 'Abrir a Etapa 2 (Experiencia: telas + BFF)?', answer: 'yes', options: [{ id: 'yes', label: 'sim' }, { id: 'no', label: 'nao' }] },
-      openBackend: { type: 'select', question: 'Abrir a Etapa 3 (Backend: persistencia + implementacao)?', answer: 'yes', options: [{ id: 'yes', label: 'sim' }, { id: 'no', label: 'nao' }] },
-    },
-  };
-  el.setAttribute('mode', 'new');
-  el.addEventListener('clarification-finish', (event: Event) => {
-    const { detail } = event as CustomEvent<{ value: { questions?: Record<string, { answer?: string }> }; action: 'continue' | 'cancel' }>;
-    applyFinish(agent, context, parentStep, step, hookSequential, detail.value, detail.action).catch(error => console.error(`[${AGENT_NAME}] ${error?.message || error}`));
-  });
-  div.appendChild(el);
-  return div;
-}
-
-async function applyFinish(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIClarificationStep, hookSequential: number, value: { questions?: Record<string, { answer?: string }> }, action: 'continue' | 'cancel'): Promise<void> {
-  if (!context.task) throw new Error('[applyFinish] task invalid');
-
-  if (action !== 'continue') {
-    await applyIntents(context, [updateStatus(context, parentStep, step, hookSequential, 'failed')]);
-    return;
-  }
-
-  const moduleName = getApprovedModuleName(context) || normalizeModuleFolderName(String(getInitialPlanSummary(context).moduleName || 'module'), 'module');
-  const wantExperience = value.questions?.openExperience?.answer !== 'no';
-  const wantBackend = value.questions?.openBackend?.answer !== 'no';
-
-  // Freeze the run record (kept in l5 — survives clear traces). Next-stage steps are recorded as
-  // pending pointers the client can open later; the permanent l4 artifacts are the real handoff.
-  try {
-    let report: BehaviorHealthReport | undefined;
-    try { report = computeBehaviorHealthReport(context); } catch { /* tolerate */ }
-    const initialPlan = getInitialPlanSummary(context);
-    const nextSteps: ProcessNextStep[] = [];
-    if (wantExperience) nextSteps.push({ id: 'stage2-experience', kind: 'workflowExperience', title: 'Etapa 2 — Experiencia', description: 'Telas + BFF a partir dos l4/workflows e l4/operations.', status: 'pending' });
-    if (wantBackend) nextSteps.push({ id: 'stage3-backend', kind: 'backendImplementation', title: 'Etapa 3 — Backend', description: 'Persistencia + implementacao a partir das ontology/operations l4.', status: 'pending' });
-    const run: ProcessRun = {
-      runId: `newSolution2-${Date.now()}`,
-      kind: 'newSolution2-behavior',
-      startedAt: new Date().toISOString(),
-      finishedAt: new Date().toISOString(),
-      initialPrompt: String(initialPlan.userPrompt || ''),
-      userLanguage: String(initialPlan.userLanguage || ''),
-      decisions: safe(() => getImplementationDecisionResult(context).decisions) || [],
-      openDetails: Array.isArray(initialPlan.openDetails) ? (initialPlan.openDetails as { title: string; description: string }[]) : [],
-      healthReport: report ?? null,
-      nextSteps,
-    };
-    await writeProcessRun(moduleName, run);
-  } catch (error) {
-    console.warn(`[${AGENT_NAME}] writeProcessRun failed`, error);
-  }
-
-  // Clear l4 traces/checkpoints (keeps the health report + permanent defs).
+  try { await writeJourneys(moduleName); } catch (error) { console.warn(`[${AGENT_NAME}] writeJourneys failed`, error); }
+  try { await writeProcessRun(moduleName, buildRun(context, report, moduleName)); } catch (error) { console.warn(`[${AGENT_NAME}] writeProcessRun failed`, error); }
   try { await clearRunArtifacts(moduleName); } catch (error) { console.warn(`[${AGENT_NAME}] clearRunArtifacts failed`, error); }
 
-  // Complete the resume + root, and CLEAN every completed step's inputs/outputs.
+  // Complete final-resume (cleaning its payload), then the org-handoff container, then the root, and
+  // clean every other completed step. We complete the container explicitly (its sibling behavior-
+  // validate is already terminal and final-resume is completed in this same batch) so the task never
+  // hangs on a passive parent waiting to auto-complete.
+  const rootStep = getAgentStepByAgentName(context.task!, ROOT_AGENT_NAME) as mls.msg.AIAgentStep | null;
   const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, 'completed', 'input_output')];
-  intents.push(...buildCleanupIntents(context, hookSequential));
-  const rootStep = getAgentStepByAgentName(context.task, ROOT_AGENT_NAME) as mls.msg.AIAgentStep | null;
+  if (rootStep && parentStep && parentStep.stepId !== rootStep.stepId) intents.push(updateStatus(context, rootStep, parentStep, hookSequential, 'completed'));
   if (rootStep) intents.push(updateStatus(context, rootStep, rootStep, hookSequential, 'completed'));
-
-  await applyIntents(context, intents);
+  intents.push(...buildCleanupIntents(context, hookSequential, step.stepId));
+  return intents;
 }
 
-/** One cleaner update-status per completed agent/result step that still carries a payload. */
-function buildCleanupIntents(context: mls.msg.ExecutionContext, hookSequential: number): mls.msg.AgentIntent[] {
+function buildRun(context: mls.msg.ExecutionContext, report: BehaviorHealthReport | undefined, moduleName: string): ProcessRun {
+  const initialPlan = getInitialPlanSummary(context);
+  const nextSteps: ProcessNextStep[] = [
+    { id: 'stage2-experience', kind: 'workflowExperience', title: 'Etapa 2 — Experiencia', description: 'Telas + BFF a partir dos l4/workflows e l4/operations.', status: 'pending' },
+    { id: 'stage3-backend', kind: 'backendImplementation', title: 'Etapa 3 — Backend', description: 'Persistencia + implementacao a partir das ontology/operations l4.', status: 'pending' },
+  ];
+  return {
+    runId: `newSolution2-${moduleName}`,
+    kind: 'newSolution2-behavior',
+    startedAt: new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    initialPrompt: String(initialPlan.userPrompt || ''),
+    userLanguage: String(initialPlan.userLanguage || ''),
+    decisions: safe(() => getImplementationDecisionResult(context).decisions) || [],
+    openDetails: Array.isArray(initialPlan.openDetails) ? (initialPlan.openDetails as { title: string; description: string }[]) : [],
+    healthReport: report ?? null,
+    nextSteps,
+  };
+}
+
+/** Derived, read-only view: consolidates the stories embedded in workflows + operations. */
+async function writeJourneys(moduleName: string): Promise<void> {
+  const journeys: Record<string, unknown>[] = [];
+  for (const w of await readWorkflowDefs()) {
+    const id = optionalString(w.workflowId);
+    if (id) journeys.push({ journeyId: id, owner: `workflow:${id}`, title: optionalString(w.title) || id, ...storyOf(w) });
+  }
+  for (const o of await readOperationDefs()) {
+    const id = optionalString(o.operationId);
+    if (id) journeys.push({ journeyId: id, owner: `operation:${id}`, title: optionalString(o.title) || id, ...storyOf(o) });
+  }
+  await saveDefsArtifact(journeysFileInfo(moduleName), `${moduleName}Journeys`, {
+    moduleName,
+    note: 'Derivado das stories embutidas em workflows/operations (visao consolidada, nao fonte).',
+    journeys,
+  });
+}
+
+function storyOf(def: Record<string, unknown>): Record<string, unknown> {
+  const s = isRecord(def.story) ? def.story : {};
+  return { actor: optionalString(s.actor) || '', goal: optionalString(s.goal) || '', soThat: optionalString(s.soThat) || '', steps: Array.isArray(s.steps) ? s.steps : [], outcome: optionalString(s.outcome) || '' };
+}
+
+/** One cleaner update-status per completed AGENT step that still carries interaction weight (input,
+ * payload OR trace). The runtime 'input_output' cleaner nulls input+payload and clears the step trace
+ * — the trace (LLM logs, biggest on parallel fan-out parents) is what scales the finished task, so
+ * cleaning every completed step keeps it well under the size budget while the durable model stays in
+ * l4 and the run summary in l5. Result/tool steps are skipped: the runtime rejects update-status for
+ * non-agent steps, and their small result strings are already persisted into designContext / the run
+ * record. Failed steps are left intact for debugging (only 'completed' steps are cleaned). */
+function buildCleanupIntents(context: mls.msg.ExecutionContext, hookSequential: number, skipStepId: number): mls.msg.AgentIntent[] {
   if (!context.task) return [];
   const steps = getAllSteps(context.task.iaCompressed?.nextSteps);
   const parentOf = buildParentMap(steps);
   const intents: mls.msg.AgentIntent[] = [];
   for (const s of steps) {
-    if (s.type !== 'agent' && s.type !== 'result') continue;
+    if (s.stepId === skipStepId) continue;
+    if (s.type !== 'agent') continue;
     if (s.status !== 'completed') continue;
-    const hasPayload = !!(s.interaction?.payload?.length);
-    if (!hasPayload) continue;
-    const parentId = parentOf.get(s.stepId) ?? s.stepId;
+    const i = s.interaction;
+    if (!i || !(i.input?.length || i.payload?.length || i.trace?.length)) continue;
     intents.push({
       type: 'update-status',
       hookSequential,
       messageId: context.message.orderAt,
       threadId: context.message.threadId,
       taskId: context.task.PK,
-      parentStepId: parentId,
+      parentStepId: parentOf.get(s.stepId) ?? s.stepId,
       stepId: s.stepId,
       status: 'completed',
       cleaner: 'input_output',
@@ -145,24 +155,12 @@ async function openStepView(agent: IAgentMeta, context: mls.msg.ExecutionContext
   const moduleName = getApprovedModuleName(context) || 'module';
   const report = await readBehaviorHealthReport(moduleName);
   const div = document.createElement('div');
+  const title = document.createElement('h3');
+  title.textContent = 'Etapa 1 — modelo de comportamento congelado';
   const pre = document.createElement('pre');
-  pre.textContent = report ? JSON.stringify(report, null, 2) : 'Behavior model frozen. Health report not available.';
-  div.appendChild(pre);
+  pre.textContent = report ? JSON.stringify(report, null, 2) : 'Modelo congelado em l4. Relatorio de saude indisponivel.';
+  div.append(title, pre);
   return div;
-}
-
-async function applyIntents(context: mls.msg.ExecutionContext, intents: mls.msg.AgentIntent[]): Promise<void> {
-  const response = await mls.api.msgApplyIntents({ userId: context.message.senderId, intents });
-  if (!response || response.statusCode !== 200) throw new Error((response as mls.msg.ResponseBase | undefined)?.msg || 'Error applying finish intents');
-  const ret = response as mls.msg.ResponseApplyIntents;
-  context.task = ret.task;
-  if (ret.message) context.message = ret.message;
-  notifyTaskChange(context);
-  const queue = context.task.iaCompressed?.queueFrontEnd || [];
-  if (queue.some(hook => hook.type !== 'pooling')) {
-    const { continuePoolingTask } = await import('/_102027_/l2/aiAgentOrchestration.js');
-    await continuePoolingTask(context);
-  }
 }
 
 function updateStatus(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIPayload, step: mls.msg.AIPayload, hookSequential: number, status: mls.msg.AIStepStatus, cleaner?: 'input' | 'input_output'): mls.msg.AgentIntentUpdateStatus {
@@ -178,15 +176,6 @@ function updateStatus(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIP
   };
   if (cleaner) intent.cleaner = cleaner;
   return intent;
-}
-
-function buildLegends(report?: BehaviorHealthReport): string[] {
-  if (!report) return ['O modelo de comportamento foi congelado em l4 (ontology, rules, workflows, operations).'];
-  return [
-    `Saude: ${report.passed ? 'OK' : 'com erros'} — ${report.errors.length} erro(s), ${report.warnings.length} aviso(s).`,
-    `Modelo: ${report.counts.entities} entidades, ${report.counts.workflows} workflows, ${report.counts.operations} operacoes.`,
-    'Artefatos permanentes em l4 (ontology, rules, workflows, operations) — consumidos pelas Etapas 2 e 3.',
-  ];
 }
 
 function safe<T>(fn: () => T): T | undefined {

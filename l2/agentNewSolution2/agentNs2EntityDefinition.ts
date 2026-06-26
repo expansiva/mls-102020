@@ -20,7 +20,7 @@ import {
   pickRecordsByIds,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { extractPlannerOutput, createPlannerToolSchema } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
-import { getApprovedModuleName, ontologyEntityFileInfo, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import { getApprovedModuleName, ontologyEntityFileInfo, readOntologyEntities, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { entityDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finalize.js';
 
@@ -101,14 +101,30 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   return [createUpdateStatusIntent(context, parentStep, step, hookSequential, status, traceMsg)];
 }
 
-/** The slim final-plan ontology map overlaid with the per-entity canonical definitions (task payloads). */
-export function getEnrichedOntology(context: mls.msg.ExecutionContext): Record<string, unknown> {
+/**
+ * The slim final-plan ontology MAP overlaid with the per-entity canonical definitions. The fan-out
+ * children are deleted by the backend after completion, so the canonical shapes are read FROM THE
+ * SAVED FILES (l4/{module}/ontology/*.defs.ts), not from task payloads. Any still-live in-task
+ * payloads take precedence (most recent within the same run).
+ */
+export async function getEnrichedOntology(context: mls.msg.ExecutionContext): Promise<Record<string, unknown>> {
   const enriched: Record<string, unknown> = { ...getFinalizeOutput(context).result.ontology.entities };
+  const overlay = (def: Record<string, unknown>) => {
+    const id = typeof def.entityId === 'string' ? def.entityId : '';
+    if (!id) return;
+    const base = isRecord(enriched[id]) ? (enriched[id] as Record<string, unknown>) : {};
+    enriched[id] = { ...base, ...def };
+  };
+  const moduleName = getApprovedModuleName(context);
+  if (moduleName) {
+    try {
+      for (const def of Object.values(await readOntologyEntities(moduleName))) overlay(def);
+    } catch (error) {
+      console.warn(`[${AGENT_NAME}] readOntologyEntities failed`, error);
+    }
+  }
   for (const output of getPlannerOutputs(context, AGENT_NAME, config)) {
-    if (output.status !== 'ok') continue;
-    const def = output.result.entityDefinition;
-    const base = isRecord(enriched[def.entityId]) ? (enriched[def.entityId] as Record<string, unknown>) : {};
-    enriched[def.entityId] = { ...base, ...def };
+    if (output.status === 'ok') overlay(output.result.entityDefinition as unknown as Record<string, unknown>);
   }
   return enriched;
 }

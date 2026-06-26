@@ -304,8 +304,9 @@ export const pluginsResultSchema = {
 const workflowClassItemSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['workflowId', 'title', 'actor', 'entities', 'capabilityIds', 'story'],
-  properties: { workflowId: str, title: str, actor: str, entities: strArray, capabilityIds: strArray, story: storySchema },
+  required: ['workflowId', 'title', 'actor', 'entities', 'capabilityIds', 'operationIds', 'story'],
+  // operationIds: the operations this workflow orchestrates — they MUST also appear in operations[].
+  properties: { workflowId: str, title: str, actor: str, entities: strArray, capabilityIds: strArray, operationIds: strArray, story: storySchema },
 } as const;
 
 const operationClassItemSchema = {

@@ -19,6 +19,7 @@ import {
   getPlannerOutput,
   isKnownEntityRef,
   normalizeStringList,
+  parallelProgressTitle,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import { saveAgentTrace, saveIndexCheckpoint } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
@@ -42,7 +43,8 @@ export function createAgent(): IAgentAsync {
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   if (!args) throw new Error(`[${AGENT_NAME}] args invalid`);
   const behavior = getBehaviorIndex(context).result;
-  const human = `## Classified workflows\n${JSON.stringify(behavior.workflows, null, 2)}\n\n## Classified operations (for orchestration refs)\n${JSON.stringify(behavior.operations.map(o => ({ operationId: o.operationId, title: o.title, entity: o.entity, kind: o.kind })), null, 2)}\n\n## Ontology entity ids\n${JSON.stringify(Object.keys(getEnrichedOntology(context)), null, 2)}\n`;
+  const ontologyIds = Object.keys(await getEnrichedOntology(context));
+  const human = `## Classified workflows\n${JSON.stringify(behavior.workflows, null, 2)}\n\n## Classified operations (for orchestration refs)\n${JSON.stringify(behavior.operations.map(o => ({ operationId: o.operationId, title: o.title, entity: o.entity, kind: o.kind })), null, 2)}\n\n## Ontology entity ids\n${JSON.stringify(ontologyIds, null, 2)}\n`;
   return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), human, toolSchema, TOOL_NAME)];
 }
 
@@ -57,8 +59,19 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     output = extractPlannerOutput(payload, config);
     if (output.status === 'failed') { status = 'failed'; traceMsg = `${AGENT_NAME} returned failed`; }
     else {
-      const known = getOntologyEntityIdSet(getEnrichedOntology(context));
-      for (const w of output.result.workflows) for (const e of w.entities) if (!isKnownEntityRef(e, known)) warnings.push(`workflow ${w.workflowId}: unknown entity ref '${e}'`);
+      const known = getOntologyEntityIdSet(await getEnrichedOntology(context));
+      // item 4: the classification is the authority for workflow->operation links. If the index left
+      // operationIds empty, fill them deterministically from the classified workflow so the link is
+      // never lost during re-derivation.
+      const classified = getBehaviorIndex(context).result.workflows;
+      for (const w of output.result.workflows) {
+        if (w.operationIds.length === 0) {
+          const src = classified.find(c => c.workflowId === w.workflowId);
+          if (src && src.operationIds.length > 0) w.operationIds = [...src.operationIds];
+        }
+        if (w.operationIds.length === 0) warnings.push(`workflow ${w.workflowId}: no orchestrated operations`);
+        for (const e of w.entities) if (!isKnownEntityRef(e, known)) warnings.push(`workflow ${w.workflowId}: unknown entity ref '${e}'`);
+      }
     }
   } catch (error) {
     status = 'failed';
@@ -81,7 +94,7 @@ function spawnDefinitions(context: mls.msg.ExecutionContext, result: WorkflowInd
   if (!placeholder || placeholder.type !== 'agent' || placeholder.status === 'completed') return [];
   const ids = result.workflows.map(w => w.workflowId).filter(Boolean);
   if (ids.length === 0) return [createUpdateStatusIntent(context, placeholder, placeholder, 0, 'completed', 'No workflows to define.')];
-  return [createParallelDynamicAgentStepIntent(context, placeholder, 'agentNs2WorkflowDefinition', 'plan-workflow-definition:parallel', 'Define workflows', ids, 5)];
+  return [createParallelDynamicAgentStepIntent(context, placeholder, 'agentNs2WorkflowDefinition', 'plan-workflow-definition:parallel', parallelProgressTitle(context, 'Definindo workflows', 'Defining workflows'), ids, 5)];
 }
 
 export function getWorkflowIndex(context: mls.msg.ExecutionContext): WorkflowIndexOutput {
@@ -123,5 +136,8 @@ operationIds[] (the operations this workflow orchestrates — from the classifie
 Rules:
 - Keep workflowId stable with the classification.
 - entities use canonical ontology ids; operationIds reference classified operations.
+- Populate operationIds with the operations this workflow orchestrates — match by the entity it acts
+  on and the action intent. Avoid leaving operationIds empty when the workflow performs CRUD-like or
+  status-changing steps; a stateful workflow with no operations is a smell.
 
 `;

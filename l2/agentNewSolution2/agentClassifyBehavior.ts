@@ -33,7 +33,7 @@ const AGENT_NAME = 'agentClassifyBehavior';
 const TOOL_NAME = 'submitBehaviorIndex';
 
 export interface Story { actor: string; goal: string; soThat?: string; steps: string[]; outcome: string }
-export interface WorkflowClassItem { workflowId: string; title: string; actor: string; entities: string[]; capabilityIds: string[]; story: Story }
+export interface WorkflowClassItem { workflowId: string; title: string; actor: string; entities: string[]; capabilityIds: string[]; operationIds: string[]; story: Story }
 export interface OperationClassItem { operationId: string; title: string; actor: string; entity: string; kind: 'create' | 'update' | 'delete' | 'query' | 'view'; capabilityId: string; story: Story }
 export interface BehaviorIndex { workflows: WorkflowClassItem[]; operations: OperationClassItem[] }
 export type BehaviorIndexOutput = PlannerOutput<BehaviorIndex>;
@@ -47,7 +47,7 @@ export function createAgent(): IAgentAsync {
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   if (!args) throw new Error(`[${AGENT_NAME}] args invalid`);
   const fp = getFinalizeOutput(context).result;
-  const ontology = getEnrichedOntology(context);
+  const ontology = await getEnrichedOntology(context);
   const clarification = getRequirementsClarificationAnswer(context);
   const capabilities = summarizeRecords(fp.capabilities as unknown[], ['capabilityId', 'title', 'actor', 'priority', 'behaviorHint']).filter(c => (c as { priority?: string }).priority !== 'never');
   const human = `## Actors\n${JSON.stringify(summarizeRecords(fp.actors as unknown[], ['actorId', 'title']), null, 2)}\n\n## Capabilities (own each one)\n${JSON.stringify(capabilities, null, 2)}\n\n## Ontology entity ids\n${JSON.stringify(Object.keys(ontology), null, 2)}\n\n## Rules\n${JSON.stringify(summarizeRecords(fp.rules as unknown[], ['ruleId', 'title']), null, 2)}\n\n## Clarification (source for stories)\n${JSON.stringify(clarification, null, 2)}\n`;
@@ -64,7 +64,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     if (!payload) throw new Error('missing payload');
     output = extractPlannerOutput(payload, config);
     if (output.status === 'failed') { status = 'failed'; traceMsg = `${AGENT_NAME} returned failed`; }
-    else warnings.push(...checkReferences(context, output.result));
+    else warnings.push(...(await checkReferences(context, output.result)));
   } catch (error) {
     status = 'failed';
     traceMsg = error instanceof Error ? error.message : String(error);
@@ -76,18 +76,22 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
 }
 
 /** Deterministic, non-blocking ref integrity: unknown entity ids and uncovered capabilities -> warnings. */
-function checkReferences(context: mls.msg.ExecutionContext, index: BehaviorIndex): string[] {
+async function checkReferences(context: mls.msg.ExecutionContext, index: BehaviorIndex): Promise<string[]> {
   const warnings: string[] = [];
   const fp = getFinalizeOutput(context).result;
-  const knownEntities = getOntologyEntityIdSet(getEnrichedOntology(context));
+  const knownEntities = getOntologyEntityIdSet(await getEnrichedOntology(context));
   const knownActors = getActorIdSet(fp.actors);
 
   const checkEntity = (ref: string, where: string) => { if (!isKnownEntityRef(ref, knownEntities)) warnings.push(`${where}: unknown entity ref '${ref}'`); };
   const checkActor = (ref: string, where: string) => { if (ref && knownActors.size > 0 && !knownActors.has(ref)) warnings.push(`${where}: unknown actor '${ref}'`); };
 
+  const opIds = new Set(index.operations.map(o => o.operationId));
   for (const w of index.workflows) {
     checkActor(w.actor, `workflow ${w.workflowId}`);
     for (const e of w.entities) checkEntity(e, `workflow ${w.workflowId}`);
+    // item 4: workflow -> operation link must resolve and stateful workflows should orchestrate ops.
+    for (const opId of w.operationIds) if (!opIds.has(opId)) warnings.push(`workflow ${w.workflowId}: operationId '${opId}' is not in operations[]`);
+    if (w.operationIds.length === 0) warnings.push(`workflow ${w.workflowId}: no operations orchestrated (stateful workflow with zero operations is a smell)`);
   }
   for (const o of index.operations) {
     checkActor(o.actor, `operation ${o.operationId}`);
@@ -124,6 +128,7 @@ function normalizeResult(value: unknown): BehaviorIndex {
       actor: assertString(w.actor, `result.workflows[${index}].actor`),
       entities: normalizeStringList(w.entities, `result.workflows[${index}].entities`),
       capabilityIds: normalizeStringList(w.capabilityIds, `result.workflows[${index}].capabilityIds`),
+      operationIds: normalizeStringList(w.operationIds, `result.workflows[${index}].operationIds`),
       story: normalizeStory(w.story, `result.workflows[${index}].story`),
     };
   });
@@ -147,14 +152,17 @@ const systemPrompt = `
 <!-- x-tool-strict: true -->
 
 You are ${AGENT_NAME} for the collab.codes "newSolution2" flow (Stage 1 — the heart of it).
-Classify EVERY priority-now capability/user-action into exactly one of:
+Classify EVERY capability that is NOT priority "never" (i.e. now AND soon AND later) into exactly one of:
 - a Workflow: stateful, triggered, spanning time and/or multiple actors (a request/order/approval lifecycle).
 - an Operation: a direct action of ONE actor on ONE entity (create/update/delete/query/view; dashboards = query/view).
+Do NOT drop soon/later capabilities — they must be classified too (their priority is carried by the
+capability and used later to phase the work). Key screens the user asked for (e.g. dashboards, AI
+summaries) are often "soon": classify them as query/view operations (AI ones call the platform LLM proxy).
 
 Call the "{{toolName}}" tool with: status, result, questions, trace. Do not return prose.
 
 In result:
-- workflows[]: { workflowId, title, actor, entities[], capabilityIds[], story }.
+- workflows[]: { workflowId, title, actor, entities[], capabilityIds[], operationIds[], story }.
 - operations[]: { operationId, title, actor, entity, kind, capabilityId, story }.
 - story = { actor, goal, soThat?, steps[], outcome } — derive it from the clarification/scope; this
   absorbs the user journey (do NOT emit a separate journeys artifact).
@@ -162,7 +170,13 @@ In result:
 Rules:
 - Use canonical ONTOLOGY entity ids for entities/entity (the provided ids), never aggregate/group names.
 - Use actorId values for actors.
-- Every priority-now capability must be owned by exactly one workflow or operation.
+- Every capability that is not "never" must be owned by exactly one workflow or operation.
+- Emit Operations for managing master-data / MDM entities (create/update/delete/query) even when the
+  capability is implicit (e.g. manage categories, manage tables).
+- workflow.operationIds: list the discrete reusable actions the workflow orchestrates AND emit each of
+  those as an Operation in operations[] (e.g. createStockMovement, updateKitchenStatus,
+  cancelOrderAndReconcile). A stateful workflow must NOT have an empty operationIds — every workflow
+  step that creates/updates/changes-status of an entity is an Operation it orchestrates.
 - camelCase workflowId/operationId.
 
 `;

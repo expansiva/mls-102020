@@ -33,7 +33,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   if (!context.task) throw new Error('[agentValidateBehaviorModel] task invalid');
   let summary = 'behavior model validated';
   try {
-    const report = computeBehaviorHealthReport(context);
+    const report = await computeBehaviorHealthReport(context);
     await saveBehaviorHealthReport(context, report);
     summary = `passed=${report.passed} errors=${report.errors.length} warnings=${report.warnings.length}`;
   } catch (error) {
@@ -44,13 +44,14 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', summary)];
 }
 
-/** Pure, reusable so the final resume can render the same report from the live payloads. */
-export function computeBehaviorHealthReport(context: mls.msg.ExecutionContext): BehaviorHealthReport {
+/** Reusable so the final step can render the same report. Reads workflow/operation/ontology defs
+ * from the SAVED l4 files (fan-out payloads are deleted by then). */
+export async function computeBehaviorHealthReport(context: mls.msg.ExecutionContext): Promise<BehaviorHealthReport> {
   const fp = getFinalizeOutput(context).result;
-  const ontology = getEnrichedOntology(context);
+  const ontology = await getEnrichedOntology(context);
   const behavior = getBehaviorIndex(context).result;
-  const workflowDefs = getWorkflowDefinitions(context);
-  const operationDefs = getOperationDefinitions(context);
+  const workflowDefs = await getWorkflowDefinitions(context);
+  const operationDefs = await getOperationDefinitions(context);
 
   const knownEntities = getOntologyEntityIdSet(ontology);
   const knownActors = getActorIdSet(fp.actors);
@@ -64,15 +65,25 @@ export function computeBehaviorHealthReport(context: mls.msg.ExecutionContext): 
   const actorRef = (ref: string, where: string) => { if (ref && knownActors.size > 0 && !knownActors.has(ref)) warnings.push({ severity: 'warning', code: 'actor.unknown', message: `${where}: unknown actor '${ref}'` }); };
   const ruleRefs = (refs: string[], where: string) => { for (const r of refs) if (knownRules.size > 0 && !knownRules.has(r)) warnings.push({ severity: 'warning', code: 'rule.unknown', message: `${where}: unknown rule '${r}'` }); };
 
-  // Capability coverage: each priority-now capability owned by exactly one workflow or operation.
-  const ownerCount = new Map<string, number>();
-  for (const w of behavior.workflows) for (const c of w.capabilityIds) ownerCount.set(c, (ownerCount.get(c) || 0) + 1);
-  for (const o of behavior.operations) ownerCount.set(o.capabilityId, (ownerCount.get(o.capabilityId) || 0) + 1);
+  // Capability coverage. A capability is "realized" if any workflow OR operation owns it (count===0 →
+  // now=error / soon|later=warning). For the multiowned signal we DON'T count operations a workflow
+  // orchestrates: by design (item 2) those share their workflow's capability, so a workflow + its child
+  // operations is ONE owner — only 2+ distinct behaviors (e.g. two workflows) is a real ambiguity.
+  const orchestratedOps = new Set<string>();
+  for (const w of behavior.workflows) for (const opId of (w.operationIds || [])) orchestratedOps.add(opId);
+  const owned = new Set<string>();
+  const primaryOwnerCount = new Map<string, number>();
+  for (const w of behavior.workflows) for (const c of w.capabilityIds) { owned.add(c); primaryOwnerCount.set(c, (primaryOwnerCount.get(c) || 0) + 1); }
+  for (const o of behavior.operations) { owned.add(o.capabilityId); if (!orchestratedOps.has(o.operationId)) primaryOwnerCount.set(o.capabilityId, (primaryOwnerCount.get(o.capabilityId) || 0) + 1); }
   for (const cap of fp.capabilities as { capabilityId?: string; priority?: string }[]) {
-    if (cap.priority !== 'now' || !cap.capabilityId) continue;
-    const count = ownerCount.get(cap.capabilityId) || 0;
-    if (count === 0) errors.push({ severity: 'error', code: 'capability.unowned', message: `capability '${cap.capabilityId}' is not owned by any workflow or operation` });
-    else if (count > 1) warnings.push({ severity: 'warning', code: 'capability.multiowned', message: `capability '${cap.capabilityId}' is owned by ${count} behaviors` });
+    if (cap.priority === 'never' || !cap.capabilityId) continue;
+    if (!owned.has(cap.capabilityId)) {
+      if (cap.priority === 'now') errors.push({ severity: 'error', code: 'capability.unowned', message: `capability '${cap.capabilityId}' (now) is not owned by any workflow or operation` });
+      else warnings.push({ severity: 'warning', code: 'capability.unowned.deferred', message: `capability '${cap.capabilityId}' (${cap.priority}) is not owned by any workflow or operation` });
+    } else {
+      const owners = primaryOwnerCount.get(cap.capabilityId) || 0;
+      if (owners > 1) warnings.push({ severity: 'warning', code: 'capability.multiowned', message: `capability '${cap.capabilityId}' is owned by ${owners} distinct behaviors (excluding workflow-orchestrated operations)` });
+    }
   }
 
   // Workflow integrity.

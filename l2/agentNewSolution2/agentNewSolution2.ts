@@ -147,15 +147,21 @@ function buildPlannedTree(initialPlan: InitialNewSolution2Plan): PlannedAgentSte
   ];
 
   const handoffChildren: PlannedStep[] = [
-    agentStep('behavior-validate', 'agentValidateBehaviorModel', title('behavior-validate'), ['org-handoff'], 'sequential'),
-    clarification('final-resume', title('final-resume'), ['behavior-validate']),
+    // IMPORTANT: behavior-validate must depend on the SAME upstream as the org-handoff container, NOT
+    // on org-handoff itself. A passive container only completes once its children are terminal, so a
+    // child that depends on its own container deadlocks (the child waits for the parent, the parent
+    // waits for the child). Gating on the upstream lets validate run and the container auto-complete.
+    agentStep('behavior-validate', 'agentValidateBehaviorModel', title('behavior-validate'), ['plan-workflow-definition', 'plan-operation-definition'], 'sequential'),
+    // Auto-finish (no blocking clarification): writes the run record + derived journeys, cleans
+    // traces/inputs/outputs, completes the task. The summary is viewable later via openStepView.
+    agentStep('final-resume', 'agentNewSolution2Final', title('final-resume'), ['behavior-validate'], 'sequential'),
   ];
 
   return [
     agentStep('org-requirements', 'agentNewSolution2Requirements', title('org-requirements'), [], 'sequential', undefined, requirementsChildren, 'waiting_human_input'),
     agentStep('org-domain', 'agentNewSolution2Domain', title('org-domain'), ['org-requirements'], 'sequential', undefined, domainChildren),
     agentStep('org-behavior', 'agentNewSolution2Behavior', title('org-behavior'), ['org-domain'], 'sequential', undefined, behaviorChildren),
-    agentStep('org-handoff', 'agentNewSolution2Final', title('org-handoff'), ['plan-workflow-definition', 'plan-operation-definition'], 'sequential', undefined, handoffChildren),
+    agentStep('org-handoff', 'agentNewSolution2Handoff', title('org-handoff'), ['plan-workflow-definition', 'plan-operation-definition'], 'sequential', undefined, handoffChildren),
   ];
 }
 
