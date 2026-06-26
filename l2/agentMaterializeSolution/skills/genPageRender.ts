@@ -10,10 +10,11 @@ All state, all methods, and all i18n live in the base class. You NEVER invent na
 
 ## What you receive
 
-- \`## Definition\`: the **page spec** JSON — \`pageId\`, \`pageName\`, \`actor\`, \`purpose\`, \`sections[]\`, \`navigationRefs[]\`.
-  Each section: \`sectionName\`, \`mode\`, \`organisms[]\`.
-  Each organism: \`organismName\`, \`purpose\`, \`userActions[]\`, \`requiredEntities[]\`, \`readsFields[]\`, \`writesFields[]\`.
-  An organism may also have \`molecules[]\` — design-system components already chosen for it, each \`{ group, tag, purpose, import }\`. When present, the organism's UI MUST be built with these components (see "## Molecules").
+- \`## Definition\`: the **page spec** JSON — \`pageId\`, \`pageName\`, \`actor\`, \`purpose\`, \`layout\`, \`sections[]\`, \`navigationRefs[]\`.
+  Prefer \`definition.layout.sections[]\` as the source of truth. \`definition.sections[]\` is only a compact compatibility summary.
+  Each layout section: \`sectionName\`, \`mode\`, \`organisms[]\`.
+  Each organism: \`organismName\`, \`purpose\`, \`userActions[]\`, \`requiredEntities[]\`, \`readsFields[]\`, \`writesFields[]\`, \`molecules[]\`.
+  Each molecule contains semantic UI intent plus \`stateKey\`, field \`stateKey\` and action \`actionKey\` when available.
   Each navigationRef: \`direction\` ("inbound" | "outbound"), \`pageId\`, \`trigger\`.
 - \`## Context Files\`: the already-generated source files for this page.
   The shared base class \`.ts\` file is listed here — it contains the real class name, all \`@property()\` declarations, all handler methods, and the i18n message object.
@@ -124,6 +125,9 @@ export class {ClassName} extends {BaseClassName} {
 }
 \`\`\`
 
+Do not add \`@property\`, class fields, helper methods, lifecycle methods, or local state to this render class.
+The only method in the class must be \`render()\`.
+
 ---
 
 ## Molecules (Design System components)
@@ -162,23 +166,18 @@ the fallback for organisms with NO assigned molecule. Never change the molecule 
 <button @click=\${this.handleValidateCpfCnhClick}>
 \`\`\`
 
-### Rule B — no handle method for this interaction → inline arrow only for local reactive state mutation
-\`\`\`typescript
-// toggling a boolean prop that exists in List 1
-@click=\${() => { this.showValidationHint = !this.showValidationHint; }}
+### Rule B — no handle method for this interaction → no interactivity
 
-// input bound to a reactive field in List 1
-@input=\${(e: Event) => {
-  this.nome = (e.target as HTMLInputElement).value;
-  this.formDirty = true;
-}}
-\`\`\`
+The render class must not mutate shared state directly.
+Never write inline arrows like \`() => { this.field = ... }\`.
+If a user-editable field has no handler in List 2, render it disabled/read-only or skip that interaction.
+Inline arrows are allowed only to pass item context into an existing shared handler, such as navigation params.
 
 The decision tree for every interactive element:
 0. Does the organism have a molecule for this need (\`molecules[]\`)? → render the molecule element (see "## Molecules") and bind its value/events using the rules below.
 1. Is this a **navigation action** (outbound navigationRef trigger)? → Rule C (see below)
 2. Does List 2 (from the actual base class source) have a \`handle*\` method that fits this action? → Rule A
-3. Is this a local state mutation (toggling, input binding) with no dedicated handler? → Rule B
+3. Is there no shared handler? → Rule B
 4. Neither → do not add interactivity (the feature does not exist in the base)
 
 ### Rule C — outbound navigation (always state-driven, never \`href\` routing)
@@ -219,7 +218,8 @@ Cross-reference List 4 (outbound targets) with organism \`userActions[]\`:
 
 ## How to map organisms to sections
 
-Use \`##User data\` sections and organisms to understand what to show and where.
+Use \`## Definition.layout.sections\` sections and organisms to understand what to show and where.
+If \`definition.layout.sections\` is absent, use \`definition.sections\` as legacy fallback.
 Use \`##Base Class\` lists to decide exactly how to show it.
 
 **Molecule-first:** if an organism has \`molecules[]\`, render it with those components (see "## Molecules").
@@ -242,7 +242,9 @@ Render a display panel. For each field in \`readsFields\`:
 
 ### Form organism (\`writesFields\` non-empty)
 - Find the \`handleXxxSubmit\` method in List 2 that matches this form's action → bind with Rule A
-- Bind each input to the matching reactive prop from List 1 → Rule B for \`@input\`
+- Bind each input value to the matching reactive prop from List 1 and bind \`@input\`/\`@change\` only to an existing shared handler from List 2.
+- Prefer handlers generated from shared state setter actions, e.g. \`handleCreateOrderCustomerNameChange\`.
+- If no handler exists, render the field read-only; never assign \`this.field = ...\` in the render layer.
 - Submit button: \`?disabled=\${saveBusy}\`, label must use two distinct keys:
   \`\`\`typescript
   \${saveBusy ? this.msg.{commandName}Loading : this.msg.{commandName}Label}

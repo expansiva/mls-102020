@@ -28,7 +28,7 @@
     "createV1ImplementedNow": [
       "agentChangeFrontend now starts the create-only real flow instead of the v0.1 console flow.",
       "agentCfeCreateScanL4 reads l4 owners with statusFrontend = toCreate and creates a real parallel fan-out with progress.",
-      "agentCfeCreatePage generates web/contracts and web/shared deterministically, then calls an LLM with a strict tool schema to generate web/desktop/page11 semantic layout defs for one page.",
+      "agentCfeCreatePage generates web/contracts deterministically, calls an LLM with a strict tool schema to generate web/desktop/page11 semantic layout defs for one page, then writes web/shared from contractRef + layout-derived states/actions.",
       "agentCfeCreatePage writes l2/{module}/trace/frontend-create-pages/{page}.json as inProgress/done so finalize does not accept stale page defs from an older run.",
       "agentCfeCreateFinalize writes l0/config.json, writes a trace report and marks generated owners statusFrontend = done only for pages with marker status done.",
       "The page11 layout keeps the section -> organism structure and enriches it with stable ids, molecules, field/column/action references, i18n keys and data bindings."
@@ -36,7 +36,7 @@
     "v0.1Test": [
       "Implemented now only to test the autonomous l4 scan and page parallelism with children.",
       "Reads l4 workflows/operations/modules/ontology and computes candidate pages.",
-      "Creates one parallel_dynamic fan-out parent with executionMode { type: 'parallel' }, so the runtime adds progress. Each dynamic page item then creates child steps contract -> shared -> layout -> config.",
+      "Creates one parallel_dynamic fan-out parent with executionMode { type: 'parallel' }, so the runtime adds progress. Each dynamic page item then creates child steps contract -> layout -> shared -> config.",
       "Each page/container/child logs to console what would be created.",
       "Does not write .defs.ts, config.json, .ts, .html or statusFrontend."
     ],
@@ -44,6 +44,7 @@
       "Scan all l4 owners and process only statusFrontend = toCreate.",
       "Exit cleanly when there is no create work.",
       "Generate final L2 .defs.ts files directly under web/contracts, web/shared and web/desktop/page11.",
+      "Preserve ontology field metadata in contract input/output fields, including enum, description, sourceEntity/sourceField, statusEnum-derived enum and lifecycleStates.",
       "Update l0/config.json with the page/menu entries for generated pages.",
       "Generate a semantic page layout in the page .defs.ts using the layout rules from spec.md.",
       "Use JSON-schema-backed LLM outputs whenever an LLM is used, following the agentNewSolution2 pattern.",
@@ -189,7 +190,7 @@
       },
       "CfeSharedDefsResult": {
         "required": ["moduleName", "pageId", "defPath", "pipeline", "definition"],
-        "purpose": "Shared .defs.ts content with bffCommands mirrored from contract, actions, state, navigationRefs and i18n keys."
+        "purpose": "Shared .defs.ts content with contractRef/layoutRef, actions, states, initialLoads, navigationRefs, i18n keys and automation metadata. It must not mirror bffCommands from the contract."
       },
       "CfeLayoutDefsResult": {
         "required": ["moduleName", "pageId", "defPath", "pipeline", "definition"],
@@ -227,10 +228,10 @@
     },
     "pipeline": "Generated .defs.ts files must include pipeline metadata compatible with a later materialization step, but this flow does not execute the pipeline.",
     "rulesHandling": "Emit rulesApplied in defs. rulesPath may point to l4/rules/{module}Rules.defs.ts only after the materializer accepts the new l4 rule shape. Until then, rulesPath is optional and missing resolved rule context must not block page creation.",
-    "layoutContract": "The page .defs.ts contains semantic layout, not raw DOM/CSS. Layout nodes use stable id/order keys, reference shared actions/state/contracts/i18n by key, and are later materialized into Lit/render code by genPageRender/genPageDS."
+    "layoutContract": "The page .defs.ts contains semantic layout, not raw DOM/CSS. Layout nodes use stable id/order keys, reference shared actions/state/contracts/i18n by key, and are later materialized into Lit/render code by genPageRender/genPageDS. The full section -> organism -> molecule tree lives in definition.layout.sections; top-level sections is only a compact compatibility summary."
   },
   "parallelStrategy": {
-    "target": "Generate different pages in parallel. Inside each page, generate contract -> shared -> layout -> validation as a child sequence.",
+    "target": "Generate different pages in parallel. Inside each page, generate contract -> layout -> shared -> validation as a child sequence.",
     "confirmedFromExistingFlows": [
       "parallel_dynamic fan-out exists and is used by agentNewSolution2 for entities, workflows and operations.",
       "per-page chained parallel_static steps with an ALL-pages barrier exist in agentImplementsDesignSystem2."
@@ -383,9 +384,9 @@
       "fallbackModelAlias": "codeinstruct",
       "toolSchema": "CfeSharedDefsResult",
       "strictTool": true,
-      "goal": "For one planned page, generate web/shared/{page}.defs.ts. Reuse the contract commands exactly and add shared state/actions/navigationRefs/i18n keys for the page.",
+      "goal": "For one planned page, generate web/shared/{page}.defs.ts. Reference the contract and layout, then add shared state/actions/navigationRefs/i18n keys for the page without duplicating bffCommands.",
       "savedArtifact": "l2/{module}/web/shared/{page}.defs.ts",
-      "definitionRequirements": "definition is { bffCommands, actions, state, navigationRefs, i18n } using the same commands as contract."
+      "definitionRequirements": "definition is { pageId, pageName, moduleName, contractRef, layoutRef, states, actions, initialLoads, navigationRefs, i18n, automation }. It references the contract commands by commandRef and must not duplicate bffCommands."
     },
     {
       "planId": "page-layout:<page>",
@@ -497,7 +498,7 @@
     {
       "agentName": "agentCfeCreatePage",
       "file": "l2/agentChangeFrontend/agentCfeCreatePage.ts",
-      "role": "For one page, writes contract/shared deterministically, asks the LLM for schema-validated page11 layout, validates references, and writes the page .defs.ts."
+      "role": "For one page, writes contract deterministically, asks the LLM for schema-validated page11 layout, writes shared from the saved layout, validates references, and writes the page .defs.ts."
     },
     {
       "agentName": "agentCfeCreateFinalize",

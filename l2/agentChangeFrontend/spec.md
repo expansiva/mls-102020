@@ -287,8 +287,11 @@ Caminho:
 
 Shape:
 
-- `export const definition = { bffCommands, navigationRefs }`
-- `bffCommands` é o mesmo conjunto de comandos do contract.
+- `export const definition = { pageId, pageName, moduleName, contractRef, layoutRef, states, actions, initialLoads, navigationRefs, i18n, automation }`
+- `contractRef` aponta para `web/contracts/{page}.defs.ts` e `web/contracts/{page}.ts`; o shared não duplica `bffCommands`.
+- `states[]` contém todos os estados globais da página: filtros, campos de formulário, dados carregados, status de action e status geral.
+- `actions[]` contém tanto chamadas BFF quanto setters/handlers de state usados pelo render.
+- `initialLoads[]` lista queries que o shared carrega ao conectar.
 - `navigationRefs` contém navegação `inbound`/`outbound` da página.
 
 Pipeline:
@@ -297,7 +300,7 @@ Pipeline:
 - `type`: `l2_shared`;
 - `outputPath`: `_{project}_/l2/{module}/web/shared/{page}.ts`;
 - `defPath`: `_{project}_/l2/{module}/web/shared/{page}.defs.ts`;
-- `dependsFiles`: [`_{project}_/l2/{module}/web/contracts/{page}.ts`];
+- `dependsFiles`: contract `.defs.ts`, contract `.ts` e page11 `.defs.ts`;
 - `skills`: [`/_102020_/l2/agentMaterializeSolution/skills/genPageShared.ts`];
 - `rulesApplied`: união das regras usadas pelos comandos;
 - `rulesPath`: precisa apontar para regras em shape aceito pelo materializador;
@@ -315,8 +318,8 @@ No exemplo atual:
 
 Shape:
 
-- `export const definition = { pageId, pageName, actor, purpose, capabilities, flowRefs, pluginRefs, mdmRefs, pageInputs, navigationRefs, sections }`
-- `sections[]` contém:
+- `export const definition = { pageId, pageName, actor, purpose, capabilities, flowRefs, pluginRefs, mdmRefs, pageInputs, navigationRefs, sections, layout, i18n, dataBindings }`
+- `layout.sections[]` é a fonte da verdade e contém:
   - `sectionName`;
   - `mode`;
   - `organisms[]`.
@@ -327,7 +330,8 @@ Shape:
   - `requiredEntities`;
   - `readsFields`;
   - `writesFields`;
-  - `rulesApplied`.
+- `rulesApplied`.
+- `sections[]` no topo é apenas um resumo de compatibilidade, sem duplicar a árvore completa de moléculas.
 
 Pipeline:
 
@@ -485,7 +489,7 @@ O `flow.json` v1 passa a ser **create-only, com `.defs.ts` + `config.json`, sem 
 - atualiza `l0/config.json` com a página que aparecerá no menu;
 - não gera `.ts`, não gera `.html`, não chama `agentMaterializeL2`/`agentMaterializeGen` e não executa `registerFrontEnd` nesta v1;
 - a geração de layout é uma etapa LLM importante e deve seguir as regras de layout semântico desta spec;
-- a geração por página deve tentar paralelismo: um item paralelo por página com filhos `contract -> shared -> layout -> validate`; como ainda não há exemplo confirmado de `parallel_dynamic` com filhos, o fluxo registra fallback para um único agente paralelo por página que executa essas quatro ações internamente;
+- a geração por página deve tentar paralelismo: um item paralelo por página com filhos `contract -> layout -> shared -> validate`; como ainda não há exemplo confirmado de `parallel_dynamic` com filhos, o fluxo registra fallback para um único agente paralelo por página que executa essas quatro ações internamente;
 - agentes LLM devem seguir o padrão do `agentNewSolution2`: saída via JSON schema/tool strict (`collab-llm`) e validação local antes de gravar;
 - aliases de modelo e recomendação por tipo de agente ficam registrados no `flow.json`.
 
@@ -495,7 +499,7 @@ Antes de gerar arquivos, a implementação inicial criada para teste faz somente
 
 - `agentChangeFrontend` inicia o fluxo v0.1;
 - `agentCfeV01ScanL4` lê `l4`, encontra owners com `statusFrontend = toCreate` e monta páginas candidatas;
-- cria um fan-out `parallel_dynamic` com `executionMode: { type: "parallel" }`, que deve gerar `progress`; cada página paralela cria filhos `contract -> shared -> layout -> config`;
+- cria um fan-out `parallel_dynamic` com `executionMode: { type: "parallel" }`, que deve gerar `progress`; cada página paralela cria filhos `contract -> layout -> shared -> config`;
 - `agentCfeV01PageConsole` imprime no console a página que seria criada;
 - `agentCfeV01PageChildConsole` imprime no console cada fase por página;
 - `agentCfeV01FinalConsole` imprime o resumo após a barreira final;
@@ -507,9 +511,13 @@ Após validar o paralelo, a implementação real inicial para `toCreate` está d
 
 - `agentChangeFrontend` inicia o fluxo create-only;
 - `agentCfeCreateScanL4` lê o `l4`, encontra owners com `statusFrontend = toCreate`, cria o fan-out real `create-page-fanout` e agenda a finalização;
-- `agentCfeCreatePage` gera `web/contracts/{page}.defs.ts` e `web/shared/{page}.defs.ts` de forma determinística, chama LLM com JSON schema/tool strict para o layout semântico e grava `web/desktop/page11/{page}.defs.ts`;
-- `agentCfeCreatePage` também grava `l2/{module}/trace/frontend-create-pages/{page}.json` como `inProgress` no início e `done` só depois do layout validado, para evitar que uma página antiga seja aceita por engano;
+- `agentCfeCreatePage` gera `web/contracts/{page}.defs.ts` de forma determinística, chama LLM com JSON schema/tool strict para o layout semântico, grava `web/desktop/page11/{page}.defs.ts` e depois gera `web/shared/{page}.defs.ts` a partir de `contractRef + layout`;
+- `agentCfeCreatePage` também grava `l2/{module}/trace/frontend-create-pages/{page}.json` como `inProgress` no início e `done` só depois de layout e shared validados, para evitar que uma página antiga seja aceita por engano;
 - `agentCfeCreateFinalize` atualiza `l0/config.json`, grava `l2/{module}/trace/frontend-create-report.json` e muda os owners gerados para `statusFrontend = done`;
 - `cfeCreateShared` concentra leitura do L4, geração determinística dos comandos, schema/validação do layout, gravação dos `.defs.ts`, merge do config e atualização de status.
 
 O layout LLM deve manter a estrutura de `sections -> organisms` e enriquecer cada organismo com `molecules`, `id` estável, `order`, `labelKey/titleKey/emptyKey`, referências a actions do shared, campos do contrato/ontologia e `dataBindings`. Se a saída falhar no schema ou na validação semântica, a página não é marcada como concluída.
+
+Os campos do contrato BFF são gerados mecanicamente a partir da ontologia. Quando um campo da entidade tiver `enum`, `description`, `statusEnum` ou `lifecycleStates`, esses metadados devem ser preservados no `input`/`output` do contrato para o materializador não degradar status/tipos fechados para `string` livre.
+
+O `page11` materializado deve apenas renderizar. Toda variável editável ou observável precisa estar em `shared.states[]`, e toda mudança de campo deve chamar handler/setter do shared para manter `collabState` atualizado e permitir automação da página.

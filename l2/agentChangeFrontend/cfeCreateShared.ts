@@ -16,8 +16,8 @@ import {
 type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
 type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
 
-interface CfeFieldDef { fieldId: string; type: string; required?: boolean; enum?: string[] }
-interface CfeEntityDef { entityId: string; title: string; fields: CfeFieldDef[]; rulesApplied: string[] }
+interface CfeFieldDef { fieldId: string; type: string; required?: boolean; description?: string; enum?: string[] }
+interface CfeEntityDef { entityId: string; title: string; fields: CfeFieldDef[]; rulesApplied: string[]; statusEnum: string[]; lifecycleStates: string[] }
 
 interface CfeOperationDef {
   operationId: string;
@@ -91,6 +91,7 @@ interface CfeLayoutAction {
   labelKey: string;
   order: number;
   displayHint?: string;
+  actionKey?: string;
 }
 
 interface CfeLayoutField {
@@ -102,6 +103,7 @@ interface CfeLayoutField {
   inputType?: string;
   format?: string;
   source?: string;
+  stateKey?: string;
 }
 
 interface CfeLayoutMolecule {
@@ -115,6 +117,7 @@ interface CfeLayoutMolecule {
   submitAction?: string;
   emptyKey?: string;
   displayHint?: string;
+  stateKey?: string;
   fields: CfeLayoutField[];
   columns: CfeLayoutField[];
   filters: CfeLayoutField[];
@@ -153,7 +156,7 @@ export interface CfePageLayoutDefinition {
   layoutId: string;
   sections: CfeLayoutSection[];
   i18n: Record<string, string>;
-  dataBindings: { id: string; source: string; entity?: string; command?: string; description?: string }[];
+  dataBindings: { id: string; source: string; entity?: string; command?: string; description?: string; stateKey?: string; inputStateKeys?: string[] }[];
 }
 
 export interface CfePageLayoutResult { pageLayout: CfePageLayoutDefinition }
@@ -176,6 +179,7 @@ const layoutActionSchema = {
     labelKey: strSchema,
     order: intSchema,
     displayHint: strSchema,
+    actionKey: strSchema,
   },
 } as const;
 
@@ -192,6 +196,7 @@ const layoutFieldSchema = {
     inputType: strSchema,
     format: strSchema,
     source: strSchema,
+    stateKey: strSchema,
   },
 } as const;
 
@@ -210,6 +215,7 @@ const layoutMoleculeSchema = {
     submitAction: strSchema,
     emptyKey: strSchema,
     displayHint: strSchema,
+    stateKey: strSchema,
     fields: { type: 'array', items: layoutFieldSchema },
     columns: { type: 'array', items: layoutFieldSchema },
     filters: { type: 'array', items: layoutFieldSchema },
@@ -280,6 +286,8 @@ export const cfePageLayoutResultSchema = {
               entity: strSchema,
               command: strSchema,
               description: strSchema,
+              stateKey: strSchema,
+              inputStateKeys: strArraySchema,
             },
           },
         },
@@ -341,8 +349,9 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
 
 export async function generatePageDefs(page: CfePagePlan): Promise<void> {
   const prepared = await preparePageCreate(page);
-  await saveContractSharedDefs(prepared);
-  await savePageLayoutDefs(prepared, deterministicLayoutFromBase(prepared));
+  await saveContractDefs(prepared);
+  const layout = await savePageLayoutDefs(prepared, deterministicLayoutFromBase(prepared));
+  await saveSharedDefs(prepared, layout);
 }
 
 export async function preparePageCreate(page: CfePagePlan): Promise<CfePreparedPage> {
@@ -356,27 +365,34 @@ export async function preparePageCreate(page: CfePagePlan): Promise<CfePreparedP
   return { project: context.project, page, operations, commands, navigationRefs, baseDefinition, visualStyle, promptContext };
 }
 
-export async function saveContractSharedDefs(prepared: CfePreparedPage): Promise<void> {
+export async function saveContractDefs(prepared: CfePreparedPage): Promise<void> {
   await savePageCreateMarker(prepared, 'inProgress');
   await saveFrontendDefs(contractFileInfo(prepared.project, prepared.page), 'definition', prepared.commands, contractPipeline(prepared.project, prepared.page));
-  await saveFrontendDefs(sharedFileInfo(prepared.project, prepared.page), 'definition', { bffCommands: prepared.commands, navigationRefs: prepared.navigationRefs }, sharedPipeline(prepared.project, prepared.page, prepared.commands));
 }
 
-export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Promise<void> {
+export async function saveSharedDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Promise<void> {
+  const enrichedLayout = enrichLayoutWithStateRefs(prepared, layout);
+  const definition = sharedDefinition(prepared, enrichedLayout);
+  await saveFrontendDefs(sharedFileInfo(prepared.project, prepared.page), 'definition', definition, sharedPipeline(prepared.project, prepared.page, prepared.commands));
+  await savePageCreateMarker(prepared, 'done');
+}
+
+export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Promise<CfePageLayoutDefinition> {
   validatePageLayout(prepared, layout);
+  const enrichedLayout = enrichLayoutWithStateRefs(prepared, layout);
   const definition = {
     ...prepared.baseDefinition,
-    sections: layout.sections,
+    sections: layoutSectionSummary(enrichedLayout.sections),
     layout: {
-      id: layout.layoutId,
+      id: enrichedLayout.layoutId,
       type: 'page',
-      sections: layout.sections,
+      sections: enrichedLayout.sections,
     },
-    i18n: layout.i18n,
-    dataBindings: layout.dataBindings,
+    i18n: enrichedLayout.i18n,
+    dataBindings: enrichedLayout.dataBindings,
   };
   await saveFrontendDefs(pageFileInfo(prepared.project, prepared.page), 'definition', definition, pagePipeline(prepared.project, prepared.page, prepared.visualStyle));
-  await savePageCreateMarker(prepared, 'done');
+  return enrichedLayout;
 }
 
 export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[] }> {
@@ -533,6 +549,7 @@ function normalizeLayoutMolecule(value: unknown, path: string): CfeLayoutMolecul
     submitAction: optionalString(molecule.submitAction),
     emptyKey: optionalString(molecule.emptyKey),
     displayHint: optionalString(molecule.displayHint),
+    stateKey: optionalString(molecule.stateKey),
     fields: normalizeLayoutFields(molecule.fields, `${path}.fields`),
     columns: normalizeLayoutFields(molecule.columns, `${path}.columns`),
     filters: normalizeLayoutFields(molecule.filters, `${path}.filters`),
@@ -548,13 +565,14 @@ function normalizeLayoutFields(value: unknown, path: string): CfeLayoutField[] {
     return {
       id: assertString(field.id, `${path}[${index}].id`),
       field: assertString(field.field, `${path}[${index}].field`),
-      labelKey: assertString(field.labelKey, `${path}[${index}].labelKey`),
-      order: normalizeOrder(field.order, `${path}[${index}].order`),
-      required: field.required === true,
-      inputType: optionalString(field.inputType),
-      format: optionalString(field.format),
-      source: optionalString(field.source),
-    };
+    labelKey: assertString(field.labelKey, `${path}[${index}].labelKey`),
+    order: normalizeOrder(field.order, `${path}[${index}].order`),
+    required: field.required === true,
+    inputType: optionalString(field.inputType),
+    format: optionalString(field.format),
+    source: optionalString(field.source),
+    stateKey: optionalString(field.stateKey),
+  };
   });
 }
 
@@ -564,14 +582,15 @@ function normalizeLayoutActions(value: unknown, path: string): CfeLayoutAction[]
     return {
       id: assertString(action.id, `${path}[${index}].id`),
       action: assertString(action.action, `${path}[${index}].action`),
-      labelKey: assertString(action.labelKey, `${path}[${index}].labelKey`),
-      order: normalizeOrder(action.order, `${path}[${index}].order`),
-      displayHint: optionalString(action.displayHint),
-    };
+    labelKey: assertString(action.labelKey, `${path}[${index}].labelKey`),
+    order: normalizeOrder(action.order, `${path}[${index}].order`),
+    displayHint: optionalString(action.displayHint),
+    actionKey: optionalString(action.actionKey),
+  };
   });
 }
 
-function normalizeDataBinding(value: unknown, path: string): { id: string; source: string; entity?: string; command?: string; description?: string } {
+function normalizeDataBinding(value: unknown, path: string): { id: string; source: string; entity?: string; command?: string; description?: string; stateKey?: string; inputStateKeys?: string[] } {
   const binding = assertRecord(value, path);
   return {
     id: assertString(binding.id, `${path}.id`),
@@ -579,6 +598,8 @@ function normalizeDataBinding(value: unknown, path: string): { id: string; sourc
     entity: optionalString(binding.entity),
     command: optionalString(binding.command),
     description: optionalString(binding.description),
+    stateKey: optionalString(binding.stateKey),
+    inputStateKeys: Array.isArray(binding.inputStateKeys) ? normalizeStringList(binding.inputStateKeys, `${path}.inputStateKeys`) : undefined,
   };
 }
 
@@ -601,6 +622,8 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
     entityId: entity!.entityId,
     title: entity!.title,
     fields: entity!.fields,
+    statusEnum: entity!.statusEnum,
+    lifecycleStates: entity!.lifecycleStates,
     rulesApplied: entity!.rulesApplied,
   }));
   const workflows = page.ownerIds
@@ -625,7 +648,14 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
       capability: operation.capability,
     })),
     contract: { bffCommands: commands },
-    shared: { bffCommands: commands, availableActions: commands.map(command => command.commandName).filter(Boolean) },
+    shared: {
+      contractRef: {
+        defPath: toDisplayRef(contractFileInfo(context.project, page)),
+        tsPath: contractTsPath(context.project, page),
+      },
+      availableActions: commands.map(command => command.commandName).filter(Boolean),
+      statePolicy: 'All filters, form fields, query results, action statuses and navigation requests are shared/global state. Page render must not own mutable state.',
+    },
     ontology: { entities },
     layoutRules: [
       'Keep the section -> organism structure. Do not replace it with generic components.',
@@ -636,6 +666,7 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
       'Do not emit HTML, CSS, DOM slots or raw web-component markup.',
       'Only reference actions from shared.availableActions.',
       'Only reference fields from contract inputs/outputs or ontology fields.',
+      'Every form/filter field must be state-driven by shared; the generator will add explicit stateKey refs.',
     ],
   };
 }
@@ -826,6 +857,231 @@ function deterministicField(id: string, field: string, index: number, i18n: Reco
   return { id, field, labelKey, order: (index + 1) * 10 };
 }
 
+function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Record<string, unknown> {
+  const states = sharedStates(prepared);
+  const actions = sharedActions(prepared, states);
+  return {
+    pageId: prepared.page.pageId,
+    pageName: prepared.page.pageName,
+    moduleName: prepared.page.moduleName,
+    sourceKind: prepared.page.sourceKind,
+    ownerIds: prepared.page.ownerIds,
+    operationIds: prepared.page.operationIds,
+    contractRef: {
+      defPath: toDisplayRef(contractFileInfo(prepared.project, prepared.page)),
+      tsPath: contractTsPath(prepared.project, prepared.page),
+    },
+    layoutRef: {
+      defPath: toDisplayRef(pageFileInfo(prepared.project, prepared.page)),
+      layoutId: layout.layoutId,
+    },
+    states,
+    actions,
+    initialLoads: prepared.commands
+      .filter(command => readString(command.kind) === 'query')
+      .map(command => ({ actionId: readString(command.commandName), stateKey: queryDataStateKey(prepared.page.pageId, readString(command.commandName)) })),
+    navigationRefs: prepared.navigationRefs,
+    i18n: layout.i18n,
+    automation: {
+      statePrefix: `ui.${prepared.page.pageId}`,
+      stateKeys: states.map(state => readString(state.stateKey)).filter(Boolean),
+      actionIds: actions.map(action => readString(action.actionId)).filter(Boolean),
+    },
+  };
+}
+
+function sharedStates(prepared: CfePreparedPage): Record<string, unknown>[] {
+  const states = new Map<string, Record<string, unknown>>();
+  addState(states, {
+    stateKey: `ui.${prepared.page.pageId}.status`,
+    name: 'status',
+    kind: 'pageStatus',
+    defaultValue: '',
+  });
+
+  for (const command of prepared.commands) {
+    const commandName = readString(command.commandName);
+    if (!commandName) continue;
+    const kind = readString(command.kind) === 'query' ? 'query' : 'command';
+    addState(states, {
+      stateKey: actionStatusStateKey(prepared.page.pageId, commandName),
+      name: `${commandName}State`,
+      kind: 'actionStatus',
+      actionRef: commandName,
+      valueSet: ['idle', 'loading', 'success', 'error'],
+      defaultValue: 'idle',
+    });
+
+    for (const field of commandFieldRecords(command.input)) {
+      addState(states, {
+        stateKey: inputStateKey(prepared.page.pageId, commandName, field.name),
+        name: inputStateName(commandName, field.name),
+        kind: 'input',
+        contractRef: { commandName, direction: 'input', field: field.name },
+        defaultValue: defaultValueForField(field),
+      });
+    }
+
+    if (kind === 'query') {
+      addState(states, {
+        stateKey: queryDataStateKey(prepared.page.pageId, commandName),
+        name: queryStateName(commandName),
+        kind: 'queryResult',
+        contractRef: { commandName, direction: 'output' },
+        collection: true,
+        defaultValue: [],
+      });
+    }
+  }
+
+  return Array.from(states.values());
+}
+
+function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown>[]): Record<string, unknown>[] {
+  const actions: Record<string, unknown>[] = [];
+  for (const command of prepared.commands) {
+    const commandName = readString(command.commandName);
+    if (!commandName) continue;
+    const kind = readString(command.kind) === 'query' ? 'query' : 'command';
+    actions.push({
+      actionId: commandName,
+      kind,
+      commandRef: commandName,
+      routeKey: `${prepared.page.moduleName}.${prepared.page.pageId}.${commandName}`,
+      purpose: readString(command.purpose),
+      methodName: kind === 'query' ? `load${toPascalCase(commandName)}` : commandName,
+      handlerName: `handle${toPascalCase(commandName)}Click`,
+      inputStateKeys: commandFieldRecords(command.input).map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
+      outputStateKeys: kind === 'query' ? [queryDataStateKey(prepared.page.pageId, commandName)] : [],
+      statusStateKey: actionStatusStateKey(prepared.page.pageId, commandName),
+    });
+  }
+
+  for (const state of states.filter(item => item.kind === 'input')) {
+    const name = readString(state.name);
+    if (!name) continue;
+    actions.push({
+      actionId: `set.${name}`,
+      kind: 'stateSetter',
+      stateKey: state.stateKey,
+      methodName: `set${toPascalCase(name)}`,
+      handlerName: `handle${toPascalCase(name)}Change`,
+    });
+  }
+
+  return actions;
+}
+
+function enrichLayoutWithStateRefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const cloned = JSON.parse(JSON.stringify(layout)) as CfePageLayoutDefinition;
+  cloned.dataBindings = cloned.dataBindings.map(binding => {
+    const commandName = binding.command || commandFromBindingSource(binding.source);
+    return commandName ? {
+      ...binding,
+      stateKey: queryDataStateKey(prepared.page.pageId, commandName),
+      inputStateKeys: commandInputStateKeys(prepared, commandName),
+    } : binding;
+  });
+
+  for (const section of cloned.sections) {
+    for (const organism of section.organisms) {
+      for (const molecule of organism.molecules) {
+        const commandName = moleculeCommandName(molecule, organism.userActions);
+        if (commandName && isQueryCommand(prepared, commandName) && moleculeUsesQueryResult(molecule)) molecule.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
+        if (commandName) {
+          for (const field of [...molecule.fields, ...molecule.filters]) {
+            field.stateKey = inputStateKey(prepared.page.pageId, commandName, field.field);
+          }
+          for (const field of molecule.columns) {
+            field.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
+          }
+        }
+        for (const action of [...molecule.toolbar, ...molecule.rowActions, ...molecule.actions]) action.actionKey = action.action;
+      }
+    }
+  }
+  return cloned;
+}
+
+function layoutSectionSummary(sections: CfeLayoutSection[]): Record<string, unknown>[] {
+  return sections.map(section => ({
+    id: section.id,
+    type: section.type,
+    sectionName: section.sectionName,
+    titleKey: section.titleKey,
+    mode: section.mode,
+    order: section.order,
+    organisms: section.organisms.map(organism => ({
+      id: organism.id,
+      type: organism.type,
+      organismName: organism.organismName,
+      titleKey: organism.titleKey,
+      purpose: organism.purpose,
+      userActions: organism.userActions,
+      requiredEntities: organism.requiredEntities,
+      readsFields: organism.readsFields,
+      writesFields: organism.writesFields,
+      rulesApplied: organism.rulesApplied,
+      order: organism.order,
+      moleculeRefs: organism.molecules.map(molecule => ({
+        id: molecule.id,
+        type: molecule.type,
+        stateKey: molecule.stateKey,
+        action: molecule.action,
+        submitAction: molecule.submitAction,
+        order: molecule.order,
+      })),
+    })),
+  }));
+}
+
+function addState(states: Map<string, Record<string, unknown>>, state: Record<string, unknown>): void {
+  const stateKey = readString(state.stateKey);
+  if (stateKey && !states.has(stateKey)) states.set(stateKey, state);
+}
+
+function commandFieldRecords(value: unknown): { name: string; required?: boolean }[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(item => isRecord(item) ? { name: readString(item.name), required: item.required === true } : { name: '' }).filter(item => item.name);
+}
+
+function commandInputStateKeys(prepared: CfePreparedPage, commandName: string): string[] {
+  const command = prepared.commands.find(item => readString(item.commandName) === commandName);
+  return commandFieldRecords(command?.input).map(field => inputStateKey(prepared.page.pageId, commandName, field.name));
+}
+
+function moleculeCommandName(molecule: CfeLayoutMolecule, userActions: string[]): string {
+  return molecule.submitAction || molecule.action || commandFromBindingSource(molecule.source) || userActions[0] || '';
+}
+
+function commandFromBindingSource(source?: string): string {
+  const value = source || '';
+  const bff = value.match(/^bff\.([A-Za-z0-9_-]+)$/);
+  if (bff) return bff[1];
+  const scoped = value.match(/^([A-Za-z0-9_-]+)\.(input|output)$/);
+  return scoped ? scoped[1] : '';
+}
+
+function isQueryCommand(prepared: CfePreparedPage, commandName: string): boolean {
+  const command = prepared.commands.find(item => readString(item.commandName) === commandName);
+  return readString(command?.kind) === 'query';
+}
+
+function moleculeUsesQueryResult(molecule: CfeLayoutMolecule): boolean {
+  return molecule.source === undefined || molecule.source.endsWith('.output') || molecule.source.startsWith('bff.') || molecule.columns.length > 0;
+}
+
+function defaultValueForField(field: { required?: boolean }): string {
+  return field.required ? '' : '';
+}
+
+function inputStateKey(pageId: string, commandName: string, fieldName: string): string { return `ui.${pageId}.input.${commandName}.${fieldName}`; }
+function queryDataStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.data.${commandName}`; }
+function actionStatusStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.action.${commandName}.status`; }
+function inputStateName(commandName: string, fieldName: string): string { return `${commandName}${toPascalCase(fieldName)}`; }
+function queryStateName(commandName: string): string { return `${commandName}Data`; }
+function contractTsPath(project: number, page: CfePagePlan): string { return `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`; }
+
 function buildPagePlans(workflows: Map<string, CfeWorkflowDef>, operations: Map<string, CfeOperationDef>, moduleFallback: string): CfePagePlan[] {
   const pendingWorkflows = Array.from(workflows.values()).filter(owner => owner.statusFrontend === 'toCreate');
   const pendingOperations = Array.from(operations.values()).filter(owner => owner.statusFrontend === 'toCreate');
@@ -877,8 +1133,8 @@ function commandFromOperation(operation: CfeOperationDef, entities: Map<string, 
     commandName: operation.operationId,
     purpose: operation.title || humanizeId(operation.operationId),
     kind,
-    input: kind === 'query' ? queryInput(entity) : commandInput(operation, entity),
-    output: kind === 'query' ? queryOutput(entity) : commandOutput(entity),
+    input: kind === 'query' ? queryInput(operation, entity) : commandInput(operation, entity),
+    output: kind === 'query' ? queryOutput(operation, entity) : commandOutput(entity),
     readsEntities: unique([operation.entity, ...normalizeEntityRefs(operation.reads)]),
     writesEntities: unique(normalizeEntityRefs(operation.writes)),
     readsTables: [],
@@ -927,7 +1183,21 @@ function contractPipeline(project: number, page: CfePagePlan): unknown[] {
 }
 
 function sharedPipeline(project: number, page: CfePagePlan, commands: Record<string, unknown>[]): unknown[] {
-  return [{ id: `${page.pageId}__l2_shared`, type: 'l2_shared', outputPath: `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`, defPath: `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.defs.ts`, dependsFiles: [`_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`], dependsOn: [], skills: ['/_102020_/l2/agentMaterializeSolution/skills/genPageShared.ts'], rulesApplied: unique(commands.flatMap(command => Array.isArray(command.rulesApplied) ? command.rulesApplied.map(String) : [])), agent: 'agentMaterializeGen' }];
+  return [{
+    id: `${page.pageId}__l2_shared`,
+    type: 'l2_shared',
+    outputPath: `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`,
+    defPath: `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.defs.ts`,
+    dependsFiles: [
+      `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.defs.ts`,
+      `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`,
+      `_${project}_/l2/${page.moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
+    ],
+    dependsOn: [],
+    skills: ['/_102020_/l2/agentMaterializeSolution/skills/genPageShared.ts'],
+    rulesApplied: unique(commands.flatMap(command => Array.isArray(command.rulesApplied) ? command.rulesApplied.map(String) : [])),
+    agent: 'agentMaterializeGen',
+  }];
 }
 
 function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown): unknown[] {
@@ -1069,26 +1339,58 @@ function workflowFromData(data: Record<string, unknown>, fileInfo: FileInfo, exp
 function entityFromData(data: Record<string, unknown>, fallbackId: string): CfeEntityDef | null {
   const entityId = readString(data.entityId) || fallbackId;
   if (!entityId) return null;
-  const fields = Array.isArray(data.fields) ? data.fields.filter(isRecord).map(field => ({ fieldId: readString(field.fieldId), type: readString(field.type), required: field.required === true, enum: readStringArray(field.enum) })).filter(field => field.fieldId) : [];
-  return { entityId, title: readString(data.title) || humanizeId(entityId), fields, rulesApplied: readStringArray(data.rulesApplied) };
+  const fields = Array.isArray(data.fields) ? data.fields.filter(isRecord).map(field => ({ fieldId: readString(field.fieldId), type: readString(field.type), required: field.required === true, description: readString(field.description), enum: readStringArray(field.enum) })).filter(field => field.fieldId) : [];
+  return { entityId, title: readString(data.title) || humanizeId(entityId), fields, rulesApplied: readStringArray(data.rulesApplied), statusEnum: readStringArray(data.statusEnum), lifecycleStates: readStringArray(data.lifecycleStates) };
 }
 
-function queryInput(entity?: CfeEntityDef): unknown[] {
+function queryInput(operation: CfeOperationDef, entity?: CfeEntityDef): unknown[] {
   if (!entity) return [];
-  return entity.fields.filter(field => ['status', 'name', 'title', 'type', 'category'].some(token => field.fieldId.toLowerCase().includes(token))).slice(0, 4).map(field => ({ name: field.fieldId, type: toFrontendType(field.type), required: false }));
+  const explicit = explicitEntityFieldNames(operation.reads, entity.entityId);
+  const fields = entity.fields.filter(field => explicit.size > 0 ? explicit.has(field.fieldId) && isLikelyQueryFilterField(field.fieldId) : isLikelyQueryFilterField(field.fieldId));
+  return fields.slice(0, 6).map(field => contractFieldFromEntityField(entity, field, { required: false }));
 }
-function queryOutput(entity?: CfeEntityDef): unknown[] { return entity ? entity.fields.slice(0, 8).map(field => ({ name: field.fieldId, type: toFrontendType(field.type) })) : []; }
+function queryOutput(operation: CfeOperationDef, entity?: CfeEntityDef): unknown[] {
+  if (!entity) return [];
+  const explicit = explicitEntityFieldNames(operation.reads, entity.entityId);
+  const fields = explicit.size > 0 ? entity.fields.filter(field => explicit.has(field.fieldId)) : entity.fields.slice(0, 8);
+  return fields.slice(0, 12).map(field => contractFieldFromEntityField(entity, field, { includeRequired: false }));
+}
 function commandInput(operation: CfeOperationDef, entity?: CfeEntityDef): unknown[] {
   if (!entity) return [];
-  const explicitFields = new Set(fieldRefs(operation.writes).filter(ref => ref.startsWith(`${entity.entityId}.`)).map(ref => ref.split('.')[1]));
+  const explicitFields = explicitEntityFieldNames(operation.writes, entity.entityId);
   const hasExplicit = explicitFields.size > 0;
   const isCreate = operation.kind === 'create';
-  return entity.fields.filter(field => !isSystemField(field.fieldId)).filter(field => !hasExplicit || explicitFields.has(field.fieldId)).filter(field => !isCreate || !isLikelyIdField(field.fieldId)).slice(0, 10).map(field => ({ name: field.fieldId, type: toFrontendType(field.type), required: field.required === true && !isLikelyIdField(field.fieldId) }));
+  return entity.fields.filter(field => !isSystemField(field.fieldId)).filter(field => !hasExplicit || explicitFields.has(field.fieldId)).filter(field => !isCreate || !isLikelyIdField(field.fieldId)).slice(0, 10).map(field => contractFieldFromEntityField(entity, field, { required: field.required === true && !isLikelyIdField(field.fieldId) }));
 }
 function commandOutput(entity?: CfeEntityDef): unknown[] {
   if (!entity) return [];
   const idField = entity.fields.find(field => isLikelyIdField(field.fieldId)) || entity.fields[0];
-  return idField ? [{ name: idField.fieldId, type: toFrontendType(idField.type) }] : [];
+  return idField ? [contractFieldFromEntityField(entity, idField, { includeRequired: false })] : [];
+}
+
+function contractFieldFromEntityField(entity: CfeEntityDef, field: CfeFieldDef, options: { required?: boolean; includeRequired?: boolean } = {}): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    name: field.fieldId,
+    type: toFrontendType(field.type),
+    sourceEntity: entity.entityId,
+    sourceField: field.fieldId,
+  };
+  if (options.includeRequired !== false) out.required = options.required ?? (field.required === true);
+  const enumValues = field.enum?.length ? field.enum : (field.fieldId === 'status' ? entity.statusEnum : []);
+  if (enumValues.length > 0) out.enum = enumValues;
+  if (field.fieldId === 'status' && entity.lifecycleStates.length > 0) out.lifecycleStates = entity.lifecycleStates;
+  if (field.description) out.description = field.description;
+  if (field.type && field.type !== toFrontendType(field.type)) out.sourceType = field.type;
+  return out;
+}
+
+function explicitEntityFieldNames(values: string[], entityId: string): Set<string> {
+  return new Set(fieldRefs(values).filter(ref => ref.startsWith(`${entityId}.`)).map(ref => ref.split('.')[1]).filter(Boolean));
+}
+
+function isLikelyQueryFilterField(fieldId: string): boolean {
+  const id = fieldId.toLowerCase();
+  return ['status', 'name', 'title', 'type', 'category'].some(token => id.includes(token)) || id.endsWith('id') || id.endsWith('at') || id.includes('date');
 }
 
 function operationEntities(operation: CfeOperationDef): string[] { return unique([operation.entity, ...normalizeEntityRefs(operation.reads), ...normalizeEntityRefs(operation.writes)]); }

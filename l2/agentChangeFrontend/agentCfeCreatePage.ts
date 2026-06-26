@@ -10,8 +10,9 @@ import {
   parseCreatePageArgs,
   preparePageCreate,
   readCreateContext,
-  saveContractSharedDefs,
+  saveContractDefs,
   savePageLayoutDefs,
+  saveSharedDefs,
 } from '/_102020_/l2/agentChangeFrontend/cfeCreateShared.js';
 
 const AGENT_NAME = 'agentCfeCreatePage';
@@ -35,8 +36,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const page = createContext.pages.find(item => item.pageId === pageId);
     if (!page) throw new Error(`page not found for create: ${pageId}`);
     const prepared = await preparePageCreate(page);
-    await saveContractSharedDefs(prepared);
-    console.log(`[${agent.agentName}] prepared contract/shared for ${page.moduleName}/${page.pageId}`);
+    await saveContractDefs(prepared);
+    console.log(`[${agent.agentName}] prepared contract for ${page.moduleName}/${page.pageId}`);
     return [
       createPromptReadyIntent(
         context,
@@ -68,8 +69,9 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const page = createContext.pages.find(item => item.pageId === pageId);
     if (!page) throw new Error(`page not found for layout save: ${pageId}`);
     const prepared = await preparePageCreate(page);
-    await savePageLayoutDefs(prepared, output.result.pageLayout);
-    console.log(`[${agent.agentName}] created page layout defs for ${page.moduleName}/${page.pageId}`);
+    const layout = await savePageLayoutDefs(prepared, output.result.pageLayout);
+    await saveSharedDefs(prepared, layout);
+    console.log(`[${agent.agentName}] created page layout/shared defs for ${page.moduleName}/${page.pageId}`);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed')];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -101,6 +103,8 @@ Layout rules:
   "statusTimeline", "actionBar" or similarly descriptive registered intent names.
 - Use fields/columns/filters/action references only from the provided contract/shared context.
 - Do not invent actions, entities, commands or payloads.
+- Treat all filters, form fields, selections, loaded data and action statuses as shared state.
+- Do not describe local page variables; page11 will only render shared state and call shared handlers.
 - Do not output HTML, CSS, web component slots, raw DOM or design-system implementation details.
 - All visible text must be referenced by titleKey, labelKey or emptyKey and declared in i18n.
 - Prefer useful operational layouts: list/search/table for query/view commands, form/action panel for
