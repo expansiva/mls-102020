@@ -11,7 +11,7 @@
 // A page applies `class="ds-<name>"` on its root; because Aura components render in light DOM
 // (createRenderRoot returns this), the `--ds-*` variables cascade into the whole tree, including
 // composed molecules and their slot tags. Pure token→CSS transform — no LLM. Run once, project-wide
-// (the `register` terminal step of agentImplementsDesignSystem2). Editing a token value only
+// (the `register` terminal step of agentImplementGenome). Editing a token value only
 // regenerates this file; pages that reference `var(--ds-*)` need no re-generation.
 
 import { createStorFile } from '/_102027_/l2/libStor.js';

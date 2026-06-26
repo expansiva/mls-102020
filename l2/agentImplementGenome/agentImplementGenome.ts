@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentImplementsDesignSystem2/agentImplementsDesignSystem2.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102020_/l2/agentImplementGenome/agentImplementGenome.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 // Orchestrator (barrier-group model, à la agentNewSolution).
 // Entry: { module, layout, ds, device?, pages? }. `pages` (optional) restricts the run to a
@@ -7,16 +7,16 @@
 // beforePromptImplicit → minimal LLM confirmation (validates the request).
 // afterPromptStep      → builds the planned tree of child steps with barriers:
 //
-//   select:<page>  agentSelectGroups2   waiting_human_input   dependsOn []
-//   gen:<page>     agentGenDefs2         waiting_dependency    dependsOn [select:<page>]
-//   register       agentRegisterGenome2  waiting_dependency    dependsOn [gen:<page> ...all]
+//   select:<page>  agentSelectGroups   waiting_human_input   dependsOn []
+//   gen:<page>     agentGenDefs         waiting_dependency    dependsOn [select:<page>]
+//   register       agentRegisterGenome  waiting_dependency    dependsOn [gen:<page> ...all]
 //
 // The `register` step's barrier (dependsOn every gen step) is how we "know all pages
 // finished" — native to the framework, no in-memory tracker needed.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { listWorkItems, DEFAULT_DEVICE } from '/_102020_/l2/dsMatch/derivePaths.js';
-import { mkAgentStep, mkFail, makePlanId, type StepArgs } from '/_102020_/l2/agentImplementsDesignSystem2/planning.js';
+import { mkAgentStep, mkFail, makePlanId, type StepArgs } from '/_102020_/l2/agentImplementGenome/planning.js';
 
 // `materialize` (default true) is a contract flag for the CALLER: after this flow writes the
 // page defs, the caller runs agentMaterializeL2 to generate the .ts (false → skip). This
@@ -25,9 +25,9 @@ interface EntryArgs { module: string; layout: number | string; ds: number | stri
 
 export function createAgent(): IAgentAsync {
   return {
-    agentName: 'agentImplementsDesignSystem2',
+    agentName: 'agentImplementGenome',
     agentProject: 102020,
-    agentFolder: 'agentImplementsDesignSystem2',
+    agentFolder: 'agentImplementGenome',
     agentDescription: 'Apply a design system to a module: derive page{layout}{ds} from page11',
     visibility: 'public',
     beforePromptImplicit,
@@ -117,25 +117,25 @@ async function afterPromptStep(
     // Group A — Agent1: pick the molecule GROUPS per organism (writes groupSelections).
     for (const page of pages) {
       intents.push(mkAgentStep(context, step, makePlanId('select', page), `Select groups: ${page}`,
-        'agentSelectGroups2', baseArgs(page), [], 'waiting_human_input', 'parallel_static'));
+        'agentSelectGroups', baseArgs(page), [], 'waiting_human_input', 'parallel_static'));
     }
 
     // Group B — Agent2: pick the VARIANT per organism from the DS-compatible candidates
     // (writes moleculeAssignments). Each waits on its own select.
     for (const page of pages) {
       intents.push(mkAgentStep(context, step, makePlanId('variant', page), `Pick variant: ${page}`,
-        'agentSelectVariant2', baseArgs(page), [makePlanId('select', page)], 'waiting_dependency', 'parallel_static'));
+        'agentSelectVariant', baseArgs(page), [makePlanId('select', page)], 'waiting_dependency', 'parallel_static'));
     }
 
     // Group C — assemble the final defs. Each waits on its own variant.
     for (const page of pages) {
       intents.push(mkAgentStep(context, step, makePlanId('gen', page), `Gen defs: ${page}`,
-        'agentGenDefs2', baseArgs(page), [makePlanId('variant', page)], 'waiting_dependency', 'parallel_static'));
+        'agentGenDefs', baseArgs(page), [makePlanId('variant', page)], 'waiting_dependency', 'parallel_static'));
     }
 
     // Terminal — register the variation in module.ts ONCE, after EVERY gen completes.
     intents.push(mkAgentStep(context, step, 'register', 'Register module genome',
-      'agentRegisterGenome2', baseArgs(), genIds, 'waiting_dependency', 'sequential'));
+      'agentRegisterGenome', baseArgs(), genIds, 'waiting_dependency', 'sequential'));
 
     return intents;
   } catch (error) {

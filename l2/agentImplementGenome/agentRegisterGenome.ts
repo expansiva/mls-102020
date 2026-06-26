@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentImplementsDesignSystem2/agentRegisterGenome2.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102020_/l2/agentImplementGenome/agentRegisterGenome.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 // Terminal step — NO-LLM wrapper agent (like agentNewSolutionPlanner: only
 // beforePromptStep, returns completed). Its `dependsOn` lists EVERY gen:<page> step, so
@@ -12,13 +12,13 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { registerPageGenome } from '/_102020_/l2/dsMatch/registerPageGenome.js';
 import { buildGlobalCss } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
-import { parseStepArgs, mkCompleted, mkFail } from '/_102020_/l2/agentImplementsDesignSystem2/planning.js';
+import { parseStepArgs, mkCompleted, mkFail } from '/_102020_/l2/agentImplementGenome/planning.js';
 
 export function createAgent(): IAgentAsync {
   return {
-    agentName: 'agentRegisterGenome2',
+    agentName: 'agentRegisterGenome',
     agentProject: 102020,
-    agentFolder: 'agentImplementsDesignSystem2',
+    agentFolder: 'agentImplementGenome',
     agentDescription: 'Register the new page variation in module.ts (terminal, no LLM)',
     visibility: 'private',
     beforePromptStep,
@@ -45,6 +45,6 @@ async function beforePromptStep(
     }
     return [mkCompleted(context, parentStep, step, hookSequential)];
   } catch (error) {
-    return [mkFail(context, parentStep, step, hookSequential, `[agentRegisterGenome2] ${error instanceof Error ? error.message : String(error)}`)];
+    return [mkFail(context, parentStep, step, hookSequential, `[agentRegisterGenome] ${error instanceof Error ? error.message : String(error)}`)];
   }
 }
