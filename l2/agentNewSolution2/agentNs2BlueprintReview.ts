@@ -69,7 +69,7 @@ function normalizeResult(value: unknown): BlueprintReviewResult {
   const result = assertRecord(value, 'result');
   const findings = assertArray(result.findings || [], 'result.findings').map((item, index) => {
     const f = assertRecord(item, `result.findings[${index}]`);
-    const severity = f.severity === 'error' || f.severity === 'warning' || f.severity === 'info' ? f.severity : 'info';
+    const severity = (f.severity === 'error' || f.severity === 'warning' || f.severity === 'info' ? f.severity : 'info') as ReviewFinding['severity'];
     return { severity, code: optionalString(f.code) || 'finding', message: assertString(f.message, `result.findings[${index}].message`), path: optionalString(f.path) };
   });
   return { summary: optionalString(result.summary) || '', findings };

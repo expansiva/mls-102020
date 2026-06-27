@@ -106,9 +106,9 @@ interface CfeLayoutField {
   stateKey?: string;
 }
 
-interface CfeLayoutMolecule {
+interface CfeLayoutIntent {
   id: string;
-  type: string;
+  intent: string;
   order: number;
   titleKey?: string;
   source?: string;
@@ -138,7 +138,7 @@ interface CfeLayoutOrganism {
   writesFields: string[];
   rulesApplied: string[];
   order: number;
-  molecules: CfeLayoutMolecule[];
+  intentions: CfeLayoutIntent[];
 }
 
 interface CfeLayoutSection {
@@ -200,13 +200,13 @@ const layoutFieldSchema = {
   },
 } as const;
 
-const layoutMoleculeSchema = {
+const layoutIntentSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['id', 'type', 'order', 'fields', 'columns', 'filters', 'toolbar', 'rowActions', 'actions'],
+  required: ['id', 'intent', 'order'],
   properties: {
     id: strSchema,
-    type: strSchema,
+    intent: strSchema,
     order: intSchema,
     titleKey: strSchema,
     source: strSchema,
@@ -228,7 +228,7 @@ const layoutMoleculeSchema = {
 const layoutOrganismSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['id', 'type', 'organismName', 'titleKey', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'molecules'],
+  required: ['id', 'type', 'organismName', 'titleKey', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'intentions'],
   properties: {
     id: strSchema,
     type: strSchema,
@@ -241,7 +241,7 @@ const layoutOrganismSchema = {
     writesFields: strArraySchema,
     rulesApplied: strArraySchema,
     order: intSchema,
-    molecules: { type: 'array', minItems: 1, items: layoutMoleculeSchema },
+    intentions: { type: 'array', minItems: 1, items: layoutIntentSchema },
   },
 } as const;
 
@@ -378,8 +378,9 @@ export async function saveSharedDefs(prepared: CfePreparedPage, layout: CfePageL
 }
 
 export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Promise<CfePageLayoutDefinition> {
-  validatePageLayout(prepared, layout);
-  const enrichedLayout = enrichLayoutWithStateRefs(prepared, layout);
+  const repairedLayout = repairUnknownLayoutActions(prepared, layout);
+  validatePageLayout(prepared, repairedLayout);
+  const enrichedLayout = enrichLayoutWithStateRefs(prepared, repairedLayout);
   const definition = {
     ...prepared.baseDefinition,
     sections: layoutSectionSummary(enrichedLayout.sections),
@@ -388,7 +389,6 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
       type: 'page',
       sections: enrichedLayout.sections,
     },
-    i18n: enrichedLayout.i18n,
     dataBindings: enrichedLayout.dataBindings,
   };
   await saveFrontendDefs(pageFileInfo(prepared.project, prepared.page), 'definition', definition, pagePipeline(prepared.project, prepared.page, prepared.visualStyle));
@@ -532,31 +532,35 @@ function normalizeLayoutOrganism(value: unknown, path: string): CfeLayoutOrganis
     writesFields: normalizeStringList(organism.writesFields, `${path}.writesFields`),
     rulesApplied: normalizeStringList(organism.rulesApplied, `${path}.rulesApplied`),
     order: normalizeOrder(organism.order, `${path}.order`),
-    molecules: assertArray(organism.molecules, `${path}.molecules`).map((item, index) => normalizeLayoutMolecule(item, `${path}.molecules[${index}]`)),
+    intentions: assertArray(organism.intentions, `${path}.intentions`).map((item, index) => normalizeLayoutIntent(item, `${path}.intentions[${index}]`)),
   };
 }
 
-function normalizeLayoutMolecule(value: unknown, path: string): CfeLayoutMolecule {
-  const molecule = assertRecord(value, path);
+function normalizeLayoutIntent(value: unknown, path: string): CfeLayoutIntent {
+  const intent = assertRecord(value, path);
   return {
-    id: assertString(molecule.id, `${path}.id`),
-    type: assertString(molecule.type, `${path}.type`),
-    order: normalizeOrder(molecule.order, `${path}.order`),
-    titleKey: optionalString(molecule.titleKey),
-    source: optionalString(molecule.source),
-    binding: optionalString(molecule.binding),
-    action: optionalString(molecule.action),
-    submitAction: optionalString(molecule.submitAction),
-    emptyKey: optionalString(molecule.emptyKey),
-    displayHint: optionalString(molecule.displayHint),
-    stateKey: optionalString(molecule.stateKey),
-    fields: normalizeLayoutFields(molecule.fields, `${path}.fields`),
-    columns: normalizeLayoutFields(molecule.columns, `${path}.columns`),
-    filters: normalizeLayoutFields(molecule.filters, `${path}.filters`),
-    toolbar: normalizeLayoutActions(molecule.toolbar, `${path}.toolbar`),
-    rowActions: normalizeLayoutActions(molecule.rowActions, `${path}.rowActions`),
-    actions: normalizeLayoutActions(molecule.actions, `${path}.actions`),
+    id: assertString(intent.id, `${path}.id`),
+    intent: assertString(intent.intent, `${path}.intent`),
+    order: normalizeOrder(intent.order, `${path}.order`),
+    titleKey: optionalString(intent.titleKey),
+    source: optionalString(intent.source),
+    binding: optionalString(intent.binding),
+    action: optionalString(intent.action),
+    submitAction: optionalString(intent.submitAction),
+    emptyKey: optionalString(intent.emptyKey),
+    displayHint: optionalString(intent.displayHint),
+    stateKey: optionalString(intent.stateKey),
+    fields: normalizeOptionalLayoutFields(intent.fields, `${path}.fields`),
+    columns: normalizeOptionalLayoutFields(intent.columns, `${path}.columns`),
+    filters: normalizeOptionalLayoutFields(intent.filters, `${path}.filters`),
+    toolbar: normalizeOptionalLayoutActions(intent.toolbar, `${path}.toolbar`),
+    rowActions: normalizeOptionalLayoutActions(intent.rowActions, `${path}.rowActions`),
+    actions: normalizeOptionalLayoutActions(intent.actions, `${path}.actions`),
   };
+}
+
+function normalizeOptionalLayoutFields(value: unknown, path: string): CfeLayoutField[] {
+  return value === undefined ? [] : normalizeLayoutFields(value, path);
 }
 
 function normalizeLayoutFields(value: unknown, path: string): CfeLayoutField[] {
@@ -574,6 +578,10 @@ function normalizeLayoutFields(value: unknown, path: string): CfeLayoutField[] {
     stateKey: optionalString(field.stateKey),
   };
   });
+}
+
+function normalizeOptionalLayoutActions(value: unknown, path: string): CfeLayoutAction[] {
+  return value === undefined ? [] : normalizeLayoutActions(value, path);
 }
 
 function normalizeLayoutActions(value: unknown, path: string): CfeLayoutAction[] {
@@ -659,16 +667,56 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
     ontology: { entities },
     layoutRules: [
       'Keep the section -> organism structure. Do not replace it with generic components.',
-      'Each section, organism, molecule, field, column and action needs a stable id and explicit order.',
+      'Each section, organism, intention, field, column and action needs a stable id and explicit order.',
       'Each operation must appear in at least one organism.userActions entry.',
-      'Use molecules for visual composition: form, groupviewtable.mlDataTable, summaryPanel, statusTimeline, actionBar or another semantic type.',
+      'Use intentions for plain page11 composition: queryList, commandForm, summary, workflowStatus, actionList or another semantic intent.',
+      'Do not reference molecule groups, molecule tags, web-component tags, DOM slots or package-specific component names in page11.',
       'Use labelKey/titleKey/emptyKey for all visible text and declare those keys in i18n.',
       'Do not emit HTML, CSS, DOM slots or raw web-component markup.',
       'Only reference actions from shared.availableActions.',
+      'Do not invent UI-only action names like select*, cancel, close, open, edit, view, remove or clear unless the exact name is in shared.availableActions.',
+      'Every intention must include fields, columns, filters, toolbar, rowActions and actions arrays; use [] when empty.',
       'Only reference fields from contract inputs/outputs or ontology fields.',
       'Every form/filter field must be state-driven by shared; the generator will add explicit stateKey refs.',
     ],
   };
+}
+
+function repairUnknownLayoutActions(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const allowedActions = new Set(prepared.commands.map(command => readString(command.commandName)).filter(Boolean));
+  const dropped: string[] = [];
+
+  const keepActionName = (action: string, path: string): boolean => {
+    if (allowedActions.has(action)) return true;
+    dropped.push(`${path}=${action}`);
+    return false;
+  };
+  const cleanActionRef = (action: string | undefined, path: string): string | undefined => {
+    if (!action) return undefined;
+    return keepActionName(action, path) ? action : undefined;
+  };
+  const cleanActionList = (actions: CfeLayoutAction[], path: string): CfeLayoutAction[] => actions.filter(action => keepActionName(action.action, `${path}.${action.id}`));
+
+  const sections = layout.sections.map(section => ({
+    ...section,
+    organisms: section.organisms.map(organism => ({
+      ...organism,
+      userActions: organism.userActions.filter(action => keepActionName(action, `${organism.id}.userActions`)),
+      intentions: organism.intentions.map(intent => ({
+        ...intent,
+        action: cleanActionRef(intent.action, `${intent.id}.action`),
+        submitAction: cleanActionRef(intent.submitAction, `${intent.id}.submitAction`),
+        toolbar: cleanActionList(intent.toolbar, `${intent.id}.toolbar`),
+        rowActions: cleanActionList(intent.rowActions, `${intent.id}.rowActions`),
+        actions: cleanActionList(intent.actions, `${intent.id}.actions`),
+      })),
+    })),
+  }));
+
+  if (dropped.length > 0) {
+    console.warn(`[agentCfeCreatePage] dropped unknown layout action(s) for ${prepared.page.pageId}: ${dropped.join('; ')}`);
+  }
+  return dropped.length > 0 ? { ...layout, sections } : layout;
 }
 
 function validatePageLayout(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): void {
@@ -697,8 +745,8 @@ function validatePageLayout(prepared: CfePreparedPage, layout: CfePageLayoutDefi
           throw new Error(`${organism.id}.requiredEntities references unknown entity ${entity}`);
         }
       }
-      if (organism.molecules.length === 0) throw new Error(`${organism.id} must have molecules`);
-      for (const molecule of organism.molecules) validateMolecule(ids, i18nKeys, actions, fields, molecule);
+      if (organism.intentions.length === 0) throw new Error(`${organism.id} must have intentions`);
+      for (const intent of organism.intentions) validateIntent(ids, i18nKeys, actions, fields, intent);
     }
   }
   for (const action of expectedActions) {
@@ -706,17 +754,17 @@ function validatePageLayout(prepared: CfePreparedPage, layout: CfePageLayoutDefi
   }
 }
 
-function validateMolecule(ids: Set<string>, i18nKeys: Set<string>, actions: Set<string>, fields: Set<string>, molecule: CfeLayoutMolecule): void {
-  registerId(ids, molecule.id, `molecule:${molecule.id}`);
-  if (molecule.titleKey) assertI18nKey(i18nKeys, molecule.titleKey, `${molecule.id}.titleKey`);
-  if (molecule.emptyKey) assertI18nKey(i18nKeys, molecule.emptyKey, `${molecule.id}.emptyKey`);
-  for (const action of [molecule.action, molecule.submitAction].filter(Boolean) as string[]) assertAction(actions, action, molecule.id);
-  for (const field of [...molecule.fields, ...molecule.columns, ...molecule.filters]) {
+function validateIntent(ids: Set<string>, i18nKeys: Set<string>, actions: Set<string>, fields: Set<string>, intent: CfeLayoutIntent): void {
+  registerId(ids, intent.id, `intent:${intent.id}`);
+  if (intent.titleKey) assertI18nKey(i18nKeys, intent.titleKey, `${intent.id}.titleKey`);
+  if (intent.emptyKey) assertI18nKey(i18nKeys, intent.emptyKey, `${intent.id}.emptyKey`);
+  for (const action of [intent.action, intent.submitAction].filter(Boolean) as string[]) assertAction(actions, action, intent.id);
+  for (const field of [...intent.fields, ...intent.columns, ...intent.filters]) {
     registerId(ids, field.id, `field:${field.id}`);
     assertI18nKey(i18nKeys, field.labelKey, `${field.id}.labelKey`);
     if (!fields.has(field.field)) throw new Error(`${field.id}.field references unknown field ${field.field}`);
   }
-  for (const action of [...molecule.toolbar, ...molecule.rowActions, ...molecule.actions]) {
+  for (const action of [...intent.toolbar, ...intent.rowActions, ...intent.actions]) {
     registerId(ids, action.id, `action:${action.id}`);
     assertI18nKey(i18nKeys, action.labelKey, `${action.id}.labelKey`);
     assertAction(actions, action.action, action.id);
@@ -810,14 +858,14 @@ function deterministicOrganism(prepared: CfePreparedPage, operation: CfeOperatio
   const organismId = `organism.${prepared.page.pageId}.${operation.operationId}`;
   const organismTitleKey = `${organismId}.title`;
   i18n[organismTitleKey] = operation.title || humanizeId(operation.operationId);
-  const moleculeId = `molecule.${prepared.page.pageId}.${operation.operationId}.${isQuery ? 'table' : 'form'}`;
-  const moleculeTitleKey = `${moleculeId}.title`;
-  const emptyKey = `${moleculeId}.empty`;
-  i18n[moleculeTitleKey] = operation.title || humanizeId(operation.operationId);
+  const intentId = `intent.${prepared.page.pageId}.${operation.operationId}.${isQuery ? 'list' : 'form'}`;
+  const intentTitleKey = `${intentId}.title`;
+  const emptyKey = `${intentId}.empty`;
+  i18n[intentTitleKey] = operation.title || humanizeId(operation.operationId);
   i18n[emptyKey] = 'Nenhum registro encontrado';
-  const fields = commandFields(command.input).map((field, fieldIndex) => deterministicField(`${moleculeId}.field.${field}`, field, fieldIndex, i18n));
-  const columns = commandFields(command.output).map((field, fieldIndex) => deterministicField(`${moleculeId}.column.${field}`, field, fieldIndex, i18n));
-  const actionKey = `${moleculeId}.action.${operation.operationId}`;
+  const fields = commandFields(command.input).map((field, fieldIndex) => deterministicField(`${intentId}.field.${field}`, field, fieldIndex, i18n));
+  const columns = commandFields(command.output).map((field, fieldIndex) => deterministicField(`${intentId}.column.${field}`, field, fieldIndex, i18n));
+  const actionKey = `${intentId}.action.${operation.operationId}`;
   i18n[actionKey] = operation.title || humanizeId(operation.operationId);
   return {
     id: organismId,
@@ -831,11 +879,11 @@ function deterministicOrganism(prepared: CfePreparedPage, operation: CfeOperatio
     writesFields: fieldRefs(operation.writes),
     rulesApplied: operation.rulesApplied,
     order: (index + 1) * 10,
-    molecules: [{
-      id: moleculeId,
-      type: isQuery ? 'groupviewtable.mlDataTable' : 'form',
+    intentions: [{
+      id: intentId,
+      intent: isQuery ? 'queryList' : 'commandForm',
       order: 10,
-      titleKey: moleculeTitleKey,
+      titleKey: intentTitleKey,
       source: `bff.${operation.operationId}`,
       binding: `binding.${prepared.page.pageId}.${operation.operationId}`,
       submitAction: isQuery ? undefined : operation.operationId,
@@ -845,8 +893,8 @@ function deterministicOrganism(prepared: CfePreparedPage, operation: CfeOperatio
       columns: isQuery ? columns : [],
       filters: isQuery ? fields : [],
       toolbar: [],
-      rowActions: isQuery ? [{ id: `${moleculeId}.rowAction.${operation.operationId}`, action: operation.operationId, labelKey: actionKey, order: 10 }] : [],
-      actions: isQuery ? [] : [{ id: `${moleculeId}.action.${operation.operationId}`, action: operation.operationId, labelKey: actionKey, order: 10 }],
+      rowActions: isQuery ? [{ id: `${intentId}.rowAction.${operation.operationId}`, action: operation.operationId, labelKey: actionKey, order: 10 }] : [],
+      actions: isQuery ? [] : [{ id: `${intentId}.action.${operation.operationId}`, action: operation.operationId, labelKey: actionKey, order: 10 }],
     }],
   };
 }
@@ -985,18 +1033,18 @@ function enrichLayoutWithStateRefs(prepared: CfePreparedPage, layout: CfePageLay
 
   for (const section of cloned.sections) {
     for (const organism of section.organisms) {
-      for (const molecule of organism.molecules) {
-        const commandName = moleculeCommandName(molecule, organism.userActions);
-        if (commandName && isQueryCommand(prepared, commandName) && moleculeUsesQueryResult(molecule)) molecule.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
+      for (const intent of organism.intentions) {
+        const commandName = intentCommandName(intent, organism.userActions);
+        if (commandName && isQueryCommand(prepared, commandName) && intentUsesQueryResult(intent)) intent.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
         if (commandName) {
-          for (const field of [...molecule.fields, ...molecule.filters]) {
+          for (const field of [...intent.fields, ...intent.filters]) {
             field.stateKey = inputStateKey(prepared.page.pageId, commandName, field.field);
           }
-          for (const field of molecule.columns) {
+          for (const field of intent.columns) {
             field.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
           }
         }
-        for (const action of [...molecule.toolbar, ...molecule.rowActions, ...molecule.actions]) action.actionKey = action.action;
+        for (const action of [...intent.toolbar, ...intent.rowActions, ...intent.actions]) action.actionKey = action.action;
       }
     }
   }
@@ -1023,13 +1071,13 @@ function layoutSectionSummary(sections: CfeLayoutSection[]): Record<string, unkn
       writesFields: organism.writesFields,
       rulesApplied: organism.rulesApplied,
       order: organism.order,
-      moleculeRefs: organism.molecules.map(molecule => ({
-        id: molecule.id,
-        type: molecule.type,
-        stateKey: molecule.stateKey,
-        action: molecule.action,
-        submitAction: molecule.submitAction,
-        order: molecule.order,
+      intentionRefs: organism.intentions.map(intent => ({
+        id: intent.id,
+        intent: intent.intent,
+        stateKey: intent.stateKey,
+        action: intent.action,
+        submitAction: intent.submitAction,
+        order: intent.order,
       })),
     })),
   }));
@@ -1050,8 +1098,8 @@ function commandInputStateKeys(prepared: CfePreparedPage, commandName: string): 
   return commandFieldRecords(command?.input).map(field => inputStateKey(prepared.page.pageId, commandName, field.name));
 }
 
-function moleculeCommandName(molecule: CfeLayoutMolecule, userActions: string[]): string {
-  return molecule.submitAction || molecule.action || commandFromBindingSource(molecule.source) || userActions[0] || '';
+function intentCommandName(intent: CfeLayoutIntent, userActions: string[]): string {
+  return intent.submitAction || intent.action || commandFromBindingSource(intent.source) || userActions[0] || '';
 }
 
 function commandFromBindingSource(source?: string): string {
@@ -1067,8 +1115,8 @@ function isQueryCommand(prepared: CfePreparedPage, commandName: string): boolean
   return readString(command?.kind) === 'query';
 }
 
-function moleculeUsesQueryResult(molecule: CfeLayoutMolecule): boolean {
-  return molecule.source === undefined || molecule.source.endsWith('.output') || molecule.source.startsWith('bff.') || molecule.columns.length > 0;
+function intentUsesQueryResult(intent: CfeLayoutIntent): boolean {
+  return intent.source === undefined || intent.source.endsWith('.output') || intent.source.startsWith('bff.') || intent.columns.length > 0;
 }
 
 function defaultValueForField(field: { required?: boolean }): string {
@@ -1179,7 +1227,7 @@ function pageDefinition(page: CfePagePlan, operations: CfeOperationDef[]): Recor
 }
 
 function contractPipeline(project: number, page: CfePagePlan): unknown[] {
-  return [{ id: `${page.pageId}__l2_contract`, type: 'l2_contract', outputPath: `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`, defPath: `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.defs.ts`, dependsFiles: [], dependsOn: [], skills: ['_102020_/l2/agentMaterializeSolution/skills/genContract.ts'], agent: 'agentMaterializeGen' }];
+  return [{ id: `${page.pageId}__l2_contract`, type: 'l2_contract', outputPath: `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`, defPath: `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.defs.ts`, dependsFiles: [], dependsOn: [], skills: ['_102020_/l2/agentChangeFrontend/skills/genCfeContractTs.ts'], agent: 'agentMaterializeGen' }];
 }
 
 function sharedPipeline(project: number, page: CfePagePlan, commands: Record<string, unknown>[]): unknown[] {
@@ -1194,14 +1242,30 @@ function sharedPipeline(project: number, page: CfePagePlan, commands: Record<str
       `_${project}_/l2/${page.moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
     ],
     dependsOn: [],
-    skills: ['/_102020_/l2/agentMaterializeSolution/skills/genPageShared.ts'],
+    skills: ['_102020_/l2/agentChangeFrontend/skills/genCfeSharedTs.ts'],
     rulesApplied: unique(commands.flatMap(command => Array.isArray(command.rulesApplied) ? command.rulesApplied.map(String) : [])),
     agent: 'agentMaterializeGen',
   }];
 }
 
 function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown): unknown[] {
-  return [{ id: `${page.pageId}__l2_page`, type: 'l2_page', outputPath: `_${project}_/l2/${page.moduleName}/web/desktop/page11/${page.pageId}.ts`, defPath: `_${project}_/l2/${page.moduleName}/web/desktop/page11/${page.pageId}.defs.ts`, dependsFiles: [`_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`, `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`], dependsOn: [], skills: ['_102020_/l2/agentMaterializeSolution/skills/genPageRender.ts', '_102020_/l2/agentMaterializeSolution/skills/genPageDS.ts'], afterSaveFrontEnd: '_102020_/l2/agentMaterializeSolution/registerFrontEnd.ts?registerPage', visualStyle: typeof visualStyle === 'string' ? { description: visualStyle } : (isRecord(visualStyle) ? visualStyle : {}), agent: 'agentMaterializeGen' }];
+  return [{
+    id: `${page.pageId}__l2_page`,
+    type: 'l2_page',
+    outputPath: `_${project}_/l2/${page.moduleName}/web/desktop/page11/${page.pageId}.ts`,
+    defPath: `_${project}_/l2/${page.moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
+    dependsFiles: [
+      `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.defs.ts`,
+      `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`,
+      `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.defs.ts`,
+      `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`,
+    ],
+    dependsOn: [],
+    skills: ['_102020_/l2/agentChangeFrontend/skills/genCfePage11RenderTs.ts'],
+    afterSaveFrontEnd: '_102020_/l2/agentMaterializeSolution/registerFrontEnd.ts?registerPage',
+    visualStyle: typeof visualStyle === 'string' ? { description: visualStyle } : (isRecord(visualStyle) ? visualStyle : {}),
+    agent: 'agentMaterializeGen',
+  }];
 }
 
 async function saveFrontendDefs(fileInfo: FileInfo, exportName: string, definition: unknown, pipeline: unknown[]): Promise<void> {

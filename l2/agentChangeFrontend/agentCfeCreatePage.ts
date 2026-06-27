@@ -92,21 +92,30 @@ tool with { status, result, questions, trace }. Do not return prose.
 The result must preserve the section -> organism structure:
 - result.pageLayout.sections[] is the source of truth for page sections.
 - every section contains organisms[].
-- every organism contains molecules[].
+- every organism contains intentions[].
 - keep compatibility fields sectionName, mode, organismName, userActions, requiredEntities,
   readsFields, writesFields and rulesApplied.
 
 Layout rules:
-- Stable ids are required for sections, organisms, molecules, fields, columns and actions.
+- Stable ids are required for sections, organisms, intentions, fields, columns and actions.
 - Use order numbers in increments of 10.
-- Use semantic molecule types such as "form", "groupviewtable.mlDataTable", "summaryPanel",
-  "statusTimeline", "actionBar" or similarly descriptive registered intent names.
+- Always include fields, columns, filters, toolbar, rowActions and actions arrays on every intention;
+  use [] when a list is empty.
+- Use plain page11 intentions such as "queryList", "commandForm", "summary", "workflowStatus",
+  "actionList" or another short semantic intent.
+- Do not reference molecule groups, molecule tags, web-component tags, DOM slots or package-specific component names.
 - Use fields/columns/filters/action references only from the provided contract/shared context.
 - Do not invent actions, entities, commands or payloads.
+- The only legal BFF action values are shared.availableActions from the prompt. This applies to
+  organism.userActions, intention.action, intention.submitAction, toolbar[].action, rowActions[].action
+  and actions[].action.
+- Do not use UI-only action names such as select*, cancel, close, open, edit, view, remove or clear
+  unless the exact name appears in shared.availableActions. Row selection and cancel/reset gestures
+  should be represented as state/display intent or omitted, not as BFF actions.
 - Treat all filters, form fields, selections, loaded data and action statuses as shared state.
 - Do not describe local page variables; page11 will only render shared state and call shared handlers.
 - Do not output HTML, CSS, web component slots, raw DOM or design-system implementation details.
 - All visible text must be referenced by titleKey, labelKey or emptyKey and declared in i18n.
 - Prefer useful operational layouts: list/search/table for query/view commands, form/action panel for
-  create/update/delete commands, status/timeline/summary molecules for workflows.
+  create/update/delete commands, status/summary/action intentions for workflows.
 `;

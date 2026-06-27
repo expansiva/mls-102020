@@ -17,7 +17,7 @@
     "stage1Contract": "l4 is BUSINESS. agentNewSolution2 produces ontology, workflows, operations, rules, actors and process metadata only. It does not produce pages or per-page bffCommands.",
     "schemaPattern": "_102020_/l2/agentNewSolution2/ns2Schemas.ts + ns2Extract.ts (strict JSON-schema tool output enforced by collab-llm and locally revalidated)",
     "parallelDynamicPattern": "_102020_/l2/agentNewSolution2/flow.json (plan-entity-definition, plan-workflow-definition, plan-operation-definition)",
-    "parallelBarrierPattern": "_102020_/l2/agentImplementsDesignSystem2/flow.json (select:<page> -> variant:<page> -> gen:<page> -> register barrier)",
+    "parallelBarrierPattern": "_102020_/l2/agentImplementGenome/agentImplementGenome.ts (select:<page> -> variant:<page> -> gen:<page> -> register barrier)",
     "pagePatternExample": "_102043_/l2/cafeFlow/web/desktop/page11/cardapioEstoque.defs.ts",
     "contractPatternExample": "_102043_/l2/cafeFlow/web/contracts/cardapioEstoque.defs.ts",
     "sharedPatternExample": "_102043_/l2/cafeFlow/web/shared/cardapioEstoque.defs.ts",
@@ -31,7 +31,7 @@
       "agentCfeCreatePage generates web/contracts deterministically, calls an LLM with a strict tool schema to generate web/desktop/page11 semantic layout defs for one page, then writes web/shared from contractRef + layout-derived states/actions.",
       "agentCfeCreatePage writes l2/{module}/trace/frontend-create-pages/{page}.json as inProgress/done so finalize does not accept stale page defs from an older run.",
       "agentCfeCreateFinalize writes l0/config.json, writes a trace report and marks generated owners statusFrontend = done only for pages with marker status done.",
-      "The page11 layout keeps the section -> organism structure and enriches it with stable ids, molecules, field/column/action references, i18n keys and data bindings."
+      "The page11 layout keeps the section -> organism structure and enriches it with stable ids, intentions, field/column/action references and data bindings. i18n values live only in shared defs; page11 references keys. page11 is the plain implementation and does not reference molecule groups/tags."
     ],
     "v0.1Test": [
       "Implemented now only to test the autonomous l4 scan and page parallelism with children.",
@@ -194,7 +194,7 @@
       },
       "CfeLayoutDefsResult": {
         "required": ["moduleName", "pageId", "defPath", "pipeline", "definition"],
-        "purpose": "Page/layout .defs.ts content with semantic layout tree, stable ids, sections, organisms, molecule intents, bindings and display hints."
+        "purpose": "Page/layout .defs.ts content with semantic layout tree, stable ids, sections, organisms, plain page11 intentions, bindings and display hints."
       },
       "CfePageDefsValidationResult": {
         "required": ["pageId", "ok", "files", "owners", "errors", "warnings"],
@@ -228,13 +228,13 @@
     },
     "pipeline": "Generated .defs.ts files must include pipeline metadata compatible with a later materialization step, but this flow does not execute the pipeline.",
     "rulesHandling": "Emit rulesApplied in defs. rulesPath may point to l4/rules/{module}Rules.defs.ts only after the materializer accepts the new l4 rule shape. Until then, rulesPath is optional and missing resolved rule context must not block page creation.",
-    "layoutContract": "The page .defs.ts contains semantic layout, not raw DOM/CSS. Layout nodes use stable id/order keys, reference shared actions/state/contracts/i18n by key, and are later materialized into Lit/render code by genPageRender/genPageDS. The full section -> organism -> molecule tree lives in definition.layout.sections; top-level sections is only a compact compatibility summary."
+    "layoutContract": "The page .defs.ts contains semantic layout, not raw DOM/CSS. Layout nodes use stable id/order keys and reference shared actions/state/contracts/i18n keys by key only; i18n values live in shared defs. It is later materialized into plain Lit/render code by agentChangeFrontend/skills/genCfePage11RenderTs.ts. The full section -> organism -> intention tree lives in definition.layout.sections; top-level sections is only a compact compatibility summary. page11 must not reference molecule groups, molecule tags or package-specific component names."
   },
   "parallelStrategy": {
     "target": "Generate different pages in parallel. Inside each page, generate contract -> layout -> shared -> validation as a child sequence.",
     "confirmedFromExistingFlows": [
       "parallel_dynamic fan-out exists and is used by agentNewSolution2 for entities, workflows and operations.",
-      "per-page chained parallel_static steps with an ALL-pages barrier exist in agentImplementsDesignSystem2."
+      "per-page chained parallel_static steps with an ALL-pages barrier exist in agentImplementGenome."
     ],
     "notYetConfirmed": "No existing flow was found that proves a parallel_dynamic item can itself own a multi-agent child sequence. Treat nested page children as the target design, not yet a runtime guarantee.",
     "implementationRule": "If nested children are implemented, child steps must not depend on a passive container that waits for its children; they should depend on the same upstream page index or on the previous child step, following the agentNewSolution2 deadlock rule.",
@@ -384,7 +384,7 @@
       "fallbackModelAlias": "codeinstruct",
       "toolSchema": "CfeSharedDefsResult",
       "strictTool": true,
-      "goal": "For one planned page, generate web/shared/{page}.defs.ts. Reference the contract and layout, then add shared state/actions/navigationRefs/i18n keys for the page without duplicating bffCommands.",
+      "goal": "For one planned page, generate web/shared/{page}.defs.ts. Reference the contract and layout, then add shared state/actions/navigationRefs/i18n values for the page without duplicating bffCommands.",
       "savedArtifact": "l2/{module}/web/shared/{page}.defs.ts",
       "definitionRequirements": "definition is { pageId, pageName, moduleName, contractRef, layoutRef, states, actions, initialLoads, navigationRefs, i18n, automation }. It references the contract commands by commandRef and must not duplicate bffCommands."
     },
@@ -402,7 +402,7 @@
       "strictTool": true,
       "goal": "For one planned page, generate web/desktop/page11/{page}.defs.ts with a useful semantic layout following spec.md. The layout should be human-maintainable and ready for a later materializer.",
       "savedArtifact": "l2/{module}/web/desktop/page11/{page}.defs.ts",
-      "definitionRequirements": "definition contains page metadata, navigationRefs, sections/organisms and semantic layout with stable ids/order/action/state/i18n references."
+      "definitionRequirements": "definition contains page metadata, navigationRefs, sections/organisms and semantic layout with stable ids/order/action/state/i18n key references. It must not duplicate i18n values from shared."
     },
     {
       "planId": "page-validate:<page>",
@@ -542,7 +542,7 @@
     "consumedBy": [
       "A later L2 materialization/registration flow",
       "agentChangeBackend for backend usecases/controllers/persistence",
-      "agentImplementsDesignSystem2 for alternate page genomes/design systems",
+      "agentImplementGenome for alternate page genomes/design systems and molecule-based implementations such as page12",
       "future agentChangeFrontend v2 for update/remove"
     ]
   },

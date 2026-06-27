@@ -1,10 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/agentChangeFrontend.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/cfeCreateShared.js';
+import { createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/cfeCreateShared.js';
 
 type CliCommand = { kind: 'rebuildAll' } | { kind: 'help'; reason: string };
-type RootPayload = { type?: string; result?: string; help?: string };
 
 export function createAgent(): IAgentAsync {
   return {
@@ -22,12 +21,13 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
   const command = parseCliCommand(userPrompt);
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
+    skipRootLLM: true,
     request: {
       action: 'addMessageAI',
       agentName: agent.agentName,
       inputAI: [
-        { type: 'system', content: systemPrompt(command) },
-        { type: 'human', content: normalizePrompt(userPrompt) },
+        { type: 'system', content: 'agentChangeFrontend deterministic bootstrap. The root LLM is skipped by AgentIntentAddMessageAI.skipRootLLM.' },
+        { type: 'human', content: normalizePrompt(userPrompt) || 'agentChangeFrontend' },
       ],
       taskTitle: 'agentChangeFrontend',
       threadId: context.message.threadId,
@@ -35,14 +35,9 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
       longTermMemory: { taskName: 'agentChangeFrontend', flowName: 'agentChangeFrontend', version: 'create-v1', cliCommand: command.kind },
     },
   };
-  return [addMessageAI];
-}
 
-async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
-  if (!context.task) throw new Error(`[${agent.agentName}] task invalid`);
-  const payload = step.interaction?.payload?.[0] as RootPayload | undefined;
-  if (!payload || payload.type !== 'result' || payload.result !== 'rebuild_all') {
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', payload?.help || HELP_TEXT)];
+  if (command.kind !== 'rebuildAll') {
+    return [addMessageAI, createBootstrapAddStepIntent(context, createHelpStep(command.reason))];
   }
 
   const reset = await resetFrontendDoneStatuses();
@@ -56,7 +51,12 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     'sequential',
     'waiting_human_input',
   );
-  return [createAddStepIntent(context, step, scanStep)];
+  return [addMessageAI, createBootstrapAddStepIntent(context, scanStep)];
+}
+
+async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
+  if (!context.task) throw new Error(`[${agent.agentName}] task invalid`);
+  return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'Root bootstrap completed without using the model payload.')];
 }
 
 function parseCliCommand(prompt: string): CliCommand {
@@ -70,20 +70,6 @@ function normalizePrompt(prompt: string): string {
     .trim()
     .replace(/^@@(?:agentChangeFrontend|changeFrontend)\s+/i, '')
     .replace(/\s+/g, ' ');
-}
-
-function systemPrompt(command: CliCommand): string {
-  const result = command.kind === 'rebuildAll'
-    ? { type: 'result', result: 'rebuild_all' }
-    : { type: 'result', result: 'help', help: HELP_TEXT };
-  return `
-<!-- modelType: codefast -->
-
-Return only this exact JSON object:
-${JSON.stringify(result)}
-
-agentChangeFrontend is a strict CLI-like agent. It accepts only /rebuild all.
-`;
 }
 
 async function resetFrontendDoneStatuses(): Promise<{ updated: number; owners: string[] }> {
@@ -155,6 +141,35 @@ function toDisplayRef(file: any): string {
 
 function readString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function createBootstrapAddStepIntent(context: mls.msg.ExecutionContext, step: mls.msg.AIPayload): mls.msg.AgentIntentAddStep {
+  return {
+    type: 'add-step',
+    messageId: '',
+    threadId: context.message.threadId,
+    taskId: '',
+    parentStepId: 1,
+    step,
+  };
+}
+
+function createHelpStep(reason: string): mls.msg.AIPayload {
+  return {
+    type: 'result',
+    stepId: 0,
+    status: 'completed',
+    interaction: null,
+    nextSteps: [],
+    stepTitle: 'Help',
+    result: `${reason}\n\n${HELP_TEXT}`,
+    planning: {
+      planId: 'help',
+      dependsOn: [],
+      executionMode: 'sequential',
+      executionHost: 'client',
+    },
+  } as any;
 }
 
 const HELP_TEXT = `agentChangeFrontend

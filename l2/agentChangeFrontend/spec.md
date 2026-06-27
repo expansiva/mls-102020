@@ -173,7 +173,7 @@ Além disso, o próprio exemplo `mls-102050` ainda não está íntegro: `l4/trac
   - `agentChangeBackend`: usecases, controller BFF real, persistência e tabelas;
   - integração: ambos podem compartilhar `operationId`/`commandName`, mas não devem marcar o status um do outro.
 - Usar validação determinística antes de chamar LLM: refs quebradas, campos inexistentes, enums ausentes, owners duplicados, workflow sem operação e operação sem entidade devem virar erro/aviso estruturado.
-- Reusar o pipeline existente (`agentMaterializeGen`, `genContract`, `genPageShared`, `genPageRender`, `registerFrontEnd`) sempre que o schema gerado for compatível.
+- Reusar `agentMaterializeGen` e o registro existente, mas com skills próprios do `agentChangeFrontend` (`genCfeContractTs`, `genCfeSharedTs`, `genCfePage11RenderTs`) sempre que o schema gerado for compatível.
 
 ### Dúvidas abertas
 
@@ -276,7 +276,7 @@ Pipeline:
 - `outputPath`: `_{project}_/l2/{module}/web/contracts/{page}.ts`;
 - `defPath`: `_{project}_/l2/{module}/web/contracts/{page}.defs.ts`;
 - `dependsFiles`: `[]`;
-- `skills`: `["_102020_/l2/agentMaterializeSolution/skills/genContract.ts"]`;
+- `skills`: `["_102020_/l2/agentChangeFrontend/skills/genCfeContractTs.ts"]`;
 - `agent`: `agentMaterializeGen`.
 
 #### 2. Shared
@@ -301,7 +301,7 @@ Pipeline:
 - `outputPath`: `_{project}_/l2/{module}/web/shared/{page}.ts`;
 - `defPath`: `_{project}_/l2/{module}/web/shared/{page}.defs.ts`;
 - `dependsFiles`: contract `.defs.ts`, contract `.ts` e page11 `.defs.ts`;
-- `skills`: [`/_102020_/l2/agentMaterializeSolution/skills/genPageShared.ts`];
+- `skills`: [`_102020_/l2/agentChangeFrontend/skills/genCfeSharedTs.ts`];
 - `rulesApplied`: união das regras usadas pelos comandos;
 - `rulesPath`: precisa apontar para regras em shape aceito pelo materializador;
 - `agent`: `agentMaterializeGen`.
@@ -318,7 +318,8 @@ No exemplo atual:
 
 Shape:
 
-- `export const definition = { pageId, pageName, actor, purpose, capabilities, flowRefs, pluginRefs, mdmRefs, pageInputs, navigationRefs, sections, layout, i18n, dataBindings }`
+- `export const definition = { pageId, pageName, actor, purpose, capabilities, flowRefs, pluginRefs, mdmRefs, pageInputs, navigationRefs, sections, layout, dataBindings }`
+- `i18n` fica somente no `web/shared/{page}.defs.ts`; o page11 referencia chaves (`titleKey`, `labelKey`, `emptyKey`) sem duplicar os valores.
 - `layout.sections[]` é a fonte da verdade e contém:
   - `sectionName`;
   - `mode`;
@@ -331,7 +332,7 @@ Shape:
   - `readsFields`;
   - `writesFields`;
 - `rulesApplied`.
-- `sections[]` no topo é apenas um resumo de compatibilidade, sem duplicar a árvore completa de moléculas.
+- `sections[]` no topo é apenas um resumo de compatibilidade, sem duplicar a árvore completa de intenções.
 
 Pipeline:
 
@@ -339,8 +340,8 @@ Pipeline:
 - `type`: `l2_page`;
 - `outputPath`: `_{project}_/l2/{module}/web/{device}/{layout}/{page}.ts`;
 - `defPath`: `_{project}_/l2/{module}/web/{device}/{layout}/{page}.defs.ts`;
-- `dependsFiles`: shared `.ts` e contract `.ts`;
-- `skills`: `genPageRender.ts` e `genPageDS.ts`;
+- `dependsFiles`: shared `.defs.ts`, shared `.ts`, contract `.defs.ts` e contract `.ts`;
+- `skills`: `_102020_/l2/agentChangeFrontend/skills/genCfePage11RenderTs.ts`;
 - `afterSaveFrontEnd`: `_102020_/l2/agentMaterializeSolution/registerFrontEnd.ts?registerPage`;
 - `visualStyle`: pode vir de `l4/{module}/module.defs.ts.module.visualStyle` ou de default do projeto;
 - `agent`: `agentMaterializeGen`.
@@ -349,29 +350,29 @@ Pipeline:
 
 O `.defs.ts` final da página deve carregar um **layout funcional** suficiente para o materializador gerar uma tela previsível e para um humano fazer pequenas manutenções sem perder essas alterações ao rematerializar o `.ts`.
 
-Esse layout não é CSS, DOM bruto nem design system. Ele descreve a estrutura semântica da página: página, seções, abas quando existirem, organismos e moléculas reutilizáveis. Cores, fontes, espaçamentos finos, classes e variações visuais continuam sendo responsabilidade do DS e da materialização.
+Esse layout não é CSS, DOM bruto, design system nem pacote de moléculas. Ele descreve a intenção semântica da página: página, seções, abas quando existirem, organismos e intenções de UI. O `page11` é a implementação simples ("feijão com arroz") e deve renderizar controles HTML/Lit básicos. Implementações com moléculas existentes, por exemplo `page12`, ficam para o agente de genome/design system.
 
 Regras do layout no `.defs.ts` da página:
 
 - cada item de layout deve ter `id` estável; o HTML gerado deve refletir esse id em `data-id`, para o Studio conseguir selecionar e alterar o item certo na tela;
-- a árvore deve ser rasa e previsível: `page -> sections | sectionTabs -> organisms -> molecules`;
+- a árvore deve ser rasa e previsível: `page -> sections | sectionTabs -> organisms -> intentions`;
 - um organismo representa uma função de tela, como "listar pedidos na fila da cozinha" ou "editar dados do cliente";
 - um organismo não pode conter outro organismo;
 - uma seção ou uma aba pode conter vários organismos;
-- moléculas podem compor outras moléculas quando isso fizer parte do contrato da própria molécula, mas a página não deve descer para `div`, `input`, `table`, `button` ou HTML interno arbitrário;
+- intenções descrevem o que a página precisa renderizar, como lista de consulta, formulário de comando, resumo, status de workflow ou bloco de ações; elas não são web components nem moléculas;
 - o layout deve referenciar `shared`, `contracts`, actions e i18n por chave, sem duplicar suas definições;
 - todo texto exibido deve entrar como `labelKey`, `titleKey`, `emptyKey` ou campo equivalente de i18n;
 - todo comportamento deve referenciar actions já definidas no shared, como `action`, `rowAction`, `submitAction` ou equivalente;
 - todo binding de dados deve apontar para fontes do shared/BFF/global state, sem declarar payloads novos dentro do layout;
 - ordenação editável por humano deve ser explícita com `order`, especialmente em seções, abas, organismos, colunas, filtros e ações;
-- alterações pequenas esperadas incluem trocar ordem de coluna, renomear chave de i18n, mover organismo entre seções compatíveis e trocar uma molécula por outra do mesmo grupo/contrato;
+- alterações pequenas esperadas incluem trocar ordem de coluna, renomear chave de i18n, mover organismo entre seções compatíveis e trocar uma intenção por outra compatível;
 - alterações que criam campo, action, binding ou comando BFF novo devem voltar para LLM/pipeline, porque exigem mudança em shared/contracts.
 
-Formato recomendado para moléculas complexas:
+Formato recomendado para intenções:
 
-- usar o tipo semântico da molécula, por exemplo `type: "groupviewtable.mlDataTable"`, `type: "form"`, `type: "summaryPanel"` ou outro tipo registrado;
+- usar `intent` semântico, por exemplo `intent: "queryList"`, `intent: "commandForm"`, `intent: "summary"`, `intent: "workflowStatus"` ou `intent: "actionList"`;
 - preferir propriedades estruturadas de alto nível, como `columns`, `toolbar`, `filters`, `rowActions`, `fields` e `emptyKey`, em vez de slots HTML no `.defs.ts` da página;
-- quando a implementação real da molécula exigir slots, o adapter do materializador faz a tradução de `columns`/`fields`/`actions` para os slots do web component;
+- o materializador do `page11` traduz essas intenções para HTML/Lit simples, sem importar moléculas;
 - cada item interno também deve ter `id`, `order` e referências por chave, para permitir edição pontual;
 - `displayHint` pode existir como string opcional para intenção visual ou animação, por exemplo "destacar status atrasado de forma discreta"; o materializador pode transformar isso em comentário ou orientação para LLM, mas não deve depender desse campo para regra de negócio.
 
@@ -395,10 +396,10 @@ export const definition = {
             type: "orderQueueList",
             source: "state.pedidosDia",
             order: 10,
-            molecules: [
+            intentions: [
               {
-                id: "molecule.listaPedidosDiaGrid",
-                type: "groupviewtable.mlDataTable",
+                id: "intent.listaPedidosDiaGrid",
+                intent: "queryList",
                 emptyKey: "emptyPedidosLabel",
                 columns: [
                   { id: "col.orderId", field: "orderId", labelKey: "orderIdLabel", order: 10 },
@@ -516,7 +517,7 @@ Após validar o paralelo, a implementação real inicial para `toCreate` está d
 - `agentCfeCreateFinalize` atualiza `l0/config.json`, grava `l2/{module}/trace/frontend-create-report.json` e muda os owners gerados para `statusFrontend = done`;
 - `cfeCreateShared` concentra leitura do L4, geração determinística dos comandos, schema/validação do layout, gravação dos `.defs.ts`, merge do config e atualização de status.
 
-O layout LLM deve manter a estrutura de `sections -> organisms` e enriquecer cada organismo com `molecules`, `id` estável, `order`, `labelKey/titleKey/emptyKey`, referências a actions do shared, campos do contrato/ontologia e `dataBindings`. Se a saída falhar no schema ou na validação semântica, a página não é marcada como concluída.
+O layout LLM deve manter a estrutura de `sections -> organisms` e enriquecer cada organismo com `intentions`, `id` estável, `order`, `labelKey/titleKey/emptyKey`, referências a actions do shared, campos do contrato/ontologia e `dataBindings`. O `page11` não deve referenciar moléculas, grupos, tags ou pacotes de componentes. Se a saída falhar no schema ou na validação semântica, a página não é marcada como concluída.
 
 Os campos do contrato BFF são gerados mecanicamente a partir da ontologia. Quando um campo da entidade tiver `enum`, `description`, `statusEnum` ou `lifecycleStates`, esses metadados devem ser preservados no `input`/`output` do contrato para o materializador não degradar status/tipos fechados para `string` livre.
 
