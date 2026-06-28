@@ -296,8 +296,34 @@ export const cfePageLayoutResultSchema = {
   },
 } as const;
 
-export const cfePageLayoutToolSchema = createPlannerToolSchema(CFE_LAYOUT_TOOL_NAME, 'Submit the semantic layout for one frontend page.', cfePageLayoutResultSchema as unknown as Record<string, unknown>);
+export const cfePageLayoutToolSchema = createRelaxedCfePageLayoutToolSchema();
 export const cfePageLayoutToolName = CFE_LAYOUT_TOOL_NAME;
+
+function createRelaxedCfePageLayoutToolSchema(): mls.msg.LLMTool {
+  const resultSchema = JSON.parse(JSON.stringify(cfePageLayoutResultSchema)) as Record<string, any>;
+  allowAdditionalProperties(resultSchema);
+
+  const pageLayoutSchema = resultSchema.properties?.pageLayout;
+  if (pageLayoutSchema && typeof pageLayoutSchema === 'object') {
+    pageLayoutSchema.required = ['pageId', 'layoutId', 'sections'];
+    const sectionSchema = pageLayoutSchema.properties?.sections?.items;
+    if (sectionSchema && typeof sectionSchema === 'object') sectionSchema.required = ['id', 'type', 'titleKey', 'mode', 'order', 'organisms'];
+  }
+
+  const tool = createPlannerToolSchema(CFE_LAYOUT_TOOL_NAME, 'Submit the semantic layout for one frontend page.', resultSchema) as mls.msg.LLMTool;
+  const parameters = (tool as any).function?.parameters;
+  if (parameters && Array.isArray(parameters.required)) parameters.required = ['status', 'result'];
+  return tool;
+}
+
+function allowAdditionalProperties(schema: any): void {
+  if (!schema || typeof schema !== 'object') return;
+  if (schema.type === 'object' || schema.properties) schema.additionalProperties = true;
+  if (schema.properties && typeof schema.properties === 'object') {
+    for (const propertySchema of Object.values(schema.properties)) allowAdditionalProperties(propertySchema);
+  }
+  if (schema.items) allowAdditionalProperties(schema.items);
+}
 
 export async function readCreateContext(): Promise<CfeCreateContext> {
   const project = mls.actualProject || 0;
@@ -493,24 +519,25 @@ const cfePageLayoutConfig: PlannerExtractConfig<CfePageLayoutResult> = {
 
 function normalizeCfePageLayoutResult(value: unknown): CfePageLayoutResult {
   const result = assertRecord(value, 'result');
-  const pageLayout = assertRecord(result.pageLayout, 'result.pageLayout');
+  const pageLayout = assertRecord(isRecord(result.pageLayout) ? result.pageLayout : result, 'result.pageLayout');
   return {
     pageLayout: {
       pageId: assertString(pageLayout.pageId, 'result.pageLayout.pageId'),
       layoutId: assertString(pageLayout.layoutId, 'result.pageLayout.layoutId'),
       sections: assertArray(pageLayout.sections, 'result.pageLayout.sections').map((item, index) => normalizeLayoutSection(item, `sections[${index}]`)),
-      i18n: normalizeI18n(pageLayout.i18n),
-      dataBindings: assertArray(pageLayout.dataBindings, 'result.pageLayout.dataBindings').map((item, index) => normalizeDataBinding(item, `dataBindings[${index}]`)),
+      i18n: normalizeI18n(pageLayout.i18n ?? result.i18n),
+      dataBindings: normalizeDataBindings(pageLayout.dataBindings ?? result.dataBindings),
     },
   };
 }
 
 function normalizeLayoutSection(value: unknown, path: string): CfeLayoutSection {
   const section = assertRecord(value, path);
+  const id = assertString(section.id, `${path}.id`);
   return {
-    id: assertString(section.id, `${path}.id`),
+    id,
     type: assertString(section.type, `${path}.type`) === 'sectionTab' ? 'sectionTab' : 'section',
-    sectionName: assertString(section.sectionName, `${path}.sectionName`),
+    sectionName: optionalString(section.sectionName) || id.split('.').pop() || id,
     titleKey: assertString(section.titleKey, `${path}.titleKey`),
     mode: assertString(section.mode, `${path}.mode`),
     order: normalizeOrder(section.order, `${path}.order`),
@@ -598,6 +625,11 @@ function normalizeLayoutActions(value: unknown, path: string): CfeLayoutAction[]
   });
 }
 
+function normalizeDataBindings(value: unknown): { id: string; source: string; entity?: string; command?: string; description?: string; stateKey?: string; inputStateKeys?: string[] }[] {
+  if (value === undefined || value === null) return [];
+  return assertArray(value, 'result.pageLayout.dataBindings').map((item, index) => normalizeDataBinding(item, `dataBindings[${index}]`));
+}
+
 function normalizeDataBinding(value: unknown, path: string): { id: string; source: string; entity?: string; command?: string; description?: string; stateKey?: string; inputStateKeys?: string[] } {
   const binding = assertRecord(value, path);
   return {
@@ -612,6 +644,7 @@ function normalizeDataBinding(value: unknown, path: string): { id: string; sourc
 }
 
 function normalizeI18n(value: unknown): Record<string, string> {
+  if (value === undefined || value === null) return {};
   const record = assertRecord(value, 'result.pageLayout.i18n');
   const normalized: Record<string, string> = {};
   for (const [key, item] of Object.entries(record)) normalized[key] = assertString(item, `i18n.${key}`);

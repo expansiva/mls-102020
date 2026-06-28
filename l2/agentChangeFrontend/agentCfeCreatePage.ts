@@ -89,6 +89,13 @@ You are ${AGENT_NAME}, the page-layout agent for collab.codes Stage 2 frontend c
 Create the semantic layout for exactly ONE page11 .defs.ts file. Call the "${cfePageLayoutToolName}"
 tool with { status, result, questions, trace }. Do not return prose.
 
+Tool argument shape:
+- status must be "ok".
+- result must contain only { pageLayout }.
+- questions must be [] when there are no questions.
+- trace must be [] when there is no trace to report.
+- Do not put i18n, dataBindings or any pageLayout field beside result.pageLayout.
+
 The result must preserve the section -> organism structure:
 - result.pageLayout.sections[] is the source of truth for page sections.
 - every section contains organisms[].
@@ -98,6 +105,8 @@ The result must preserve the section -> organism structure:
 
 Layout rules:
 - Stable ids are required for sections, organisms, intentions, fields, columns and actions.
+- Every section must include sectionName.
+- Prefer including result.pageLayout.i18n and result.pageLayout.dataBindings; use {} and [] when empty.
 - Use order numbers in increments of 10.
 - Always include fields, columns, filters, toolbar, rowActions and actions arrays on every intention;
   use [] when a list is empty.
