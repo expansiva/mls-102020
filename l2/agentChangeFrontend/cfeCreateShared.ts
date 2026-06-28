@@ -404,7 +404,7 @@ export async function saveSharedDefs(prepared: CfePreparedPage, layout: CfePageL
 }
 
 export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Promise<CfePageLayoutDefinition> {
-  const repairedLayout = repairUnknownLayoutActions(prepared, layout);
+  const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutActions(prepared, layout));
   validatePageLayout(prepared, repairedLayout);
   const enrichedLayout = enrichLayoutWithStateRefs(prepared, repairedLayout);
   const definition = {
@@ -658,7 +658,7 @@ function normalizeOrder(value: unknown, path: string): number {
 }
 
 function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[], baseDefinition: Record<string, unknown>, visualStyle: unknown): Record<string, unknown> {
-  const entityIds = new Set([...page.entityIds, ...operations.flatMap(operationEntities), ...commands.flatMap(command => [...readStringArray(command.readsEntities), ...readStringArray(command.writesEntities)])]);
+  const entityIds = new Set([...page.entityIds, ...operations.flatMap(operationEntities)]);
   const entities = Array.from(entityIds).map(entityId => context.entities.get(entityId)).filter(Boolean).map(entity => ({
     entityId: entity!.entityId,
     title: entity!.title,
@@ -750,6 +750,41 @@ function repairUnknownLayoutActions(prepared: CfePreparedPage, layout: CfePageLa
     console.warn(`[agentCfeCreatePage] dropped unknown layout action(s) for ${prepared.page.pageId}: ${dropped.join('; ')}`);
   }
   return dropped.length > 0 ? { ...layout, sections } : layout;
+}
+
+function repairMissingLayoutI18n(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const i18n: Record<string, string> = { ...layout.i18n };
+  const added: string[] = [];
+  const ensure = (key: string | undefined, fallback: string, kind: 'title' | 'label' | 'empty'): void => {
+    if (!key || i18n[key]) return;
+    i18n[key] = fallbackI18nText(key, fallback, kind);
+    added.push(key);
+  };
+
+  for (const section of layout.sections) {
+    ensure(section.titleKey, section.sectionName || section.id, 'title');
+    for (const organism of section.organisms) {
+      ensure(organism.titleKey, organism.purpose || organism.organismName || organism.id, 'title');
+      for (const intent of organism.intentions) {
+        ensure(intent.titleKey, intent.intent || intent.id, 'title');
+        ensure(intent.emptyKey, intent.intent || intent.id, 'empty');
+        for (const field of [...intent.fields, ...intent.columns, ...intent.filters]) ensure(field.labelKey, field.field || field.id, 'label');
+        for (const action of [...intent.toolbar, ...intent.rowActions, ...intent.actions]) ensure(action.labelKey, action.action || action.id, 'label');
+      }
+    }
+  }
+
+  if (added.length > 0) {
+    console.warn(`[agentCfeCreatePage] repaired missing i18n key(s) for ${prepared.page.pageId}: ${added.join('; ')}`);
+  }
+  return added.length > 0 ? { ...layout, i18n } : layout;
+}
+
+function fallbackI18nText(key: string, fallback: string, kind: 'title' | 'label' | 'empty'): string {
+  if (kind === 'empty') return 'Nenhum registro encontrado';
+  const source = fallback || key.replace(/\.(title|label|empty)$/i, '');
+  const lastSegment = source.split('.').filter(Boolean).pop() || source;
+  return humanizeId(lastSegment);
 }
 
 function validatePageLayout(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): void {
@@ -1216,13 +1251,6 @@ function commandFromOperation(operation: CfeOperationDef, entities: Map<string, 
     kind,
     input: kind === 'query' ? queryInput(operation, entity) : commandInput(operation, entity),
     output: kind === 'query' ? queryOutput(operation, entity) : commandOutput(entity),
-    readsEntities: unique([operation.entity, ...normalizeEntityRefs(operation.reads)]),
-    writesEntities: unique(normalizeEntityRefs(operation.writes)),
-    readsTables: [],
-    writesTables: [],
-    usecaseRefs: [operation.operationId],
-    layerContract: { controllerLayer: 'layer_2_controllers', mustCallLayer: 'layer_3_usecases', directTableAccessForbidden: true },
-    rulesApplied: unique([...(operation.rulesApplied || []), ...(entity?.rulesApplied || [])]),
   };
 }
 
@@ -1469,15 +1497,11 @@ function contractFieldFromEntityField(entity: CfeEntityDef, field: CfeFieldDef, 
   const out: Record<string, unknown> = {
     name: field.fieldId,
     type: toFrontendType(field.type),
-    sourceEntity: entity.entityId,
-    sourceField: field.fieldId,
   };
   if (options.includeRequired !== false) out.required = options.required ?? (field.required === true);
   const enumValues = field.enum?.length ? field.enum : (field.fieldId === 'status' ? entity.statusEnum : []);
   if (enumValues.length > 0) out.enum = enumValues;
-  if (field.fieldId === 'status' && entity.lifecycleStates.length > 0) out.lifecycleStates = entity.lifecycleStates;
   if (field.description) out.description = field.description;
-  if (field.type && field.type !== toFrontendType(field.type)) out.sourceType = field.type;
   return out;
 }
 

@@ -44,7 +44,7 @@
       "Scan all l4 owners and process only statusFrontend = toCreate.",
       "Exit cleanly when there is no create work.",
       "Generate final L2 .defs.ts files directly under web/contracts, web/shared and web/desktop/page11.",
-      "Preserve ontology field metadata in contract input/output fields, including enum, description, sourceEntity/sourceField, statusEnum-derived enum and lifecycleStates.",
+      "Preserve only frontend-facing field metadata in contract input/output fields, including enum, description and statusEnum-derived enum. Do not emit backend/L4 provenance such as sourceEntity/sourceField, lifecycleStates, table refs, usecase refs, layer contracts or rulesApplied.",
       "Update l0/config.json with the page/menu entries for generated pages.",
       "Generate a semantic page layout in the page .defs.ts using the layout rules from spec.md.",
       "Use JSON-schema-backed LLM outputs whenever an LLM is used, following the agentNewSolution2 pattern.",
@@ -65,7 +65,7 @@
       "mobile or non-desktop devices.",
       "alternate layouts/design systems beyond page11.",
       "patching existing pages created by a previous run.",
-      "frontend/backend reconciliation beyond shared operationId/usecaseRefs."
+      "frontend/backend reconciliation beyond shared action ids. Backend resolves operation/usecase/table/rule metadata directly from l4."
     ],
     "notResponsible": [
       "L1 controller generation.",
@@ -186,7 +186,7 @@
       },
       "CfeContractDefsResult": {
         "required": ["moduleName", "pageId", "defPath", "pipeline", "definition"],
-        "purpose": "Contract .defs.ts content with bffCommands, input/output shapes, readsEntities, writesEntities, usecaseRefs and rulesApplied."
+        "purpose": "Contract .defs.ts content with pure frontend-facing BFF commands: commandName, purpose, kind, input and output shapes only."
       },
       "CfeSharedDefsResult": {
         "required": ["moduleName", "pageId", "defPath", "pipeline", "definition"],
@@ -227,7 +227,7 @@
       "page": "l2/{module}/web/desktop/page11/{page}.defs.ts"
     },
     "pipeline": "Generated .defs.ts files must include pipeline metadata compatible with a later materialization step, but this flow does not execute the pipeline.",
-    "rulesHandling": "Emit rulesApplied in defs. rulesPath may point to l4/rules/{module}Rules.defs.ts only after the materializer accepts the new l4 rule shape. Until then, rulesPath is optional and missing resolved rule context must not block page creation.",
+    "rulesHandling": "Do not emit rulesApplied in web/contracts. Backend-facing rule metadata stays in l4 and is read directly by agentChangeBackend. Page/shared metadata may reference rules only when needed for frontend behavior and must not block page creation.",
     "layoutContract": "The page .defs.ts contains semantic layout, not raw DOM/CSS. Layout nodes use stable id/order keys and reference shared actions/state/contracts/i18n keys by key only; i18n values live in shared defs. It is later materialized into plain Lit/render code by agentChangeFrontend/skills/genCfePage11RenderTs.ts. The full section -> organism -> intention tree lives in definition.layout.sections; top-level sections is only a compact compatibility summary. page11 must not reference molecule groups, molecule tags or package-specific component names."
   },
   "parallelStrategy": {
@@ -370,7 +370,7 @@
       "strictTool": true,
       "goal": "For one planned page, generate web/contracts/{page}.defs.ts. Resolve bffCommands from l4 owners and ontology.",
       "savedArtifact": "l2/{module}/web/contracts/{page}.defs.ts",
-      "definitionRequirements": "definition is an array of bffCommands with input/output, readsEntities, writesEntities, usecaseRefs, layerContract and rulesApplied."
+      "definitionRequirements": "definition is an array of pure BFF commands with commandName, purpose, kind, input and output only. Do not include readsEntities, writesEntities, table refs, usecaseRefs, layerContract, rulesApplied or field source provenance."
     },
     {
       "planId": "page-shared:<page>",

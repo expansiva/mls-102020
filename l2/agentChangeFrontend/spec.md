@@ -23,10 +23,10 @@ Olhar o `statusFrontend` dos owners no `l4` e **fazer só o que está pendente**
 Este worker lê/escreve **apenas `statusFrontend`**; o `agentChangeBackend` cuida do `statusBackend`.
 São independentes — sem ordem obrigatória entre os dois workers nem ambiguidade de status único.
 
-**Espaço de IDs:** as referências de entidade nas páginas/bffCommands usam SEMPRE id de ontologia (qualificado entre módulos). **Nunca** nomes de agregado (`OrderAggregate`, `menuEntity`).
+**Espaço de IDs:** as referências de entidade usadas para derivar páginas/layout vêm SEMPRE do id de ontologia (qualificado entre módulos). **Nunca** nomes de agregado (`OrderAggregate`, `menuEntity`). O contrato frontend não deve publicar esses ids; eles ficam no L4 e são lidos diretamente pelo `agentChangeBackend`.
 
 **Guardrails (lições analise10/11/12):**
-- bffCommands devem carregar **tipo resolvido** via ontologia (status como enum literal, ids como `uuid`), para o backend não adivinhar (T1/T5).
+- bffCommands devem carregar **tipo frontend resolvido** via ontologia (status como enum literal), mas sem metadados de backend como entidade, tabela, usecase, layer contract, regras ou campo de origem.
 - Não referenciar concerns de plataforma (auth/audit/monitoring/notifications) — são da plataforma.
 - Evitar **fragmentação**: guardas/confirmações/erros de um processo são **estados do Workflow** (uma página com estados/modais), não dezenas de micro-páginas.
 - Determinístico é duro; opinião de LLM é suave (não derruba o fluxo). Finalizar a task cedo.
@@ -108,13 +108,11 @@ Fluxo sugerido:
 1. Ler `l4/{module}/module.defs.ts`, `l4/{module}/ontology/*.defs.ts`, `l4/workflows/*.defs.ts`, `l4/operations/*.defs.ts`, `l4/rules/*.defs.ts`, `l4/actors/{module}Actors.defs.ts` e `l5/{module}/process.defs.ts`.
 2. Validar o modelo antes de gerar: owners pendentes, operações referenciadas por workflows existentes, entidades e campos resolvíveis, regras existentes e `healthReport` sem erro fatal.
 3. Agrupar owners em páginas. Operações simples podem virar páginas de CRUD/query; workflows devem virar páginas orientadas a estado/processo, evitando uma página por micro-transição.
-4. Derivar `bffCommands` concretos por página a partir de operations/workflows + ontologia:
+4. Derivar `bffCommands` concretos por página a partir de operations/workflows + ontologia, publicando apenas o contrato frontend:
    - `commandName`: preferir `operationId` ou uma composição estável `workflowId.transition`;
    - `kind`: mapear `operation.kind` (`query/view` => query, `create/update/delete` => command);
    - `input/output`: resolver campos pela ontologia, incluindo enum literal quando existir;
-   - `readsEntities/writesEntities`: preservar ids canônicos de ontologia;
-   - `rulesApplied`: unir regras do owner, operação e entidades tocadas;
-   - `usecaseRefs`: usar `operationId` quando houver operação concreta.
+   - não emitir `readsEntities`, `writesEntities`, `readsTables`, `writesTables`, `usecaseRefs`, `layerContract`, `rulesApplied`, `sourceEntity`, `sourceField`, `sourceType` ou `lifecycleStates`.
 5. Gerar os três `.defs.ts` frontend:
    - `web/contracts/{page}.defs.ts`;
    - `web/shared/{page}.defs.ts`;
@@ -159,14 +157,14 @@ Eles ainda não são suficientes para uma geração precisa e sem inferência em
 - dados de layout/device/design-system por página além do default `web/desktop/page11`;
 - menu/agrupamento/ordem por ator ou prioridade;
 - resolução de conflitos quando uma capability aparece em vários owners;
-- contrato entre frontend e backend para `usecaseRefs`, já que Stage 1 explicitamente não gera `layer_3` nem tabelas.
+- contrato entre frontend e backend deve ficar limitado à assinatura BFF consumida pelo frontend; o vínculo com usecase/tabela/regra deve ser resolvido pelo `agentChangeBackend` diretamente no L4.
 
 Além disso, o próprio exemplo `mls-102050` ainda não está íntegro: `l4/trace/behavior-health-report.json` marca `passed: false` porque o workflow `closeDailyShift` referencia `updateDailyShiftStatus` e `recordClosingCashMovement`, mas essas operações não existem. O `agentChangeFrontend` deve bloquear ou marcar como pendente com erro claro quando o owner tem referências quebradas, em vez de inventar operações.
 
 ### Sugestões
 
 - Tratar o L4 como fonte de verdade, mas adicionar uma etapa interna `derive-page-plan` antes dos três `.defs.ts`. Se precisar persistir auditoria, salvar em `l2/{module}/trace`, não como o antigo `l2/{module}/{page}.defs.ts` canônico.
-- Normalizar um schema único para comandos BFF antes da materialização. O ideal é `commands[]` com `commandName`, `kind`, `inputShape`, `outputShape`, `readsEntities`, `writesEntities`, `rulesApplied` e `usecaseRefs`. Isso evita o problema atual de tipos frouxos, como `OrderItem[]` virar `string` no contrato gerado quando não há shape resolvido.
+- Normalizar um schema único para comandos BFF antes da materialização. O ideal é `commands[]` com `commandName`, `kind`, `inputShape` e `outputShape`, sem metadados de backend. Isso evita o problema atual de tipos frouxos, como `OrderItem[]` virar `string` no contrato gerado quando não há shape resolvido.
 - Resolver tipos sempre pela ontologia. Campo `Order.status` deve virar união literal (`'draft' | 'sentToKitchen' | ...`) no contrato, não `string` genérico.
 - Separar claramente responsabilidades:
   - `agentChangeFrontend`: experiência, contrato frontend, shared, layout e menu;
@@ -259,15 +257,10 @@ Shape:
   - `commandName`;
   - `purpose`;
   - `kind`: `query` ou `command`;
-  - `input`: array de `{ name, type, required }`;
-  - `output`: array de `{ name, type }`;
-  - `readsEntities`;
-  - `writesEntities`;
-  - `readsTables`;
-  - `writesTables`;
-  - `usecaseRefs`;
-  - `layerContract`;
-  - `rulesApplied`.
+  - `input`: array de `{ name, type, required?, enum?, description? }`;
+  - `output`: array de `{ name, type, required?, enum?, description? }`.
+
+O contrato é puro BFF/frontend. Não publicar nele metadados de backend/L4 como entidade, tabela, usecase, layer contract, regras, campo de origem ou lifecycle interno.
 
 Pipeline:
 
@@ -302,8 +295,8 @@ Pipeline:
 - `defPath`: `_{project}_/l2/{module}/web/shared/{page}.defs.ts`;
 - `dependsFiles`: contract `.defs.ts`, contract `.ts` e page11 `.defs.ts`;
 - `skills`: [`_102020_/l2/agentChangeFrontend/skills/genCfeSharedTs.ts`];
-- `rulesApplied`: união das regras usadas pelos comandos;
-- `rulesPath`: precisa apontar para regras em shape aceito pelo materializador;
+- `rulesApplied`: opcional, somente quando houver regra de frontend/materialização; não deve vir do contrato BFF;
+- `rulesPath`: opcional, somente quando houver regra de frontend em shape aceito pelo materializador;
 - `agent`: `agentMaterializeGen`.
 
 #### 3. Page/Layout
@@ -463,9 +456,7 @@ Para cada página derivada, gerar `bffCommands` concretos a partir dos owners:
 - `input` de query deve vir de filtros úteis inferidos de `reads`, lifecycle/status e relações;
 - `output` deve vir dos campos da entidade principal que a tela precisa exibir;
 - enum da ontologia deve ser preservado como tipo literal/union, não `string`;
-- `readsEntities`/`writesEntities` usam ids canônicos de ontologia;
-- `usecaseRefs` usa `operationId` quando existir operação concreta;
-- `rulesApplied` é a união de regras da operation/workflow/entity.
+- metadados de backend/L4 não devem ser publicados no contrato frontend; o `agentChangeBackend` lê diretamente o L4.
 
 Esta derivação ainda exige heurística ou LLM porque o L4 não diz exatamente quais campos aparecem em filtro, tabela, formulário e detalhe.
 
@@ -519,6 +510,6 @@ Após validar o paralelo, a implementação real inicial para `toCreate` está d
 
 O layout LLM deve manter a estrutura de `sections -> organisms` e enriquecer cada organismo com `intentions`, `id` estável, `order`, `labelKey/titleKey/emptyKey`, referências a actions do shared, campos do contrato/ontologia e `dataBindings`. O `page11` não deve referenciar moléculas, grupos, tags ou pacotes de componentes. Se a saída falhar no schema ou na validação semântica, a página não é marcada como concluída.
 
-Os campos do contrato BFF são gerados mecanicamente a partir da ontologia. Quando um campo da entidade tiver `enum`, `description`, `statusEnum` ou `lifecycleStates`, esses metadados devem ser preservados no `input`/`output` do contrato para o materializador não degradar status/tipos fechados para `string` livre.
+Os campos do contrato BFF são gerados mecanicamente a partir da ontologia. Quando um campo da entidade tiver `enum`, `description` ou `statusEnum`, esses metadados frontend devem ser preservados no `input`/`output` do contrato para o materializador não degradar status/tipos fechados para `string` livre. Não preservar `lifecycleStates`, `sourceEntity`, `sourceField` ou `sourceType` no contrato.
 
 O `page11` materializado deve apenas renderizar. Toda variável editável ou observável precisa estar em `shared.states[]`, e toda mudança de campo deve chamar handler/setter do shared para manter `collabState` atualizado e permitir automação da página.

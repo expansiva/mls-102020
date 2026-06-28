@@ -7,8 +7,9 @@ Generate the TypeScript contract file for one Stage 2 frontend page.
 
 This skill is only for the new agentChangeFrontend format:
 - Input Definition is an array of BFF command descriptors.
-- Each command has commandName, purpose, kind, input[], output[], readsEntities, writesEntities, usecaseRefs and rulesApplied.
-- Each field has name, type, required, enum, description, sourceEntity, sourceField, sourceType and lifecycleStates when available.
+- Each command has commandName, purpose, kind, input[] and output[].
+- Each field has name, type, required, enum and description when available.
+- The contract is frontend-facing BFF shape only. It must not depend on backend metadata such as entity/table refs, usecase refs, layer contracts, rulesApplied or source field provenance.
 
 ## Output
 
@@ -67,4 +68,3 @@ Always generate an Input interface, even if it is empty.
 - Do not emit comments for descriptions or source metadata.
 - Do not invent fields, helper types, commands, imports or values.
 `;
-
