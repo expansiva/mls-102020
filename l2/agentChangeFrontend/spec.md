@@ -282,10 +282,12 @@ Shape:
 
 - `export const definition = { pageId, pageName, moduleName, contractRef, layoutRef, states, actions, initialLoads, navigationRefs, i18n, automation }`
 - `contractRef` aponta para `web/contracts/{page}.defs.ts` e `web/contracts/{page}.ts`; o shared não duplica `bffCommands`.
-- `states[]` contém todos os estados globais da página: filtros, campos de formulário, dados carregados, status de action e status geral.
+- `states[]` contém todos os estados globais da página: filtros, campos de formulário, dados carregados, status de action, status geral e estados complementares exigidos pelo layout page11.
 - `actions[]` contém tanto chamadas BFF quanto setters/handlers de state usados pelo render.
 - `initialLoads[]` lista queries que o shared carrega ao conectar.
 - `navigationRefs` contém navegação `inbound`/`outbound` da página.
+- O shared é gerado depois do page11: primeiro cria os states base pelo contrato, depois reconcilia todos os `stateKey` usados em `page11` e adiciona states complementares controlados quando necessário.
+- A página só pode ser marcada como `done` se todo `page11.stateKey` existir em `shared.states` e toda action usada no layout existir em `shared.actions`.
 
 Pipeline:
 
@@ -357,9 +359,10 @@ Regras do layout no `.defs.ts` da página:
 - todo texto exibido deve entrar como `labelKey`, `titleKey`, `emptyKey` ou campo equivalente de i18n;
 - todo comportamento deve referenciar actions já definidas no shared, como `action`, `rowAction`, `submitAction` ou equivalente;
 - todo binding de dados deve apontar para fontes do shared/BFF/global state, sem declarar payloads novos dentro do layout;
+- `page11` pode sugerir necessidades de estado pelo layout, mas o agente deve reconciliar essas necessidades no shared antes de salvar o marker `done`;
 - ordenação editável por humano deve ser explícita com `order`, especialmente em seções, abas, organismos, colunas, filtros e ações;
 - alterações pequenas esperadas incluem trocar ordem de coluna, renomear chave de i18n, mover organismo entre seções compatíveis e trocar uma intenção por outra compatível;
-- alterações que criam campo, action, binding ou comando BFF novo devem voltar para LLM/pipeline, porque exigem mudança em shared/contracts.
+- alterações que criam campo, action, binding ou comando BFF novo devem voltar para LLM/pipeline, porque exigem mudança em shared/contracts. Estados temporários/display podem ser adicionados no shared pelo reconciliador desde que não sejam enviados ao BFF sem `contractRef`.
 
 Formato recomendado para intenções:
 
@@ -481,7 +484,7 @@ O `flow.json` v1 passa a ser **create-only, com `.defs.ts` + `config.json`, sem 
 - atualiza `l0/config.json` com a página que aparecerá no menu;
 - não gera `.ts`, não gera `.html`, não chama `agentMaterializeL2`/`agentMaterializeGen` e não executa `registerFrontEnd` nesta v1;
 - a geração de layout é uma etapa LLM importante e deve seguir as regras de layout semântico desta spec;
-- a geração por página deve tentar paralelismo: um item paralelo por página com filhos `contract -> layout -> shared -> validate`; como ainda não há exemplo confirmado de `parallel_dynamic` com filhos, o fluxo registra fallback para um único agente paralelo por página que executa essas quatro ações internamente;
+- a geração por página deve tentar paralelismo: um item paralelo por página com filhos `contract -> layout -> shared/state-reconcile -> validate`; como ainda não há exemplo confirmado de `parallel_dynamic` com filhos, o fluxo registra fallback para um único agente paralelo por página que executa essas quatro ações internamente;
 - agentes LLM devem seguir o padrão do `agentNewSolution2`: saída via JSON schema/tool strict (`collab-llm`) e validação local antes de gravar;
 - aliases de modelo e recomendação por tipo de agente ficam registrados no `flow.json`.
 
@@ -491,7 +494,7 @@ Antes de gerar arquivos, a implementação inicial criada para teste faz somente
 
 - `agentChangeFrontend` inicia o fluxo v0.1;
 - `agentCfeV01ScanL4` lê `l4`, encontra owners com `statusFrontend = toCreate` e monta páginas candidatas;
-- cria um fan-out `parallel_dynamic` com `executionMode: { type: "parallel" }`, que deve gerar `progress`; cada página paralela cria filhos `contract -> layout -> shared -> config`;
+- cria um fan-out `parallel_dynamic` com `executionMode: { type: "parallel" }`, que deve gerar `progress`; cada página paralela cria filhos `contract -> layout -> shared/state-reconcile -> config`;
 - `agentCfeV01PageConsole` imprime no console a página que seria criada;
 - `agentCfeV01PageChildConsole` imprime no console cada fase por página;
 - `agentCfeV01FinalConsole` imprime o resumo após a barreira final;
@@ -503,7 +506,7 @@ Após validar o paralelo, a implementação real inicial para `toCreate` está d
 
 - `agentChangeFrontend` inicia o fluxo create-only;
 - `agentCfeCreateScanL4` lê o `l4`, encontra owners com `statusFrontend = toCreate`, cria o fan-out real `create-page-fanout` e agenda a finalização;
-- `agentCfeCreatePage` gera `web/contracts/{page}.defs.ts` de forma determinística, chama LLM com JSON schema/tool strict para o layout semântico, grava `web/desktop/page11/{page}.defs.ts` e depois gera `web/shared/{page}.defs.ts` a partir de `contractRef + layout`;
+- `agentCfeCreatePage` gera `web/contracts/{page}.defs.ts` de forma determinística, chama LLM com JSON schema/tool strict para o layout semântico, grava `web/desktop/page11/{page}.defs.ts` e depois gera `web/shared/{page}.defs.ts` a partir de `contractRef + layout reconciliado`;
 - `agentCfeCreatePage` também grava `l2/{module}/trace/frontend-create-pages/{page}.json` como `inProgress` no início e `done` só depois de layout e shared validados, para evitar que uma página antiga seja aceita por engano;
 - `agentCfeCreateFinalize` atualiza `l0/config.json`, grava `l2/{module}/trace/frontend-create-report.json` e muda os owners gerados para `statusFrontend = done`;
 - `cfeCreateShared` concentra leitura do L4, geração determinística dos comandos, schema/validação do layout, gravação dos `.defs.ts`, merge do config e atualização de status.
@@ -513,3 +516,11 @@ O layout LLM deve manter a estrutura de `sections -> organisms` e enriquecer cad
 Os campos do contrato BFF são gerados mecanicamente a partir da ontologia. Quando um campo da entidade tiver `enum`, `description` ou `statusEnum`, esses metadados frontend devem ser preservados no `input`/`output` do contrato para o materializador não degradar status/tipos fechados para `string` livre. Não preservar `lifecycleStates`, `sourceEntity`, `sourceField` ou `sourceType` no contrato.
 
 O `page11` materializado deve apenas renderizar. Toda variável editável ou observável precisa estar em `shared.states[]`, e toda mudança de campo deve chamar handler/setter do shared para manter `collabState` atualizado e permitir automação da página.
+
+Ordem obrigatória por página:
+
+1. `web/contracts/{page}.defs.ts`: comandos BFF e shapes de input/output.
+2. `web/desktop/page11/{page}.defs.ts`: layout semântico com contrato e states base disponíveis.
+3. Reconciliar `page11` com o contrato: normalizar `stateKey` para campos do contrato, criar states complementares de layout no shared quando forem apenas estado de UI/display, e rejeitar action/comando/campo BFF inexistente.
+4. `web/shared/{page}.defs.ts`: estados/actions finais derivados de contrato + page11 reconciliado.
+5. Validação: todo `page11.stateKey` precisa existir em `shared.states`; toda action do layout precisa existir em `shared.actions`; toda action BFF do shared precisa apontar para comando do contrato.

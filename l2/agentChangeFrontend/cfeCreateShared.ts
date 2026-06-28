@@ -695,6 +695,7 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
         tsPath: contractTsPath(context.project, page),
       },
       availableActions: commands.map(command => command.commandName).filter(Boolean),
+      baseStateKeys: baseSharedStateKeys(page.pageId, commands),
       statePolicy: 'All filters, form fields, query results, action statuses and navigation requests are shared/global state. Page render must not own mutable state.',
     },
     ontology: { entities },
@@ -974,8 +975,12 @@ function deterministicField(id: string, field: string, index: number, i18n: Reco
 }
 
 function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Record<string, unknown> {
-  const states = sharedStates(prepared);
+  const states = sharedStates(prepared, layout);
   const actions = sharedActions(prepared, states);
+  const initialLoads = prepared.commands
+    .filter(command => readString(command.kind) === 'query')
+    .map(command => ({ actionId: readString(command.commandName), stateKey: queryDataStateKey(prepared.page.pageId, readString(command.commandName)) }));
+  validateSharedLayoutRefs(prepared, layout, states, actions, initialLoads);
   return {
     pageId: prepared.page.pageId,
     pageName: prepared.page.pageName,
@@ -993,9 +998,7 @@ function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefini
     },
     states,
     actions,
-    initialLoads: prepared.commands
-      .filter(command => readString(command.kind) === 'query')
-      .map(command => ({ actionId: readString(command.commandName), stateKey: queryDataStateKey(prepared.page.pageId, readString(command.commandName)) })),
+    initialLoads,
     navigationRefs: prepared.navigationRefs,
     i18n: layout.i18n,
     automation: {
@@ -1006,7 +1009,7 @@ function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefini
   };
 }
 
-function sharedStates(prepared: CfePreparedPage): Record<string, unknown>[] {
+function sharedStates(prepared: CfePreparedPage, layout?: CfePageLayoutDefinition): Record<string, unknown>[] {
   const states = new Map<string, Record<string, unknown>>();
   addState(states, {
     stateKey: `ui.${prepared.page.pageId}.status`,
@@ -1050,15 +1053,18 @@ function sharedStates(prepared: CfePreparedPage): Record<string, unknown>[] {
     }
   }
 
+  if (layout) addLayoutSupplementalStates(prepared, layout, states);
   return Array.from(states.values());
 }
 
 function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown>[]): Record<string, unknown>[] {
   const actions: Record<string, unknown>[] = [];
+  const stateKeys = new Set(states.map(state => readString(state.stateKey)).filter(Boolean));
   for (const command of prepared.commands) {
     const commandName = readString(command.commandName);
     if (!commandName) continue;
     const kind = readString(command.kind) === 'query' ? 'query' : 'command';
+    const commandOutputState = commandOutputStateKey(prepared.page.pageId, commandName);
     actions.push({
       actionId: commandName,
       kind,
@@ -1068,7 +1074,7 @@ function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown
       methodName: kind === 'query' ? `load${toPascalCase(commandName)}` : commandName,
       handlerName: `handle${toPascalCase(commandName)}Click`,
       inputStateKeys: commandFieldRecords(command.input).map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
-      outputStateKeys: kind === 'query' ? [queryDataStateKey(prepared.page.pageId, commandName)] : [],
+      outputStateKeys: kind === 'query' ? [queryDataStateKey(prepared.page.pageId, commandName)] : (stateKeys.has(commandOutputState) ? [commandOutputState] : []),
       statusStateKey: actionStatusStateKey(prepared.page.pageId, commandName),
     });
   }
@@ -1088,13 +1094,72 @@ function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown
   return actions;
 }
 
+function addLayoutSupplementalStates(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, states: Map<string, Record<string, unknown>>): void {
+  const prefix = `ui.${prepared.page.pageId}.`;
+  const added: string[] = [];
+  for (const ref of collectLayoutStateRefs(layout)) {
+    if (states.has(ref.stateKey)) continue;
+    if (!ref.stateKey.startsWith(prefix)) throw new Error(`${ref.path} references state outside page namespace ${ref.stateKey}`);
+    const state = layoutSupplementalState(prepared, ref.stateKey);
+    addState(states, state);
+    added.push(ref.stateKey);
+  }
+  if (added.length > 0) {
+    console.warn(`[agentCfeCreatePage] added shared supplemental state(s) for ${prepared.page.pageId}: ${added.join('; ')}`);
+  }
+}
+
+function layoutSupplementalState(prepared: CfePreparedPage, stateKey: string): Record<string, unknown> {
+  const name = stateNameFromKey(prepared.page.pageId, stateKey);
+  if (stateKey.includes('.input.')) {
+    return { stateKey, name, kind: 'input', defaultValue: '' };
+  }
+  if (stateKey.includes('.data.')) {
+    return { stateKey, name, kind: 'layoutData', collection: true, defaultValue: [] };
+  }
+  if (stateKey.includes('.output.')) {
+    return { stateKey, name, kind: 'commandOutput', defaultValue: null };
+  }
+  return { stateKey, name, kind: 'layoutState', defaultValue: '' };
+}
+
+function validateSharedLayoutRefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, states: Record<string, unknown>[], actions: Record<string, unknown>[], initialLoads: Record<string, unknown>[]): void {
+  const stateKeys = new Set(states.map(state => readString(state.stateKey)).filter(Boolean));
+  const actionIds = new Set(actions.map(action => readString(action.actionId)).filter(Boolean));
+  const commandNames = new Set(prepared.commands.map(command => readString(command.commandName)).filter(Boolean));
+
+  for (const action of actions) {
+    const actionId = readString(action.actionId);
+    const commandRef = readString(action.commandRef);
+    if (commandRef && !commandNames.has(commandRef)) throw new Error(`shared action ${actionId} references unknown contract command ${commandRef}`);
+    for (const stateKey of [...readStringArray(action.inputStateKeys), ...readStringArray(action.outputStateKeys), readString(action.statusStateKey), readString(action.stateKey)].filter(Boolean)) {
+      if (!stateKeys.has(stateKey)) throw new Error(`shared action ${actionId} references missing state ${stateKey}`);
+    }
+  }
+
+  for (const load of initialLoads) {
+    const actionId = readString(load.actionId);
+    const stateKey = readString(load.stateKey);
+    if (actionId && !actionIds.has(actionId)) throw new Error(`initialLoad references missing action ${actionId}`);
+    if (stateKey && !stateKeys.has(stateKey)) throw new Error(`initialLoad references missing state ${stateKey}`);
+  }
+
+  for (const ref of collectLayoutStateRefs(layout)) {
+    if (!stateKeys.has(ref.stateKey)) throw new Error(`${ref.path} references missing shared state ${ref.stateKey}`);
+  }
+  for (const ref of collectLayoutActionRefs(layout)) {
+    if (!actionIds.has(ref.action)) throw new Error(`${ref.path} references missing shared action ${ref.action}`);
+  }
+}
+
 function enrichLayoutWithStateRefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
   const cloned = JSON.parse(JSON.stringify(layout)) as CfePageLayoutDefinition;
   cloned.dataBindings = cloned.dataBindings.map(binding => {
     const commandName = binding.command || commandFromBindingSource(binding.source);
-    return commandName ? {
+    const command = commandByName(prepared, commandName);
+    return commandName && command ? {
       ...binding,
-      stateKey: queryDataStateKey(prepared.page.pageId, commandName),
+      stateKey: readString(command.kind) === 'query' ? queryDataStateKey(prepared.page.pageId, commandName) : commandOutputStateKey(prepared.page.pageId, commandName),
       inputStateKeys: commandInputStateKeys(prepared, commandName),
     } : binding;
   });
@@ -1103,13 +1168,34 @@ function enrichLayoutWithStateRefs(prepared: CfePreparedPage, layout: CfePageLay
     for (const organism of section.organisms) {
       for (const intent of organism.intentions) {
         const commandName = intentCommandName(intent, organism.userActions);
-        if (commandName && isQueryCommand(prepared, commandName) && intentUsesQueryResult(intent)) intent.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
+        const isQuery = isQueryCommand(prepared, commandName);
+        if (commandName && isQuery && intentUsesQueryResult(intent)) intent.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
         if (commandName) {
           for (const field of [...intent.fields, ...intent.filters]) {
-            field.stateKey = inputStateKey(prepared.page.pageId, commandName, field.field);
+            const inputField = resolveCommandFieldName(prepared, commandName, field.field, 'input');
+            const outputField = resolveCommandFieldName(prepared, commandName, field.field, 'output');
+            if (inputField) {
+              field.field = inputField;
+              field.stateKey = inputStateKey(prepared.page.pageId, commandName, inputField);
+            } else if (isQuery && outputField) {
+              field.field = outputField;
+              field.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
+            } else {
+              field.stateKey = layoutFieldStateKey(prepared.page.pageId, field);
+            }
           }
           for (const field of intent.columns) {
-            field.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
+            const outputField = resolveCommandFieldName(prepared, commandName, field.field, 'output');
+            const inputField = resolveCommandFieldName(prepared, commandName, field.field, 'input');
+            if (isQuery && outputField) {
+              field.field = outputField;
+              field.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
+            } else if (inputField) {
+              field.field = inputField;
+              field.stateKey = inputStateKey(prepared.page.pageId, commandName, inputField);
+            } else {
+              field.stateKey = layoutFieldStateKey(prepared.page.pageId, field);
+            }
           }
         }
         for (const action of [...intent.toolbar, ...intent.rowActions, ...intent.actions]) action.actionKey = action.action;
@@ -1117,6 +1203,46 @@ function enrichLayoutWithStateRefs(prepared: CfePreparedPage, layout: CfePageLay
     }
   }
   return cloned;
+}
+
+function collectLayoutStateRefs(layout: CfePageLayoutDefinition): { stateKey: string; path: string }[] {
+  const refs: { stateKey: string; path: string }[] = [];
+  const add = (stateKey: string | undefined, path: string): void => {
+    if (stateKey) refs.push({ stateKey, path });
+  };
+
+  for (const binding of layout.dataBindings) {
+    add(binding.stateKey, `dataBinding:${binding.id}.stateKey`);
+    for (const stateKey of binding.inputStateKeys || []) add(stateKey, `dataBinding:${binding.id}.inputStateKeys`);
+  }
+  for (const section of layout.sections) {
+    for (const organism of section.organisms) {
+      for (const intent of organism.intentions) {
+        add(intent.stateKey, `${intent.id}.stateKey`);
+        for (const field of [...intent.fields, ...intent.columns, ...intent.filters]) add(field.stateKey, `${field.id}.stateKey`);
+      }
+    }
+  }
+  return refs;
+}
+
+function collectLayoutActionRefs(layout: CfePageLayoutDefinition): { action: string; path: string }[] {
+  const refs: { action: string; path: string }[] = [];
+  const add = (action: string | undefined, path: string): void => {
+    if (action) refs.push({ action, path });
+  };
+
+  for (const section of layout.sections) {
+    for (const organism of section.organisms) {
+      for (const action of organism.userActions) add(action, `${organism.id}.userActions`);
+      for (const intent of organism.intentions) {
+        add(intent.action, `${intent.id}.action`);
+        add(intent.submitAction, `${intent.id}.submitAction`);
+        for (const action of [...intent.toolbar, ...intent.rowActions, ...intent.actions]) add(action.action, `${action.id}.action`);
+      }
+    }
+  }
+  return refs;
 }
 
 function layoutSectionSummary(sections: CfeLayoutSection[]): Record<string, unknown>[] {
@@ -1161,9 +1287,34 @@ function commandFieldRecords(value: unknown): { name: string; required?: boolean
   return value.map(item => isRecord(item) ? { name: readString(item.name), required: item.required === true } : { name: '' }).filter(item => item.name);
 }
 
+function baseSharedStateKeys(pageId: string, commands: Record<string, unknown>[]): string[] {
+  const keys: string[] = [`ui.${pageId}.status`];
+  for (const command of commands) {
+    const commandName = readString(command.commandName);
+    if (!commandName) continue;
+    keys.push(actionStatusStateKey(pageId, commandName));
+    keys.push(...commandFieldRecords(command.input).map(field => inputStateKey(pageId, commandName, field.name)));
+    if (readString(command.kind) === 'query') keys.push(queryDataStateKey(pageId, commandName));
+  }
+  return unique(keys);
+}
+
 function commandInputStateKeys(prepared: CfePreparedPage, commandName: string): string[] {
   const command = prepared.commands.find(item => readString(item.commandName) === commandName);
   return commandFieldRecords(command?.input).map(field => inputStateKey(prepared.page.pageId, commandName, field.name));
+}
+
+function commandByName(prepared: CfePreparedPage, commandName: string): Record<string, unknown> | undefined {
+  return prepared.commands.find(item => readString(item.commandName) === commandName);
+}
+
+function resolveCommandFieldName(prepared: CfePreparedPage, commandName: string, fieldName: string, direction: 'input' | 'output'): string | undefined {
+  const command = commandByName(prepared, commandName);
+  const fields = commandFieldRecords(command?.[direction]);
+  const exact = fields.find(field => field.name === fieldName);
+  if (exact) return exact.name;
+  const tail = fieldName.split('.').filter(Boolean).pop() || fieldName;
+  return fields.find(field => field.name === tail)?.name;
 }
 
 function intentCommandName(intent: CfeLayoutIntent, userActions: string[]): string {
@@ -1193,9 +1344,15 @@ function defaultValueForField(field: { required?: boolean }): string {
 
 function inputStateKey(pageId: string, commandName: string, fieldName: string): string { return `ui.${pageId}.input.${commandName}.${fieldName}`; }
 function queryDataStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.data.${commandName}`; }
+function commandOutputStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.output.${commandName}`; }
 function actionStatusStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.action.${commandName}.status`; }
 function inputStateName(commandName: string, fieldName: string): string { return `${commandName}${toPascalCase(fieldName)}`; }
 function queryStateName(commandName: string): string { return `${commandName}Data`; }
+function layoutFieldStateKey(pageId: string, field: CfeLayoutField): string { return `ui.${pageId}.layout.${toSafeShortName(field.id || field.field)}`; }
+function stateNameFromKey(pageId: string, stateKey: string): string {
+  const local = stateKey.replace(`ui.${pageId}.`, '');
+  return toPascalCase(local) || 'layoutState';
+}
 function contractTsPath(project: number, page: CfePagePlan): string { return `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`; }
 
 function buildPagePlans(workflows: Map<string, CfeWorkflowDef>, operations: Map<string, CfeOperationDef>, moduleFallback: string): CfePagePlan[] {

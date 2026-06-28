@@ -118,6 +118,9 @@ Layout rules:
 - The only legal BFF action values are shared.availableActions from the prompt. This applies to
   organism.userActions, intention.action, intention.submitAction, toolbar[].action, rowActions[].action
   and actions[].action.
+- Use shared.baseStateKeys only when you need to reference an existing state explicitly.
+- Do not invent stateKey values. If a layout element needs state and no shared.baseStateKeys entry fits,
+  omit stateKey; the agent will reconcile page11 state references into shared after layout generation.
 - Do not use UI-only action names such as select*, cancel, close, open, edit, view, remove or clear
   unless the exact name appears in shared.availableActions. Row selection and cancel/reset gestures
   should be represented as state/display intent or omitted, not as BFF actions.
