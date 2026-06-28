@@ -39,14 +39,37 @@ Generate:
 - Imports:
   - CollabLitElement from /_102029_/l2/collabLitElement.js
   - property from lit/decorators.js
-  - execBff and BffClientOptions from /_102029_/l2/bffClient.js
-  - setState, getState, subscribe, unsubscribe or initState only when used
-  - runBlockingUiAction only when BFF click handlers are generated
+  - execBff and type BffClientOptions from /_102029_/l2/bffClient.js
+  - setState, getState, subscribe, unsubscribe or initState only from /_102029_/l2/collabState.js when used
+  - runBlockingUiAction only from /_102029_/l2/interactionRuntime.js when BFF click handlers are generated
   - contract types from /_{project}_/l2/{moduleName}/web/contracts/{pageName}.js, using only interfaces/types that exist in the contract .ts context
 - export class {ModulePascal}{PagePascal}Base extends CollabLitElement
 
 Do not use customElement.
 Do not implement render().
+
+## Runtime API contracts
+
+Use exactly these APIs:
+
+import { execBff, type BffClientOptions } from '/_102029_/l2/bffClient.js';
+import { runBlockingUiAction } from '/_102029_/l2/interactionRuntime.js';
+import { getState, setState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
+
+Never import getState, setState or runBlockingUiAction from bffClient.js or collabLitElement.js.
+Never import stateManager.js, stateStore.js, uiBlocking.js or blockingUi.js; those modules do not exist.
+
+execBff has this signature:
+const response = await execBff<OutputType>(routeKey, params, options);
+
+BffClientOptions has only mode, timeoutMs and signal. Do not put routeKey inside options.
+When using mode, only use 'silent' or 'blocking'. Use 'silent' for query actions and 'blocking' for command actions.
+Never use mode values such as 'query', 'command' or 'standard'.
+The routeKey string is always the first argument to execBff.
+The params object is always the second argument, even when it is {}.
+The return value is an envelope: { ok, data, error }. Never assign the response envelope directly to an output state. Use response.data only after checking response.ok.
+getState is not generic. Use casts after the call when needed, e.g. getState(key) as SomeType.
+subscribe returns void and unsubscribe requires the same state keys plus component. Do not push subscribe() results into an array of unsubscribe callbacks.
 
 ## State generation
 
@@ -82,9 +105,10 @@ For every action in actions[]:
 - Generate handlerName exactly as action.handlerName when present.
 - Set statusStateKey to "loading" before execBff, then "success" or "error".
 - Build params from action.inputStateKeys by reading mapped properties.
-- Call execBff with action.routeKey when present; otherwise use "{moduleName}.{pageId}.{commandRef}".
+- Call execBff with action.routeKey when present; otherwise use "{moduleName}.{pageId}.{commandRef}". The route key is the first argument, not an option field.
 - Use contract input/output interfaces only if they exist in contract .ts context.
 - Write response data into action.outputStateKeys by mapping each stateKey to a declared property and calling setState.
+- If the response is not ok, throw or set error state. If the action has outputStateKeys, write response.data, falling back to [] only for array output states.
 - Query actions used in initialLoads must be safe to call without explicit params.
 - Handler wrappers must use runBlockingUiAction for command actions and may call query methods directly for query actions.
 
@@ -109,4 +133,3 @@ disconnectedCallback:
 - No guessed handler names.
 - No guessed contract interface names.
 `;
-

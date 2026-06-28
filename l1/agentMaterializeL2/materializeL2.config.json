@@ -1,0 +1,12 @@
+{
+  "baseUrl": "https://llm.collab.codes",
+  "token": "collab_c029ce5ff9e94b13bf0b841cdda1dbed_8205442a80",
+  "orgId": "collabcodes",
+  "userId": "agentMaterializeL2",
+  "agentName": "agentMaterializeL2",
+  "toolStrict": true,
+  "timeoutMs": 200000,
+  "temperature": 0,
+  "maxTokens": 32000,
+  "modelTypeOverride": "codehigh"
+}

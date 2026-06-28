@@ -73,7 +73,7 @@ For every action:
 Render page11 as a simple operational page:
 - outer wrapper: min-h-full bg-slate-50 dark:bg-slate-950
 - inner container: max-w-6xl mx-auto px-4 py-6 space-y-6
-- header with pageName and purpose
+- header with page title from an existing msg key. Do not render purpose unless a purpose msg key exists in the shared class.
 - sections as cards
 - organisms as grouped panels
 - plain forms for commandForm intentions
@@ -104,5 +104,6 @@ Do not create local CSS.
 - Render must compile even when some optional layout hints are missing.
 - Prefer omitting an interaction over inventing one.
 - Every visible text should use this.msg when the key exists.
+- Never use this.purpose; shared/base classes do not expose a purpose property.
 - Do not use page definition i18n; it is intentionally absent.
 `;
