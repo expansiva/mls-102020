@@ -30,7 +30,7 @@
       "agentCfeCreateScanL4 reads l4 owners with statusFrontend = toCreate and creates a real parallel fan-out with progress.",
       "agentCfeCreatePage generates web/contracts deterministically, calls an LLM with a strict tool schema to generate web/desktop/page11 semantic layout defs for one page, reconciles layout state references, then writes web/shared from contractRef + layout-derived states/actions.",
       "agentCfeCreatePage writes l2/{module}/trace/frontend-create-pages/{page}.json as inProgress/done so finalize does not accept stale page defs from an older run.",
-      "agentCfeMaterializeL2 reads the generated .defs.ts pipelines, creates progress fan-outs for contracts, shared and pages, schedules agentCfeMaterializeGen for .ts generation, and keeps registration behind the materialization fan-outs.",
+      "agentCfeMaterializeL2 reads the generated .defs.ts pipelines and creates sequential phase launchers for contracts, shared and pages. Each agentCfeMaterializePhase starts one progress fan-out only after the previous fan-out completed successfully, then schedules agentCfeMaterializeGen for .ts generation.",
       "agentCfeRegisterFrontend writes page preview .html files, updates l0/config.json and writes frontend-register-pages markers.",
       "agentCfeCreateFinalize writes a trace report and marks generated owners statusFrontend = done only after pages have create and register markers done.",
       "The page11 layout keeps the section -> organism structure and enriches it with stable ids, intentions, field/column/action references and data bindings. i18n values live only in shared defs; page11 references keys. page11 is the plain implementation and does not reference molecule groups/tags."
@@ -501,7 +501,12 @@
     {
       "agentName": "agentCfeMaterializeL2",
       "file": "l2/agentChangeFrontend/agentCfeMaterializeL2.ts",
-      "role": "Reads generated page .defs.ts pipelines, creates progress fan-outs for contract/shared/page materialization, then schedules frontend registration after materialization."
+      "role": "Reads generated page .defs.ts pipelines, creates sequential contract/shared/page phase launchers, then schedules frontend registration after the last materialization fan-out."
+    },
+    {
+      "agentName": "agentCfeMaterializePhase",
+      "file": "l2/agentChangeFrontend/agentCfeMaterializePhase.ts",
+      "role": "Starts one parallel materialization fan-out only after its dependency barrier has completed."
     },
     {
       "agentName": "agentCfeMaterializeGen",

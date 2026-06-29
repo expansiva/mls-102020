@@ -508,7 +508,7 @@ Após validar o paralelo, a implementação real inicial para `toCreate` está d
 - `agentCfeCreateScanL4` lê o `l4`, encontra owners com `statusFrontend = toCreate`, cria o fan-out real `create-page-fanout` e agenda a materialização;
 - `agentCfeCreatePage` gera `web/contracts/{page}.defs.ts` de forma determinística, chama LLM com JSON schema/tool strict para o layout semântico, grava `web/desktop/page11/{page}.defs.ts` e depois gera `web/shared/{page}.defs.ts` a partir de `contractRef + layout reconciliado`;
 - `agentCfeCreatePage` também grava `l2/{module}/trace/frontend-create-pages/{page}.json` como `inProgress` no início e `done` só depois de layout e shared validados, para evitar que uma página antiga seja aceita por engano;
-- `agentCfeMaterializeL2` lê os pipelines gerados e agenda `agentCfeMaterializeGen` para contrato, shared e page11, reutilizando a ordem/staleness do `l2/agentChangeFrontend/cfeMaterializeCore.ts`;
+- `agentCfeMaterializeL2` lê os pipelines gerados, cria launchers sequenciais por fase (`contracts -> shared -> page11`) e cada `agentCfeMaterializePhase` inicia um fan-out paralelo com `agentCfeMaterializeGen` somente depois da fase anterior completar sem erro;
 - `agentCfeRegisterFrontend` gera o `.html` de preview, atualiza `l0/config.json` e grava marcador de registro por página;
 - `agentCfeCreateFinalize` grava `l2/{module}/trace/frontend-create-report.json` e muda os owners gerados para `statusFrontend = done` somente após materialização e registro;
 - `cfeCreateShared` concentra leitura do L4, geração determinística dos comandos, schema/validação do layout, gravação dos `.defs.ts`, merge do config e atualização de status.

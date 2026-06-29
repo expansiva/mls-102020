@@ -54,8 +54,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const candidates = await readMaterializeCandidates(generated.project, generated.pages);
     const planned = planMaterialization(candidates, args.force === true);
     const todo = planned.filter(item => item.stale);
-    const fanouts = createMaterializeFanouts(context, step, todo);
-    const registerDeps = fanouts.map(intent => String((intent.step as any).planning?.planId || '')).filter(Boolean);
+    const phasePlan = createMaterializePhaseSteps(context, step, todo);
+    const registerDeps = phasePlan.terminalPlanIds;
     const register = createAgentStepPayload(
       'register-frontend',
       'agentCfeRegisterFrontend',
@@ -77,7 +77,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const trace = `pages=${generated.pages.length}; materialize=${todo.length}/${planned.length}; skippedPages=${generated.skippedPages.length}`;
     console.log(`[${agent.agentName}] ${trace}`);
     return [
-      ...fanouts,
+      ...phasePlan.intents,
       createAddStepIntent(context, parentStep, register),
       createAddStepIntent(context, parentStep, finalize),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
@@ -165,24 +165,35 @@ function modifiedMs(ref: string): number | null {
   return getFileModified(parsed.project, parsed.level, parsed.folder, parsed.shortName, parsed.extension);
 }
 
-function createMaterializeFanouts(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, planned: PlannedMaterializeItem[]): mls.msg.AgentIntentAddStep[] {
+function createMaterializePhaseSteps(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, planned: PlannedMaterializeItem[]): { intents: mls.msg.AgentIntentAddStep[]; terminalPlanIds: string[] } {
   const groups = groupByMaterializePhase(planned);
   const intents: mls.msg.AgentIntentAddStep[] = [];
-  const priorPlanIds: string[] = [];
+  let priorFanoutPlanIds: string[] = [];
+  let terminalPlanIds: string[] = [];
 
   for (const group of groups) {
     if (group.items.length === 0) continue;
-    const planId = `materialize-${group.phase}`;
-    const args = group.items.map(item => JSON.stringify({
+    const phasePlanId = `materialize-phase-${group.phase}`;
+    const fanoutPlanId = `${phasePlanId}-fanout`;
+    const items = group.items.map(item => ({
       planId: materializePlanId(item.candidate.item),
       defPath: item.candidate.defPath,
     } satisfies GenStepArgs));
-    const fanout = createMaterializeFanoutStep(planId, group.title, args.length, priorPlanIds);
-    intents.push(createAddStepIntent(context, parentStep, fanout, args, 5));
-    priorPlanIds.push(planId);
+    const phase = createAgentStepPayload(
+      phasePlanId,
+      'agentCfeMaterializePhase',
+      group.title,
+      { planId: phasePlanId, fanoutPlanId, title: group.title, items, maxParallel: 5 },
+      priorFanoutPlanIds,
+      'sequential',
+      priorFanoutPlanIds.length > 0 ? 'waiting_dependency' : 'waiting_human_input',
+    );
+    intents.push(createAddStepIntent(context, parentStep, phase));
+    priorFanoutPlanIds = [fanoutPlanId];
+    terminalPlanIds = [fanoutPlanId];
   }
 
-  return intents;
+  return { intents, terminalPlanIds };
 }
 
 function groupByMaterializePhase(planned: PlannedMaterializeItem[]): Array<{ phase: string; title: string; items: PlannedMaterializeItem[] }> {
@@ -192,26 +203,6 @@ function groupByMaterializePhase(planned: PlannedMaterializeItem[]): Array<{ pha
     { phase: 'shared', title: 'Materializar shared {{completed}}/{{total}}, falhas {{failed}}', items: ordered.filter(item => item.candidate.item.type === 'l2_shared') },
     { phase: 'pages', title: 'Materializar paginas {{completed}}/{{total}}, falhas {{failed}}', items: ordered.filter(item => item.candidate.item.type === 'l2_page') },
   ];
-}
-
-function createMaterializeFanoutStep(planId: string, title: string, total: number, dependsOn: string[]): mls.msg.AIAgentStep {
-  return {
-    type: 'agent',
-    stepId: 0,
-    interaction: {
-      input: [{ type: 'system', content: '<!-- modelType: codeinstruct -->' }],
-      cost: 0,
-      trace: [`queued ${total} materialization item(s)`],
-      payload: null,
-    },
-    stepTitle: title,
-    status: dependsOn.length > 0 ? 'waiting_dependency' : 'in_progress',
-    nextSteps: [],
-    agentName: 'agentCfeMaterializeGen',
-    prompt: JSON.stringify({ planId }),
-    rags: [],
-    planning: { planId, dependsOn, executionMode: 'parallel_dynamic', executionHost: 'client' },
-  } as any;
 }
 
 function materializePlanId(item: PipelineItem): string {
