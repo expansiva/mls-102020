@@ -66,7 +66,7 @@ Pega itens com `statusFrontend` em `toCreate | toUpdate | toRemove`; ao iniciar 
 ## Referências de artefato
 - Lê: `l4/...` (owners + ontologia + rules).
 - Escreve: `l2/{module}/web/contracts`, `l2/{module}/web/shared`, `l2/{module}/web/{device}/{layout}` + `.ts` materializado + `l0/config.json`.
-- Reusa: materialização L2 já existente (agentMaterializeL2 / agentMaterializeGen).
+- Reusa o padrão de materialização L2, mas a implementação v1 fica local em `agentChangeFrontend` (`agentCfeMaterializeL2` / `agentCfeMaterializeGen`).
 
 ## Análise geral — agentPrepareDefsL2 e novo pipeline a partir do L4
 
@@ -97,7 +97,7 @@ O `agentMaterializeL2Def` é quem divide a página original em arquivos derivado
 - `l2/{module}/web/shared/{page}.defs.ts` — estado, actions, chamadas BFF e navegação compartilhada;
 - `l2/{module}/web/desktop/page11/{page}.defs.ts` — implementação de layout/dispositivo/design-system.
 
-Depois cada `.defs.ts` recebe um `pipeline` com `agentMaterializeGen`, `skills`, `dependsFiles` e hooks como `registerFrontEnd.ts?registerPage`.
+Depois cada `.defs.ts` recebe um `pipeline` com `agentCfeMaterializeGen`, `skills` e `dependsFiles`.
 
 ### Implicação para o modelo novo
 
@@ -171,7 +171,7 @@ Além disso, o próprio exemplo `mls-102050` ainda não está íntegro: `l4/trac
   - `agentChangeBackend`: usecases, controller BFF real, persistência e tabelas;
   - integração: ambos podem compartilhar `operationId`/`commandName`, mas não devem marcar o status um do outro.
 - Usar validação determinística antes de chamar LLM: refs quebradas, campos inexistentes, enums ausentes, owners duplicados, workflow sem operação e operação sem entidade devem virar erro/aviso estruturado.
-- Reusar `agentMaterializeGen` e o registro existente, mas com skills próprios do `agentChangeFrontend` (`genCfeContractTs`, `genCfeSharedTs`, `genCfePage11RenderTs`) sempre que o schema gerado for compatível.
+- Reusar o padrão do materializador, mas com agente próprio `agentCfeMaterializeGen` e skills próprios do `agentChangeFrontend` (`genCfeContractTs`, `genCfeSharedTs`, `genCfePage11RenderTs`) sempre que o schema gerado for compatível.
 
 ### Dúvidas abertas
 
@@ -270,7 +270,7 @@ Pipeline:
 - `defPath`: `_{project}_/l2/{module}/web/contracts/{page}.defs.ts`;
 - `dependsFiles`: `[]`;
 - `skills`: `["_102020_/l2/agentChangeFrontend/skills/genCfeContractTs.ts"]`;
-- `agent`: `agentMaterializeGen`.
+- `agent`: `agentCfeMaterializeGen`.
 
 #### 2. Shared
 
@@ -299,7 +299,7 @@ Pipeline:
 - `skills`: [`_102020_/l2/agentChangeFrontend/skills/genCfeSharedTs.ts`];
 - `rulesApplied`: opcional, somente quando houver regra de frontend/materialização; não deve vir do contrato BFF;
 - `rulesPath`: opcional, somente quando houver regra de frontend em shape aceito pelo materializador;
-- `agent`: `agentMaterializeGen`.
+- `agent`: `agentCfeMaterializeGen`.
 
 #### 3. Page/Layout
 
@@ -337,9 +337,8 @@ Pipeline:
 - `defPath`: `_{project}_/l2/{module}/web/{device}/{layout}/{page}.defs.ts`;
 - `dependsFiles`: shared `.defs.ts`, shared `.ts`, contract `.defs.ts` e contract `.ts`;
 - `skills`: `_102020_/l2/agentChangeFrontend/skills/genCfePage11RenderTs.ts`;
-- `afterSaveFrontEnd`: `_102020_/l2/agentMaterializeSolution/registerFrontEnd.ts?registerPage`;
 - `visualStyle`: pode vir de `l4/{module}/module.defs.ts.module.visualStyle` ou de default do projeto;
-- `agent`: `agentMaterializeGen`.
+- `agent`: `agentCfeMaterializeGen`.
 
 ### Defs com layout
 
@@ -474,15 +473,16 @@ Exemplo:
 
 Logo, o novo agente não deve copiar entidades/comandos do exemplo. Ele deve copiar somente o padrão estrutural dos três `.defs.ts` e derivar nomes, campos e comandos do L4 do projeto alvo.
 
-## Atualização do fluxo v1 — defs + config
+## Atualização do fluxo v1 — defs + materialização + config
 
-O `flow.json` v1 passa a ser **create-only, com `.defs.ts` + `config.json`, sem materialização**. Isto corrige/sobrescreve as partes anteriores desta spec que ainda citavam materialização ou entrada manual:
+O `flow.json` v1 passa a ser **create-only, com `.defs.ts` + materialização `.ts/.html` + `config.json`**. Isto corrige/sobrescreve as partes anteriores desta spec que ainda citavam entrada manual:
 
 - o agente não recebe `module`, `owner`, `page` ou outro input operacional; ele varre o `l4` e processa somente owners com `statusFrontend = toCreate`;
 - se não houver `toCreate`, encerra sem escrever arquivos nem alterar status;
 - gera os três `.defs.ts` finais por página: `web/contracts`, `web/shared` e `web/desktop/page11`;
+- materializa os `.ts` via pipelines dos `.defs.ts`, usando `agentCfeMaterializeGen` com os skills do `agentChangeFrontend`;
+- gera o `.html` de preview pelo agente explícito `agentCfeRegisterFrontend`, depois da página materializada;
 - atualiza `l0/config.json` com a página que aparecerá no menu;
-- não gera `.ts`, não gera `.html`, não chama `agentMaterializeL2`/`agentMaterializeGen` e não executa `registerFrontEnd` nesta v1;
 - a geração de layout é uma etapa LLM importante e deve seguir as regras de layout semântico desta spec;
 - a geração por página deve tentar paralelismo: um item paralelo por página com filhos `contract -> layout -> shared/state-reconcile -> validate`; como ainda não há exemplo confirmado de `parallel_dynamic` com filhos, o fluxo registra fallback para um único agente paralelo por página que executa essas quatro ações internamente;
 - agentes LLM devem seguir o padrão do `agentNewSolution2`: saída via JSON schema/tool strict (`collab-llm`) e validação local antes de gravar;
@@ -505,10 +505,12 @@ Antes de gerar arquivos, a implementação inicial criada para teste faz somente
 Após validar o paralelo, a implementação real inicial para `toCreate` está dividida assim:
 
 - `agentChangeFrontend` inicia o fluxo create-only;
-- `agentCfeCreateScanL4` lê o `l4`, encontra owners com `statusFrontend = toCreate`, cria o fan-out real `create-page-fanout` e agenda a finalização;
+- `agentCfeCreateScanL4` lê o `l4`, encontra owners com `statusFrontend = toCreate`, cria o fan-out real `create-page-fanout` e agenda a materialização;
 - `agentCfeCreatePage` gera `web/contracts/{page}.defs.ts` de forma determinística, chama LLM com JSON schema/tool strict para o layout semântico, grava `web/desktop/page11/{page}.defs.ts` e depois gera `web/shared/{page}.defs.ts` a partir de `contractRef + layout reconciliado`;
 - `agentCfeCreatePage` também grava `l2/{module}/trace/frontend-create-pages/{page}.json` como `inProgress` no início e `done` só depois de layout e shared validados, para evitar que uma página antiga seja aceita por engano;
-- `agentCfeCreateFinalize` atualiza `l0/config.json`, grava `l2/{module}/trace/frontend-create-report.json` e muda os owners gerados para `statusFrontend = done`;
+- `agentCfeMaterializeL2` lê os pipelines gerados e agenda `agentCfeMaterializeGen` para contrato, shared e page11, reutilizando a ordem/staleness do `l2/agentChangeFrontend/cfeMaterializeCore.ts`;
+- `agentCfeRegisterFrontend` gera o `.html` de preview, atualiza `l0/config.json` e grava marcador de registro por página;
+- `agentCfeCreateFinalize` grava `l2/{module}/trace/frontend-create-report.json` e muda os owners gerados para `statusFrontend = done` somente após materialização e registro;
 - `cfeCreateShared` concentra leitura do L4, geração determinística dos comandos, schema/validação do layout, gravação dos `.defs.ts`, merge do config e atualização de status.
 
 O layout LLM deve manter a estrutura de `sections -> organisms` e enriquecer cada organismo com `intentions`, `id` estável, `order`, `labelKey/titleKey/emptyKey`, referências a actions do shared, campos do contrato/ontologia e `dataBindings`. O `page11` não deve referenciar moléculas, grupos, tags ou pacotes de componentes. Se a saída falhar no schema ou na validação semântica, a página não é marcada como concluída.

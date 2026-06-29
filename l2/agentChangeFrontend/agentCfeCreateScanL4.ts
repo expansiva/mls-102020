@@ -39,10 +39,16 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       payload: null,
     };
 
-    const finalize = createAgentStepPayload('finalize-create', 'agentCfeCreateFinalize', 'Atualizar config e status', { planId: 'finalize-create' }, ['create-page-fanout']);
+    const materialize = createAgentStepPayload(
+      'materialize-create-l2',
+      'agentCfeMaterializeL2',
+      'Materializar frontend L2',
+      { planId: 'materialize-create-l2', force: true },
+      ['create-page-fanout'],
+    );
     return [
       createAddStepIntent(context, parentStep, fanout, args),
-      createAddStepIntent(context, parentStep, finalize),
+      createAddStepIntent(context, parentStep, materialize),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Queued ${args.length} page(s).`),
     ];
   } catch (error) {
