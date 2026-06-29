@@ -100,7 +100,7 @@ In result:
 - signals grouped by category. Each signal is { title, reason }.
   - workflows: stateful, multi-step or multi-actor processes over time (a request/order/approval lifecycle).
   - operations: direct single-actor actions on one entity (create/update/delete/query/view, dashboards as query/view).
-  - mdm: stable master data (customers, products, suppliers, staff, locations).
+  - mdm: stable cadastral master data (customers, products, suppliers, staff, locations, rooms, assets, menu/catalog). NOT operational state — a thing whose status changes during operation (occupied/available, open/closed, balances) is operational, not mdm; signal only its registration here.
   - horizontals: cross-cutting domain modules NOT provided by the platform (finance, notifications, documents).
   - plugins: external integrations by brand.
   - agents: autonomous operational agents the domain needs.

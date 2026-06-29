@@ -150,6 +150,16 @@ In result:
   ownership (and kind/statusEnum/lifecycleStates when known). This is a MAP — do NOT detail fields
   here (a later stage does). ontology.entities hold ONLY persistent DATA nouns (kind core/mdm/event/
   metric/supporting). NEVER put use-cases/workflows/queries here; never use Uc*/verb-named ids.
+  - kind=mdm is ONLY stable cadastral master-data (identity/registration: people, companies,
+    vehicles, rooms, furniture, menu/catalog), referenced by id; its statusEnum is a cadastral
+    lifecycle (active/inactive), never an operational state.
+  - Operational/transactional STATE is NEVER mdm. A status that moves during operation
+    (occupied/available, open/closed, in-progress, balances, current charges/consumption) is a
+    kind=core entity with its own table.
+  - When one real-world thing has BOTH a registration and a live state, SPLIT it into two entities:
+    the registration as kind=mdm (cadastral status), the live state as a separate kind=core entity
+    that references it by id — e.g. Table (mdm cadastro: number, room) + TableOccupancy
+    (core: occupied/available, currentChargesTotal). Operations then write the core state, not the mdm record.
 - rules: centralized, stable ruleId.
 - relationships.
 - behaviorPlan: mdm, horizontals, plugins, agents signals ({ title, reason }).

@@ -99,5 +99,8 @@ Call the "{{toolName}}" tool with: status, result, questions, trace. Do not retu
 In result.mdmDomains, each: domainId (camelCase), title, masterEntities (ontology entity ids),
 resolution ('referenceSharedInfra' when the shared MDM infra fits, else 'draft'), reason.
 Use canonical ontology ids for masterEntities. Return an empty array when there is no master data.
+masterEntities are ONLY stable cadastral records (identity/registration), accessed by id with a
+cadastral status (active/inactive). NEVER list an entity that holds operational/transactional state
+(occupied/available, open/closed, balances, current charges) — that lives in a kind=core entity, not MDM.
 
 `;
