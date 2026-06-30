@@ -194,8 +194,9 @@ const messages: Record<string, MessageType> = {
 interface IDsEntry { key: number; name: string; description: string; skill: string; tokens: DsTokens; }
 interface IRole { name: string; light: string; dark: string; }
 
-// Token'd design systems render through the token-aware skill.
-const DS_SKILL_DEFAULT = '_102020_/l2/skills/design/genPageDsCustom.ts';
+// Per-DS skill slot: the rules for this DS's styles/<ds>/global.css. The fixed base render
+// skill (genCfePageGenome) is prepended by agentGenDefs — it is NOT stored per DS.
+const DS_SKILL_DEFAULT = '_102020_/l2/agentImplementGenome/skills/genCfePageDesignSystem.ts';
 
 // Font sourcing. The curated Google list is only a SUGGESTION — the family field is a
 // combobox, so any Google Fonts family works by name. `custom` covers anything else (URL).

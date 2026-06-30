@@ -28,9 +28,12 @@ import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { resolveTagToFile } from '/_102020_/l2/utils.js';
 import { parseStepArgs, mkCompleted, mkFail, saveFile } from '/_102020_/l2/agentImplementGenome/planning.js';
 
-// Defaults when the layout/DS entry in project.json declares no `skill`.
-const DEFAULT_LAYOUT_SKILL = '_102020_/l2/agentMaterializeSolution/skills/genPageRender.ts';
-const DEFAULT_DS_SKILL = '_102020_/l2/agentMaterializeSolution/skills/genPageDS.ts';
+// Fixed base render skill — ALWAYS first in the pipeline. Renders the structure
+// (definition.layout) + the molecule assigned to each element + applies the DS tokens.
+const GENOME_SKILL = '_102020_/l2/agentImplementGenome/skills/genCfePageGenome.ts';
+// Defaults for the VARIABLE slots when the DS/layout entry in project.json declares no `skill`.
+const DEFAULT_DS_SKILL = '_102020_/l2/agentImplementGenome/skills/genCfePageDesignSystem.ts';
+const DEFAULT_LAYOUT_SKILL = '_102020_/l2/agentImplementGenome/skills/layout/genCfePageLayoutStandard.ts';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -153,12 +156,17 @@ function repointPaths(pipeline: any[], layout: number | string, ds: number | str
   }
 }
 
-/** Resolve the render skills for this page: [layout skill, DS skill] from project.json. */
+/**
+ * Resolve the render skills for this page, in pipeline order:
+ *   [ genome (fixed), DS skill (per-DS), layout skill (per-layout) ].
+ * The DS/layout skills come from project.json (designSystems[ds].skill / layouts[layout].skill),
+ * falling back to the defaults above.
+ */
 async function resolvePageSkills(project: number, layout: number | string, ds: number | string): Promise<string[]> {
   const config: any = await getConfigProject(project);
-  const layoutSkill = config?.layouts?.[String(layout)]?.skill || DEFAULT_LAYOUT_SKILL;
   const dsSkill = config?.designSystems?.[String(ds)]?.skill || DEFAULT_DS_SKILL;
-  return [layoutSkill, dsSkill].filter(Boolean);
+  const layoutSkill = config?.layouts?.[String(layout)]?.skill || DEFAULT_LAYOUT_SKILL;
+  return [GENOME_SKILL, dsSkill, layoutSkill].filter(Boolean);
 }
 
 /** Merge the DS global css (plain) + molecule usage skills (?key=skill) into dependsFiles. */
