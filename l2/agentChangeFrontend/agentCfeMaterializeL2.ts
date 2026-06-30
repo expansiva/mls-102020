@@ -52,7 +52,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   try {
     const args = parseArgs(step.prompt);
     const generated = await listGeneratedCreatePages();
-    const candidates = await readMaterializeCandidates(generated.project, generated.pages);
+    const candidates = await readMaterializeCandidates(generated.project);
     const planned = planMaterialization(candidates, args.force === true);
     const todo = planned.filter(item => item.stale);
     const phasePlan = createMaterializePhaseSteps(context, step, todo);
@@ -100,23 +100,41 @@ function parseArgs(prompt: string | undefined): MaterializeArgs {
   }
 }
 
-async function readMaterializeCandidates(project: number, pages: Array<{ moduleName: string; pageId: string }>): Promise<MaterializeCandidate[]> {
+async function readMaterializeCandidates(project: number): Promise<MaterializeCandidate[]> {
   const candidates: MaterializeCandidate[] = [];
-  for (const page of pages) {
-    const defPaths = [
-      `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.defs.ts`,
-      `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.defs.ts`,
-      `_${project}_/l2/${page.moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
-    ];
-    for (const defPath of defPaths) {
-      const source = await getContentByMlsPath(defPath);
-      const pipeline = source ? parsePipelineFromContent(source) : null;
-      const item = pipeline?.[0] as PipelineItem | undefined;
-      if (!item) throw new Error(`pipeline not found in ${defPath}`);
-      candidates.push({ defPath, item });
-    }
+  const seenOutputs = new Set<string>();
+  for (const defPath of listFrontendDefs(project)) {
+    const source = await getContentByMlsPath(defPath);
+    const pipeline = source ? parsePipelineFromContent(source) : null;
+    const item = pipeline?.[0] as PipelineItem | undefined;
+    if (!item || !item.type.startsWith('l2_') || seenOutputs.has(item.outputPath)) continue;
+    seenOutputs.add(item.outputPath);
+    candidates.push({ defPath, item });
   }
   return candidates;
+}
+
+function listFrontendDefs(project: number): string[] {
+  const refs: string[] = [];
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted' || file.extension !== '.defs.ts') continue;
+    const folder = String(file.folder || '');
+    if (!isFrontendMaterializeFolder(folder)) continue;
+    refs.push(toMlsRef(file));
+  }
+  return refs.sort();
+}
+
+function isFrontendMaterializeFolder(folder: string): boolean {
+  return /\/web\/contracts$/.test(folder)
+    || /\/web\/shared$/.test(folder)
+    || /\/web\/desktop\/page\d+$/.test(folder)
+    || /\/web\/mobile\/page\d+$/.test(folder);
+}
+
+function toMlsRef(file: any): string {
+  const folder = file.folder ? `${file.folder}/` : '';
+  return `_${file.project}_/l${file.level}/${folder}${file.shortName}${file.extension}`;
 }
 
 function planMaterialization(candidates: MaterializeCandidate[], force: boolean): PlannedMaterializeItem[] {
@@ -189,8 +207,8 @@ function createMaterializePhaseSteps(context: mls.msg.ExecutionContext, parentSt
     const phase = createAgentStepPayload(
       phasePlanId,
       'agentCfeMaterializePhase',
-      group.title,
-      { planId: phasePlanId, fanoutPlanId, title: group.title, items, maxParallel: 5 },
+      group.parentTitle,
+      { planId: phasePlanId, fanoutPlanId, title: group.parentTitle, fanoutTitle: group.progressTitle, items, maxParallel: 5 },
       priorFanoutPlanIds,
       'sequential',
       priorFanoutPlanIds.length > 0 ? 'waiting_dependency' : 'waiting_human_input',
@@ -203,12 +221,12 @@ function createMaterializePhaseSteps(context: mls.msg.ExecutionContext, parentSt
   return { intents, terminalPlanIds };
 }
 
-function groupByMaterializePhase(planned: PlannedMaterializeItem[]): Array<{ phase: string; title: string; items: PlannedMaterializeItem[] }> {
+function groupByMaterializePhase(planned: PlannedMaterializeItem[]): Array<{ phase: string; parentTitle: string; progressTitle: string; items: PlannedMaterializeItem[] }> {
   const ordered = [...planned].sort((a, b) => layerRank(a.candidate.item.type) - layerRank(b.candidate.item.type) || a.candidate.item.outputPath.localeCompare(b.candidate.item.outputPath));
   return [
-    { phase: 'contracts', title: 'Materializar contratos {{completed}}/{{total}}, falhas {{failed}}', items: ordered.filter(item => item.candidate.item.type === 'l2_contract') },
-    { phase: 'shared', title: 'Materializar shared {{completed}}/{{total}}, falhas {{failed}}', items: ordered.filter(item => item.candidate.item.type === 'l2_shared') },
-    { phase: 'pages', title: 'Materializar paginas {{completed}}/{{total}}, falhas {{failed}}', items: ordered.filter(item => item.candidate.item.type === 'l2_page') },
+    { phase: 'contracts', parentTitle: 'Materializar contratos', progressTitle: 'Materializar contratos {{completed}}/{{total}}, falhas {{failed}}', items: ordered.filter(item => item.candidate.item.type === 'l2_contract') },
+    { phase: 'shared', parentTitle: 'Materializar shared', progressTitle: 'Materializar shared {{completed}}/{{total}}, falhas {{failed}}', items: ordered.filter(item => item.candidate.item.type === 'l2_shared') },
+    { phase: 'pages', parentTitle: 'Materializar paginas', progressTitle: 'Materializar paginas {{completed}}/{{total}}, falhas {{failed}}', items: ordered.filter(item => item.candidate.item.type === 'l2_page') },
   ];
 }
 

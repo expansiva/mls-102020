@@ -8,6 +8,7 @@ interface MaterializePhaseArgs {
   planId: string;
   fanoutPlanId: string;
   title: string;
+  fanoutTitle: string;
   items: GenStepArgs[];
   maxParallel?: number;
 }
@@ -30,7 +31,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'no materialization items in phase')];
     }
 
-    const fanout = createFanoutStep(args.fanoutPlanId, args.title, args.items.length);
+    const fanout = createFanoutStep(args.fanoutPlanId, args.fanoutTitle, args.items.length);
     const parallelArgs = args.items.map(item => JSON.stringify(item));
     const trace = `queued ${args.items.length} materialization item(s)`;
     console.log(`[${agent.agentName}] ${args.planId}: ${trace}`);
@@ -52,6 +53,7 @@ function parsePhaseArgs(prompt: string | undefined): MaterializePhaseArgs {
   const planId = readString(parsed.planId);
   const fanoutPlanId = readString(parsed.fanoutPlanId) || `${planId}-fanout`;
   const title = readString(parsed.title);
+  const fanoutTitle = readString(parsed.fanoutTitle) || title;
   const items = Array.isArray(parsed.items) ? parsed.items.map(readGenStepArgs) : [];
   if (!planId) throw new Error('phase prompt missing planId');
   if (!title) throw new Error('phase prompt missing title');
@@ -59,6 +61,7 @@ function parsePhaseArgs(prompt: string | undefined): MaterializePhaseArgs {
     planId,
     fanoutPlanId,
     title,
+    fanoutTitle,
     items,
     maxParallel: typeof parsed.maxParallel === 'number' ? parsed.maxParallel : undefined,
   };

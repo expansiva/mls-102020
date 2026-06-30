@@ -3,7 +3,11 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/cfeCreateShared.js';
 
-type CliCommand = { kind: 'rebuildAll' } | { kind: 'help'; reason: string };
+type CliCommand =
+  | { kind: 'rebuild-all'; materialize: true; reset: true }
+  | { kind: 'rebuild-defs'; materialize: false; reset: true }
+  | { kind: 'run'; materialize: true; reset: false }
+  | { kind: 'help'; reason: string };
 
 export function createAgent(): IAgentAsync {
   return {
@@ -18,7 +22,8 @@ export function createAgent(): IAgentAsync {
 }
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
-  const command = parseCliCommand(userPrompt);
+  const raw = userPrompt || context.message.content || '';
+  const command = parseCliCommand(raw);
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
     skipRootLLM: true,
@@ -27,7 +32,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
       agentName: agent.agentName,
       inputAI: [
         { type: 'system', content: 'agentChangeFrontend deterministic bootstrap. The root LLM is skipped by AgentIntentAddMessageAI.skipRootLLM.' },
-        { type: 'human', content: normalizePrompt(userPrompt) || 'agentChangeFrontend' },
+        { type: 'human', content: normalizePrompt(raw) || 'agentChangeFrontend' },
       ],
       taskTitle: 'agentChangeFrontend',
       threadId: context.message.threadId,
@@ -36,17 +41,17 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
     },
   };
 
-  if (command.kind !== 'rebuildAll') {
+  if (command.kind === 'help') {
     return [addMessageAI, createBootstrapAddStepIntent(context, createHelpStep(command.reason))];
   }
 
-  const reset = await resetFrontendDoneStatuses();
-  console.log(`[${agent.agentName}] /rebuild all reset ${reset.updated} owner(s) from done to toCreate`);
+  const reset = command.reset ? await resetFrontendDoneStatuses() : { updated: 0, owners: [] };
+  if (command.reset) console.log(`[${agent.agentName}] ${command.kind} reset ${reset.updated} owner(s) from done to toCreate`);
   const scanStep = createAgentStepPayload(
     'scan-create-l4',
     'agentCfeCreateScanL4',
     'Ler L4 e criar paginas pendentes',
-    { command: '/rebuild all', reset },
+    { command: command.kind, reset, materialize: command.materialize, forceMaterialize: false },
     [],
     'sequential',
     'waiting_human_input',
@@ -61,15 +66,22 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
 
 function parseCliCommand(prompt: string): CliCommand {
   const normalized = normalizePrompt(prompt);
-  if (normalized === '/rebuild all') return { kind: 'rebuildAll' };
-  return { kind: 'help', reason: normalized ? `Comando desconhecido: ${normalized}` : 'Comando ausente.' };
+  if (!normalized) return { kind: 'run', materialize: true, reset: false };
+  if (normalized === '/help' || normalized === 'help') return { kind: 'help', reason: '' };
+  if (/\brebuild\b/.test(normalized)) {
+    if (/\bdefs\b/.test(normalized)) return { kind: 'rebuild-defs', materialize: false, reset: true };
+    if (/\ball\b/.test(normalized) || normalized === '/rebuild') return { kind: 'rebuild-all', materialize: true, reset: true };
+  }
+  if (normalized === '/run' || normalized === 'run') return { kind: 'run', materialize: true, reset: false };
+  return { kind: 'help', reason: `Comando desconhecido: ${normalized}` };
 }
 
 function normalizePrompt(prompt: string): string {
   return String(prompt || '')
     .trim()
     .replace(/^@@(?:agentChangeFrontend|changeFrontend)\s+/i, '')
-    .replace(/\s+/g, ' ');
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
 }
 
 async function resetFrontendDoneStatuses(): Promise<{ updated: number; owners: string[] }> {
@@ -155,31 +167,21 @@ function createBootstrapAddStepIntent(context: mls.msg.ExecutionContext, step: m
 }
 
 function createHelpStep(reason: string): mls.msg.AIPayload {
-  return {
-    type: 'result',
-    stepId: 0,
-    status: 'completed',
-    interaction: null,
-    nextSteps: [],
-    stepTitle: 'Help',
-    result: `${reason}\n\n${HELP_TEXT}`,
-    planning: {
-      planId: 'help',
-      dependsOn: [],
-      executionMode: 'sequential',
-      executionHost: 'client',
-    },
-  } as any;
+  return createAgentStepPayload('help', 'agentCfeHelp', 'Help', { reason, helpText: HELP_TEXT }, [], 'sequential', 'waiting_human_input');
 }
 
 const HELP_TEXT = `agentChangeFrontend
 
 Uso:
+@@changeFrontend /run
 @@changeFrontend /rebuild all
+@@changeFrontend /rebuild defs
+@@changeFrontend /help
 
-Comportamento:
-- altera l4 operations/workflows com statusFrontend = done para toCreate
-- nao deleta arquivos gerados
-- a geracao seguinte sobrescreve os .defs.ts e atualiza config.json
+Comandos:
+- /run          : default. Varre o l4 por statusFrontend = toCreate e materializa .ts quando o .defs.ts for mais novo ou o .ts nao existir.
+- /rebuild all  : altera l4 operations/workflows com statusFrontend = done para toCreate, regenera .defs.ts e materializa .ts/config por updatedAt.
+- /rebuild defs : altera l4 operations/workflows com statusFrontend = done para toCreate e regenera somente os .defs.ts. Nao materializa .ts/config.
+- /help         : mostra esta ajuda.
 
 Qualquer outro comando apenas mostra este help.`;
