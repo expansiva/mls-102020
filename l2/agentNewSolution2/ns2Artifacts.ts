@@ -242,8 +242,8 @@ export async function readOperationDefs(): Promise<Record<string, unknown>[]> {
   return readDefsObjectsInFolder(4, 'operations');
 }
 
-/** Merge l5/project.json: preserve every top-level field, add/replace this module + dedupe deps. */
-export async function mergeProjectJson(moduleEntry: Record<string, unknown>, dependencies: Record<string, unknown>[] = []): Promise<void> {
+/** Merge l5/project.json: preserve every top-level field, add/replace this module + dedupe deps/languages. */
+export async function mergeProjectJson(moduleEntry: Record<string, unknown>, dependencies: Record<string, unknown>[] = [], languages: string[] = []): Promise<void> {
   const fileInfo: FileInfo = { project: mls.actualProject || 0, level: 5, folder: '', shortName: 'project', extension: '.json' };
   const key = mls.stor.getKeyToFile(fileInfo);
   const existingFile = mls.stor.files[key];
@@ -263,12 +263,43 @@ export async function mergeProjectJson(moduleEntry: Record<string, unknown>, dep
     depsMap.set(`${readString(dep.projectId)}:${readString(dep.kind)}`, dep);
   }
 
+  const languageMap = new Map<string, Record<string, unknown>>();
+  for (const language of (Array.isArray(base.languages) ? base.languages : []).filter(isRecord)) {
+    const code = normalizeLanguageCode(readString(language.language));
+    if (code) languageMap.set(code.toLowerCase(), { ...language, language: code });
+  }
+  for (const code of languages.map(normalizeLanguageCode).filter(Boolean)) {
+    const key = code.toLowerCase();
+    if (!languageMap.has(key)) languageMap.set(key, buildLanguageEntry(code, languageMap.size === 0));
+  }
+
   const merged = {
     ...base,
     modules: [...moduleMap.values()],
+    ...(languageMap.size > 0 ? { languages: [...languageMap.values()] } : {}),
     ...(depsMap.size > 0 ? { dependencies: [...depsMap.values()] } : {}),
   };
   await saveStorContent(fileInfo, `${JSON.stringify(merged, null, 2)}\n`, false);
+}
+
+function normalizeLanguageCode(value: unknown): string {
+  return (typeof value === 'string' ? value.trim() : '').replace('_', '-');
+}
+
+function buildLanguageEntry(code: string, isFirst: boolean): Record<string, unknown> {
+  return {
+    language: code,
+    name: languageName(code),
+    path: isFirst ? '/' : `/${code}`,
+  };
+}
+
+function languageName(code: string): string {
+  const normalized = code.toLowerCase();
+  if (normalized === 'en') return 'English';
+  if (normalized === 'pt' || normalized === 'pt-br') return 'Portuguese';
+  if (normalized === 'es') return 'Spanish';
+  return code;
 }
 
 // ── process record (l5/{module}/process.defs.ts) ─────────────────────────────────
