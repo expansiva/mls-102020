@@ -7,10 +7,10 @@
 // function of (group, dsRules, catalog), so two pages cannot diverge — consistency
 // by construction.
 //
-// Pipeline here:
-//   1. collectUsedGroups  — distinct groups Agent1 selected across all pages
-//   2. resolveMolecules   — (group → molecule) for the DS, via matchVariant
-//   3. assignMoleculesToPage — combine Agent1 output + the table → per-organism molecules
+//   resolveMolecules — (group → molecule) for the DS, via matchVariant.
+//   groupHasConfiguredAxis — the DS gate (skip groups the DS has no opinion on).
+// Placement onto the page layout is done element-by-element in agentGenDefs (the LLM
+// picks the group per element; matchVariant resolves the variant deterministically).
 //
 // Scale overrides (selectOne, listOverflow) depend on runtime volume (option/record
 // counts) not available here; they are applied later at generation time, NOT in this
@@ -18,7 +18,6 @@
 
 import { matchVariant } from '/_102020_/l2/dsMatch/matchVariant.js';
 import type { ResolvedLayoutRules, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
-import type { Agent1Output } from '/_102020_/l2/dsMatch/agent1.js';
 
 export interface ResolvedMolecule {
     project: number;      // molecule component project (e.g. 102040) — import origin
@@ -35,11 +34,9 @@ export interface ResolvedMolecule {
 export type ResolvedMolecules = Record<string, ResolvedMolecule>;
 
 export interface AssignedMolecule { project: number; group: string; tag: string; purpose: string; import?: string; }
-export interface OrganismAssignment { organismName: string; molecules: AssignedMolecule[]; }
-export interface PageAssignment { path: string; organisms: OrganismAssignment[]; }
 
 /** True if any candidacy axis used by the group's molecules was explicitly configured in the DS. */
-function groupHasConfiguredAxis(group: string, catalog: MoleculeCatalogEntry[], configuredAxes: Set<string>): boolean {
+export function groupHasConfiguredAxis(group: string, catalog: MoleculeCatalogEntry[], configuredAxes: Set<string>): boolean {
     for (const m of catalog) {
         if (m.group !== group) continue;
         for (const axis of Object.keys(m.layoutConfig)) {
@@ -47,17 +44,6 @@ function groupHasConfiguredAxis(group: string, catalog: MoleculeCatalogEntry[], 
         }
     }
     return false;
-}
-
-/** Distinct groups Agent1 selected across all pages, sorted. */
-export function collectUsedGroups(outputs: Agent1Output[]): string[] {
-    const set = new Set<string>();
-    for (const out of outputs) {
-        for (const po of out.perOrganism) {
-            for (const g of po.groups) set.add(g);
-        }
-    }
-    return [...set].sort();
 }
 
 /**
@@ -101,30 +87,3 @@ export function resolveMolecules(
     return out;
 }
 
-/**
- * Combine one page's Agent1 output with the resolution table into per-organism
- * molecule assignments (the canonical defs shape: { group, tag, purpose }).
- * Groups absent from the table are skipped.
- */
-export function assignMoleculesToPage(output: Agent1Output, resolved: ResolvedMolecules): PageAssignment {
-    const organisms: OrganismAssignment[] = output.perOrganism.map(po => ({
-        organismName: po.organismName,
-        molecules: po.groups
-            .map(g => resolved[g])
-            .filter((rm): rm is ResolvedMolecule => !!rm)
-            .map(rm => ({ project: rm.project, group: rm.group, tag: rm.tag, purpose: rm.objective })),
-    }));
-    return { path: output.path, organisms };
-}
-
-/** Distinct usagePaths for a page's assignment (feeds `moleculesPaths` in the pipeline, Fase E). */
-export function collectUsagePaths(assignment: PageAssignment, resolved: ResolvedMolecules): string[] {
-    const set = new Set<string>();
-    for (const org of assignment.organisms) {
-        for (const m of org.molecules) {
-            const rm = resolved[m.group];
-            if (rm?.usagePath) set.add(rm.usagePath);
-        }
-    }
-    return [...set].sort();
-}

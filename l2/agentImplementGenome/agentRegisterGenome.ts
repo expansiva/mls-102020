@@ -37,14 +37,20 @@ async function beforePromptStep(
   try {
     const a = parseStepArgs(args ?? step.prompt);
     const project = mls.actualProject || 0;
+    console.info(`[agentRegisterGenome] ▶ terminal — registrando variação page${a.layout}${a.ds} em ${a.module}/module.ts`);
     if (!context.isTest) {
       // Register the new variation in module.ts.
       await registerPageGenome(project, a.module, a.layout, a.ds, a.device);
+      console.info(`[agentRegisterGenome] module.ts atualizado (web/${a.device}/page${a.layout}${a.ds})`);
       // Regenerate THIS run's DS stylesheet (styles/<ds>/global.css) from its tokens (Phase B).
       await buildGlobalCss(project, a.ds);
+      console.info(`[agentRegisterGenome] global.css do DS ${a.ds} regerado`);
     }
+    console.info('[agentRegisterGenome] ✓ fluxo agentImplementGenome concluído');
     return [mkCompleted(context, parentStep, step, hookSequential)];
   } catch (error) {
-    return [mkFail(context, parentStep, step, hookSequential, `[agentRegisterGenome] ${error instanceof Error ? error.message : String(error)}`)];
+    const msg = `[agentRegisterGenome] ${error instanceof Error ? error.message : String(error)}`;
+    console.error('✗', msg);
+    return [mkFail(context, parentStep, step, hookSequential, msg)];
   }
 }

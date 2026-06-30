@@ -1,30 +1,29 @@
 /// <mls fileReference="_102020_/l2/dsMatch/agent1.ts" enhancement="_blank" />
 
-// Fase B pure core — load a page (rendered .ts + its .defs.ts `definition` text),
-// build the Agent1 human prompt, and validate the LLM output. These are
-// pure/testable; the IAgentAsync wrapper lives in
-// agentImplementsDesignSystem/agentSelectMoleculeGroups.ts.
+// Fase B pure core — Agent1 (group selection), element-level.
 //
-// Decision D7 (revised): Agent1 runs AFTER creative-mode generation, so the page is
-// materialized. PRIMARY input is the rendered `.ts` (the actual HTML the creative
-// LLM produced). The `.defs.ts` is also sent — as RAW TEXT, not parsed.
+// New page defs declare the concrete UI explicitly in `definition.layout`
+// (intentions → fields/filters/actions, plus collection/summary/status containers).
+// So Agent1 reads the LAYOUT (not the rendered HTML) and chooses, PER ELEMENT id, which
+// molecule GROUP best represents it (or omits it). The concrete variant is resolved
+// deterministically later (matchVariant) — the LLM only picks the group.
 //
-// Why raw text (Option A): the page defs `definition` is authored as a loose
-// JSON-ish block meant to be fed to an LLM (single quotes, unquoted keys), not
-// strict JSON — JSON.parse fails on it. The rest of the system treats `definition`
-// as text-for-LLM, so we do the same: the model reads the organisms straight from it.
+// These helpers are pure/testable; the IAgentAsync wrapper lives in
+// agentImplementGenome/agentSelectGroups.ts.
 
 import { collabImport } from '/_102027_/l2/collabImport.js';
 import { renderGroupList, type GroupInfo } from '/_102020_/l2/dsMatch/groupCatalog.js';
+import { listLayoutElements, type LayoutElement } from '/_102020_/l2/dsMatch/layoutElements.js';
 
-export interface Agent1PerOrganism {
-    organismName: string;
-    groups: string[];   // camelCase group names, subset of the valid groups
+/** One element's chosen molecule group (id references a node in `definition.layout`). */
+export interface ElementGroup {
+    id: string;
+    group: string;
 }
 
 export interface Agent1Output {
     path: string;
-    perOrganism: Agent1PerOrganism[];
+    assignments: ElementGroup[];
 }
 
 // ─── loaders (runtime: need mls.stor) ───────────────────────────────────────
@@ -35,89 +34,99 @@ function fileInfo(path: string): any {
     return mls.stor.convertFileReferenceToFile(norm);
 }
 
-/**
- * Load the rendered page source (the `.ts` Lit component). PRIMARY input.
- * Returns '' (with a warning) if the page is not materialized yet.
- */
-export async function loadPageSource(path: string): Promise<string> {
+/** Load a page defs `definition.layout` object (via collabImport). Null if missing. */
+export async function loadPageLayout(path: string): Promise<any | null> {
     const f = fileInfo(path);
-    if (!f) return '';
-    const key = mls.stor.getKeyToFiles(f.project, 2, f.shortName, f.folder, '.ts');
-    const sf = mls.stor.files[key];
-    if (!sf) { console.warn(`[agent1] rendered .ts not found: ${path}`); return ''; }
-    const content = await sf.getContent();
-    return typeof content === 'string' ? content : '';
-}
-
-/**
- * Load the page defs `definition` export as RAW TEXT (not parsed).
- * Returns '' (with a warning) if missing.
- */
-export async function loadPageDefinitionText(path: string): Promise<string> {
-    const f = fileInfo(path);
-    if (!f) return '';
+    if (!f) return null;
     try {
         const mod = await collabImport({ project: f.project, folder: f.folder, shortName: f.shortName, extension: '.defs.ts' });
-       if (mod && mod.definition) return JSON.stringify(mod.definition);
-        console.warn(`[agent1] page defs has no string 'definition' export: ${path}`);
-        return '';
+        const layout = (mod as any)?.definition?.layout;
+        if (layout && typeof layout === 'object') return layout;
+        console.warn(`[agent1] page defs has no 'definition.layout': ${path}`);
+        return null;
     } catch (err) {
         console.warn(`[agent1] defs not loadable: ${path}`, err);
-        return '';
+        return null;
+    }
+}
+
+/** Read the element-level group selections Agent1 wrote (`export const groupSelections`). */
+export async function loadElementGroupSelections(defsRef: string): Promise<ElementGroup[]> {
+    const f = fileInfo(defsRef);
+    if (!f) return [];
+    try {
+        const mod = await collabImport({ project: f.project, folder: f.folder, shortName: f.shortName, extension: '.defs.ts' });
+        const sel = (mod as any)?.groupSelections;
+        if (!Array.isArray(sel)) return [];
+        return sel
+            .filter((s: any) => s && typeof s.id === 'string' && typeof s.group === 'string')
+            .map((s: any) => ({ id: s.id, group: s.group }));
+    } catch {
+        return [];
     }
 }
 
 // ─── prompt + validation (pure) ──────────────────────────────────────────────
 
+/** One compact line per element for the prompt. */
+function renderElement(e: LayoutElement): string {
+    const bits = [
+        `id=${e.id}`,
+        e.kind,
+        `intent=${e.intent}`,
+        e.inputType ? `inputType=${e.inputType}` : '',
+        e.labelKey ? `label=${e.labelKey}` : '',
+    ].filter(Boolean);
+    return `- ${bits.join(' | ')}`;
+}
+
 /**
- * Build the human prompt for one page:
- *   rendered .ts (primary) + raw defs `definition` text (structure) + group list.
+ * Build the human prompt for one page: the list of layout elements (each with a stable id)
+ * + the valid molecule groups. The LLM answers with one { id, group } per element it maps.
  */
 export function buildAgent1HumanPrompt(
     path: string,
-    pageSource: string,
-    definitionText: string,
+    elements: LayoutElement[],
     groups: GroupInfo[],
 ): string {
-    const parts = [
+    const elementList = elements.length
+        ? elements.map(renderElement).join('\n')
+        : '(no eligible elements)';
+    return [
         `## Page\n${path}`,
-        pageSource
-            ? `## Rendered page (Lit component — HTML + Tailwind). This is the real UI to map.\n\`\`\`typescript\n${pageSource}\n\`\`\``
-            : `## Rendered page\n(not available — fall back to the page definition below)`,
-        definitionText
-            ? `## Page definition (sections, organisms, fields). Use the organismName values here to group your answer.\n${definitionText}`
-            : `## Page definition\n(not available)`,
+        `## Layout elements (each has a stable id — answer per id)\n${elementList}`,
         `## Molecule groups (choose from these only)\n${renderGroupList(groups)}`,
-    ];
-
-    return parts.join('\n\n');
+    ].join('\n\n');
 }
 
 /**
- * Validate raw LLM output against the valid group set:
- *   - keep only known groups (drop unknown silently — Agent1 must omit, not guess);
- *   - dedupe groups per organism;
- *   - preserve organism order.
- * Organism names are NOT validated (we don't parse the defs — Option A).
+ * Validate raw LLM output:
+ *   - keep only assignments whose `id` exists in the layout and whose `group` is valid;
+ *   - one group per id (first wins);
+ *   - preserve order.
  */
-export function validateAgent1Output(raw: any, validGroups: Set<string>, path: string): Agent1Output {
-    const perOrganismRaw = Array.isArray(raw?.perOrganism) ? raw.perOrganism : [];
-    const perOrganism: Agent1PerOrganism[] = [];
-
-    for (const item of perOrganismRaw) {
-        const organismName = typeof item?.organismName === 'string' ? item.organismName : '';
-        if (!organismName) continue;
-        const seen = new Set<string>();
-        const groups: string[] = [];
-        for (const g of arr(item?.groups)) {
-            if (validGroups.has(g) && !seen.has(g)) { seen.add(g); groups.push(g); }
-        }
-        perOrganism.push({ organismName, groups });
+export function validateAgent1Output(
+    raw: any,
+    validIds: Set<string>,
+    validGroups: Set<string>,
+    path: string,
+): Agent1Output {
+    const rawAssignments = Array.isArray(raw?.assignments) ? raw.assignments : [];
+    const seen = new Set<string>();
+    const assignments: ElementGroup[] = [];
+    for (const a of rawAssignments) {
+        const id = typeof a?.id === 'string' ? a.id : '';
+        const group = typeof a?.group === 'string' ? a.group : '';
+        if (!id || !group) continue;
+        if (!validIds.has(id) || !validGroups.has(group)) continue;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        assignments.push({ id, group });
     }
-
-    return { path: raw?.path || path, perOrganism };
+    return { path: raw?.path || path, assignments };
 }
 
-function arr(v: unknown): string[] {
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+/** Convenience: valid ids for a layout. */
+export function layoutElementIds(layout: any): Set<string> {
+    return new Set(listLayoutElements(layout).map(e => e.id));
 }

@@ -7,8 +7,8 @@
 // beforePromptImplicit → minimal LLM confirmation (validates the request).
 // afterPromptStep      → builds the planned tree of child steps with barriers:
 //
-//   select:<page>  agentSelectGroups   waiting_human_input   dependsOn []
-//   gen:<page>     agentGenDefs         waiting_dependency    dependsOn [select:<page>]
+//   select:<page>  agentSelectGroups   waiting_human_input   dependsOn []           (Agent1, LLM)
+//   gen:<page>     agentGenDefs         waiting_dependency    dependsOn [select:<page>]  (deterministic)
 //   register       agentRegisterGenome  waiting_dependency    dependsOn [gen:<page> ...all]
 //
 // The `register` step's barrier (dependsOn every gen step) is how we "know all pages
@@ -46,6 +46,7 @@ async function beforePromptImplicit(
   const dev = device || DEFAULT_DEVICE;
   // Optional subset: keep only non-empty strings; empty → all pages.
   const targetPages = Array.isArray(pages) ? pages.filter(p => typeof p === 'string' && p) : [];
+  console.info('[agentImplementGenome] ▶ request received', { module, layout, ds, device: dev, pages: targetPages.length ? targetPages : 'ALL' });
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -103,6 +104,8 @@ async function afterPromptStep(
     const allPages = listWorkItems(project, module, layout, ds, device).map(i => i.page);
     // `pages` subset (validated against the page11 folder) → that subset; empty → all.
     const pages = requested.length ? allPages.filter(p => requested.includes(p)) : allPages;
+    console.info(`[agentImplementGenome] confirmed. project=${project} module=${module} layout=${layout} ds=${ds} device=${device}`);
+    console.info(`[agentImplementGenome] ${pages.length}/${allPages.length} page(s) to process:`, pages);
     if (pages.length === 0) {
       throw new Error(requested.length
         ? `none of the requested pages [${requested.join(', ')}] exist in ${module}/web/${device}/page11`
@@ -114,32 +117,28 @@ async function afterPromptStep(
 
     const intents: mls.msg.AgentIntentAddStep[] = [];
 
-    // Group A — Agent1: pick the molecule GROUPS per organism (writes groupSelections).
+    // Group A — Agent1 (LLM): pick the molecule GROUP per layout element (writes groupSelections).
     for (const page of pages) {
       intents.push(mkAgentStep(context, step, makePlanId('select', page), `Select groups: ${page}`,
         'agentSelectGroups', baseArgs(page), [], 'waiting_human_input', 'parallel_static'));
     }
 
-    // Group B — Agent2: pick the VARIANT per organism from the DS-compatible candidates
-    // (writes moleculeAssignments). Each waits on its own select.
-    for (const page of pages) {
-      intents.push(mkAgentStep(context, step, makePlanId('variant', page), `Pick variant: ${page}`,
-        'agentSelectVariant', baseArgs(page), [makePlanId('select', page)], 'waiting_dependency', 'parallel_static'));
-    }
-
-    // Group C — assemble the final defs. Each waits on its own variant.
+    // Group B — assemble the final defs DETERMINISTICALLY: resolve the variant (matchVariant)
+    // and place a molecule per element. Each waits on its own select.
     for (const page of pages) {
       intents.push(mkAgentStep(context, step, makePlanId('gen', page), `Gen defs: ${page}`,
-        'agentGenDefs', baseArgs(page), [makePlanId('variant', page)], 'waiting_dependency', 'parallel_static'));
+        'agentGenDefs', baseArgs(page), [makePlanId('select', page)], 'waiting_dependency', 'parallel_static'));
     }
 
     // Terminal — register the variation in module.ts ONCE, after EVERY gen completes.
     intents.push(mkAgentStep(context, step, 'register', 'Register module genome',
       'agentRegisterGenome', baseArgs(), genIds, 'waiting_dependency', 'sequential'));
 
+    console.info(`[agentImplementGenome] ✓ planned ${pages.length} select(Agent1) + ${pages.length} gen(deterministic) + 1 register steps`);
     return intents;
   } catch (error) {
     const msg = `[${agent.agentName}] ${error instanceof Error ? error.message : String(error)}`;
+    console.error('[agentImplementGenome] ✗', msg);
     return [mkFail(context, parentStep, step, hookSequential, msg)];
   }
 }
