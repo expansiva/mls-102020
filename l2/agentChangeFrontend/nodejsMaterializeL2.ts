@@ -9,12 +9,15 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
   applyHeader,
+  buildCompileRepairHint,
   buildHumanPrompt,
   buildMaterializeTypecheckTest,
+  buildMissingCodeRepairHint,
   buildSystemPrompt,
   DEFAULT_MODEL_TYPE,
   isStale,
   layerRank,
+  MATERIALIZE_REPAIR_ATTEMPTS,
   orderItems,
   parseDefs,
   testPathForOutputPath,
@@ -313,53 +316,142 @@ async function main(): Promise<void> {
       continue;
     }
 
-    process.stdout.write(`[${n}] ${base} ... `);
-    const r = await callCollabLlm(cfg, { model: modelType, system, human });
-    const code = r.ok && r.code ? applyHeader(p.item.outputPath, r.code) : '';
-
-    if (tracePath) {
-      const sec = [
-        `=== ${new Date().toISOString()} | ${p.item.id} (${p.item.type}) ===`,
-        `output: ${p.item.outputPath}`,
-        `model:  ${modelType}    status: ${r.ok ? 'ok' : `error(${r.httpStatus})`}`,
-        r.ok ? `bytes:  ${code.length}` : `error: ${r.error ?? 'unknown'}`,
-        `skills: ${skillReport.join(' | ') || '(none)'}`,
-        `deps:   ${depReport.join(' | ') || '(none)'}`,
-        `usage:  ${r.usage ? JSON.stringify(r.usage) : '(none)'}`,
-      ];
-      if (!r.ok) sec.push('--- raw (capped) ---', r.raw.slice(0, TRACE_RAW_CAP));
-      sec.push('', '');
-      fs.appendFileSync(tracePath, sec.join('\n'));
-    }
-
-    if (!r.ok || !code) {
-      console.log(`FAIL: ${r.error ?? 'no code'}`);
+    const result = await materializeOne(p, modelType, cfg, data, tracePath, `[${n}]`, skillReport, depReport);
+    if (!result.ok) {
       failures.push(p.item.id);
       continue;
     }
-
-    const outAbs = mlsToFs(p.item.outputPath);
-    fs.mkdirSync(path.dirname(outAbs), { recursive: true });
-    fs.writeFileSync(outAbs, code);
-    const typecheckCode = buildMaterializeTypecheckTest(p.item, data);
-    const typecheckRef = typecheckCode ? testPathForOutputPath(p.item.outputPath) : null;
-    if (typecheckCode && typecheckRef) {
-      const typecheckAbs = mlsToFs(typecheckRef);
-      fs.mkdirSync(path.dirname(typecheckAbs), { recursive: true });
-      fs.writeFileSync(typecheckAbs, typecheckCode);
-    }
-    const htmlRef = writePagePreviewHtml(p.item);
-    console.log(`ok ${code.length}b${typecheckRef ? ' + test' : ''}${htmlRef ? ' + html' : ''}${miss.length ? `  (ctx MISS: ${miss.length})` : ''}`);
   }
 
   const okCount = todo.length - failures.length;
   console.log(`\ndone: ${okCount}/${todo.length} file(s) ${args.dryRun ? 'prepared' : 'generated'}.`);
   if (tracePath) console.log(`trace: ${tracePath}`);
-  if (failures.length) { console.log(`FAILURES (${failures.length}): ${failures.join(', ')}`); process.exitCode = 1; }
-  if (args.check && !runCheck()) process.exitCode = 2;
+  if (!args.dryRun && cfg && args.check) {
+    let check = runCheckCapture();
+    for (let round = 1; round <= MATERIALIZE_REPAIR_ATTEMPTS && !check.ok; round++) {
+      const errorsByFile = parseTscErrorsByFile(check.output);
+      const targets = planned.filter(p => itemHasTscErrors(p.item, errorsByFile) || failures.includes(p.item.id));
+      if (!targets.length) {
+        console.log('\nrepair: no regenerable file matches the tsc errors; stopping.');
+        break;
+      }
+
+      console.log(`\nrepair round ${round}/${MATERIALIZE_REPAIR_ATTEMPTS}: ${targets.length} file(s)`);
+      for (const p of targets) {
+        const repairErrors = itemTscErrors(p.item, errorsByFile);
+        const repairHint = repairErrors.length
+          ? buildCompileRepairHint(p.item.outputPath, repairErrors)
+          : buildMissingCodeRepairHint(p.item.outputPath, 'previous attempt failed before a valid file was generated');
+        const data = dataByOut.get(p.item.outputPath);
+        const { skillReport, depReport } = assemble(p.item, data, modelType);
+        const result = await materializeOne(p, modelType, cfg, data, tracePath, '[repair]', skillReport, depReport, repairHint);
+        const failedIndex = failures.indexOf(p.item.id);
+        if (result.ok && failedIndex >= 0) failures.splice(failedIndex, 1);
+        if (!result.ok && failedIndex < 0) failures.push(p.item.id);
+      }
+      check = runCheckCapture();
+    }
+
+    if (check.ok) {
+      console.log('\ntsc: OK');
+    } else {
+      console.log('\ntsc: errors remain after repair (see below)');
+      console.log(check.output.trim());
+      process.exitCode = 2;
+    }
+  } else if (args.check && !runCheck()) {
+    process.exitCode = 2;
+  }
+  if (failures.length) {
+    console.log(`FAILURES (${failures.length}): ${failures.join(', ')}`);
+    process.exitCode = process.exitCode || 1;
+  }
 }
 
 const TRACE_RAW_CAP = 40000;
+
+async function materializeOne(
+  p: PlannedItem,
+  modelType: string,
+  cfg: LlmConfig,
+  data: unknown,
+  tracePath: string | null,
+  label: string,
+  skillReport: string[],
+  depReport: string[],
+  repairHint?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { system, human } = assemble(p.item, data, modelType);
+  let nextRepairHint = repairHint;
+
+  for (let attempt = 0; attempt <= MATERIALIZE_REPAIR_ATTEMPTS; attempt++) {
+    const isRepair = !!nextRepairHint;
+    const humanFull = nextRepairHint ? `${human}\n\n${nextRepairHint}` : human;
+    process.stdout.write(`${label} ${p.item.outputPath}${isRepair ? ' (repair)' : ''} ... `);
+    const r = await callCollabLlm(cfg, { model: modelType, system, human: humanFull });
+    const code = r.ok && r.code ? applyHeader(p.item.outputPath, r.code) : '';
+
+    appendTrace(tracePath, p.item, modelType, r, code, skillReport, depReport, isRepair);
+
+    if (r.ok && code) {
+      const artifacts = writeGeneratedArtifacts(p.item, data, code);
+      console.log(`ok ${code.length}b${artifacts.typecheckRef ? ' + test' : ''}${artifacts.htmlRef ? ' + html' : ''}`);
+      return { ok: true };
+    }
+
+    const detail = r.error ?? 'no code';
+    if (attempt >= MATERIALIZE_REPAIR_ATTEMPTS) {
+      console.log(`FAIL: ${detail}`);
+      return { ok: false, error: detail };
+    }
+
+    console.log(`retry: ${detail}`);
+    nextRepairHint = buildMissingCodeRepairHint(p.item.outputPath, detail);
+  }
+
+  return { ok: false, error: 'retry loop exhausted' };
+}
+
+function appendTrace(
+  tracePath: string | null,
+  item: PipelineItem,
+  modelType: string,
+  result: Awaited<ReturnType<typeof callCollabLlm>>,
+  code: string,
+  skillReport: string[],
+  depReport: string[],
+  isRepair: boolean,
+): void {
+  if (!tracePath) return;
+  const sec = [
+    `=== ${new Date().toISOString()} | ${item.id} (${item.type})${isRepair ? ' [repair]' : ''} ===`,
+    `output: ${item.outputPath}`,
+    `model:  ${modelType}    status: ${result.ok ? 'ok' : `error(${result.httpStatus})`}`,
+    result.ok ? `bytes:  ${code.length}` : `error: ${result.error ?? 'unknown'}`,
+    `skills: ${skillReport.join(' | ') || '(none)'}`,
+    `deps:   ${depReport.join(' | ') || '(none)'}`,
+    `usage:  ${result.usage ? JSON.stringify(result.usage) : '(none)'}`,
+  ];
+  if (!result.ok) sec.push('--- raw (capped) ---', result.raw.slice(0, TRACE_RAW_CAP));
+  sec.push('', '');
+  fs.appendFileSync(tracePath, sec.join('\n'));
+}
+
+function writeGeneratedArtifacts(item: PipelineItem, data: unknown, code: string): { typecheckRef: string | null; htmlRef: string | null } {
+  const outAbs = mlsToFs(item.outputPath);
+  fs.mkdirSync(path.dirname(outAbs), { recursive: true });
+  fs.writeFileSync(outAbs, code);
+
+  const typecheckCode = buildMaterializeTypecheckTest(item, data);
+  const typecheckRef = typecheckCode ? testPathForOutputPath(item.outputPath) : null;
+  if (typecheckCode && typecheckRef) {
+    const typecheckAbs = mlsToFs(typecheckRef);
+    fs.mkdirSync(path.dirname(typecheckAbs), { recursive: true });
+    fs.writeFileSync(typecheckAbs, typecheckCode);
+  }
+
+  return { typecheckRef, htmlRef: writePagePreviewHtml(item) };
+}
 
 function nextTracePath(project: number): string {
   const dir = path.join(ROOT, `mls-${project}`, 'l2', 'trace');
@@ -376,18 +468,63 @@ function nextTracePath(project: number): string {
 }
 
 function runCheck(): boolean {
+  const result = runCheckCapture(true);
+  if (result.ok) {
+    console.log('tsc: OK');
+    return true;
+  }
+  console.log('tsc: errors (see above)');
+  return false;
+}
+
+function runCheckCapture(inherit = false): { ok: boolean; output: string } {
   const localTsc = path.join(ROOT, 'node_modules', '.bin', 'tsc');
   const bin = fs.existsSync(localTsc) ? localTsc : 'npx';
   const binArgs = bin === 'npx' ? ['tsc', '--noEmit', '--pretty', 'false'] : ['--noEmit', '--pretty', 'false'];
   console.log('\nchecking mls-base with tsc...');
   try {
-    execFileSync(bin, binArgs, { cwd: ROOT, stdio: 'inherit' });
-    console.log('tsc: OK');
-    return true;
-  } catch {
-    console.log('tsc: errors (see above)');
-    return false;
+    const output = execFileSync(bin, binArgs, { cwd: ROOT, encoding: 'utf8', stdio: inherit ? 'inherit' : 'pipe' });
+    return { ok: true, output: typeof output === 'string' ? output : '' };
+  } catch (error) {
+    const err = error as { stdout?: Buffer | string; stderr?: Buffer | string };
+    const output = `${err.stdout ?? ''}${err.stderr ?? ''}`;
+    if (inherit && output.trim()) console.log(output.trim());
+    return { ok: false, output };
   }
+}
+
+function itemHasTscErrors(item: PipelineItem, errorsByFile: Map<string, string[]>): boolean {
+  return itemTscErrors(item, errorsByFile).length > 0;
+}
+
+function itemTscErrors(item: PipelineItem, errorsByFile: Map<string, string[]>): string[] {
+  const refs = [item.outputPath];
+  if (item.type === 'l2_contract' || item.type === 'l2_shared') refs.push(testPathForOutputPath(item.outputPath));
+  return refs.flatMap(ref => errorsByFile.get(normalizeFsPath(mlsToFs(ref))) ?? []);
+}
+
+function parseTscErrorsByFile(output: string): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  for (const raw of output.split(/\r?\n/)) {
+    const line = raw.trim();
+    const file = parseTscErrorFile(line);
+    if (!file) continue;
+    const key = normalizeFsPath(path.isAbsolute(file) ? file : path.join(ROOT, file));
+    const existing = map.get(key);
+    if (existing) existing.push(line); else map.set(key, [line]);
+  }
+  return map;
+}
+
+function parseTscErrorFile(line: string): string | null {
+  const compact = /^(.+?\.ts)\(\d+,\d+\):\s*error\s+TS\d+/.exec(line);
+  if (compact) return compact[1];
+  const pretty = /^(.+?\.ts):\d+:\d+\s+-\s+error\s+TS\d+/.exec(line);
+  return pretty ? pretty[1] : null;
+}
+
+function normalizeFsPath(value: string): string {
+  return path.resolve(value).replace(/\\/g, '/');
 }
 
 function parseModelTypeFromConfig(cfg: LlmConfig | null): string | null {

@@ -89,20 +89,17 @@ The i18n block must be outside the class and wrapped exactly with these markers:
 
 \`\`\`typescript
 /// **collab_i18n_start**
-const message_pt = {
-  // copy Definition.i18n exactly for Portuguese
+const message_default = {
+  // copy Definition.i18n exactly for the project default locale
 };
-const message_en = {
-  // same keys translated to English
-};
-type MessageType = typeof message_en;
-const messages: { [key: string]: MessageType } = { en: message_en, pt: message_pt };
+type MessageType = typeof message_default;
+const messages: { [key: string]: MessageType } = { default: message_default };
 /// **collab_i18n_end**
 \`\`\`
 
-Generate message_pt from Definition.i18n exactly.
-Generate message_en by translating the same keys.
-Never declare message_pt, message_en or messages inside the class.
+Generate message_default from Definition.i18n exactly.
+Do not invent extra locale catalogs unless they already exist in Definition.i18n.
+Never declare message_default or messages inside the class.
 Never write \`as const\` on message objects.
 
 Inside the class expose this exact getter shape:
@@ -110,7 +107,7 @@ Inside the class expose this exact getter shape:
 \`\`\`typescript
 protected get msg(): MessageType {
   const lang: string = this.getMessageKey(messages);
-  return messages[lang] || messages['en'];
+  return messages[lang] || message_default;
 }
 \`\`\`
 

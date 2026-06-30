@@ -145,6 +145,7 @@ export const GEN_TOOL = {
 } as const;
 
 export const DEFAULT_MODEL_TYPE = 'codeinstruct';
+export const MATERIALIZE_REPAIR_ATTEMPTS = 1;
 
 export function parseModelType(systemPrompt: string): string | null {
   const m = systemPrompt.match(/<!--\s*modelType:\s*([A-Za-z0-9_-]+)\s*-->/);
@@ -173,14 +174,40 @@ Return ONLY the file through the ${GEN_TOOL_NAME} tool.
 ${skills}`;
 }
 
-export function buildHumanPrompt(data: unknown, contextSections: string[], outputPath: string): string {
+export function buildHumanPrompt(data: unknown, contextSections: string[], outputPath: string, repairHint?: string): string {
   const lines = ['## Definition', '', '```json', JSON.stringify(data, null, 2), '```', ''];
   if (contextSections.length) {
     lines.push('## Context files (dependsFiles)', '');
     for (const c of contextSections) lines.push(c, '');
   }
   lines.push('## Output', '', `Generate ONLY the TypeScript for: ${outputPath}`, `Call ${GEN_TOOL_NAME} with the complete code.`);
+  if (repairHint) lines.push('', repairHint);
   return lines.join('\n');
+}
+
+export function buildMissingCodeRepairHint(outputPath: string, detail: string): string {
+  return [
+    '## Repair',
+    `The previous attempt did not produce a complete tool response for ${outputPath}.`,
+    detail ? `Reason: ${detail}` : '',
+    `Return ONLY the ${GEN_TOOL_NAME} tool call with the COMPLETE TypeScript file.`,
+    'Do not write analysis, markdown or partial code before calling the tool.',
+  ].filter(Boolean).join('\n');
+}
+
+export function buildCompileRepairHint(outputPath: string, errors: string[]): string {
+  return [
+    '## Repair',
+    `The previous generated file for ${outputPath} failed TypeScript checking.`,
+    '',
+    'Compiler errors:',
+    '```text',
+    errors.slice(0, 20).join('\n'),
+    '```',
+    '',
+    `Return the COMPLETE corrected TypeScript file through the ${GEN_TOOL_NAME} tool.`,
+    'Fix exactly these syntax/type errors while preserving the .defs.ts contract and the existing context.',
+  ].join('\n');
 }
 
 export function applyHeader(outputPath: string, code: string): string {

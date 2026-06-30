@@ -169,6 +169,9 @@ const strSchema = { type: 'string' } as const;
 const boolSchema = { type: 'boolean' } as const;
 const intSchema = { type: 'integer' } as const;
 const strArraySchema = { type: 'array', items: strSchema } as const;
+const i18nStringMapSchema = { type: 'object', additionalProperties: strSchema } as const;
+const i18nNestedMapSchema = { type: 'object', additionalProperties: i18nStringMapSchema } as const;
+const i18nValueSchema = { anyOf: [strSchema, i18nStringMapSchema, i18nNestedMapSchema] } as const;
 
 const layoutActionSchema = {
   type: 'object',
@@ -274,7 +277,7 @@ export const cfePageLayoutResultSchema = {
         pageId: strSchema,
         layoutId: strSchema,
         sections: { type: 'array', minItems: 1, items: layoutSectionSchema },
-        i18n: { type: 'object', additionalProperties: strSchema },
+        i18n: { type: 'object', additionalProperties: i18nValueSchema },
         dataBindings: {
           type: 'array',
           items: {
@@ -674,10 +677,65 @@ function normalizeDataBinding(value: unknown, path: string): { id: string; sourc
 
 function normalizeI18n(value: unknown): Record<string, string> {
   if (value === undefined || value === null) return {};
-  const record = assertRecord(value, 'result.pageLayout.i18n');
+  const { record, defaultLocale } = normalizeI18nSource(value);
   const normalized: Record<string, string> = {};
-  for (const [key, item] of Object.entries(record)) normalized[key] = assertString(item, `i18n.${key}`);
+  for (const [key, item] of Object.entries(record)) {
+    if (isI18nMetadataKey(key)) continue;
+    const text = normalizeI18nText(item, defaultLocale);
+    if (text) normalized[key] = text;
+  }
   return normalized;
+}
+
+function normalizeI18nSource(value: unknown): { record: Record<string, unknown>; defaultLocale: string } {
+  const record = assertRecord(value, 'result.pageLayout.i18n');
+  const defaultLocale = readI18nLocale(record.defaultLocale) || readI18nLocale(record.locale) || readI18nLocale(record.language);
+  const messages = isRecord(record.messages) ? record.messages : undefined;
+  const localeCatalog = selectI18nLocaleCatalog(messages || record, defaultLocale);
+  return { record: localeCatalog || record, defaultLocale };
+}
+
+function selectI18nLocaleCatalog(record: Record<string, unknown>, defaultLocale: string): Record<string, unknown> | undefined {
+  const entries = Object.entries(record).filter(([key, item]) => isI18nLocaleKey(key) && isRecord(item)) as [string, Record<string, unknown>][];
+  if (entries.length === 0) return undefined;
+  if (defaultLocale) {
+    const exact = entries.find(([key]) => sameI18nLocale(key, defaultLocale));
+    if (exact) return exact[1];
+  }
+  return entries[0][1];
+}
+
+function normalizeI18nText(value: unknown, defaultLocale: string): string {
+  if (typeof value === 'string') return value.trim();
+  if (!isRecord(value)) return '';
+  if (defaultLocale) {
+    const explicit = Object.entries(value).find(([key, item]) => sameI18nLocale(key, defaultLocale) && typeof item === 'string' && item.trim());
+    if (explicit && typeof explicit[1] === 'string') return explicit[1].trim();
+  }
+  const localized = Object.entries(value).find(([key, item]) => isI18nLocaleKey(key) && typeof item === 'string' && item.trim());
+  if (localized && typeof localized[1] === 'string') return localized[1].trim();
+  return optionalString(value.text) || optionalString(value.value) || optionalString(value.label) || optionalString(value.title);
+}
+
+function readI18nLocale(value: unknown): string {
+  const locale = readString(value);
+  return isI18nLocaleKey(locale) ? locale : '';
+}
+
+function isI18nLocaleKey(key: string): boolean {
+  return /^[a-z]{2}(?:[-_][a-z0-9]{2,8})*$/i.test(key.trim());
+}
+
+function sameI18nLocale(a: string, b: string): boolean {
+  return normalizeI18nLocale(a) === normalizeI18nLocale(b);
+}
+
+function normalizeI18nLocale(value: string): string {
+  return value.trim().replace(/_/g, '-').toLowerCase();
+}
+
+function isI18nMetadataKey(key: string): boolean {
+  return ['defaultlocale', 'locale', 'language', 'messages'].includes(key.trim().toLowerCase());
 }
 
 function normalizeOrder(value: unknown, path: string): number {
@@ -873,9 +931,6 @@ function repairMissingLayoutI18n(prepared: CfePreparedPage, layout: CfePageLayou
     }
   }
 
-  if (added.length > 0) {
-    console.warn(`[agentCfeCreatePage] repaired missing i18n key(s) for ${prepared.page.pageId}: ${added.join('; ')}`);
-  }
   return added.length > 0 ? { ...layout, i18n } : layout;
 }
 

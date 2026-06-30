@@ -107,6 +107,8 @@ Layout rules:
 - Stable ids are required for sections, organisms, intentions, fields, columns and actions.
 - Every section must include sectionName.
 - Prefer including result.pageLayout.i18n and result.pageLayout.dataBindings; use {} and [] when empty.
+- result.pageLayout.i18n must be a flat object of "key": "localized text for the project default locale";
+  do not hard-code locale keys in the shape and do not return empty strings.
 - Before creating sections, read promptContext.userJourney. Use operationsInOrder and recommendedStages as the main sequence for the page.
 - If userJourney.isMultiStep is true, create distinct intentions for the stages instead of one generic form.
 - For parent-child flows such as orders with items, separate the parent/header command, item management, totals/summary and status/conclusion actions.

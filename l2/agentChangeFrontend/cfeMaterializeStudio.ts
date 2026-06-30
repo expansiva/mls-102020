@@ -8,6 +8,8 @@ declare const mls: any;
 export interface GenStepArgs {
   planId: string;
   defPath: string;
+  attempt?: number;
+  repairHint?: string;
 }
 
 export interface ParsedMlsPath {
