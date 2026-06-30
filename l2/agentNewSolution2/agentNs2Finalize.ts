@@ -95,12 +95,14 @@ async function persistDomain(context: mls.msg.ExecutionContext, result: Finalize
   try {
     // module.defs.ts is the slim structural artifact. capabilities are NOT persisted as a top-level
     // list (they are realized — with priority — on each workflow/operation); actors live in l4/actors.
+    // The ontology block is only an index: canonical entity fields/kind/status live in
+    // l4/{module}/ontology/{Entity}.defs.ts to avoid split sources of truth.
     // designContext carries the ORIGINAL intent for Stage 2: the user's prompt, language, open details
     // and the priority decisions (so the page generator knows what was requested and what was deferred).
     await saveDefsArtifact(moduleDefsFileInfo(moduleName), `${moduleName}Module`, {
       module: result.module,
       designContext: buildDesignContext(context),
-      ontology: { entities: result.ontology.entities }, // slim MAP; canonical shapes in l4/{module}/ontology
+      ontology: { entities: buildOntologyIndex(moduleName, result.ontology.entities) },
       relationships: result.relationships,
       approvedArtifacts: result.approvedArtifacts,
     });
@@ -142,6 +144,17 @@ function buildDesignContext(context: mls.msg.ExecutionContext): Record<string, u
     }));
   } catch { /* decisions may be absent */ }
   return { initialPrompt, userLanguage, openDetails, decisions };
+}
+
+function buildOntologyIndex(moduleName: string, entities: Record<string, unknown>): Record<string, Record<string, string>> {
+  const index: Record<string, Record<string, string>> = {};
+  for (const entityId of Object.keys(entities || {}).filter(Boolean)) {
+    index[entityId] = {
+      entityId,
+      defPath: `l4/${moduleName}/ontology/${entityId}.defs.ts`,
+    };
+  }
+  return index;
 }
 
 /** Actor roster for authz: each actor + a stable JWT role scope `{module}:{actorId}`. */

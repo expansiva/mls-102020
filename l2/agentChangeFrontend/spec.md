@@ -105,11 +105,13 @@ No modelo novo, o `agentChangeFrontend` precisa ocupar a etapa que antes já vin
 
 Fluxo sugerido:
 
-1. Ler `l4/{module}/module.defs.ts`, `l4/{module}/ontology/*.defs.ts`, `l4/workflows/*.defs.ts`, `l4/operations/*.defs.ts`, `l4/rules/*.defs.ts`, `l4/actors/{module}Actors.defs.ts` e `l5/{module}/process.defs.ts`.
+1. Ler `l4/{module}/module.defs.ts`, `l4/{module}/ontology/*.defs.ts`, `l4/workflows/*.defs.ts`, `l4/operations/*.defs.ts`, `l4/rules/*.defs.ts`, `l4/actors/{module}Actors.defs.ts`, `l4/trace/behavior-health-report.json` e `l5/{module}/process.defs.ts`.
 2. Validar o modelo antes de gerar: owners pendentes, operações referenciadas por workflows existentes, entidades e campos resolvíveis, regras existentes e `healthReport` sem erro fatal.
 3. Agrupar owners em páginas. Operações simples podem virar páginas de CRUD/query; workflows devem virar páginas orientadas a estado/processo, evitando uma página por micro-transição.
 4. Derivar `bffCommands` concretos por página a partir de operations/workflows + ontologia, publicando apenas o contrato frontend:
-   - `commandName`: preferir `operationId` ou uma composição estável `workflowId.transition`;
+   - `commandName`: usar `operation.commandName` quando existir; fallback para `operationId` apenas para L4 legado;
+   - `routeKey`: usar `operation.bffName` quando existir; fallback determinístico `{moduleName}.{pageId}.{commandName}` apenas para L4 legado;
+   - `origin`: registrar apenas a origem leve (`operationId`/`workflowId`, `defPath` e `bffName` quando houver) para rastreio de manutenção;
    - `kind`: mapear `operation.kind` (`query/view` => query, `create/update/delete` => command);
    - `input/output`: resolver campos pela ontologia, incluindo enum literal quando existir;
    - não emitir `readsEntities`, `writesEntities`, `readsTables`, `writesTables`, `usecaseRefs`, `layerContract`, `rulesApplied`, `sourceEntity`, `sourceField`, `sourceType` ou `lifecycleStates`.

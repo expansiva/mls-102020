@@ -45,6 +45,9 @@ export interface WorkflowDefinition {
   entities: string[];
   rulesApplied: string[];
   story: { actor: string; goal: string; soThat?: string; steps: string[]; outcome: string };
+  // Canonical page owner for Stage 2. The workflow is the page boundary for its orchestrated
+  // operations; operation defs carry the concrete commandName/bffName route handoff.
+  pageId?: string;
   // Mechanically attached at save (not from the LLM): the capabilities this workflow realizes, with
   // their priority — makes the workflow the source of truth for "which feature + phase" it covers.
   capabilities?: { capabilityId: string; title: string; actor?: string; priority?: string }[];
@@ -102,6 +105,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       // Attach the realized capabilities (id + title + priority) deterministically.
       const capabilityIds = getBehaviorIndex(context).result.workflows.find(w => w.workflowId === def.workflowId)?.capabilityIds || [];
       def.capabilities = resolveCapabilityInfo(capabilityIds, getFinalizeOutput(context).result.capabilities as unknown[]);
+      def.pageId = def.workflowId;
       def.statusFrontend = EXPERIENCE_STATUS_INITIAL; // agentChangeFrontend picks up statusFrontend != 'done'
       def.statusBackend = EXPERIENCE_STATUS_INITIAL;   // agentChangeBackend picks up statusBackend != 'done'
       await saveDefsArtifact(workflowFileInfo(def.workflowId), `workflow${capitalize(def.workflowId)}`, def);
@@ -121,7 +125,11 @@ export async function getWorkflowDefinitions(context: mls.msg.ExecutionContext):
     if (id) byId.set(id, d as unknown as WorkflowDefinition);
   }
   for (const o of getPlannerOutputs(context, AGENT_NAME, config)) {
-    if (o.status === 'ok') byId.set(o.result.workflowDefinition.workflowId, o.result.workflowDefinition);
+    if (o.status === 'ok') {
+      const def = o.result.workflowDefinition;
+      def.pageId = def.workflowId;
+      byId.set(def.workflowId, def);
+    }
   }
   return [...byId.values()];
 }

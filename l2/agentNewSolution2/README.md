@@ -2,29 +2,29 @@
 
 # agentNewSolution2 — Stage 1 (the behavior contract)
 
-Implements `flow.json`. Stage 1 delivers ONLY the durable business model and stops before screens
-(Stage 2) and backend persistence (Stage 3), which start as separate tasks consuming the frozen l4
-artifacts.
+Implements `flow.json`. Stage 1 delivers ONLY the durable business model and the deterministic BFF
+name handoff. It stops before screens/contracts (Stage 2) and backend persistence/controllers
+(Stage 3), which start as separate tasks consuming the frozen l4 artifacts.
 
 ## What it freezes (l4 = BUSINESS)
 
 - `l4/{module}/module.defs.ts` — module meta, **`designContext`** (initial prompt + userLanguage +
-  openDetails + priority decisions, so Stage 2 has the original intent), ontology MAP, relationships,
+  openDetails + priority decisions, so Stage 2 has the original intent), ontology index, relationships,
   approved refs. **No top-level `capabilities`** (realized — with priority — on each workflow/operation)
   and **no `actors`** (moved to `l4/actors`).
 - `l4/{module}/ontology/{EntityId}.defs.ts` — canonical entities (fields, enums, lifecycle).
 - `l4/actors/{module}Actors.defs.ts` — authorization roster: each actor + a JWT role scope
   `{module}:{actorId}` (e.g. `cafeFlow:managerOwner`) the runtime can enforce later.
 - `l4/rules/{module}Rules.defs.ts` — global rules.
-- `l4/workflows/{workflowId}.defs.ts` — global workflows (states aligned to the entity lifecycle, with embedded story).
-- `l4/operations/{operationId}.defs.ts` — global operations = intent-level BFF contract (with story).
-- `l4/{module}/journeys.defs.ts` — **derived, read-only** consolidation of the stories embedded in
-  workflows/operations (a view, not a source).
+- `l4/workflows/{workflowId}.defs.ts` — global workflows (states aligned to the entity lifecycle, with embedded story) plus canonical `pageId`.
+- `l4/operations/{operationId}.defs.ts` — global operations = intent-level BFF contract (with story) plus canonical `pageId`, `commandName` and `bffName`.
 - `l5/project.json` (merge), `l5/{module}/process.defs.ts` (run record).
 
-Never produced here: pages, per-page bffCommands, tables/persistence, layer_3/4 backend, metrics.
-User stories live as the embedded `story` on each workflow/operation; `journeys.defs.ts` is derived
-from them, never authored directly.
+Never produced here: page implementation files, l2 contract/shared/page defs, tables/persistence,
+layer_3/4 backend, metrics. Stage 1 only publishes the stable BFF names that those later artifacts
+must reuse.
+User stories live as the embedded `story` on each workflow/operation; no separate journeys artifact
+is produced.
 
 ## Tree (planId → agent)
 
@@ -47,7 +47,7 @@ from them, never authored directly.
 | plan-operation-definition | agentPlanOperationDefinition | **new** — fan-out (1/operation) |
 | org-handoff | agentNewSolution2Handoff | no-LLM container (separate from Final so only final-resume shows the "open summary" link) |
 | behavior-validate | agentValidateBehaviorModel | **new** — deterministic, non-blocking, reads saved l4 files |
-| final-resume | agentNewSolution2Final | **auto-finish** (no clarification): freezes run + journeys, cleans, completes; openStepView shows the summary |
+| final-resume | agentNewSolution2Final | **auto-finish** (no clarification): freezes run, cleans, completes; openStepView shows the summary |
 
 ## Plumbing (self-contained, no imports from the old agentNewSolution)
 
@@ -75,11 +75,11 @@ from them, never authored directly.
   on. This is why `behavior-validate` depends on `[plan-workflow-definition, plan-operation-definition]`,
   not on `org-handoff`. `final-resume` then auto-completes the container + root explicitly as a safety net.
 - **Automatic finish.** No blocking final clarification: after validate, `final-resume` runs in a
-  hook (`beforePromptStep`) that writes the run record + derived journeys, clears traces, cleans the
+  hook (`beforePromptStep`) that writes the run record with source refs, clears traces, cleans the
   task inputs/outputs and completes the task. The summary is re-openable via `openStepView`. (Doing
   the finish in a hook — not a UI event handler — avoids the silent-stall failure mode.)
 - **File-fallback after fan-outs.** Parallel fan-out children are pre-allocated, reused and deleted by
-  the backend, so consumers that run after a fan-out (validate, journeys) read the SAVED
+  the backend, so consumers that run after a fan-out (validate, final handoff) read the SAVED
   `l4/.../*.defs.ts` via `ns2Artifacts.read{OntologyEntities,WorkflowDefs,OperationDefs}` — never the
   task payloads.
 - **Actors as authz roster.** Actors are persisted to `l4/actors/{module}Actors.defs.ts` with a JWT
@@ -93,6 +93,10 @@ from them, never authored directly.
   both seeded `toCreate`. `agentChangeFrontend` reads/writes `statusFrontend`; `agentChangeBackend`
   reads/writes `statusBackend`. Each reconciler processes owners whose own status `!= done` and flips
   it independently (no single-status ambiguity). Stage 1 leaves an explicit per-stage to-do list.
+- **BFF naming source of truth.** Each workflow carries canonical `pageId`. Each operation carries
+  `pageId`, `commandName` and `bffName = {moduleName}.{pageId}.{commandName}`. The operation page is
+  the workflow that orchestrates it, or the operation itself when no workflow owns it. Stage 2 and
+  Stage 3 must reuse `bffName` instead of deriving route keys independently.
 - **Full behavior coverage.** Classification covers every non-`never` capability (now/soon/later), so
   user-requested key screens that landed as `soon` (dashboards, AI) still become operations → pages.
   Each stateful workflow must list `operationIds`; the index fills them from the classification if empty.
@@ -101,5 +105,4 @@ from them, never authored directly.
 
 ## Verify
 
-Run `pnpm build` in `mls-base/` (per CLAUDE.md). The custom mls loader resolves the `/_102020_/…`
-imports and the `mls` global; standard `tsc` alone will not. Syntax was checked file-by-file.
+Run `tsc` in `mls-base/` per `todo/specAuraForge.md`. Do not use `pnpm build` for this validation.

@@ -1,8 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution2/agentPlanOperationDefinition.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// NEW (Stage 1). Per-operation definition — the intent-level BFF contract (no tables, no per-page
-// bffCommands): operationId, actor, entity, kind, reads/writes (ontology entities/fields),
-// rulesApplied, embedded story. One fan-out child per operationId; writes l4/operations/{id}.defs.ts.
+// NEW (Stage 1). Per-operation definition — the intent-level BFF contract (no tables):
+// operationId, actor, entity, kind, reads/writes (ontology entities/fields), rulesApplied,
+// embedded story, plus deterministic BFF naming handoff fields for Stage 2/3. One fan-out child per
+// operationId; writes l4/operations/{id}.defs.ts.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
@@ -21,7 +22,7 @@ import {
   type ExperienceStatus,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
-import { operationFileInfo, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import { getApprovedModuleName, operationFileInfo, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { operationDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getOperationIndex } from '/_102020_/l2/agentNewSolution2/agentPlanOperationIndex.js';
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
@@ -41,6 +42,11 @@ export interface OperationDefinition {
   writes: string[];
   rulesApplied: string[];
   story: { actor: string; goal: string; soThat?: string; steps: string[]; outcome: string };
+  // Deterministic handoff for frontend/backend. Stage 2 must use commandName/bffName in l2 contracts;
+  // Stage 3 must use the same bffName as the route key. The LLM does not author these names.
+  pageId?: string;
+  commandName?: string;
+  bffName?: string;
   // Mechanically attached at save (not from the LLM): the capability this operation realizes + its
   // priority — makes the operation the source of truth for "which feature + phase" it covers.
   capability?: { capabilityId: string; title: string; actor?: string; priority?: string };
@@ -96,6 +102,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       const capabilityId = behavior.operations.find(o => o.operationId === def.operationId)?.capabilityId
         ?? behavior.workflows.find(w => (w.operationIds || []).includes(def.operationId))?.capabilityIds[0];
       def.capability = capabilityId ? resolveCapabilityInfo([capabilityId], getFinalizeOutput(context).result.capabilities as unknown[])[0] : undefined;
+      attachBffNaming(context, def);
       def.statusFrontend = EXPERIENCE_STATUS_INITIAL; // agentChangeFrontend picks up statusFrontend != 'done'
       def.statusBackend = EXPERIENCE_STATUS_INITIAL;   // agentChangeBackend picks up statusBackend != 'done'
       await saveDefsArtifact(operationFileInfo(def.operationId), `operation${capitalize(def.operationId)}`, def);
@@ -115,7 +122,11 @@ export async function getOperationDefinitions(context: mls.msg.ExecutionContext)
     if (id) byId.set(id, d as unknown as OperationDefinition);
   }
   for (const o of getPlannerOutputs(context, AGENT_NAME, config)) {
-    if (o.status === 'ok') byId.set(o.result.operationDefinition.operationId, o.result.operationDefinition);
+    if (o.status === 'ok') {
+      const def = o.result.operationDefinition;
+      attachBffNaming(context, def);
+      byId.set(def.operationId, def);
+    }
   }
   return [...byId.values()];
 }
@@ -141,6 +152,23 @@ function normalizeResult(value: unknown): OperationDefinitionResult {
   };
 }
 
+function attachBffNaming(context: mls.msg.ExecutionContext, def: OperationDefinition): void {
+  const moduleName = getApprovedModuleName(context) || 'module';
+  const pageId = pageIdForOperation(context, def.operationId);
+  const commandName = def.operationId;
+  def.pageId = pageId;
+  def.commandName = commandName;
+  def.bffName = `${moduleName}.${pageId}.${commandName}`;
+}
+
+function pageIdForOperation(context: mls.msg.ExecutionContext, operationId: string): string {
+  try {
+    const workflow = getBehaviorIndex(context).result.workflows.find(w => (w.operationIds || []).includes(operationId));
+    if (workflow?.workflowId) return workflow.workflowId;
+  } catch { /* fallback below */ }
+  return operationId;
+}
+
 function capitalize(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 }
@@ -159,7 +187,8 @@ ontology id), kind (create|update|delete|query|view), reads[] and writes[] (onto
 "Entity.field" the operation reads/writes), rulesApplied[] (ruleIds), and the embedded story.
 
 Rules:
-- operationId must equal the selector. No tables, no per-page commands — this is the intent contract.
+- operationId must equal the selector. No tables. Do not invent page, command or route names; the
+  agent attaches pageId, commandName and bffName deterministically after the tool call.
 - reads/writes reference canonical ontology ids (optionally "Entity.field"), never aggregate names.
 
 `;

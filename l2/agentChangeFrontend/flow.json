@@ -247,8 +247,7 @@
     "l4/workflows/*.defs.ts",
     "l4/rules/{module}Rules.defs.ts",
     "l4/actors/{module}Actors.defs.ts",
-    "l4/{module}/journeys.defs.ts",
-    "l4/{module}/trace/behavior-health-report.json"
+    "l4/trace/behavior-health-report.json"
   ],
   "writes": [
     "l2/{module}/web/contracts/{page}.defs.ts",
@@ -323,6 +322,7 @@
         "Create only. Do not modify l4 business artifacts except statuses already locked.",
         "Do not copy domain names from examples; derive from target l4.",
         "Do not create the old l2/{module}/{page}.defs.ts general source file.",
+        "Reuse canonical pageId, commandName and bffName from l4 workflows/operations when present.",
         "Use page11 for every page in v1.",
         "Keep organisms semantic and layout ids stable.",
         "Save navigation/menu intent in defs and update l0/config.json after all defs validate."
@@ -368,7 +368,7 @@
       "strictTool": true,
       "goal": "For one planned page, generate web/contracts/{page}.defs.ts. Resolve bffCommands from l4 owners and ontology.",
       "savedArtifact": "l2/{module}/web/contracts/{page}.defs.ts",
-      "definitionRequirements": "definition is an array of pure BFF commands with commandName, purpose, kind, input and output only. Do not include readsEntities, writesEntities, table refs, usecaseRefs, layerContract, rulesApplied or field source provenance."
+      "definitionRequirements": "definition is an array of pure BFF commands with commandName, routeKey, purpose, kind, input, output and origin. origin is only a lightweight L4 owner reference (operation/workflow id + defPath + bffName when available). Do not include readsEntities, writesEntities, table refs, usecaseRefs, layerContract, rulesApplied or field-level source provenance."
     },
     {
       "planId": "page-shared:<page>",
@@ -384,7 +384,7 @@
       "strictTool": true,
       "goal": "For one planned page, generate web/shared/{page}.defs.ts after page11 exists. Reference the contract and layout, include contract-derived states/actions, add layout-required supplemental shared states, and do not duplicate bffCommands.",
       "savedArtifact": "l2/{module}/web/shared/{page}.defs.ts",
-      "definitionRequirements": "definition is { pageId, pageName, moduleName, contractRef, layoutRef, states, actions, initialLoads, navigationRefs, i18n, automation }. It references the contract commands by commandRef, must not duplicate bffCommands, and every page11 stateKey/action reference must resolve to shared.states/shared.actions."
+      "definitionRequirements": "definition is { pageId, pageName, moduleName, origin, contractRef, layoutRef, states, actions, initialLoads, navigationRefs, i18n, automation }. It references the contract commands by commandRef, must not duplicate bffCommands, and every page11 stateKey/action reference must resolve to shared.states/shared.actions."
     },
     {
       "planId": "page-layout:<page>",

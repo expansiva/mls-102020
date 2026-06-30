@@ -169,6 +169,8 @@ Rules:
   an entity id for references), required, description. Include identity, references ({entity}Id for the
   relationships provided), business attributes and audit timestamps (createdAt/updatedAt) when persisted.
 - A field with discrete values declares them in "enum". Entity lifecycle goes in statusEnum/lifecycleStates.
+- If you set ownership, it MUST be EXACTLY one of: moduleOwned, mdmOwned, horizontalOwned, pluginOwned,
+  existingModuleOwned, external (keep the value from the entity map; never invent another). Omit it if unsure.
 - rulesApplied lists ruleIds (from the provided rules) constraining this entity.
 - Do not invent entities/rules/relationships; if a needed reference entity is missing from
   otherEntityIds, return status "needs_input" with questions. Never return empty fields.

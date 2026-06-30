@@ -193,10 +193,6 @@ export function operationFileInfo(operationId: string): FileInfo {
 export function actorsFileInfo(moduleName: string): FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: 'actors', shortName: `${toSafeShortName(moduleName)}Actors`, extension: '.defs.ts' };
 }
-// Derived, read-only consolidation of the embedded workflow/operation stories (NOT a source artifact).
-export function journeysFileInfo(moduleName: string): FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: normalizeModuleFolderName(moduleName, 'module'), shortName: 'journeys', extension: '.defs.ts' };
-}
 
 /** Writes an `export const {name} = {...} as const;` defs artifact and returns its display path. */
 export async function saveDefsArtifact(fileInfo: FileInfo, exportName: string, data: unknown): Promise<string> {
@@ -293,11 +289,8 @@ export interface ProcessRun {
   kind: 'newSolution2-behavior';
   startedAt: string;
   finishedAt?: string;
-  initialPrompt: string;
-  userLanguage: string;
-  decisions: unknown[];
-  openDetails: { title: string; description: string }[];
-  healthReport: unknown;
+  sourceRefs?: Record<string, string>;
+  handoffNotes?: string[];
   nextSteps: ProcessNextStep[];
 }
 
