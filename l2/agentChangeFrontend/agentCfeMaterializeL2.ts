@@ -12,6 +12,7 @@ import {
   isStale,
   layerRank,
   orderItems,
+  testPathForOutputPath,
   type PipelineItem,
 } from '/_102020_/l2/agentChangeFrontend/cfeMaterializeCore.js';
 import {
@@ -129,20 +130,26 @@ function planMaterialization(candidates: MaterializeCandidate[], force: boolean)
     if (!candidate) continue;
     const defsMs = modifiedMs(candidate.defPath);
     const tsMs = modifiedMs(item.outputPath);
+    const expectsTypecheck = item.type === 'l2_contract' || item.type === 'l2_shared';
+    const testMs = expectsTypecheck ? modifiedMs(testPathForOutputPath(item.outputPath)) : null;
     const depMs = newestDependencyMs(item);
     const scheduledDep = (item.dependsFiles ?? []).some(dep => scheduledOutputs.has(dep));
-    const stale = force || scheduledDep || isStale(defsMs, tsMs, depMs);
+    const stale = force || scheduledDep || isStale(defsMs, tsMs, depMs) || (expectsTypecheck && (testMs == null || (defsMs != null && defsMs > testMs)));
     const reason = force
       ? 'forced'
       : tsMs == null
         ? 'output missing'
-        : scheduledDep
-          ? 'dependency scheduled'
-          : defsMs != null && defsMs > tsMs
-            ? 'defs newer than ts'
-            : depMs != null && depMs > tsMs
-              ? 'dependency newer than ts'
-              : 'up to date';
+        : expectsTypecheck && testMs == null
+          ? 'typecheck missing'
+          : scheduledDep
+            ? 'dependency scheduled'
+            : defsMs != null && defsMs > tsMs
+              ? 'defs newer than ts'
+              : expectsTypecheck && defsMs != null && testMs != null && defsMs > testMs
+                ? 'defs newer than typecheck'
+                : depMs != null && depMs > tsMs
+                  ? 'dependency newer than ts'
+                  : 'up to date';
     if (stale) scheduledOutputs.add(item.outputPath);
     planned.push({ candidate, stale, reason });
   }

@@ -125,6 +125,12 @@ export async function saveGeneratedTs(
   }
 }
 
+export async function saveGeneratedTsByMlsPath(mlsPath: string, content: string): Promise<boolean> {
+  const parsed = parseMlsPath(mlsPath);
+  if (!parsed || parsed.extension !== '.ts') return false;
+  return saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, content);
+}
+
 export async function compileAndGetErrors(
   project: number,
   level: number,
@@ -145,6 +151,12 @@ export async function compileAndGetErrors(
     console.warn('[cfeMaterializeStudio] compileAndGetErrors failed', error);
     return [];
   }
+}
+
+export async function compileMlsPathAndGetErrors(mlsPath: string): Promise<string[]> {
+  const parsed = parseMlsPath(mlsPath);
+  if (!parsed || parsed.extension !== '.ts') return [];
+  return compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName);
 }
 
 export function extractToolCallArgs<T>(raw: unknown, toolName: string): T | null {

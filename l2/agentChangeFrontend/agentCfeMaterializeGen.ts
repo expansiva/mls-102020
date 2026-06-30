@@ -3,21 +3,24 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   applyHeader,
+  buildMaterializeTypecheckTest,
   buildHumanPrompt,
   buildSystemPrompt,
   DEFAULT_MODEL_TYPE,
   GEN_TOOL,
   GEN_TOOL_NAME,
   parseDefs,
+  testPathForOutputPath,
   type PipelineItem,
 } from '/_102020_/l2/agentChangeFrontend/cfeMaterializeCore.js';
 import {
   compileAndGetErrors,
+  compileMlsPathAndGetErrors,
   extractToolCallArgs,
   getContentByMlsPath,
   parseMlsPath,
-  parsePipelineFromContent,
   saveGeneratedTs,
+  saveGeneratedTsByMlsPath,
   type GenStepArgs,
 } from '/_102020_/l2/agentChangeFrontend/cfeMaterializeStudio.js';
 
@@ -82,8 +85,8 @@ async function afterPromptStep(
   try {
     const { defPath }: GenStepArgs = JSON.parse(step.prompt || '{}');
     const defsContent = defPath ? await getContentByMlsPath(defPath) : null;
-    const pipeline = defsContent ? parsePipelineFromContent(defsContent) : null;
-    const pipelineItem = pipeline?.[0];
+    const parsedDefs = defsContent ? parseDefs(defsContent) : null;
+    const pipelineItem = parsedDefs?.item;
 
     if (!pipelineItem) {
       return [mkStatus(context, parentStep, step, hookSequential, 'failed', `pipeline not found in defs: ${defPath || '(missing defPath)'}`)];
@@ -106,9 +109,22 @@ async function afterPromptStep(
       return [mkStatus(context, parentStep, step, hookSequential, 'failed', `saveGeneratedTs failed for ${pipelineItem.outputPath}`)];
     }
 
-    const compileErrors = await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName);
+    const typecheckTest = buildMaterializeTypecheckTest(pipelineItem, parsedDefs ? parsedDefs.data : null);
+    const typecheckPath = typecheckTest ? testPathForOutputPath(pipelineItem.outputPath) : null;
+    if (typecheckPath && typecheckTest) {
+      const testSaved = await saveGeneratedTsByMlsPath(typecheckPath, typecheckTest);
+      if (!testSaved) {
+        return [mkStatus(context, parentStep, step, hookSequential, 'failed', `saveGeneratedTs failed for ${typecheckPath}`)];
+      }
+    }
+
+    const compileErrors = [
+      ...await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName),
+      ...(typecheckPath ? await compileMlsPathAndGetErrors(typecheckPath) : []),
+    ];
     if (compileErrors.length > 0) {
-      return [mkStatus(context, parentStep, step, hookSequential, 'failed', `compile failed for ${pipelineItem.outputPath}:\n${compileErrors.slice(0, 5).join('\n')}`)];
+      const checkedFiles = typecheckPath ? `${pipelineItem.outputPath} + ${typecheckPath}` : pipelineItem.outputPath;
+      return [mkStatus(context, parentStep, step, hookSequential, 'failed', `compile/typecheck failed for ${checkedFiles}:\n${compileErrors.slice(0, 8).join('\n')}`)];
     }
 
     return [mkStatus(context, parentStep, step, hookSequential, 'completed', undefined, 'input_output')];

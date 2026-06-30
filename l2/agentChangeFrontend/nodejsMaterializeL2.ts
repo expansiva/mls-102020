@@ -10,12 +10,14 @@ import { execFileSync } from 'node:child_process';
 import {
   applyHeader,
   buildHumanPrompt,
+  buildMaterializeTypecheckTest,
   buildSystemPrompt,
   DEFAULT_MODEL_TYPE,
   isStale,
   layerRank,
   orderItems,
   parseDefs,
+  testPathForOutputPath,
   type PipelineItem,
   type PlannedItem,
 } from './cfeMaterializeCore.js';
@@ -128,20 +130,27 @@ function plan(scanned: ScannedDefs[], force: boolean): PlannedItem[] {
     const s = byOut.get(item.outputPath)!;
     const defsMs = mtimeMs(s.defAbs);
     const tsMs = mtimeMs(mlsToFs(item.outputPath));
+    const typecheckCode = buildMaterializeTypecheckTest(item, s.data);
+    const testRef = typecheckCode ? testPathForOutputPath(item.outputPath) : null;
+    const testMs = testRef ? mtimeMs(mlsToFs(testRef)) : null;
     const depMs = newestDependencyMs(item);
     const scheduledDep = (item.dependsFiles ?? []).some((dep) => scheduledOutputs.has(dep));
-    const stale = force || scheduledDep || isStale(defsMs, tsMs, depMs);
+    const stale = force || scheduledDep || isStale(defsMs, tsMs, depMs) || (testRef != null && (testMs == null || (defsMs != null && defsMs > testMs)));
     const reason = force
       ? 'forced'
       : tsMs == null
         ? 'output missing'
-        : scheduledDep
-          ? 'dependency scheduled'
-          : defsMs != null && defsMs > tsMs
-            ? 'defs newer than ts'
-            : depMs != null && depMs > tsMs
-              ? 'dependency newer than ts'
-              : 'up to date';
+        : testRef != null && testMs == null
+          ? 'typecheck missing'
+          : scheduledDep
+            ? 'dependency scheduled'
+            : defsMs != null && defsMs > tsMs
+              ? 'defs newer than ts'
+              : testRef != null && defsMs != null && testMs != null && defsMs > testMs
+                ? 'defs newer than typecheck'
+                : depMs != null && depMs > tsMs
+                  ? 'dependency newer than ts'
+                  : 'up to date';
     if (stale) scheduledOutputs.add(item.outputPath);
     planned.push({ item, rank: layerRank(item.type), stale, reason });
   }
@@ -298,6 +307,8 @@ async function main(): Promise<void> {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'system.md'), system);
       fs.writeFileSync(path.join(dir, 'human.md'), human);
+      const typecheckCode = buildMaterializeTypecheckTest(p.item, data);
+      if (typecheckCode) fs.writeFileSync(path.join(dir, 'typecheck.test.ts'), typecheckCode);
       console.log(`[${n}] ${base}  -> prompt (${p.reason})${miss.length ? `  ctx MISS: ${miss.length}` : ''}`);
       continue;
     }
@@ -330,8 +341,15 @@ async function main(): Promise<void> {
     const outAbs = mlsToFs(p.item.outputPath);
     fs.mkdirSync(path.dirname(outAbs), { recursive: true });
     fs.writeFileSync(outAbs, code);
+    const typecheckCode = buildMaterializeTypecheckTest(p.item, data);
+    const typecheckRef = typecheckCode ? testPathForOutputPath(p.item.outputPath) : null;
+    if (typecheckCode && typecheckRef) {
+      const typecheckAbs = mlsToFs(typecheckRef);
+      fs.mkdirSync(path.dirname(typecheckAbs), { recursive: true });
+      fs.writeFileSync(typecheckAbs, typecheckCode);
+    }
     const htmlRef = writePagePreviewHtml(p.item);
-    console.log(`ok ${code.length}b${htmlRef ? ' + html' : ''}${miss.length ? `  (ctx MISS: ${miss.length})` : ''}`);
+    console.log(`ok ${code.length}b${typecheckRef ? ' + test' : ''}${htmlRef ? ' + html' : ''}${miss.length ? `  (ctx MISS: ${miss.length})` : ''}`);
   }
 
   const okCount = todo.length - failures.length;

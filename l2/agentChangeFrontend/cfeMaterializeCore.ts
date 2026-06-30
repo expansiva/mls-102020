@@ -191,6 +191,16 @@ export function applyHeader(outputPath: string, code: string): string {
   return `${header}\n\n${trimmed}`;
 }
 
+export function testPathForOutputPath(outputPath: string): string {
+  return outputPath.replace(/\.ts$/, '.test.ts');
+}
+
+export function buildMaterializeTypecheckTest(item: PipelineItem, data: unknown): string | null {
+  if (item.type === 'l2_contract') return buildContractTypecheckTest(item.outputPath, data);
+  if (item.type === 'l2_shared') return buildSharedTypecheckTest(item.outputPath, data);
+  return null;
+}
+
 export function mlsHeaderForOutputPath(outputPath: string): string {
   return `/// <mls fileReference="${outputPath}" enhancement="${headerEnhancementForOutputPath(outputPath)}"/>`;
 }
@@ -199,4 +209,203 @@ export function headerEnhancementForOutputPath(outputPath: string): string {
   if (/^_\d+_\/l2\/[^/]+\/web\/shared\/[^/]+\.ts$/.test(outputPath)) return '_102020_/l2/enhancementAura';
   if (/^_\d+_\/l2\/[^/]+\/web\/(?:desktop|mobile)\/page\d+\/[^/]+\.ts$/.test(outputPath)) return '_102020_/l2/enhancementAura';
   return '_blank';
+}
+
+function buildContractTypecheckTest(outputPath: string, data: unknown): string | null {
+  if (!Array.isArray(data)) return null;
+
+  const moduleName = moduleNameFromOutputPath(outputPath);
+  if (!moduleName) return null;
+  const modulePrefix = toPascalCase(moduleName);
+  const imports = new Set<string>();
+  const declarations: string[] = [];
+  const assertions: string[] = [];
+
+  for (const command of data) {
+    if (!isRecord(command) || typeof command.commandName !== 'string') continue;
+    const commandName = command.commandName;
+    const commandPrefix = `${modulePrefix}${toPascalCase(commandName)}`;
+    const inputName = `${commandPrefix}Input`;
+    const outputName = `${commandPrefix}Output`;
+    const outputItemName = `${commandPrefix}OutputItem`;
+    const isQuery = command.kind === 'query';
+    const inputFields = Array.isArray(command.input) ? command.input.filter(isRecord) : [];
+    const outputFields = Array.isArray(command.output) ? command.output.filter(isRecord) : [];
+
+    imports.add(inputName);
+    imports.add(outputName);
+    if (isQuery) imports.add(outputItemName);
+
+    const expectedInputName = `Expected${inputName}`;
+    const expectedOutputName = `Expected${outputName}`;
+    const expectedOutputItemName = `Expected${outputItemName}`;
+
+    declarations.push(`type ${expectedInputName} = ${objectType(inputFields, 'input')};`);
+    assertions.push(`type ${assertName(inputName, commandName)} = Assert<Equal<${inputName}, ${expectedInputName}>>;`);
+
+    if (isQuery) {
+      declarations.push(`type ${expectedOutputItemName} = ${objectType(outputFields, 'output')};`);
+      declarations.push(`type ${expectedOutputName} = ${expectedOutputItemName}[];`);
+      assertions.push(`type ${assertName(outputItemName, commandName)} = Assert<Equal<${outputItemName}, ${expectedOutputItemName}>>;`);
+      assertions.push(`type ${assertName(outputName, commandName)} = Assert<Equal<${outputName}, ${expectedOutputName}>>;`);
+    } else {
+      declarations.push(`type ${expectedOutputName} = ${objectType(outputFields, 'output')};`);
+      assertions.push(`type ${assertName(outputName, commandName)} = Assert<Equal<${outputName}, ${expectedOutputName}>>;`);
+    }
+  }
+
+  if (!imports.size) return null;
+  const testPath = testPathForOutputPath(outputPath);
+  return [
+    mlsHeaderForOutputPath(testPath),
+    '',
+    `import type { ${[...imports].sort().join(', ')} } from './${fileBaseName(outputPath)}.js';`,
+    '',
+    'type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;',
+    'type Assert<T extends true> = T;',
+    '',
+    '// This file is generated from .defs.ts so tsc catches contract drift in the generated .ts.',
+    ...declarations,
+    '',
+    ...assertions,
+    '',
+    'export {};',
+  ].join('\n');
+}
+
+function buildSharedTypecheckTest(outputPath: string, data: unknown): string | null {
+  if (!isRecord(data)) return null;
+  const moduleName = typeof data.moduleName === 'string' ? data.moduleName : moduleNameFromOutputPath(outputPath);
+  const pageId = typeof data.pageId === 'string' ? data.pageId : fileBaseName(outputPath);
+  if (!moduleName || !pageId) return null;
+
+  const className = `${toPascalCase(moduleName)}${toPascalCase(pageId)}Base`;
+  const stateAssertions: string[] = [];
+  const actionAssertions: string[] = [];
+
+  const states = Array.isArray(data.states) ? data.states.filter(isRecord) : [];
+  for (const state of states) {
+    const propertyName = typeof state.name === 'string' && state.name ? state.name : camelCaseFromKey(String(state.stateKey ?? ''));
+    if (!propertyName) continue;
+    const expectedType = stateAssertionType(state);
+    stateAssertions.push(`type ${assertName(`State_${propertyName}`, propertyName)} = Assert<Assignable<typeof page${propertyAccess(propertyName)}, ${expectedType}>>;`);
+  }
+
+  const actions = Array.isArray(data.actions) ? data.actions.filter(isRecord) : [];
+  for (const action of actions) {
+    if (typeof action.methodName === 'string' && action.methodName) {
+      const fnType = action.kind === 'query' || action.kind === 'command' ? '(...args: any[]) => Promise<void>' : '(...args: any[]) => void';
+      actionAssertions.push(`type ${assertName(`Action_${action.methodName}`, action.methodName)} = Assert<Assignable<typeof page${propertyAccess(action.methodName)}, ${fnType}>>;`);
+    }
+    if (typeof action.handlerName === 'string' && action.handlerName) {
+      actionAssertions.push(`type ${assertName(`Handler_${action.handlerName}`, action.handlerName)} = Assert<Assignable<typeof page${propertyAccess(action.handlerName)}, (...args: any[]) => void>>;`);
+    }
+  }
+
+  if (!stateAssertions.length && !actionAssertions.length) return null;
+  const testPath = testPathForOutputPath(outputPath);
+  return [
+    mlsHeaderForOutputPath(testPath),
+    '',
+    `import type { ${className} } from './${fileBaseName(outputPath)}.js';`,
+    '',
+    'type Assignable<Actual, Expected> = Actual extends Expected ? true : false;',
+    'type Assert<T extends true> = T;',
+    '',
+    `declare const page: ${className};`,
+    '',
+    '// This file is generated from .defs.ts. Add narrower state/action assertions here as materialization rules evolve.',
+    ...stateAssertions,
+    ...actionAssertions,
+    '',
+    'export {};',
+  ].join('\n');
+}
+
+function objectType(fields: Record<string, unknown>[], direction: 'input' | 'output'): string {
+  if (fields.length === 0) return '{}';
+  const lines = ['{'];
+  for (const field of fields) {
+    const name = typeof field.name === 'string' && field.name ? field.name : null;
+    if (!name) continue;
+    const optional = direction === 'input' ? field.required !== true : field.required === false;
+    lines.push(`  ${propertyKey(name)}${optional ? '?' : ''}: ${fieldType(field)};`);
+  }
+  lines.push('}');
+  return lines.join('\n');
+}
+
+function fieldType(field: Record<string, unknown>): string {
+  if (Array.isArray(field.enum) && field.enum.length > 0 && field.enum.every(item => typeof item === 'string')) {
+    return field.enum.map(item => JSON.stringify(item)).join(' | ');
+  }
+
+  const rawType = String(field.type ?? 'unknown').trim();
+  const t = rawType.toLowerCase();
+  if (t.endsWith('[]')) return `${primitiveType(t.slice(0, -2))}[]`;
+  if (t === 'array' || t === 'list') return 'unknown[]';
+  return primitiveType(t);
+}
+
+function primitiveType(type: string): string {
+  if (['string', 'uuid', 'guid', 'email', 'url', 'uri', 'date', 'datetime', 'date-time', 'time', 'timestamp', 'timestamptz'].includes(type)) return 'string';
+  if (['number', 'integer', 'int', 'int32', 'int64', 'float', 'double', 'decimal', 'money', 'currency'].includes(type)) return 'number';
+  if (type === 'boolean' || type === 'bool') return 'boolean';
+  if (type === 'json' || type === 'object' || type === 'any' || type === 'unknown') return 'unknown';
+  return 'unknown';
+}
+
+function stateAssertionType(state: Record<string, unknown>): string {
+  if (Array.isArray(state.valueSet) && state.valueSet.length > 0 && state.valueSet.every(item => typeof item === 'string')) {
+    return state.valueSet.map(item => JSON.stringify(item)).join(' | ');
+  }
+  if (state.collection === true || Array.isArray(state.defaultValue)) return 'unknown[]';
+  const value = state.defaultValue;
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'string') return 'string';
+  return 'unknown';
+}
+
+function moduleNameFromOutputPath(outputPath: string): string | null {
+  const match = /^_\d+_\/l2\/([^/]+)\//.exec(outputPath);
+  return match ? match[1] : null;
+}
+
+function fileBaseName(outputPath: string): string {
+  const filename = outputPath.split('/').pop() ?? outputPath;
+  return filename.replace(/\.ts$/, '');
+}
+
+function toPascalCase(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('');
+}
+
+function camelCaseFromKey(value: string): string {
+  const parts = value.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  if (!parts.length) return '';
+  const [first, ...rest] = parts;
+  return first.charAt(0).toLowerCase() + first.slice(1) + rest.map(toPascalCase).join('');
+}
+
+function propertyKey(value: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value) ? value : JSON.stringify(value);
+}
+
+function propertyAccess(value: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value) ? `.${value}` : `[${JSON.stringify(value)}]`;
+}
+
+function assertName(rawName: string, fallback: string): string {
+  const clean = rawName.replace(/[^A-Za-z0-9_$]+/g, '_').replace(/^([^A-Za-z_$])/, '_$1');
+  return `_${clean || toPascalCase(fallback)}`;
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

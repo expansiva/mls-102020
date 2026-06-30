@@ -105,7 +105,7 @@ export async function callCollabLlm(cfg: LlmConfig, input: LlmCallInput): Promis
     ],
     stream: false,
     temperature: cfg.temperature ?? 0,
-    max_tokens: cfg.maxTokens ?? 32000,
+    max_tokens: cfg.maxTokens ?? 65536,
     tools: [GEN_TOOL],
     tool_choice: { type: 'function', function: { name: GEN_TOOL_NAME } },
   };

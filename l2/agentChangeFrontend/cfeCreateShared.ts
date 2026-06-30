@@ -308,7 +308,13 @@ function createRelaxedCfePageLayoutToolSchema(): mls.msg.LLMTool {
   if (pageLayoutSchema && typeof pageLayoutSchema === 'object') {
     pageLayoutSchema.required = ['pageId', 'layoutId', 'sections'];
     const sectionSchema = pageLayoutSchema.properties?.sections?.items;
-    if (sectionSchema && typeof sectionSchema === 'object') sectionSchema.required = ['id', 'type', 'titleKey', 'mode', 'order', 'organisms'];
+    if (sectionSchema && typeof sectionSchema === 'object') {
+      sectionSchema.required = ['id', 'type', 'mode', 'order', 'organisms'];
+      const organismSchema = sectionSchema.properties?.organisms?.items;
+      if (organismSchema && typeof organismSchema === 'object') {
+        organismSchema.required = ['id', 'type', 'organismName', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'intentions'];
+      }
+    }
   }
 
   const tool = createPlannerToolSchema(CFE_LAYOUT_TOOL_NAME, 'Submit the semantic layout for one frontend page.', resultSchema) as mls.msg.LLMTool;
@@ -555,11 +561,12 @@ function normalizeCfePageLayoutResult(value: unknown): CfePageLayoutResult {
 function normalizeLayoutSection(value: unknown, path: string): CfeLayoutSection {
   const section = assertRecord(value, path);
   const id = assertString(section.id, `${path}.id`);
+  const sectionName = optionalString(section.sectionName) || id.split('.').pop() || id;
   return {
     id,
     type: assertString(section.type, `${path}.type`) === 'sectionTab' ? 'sectionTab' : 'section',
-    sectionName: optionalString(section.sectionName) || id.split('.').pop() || id,
-    titleKey: assertString(section.titleKey, `${path}.titleKey`),
+    sectionName,
+    titleKey: optionalString(section.titleKey) || fallbackLayoutTitleKey(id),
     mode: assertString(section.mode, `${path}.mode`),
     order: normalizeOrder(section.order, `${path}.order`),
     organisms: assertArray(section.organisms, `${path}.organisms`).map((item, index) => normalizeLayoutOrganism(item, `${path}.organisms[${index}]`)),
@@ -568,11 +575,12 @@ function normalizeLayoutSection(value: unknown, path: string): CfeLayoutSection 
 
 function normalizeLayoutOrganism(value: unknown, path: string): CfeLayoutOrganism {
   const organism = assertRecord(value, path);
+  const id = assertString(organism.id, `${path}.id`);
   return {
-    id: assertString(organism.id, `${path}.id`),
+    id,
     type: assertString(organism.type, `${path}.type`),
     organismName: assertString(organism.organismName, `${path}.organismName`),
-    titleKey: assertString(organism.titleKey, `${path}.titleKey`),
+    titleKey: optionalString(organism.titleKey) || fallbackLayoutTitleKey(id),
     purpose: assertString(organism.purpose, `${path}.purpose`),
     userActions: normalizeStringList(organism.userActions, `${path}.userActions`),
     requiredEntities: normalizeStringList(organism.requiredEntities, `${path}.requiredEntities`),
@@ -876,6 +884,11 @@ function fallbackI18nText(key: string, fallback: string, kind: 'title' | 'label'
   const source = fallback || key.replace(/\.(title|label|empty)$/i, '');
   const lastSegment = source.split('.').filter(Boolean).pop() || source;
   return humanizeId(lastSegment);
+}
+
+function fallbackLayoutTitleKey(id: string): string {
+  const safeId = id.replace(/[^a-zA-Z0-9]+/g, '.').replace(/^\.+|\.+$/g, '') || 'layout';
+  return `${safeId}.title`;
 }
 
 function validatePageLayout(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): void {
