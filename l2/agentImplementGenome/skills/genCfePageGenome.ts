@@ -1,13 +1,52 @@
-/// <mls fileReference="_102020_/l2/skills/design/genPageDsCustom.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentImplementGenome/skills/genCfePageGenome.ts" enhancement="_blank"/>
 
 export const skill = `
-# SKILL: Apply the Design System (custom tokens)
+# SKILL: Render the page genome (structure + molecules + design system)
 
-This page is generated **with a configured Design System**. Unlike the free-form
-\`genPageDS\` skill, you do **not** invent colors, fonts or spacing here — you
-**apply the tokens** declared in the project's design system. Every visual
-decision must trace back to a token. If a value is not in the tokens, derive it
-from the tokens (e.g. a hover shade) — never introduce an unrelated color.
+The FIXED base skill for every page{layout}{ds}. You extend the shared base class and ONLY
+render — no own state, handlers or i18n. Three jobs, in order:
+1. render the STRUCTURE from \`definition.layout\`;
+2. render the MOLECULE assigned to each element;
+3. apply the DESIGN SYSTEM tokens (sections 1–6 below) — you do **not** invent colors, fonts or
+   spacing; every visual decision traces back to a token (derive hovers from the same role).
+
+---
+
+## Structure — read \`definition.layout\`
+
+Use \`definition.layout.sections[].organisms[].intentions[]\` as the source of truth. Each
+intention has an \`intent\` plus \`fields[]\`, \`columns[]\`, \`filters[]\`, \`toolbar[]\`, \`rowActions[]\`,
+\`actions[]\`. Use \`section.titleKey\` / \`organism.titleKey\` / \`intention.titleKey\` /
+\`intention.emptyKey\` / \`field.labelKey\` / \`action.labelKey\` only as keys into \`this.msg\`
+(render a safe empty string when a key is missing — never invent keys).
+
+Read the shared \`.ts\` FIRST and use ONLY its real @property names, handlers (\`handle…\`) and msg
+keys. Bind \`field.stateKey\` → the shared property; \`action.actionKey\`/\`action.action\` → the shared
+handler. Never invent names — degrade to read-only / disabled instead.
+
+Per intent: \`commandForm\` → a form; \`queryList\` → a collection (table/grid/list); \`summary\` → a
+metric block; \`actionList\` → a button row; \`workflowStatus\` → a status/progress block.
+
+---
+
+## Molecules — render the assigned \`molecule\` per element
+
+ANY element (a \`field\`/\`filter\`/\`column\`/\`action\`, or the intention itself for
+\`queryList\`/\`summary\`/\`workflowStatus\`) MAY carry a \`molecule\` object:
+\`{ project, group, tag, purpose, import }\`.
+
+- **\`molecule\` PRESENT** → import it for its side effect (registers the custom element):
+  \`import '<molecule.import>';\` — then render its tag \`<molecule.tag …></molecule.tag>\`. The tag
+  IS the chosen variant; never swap it for another tag/group. Configure it from its group's USAGE
+  skill (the matching \`…/skills/molecules/<group>/usage.ts\` is provided): fill its slots, bind its
+  value to the shared property (via \`field.stateKey\`) and its change/input/submit/click to existing
+  shared handlers.
+- **\`molecule\` ABSENT** → render a plain control (native input / table / button), still bound to the
+  shared state/handlers and msg keys.
+
+If a molecule needs a property/handler missing from shared \`.ts\`, degrade gracefully — never invent.
+
+Once the structure + molecules are in place, theme everything with the design-system tokens:
 
 ---
 

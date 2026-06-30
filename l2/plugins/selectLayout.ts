@@ -111,11 +111,11 @@ interface ILayoutOption {
 
 // Presets for the "Add layout" form: each sets the layout name + its render skill.
 const LAYOUT_PRESETS: { name: string; skill: string }[] = [
-    { name: 'standard', skill: '_102020_/l2/agentMaterializeSolution/skills/genPageRender.ts' },
-    { name: 'compact',  skill: '_102020_/l2/skills/layout/compact.ts' },
-    { name: 'sidebar',  skill: '_102020_/l2/skills/layout/sidebar.ts' },
-    { name: 'tabs',     skill: '_102020_/l2/skills/layout/tabs.ts' },
-    { name: 'bento',    skill: '_102020_/l2/skills/layout/bento.ts' },
+    { name: 'standard', skill: '_102020_/l2/agentImplementGenome/skills/layout/genCfePageLayoutStandard.ts' },
+    { name: 'compact',  skill: '_102020_/l2/agentImplementGenome/skills/layout/genCfePageLayoutCompact.ts' },
+    { name: 'sidebar',  skill: '_102020_/l2/agentImplementGenome/skills/layout/genCfePageLayoutSidebar.ts' },
+    { name: 'tabs',     skill: '_102020_/l2/agentImplementGenome/skills/layout/genCfePageLayoutTabs.ts' },
+    { name: 'bento',    skill: '_102020_/l2/agentImplementGenome/skills/layout/genCfePageLayoutBento.ts' },
 ];
 
 // ─── Component ───────────────────────────────────────────────────────

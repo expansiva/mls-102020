@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/skills/layout/compact.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentImplementGenome/skills/layout/genCfePageLayoutCompact.ts" enhancement="_blank"/>
 
 export const skill = `
 

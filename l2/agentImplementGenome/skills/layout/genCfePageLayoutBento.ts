@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/skills/layout/bento.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentImplementGenome/skills/layout/genCfePageLayoutBento.ts" enhancement="_blank"/>
 
 export const skill = `
 
