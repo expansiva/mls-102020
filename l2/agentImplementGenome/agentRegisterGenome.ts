@@ -10,7 +10,8 @@
 // nothing reads a DS-level aggregate. Staleness uses dsVersion (per-page stamp) instead.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { registerPageGenome } from '/_102020_/l2/dsMatch/registerPageGenome.js';
+// [DESATIVADO temporariamente] avaliando se module.ts/moduleGenome ainda é necessário.
+// import { registerPageGenome } from '/_102020_/l2/dsMatch/registerPageGenome.js';
 import { buildGlobalCss } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
 import { parseStepArgs, mkCompleted, mkFail } from '/_102020_/l2/agentImplementGenome/planning.js';
 
@@ -37,11 +38,14 @@ async function beforePromptStep(
   try {
     const a = parseStepArgs(args ?? step.prompt);
     const project = mls.actualProject || 0;
-    console.info(`[agentRegisterGenome] ▶ terminal — registrando variação page${a.layout}${a.ds} em ${a.module}/module.ts`);
+    console.info(`[agentRegisterGenome] ▶ terminal — page${a.layout}${a.ds} (${a.module})`);
     if (!context.isTest) {
-      // Register the new variation in module.ts.
-      await registerPageGenome(project, a.module, a.layout, a.ds, a.device);
-      console.info(`[agentRegisterGenome] module.ts atualizado (web/${a.device}/page${a.layout}${a.ds})`);
+      // [DESATIVADO temporariamente] registro da variação no module.ts (moduleGenome).
+      // O materializador atual (agentMaterializeL2) lê o .defs.ts direto e ignora o moduleGenome;
+      // avaliando se ainda há consumidor vivo antes de remover de vez. Reative as 2 linhas + o import.
+      // await registerPageGenome(project, a.module, a.layout, a.ds, a.device);
+      // console.info(`[agentRegisterGenome] module.ts atualizado (web/${a.device}/page${a.layout}${a.ds})`);
+
       // Regenerate THIS run's DS stylesheet (styles/<ds>/global.css) from its tokens (Phase B).
       await buildGlobalCss(project, a.ds);
       console.info(`[agentRegisterGenome] global.css do DS ${a.ds} regerado`);
