@@ -1,13 +1,17 @@
 /// <mls fileReference="_102020_/l2/agentImplementGenome/agentSelectGroups.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// Fase B — Agent1: per-organism GROUP selection (LLM). One per page.
-// Decides which molecule GROUPS each organism needs (NOT the variant — that is Agent2,
-// agentSelectVariant). Writes `groupSelections` to the page defs for Agent2 to consume.
+// Fase B — Agent1: per-ELEMENT molecule GROUP selection (LLM). One per page.
+// Reads the origin page's `definition.layout` (intentions → fields/filters/actions +
+// collection/summary/status containers) and, for each element id, picks the molecule
+// GROUP that best represents it (or omits it). It does NOT pick the variant — the concrete
+// molecule is resolved deterministically later (agentGenDefs via matchVariant).
+// Writes `groupSelections` ([{ id, group }]) to page{layout}{ds}/<page>.defs.ts.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { buildWorkItem } from '/_102020_/l2/dsMatch/derivePaths.js';
 import { buildGroupList } from '/_102020_/l2/dsMatch/groupCatalog.js';
-import { loadPageSource, loadPageDefinitionText, buildAgent1HumanPrompt, validateAgent1Output } from '/_102020_/l2/dsMatch/agent1.js';
+import { listLayoutElements } from '/_102020_/l2/dsMatch/layoutElements.js';
+import { loadPageLayout, buildAgent1HumanPrompt, validateAgent1Output, layoutElementIds } from '/_102020_/l2/dsMatch/agent1.js';
 import { parseStepArgs, mkCompleted, mkFail, saveFile } from '/_102020_/l2/agentImplementGenome/planning.js';
 
 export function createAgent(): IAgentAsync {
@@ -15,7 +19,7 @@ export function createAgent(): IAgentAsync {
     agentName: 'agentSelectGroups',
     agentProject: 102020,
     agentFolder: 'agentImplementGenome',
-    agentDescription: 'Select which molecule groups each organism of a page needs (Agent1)',
+    agentDescription: 'Pick the molecule group per layout element of a page (Agent1)',
     visibility: 'private',
     beforePromptStep,
     afterPromptStep,
@@ -34,11 +38,14 @@ async function beforePromptStep(
   const a = parseStepArgs(args ?? step.prompt);
   const project = mls.actualProject || 0;
   const item = buildWorkItem(project, a.module, a.layout, a.ds, a.page!, a.device);
+  console.info(`[agentSelectGroups] ▶ ${a.page} — beforePrompt (Agent1, group por elemento)`);
 
-  const pageSource = await loadPageSource(item.tsOrigem);
-  const definitionText = await loadPageDefinitionText(item.tsOrigem);
+  const layout = await loadPageLayout(item.defsOrigem);
+  if (!layout) console.warn(`[agentSelectGroups] ${a.page}: definition.layout não carregou de ${item.defsOrigem}`);
+  const elements = listLayoutElements(layout);
   const groups = await buildGroupList();
-  const humanPrompt = buildAgent1HumanPrompt(item.tsOrigem, pageSource, definitionText, groups);
+  console.info(`[agentSelectGroups] ${a.page}: ${elements.length} elemento(s), ${groups.length} grupo(s) disponíveis → enviando ao LLM`);
+  const humanPrompt = buildAgent1HumanPrompt(item.defsOrigem, elements, groups);
 
   const continueParallel: mls.msg.AgentIntentPromptReady = {
     type: 'prompt_ready',
@@ -71,28 +78,38 @@ async function afterPromptStep(
     const project = mls.actualProject || 0;
     const item = buildWorkItem(project, a.module, a.layout, a.ds, a.page!, a.device);
 
+    const rawCount = Array.isArray((payload.result as any)?.assignments) ? (payload.result as any).assignments.length : 0;
+    const layout = await loadPageLayout(item.defsOrigem);
+    const validIds = layoutElementIds(layout);
     const groups = await buildGroupList();
     const validGroups = new Set(groups.map(g => g.group));
-    const validated = validateAgent1Output(payload.result, validGroups, item.defsDestino);
+    const validated = validateAgent1Output(payload.result, validIds, validGroups, item.defsDestino);
+    console.info(`[agentSelectGroups] ${a.page}: LLM retornou ${rawCount} → ${validated.assignments.length} válida(s) (id∈layout & group∈catálogo)`);
+    for (const as of validated.assignments) console.info(`[agentSelectGroups]   · ${as.id} → ${as.group}`);
 
-    if (!context.isTest) await saveFile(item.defsDestino, buildGroupSelectionsDefs(item.defsDestino, validated.perOrganism));
+    if (!context.isTest) {
+      await saveFile(item.defsDestino, buildGroupSelectionsDefs(item.defsDestino, validated.assignments));
+      console.info(`[agentSelectGroups] ✓ ${a.page}: groupSelections gravado em ${item.defsDestino}`);
+    }
 
     return [mkCompleted(context, parentStep, step, hookSequential)];
   } catch (error) {
-    return [mkFail(context, parentStep, step, hookSequential, `[agentSelectGroups] ${error instanceof Error ? error.message : String(error)}`)];
+    const msg = `[agentSelectGroups] ${error instanceof Error ? error.message : String(error)}`;
+    console.error('✗', msg);
+    return [mkFail(context, parentStep, step, hookSequential, msg)];
   }
 }
 
-/** The intermediate handoff: which groups each organism needs (consumed by agentSelectVariant). */
-function buildGroupSelectionsDefs(defsRef: string, perOrganism: unknown): string {
+/** The intermediate handoff: which group each element needs (consumed by agentGenDefs). */
+function buildGroupSelectionsDefs(defsRef: string, assignments: unknown): string {
   const cleanRef = defsRef.startsWith('/') ? defsRef.slice(1) : defsRef;
   return [
     `/// <mls fileReference="${cleanRef}" enhancement="_blank"/>`,
     '',
-    '// Generated by agentSelectGroups (Agent1). Groups chosen per organism.',
-    '// Consumed by agentSelectVariant (Agent2), which picks the concrete molecule variant.',
+    '// Generated by agentSelectGroups (Agent1). Group chosen per layout element id.',
+    '// Consumed by agentGenDefs, which resolves the concrete variant (matchVariant) and places it.',
     '',
-    `export const groupSelections = ${JSON.stringify(perOrganism, null, 2)} as const;`,
+    `export const groupSelections = ${JSON.stringify(assignments, null, 2)} as const;`,
     '',
   ].join('\n');
 }
@@ -103,17 +120,17 @@ const system1 = `
 You must return ONLY a valid JSON object. No preamble, no markdown fences. Start with { and end with }
 
 ## Task
-You are given the page's RENDERED source (a Lit component with HTML + Tailwind) and the
-page definition (sections, organisms, fields). For each organism, decide which molecule
-GROUPS are needed to replace the hand-built UI elements that belong to it. Base the
-decision on the ACTUAL elements in the rendered HTML, mapped to the organism they sit in.
-Use the organismName values from the page definition.
+You are given a page's LAYOUT elements (each with a stable id, kind, intent and — for inputs —
+an inputType) and the list of molecule GROUPS. For each element that a molecule should render,
+choose the ONE group that best represents it. Decide by what the element actually IS, not by a
+rigid table: e.g. a status "select" may be a segmented selection, a numeric "rating" field may be
+a rating group, a "queryList" container may be a table/grid/calendar collection group.
 
 ## Rules
-- Map a group only when its purpose DIRECTLY and OBVIOUSLY matches a real UI element.
-- An organism may need several groups, one, or none. Shorter accurate beats longer wrong.
-- Choose group names EXACTLY as listed (camelCase). Never invent a group; omit if none fits.
-- Decide GROUPS only — the concrete variant/molecule is chosen later (Agent2).
+- Answer per element id. Use the id EXACTLY as given. Never invent an id.
+- Choose group names EXACTLY as listed (camelCase). Never invent a group.
+- Map an element only when a group DIRECTLY and OBVIOUSLY fits. Omit elements with no good fit.
+- One group per id. Decide GROUPS only — the concrete variant is chosen later.
 
 ## Output format
 [[OutputSection]]
@@ -124,7 +141,7 @@ export type Output = {
   type: 'flexible';
   result: {
     path: string;
-    perOrganism: Array<{ organismName: string; groups: string[] }>;
+    assignments: Array<{ id: string; group: string }>;
   };
 };
 //#endregion

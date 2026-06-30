@@ -35,8 +35,7 @@ export function pageRef(
 
 export interface PageWorkItem {
     page: string;          // shortName, e.g. 'cardapioEstoque'
-    tsOrigem: string;      // page11 .ts file reference (primary input)
-    defsOrigem: string;    // page11 .defs.ts file reference (structure)
+    defsOrigem: string;    // page11 .defs.ts file reference (structure — the only origin input)
     defsDestino: string;   // page{layout}{ds} .defs.ts file reference (output)
 }
 
@@ -51,7 +50,6 @@ export function buildWorkItem(
 ): PageWorkItem {
     return {
         page,
-        tsOrigem: pageRef(project, module, 1, 1, page, '.ts', device),
         defsOrigem: pageRef(project, module, 1, 1, page, '.defs.ts', device),
         defsDestino: pageRef(project, module, layout, ds, page, '.defs.ts', device),
     };
@@ -59,7 +57,9 @@ export function buildWorkItem(
 
 // ─── runtime (needs mls.stor) ────────────────────────────────────────────────
 
-/** Distinct page shortNames present in the origin (page11) folder of a module. */
+/** Distinct page shortNames present in the origin (page11) folder of a module.
+ *  Enumerated by `.defs.ts` (the structural source of truth the flow reads) — NOT the
+ *  rendered `.ts`, which the new defs-driven flow no longer depends on. */
 export function listPages(project: number, module: string, device = DEFAULT_DEVICE): string[] {
     const folder = `${module}/web/${device}/page11`;
     const pages = Object.values(mls.stor.files as Record<string, any>)
@@ -68,7 +68,7 @@ export function listPages(project: number, module: string, device = DEFAULT_DEVI
             sf.project === project &&
             sf.level === 2 &&
             sf.folder === folder &&
-            sf.extension === '.ts' &&
+            sf.extension === '.defs.ts' &&
             typeof sf.shortName === 'string' &&
             sf.shortName,
         )

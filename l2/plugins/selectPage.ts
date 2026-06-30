@@ -563,7 +563,9 @@ export class PluginSelectPage extends StateLitElement {
         if (getTask(taskKey)?.status === 'running') return;
 
         const materialize = true; // the button regenerates the rendered .ts page too
-        const prompt = JSON.stringify({ module, layout, ds, device, pages: [page.name], materialize });
+        // The agent matches on page shortNames; page.name may be a pageId/path, so send the file shortName.
+        const pageShort = page.file?.shortName ?? page.name;
+        const prompt = JSON.stringify({ module, layout, ds, device, pages: [pageShort], materialize });
         // Pause the preview while the agent rewrites the defs (avoids repaint thrash); restore after.
         const prevPause = getState('preview.pausePreview');
         setState('preview.pausePreview', true);
