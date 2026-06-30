@@ -12,6 +12,7 @@ import {
   type PlannerExtractConfig,
   type PlannerOutput,
 } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
+import { convertFileToTag } from '/_102020_/l2/utils.js';
 
 type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
 type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
@@ -168,6 +169,9 @@ const strSchema = { type: 'string' } as const;
 const boolSchema = { type: 'boolean' } as const;
 const intSchema = { type: 'integer' } as const;
 const strArraySchema = { type: 'array', items: strSchema } as const;
+const i18nStringMapSchema = { type: 'object', additionalProperties: strSchema } as const;
+const i18nNestedMapSchema = { type: 'object', additionalProperties: i18nStringMapSchema } as const;
+const i18nValueSchema = { anyOf: [strSchema, i18nStringMapSchema, i18nNestedMapSchema] } as const;
 
 const layoutActionSchema = {
   type: 'object',
@@ -273,7 +277,7 @@ export const cfePageLayoutResultSchema = {
         pageId: strSchema,
         layoutId: strSchema,
         sections: { type: 'array', minItems: 1, items: layoutSectionSchema },
-        i18n: { type: 'object', additionalProperties: strSchema },
+        i18n: { type: 'object', additionalProperties: i18nValueSchema },
         dataBindings: {
           type: 'array',
           items: {
@@ -307,7 +311,13 @@ function createRelaxedCfePageLayoutToolSchema(): mls.msg.LLMTool {
   if (pageLayoutSchema && typeof pageLayoutSchema === 'object') {
     pageLayoutSchema.required = ['pageId', 'layoutId', 'sections'];
     const sectionSchema = pageLayoutSchema.properties?.sections?.items;
-    if (sectionSchema && typeof sectionSchema === 'object') sectionSchema.required = ['id', 'type', 'titleKey', 'mode', 'order', 'organisms'];
+    if (sectionSchema && typeof sectionSchema === 'object') {
+      sectionSchema.required = ['id', 'type', 'mode', 'order', 'organisms'];
+      const organismSchema = sectionSchema.properties?.organisms?.items;
+      if (organismSchema && typeof organismSchema === 'object') {
+        organismSchema.required = ['id', 'type', 'organismName', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'intentions'];
+      }
+    }
   }
 
   const tool = createPlannerToolSchema(CFE_LAYOUT_TOOL_NAME, 'Submit the semantic layout for one frontend page.', resultSchema) as mls.msg.LLMTool;
@@ -423,13 +433,33 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
 
 export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[] }> {
   const context = await readCreateContext();
-  const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) })));
+  const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) && await hasRegisteredFrontend(context.project, page) })));
   const validPages = checkedPages.filter(item => item.ok).map(item => item.page);
   const skippedPages = checkedPages.filter(item => !item.ok).map(item => item.page.pageId);
-  await updateConfigJson(context, validPages);
   const ownersDone = await updateOwnerStatuses(context, validPages.flatMap(page => page.ownerIds), 'done');
   await saveCreateReport(context.project, validPages, ownersDone, skippedPages);
   return { pagesDone: validPages.map(page => page.pageId), ownersDone, skippedPages };
+}
+
+export async function listGeneratedCreatePages(): Promise<{ project: number; pages: CfePagePlan[]; skippedPages: string[] }> {
+  const context = await readCreateContext();
+  const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) })));
+  return {
+    project: context.project,
+    pages: checkedPages.filter(item => item.ok).map(item => item.page),
+    skippedPages: checkedPages.filter(item => !item.ok).map(item => item.page.pageId),
+  };
+}
+
+export async function registerGeneratedFrontendPages(): Promise<{ pagesRegistered: string[]; skippedPages: string[] }> {
+  const context = await readCreateContext();
+  const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) && hasMaterializedPageTs(context.project, page) })));
+  const validPages = checkedPages.filter(item => item.ok).map(item => item.page);
+  const skippedPages = checkedPages.filter(item => !item.ok).map(item => item.page.pageId);
+  await Promise.all(validPages.map(page => savePageHtml(context.project, page)));
+  await updateConfigJson(context, validPages);
+  await Promise.all(validPages.map(page => savePageRegisterMarker(context.project, page, 'done')));
+  return { pagesRegistered: validPages.map(page => page.pageId), skippedPages };
 }
 
 export function parseCreatePageArgs(prompt: string | undefined): { pageId: string } {
@@ -495,7 +525,7 @@ export function createAgentStepPayload(planId: string, agentName: string, stepTi
   } as any;
 }
 
-export function createAddStepIntent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, args?: string[]): mls.msg.AgentIntentAddStep {
+export function createAddStepIntent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, args?: string[], maxParallel = 5): mls.msg.AgentIntentAddStep {
   const intent: mls.msg.AgentIntentAddStep = {
     type: 'add-step',
     messageId: context.message.orderAt,
@@ -504,7 +534,7 @@ export function createAddStepIntent(context: mls.msg.ExecutionContext, parentSte
     parentStepId: parentStep.stepId,
     step,
   };
-  if (args) intent.executionMode = { type: 'parallel', args, maxParallel: 5 };
+  if (args) intent.executionMode = { type: 'parallel', args, maxParallel };
   return intent;
 }
 
@@ -534,11 +564,12 @@ function normalizeCfePageLayoutResult(value: unknown): CfePageLayoutResult {
 function normalizeLayoutSection(value: unknown, path: string): CfeLayoutSection {
   const section = assertRecord(value, path);
   const id = assertString(section.id, `${path}.id`);
+  const sectionName = optionalString(section.sectionName) || id.split('.').pop() || id;
   return {
     id,
     type: assertString(section.type, `${path}.type`) === 'sectionTab' ? 'sectionTab' : 'section',
-    sectionName: optionalString(section.sectionName) || id.split('.').pop() || id,
-    titleKey: assertString(section.titleKey, `${path}.titleKey`),
+    sectionName,
+    titleKey: optionalString(section.titleKey) || fallbackLayoutTitleKey(id),
     mode: assertString(section.mode, `${path}.mode`),
     order: normalizeOrder(section.order, `${path}.order`),
     organisms: assertArray(section.organisms, `${path}.organisms`).map((item, index) => normalizeLayoutOrganism(item, `${path}.organisms[${index}]`)),
@@ -547,11 +578,12 @@ function normalizeLayoutSection(value: unknown, path: string): CfeLayoutSection 
 
 function normalizeLayoutOrganism(value: unknown, path: string): CfeLayoutOrganism {
   const organism = assertRecord(value, path);
+  const id = assertString(organism.id, `${path}.id`);
   return {
-    id: assertString(organism.id, `${path}.id`),
+    id,
     type: assertString(organism.type, `${path}.type`),
     organismName: assertString(organism.organismName, `${path}.organismName`),
-    titleKey: assertString(organism.titleKey, `${path}.titleKey`),
+    titleKey: optionalString(organism.titleKey) || fallbackLayoutTitleKey(id),
     purpose: assertString(organism.purpose, `${path}.purpose`),
     userActions: normalizeStringList(organism.userActions, `${path}.userActions`),
     requiredEntities: normalizeStringList(organism.requiredEntities, `${path}.requiredEntities`),
@@ -645,10 +677,65 @@ function normalizeDataBinding(value: unknown, path: string): { id: string; sourc
 
 function normalizeI18n(value: unknown): Record<string, string> {
   if (value === undefined || value === null) return {};
-  const record = assertRecord(value, 'result.pageLayout.i18n');
+  const { record, defaultLocale } = normalizeI18nSource(value);
   const normalized: Record<string, string> = {};
-  for (const [key, item] of Object.entries(record)) normalized[key] = assertString(item, `i18n.${key}`);
+  for (const [key, item] of Object.entries(record)) {
+    if (isI18nMetadataKey(key)) continue;
+    const text = normalizeI18nText(item, defaultLocale);
+    if (text) normalized[key] = text;
+  }
   return normalized;
+}
+
+function normalizeI18nSource(value: unknown): { record: Record<string, unknown>; defaultLocale: string } {
+  const record = assertRecord(value, 'result.pageLayout.i18n');
+  const defaultLocale = readI18nLocale(record.defaultLocale) || readI18nLocale(record.locale) || readI18nLocale(record.language);
+  const messages = isRecord(record.messages) ? record.messages : undefined;
+  const localeCatalog = selectI18nLocaleCatalog(messages || record, defaultLocale);
+  return { record: localeCatalog || record, defaultLocale };
+}
+
+function selectI18nLocaleCatalog(record: Record<string, unknown>, defaultLocale: string): Record<string, unknown> | undefined {
+  const entries = Object.entries(record).filter(([key, item]) => isI18nLocaleKey(key) && isRecord(item)) as [string, Record<string, unknown>][];
+  if (entries.length === 0) return undefined;
+  if (defaultLocale) {
+    const exact = entries.find(([key]) => sameI18nLocale(key, defaultLocale));
+    if (exact) return exact[1];
+  }
+  return entries[0][1];
+}
+
+function normalizeI18nText(value: unknown, defaultLocale: string): string {
+  if (typeof value === 'string') return value.trim();
+  if (!isRecord(value)) return '';
+  if (defaultLocale) {
+    const explicit = Object.entries(value).find(([key, item]) => sameI18nLocale(key, defaultLocale) && typeof item === 'string' && item.trim());
+    if (explicit && typeof explicit[1] === 'string') return explicit[1].trim();
+  }
+  const localized = Object.entries(value).find(([key, item]) => isI18nLocaleKey(key) && typeof item === 'string' && item.trim());
+  if (localized && typeof localized[1] === 'string') return localized[1].trim();
+  return optionalString(value.text) || optionalString(value.value) || optionalString(value.label) || optionalString(value.title);
+}
+
+function readI18nLocale(value: unknown): string {
+  const locale = readString(value);
+  return isI18nLocaleKey(locale) ? locale : '';
+}
+
+function isI18nLocaleKey(key: string): boolean {
+  return /^[a-z]{2}(?:[-_][a-z0-9]{2,8})*$/i.test(key.trim());
+}
+
+function sameI18nLocale(a: string, b: string): boolean {
+  return normalizeI18nLocale(a) === normalizeI18nLocale(b);
+}
+
+function normalizeI18nLocale(value: string): string {
+  return value.trim().replace(/_/g, '-').toLowerCase();
+}
+
+function isI18nMetadataKey(key: string): boolean {
+  return ['defaultlocale', 'locale', 'language', 'messages'].includes(key.trim().toLowerCase());
 }
 
 function normalizeOrder(value: unknown, path: string): number {
@@ -676,6 +763,7 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
     baseDefinition,
     visualStyle,
     workflows,
+    userJourney: buildPageUserJourney(context, page, operations, commands),
     operations: operations.map(operation => ({
       operationId: operation.operationId,
       title: operation.title,
@@ -712,6 +800,74 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
       'Every intention must include fields, columns, filters, toolbar, rowActions and actions arrays; use [] when empty.',
       'Only reference fields from contract inputs/outputs or ontology fields.',
       'Every form/filter field must be state-driven by shared; the generator will add explicit stateKey refs.',
+      'Use userJourney.operationsInOrder and userJourney.recommendedStages to decide the order and purpose of sections/intentions.',
+      'For multi-step pages, do not collapse the page into one generic form; represent the operational sequence with distinct intentions.',
+    ],
+  };
+}
+
+function buildPageUserJourney(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[]): Record<string, unknown> {
+  const queryCommands = commands.filter(command => readString(command.kind) === 'query');
+  const mutationCommands = commands.filter(command => readString(command.kind) !== 'query');
+  const lifecycleEntities = unique(operations.flatMap(operationEntities))
+    .map(entityId => context.entities.get(entityId))
+    .filter((entity): entity is CfeEntityDef => Boolean(entity && (entity.statusEnum.length > 0 || entity.lifecycleStates.length > 0)))
+    .map(entity => ({
+      entityId: entity.entityId,
+      statusEnum: entity.statusEnum,
+      lifecycleStates: entity.lifecycleStates,
+    }));
+  const recommendedStages: Record<string, unknown>[] = [];
+
+  if (queryCommands.length > 0) {
+    recommendedStages.push({
+      stageId: 'discover',
+      intent: 'queryList',
+      purpose: 'Listar, buscar ou selecionar dados existentes antes de executar comandos.',
+      actions: queryCommands.map(command => readString(command.commandName)).filter(Boolean),
+    });
+  }
+
+  for (const command of mutationCommands) {
+    const commandName = readString(command.commandName);
+    if (!commandName) continue;
+    recommendedStages.push({
+      stageId: `execute.${commandName}`,
+      intent: 'commandForm',
+      purpose: readString(command.purpose) || humanizeId(commandName),
+      actions: [commandName],
+      fields: commandFieldRecords(command.input).map(field => field.name),
+    });
+  }
+
+  if (page.sourceKind === 'workflow' || operations.length > 1) {
+    recommendedStages.push({
+      stageId: 'review',
+      intent: 'summary',
+      purpose: 'Revisar o contexto e o resultado das ações principais da página.',
+      actions: [],
+    });
+  }
+
+  return {
+    pageId: page.pageId,
+    sourceKind: page.sourceKind,
+    isMultiStep: page.sourceKind === 'workflow' || operations.length > 1 || mutationCommands.length > 1,
+    operationsInOrder: operations.map(operation => ({
+      operationId: operation.operationId,
+      title: operation.title,
+      kind: operation.kind,
+      reads: operation.reads,
+      writes: operation.writes,
+      entities: operationEntities(operation),
+    })),
+    lifecycleEntities,
+    recommendedStages,
+    guidance: [
+      'Preserve the order of operations when laying out intentions.',
+      'Place query/list/selection context before create/update/status commands when both exist.',
+      'For order-like or parent-child flows, separate parent/header data, child item management, totals/summary and status actions.',
+      'Use progressive disclosure or wizard-like stages only as semantic intent; page11 implementation remains plain render.',
     ],
   };
 }
@@ -775,9 +931,6 @@ function repairMissingLayoutI18n(prepared: CfePreparedPage, layout: CfePageLayou
     }
   }
 
-  if (added.length > 0) {
-    console.warn(`[agentCfeCreatePage] repaired missing i18n key(s) for ${prepared.page.pageId}: ${added.join('; ')}`);
-  }
   return added.length > 0 ? { ...layout, i18n } : layout;
 }
 
@@ -786,6 +939,11 @@ function fallbackI18nText(key: string, fallback: string, kind: 'title' | 'label'
   const source = fallback || key.replace(/\.(title|label|empty)$/i, '');
   const lastSegment = source.split('.').filter(Boolean).pop() || source;
   return humanizeId(lastSegment);
+}
+
+function fallbackLayoutTitleKey(id: string): string {
+  const safeId = id.replace(/[^a-zA-Z0-9]+/g, '.').replace(/^\.+|\.+$/g, '') || 'layout';
+  return `${safeId}.title`;
 }
 
 function validatePageLayout(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): void {
@@ -1445,7 +1603,7 @@ function pageDefinition(page: CfePagePlan, operations: CfeOperationDef[]): Recor
 }
 
 function contractPipeline(project: number, page: CfePagePlan): unknown[] {
-  return [{ id: `${page.pageId}__l2_contract`, type: 'l2_contract', outputPath: `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`, defPath: `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.defs.ts`, dependsFiles: [], dependsOn: [], skills: ['_102020_/l2/agentChangeFrontend/skills/genCfeContractTs.ts'], agent: 'agentMaterializeGen' }];
+  return [{ id: `${page.pageId}__l2_contract`, type: 'l2_contract', outputPath: `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`, defPath: `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.defs.ts`, dependsFiles: [], dependsOn: [], skills: ['_102020_/l2/agentChangeFrontend/skills/genCfeContractTs.ts'], agent: 'agentCfeMaterializeGen' }];
 }
 
 function sharedPipeline(project: number, page: CfePagePlan, commands: Record<string, unknown>[]): unknown[] {
@@ -1459,10 +1617,10 @@ function sharedPipeline(project: number, page: CfePagePlan, commands: Record<str
       `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`,
       `_${project}_/l2/${page.moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
     ],
-    dependsOn: [],
+    dependsOn: [`${page.pageId}__l2_contract`],
     skills: ['_102020_/l2/agentChangeFrontend/skills/genCfeSharedTs.ts'],
     rulesApplied: unique(commands.flatMap(command => Array.isArray(command.rulesApplied) ? command.rulesApplied.map(String) : [])),
-    agent: 'agentMaterializeGen',
+    agent: 'agentCfeMaterializeGen',
   }];
 }
 
@@ -1478,11 +1636,10 @@ function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown):
       `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.defs.ts`,
       `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`,
     ],
-    dependsOn: [],
+    dependsOn: [`${page.pageId}__l2_shared`],
     skills: ['_102020_/l2/agentChangeFrontend/skills/genCfePage11RenderTs.ts'],
-    afterSaveFrontEnd: '_102020_/l2/agentMaterializeSolution/registerFrontEnd.ts?registerPage',
     visualStyle: typeof visualStyle === 'string' ? { description: visualStyle } : (isRecord(visualStyle) ? visualStyle : {}),
-    agent: 'agentMaterializeGen',
+    agent: 'agentCfeMaterializeGen',
   }];
 }
 
@@ -1517,7 +1674,7 @@ async function updateConfigJson(context: CfeCreateContext, pages: CfePagePlan[])
 
     for (const page of pages.filter(p => p.moduleName === moduleName)) {
       Object.assign(upsertByKey(navigation, 'id', page.pageId), { id: page.pageId, label: page.pageName, href: `/${moduleName}/${page.pageId}`, description: page.pageName });
-      Object.assign(upsertByKey(frontendPages, 'pageId', page.pageId), { pageId: page.pageId, route: `/${moduleName}/${page.pageId}`, source: `l2/${moduleName}/web/desktop/page11/${page.pageId}.ts`, definition: `l2/${moduleName}/web/desktop/page11/${page.pageId}.defs.ts`, componentTag: `${toKebabCase(moduleName)}--web--desktop--page11--${toKebabCase(page.pageId)}-${context.project}` });
+      Object.assign(upsertByKey(frontendPages, 'pageId', page.pageId), { pageId: page.pageId, route: `/${moduleName}/${page.pageId}`, source: `l2/${moduleName}/web/desktop/page11/${page.pageId}.ts`, definition: `l2/${moduleName}/web/desktop/page11/${page.pageId}.defs.ts`, componentTag: frontendComponentTag(context.project, page) });
     }
   }
 
@@ -1562,6 +1719,17 @@ async function savePageCreateMarker(prepared: CfePreparedPage, status: 'inProgre
   }, null, 2)}\n`);
 }
 
+async function savePageRegisterMarker(project: number, page: CfePagePlan, status: 'done'): Promise<void> {
+  const fileInfo = pageRegisterMarkerFileInfo(project, page);
+  await saveStorContent(fileInfo, `${JSON.stringify({
+    savedAt: new Date().toISOString(),
+    status,
+    pageId: page.pageId,
+    moduleName: page.moduleName,
+    agent: 'agentCfeRegisterFrontend',
+  }, null, 2)}\n`);
+}
+
 async function hasGeneratedDefs(project: number, page: CfePagePlan): Promise<boolean> {
   const defsExist = [contractFileInfo(project, page), sharedFileInfo(project, page), pageFileInfo(project, page)].every(fileInfo => {
     const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
@@ -1572,10 +1740,32 @@ async function hasGeneratedDefs(project: number, page: CfePagePlan): Promise<boo
   return isRecord(marker) && marker.status === 'done';
 }
 
+function hasMaterializedPageTs(project: number, page: CfePagePlan): boolean {
+  const file = mls.stor.files[mls.stor.getKeyToFile(pageTsFileInfo(project, page))];
+  return !!file && file.status !== 'deleted';
+}
+
+async function hasRegisteredFrontend(project: number, page: CfePagePlan): Promise<boolean> {
+  const marker = await readJsonFile(pageRegisterMarkerFileInfo(project, page));
+  return isRecord(marker) && marker.status === 'done';
+}
+
+async function savePageHtml(project: number, page: CfePagePlan): Promise<void> {
+  const tag = frontendComponentTag(project, page);
+  await saveStorContent(pageHtmlFileInfo(project, page), `<${tag}></${tag}>`);
+}
+
+function frontendComponentTag(project: number, page: CfePagePlan): string {
+  return convertFileToTag({ project, folder: `${page.moduleName}/web/desktop/page11`, shortName: page.pageId });
+}
+
 function contractFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/contracts`, shortName: page.pageId, extension: '.defs.ts' }; }
 function sharedFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/shared`, shortName: page.pageId, extension: '.defs.ts' }; }
 function pageFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/page11`, shortName: page.pageId, extension: '.defs.ts' }; }
+function pageTsFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/page11`, shortName: page.pageId, extension: '.ts' }; }
+function pageHtmlFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/page11`, shortName: page.pageId, extension: '.html' }; }
 function pageCreateMarkerFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/trace/frontend-create-pages`, shortName: page.pageId, extension: '.json' }; }
+function pageRegisterMarkerFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/trace/frontend-register-pages`, shortName: page.pageId, extension: '.json' }; }
 
 function operationFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string): CfeOperationDef | null {
   const operationId = readString(data.operationId);
@@ -1728,6 +1918,5 @@ function readStringArray(value: unknown): string[] { return Array.isArray(value)
 function isRecord(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 function unique(values: string[]): string[] { return Array.from(new Set(values.filter(Boolean))); }
 function toSafeShortName(value: string): string { return value.trim().replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'page'; }
-function toKebabCase(value: string): string { return value.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase(); }
 function toPascalCase(value: string): string { return value.split(/[^a-zA-Z0-9]+|(?=[A-Z])/).filter(Boolean).map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('') || 'Organism'; }
 function humanizeId(id: string): string { const spaced = id.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim(); return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : id; }

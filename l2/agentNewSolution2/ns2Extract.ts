@@ -108,6 +108,10 @@ function normalizeToolArguments<T>(value: unknown, config: PlannerExtractConfig<
   const args = parseMaybeJson(value);
   if (!isRecord(args)) throw new Error('tool arguments must be an object');
 
+  if (args.result !== undefined && !isToolWrapper(args.result, config.toolName)) {
+    return normalizeEnvelope(args, config);
+  }
+
   const direct = tryNormalizeEnvelope(args, config);
   if (direct) return direct;
 
@@ -133,17 +137,21 @@ function tryNormalizeEnvelope<T>(value: unknown, config: PlannerExtractConfig<T>
   if (isToolWrapper(output.result, config.toolName)) return null;
 
   try {
-    const pre = config.preNormalizeResult ? config.preNormalizeResult(output.result) : output.result;
-    validatePlannerResultSchema(pre, config);
-    return {
-      status: output.status === undefined ? 'ok' : assertPlannerStatus(output.status, 'status'),
-      result: config.normalizeResult(pre),
-      questions: normalizeStringList(output.questions, 'questions'),
-      trace: normalizeStringList(output.trace, 'trace'),
-    };
+    return normalizeEnvelope(output, config);
   } catch {
     return null;
   }
+}
+
+function normalizeEnvelope<T>(output: Record<string, unknown>, config: PlannerExtractConfig<T>): PlannerOutput<T> {
+  const pre = config.preNormalizeResult ? config.preNormalizeResult(output.result) : output.result;
+  validatePlannerResultSchema(pre, config);
+  return {
+    status: output.status === undefined ? 'ok' : assertPlannerStatus(output.status, 'status'),
+    result: config.normalizeResult(pre),
+    questions: normalizeStringList(output.questions, 'questions'),
+    trace: normalizeStringList(output.trace, 'trace'),
+  };
 }
 
 function isToolWrapper(value: unknown, toolName: string): boolean {

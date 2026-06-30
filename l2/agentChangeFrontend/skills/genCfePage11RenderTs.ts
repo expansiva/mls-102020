@@ -37,12 +37,17 @@ Never invent property names, handler names or msg keys from conventions.
 ## File shape
 
 Generate:
-- MLS header from target outputPath.
+- MLS header from target outputPath, with enhancement="_102020_/l2/enhancementAura".
 - import { html } from 'lit';
 - import { customElement } from 'lit/decorators.js';
 - import the exact base class from /_{project}_/l2/{moduleName}/web/shared/{pageName}.js
-- @customElement tag from outputPath:
-  {module-kebab}--web--desktop--page11--{page-kebab}-{project}
+- @customElement tag from outputPath using the same rule as /_102020_/l2/utils.ts convertFileToTag:
+  - Insert "-" before every uppercase letter that follows a lowercase letter or digit.
+  - Lowercase the result.
+  - Replace folder "/" with "--".
+  - Append "-{project}" to the page shortName.
+  - Example: folder cafeFlow/web/desktop/page11, page aiSalesSummary, project 102050 becomes cafe-flow--web--desktop--page11--ai-sales-summary-102050.
+  - Never collapse camelCase into lowercase-only names such as aisalessummary.
 - export class {ModulePascal}DesktopPage11{PagePascal}Page extends {BaseClassName}
 - The only class method is render().
 

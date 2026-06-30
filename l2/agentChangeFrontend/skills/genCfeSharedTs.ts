@@ -35,7 +35,7 @@ Never read i18n from page11; page11 only references i18n keys.
 ## Class and file shape
 
 Generate:
-- MLS header from target outputPath.
+- MLS header from target outputPath, with enhancement="_102020_/l2/enhancementAura".
 - Imports:
   - CollabLitElement from /_102029_/l2/collabLitElement.js
   - property from lit/decorators.js
@@ -85,10 +85,33 @@ Maintain a mapping from stateKey to propertyName internally while generating cod
 
 ## i18n
 
-Generate message_pt from Definition.i18n exactly.
-Generate message_en by translating the same keys.
-Expose a protected or public msg getter compatible with existing pages.
-Every render-facing label must come from this shared class.
+The i18n block must be outside the class and wrapped exactly with these markers:
+
+\`\`\`typescript
+/// **collab_i18n_start**
+const message_default = {
+  // copy Definition.i18n exactly for the project default locale
+};
+type MessageType = typeof message_default;
+const messages: { [key: string]: MessageType } = { default: message_default };
+/// **collab_i18n_end**
+\`\`\`
+
+Generate message_default from Definition.i18n exactly.
+Do not invent extra locale catalogs unless they already exist in Definition.i18n.
+Never declare message_default or messages inside the class.
+Never write \`as const\` on message objects.
+
+Inside the class expose this exact getter shape:
+
+\`\`\`typescript
+protected get msg(): MessageType {
+  const lang: string = this.getMessageKey(messages);
+  return messages[lang] || message_default;
+}
+\`\`\`
+
+Every render-facing label must come from this shared class through this.msg.
 
 ## Action generation
 
