@@ -4,8 +4,8 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getAuraState } from '/_102020_/l2/auraState.js';
-import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
-import { pageDsCheckByDefs, restampPage, type PageDsCheck } from '/_102020_/l2/dsMatch/dsVersion.js';
+import { getContentByMlsPath } from '/_102020_/l2/agentChangeFrontend/cfeMaterializeStudio.js';
+import { pageDsCheckByDefs, restampPage, layoutHasRules, type PageDsCheck } from '/_102020_/l2/dsMatch/dsVersion.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
@@ -306,14 +306,19 @@ export class PluginSelectPage extends StateLitElement {
     private async _loadPageStatus(): Promise<void> {
         this._checkByName = {};
         const module = this._modulePath;
+        const project = getAuraState().actualProject;
+        const layout = getAuraState().actualLayout ?? 1;
         const ds = getAuraState().actualDesignSystem ?? 1;
-        if (!module || !ds || ds <= 1 || this._pages.length === 0) return;
+        if (!module || !project || this._pages.length === 0) return;
+        // Gate (L6): only check staleness when the layout actually has rules configured.
+        if (!(await layoutHasRules(project, layout))) return;
 
         const results = await Promise.all(this._pages.map(async (p) => {
             try {
                 const check = await pageDsCheckByDefs(
                     { project: p.file.project, folder: p.file.folder ?? '', shortName: p.file.shortName },
                     module,
+                    layout,
                     ds,
                 );
                 return [p.name, check] as const;
@@ -529,13 +534,15 @@ export class PluginSelectPage extends StateLitElement {
 
     private async _onMarkReviewed(page: IPageEntry) {
         const module = this._modulePath;
+        const layout = getAuraState().actualLayout ?? 1;
         const ds = getAuraState().actualDesignSystem ?? 1;
-        if (!module || !ds) return;
+        if (!module) return;
         this._busyPage = page.name;
         this.requestUpdate();
         await restampPage(
             { project: page.file.project, folder: page.file.folder ?? '', shortName: page.file.shortName },
             module,
+            layout,
             ds,
             new Date().toISOString(),
         );
@@ -555,16 +562,26 @@ export class PluginSelectPage extends StateLitElement {
         const taskKey = `regenerate:${page.name}`;
         if (getTask(taskKey)?.status === 'running') return;
 
-        const prompt = JSON.stringify({ module, layout, ds, device, pages: [page.name] });
+        const materialize = true; // the button regenerates the rendered .ts page too
+        // The agent matches on page shortNames; page.name may be a pageId/path, so send the file shortName.
+        const pageShort = page.file?.shortName ?? page.name;
+        const prompt = JSON.stringify({ module, layout, ds, device, pages: [pageShort], materialize });
         // Pause the preview while the agent rewrites the defs (avoids repaint thrash); restore after.
         const prevPause = getState('preview.pausePreview');
         setState('preview.pausePreview', true);
         setTask(taskKey, { status: 'running', startedAt: Date.now() });
         try {
-            await this._executeAgent('agentImplementsDesignSystem2', prompt, (data) => {
+            // 1) DS-implementation: rewrite the page defs (page{layout}{ds}/<page>.defs.ts).
+            await this._executeAgent('agentImplementGenome', prompt, (data) => {
                 this._taskInfoByName.set(page.name, data);
                 this.requestUpdate(); // surface "Follow task" as soon as the task exists
             });
+            // 2) Materialize: read the now-stale defs and generate the .ts page. Unpause first
+            //    so the .ts write repaints the preview with the new result.
+            if (materialize) {
+                setState('preview.pausePreview', prevPause ?? false);
+                await this._executeAgent('agentMaterializeL2', '{}');
+            }
             setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
         } catch (e: any) {
             setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: e?.message });

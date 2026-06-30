@@ -11,14 +11,14 @@ import {
     type PageDsStamp,
     type UsedMolecule,
 } from '/_102020_/l2/dsMatch/dsVersion.js';
-import type { MoleculeCatalogEntry, ResolvedDs } from '/_102020_/l2/dsMatch/types.js';
+import type { MoleculeCatalogEntry, ResolvedLayoutRules } from '/_102020_/l2/dsMatch/types.js';
 
 function assert(cond: boolean, msg: string): void { if (!cond) throw new Error(`[dsVersion.test] FAIL: ${msg}`); }
 
 function mol(project: number, group: string, tag: string, layoutConfig: Record<string, string> = {}, description = `desc-${tag}`): MoleculeCatalogEntry {
     return { project, group, tag, variant: tag, layoutConfig, objective: '', description, usagePath: '' };
 }
-function ds(rules: Record<string, string>): ResolvedDs { return rules as ResolvedDs; }
+function ds(rules: Record<string, string>): ResolvedLayoutRules { return rules as ResolvedLayoutRules; }
 
 export function runDsVersionTests(): { passed: number } {
     let passed = 0;
@@ -66,7 +66,7 @@ export function runDsVersionTests(): { passed: number } {
     const rules = ds({ feedback: 'toast' });
     const configuredAxes = new Set(['feedback']);
     const freshStamp: PageDsStamp = {
-        ds: 2, dsName: 'X', rulesHash: effectiveRulesSignature({ feedback: 'toast' }),
+        layout: 1, ds: 2, dsName: 'X', rulesHash: effectiveRulesSignature({ feedback: 'toast' }),
         moleculesSeen: { '102040|ml-toast': moleculeContentSignature(catalog[0]) }, generatedAt: 't',
     };
     const base = { used, catalog, rules, configuredAxes, currentRulesHash: effectiveRulesSignature({ feedback: 'toast' }) };
@@ -114,9 +114,9 @@ export function runDsVersionTests(): { passed: number } {
 
     // ── renderDsVersionExport ─────────────────────────────────────────────────
     {
-        const stamp: PageDsStamp = { ds: 2, dsName: 'Collab design', rulesHash: 'ab12cd34', moleculesSeen: { '102040|ml-toast': '9f2a' }, generatedAt: '2026-06-22T10:00:00Z' };
+        const stamp: PageDsStamp = { layout: 1, ds: 2, dsName: 'Collab design', rulesHash: 'ab12cd34', moleculesSeen: { '102040|ml-toast': '9f2a' }, generatedAt: '2026-06-22T10:00:00Z' };
         const src = renderDsVersionExport(stamp);
-        assert(src.startsWith('export const dsVersion = ') && src.trimEnd().endsWith('as const;'), 'valid as-const export');
+        assert(src.startsWith('export const pageVersion = ') && src.trimEnd().endsWith('as const;'), 'valid as-const export');
         assert(src.includes('"moleculesSeen"'), 'should carry moleculesSeen');
         passed++;
     }

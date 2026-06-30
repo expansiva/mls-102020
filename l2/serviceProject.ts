@@ -168,6 +168,13 @@ export class ServiceProject102020 extends ServiceBase {
         this.requestUpdate();
     }
 
+    private async _onDsCreated(value: number) {
+        // New DS persisted: rebuild the knob (new entry + fresh "+" slot), then select it.
+        const project = getAuraState().actualProject;
+        if (project != null) await this._initDsConfig(project);
+        this._setKnobValue('designSystem', value);
+    }
+
     private async _initDsConfig(projectId: number): Promise<void> {
         try {
             const config = await getConfigProject(projectId);
@@ -364,6 +371,7 @@ export class ServiceProject102020 extends ServiceBase {
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col gap-3 px-4 py-4 flex-1"
                     @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
+                    @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}
                     @ds-config=${(e: CustomEvent) => { this._dsConfig = { key: 'designSystem', min: e.detail.min, max: e.detail.max, labels: e.detail.labels }; this.requestUpdate(); }}
                     @select-assets=${(e: CustomEvent) => this._setKnobValue('assets', e.detail.value)}
                 >
@@ -383,19 +391,14 @@ export class ServiceProject102020 extends ServiceBase {
                         @select-module=${(e: CustomEvent) => this._setKnobValue('module', e.detail.value)}
                     ></plugins--select-module-102020>
                 `;
-            case 'designSystem': {
-                // Project service configures the SELECTED module's overrides; with no module
-                // selected ("All") it falls back to editing the project-level base rules.
-                const mod = this._selectedModule?.name ?? null;
+            case 'designSystem':
+                // Phase B — DS = styling. Same tokens editor as the genome (project-wide tokens).
                 return html`
                     <plugins--select-design-system-102020
                         .projectId=${getAuraState().actualProject}
                         .value=${this._dsValue}
-                        .scope=${mod ? 'module' : 'project'}
-                        .module=${mod}
                     ></plugins--select-design-system-102020>
                 `;
-            }
             case 'device':
                 return html`
                     <plugins--select-device-102020

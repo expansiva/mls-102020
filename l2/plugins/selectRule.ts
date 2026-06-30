@@ -4,7 +4,8 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getAuraState } from '/_102020_/l2/auraState.js';
-import { loadModuleByBuild } from '/_102020_/l2/agentMaterializeSolution/agentMaterializeArtifacts.js';
+import { loadModuleByBuild } from '/_102020_/l2/agentChangeFrontend/cfeMaterializeStudio.js';
+
 import '/_102020_/l2/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────

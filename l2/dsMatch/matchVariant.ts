@@ -11,7 +11,7 @@
 //   4. nothing matches → null      (NO assignment; a wrong molecule is worse than none —
 //                                   the organism keeps its original UI. No arbitrary fallback.)
 
-import type { ResolvedDs, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
+import type { ResolvedLayoutRules, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
 
 export interface MatchResult {
     entry: MoleculeCatalogEntry;
@@ -27,7 +27,7 @@ export interface MatchResult {
  */
 export function matchVariant(
     group: string,
-    dsRules: ResolvedDs,
+    dsRules: ResolvedLayoutRules,
     catalog: MoleculeCatalogEntry[],
 ): MatchResult | null {
 
@@ -43,7 +43,7 @@ export function matchVariant(
         // AND: every declared axis must match the DS.
         let ok = true;
         for (const [axis, value] of declared) {
-            if (dsRules[axis as keyof ResolvedDs] !== value) { ok = false; break; }
+            if (dsRules[axis as keyof ResolvedLayoutRules] !== value) { ok = false; break; }
         }
         if (!ok) continue;
 

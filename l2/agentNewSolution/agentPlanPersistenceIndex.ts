@@ -336,7 +336,11 @@ export function validatePlanPersistenceIndexOutput(output: PlanPersistenceIndexO
     throw new Error('newTablesRequired is true, but tables is empty');
   }
   if (output.status === 'ok' && initialMetricsRequested && !output.result.persistenceScope.metricsTablesRequired) {
-    throw new Error('initial metrics requested, but metricsTablesRequired is false');
+    // analise11: metricsTablesRequired is a derived invariant (initial metrics requested => true).
+    // The critic/repair sometimes flips it to false by misreading the field (it is a flag, not a
+    // metric table planned here). Coerce it back instead of failing the whole task — the correct
+    // value is deterministic and harmless to enforce.
+    output.result.persistenceScope.metricsTablesRequired = true;
   }
   if (output.status === 'needs_input' && output.questions.length === 0) throw new Error('needs_input persistence index must include questions');
 }
@@ -411,7 +415,7 @@ ${JSON.stringify(reduced, null, 2)}
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codereasoning -->
 <!-- x-tool-strict: true -->
 
 You are agentPlanPersistenceIndex for the collab.codes "newSolution" flow.

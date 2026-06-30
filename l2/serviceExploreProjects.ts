@@ -10,8 +10,8 @@ import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import '/_102027_/l2/collabSelectKnob.js';
 import '/_102020_/l2/plugins/selectOrganization.js';
 import '/_102020_/l2/plugins/selectProject.js';
-import '/_102020_/l2/plugins/selectDesignSystem.js';
 import '/_102020_/l2/plugins/selectLanguage.js';
+import '/_102020_/l2/plugins/selectDesignSystem.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -35,7 +35,6 @@ const message_en = {
     projectCustomDesc: 'Create a new project within this organization.',
     projectNeedsOrg: 'Select an organization first to see the available projects.',
     dsScenarioTitle: 'Select Design System',
-    dsScenarioDesc: 'A design system defines the visual tokens (colors, typography, spacing) applied when generating components for this project.',
     dsNeedsProject: 'Select a project first to see the available design systems.',
     langScenarioTitle: 'Select Language',
     langScenarioDesc: 'The language defines the locale used for i18n content generation. Each language produces translated variations of the project pages.',
@@ -66,7 +65,6 @@ const messages: Record<string, MessageType> = {
         projectCustomDesc: 'Crie um novo projeto dentro desta organização.',
         projectNeedsOrg: 'Selecione uma organização primeiro para ver os projetos disponíveis.',
         dsScenarioTitle: 'Selecionar Design System',
-        dsScenarioDesc: 'Um design system define os tokens visuais (cores, tipografia, espaçamentos) aplicados na geração de componentes do projeto.',
         dsNeedsProject: 'Selecione um projeto primeiro para ver os design systems disponíveis.',
         langScenarioTitle: 'Selecionar Idioma',
         langScenarioDesc: 'O idioma define o locale usado para geração de conteúdo i18n. Cada idioma produz variações traduzidas das páginas do projeto.',
@@ -94,7 +92,6 @@ const messages: Record<string, MessageType> = {
         projectCustomDesc: 'Cree un nuevo proyecto dentro de esta organización.',
         projectNeedsOrg: 'Seleccione una organización primero para ver los proyectos disponibles.',
         dsScenarioTitle: 'Seleccionar Design System',
-        dsScenarioDesc: 'Un sistema de diseño define los tokens visuales (colores, tipografía, espaciado) aplicados al generar componentes del proyecto.',
         dsNeedsProject: 'Seleccione un proyecto primero para ver los sistemas de diseño disponibles.',
         langScenarioTitle: 'Seleccionar Idioma',
         langScenarioDesc: 'El idioma define el locale para la generación de contenido i18n. Cada idioma produce variaciones traducidas de las páginas del proyecto.',
@@ -405,6 +402,13 @@ export class ServiceExploreProjects102020 extends ServiceBase {
         this.requestUpdate();
     }
 
+    private async _onDsCreated(value: number) {
+        // New DS persisted: rebuild the knob (new entry + fresh "+" slot), then select it.
+        const project = this._selectedProject?.project;
+        if (project != null) await this._initDsConfig(project);
+        this._setKnobValue('designSystem', value);
+    }
+
     private _onDsConfig(e: CustomEvent) {
         this._dsConfig = { key: 'designSystem', min: e.detail.min, max: e.detail.max, labels: e.detail.labels };
         const actualDs = getAuraState().actualDesignSystem;
@@ -526,6 +530,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col gap-3 px-4 py-4 flex-1"
                     @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
+                    @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}
                     @ds-config=${(e: CustomEvent) => this._onDsConfig(e)}
                 >
                     ${this._renderContextStatusArea()}
@@ -553,11 +558,11 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                     ></plugins--select-project-102020>
                 `;
             case 'designSystem':
+                // Phase B — DS = styling. Same tokens editor as the genome (project-wide tokens).
                 return html`
                     <plugins--select-design-system-102020
                         .projectId=${this._selectedProject?.project ?? null}
                         .value=${this._dsValue}
-                        .scope=${'project'}
                     ></plugins--select-design-system-102020>
                 `;
             case 'language':

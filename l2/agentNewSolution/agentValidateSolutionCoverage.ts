@@ -870,6 +870,9 @@ function buildCoverageSnapshot(
     if (record.priority === 'never') return;
     const rawId = record.horizontalModuleId ?? record.artifactId ?? record.signal;
     const id = normalizeHorizontalModuleId(rawId);
+    // analise11 T12: auth, audit, monitoring and notifications are platform-provided — the module
+    // must not spend budget on them, so never flag them as a missing artifact.
+    if (id && /notificac|notification|audit|monitor|observab|telemetr|logging|auth|permission/i.test(id)) return;
     if (!id || !plannedHorizontalIds.has(id)) {
       addIssue('error', 'horizontal.artifact.missing', `approved horizontal module ${String(rawId || `#${i}`)} produced no plan item/artifact`, `approvedArtifacts.horizontalModules[${i}]`);
     }
@@ -882,6 +885,51 @@ function buildCoverageSnapshot(
       addIssue('error', 'dashboard.actor.unknown', `dashboard ${rec.metricDashboardId} actor ${rec.actor} is not a final plan actorId`, `dashboard[${i}]`);
     }
   });
+
+  // analise10 T3: entity-reference resolution. Every entity referenced by a bffCommand
+  // (readsEntities/writesEntities), an organism (requiredEntities) or a usecase
+  // (inputEntities/outputEntities) must resolve to a KNOWN entity: an ontology entity, a layer_4
+  // usecase entity (entityId), or one of the ontology entities a layer_4 aggregate realizes
+  // (entity.ontologyEntities). A reference that resolves to nothing is drift between ID spaces —
+  // e.g. a bffCommand pointing at a layer_4 group id ('cardapioEntity') instead of the ontology id.
+  const normEntityKey = (id: string) => id.replace(/Entity$/i, '').toLowerCase();
+  const knownEntityKeys = new Set<string>();
+  for (const id of Object.keys((fp.ontology?.entities as Record<string, unknown> | undefined) || {})) {
+    if (id) knownEntityKeys.add(normEntityKey(id));
+  }
+  for (const entity of extras.entityDefs) {
+    const eid = typeof entity.entityId === 'string' ? entity.entityId : '';
+    if (eid) knownEntityKeys.add(normEntityKey(eid));
+    for (const alias of asStrings(entity.ontologyEntities)) knownEntityKeys.add(normEntityKey(alias));
+  }
+  if (knownEntityKeys.size > 0) {
+    const checkEntityRefs = (refs: unknown, subject: string, path: string) => {
+      for (const ref of asStrings(refs)) {
+        if (!knownEntityKeys.has(normEntityKey(ref))) {
+          // analise10 T7: refs are now derived deterministically from the tables (T5), so a healthy
+          // run resolves all of them — an unresolved ref is a real defect, not noise.
+          addIssue('error', 'entity.ref.unknown', `${subject} references unknown entity ${ref}`, path);
+        }
+      }
+    };
+    for (const pd of pageDefinitions) {
+      const pid = pd.result.pageDefinition.pageId;
+      for (const cmd of pd.result.bffCommands) {
+        checkEntityRefs(cmd.readsEntities, `bffCommand ${pid}.${cmd.commandName}`, `pageDefinition.${pid}.bffCommands.${cmd.commandName}.readsEntities`);
+        checkEntityRefs(cmd.writesEntities, `bffCommand ${pid}.${cmd.commandName}`, `pageDefinition.${pid}.bffCommands.${cmd.commandName}.writesEntities`);
+      }
+      for (const section of pd.result.pageDefinition.sections || []) {
+        for (const organism of section.organisms || []) {
+          checkEntityRefs(organism.requiredEntities, `organism ${pid}.${organism.organismName}`, `pageDefinition.${pid}.requiredEntities`);
+        }
+      }
+    }
+    for (const usecase of usecases) {
+      const uid = (usecase.usecaseId as string) || '';
+      checkEntityRefs(usecase.inputEntities, `usecase ${uid}`, `usecase.${uid}.inputEntities`);
+      checkEntityRefs(usecase.outputEntities, `usecase ${uid}`, `usecase.${uid}.outputEntities`);
+    }
+  }
 
   const snapshot = {
     module: fp.module,
@@ -1015,7 +1063,7 @@ function asArray(value: unknown): unknown[] {
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codeawsfast -->
 
 You are agentValidateSolutionCoverage for the collab.codes "newSolution" flow.
 Perform a final cross-plan validation of the entire solution before any .defs materialization.

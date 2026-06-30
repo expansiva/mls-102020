@@ -11,13 +11,13 @@
 //
 // It logs a readable report and returns it. `checks[].ok === false` flags a problem.
 
-import { dsAxisKeys, dsDefaults, isValidAxisValue } from '/_102020_/l2/designSystemAuraBase.js';
+import { layoutAxisKeys, layoutRuleDefaults, isValidAxisValue } from '/_102020_/l2/designSystemAuraBase.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { readDsRules } from '/_102020_/l2/dsMatch/readDsRules.js';
+import { readLayoutRules } from '/_102020_/l2/dsMatch/readDsRules.js';
 import { buildMoleculeCatalog } from '/_102020_/l2/dsMatch/buildMoleculeCatalog.js';
 import { matchVariant } from '/_102020_/l2/dsMatch/matchVariant.js';
 import { runMatchVariantTests } from '/_102020_/l2/dsMatch/matchVariant.test.js';
-import type { ResolvedDs } from '/_102020_/l2/dsMatch/types.js';
+import type { ResolvedLayoutRules } from '/_102020_/l2/dsMatch/types.js';
 
 export interface FaseACheck { name: string; ok: boolean; detail?: string; }
 
@@ -32,7 +32,7 @@ export interface FaseASelection {
 export interface FaseAReport {
     project: number;
     dsIndex: string;
-    resolvedDs: ResolvedDs;
+    resolvedDs: ResolvedLayoutRules;
     catalogTotal: number;
     groupCount: number;
     groupNames: string[];
@@ -53,27 +53,27 @@ export async function simulateFaseA(project = 102043, dsIndex: number | string =
         check('matchVariant pure tests', false, String(err?.message ?? err));
     }
 
-    // ── A1: readDsRules ──────────────────────────────────────────────────────
-    const resolvedDs = await readDsRules(project, dsIndex);
+    // ── A1: readLayoutRules ───────────────────────────────────────────────────
+    const resolvedDs = await readLayoutRules(project, dsIndex);
     const resolvedKeys = Object.keys(resolvedDs);
     check(
         'A1: every axis resolved',
-        resolvedKeys.length === dsAxisKeys.length,
-        `${resolvedKeys.length}/${dsAxisKeys.length} axes`,
+        resolvedKeys.length === layoutAxisKeys.length,
+        `${resolvedKeys.length}/${layoutAxisKeys.length} axes`,
     );
     // DS-agnostic verification (no hardcoded values):
     //   - every valid axis the DS declares must be reflected in the resolved DS;
     //   - every axis the DS does NOT declare must equal its vocabulary default.
     const liveRules = await readLiveRules(project, dsIndex);
-    const defaults = dsDefaults();
+    const defaults = layoutRuleDefaults();
     const declaredCount = Object.keys(liveRules).length;
 
     const declaredReflected = Object.entries(liveRules)
         .filter(([axis, value]) => typeof value === 'string' && isValidAxisValue(axis, value))
-        .every(([axis, value]) => resolvedDs[axis as keyof ResolvedDs] === value);
+        .every(([axis, value]) => resolvedDs[axis as keyof ResolvedLayoutRules] === value);
     check('A1: declared rules reflected', declaredReflected, `${declaredCount} declared rule(s)`);
 
-    const undeclaredDefaulted = dsAxisKeys.every(
+    const undeclaredDefaulted = layoutAxisKeys.every(
         axis => (axis in liveRules) || resolvedDs[axis] === defaults[axis],
     );
     check('A1: undeclared axes use defaults', undeclaredDefaulted);

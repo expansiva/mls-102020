@@ -14,18 +14,18 @@
 // keeps its original UI. Option A (cross-group: include sibling groups of the axis) is a
 // future improvement.
 
-import type { ResolvedDs, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
+import type { ResolvedLayoutRules, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
 
 export function filterCompatibleVariants(
     group: string,
-    dsRules: ResolvedDs,
+    dsRules: ResolvedLayoutRules,
     configuredAxes: Set<string>,
     catalog: MoleculeCatalogEntry[],
 ): MoleculeCatalogEntry[] {
     return catalog.filter(m => {
         if (m.group !== group) return false;
         for (const [axis, value] of Object.entries(m.layoutConfig)) {
-            if (configuredAxes.has(axis) && dsRules[axis as keyof ResolvedDs] !== value) return false;
+            if (configuredAxes.has(axis) && dsRules[axis as keyof ResolvedLayoutRules] !== value) return false;
         }
         return true;
     });

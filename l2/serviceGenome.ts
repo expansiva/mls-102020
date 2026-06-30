@@ -14,6 +14,7 @@ import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
 import '/_102020_/l2/plugins/selectLayout.js';
+import '/_102020_/l2/plugins/selectLayoutRules.js';
 import '/_102020_/l2/plugins/selectDesignSystem.js';
 import '/_102020_/l2/plugins/selectMolecule.js';
 
@@ -157,10 +158,13 @@ export class ServiceGenome102020 extends ServiceBase {
 
         const labels: Record<number, string> = { 0: 'All' };
         keys.forEach(k => { labels[k] = layoutsMap[k].name; });
+        // Last slot = "+ Add layout".
+        const addSlot = keys[keys.length - 1] + 1;
+        labels[addSlot] = '+';
 
-        this._layoutConfig = { key: 'layout', min: 0, max: keys[keys.length - 1], labels };
+        this._layoutConfig = { key: 'layout', min: 0, max: addSlot, labels };
         const stateLayout = getAuraState().actualLayout;
-        this._layoutValue = (stateLayout !== null && stateLayout <= this._layoutConfig.max) ? stateLayout : 0;
+        this._layoutValue = (stateLayout !== null && stateLayout > 0 && stateLayout < addSlot) ? stateLayout : 0;
         // @ts-ignore
         this.requestUpdate();
     }
@@ -344,7 +348,8 @@ export class ServiceGenome102020 extends ServiceBase {
         switch (key) {
             case 'layout':
                 this._layoutValue = value;
-                if (value !== null && value > 0 && value <= this._layoutConfig.max) {
+                // Real layouts only (1..max-1); the last slot (max) is "+ Add layout".
+                if (value !== null && value > 0 && value < this._layoutConfig.max) {
                     setAuraState('actualLayout', value);
                     saveAuraProject();
                     this._repaintPageForCombination();
@@ -367,6 +372,20 @@ export class ServiceGenome102020 extends ServiceBase {
                 return;
         }
         this.requestUpdate();
+    }
+
+    private async _onLayoutCreated(value: number) {
+        // A new layout was persisted to project.json. Rebuild the layout knob so it
+        // includes the new entry (and a fresh "+ Add" slot), then select it.
+        await this._initLayoutKnob();
+        this._setKnobValue('layout', value);
+    }
+
+    private async _onDsCreated(value: number) {
+        // A new design system was persisted. Rebuild the DS knob (new entry + fresh "+"
+        // slot), then select it.
+        await this._initDsKnob();
+        this._setKnobValue('designSystem', value);
     }
 
     private _onKnobChange(key: string, e: CustomEvent) {
@@ -450,6 +469,27 @@ export class ServiceGenome102020 extends ServiceBase {
         await this._openPage(file, storFiles);
     }
 
+    /**
+     * Force the CURRENT page to re-render (e.g. after a DS save changed global.css).
+     * Unlike _repaintPageForCombination, this has no "same folder" guard — it re-fires
+     * the open action for the page already in view so the preview rebuilds (and re-reads
+     * the regenerated global.css via buildFile).
+     */
+    private _repaintCurrentPage(): void {
+        const file = this._currentPageFile;
+        if (!file) return;
+        const params: any = {
+            action: 'open',
+            level: mls.actualLevel,
+            project: file.project,
+            shortName: file.shortName,
+            extension: file.extension,
+            folder: file.folder,
+            position: this.position,
+        };
+        mls.events.fire([mls.actualLevel], ['FileAction'], JSON.stringify(params), 0);
+    }
+
     /** Open a page into the preview — mirrors servicePage._setActualPage. */
     private async _openPage(file: mls.stor.IFileInfo, storFiles?: any): Promise<void> {
         let name = `_${file.project}_${file.shortName}`;
@@ -475,7 +515,7 @@ export class ServiceGenome102020 extends ServiceBase {
 
         const params: any = {
             action: 'open',
-            level: 4,
+            level: mls.actualLevel,
             project: file.project,
             shortName: file.shortName,
             extension: file.extension,
@@ -606,10 +646,13 @@ export class ServiceGenome102020 extends ServiceBase {
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col gap-3 px-4 py-4 flex-1"
                     @select-layout=${(e: CustomEvent) => this._setKnobValue('layout', e.detail.value)}
+                    @layout-created=${(e: CustomEvent) => this._onLayoutCreated(e.detail.value)}
                     @select-molecule=${(e: CustomEvent) => this._setKnobValue('molecules', e.detail.value)}
                     @molecule-replace-mode=${(e: CustomEvent) => { this._moleculeReplaceMode = e.detail.value; this.requestUpdate(); }}
                     @ds-config=${(e: CustomEvent) => this._onDsConfig(e)}
                     @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
+                    @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}
+                    @save-ds=${() => this._repaintCurrentPage()}
                 >
                     ${this._renderContextStatusArea()}
                 </div>
@@ -626,31 +669,42 @@ export class ServiceGenome102020 extends ServiceBase {
             </div>
         `;
         switch (this._selectedKnob) {
-            case 'layout':
-                return html`
-                    <plugins--select-layout-102020
-                        .value=${this._layoutValue}
-                        .pageFile=${this._currentPageFile}
-                    ></plugins--select-layout-102020>
-                `;
-            case 'designSystem': {
-                // Genome configures the CURRENT page's overrides. module = first folder
-                // segment (same rule as _trySetActualModule), page = file shortName —
-                // together they form the pageOverrides key "{module}/{page}".
+            case 'layout': {
+                // Rules now live on the LAYOUT. Picker (structure) + the rule cascade editor
+                // for the selected layout (scope base/module/page chosen inside the editor).
                 const folder = this._currentPageFile?.folder ?? '';
                 const mod = folder.split('/')[0] || null;
                 const page = this._currentPageFile?.shortName ?? null;
-                const scope = (mod && page) ? 'page' : 'project';
+                // Real layout = 1..max-1; the last slot (max) is "+ Add layout" (handled inside
+                // selectLayout). Layout 1 is the default → its rules are read-only.
+                const isRealLayout = !!this._layoutValue && this._layoutValue > 0 && this._layoutValue < this._layoutConfig.max;
+                return html`
+                    <div class="flex flex-col gap-4">
+                        <plugins--select-layout-102020
+                            .value=${this._layoutValue}
+                            .pageFile=${this._currentPageFile}
+                        ></plugins--select-layout-102020>
+                        ${isRealLayout ? html`
+                            <plugins--select-layout-rules-102020
+                                .projectId=${getAuraState().actualProject}
+                                .layout=${this._layoutValue}
+                                .module=${mod}
+                                .page=${page}
+                                .readOnly=${this._layoutValue === 1}
+                            ></plugins--select-layout-rules-102020>
+                        ` : nothing}
+                    </div>
+                `;
+            }
+            case 'designSystem':
+                // Phase B — DS = styling. The editor reads/writes designSystems[ds].tokens and
+                // regenerates global.css on save. Knob: 0=All, 1..N=edit, last=Add.
                 return html`
                     <plugins--select-design-system-102020
                         .projectId=${getAuraState().actualProject}
                         .value=${this._dsValue}
-                        .scope=${scope}
-                        .module=${mod}
-                        .page=${page}
                     ></plugins--select-design-system-102020>
                 `;
-            }
             case 'molecules':
                 return html`
                     <plugins--select-molecule-102020

@@ -3,6 +3,7 @@
 import { getTokensCss, getGlobalCss } from '/_102027_/l2/designSystemBase.js';
 import { getPath } from '/_102027_/l2/utils';
 import { convertFileToTag, resolveTagToFile } from '/_102020_/l2/utils';
+import { readDsGlobalCss } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
 
 
 export interface IJSONDependence {
@@ -13,6 +14,7 @@ export interface IJSONDependence {
     importsLinks: { ref: string, rel: string }[],
     tokens: string | undefined,
     globalCss: string,
+    dsGlobalCss: string,            // Aura per-DS stylesheet (Phase B): class-scoped --ds-* vars
     errors: { tag: string, error: string }[]
 }
 
@@ -58,6 +60,10 @@ async function getDependencies(storFile: mls.stor.IFileInfo, fileName: string, h
 
     let tokens: string | undefined = await getTokensCss(project, theme);
     let globalCss: string | undefined = await getGlobalCss(project, theme);
+    // Per-DS stylesheet: a page variation folder encodes its DS as `page<layout><ds>`.
+    // Inject only that DS's file; non-page files have no DS → no styling injected.
+    const pageDs = pageDsFromFolder(folder);
+    let dsGlobalCss: string = pageDs ? await readDsGlobalCss(project, pageDs) : '';
 
     return {
         file: fileName,
@@ -66,12 +72,23 @@ async function getDependencies(storFile: mls.stor.IFileInfo, fileName: string, h
         importsJs: Array.from(new Set(importsJs)),
         importsLinks: Array.from(new Set(importsLinks)),
         globalCss,
+        dsGlobalCss,
         tokens,
         errors
     }
 
 }
 
+
+/**
+ * The DS index of a page variation, parsed from a `page<layout><ds>` folder segment
+ * (layout is a single digit, ds is the rest — same convention as derivePaths/genome).
+ * Returns null when the folder is not a page variation.
+ */
+function pageDsFromFolder(folder: string): string | null {
+    const m = (folder || '').match(/(?:^|\/)page(\d)(\d+)(?=\/|$)/);
+    return m ? m[2] : null;
+}
 
 function extractTagsCustom(html: string): string[] {
 

@@ -21,7 +21,7 @@ import { resolveRulesForPage } from '/_102020_/l2/dsMatch/resolveRulesForPage.js
 import { pageRef, DEFAULT_DEVICE } from '/_102020_/l2/dsMatch/derivePaths.js';
 import { buildMoleculeCatalog } from '/_102020_/l2/dsMatch/buildMoleculeCatalog.js';
 import { filterCompatibleVariants } from '/_102020_/l2/dsMatch/filterVariants.js';
-import type { ResolvedDs, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
+import type { ResolvedLayoutRules, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
 
 export type PageDsStatus = 'fresh' | 'review' | 'stale';
 export type StaleReason = 'no-stamp' | 'rules' | 'molecule-removed' | 'molecule-incompatible';
@@ -37,11 +37,12 @@ export interface PageDsCheck {
     staleMolecule: UsedMolecule | null;  // stale (removed/incompatible): the offending molecule
 }
 
-/** What gets stamped on each generated page defs as `export const dsVersion`. */
+/** What gets stamped on each generated page defs as `export const pageVersion`. */
 export interface PageDsStamp {
-    ds: number | string;
+    layout: number | string;                // rules come from this layout
+    ds: number | string;                    // styling (Phase B); identity for now
     dsName: string;
-    rulesHash: string;                      // hash of THIS page's effective (configured) DS rules
+    rulesHash: string;                      // hash of THIS page's effective (configured) LAYOUT rules
     moleculesSeen: Record<string, string>;  // "project|tag" → molecule content signature at gen time
     generatedAt: string;                    // audit only (ISO)
 }
@@ -58,9 +59,9 @@ export function moleculeContentSignature(entry: MoleculeCatalogEntry): string {
     return hash(entry.description ?? '');
 }
 
-/** Serialize the stamp into the `export const dsVersion` line appended to a page defs. */
+/** Serialize the stamp into the `export const pageVersion` line appended to a page defs. */
 export function renderDsVersionExport(stamp: PageDsStamp): string {
-    return `export const dsVersion = ${JSON.stringify(stamp, null, 2)} as const;`;
+    return `export const pageVersion = ${JSON.stringify(stamp, null, 2)} as const;`;
 }
 
 /** FNV-1a 32-bit — no mls dependency, testable. */
@@ -75,9 +76,9 @@ function hash(s: string): string {
 
 // ─── pure: parse from defs source ──────────────────────────────────────────────
 
-/** Parse the `export const dsVersion = { ... } as const;` object from raw source. */
+/** Parse the `export const pageVersion = { ... } as const;` object from raw source. */
 export function parseDsVersion(content: string): PageDsStamp | null {
-    const m = content.match(/export\s+const\s+dsVersion\s*=\s*(\{[\s\S]*?\})\s+as\s+const\s*;/);
+    const m = content.match(/export\s+const\s+pageVersion\s*=\s*(\{[\s\S]*?\})\s+as\s+const\s*;/);
     if (!m) return null;
     try {
         const v = JSON.parse(m[1]);
@@ -115,7 +116,7 @@ export function decidePageDsCheck(params: {
     stamp: PageDsStamp | null;
     used: UsedMolecule[];
     catalog: MoleculeCatalogEntry[];
-    rules: ResolvedDs;
+    rules: ResolvedLayoutRules;
     configuredAxes: Set<string>;
     currentRulesHash: string;
 }): PageDsCheck {
@@ -145,7 +146,7 @@ export function decidePageDsCheck(params: {
 // ─── runtime: build / read / write / check ─────────────────────────────────────
 
 /** The configured axis→value map for a page (only axes set across the cascade, post-unset). */
-function configuredFrom(rules: ResolvedDs, configuredAxes: Set<string>): Record<string, string> {
+function configuredFrom(rules: ResolvedLayoutRules, configuredAxes: Set<string>): Record<string, string> {
     const out: Record<string, string> = {};
     for (const axis of configuredAxes) out[axis] = (rules as Record<string, string>)[axis];
     return out;
@@ -176,12 +177,13 @@ async function readDefsContent(defsFile: { project: number; folder: string; shor
 export async function buildPageDsStamp(
     project: number,
     module: string,
+    layout: number | string,
     ds: number | string,
     page: string,
     generatedAt: string,
     defsContent: string,
 ): Promise<PageDsStamp> {
-    const { rules, configuredAxes } = await resolveRulesForPage(project, module, page, ds);
+    const { rules, configuredAxes } = await resolveRulesForPage(project, module, page, layout); // rules from LAYOUT
     const config: any = await getConfigProject(project);
     const dsEntry = config?.designSystems?.[String(ds)] ?? {};
     const catalog = await buildMoleculeCatalog();
@@ -194,6 +196,7 @@ export async function buildPageDsStamp(
     }
 
     return {
+        layout,
         ds,
         dsName: dsEntry.name ?? String(ds),
         rulesHash: effectiveRulesSignature(configuredFrom(rules, configuredAxes)),
@@ -206,12 +209,13 @@ export async function buildPageDsStamp(
 export async function pageDsCheckByDefs(
     defsFile: { project: number; folder: string; shortName: string },
     module: string,
+    layout: number | string,
     ds: number | string,
 ): Promise<PageDsCheck> {
     const content = await readDefsContent(defsFile);
     const stamp = parseDsVersion(content);
     if (!stamp) return { status: 'stale', changed: [], staleReason: 'no-stamp', staleMolecule: null };
-    const { rules, configuredAxes } = await resolveRulesForPage(defsFile.project, module, defsFile.shortName, ds);
+    const { rules, configuredAxes } = await resolveRulesForPage(defsFile.project, module, defsFile.shortName, layout); // rules from LAYOUT
     const catalog = await buildMoleculeCatalog();
     return decidePageDsCheck({
         stamp,
@@ -221,6 +225,18 @@ export async function pageDsCheckByDefs(
         configuredAxes,
         currentRulesHash: effectiveRulesSignature(configuredFrom(rules, configuredAxes)),
     });
+}
+
+/** True when a layout has any rules configured (base/module/page) — gates the staleness UI. */
+export async function layoutHasRules(project: number, layout: number | string): Promise<boolean> {
+    const config: any = await getConfigProject(project);
+    const lay = config?.layouts?.[String(layout)];
+    if (!lay) return false;
+    const nonEmpty = (o: unknown) => !!o && typeof o === 'object' && Object.keys(o as object).length > 0;
+    if (nonEmpty(lay.rules)) return true;
+    if (lay.moduleOverrides && Object.values(lay.moduleOverrides).some(nonEmpty)) return true;
+    if (lay.pageOverrides && Object.values(lay.pageOverrides).some(nonEmpty)) return true;
+    return false;
 }
 
 /** Page status addressed by (project, module, layout, ds, page, device). */
@@ -235,7 +251,7 @@ export async function pageDsStatus(
     const ref = pageRef(project, module, layout, ds, page, '.defs.ts', device);
     const norm = ref.startsWith('/') ? ref.slice(1) : ref;
     const f = mls.stor.convertFileReferenceToFile(norm);
-    return (await pageDsCheckByDefs({ project: f.project, folder: f.folder, shortName: f.shortName }, module, ds)).status;
+    return (await pageDsCheckByDefs({ project: f.project, folder: f.folder, shortName: f.shortName }, module, layout, ds)).status;
 }
 
 /** True when the page must be re-materialized (status 'stale'). For the materialize trigger. */
@@ -251,21 +267,22 @@ export async function isPageStale(
 }
 
 /**
- * "Mark as reviewed": re-stamp the page's `dsVersion` with the CURRENT signatures (no
+ * "Mark as reviewed": re-stamp the page's `pageVersion` with the CURRENT signatures (no
  * regeneration). Clears the `review` flag honestly — the page genuinely uses these molecule
  * versions now. Returns false if the file/stamp can't be read or written.
  */
 export async function restampPage(
     defsFile: { project: number; folder: string; shortName: string },
     module: string,
+    layout: number | string,
     ds: number | string,
     generatedAt: string,
 ): Promise<boolean> {
     const content = await readDefsContent(defsFile);
-    if (!content || !/export\s+const\s+dsVersion\s*=/.test(content)) return false;
-    const stamp = await buildPageDsStamp(defsFile.project, module, ds, defsFile.shortName, generatedAt, content);
+    if (!content || !/export\s+const\s+pageVersion\s*=/.test(content)) return false;
+    const stamp = await buildPageDsStamp(defsFile.project, module, layout, ds, defsFile.shortName, generatedAt, content);
     const next = content.replace(
-        /export\s+const\s+dsVersion\s*=\s*\{[\s\S]*?\}\s+as\s+const\s*;/,
+        /export\s+const\s+pageVersion\s*=\s*\{[\s\S]*?\}\s+as\s+const\s*;/,
         renderDsVersionExport(stamp),
     );
     try {

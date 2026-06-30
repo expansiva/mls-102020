@@ -190,7 +190,7 @@ ${JSON.stringify(blueprint, null, 2)}
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codereasoning -->
 <!-- x-tool-strict: true -->
 
 You are agentBlueprintReview for the collab.codes "newSolution" flow.

@@ -1,18 +1,17 @@
 /// <mls fileReference="_102020_/l2/designSystemAuraBase.ts" enhancement="_blank" />
 
-// Canonical vocabulary of design-system decision axes — single source of truth
-// (DSDefinition.md §4). Shared by:
-//   - the `selectDesignSystem` configuration UI (which axes/values to render);
-//   - molecule `.defs.ts` files (each molecule declares the axis values it
-//     candidates for, via `export const designsystem: IDesignSystemAxes`);
-//   - the matching agent (resolve a DS → pick the molecules that match).
+// Canonical vocabulary of layout RULE axes — single source of truth. Shared by:
+//   - the `selectLayoutRules` configuration UI (which axes/values to render);
+//   - molecule `.defs.ts` files (each molecule declares the axis values it candidates
+//     for, via `export const layoutConfig`);
+//   - the matching agent (resolve a layout's rules → pick the molecules that match).
 //
 // An axis is a UX preference that applies to the whole page. Axes omitted from a
-// DS fall back to the `default` declared here. `label`/`section`/`essential` are
+// layout fall back to the `default` declared here. `label`/`section`/`essential` are
 // presentation hints for the configuration UI; the matching contract is `values`
 // + `default` + `groups`.
 
-export type DsSectionKey =
+export type LayoutSectionKey =
     | 'transversal'
     | 'input'
     | 'selection'
@@ -21,17 +20,17 @@ export type DsSectionKey =
     | 'action'
     | 'visualization';
 
-export interface IDsSection {
-    key: DsSectionKey;
+export interface ILayoutSection {
+    key: LayoutSectionKey;
     label: string;
     desc: string;
     /** one of the few sections shown up-front; the rest are added on demand. */
     primary?: boolean;
 }
 
-export interface IDsAxisDef {
+export interface ILayoutAxisDef {
     label: string;
-    section: DsSectionKey;
+    section: LayoutSectionKey;
     values: readonly string[];
     default: string;
     /** UX groups this axis governs (transversal axes span many groups). */
@@ -40,7 +39,7 @@ export interface IDsAxisDef {
     essential?: boolean;
 }
 
-export const dsSections: readonly IDsSection[] = [
+export const layoutSections: readonly ILayoutSection[] = [
     { key: 'transversal',   label: 'General',           desc: 'Defaults that apply across the whole interface.', primary: true },
     { key: 'input',         label: 'Input',             desc: 'How users type and edit values.', primary: true },
     { key: 'selection',     label: 'Selection',         desc: 'How users choose from a set of options.', primary: true },
@@ -50,9 +49,9 @@ export const dsSections: readonly IDsSection[] = [
     { key: 'visualization', label: 'Visualization',     desc: 'How collections and data are displayed.' },
 ];
 
-// Keyed by axis name (DSDefinition.md §4). `as const` preserves the literal value
-// types so molecule declarations can be validated against the exact allowed set.
-export const dsAxes = {
+// Keyed by axis name. `as const` preserves the literal value types so molecule
+// declarations can be validated against the exact allowed set.
+export const layoutAxes = {
     // ── transversais (afetam muitos grupos) ──
     density:        { label: 'Density',         section: 'transversal', values: ['comfortable', 'compact'],              default: 'comfortable', essential: true },
     motion:         { label: 'Motion',          section: 'transversal', values: ['full', 'reduced', 'none'],             default: 'full' },
@@ -96,45 +95,42 @@ export const dsAxes = {
     cardLayout:     { label: 'Card layout',  section: 'visualization', values: ['horizontal', 'vertical', 'media', 'profile'], default: 'vertical', groups: ['groupViewCard'] },
     metric:         { label: 'Metric',       section: 'visualization', values: ['big-number', 'gauge', 'sparkline'], default: 'big-number', groups: ['groupViewMetric'] },
     hierarchy:      { label: 'Hierarchy',    section: 'visualization', values: ['tree', 'orgchart', 'mindmap'], default: 'tree', groups: ['groupViewHierarchy'] },
-} as const satisfies Record<string, IDsAxisDef>;
+} as const satisfies Record<string, ILayoutAxisDef>;
 
 // ─── Derived types ───────────────────────────────────────────────────────────
 
-export type DsAxisKey = keyof typeof dsAxes;
-export type DsAxisValue<K extends DsAxisKey> = (typeof dsAxes)[K]['values'][number];
+export type LayoutAxisKey = keyof typeof layoutAxes;
+export type LayoutAxisValue<K extends LayoutAxisKey> = (typeof layoutAxes)[K]['values'][number];
 
 /**
- * The `designsystem` bag, declared by the DS file and by each molecule `.defs.ts`.
- * Every axis is optional; omitting one means "wildcard" (molecule) / "use default" (DS).
- *
- * @example a molecule declares the axis values it candidates for:
- *   export const designsystem: IDesignSystemAxes = { feedback: 'toast' };
+ * The axis bag, declared by each molecule `.defs.ts` (`export const layoutConfig`).
+ * Every axis is optional; omitting one means "wildcard" (molecule) / "use default" (layout).
  */
-export type IDesignSystemAxes = { [K in DsAxisKey]?: DsAxisValue<K> };
+export type ILayoutAxes = { [K in LayoutAxisKey]?: LayoutAxisValue<K> };
 
 // ─── Convenience accessors ─────────────────────────────────────────────────────
 
-export interface IDsAxisEntry extends IDsAxisDef { key: DsAxisKey; }
+export interface ILayoutAxisEntry extends ILayoutAxisDef { key: LayoutAxisKey; }
 
-export const dsAxisKeys = Object.keys(dsAxes) as DsAxisKey[];
+export const layoutAxisKeys = Object.keys(layoutAxes) as LayoutAxisKey[];
 
-/** Ordered list form of `dsAxes`, each entry carrying its own `key`. */
-export const dsAxisList: readonly IDsAxisEntry[] =
-    dsAxisKeys.map(k => ({ key: k, ...(dsAxes[k] as IDsAxisDef) }));
+/** Ordered list form of `layoutAxes`, each entry carrying its own `key`. */
+export const layoutAxisList: readonly ILayoutAxisEntry[] =
+    layoutAxisKeys.map(k => ({ key: k, ...(layoutAxes[k] as ILayoutAxisDef) }));
 
 /** Curated subset shown by default in the configuration UI. */
-export const essentialAxisList: readonly IDsAxisEntry[] =
-    dsAxisList.filter(a => a.essential);
+export const essentialAxisList: readonly ILayoutAxisEntry[] =
+    layoutAxisList.filter(a => a.essential);
 
 /** Every axis at its default value. */
-export function dsDefaults(): Record<DsAxisKey, string> {
-    const out = {} as Record<DsAxisKey, string>;
-    for (const k of dsAxisKeys) out[k] = dsAxes[k].default;
+export function layoutRuleDefaults(): Record<LayoutAxisKey, string> {
+    const out = {} as Record<LayoutAxisKey, string>;
+    for (const k of layoutAxisKeys) out[k] = layoutAxes[k].default;
     return out;
 }
 
-/** True when `value` is a valid choice for `key` (validates DS files and molecule defs). */
+/** True when `value` is a valid choice for `key` (validates layout rules and molecule defs). */
 export function isValidAxisValue(key: string, value: string): boolean {
-    const axis = (dsAxes as Record<string, IDsAxisDef>)[key];
+    const axis = (layoutAxes as Record<string, ILayoutAxisDef>)[key];
     return !!axis && axis.values.includes(value);
 }

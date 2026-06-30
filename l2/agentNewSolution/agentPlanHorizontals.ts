@@ -363,7 +363,7 @@ function applyHorizontalsPostProcessing(output: PlanHorizontalsOutput, context: 
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codefast -->
 <!-- x-tool-strict: true -->
 
 You are agentPlanHorizontals for the collab.codes "newSolution" flow.
@@ -378,7 +378,7 @@ Do not return prose.
 - Use only horizontals from the provided horizontal catalog.
 - Do not hard-code horizontal priorities from a sample domain.
 - Finance should be planned only when the approved scope includes billing, payments, pricing, receivables, payables, accounting, invoices, refunds, or reconciliation.
-- Notifications should be planned when approved workflows, agents, or rules require reminders, alerts, approvals, follow-ups, or external communication.
+- (T12) Notifications are PLATFORM-PROVIDED: do NOT plan a notifications horizontal for the module (the platform handles reminders/alerts/approvals/communication). Likewise do not plan audit or monitoring/observability horizontals.
 - Documents should be planned when the domain needs contracts, signatures, files, certificates, receipts, policies, or generated documents.
 - AuthRoles must be planned when an accepted decision covers authentication/roles or when the solution declares actors that require role-based authorization (platform horizontal; usually a reference to existing infrastructure).
 - I18n must be planned when an accepted decision covers internationalization or when the module declares more than one language.

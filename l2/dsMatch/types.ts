@@ -4,14 +4,14 @@
 // skills/desingsystem/planodeexecucao.md). These types are the interface between
 // readDsRules (A1), buildMoleculeCatalog (A2) and matchVariant (A3).
 
-import type { DsAxisKey } from '/_102020_/l2/designSystemAuraBase.js';
+import type { LayoutAxisKey } from '/_102020_/l2/designSystemAuraBase.js';
 
 /**
  * A DS with EVERY axis resolved to a concrete value. Axes not declared in
  * project.json are filled with the vocabulary `default` (DSDefinition.md §2.4).
  * This is what `matchVariant` consults.
  */
-export type ResolvedDs = Record<DsAxisKey, string>;
+export type ResolvedLayoutRules = Record<LayoutAxisKey, string>;
 
 /**
  * One molecule, in the minimal shape needed for matching. Built by

@@ -1,0 +1,187 @@
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/agentChangeFrontend.ts" enhancement="_102027_/l2/enhancementAgent"/>
+
+import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/cfeCreateShared.js';
+
+type CliCommand =
+  | { kind: 'rebuild-all'; materialize: true; reset: true }
+  | { kind: 'rebuild-defs'; materialize: false; reset: true }
+  | { kind: 'run'; materialize: true; reset: false }
+  | { kind: 'help'; reason: string };
+
+export function createAgent(): IAgentAsync {
+  return {
+    agentName: 'agentChangeFrontend',
+    agentProject: 102020,
+    agentFolder: 'agentChangeFrontend',
+    agentDescription: 'Stage 2 frontend reconciler. Create-only frontend defs and config from l4.',
+    visibility: 'public',
+    beforePromptImplicit,
+    afterPromptStep,
+  };
+}
+
+async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
+  const raw = userPrompt || context.message.content || '';
+  const command = parseCliCommand(raw);
+  const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
+    type: 'add-message-ai',
+    skipRootLLM: true,
+    request: {
+      action: 'addMessageAI',
+      agentName: agent.agentName,
+      inputAI: [
+        { type: 'system', content: 'agentChangeFrontend deterministic bootstrap. The root LLM is skipped by AgentIntentAddMessageAI.skipRootLLM.' },
+        { type: 'human', content: normalizePrompt(raw) || 'agentChangeFrontend' },
+      ],
+      taskTitle: 'agentChangeFrontend',
+      threadId: context.message.threadId,
+      userMessage: context.message.content,
+      longTermMemory: { taskName: 'agentChangeFrontend', flowName: 'agentChangeFrontend', version: 'create-v1', cliCommand: command.kind },
+    },
+  };
+
+  if (command.kind === 'help') {
+    return [addMessageAI, createBootstrapAddStepIntent(context, createHelpStep(command.reason))];
+  }
+
+  const reset = command.reset ? await resetFrontendDoneStatuses() : { updated: 0, owners: [] };
+  if (command.reset) console.log(`[${agent.agentName}] ${command.kind} reset ${reset.updated} owner(s) from done to toCreate`);
+  const scanStep = createAgentStepPayload(
+    'scan-create-l4',
+    'agentCfeCreateScanL4',
+    'Ler L4 e criar paginas pendentes',
+    { command: command.kind, reset, materialize: command.materialize, forceMaterialize: false },
+    [],
+    'sequential',
+    'waiting_human_input',
+  );
+  return [addMessageAI, createBootstrapAddStepIntent(context, scanStep)];
+}
+
+async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
+  if (!context.task) throw new Error(`[${agent.agentName}] task invalid`);
+  return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'Root bootstrap completed without using the model payload.')];
+}
+
+function parseCliCommand(prompt: string): CliCommand {
+  const normalized = normalizePrompt(prompt);
+  if (!normalized) return { kind: 'run', materialize: true, reset: false };
+  if (normalized === '/help' || normalized === 'help') return { kind: 'help', reason: '' };
+  if (/\brebuild\b/.test(normalized)) {
+    if (/\bdefs\b/.test(normalized)) return { kind: 'rebuild-defs', materialize: false, reset: true };
+    if (/\ball\b/.test(normalized) || normalized === '/rebuild') return { kind: 'rebuild-all', materialize: true, reset: true };
+  }
+  if (normalized === '/run' || normalized === 'run') return { kind: 'run', materialize: true, reset: false };
+  return { kind: 'help', reason: `Comando desconhecido: ${normalized}` };
+}
+
+function normalizePrompt(prompt: string): string {
+  return String(prompt || '')
+    .trim()
+    .replace(/^@@(?:agentChangeFrontend|changeFrontend)\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+async function resetFrontendDoneStatuses(): Promise<{ updated: number; owners: string[] }> {
+  const owners: string[] = [];
+  const project = mls.actualProject || 0;
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted' || file.extension !== '.defs.ts') continue;
+    const folder = String(file.folder || '');
+    if (folder !== 'operations' && folder !== 'workflows') continue;
+    const parsed = parseDefsSource(String(await file.getContent()));
+    if (!parsed || parsed.data.statusFrontend !== 'done') continue;
+    parsed.data.statusFrontend = 'toCreate';
+    await saveConstDefault(file, parsed.exportName, parsed.data);
+    owners.push(`${folder.slice(0, -1)}:${readString(parsed.data.operationId) || readString(parsed.data.workflowId) || file.shortName}`);
+  }
+  return { updated: owners.length, owners };
+}
+
+function parseDefsSource(content: string): { exportName: string; data: Record<string, unknown> } | null {
+  const exportMatch = content.match(/export\s+const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=/);
+  if (!exportMatch) return null;
+  const json = extractJsonLiteral(content, exportMatch.index || 0);
+  if (!json) return null;
+  try {
+    const data = JSON.parse(json);
+    return data && typeof data === 'object' && !Array.isArray(data) ? { exportName: exportMatch[1], data } : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractJsonLiteral(content: string, fromIndex: number): string {
+  const firstObject = content.indexOf('{', fromIndex);
+  if (firstObject === -1) return '';
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = firstObject; index < content.length; index += 1) {
+    const char = content[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === '{') depth += 1;
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return content.slice(firstObject, index + 1);
+    }
+  }
+  return '';
+}
+
+async function saveConstDefault(file: any, exportName: string, data: Record<string, unknown>): Promise<void> {
+  const header = `/// <mls fileReference="${toDisplayRef(file)}" enhancement="_blank"/>\n\n`;
+  const content = `${header}export const ${exportName} = ${JSON.stringify(data, null, 2)} as const;\n\nexport default ${exportName};\n`;
+  await mls.stor.localStor.setContent(file, { contentType: 'string', content });
+}
+
+function toDisplayRef(file: any): string {
+  const folder = file.folder ? `${file.folder}/` : '';
+  return `_${file.project}_/l${file.level}/${folder}${file.shortName}${file.extension}`;
+}
+
+function readString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function createBootstrapAddStepIntent(context: mls.msg.ExecutionContext, step: mls.msg.AIPayload): mls.msg.AgentIntentAddStep {
+  return {
+    type: 'add-step',
+    messageId: '',
+    threadId: context.message.threadId,
+    taskId: '',
+    parentStepId: 1,
+    step,
+  };
+}
+
+function createHelpStep(reason: string): mls.msg.AIPayload {
+  return createAgentStepPayload('help', 'agentCfeHelp', 'Help', { reason, helpText: HELP_TEXT }, [], 'sequential', 'waiting_human_input');
+}
+
+const HELP_TEXT = `agentChangeFrontend
+
+Uso:
+@@changeFrontend /run
+@@changeFrontend /rebuild all
+@@changeFrontend /rebuild defs
+@@changeFrontend /help
+
+Comandos:
+- /run          : default. Varre o l4 por statusFrontend = toCreate e materializa .ts quando o .defs.ts for mais novo ou o .ts nao existir.
+- /rebuild all  : altera l4 operations/workflows com statusFrontend = done para toCreate, regenera .defs.ts e materializa .ts/config por updatedAt.
+- /rebuild defs : altera l4 operations/workflows com statusFrontend = done para toCreate e regenera somente os .defs.ts. Nao materializa .ts/config.
+- /help         : mostra esta ajuda.
+
+Qualquer outro comando apenas mostra este help.`;

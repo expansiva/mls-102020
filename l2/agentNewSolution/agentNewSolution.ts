@@ -393,7 +393,7 @@ const fallbackTitlesPt: Record<NewSolutionPlanId, string> = {
 };
 
 const systemPrompt = `
-<!-- modelType: codepro -->
+<!-- modelType: codefast -->
 
 You initialize the collab.codes "newModule" task.
 

@@ -466,7 +466,7 @@ ${JSON.stringify(metricsIndex, null, 2)}
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codefast -->
 <!-- x-tool-strict: true -->
 
 You are agentPlanMetricTableDefinition for the collab.codes "newSolution" flow.

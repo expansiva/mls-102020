@@ -265,7 +265,7 @@ function validatePlanUserJourneysOutput(output: PlanUserJourneysOutput, context:
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codereasoning -->
 <!-- x-tool-strict: true -->
 
 You are agentPlanUserJourneys for the collab.codes "newSolution" flow.
@@ -287,5 +287,7 @@ Do not return prose.
 - Think in WORK SURFACES, not CRUD: pipelines/kanbans, trackers by stage, agendas/calendars, POS-style fast flows, dashboards — when the domain implies one, the journey must walk through it and hint the page.
 - Include the unhappy paths that matter operationally (cancel, reschedule, reject) as steps or separate journeys.
 - Journeys describe interaction, not implementation: no tables, no BFF, no components.
+- (T9) For EACH actor x capability, walk the FULL path that applies: browse/list -> open/select detail -> create/edit -> confirm -> track status -> the exceptions that matter. Prefer several focused steps, each with its own pageHint, over one dense step, so distinct screens emerge.
+- (T14) Balance journeys across ALL actors, not only managers/admins: frontline/operational actors must get their own journeys and screens (capture, queue, detail). Include domain-configuration journeys (catalogs, parameters the domain owns) — this is domain config, NOT platform settings.
 - If the plan lacks information for a coherent journey, return status "needs_input" with questions.
 `;

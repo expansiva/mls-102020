@@ -3,12 +3,12 @@
 // Tests for filterCompatibleVariants (pure). Exposes `runFilterVariantsTests()`.
 
 import { filterCompatibleVariants } from '/_102020_/l2/dsMatch/filterVariants.js';
-import type { ResolvedDs, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
+import type { ResolvedLayoutRules, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
 
 function entry(group: string, variant: string, layoutConfig: Record<string, string>): MoleculeCatalogEntry {
     return { project: 102040, group, variant, tag: `${group.toLowerCase()}--${variant}`, layoutConfig, objective: '', description: '', usagePath: '' };
 }
-function ds(rules: Record<string, string>): ResolvedDs { return rules as ResolvedDs; }
+function ds(rules: Record<string, string>): ResolvedLayoutRules { return rules as ResolvedLayoutRules; }
 function assert(cond: boolean, msg: string): void { if (!cond) throw new Error(`[filterVariants.test] FAIL: ${msg}`); }
 function variants(list: MoleculeCatalogEntry[]): string[] { return list.map(m => m.variant).sort(); }
 

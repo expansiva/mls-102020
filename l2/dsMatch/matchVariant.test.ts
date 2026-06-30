@@ -5,14 +5,14 @@
 // `runMatchVariantTests()`, which throws on failure and returns the case count on success.
 
 import { matchVariant, type MatchResult } from '/_102020_/l2/dsMatch/matchVariant.js';
-import type { ResolvedDs, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
+import type { ResolvedLayoutRules, MoleculeCatalogEntry } from '/_102020_/l2/dsMatch/types.js';
 
 function entry(group: string, variant: string, layoutConfig: Record<string, string>): MoleculeCatalogEntry {
     return { project: 102040, group, variant, tag: `${group.toLowerCase()}--${variant}`, layoutConfig, objective: '', description: '', usagePath: '' };
 }
 
-function ds(rules: Record<string, string>): ResolvedDs {
-    return rules as ResolvedDs;
+function ds(rules: Record<string, string>): ResolvedLayoutRules {
+    return rules as ResolvedLayoutRules;
 }
 
 function assert(cond: boolean, msg: string): void {

@@ -555,7 +555,7 @@ class PreviewEditorL3 extends StateLitElement {
       if (!device) return null;
 
       const mod = await import(`/_${project}_/l2/${moduleName}/module.js`) as any;
-      const deviceSkills = mod?.skills?.[device];
+      const deviceSkills = mod?.shared?.[device];
       if (!deviceSkills?.sharedPath) return null;
 
       // sharedPath may be a full MLS path like '/_102029_/l2/web/shared' or just '/web/shared'
