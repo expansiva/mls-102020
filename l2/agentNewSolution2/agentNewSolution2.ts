@@ -152,7 +152,7 @@ function buildPlannedTree(initialPlan: InitialNewSolution2Plan): PlannedAgentSte
     // child that depends on its own container deadlocks (the child waits for the parent, the parent
     // waits for the child). Gating on the upstream lets validate run and the container auto-complete.
     agentStep('behavior-validate', 'agentValidateBehaviorModel', title('behavior-validate'), ['plan-workflow-definition', 'plan-operation-definition'], 'sequential'),
-    // Auto-finish (no blocking clarification): writes the run record + derived journeys, cleans
+    // Auto-finish (no blocking clarification): writes the run record with source refs, cleans
     // traces/inputs/outputs, completes the task. The summary is viewable later via openStepView.
     agentStep('final-resume', 'agentNewSolution2Final', title('final-resume'), ['behavior-validate'], 'sequential'),
   ];

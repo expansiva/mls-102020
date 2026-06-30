@@ -22,6 +22,9 @@ interface CfeEntityDef { entityId: string; title: string; fields: CfeFieldDef[];
 
 interface CfeOperationDef {
   operationId: string;
+  commandName: string;
+  pageId: string;
+  bffName: string;
   title: string;
   actor: string;
   entity: string;
@@ -39,6 +42,7 @@ interface CfeOperationDef {
 
 interface CfeWorkflowDef {
   workflowId: string;
+  pageId: string;
   title: string;
   actors: string[];
   operationIds: string[];
@@ -63,6 +67,7 @@ export interface CfePagePlan {
   operationIds: string[];
   rulesApplied: string[];
   capabilities: string[];
+  origin: Record<string, unknown>;
 }
 
 interface CfeCreateContext {
@@ -1146,6 +1151,7 @@ function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefini
     sourceKind: prepared.page.sourceKind,
     ownerIds: prepared.page.ownerIds,
     operationIds: prepared.page.operationIds,
+    origin: prepared.page.origin,
     contractRef: {
       defPath: toDisplayRef(contractFileInfo(prepared.project, prepared.page)),
       tsPath: contractTsPath(prepared.project, prepared.page),
@@ -1227,7 +1233,7 @@ function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown
       actionId: commandName,
       kind,
       commandRef: commandName,
-      routeKey: `${prepared.page.moduleName}.${prepared.page.pageId}.${commandName}`,
+      routeKey: readString(command.routeKey) || `${prepared.page.moduleName}.${prepared.page.pageId}.${commandName}`,
       purpose: readString(command.purpose),
       methodName: kind === 'query' ? `load${toPascalCase(commandName)}` : commandName,
       handlerName: `handle${toPascalCase(commandName)}Click`,
@@ -1524,7 +1530,7 @@ function buildPagePlans(workflows: Map<string, CfeWorkflowDef>, operations: Map<
     for (const operationId of workflow.operationIds) operationIdsUsedByWorkflow.add(operationId);
     const linkedOperations = workflow.operationIds.map(id => pendingOpsById.get(id)).filter(Boolean) as CfeOperationDef[];
     pages.push({
-      pageId: toSafeShortName(workflow.workflowId),
+      pageId: toSafeShortName(workflow.pageId || workflow.workflowId),
       pageName: workflow.title || humanizeId(workflow.workflowId),
       moduleName: workflow.moduleName || moduleFallback,
       sourceKind: 'workflow',
@@ -1534,13 +1540,14 @@ function buildPagePlans(workflows: Map<string, CfeWorkflowDef>, operations: Map<
       operationIds: unique([...workflow.operationIds, ...linkedOperations.map(op => op.operationId)]),
       rulesApplied: unique([...workflow.rulesApplied, ...linkedOperations.flatMap(op => op.rulesApplied)]),
       capabilities: unique([...workflow.capabilities.map(c => readString(c.capabilityId)), ...linkedOperations.map(op => readString(op.capability?.capabilityId))]),
+      origin: pageOrigin('workflow', workflow, linkedOperations),
     });
   }
 
   for (const operation of pendingOperations) {
     if (operationIdsUsedByWorkflow.has(operation.operationId)) continue;
     pages.push({
-      pageId: toSafeShortName(operation.operationId),
+      pageId: toSafeShortName(operation.pageId || operation.operationId),
       pageName: operation.title || humanizeId(operation.operationId),
       moduleName: operation.moduleName || moduleFallback,
       sourceKind: 'operation',
@@ -1550,22 +1557,50 @@ function buildPagePlans(workflows: Map<string, CfeWorkflowDef>, operations: Map<
       operationIds: [operation.operationId],
       rulesApplied: operation.rulesApplied,
       capabilities: unique([readString(operation.capability?.capabilityId)]),
+      origin: pageOrigin('operation', operation, []),
     });
   }
 
   return pages.sort((a, b) => `${a.moduleName}:${a.pageId}`.localeCompare(`${b.moduleName}:${b.pageId}`));
 }
 
+function pageOrigin(sourceKind: CfePagePlan['sourceKind'], owner: CfeWorkflowDef | CfeOperationDef, linkedOperations: CfeOperationDef[]): Record<string, unknown> {
+  const owners: Record<string, unknown>[] = [];
+  if (sourceKind === 'workflow' && 'workflowId' in owner) {
+    owners.push({ kind: 'workflow', id: owner.workflowId, defPath: toDisplayRef(owner.fileInfo) });
+  }
+  if (sourceKind === 'operation' && 'operationId' in owner) {
+    owners.push({ kind: 'operation', id: owner.operationId, defPath: toDisplayRef(owner.fileInfo) });
+  }
+  for (const operation of linkedOperations) {
+    owners.push({ kind: 'operation', id: operation.operationId, defPath: toDisplayRef(operation.fileInfo) });
+  }
+  return {
+    source: 'l4',
+    sourceKind,
+    owners,
+  };
+}
+
 function commandFromOperation(operation: CfeOperationDef, entities: Map<string, CfeEntityDef>): Record<string, unknown> {
   const primaryEntity = operation.entity || firstEntity(operationEntities(operation));
   const entity = entities.get(primaryEntity);
   const kind = operation.kind === 'query' || operation.kind === 'view' ? 'query' : 'command';
+  const commandName = operation.commandName || operation.operationId;
   return {
-    commandName: operation.operationId,
+    commandName,
+    ...(operation.bffName ? { routeKey: operation.bffName } : {}),
     purpose: operation.title || humanizeId(operation.operationId),
     kind,
     input: kind === 'query' ? queryInput(operation, entity) : commandInput(operation, entity),
     output: kind === 'query' ? queryOutput(operation, entity) : commandOutput(entity),
+    origin: {
+      source: 'l4/operations',
+      ownerId: `operation:${operation.operationId}`,
+      operationId: operation.operationId,
+      defPath: toDisplayRef(operation.fileInfo),
+      ...(operation.bffName ? { bffName: operation.bffName } : {}),
+    },
   };
 }
 
@@ -1584,6 +1619,7 @@ function pageDefinition(page: CfePagePlan, operations: CfeOperationDef[]): Recor
     },
     pluginRefs: [],
     mdmRefs: [],
+    origin: page.origin,
     pageInputs: [],
     navigationRefs: [],
     sections: [{
@@ -1770,7 +1806,7 @@ function pageRegisterMarkerFileInfo(project: number, page: CfePagePlan): FileInf
 function operationFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string): CfeOperationDef | null {
   const operationId = readString(data.operationId);
   if (!operationId) return null;
-  return { operationId, title: readString(data.title) || humanizeId(operationId), actor: readString(data.actor), entity: normalizeEntityRef(readString(data.entity)), kind: readString(data.kind), reads: readStringArray(data.reads), writes: readStringArray(data.writes), rulesApplied: readStringArray(data.rulesApplied), statusFrontend: readString(data.statusFrontend), capability: isRecord(data.capability) ? data.capability : undefined, moduleName: '', fileInfo, exportName, data };
+  return { operationId, commandName: readString(data.commandName) || operationId, pageId: readString(data.pageId), bffName: readString(data.bffName), title: readString(data.title) || humanizeId(operationId), actor: readString(data.actor), entity: normalizeEntityRef(readString(data.entity)), kind: readString(data.kind), reads: readStringArray(data.reads), writes: readStringArray(data.writes), rulesApplied: readStringArray(data.rulesApplied), statusFrontend: readString(data.statusFrontend), capability: isRecord(data.capability) ? data.capability : undefined, moduleName: '', fileInfo, exportName, data };
 }
 
 function syntheticOperation(page: CfePagePlan, operationId: string, project: number): CfeOperationDef {
@@ -1778,6 +1814,9 @@ function syntheticOperation(page: CfePagePlan, operationId: string, project: num
   const kind = inferOperationKind(operationId);
   return {
     operationId,
+    commandName: operationId,
+    pageId: page.pageId,
+    bffName: '',
     title: humanizeId(operationId),
     actor: page.actorIds[0] || 'user',
     entity,
@@ -1805,7 +1844,7 @@ function inferOperationKind(operationId: string): string {
 function workflowFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string): CfeWorkflowDef | null {
   const workflowId = readString(data.workflowId);
   if (!workflowId) return null;
-  return { workflowId, title: readString(data.title) || humanizeId(workflowId), actors: readStringArray(data.actors), operationIds: readStringArray(data.operationIds), entities: normalizeEntityRefs(readStringArray(data.entities)), rulesApplied: readStringArray(data.rulesApplied), statusFrontend: readString(data.statusFrontend), capabilities: Array.isArray(data.capabilities) ? data.capabilities.filter(isRecord) : [], moduleName: '', fileInfo, exportName, data };
+  return { workflowId, pageId: readString(data.pageId) || workflowId, title: readString(data.title) || humanizeId(workflowId), actors: readStringArray(data.actors), operationIds: readStringArray(data.operationIds), entities: normalizeEntityRefs(readStringArray(data.entities)), rulesApplied: readStringArray(data.rulesApplied), statusFrontend: readString(data.statusFrontend), capabilities: Array.isArray(data.capabilities) ? data.capabilities.filter(isRecord) : [], moduleName: '', fileInfo, exportName, data };
 }
 
 function entityFromData(data: Record<string, unknown>, fallbackId: string): CfeEntityDef | null {

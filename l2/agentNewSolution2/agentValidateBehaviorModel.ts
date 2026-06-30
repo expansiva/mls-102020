@@ -7,7 +7,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createUpdateStatusIntent, getActorIdSet, getOntologyEntityIdSet, isKnownEntityRef, isRecord } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
-import { saveBehaviorHealthReport } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import { getApprovedModuleName, saveBehaviorHealthReport } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finalize.js';
 import { getEnrichedOntology } from '/_102020_/l2/agentNewSolution2/agentNs2EntityDefinition.js';
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
@@ -52,12 +52,16 @@ export async function computeBehaviorHealthReport(context: mls.msg.ExecutionCont
   const behavior = getBehaviorIndex(context).result;
   const workflowDefs = await getWorkflowDefinitions(context);
   const operationDefs = await getOperationDefinitions(context);
+  const moduleName = getApprovedModuleName(context) || '';
 
   const knownEntities = getOntologyEntityIdSet(ontology);
   const knownActors = getActorIdSet(fp.actors);
   const knownRules = new Set<string>();
   for (const rule of (Array.isArray(fp.rules) ? fp.rules : [])) if (isRecord(rule) && typeof rule.ruleId === 'string') knownRules.add(rule.ruleId);
   const operationIds = new Set<string>([...behavior.operations.map(o => o.operationId), ...operationDefs.map(o => o.operationId)]);
+  const currentWorkflowIds = new Set<string>(behavior.workflows.map(w => w.workflowId));
+  const currentOperationIds = new Set<string>(behavior.operations.map(o => o.operationId));
+  for (const w of behavior.workflows) for (const opId of w.operationIds || []) currentOperationIds.add(opId);
 
   const errors: HealthFinding[] = [];
   const warnings: HealthFinding[] = [];
@@ -89,6 +93,7 @@ export async function computeBehaviorHealthReport(context: mls.msg.ExecutionCont
   // Workflow integrity.
   for (const w of workflowDefs) {
     actorRef(w.story?.actor, `workflow ${w.workflowId}`);
+    if (currentWorkflowIds.has(w.workflowId) && !w.pageId) errors.push({ severity: 'error', code: 'workflow.pageId.missing', message: `workflow ${w.workflowId}: missing canonical pageId` });
     for (const a of w.actors) actorRef(a, `workflow ${w.workflowId}`);
     for (const e of w.entities) entityRef(e, `workflow ${w.workflowId}`);
     ruleRefs(w.rulesApplied, `workflow ${w.workflowId}`);
@@ -101,6 +106,7 @@ export async function computeBehaviorHealthReport(context: mls.msg.ExecutionCont
     entityRef(o.entity, `operation ${o.operationId}`);
     for (const r of [...o.reads, ...o.writes]) entityRef(stripField(r), `operation ${o.operationId}`);
     ruleRefs(o.rulesApplied, `operation ${o.operationId}`);
+    if (currentOperationIds.has(o.operationId)) validateBffNaming(o, moduleName, errors);
   }
 
   // Fan-out completeness: a defined artifact per classified behavior.
@@ -121,4 +127,16 @@ export async function computeBehaviorHealthReport(context: mls.msg.ExecutionCont
 function stripField(ref: string): string {
   const dot = ref.indexOf('.');
   return dot > 0 ? ref.slice(0, dot) : ref;
+}
+
+function validateBffNaming(operation: { operationId: string; pageId?: string; commandName?: string; bffName?: string }, moduleName: string, errors: HealthFinding[]): void {
+  const where = `operation ${operation.operationId}`;
+  if (!operation.pageId) errors.push({ severity: 'error', code: 'operation.pageId.missing', message: `${where}: missing pageId for BFF route handoff` });
+  if (!operation.commandName) errors.push({ severity: 'error', code: 'operation.commandName.missing', message: `${where}: missing commandName for BFF route handoff` });
+  if (!operation.bffName) errors.push({ severity: 'error', code: 'operation.bffName.missing', message: `${where}: missing bffName for BFF route handoff` });
+  if (!moduleName || !operation.pageId || !operation.commandName || !operation.bffName) return;
+  const expected = `${moduleName}.${operation.pageId}.${operation.commandName}`;
+  if (operation.bffName !== expected) {
+    errors.push({ severity: 'error', code: 'operation.bffName.mismatch', message: `${where}: bffName '${operation.bffName}' must be '${expected}'` });
+  }
 }
