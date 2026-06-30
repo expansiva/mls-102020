@@ -100,15 +100,19 @@ async function afterPromptStep(
     const project = mls.actualProject || 0;
     let requested: string[] = [];
     try { requested = JSON.parse(lm['pages'] || '[]'); } catch { requested = []; }
+    // Callers may pass a full file ref / pageId (e.g. "_102050_/l2/.../page11/foo.ts");
+    // the orchestrator matches on page shortNames, so normalize to the basename (no extension).
+    const toShortName = (p: string) => (p.split('/').pop() ?? '').replace(/\.defs\.ts$/, '').replace(/\.ts$/, '');
+    const requestedShort = requested.map(toShortName).filter(Boolean);
 
     const allPages = listWorkItems(project, module, layout, ds, device).map(i => i.page);
     // `pages` subset (validated against the page11 folder) → that subset; empty → all.
-    const pages = requested.length ? allPages.filter(p => requested.includes(p)) : allPages;
+    const pages = requestedShort.length ? allPages.filter(p => requestedShort.includes(p)) : allPages;
     console.info(`[agentImplementGenome] confirmed. project=${project} module=${module} layout=${layout} ds=${ds} device=${device}`);
-    console.info(`[agentImplementGenome] ${pages.length}/${allPages.length} page(s) to process:`, pages);
+    console.info(`[agentImplementGenome] ${pages.length}/${allPages.length} page(s) to process:`, pages, requestedShort.length ? `(requested: ${requestedShort.join(', ')})` : '(all)');
     if (pages.length === 0) {
-      throw new Error(requested.length
-        ? `none of the requested pages [${requested.join(', ')}] exist in ${module}/web/${device}/page11`
+      throw new Error(requestedShort.length
+        ? `none of the requested pages [${requestedShort.join(', ')}] exist in ${module}/web/${device}/page11 (available: ${allPages.join(', ') || 'none'})`
         : `no pages found in ${module}/web/${device}/page11`);
     }
 

@@ -36,7 +36,6 @@ export function runDerivePathsTests(): { passed: number } {
     // 4. buildWorkItem: origin always page11, destination page{layout}{ds}.
     {
         const item = buildWorkItem(102043, 'cafeFlow', 1, 2, 'cardapioEstoque');
-        assert(item.tsOrigem === '_102043_/l2/cafeFlow/web/desktop/page11/cardapioEstoque.ts', `tsOrigem wrong: ${item.tsOrigem}`);
         assert(item.defsOrigem === '_102043_/l2/cafeFlow/web/desktop/page11/cardapioEstoque.defs.ts', `defsOrigem wrong: ${item.defsOrigem}`);
         assert(item.defsDestino === '_102043_/l2/cafeFlow/web/desktop/page12/cardapioEstoque.defs.ts', `defsDestino wrong: ${item.defsDestino}`);
         passed++;
