@@ -27,7 +27,7 @@ import {
   saveAgentTrace,
   saveDefsArtifact,
 } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
-import { getInitialPlanSummary, isRecord, optionalString, parallelProgressTitle } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
+import { getInitialPlanSummary, isRecord, optionalString, optionalStringArray, parallelProgressTitle } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { finalizeResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getBlueprintOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Blueprint.js';
 import { getBlueprintReviewOutput } from '/_102020_/l2/agentNewSolution2/agentNs2BlueprintReview.js';
@@ -116,7 +116,7 @@ async function persistDomain(context: mls.msg.ExecutionContext, result: Finalize
       title: (result.module as Record<string, unknown>).title || (result.module as Record<string, unknown>).purpose || moduleName,
       stage: 'behavior',
       layer: 'l4',
-    });
+    }, [], moduleLanguages(result.module));
   } catch (error) {
     console.warn(`[${AGENT_NAME}] persistDomain failed`, error);
   }
@@ -155,6 +155,10 @@ function buildOntologyIndex(moduleName: string, entities: Record<string, unknown
     };
   }
   return index;
+}
+
+function moduleLanguages(module: Record<string, unknown>): string[] {
+  return optionalStringArray(module.languages) || [];
 }
 
 /** Actor roster for authz: each actor + a stable JWT role scope `{module}:{actorId}`. */
