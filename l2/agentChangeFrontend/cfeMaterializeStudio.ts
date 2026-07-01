@@ -117,12 +117,11 @@ export async function saveGeneratedTs(
     const key = mls.stor.getKeyToFile(fileInfo);
     let file = (mls.stor.files as Record<string, any>)[key];
     if (!file) {
-      file = await createStorFile({ ...fileInfo, source: content }, false, false, false);
-    } else {
-      const model = await file.getOrCreateModel?.();
-      if (model) model.model.setValue(content);
+      file = await createStorFile({ ...fileInfo, source: content }, true, false, false);
     }
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
+    const model = await getGeneratedModel(project, level, folder, shortName, extension);
+    if (model?.model && model.model.getValue?.() !== content) model.model.setValue(content);
     await compileGeneratedTs(project, level, folder, shortName, extension);
     return true;
   } catch (error) {
@@ -145,10 +144,7 @@ export async function compileAndGetErrors(
   extension = '.ts',
 ): Promise<string[]> {
   try {
-    const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
-    let modelBase = mls.editor.models[editorKey];
-    if (!modelBase) modelBase = await mls.editor.addModels(project, shortName, folder, level);
-    const modelTs = modelBase?.[getModelSlot(extension)];
+    const modelTs = await getGeneratedModel(project, level, folder, shortName, extension);
     if (!modelTs?.model) return [];
     if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
     await mls.l2.typescript.compile(modelTs);
@@ -210,10 +206,7 @@ async function getEsbuild(): Promise<any> {
 
 async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string, extension: string): Promise<void> {
   try {
-    const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
-    let modelBase = mls.editor.models[editorKey];
-    if (!modelBase) modelBase = await mls.editor.addModels(project, shortName, folder, level);
-    const modelTs = modelBase?.[getModelSlot(extension)];
+    const modelTs = await getGeneratedModel(project, level, folder, shortName, extension);
     if (!modelTs) return;
     if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
     await mls.l2.typescript.compileAndPostProcess(modelTs, extension === '.ts', true);
@@ -221,6 +214,27 @@ async function compileGeneratedTs(project: number, level: number, folder: string
   } catch (error) {
     console.warn('[cfeMaterializeStudio] compileGeneratedTs failed', error);
   }
+}
+
+async function getGeneratedModel(
+  project: number,
+  level: number,
+  folder: string,
+  shortName: string,
+  extension: string,
+): Promise<any | null> {
+  const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
+  const slot = getModelSlot(extension);
+  let modelBase = mls.editor.models[editorKey];
+  if (modelBase?.[slot]?.model) return modelBase[slot];
+
+  const key = mls.stor.getKeyToFile({ project, level, folder, shortName, extension });
+  const file = (mls.stor.files as Record<string, any>)[key];
+  if (!file || file.status === 'deleted') return null;
+
+  const model = await file.getOrCreateModel?.();
+  modelBase = mls.editor.models[editorKey];
+  return modelBase?.[slot] ?? model ?? null;
 }
 
 function isGeneratedTsExtension(extension: string): boolean {
