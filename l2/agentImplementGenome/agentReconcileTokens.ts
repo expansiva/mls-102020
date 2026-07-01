@@ -78,10 +78,15 @@ async function beforePromptStep(
   try {
     const a = parseStepArgs(args ?? step.prompt);
     const project = mls.actualProject || 0;
+    const runPagesDiag = Array.isArray(a.pages) ? a.pages : (a.page ? [a.page] : []);
     const inputs = await deriveInputs(project, a);
 
-    if (!inputs || inputs.vocab.length === 0) {
-      console.info(`[agentReconcileTokens] ds=${a.ds}: sem tokens de DS ou sem grupos usados → nada a reconciliar`);
+    if (!inputs) {
+      console.info(`[agentReconcileTokens] ds=${a.ds}: DS sem 'tokens' no config → nada a reconciliar. pages=${JSON.stringify(runPagesDiag)}`);
+      return [mkCompleted(context, parentStep, step, hookSequential)];
+    }
+    if (inputs.vocab.length === 0) {
+      console.info(`[agentReconcileTokens] ds=${a.ds}: 0 token(s) --ml-* · usedGroups=[${inputs.usedGroups.join(',') || '—'}] · pages=${JSON.stringify(runPagesDiag)} → nada a reconciliar (grupos não coletados do defs?)`);
       return [mkCompleted(context, parentStep, step, hookSequential)];
     }
     if (inputs.existing?.version === inputs.version) {
