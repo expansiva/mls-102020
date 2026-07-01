@@ -251,7 +251,7 @@
   "materializationRecovery": {
     "studioPolicy": "Do not retry by returning prompt_ready from agentCfeMaterializeGen.afterPromptStep. On missing tool output or compile/typecheck errors, fail the affected item with a trace message and let the phase/fan-out report the failure.",
     "reason": "A 102048 run showed a continue/recovery failure during shared materialization repair: the retry attempted to locate a beforePromptStep for the fan-out parent and failed with No matching beforePromptStep found. Failing explicitly is safer than leaving the task in waiting_after_prompt.",
-    "cliPolicy": "The Node CLI can retry safely because it owns the prompt loop and filesystem context locally. It may retry missing/truncated LLM output and run one tsc repair round with compiler errors in the repair prompt."
+    "cliPolicy": "The Node CLI can retry safely because it owns the prompt loop and filesystem context locally. It may retry missing/truncated LLM output and run one tsc repair round with compiler errors in the repair prompt. The CLI checks generated artifacts through a temporary scoped tsconfig with noImplicitAny and strictNullChecks enabled, so unrelated strict errors in other base projects do not block materialization repair. collab-llm HTTP/request failures, including timeouts, are item failures and are not sent to the repair loop: record the trace, continue the remaining items, print a final failure summary and exit nonzero if any item failed."
   },
   "loggingPolicy": {
     "studioConsole": "Studio agents must not use console.log for progress. Progress belongs in task trace/progress titles. Only console.warn and console.error are allowed for real diagnostics.",

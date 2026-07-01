@@ -178,6 +178,8 @@ ${header}
 
 Follow the skill instructions exactly.
 Use context files as source of truth for types, imports, states, actions, handlers and message keys.
+The generated file is checked with TypeScript strict null checks and no implicit any.
+Annotate callback parameters, avoid nullable assignments without guards, and do not rely on implicit any.
 Return ONLY the file through the ${GEN_TOOL_NAME} tool.
 
 ---
@@ -320,12 +322,13 @@ function buildSharedTypecheckTest(outputPath: string, data: unknown): string | n
   const className = `${toPascalCase(moduleName)}${toPascalCase(pageId)}Base`;
   const stateAssertions: string[] = [];
   const actionAssertions: string[] = [];
+  const contractImports = new Map<string, Set<string>>();
 
   const states = Array.isArray(data.states) ? data.states.filter(isRecord) : [];
   for (const state of states) {
     const propertyName = typeof state.name === 'string' && state.name ? state.name : camelCaseFromKey(String(state.stateKey ?? ''));
     if (!propertyName) continue;
-    const expectedType = stateAssertionType(state);
+    const expectedType = stateAssertionType(state, sharedStateContractType(outputPath, data, state, contractImports));
     stateAssertions.push(`type ${assertName(`State_${propertyName}`, propertyName)} = Assert<Assignable<typeof page${propertyAccess(propertyName)}, ${expectedType}>>;`);
   }
 
@@ -346,6 +349,7 @@ function buildSharedTypecheckTest(outputPath: string, data: unknown): string | n
     mlsHeaderForOutputPath(testPath),
     '',
     `import type { ${className} } from './${fileBaseName(outputPath)}.js';`,
+    ...contractImportLines(contractImports),
     '',
     'type IsAny<T> = 0 extends (1 & T) ? true : false;',
     'type Assignable<Actual, Expected> = IsAny<Actual> extends true ? false : [Actual] extends [Expected] ? true : false;',
@@ -394,16 +398,70 @@ function primitiveType(type: string): string {
   return 'unknown';
 }
 
-function stateAssertionType(state: Record<string, unknown>): string {
+function stateAssertionType(state: Record<string, unknown>, contractType?: string | null): string {
+  const types: string[] = [];
   if (Array.isArray(state.valueSet) && state.valueSet.length > 0 && state.valueSet.every(item => typeof item === 'string')) {
-    return state.valueSet.map(item => JSON.stringify(item)).join(' | ');
+    types.push(...state.valueSet.map(item => JSON.stringify(item)));
+  } else if (state.collection === true || Array.isArray(state.defaultValue)) {
+    types.push('unknown[]');
+  } else {
+    const value = state.defaultValue;
+    if (typeof value === 'number') types.push('number');
+    else if (typeof value === 'boolean') types.push('boolean');
+    else if (typeof value === 'string') types.push('string');
+    else types.push('unknown');
   }
-  if (state.collection === true || Array.isArray(state.defaultValue)) return 'unknown[]';
-  const value = state.defaultValue;
-  if (typeof value === 'number') return 'number';
-  if (typeof value === 'boolean') return 'boolean';
-  if (typeof value === 'string') return 'string';
-  return 'unknown';
+  if (contractType) {
+    if (types.length === 1 && types[0] === 'unknown') types[0] = contractType;
+    else types.push(contractType);
+  }
+  return uniqueTypeUnion(types);
+}
+
+function sharedStateContractType(outputPath: string, data: Record<string, unknown>, state: Record<string, unknown>, imports: Map<string, Set<string>>): string | null {
+  const ref = isRecord(state.contractRef) ? state.contractRef : null;
+  if (!ref || ref.direction !== 'input') return null;
+  const commandName = typeof ref.commandName === 'string' && ref.commandName ? ref.commandName : null;
+  const field = typeof ref.field === 'string' && ref.field ? ref.field : null;
+  const moduleName = typeof data.moduleName === 'string' && data.moduleName ? data.moduleName : moduleNameFromOutputPath(outputPath);
+  const contractPath = sharedContractTsPath(outputPath, data);
+  if (!commandName || !field || !moduleName || !contractPath) return null;
+
+  const inputType = `${toPascalCase(moduleName)}${toPascalCase(commandName)}Input`;
+  const importPath = relativeJsImportPath(outputPath, contractPath);
+  const names = imports.get(importPath) ?? new Set<string>();
+  names.add(inputType);
+  imports.set(importPath, names);
+  return `${inputType}[${JSON.stringify(field)}]`;
+}
+
+function sharedContractTsPath(outputPath: string, data: Record<string, unknown>): string | null {
+  const ref = isRecord(data.contractRef) ? data.contractRef : null;
+  if (ref && typeof ref.tsPath === 'string' && ref.tsPath) return ref.tsPath;
+  if (outputPath.includes('/web/shared/')) return outputPath.replace('/web/shared/', '/web/contracts/');
+  return null;
+}
+
+function contractImportLines(imports: Map<string, Set<string>>): string[] {
+  return [...imports.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([importPath, names]) => `import type { ${[...names].sort().join(', ')} } from '${importPath}';`);
+}
+
+function relativeJsImportPath(fromPath: string, toPath: string): string {
+  const fromParts = fromPath.split('/');
+  fromParts.pop();
+  const toParts = toPath.replace(/\.ts$/, '.js').split('/');
+  let i = 0;
+  while (i < fromParts.length && i < toParts.length && fromParts[i] === toParts[i]) i++;
+  const parts = [...Array(fromParts.length - i).fill('..'), ...toParts.slice(i)];
+  const rel = parts.join('/') || '.';
+  return rel.startsWith('.') ? rel : `./${rel}`;
+}
+
+function uniqueTypeUnion(types: string[]): string {
+  if (types.includes('unknown')) return 'unknown';
+  return [...new Set(types)].join(' | ') || 'unknown';
 }
 
 function moduleNameFromOutputPath(outputPath: string): string | null {

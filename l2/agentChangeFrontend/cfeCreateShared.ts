@@ -747,7 +747,7 @@ function normalizeI18nText(value: unknown, defaultLocale: string): string {
   }
   const localized = Object.entries(value).find(([key, item]) => isI18nLocaleKey(key) && typeof item === 'string' && item.trim());
   if (localized && typeof localized[1] === 'string') return localized[1].trim();
-  return optionalString(value.text) || optionalString(value.value) || optionalString(value.label) || optionalString(value.title);
+  return optionalString(value.text) || optionalString(value.value) || optionalString(value.label) || optionalString(value.title) || '';
 }
 
 function readI18nLocale(value: unknown): string {

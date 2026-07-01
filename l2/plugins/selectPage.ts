@@ -361,6 +361,7 @@ export class PluginSelectPage extends StateLitElement {
 
     private _fileExists(project: number | null, level: number, folder: string, shortName: string): boolean {
         try {
+            if (!project) return false;
             const key = mls.stor.getKeyToFile({ project, level, folder, shortName, extension: '.ts' });
             const file = (mls.stor.files as Record<string, any>)[key];
             return !!file && file.status !== 'deleted';
