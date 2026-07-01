@@ -39,6 +39,9 @@ export function parseMlsPath(mlsPath: string): ParsedMlsPath | null {
   if (filename.endsWith('.defs.ts')) {
     return { project, level, folder, shortName: filename.slice(0, -'.defs.ts'.length), extension: '.defs.ts' };
   }
+  if (filename.endsWith('.test.ts')) {
+    return { project, level, folder, shortName: filename.slice(0, -'.test.ts'.length), extension: '.test.ts' };
+  }
   if (filename.endsWith('.d.ts')) {
     return { project, level, folder, shortName: filename.slice(0, -'.d.ts'.length), extension: '.d.ts' };
   }
@@ -107,9 +110,10 @@ export async function saveGeneratedTs(
   folder: string,
   shortName: string,
   content: string,
+  extension = '.ts',
 ): Promise<boolean> {
   try {
-    const fileInfo = { project, level, folder, shortName, extension: '.ts' };
+    const fileInfo = { project, level, folder, shortName, extension };
     const key = mls.stor.getKeyToFile(fileInfo);
     let file = (mls.stor.files as Record<string, any>)[key];
     if (!file) {
@@ -119,7 +123,7 @@ export async function saveGeneratedTs(
       if (model) model.model.setValue(content);
     }
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
-    await compileGeneratedTs(project, level, folder, shortName);
+    await compileGeneratedTs(project, level, folder, shortName, extension);
     return true;
   } catch (error) {
     console.warn('[cfeMaterializeStudio] saveGeneratedTs failed', error);
@@ -129,8 +133,8 @@ export async function saveGeneratedTs(
 
 export async function saveGeneratedTsByMlsPath(mlsPath: string, content: string): Promise<boolean> {
   const parsed = parseMlsPath(mlsPath);
-  if (!parsed || parsed.extension !== '.ts') return false;
-  return saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, content);
+  if (!parsed || !isGeneratedTsExtension(parsed.extension)) return false;
+  return saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, content, parsed.extension);
 }
 
 export async function compileAndGetErrors(
@@ -138,12 +142,13 @@ export async function compileAndGetErrors(
   level: number,
   folder: string,
   shortName: string,
+  extension = '.ts',
 ): Promise<string[]> {
   try {
     const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
     let modelBase = mls.editor.models[editorKey];
     if (!modelBase) modelBase = await mls.editor.addModels(project, shortName, folder, level);
-    const modelTs = modelBase?.ts;
+    const modelTs = modelBase?.[getModelSlot(extension)];
     if (!modelTs?.model) return [];
     if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
     await mls.l2.typescript.compile(modelTs);
@@ -157,8 +162,8 @@ export async function compileAndGetErrors(
 
 export async function compileMlsPathAndGetErrors(mlsPath: string): Promise<string[]> {
   const parsed = parseMlsPath(mlsPath);
-  if (!parsed || parsed.extension !== '.ts') return [];
-  return compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName);
+  if (!parsed || !isGeneratedTsExtension(parsed.extension)) return [];
+  return compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName, parsed.extension);
 }
 
 export function extractToolCallArgs<T>(raw: unknown, toolName: string): T | null {
@@ -203,19 +208,27 @@ async function getEsbuild(): Promise<any> {
   return esbuild;
 }
 
-async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string): Promise<void> {
+async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string, extension: string): Promise<void> {
   try {
     const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
     let modelBase = mls.editor.models[editorKey];
     if (!modelBase) modelBase = await mls.editor.addModels(project, shortName, folder, level);
-    const modelTs = modelBase?.ts;
+    const modelTs = modelBase?.[getModelSlot(extension)];
     if (!modelTs) return;
     if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
-    await mls.l2.typescript.compileAndPostProcess(modelTs, true, true);
+    await mls.l2.typescript.compileAndPostProcess(modelTs, extension === '.ts', true);
     mls.editor.forceModelUpdate(modelTs.model);
   } catch (error) {
     console.warn('[cfeMaterializeStudio] compileGeneratedTs failed', error);
   }
+}
+
+function isGeneratedTsExtension(extension: string): boolean {
+  return extension === '.ts' || extension === '.test.ts';
+}
+
+function getModelSlot(extension: string): 'ts' | 'test' {
+  return extension === '.test.ts' ? 'test' : 'ts';
 }
 
 function parseMaybeJson(raw: unknown): unknown {

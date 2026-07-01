@@ -39,7 +39,7 @@
       "agentCfeCreatePage generates web/contracts deterministically, calls an LLM with a strict tool schema to generate web/desktop/page11 semantic layout defs for one page, reconciles layout state references, then writes web/shared from contractRef + layout-derived states/actions.",
       "agentCfeCreatePage writes l2/{module}/trace/frontend-create-pages/{page}.json as inProgress/done so finalize does not accept stale page defs from an older run.",
       "agentCfeMaterializeL2 reads the generated .defs.ts pipelines and creates sequential phase launchers for contracts, shared and pages. Each agentCfeMaterializePhase starts one progress fan-out only after the previous fan-out completed successfully, then schedules agentCfeMaterializeGen for .ts generation.",
-      "agentCfeMaterializeGen fails one Studio item explicitly on missing tool output or compile/typecheck errors, with the compiler details in trace. It does not re-emit prompt_ready from afterPromptStep because continue/recovery can orphan the original beforePromptStep hook.",
+      "agentCfeMaterializeGen fails one Studio item explicitly on missing tool output or compile/typecheck errors, with the compiler details in trace. It writes companion .test.ts typecheck files using the MLS .test.ts extension slot. It does not re-emit prompt_ready from afterPromptStep because continue/recovery can orphan the original beforePromptStep hook.",
       "agentCfeRegisterFrontend writes page preview .html files, updates l0/config.json and writes frontend-register-pages markers.",
       "agentCfeCreateFinalize writes a trace report and marks generated owners statusFrontend = done only after pages have create and register markers done.",
       "The page11 layout keeps the section -> organism structure and enriches it with stable ids, intentions, field/column/action references and data bindings. i18n values live only in shared defs; page11 references keys. page11 is the plain implementation and does not reference molecule groups/tags."
@@ -233,6 +233,7 @@
       "shared": "l2/{module}/web/shared/{page}.defs.ts",
       "page": "l2/{module}/web/desktop/page11/{page}.defs.ts"
     },
+    "generatedTypecheckFiles": "Materialization may write companion .test.ts files beside generated .ts files. In MLS storage this is extension .test.ts with the same base shortName as the generated .ts; do not parse createStockItem.test.ts as shortName=createStockItem.test plus extension=.ts.",
     "pipeline": "Generated .defs.ts files must include pipeline metadata executed by agentCfeMaterializeL2 through agentCfeMaterializeGen after .defs.ts creation.",
     "rulesHandling": "Do not emit rulesApplied in web/contracts. Backend-facing rule metadata stays in l4 and is read directly by agentChangeBackend. Page/shared metadata may reference rules only when needed for frontend behavior and must not block page creation.",
     "layoutContract": "The page .defs.ts contains semantic layout, not raw DOM/CSS. Layout nodes use stable id/order keys and reference shared actions/state/contracts/i18n keys by key only; i18n values live in shared defs. It is later materialized into plain Lit/render code by agentChangeFrontend/skills/genCfePage11RenderTs.ts. The full section -> organism -> intention tree lives in definition.layout.sections; top-level sections is only a compact compatibility summary. page11 must not reference molecule groups, molecule tags or package-specific component names."
@@ -270,6 +271,9 @@
     "l2/{module}/web/contracts/{page}.ts",
     "l2/{module}/web/shared/{page}.ts",
     "l2/{module}/web/desktop/page11/{page}.ts",
+    "l2/{module}/web/contracts/{page}.test.ts",
+    "l2/{module}/web/shared/{page}.test.ts",
+    "l2/{module}/web/desktop/page11/{page}.test.ts",
     "l2/{module}/web/desktop/page11/{page}.html",
     "l2/{module}/trace/frontend-page-index.json",
     "l2/{module}/trace/frontend-create-report.json",
@@ -525,7 +529,7 @@
     {
       "agentName": "agentCfeMaterializeGen",
       "file": "l2/agentChangeFrontend/agentCfeMaterializeGen.ts",
-      "role": "Generates one frontend L2 .ts file from a generated .defs.ts pipeline item using local agentChangeFrontend materialization helpers. In Studio it fails explicitly on missing output or compile/typecheck errors instead of retrying in the same hook."
+      "role": "Generates one frontend L2 .ts file from a generated .defs.ts pipeline item using local agentChangeFrontend materialization helpers, then saves the companion .test.ts typecheck file with the MLS .test.ts extension slot. In Studio it fails explicitly on missing output or compile/typecheck errors instead of retrying in the same hook."
     },
     {
       "agentName": "agentCfeRegisterFrontend",
