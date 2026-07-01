@@ -7,9 +7,10 @@
 // beforePromptImplicit → minimal LLM confirmation (validates the request).
 // afterPromptStep      → builds the planned tree of child steps with barriers:
 //
-//   select:<page>  agentSelectGroups   waiting_human_input   dependsOn []           (Agent1, LLM)
-//   gen:<page>     agentGenDefs         waiting_dependency    dependsOn [select:<page>]  (deterministic)
-//   register       agentRegisterGenome  waiting_dependency    dependsOn [gen:<page> ...all]
+//   select:<page>    agentSelectGroups    waiting_human_input   dependsOn []                 (Agent1, LLM)
+//   gen:<page>       agentGenDefs         waiting_dependency    dependsOn [select:<page>]    (deterministic)
+//   reconcile-tokens agentReconcileTokens waiting_dependency    dependsOn [gen:<page> ...all] (LLM, 1x/DS)
+//   register         agentRegisterGenome  waiting_dependency    dependsOn [reconcile-tokens]
 //
 // The `register` step's barrier (dependsOn every gen step) is how we "know all pages
 // finished" — native to the framework, no in-memory tracker needed.
@@ -134,11 +135,17 @@ async function afterPromptStep(
         'agentGenDefs', baseArgs(page), [makePlanId('select', page)], 'waiting_dependency', 'parallel_static'));
     }
 
-    // Terminal — register the variation in module.ts ONCE, after EVERY gen completes.
-    intents.push(mkAgentStep(context, step, 'register', 'Register module genome',
-      'agentRegisterGenome', baseArgs(), genIds, 'waiting_dependency', 'sequential'));
+    // Reconcile molecule tokens (--ml-*) to the DS tokens (--ds-*) — ONCE per DS, barrier over
+    // every gen (so all pages' molecule assignments are known). Feeds buildGlobalCss in register.
+    const reconcileArgs: StepArgs = { module, layout, ds, device, pages };
+    intents.push(mkAgentStep(context, step, 'reconcile-tokens', 'Reconciliar tokens (molécula→DS)',
+      'agentReconcileTokens', reconcileArgs, genIds, 'waiting_dependency', 'sequential'));
 
-    console.info(`[agentImplementGenome] ✓ planned ${pages.length} select(Agent1) + ${pages.length} gen(deterministic) + 1 register steps`);
+    // Terminal — register the variation ONCE, after reconciliation (so global.css carries --ml-*).
+    intents.push(mkAgentStep(context, step, 'register', 'Register module genome',
+      'agentRegisterGenome', baseArgs(), ['reconcile-tokens'], 'waiting_dependency', 'sequential'));
+
+    console.info(`[agentImplementGenome] ✓ planned ${pages.length} select(Agent1) + ${pages.length} gen(deterministic) + 1 reconcile-tokens + 1 register steps`);
     return intents;
   } catch (error) {
     const msg = `[${agent.agentName}] ${error instanceof Error ? error.message : String(error)}`;

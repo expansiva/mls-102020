@@ -262,17 +262,50 @@ classMap({
 Build CSS classes using arrays and \`join()\`:
 
 \`\`\`typescript
-// ✅ CORRECT - template strings
+// ✅ CORRECT - template strings with semantic ml-* classes
 const classes = [
-  // Base classes (always applied)
-  'w-full rounded-md px-3 py-2 text-sm border transition',
-  // Conditional classes
-  isSelected ? 'border-sky-500 bg-sky-50 text-sky-900' : 'border-slate-200 bg-white hover:bg-slate-50',
-  // State classes
-  disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
-].join(' ');
+  // Layout classes (Tailwind)
+  'w-full px-3 py-2 text-sm',
+  // Semantic class (visual styling via .less)
+  'ml-input-container',
+  // Conditional semantic classes
+  this.error ? 'ml-input-container-error' : '',
+  // State
+  disabled ? 'ml-disabled' : 'cursor-pointer',
+].filter(Boolean).join(' ');
 
-return html\\\`<button class=\\\${classes}>...</button>\\\`;
+return html\\\`<div class=\\\${classes}>...</div>\\\`;
+\`\`\`
+
+### cn() — class merge utility
+
+Import \`cn\` from the project's molecules directory. Use it to merge component classes with consumer-provided classes:
+
+\`\`\`typescript
+import { cn } from '/_102033_/l2/cn.js';
+\`\`\`
+
+The base class \`MoleculeAuraElement\` provides:
+- **\`this.cssClass\`** — reads the \`data-class\` attribute from the host element
+- **\`this.getSlotClass(tag)\`** — reads the \`data-class\` attribute from a slot tag
+
+Apply \`cn()\` on the root element and on slot wrappers:
+
+\`\`\`typescript
+// Root element — merge with consumer's data-class
+return html\\\`<button class="\\\${cn(this.getButtonClasses(), this.cssClass)}">...</button>\\\`;
+
+// Slot wrapper — merge with consumer's slot data-class
+return html\\\`<div class="\\\${cn('mb-2 text-sm ml-label', this.getSlotClass('Label'))}">
+  \\\${unsafeHTML(this.getSlotContent('Label'))}
+</div>\\\`;
+\`\`\`
+
+Consumer usage:
+\`\`\`html
+<my-component data-class="w-full mt-4">
+  <Label data-class="uppercase tracking-wide">Text</Label>
+</my-component>
 \`\`\`
 
 ### Pattern for complex states
@@ -280,21 +313,15 @@ return html\\\`<button class=\\\${classes}>...</button>\\\`;
 \`\`\`typescript
 private getItemClasses(item: ParsedItem, isSelected: boolean): string {
   return [
-    // Base
-    'w-full rounded-md px-3 py-2 text-sm border transition',
-    // Selection state
-    isSelected 
-      ? 'border-sky-500 bg-sky-50 text-sky-900' 
-      : 'border-slate-200 bg-white text-slate-900',
-    // Hover (only when not disabled)
-    !item.disabled && !isSelected ? 'hover:bg-slate-50' : '',
-    // Disabled state
-    item.disabled ? 'opacity-50 cursor-not-allowed' : '',
-    // Focus state
-    !item.disabled ? 'focus:outline-none focus:ring-2 focus:ring-sky-500' : '',
+    // Layout (Tailwind)
+    'w-full px-3 py-2 text-sm',
+    // Semantic classes (visual via .less)
+    'ml-item',
+    isSelected ? 'ml-item-selected' : '',
+    // State
+    item.disabled ? 'ml-disabled' : '',
   ].filter(Boolean).join(' ');
 }
-
 \`\`\`
 
 ---
@@ -628,83 +655,132 @@ Molecules that accept both binding types must implement **both mechanisms**.
 
 ---
 
-## 12. Dark Mode
+## 12. Design System — Styling via Tokens
 
-Molecules MUST support dark mode using Tailwind's \`dark:\` variant classes. The platform toggles dark mode via the \`dark\` class on a parent element (class-based strategy).
+Molecules MUST use CSS custom properties (design tokens) for all visual styling. Colors, borders, typography, radius, shadows, and focus are defined in the component's \`.less\` file using \`var(--ml-*, fallback)\`. The \`.ts\` file uses semantic \`ml-*\` CSS classes — never hardcoded Tailwind color classes.
 
 ### Rules
 
-- **Never use hardcoded light-only colors.** Every color class (\`bg-*\`, \`text-*\`, \`border-*\`, \`ring-*\`, \`shadow-*\`) MUST have a \`dark:\` counterpart.
-- **Do not use inline styles** for colors — only Tailwind classes so dark mode variants work.
-- Follow the **semantic color pairing** table below consistently across all molecules.
+1. **Never use hardcoded Tailwind color classes** — no \`bg-sky-600\`, \`text-slate-700\`, \`border-red-500\`, etc.
+2. **Never use \`dark:\` variant classes** — dark mode is handled via token override by the consuming project.
+3. **Use semantic \`ml-*\` classes in the .ts** — these classes are defined in the component's \`.less\` file.
+4. **Tailwind is ONLY for layout and animation** — \`flex\`, \`grid\`, \`gap\`, \`p-\`, \`m-\`, \`w-\`, \`h-\`, \`items-center\`, \`animate-spin\`, \`transition-all\`, \`duration-200\`, etc.
+5. **All visual styling goes in the .less file** using \`var(--ml-*, fallback)\`.
+6. **Every \`var()\` MUST have a concrete fallback** so the component renders without external configuration.
 
-### Semantic Color Pairing
+### Token vocabulary
 
-| Role | Light | Dark |
-|------|-------|------|
-| Surface (default) | \`bg-white\` | \`dark:bg-slate-800\` |
-| Surface (sunken/input bg) | \`bg-slate-50\` | \`dark:bg-slate-900\` |
-| Surface (overlay/dropdown) | \`bg-white\` | \`dark:bg-slate-800\` |
-| Border (default) | \`border-slate-200\` | \`dark:border-slate-700\` |
-| Border (focus) | \`border-sky-500\` | \`dark:border-sky-400\` |
-| Border (error) | \`border-red-500\` | \`dark:border-red-400\` |
-| Text (primary) | \`text-slate-900\` | \`dark:text-slate-100\` |
-| Text (secondary/label) | \`text-slate-600\` | \`dark:text-slate-400\` |
-| Text (placeholder) | \`text-slate-400\` | \`dark:text-slate-500\` |
-| Text (disabled) | \`text-slate-400\` | \`dark:text-slate-600\` |
-| Text (error) | \`text-red-600\` | \`dark:text-red-400\` |
-| Text (helper) | \`text-slate-500\` | \`dark:text-slate-400\` |
-| Accent (selected bg) | \`bg-sky-50\` | \`dark:bg-sky-900/40\` |
-| Accent (selected text) | \`text-sky-700\` | \`dark:text-sky-300\` |
-| Accent (selected border) | \`border-sky-500\` | \`dark:border-sky-400\` |
-| Hover (item) | \`hover:bg-slate-50\` | \`dark:hover:bg-slate-700\` |
-| Focus ring | \`focus:ring-sky-500\` | \`dark:focus:ring-sky-400\` |
-| Disabled overlay | \`opacity-50\` | \`opacity-50\` (same) |
+| Category | Token | Fallback | Purpose |
+|----------|-------|----------|---------|
+| Surface | \`--ml-surface\` | \`#ffffff\` | Component background |
+| | \`--ml-surface-dim\` | \`#f5f5f5\` | Secondary background, hover |
+| Text | \`--ml-on-surface\` | \`#1c1b1f\` | Primary text |
+| | \`--ml-on-surface-muted\` | \`#49454f\` | Secondary text, labels |
+| | \`--ml-on-surface-faint\` | \`#79747e\` | Placeholder, tertiary text |
+| Action | \`--ml-primary\` | \`#3b82f6\` | Primary action color |
+| | \`--ml-on-primary\` | \`#ffffff\` | Text on primary |
+| Feedback | \`--ml-error\` | \`#ef4444\` | Error color |
+| | \`--ml-on-error\` | \`#ffffff\` | Text on error |
+| | \`--ml-success\` | \`#22c55e\` | Success color |
+| Border | \`--ml-outline-variant\` | \`#e2e8f0\` | Default border |
+| | \`--ml-outline-focus\` | \`#3b82f6\` | Focus border |
+| | \`--ml-outline-error\` | \`#ef4444\` | Error border |
+| Shape | \`--ml-radius-sm\` | \`6px\` | Inputs, buttons |
+| | \`--ml-radius-md\` | \`8px\` | Cards |
+| | \`--ml-radius-lg\` | \`12px\` | Modals |
+| | \`--ml-radius-full\` | \`9999px\` | Circular (toggle, avatar) |
+| Elevation | \`--ml-shadow-0\` | \`none\` | No shadow |
+| | \`--ml-shadow-1\` | \`0 1px 3px rgba(0,0,0,0.1)\` | Subtle |
+| | \`--ml-shadow-2\` | \`0 4px 6px rgba(0,0,0,0.1)\` | Medium |
+| Typography | \`--ml-font-family\` | \`system-ui, -apple-system, sans-serif\` | Font |
+| | \`--ml-font-weight-medium\` | \`500\` | Medium weight |
+| Border | \`--ml-border-width\` | \`1px\` | Border thickness |
+| | \`--ml-border-style\` | \`solid\` | Border style |
+| Motion | \`--ml-transition\` | \`200ms ease\` | Default transition |
+| Focus | \`--ml-focus-ring-color\` | \`rgba(59,130,246,0.4)\` | Focus ring color |
+| | \`--ml-focus-ring-width\` | \`2px\` | Focus ring width |
+| State | \`--ml-disabled-opacity\` | \`0.5\` | Disabled opacity |
 
-### Example — input field with dark mode
+### Shared semantic classes (available to all groups)
+
+These classes appear across multiple groups. Their styling is defined in each component's \`.less\`:
+
+| Class | Purpose |
+|-------|---------|
+| \`ml-label\` | Field labels |
+| \`ml-helper\` | Helper text below fields |
+| \`ml-error-text\` | Error messages |
+| \`ml-text\` | Default text |
+| \`ml-text-muted\` | Secondary text |
+| \`ml-text-faint\` | Tertiary text, placeholder |
+| \`ml-disabled\` | Disabled state (opacity + cursor) |
+| \`ml-skeleton\` | Loading placeholder |
+| \`ml-spinner\` | Loading spinner |
+
+### Example — .ts file (semantic classes only)
 
 \`\`\`typescript
-private getInputClasses(): string {
+private getContainerClasses(): string {
   return [
-    'w-full rounded-lg px-3 py-2 text-sm border transition',
-    'bg-white dark:bg-slate-900',
-    'text-slate-900 dark:text-slate-100',
-    'placeholder:text-slate-400 dark:placeholder:text-slate-500',
-    this.error
-      ? 'border-red-500 dark:border-red-400'
-      : 'border-slate-200 dark:border-slate-700',
-    'focus:outline-none focus:ring-2 focus:ring-sky-500 dark:focus:ring-sky-400',
-    this.disabled ? 'opacity-50 cursor-not-allowed' : '',
+    // Layout (Tailwind)
+    'relative flex w-full items-center gap-2 py-2 px-3',
+    // Visual (semantic — defined in .less)
+    'ml-input-container',
+    this.error ? 'ml-input-container-error' : '',
+    this.disabled ? 'ml-disabled' : 'cursor-text',
   ].filter(Boolean).join(' ');
 }
 \`\`\`
 
-### Example — dropdown item list with dark mode
+### Example — .less file (tokens with fallbacks)
 
-\`\`\`typescript
-private getItemClasses(item: ParsedItem, isSelected: boolean): string {
-  return [
-    'w-full rounded-md px-3 py-2 text-sm transition cursor-pointer',
-    isSelected
-      ? 'bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 border border-sky-500 dark:border-sky-400'
-      : 'text-slate-900 dark:text-slate-100 border border-transparent',
-    !item.disabled && !isSelected
-      ? 'hover:bg-slate-50 dark:hover:bg-slate-700'
-      : '',
-    item.disabled ? 'opacity-50 cursor-not-allowed' : '',
-  ].filter(Boolean).join(' ');
+\`\`\`less
+my-component-tag {
+
+  .ml-input-container {
+    background: var(--ml-surface, #ffffff);
+    border: var(--ml-border-width, 1px) var(--ml-border-style, solid) var(--ml-outline-variant, #e2e8f0);
+    border-radius: var(--ml-radius-sm, 6px);
+    transition: border-color var(--ml-transition, 200ms ease), box-shadow var(--ml-transition, 200ms ease);
+    &:focus-within {
+      border-color: var(--ml-outline-focus, #3b82f6);
+      box-shadow: 0 0 0 var(--ml-focus-ring-width, 2px) var(--ml-focus-ring-color, rgba(59, 130, 246, 0.4));
+    }
+  }
+
+  .ml-input-container-error {
+    border-color: var(--ml-outline-error, #ef4444) !important;
+  }
+
+  .ml-label {
+    font-family: var(--ml-font-family, system-ui, -apple-system, sans-serif);
+    font-weight: var(--ml-font-weight-medium, 500);
+    color: var(--ml-on-surface, #1c1b1f);
+  }
+
+  .ml-error-text {
+    color: var(--ml-error, #ef4444);
+    font-family: var(--ml-font-family, system-ui, -apple-system, sans-serif);
+  }
+
+  .ml-disabled {
+    opacity: var(--ml-disabled-opacity, 0.5);
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
 }
 \`\`\`
 
-### Example — error and helper text
+### Example — feedback rendering
 
 \`\`\`typescript
 private renderFeedback(): TemplateResult {
   if (this.error) {
-    return html\\\`<p class="mt-1 text-xs text-red-600 dark:text-red-400">\\\${unsafeHTML(String(this.error))}</p>\\\`;
+    return html\\\`<p class="\\\${cn('mt-1 text-xs ml-error-text')}">\\\${unsafeHTML(String(this.error))}</p>\\\`;
   }
   if (this.hasSlot('Helper')) {
-    return html\\\`<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">\\\${unsafeHTML(this.getSlotContent('Helper'))}</p>\\\`;
+    return html\\\`<p class="\\\${cn('mt-1 text-xs ml-helper', this.getSlotClass('Helper'))}">\\\${unsafeHTML(this.getSlotContent('Helper'))}</p>\\\`;
   }
   return html\\\`\\\`;
 }

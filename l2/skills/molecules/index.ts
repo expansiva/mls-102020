@@ -78,6 +78,12 @@ export const skills = [
         skillUsageReference: '/_102020_/l2/skills/molecules/groupEnterTimeInterval/usage'
     },
     {
+        name: 'groupEnterNumberInterval',
+        description: 'Allows the user to input a numeric range with a lower and an upper value. Ideal for price bands, age brackets, value filters, weight or measurement ranges, and any bounded numeric interval. Supports min/max bounds, step, decimals, locale formatting, and minimum/maximum gap between values. Implementations include dual-handle range slider, from/to number inputs, and histogram range.',
+        skillReference: '/_102020_/l2/skills/molecules/groupEnterNumberInterval/creation',
+        skillUsageReference: '/_102020_/l2/skills/molecules/groupEnterNumberInterval/usage'
+    },
+    {
         name: 'groupLocatePosition',
         description: 'Allows the user to inform or visualize a geographic location. Supports address search with autocomplete (suggestions provided by the page via BFF), geolocation capture, and map preview. Value is stored as a JSON string containing lat, lng, and address. Implementations include address autocomplete, map picker, geolocation button, and area selector.',
         skillReference: '/_102020_/l2/skills/molecules/groupLocatePosition/creation',

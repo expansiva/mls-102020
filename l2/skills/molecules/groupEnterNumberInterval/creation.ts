@@ -1,9 +1,9 @@
-/// <mls fileReference="_102020_/l2/skills/molecules/groupEnterDateTimeInterval/creation.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/skills/molecules/groupEnterNumberInterval/creation.ts" enhancement="_blank"/>
 
 export const skill = `
-# groupEnterDateTimeInterval — Creation
+# groupEnterNumberInterval — Creation
 
-> Implementation reference for creating molecules in the **groupEnterDateTimeInterval** group.
+> Implementation reference for creating molecules in the **groupEnterNumberInterval** group.
 > Follow the general Lit/Aura rules defined in \`molecule-generation2.md\`.
 
 ---
@@ -12,7 +12,7 @@ export const skill = `
 
 | Field | Value |
 |-------|-------|
-| **Group** | \`groupEnterDateTimeInterval\` |
+| **Group** | \`groupEnterNumberInterval\` |
 | **Category** | Data Entry |
 | **Version** | \`1.0.0\` |
 
@@ -23,12 +23,14 @@ export const skill = `
 | Tag | Required | Description |
 |-----|:--------:|-------------|
 | \`Label\` | No | Overall label for the range field |
-| \`LabelStart\` | No | Label for the start datetime input |
-| \`LabelEnd\` | No | Label for the end datetime input |
+| \`LabelStart\` | No | Label for the lower-value control |
+| \`LabelEnd\` | No | Label for the upper-value control |
 | \`Helper\` | No | Help text displayed below the field |
+| \`Prefix\` | No | Content rendered before each value (e.g. unit symbol \`R$\`) |
+| \`Suffix\` | No | Content rendered after each value (e.g. unit label \`%\`, \`kg\`) |
 
 \`\`\`typescript
-slotTags = ['Label', 'LabelStart', 'LabelEnd', 'Helper'];
+slotTags = ['Label', 'LabelStart', 'LabelEnd', 'Helper', 'Prefix', 'Suffix'];
 \`\`\`
 
 ---
@@ -39,8 +41,8 @@ slotTags = ['Label', 'LabelStart', 'LabelEnd', 'Helper'];
 
 | Property | Type | Default | Decorator | Description |
 |----------|------|---------|-----------|-------------|
-| \`startDatetime\` | \`string \| null\` | \`null\` | \`@propertyDataSource\` | Start datetime (\`"YYYY-MM-DDTHH:mm:ss"\`) |
-| \`endDatetime\` | \`string \| null\` | \`null\` | \`@propertyDataSource\` | End datetime (\`"YYYY-MM-DDTHH:mm:ss"\`) |
+| \`startValue\` | \`number \| null\` | \`null\` | \`@propertyDataSource\` | Lower bound of the interval |
+| \`endValue\` | \`number \| null\` | \`null\` | \`@propertyDataSource\` | Upper bound of the interval |
 | \`error\` | \`string\` | \`''\` | \`@propertyDataSource\` | Error message (empty = no error) |
 | \`name\` | \`string\` | \`''\` | \`@propertyDataSource\` | Field name (for forms) |
 
@@ -48,14 +50,14 @@ slotTags = ['Label', 'LabelStart', 'LabelEnd', 'Helper'];
 
 | Property | Type | Default | Decorator | Description |
 |----------|------|---------|-----------|-------------|
-| \`locale\` | \`string\` | \`''\` | \`@propertyDataSource\` | Locale for display formatting |
-| \`timezone\` | \`string\` | \`''\` | \`@propertyDataSource\` | IANA timezone. Empty = local |
-| \`minDatetime\` | \`string\` | \`''\` | \`@propertyDataSource\` | Minimum allowed datetime (ISO 8601) |
-| \`maxDatetime\` | \`string\` | \`''\` | \`@propertyDataSource\` | Maximum allowed datetime (ISO 8601) |
-| \`minDurationMinutes\` | \`number\` | \`0\` | \`@propertyDataSource\` | Minimum duration in minutes (0 = no minimum) |
-| \`maxDurationMinutes\` | \`number\` | \`0\` | \`@propertyDataSource\` | Maximum duration in minutes (0 = no maximum) |
-| \`minuteStep\` | \`number\` | \`1\` | \`@propertyDataSource\` | Minutes increment in time picker |
-| \`allowSameInstant\` | \`boolean\` | \`false\` | \`@propertyDataSource\` | Allow start and end at the same datetime |
+| \`min\` | \`number \| null\` | \`null\` | \`@propertyDataSource\` | Absolute floor for both controls (null = no minimum) |
+| \`max\` | \`number \| null\` | \`null\` | \`@propertyDataSource\` | Absolute ceiling for both controls (null = no maximum) |
+| \`step\` | \`number\` | \`1\` | \`@propertyDataSource\` | Increment for both controls |
+| \`decimals\` | \`number\` | \`0\` | \`@propertyDataSource\` | Number of decimal places allowed |
+| \`locale\` | \`string\` | \`''\` | \`@propertyDataSource\` | Locale for display formatting (e.g. \`'en-US'\`, \`'pt-BR'\`) |
+| \`placeholder\` | \`string\` | \`''\` | \`@propertyDataSource\` | Placeholder text when the interval is unset |
+| \`minGap\` | \`number\` | \`0\` | \`@propertyDataSource\` | Minimum distance between \`startValue\` and \`endValue\` (0 = no minimum) |
+| \`maxGap\` | \`number\` | \`0\` | \`@propertyDataSource\` | Maximum distance between \`startValue\` and \`endValue\` (0 = no maximum) |
 
 ### 3.3 States
 
@@ -64,14 +66,14 @@ slotTags = ['Label', 'LabelStart', 'LabelEnd', 'Helper'];
 | \`isEditing\` | \`boolean\` | \`true\` | \`@propertyDataSource\` | Edit mode (true) or view mode (false) |
 | \`disabled\` | \`boolean\` | \`false\` | \`@propertyDataSource\` | Field is disabled |
 | \`readonly\` | \`boolean\` | \`false\` | \`@propertyDataSource\` | Field is read-only |
-| \`required\` | \`boolean\` | \`false\` | \`@propertyDataSource\` | Both datetimes are required |
+| \`required\` | \`boolean\` | \`false\` | \`@propertyDataSource\` | Both values are required |
 | \`loading\` | \`boolean\` | \`false\` | \`@propertyDataSource\` | Loading state |
 
 ### 3.4 Internal State
 
 | Property | Type | Default | Decorator | Description |
 |----------|------|---------|-----------|-------------|
-| \`activeField\` | \`string \| null\` | \`null\` | \`@state\` | Which picker is open: \`'start'\`, \`'end'\`, or \`null\` |
+| \`activeHandle\` | \`string \| null\` | \`null\` | \`@state\` | Which control is being adjusted: \`'start'\`, \`'end'\`, or \`null\` |
 
 ---
 
@@ -79,26 +81,25 @@ slotTags = ['Label', 'LabelStart', 'LabelEnd', 'Helper'];
 
 ### Storage Format
 
-- Both values stored as **ISO 8601**: \`"YYYY-MM-DDTHH:mm:ss"\`
-- Time always stored in **24-hour format**
-- \`null\` means not yet selected
-- \`endDatetime\` must be > \`startDatetime\` (unless \`allowSameInstant=true\`)
+- Both values stored and emitted as native **JavaScript numbers**
+- \`null\` means not yet provided
+- \`startValue\` must never exceed \`endValue\` (the pair is clamped — see §7)
+- Decimal precision controlled by \`decimals\`; display respects \`locale\` and Prefix/Suffix
+- When \`decimals = 0\`, only integers are accepted
 
 ### Display Format
 
-| Locale | Same day range | Displayed |
-|--------|---------------|-----------|
-| \`en-US\` | same day | \`04/17/2026 09:00 AM – 10:30 AM\` |
-| \`en-US\` | different days | \`04/17/2026 09:00 AM – 04/18/2026 08:00 AM\` |
-| \`pt-BR\` | same day | \`17/04/2026 09:00 – 10:30\` |
-
-When start and end are on the same day, the date can be shown once with only the times for brevity.
+| \`locale\` | \`decimals\` | Interval | Displayed |
+|----------|------------|----------|-----------|
+| \`'pt-BR'\` | \`0\` | \`200\` → \`750\` | \`200 – 750\` |
+| \`'pt-BR'\` | \`2\` | \`19.9\` → \`199.9\` | \`19,90 – 199,90\` |
+| \`''\` | \`0\` | \`0\` → \`100\` | \`0 – 100\` (browser default) |
 
 ### View Mode
 
 - If both are \`null\`: display \`"—"\`
-- If only \`startDatetime\` is set: display \`"startDatetime – —"\`
-- If both set: display full formatted range
+- If only \`startValue\` is set: display \`"startValue – —"\`
+- If both set: display full formatted interval (with Prefix/Suffix)
 
 ---
 
@@ -106,9 +107,8 @@ When start and end are on the same day, the date can be shown once with only the
 
 | Event | Detail | Bubbles | Description |
 |-------|--------|:-------:|-------------|
-| \`change\` | \`{ startDatetime: string \| null, endDatetime: string \| null }\` | ✓ | Both datetimes confirmed |
-| \`startChange\` | \`{ value: string \| null }\` | ✓ | Start datetime changed |
-| \`endChange\` | \`{ value: string \| null }\` | ✓ | End datetime changed |
+| \`change\` | \`{ startValue: number \| null, endValue: number \| null }\` | ✓ | Interval confirmed (on release or blur) |
+| \`input\` | \`{ startValue: number \| null, endValue: number \| null }\` | ✓ | Fired continuously while either control is adjusted |
 | \`blur\` | \`{}\` | ✓ | Field lost focus |
 | \`focus\` | \`{}\` | ✓ | Field received focus |
 
@@ -119,8 +119,8 @@ this.dispatchEvent(new CustomEvent('change', {
   bubbles: true,
   composed: true,
   detail: {
-    startDatetime: this.startDatetime, // "2026-04-17T09:00:00"
-    endDatetime: this.endDatetime      // "2026-04-17T10:30:00"
+    startValue: this.startValue, // 200
+    endValue: this.endValue      // 750
   }
 }));
 \`\`\`
@@ -131,44 +131,49 @@ this.dispatchEvent(new CustomEvent('change', {
 
 | Mode | \`isEditing\` | Behavior |
 |------|-------------|----------|
-| **Edit** | \`true\` | Renders two datetime inputs + pickers |
-| **View** | \`false\` | Renders formatted datetime range as static text |
+| **Edit** | \`true\` | Renders two adjustable controls (slider handles or from/to inputs) |
+| **View** | \`false\` | Renders the formatted interval as static text |
 
-- In view mode: no inputs, no pickers, no events, no error, no helper
-
----
-
-## 7. Selection Flow
-
-\`\`\`
-1. User clicks start input → activeField = 'start'
-2. Start picker opens (calendar + time)
-3. User confirms start:
-   - startDatetime is set
-   - emit startChange
-   - IF endDatetime is null: activeField = 'end' (auto-advance)
-   - ELSE: activeField = null, close
-4. User clicks end input → activeField = 'end'
-5. End picker opens:
-   - Calendar: disable dates before startDatetime date
-   - Time: if same day, disable times ≤ startDatetime time
-6. User confirms end:
-   - endDatetime is set
-   - emit endChange + change
-   - activeField = null, close picker
-\`\`\`
+- In view mode: no controls, no events, no error, no helper
 
 ---
 
-## 8. Duration Validation
+## 7. Gap / Clamp Logic
+
+Keep the pair ordered and within bounds and gap constraints:
+
+\`\`\`typescript
+function clampToBounds(value: number, min: number | null, max: number | null): number {
+  let next = value;
+  if (min !== null) next = Math.max(next, min);
+  if (max !== null) next = Math.min(next, max);
+  return next;
+}
+
+// When the lower control moves: never let it pass the upper one (respecting minGap).
+function clampPair(start: number, end: number, minGap: number, maxGap: number): { start: number; end: number } {
+  let s = start;
+  let e = end;
+  if (s > e) e = s;                       // keep order
+  if (minGap > 0 && e - s < minGap) e = s + minGap;
+  if (maxGap > 0 && e - s > maxGap) e = s + maxGap;
+  return { start: s, end: e };
+}
+\`\`\`
+
+---
+
+## 8. Validation Rules
 
 | Rule | Behavior |
 |------|----------|
-| \`endDatetime ≤ startDatetime\` | Prevent selection (unless \`allowSameInstant=true\`) |
-| Duration < \`minDurationMinutes\` | Grey out end times/dates that would be too short |
-| Duration > \`maxDurationMinutes\` | Grey out end times/dates that would be too long |
-
-The molecule enforces these rules visually during selection. The Page/Organism sets the \`error\` message after the fact if needed.
+| Value < \`min\` | Clamp to \`min\` |
+| Value > \`max\` | Clamp to \`max\` |
+| \`startValue > endValue\` | Reorder/clamp so \`startValue ≤ endValue\` |
+| Gap < \`minGap\` | Push the opposite control to satisfy the minimum gap |
+| Gap > \`maxGap\` | Push the opposite control to satisfy the maximum gap |
+| Decimals > \`decimals\` | Round to the configured precision |
+| \`required\` and either \`null\` | Error state until both values are provided |
 
 ---
 
@@ -189,13 +194,13 @@ The molecule enforces these rules visually during selection. The Page/Organism s
 | State | Behavior |
 |-------|----------|
 | **Normal** | Default appearance |
-| **Active (start)** | Start picker open |
-| **Active (end)** | End picker open |
-| **Complete** | Both datetimes selected |
+| **Active (start)** | Lower control being adjusted |
+| **Active (end)** | Upper control being adjusted |
+| **Complete** | Both values selected |
 | **Disabled** | Reduced opacity, no interaction |
 | **Readonly** | No editing, text selectable |
 | **Error** | Error border/style, error message visible |
-| **Loading** | Loading indicator visible |
+| **Loading** | Loading indicator visible, controls blocked |
 | **View Mode** | Formatted text only |
 
 ---
@@ -204,12 +209,13 @@ The molecule enforces these rules visually during selection. The Page/Organism s
 
 | Requirement | Implementation |
 |-------------|----------------|
-| Labels | \`aria-labelledby\` for each input |
+| Labels | \`aria-labelledby\` for each control |
 | Error | \`aria-describedby\` pointing to error element |
 | Invalid | \`aria-invalid="true"\` when error exists |
 | Required | \`aria-required="true"\` |
-| Picker dialogs | \`role="dialog"\`, \`aria-modal="true"\` |
-| Day cells | \`role="gridcell"\`, \`aria-selected\`, \`aria-disabled\` |
+| Min/Max | \`aria-valuemin\` / \`aria-valuemax\` on each control |
+| Current value | \`aria-valuenow\` on each control |
+| Readonly | \`aria-readonly="true"\` when read-only |
 
 ---
 
@@ -282,9 +288,9 @@ Group-specific semantic classes will be defined during component migration.
 
 | Component | Description |
 |-----------|-------------|
-| **DateTime Range Picker** | Two inputs + separate calendar+time panels |
-| **Event Scheduler** | Side-by-side pickers optimized for meeting booking |
-| **Booking Widget** | Compact check-in/check-out with duration display |
+| **Number Range Slider** | Dual-handle slider over a bounded numeric track |
+| **Number Range Inputs** | Two numeric inputs (from / to) |
+| **Histogram Range** | Dual-handle slider laid over a distribution histogram |
 
 ---
 
@@ -292,6 +298,6 @@ Group-specific semantic classes will be defined during component migration.
 
 | Version | Date | Description |
 |---------|------|-------------|
-| 1.0.0 | 2026-04-17 | Initial creation reference |
+| 1.0.0 | 2026-06-30 | Initial creation reference |
 
 `
