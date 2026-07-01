@@ -34,7 +34,6 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const fanout = createFanoutStep(args.fanoutPlanId, args.fanoutTitle, args.items.length);
     const parallelArgs = args.items.map(item => JSON.stringify(item));
     const trace = `queued ${args.items.length} materialization item(s)`;
-    console.log(`[${agent.agentName}] ${args.planId}: ${trace}`);
     return [
       createAddStepIntent(context, step, fanout, parallelArgs, args.maxParallel ?? 5),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),

@@ -76,7 +76,6 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       'waiting_dependency',
     );
     const trace = `pages=${generated.pages.length}; materialize=${todo.length}/${planned.length}; skippedPages=${generated.skippedPages.length}`;
-    console.log(`[${agent.agentName}] ${trace}`);
     return [
       ...phasePlan.intents,
       createAddStepIntent(context, parentStep, register),

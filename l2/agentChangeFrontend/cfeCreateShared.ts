@@ -509,6 +509,14 @@ export function createUpdateStatusIntent(context: mls.msg.ExecutionContext, pare
   };
 }
 
+function recordCreateWarning(message: string): void {
+  const full = `[agentCfeCreatePage] ${message}`;
+  console.warn(full);
+  const w = window as any;
+  if (!Array.isArray(w.__agentChangeFrontendCreateDiagnostics)) w.__agentChangeFrontendCreateDiagnostics = [];
+  w.__agentChangeFrontendCreateDiagnostics.push(full);
+}
+
 export function createPromptReadyIntent(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
@@ -940,7 +948,7 @@ function repairUnknownLayoutActions(prepared: CfePreparedPage, layout: CfePageLa
   }));
 
   if (dropped.length > 0) {
-    console.warn(`[agentCfeCreatePage] dropped unknown layout action(s) for ${prepared.page.pageId}: ${dropped.join('; ')}`);
+    recordCreateWarning(`dropped unknown layout action(s) for ${prepared.page.pageId}: ${dropped.join('; ')}`);
   }
   return dropped.length > 0 ? { ...layout, sections } : layout;
 }
@@ -1301,7 +1309,7 @@ function addLayoutSupplementalStates(prepared: CfePreparedPage, layout: CfePageL
     added.push(ref.stateKey);
   }
   if (added.length > 0) {
-    console.warn(`[agentCfeCreatePage] added shared supplemental state(s) for ${prepared.page.pageId}: ${added.join('; ')}`);
+    recordCreateWarning(`added shared supplemental state(s) for ${prepared.page.pageId}: ${added.join('; ')}`);
   }
 }
 

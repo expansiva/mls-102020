@@ -5,6 +5,11 @@ import { createStorFile } from '/_102027_/l2/libStor.js';
 
 declare const mls: any;
 
+export interface MaterializeStudioMessage {
+  level: 'warn' | 'error';
+  message: string;
+}
+
 export interface GenStepArgs {
   planId: string;
   defPath: string;
@@ -25,6 +30,14 @@ export function parsePipelineFromContent(content: string): PipelineItem[] | null
   return parsed.item ? [parsed.item] : null;
 }
 
+const studioMessages: MaterializeStudioMessage[] = [];
+
+export function consumeMaterializeStudioMessages(): MaterializeStudioMessage[] {
+  const ret = [...studioMessages];
+  studioMessages.length = 0;
+  return ret;
+}
+
 export function parseMlsPath(mlsPath: string): ParsedMlsPath | null {
   const match = mlsPath.match(/^_(\d+)_\/l(\d+)\/(.+)$/);
   if (!match) return null;
@@ -38,6 +51,9 @@ export function parseMlsPath(mlsPath: string): ParsedMlsPath | null {
 
   if (filename.endsWith('.defs.ts')) {
     return { project, level, folder, shortName: filename.slice(0, -'.defs.ts'.length), extension: '.defs.ts' };
+  }
+  if (filename.endsWith('.test.ts')) {
+    return { project, level, folder, shortName: filename.slice(0, -'.test.ts'.length), extension: '.test.ts' };
   }
   if (filename.endsWith('.d.ts')) {
     return { project, level, folder, shortName: filename.slice(0, -'.d.ts'.length), extension: '.d.ts' };
@@ -107,30 +123,30 @@ export async function saveGeneratedTs(
   folder: string,
   shortName: string,
   content: string,
+  extension = '.ts',
 ): Promise<boolean> {
   try {
-    const fileInfo = { project, level, folder, shortName, extension: '.ts' };
+    const fileInfo = { project, level, folder, shortName, extension };
     const key = mls.stor.getKeyToFile(fileInfo);
     let file = (mls.stor.files as Record<string, any>)[key];
     if (!file) {
-      file = await createStorFile({ ...fileInfo, source: content }, false, false, false);
-    } else {
-      const model = await file.getOrCreateModel?.();
-      if (model) model.model.setValue(content);
+      file = await createStorFile({ ...fileInfo, source: content }, true, false, false);
     }
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
-    await compileGeneratedTs(project, level, folder, shortName);
+    const model = await getGeneratedModel(project, level, folder, shortName, extension);
+    if (model?.model && model.model.getValue?.() !== content) model.model.setValue(content);
+    await compileGeneratedTs(project, level, folder, shortName, extension);
     return true;
   } catch (error) {
-    console.warn('[cfeMaterializeStudio] saveGeneratedTs failed', error);
+    recordStudioMessage('error', 'saveGeneratedTs failed', error);
     return false;
   }
 }
 
 export async function saveGeneratedTsByMlsPath(mlsPath: string, content: string): Promise<boolean> {
   const parsed = parseMlsPath(mlsPath);
-  if (!parsed || parsed.extension !== '.ts') return false;
-  return saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, content);
+  if (!parsed || !isGeneratedTsExtension(parsed.extension)) return false;
+  return saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, content, parsed.extension);
 }
 
 export async function compileAndGetErrors(
@@ -138,27 +154,25 @@ export async function compileAndGetErrors(
   level: number,
   folder: string,
   shortName: string,
+  extension = '.ts',
 ): Promise<string[]> {
   try {
-    const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
-    let modelBase = mls.editor.models[editorKey];
-    if (!modelBase) modelBase = await mls.editor.addModels(project, shortName, folder, level);
-    const modelTs = modelBase?.ts;
+    const modelTs = await getGeneratedModel(project, level, folder, shortName, extension);
     if (!modelTs?.model) return [];
     if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
     await mls.l2.typescript.compile(modelTs);
     const errors: unknown[] = modelTs.compilerResults?.errors ?? [];
-    return errors.map(error => typeof error === 'string' ? error : JSON.stringify(error));
+    return errors.map(formatCompilerDiagnostic);
   } catch (error) {
-    console.warn('[cfeMaterializeStudio] compileAndGetErrors failed', error);
-    return [];
+    recordStudioMessage('error', 'compileAndGetErrors failed', error);
+    return [`compileAndGetErrors failed: ${formatUnknownError(error)}`];
   }
 }
 
 export async function compileMlsPathAndGetErrors(mlsPath: string): Promise<string[]> {
   const parsed = parseMlsPath(mlsPath);
-  if (!parsed || parsed.extension !== '.ts') return [];
-  return compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName);
+  if (!parsed || !isGeneratedTsExtension(parsed.extension)) return [];
+  return compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName, parsed.extension);
 }
 
 export function extractToolCallArgs<T>(raw: unknown, toolName: string): T | null {
@@ -203,19 +217,92 @@ async function getEsbuild(): Promise<any> {
   return esbuild;
 }
 
-async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string): Promise<void> {
+async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string, extension: string): Promise<void> {
   try {
-    const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
-    let modelBase = mls.editor.models[editorKey];
-    if (!modelBase) modelBase = await mls.editor.addModels(project, shortName, folder, level);
-    const modelTs = modelBase?.ts;
+    const modelTs = await getGeneratedModel(project, level, folder, shortName, extension);
     if (!modelTs) return;
     if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
-    await mls.l2.typescript.compileAndPostProcess(modelTs, true, true);
+    await mls.l2.typescript.compileAndPostProcess(modelTs, extension === '.ts', true);
     mls.editor.forceModelUpdate(modelTs.model);
   } catch (error) {
-    console.warn('[cfeMaterializeStudio] compileGeneratedTs failed', error);
+    recordStudioMessage('warn', 'compileGeneratedTs failed', error);
   }
+}
+
+function recordStudioMessage(level: 'warn' | 'error', message: string, error?: unknown): void {
+  const detail = error === undefined ? message : `${message}: ${formatUnknownError(error)}`;
+  studioMessages.push({ level, message: detail });
+  const line = `[cfeMaterializeStudio] ${detail}`;
+  if (level === 'error') console.error(line);
+  else console.warn(line);
+}
+
+function formatCompilerDiagnostic(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (!isRecord(error)) return formatUnknownError(error);
+
+  const code = typeof error.code === 'number' ? `TS${error.code}` : '';
+  const file = isRecord(error.file) && typeof error.file.fileName === 'string' ? error.file.fileName : '';
+  const position = diagnosticPosition(error);
+  const message = flattenMessageText(error.messageText ?? error.message ?? error);
+  return [file ? `${file}${position}` : '', code, message].filter(Boolean).join(' - ');
+}
+
+function diagnosticPosition(error: Record<string, any>): string {
+  const file = error.file;
+  if (!isRecord(file) || typeof error.start !== 'number' || typeof file.getLineAndCharacterOfPosition !== 'function') return '';
+  try {
+    const pos = file.getLineAndCharacterOfPosition(error.start);
+    if (!pos || typeof pos.line !== 'number' || typeof pos.character !== 'number') return '';
+    return `:${pos.line + 1}:${pos.character + 1}`;
+  } catch {
+    return '';
+  }
+}
+
+function flattenMessageText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (isRecord(value)) {
+    const head = flattenMessageText(value.messageText ?? '');
+    const next = Array.isArray(value.next) ? value.next.map(flattenMessageText).filter(Boolean) : [];
+    return [head, ...next].filter(Boolean).join(' ');
+  }
+  return formatUnknownError(value);
+}
+
+function formatUnknownError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  try { return JSON.stringify(error); } catch { return String(error); }
+}
+
+async function getGeneratedModel(
+  project: number,
+  level: number,
+  folder: string,
+  shortName: string,
+  extension: string,
+): Promise<any | null> {
+  const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
+  const slot = getModelSlot(extension);
+  let modelBase = mls.editor.models[editorKey];
+  if (modelBase?.[slot]?.model) return modelBase[slot];
+
+  const key = mls.stor.getKeyToFile({ project, level, folder, shortName, extension });
+  const file = (mls.stor.files as Record<string, any>)[key];
+  if (!file || file.status === 'deleted') return null;
+
+  const model = await file.getOrCreateModel?.();
+  modelBase = mls.editor.models[editorKey];
+  return modelBase?.[slot] ?? model ?? null;
+}
+
+function isGeneratedTsExtension(extension: string): boolean {
+  return extension === '.ts' || extension === '.test.ts';
+}
+
+function getModelSlot(extension: string): 'ts' | 'test' {
+  return extension === '.test.ts' ? 'test' : 'ts';
 }
 
 function parseMaybeJson(raw: unknown): unknown {

@@ -31,13 +31,13 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   try {
+    consumeCreateDiagnostics();
     const { pageId } = parseCreatePageArgs(args || step.prompt);
     const createContext = await readCreateContext();
     const page = createContext.pages.find(item => item.pageId === pageId);
     if (!page) throw new Error(`page not found for create: ${pageId}`);
     const prepared = await preparePageCreate(page);
     await saveContractDefs(prepared);
-    console.log(`[${agent.agentName}] prepared contract for ${page.moduleName}/${page.pageId}`);
     return [
       createPromptReadyIntent(
         context,
@@ -59,6 +59,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
+    consumeCreateDiagnostics();
     const { pageId } = parseCreatePageArgs(step.prompt);
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing LLM payload');
@@ -71,13 +72,25 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const prepared = await preparePageCreate(page);
     const layout = await savePageLayoutDefs(prepared, output.result.pageLayout);
     await saveSharedDefs(prepared, layout);
-    console.log(`[${agent.agentName}] created page layout/shared defs for ${page.moduleName}/${page.pageId}`);
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed')];
+    const diagnostics = consumeCreateDiagnostics();
+    const trace = diagnostics.length ? formatCreateDiagnostics(diagnostics) : undefined;
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[${agent.agentName}] ${message}`);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
+}
+
+function consumeCreateDiagnostics(): string[] {
+  const w = window as any;
+  const diagnostics = Array.isArray(w.__agentChangeFrontendCreateDiagnostics) ? w.__agentChangeFrontendCreateDiagnostics : [];
+  w.__agentChangeFrontendCreateDiagnostics = [];
+  return diagnostics.map(String);
+}
+
+function formatCreateDiagnostics(diagnostics: string[]): string {
+  return `Warnings:\n${diagnostics.map(item => `- ${item}`).join('\n')}`;
 }
 
 const systemPrompt = `

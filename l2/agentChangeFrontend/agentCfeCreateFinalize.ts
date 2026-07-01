@@ -18,7 +18,6 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   try {
     const result = await finalizeGeneratedPages();
     const trace = `pagesDone=${result.pagesDone.length}; ownersDone=${result.ownersDone.length}; skippedPages=${result.skippedPages.length}`;
-    console.log(`[${agent.agentName}] ${trace}`);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

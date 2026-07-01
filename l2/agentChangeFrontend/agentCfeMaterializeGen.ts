@@ -3,16 +3,13 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   applyHeader,
-  buildCompileRepairHint,
   buildMaterializeTypecheckTest,
   buildHumanPrompt,
-  buildMissingCodeRepairHint,
   buildSystemPrompt,
   DEFAULT_MODEL_TYPE,
   expandContextRef,
   GEN_TOOL,
   GEN_TOOL_NAME,
-  MATERIALIZE_REPAIR_ATTEMPTS,
   parseDefs,
   testPathForOutputPath,
   type PipelineItem,
@@ -20,6 +17,7 @@ import {
 import {
   compileAndGetErrors,
   compileMlsPathAndGetErrors,
+  consumeMaterializeStudioMessages,
   extractToolCallArgs,
   getContentByMlsPath,
   parseMlsPath,
@@ -32,9 +30,11 @@ interface ToolOutput {
   code: string;
 }
 
+const AGENT_NAME = 'agentCfeMaterializeGen';
+
 export function createAgent(): IAgentAsync {
   return {
-    agentName: 'agentCfeMaterializeGen',
+    agentName: AGENT_NAME,
     agentProject: 102020,
     agentFolder: 'agentChangeFrontend',
     agentDescription: 'Generate one frontend L2 .ts file from an agentChangeFrontend .defs.ts pipeline item',
@@ -73,6 +73,7 @@ async function afterPromptStep(
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
   try {
+    consumeMaterializeStudioMessages();
     const genArgs = parseGenStepArgs(step.prompt);
     const { defPath } = genArgs;
     const defsContent = defPath ? await getContentByMlsPath(defPath) : null;
@@ -87,7 +88,7 @@ async function afterPromptStep(
     const output = extractToolCallArgs<ToolOutput>(raw, GEN_TOOL_NAME);
     if (!output?.code) {
       const detail = `missing generated code; payload=${describePayload(raw)}`;
-      return retryOrFail(context, parentStep, step, hookSequential, genArgs, buildMissingCodeRepairHint(pipelineItem.outputPath, detail), detail);
+      return [mkStatus(context, parentStep, step, hookSequential, 'failed', `${detail}\nmanual rerun required; Studio retry is disabled to avoid orphaned prompt hooks during continue/recovery.`)];
     }
 
     const parsed = parseMlsPath(pipelineItem.outputPath);
@@ -98,7 +99,7 @@ async function afterPromptStep(
     const code = applyHeader(pipelineItem.outputPath, output.code);
     const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, code);
     if (!saved) {
-      return [mkStatus(context, parentStep, step, hookSequential, 'failed', `saveGeneratedTs failed for ${pipelineItem.outputPath}`)];
+      return [mkStatus(context, parentStep, step, hookSequential, 'failed', withStudioDiagnostics(`saveGeneratedTs failed for ${pipelineItem.outputPath}`))];
     }
 
     const typecheckTest = buildMaterializeTypecheckTest(pipelineItem, parsedDefs ? parsedDefs.data : null);
@@ -106,7 +107,7 @@ async function afterPromptStep(
     if (typecheckPath && typecheckTest) {
       const testSaved = await saveGeneratedTsByMlsPath(typecheckPath, typecheckTest);
       if (!testSaved) {
-        return [mkStatus(context, parentStep, step, hookSequential, 'failed', `saveGeneratedTs failed for ${typecheckPath}`)];
+        return [mkStatus(context, parentStep, step, hookSequential, 'failed', withStudioDiagnostics(`saveGeneratedTs failed for ${typecheckPath}`))];
       }
     }
 
@@ -114,13 +115,14 @@ async function afterPromptStep(
       ...await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName),
       ...(typecheckPath ? await compileMlsPathAndGetErrors(typecheckPath) : []),
     ];
+    const studioDiagnostics = consumeMaterializeStudioMessages();
     if (compileErrors.length > 0) {
       const checkedFiles = typecheckPath ? `${pipelineItem.outputPath} + ${typecheckPath}` : pipelineItem.outputPath;
       const traceMsg = `compile/typecheck failed for ${checkedFiles}:\n${compileErrors.slice(0, 8).join('\n')}`;
-      return retryOrFail(context, parentStep, step, hookSequential, genArgs, buildCompileRepairHint(pipelineItem.outputPath, compileErrors), traceMsg);
+      return [mkStatus(context, parentStep, step, hookSequential, 'failed', `${withStudioDiagnostics(traceMsg, studioDiagnostics)}\nmanual rerun required; Studio retry is disabled to avoid orphaned prompt hooks during continue/recovery.`)];
     }
 
-    return [mkStatus(context, parentStep, step, hookSequential, 'completed', undefined, 'input_output')];
+    return [mkStatus(context, parentStep, step, hookSequential, 'completed', studioDiagnostics.length ? formatStudioDiagnostics(studioDiagnostics) : undefined, 'input_output')];
   } catch (error) {
     const message = formatError('afterPromptStep', error);
     console.error(`[${agent.agentName}] ${message}`);
@@ -154,25 +156,6 @@ function createPromptReadyIntent(
     tools: [GEN_TOOL as unknown as mls.msg.LLMTool],
     toolChoice: { type: 'function', function: { name: GEN_TOOL_NAME } },
   };
-}
-
-async function retryOrFail(
-  context: mls.msg.ExecutionContext,
-  parentStep: mls.msg.AIAgentStep,
-  step: mls.msg.AIAgentStep,
-  hookSequential: number,
-  genArgs: GenStepArgs,
-  repairHint: string,
-  traceMsg: string,
-): Promise<mls.msg.AgentIntent[]> {
-  const attempt = typeof genArgs.attempt === 'number' ? genArgs.attempt : 0;
-  if (attempt >= MATERIALIZE_REPAIR_ATTEMPTS) {
-    return [mkStatus(context, parentStep, step, hookSequential, 'failed', `${traceMsg}\nrepair attempts exhausted (${attempt}/${MATERIALIZE_REPAIR_ATTEMPTS})`)];
-  }
-
-  const nextArgs: GenStepArgs = { ...genArgs, attempt: attempt + 1, repairHint };
-  const genContext = await buildGenContext(genArgs.defPath);
-  return [createPromptReadyIntent(context, parentStep, hookSequential, nextArgs, genContext)];
 }
 
 async function buildGenContext(defPath: string): Promise<{
@@ -219,6 +202,10 @@ function mkStatus(
   traceMsg?: string,
   cleaner?: 'input' | 'input_output',
 ): mls.msg.AgentIntentUpdateStatus {
+  if (traceMsg) {
+    if (status === 'failed') console.error(`[${AGENT_NAME}] ${traceMsg}`);
+    else if (status === 'completed' && traceMsg.includes('Studio diagnostics')) console.warn(`[${AGENT_NAME}] ${traceMsg}`);
+  }
   return {
     type: 'update-status',
     hookSequential,
@@ -231,6 +218,18 @@ function mkStatus(
     traceMsg,
     cleaner,
   };
+}
+
+function withStudioDiagnostics(message: string, diagnostics = consumeMaterializeStudioMessages()): string {
+  if (!diagnostics.length) return message;
+  return `${message}\n${formatStudioDiagnostics(diagnostics)}`;
+}
+
+function formatStudioDiagnostics(diagnostics: ReturnType<typeof consumeMaterializeStudioMessages>): string {
+  return [
+    'Studio diagnostics:',
+    ...diagnostics.map(item => `- ${item.level}: ${item.message}`),
+  ].join('\n');
 }
 
 function parseGenStepArgs(raw: string | undefined): GenStepArgs {

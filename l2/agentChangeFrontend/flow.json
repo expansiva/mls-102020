@@ -7,6 +7,14 @@
     "mode": "autonomous_scan",
     "noInputPolicy": "The agent receives no module, owner, page or device arguments. It discovers all actionable work from l4 statusFrontend.",
     "noWorkBehavior": "If no owner with statusFrontend = toCreate is found, finish without changing files or statuses.",
+    "defaultCommand": "/run",
+    "slashCommands": {
+      "@@changeFrontend": "Alias for @@changeFrontend /run. Scan l4 and materialize stale/missing .ts files without resetting done owners.",
+      "@@changeFrontend /run": "Scan l4 and materialize stale/missing .ts files without resetting done owners.",
+      "@@changeFrontend /rebuild all": "Reset done owners to toCreate, regenerate .defs.ts and materialize stale/missing .ts files.",
+      "@@changeFrontend /rebuild defs": "Reset done owners to toCreate and regenerate only .defs.ts. Do not materialize .ts.",
+      "@@changeFrontend /help": "Return CLI-style help and finish the task."
+    },
     "defaultDevice": "desktop",
     "defaultPageGenome": "web/desktop/page11",
     "defaultDesignSystem": "default",
@@ -31,6 +39,7 @@
       "agentCfeCreatePage generates web/contracts deterministically, calls an LLM with a strict tool schema to generate web/desktop/page11 semantic layout defs for one page, reconciles layout state references, then writes web/shared from contractRef + layout-derived states/actions.",
       "agentCfeCreatePage writes l2/{module}/trace/frontend-create-pages/{page}.json as inProgress/done so finalize does not accept stale page defs from an older run.",
       "agentCfeMaterializeL2 reads the generated .defs.ts pipelines and creates sequential phase launchers for contracts, shared and pages. Each agentCfeMaterializePhase starts one progress fan-out only after the previous fan-out completed successfully, then schedules agentCfeMaterializeGen for .ts generation.",
+      "agentCfeMaterializeGen fails one Studio item explicitly on missing tool output or compile/typecheck errors, with the compiler details in trace. It writes companion .test.ts typecheck files using the MLS .test.ts extension slot. It does not re-emit prompt_ready from afterPromptStep because continue/recovery can orphan the original beforePromptStep hook.",
       "agentCfeRegisterFrontend writes page preview .html files, updates l0/config.json and writes frontend-register-pages markers.",
       "agentCfeCreateFinalize writes a trace report and marks generated owners statusFrontend = done only after pages have create and register markers done.",
       "The page11 layout keeps the section -> organism structure and enriches it with stable ids, intentions, field/column/action references and data bindings. i18n values live only in shared defs; page11 references keys. page11 is the plain implementation and does not reference molecule groups/tags."
@@ -224,6 +233,7 @@
       "shared": "l2/{module}/web/shared/{page}.defs.ts",
       "page": "l2/{module}/web/desktop/page11/{page}.defs.ts"
     },
+    "generatedTypecheckFiles": "Materialization may write companion .test.ts files beside generated .ts files. In MLS storage this is extension .test.ts with the same base shortName as the generated .ts; do not parse createStockItem.test.ts as shortName=createStockItem.test plus extension=.ts. Studio materialization must save local content before creating/compiling the model, because generated .test.ts files do not exist in the remote driver during rebuild.",
     "pipeline": "Generated .defs.ts files must include pipeline metadata executed by agentCfeMaterializeL2 through agentCfeMaterializeGen after .defs.ts creation.",
     "rulesHandling": "Do not emit rulesApplied in web/contracts. Backend-facing rule metadata stays in l4 and is read directly by agentChangeBackend. Page/shared metadata may reference rules only when needed for frontend behavior and must not block page creation.",
     "layoutContract": "The page .defs.ts contains semantic layout, not raw DOM/CSS. Layout nodes use stable id/order keys and reference shared actions/state/contracts/i18n keys by key only; i18n values live in shared defs. It is later materialized into plain Lit/render code by agentChangeFrontend/skills/genCfePage11RenderTs.ts. The full section -> organism -> intention tree lives in definition.layout.sections; top-level sections is only a compact compatibility summary. page11 must not reference molecule groups, molecule tags or package-specific component names."
@@ -237,6 +247,16 @@
     "notYetConfirmed": "No existing flow was found that proves a parallel_dynamic item can itself own a multi-agent child sequence. Treat nested page children as the target design, not yet a runtime guarantee.",
     "implementationRule": "If nested children are implemented, child steps must not depend on a passive container that waits for its children; they should depend on the same upstream page index or on the previous child step, following the agentNewSolution2 deadlock rule.",
     "fallback": "If the runtime rejects nested children under parallel_dynamic, replace the child sequence with one parallel_dynamic agent generate-page-defs:<page> that performs contract, shared, layout and per-page validation internally, while keeping validate-all-defs as the barrier."
+  },
+  "materializationRecovery": {
+    "studioPolicy": "Do not retry by returning prompt_ready from agentCfeMaterializeGen.afterPromptStep. On missing tool output or compile/typecheck errors, fail the affected item with a trace message and let the phase/fan-out report the failure.",
+    "reason": "A 102048 run showed a continue/recovery failure during shared materialization repair: the retry attempted to locate a beforePromptStep for the fan-out parent and failed with No matching beforePromptStep found. Failing explicitly is safer than leaving the task in waiting_after_prompt.",
+    "cliPolicy": "The Node CLI can retry safely because it owns the prompt loop and filesystem context locally. It may retry missing/truncated LLM output and run one tsc repair round with compiler errors in the repair prompt."
+  },
+  "loggingPolicy": {
+    "studioConsole": "Studio agents must not use console.log for progress. Progress belongs in task trace/progress titles. Only console.warn and console.error are allowed for real diagnostics.",
+    "taskTrace": "Every failed materialization update-status must include the same diagnostic text sent to console.error. Warnings produced during create/materialize are appended to traceMsg on the affected step.",
+    "typecheckDiagnostics": "TypeScript diagnostics from generated .test.ts files are formatted as readable TS errors before being written to traceMsg; raw diagnostic JSON should not be used as the user-facing error."
   },
   "reads": [
     "l5/project.json",
@@ -256,6 +276,9 @@
     "l2/{module}/web/contracts/{page}.ts",
     "l2/{module}/web/shared/{page}.ts",
     "l2/{module}/web/desktop/page11/{page}.ts",
+    "l2/{module}/web/contracts/{page}.test.ts",
+    "l2/{module}/web/shared/{page}.test.ts",
+    "l2/{module}/web/desktop/page11/{page}.test.ts",
     "l2/{module}/web/desktop/page11/{page}.html",
     "l2/{module}/trace/frontend-page-index.json",
     "l2/{module}/trace/frontend-create-report.json",
@@ -511,7 +534,7 @@
     {
       "agentName": "agentCfeMaterializeGen",
       "file": "l2/agentChangeFrontend/agentCfeMaterializeGen.ts",
-      "role": "Generates one frontend L2 .ts file from a generated .defs.ts pipeline item using local agentChangeFrontend materialization helpers."
+      "role": "Generates one frontend L2 .ts file from a generated .defs.ts pipeline item using local agentChangeFrontend materialization helpers, then saves the companion .test.ts typecheck file with the MLS .test.ts extension slot. In Studio it fails explicitly on missing output or compile/typecheck errors instead of retrying in the same hook."
     },
     {
       "agentName": "agentCfeRegisterFrontend",

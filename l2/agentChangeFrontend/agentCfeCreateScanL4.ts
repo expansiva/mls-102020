@@ -23,7 +23,6 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   try {
     const scanArgs = parseScanArgs(step.prompt);
     const createContext = await readCreateContext();
-    console.log(`[${agent.agentName}] project=${createContext.project} pagesToCreate=${createContext.pages.length}`);
     if (createContext.pages.length === 0) {
       if (scanArgs.materialize !== false) {
         const materialize = createMaterializeStep(scanArgs, []);
