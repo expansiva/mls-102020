@@ -21,6 +21,13 @@ export interface ElementGroup {
     group: string;
 }
 
+/** One element's chosen molecule variant (Agent2 output; id references a layout node). */
+export interface VariantSelection {
+    id: string;
+    group: string;
+    tag: string;
+}
+
 export interface Agent1Output {
     path: string;
     assignments: ElementGroup[];
@@ -50,20 +57,41 @@ export async function loadPageLayout(path: string): Promise<any | null> {
     }
 }
 
+/** Raw defs source straight from the stor (fresh — avoids collabImport module-cache staleness
+ *  on files written earlier in the SAME run, e.g. Agent1→Agent2→gen handoffs). */
+async function readRawDefs(defsRef: string): Promise<string> {
+    const f = fileInfo(defsRef);
+    if (!f) return '';
+    try {
+        const key = mls.stor.getKeyToFile(f);
+        const sf = (mls.stor.files as Record<string, any>)[key];
+        if (!sf) return '';
+        const content = await sf.getContent();
+        return typeof content === 'string' ? content : '';
+    } catch {
+        return '';
+    }
+}
+
+/** Parse `export const <name> = [ … ] as const;` from raw source. */
+function parseConstArray(content: string, name: string): any[] {
+    const m = content.match(new RegExp(`export\\s+const\\s+${name}\\s*=\\s*(\\[[\\s\\S]*?\\])\\s+as\\s+const\\s*;`));
+    if (!m) return [];
+    try { const v = JSON.parse(m[1]); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+
 /** Read the element-level group selections Agent1 wrote (`export const groupSelections`). */
 export async function loadElementGroupSelections(defsRef: string): Promise<ElementGroup[]> {
-    const f = fileInfo(defsRef);
-    if (!f) return [];
-    try {
-        const mod = await collabImport({ project: f.project, folder: f.folder, shortName: f.shortName, extension: '.defs.ts' });
-        const sel = (mod as any)?.groupSelections;
-        if (!Array.isArray(sel)) return [];
-        return sel
-            .filter((s: any) => s && typeof s.id === 'string' && typeof s.group === 'string')
-            .map((s: any) => ({ id: s.id, group: s.group }));
-    } catch {
-        return [];
-    }
+    return parseConstArray(await readRawDefs(defsRef), 'groupSelections')
+        .filter(s => s && typeof s.id === 'string' && typeof s.group === 'string')
+        .map(s => ({ id: s.id, group: s.group }));
+}
+
+/** Read the element-level variant selections Agent2 wrote (`export const variantSelections`). */
+export async function loadVariantSelections(defsRef: string): Promise<VariantSelection[]> {
+    return parseConstArray(await readRawDefs(defsRef), 'variantSelections')
+        .filter(s => s && typeof s.id === 'string' && typeof s.group === 'string' && typeof s.tag === 'string')
+        .map(s => ({ id: s.id, group: s.group, tag: s.tag }));
 }
 
 // ─── prompt + validation (pure) ──────────────────────────────────────────────

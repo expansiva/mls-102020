@@ -89,12 +89,12 @@ async function beforePromptStep(
       console.info(`[agentReconcileTokens] ds=${a.ds}: 0 token(s) --ml-* · usedGroups=[${inputs.usedGroups.join(',') || '—'}] · pages=${JSON.stringify(runPagesDiag)} → nada a reconciliar (grupos não coletados do defs?)`);
       return [mkCompleted(context, parentStep, step, hookSequential)];
     }
-    if (inputs.existing?.version === inputs.version) {
-      console.info(`[agentReconcileTokens] ds=${a.ds}: reconciliação em cache (version=${inputs.version}) → skip LLM`);
+    if (!a.forceReconcile && inputs.existing?.version === inputs.version) {
+      console.info(`[agentReconcileTokens] ds=${a.ds}: reconciliação em cache (version=${inputs.version}) → skip LLM (use forceReconcile p/ refazer)`);
       return [mkCompleted(context, parentStep, step, hookSequential)];
     }
 
-    console.info(`[agentReconcileTokens] ▶ ds=${a.ds}: ${inputs.vocab.length} token(s) --ml-* de ${inputs.usedGroups.length} grupo(s) → ${inputs.dsVars.size} var(s) --ds-*`);
+    console.info(`[agentReconcileTokens] ▶ ds=${a.ds}${a.forceReconcile ? ' [FORCE]' : ''}: ${inputs.vocab.length} token(s) --ml-* de ${inputs.usedGroups.length} grupo(s) → ${inputs.dsVars.size} var(s) --ds-*`);
     const humanPrompt = buildHumanPrompt(inputs.tokens, inputs.vocab);
 
     const continueParallel: mls.msg.AgentIntentPromptReady = {

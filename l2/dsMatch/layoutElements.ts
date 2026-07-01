@@ -21,6 +21,7 @@ export interface LayoutElement {
     organismName: string;
     intent: string;
     inputType?: string;
+    field?: string;        // the field/column name (e.g. 'customerName', 'postalCode') — semantic hint
     labelKey?: string;
     purpose?: string;
     /** Live reference to the node in `definition.layout` (set `.molecule` here). */
@@ -43,10 +44,10 @@ export function listLayoutElements(layout: any): LayoutElement[] {
                     out.push({ ...base, id: it.id, kind: 'container', labelKey: it.titleKey, purpose: it.titleKey, ref: it });
                 }
                 for (const f of it?.fields ?? []) {
-                    if (f?.id) out.push({ ...base, id: f.id, kind: 'field', inputType: f.inputType, labelKey: f.labelKey, ref: f });
+                    if (f?.id) out.push({ ...base, id: f.id, kind: 'field', inputType: f.inputType, field: f.field, labelKey: f.labelKey, ref: f });
                 }
                 for (const f of it?.filters ?? []) {
-                    if (f?.id) out.push({ ...base, id: f.id, kind: 'filter', inputType: f.inputType, labelKey: f.labelKey, ref: f });
+                    if (f?.id) out.push({ ...base, id: f.id, kind: 'filter', inputType: f.inputType, field: f.field, labelKey: f.labelKey, ref: f });
                 }
                 for (const a of [...(it?.toolbar ?? []), ...(it?.rowActions ?? []), ...(it?.actions ?? [])]) {
                     if (a?.id) out.push({ ...base, id: a.id, kind: 'action', labelKey: a.labelKey, ref: a });
