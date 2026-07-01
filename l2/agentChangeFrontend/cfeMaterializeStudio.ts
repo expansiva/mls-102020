@@ -5,6 +5,11 @@ import { createStorFile } from '/_102027_/l2/libStor.js';
 
 declare const mls: any;
 
+export interface MaterializeStudioMessage {
+  level: 'warn' | 'error';
+  message: string;
+}
+
 export interface GenStepArgs {
   planId: string;
   defPath: string;
@@ -23,6 +28,14 @@ export interface ParsedMlsPath {
 export function parsePipelineFromContent(content: string): PipelineItem[] | null {
   const parsed = parseDefs(content);
   return parsed.item ? [parsed.item] : null;
+}
+
+const studioMessages: MaterializeStudioMessage[] = [];
+
+export function consumeMaterializeStudioMessages(): MaterializeStudioMessage[] {
+  const ret = [...studioMessages];
+  studioMessages.length = 0;
+  return ret;
 }
 
 export function parseMlsPath(mlsPath: string): ParsedMlsPath | null {
@@ -125,7 +138,7 @@ export async function saveGeneratedTs(
     await compileGeneratedTs(project, level, folder, shortName, extension);
     return true;
   } catch (error) {
-    console.warn('[cfeMaterializeStudio] saveGeneratedTs failed', error);
+    recordStudioMessage('error', 'saveGeneratedTs failed', error);
     return false;
   }
 }
@@ -149,10 +162,10 @@ export async function compileAndGetErrors(
     if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
     await mls.l2.typescript.compile(modelTs);
     const errors: unknown[] = modelTs.compilerResults?.errors ?? [];
-    return errors.map(error => typeof error === 'string' ? error : JSON.stringify(error));
+    return errors.map(formatCompilerDiagnostic);
   } catch (error) {
-    console.warn('[cfeMaterializeStudio] compileAndGetErrors failed', error);
-    return [];
+    recordStudioMessage('error', 'compileAndGetErrors failed', error);
+    return [`compileAndGetErrors failed: ${formatUnknownError(error)}`];
   }
 }
 
@@ -212,8 +225,55 @@ async function compileGeneratedTs(project: number, level: number, folder: string
     await mls.l2.typescript.compileAndPostProcess(modelTs, extension === '.ts', true);
     mls.editor.forceModelUpdate(modelTs.model);
   } catch (error) {
-    console.warn('[cfeMaterializeStudio] compileGeneratedTs failed', error);
+    recordStudioMessage('warn', 'compileGeneratedTs failed', error);
   }
+}
+
+function recordStudioMessage(level: 'warn' | 'error', message: string, error?: unknown): void {
+  const detail = error === undefined ? message : `${message}: ${formatUnknownError(error)}`;
+  studioMessages.push({ level, message: detail });
+  const line = `[cfeMaterializeStudio] ${detail}`;
+  if (level === 'error') console.error(line);
+  else console.warn(line);
+}
+
+function formatCompilerDiagnostic(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (!isRecord(error)) return formatUnknownError(error);
+
+  const code = typeof error.code === 'number' ? `TS${error.code}` : '';
+  const file = isRecord(error.file) && typeof error.file.fileName === 'string' ? error.file.fileName : '';
+  const position = diagnosticPosition(error);
+  const message = flattenMessageText(error.messageText ?? error.message ?? error);
+  return [file ? `${file}${position}` : '', code, message].filter(Boolean).join(' - ');
+}
+
+function diagnosticPosition(error: Record<string, any>): string {
+  const file = error.file;
+  if (!isRecord(file) || typeof error.start !== 'number' || typeof file.getLineAndCharacterOfPosition !== 'function') return '';
+  try {
+    const pos = file.getLineAndCharacterOfPosition(error.start);
+    if (!pos || typeof pos.line !== 'number' || typeof pos.character !== 'number') return '';
+    return `:${pos.line + 1}:${pos.character + 1}`;
+  } catch {
+    return '';
+  }
+}
+
+function flattenMessageText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (isRecord(value)) {
+    const head = flattenMessageText(value.messageText ?? '');
+    const next = Array.isArray(value.next) ? value.next.map(flattenMessageText).filter(Boolean) : [];
+    return [head, ...next].filter(Boolean).join(' ');
+  }
+  return formatUnknownError(value);
+}
+
+function formatUnknownError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  try { return JSON.stringify(error); } catch { return String(error); }
 }
 
 async function getGeneratedModel(

@@ -7,7 +7,6 @@ import {
   createAddStepIntent,
   createAgentStepPayload,
   createUpdateStatusIntent,
-  logPrefix,
   parseStepArgs,
   phasePlanId,
 } from '/_102020_/l2/agentChangeFrontend/cfeV01Shared.js';
@@ -23,11 +22,10 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
+async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   const parsed = parseStepArgs(args || step.prompt);
   const page = parsed.page;
   if (!page) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', 'missing page args')];
-  console.log(`${logPrefix(agent)} page=${page.pageId} module=${page.moduleName} source=${page.sourceKind} owners=${page.ownerIds.join(',')} operations=${page.operationIds.join(',')}`);
   return [
     createAddStepIntent(context, step, createChildStep(page, 'contract', [])),
     createAddStepIntent(context, step, createChildStep(page, 'shared', [phasePlanId('contract', page)])),

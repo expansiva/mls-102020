@@ -46,7 +46,6 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
   }
 
   const reset = command.reset ? await resetFrontendDoneStatuses() : { updated: 0, owners: [] };
-  if (command.reset) console.log(`[${agent.agentName}] ${command.kind} reset ${reset.updated} owner(s) from done to toCreate`);
   const scanStep = createAgentStepPayload(
     'scan-create-l4',
     'agentCfeCreateScanL4',

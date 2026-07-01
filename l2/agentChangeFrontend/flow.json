@@ -253,6 +253,11 @@
     "reason": "A 102048 run showed a continue/recovery failure during shared materialization repair: the retry attempted to locate a beforePromptStep for the fan-out parent and failed with No matching beforePromptStep found. Failing explicitly is safer than leaving the task in waiting_after_prompt.",
     "cliPolicy": "The Node CLI can retry safely because it owns the prompt loop and filesystem context locally. It may retry missing/truncated LLM output and run one tsc repair round with compiler errors in the repair prompt."
   },
+  "loggingPolicy": {
+    "studioConsole": "Studio agents must not use console.log for progress. Progress belongs in task trace/progress titles. Only console.warn and console.error are allowed for real diagnostics.",
+    "taskTrace": "Every failed materialization update-status must include the same diagnostic text sent to console.error. Warnings produced during create/materialize are appended to traceMsg on the affected step.",
+    "typecheckDiagnostics": "TypeScript diagnostics from generated .test.ts files are formatted as readable TS errors before being written to traceMsg; raw diagnostic JSON should not be used as the user-facing error."
+  },
   "reads": [
     "l5/project.json",
     "l5/{module}/process.defs.ts",

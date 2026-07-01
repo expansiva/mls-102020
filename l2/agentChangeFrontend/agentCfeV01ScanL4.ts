@@ -7,7 +7,6 @@ import {
   createAgentStepPayload,
   createParallelAgentStepIntent,
   createUpdateStatusIntent,
-  logPrefix,
   readCreateScanResult,
 } from '/_102020_/l2/agentChangeFrontend/cfeV01Shared.js';
 
@@ -27,10 +26,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const scan = await readCreateScanResult();
     const pendingOwners = scan.workflows.filter(owner => owner.statusFrontend === 'toCreate').length
       + scan.operations.filter(owner => owner.statusFrontend === 'toCreate').length;
-    console.log(`${logPrefix(agent)} scan project=${scan.project} modules=${scan.moduleNames.join(',') || '(none)'} pendingOwners=${pendingOwners} candidatePages=${scan.pages.length}`);
 
     if (scan.pages.length === 0) {
-      console.log(`${logPrefix(agent)} no pages to create: no l4 owner with statusFrontend=toCreate`);
       const finalStep = createFinalStep({
         scan: { project: scan.project, moduleNames: scan.moduleNames, pageCount: 0, ownerCount: pendingOwners },
         phase: 'final',
@@ -61,7 +58,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     return intents;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`${logPrefix(agent)} failed: ${message}`);
+    console.error(`[${agent.agentName}] ${message}`);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
 }
