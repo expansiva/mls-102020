@@ -16,10 +16,11 @@ Definition is the shared .defs.ts object:
 - actions[]: all BFF actions and all stateSetter actions used by render
 - initialLoads[]: query actions to run on connectedCallback
 - navigationRefs[]
+- i18nMeta: defaultLocale and activeLocales from the L4 module language metadata
 - i18n: the only place where UI text values live
 - automation
 
-Context Files include contract .defs.ts, contract .ts and page11 .defs.ts.
+Context Files include the contract .ts and the 102029 runtime context expanded from _102029_.d.ts.
 
 ## Mandatory source of truth
 
@@ -89,17 +90,22 @@ The i18n block must be outside the class and wrapped exactly with these markers:
 
 \`\`\`typescript
 /// **collab_i18n_start**
-const message_default = {
-  // copy Definition.i18n exactly for the project default locale
+const message_en = {
+  // copy Definition.i18n exactly for Definition.i18nMeta.defaultLocale
 };
-type MessageType = typeof message_default;
-const messages: { [key: string]: MessageType } = { default: message_default };
+type MessageType = typeof message_en;
+const messages: { [key: string]: MessageType } = { en: message_en };
 /// **collab_i18n_end**
 \`\`\`
 
-Generate message_default from Definition.i18n exactly.
-Do not invent extra locale catalogs unless they already exist in Definition.i18n.
-Never declare message_default or messages inside the class.
+The example uses "en". In the actual output, derive the language key from Definition.i18nMeta.defaultLocale:
+- "en" -> message_en and messages.en
+- "pt-BR" or "pt_BR" -> message_pt and messages.pt
+
+Generate the default locale message object from Definition.i18n exactly.
+For the current flat Definition.i18n catalog, generate only that default locale catalog.
+Do not invent extra locale catalogs for Definition.i18nMeta.activeLocales unless Definition.i18n already contains per-locale catalogs.
+Never declare the message object or messages inside the class.
 Never write \`as const\` on message objects.
 
 Inside the class expose this exact getter shape:
@@ -107,9 +113,11 @@ Inside the class expose this exact getter shape:
 \`\`\`typescript
 protected get msg(): MessageType {
   const lang: string = this.getMessageKey(messages);
-  return messages[lang] || message_default;
+  return messages[lang] || message_en;
 }
 \`\`\`
+
+Replace message_en in the getter with the actual generated default message object name.
 
 Every render-facing label must come from this shared class through this.msg.
 

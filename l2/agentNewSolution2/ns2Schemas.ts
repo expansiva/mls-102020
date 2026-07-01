@@ -25,6 +25,22 @@ export const entityFieldSchema = {
   },
 } as const;
 
+// Persistence intent for kind:"event" entities. Stage 1 does NOT plan tables, but it MUST classify
+// the event's purpose so Stage 3 (agentChangeBackend) knows where it lives and for how long, instead
+// of leaving the event as a dead in-memory object:
+//   telemetry -> durable log table with retention (TTL), aggregated for metrics/reports
+//   audit     -> durable append-only table, long/permanent retention (omit retentionDays)
+//   reaction  -> transient trigger delivered via the platform outbox (no local table)
+const eventPolicySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['purpose'],
+  properties: {
+    purpose: { enum: ['telemetry', 'audit', 'reaction'] },
+    retentionDays: { type: 'number' }, // telemetry default 90 when omitted; audit may omit for permanent
+  },
+} as const;
+
 // Blueprint/finalize ontology is a slim MAP (no fields). The canonical shape is produced per entity.
 const ontologyEntityMapSchema = {
   type: 'object',
@@ -35,6 +51,7 @@ const ontologyEntityMapSchema = {
     description: str,
     kind: { enum: ['core', 'mdm', 'event', 'metric', 'supporting'] },
     ownership: { enum: ['moduleOwned', 'mdmOwned', 'horizontalOwned', 'pluginOwned', 'existingModuleOwned', 'external'] },
+    eventPolicy: eventPolicySchema, // required-by-prompt when kind === 'event'
     statusEnum: strArray,
     lifecycleStates: strArray,
   },
@@ -237,6 +254,7 @@ export const entityDefinitionResultSchema = {
         description: str,
         ownership: { enum: ['moduleOwned', 'mdmOwned', 'horizontalOwned', 'pluginOwned', 'existingModuleOwned', 'external'] },
         kind: str,
+        eventPolicy: eventPolicySchema, // carry the event classification onto the canonical entity def
         fields: { type: 'array', minItems: 1, items: entityFieldSchema },
         statusEnum: strArray,
         lifecycleStates: strArray,

@@ -38,6 +38,17 @@ export interface MaterializeEnv {
 
 export interface GenResult { code: string; }
 
+export const CONTRACTS_102029: readonly string[] = [
+  '_102029_/l2/collabLitElement.ts',
+  '_102029_/l2/bffClient.ts',
+  '_102029_/l2/collabState.ts',
+  '_102029_/l2/interactionRuntime.ts',
+];
+
+export function expandContextRef(ref: string): string[] {
+  return ref === '_102029_.d.ts' ? [...CONTRACTS_102029] : [ref];
+}
+
 const LAYER_RANK: Record<string, number> = {
   l2_contract: 0,
   l2_shared: 1,

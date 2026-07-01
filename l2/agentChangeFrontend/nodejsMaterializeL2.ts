@@ -15,6 +15,7 @@ import {
   buildMissingCodeRepairHint,
   buildSystemPrompt,
   DEFAULT_MODEL_TYPE,
+  expandContextRef,
   isStale,
   layerRank,
   MATERIALIZE_REPAIR_ATTEMPTS,
@@ -78,6 +79,12 @@ function mtimeMs(abs: string): number | null {
   try { return fs.statSync(abs).mtimeMs; } catch { return null; }
 }
 
+function refMtimeMs(ref: string): number | null {
+  const direct = mtimeMs(mlsToFs(ref));
+  if (direct != null) return direct;
+  return ref.endsWith('.d.ts') ? mtimeMs(mlsToFs(ref.replace(/\.d\.ts$/, '.ts'))) : null;
+}
+
 function readContext(ref: string): { ref: string; found: boolean; content: string } {
   const direct = readIfExists(mlsToFs(ref));
   if (direct != null) return { ref, found: true, content: direct };
@@ -117,8 +124,10 @@ function newestDependencyMs(item: PipelineItem): number | null {
   const deps = item.dependsFiles ?? [];
   let newest: number | null = null;
   for (const dep of deps) {
-    const ms = mtimeMs(mlsToFs(dep));
-    if (ms != null && (newest == null || ms > newest)) newest = ms;
+    for (const ref of expandContextRef(dep)) {
+      const ms = refMtimeMs(ref);
+      if (ms != null && (newest == null || ms > newest)) newest = ms;
+    }
   }
   return newest;
 }
@@ -137,7 +146,7 @@ function plan(scanned: ScannedDefs[], force: boolean): PlannedItem[] {
     const testRef = typecheckCode ? testPathForOutputPath(item.outputPath) : null;
     const testMs = testRef ? mtimeMs(mlsToFs(testRef)) : null;
     const depMs = newestDependencyMs(item);
-    const scheduledDep = (item.dependsFiles ?? []).some((dep) => scheduledOutputs.has(dep));
+    const scheduledDep = (item.dependsFiles ?? []).some((dep) => expandContextRef(dep).some((ref) => scheduledOutputs.has(ref)));
     const stale = force || scheduledDep || isStale(defsMs, tsMs, depMs) || (testRef != null && (testMs == null || (defsMs != null && defsMs > testMs)));
     const reason = force
       ? 'forced'
@@ -173,9 +182,11 @@ function assemble(item: PipelineItem, data: unknown, modelType: string): { syste
   const contextSections: string[] = [];
   const depReport: string[] = [];
   for (const d of item.dependsFiles ?? []) {
-    const r = readContext(d);
-    depReport.push(`${r.found ? 'OK ' : 'MISS'} ${d}`);
-    if (r.found) contextSections.push(`### ${r.ref}\n\`\`\`ts\n${r.content}\n\`\`\``);
+    for (const ref of expandContextRef(d)) {
+      const r = readContext(ref);
+      depReport.push(`${r.found ? 'OK ' : 'MISS'} ${ref === d ? d : `${d} -> ${ref}`}`);
+      if (r.found) contextSections.push(`### ${r.ref}\n\`\`\`ts\n${r.content}\n\`\`\``);
+    }
   }
 
   return {
