@@ -72,7 +72,10 @@ async function beforePromptStep(
     const assignments = await loadElementGroupSelections(item.defsDestino);
 
     // 3. Resolve variant per group (deterministic) and place a single `molecule` per element.
-    const { rules, configuredAxes } = await resolveRulesForPage(project, a.module, a.page!, a.ds);
+    // Axis rules (labelPlacement, boolean, recordsView, …) are LAYOUT-scoped: resolveRulesForPage
+    // reads config.layouts[<4th arg>]. Pass a.layout (NOT a.ds) — else every layout of the same DS
+    // resolves to the same variant (bug: page22 layout2/floating & page32 layout3/top → both floating).
+    const { rules, configuredAxes } = await resolveRulesForPage(project, a.module, a.page!, a.layout);
     const catalog = await buildMoleculeCatalog();
     const byId = indexById(listLayoutElements(definition.layout));
     console.info(`[agentGenDefs] ${a.page}: ${assignments.length} grupo(s) do Agent1 · ${byId.size} elemento(s) no layout · eixos configurados no DS: [${[...configuredAxes].join(', ') || '—'}] · catálogo: ${catalog.length} molécula(s)`);
