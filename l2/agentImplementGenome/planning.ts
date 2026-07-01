@@ -21,6 +21,7 @@ export interface StepArgs {
     device: string;
     page?: string;
     pages?: string[];   // used by the whole-DS steps (e.g. reconcile-tokens) that span all run pages
+    forceReconcile?: boolean;  // reconcile-tokens: bypass the version cache and re-run the LLM
 }
 
 /** 'select:cardapioEstoque' / 'gen:cardapioEstoque' / 'register'. */

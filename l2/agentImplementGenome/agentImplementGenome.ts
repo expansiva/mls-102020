@@ -22,7 +22,7 @@ import { mkAgentStep, mkFail, makePlanId, type StepArgs } from '/_102020_/l2/age
 // `materialize` (default true) is a contract flag for the CALLER: after this flow writes the
 // page defs, the caller runs agentMaterializeL2 to generate the .ts (false → skip). This
 // orchestrator only produces defs; agentMaterializeL2 is a top-level, project-wide flow.
-interface EntryArgs { module: string; layout: number | string; ds: number | string; device?: string; pages?: string[]; materialize?: boolean; }
+interface EntryArgs { module: string; layout: number | string; ds: number | string; device?: string; pages?: string[]; materialize?: boolean; forceReconcile?: boolean; }
 
 export function createAgent(): IAgentAsync {
   return {
@@ -42,7 +42,7 @@ async function beforePromptImplicit(
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
 
-  const { module, layout, ds, device, pages } = JSON.parse(userPrompt) as EntryArgs;
+  const { module, layout, ds, device, pages, forceReconcile } = JSON.parse(userPrompt) as EntryArgs;
   if (!module || layout == null || ds == null) throw new Error(`(${agent.agentName}) entry needs { module, layout, ds }`);
   const dev = device || DEFAULT_DEVICE;
   // Optional subset: keep only non-empty strings; empty → all pages.
@@ -64,7 +64,7 @@ async function beforePromptImplicit(
       threadId: context.message.threadId,
       userMessage: context.message.content,
       // longMemory is string-only → the subset is JSON-encoded and parsed back in afterPromptStep.
-      longTermMemory: { module, layout: String(layout), ds: String(ds), device: dev, pages: JSON.stringify(targetPages) },
+      longTermMemory: { module, layout: String(layout), ds: String(ds), device: dev, pages: JSON.stringify(targetPages), forceReconcile: String(!!forceReconcile) },
     },
   };
 
@@ -96,6 +96,7 @@ async function afterPromptStep(
     const layout = lm['layout'];
     const ds = lm['ds'];
     const device = lm['device'] || DEFAULT_DEVICE;
+    const forceReconcile = lm['forceReconcile'] === 'true';
     if (!module || layout == null || ds == null) throw new Error('missing run params in longMemory');
 
     const project = mls.actualProject || 0;
@@ -137,7 +138,7 @@ async function afterPromptStep(
 
     // Reconcile molecule tokens (--ml-*) to the DS tokens (--ds-*) — ONCE per DS, barrier over
     // every gen (so all pages' molecule assignments are known). Feeds buildGlobalCss in register.
-    const reconcileArgs: StepArgs = { module, layout, ds, device, pages };
+    const reconcileArgs: StepArgs = { module, layout, ds, device, pages, forceReconcile };
     intents.push(mkAgentStep(context, step, 'reconcile-tokens', 'Reconciliar tokens (molécula→DS)',
       'agentReconcileTokens', reconcileArgs, genIds, 'waiting_dependency', 'sequential'));
 
