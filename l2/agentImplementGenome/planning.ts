@@ -20,6 +20,7 @@ export interface StepArgs {
     ds: number | string;
     device: string;
     page?: string;
+    pages?: string[];   // used by the whole-DS steps (e.g. reconcile-tokens) that span all run pages
 }
 
 /** 'select:cardapioEstoque' / 'gen:cardapioEstoque' / 'register'. */

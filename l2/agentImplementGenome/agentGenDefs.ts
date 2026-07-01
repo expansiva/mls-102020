@@ -67,9 +67,6 @@ async function beforePromptStep(
     const definition = clone(origin.definition);
     const pipeline = clone(origin.pipeline ?? []);
     console.info(`[agentGenDefs] ${a.page}: page11 importado (origem=${item.defsOrigem})`);
-    // DIAGNÓSTICO: estrutura real do definition em runtime (esperado: layout.sections[].organisms[].intentions[]).
-    const _diagOrg = definition?.layout?.sections?.[0]?.organisms?.[0];
-    console.info(`[agentGenDefs] ${a.page}: DIAG keys=[${Object.keys(definition || {}).join(',')}] · layout? ${!!definition?.layout} · layout.sections=${definition?.layout?.sections?.length ?? 0} · definition.sections=${definition?.sections?.length ?? 0} · 1ºorg.intentions=${_diagOrg?.intentions?.length ?? 0} · 1ºorg.intentionRefs=${_diagOrg?.intentionRefs?.length ?? 0}`);
 
     // 2. Agent1's per-element group choices.
     const assignments = await loadElementGroupSelections(item.defsDestino);
