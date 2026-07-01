@@ -257,6 +257,8 @@ Shape:
 - `definition` é um array de comandos BFF.
 - Cada comando contém:
   - `commandName`;
+  - `bffName`: quando existir no L4, preserva o endpoint canônico para auditoria e alinhamento com backend;
+  - `routeKey`: usar `bffName` quando existir; fallback determinístico `{moduleName}.{pageId}.{commandName}` apenas para L4 legado;
   - `purpose`;
   - `kind`: `query` ou `command`;
   - `input`: array de `{ name, type, required?, enum?, description? }`;
@@ -282,7 +284,7 @@ Caminho:
 
 Shape:
 
-- `export const definition = { pageId, pageName, moduleName, contractRef, layoutRef, states, actions, initialLoads, navigationRefs, i18n, automation }`
+- `export const definition = { pageId, pageName, moduleName, contractRef, layoutRef, states, actions, initialLoads, navigationRefs, i18nMeta, i18n, automation }`
 - `contractRef` aponta para `web/contracts/{page}.defs.ts` e `web/contracts/{page}.ts`; o shared não duplica `bffCommands`.
 - `states[]` contém todos os estados globais da página: filtros, campos de formulário, dados carregados, status de action, status geral e estados complementares exigidos pelo layout page11.
 - `actions[]` contém tanto chamadas BFF quanto setters/handlers de state usados pelo render.
@@ -297,7 +299,7 @@ Pipeline:
 - `type`: `l2_shared`;
 - `outputPath`: `_{project}_/l2/{module}/web/shared/{page}.ts`;
 - `defPath`: `_{project}_/l2/{module}/web/shared/{page}.defs.ts`;
-- `dependsFiles`: contract `.defs.ts`, contract `.ts` e page11 `.defs.ts`;
+- `dependsFiles`: contract `.ts` e `_102029_.d.ts`;
 - `skills`: [`_102020_/l2/agentChangeFrontend/skills/genCfeSharedTs.ts`];
 - `rulesApplied`: opcional, somente quando houver regra de frontend/materialização; não deve vir do contrato BFF;
 - `rulesPath`: opcional, somente quando houver regra de frontend em shape aceito pelo materializador;

@@ -94,6 +94,11 @@ export async function computeBehaviorHealthReport(context: mls.msg.ExecutionCont
   for (const w of workflowDefs) {
     actorRef(w.story?.actor, `workflow ${w.workflowId}`);
     if (currentWorkflowIds.has(w.workflowId) && !w.pageId) errors.push({ severity: 'error', code: 'workflow.pageId.missing', message: `workflow ${w.workflowId}: missing canonical pageId` });
+    // A workflow is pure orchestration: it generates NO backend command of its own, so it MUST be
+    // realized by member operations. A workflow with no operations cannot be executed by the backend.
+    if (currentWorkflowIds.has(w.workflowId) && (!w.operationIds || w.operationIds.length === 0)) {
+      errors.push({ severity: 'error', code: 'workflow.operations.missing', message: `workflow ${w.workflowId}: has no orchestrated operations — it generates no command and cannot be realized; add the operations that carry its steps` });
+    }
     for (const a of w.actors) actorRef(a, `workflow ${w.workflowId}`);
     for (const e of w.entities) entityRef(e, `workflow ${w.workflowId}`);
     ruleRefs(w.rulesApplied, `workflow ${w.workflowId}`);

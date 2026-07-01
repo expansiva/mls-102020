@@ -33,6 +33,9 @@ export interface EntityDefinition {
   description: string;
   ownership?: string;
   kind?: string;
+  // Classification for kind:"event" entities so Stage 3 persists them (telemetry/audit) or routes
+  // them to the outbox (reaction) instead of dropping them. Omitted for non-event entities.
+  eventPolicy?: { purpose: string; retentionDays?: number };
   fields: Record<string, unknown>[];
   statusEnum?: string[];
   lifecycleStates?: string[];
@@ -141,6 +144,7 @@ function normalizeResult(value: unknown): EntityDefinitionResult {
       description: assertString(def.description, 'result.entityDefinition.description'),
       ownership: optionalString(def.ownership),
       kind: optionalString(def.kind),
+      eventPolicy: normalizeEventPolicy(def.eventPolicy),
       fields: assertArray(def.fields || [], 'result.entityDefinition.fields').map((item, index) => assertRecord(item, `result.entityDefinition.fields[${index}]`)),
       statusEnum: optionalStringArray(def.statusEnum),
       lifecycleStates: optionalStringArray(def.lifecycleStates),
@@ -151,6 +155,16 @@ function normalizeResult(value: unknown): EntityDefinitionResult {
 
 function capitalize(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
+// eventPolicy is optional and only meaningful for kind:"event"; keep it shape-safe (purpose string +
+// optional numeric retentionDays) and drop anything malformed rather than failing the whole entity.
+function normalizeEventPolicy(value: unknown): { purpose: string; retentionDays?: number } | undefined {
+  if (!isRecord(value)) return undefined;
+  const purpose = optionalString(value.purpose);
+  if (!purpose) return undefined;
+  const retentionDays = typeof value.retentionDays === 'number' ? value.retentionDays : undefined;
+  return retentionDays === undefined ? { purpose } : { purpose, retentionDays };
 }
 
 const systemPrompt = `
@@ -169,6 +183,13 @@ Rules:
   an entity id for references), required, description. Include identity, references ({entity}Id for the
   relationships provided), business attributes and audit timestamps (createdAt/updatedAt) when persisted.
 - A field with discrete values declares them in "enum". Entity lifecycle goes in statusEnum/lifecycleStates.
+- If the entity map kind is "event", you MUST set eventPolicy.purpose so Stage 3 knows how to persist it
+  (otherwise the event becomes a dead in-memory object). Choose: "telemetry" for status/activity logs read
+  for metrics, dashboards or reports (set retentionDays, default 90 if you omit it); "audit" for a
+  compliance/history trail that must be kept (omit retentionDays for permanent); "reaction" only for a
+  transient trigger consumed by another process (delivered via outbox, no stored history). An event with
+  createdAt/updatedAt and queried history is telemetry or audit, NOT reaction. Do not set eventPolicy for
+  non-event entities.
 - If you set ownership, it MUST be EXACTLY one of: moduleOwned, mdmOwned, horizontalOwned, pluginOwned,
   existingModuleOwned, external (keep the value from the entity map; never invent another). Omit it if unsure.
 - rulesApplied lists ruleIds (from the provided rules) constraining this entity.

@@ -368,7 +368,7 @@
       "strictTool": true,
       "goal": "For one planned page, generate web/contracts/{page}.defs.ts. Resolve bffCommands from l4 owners and ontology.",
       "savedArtifact": "l2/{module}/web/contracts/{page}.defs.ts",
-      "definitionRequirements": "definition is an array of pure BFF commands with commandName, routeKey, purpose, kind, input, output and origin. origin is only a lightweight L4 owner reference (operation/workflow id + defPath + bffName when available). Do not include readsEntities, writesEntities, table refs, usecaseRefs, layerContract, rulesApplied or field-level source provenance."
+      "definitionRequirements": "definition is an array of pure BFF commands with commandName, bffName when available from L4, routeKey, purpose, kind, input, output and origin. origin is only a lightweight L4 owner reference (operation/workflow id + defPath + bffName when available). Do not include readsEntities, writesEntities, table refs, usecaseRefs, layerContract, rulesApplied or field-level source provenance."
     },
     {
       "planId": "page-shared:<page>",
@@ -384,7 +384,7 @@
       "strictTool": true,
       "goal": "For one planned page, generate web/shared/{page}.defs.ts after page11 exists. Reference the contract and layout, include contract-derived states/actions, add layout-required supplemental shared states, and do not duplicate bffCommands.",
       "savedArtifact": "l2/{module}/web/shared/{page}.defs.ts",
-      "definitionRequirements": "definition is { pageId, pageName, moduleName, origin, contractRef, layoutRef, states, actions, initialLoads, navigationRefs, i18n, automation }. It references the contract commands by commandRef, must not duplicate bffCommands, and every page11 stateKey/action reference must resolve to shared.states/shared.actions."
+      "definitionRequirements": "definition is { pageId, pageName, moduleName, origin, contractRef, layoutRef, states, actions, initialLoads, navigationRefs, i18nMeta, i18n, automation }. It references the contract commands by commandRef, must not duplicate bffCommands, and every page11 stateKey/action reference must resolve to shared.states/shared.actions."
     },
     {
       "planId": "page-layout:<page>",

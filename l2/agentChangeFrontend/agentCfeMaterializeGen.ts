@@ -9,6 +9,7 @@ import {
   buildMissingCodeRepairHint,
   buildSystemPrompt,
   DEFAULT_MODEL_TYPE,
+  expandContextRef,
   GEN_TOOL,
   GEN_TOOL_NAME,
   MATERIALIZE_REPAIR_ATTEMPTS,
@@ -194,13 +195,16 @@ async function buildGenContext(defPath: string): Promise<{
 
 async function readSections(paths: string[], kind: 'skill' | 'context'): Promise<string[]> {
   const sections: string[] = [];
-  for (const path of paths) {
-    const content = await getContentByMlsPath(path);
-    if (!content) continue;
-    if (kind === 'skill') {
-      sections.push(`<!-- skill: ${path} -->\n${content}`);
-    } else {
-      sections.push(`### ${path}\n\`\`\`ts\n${content}\n\`\`\``);
+  for (const requestedPath of paths) {
+    const expandedPaths = kind === 'context' ? expandContextRef(requestedPath) : [requestedPath];
+    for (const path of expandedPaths) {
+      const content = await getContentByMlsPath(path);
+      if (!content) continue;
+      if (kind === 'skill') {
+        sections.push(`<!-- skill: ${path} -->\n${content}`);
+      } else {
+        sections.push(`### ${path}\n\`\`\`ts\n${content}\n\`\`\``);
+      }
     }
   }
   return sections;

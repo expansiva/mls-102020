@@ -70,10 +70,19 @@ export interface CfePagePlan {
   origin: Record<string, unknown>;
 }
 
+interface CfeModuleInfo {
+  moduleName: string;
+  visualStyle?: unknown;
+  entityIds: Set<string>;
+  i18nLocales: string[];
+  i18nDefaultLocale: string;
+}
+
 interface CfeCreateContext {
   project: number;
   moduleNames: string[];
   moduleVisualStyle: Record<string, unknown>;
+  moduleI18n: Record<string, { defaultLocale: string; activeLocales: string[] }>;
   entities: Map<string, CfeEntityDef>;
   operations: Map<string, CfeOperationDef>;
   workflows: Map<string, CfeWorkflowDef>;
@@ -88,6 +97,7 @@ export interface CfePreparedPage {
   navigationRefs: unknown[];
   baseDefinition: Record<string, unknown>;
   visualStyle: unknown;
+  i18nMeta: { defaultLocale: string; activeLocales: string[] };
   promptContext: Record<string, unknown>;
 }
 
@@ -342,7 +352,7 @@ function allowAdditionalProperties(schema: any): void {
 
 export async function readCreateContext(): Promise<CfeCreateContext> {
   const project = mls.actualProject || 0;
-  const modules = new Map<string, { moduleName: string; visualStyle?: unknown; entityIds: Set<string> }>();
+  const modules = new Map<string, CfeModuleInfo>();
   const entityToModule = new Map<string, string>();
   const entities = new Map<string, CfeEntityDef>();
   const operations = new Map<string, CfeOperationDef>();
@@ -364,8 +374,12 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
       if (operation) operations.set(operation.operationId, operation);
     } else if (shortName === 'module' && folder && !folder.includes('/')) {
       const moduleData = isRecord(parsed.data.module) ? parsed.data.module : parsed.data;
+      const designContext = isRecord(parsed.data.designContext) ? parsed.data.designContext : {};
       const moduleName = readString(moduleData.moduleName) || folder;
-      ensureModule(modules, moduleName).visualStyle = moduleData.visualStyle;
+      const module = ensureModule(modules, moduleName);
+      module.visualStyle = moduleData.visualStyle;
+      module.i18nLocales = languageKeys(readStringArray(moduleData.languages));
+      module.i18nDefaultLocale = languageKey(readString(designContext.userLanguage)) || module.i18nLocales[0] || '';
     } else if (folder.endsWith('/ontology')) {
       const moduleName = folder.split('/')[0];
       const entity = entityFromData(parsed.data, shortName);
@@ -380,12 +394,17 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   const moduleNames = Array.from(modules.keys()).sort();
   const moduleFallback = moduleNames.length === 1 ? moduleNames[0] : 'unknown';
   const moduleVisualStyle: Record<string, unknown> = {};
-  for (const module of modules.values()) moduleVisualStyle[module.moduleName] = module.visualStyle || {};
+  const moduleI18n: Record<string, { defaultLocale: string; activeLocales: string[] }> = {};
+  for (const module of modules.values()) {
+    moduleVisualStyle[module.moduleName] = module.visualStyle || {};
+    const defaultLocale = module.i18nDefaultLocale || module.i18nLocales[0] || 'en';
+    moduleI18n[module.moduleName] = { defaultLocale, activeLocales: unique([defaultLocale, ...module.i18nLocales]) };
+  }
 
   for (const operation of operations.values()) operation.moduleName = inferModule(operationEntities(operation), entityToModule, moduleFallback);
   for (const workflow of workflows.values()) workflow.moduleName = inferModule(workflow.entities, entityToModule, moduleFallback);
 
-  return { project, moduleNames, moduleVisualStyle, entities, operations, workflows, pages: buildPagePlans(workflows, operations, moduleFallback) };
+  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, pages: buildPagePlans(workflows, operations, moduleFallback) };
 }
 
 export async function generatePageDefs(page: CfePagePlan): Promise<void> {
@@ -402,8 +421,9 @@ export async function preparePageCreate(page: CfePagePlan): Promise<CfePreparedP
   const navigationRefs: unknown[] = [];
   const baseDefinition = pageDefinition(page, operations);
   const visualStyle = context.moduleVisualStyle[page.moduleName];
+  const i18nMeta = context.moduleI18n[page.moduleName] || { defaultLocale: 'en', activeLocales: ['en'] };
   const promptContext = buildLayoutPromptContext(context, page, operations, commands, baseDefinition, visualStyle);
-  return { project: context.project, page, operations, commands, navigationRefs, baseDefinition, visualStyle, promptContext };
+  return { project: context.project, page, operations, commands, navigationRefs, baseDefinition, visualStyle, i18nMeta, promptContext };
 }
 
 export async function saveContractDefs(prepared: CfePreparedPage): Promise<void> {
@@ -739,6 +759,16 @@ function normalizeI18nLocale(value: string): string {
   return value.trim().replace(/_/g, '-').toLowerCase();
 }
 
+function languageKeys(values: string[]): string[] {
+  return unique(values.map(languageKey).filter(Boolean));
+}
+
+function languageKey(value: string): string {
+  const locale = readI18nLocale(value);
+  const primary = normalizeI18nLocale(locale || value).split('-')[0] || '';
+  return /^[a-z]{2,3}$/i.test(primary) ? primary.toLowerCase() : '';
+}
+
 function isI18nMetadataKey(key: string): boolean {
   return ['defaultlocale', 'locale', 'language', 'messages'].includes(key.trim().toLowerCase());
 }
@@ -767,6 +797,7 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
     page,
     baseDefinition,
     visualStyle,
+    i18n: context.moduleI18n[page.moduleName] || { defaultLocale: 'en', activeLocales: ['en'] },
     workflows,
     userJourney: buildPageUserJourney(context, page, operations, commands),
     operations: operations.map(operation => ({
@@ -1164,6 +1195,7 @@ function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefini
     actions,
     initialLoads,
     navigationRefs: prepared.navigationRefs,
+    i18nMeta: prepared.i18nMeta,
     i18n: layout.i18n,
     automation: {
       statePrefix: `ui.${prepared.page.pageId}`,
@@ -1589,6 +1621,7 @@ function commandFromOperation(operation: CfeOperationDef, entities: Map<string, 
   const commandName = operation.commandName || operation.operationId;
   return {
     commandName,
+    ...(operation.bffName ? { bffName: operation.bffName } : {}),
     ...(operation.bffName ? { routeKey: operation.bffName } : {}),
     purpose: operation.title || humanizeId(operation.operationId),
     kind,
@@ -1649,9 +1682,8 @@ function sharedPipeline(project: number, page: CfePagePlan, commands: Record<str
     outputPath: `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`,
     defPath: `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.defs.ts`,
     dependsFiles: [
-      `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.defs.ts`,
       `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`,
-      `_${project}_/l2/${page.moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
+      '_102029_.d.ts',
     ],
     dependsOn: [`${page.pageId}__l2_contract`],
     skills: ['_102020_/l2/agentChangeFrontend/skills/genCfeSharedTs.ts'],
@@ -1944,7 +1976,7 @@ function createBaseConfig(project: number): Record<string, unknown> {
   };
 }
 
-function ensureModule(modules: Map<string, { moduleName: string; visualStyle?: unknown; entityIds: Set<string> }>, moduleName: string): { moduleName: string; visualStyle?: unknown; entityIds: Set<string> } { const existing = modules.get(moduleName); if (existing) return existing; const created = { moduleName, entityIds: new Set<string>() }; modules.set(moduleName, created); return created; }
+function ensureModule(modules: Map<string, CfeModuleInfo>, moduleName: string): CfeModuleInfo { const existing = modules.get(moduleName); if (existing) return existing; const created = { moduleName, entityIds: new Set<string>(), i18nLocales: [], i18nDefaultLocale: '' }; modules.set(moduleName, created); return created; }
 function ensureRecord(parent: Record<string, unknown>, key: string): Record<string, unknown> { if (!isRecord(parent[key])) parent[key] = {}; return parent[key] as Record<string, unknown>; }
 function ensureArray(parent: Record<string, unknown>, key: string): Record<string, unknown>[] { if (!Array.isArray(parent[key])) parent[key] = []; return parent[key] as Record<string, unknown>[]; }
 function upsertByKey(items: Record<string, unknown>[], key: string, value: string): Record<string, unknown> { let item = items.find(candidate => candidate[key] === value); if (!item) { item = { [key]: value }; items.push(item); } return item; }

@@ -155,6 +155,13 @@ In result:
     (the default), mdmOwned for cadastral master-data. Never invent other values (e.g. "module",
     "internal", "owned") — the tool call is rejected if ownership is outside this list.
   - kind, when set, MUST be EXACTLY one of: core, mdm, event, metric, supporting.
+  - kind=event is an immutable record of something that happened (status transitions, activity log,
+    audit trail). When you add an event entity you MUST (a) set its eventPolicy.purpose — telemetry
+    (metrics/reporting, retentionDays default 90), audit (kept history/compliance), or reaction
+    (transient outbox trigger, no stored history) — and (b) add a relationship linking it to the core
+    entity it belongs to (e.g. fromEntity=OrderStatusEvent, toEntity=Order), so Stage 3 can attach,
+    persist and write it. An event without a policy or without an owner relationship will be dropped
+    downstream.
   - kind=mdm is ONLY stable cadastral master-data (identity/registration: people, companies,
     vehicles, rooms, furniture, menu/catalog), referenced by id; its statusEnum is a cadastral
     lifecycle (active/inactive), never an operational state.
