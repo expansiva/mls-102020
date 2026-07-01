@@ -82,19 +82,32 @@ export async function readGroupUsageTokens(group: string): Promise<MlToken[]> {
     }
 }
 
-/** Groups used by one generated page (from its `moleculeAssignments` export). */
-export async function readPageGroups(defsRef: string): Promise<string[]> {
+/** Raw defs source straight from the stor (fresh — avoids collabImport module-cache staleness). */
+async function readRawDefsContent(defsRef: string): Promise<string> {
     try {
         const norm = defsRef.startsWith('/') ? defsRef.slice(1) : defsRef;
-        const f = mls.stor.convertFileReferenceToFile(norm);
-        if (!f) return [];
-        const mod = await collabImport({ project: f.project, folder: f.folder, shortName: f.shortName, extension: '.defs.ts' });
-        const assignments = (mod as any)?.moleculeAssignments;
-        if (!Array.isArray(assignments)) return [];
-        return [...new Set(assignments.map((m: any) => m?.group).filter((g: any): g is string => typeof g === 'string' && !!g))];
+        const info = mls.stor.convertFileReferenceToFile(norm);
+        if (!info) return '';
+        const key = mls.stor.getKeyToFile(info as any);
+        const sf = (mls.stor.files as Record<string, any>)[key];
+        if (!sf) return '';
+        const content = await sf.getContent();
+        return typeof content === 'string' ? content : '';
     } catch {
-        return [];
+        return '';
     }
+}
+
+/** Groups used by one generated page — regex-parsed from its `moleculeAssignments` export
+ *  (raw source, NOT collabImport: the page defs is written earlier in the same run and the
+ *  module cache can be stale). */
+export async function readPageGroups(defsRef: string): Promise<string[]> {
+    const content = await readRawDefsContent(defsRef);
+    const m = content.match(/export\s+const\s+moleculeAssignments\s*=\s*(\[[\s\S]*?\])\s+as\s+const\s*;/);
+    if (!m) return [];
+    let arr: Array<{ group?: string }>;
+    try { arr = JSON.parse(m[1]); } catch { return []; }
+    return [...new Set(arr.map(x => x?.group).filter((g): g is string => typeof g === 'string' && !!g))];
 }
 
 /** Build the --ml-* vocabulary (union) for a set of used groups. */
