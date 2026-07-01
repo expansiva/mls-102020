@@ -3,15 +3,13 @@
 // Fase E — assemble the FINAL page defs. DETERMINISTIC, no LLM (like agentRegisterGenome:
 // only beforePromptStep → completed). It:
 //   1. imports the ORIGIN page11 defs ({ definition, pipeline });
-//   2. reads Agent1's per-element group choices (groupSelections = [{ id, group }]);
-//   3. resolves each group to ONE molecule via matchVariant (gated by the DS configuredAxes)
-//      and places a single `molecule` on the matching layout element (field/filter/action/
-//      container) — by id;
+//   2. reads Agent2's per-element variant picks (variantSelections = [{ id, group, tag }]);
+//   3. looks each tag up in the catalog and places a single `molecule` on the layout element
+//      (field/filter/action/container) — by id. Elements Agent2 rejected carry no molecule;
 //   4. repoints paths page11 → page{layout}{ds}, overrides pipeline skills + dependsFiles
 //      (DS global css + each molecule usage skill), stamps pageVersion, and writes the defs.
 //
-// The LLM picks the GROUP per element (Agent1); the variant + placement are deterministic
-// here (matchVariant is pure → consistency by construction).
+// The semantic choice is done upstream (group = Agent1, variant = Agent2); this step only PLACES.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { collabImport } from '/_102027_/l2/collabImport.js';
@@ -19,11 +17,9 @@ import { buildWorkItem, variationFolder } from '/_102020_/l2/dsMatch/derivePaths
 import { buildPageDsStamp, renderDsVersionExport } from '/_102020_/l2/dsMatch/dsVersion.js';
 import { dsGlobalCssRef } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
 import { buildMoleculeCatalog } from '/_102020_/l2/dsMatch/buildMoleculeCatalog.js';
-import { matchVariant } from '/_102020_/l2/dsMatch/matchVariant.js';
-import { groupHasConfiguredAxis, type AssignedMolecule } from '/_102020_/l2/dsMatch/resolveMolecules.js';
-import { resolveRulesForPage } from '/_102020_/l2/dsMatch/resolveRulesForPage.js';
+import type { AssignedMolecule } from '/_102020_/l2/dsMatch/resolveMolecules.js';
 import { listLayoutElements, indexById } from '/_102020_/l2/dsMatch/layoutElements.js';
-import { loadElementGroupSelections } from '/_102020_/l2/dsMatch/agent1.js';
+import { loadVariantSelections } from '/_102020_/l2/dsMatch/agent1.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { resolveTagToFile } from '/_102020_/l2/utils.js';
 import { parseStepArgs, mkCompleted, mkFail, saveFile } from '/_102020_/l2/agentImplementGenome/planning.js';
@@ -68,46 +64,38 @@ async function beforePromptStep(
     const pipeline = clone(origin.pipeline ?? []);
     console.info(`[agentGenDefs] ${a.page}: page11 importado (origem=${item.defsOrigem})`);
 
-    // 2. Agent1's per-element group choices.
-    const assignments = await loadElementGroupSelections(item.defsDestino);
-
-    // 3. Resolve variant per group (deterministic) and place a single `molecule` per element.
-    // Axis rules (labelPlacement, boolean, recordsView, …) are LAYOUT-scoped: resolveRulesForPage
-    // reads config.layouts[<4th arg>]. Pass a.layout (NOT a.ds) — else every layout of the same DS
-    // resolves to the same variant (bug: page22 layout2/floating & page32 layout3/top → both floating).
-    const { rules, configuredAxes } = await resolveRulesForPage(project, a.module, a.page!, a.layout);
+    // 2. Agent2's per-element variant picks (tag). The semantic choice is already done; we only
+    //    PLACE the chosen molecule on the element (by id). Elements Agent2 rejected are absent.
+    const selections = await loadVariantSelections(item.defsDestino);
     const catalog = await buildMoleculeCatalog();
+    const byTag = new Map(catalog.map(m => [m.tag, m]));
     const byId = indexById(listLayoutElements(definition.layout));
-    console.info(`[agentGenDefs] ${a.page}: ${assignments.length} grupo(s) do Agent1 · ${byId.size} elemento(s) no layout · eixos configurados no DS: [${[...configuredAxes].join(', ') || '—'}] · catálogo: ${catalog.length} molécula(s)`);
+    console.info(`[agentGenDefs] ${a.page}: ${selections.length} variante(s) do Agent2 · ${byId.size} elemento(s) no layout · catálogo: ${catalog.length}`);
 
+    // 3. Place one `molecule` per selected element.
     const usagePaths = new Set<string>();
     const assigned: AssignedMolecule[] = [];
-    let placed = 0, gated = 0, noMatch = 0, unknownId = 0;
-    for (const { id, group } of assignments) {
+    let placed = 0, unknownId = 0, unknownTag = 0;
+    for (const { id, group, tag } of selections) {
       const el = byId.get(id);
       if (!el) { console.warn(`[agentGenDefs]   ⚠ ${id}: id não existe no layout (ignorado)`); unknownId++; continue; }
-      // Gate: only swap when the DS configured an axis governing this group (else keep default UI).
-      if (!groupHasConfiguredAxis(group, catalog, configuredAxes)) {
-        console.info(`[agentGenDefs]   – ${id} (${group}): DS não configurou eixo deste grupo → mantém controle padrão`);
-        gated++; continue;
-      }
-      const r = matchVariant(group, rules, catalog);
-      if (!r) { console.info(`[agentGenDefs]   – ${id} (${group}): nenhuma variante casa com o DS → mantém controle padrão`); noMatch++; continue; }
-      const f = resolveTagToFile(r.entry.tag);
+      const entry = byTag.get(tag);
+      if (!entry) { console.warn(`[agentGenDefs]   ⚠ ${id}: tag fora do catálogo: ${tag}`); unknownTag++; continue; }
+      const f = resolveTagToFile(tag);
       const molecule: AssignedMolecule = {
-        project: r.entry.project,
+        project: entry.project,
         group,
-        tag: r.entry.tag,
-        purpose: r.entry.objective,
+        tag,
+        purpose: entry.objective,
         import: f ? `/_${f.project}_/l2/${f.folder}/${f.shortName}.js` : '',
       };
       el.ref.molecule = molecule;            // single molecule per element
       assigned.push(molecule);
-      if (r.entry.usagePath) usagePaths.add(r.entry.usagePath);
-      console.info(`[agentGenDefs]   ✓ ${id} [${el.kind}/${el.intent}] → ${group} → ${r.entry.tag}`);
+      if (entry.usagePath) usagePaths.add(entry.usagePath);
+      console.info(`[agentGenDefs]   ✓ ${id} [${el.kind}/${el.intent}] → ${group} → ${tag}`);
       placed++;
     }
-    console.info(`[agentGenDefs] ${a.page}: ${placed} molécula(s) colocada(s) · ${gated} sem-opinião · ${noMatch} sem-match · ${unknownId} id-inválido`);
+    console.info(`[agentGenDefs] ${a.page}: ${placed} molécula(s) colocada(s) · ${unknownId} id-inválido · ${unknownTag} tag-inválida`);
 
     // 4. Repoint paths, override skills + dependsFiles, stamp, write.
     repointPaths(pipeline, a.layout, a.ds);

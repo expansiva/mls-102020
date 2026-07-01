@@ -7,8 +7,9 @@
 // beforePromptImplicit → minimal LLM confirmation (validates the request).
 // afterPromptStep      → builds the planned tree of child steps with barriers:
 //
-//   select:<page>    agentSelectGroups    waiting_human_input   dependsOn []                 (Agent1, LLM)
-//   gen:<page>       agentGenDefs         waiting_dependency    dependsOn [select:<page>]    (deterministic)
+//   select:<page>    agentSelectGroups    waiting_human_input   dependsOn []                 (Agent1, LLM: grupo/elemento)
+//   variant:<page>   agentSelectVariant   waiting_dependency    dependsOn [select:<page>]    (Agent2, LLM: variante semântica/elemento, ou none)
+//   gen:<page>       agentGenDefs         waiting_dependency    dependsOn [variant:<page>]   (determinístico: coloca a molécula)
 //   reconcile-tokens agentReconcileTokens waiting_dependency    dependsOn [gen:<page> ...all] (LLM, 1x/DS)
 //   register         agentRegisterGenome  waiting_dependency    dependsOn [reconcile-tokens]
 //
@@ -129,11 +130,18 @@ async function afterPromptStep(
         'agentSelectGroups', baseArgs(page), [], 'waiting_human_input', 'parallel_static'));
     }
 
-    // Group B — assemble the final defs DETERMINISTICALLY: resolve the variant (matchVariant)
-    // and place a molecule per element. Each waits on its own select.
+    // Group B — Agent2 (LLM): pick the VARIANT per element by semantic fit among the
+    // style-compatible candidates, or reject (writes variantSelections). Waits on its own select.
+    for (const page of pages) {
+      intents.push(mkAgentStep(context, step, makePlanId('variant', page), `Pick variant: ${page}`,
+        'agentSelectVariant', baseArgs(page), [makePlanId('select', page)], 'waiting_dependency', 'parallel_static'));
+    }
+
+    // Group C — assemble the final defs DETERMINISTICALLY: place the chosen molecule per element.
+    // Waits on its own variant.
     for (const page of pages) {
       intents.push(mkAgentStep(context, step, makePlanId('gen', page), `Gen defs: ${page}`,
-        'agentGenDefs', baseArgs(page), [makePlanId('select', page)], 'waiting_dependency', 'parallel_static'));
+        'agentGenDefs', baseArgs(page), [makePlanId('variant', page)], 'waiting_dependency', 'parallel_static'));
     }
 
     // Reconcile molecule tokens (--ml-*) to the DS tokens (--ds-*) — ONCE per DS, barrier over
@@ -146,7 +154,7 @@ async function afterPromptStep(
     intents.push(mkAgentStep(context, step, 'register', 'Register module genome',
       'agentRegisterGenome', baseArgs(), ['reconcile-tokens'], 'waiting_dependency', 'sequential'));
 
-    console.info(`[agentImplementGenome] ✓ planned ${pages.length} select(Agent1) + ${pages.length} gen(deterministic) + 1 reconcile-tokens + 1 register steps`);
+    console.info(`[agentImplementGenome] ✓ planned ${pages.length} select(Agent1) + ${pages.length} variant(Agent2) + ${pages.length} gen(deterministic) + 1 reconcile-tokens + 1 register steps`);
     return intents;
   } catch (error) {
     const msg = `[${agent.agentName}] ${error instanceof Error ? error.message : String(error)}`;
