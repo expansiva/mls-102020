@@ -3,16 +3,13 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   applyHeader,
-  buildCompileRepairHint,
   buildMaterializeTypecheckTest,
   buildHumanPrompt,
-  buildMissingCodeRepairHint,
   buildSystemPrompt,
   DEFAULT_MODEL_TYPE,
   expandContextRef,
   GEN_TOOL,
   GEN_TOOL_NAME,
-  MATERIALIZE_REPAIR_ATTEMPTS,
   parseDefs,
   testPathForOutputPath,
   type PipelineItem,
@@ -87,7 +84,7 @@ async function afterPromptStep(
     const output = extractToolCallArgs<ToolOutput>(raw, GEN_TOOL_NAME);
     if (!output?.code) {
       const detail = `missing generated code; payload=${describePayload(raw)}`;
-      return retryOrFail(context, parentStep, step, hookSequential, genArgs, buildMissingCodeRepairHint(pipelineItem.outputPath, detail), detail);
+      return [mkStatus(context, parentStep, step, hookSequential, 'failed', `${detail}\nmanual rerun required; Studio retry is disabled to avoid orphaned prompt hooks during continue/recovery.`)];
     }
 
     const parsed = parseMlsPath(pipelineItem.outputPath);
@@ -117,7 +114,7 @@ async function afterPromptStep(
     if (compileErrors.length > 0) {
       const checkedFiles = typecheckPath ? `${pipelineItem.outputPath} + ${typecheckPath}` : pipelineItem.outputPath;
       const traceMsg = `compile/typecheck failed for ${checkedFiles}:\n${compileErrors.slice(0, 8).join('\n')}`;
-      return retryOrFail(context, parentStep, step, hookSequential, genArgs, buildCompileRepairHint(pipelineItem.outputPath, compileErrors), traceMsg);
+      return [mkStatus(context, parentStep, step, hookSequential, 'failed', `${traceMsg}\nmanual rerun required; Studio retry is disabled to avoid orphaned prompt hooks during continue/recovery.`)];
     }
 
     return [mkStatus(context, parentStep, step, hookSequential, 'completed', undefined, 'input_output')];
@@ -154,25 +151,6 @@ function createPromptReadyIntent(
     tools: [GEN_TOOL as unknown as mls.msg.LLMTool],
     toolChoice: { type: 'function', function: { name: GEN_TOOL_NAME } },
   };
-}
-
-async function retryOrFail(
-  context: mls.msg.ExecutionContext,
-  parentStep: mls.msg.AIAgentStep,
-  step: mls.msg.AIAgentStep,
-  hookSequential: number,
-  genArgs: GenStepArgs,
-  repairHint: string,
-  traceMsg: string,
-): Promise<mls.msg.AgentIntent[]> {
-  const attempt = typeof genArgs.attempt === 'number' ? genArgs.attempt : 0;
-  if (attempt >= MATERIALIZE_REPAIR_ATTEMPTS) {
-    return [mkStatus(context, parentStep, step, hookSequential, 'failed', `${traceMsg}\nrepair attempts exhausted (${attempt}/${MATERIALIZE_REPAIR_ATTEMPTS})`)];
-  }
-
-  const nextArgs: GenStepArgs = { ...genArgs, attempt: attempt + 1, repairHint };
-  const genContext = await buildGenContext(genArgs.defPath);
-  return [createPromptReadyIntent(context, parentStep, hookSequential, nextArgs, genContext)];
 }
 
 async function buildGenContext(defPath: string): Promise<{

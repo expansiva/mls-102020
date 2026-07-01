@@ -79,7 +79,7 @@ function parseCliCommand(prompt: string): CliCommand {
 function normalizePrompt(prompt: string): string {
   return String(prompt || '')
     .trim()
-    .replace(/^@@(?:agentChangeFrontend|changeFrontend)\s+/i, '')
+    .replace(/^@@(?:agentChangeFrontend|changeFrontend)(?:\s+|$)/i, '')
     .replace(/\s+/g, ' ')
     .toLowerCase();
 }

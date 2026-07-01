@@ -7,6 +7,14 @@
     "mode": "autonomous_scan",
     "noInputPolicy": "The agent receives no module, owner, page or device arguments. It discovers all actionable work from l4 statusFrontend.",
     "noWorkBehavior": "If no owner with statusFrontend = toCreate is found, finish without changing files or statuses.",
+    "defaultCommand": "/run",
+    "slashCommands": {
+      "@@changeFrontend": "Alias for @@changeFrontend /run. Scan l4 and materialize stale/missing .ts files without resetting done owners.",
+      "@@changeFrontend /run": "Scan l4 and materialize stale/missing .ts files without resetting done owners.",
+      "@@changeFrontend /rebuild all": "Reset done owners to toCreate, regenerate .defs.ts and materialize stale/missing .ts files.",
+      "@@changeFrontend /rebuild defs": "Reset done owners to toCreate and regenerate only .defs.ts. Do not materialize .ts.",
+      "@@changeFrontend /help": "Return CLI-style help and finish the task."
+    },
     "defaultDevice": "desktop",
     "defaultPageGenome": "web/desktop/page11",
     "defaultDesignSystem": "default",
@@ -31,6 +39,7 @@
       "agentCfeCreatePage generates web/contracts deterministically, calls an LLM with a strict tool schema to generate web/desktop/page11 semantic layout defs for one page, reconciles layout state references, then writes web/shared from contractRef + layout-derived states/actions.",
       "agentCfeCreatePage writes l2/{module}/trace/frontend-create-pages/{page}.json as inProgress/done so finalize does not accept stale page defs from an older run.",
       "agentCfeMaterializeL2 reads the generated .defs.ts pipelines and creates sequential phase launchers for contracts, shared and pages. Each agentCfeMaterializePhase starts one progress fan-out only after the previous fan-out completed successfully, then schedules agentCfeMaterializeGen for .ts generation.",
+      "agentCfeMaterializeGen fails one Studio item explicitly on missing tool output or compile/typecheck errors, with the compiler details in trace. It does not re-emit prompt_ready from afterPromptStep because continue/recovery can orphan the original beforePromptStep hook.",
       "agentCfeRegisterFrontend writes page preview .html files, updates l0/config.json and writes frontend-register-pages markers.",
       "agentCfeCreateFinalize writes a trace report and marks generated owners statusFrontend = done only after pages have create and register markers done.",
       "The page11 layout keeps the section -> organism structure and enriches it with stable ids, intentions, field/column/action references and data bindings. i18n values live only in shared defs; page11 references keys. page11 is the plain implementation and does not reference molecule groups/tags."
@@ -237,6 +246,11 @@
     "notYetConfirmed": "No existing flow was found that proves a parallel_dynamic item can itself own a multi-agent child sequence. Treat nested page children as the target design, not yet a runtime guarantee.",
     "implementationRule": "If nested children are implemented, child steps must not depend on a passive container that waits for its children; they should depend on the same upstream page index or on the previous child step, following the agentNewSolution2 deadlock rule.",
     "fallback": "If the runtime rejects nested children under parallel_dynamic, replace the child sequence with one parallel_dynamic agent generate-page-defs:<page> that performs contract, shared, layout and per-page validation internally, while keeping validate-all-defs as the barrier."
+  },
+  "materializationRecovery": {
+    "studioPolicy": "Do not retry by returning prompt_ready from agentCfeMaterializeGen.afterPromptStep. On missing tool output or compile/typecheck errors, fail the affected item with a trace message and let the phase/fan-out report the failure.",
+    "reason": "A 102048 run showed a continue/recovery failure during shared materialization repair: the retry attempted to locate a beforePromptStep for the fan-out parent and failed with No matching beforePromptStep found. Failing explicitly is safer than leaving the task in waiting_after_prompt.",
+    "cliPolicy": "The Node CLI can retry safely because it owns the prompt loop and filesystem context locally. It may retry missing/truncated LLM output and run one tsc repair round with compiler errors in the repair prompt."
   },
   "reads": [
     "l5/project.json",
@@ -511,7 +525,7 @@
     {
       "agentName": "agentCfeMaterializeGen",
       "file": "l2/agentChangeFrontend/agentCfeMaterializeGen.ts",
-      "role": "Generates one frontend L2 .ts file from a generated .defs.ts pipeline item using local agentChangeFrontend materialization helpers."
+      "role": "Generates one frontend L2 .ts file from a generated .defs.ts pipeline item using local agentChangeFrontend materialization helpers. In Studio it fails explicitly on missing output or compile/typecheck errors instead of retrying in the same hook."
     },
     {
       "agentName": "agentCfeRegisterFrontend",
