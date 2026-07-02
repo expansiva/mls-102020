@@ -13,6 +13,7 @@ import { createModel } from '/_102027_/l2/libModel.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
+import '/_102020_/l2/plugins/selectPage.js';
 import '/_102020_/l2/plugins/selectLayout.js';
 import '/_102020_/l2/plugins/selectLayoutRules.js';
 import '/_102020_/l2/plugins/selectDesignSystem.js';
@@ -22,6 +23,7 @@ import '/_102020_/l2/plugins/selectMolecule.js';
 /// **collab_i18n_start**
 const message_en = {
     svcTitle: 'Genome',
+    page: 'Pages',
     layout: 'Layout',
     designSystem: 'Design System',
     molecules: 'Molecules',
@@ -33,6 +35,7 @@ const messages: Record<string, MessageType> = {
     en: message_en,
     pt: {
         svcTitle: 'Genome',
+        page: 'Páginas',
         layout: 'Layout',
         designSystem: 'Design System',
         molecules: 'Moléculas',
@@ -41,6 +44,7 @@ const messages: Record<string, MessageType> = {
     },
     es: {
         svcTitle: 'Genome',
+        page: 'Páginas',
         layout: 'Layout',
         designSystem: 'Design System',
         molecules: 'Moléculas',
@@ -103,6 +107,7 @@ export class ServiceGenome102020 extends ServiceBase {
     async onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
         this._initLayoutKnob();
         this._initDsKnob();
+        this._pageReloadToken += 1; // re-scan the page list on each service (re)open
         const file = await this._getActual3File();
         await this._trySetActualModule(file);
         this._updateCurrentPage(file);
@@ -117,7 +122,12 @@ export class ServiceGenome102020 extends ServiceBase {
     @state() private _isPageContext: boolean = true;
     @state() private _dsValue: number | null = 1;
     @state() private _moleculesValue: number | null = null;
-    @state() private _selectedKnob: string = 'layout';
+    @state() private _selectedKnob: string = 'page';
+
+    @state() private _pageValue: number | null = 0;
+    @state() private _pageConfig: IKnobConfig = { key: 'page', min: 0, max: 1, labels: { 0: 'All', 1: '+' } };
+    @state() private _pageReloadToken: number = 0;
+    private _pageEntries: Array<{ name: string; file: mls.stor.IFileInfo }> = [];
 
     @state() private _layoutConfig: IKnobConfig = DISABLED_CONFIG('layout');
     @state() private _dsConfig: IKnobConfig = DISABLED_CONFIG('designSystem');
@@ -329,6 +339,7 @@ export class ServiceGenome102020 extends ServiceBase {
 
     private get _knobValues(): Record<string, number | null> {
         return {
+            page: this._pageValue,
             layout: this._layoutValue,
             designSystem: this._dsValue,
             molecules: this._moleculesValue,
@@ -337,6 +348,7 @@ export class ServiceGenome102020 extends ServiceBase {
 
     private _getKnobConfig(key: string): IKnobConfig {
         switch (key) {
+            case 'page': return this._pageConfig;
             case 'layout': return this._layoutConfig;
             case 'designSystem': return this._dsConfig;
             case 'molecules': return this._moleculesConfig;
@@ -346,6 +358,15 @@ export class ServiceGenome102020 extends ServiceBase {
 
     private _setKnobValue(key: string, value: number | null) {
         switch (key) {
+            case 'page': {
+                this._pageValue = value;
+                // Selecting via the knob opens the page (the plugin's cards fire
+                // select-page with the file; the knob only knows the index).
+                const entry = value !== null && value > 0 && value <= this._pageEntries.length
+                    ? this._pageEntries[value - 1] : null;
+                if (entry?.file) this._openPage(entry.file);
+                break;
+            }
             case 'layout':
                 this._layoutValue = value;
                 // Real layouts only (1..max-1); the last slot (max) is "+ Add layout".
@@ -391,6 +412,22 @@ export class ServiceGenome102020 extends ServiceBase {
     private _onKnobChange(key: string, e: CustomEvent) {
         this._selectedKnob = key;
         this._setKnobValue(key, e.detail.value);
+    }
+
+    // ─── Page knob (selectPage plugin) ────────────────────────────────
+
+    private _onPageConfig(e: CustomEvent) {
+        const { min, max, labels, pages } = e.detail;
+        this._pageConfig = { key: 'page', min, max, labels };
+        if (pages) this._pageEntries = pages;
+        this.requestUpdate();
+    }
+
+    private _onPageSelect(e: CustomEvent) {
+        this._pageValue = e.detail.value;
+        const file = e.detail.file as mls.stor.IFileInfo | null;
+        if (file) this._openPage(file);
+        this.requestUpdate();
     }
 
     private _onKnobClick(key: string) {
@@ -585,8 +622,8 @@ export class ServiceGenome102020 extends ServiceBase {
                 px-2 py-3
                 border-b border-gray-200 dark:border-gray-800
                 gap-0
-                ${!this._isPageContext ? 'opacity-30 pointer-events-none' : ''}
             " style="--knob-scale: 0.5">
+                ${this._renderKnobItem('page')}
                 ${this._renderKnobItem('layout')}
                 ${this._renderKnobItem('designSystem')}
                 ${this._renderKnobItem('molecules')}
@@ -599,10 +636,14 @@ export class ServiceGenome102020 extends ServiceBase {
         const value = this._knobValues[key];
         const isContext = this._selectedKnob === key;
         const isDisabled = config.disabled ?? false;
+        // Page is always operable (it's how a page gets selected in the first place);
+        // the other knobs only make sense with a page in context.
+        const noContext = key !== 'page' && !this._isPageContext;
+
         const label = this.msg[key as keyof MessageType] || key;
 
         return html`
-            <div class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''}">
+            <div class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''} ${noContext ? 'opacity-30 pointer-events-none' : ''}">
                 <collab-select-knob-102027
                     .min=${config.min}
                     .max=${config.max}
@@ -645,6 +686,8 @@ export class ServiceGenome102020 extends ServiceBase {
         return html`
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col gap-3 px-4 py-4 flex-1"
+                    @select-page=${(e: CustomEvent) => this._onPageSelect(e)}
+                    @page-config=${(e: CustomEvent) => this._onPageConfig(e)}
                     @select-layout=${(e: CustomEvent) => this._setKnobValue('layout', e.detail.value)}
                     @layout-created=${(e: CustomEvent) => this._onLayoutCreated(e.detail.value)}
                     @select-molecule=${(e: CustomEvent) => this._setKnobValue('molecules', e.detail.value)}
@@ -661,6 +704,13 @@ export class ServiceGenome102020 extends ServiceBase {
     }
 
     private _renderContextStatusArea() {
+        // The page picker works without a page in context — it's how one gets selected.
+        if (this._selectedKnob === 'page') return html`
+            <plugins--select-page-102020
+                .value=${this._pageValue}
+                .reloadToken=${this._pageReloadToken}
+            ></plugins--select-page-102020>
+        `;
         if (!this._isPageContext) return html`
             <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5">
                 <span class="text-sm text-amber-600 dark:text-amber-400">
