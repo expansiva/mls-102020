@@ -110,7 +110,12 @@ export async function callCollabLlm(cfg: LlmConfig, input: LlmCallInput): Promis
     tool_choice: { type: 'function', function: { name: GEN_TOOL_NAME } },
   };
 
-  const res = await postJson(endpoint, headers, payload, cfg.timeoutMs ?? 200000);
+  let res: HttpResponse;
+  try {
+    res = await postJson(endpoint, headers, payload, cfg.timeoutMs ?? 200000);
+  } catch (e) {
+    return { ok: false, raw: '', usage: undefined, httpStatus: 0, error: e instanceof Error ? e.message : String(e) };
+  }
   let usage: Record<string, unknown> | undefined;
   try { usage = (JSON.parse(res.text) as { usage?: Record<string, unknown> }).usage; } catch { /* keep undefined */ }
 

@@ -25,7 +25,7 @@ import {
   type PipelineItem,
   type PlannedItem,
 } from './cfeMaterializeCore.js';
-import { callCollabLlm, parseGenResult, type LlmConfig } from './cfeMaterializeLlmClient.js';
+import { callCollabLlm, parseGenResult, type LlmConfig, type LlmResult } from './cfeMaterializeLlmClient.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 let ROOT = process.env.MATERIALIZE_L2_ROOT ? path.resolve(process.env.MATERIALIZE_L2_ROOT) : path.resolve(HERE, '../../../');
@@ -285,7 +285,7 @@ async function main(): Promise<void> {
 
   if (!todo.length) {
     console.log('nothing to generate (all up to date).');
-    if (args.check) runCheck();
+    if (args.check && !runGeneratedCheck(planned, dataByOut)) process.exitCode = 2;
     return;
   }
 
@@ -338,7 +338,7 @@ async function main(): Promise<void> {
   console.log(`\ndone: ${okCount}/${todo.length} file(s) ${args.dryRun ? 'prepared' : 'generated'}.`);
   if (tracePath) console.log(`trace: ${tracePath}`);
   if (!args.dryRun && cfg && args.check) {
-    let check = runCheckCapture();
+    let check = runGeneratedCheckCapture(planned, dataByOut);
     for (let round = 1; round <= MATERIALIZE_REPAIR_ATTEMPTS && !check.ok; round++) {
       const errorsByFile = parseTscErrorsByFile(check.output);
       const targets = planned.filter(p => itemHasTscErrors(p.item, errorsByFile) || failures.includes(p.item.id));
@@ -360,17 +360,17 @@ async function main(): Promise<void> {
         if (result.ok && failedIndex >= 0) failures.splice(failedIndex, 1);
         if (!result.ok && failedIndex < 0) failures.push(p.item.id);
       }
-      check = runCheckCapture();
+      check = runGeneratedCheckCapture(planned, dataByOut);
     }
 
     if (check.ok) {
-      console.log('\ntsc: OK');
+      console.log('\ngenerated strict tsc: OK');
     } else {
-      console.log('\ntsc: errors remain after repair (see below)');
+      console.log('\ngenerated strict tsc: errors remain after repair (see below)');
       console.log(check.output.trim());
       process.exitCode = 2;
     }
-  } else if (args.check && !runCheck()) {
+  } else if (args.check && !runGeneratedCheck(planned, dataByOut)) {
     process.exitCode = 2;
   }
   if (failures.length) {
@@ -380,6 +380,19 @@ async function main(): Promise<void> {
 }
 
 const TRACE_RAW_CAP = 40000;
+
+function formatMaterializeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function failedLlmResult(error: unknown): LlmResult {
+  return { ok: false, raw: '', usage: undefined, httpStatus: 0, error: formatMaterializeError(error) };
+}
+
+function canRetryMaterializeFailure(result: LlmResult, attempt: number): boolean {
+  if (attempt >= MATERIALIZE_REPAIR_ATTEMPTS) return false;
+  return result.httpStatus !== 0;
+}
 
 async function materializeOne(
   p: PlannedItem,
@@ -399,19 +412,40 @@ async function materializeOne(
     const isRepair = !!nextRepairHint;
     const humanFull = nextRepairHint ? `${human}\n\n${nextRepairHint}` : human;
     process.stdout.write(`${label} ${p.item.outputPath}${isRepair ? ' (repair)' : ''} ... `);
-    const r = await callCollabLlm(cfg, { model: modelType, system, human: humanFull });
-    const code = r.ok && r.code ? applyHeader(p.item.outputPath, r.code) : '';
+
+    let r: LlmResult;
+    let code = '';
+    try {
+      r = await callCollabLlm(cfg, { model: modelType, system, human: humanFull });
+      code = r.ok && r.code ? applyHeader(p.item.outputPath, r.code) : '';
+    } catch (error) {
+      r = failedLlmResult(error);
+    }
 
     appendTrace(tracePath, p.item, modelType, r, code, skillReport, depReport, isRepair);
 
     if (r.ok && code) {
-      const artifacts = writeGeneratedArtifacts(p.item, data, code);
-      console.log(`ok ${code.length}b${artifacts.typecheckRef ? ' + test' : ''}${artifacts.htmlRef ? ' + html' : ''}`);
-      return { ok: true };
+      try {
+        const artifacts = writeGeneratedArtifacts(p.item, data, code);
+        console.log(`ok ${code.length}b${artifacts.typecheckRef ? ' + test' : ''}${artifacts.htmlRef ? ' + html' : ''}`);
+        return { ok: true };
+      } catch (error) {
+        const detail = `save generated artifacts failed: ${formatMaterializeError(error)}`;
+        const failed = failedLlmResult(detail);
+        appendTrace(tracePath, p.item, modelType, failed, '', skillReport, depReport, isRepair);
+        if (!canRetryMaterializeFailure(failed, attempt)) {
+          console.log(`FAIL: ${detail}`);
+          return { ok: false, error: detail };
+        }
+
+        console.log(`retry: ${detail}`);
+        nextRepairHint = buildMissingCodeRepairHint(p.item.outputPath, detail);
+        continue;
+      }
     }
 
     const detail = r.error ?? 'no code';
-    if (attempt >= MATERIALIZE_REPAIR_ATTEMPTS) {
+    if (!canRetryMaterializeFailure(r, attempt)) {
       console.log(`FAIL: ${detail}`);
       return { ok: false, error: detail };
     }
@@ -478,21 +512,38 @@ function nextTracePath(project: number): string {
   return path.join(dir, `run${String(n).padStart(2, '0')}.txt`);
 }
 
-function runCheck(): boolean {
-  const result = runCheckCapture(true);
+function runGeneratedCheck(items: PlannedItem[], dataByOut: Map<string, unknown>): boolean {
+  const result = runGeneratedCheckCapture(items, dataByOut, true);
   if (result.ok) {
-    console.log('tsc: OK');
+    console.log('generated strict tsc: OK');
     return true;
   }
-  console.log('tsc: errors (see above)');
+  console.log('generated strict tsc: errors (see above)');
   return false;
 }
 
-function runCheckCapture(inherit = false): { ok: boolean; output: string } {
+function runGeneratedCheckCapture(items: PlannedItem[], dataByOut: Map<string, unknown>, inherit = false): { ok: boolean; output: string } {
+  const files = generatedCheckFiles(items, dataByOut);
+  if (!files.length) return { ok: true, output: '' };
+
+  const configPath = path.join(os.tmpdir(), `materializeL2-strict-${process.pid}-${Date.now()}.json`);
+  const config = {
+    extends: path.join(ROOT, 'tsconfig.json'),
+    compilerOptions: {
+      noEmit: true,
+      pretty: false,
+      noImplicitAny: true,
+      strictNullChecks: true,
+    },
+    include: [],
+    files,
+  };
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
   const localTsc = path.join(ROOT, 'node_modules', '.bin', 'tsc');
   const bin = fs.existsSync(localTsc) ? localTsc : 'npx';
-  const binArgs = bin === 'npx' ? ['tsc', '--noEmit', '--pretty', 'false'] : ['--noEmit', '--pretty', 'false'];
-  console.log('\nchecking mls-base with tsc...');
+  const binArgs = bin === 'npx' ? ['tsc', '--project', configPath] : ['--project', configPath];
+  console.log(`\nchecking ${files.length} generated file(s) with strict tsc...`);
   try {
     const output = execFileSync(bin, binArgs, { cwd: ROOT, encoding: 'utf8', stdio: inherit ? 'inherit' : 'pipe' });
     return { ok: true, output: typeof output === 'string' ? output : '' };
@@ -501,7 +552,22 @@ function runCheckCapture(inherit = false): { ok: boolean; output: string } {
     const output = `${err.stdout ?? ''}${err.stderr ?? ''}`;
     if (inherit && output.trim()) console.log(output.trim());
     return { ok: false, output };
+  } finally {
+    try { fs.rmSync(configPath, { force: true }); } catch { /* ignore */ }
   }
+}
+
+function generatedCheckFiles(items: PlannedItem[], dataByOut: Map<string, unknown>): string[] {
+  const files = new Set<string>();
+  for (const p of items) {
+    const outAbs = mlsToFs(p.item.outputPath);
+    if (fs.existsSync(outAbs)) files.add(outAbs);
+
+    const typecheckCode = buildMaterializeTypecheckTest(p.item, dataByOut.get(p.item.outputPath));
+    const typecheckAbs = typecheckCode ? mlsToFs(testPathForOutputPath(p.item.outputPath)) : null;
+    if (typecheckAbs && fs.existsSync(typecheckAbs)) files.add(typecheckAbs);
+  }
+  return [...files].sort();
 }
 
 function itemHasTscErrors(item: PipelineItem, errorsByFile: Map<string, string[]>): boolean {

@@ -482,7 +482,7 @@ export async function registerGeneratedFrontendPages(): Promise<{ pagesRegistere
   const validPages = checkedPages.filter(item => item.ok).map(item => item.page);
   const skippedPages = checkedPages.filter(item => !item.ok).map(item => item.page.pageId);
   await Promise.all(validPages.map(page => savePageHtml(context.project, page)));
-  await updateConfigJson(context, validPages);
+  await updateL5FrontendSignature(context.project);
   await Promise.all(validPages.map(page => savePageRegisterMarker(context.project, page, 'done')));
   return { pagesRegistered: validPages.map(page => page.pageId), skippedPages };
 }
@@ -747,7 +747,7 @@ function normalizeI18nText(value: unknown, defaultLocale: string): string {
   }
   const localized = Object.entries(value).find(([key, item]) => isI18nLocaleKey(key) && typeof item === 'string' && item.trim());
   if (localized && typeof localized[1] === 'string') return localized[1].trim();
-  return optionalString(value.text) || optionalString(value.value) || optionalString(value.label) || optionalString(value.title);
+  return optionalString(value.text) || optionalString(value.value) || optionalString(value.label) || optionalString(value.title) || '';
 }
 
 function readI18nLocale(value: unknown): string {
@@ -1724,37 +1724,16 @@ async function saveFrontendDefs(fileInfo: FileInfo, exportName: string, definiti
   await saveStorContent(fileInfo, `${header}export const ${exportName} = ${JSON.stringify(definition, null, 2)};\n\nexport const pipeline = ${JSON.stringify(pipeline, null, 2)} as const;\n`);
 }
 
-async function updateConfigJson(context: CfeCreateContext, pages: CfePagePlan[]): Promise<void> {
-  const fileInfo: FileInfo = { project: context.project, level: 0, folder: '', shortName: 'config', extension: '.json' };
+// The workspace config.json is no longer written by this agent: it is composed at publish
+// time from l5/project.json + on-disk artifacts (see nodejsSaveConfigJson.ts). The agent
+// only signs the client-owned l5/project.json so the publish can resolve the composer.
+async function updateL5FrontendSignature(project: number): Promise<void> {
+  const fileInfo: FileInfo = { project, level: 5, folder: '', shortName: 'project', extension: '.json' };
   const existing = await readJsonFile(fileInfo);
-  const config = isRecord(existing) ? existing : createBaseConfig(context.project);
-  const projects = ensureRecord(config, 'projects');
-  const projectKey = String(context.project);
-  const projectConfig = ensureRecord(projects, projectKey);
-  projectConfig.root = projectConfig.root || '.';
-  projectConfig.type = projectConfig.type || 'client';
-  const modules = ensureArray(projectConfig, 'modules');
-
-  for (const moduleName of unique(pages.map(page => page.moduleName))) {
-    const moduleConfig = upsertByKey(modules, 'moduleId', moduleName);
-    moduleConfig.moduleId = moduleName;
-    moduleConfig.basePath = moduleConfig.basePath || `/${moduleName}`;
-    moduleConfig.shellMode = moduleConfig.shellMode || 'spa';
-    moduleConfig.backendRouter = moduleConfig.backendRouter || `./_${context.project}_/l1/${moduleName}/layer_2_controllers/router.js`;
-    const navigation = ensureArray(moduleConfig, 'navigation');
-    const frontend = ensureRecord(moduleConfig, 'frontend');
-    frontend.layer = 'l2';
-    frontend.moduleEntrypoint = frontend.moduleEntrypoint || `./_${context.project}_/l2/${moduleName}/module.js`;
-    frontend.moduleSource = frontend.moduleSource || `l2/${moduleName}/module.ts`;
-    const frontendPages = ensureArray(frontend, 'pages');
-
-    for (const page of pages.filter(p => p.moduleName === moduleName)) {
-      Object.assign(upsertByKey(navigation, 'id', page.pageId), { id: page.pageId, label: page.pageName, href: `/${moduleName}/${page.pageId}`, description: page.pageName });
-      Object.assign(upsertByKey(frontendPages, 'pageId', page.pageId), { pageId: page.pageId, route: `/${moduleName}/${page.pageId}`, source: `l2/${moduleName}/web/desktop/page11/${page.pageId}.ts`, definition: `l2/${moduleName}/web/desktop/page11/${page.pageId}.defs.ts`, componentTag: frontendComponentTag(context.project, page) });
-    }
-  }
-
-  await saveStorContent(fileInfo, `${JSON.stringify(config, null, 2)}\n`);
+  const cfg = isRecord(existing) ? existing : {};
+  const masters = isRecord(cfg.masters) ? cfg.masters : (cfg.masters = {});
+  masters.frontend = { masterProject: 102020, agentFolder: 'agentChangeFrontend', runtimeProject: 102033 };
+  await saveStorContent(fileInfo, `${JSON.stringify(cfg, null, 2)}\n`);
 }
 
 async function updateOwnerStatuses(context: CfeCreateContext, ownerIds: string[], status: OwnerStatus): Promise<string[]> {
@@ -1974,20 +1953,7 @@ async function saveConstDefault(fileInfo: FileInfo, exportName: string, data: un
   await saveStorContent(fileInfo, `${header}export const ${exportName} = ${JSON.stringify(data, null, 2)} as const;\n\nexport default ${exportName};\n`);
 }
 
-function createBaseConfig(project: number): Record<string, unknown> {
-  return {
-    defaultProjectId: String(project),
-    shellTemplates: { spa: './_102033_/l2/shared/spa/index.html', pwa: './_102033_/l2/shared/pwa/index.html' },
-    publication: { defaultTarget: 'web', targets: { web: { assetBaseUrl: '', serveStaticFromServer: true, minify: false, sourcemap: true } } },
-    clientShell: { mode: 'spa', activeProfile: 'production', regions: { aside: { activeProfile: 'defaultAura', profiles: { defaultAura: { renderer: { entrypoint: '/_102033_/l2/shared/layout/aura-aside.js', source: '../mls-102033/l2/shared/layout/aura-aside.ts', tag: 'collab-aura-aside' }, widthPx: 280 } } } } },
-    projects: { '102027': { root: '../mls-102027', type: 'lib' }, '102029': { root: '../mls-102029', type: 'lib' }, '102033': { root: '../mls-102033', type: 'master frontend' }, '102034': { root: '../mls-102034', type: 'master backend' }, [String(project)]: { root: '.', type: 'client', modules: [] } },
-  };
-}
-
 function ensureModule(modules: Map<string, CfeModuleInfo>, moduleName: string): CfeModuleInfo { const existing = modules.get(moduleName); if (existing) return existing; const created = { moduleName, entityIds: new Set<string>(), i18nLocales: [], i18nDefaultLocale: '' }; modules.set(moduleName, created); return created; }
-function ensureRecord(parent: Record<string, unknown>, key: string): Record<string, unknown> { if (!isRecord(parent[key])) parent[key] = {}; return parent[key] as Record<string, unknown>; }
-function ensureArray(parent: Record<string, unknown>, key: string): Record<string, unknown>[] { if (!Array.isArray(parent[key])) parent[key] = []; return parent[key] as Record<string, unknown>[]; }
-function upsertByKey(items: Record<string, unknown>[], key: string, value: string): Record<string, unknown> { let item = items.find(candidate => candidate[key] === value); if (!item) { item = { [key]: value }; items.push(item); } return item; }
 function toDisplayRef(fileInfo: FileInfo): string { const folder = fileInfo.folder ? `${fileInfo.folder}/` : ''; return `_${fileInfo.project}_/l${fileInfo.level}/${folder}${fileInfo.shortName}${fileInfo.extension}`; }
 function toFrontendType(type: string): string { const normalized = type.toLowerCase(); if (['number', 'integer', 'decimal', 'money', 'float'].includes(normalized)) return 'number'; if (['boolean', 'bool'].includes(normalized)) return 'boolean'; if (['date', 'datetime', 'time'].includes(normalized)) return 'date'; return 'string'; }
 function isSystemField(fieldId: string): boolean { return ['createdat', 'updatedat'].includes(fieldId.toLowerCase()); }

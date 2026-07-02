@@ -99,7 +99,7 @@ async function beforePromptStep(
 
     const continueParallel: mls.msg.AgentIntentPromptReady = {
       type: 'prompt_ready',
-      args: args ?? step.prompt,
+      args: args ?? step.prompt ?? '',
       messageId: context.message.orderAt,
       threadId: context.message.threadId,
       taskId: context.task?.PK || '',
