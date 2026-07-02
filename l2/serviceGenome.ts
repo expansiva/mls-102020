@@ -374,6 +374,7 @@ export class ServiceGenome102020 extends ServiceBase {
                     setAuraState('actualLayout', value);
                     saveAuraProject();
                     this._repaintPageForCombination();
+                    this._pageReloadToken += 1; // page list re-scans for the new variation
                 }
                 break;
             case 'designSystem':
@@ -385,6 +386,7 @@ export class ServiceGenome102020 extends ServiceBase {
                     setAuraState('actualDesignSystem', value);
                     saveAuraProject();
                     this._repaintPageForCombination();
+                    this._pageReloadToken += 1; // page list re-scans for the new variation
                 }
                 break;
             case 'molecules':
@@ -495,15 +497,15 @@ export class ServiceGenome102020 extends ServiceBase {
         return { ...base, folder } as mls.stor.IFileInfo;
     }
 
-    /** If the page exists for the current layout/DS combination, open it so the preview repaints. */
+    /** Repaint the preview for the current layout/DS combination — ALWAYS, even when the
+     *  page doesn't exist for it yet (the preview shows its own "not found" state; keeping
+     *  the old variation on screen reads as if the knob change did nothing). */
     private async _repaintPageForCombination(): Promise<void> {
         const file = this._variationPageFile();
         if (!file) return;
         // Already showing this combination → nothing to repaint.
         if (this._currentPageFile && file.folder === this._currentPageFile.folder) return;
-        const storFiles = await mls.stor.getFiles({ project: file.project, shortName: file.shortName, folder: file.folder, loadContent: false });
-        if (!storFiles.ts) return; // combination not generated → keep the current preview
-        await this._openPage(file, storFiles);
+        await this._openPage(file);
     }
 
     /**
