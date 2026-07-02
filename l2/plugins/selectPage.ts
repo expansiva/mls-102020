@@ -273,11 +273,17 @@ export class PluginSelectPage extends StateLitElement {
             if (activeDevicePath && devicePath !== activeDevicePath) continue;
 
             // Swap the source's variation segment (e.g. page11) for the current one.
-            const folder = rawFolder.replace(/page\d+(\/|$)/, `${variation}$1`);
+            const variationFolder = rawFolder.replace(/page\d+(\/|$)/, `${variation}$1`);
             candidateCount++;
 
-            // Only surface pages that actually exist for this layout/DS combination.
-            if (!this._fileExists(project, level, folder, shortName)) continue;
+            // The page list is owned by the config (or, without one, by the page11 scan).
+            // A page not yet generated for the current layout/DS variation still shows,
+            // pointing at its source file (page11) until the variation exists.
+            let folder = variationFolder;
+            if (!this._fileExists(project, level, variationFolder, shortName)) {
+                if (!this._fileExists(project, level, rawFolder, shortName)) continue;
+                folder = rawFolder;
+            }
 
             const name = page.pageId || shortName;
             if (!pageMap.has(name)) {
