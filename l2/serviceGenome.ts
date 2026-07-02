@@ -527,7 +527,7 @@ export class ServiceGenome102020 extends ServiceBase {
         mls.events.fire([mls.actualLevel], ['FileAction'], JSON.stringify(params), 0);
     }
 
-    /** Open a page into the preview — mirrors servicePage._setActualPage. */
+    /** Open a page into the preview (single implementation since the Page knob moved here). */
     private async _openPage(file: mls.stor.IFileInfo, storFiles?: any): Promise<void> {
         let name = `_${file.project}_${file.shortName}`;
         if (file.folder) name = `_${file.project}_${file.folder}/${file.shortName}`;

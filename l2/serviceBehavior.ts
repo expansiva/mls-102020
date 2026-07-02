@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/servicePage.ts" enhancement="_102027_/l2/enhancementLit"/>
+/// <mls fileReference="_102020_/l2/serviceBehavior.ts" enhancement="_102027_/l2/enhancementLit"/>
 
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
@@ -12,18 +12,18 @@ import '/_102020_/l2/plugins/selectRule.js';
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
 const message_en = {
-    svcTitle: 'Page',
+    svcTitle: 'Behavior',
     rule: 'Rules',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
     en: message_en,
     pt: {
-        svcTitle: 'Página',
+        svcTitle: 'Comportamento',
         rule: 'Regras',
     },
     es: {
-        svcTitle: 'Página',
+        svcTitle: 'Comportamiento',
         rule: 'Reglas',
     },
 };
@@ -46,16 +46,16 @@ interface IKnobConfig {
 
 // ─── Service ─────────────────────────────────────────────────────────
 
-@customElement('service-page-102020')
-export class ServicePage102020 extends ServiceBase {
+@customElement('service-behavior-102020')
+export class ServiceBehavior102020 extends ServiceBase {
 
     public details: IService = {
         icon: '&#xf0f6',
         state: 'foreground',
         position: 'left',
-        tooltip: 'Page',
+        tooltip: 'Behavior',
         visible: true,
-        widget: '_102020_servicePage',
+        widget: '_102020_serviceBehavior',
         level: [6],
     };
 

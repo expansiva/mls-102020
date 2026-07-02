@@ -653,7 +653,8 @@ export class PluginSelectPage extends StateLitElement {
         prompt: string,
         onTaskCreated?: (data: { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }) => void,
     ): Promise<{ taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }> {
-        const fullName = '_102020_/l2/servicePage';
+        // Thread host: selectPage lives in serviceGenome since the knob move (D4).
+        const fullName = '_102020_/l2/serviceGenome';
         let threadPromise = this._threadCache.get(fullName);
         if (!threadPromise) {
             threadPromise = (async () => {
