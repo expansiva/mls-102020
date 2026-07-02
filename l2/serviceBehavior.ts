@@ -6,6 +6,7 @@ import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/
 import { AuraInitState, getAuraState } from '/_102020_/l2/auraState.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
+import '/_102020_/l2/plugins/selectWorkflow.js';
 import '/_102020_/l2/plugins/selectRule.js';
 
 
@@ -13,6 +14,7 @@ import '/_102020_/l2/plugins/selectRule.js';
 /// **collab_i18n_start**
 const message_en = {
     svcTitle: 'Behavior',
+    workflow: 'Workflows',
     rule: 'Rules',
 };
 type MessageType = typeof message_en;
@@ -20,10 +22,12 @@ const messages: Record<string, MessageType> = {
     en: message_en,
     pt: {
         svcTitle: 'Comportamento',
+        workflow: 'Workflows',
         rule: 'Regras',
     },
     es: {
         svcTitle: 'Comportamiento',
+        workflow: 'Workflows',
         rule: 'Reglas',
     },
 };
@@ -72,6 +76,7 @@ export class ServiceBehavior102020 extends ServiceBase {
     };
 
     onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
+        this._workflowReloadToken += 1; // re-scan the workflow list on each service (re)open
         // @ts-ignore
         this.requestUpdate();
     }
@@ -82,11 +87,14 @@ export class ServiceBehavior102020 extends ServiceBase {
 
     @state() private _modules: IModule[] = [];
 
+    @state() private _workflowConfig: IKnobConfig = { key: 'workflow', min: 0, max: 0, labels: { 0: 'All' } };
     @state() private _ruleConfig: IKnobConfig = { key: 'rule', min: 0, max: 0, labels: { 0: 'All' } };
 
+    @state() private _workflowValue: number | null = 0;
     @state() private _ruleValue: number | null = null;
+    @state() private _workflowReloadToken: number = 0;
 
-    @state() private _selectedKnob: string = 'rule';
+    @state() private _selectedKnob: string = 'workflow';
 
     // ─── Data Loading ─────────────────────────────────────────────────
 
@@ -114,12 +122,14 @@ export class ServiceBehavior102020 extends ServiceBase {
 
     private get _knobValues(): Record<string, number | null> {
         return {
+            workflow: this._workflowValue,
             rule: this._ruleValue,
         };
     }
 
     private _getKnobConfig(key: string): IKnobConfig {
         switch (key) {
+            case 'workflow': return this._workflowConfig;
             case 'rule': return this._ruleConfig;
             default: return { key, min: 0, max: 0, labels: {}, disabled: true };
         }
@@ -127,6 +137,7 @@ export class ServiceBehavior102020 extends ServiceBase {
 
     private _setKnobValue(key: string, value: number | null) {
         switch (key) {
+            case 'workflow': this._workflowValue = value; break;
             case 'rule': this._ruleValue = value; break;
         }
         // @ts-ignore
@@ -180,6 +191,7 @@ export class ServiceBehavior102020 extends ServiceBase {
                 border-b border-gray-200 dark:border-gray-800
                 gap-0
             " style="--knob-scale: 0.5">
+                ${this._renderKnobItem('workflow')}
                 ${this._renderKnobItem('rule')}
             </div>
         `;
@@ -232,6 +244,13 @@ export class ServiceBehavior102020 extends ServiceBase {
 
     // ─── Details Row ──────────────────────────────────────────────────
 
+    private _onWorkflowConfig(e: CustomEvent) {
+        const { min, max, labels } = e.detail;
+        this._workflowConfig = { key: 'workflow', min, max, labels };
+        // @ts-ignore
+        this.requestUpdate();
+    }
+
     private _onRuleConfig(e: CustomEvent) {
         const { min, max, labels } = e.detail;
         this._ruleConfig = { key: 'rule', min, max, labels };
@@ -243,6 +262,8 @@ export class ServiceBehavior102020 extends ServiceBase {
         return html`
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col gap-3 px-4 py-4 flex-1"
+                    @select-workflow=${(e: CustomEvent) => this._setKnobValue('workflow', e.detail.value)}
+                    @workflow-config=${(e: CustomEvent) => this._onWorkflowConfig(e)}
                     @select-rule=${(e: CustomEvent) => this._setKnobValue('rule', e.detail.value)}
                     @rule-config=${(e: CustomEvent) => this._onRuleConfig(e)}
                 >
@@ -254,6 +275,13 @@ export class ServiceBehavior102020 extends ServiceBase {
 
     private _renderContextStatusArea() {
         switch (this._selectedKnob) {
+            case 'workflow':
+                return html`
+                    <plugins--select-workflow-102020
+                        .value=${this._workflowValue}
+                        .reloadToken=${this._workflowReloadToken}
+                    ></plugins--select-workflow-102020>
+                `;
             case 'rule':
                 return html`
                     <plugins--select-rule-102020
