@@ -47,6 +47,9 @@ const message_en = {
     regenerating: 'Regenerating…',
     regenerated: 'Task started',
     followTask: 'Follow task',
+    missingVariation: 'This page has not been generated for the current layout / design system yet.',
+    generatePage: 'Generate page',
+    notGenerated: 'Not generated',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -81,6 +84,9 @@ const messages: Record<string, MessageType> = {
         regenerating: 'Refazendo…',
         regenerated: 'Task iniciada',
         followTask: 'Acompanhar task',
+        missingVariation: 'Esta página ainda não foi gerada para o layout / design system atual.',
+        generatePage: 'Gerar página',
+        notGenerated: 'Não gerada',
     },
     es: {
         title: 'Páginas',
@@ -112,6 +118,9 @@ const messages: Record<string, MessageType> = {
         regenerating: 'Regenerando…',
         regenerated: 'Tarea iniciada',
         followTask: 'Seguir tarea',
+        missingVariation: 'Esta página aún no fue generada para el layout / design system actual.',
+        generatePage: 'Generar página',
+        notGenerated: 'No generada',
     },
 };
 /// **collab_i18n_end**
@@ -127,6 +136,8 @@ interface IPageEntry {
     name: string;
     devices: string[];
     file: mls.stor.IFileInfo;
+    // false = listed from the source (page11) but not generated for the current layout/DS variation.
+    exists: boolean;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────
@@ -245,7 +256,7 @@ export class PluginSelectPage extends StateLitElement {
         // present after create). Synthetic entries mirror the config shape (pageId + source).
         if (!pages.length) pages = this._scanPagesFromStor(project, modulePath);
 
-        const pageMap = new Map<string, { devices: Set<string>; file: mls.stor.IFileInfo }>();
+        const pageMap = new Map<string, { devices: Set<string>; file: mls.stor.IFileInfo; exists: boolean }>();
         let candidateCount = 0;
 
         for (const page of pages) {
@@ -276,25 +287,24 @@ export class PluginSelectPage extends StateLitElement {
             const variationFolder = rawFolder.replace(/page\d+(\/|$)/, `${variation}$1`);
             candidateCount++;
 
-            // The page list is owned by the config (or, without one, by the page11 scan).
-            // A page not yet generated for the current layout/DS variation still shows,
-            // pointing at its source file (page11) until the variation exists.
-            let folder = variationFolder;
-            if (!this._fileExists(project, level, variationFolder, shortName)) {
-                if (!this._fileExists(project, level, rawFolder, shortName)) continue;
-                folder = rawFolder;
-            }
+            // The page list is owned by the config (or, without one, by the page11 scan):
+            // the source (page11) is the source of truth, so a page not yet generated for
+            // the current layout/DS variation still shows. Its file always points at the
+            // variation path — selecting a missing one leads the preview to its own
+            // "not found" state instead of silently rendering the page11 version.
+            const exists = this._fileExists(project, level, variationFolder, shortName);
+            if (!exists && !this._fileExists(project, level, rawFolder, shortName)) continue;
 
             const name = page.pageId || shortName;
             if (!pageMap.has(name)) {
-                const file = { project, folder, shortName, level, extension: '.ts' } as mls.stor.IFileInfo;
-                pageMap.set(name, { devices: new Set(), file });
+                const file = { project, folder: variationFolder, shortName, level, extension: '.ts' } as mls.stor.IFileInfo;
+                pageMap.set(name, { devices: new Set(), file, exists });
             }
             pageMap.get(name)!.devices.add(devicePath);
         }
 
         this._pages = Array.from(pageMap.entries())
-            .map(([name, { devices, file }]) => ({ name, devices: Array.from(devices).sort(), file }))
+            .map(([name, { devices, file, exists }]) => ({ name, devices: Array.from(devices).sort(), file, exists }))
             .sort((a, b) => a.name.localeCompare(b.name));
 
         // Config lists pages for this module/device, but none exist for the
@@ -339,7 +349,7 @@ export class PluginSelectPage extends StateLitElement {
         // Gate (L6): only check staleness when the layout actually has rules configured.
         if (!(await layoutHasRules(project, layout))) return;
 
-        const results = await Promise.all(this._pages.map(async (p) => {
+        const results = await Promise.all(this._pages.filter(p => p.exists).map(async (p) => {
             try {
                 const check = await pageDsCheckByDefs(
                     { project: p.file.project, folder: p.file.folder ?? '', shortName: p.file.shortName },
@@ -485,7 +495,27 @@ export class PluginSelectPage extends StateLitElement {
                     `)}
                 </div>
             </div>
-            ${this._renderDsVersionPanel(page)}
+            ${page.exists ? this._renderDsVersionPanel(page) : this._renderMissingPanel(page)}
+        `;
+    }
+
+    // Page listed from the source (page11) but absent in the current layout/DS
+    // variation: explain why the preview shows nothing and offer to generate it.
+    private _renderMissingPanel(page: IPageEntry) {
+        const task = getTask(`regenerate:${page.name}`);
+        const running = task?.status === 'running';
+        return html`
+            <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-amber-700 dark:text-amber-300">${this.msg.missingVariation}</span>
+                <button
+                    class="self-start text-sm px-3 py-1.5 rounded-md bg-amber-500 dark:bg-amber-600 text-white hover:bg-amber-600 dark:hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    ?disabled=${running}
+                    @click=${() => this._onRegenerate(page)}
+                >${running ? this.msg.regenerating : this.msg.generatePage}</button>
+                ${task && task.status === 'error' ? html`
+                    <span class="text-xs text-red-500 dark:text-red-400 truncate">${task.message ?? 'error'}</span>
+                ` : nothing}
+            </div>
         `;
     }
 
@@ -614,7 +644,7 @@ export class PluginSelectPage extends StateLitElement {
             setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: e?.message });
         } finally {
             setState('preview.pausePreview', prevPause ?? false);
-            await this._loadPageStatus(); // re-check: the regenerated page should now be fresh
+            await this._loadPages(); // re-scan: refreshes existence in the variation + DS status
         }
     }
 
@@ -805,6 +835,10 @@ export class PluginSelectPage extends StateLitElement {
                     <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">${page.name}</span>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
+                    ${!page.exists ? html`
+                        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                            ${this.msg.notGenerated}
+                        </span>` : nothing}
                     ${this._renderStatusBadge(page.name)}
                     ${page.devices.map(d => html`
                         <span class="text-[10px] font-medium px-1 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
