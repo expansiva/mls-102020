@@ -5,6 +5,10 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { buildGlobalCss, type DsTokens, type DsColorRole, type DsFont } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
+import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
+import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
+import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
+import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // Phase B — DESIGN SYSTEM = STYLING. This plugin presents and edits the visual tokens
@@ -70,6 +74,14 @@ const message_en = {
     saving: 'Saving…',
     saveError: 'Could not save the design system.',
     tokensSuffix: 'tokens',
+    aiTitle: 'Generate with AI',
+    aiTag: 'brief · palette',
+    aiHint: 'Describe the brand/mood and/or use the palette below as brand colors. The result fills this form as a draft — review and save.',
+    aiBriefPlaceholder: 'e.g. sophisticated law firm, dark tones, serif display font…',
+    aiUsePalette: 'Use the current palette as brand colors',
+    aiGenerate: 'Generate',
+    aiGenerating: 'Generating…',
+    aiError: 'Could not generate the design system. Try again.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -129,6 +141,14 @@ const messages: Record<string, MessageType> = {
         saving: 'Salvando…',
         saveError: 'Não foi possível salvar o design system.',
         tokensSuffix: 'tokens',
+        aiTitle: 'Gerar com IA',
+        aiTag: 'brief · paleta',
+        aiHint: 'Descreva a marca/clima e/ou use a paleta abaixo como cores da marca. O resultado preenche este formulário como rascunho — revise e salve.',
+        aiBriefPlaceholder: 'ex.: escritório de advocacia sofisticado, tons escuros, display serifada…',
+        aiUsePalette: 'Usar a paleta atual como cores da marca',
+        aiGenerate: 'Gerar',
+        aiGenerating: 'Gerando…',
+        aiError: 'Não foi possível gerar o design system. Tente novamente.',
     },
     es: {
         title: 'Design System',
@@ -185,6 +205,14 @@ const messages: Record<string, MessageType> = {
         saving: 'Guardando…',
         saveError: 'No se pudo guardar el design system.',
         tokensSuffix: 'tokens',
+        aiTitle: 'Generar con IA',
+        aiTag: 'brief · paleta',
+        aiHint: 'Describe la marca/tono y/o usa la paleta de abajo como colores de marca. El resultado llena este formulario como borrador — revisa y guarda.',
+        aiBriefPlaceholder: 'ej.: bufete de abogados sofisticado, tonos oscuros, display con serifa…',
+        aiUsePalette: 'Usar la paleta actual como colores de marca',
+        aiGenerate: 'Generar',
+        aiGenerating: 'Generando…',
+        aiError: 'No se pudo generar el design system. Inténtalo de nuevo.',
     },
 };
 /// **collab_i18n_end**
@@ -319,6 +347,13 @@ export class PluginSelectDesignSystem extends StateLitElement {
     @state() private _nameError = false;
     @state() private _saving = false;
     @state() private _saveError = '';
+
+    // ── AI generation (Add view; task 12) ──────────────────────────────
+    @state() private _aiBrief = '';
+    @state() private _aiUsePalette = false;
+    @state() private _generating = false;
+    @state() private _genError = '';
+    private _threadCache = new Map<string, Promise<any>>();
 
     connectedCallback() {
         super.connectedCallback();
@@ -511,6 +546,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 ${this._navHeader(this.msg.addTitle, this.msg.addDesc, this._customKey)}
                 ${this._renderNameField()}
                 ${this._renderDescField()}
+                ${this._renderAiSection()}
                 ${this._renderPresetPicker()}
                 ${this._renderEditor()}
                 ${this._renderSave(this.msg.create)}
@@ -558,6 +594,96 @@ export class PluginSelectDesignSystem extends StateLitElement {
         const keepName = this._name.trim();
         const keepDesc = this._desc;
         this._loadDraft(PRESETS[key], keepName || (key === 'custom' ? '' : key), keepDesc, key);
+    }
+
+    // ── AI generation (Add view; task 12) ───────────────────────────────
+    // brief and/or palette → agentGenerateDs → sanitized DsTokens draft loaded into THIS form
+    // (nothing committed; the user reviews and clicks "Create design system" as usual).
+
+    private _renderAiSection() {
+        const canGenerate = !this._generating && (this._aiBrief.trim().length > 0 || this._aiUsePalette);
+        return this._section(this.msg.aiTitle, this.msg.aiTag, true, html`
+            <p class="text-[11px] text-gray-400 dark:text-gray-500">${this.msg.aiHint}</p>
+            <textarea rows="3"
+                class="w-full text-[11px]! px-2.5 py-1.5 rounded-md resize-y border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                placeholder=${this.msg.aiBriefPlaceholder} .value=${this._aiBrief}
+                ?disabled=${this._generating}
+                @input=${(e: Event) => { this._aiBrief = (e.target as HTMLTextAreaElement).value; }}></textarea>
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" class="accent-indigo-500" .checked=${this._aiUsePalette}
+                    ?disabled=${this._generating}
+                    @change=${(e: Event) => { this._aiUsePalette = (e.target as HTMLInputElement).checked; }} />
+                <span class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.aiUsePalette}</span>
+                <span class="flex h-3.5 w-12 rounded overflow-hidden border border-black/10 ${this._aiUsePalette ? '' : 'opacity-40'}">
+                    ${this._palette.slice(0, 6).map(c => html`<span class="flex-1" style="background:${c}"></span>`)}
+                </span>
+            </label>
+            ${this._genError ? html`<div class="rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 px-2.5 py-1.5"><span class="text-[11px] text-red-600 dark:text-red-400">${this._genError}</span></div>` : nothing}
+            <button class="self-start text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                ?disabled=${!canGenerate} @click=${() => this._onGenerate()}>
+                ${this._generating ? this.msg.aiGenerating : this.msg.aiGenerate}</button>
+        `);
+    }
+
+    private async _onGenerate(): Promise<void> {
+        if (!this.projectId || this._generating) return;
+        const brief = this._aiBrief.trim();
+        const palette = this._aiUsePalette ? this._palette.filter(c => /^#[0-9a-fA-F]{6}$/.test(c)) : [];
+        if (!brief && palette.length === 0) return;
+
+        // One-shot correlation id: the agent echoes it on config.dsDraft — a missing/mismatched
+        // id after the task means the generation failed (or an older draft is lying around).
+        const requestId = `dsgen-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+        const prompt = JSON.stringify({
+            projectId: this.projectId,
+            brief: brief || undefined,
+            palette: palette.length ? palette : undefined,
+            nameHint: this._name.trim() || undefined,
+            language: this.getMessageKey(messages),
+            requestId,
+        });
+
+        this._generating = true;
+        this._genError = '';
+        try {
+            await this._executeAgent('agentGenerateDs', prompt);
+            const config: any = await getConfigProject(this.projectId);
+            const draft = config?.dsDraft;
+            if (!draft || draft.requestId !== requestId || !draft.tokens) throw new Error('generation produced no draft');
+            const keepName = this._name.trim();
+            const keepDesc = this._desc.trim();
+            this._loadDraft(draft.tokens, keepName || draft.name || '', keepDesc || draft.description || '', null);
+            delete config.dsDraft; // consume the one-shot draft
+            await updateConfigProject(this.projectId, config);
+        } catch (err) {
+            console.error('[selectDesignSystem] generate failed', err);
+            this._genError = this.msg.aiError;
+        }
+        this._generating = false;
+    }
+
+    private async _executeAgent(agentName: string, prompt: string): Promise<void> {
+        const fullName = '_102020_/l2/serviceExploreProjects';
+        let threadPromise = this._threadCache.get(fullName);
+        if (!threadPromise) {
+            threadPromise = (async () => {
+                let thread = await getThreadByName(fullName);
+                if (!thread) thread = await createThread(fullName, [], 'company');
+                return thread;
+            })();
+            this._threadCache.set(fullName, threadPromise);
+        }
+        const thread = await threadPromise;
+        const userId = getUserId();
+        const threadId = thread?.threadId;
+        if (!userId || !threadId) throw new Error('no user/thread for agent execution');
+
+        const moduleAgent = await loadAgent(agentName);
+        if (!moduleAgent) throw new Error('Invalid agent');
+        const context = getTemporaryContext(threadId, userId, prompt);
+        for await (const _event of executeBeforePromptStream(moduleAgent, context)) {
+            // consume the whole lifecycle (LLM + afterPromptStep) — result lands on the config
+        }
     }
 
     // ── the editor (palette + colors + typography + shape + elevation) ──
