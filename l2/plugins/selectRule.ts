@@ -135,21 +135,33 @@ export class PluginSelectRule extends StateLitElement {
         const project = getAuraState().actualProject;
 
         try {
+            // Current location: l4/rules/{module}Rules.defs.ts (e.g. cafeFlowRules.defs.ts),
+            // shape { ruleSetId, rules: [...] } — named export `{module}Rules` + default.
+            const l4Ref = `l4/rules/${modulePath}Rules.defs`;
             let mod: any = null;
-            // 1st option: module already compiled/in cache
             try {
-                mod = await import(`/_${project}_/l5/${modulePath}/rules.defs.js`);
+                mod = await import(`/_${project}_/${l4Ref}.js`);
             } catch {
                 mod = null;
             }
-            // 2nd option: file not in cache yet — read the stor file content
-            // and compile it via esbuild.
-            if (!Array.isArray(mod?.rulesPlan?.data?.rules) && !Array.isArray(mod?.default?.data?.rules)) {
-                mod = await loadModuleByBuild(`_${project}_/l5/${modulePath}/rules.defs.ts`);
+            if (!this._extractRules(mod, modulePath).length) {
+                try { mod = await loadModuleByBuild(`_${project}_/${l4Ref}.ts`); } catch { mod = null; }
             }
+            let rulesArr: any[] = this._extractRules(mod, modulePath);
 
-            const plan: any = mod?.rulesPlan ?? mod?.default ?? {};
-            const rulesArr: any[] = Array.isArray(plan?.data?.rules) ? plan.data.rules : [];
+            // Legacy fallback: l5/{module}/rules.defs.ts with rulesPlan.data.rules.
+            if (!rulesArr.length) {
+                try {
+                    mod = await import(`/_${project}_/l5/${modulePath}/rules.defs.js`);
+                } catch {
+                    mod = null;
+                }
+                if (!Array.isArray(mod?.rulesPlan?.data?.rules) && !Array.isArray(mod?.default?.data?.rules)) {
+                    try { mod = await loadModuleByBuild(`_${project}_/l5/${modulePath}/rules.defs.ts`); } catch { mod = null; }
+                }
+                const plan: any = mod?.rulesPlan ?? mod?.default ?? {};
+                rulesArr = Array.isArray(plan?.data?.rules) ? plan.data.rules : [];
+            }
             this._rules = rulesArr.map((r) => ({
                 id: r.ruleId ?? '',
                 title: r.title ?? r.ruleId ?? '',
@@ -165,6 +177,12 @@ export class PluginSelectRule extends StateLitElement {
         this._dispatchConfig();
         // @ts-ignore
         this.requestUpdate();
+    }
+
+    /** Rules from the l4 shape: `{ ruleSetId, rules: [...] }` via default or `{module}Rules` export. */
+    private _extractRules(mod: any, modulePath: string): any[] {
+        const bag = mod?.default ?? mod?.[`${modulePath}Rules`] ?? null;
+        return Array.isArray(bag?.rules) ? bag.rules : [];
     }
 
     private _dispatchConfig() {

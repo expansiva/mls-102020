@@ -229,8 +229,7 @@ export class PluginSelectPage extends StateLitElement {
         const ds = getAuraState().actualDesignSystem ?? 1;
         const variation = `page${layout}${ds}`;
 
-        // Pages now live in the project config.json (l0). Read the stor content
-        // and pull the frontend pages for the selected module.
+        // Pages live in the project config.json (l0), written by the register step.
         let pages: any[] = [];
         try {
             const content = await getContentByMlsPath(`_${project}_/l0/config.json`);
@@ -239,11 +238,12 @@ export class PluginSelectPage extends StateLitElement {
             const moduleDef = config?.projects?.[String(project)]?.modules
                 ?.find((m: any) => m.moduleId === modulePath);
             pages = moduleDef?.frontend?.pages ?? [];
-        } catch {
-            this._dispatchConfig();
-            this.requestUpdate();
-            return;
-        }
+        } catch { /* fall through to the stor scan below */ }
+
+        // Fallback: config.json absent or without this module (register step not run yet) →
+        // derive the pages from the physical files in {module}/web/{device}/page11 (always
+        // present after create). Synthetic entries mirror the config shape (pageId + source).
+        if (!pages.length) pages = this._scanPagesFromStor(project, modulePath);
 
         const pageMap = new Map<string, { devices: Set<string>; file: mls.stor.IFileInfo }>();
         let candidateCount = 0;
@@ -299,6 +299,26 @@ export class PluginSelectPage extends StateLitElement {
         this.requestUpdate();
         this._autoSelectActivePage();
         this._loadPageStatus();
+    }
+
+    /** Fallback page source: scan the stor for {module}/web/{device}/page11/*.ts pages and
+     *  return entries in the config.json shape ({ pageId, source }). Used when l0/config.json
+     *  is missing or has no entry for the module (frontend register step not run yet). */
+    private _scanPagesFromStor(project: number | null, modulePath: string): Array<{ pageId: string; source: string }> {
+        if (!project) return [];
+        const out: Array<{ pageId: string; source: string }> = [];
+        const seen = new Set<string>();
+        for (const f of Object.values(mls.stor.files) as any[]) {
+            if (!f || f.project !== project || f.level !== 2 || f.status === 'deleted') continue;
+            if (f.extension !== '.ts' || typeof f.shortName !== 'string' || !f.shortName) continue;
+            const folder = String(f.folder || '');
+            if (!folder.startsWith(`${modulePath}/web/`) || !/\/page11$/.test(folder)) continue;
+            const key = `${folder}/${f.shortName}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({ pageId: f.shortName, source: `l2/${folder}/${f.shortName}.ts` });
+        }
+        return out.sort((a, b) => a.pageId.localeCompare(b.pageId));
     }
 
     // Compute each page's DS-version check (stale / review / fresh + details). Only meaningful
