@@ -56,7 +56,7 @@ export const layoutAxes = {
     density:        { label: 'Density',         section: 'transversal', values: ['comfortable', 'compact'],              default: 'comfortable', essential: true },
     motion:         { label: 'Motion',          section: 'transversal', values: ['full', 'reduced', 'none'],             default: 'full' },
     labelPlacement: { label: 'Label placement', section: 'transversal', values: ['top', 'inline', 'floating'],           default: 'top', essential: true,
-                      groups: ['groupEnterText', 'groupEnterNumber', 'groupEnterMoney'] },
+                      groups: ['groupEnterText', 'groupEnterNumber', 'groupEnterMoney', 'groupEnterBoolean', 'groupEnterDate', 'groupEnterDatetime', 'groupEnterTime', 'groupEnterDateInterval', 'groupEnterDatetimeInterval', 'groupEnterTimeInterval', 'groupSelectOne', 'groupSelectMany', 'groupSelectFileForUpload'] },
     validation:     { label: 'Validation',      section: 'transversal', values: ['inline-below', 'tooltip', 'summary'],  default: 'inline-below', essential: true },
     requiredMark:   { label: 'Required mark',   section: 'transversal', values: ['asterisk', 'optional-tag', 'none'],    default: 'asterisk', essential: true },
     listOverflow:   { label: 'List overflow',   section: 'transversal', values: ['pagination', 'infinite', 'load-more'], default: 'pagination',
@@ -70,8 +70,8 @@ export const layoutAxes = {
     intervalInput:  { label: 'Interval input', section: 'input', values: ['dual-calendar', 'drag', 'presets', 'timeline', 'slider', 'fields', 'duration'], default: 'dual-calendar', groups: ['groupEnterDateInterval', 'groupEnterDatetimeInterval', 'groupEnterTimeInterval'] },
 
     // ── seleção ──
-    selectOne:      { label: 'Select one',  section: 'selection', values: ['dropdown', 'radio', 'segmented', 'cards', 'listbox', 'slider', 'dial'], default: 'dropdown', essential: true, groups: ['groupSelectOne'] },
-    selectMany:     { label: 'Select many', section: 'selection', values: ['dropdown', 'checkbox-list', 'dual-list', 'popover'], default: 'checkbox-list', essential: true, groups: ['groupSelectMany'] },
+    selectOne:      { label: 'Select one',  section: 'selection', values: ['dropdown', 'radio', 'segmented', 'cards', 'listbox', 'slider', 'dial', 'table'], default: 'dropdown', essential: true, groups: ['groupSelectOne'] },
+    selectMany:     { label: 'Select many', section: 'selection', values: ['dropdown', 'checkbox-list', 'dual-list', 'popover', 'tree'], default: 'checkbox-list', essential: true, groups: ['groupSelectMany'] },
     upload:         { label: 'File upload',  section: 'selection', values: ['dropzone', 'button', 'avatar'], default: 'dropzone', groups: ['groupSelectFileForUpload'] },
 
     // ── navegação ──
