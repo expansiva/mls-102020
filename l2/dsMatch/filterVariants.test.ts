@@ -45,14 +45,23 @@ export function runFilterVariantsTests(): { passed: number } {
         passed++;
     }
 
-    // 4. Wildcard always compatible; non-wildcard filtered by configured axis.
+    // 4. Wildcard survives when NO candidate declares the configured value.
     {
-        // labelPlacement configured = top → floating variant out, wildcard stays.
+        // labelPlacement configured = top → floating variant out (wrong value); the wildcard
+        // stays because no remaining candidate declares labelPlacement at all.
         const r = filterCompatibleVariants('groupEnterText', ds({ labelPlacement: 'top' }), new Set(['labelPlacement']), catalog);
         assert(JSON.stringify(variants(r)) === JSON.stringify(['ml-enter-text']), `expected wildcard only, got ${variants(r)}`);
         // labelPlacement NOT configured → both valid.
         const r2 = filterCompatibleVariants('groupEnterText', ds({}), new Set<string>(), catalog);
         assert(r2.length === 2, `expected both text variants, got ${r2.length}`);
+        passed++;
+    }
+
+    // 5. Explicit match beats wildcard: layout wants floating and a variant DECLARES it →
+    //    the undeclared (wildcard) variant does not attend the layout and is no candidate.
+    {
+        const r = filterCompatibleVariants('groupEnterText', ds({ labelPlacement: 'floating' }), new Set(['labelPlacement']), catalog);
+        assert(JSON.stringify(variants(r)) === JSON.stringify(['ml-floating-text-input']), `expected floating only, got ${variants(r)}`);
         passed++;
     }
 
