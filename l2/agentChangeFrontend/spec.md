@@ -5,14 +5,14 @@ Documento auto-contido (não depende de outros arquivos).
 
 ## Propósito
 
-Olhar o `statusFrontend` dos owners no `l4` e **fazer só o que está pendente** (um "to-be"): criar/atualizar/remover as **telas** + parte **shared** + **contrato BFF** + **layout** da página, chamar a **materialização** (`.defs.ts → .ts`) e registrar no **menu** (`config.json`). No fim, muda o `statusFrontend`. Pode ser chamado **a qualquer momento** e fazer **um único item** (uma tela, um arquivo). É idempotente: re-rodar só toca no que ainda não está `done`.
+Olhar o `statusFrontend` dos owners no `l4` e **fazer só o que está pendente** (um "to-be"): criar/atualizar/remover as **telas** + parte **shared** + **contrato BFF** + **layout** da página, chamar a **materialização** (`.defs.ts → .ts`) e assinar o **l5/project.json** (`masters.frontend`). No fim, muda o `statusFrontend`. O `config.json` do workspace é composto no publish (nodejsSaveConfigJson.ts), não pelo agente. Pode ser chamado **a qualquer momento** e fazer **um único item** (uma tela, um arquivo). É idempotente: re-rodar só toca no que ainda não está `done`.
 
 ## Modelo compartilhado (contexto auto-contido)
 
 **Camadas:** `l4` = business; `l5` = dados de projeto. Caminhos relevantes:
 - Lê de `l4`: `l4/{module}/ontology/*`, `l4/workflows/*`, `l4/operations/*`, `l4/rules/*`, `l4/{module}/module.defs.ts`.
 - Escreve direto nos `.defs.ts` finais de frontend: `l2/{module}/web/contracts/{page}.defs.ts`, `l2/{module}/web/shared/{page}.defs.ts` e `l2/{module}/web/{device}/{layout}/{page}.defs.ts`; e materializa para `.ts`.
-- Registra no menu: `l0/config.json` (mecanismo de menu já existente).
+- Assina o `l5/project.json` com `masters.frontend` (o menu/páginas do `config.json` é composto no publish a partir do l4 + l2 materializado).
 
 **Owners (de onde a tela nasce):**
 - **Workflow** = processo com estado/gatilho → telas de processo (1 tela por estado/passo) + BFF de transição.
@@ -35,7 +35,7 @@ São independentes — sem ordem obrigatória entre os dois workers nem ambiguid
 
 1. **Varrer** o `l4` em busca de owners (Operations/Workflows) com `statusFrontend` em `toCreate | toUpdate | toRemove` — ou processar **um item específico** recebido como argumento.
 2. Para cada item pendente:
-   - `toCreate` / `toUpdate`: gerar/atualizar a(s) página(s) do owner (contract + shared + page/layout com bffCommands tipados por ontologia); **materializar** (`.defs.ts → .ts` via materialização L2 existente); **registrar no menu** (`config.json`).
+   - `toCreate` / `toUpdate`: gerar/atualizar a(s) página(s) do owner (contract + shared + page/layout com bffCommands tipados por ontologia); **materializar** (`.defs.ts → .ts` via materialização L2 existente); **assinar o l5/project.json** (`masters.frontend`).
    - `toRemove`: remover página + shared + `.ts` materializado + entrada no menu (remoção em cascata do que era só daquele owner).
 3. **Mudar o `statusFrontend`** do item ao concluir.
 
@@ -45,7 +45,7 @@ São independentes — sem ordem obrigatória entre os dois workers nem ambiguid
 - `derive-pages` — do owner, decide as páginas (estado de Workflow / Operation).
 - `generate-page-defs` — por página: gera os três `.defs.ts` finais (`contract`, `shared`, `page/layout`) com pipeline.
 - `materialize` — chama a materialização L2 existente (`.defs.ts → .ts`).
-- `register-menu` — atualiza `config.json`.
+- `register-menu` — assina `l5/project.json` (masters.frontend).
 - `flip-status` — marca `statusFrontend = inProgress` ao iniciar e `statusFrontend = done` ao concluir.
 
 ## Entrada / Saída
@@ -65,7 +65,7 @@ Pega itens com `statusFrontend` em `toCreate | toUpdate | toRemove`; ao iniciar 
 
 ## Referências de artefato
 - Lê: `l4/...` (owners + ontologia + rules).
-- Escreve: `l2/{module}/web/contracts`, `l2/{module}/web/shared`, `l2/{module}/web/{device}/{layout}` + `.ts` materializado + `l0/config.json`.
+- Escreve: `l2/{module}/web/contracts`, `l2/{module}/web/shared`, `l2/{module}/web/{device}/{layout}` + `.ts` materializado + assinatura em `l5/project.json`.
 - Reusa o padrão de materialização L2, mas a implementação v1 fica local em `agentChangeFrontend` (`agentCfeMaterializeL2` / `agentCfeMaterializeGen`).
 
 ## Análise geral — agentPrepareDefsL2 e novo pipeline a partir do L4
