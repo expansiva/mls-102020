@@ -6,8 +6,9 @@
 //   2. reads Agent2's per-element variant picks (variantSelections = [{ id, group, tag }]);
 //   3. looks each tag up in the catalog and places a single `molecule` on the layout element
 //      (field/filter/action/container) — by id. Elements Agent2 rejected carry no molecule;
-//   4. repoints paths page11 → page{layout}{ds}, overrides pipeline skills + dependsFiles
-//      (DS global css + each molecule usage skill), stamps pageVersion, and writes the defs.
+//   4. repoints paths page11 → page{layout}{ds}, overrides the pipeline `skills`
+//      ([genome, DS, layout] + one usage skill per used molecule group) and adds the DS global
+//      css to `dependsFiles`, stamps pageVersion, and writes the defs.
 //
 // The semantic choice is done upstream (group = Agent1, variant = Agent2); this step only PLACES.
 
@@ -98,15 +99,18 @@ async function beforePromptStep(
     console.info(`[agentGenDefs] ${a.page}: ${placed} molécula(s) colocada(s) · ${unknownId} id-inválido · ${unknownTag} tag-inválida`);
 
     // 4. Repoint paths, override skills + dependsFiles, stamp, write.
+    // Usage skills go in the pipeline `skills` array (the materializer feeds `skills` to the LLM
+    // as skill sections; a `?key=skill` suffix on dependsFiles is understood by nobody).
     repointPaths(pipeline, a.layout, a.ds);
-    const skills = await resolvePageSkills(project, a.layout, a.ds);
+    const baseSkills = await resolvePageSkills(project, a.layout, a.ds);
     const cssRef = dsGlobalCssRef(project, a.ds);
     const usageList = [...usagePaths].sort();
+    const skills = [...baseSkills, ...usageList];
     for (const p of pipeline) {
       if (skills.length) p.skills = skills;
-      p.dependsFiles = mergeDepends(p.dependsFiles, cssRef, usageList);
+      p.dependsFiles = mergeDepends(p.dependsFiles, cssRef);
     }
-    console.info(`[agentGenDefs] ${a.page}: skills=[${skills.join(', ')}] · +css=${cssRef} · +${usageList.length} usage skill(s)`);
+    console.info(`[agentGenDefs] ${a.page}: skills=[${baseSkills.join(', ')}] + ${usageList.length} usage skill(s) · +css=${cssRef}`);
 
     let finalSrc = renderDefs(item.defsDestino, definition, pipeline, dedupeAssigned(assigned));
 
@@ -160,15 +164,10 @@ async function resolvePageSkills(project: number, layout: number | string, ds: n
   return [GENOME_SKILL, dsSkill, layoutSkill].filter(Boolean);
 }
 
-/** Merge the DS global css (plain) + molecule usage skills (?key=skill) into dependsFiles. */
-function mergeDepends(existing: unknown, cssRef: string, usagePaths: string[]): string[] {
+/** Merge the DS global stylesheet into dependsFiles (plain path — no query suffixes). */
+function mergeDepends(existing: unknown, cssRef: string): string[] {
   const out: string[] = Array.isArray(existing) ? existing.filter((x): x is string => typeof x === 'string') : [];
-  const has = (v: string) => out.includes(v);
-  if (!has(cssRef)) out.push(cssRef);
-  for (const u of usagePaths) {
-    const ref = `${u}?key=skill`;
-    if (!has(ref)) out.push(ref);
-  }
+  if (!out.includes(cssRef)) out.push(cssRef);
   return out;
 }
 

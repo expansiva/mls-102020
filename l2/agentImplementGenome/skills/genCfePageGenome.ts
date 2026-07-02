@@ -3,29 +3,85 @@
 export const skill = `
 # SKILL: Render the page genome (structure + molecules + design system)
 
-The FIXED base skill for every page{layout}{ds}. You extend the shared base class and ONLY
-render — no own state, handlers or i18n. Three jobs, in order:
+Generate the Lit render file for one frontend page genome: web/{device}/page{layout}{ds}
+(e.g. web/desktop/page22). This file extends the shared base class and only renders. It must
+not own state, define handlers or duplicate i18n. Three jobs, in order:
 1. render the STRUCTURE from \`definition.layout\`;
 2. render the MOLECULE assigned to each element;
-3. apply the DESIGN SYSTEM tokens (sections 1–6 below) — you do **not** invent colors, fonts or
-   spacing; every visual decision traces back to a token (derive hovers from the same role).
+3. style YOUR OWN markup (page scaffolding + slot content) with the design-system CSS variables.
 
----
+## Input contract
 
-## Structure — read \`definition.layout\`
+Definition is the page .defs.ts object:
+- page metadata
+- navigationRefs
+- sections[] compatibility summary
+- layout.sections[] as the source of truth for render structure
+- dataBindings
+- layout elements (fields/filters/actions/intentions) MAY carry a \`molecule\` assignment
 
-Use \`definition.layout.sections[].organisms[].intentions[]\` as the source of truth. Each
-intention has an \`intent\` plus \`fields[]\`, \`columns[]\`, \`filters[]\`, \`toolbar[]\`, \`rowActions[]\`,
-\`actions[]\`. Use \`section.titleKey\` / \`organism.titleKey\` / \`intention.titleKey\` /
-\`intention.emptyKey\` / \`field.labelKey\` / \`action.labelKey\` only as keys into \`this.msg\`
-(render a safe empty string when a key is missing — never invent keys).
+The page definition must not contain i18n values. All visible text values come from the shared .defs.ts / shared .ts context.
 
-Read the shared \`.ts\` FIRST and use ONLY its real @property names, handlers (\`handle…\`) and msg
-keys. Bind \`field.stateKey\` → the shared property; \`action.actionKey\`/\`action.action\` → the shared
-handler. Never invent names — degrade to read-only / disabled instead.
+Context Files must include:
+- shared .defs.ts: source of states, actions and i18n values
+- shared .ts: source of actual class name, @property names, handlers and msg keys
+- contract .defs.ts and contract .ts for type reference when needed
+- the DS global stylesheet (styles/<ds>/global.css) and one molecule USAGE skill per used group
 
-Per intent: \`commandForm\` → a form; \`queryList\` → a collection (table/grid/list); \`summary\` → a
-metric block; \`actionList\` → a button row; \`workflowStatus\` → a status/progress block.
+## Mandatory first step
+
+Read the shared .ts context before writing code and extract:
+1. Base class name from export class.
+2. Every @property() field name.
+3. Every method whose name starts with handle.
+4. Every method referenced by shared actions.
+5. Every msg/message key available.
+
+Use only those names in render().
+Never invent property names, handler names or msg keys from conventions.
+
+## File shape
+
+Generate:
+- MLS header from target outputPath, with enhancement="_102020_/l2/enhancementAura".
+- import { html } from 'lit';
+- import { customElement } from 'lit/decorators.js';
+- one side-effect import per DISTINCT molecule used: import '<molecule.import>';
+- import the exact base class from /_{project}_/l2/{moduleName}/web/shared/{pageName}.js
+- @customElement tag from outputPath using the same rule as /_102020_/l2/utils.ts convertFileToTag:
+  - Insert "-" before every uppercase letter that follows a lowercase letter or digit.
+  - Lowercase the result.
+  - Replace folder "/" with "--".
+  - Append "-{project}" to the page shortName.
+  - Example: folder cafeFlow/web/desktop/page22, page aiSalesSummary, project 102050 becomes cafe-flow--web--desktop--page22--ai-sales-summary-102050.
+  - Never collapse camelCase into lowercase-only names such as aisalessummary.
+- export class {ModulePascal}Desktop{PageFolderPascal}{PagePascal}Page extends {BaseClassName} (e.g. CafeFlowDesktopPage22AiSalesSummaryPage)
+- The only class method is render().
+
+Do not add @property fields.
+Do not add helper methods.
+Do not mutate state.
+Do not call setState.
+Do not duplicate i18n objects.
+
+## Mapping layout to render
+
+Use Definition.layout.sections[].
+Use section.titleKey, organism.titleKey, intention.titleKey, intention.emptyKey, field.labelKey and action.labelKey only as keys into this.msg.
+If a key does not exist in the shared class msg object, render a safe empty string or a short TODO comment; do not invent a new key.
+
+For every field/column/filter:
+- Use field.stateKey to find the corresponding shared state from shared .defs.ts.
+- Then use the property name actually declared in shared .ts.
+- If no shared state/property exists, render the control read-only or skip the value. Do not invent a property.
+
+For every action:
+- Use action.actionKey or action.action to find Definition.actions[] in shared .defs.ts.
+- Bind only to handlerName/methodName that exists in shared .ts.
+- If no handler exists, render the button disabled.
+
+Per intent: commandForm → a form; queryList → a collection (table/grid/list); summary → a
+metric block; actionList → a button row; workflowStatus → a status/progress block.
 
 ---
 
@@ -41,67 +97,71 @@ ANY element (a \`field\`/\`filter\`/\`column\`/\`action\`, or the intention itse
   skill (the matching \`…/skills/molecules/<group>/usage.ts\` is provided): fill its slots, bind its
   value to the shared property (via \`field.stateKey\`) and its change/input/submit/click to existing
   shared handlers.
-- **\`molecule\` ABSENT** → render a plain control (native input / table / button), still bound to the
-  shared state/handlers and msg keys.
+- **\`molecule\` ABSENT** → render a plain control (native input / table / button), still bound to
+  the shared state/handlers and msg keys, styled with the \`--ds-*\` variables.
 
-If a molecule needs a property/handler missing from shared \`.ts\`, degrade gracefully — never invent.
+If a molecule needs a property/handler missing from shared .ts, degrade gracefully — never invent.
 
-Once the structure + molecules are in place, theme everything with the design-system tokens:
+### Molecules are ALREADY themed — do not restyle them
 
----
+Molecule internals consume \`--ml-*\` CSS variables, and the design-system stylesheet already
+reconciles those to the DS (e.g. \`--ml-on-surface: var(--ds-text)\`). Theming is AUTOMATIC.
 
-## 1. The token contract you receive
+- Do NOT put color/background/border/radius/shadow classes on the molecule tag to "theme" it.
+- Do NOT set or override any \`--ml-*\` variable (inline, in a class, anywhere).
+- Do NOT reach into the molecule's internal DOM or restyle its parts.
+- What you MAY style is the **content you place inside its slot tags**: layout, spacing,
+  typography and text colors, using the same \`--ds-*\` variables. Never fight styles the
+  molecule already applies to its slots.
+- **\`data-class\`, not \`class\`, on the molecule host and on slot TAGS.** Molecules read extra
+  CSS classes from the \`data-class\` attribute (see each usage skill): a \`class\` attribute there
+  is ignored. Your own plain HTML elements (divs/spans INSIDE a slot) use normal \`class\`.
+- Layout-only utilities on the molecule host are fine (grid placement, width, margin) — e.g.
+  \`data-class="col-span-2"\` — they position the component without re-theming it.
 
-The design system is an object on \`designSystems[ds].tokens\` with this exact shape:
-
-\`\`\`jsonc
-{
-  "palette": ["#C85A2A", "#F2C57C", "#F6F1EB", "#3B2F2F", "#2E7D32"], // source swatches (authoring only — DO NOT consume directly)
-  "color": {                       // semantic roles — each has light + dark
-    "primary":    { "light": "#C85A2A", "dark": "#E0723F" },
-  },
-  "typography": {
-    "fontDisplay":   "Fraunces, serif",
-  },
-  "shape":     { "radius": "lg", "borderWidth": "1" },   // radius: none | sm | md | lg | full
-  "density":   "cozy",                                    // compact | cozy | comfortable
-  "elevation": "soft"                                     // none | soft | strong
-}
-\`\`\`
-
-> **\`palette\` is authoring input only** — it feeds the configuration UI. Always
-> consume the semantic **\`color\` roles**, never \`palette[0]\`, \`palette[1]\`, …
-> A role tells you *intent* (primary, surface, danger); a palette index does not.
-
----
-
-## 2. Step 1 — Nothing to set up: the variables are global
-
-**Do NOT emit a \`<style>\` block, and do NOT add any wrapper class.** The \`--ds-*\`
-variables are already defined on \`:root\` by this page's design-system stylesheet
-(\`_<project>_/l2/styles/<ds>/global.css\`), which the page's pipeline loads. Each page
-has exactly ONE design system, so the variables are simply available everywhere.
-
-Your only job is to **reference them** with \`var(--ds-*)\`:
+Example — molecule tag stays clean; only the slot CONTENT you author gets styling:
 
 \`\`\`html
-<div class="bg-[var(--ds-bg)] text-[color:var(--ds-text)] min-h-screen">
-  <!-- the whole page goes here -->
-</div>
+<groupviewcard--ml-vertical-card .isEditing=\${true} data-class="col-span-2">
+  <CardHeader>
+    <CardTitle data-class="font-[family-name:var(--ds-font-display)] text-lg font-semibold">
+      \${this.msg.criarOuAtualizarItemEstoqueLabel}
+    </CardTitle>
+    <CardDescription data-class="text-sm text-[color:var(--ds-muted)]">
+      \${this.msg.loadingListarItensEstoque}
+    </CardDescription>
+  </CardHeader>
+  <CardContent data-class="flex flex-col gap-3">
+    <!-- your own plain HTML inside the slot uses normal class, styled with --ds-* -->
+    <div class="flex items-center gap-2 text-[color:var(--ds-text)]">…</div>
+  </CardContent>
+</groupviewcard--ml-vertical-card>
 \`\`\`
-
-> **Why it just works:** the stylesheet defines \`:root { --ds-*: … }\` (light) and
-> \`:root.dark { … }\` (dark). Because these components render into the **light DOM**
-> (\`createRenderRoot() { return this; }\`), the \`:root\` variables **cascade into every
-> child — including the molecules and their slot tags**. Dark mode is the host \`.dark\`
-> toggle on \`<html>\`; \`:root.dark\` swaps the values automatically — no per-element
-> rework. Editing a token only regenerates that stylesheet; this page does not change.
 
 ---
 
-## 3. Step 2 — Apply the tokens with Tailwind
+## Design system — what you receive (and what you don't)
 
-Reference the variables through Tailwind **arbitrary values**
+You do NOT receive the design-system JSON. You receive the DS GLOBAL STYLESHEET
+(\`_<project>_/l2/styles/<ds>/global.css\`), already loaded by this page's pipeline. It defines,
+on \`:root\` (with dark overrides on \`:root.dark\`):
+
+- \`--ds-*\` variables — the vocabulary YOU style with: color roles (e.g. \`--ds-bg\`,
+  \`--ds-surface\`, \`--ds-text\`, \`--ds-muted\`, \`--ds-primary\`, \`--ds-accent\`, \`--ds-border\`,
+  \`--ds-success\`, \`--ds-danger\`), font roles (\`--ds-font-<role>\`), and possibly \`--ds-radius\`
+  and \`--ds-border-w\`;
+- \`--ml-*\` variables — molecule theming, reconciled to the \`--ds-*\` vars. These belong to the
+  molecules; you never reference or override them.
+
+**READ the stylesheet first** and use ONLY the \`--ds-*\` variables that actually exist in it.
+Never invent a variable; never hardcode a hex color. Do NOT emit a \`<style>\` block and do NOT
+add any wrapper class — components render in the light DOM
+(\`createRenderRoot() { return this; }\`), so the \`:root\` variables cascade into everything,
+molecules included; dark mode is the \`.dark\` toggle on \`<html>\` and needs no per-element work.
+
+---
+
+## Styling your markup with Tailwind (arbitrary values)
 
 ### Color → utility
 
@@ -116,136 +176,43 @@ Reference the variables through Tailwind **arbitrary values**
 | Borders / dividers | \`border-[color:var(--ds-border)]\` |
 | Success / danger states | \`text-[color:var(--ds-success)]\` / \`text-[color:var(--ds-danger)]\` |
 
-> For hover/active, layer opacity on the same role:
-> \`hover:bg-[var(--ds-primary)]/90\`. Do not introduce a new color.
+> Use only the roles present in the stylesheet. For hover/active, layer opacity on the same
+> role: \`hover:bg-[var(--ds-primary)]/90\`. Do not introduce a new color.
 
-### Typography → utility
+### Typography
 
 > **Font family — Tailwind v4 requires the \`family-name:\` type hint.** A bare
-> \`font-[var(--ds-font-display)]\` does NOT emit \`font-family\` (Tailwind can't tell if
-> \`font-[…]\` means family, size or weight). Always write \`font-[family-name:var(--ds-font-…)]\`.
-> Do NOT add a font fallback in the class — the variable already carries family + fallback.
+> \`font-[var(--ds-font-display)]\` does NOT emit \`font-family\`. Always write
+> \`font-[family-name:var(--ds-font-…)]\`; no extra fallback in the class — the variable
+> already carries family + fallback.
 
-- **Headings/titles:** \`font-[family-name:var(--ds-font-display)]\` + heading weight + \`tracking\` from token.
-- **Body/labels:** \`font-[family-name:var(--ds-font-body)]\` + body weight.
-- **Size scale** (from \`typography.scale\`) — pick the row, apply consistently:
+- **Headings/titles:** the display-like font role (e.g. \`--ds-font-display\`) + a heavier weight (\`font-semibold\`).
+- **Body/labels:** the body font role (e.g. \`--ds-font-body\`) + \`font-normal\`/\`font-medium\`.
+- **Sizes:** the stylesheet does not dictate sizes — pick ONE consistent scale for the whole
+  page (e.g. \`text-xs\` labels / \`text-sm\` body / \`text-lg\` headings) and never mix scales.
 
-| scale | body | label | heading |
-|-------|------|-------|---------|
-| \`compact\` | \`text-sm\` | \`text-xs\` | \`text-base\` |
-| \`comfortable\` | \`text-base\` | \`text-sm\` | \`text-lg\` |
-| \`spacious\` | \`text-lg\` | \`text-base\` | \`text-2xl\` |
+### Shape, spacing, elevation
 
-- **Weights:** \`weightHeading\`/\`weightBody\` map to \`font-medium\`/\`font-semibold\`/\`font-normal\` (\`600\`→\`font-semibold\`, \`500\`→\`font-medium\`, \`400\`→\`font-normal\`).
-- **Tracking:** \`tracking-tight\` | \`tracking-normal\` | \`tracking-wide\`.
-
-### Shape → utility (\`shape.radius\`, \`shape.borderWidth\`)
-
-\`shape.radius\` and \`shape.borderWidth\` are exposed as variables (\`--ds-radius\`,
-\`--ds-border-w\`) in \`global.css\`. Reference them so the radius/border stay uniform:
-
-- **Radius:** \`rounded-[var(--ds-radius,0.5rem)]\` on cards, inputs and buttons.
-- **Border width:** \`border border-[color:var(--ds-border)]\` (1px) or, for a custom
-  width, \`border-[length:var(--ds-border-w,1px)]\`.
-
-Apply the **same** radius across cards, inputs, and buttons — one shape language.
-
-### Density → spacing scale (\`density\`)
-
-| density | component padding | element gap | section gap |
-|---------|-------------------|-------------|-------------|
-| \`compact\` | \`p-3\` | \`gap-2\` | \`gap-4\` |
-| \`cozy\` | \`p-4\` | \`gap-3\` | \`gap-6\` |
-| \`comfortable\` | \`p-6\` | \`gap-4\` | \`gap-8\` |
-
-### Elevation → shadow (\`elevation\`)
-
-| elevation | surfaces |
-|-----------|----------|
-| \`none\` | no shadow — separate with \`border\` only |
-| \`soft\` | \`shadow-sm\` |
-| \`strong\` | \`shadow-md\` / \`shadow-lg\` for key surfaces |
+- **Radius:** \`rounded-[var(--ds-radius,0.5rem)]\` on cards, inputs and buttons — the SAME radius everywhere.
+- **Border:** \`border-[length:var(--ds-border-w,1px)] border-[color:var(--ds-border)]\`.
+- **Spacing:** choose ONE rhythm (e.g. \`p-4\` panels / \`gap-3\` elements / \`gap-6\` sections) and
+  apply it consistently — do not mix densities across the page.
+- **Elevation:** ONE shadow language for the whole page (border-only, or a consistent
+  \`shadow-sm\`) — never decorative multi-level shadows.
 
 ---
 
-## 4. Styling molecules (composition / slot tags)
-
-Molecules are **composed** — you fill their slot tags with your own markup.
-You do **not** restyle the molecule's internals; you style **the content you put
-inside the slots**, using the very same DS variables. Because molecules live in
-the light DOM, the \`--ds-*\` variables already cascade into them.
-
-Given a molecule used like this:
-
-\`\`\`html
-<groupviewcard--ml-vertical-card .isEditing=\${true}>
-  <CardHeader>
-    <CardTitle>\${this.msg.criarOuAtualizarItemEstoqueLabel}</CardTitle>
-    <CardDescription>\${this.msg.loadingListarItensEstoque}</CardDescription>
-  </CardHeader>
-  <CardContent>
-    <!-- fields … -->
-  </CardContent>
-</groupviewcard--ml-vertical-card>
-\`\`\`
-
-Apply the design system **on the slot tags and their children**:
-
-\`\`\`html
-<groupviewcard--ml-vertical-card
-  .isEditing=\${true}
-  class="bg-[var(--ds-surface)] border border-[color:var(--ds-border)] rounded-lg shadow-sm">
-  <CardHeader class="p-4 border-b border-[color:var(--ds-border)]">
-    <CardTitle class="font-[family-name:var(--ds-font-display)] text-lg font-semibold tracking-tight text-[color:var(--ds-text)]">
-      \${this.msg.criarOuAtualizarItemEstoqueLabel}
-    </CardTitle>
-    <CardDescription class="font-[family-name:var(--ds-font-body)] text-sm text-[color:var(--ds-muted)]">
-      \${this.msg.loadingListarItensEstoque}
-    </CardDescription>
-  </CardHeader>
-  <CardContent class="p-4 flex flex-col gap-3 text-[color:var(--ds-text)]">
-    <!-- fields, themed with the same tokens -->
-  </CardContent>
-</groupviewcard--ml-vertical-card>
-\`\`\`
-
-**Rules for molecule slots:**
-- Put the surface/border/radius/shadow on the **molecule root tag** (or its
-  outermost slot wrapper) — one themed container per molecule.
-- Title-like slots → display font + heading weight + \`--ds-text\`.
-- Description/helper slots → body font + \`--ds-muted\`.
-- Action slots (buttons inside the molecule) → \`--ds-primary\` background,
-  contrasting text; danger actions → \`--ds-danger\`.
-- Keep padding/gap from the **density** scale so molecules match the page rhythm.
-- Never reach into the molecule's own DOM or override its behavior — only theme
-  what you place in the slots.
-
----
-
-## 5. Hard rules (consistency)
+## Hard rules (consistency)
 
 ### ✅ Do
-- Resolve every visual choice to a token (\`color\` role, \`typography\`, \`shape\`, \`density\`, \`elevation\`).
-- Reference tokens through \`var(--ds-*)\` so light/dark and future edits propagate.
-- Use **one** radius, **one** density, **one** elevation language across the whole page.
+- Resolve every visual choice of YOUR markup to a \`--ds-*\` variable that exists in the stylesheet.
+- Keep one radius, one spacing rhythm, one shadow language, one type scale across the page.
 - Derive hover/active/disabled from the same role (opacity), not a new color.
 
 ### ❌ Never
-- Hardcode a bare hex in a class (\`bg-[#C85A2A]\`) — use \`var(--ds-primary)\`. 
-- Consume \`palette[i]\` directly — use the semantic \`color\` roles.
-- Mix radii/shadows/fonts not present in the tokens.
-- Restyle a molecule's internals — theme only its slots.
-- Add gradients, decorative shadows, or fonts the design system did not declare.
-
----
-
-## 6. Output checklist
-
-Before finishing, confirm:
-- [ ] NO inline \`<style>\` token block and NO \`ds-*\` wrapper class — variables come from \`:root\`.
-- [ ] Page background, surfaces, text, borders all use role variables (with fallbacks).
-- [ ] Headings use \`fontDisplay\`; body uses \`fontBody\`; sizes follow the \`scale\` row.
-- [ ] Radius, density and elevation are uniform and match the tokens.
-- [ ] Every composed molecule is themed on its slot tags with the same variables.
-- [ ] No raw hex, no \`palette[i]\`, no undeclared colors/fonts.
+- Hardcode a bare hex in a class (\`bg-[#C85A2A]\`) — use \`var(--ds-…)\`.
+- Invent a \`--ds-*\` variable that is not in the stylesheet.
+- Reference or override any \`--ml-*\` variable — molecule theming is automatic.
+- Re-theme a molecule (its tag or internals); style only the content you put in its slots.
+- Emit a \`<style>\` block, local CSS, gradients or fonts the stylesheet does not declare.
 `;
