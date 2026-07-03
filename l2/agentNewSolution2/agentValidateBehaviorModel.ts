@@ -8,7 +8,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createUpdateStatusIntent, getActorIdSet, getOntologyEntityIdSet, isKnownEntityRef, isRecord } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
-import { getApprovedModuleName, readOntologyEntities, readOperationDefs, readWorkflowDefs, saveBehaviorHealthReport } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import { getApprovedModuleName, readModuleRelationships, readOntologyEntities, readOperationDefs, readWorkflowDefs, saveBehaviorHealthReport } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finalize.js';
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
 import { type WorkflowDefinition } from '/_102020_/l2/agentNewSolution2/agentNs2WorkflowDefinition.js';
@@ -54,6 +54,16 @@ export async function computeBehaviorHealthReport(context: mls.msg.ExecutionCont
   const behavior = getBehaviorIndex(context).result;
   const moduleName = getApprovedModuleName(context) || '';
   const ontology = moduleName ? await readOntologyEntities(moduleName) : {};
+  // Composition map: root entity -> set of children declared `partOf` it (from module relationships).
+  const composedChildrenByRoot = new Map<string, Set<string>>();
+  for (const rel of moduleName ? await readModuleRelationships(moduleName) : []) {
+    if ((typeof rel.type === 'string' ? rel.type : '') !== 'partOf') continue;
+    const child = typeof rel.fromEntity === 'string' ? rel.fromEntity : '';
+    const rootEntity = typeof rel.toEntity === 'string' ? rel.toEntity : '';
+    if (!child || !rootEntity) continue;
+    if (!composedChildrenByRoot.has(rootEntity)) composedChildrenByRoot.set(rootEntity, new Set());
+    composedChildrenByRoot.get(rootEntity)!.add(child);
+  }
   const workflowDefs = (await readWorkflowDefs()).filter(isRecord) as unknown as WorkflowDefinition[];
   const operationDefs = (await readOperationDefs()).filter(isRecord) as unknown as OperationDefinition[];
   const journeyMap = await getJourneyMap(context);
@@ -116,7 +126,7 @@ export async function computeBehaviorHealthReport(context: mls.msg.ExecutionCont
     entityRef(o.entity, `operation ${o.operationId}`);
     for (const r of [...o.reads, ...o.writes]) entityRef(stripField(r), `operation ${o.operationId}`);
     ruleRefs(o.rulesApplied, `operation ${o.operationId}`);
-    validateOperationContract(o, ontology, knownEntities, journeyMap, errors, warnings);
+    validateOperationContract(o, ontology, knownEntities, composedChildrenByRoot, journeyMap, errors, warnings);
     if (currentOperationIds.has(o.operationId)) validateBffNaming(o, moduleName, errors);
   }
 
@@ -209,8 +219,24 @@ function collectCapabilityWorkspaceIds(journey: JourneyMap | null, workflows: Wo
   return byCapability;
 }
 
-function validateOperationContract(operation: OperationDefinition, ontology: Record<string, unknown>, knownEntities: Set<string>, journey: JourneyMap | null, errors: HealthFinding[], warnings: HealthFinding[]): void {
+function validateOperationContract(operation: OperationDefinition, ontology: Record<string, unknown>, knownEntities: Set<string>, composedChildrenByRoot: Map<string, Set<string>>, journey: JourneyMap | null, errors: HealthFinding[], warnings: HealthFinding[]): void {
   const where = `operation ${operation.operationId}`;
+
+  // Composition guarantee: a create/update that writes a child entity declared partOf the operation's
+  // root must expose that child as a composed input (e.g. items[]), so the BFF is a single command —
+  // never a separate "save order" then "save order item". The frontend cannot merge two commands.
+  const root = stripField(operation.entity || '');
+  const composedChildren = composedChildrenByRoot.get(root);
+  if ((operation.kind === 'create' || operation.kind === 'update') && composedChildren && composedChildren.size) {
+    const writeEntities = new Set((Array.isArray(operation.writes) ? operation.writes : []).map(stripField));
+    const inputEntities = new Set((Array.isArray(operation.inputs) ? operation.inputs : []).map(input => stripField(typeof input.fieldRef === 'string' ? input.fieldRef : '')));
+    for (const child of composedChildren) {
+      if (writeEntities.has(child) && !inputEntities.has(child)) {
+        errors.push({ severity: 'error', code: 'operation.input.compositionMissing', message: `${where}: writes composed child '${child}' (partOf '${root}') but declares no input for it — model it as a composed input (e.g. items[]) so the BFF stays a single command, not a separate save per child` });
+      }
+    }
+  }
+
   const access = isRecord(operation.accessPattern) ? operation.accessPattern : null;
   if (!access) {
     errors.push({ severity: 'error', code: 'operation.accessPattern.missing', message: `${where}: missing accessPattern` });

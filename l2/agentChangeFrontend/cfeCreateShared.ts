@@ -32,7 +32,13 @@ interface CfeOperationDef {
   reads: string[];
   writes: string[];
   rulesApplied: string[];
-  statusFrontend: string;
+  // Intent-level micro user flow (from l4 operation.story.steps). Drives field/organism ordering
+  // in the layout prompt; layout-agnostic, so any genome (page11/page12) can reinterpret it.
+  storySteps: string[];
+  // Generation status now comes from l5/{module}/todoFrontend.defs.ts (single source of truth).
+  todoStatus: string;
+  // Legacy inline status read from l4 only to warn about divergence; never used for decisions.
+  inlineStatusFrontend: string;
   capability?: Record<string, unknown>;
   moduleName: string;
   fileInfo: FileInfo;
@@ -48,12 +54,34 @@ interface CfeWorkflowDef {
   operationIds: string[];
   entities: string[];
   rulesApplied: string[];
-  statusFrontend: string;
+  storySteps: string[];
+  todoStatus: string;
+  inlineStatusFrontend: string;
   capabilities: Record<string, unknown>[];
   moduleName: string;
   fileInfo: FileInfo;
   exportName: string;
   data: Record<string, unknown>;
+}
+
+// L4 journey map (l4/{module}/journeys/{module}Journeys.defs.ts). Workspaces are the unit of
+// page grouping in the L4 v2 model: one page per workspace (an actor's coherent area), which
+// can split a single workflow across actors (e.g. orderLifecycle -> POS + kitchen workspaces).
+interface CfeJourneyWorkspace {
+  workspaceId: string;
+  title: string;
+  actor: string;
+  kind: string;              // workflow | entityManagement | dashboard | ...
+  entity: string;
+  workflowId?: string;
+  operationIds: string[];
+  purpose: string;
+}
+
+interface CfeJourneyMap {
+  moduleName: string;
+  workspaces: CfeJourneyWorkspace[];
+  navigationEdges: Record<string, unknown>[];
 }
 
 export interface CfePagePlan {
@@ -87,6 +115,7 @@ interface CfeCreateContext {
   operations: Map<string, CfeOperationDef>;
   workflows: Map<string, CfeWorkflowDef>;
   pages: CfePagePlan[];
+  warnings: string[];
 }
 
 export interface CfePreparedPage {
@@ -357,6 +386,7 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   const entities = new Map<string, CfeEntityDef>();
   const operations = new Map<string, CfeOperationDef>();
   const workflows = new Map<string, CfeWorkflowDef>();
+  const journeys = new Map<string, CfeJourneyMap>();
 
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted' || file.extension !== '.defs.ts') continue;
@@ -388,6 +418,9 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
         entityToModule.set(entity.entityId, moduleName);
         entities.set(entity.entityId, entity);
       }
+    } else if (folder.endsWith('/journeys')) {
+      const journey = journeyFromData(parsed.data, folder.split('/')[0]);
+      if (journey) journeys.set(journey.moduleName, journey);
     }
   }
 
@@ -404,7 +437,51 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   for (const operation of operations.values()) operation.moduleName = inferModule(operationEntities(operation), entityToModule, moduleFallback);
   for (const workflow of workflows.values()) workflow.moduleName = inferModule(workflow.entities, entityToModule, moduleFallback);
 
-  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, pages: buildPagePlans(workflows, operations, moduleFallback) };
+  // Generation status is owned by l5/{module}/todoFrontend.defs.ts; the l4 owner defs are read-only
+  // for this agent. Merge the todo status into each owner and fail loudly on plan/disk divergence.
+  const todoState = await readFrontendTodoState(project);
+  const warnings: string[] = [...todoState.warnings];
+  const ownerKeys = new Set<string>([
+    ...Array.from(operations.values()).map(op => `operation:${op.operationId}`),
+    ...Array.from(workflows.values()).map(wf => `workflow:${wf.workflowId}`),
+  ]);
+  if (ownerKeys.size > 0 && todoState.files === 0) {
+    throw new Error('l5/{module}/todoFrontend.defs.ts not found; frontend generation status must come from todoFrontend, not inline l4 statusFrontend.');
+  }
+  const missingTodo: string[] = [];
+  for (const operation of operations.values()) {
+    const todoOwner = todoState.ownersByKey.get(`operation:${operation.operationId}`);
+    if (!todoOwner) { missingTodo.push(`operation:${operation.operationId}`); continue; }
+    operation.todoStatus = todoOwner.status;
+    if (operation.inlineStatusFrontend && operation.inlineStatusFrontend !== todoOwner.status) {
+      warnings.push(`operation:${operation.operationId} inline statusFrontend=${operation.inlineStatusFrontend} ignored; todoFrontend=${todoOwner.status}`);
+    }
+  }
+  for (const workflow of workflows.values()) {
+    const todoOwner = todoState.ownersByKey.get(`workflow:${workflow.workflowId}`);
+    if (!todoOwner) { missingTodo.push(`workflow:${workflow.workflowId}`); continue; }
+    workflow.todoStatus = todoOwner.status;
+    if (workflow.inlineStatusFrontend && workflow.inlineStatusFrontend !== todoOwner.status) {
+      warnings.push(`workflow:${workflow.workflowId} inline statusFrontend=${workflow.inlineStatusFrontend} ignored; todoFrontend=${todoOwner.status}`);
+    }
+  }
+  const extraTodo = [...todoState.ownersByKey.keys()].filter(key => !ownerKeys.has(key));
+  if (missingTodo.length || extraTodo.length || todoState.errors.length) {
+    throw new Error([
+      ...todoState.errors,
+      ...(missingTodo.length ? [`todoFrontend missing l4 owner(s): ${missingTodo.slice(0, 12).join(', ')}`] : []),
+      ...(extraTodo.length ? [`todoFrontend has owner(s) absent from l4: ${extraTodo.slice(0, 12).join(', ')}`] : []),
+    ].join('; '));
+  }
+
+  // Navigation edges are advisory in v1: recorded in trace, never blocking (decision improveL2Test §6.7).
+  const journeyList = Array.from(journeys.values());
+  for (const journey of journeyList) {
+    const edgeCount = Array.isArray(journey.navigationEdges) ? journey.navigationEdges.length : 0;
+    if (edgeCount === 0) warnings.push(`journey ${journey.moduleName}: no navigationEdges; navigation falls back to selectedEntity from inputs`);
+  }
+
+  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList), warnings };
 }
 
 export async function generatePageDefs(page: CfePagePlan): Promise<void> {
@@ -893,10 +970,23 @@ function buildPageUserJourney(context: CfeCreateContext, page: CfePagePlan, oper
     });
   }
 
+  const workflowSteps = page.ownerIds
+    .filter(id => id.startsWith('workflow:'))
+    .flatMap(id => context.workflows.get(id.slice('workflow:'.length))?.storySteps || []);
+
   return {
     pageId: page.pageId,
     sourceKind: page.sourceKind,
     isMultiStep: page.sourceKind === 'workflow' || operations.length > 1 || mutationCommands.length > 1,
+    // Intent-level micro user flow from l4 story.steps: the primary ordering signal for fields/organisms.
+    microUserFlow: {
+      workflowSteps,
+      operations: operations.map(operation => ({
+        operationId: operation.operationId,
+        commandName: operation.commandName || operation.operationId,
+        steps: operation.storySteps,
+      })),
+    },
     operationsInOrder: operations.map(operation => ({
       operationId: operation.operationId,
       title: operation.title,
@@ -908,9 +998,10 @@ function buildPageUserJourney(context: CfeCreateContext, page: CfePagePlan, oper
     lifecycleEntities,
     recommendedStages,
     guidance: [
+      'Order fields and organisms following microUserFlow (l4 story.steps): the steps are the intended user sequence within the page.',
       'Preserve the order of operations when laying out intentions.',
       'Place query/list/selection context before create/update/status commands when both exist.',
-      'For order-like or parent-child flows, separate parent/header data, child item management, totals/summary and status actions.',
+      'For order-like or parent-child flows, a composed input (e.g. items[]) is a repeatable sub-form inside the SAME single submit — never a separate save per child.',
       'Use progressive disclosure or wizard-like stages only as semantic intent; page11 implementation remains plain render.',
     ],
   };
@@ -1559,9 +1650,68 @@ function stateNameFromKey(pageId: string, stateKey: string): string {
 }
 function contractTsPath(project: number, page: CfePagePlan): string { return `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`; }
 
-function buildPagePlans(workflows: Map<string, CfeWorkflowDef>, operations: Map<string, CfeOperationDef>, moduleFallback: string): CfePagePlan[] {
-  const pendingWorkflows = Array.from(workflows.values()).filter(owner => owner.statusFrontend === 'toCreate');
-  const pendingOperations = Array.from(operations.values()).filter(owner => owner.statusFrontend === 'toCreate');
+// Page grouping. When the L4 journey map declares workspaces, pages are derived per workspace
+// (the L4 v2 model): this can split one workflow across actors and group entityManagement CRUD
+// into a single page. Without a journey (or for owners not covered by any workspace), it falls
+// back to the legacy workflow/operation grouping.
+function buildPagePlans(workflows: Map<string, CfeWorkflowDef>, operations: Map<string, CfeOperationDef>, moduleFallback: string, journeys: CfeJourneyMap[] = []): CfePagePlan[] {
+  const pendingWorkflows = Array.from(workflows.values()).filter(owner => owner.todoStatus === 'toCreate');
+  const pendingOperations = Array.from(operations.values()).filter(owner => owner.todoStatus === 'toCreate');
+  const workspaces = journeys.flatMap(journey => journey.workspaces);
+  if (workspaces.length === 0) return buildLegacyPagePlans(pendingWorkflows, pendingOperations, moduleFallback);
+
+  const pendingOpsById = new Map(pendingOperations.map(op => [op.operationId, op]));
+  const pendingWfById = new Map(pendingWorkflows.map(wf => [wf.workflowId, wf]));
+  const coveredOps = new Set<string>();
+  const coveredWfs = new Set<string>();
+  const pages: CfePagePlan[] = [];
+
+  for (const ws of workspaces) {
+    const wsOps = ws.operationIds.map(id => pendingOpsById.get(id)).filter((op): op is CfeOperationDef => !!op);
+    const wsWf = ws.workflowId ? pendingWfById.get(ws.workflowId) : undefined;
+    if (wsOps.length === 0 && !wsWf) continue; // nothing pending in this workspace
+    wsOps.forEach(op => coveredOps.add(op.operationId));
+    if (wsWf) coveredWfs.add(wsWf.workflowId);
+    pages.push({
+      pageId: toSafeShortName(ws.workspaceId),
+      pageName: ws.title || humanizeId(ws.workspaceId),
+      moduleName: wsWf?.moduleName || wsOps[0]?.moduleName || moduleFallback,
+      sourceKind: ws.kind === 'workflow' ? 'workflow' : 'operation',
+      ownerIds: unique([...(wsWf ? [`workflow:${wsWf.workflowId}`] : []), ...wsOps.map(op => `operation:${op.operationId}`)]),
+      actorIds: unique([ws.actor, ...(wsWf ? wsWf.actors : []), ...wsOps.map(op => op.actor)]),
+      entityIds: unique([ws.entity, ...(wsWf ? wsWf.entities : []), ...wsOps.flatMap(operationEntities)]),
+      operationIds: unique(wsOps.map(op => op.operationId)),
+      rulesApplied: unique([...(wsWf ? wsWf.rulesApplied : []), ...wsOps.flatMap(op => op.rulesApplied)]),
+      capabilities: unique([...(wsWf ? wsWf.capabilities.map(capability => readString(capability.capabilityId)) : []), ...wsOps.map(op => readString(op.capability?.capabilityId))]),
+      origin: workspaceOrigin(ws, wsWf, wsOps),
+    });
+  }
+
+  // Pending owners not covered by any workspace keep the legacy grouping so nothing is dropped.
+  const leftoverWorkflows = pendingWorkflows.filter(wf => !coveredWfs.has(wf.workflowId));
+  const leftoverOperations = pendingOperations.filter(op => !coveredOps.has(op.operationId));
+  pages.push(...buildLegacyPagePlans(leftoverWorkflows, leftoverOperations, moduleFallback));
+  return pages.sort((a, b) => `${a.moduleName}:${a.pageId}`.localeCompare(`${b.moduleName}:${b.pageId}`));
+}
+
+function workspaceOrigin(ws: CfeJourneyWorkspace, workflow: CfeWorkflowDef | undefined, operations: CfeOperationDef[]): Record<string, unknown> {
+  const owners: Record<string, unknown>[] = [];
+  if (workflow) owners.push({ kind: 'workflow', id: workflow.workflowId, defPath: toDisplayRef(workflow.fileInfo) });
+  for (const operation of operations) owners.push({ kind: 'operation', id: operation.operationId, defPath: toDisplayRef(operation.fileInfo) });
+  return { source: 'l4-journey', workspaceId: ws.workspaceId, workspaceKind: ws.kind, workflowId: ws.workflowId, actor: ws.actor, entity: ws.entity, owners, microUserFlow: buildMicroUserFlow(workflow, operations) };
+}
+
+// Intent-level micro user flow recorded in the page origin (traceability) and fed to the layout
+// prompt. Derived from l4 story.steps each generation; never a page11-specific persisted layout.
+function buildMicroUserFlow(workflow: CfeWorkflowDef | undefined, operations: CfeOperationDef[]): Record<string, unknown> {
+  return {
+    source: 'l4/story.steps',
+    workflowSteps: workflow ? workflow.storySteps : [],
+    operations: operations.map(operation => ({ operationId: operation.operationId, commandName: operation.commandName || operation.operationId, steps: operation.storySteps })),
+  };
+}
+
+function buildLegacyPagePlans(pendingWorkflows: CfeWorkflowDef[], pendingOperations: CfeOperationDef[], moduleFallback: string): CfePagePlan[] {
   const pendingOpsById = new Map(pendingOperations.map(op => [op.operationId, op]));
   const operationIdsUsedByWorkflow = new Set<string>();
   const pages: CfePagePlan[] = [];
@@ -1615,10 +1765,13 @@ function pageOrigin(sourceKind: CfePagePlan['sourceKind'], owner: CfeWorkflowDef
   for (const operation of linkedOperations) {
     owners.push({ kind: 'operation', id: operation.operationId, defPath: toDisplayRef(operation.fileInfo) });
   }
+  const workflow = sourceKind === 'workflow' && 'workflowId' in owner ? owner : undefined;
+  const flowOperations = sourceKind === 'operation' && 'operationId' in owner ? [owner, ...linkedOperations] : linkedOperations;
   return {
     source: 'l4',
     sourceKind,
     owners,
+    microUserFlow: buildMicroUserFlow(workflow, flowOperations),
   };
 }
 
@@ -1736,22 +1889,72 @@ async function updateL5FrontendSignature(project: number): Promise<void> {
   await saveStorContent(fileInfo, `${JSON.stringify(cfg, null, 2)}\n`);
 }
 
+// Update generation status only in l5/{module}/todoFrontend.defs.ts. The l4 owner defs are
+// read-only for this agent (mirrors agentChangeBackend/todoBackend).
 async function updateOwnerStatuses(context: CfeCreateContext, ownerIds: string[], status: OwnerStatus): Promise<string[]> {
-  const updated: string[] = [];
-  const wanted = new Set(ownerIds);
-  for (const workflow of context.workflows.values()) {
-    const ownerId = `workflow:${workflow.workflowId}`;
-    if (!wanted.has(ownerId)) continue;
-    workflow.data.statusFrontend = status;
-    await saveConstDefault(workflow.fileInfo, workflow.exportName, workflow.data);
-    updated.push(ownerId);
+  return setTodoFrontendStatuses(context.project, new Set(ownerIds), status);
+}
+
+interface CfeTodoOwner { ownerType: string; ownerId: string; status: string; moduleName: string; }
+interface CfeTodoState { files: number; moduleNames: string[]; ownersByKey: Map<string, CfeTodoOwner>; warnings: string[]; errors: string[]; }
+
+function isOwnerStatus(status: string): boolean {
+  return status === 'toCreate' || status === 'toUpdate' || status === 'toRemove' || status === 'inProgress' || status === 'done';
+}
+
+async function readFrontendTodoState(project: number): Promise<CfeTodoState> {
+  const ownersByKey = new Map<string, CfeTodoOwner>();
+  const moduleNames = new Set<string>();
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  let files = 0;
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
+    if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoFrontend') continue;
+    files++;
+    const parsed = parseDefsSource(String(await file.getContent()));
+    if (!parsed) { errors.push(`invalid todoFrontend defs at l5/${String(file.folder || '')}/todoFrontend.defs.ts`); continue; }
+    const data = parsed.data;
+    const layer = readString(data.layer);
+    if (layer && layer !== 'frontend') warnings.push(`todoFrontend ${String(file.folder || '')} has layer=${layer}; treating as frontend by filename`);
+    const moduleName = readString(data.moduleName) || String(file.folder || '');
+    if (moduleName) moduleNames.add(moduleName);
+    const owners = Array.isArray(data.owners) ? data.owners.filter(isRecord) : [];
+    for (const raw of owners) {
+      const ownerType = readString(raw.ownerType);
+      const ownerId = readString(raw.ownerId);
+      const status = readString(raw.status);
+      if ((ownerType !== 'operation' && ownerType !== 'workflow') || !ownerId) { errors.push(`todoFrontend ${moduleName || String(file.folder || '')} has invalid owner entry`); continue; }
+      if (!isOwnerStatus(status)) { errors.push(`todoFrontend ${moduleName || String(file.folder || '')}/${ownerType}:${ownerId} has invalid status "${status}"`); continue; }
+      const key = `${ownerType}:${ownerId}`;
+      if (ownersByKey.has(key)) warnings.push(`duplicate todoFrontend owner ${key}; first entry kept`);
+      else ownersByKey.set(key, { ownerType, ownerId, status, moduleName });
+    }
   }
-  for (const operation of context.operations.values()) {
-    const ownerId = `operation:${operation.operationId}`;
-    if (!wanted.has(ownerId)) continue;
-    operation.data.statusFrontend = status;
-    await saveConstDefault(operation.fileInfo, operation.exportName, operation.data);
-    updated.push(ownerId);
+  return { files, moduleNames: Array.from(moduleNames).sort(), ownersByKey, warnings, errors };
+}
+
+async function setTodoFrontendStatuses(project: number, wanted: Set<string>, status: OwnerStatus): Promise<string[]> {
+  const updated: string[] = [];
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
+    if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoFrontend') continue;
+    const parsed = parseDefsSource(String(await file.getContent()));
+    if (!parsed) continue;
+    const owners = Array.isArray(parsed.data.owners) ? parsed.data.owners.filter(isRecord) : [];
+    let changed = false;
+    for (const owner of owners) {
+      const key = `${readString(owner.ownerType)}:${readString(owner.ownerId)}`;
+      if (!wanted.has(key)) continue;
+      owner.status = status;
+      updated.push(key);
+      changed = true;
+    }
+    if (changed) {
+      parsed.data.updatedAt = new Date().toISOString();
+      const fileInfo: FileInfo = { project: file.project, level: 5, folder: String(file.folder || ''), shortName: 'todoFrontend', extension: '.defs.ts' };
+      await saveConstDefault(fileInfo, parsed.exportName, parsed.data);
+    }
   }
   return updated;
 }
@@ -1825,7 +2028,7 @@ function pageRegisterMarkerFileInfo(project: number, page: CfePagePlan): FileInf
 function operationFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string): CfeOperationDef | null {
   const operationId = readString(data.operationId);
   if (!operationId) return null;
-  return { operationId, commandName: readString(data.commandName) || operationId, pageId: readString(data.pageId), bffName: readString(data.bffName), title: readString(data.title) || humanizeId(operationId), actor: readString(data.actor), entity: normalizeEntityRef(readString(data.entity)), kind: readString(data.kind), reads: readStringArray(data.reads), writes: readStringArray(data.writes), rulesApplied: readStringArray(data.rulesApplied), statusFrontend: readString(data.statusFrontend), capability: isRecord(data.capability) ? data.capability : undefined, moduleName: '', fileInfo, exportName, data };
+  return { operationId, commandName: readString(data.commandName) || operationId, pageId: readString(data.pageId), bffName: readString(data.bffName), title: readString(data.title) || humanizeId(operationId), actor: readString(data.actor), entity: normalizeEntityRef(readString(data.entity)), kind: readString(data.kind), reads: readStringArray(data.reads), writes: readStringArray(data.writes), rulesApplied: readStringArray(data.rulesApplied), storySteps: readStorySteps(data), todoStatus: '', inlineStatusFrontend: readString(data.statusFrontend), capability: isRecord(data.capability) ? data.capability : undefined, moduleName: '', fileInfo, exportName, data };
 }
 
 function syntheticOperation(page: CfePagePlan, operationId: string, project: number): CfeOperationDef {
@@ -1843,7 +2046,9 @@ function syntheticOperation(page: CfePagePlan, operationId: string, project: num
     reads: entity ? [entity] : [],
     writes: kind === 'query' || kind === 'view' ? [] : (entity ? [entity] : []),
     rulesApplied: page.rulesApplied,
-    statusFrontend: 'synthetic',
+    storySteps: [],
+    todoStatus: 'synthetic',
+    inlineStatusFrontend: '',
     capability: page.capabilities[0] ? { capabilityId: page.capabilities[0] } : undefined,
     moduleName: page.moduleName,
     fileInfo: { project, level: 4, folder: 'operations', shortName: operationId, extension: '.defs.ts' },
@@ -1863,7 +2068,24 @@ function inferOperationKind(operationId: string): string {
 function workflowFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string): CfeWorkflowDef | null {
   const workflowId = readString(data.workflowId);
   if (!workflowId) return null;
-  return { workflowId, pageId: readString(data.pageId) || workflowId, title: readString(data.title) || humanizeId(workflowId), actors: readStringArray(data.actors), operationIds: readStringArray(data.operationIds), entities: normalizeEntityRefs(readStringArray(data.entities)), rulesApplied: readStringArray(data.rulesApplied), statusFrontend: readString(data.statusFrontend), capabilities: Array.isArray(data.capabilities) ? data.capabilities.filter(isRecord) : [], moduleName: '', fileInfo, exportName, data };
+  return { workflowId, pageId: readString(data.pageId) || workflowId, title: readString(data.title) || humanizeId(workflowId), actors: readStringArray(data.actors), operationIds: readStringArray(data.operationIds), entities: normalizeEntityRefs(readStringArray(data.entities)), rulesApplied: readStringArray(data.rulesApplied), storySteps: readStorySteps(data), todoStatus: '', inlineStatusFrontend: readString(data.statusFrontend), capabilities: Array.isArray(data.capabilities) ? data.capabilities.filter(isRecord) : [], moduleName: '', fileInfo, exportName, data };
+}
+
+function journeyFromData(data: Record<string, unknown>, folderModule: string): CfeJourneyMap | null {
+  const moduleName = readString(data.moduleName) || folderModule;
+  if (!moduleName) return null;
+  const workspaces = (Array.isArray(data.workspaces) ? data.workspaces.filter(isRecord) : []).map(raw => ({
+    workspaceId: readString(raw.workspaceId),
+    title: readString(raw.title),
+    actor: readString(raw.actor),
+    kind: readString(raw.kind),
+    entity: normalizeEntityRef(readString(raw.entity)),
+    workflowId: readString(raw.workflowId) || undefined,
+    operationIds: readStringArray(raw.operationIds),
+    purpose: readString(raw.purpose),
+  })).filter(ws => ws.workspaceId);
+  const navigationEdges = Array.isArray(data.navigationEdges) ? data.navigationEdges.filter(isRecord) : [];
+  return { moduleName, workspaces, navigationEdges };
 }
 
 function entityFromData(data: Record<string, unknown>, fallbackId: string): CfeEntityDef | null {
@@ -1960,6 +2182,7 @@ function isSystemField(fieldId: string): boolean { return ['createdat', 'updated
 function isLikelyIdField(fieldId: string): boolean { return fieldId.toLowerCase().endsWith('id'); }
 function readString(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
 function readStringArray(value: unknown): string[] { return Array.isArray(value) ? value.map(readString).filter(Boolean) : []; }
+function readStorySteps(data: Record<string, unknown>): string[] { return isRecord(data.story) ? readStringArray(data.story.steps) : []; }
 function isRecord(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 function unique(values: string[]): string[] { return Array.from(new Set(values.filter(Boolean))); }
 function toSafeShortName(value: string): string { return value.trim().replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'page'; }

@@ -83,18 +83,30 @@ function normalizePrompt(prompt: string): string {
     .toLowerCase();
 }
 
+// Reset generation status in l5/{module}/todoFrontend.defs.ts (done -> toCreate). The l4 owner
+// defs are read-only for this agent; status lives only in the todo (mirrors agentChangeBackend).
 async function resetFrontendDoneStatuses(): Promise<{ updated: number; owners: string[] }> {
   const owners: string[] = [];
   const project = mls.actualProject || 0;
   for (const file of Object.values(mls.stor.files) as any[]) {
-    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted' || file.extension !== '.defs.ts') continue;
-    const folder = String(file.folder || '');
-    if (folder !== 'operations' && folder !== 'workflows') continue;
+    if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted' || file.extension !== '.defs.ts') continue;
+    if (String(file.shortName || '') !== 'todoFrontend') continue;
     const parsed = parseDefsSource(String(await file.getContent()));
-    if (!parsed || parsed.data.statusFrontend !== 'done') continue;
-    parsed.data.statusFrontend = 'toCreate';
-    await saveConstDefault(file, parsed.exportName, parsed.data);
-    owners.push(`${folder.slice(0, -1)}:${readString(parsed.data.operationId) || readString(parsed.data.workflowId) || file.shortName}`);
+    if (!parsed) continue;
+    const todoOwners = Array.isArray(parsed.data.owners)
+      ? parsed.data.owners.filter((o: unknown): o is Record<string, unknown> => !!o && typeof o === 'object' && !Array.isArray(o))
+      : [];
+    let changed = false;
+    for (const owner of todoOwners) {
+      if (readString(owner.status) !== 'done') continue;
+      owner.status = 'toCreate';
+      owners.push(`${readString(owner.ownerType)}:${readString(owner.ownerId)}`);
+      changed = true;
+    }
+    if (changed) {
+      parsed.data.updatedAt = new Date().toISOString();
+      await saveConstDefault(file, parsed.exportName, parsed.data);
+    }
   }
   return { updated: owners.length, owners };
 }
@@ -178,9 +190,9 @@ Uso:
 @@changeFrontend /help
 
 Comandos:
-- /run          : default. Varre o l4 por statusFrontend = toCreate e materializa .ts quando o .defs.ts for mais novo ou o .ts nao existir.
-- /rebuild all  : altera l4 operations/workflows com statusFrontend = done para toCreate, regenera .defs.ts e materializa .ts/config por updatedAt.
-- /rebuild defs : altera l4 operations/workflows com statusFrontend = done para toCreate e regenera somente os .defs.ts. Nao materializa .ts/config.
+- /run          : default. Varre o todoFrontend por status = toCreate e materializa .ts quando o .defs.ts for mais novo ou o .ts nao existir. O l4 e read-only.
+- /rebuild all  : altera owners do todoFrontend com status = done para toCreate, regenera .defs.ts e materializa .ts/config por updatedAt.
+- /rebuild defs : altera owners do todoFrontend com status = done para toCreate e regenera somente os .defs.ts. Nao materializa .ts/config.
 - /help         : mostra esta ajuda.
 
 Qualquer outro comando apenas mostra este help.`;

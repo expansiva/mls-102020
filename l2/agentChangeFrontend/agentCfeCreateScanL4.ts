@@ -13,7 +13,7 @@ export function createAgent(): IAgentAsync {
     agentName: 'agentCfeCreateScanL4',
     agentProject: 102020,
     agentFolder: 'agentChangeFrontend',
-    agentDescription: 'Scan l4 statusFrontend=toCreate and start create fan-out',
+    agentDescription: 'Scan todoFrontend=toCreate owners (l4 read-only) and start create fan-out',
     visibility: 'private',
     beforePromptStep,
   };
@@ -28,10 +28,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const materialize = createMaterializeStep(scanArgs, []);
         return [
           createAddStepIntent(context, parentStep, materialize),
-          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'No statusFrontend=toCreate owners. Queued materialization freshness check.'),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'No todoFrontend=toCreate owners. Queued materialization freshness check.'),
         ];
       }
-      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'No statusFrontend=toCreate owners.')];
+      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'No todoFrontend=toCreate owners.')];
     }
 
     const args = createContext.pages.map(page => JSON.stringify({ pageId: page.pageId }));

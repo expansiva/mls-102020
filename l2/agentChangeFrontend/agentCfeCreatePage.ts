@@ -122,9 +122,10 @@ Layout rules:
 - Prefer including result.pageLayout.i18n and result.pageLayout.dataBindings; use {} and [] when empty.
 - result.pageLayout.i18n must be a flat object of "key": "localized text for the project default locale";
   do not hard-code locale keys in the shape and do not return empty strings.
-- Before creating sections, read promptContext.userJourney. Use operationsInOrder and recommendedStages as the main sequence for the page.
+- Before creating sections, read promptContext.userJourney. The PRIMARY ordering signal is userJourney.microUserFlow (derived from l4 story.steps): order fields, intentions and organisms to follow those user steps. Use operationsInOrder and recommendedStages as secondary structure.
+- microUserFlow.operations[].steps is the intended intra-operation sequence (e.g. "select table" -> "add menu items" -> "confirm order"); order the command form fields to match it. microUserFlow.workflowSteps is the cross-operation sequence for workflow pages.
 - If userJourney.isMultiStep is true, create distinct intentions for the stages instead of one generic form.
-- For parent-child flows such as orders with items, separate the parent/header command, item management, totals/summary and status/conclusion actions.
+- For parent-child flows such as orders with items, a composed input (e.g. items[]) is a repeatable sub-form (add/remove lines) inside the SAME single submit command — never model a separate save for the child. Separate the parent/header fields, the repeatable item sub-form, totals/summary and the single confirm/submit action.
 - Query/list/selection intentions should appear before dependent create/update/status command intentions when both exist.
 - Use order numbers in increments of 10.
 - Always include fields, columns, filters, toolbar, rowActions and actions arrays on every intention;

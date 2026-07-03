@@ -3,9 +3,13 @@
 Projeto: master frontend (102020). Tipo: **worker (reconciliador) de frontend**.
 Documento auto-contido (não depende de outros arquivos).
 
+> **Atualização 2026-07-03 (P0 executado):** o status de geração migrou para `l5/{module}/todoFrontend.defs.ts` (fonte única, espelho do `todoBackend`). O **l4 é read-only** para este agente. Onde o texto histórico abaixo diz "`statusFrontend` no l4", leia "status do owner no `l5/todoFrontend`". O `agentNewSolution2` semeia os owners no `todoFrontend` com `status = toCreate`.
+
+> **Atualização 2026-07-03 (journeys + micro user flow):** o agrupamento de páginas passa a derivar dos **workspaces** do `l4/{module}/journeys` (uma página por workspace; fallback legado por workflow/operation quando não há journey). A ordenação de campos/organismos usa o **micro user flow** derivado de `operation.story.steps` (+ `workflow.story.steps`), passado no `promptContext.userJourney.microUserFlow` e registrado no `origin` da página (rastreabilidade). **Guardrail:** o micro user flow é de nível de intenção e é re-derivado da `story` a cada geração — NÃO é uma seção de layout persistida no page11; assim outros genomes (page12…) podem reinterpretá-lo livremente. As `navigationEdges` do journey são advisory (trace), não bloqueiam.
+
 ## Propósito
 
-Olhar o `statusFrontend` dos owners no `l4` e **fazer só o que está pendente** (um "to-be"): criar/atualizar/remover as **telas** + parte **shared** + **contrato BFF** + **layout** da página, chamar a **materialização** (`.defs.ts → .ts`) e assinar o **l5/project.json** (`masters.frontend`). No fim, muda o `statusFrontend`. O `config.json` do workspace é composto no publish (nodejsSaveConfigJson.ts), não pelo agente. Pode ser chamado **a qualquer momento** e fazer **um único item** (uma tela, um arquivo). É idempotente: re-rodar só toca no que ainda não está `done`.
+Olhar o status dos owners no `l5/todoFrontend` e **fazer só o que está pendente** (um "to-be"): criar/atualizar/remover as **telas** + parte **shared** + **contrato BFF** + **layout** da página, chamar a **materialização** (`.defs.ts → .ts`) e assinar o **l5/project.json** (`masters.frontend`). No fim, muda o status no `todoFrontend` (o l4 é read-only). O `config.json` do workspace é composto no publish (nodejsSaveConfigJson.ts), não pelo agente. Pode ser chamado **a qualquer momento** e fazer **um único item** (uma tela, um arquivo). É idempotente: re-rodar só toca no que ainda não está `done`.
 
 ## Modelo compartilhado (contexto auto-contido)
 
@@ -18,10 +22,10 @@ Olhar o `statusFrontend` dos owners no `l4` e **fazer só o que está pendente**
 - **Workflow** = processo com estado/gatilho → telas de processo (1 tela por estado/passo) + BFF de transição.
 - **Operation** = ação direta sobre 1 entidade (create/update/delete/query/view) → tela de gestão/consulta + BFF da ação. A Operation já traz a assinatura (entidades de ontologia que lê/escreve) = **contrato BFF de intenção**; aqui ela vira `bffCommands` concretos da página.
 
-**Status de reconciliação (DOIS campos independentes no item de Workflow/Operation):**
-`statusFrontend` e `statusBackend`, cada um com o enum `toCreate | toUpdate | toRemove | inProgress | done`.
-Este worker lê/escreve **apenas `statusFrontend`**; o `agentChangeBackend` cuida do `statusBackend`.
-São independentes — sem ordem obrigatória entre os dois workers nem ambiguidade de status único.
+**Status de reconciliação (DOIS todos independentes por camada, em `l5`):**
+`l5/{module}/todoFrontend.defs.ts` e `l5/{module}/todoBackend.defs.ts`, cada owner com o enum `toCreate | toUpdate | toRemove | inProgress | done`.
+Este worker lê/escreve **apenas `todoFrontend`**; o `agentChangeBackend` cuida do `todoBackend`. O l4 é read-only para ambos.
+São independentes — sem ordem obrigatória entre os dois workers nem ambiguidade de status único. Status inline legado no l4 (`statusFrontend`), se existir em módulo antigo, é ignorado para decisão e vira apenas warning de trace.
 
 **Espaço de IDs:** as referências de entidade usadas para derivar páginas/layout vêm SEMPRE do id de ontologia (qualificado entre módulos). **Nunca** nomes de agregado (`OrderAggregate`, `menuEntity`). O contrato frontend não deve publicar esses ids; eles ficam no L4 e são lidos diretamente pelo `agentChangeBackend`.
 
@@ -51,11 +55,11 @@ São independentes — sem ordem obrigatória entre os dois workers nem ambiguid
 ## Entrada / Saída
 
 - **Entrada:** `l4` do módulo (owners + `statusFrontend`). Opcional: um `operationId`/`workflowId`/página específico para processar só ele.
-- **Saída:** páginas/shared/contratos BFF criados/atualizados/removidos em `l2`, materializados em `.ts`, menu atualizado, e `statusFrontend` dos itens processados atualizado.
+- **Saída:** páginas/shared/contratos BFF criados/atualizados/removidos em `l2`, materializados em `.ts`, menu atualizado, e status dos itens processados atualizado **no `l5/todoFrontend`**.
 
-## Status (statusFrontend)
+## Status (l5/todoFrontend)
 
-Pega itens com `statusFrontend` em `toCreate | toUpdate | toRemove`; ao iniciar um item seta `statusFrontend = inProgress`; ao concluir a parte de frontend, marca `statusFrontend = done`. Não toca em owners `done` nem em owners `inProgress`, salvo se existir uma rotina explícita de recuperação. **Independente do backend:** o `agentChangeBackend` controla o `statusBackend` separadamente, então não há ordem obrigatória entre os dois workers nem a antiga ambiguidade do status único. Owners semeados pela Etapa 1 (`agentNewSolution2`) nascem com `statusFrontend = toCreate` e `statusBackend = toCreate`.
+Pega owners com status em `toCreate | toUpdate | toRemove` no `l5/{module}/todoFrontend.defs.ts`; ao iniciar um item seta `status = inProgress`; ao concluir a parte de frontend, marca `status = done`. **O l4 é read-only** — o agente nunca regrava owner do l4 para avançar status. Não toca em owners `done` nem em owners `inProgress`, salvo se existir uma rotina explícita de recuperação. **Independente do backend:** o `agentChangeBackend` controla o `todoBackend` separadamente, então não há ordem obrigatória entre os dois workers nem a antiga ambiguidade do status único. Owners semeados pela Etapa 1 (`agentNewSolution2`) nascem com `status = toCreate` no `todoFrontend` e no `todoBackend`. Divergência plano×disco (owner no l4 sem entrada no todo, ou vice-versa) falha o scan com erro objetivo.
 
 ## O que este agente NÃO faz
 

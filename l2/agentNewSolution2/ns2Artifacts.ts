@@ -242,6 +242,14 @@ export async function readOntologyEntities(moduleName: string): Promise<Record<s
   return map;
 }
 
+/** l4/{module}/module.defs.ts -> declared relationships[] (fromEntity/toEntity/type). */
+export async function readModuleRelationships(moduleName: string): Promise<Record<string, unknown>[]> {
+  for (const def of await readDefsObjectsInFolder(4, normalizeModuleFolderName(moduleName, 'module'))) {
+    if (Array.isArray(def.relationships)) return (def.relationships as unknown[]).filter(isRecord);
+  }
+  return [];
+}
+
 /** l4/workflows/*.defs.ts -> workflow definition objects. */
 export async function readWorkflowDefs(): Promise<Record<string, unknown>[]> {
   return readDefsObjectsInFolder(4, 'workflows');
