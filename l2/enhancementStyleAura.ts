@@ -66,7 +66,8 @@ export async function validateStyle(modelStyle: mls.editor.IModelStyle) {
         const isValid =
             selector === nav3MenuSelector ||
             selector === tagName ||
-            new RegExp(`^${tagName}\\.[a-zA-Z0-9_-]+$`).test(selector);
+            new RegExp(`^${tagName}\\.[a-zA-Z0-9_-]+$`).test(selector) ||
+            new RegExp(`^(\\.[a-zA-Z0-9_-]+|[a-zA-Z][a-zA-Z0-9-]*)\\[data-widget=["']${tagName}["']\\]$`).test(selector);
         if (!isValid) {
             const position = getLineSelectorByText(model, selector);
             if (position) markers.push(position);
@@ -100,7 +101,7 @@ function setErrorOnEditor(position: monaco.Position[], model: monaco.editor.ITex
     position.forEach((pos) => {
         const markerOptions = {
             severity: monaco.MarkerSeverity.Error,
-            message: `Invalid selector, must starting with tag or tag.class ex: '${tag} {' or '${tag}.myclass {'`,
+            message: `Invalid selector, must starting with tag, tag.class, .class[data-widget="tag"] or element[data-widget="tag"] ex: '${tag} {', '${tag}.myclass {', '.myclass[data-widget="${tag}"] {' or 'div[data-widget="${tag}"] {'`,
             startLineNumber: pos.lineNumber,
             startColumn: pos.column,
             endLineNumber: pos.lineNumber,
