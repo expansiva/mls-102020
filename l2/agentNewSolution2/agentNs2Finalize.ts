@@ -150,9 +150,15 @@ function buildDesignContext(context: mls.msg.ExecutionContext): Record<string, u
 function buildOntologyIndex(moduleName: string, entities: Record<string, unknown>): Record<string, Record<string, string>> {
   const index: Record<string, Record<string, string>> = {};
   for (const entityId of Object.keys(entities || {}).filter(Boolean)) {
+    const entity = isRecord(entities[entityId]) ? entities[entityId] as Record<string, unknown> : {};
+    // Preserve title/description/kind so downstream fan-outs (entity/operation definition) can match
+    // referenced entities by meaning, not just by exact id name. Only the id used to survive here.
     index[entityId] = {
       entityId,
       defPath: `l4/${moduleName}/ontology/${entityId}.defs.ts`,
+      ...(optionalString(entity.title) ? { title: optionalString(entity.title)! } : {}),
+      ...(optionalString(entity.description) ? { description: optionalString(entity.description)! } : {}),
+      ...(optionalString(entity.kind) ? { kind: optionalString(entity.kind)! } : {}),
     };
   }
   return index;
