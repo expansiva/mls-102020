@@ -178,7 +178,7 @@ function buildVariantSelectionsDefs(defsRef: string, selections: unknown): strin
 }
 
 const system1 = `
-<!-- modelType: codeinstruct3 -->
+<!-- modelType: codeinstruct -->
 
 You must return ONLY a valid JSON object. No preamble, no markdown fences. Start with { and end with }
 
