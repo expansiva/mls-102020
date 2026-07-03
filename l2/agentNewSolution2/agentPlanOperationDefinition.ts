@@ -20,7 +20,7 @@ import {
   resolveCapabilityInfo,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
-import { getApprovedModuleName, operationFileInfo, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import { getApprovedModuleName, operationFileInfo, readOntologyEntities, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { operationDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getOperationIndex } from '/_102020_/l2/agentNewSolution2/agentPlanOperationIndex.js';
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
@@ -118,8 +118,8 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     console.error(`[${AGENT_NAME}] ${traceMsg}`);
   }
   if (status === 'completed' && output && output.status === 'ok') {
+    const def = output.result.operationDefinition;
     try {
-      const def = output.result.operationDefinition;
       // Attach the realized capability (id + title + priority) deterministically. A classified operation
       // carries its own capabilityId; an operation synthesized from a workflow's operationIds inherits the
       // capability of the workflow that orchestrates it.
@@ -128,9 +128,29 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
         ?? behavior.workflows.find(w => (w.operationIds || []).includes(def.operationId))?.capabilityIds[0];
       def.capability = capabilityId ? resolveCapabilityInfo([capabilityId], getFinalizeOutput(context).result.capabilities as unknown[])[0] : undefined;
       attachBffNaming(context, def);
-      await saveDefsArtifact(operationFileInfo(def.operationId), `operation${capitalize(def.operationId)}`, def);
+      // Deterministic repair: rewrite generic 'Entity.id' refs to the entity's canonical pk field
+      // (convention '<entity>Id') when it resolves in the ontology — removes a common LLM slip that
+      // otherwise hard-fails validation (operation.context.origin.unknown / accessPattern.key.unknown).
+      try { normalizeIdRefs(def, await readOntologyEntities(getApprovedModuleName(context) || '')); } catch { /* ontology optional */ }
     } catch (error) {
-      console.warn(`[${AGENT_NAME}] save failed for ${selector}`, error);
+      status = 'failed';
+      traceMsg = `prepare failed for operation ${selector}: ${error instanceof Error ? error.message : String(error)}`;
+      console.error(`[${AGENT_NAME}] ${traceMsg}`);
+    }
+    // Save with one retry, then fail loudly (mirrors agentNs2EntityDefinition §14.1): a swallowed save
+    // used to leave the operation missing on disk and only surface later as plan.disk.divergence.
+    if (status === 'completed') {
+      try {
+        await saveDefsArtifact(operationFileInfo(def.operationId), `operation${capitalize(def.operationId)}`, def);
+      } catch (firstError) {
+        try {
+          await saveDefsArtifact(operationFileInfo(def.operationId), `operation${capitalize(def.operationId)}`, def);
+        } catch (secondError) {
+          status = 'failed';
+          traceMsg = `save failed for operation ${selector}: ${secondError instanceof Error ? secondError.message : String(secondError)}`;
+          console.error(`[${AGENT_NAME}] ${traceMsg}`);
+        }
+      }
     }
   }
   await saveAgentTrace(context, AGENT_NAME, step);
@@ -249,6 +269,32 @@ function pageIdForOperation(context: mls.msg.ExecutionContext, operationId: stri
 
 function capitalize(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
+// Rewrite generic 'Entity.id' refs to the entity's canonical pk field (convention '<entity>Id', e.g.
+// Order.id -> Order.orderId) when the pk resolves in the ontology and no literal 'id' field exists.
+// Conservative: leaves the ref untouched if the entity/pk is unknown, so a real error still surfaces.
+function normalizeIdRefs(def: OperationDefinition, ontology: Record<string, Record<string, unknown>>): void {
+  const fix = (ref: string): string => {
+    const dot = ref.indexOf('.');
+    if (dot <= 0 || ref.slice(dot + 1) !== 'id') return ref;
+    const entity = ref.slice(0, dot);
+    const ent = ontology[entity];
+    if (!ent || fieldExists(ent, 'id')) return ref;
+    const pk = `${entity.charAt(0).toLowerCase()}${entity.slice(1)}Id`;
+    return fieldExists(ent, pk) ? `${entity}.${pk}` : ref;
+  };
+  if (Array.isArray(def.inputs)) for (const input of def.inputs) if (typeof input.fieldRef === 'string') input.fieldRef = fix(input.fieldRef);
+  if (Array.isArray(def.contextResolution)) for (const ctx of def.contextResolution) {
+    if (typeof ctx.targetRef === 'string') ctx.targetRef = fix(ctx.targetRef);
+    if (typeof ctx.originRef === 'string') ctx.originRef = fix(ctx.originRef);
+  }
+  if (def.accessPattern && typeof def.accessPattern.keyField === 'string') def.accessPattern.keyField = fix(def.accessPattern.keyField);
+}
+
+function fieldExists(entity: Record<string, unknown>, fieldId: string): boolean {
+  const fields = Array.isArray(entity.fields) ? entity.fields : [];
+  return fields.some(field => !!field && typeof field === 'object' && (field as Record<string, unknown>).fieldId === fieldId);
 }
 
 const systemPrompt = `
