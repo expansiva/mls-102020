@@ -9,11 +9,14 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAgentStepByAgentName, getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
-import { createUpdateStatusIntent, getInitialPlanSummary } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
+import { createUpdateStatusIntent, getInitialPlanSummary, isRecord } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import {
   clearRunArtifacts,
   getApprovedModuleName,
   readBehaviorHealthReport,
+  readOperationDefs,
+  readWorkflowDefs,
+  writeGenerationTodo,
   writeProcessRun,
   type ProcessNextStep,
   type ProcessRun,
@@ -41,6 +44,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 async function autoFinish(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   const moduleName = getApprovedModuleName(context) || normalizeModuleFolderName(String((getInitialPlanSummary(context).moduleName) || 'module'), 'module');
 
+  try { await writeLayerTodos(moduleName); } catch (error) { console.warn(`[${AGENT_NAME}] writeLayerTodos failed`, error); }
   try { await writeProcessRun(moduleName, buildRun(moduleName)); } catch (error) { console.warn(`[${AGENT_NAME}] writeProcessRun failed`, error); }
   try { await clearRunArtifacts(moduleName); } catch (error) { console.warn(`[${AGENT_NAME}] clearRunArtifacts failed`, error); }
 
@@ -73,12 +77,48 @@ function buildRun(moduleName: string): ProcessRun {
       operations: 'l4/operations/*.defs.ts',
       journeys: `l4/${moduleName}/journeys/*.defs.ts`,
       ontology: `l4/${moduleName}/ontology/*.defs.ts`,
+      todoFrontend: `l5/${moduleName}/todoFrontend.defs.ts`,
+      todoBackend: `l5/${moduleName}/todoBackend.defs.ts`,
     },
     handoffNotes: [
       'l4/workflows carries pageId. l4/operations carries pageId, commandName and bffName. Stage 2 contracts and Stage 3 controllers must use bffName as the shared route key instead of deriving {module}.{page}.{command} independently.',
       'l4/{module}/journeys carries actor landings, workspaces, navigation edges and input origins. Stage 2 should use it to group operations into navigable workspaces instead of producing isolated pages.',
+      'l5/{module}/todoFrontend.defs.ts and todoBackend.defs.ts carry generation status per layer; l4 owners are read-only after Stage 1.',
     ],
     nextSteps,
+  };
+}
+
+async function writeLayerTodos(moduleName: string): Promise<void> {
+  const workflows = (await readWorkflowDefs()).filter(isRecord);
+  const operations = (await readOperationDefs()).filter(isRecord);
+  const owners = [
+    ...workflows.map(workflow => buildTodoOwner('workflow', workflow)),
+    ...operations.map(operation => buildTodoOwner('operation', operation)),
+  ].filter(owner => isRecord(owner) && readString(owner.ownerId));
+  await writeGenerationTodo(moduleName, 'frontend', owners);
+  await writeGenerationTodo(moduleName, 'backend', owners);
+}
+
+function buildTodoOwner(ownerType: 'workflow' | 'operation', owner: Record<string, unknown>): Record<string, unknown> {
+  const ownerId = readString(ownerType === 'workflow' ? owner.workflowId : owner.operationId);
+  const title = readString(owner.title) || ownerId;
+  const pageId = readString(owner.pageId);
+  const commandName = readString(owner.commandName);
+  const bffName = readString(owner.bffName);
+  const capability = isRecord(owner.capability) ? owner.capability : undefined;
+  const capabilities = Array.isArray(owner.capabilities) ? owner.capabilities.filter(isRecord) : [];
+  const capabilityId = readString(capability?.capabilityId) || readString(capabilities[0]?.capabilityId);
+  return {
+    ownerType,
+    ownerId,
+    title,
+    status: 'toCreate',
+    defPath: ownerType === 'workflow' ? `l4/workflows/${ownerId}.defs.ts` : `l4/operations/${ownerId}.defs.ts`,
+    ...(pageId ? { pageId } : {}),
+    ...(commandName ? { commandName } : {}),
+    ...(bffName ? { bffName } : {}),
+    ...(capabilityId ? { capabilityId } : {}),
   };
 }
 
@@ -122,6 +162,10 @@ function buildParentMap(steps: mls.msg.AIPayload[]): Map<number, number> {
     for (const child of s.interaction?.payload || []) if (child && typeof (child as { stepId?: number }).stepId === 'number') map.set((child as { stepId: number }).stepId, s.stepId);
   }
   return map;
+}
+
+function readString(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : '';
 }
 
 async function openStepView(agent: IAgentMeta, context: mls.msg.ExecutionContext, step: mls.msg.AIAgentStep): Promise<HTMLElement> {

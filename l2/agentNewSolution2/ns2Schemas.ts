@@ -436,11 +436,14 @@ const operationInputSchema = {
 const operationContextResolutionSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['fieldRef', 'source', 'description'],
+  required: ['targetRef', 'source', 'originRef', 'description'],
   properties: {
     inputId: str,
-    fieldRef: str,
+    // targetRef is the operation/BFF/ontology field being resolved. fieldRef is kept out on purpose:
+    // previous generations confused the target with runtime origins such as actorSession/currentWorkspace.
+    targetRef: str,
     source: contextSource,
+    originRef: str,
     description: str,
   },
 } as const;

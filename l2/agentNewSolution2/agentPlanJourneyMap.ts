@@ -233,8 +233,16 @@ In result.journeyMap:
 
 Rules:
 - Every operation with priority now must be reachable from a landing through a workspace and/or edge.
+- navigationEdges[] cannot be empty when there is more than one reachable step. Declare the minimal
+  edges needed for the business journey: entity management list -> detail/action with the selected
+  Entity.id transported, and workflow step -> next step with the workflow entity id transported.
 - Required id inputs should come from selectedEntity, routeParam, activeLifecycleInstance,
   workflowState or previousStepOutput. Do not model "type an id manually" as a normal journey.
+- For entityManagement workspaces, model the list-to-action transition explicitly. A self-edge is
+  acceptable when the list/detail/action live in the same workspace, but its data[] must still carry
+  the selected entity id (for example selected MenuItem.menuItemId).
+- routeParam and previousStepOutput inputs must have a matching inputResolution AND an edge data row
+  that explains where the value travels from.
 - A workspace actor must be authorized for every operation it exposes.
 - entityManagement is an experience grouping only; do not merge or delete operation contracts.
 - Prefer simple, obvious workspaces over speculative UX structure.

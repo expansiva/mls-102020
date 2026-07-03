@@ -50,8 +50,8 @@ the module journey map.
 | plan-operation-definition | agentPlanOperationDefinition | **new** — fan-out (1/operation) |
 | plan-journey-map | agentPlanJourneyMap | **new** — L4 journey map |
 | org-handoff | agentNewSolution2Handoff | no-LLM container (separate from Final so only final-resume shows the "open summary" link) |
-| behavior-validate | agentValidateBehaviorModel | **new** — deterministic, non-blocking, reads saved l4 files |
-| final-resume | agentNewSolution2Final | **auto-finish** (no clarification): freezes run, cleans, completes; openStepView shows the summary |
+| behavior-validate | agentValidateBehaviorModel | **new** — deterministic, blocking on errors, reads saved l4 files |
+| final-resume | agentNewSolution2Final | **auto-finish** (no clarification): writes process + layer todos, cleans, completes; openStepView shows the summary |
 
 ## Plumbing (self-contained, no imports from the old agentNewSolution)
 
@@ -92,11 +92,10 @@ the module journey map.
   `capabilities[]` and each operation carries `capability` (id + title + priority), attached
   mechanically at save — so workflows/operations are the source of truth for "which feature + phase".
   The priority rationale also lives in `module.defs.ts.designContext.decisions`.
-- **Per-stage owner status for Stage 2/3.** Each persisted workflow/operation carries TWO independent
-  statuses — `statusFrontend` and `statusBackend` (each `toCreate|toUpdate|toRemove|inProgress|done`),
-  both seeded `toCreate`. `agentChangeFrontend` reads/writes `statusFrontend`; `agentChangeBackend`
-  reads/writes `statusBackend`. Each reconciler processes owners whose own status `!= done` and flips
-  it independently (no single-status ambiguity). Stage 1 leaves an explicit per-stage to-do list.
+- **Per-stage owner status for Stage 2/3 lives outside l4.** Persisted workflow/operation owners are
+  read-only after Stage 1. `final-resume` writes `l5/{module}/todoFrontend.defs.ts` and
+  `l5/{module}/todoBackend.defs.ts`, both seeded with all owners as `toCreate`. Stage 2/3 mutate their
+  own todo file, not the l4 owner definitions.
 - **BFF naming source of truth.** Each workflow carries canonical `pageId`. Each operation carries
   `pageId`, `commandName` and `bffName = {moduleName}.{pageId}.{commandName}`. The operation page is
   the workflow that orchestrates it, or the operation itself when no workflow owns it. Stage 2 and

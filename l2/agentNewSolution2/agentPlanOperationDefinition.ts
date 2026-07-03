@@ -18,8 +18,6 @@ import {
   normalizeStringList,
   optionalString,
   resolveCapabilityInfo,
-  EXPERIENCE_STATUS_INITIAL,
-  type ExperienceStatus,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import { getApprovedModuleName, operationFileInfo, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
@@ -54,11 +52,6 @@ export interface OperationDefinition {
   // Mechanically attached at save (not from the LLM): the capability this operation realizes + its
   // priority — makes the operation the source of truth for "which feature + phase" it covers.
   capability?: { capabilityId: string; title: string; actor?: string; priority?: string };
-  // Independent reconciler statuses: agentChangeFrontend reads/writes statusFrontend, agentChangeBackend
-  // reads/writes statusBackend. Each is toCreate|toUpdate|toRemove|inProgress|done; both seeded
-  // 'toCreate' on creation. Decoupling them avoids the single-status ambiguity between the two stages.
-  statusFrontend?: ExperienceStatus;
-  statusBackend?: ExperienceStatus;
 }
 export type OperationContextSource = 'userInput' | 'actorSession' | 'currentWorkspace' | 'selectedEntity' | 'activeLifecycleInstance' | 'workflowState' | 'routeParam' | 'previousStepOutput' | 'systemDefault';
 export interface OperationAccessPattern {
@@ -81,8 +74,9 @@ export interface OperationInput {
 }
 export interface OperationContextResolution {
   inputId?: string;
-  fieldRef: string;
+  targetRef: string;
   source: OperationContextSource;
+  originRef: string;
   description: string;
 }
 export interface OperationDefinitionResult { operationDefinition: OperationDefinition }
@@ -134,8 +128,6 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
         ?? behavior.workflows.find(w => (w.operationIds || []).includes(def.operationId))?.capabilityIds[0];
       def.capability = capabilityId ? resolveCapabilityInfo([capabilityId], getFinalizeOutput(context).result.capabilities as unknown[])[0] : undefined;
       attachBffNaming(context, def);
-      def.statusFrontend = EXPERIENCE_STATUS_INITIAL; // agentChangeFrontend picks up statusFrontend != 'done'
-      def.statusBackend = EXPERIENCE_STATUS_INITIAL;   // agentChangeBackend picks up statusBackend != 'done'
       await saveDefsArtifact(operationFileInfo(def.operationId), `operation${capitalize(def.operationId)}`, def);
     } catch (error) {
       console.warn(`[${AGENT_NAME}] save failed for ${selector}`, error);
@@ -224,8 +216,9 @@ function normalizeContextResolution(value: unknown, path: string): OperationCont
     const ctx = assertRecord(item, `${path}[${index}]`);
     return {
       inputId: optionalString(ctx.inputId),
-      fieldRef: assertString(ctx.fieldRef, `${path}[${index}].fieldRef`),
+      targetRef: assertString(ctx.targetRef, `${path}[${index}].targetRef`),
       source: normalizeContextSource(ctx.source, `${path}[${index}].source`),
+      originRef: assertString(ctx.originRef, `${path}[${index}].originRef`),
       description: assertString(ctx.description, `${path}[${index}].description`),
     };
   });
@@ -279,6 +272,8 @@ Rules:
 - accessPattern.kind must be exactly one of list|getById|lookup|commandInput. For query/view, choose
   the user journey's best access: list for browsable sets, getById only when the journey already
   carries a selected id, lookup for compact selectors. For create/update/delete use commandInput.
+- accessPattern.keyField, when present, must be fully qualified as Entity.field (example:
+  Shift.shiftId, never shiftId).
 - inputs[] must list every BFF input the frontend/backend contract needs. Each input.fieldRef must be
   an ontology field ref (Entity.field or Entity) and each input.source must be one of:
   userInput, actorSession, currentWorkspace, selectedEntity, activeLifecycleInstance, workflowState,
@@ -286,8 +281,20 @@ Rules:
 - Required identifier inputs (id fields) must not be plain userInput. Resolve them from routeParam,
   selectedEntity, activeLifecycleInstance, workflowState or previousStepOutput whenever the system can
   know the value. If the actor selects it from a list/detail, use selectedEntity or previousStepOutput.
-- contextResolution[] declares fields resolved by the system/runtime, never typed manually. Do not put
-  persistence/table/usecase internals here.
+- contextResolution[] declares fields resolved by the system/runtime, never typed manually. Each item
+  must have targetRef, source and originRef:
+  - targetRef = the operation input or ontology/BFF field being filled. If it is business data, use
+    Entity.field. For a pure runtime target, use one of the explicit runtime attributes below.
+  - source = one of the closed context sources.
+  - originRef = the concrete source path.
+  Valid originRef formats:
+  - actorSession: actorSession.actorId or actorSession.scope.
+  - currentWorkspace: currentWorkspace.workspaceId.
+  - systemDefault: systemDefault.now, systemDefault.uuid or systemDefault.locale.
+  - selectedEntity, activeLifecycleInstance, workflowState: Entity.field.
+  - routeParam: routeParam.<name>, matching a journey edge/inputResolution.
+  - previousStepOutput: previousStepOutput.<operationId>.<field>, matching a journey edge/inputResolution.
+  Do not put persistence/table/usecase internals here.
 - acceptanceAssertions[] must be objective checks for this operation, e.g. "opening the menu list
   requires no typed id" or "payment uses the order id selected in the journey".
 
