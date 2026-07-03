@@ -2,6 +2,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { appendLongTermMemory } from '/_102027_/l2/aiAgentHelper.js';
+import { createStorFile } from '/_102027_/l2/libStor.js';
 import { convertFileToTag } from '/_102020_/l2/utils';
 import { skill as skillMolecule } from '/_102020_/l2/skills/aura/moleculeGeneration2.js';
 import { skills as skillList } from '/_102020_/l2/skills/molecules/index';
@@ -58,7 +59,7 @@ async function beforePromptStep(
     agent: IAgentMeta,
     context: mls.msg.ExecutionContext,
     parentStep: mls.msg.AIAgentStep,
-    step: mls.msg.AIAgentStep,
+    _step: mls.msg.AIAgentStep,
     hookSequential: number,
     args?: string
 ): Promise<mls.msg.AgentIntent[]> {
@@ -216,9 +217,34 @@ function buildLessWithHeader(tsFileReference: string, less: string): string {
 }
 
 async function writeLess(tsFileReference: string, content: string): Promise<void> {
-    const fileInfo = mls.stor.convertFileReferenceToFile(tsFileReference);
-    if (fileInfo.project < 1) throw new Error(`[agentMoleculeMaterializeLess] invalid fileReference: ${tsFileReference}`);
+    // Resolve against the .less reference: convertFileReferenceToFile needs an extension to parse,
+    // and the improve-less route passes the molecule reference without one.
+    const lessFileReference = stripExtension(tsFileReference) + '.less';
+    const fileInfo = mls.stor.convertFileReferenceToFile(lessFileReference);
+    if (fileInfo.project < 1) throw new Error(`[agentMoleculeMaterializeLess] invalid fileReference: ${lessFileReference}`);
 
+    const files = await mls.stor.getFiles({ ...fileInfo, loadContent: false });
+
+    // New molecule: the .less was never scaffolded — create it locally (status 'new'), like the .ts/.defs.ts.
+    // getOrCreateModel must not hit the github driver for a file that does not exist remotely.
+    if (!files.less) {
+        const storFile = await createStorFile({
+            extension: '.less',
+            folder: fileInfo.folder,
+            level: fileInfo.level,
+            project: fileInfo.project,
+            shortName: fileInfo.shortName,
+            source: content,
+            status: 'new'
+        }, true, true, true);
+
+        const model = await storFile.getOrCreateModel();
+        if (model) mls.editor.forceModelUpdate(model.model);
+        return;
+    }
+
+    // Existing .less (improve / re-run): update it.
+    // Params go through a variable so the excess-property check does not reject `content` (set via setValue below).
     const params = { ...fileInfo, content, versionRef: new Date().toISOString(), extension: ".less" };
     const file = await mls.stor.addOrUpdateFile(params);
     if (!file) throw new Error('[agentMoleculeMaterializeLess] addOrUpdateFile returned null');
@@ -267,7 +293,7 @@ function normalizeFileReference(fileReference: string): string {
 }
 
 const system1 = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codepro -->
 
 You are a senior Frontend Architect specialized in the collab.codes design system.
 Your only job is to produce the **.less** stylesheet for a Lit molecule, derived from its final .ts and the style contract.

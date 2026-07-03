@@ -81,10 +81,13 @@ async function beforePromptStep(
 async function prepareSystem(fileReference: string) {
 
     const path = mls.stor.getPathToFile(fileReference);
-    const files = await mls.stor.getFiles({ ...path, loadContent: true });
-    if (!files || !files.ts || !files.tsContent) throw new Error('[agentNewMoleculeFix] ts content is null')
+    // Load only the .ts content. loadContent:true would eagerly fetch every scaffolded file
+    // (including the not-yet-committed .less), which 404s in the github driver and aborts the load.
+    const files = await mls.stor.getFiles({ ...path, loadContent: false });
+    if (!files || !files.ts) throw new Error('[agentNewMoleculeFix] ts file not found')
 
-    const content = files.tsContent;
+    const content = (await files.ts.getContent()) as string;
+    if (!content) throw new Error('[agentNewMoleculeFix] ts content is null');
     const modelTs = await files.ts.getOrCreateModel() as mls.editor.IModelTS;
     const imports = modelTs.compilerResults?.imports || [];
     const defs = await getDefinitonsByImports(imports);
@@ -194,16 +197,17 @@ async function processOutput(context: mls.msg.ExecutionContext, output: Result):
         const nextStep = context.task?.iaCompressed?.longMemory['nextStep'];
         if (nextStep === 'finish') return [];
 
-        console.info('Fix ok, call playground agent');
+        console.info('Fix ok, call less materializer');
         const group = context.task?.iaCompressed?.longMemory['group'];
 
+        // Chain the .less materializer on the FINAL (post-fix) ts; it chains the playground afterwards.
         const newStep: mls.msg.AgentIntentAddStep = {
             type: "add-step",
             messageId: context.message.orderAt,
             threadId: context.message.threadId,
             taskId: context.task?.PK || '',
             parentStepId: 1,
-            stepTitle: 'Preparing playground',
+            stepTitle: 'Materializing styles',
             step:
             {
                 type: 'agent',
@@ -211,8 +215,8 @@ async function processOutput(context: mls.msg.ExecutionContext, output: Result):
                 interaction: null,
                 status: 'waiting_human_input',
                 nextSteps: [],
-                agentName: "agentNewMoleculePlayground",
-                prompt: JSON.stringify({ group: group, fileReference }),
+                agentName: "agentMoleculeMaterializeLess",
+                prompt: JSON.stringify({ fileReference, group, nextPlayground: true }),
                 rags: null,
             }
         };

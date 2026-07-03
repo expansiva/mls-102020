@@ -95,10 +95,33 @@ Binds the property to a **single dynamic state**.
 > **Rule:** never reassign a \`@propertyDataSource\` inside \`handleIcaStateChange\` (see §11) — it re-fires \`setState\` and causes an **infinite render loop**.
 
 \`\`\`typescript
-@propertyDataSource({ type: String }) 
+@propertyDataSource({ type: String })
 value: string | undefined;
 \`\`\`
 **Binding:** \`{{page1.selectedId}}\`
+
+> ⚠️ **Rule — bound props can be \`undefined\`: every formatter/derivation must tolerate it.**
+> When the attribute is \`{{...}}\` and the state key does not exist yet (page still seeding,
+> key never set), the getter returns \`undefined\` — the field's declared default (\`value = ''\`)
+> does NOT apply. Any member access on it (\`.replace\`, \`.length\`, \`.toFixed\`, \`.map\`, ...)
+> throws during \`render\`/\`updated\`/\`firstUpdated\` and leaves the component blank.
+> Normalize at the entry point of the formatting/derivation chain:
+>
+> \`\`\`typescript
+> // string formatters — normalize the input
+> private formatCpf(raw: string): string {
+>   const digits = String(raw ?? '').replace(/\\D/g, '');
+>   ...
+> }
+>
+> // number/object props — bail out explicitly (canonical example: ml-number-input)
+> this.rawValue = this.value === null || this.value === undefined
+>   ? ''
+>   : this.formatToDisplay(this.value);
+>
+> // array props
+> if (!Array.isArray(this.value)) return;
+> \`\`\`
 
 ---
 

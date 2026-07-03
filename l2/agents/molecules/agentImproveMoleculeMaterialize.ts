@@ -98,7 +98,7 @@ async function preparePrompts(context: mls.msg.ExecutionContext, data: IDataProm
     const groupMatch = defsContent.match(/export const group = '([^']+)'/);
     const group = groupMatch?.[1] || '';
     const groupSkill = group ? await getGroupSkill(group) : '';
-    if (context.task) await appendLongTermMemory(context, { page: data.page, group });
+    if (context.task) await appendLongTermMemory(context, { page: data.page, group, target: data.target || 'ts', prompt: data.prompt });
     return {
         systemContext: currentTs || '(no ts file found)',
         humanContent: data.prompt,
@@ -155,6 +155,37 @@ async function afterPromptStep(
 async function processOutput(context: mls.msg.ExecutionContext, result: IResult): Promise<mls.msg.AgentIntent[]> {
 
     const fileReference = await updateMoleculeTs(context, result.ts);
+    const target = context.task?.iaCompressed?.longMemory['target'] || 'ts';
+
+    // target === 'both': the .ts changed AND styles need updating → chain the .less agent,
+    // which then chains the playground according to needsPlayground.
+    if (target === 'both') {
+        const group = await getGroup(context, fileReference);
+        const prompt = context.task?.iaCompressed?.longMemory['prompt'] || '';
+
+        const lessStep: mls.msg.AgentIntentAddStep = {
+            type: "add-step",
+            messageId: context.message.orderAt,
+            threadId: context.message.threadId,
+            taskId: context.task?.PK || '',
+            parentStepId: 1,
+            stepTitle: 'Materializing styles',
+            step: {
+                type: 'agent',
+                stepId: 0,
+                interaction: null,
+                status: 'waiting_human_input',
+                nextSteps: [],
+                agentName: "agentMoleculeMaterializeLess",
+                prompt: JSON.stringify({ fileReference, prompt, group, nextPlayground: result.needsPlayground }),
+                rags: null,
+            }
+        };
+
+        return [lessStep];
+    }
+
+    // ts-only → previous behavior (playground only when needed).
     if (!result.needsPlayground) return [];
 
     const group = await getGroup(context, fileReference);
@@ -317,5 +348,6 @@ interface IResult {
 interface IDataPrompt {
     page: string;
     prompt: string;
+    target?: 'ts' | 'less' | 'both'; // set by agentImproveMolecule; 'both' also updates the .less
 }
 //#endregion
