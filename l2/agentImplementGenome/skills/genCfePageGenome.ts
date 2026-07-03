@@ -110,24 +110,37 @@ reconciles those to the DS (e.g. \`--ml-on-surface: var(--ds-text)\`). Theming i
 - Do NOT put color/background/border/radius/shadow classes on the molecule tag to "theme" it.
 - Do NOT set or override any \`--ml-*\` variable (inline, in a class, anywhere).
 - Do NOT reach into the molecule's internal DOM or restyle its parts.
-- What you MAY style is the **content you place inside its slot tags**: layout, spacing,
-  typography and text colors, using the same \`--ds-*\` variables. Never fight styles the
-  molecule already applies to its slots.
+- **Slot TAGS are already themed by the molecule tokens** (\`--ml-*\`). A concern is
+  "covered" — and therefore FORBIDDEN on the slot tag — only when BOTH hold:
+  1. the group's USAGE skill token table has a token for it, AND
+  2. the DS global stylesheet actually sets/reconciles that \`--ml-*\` token to the DS
+     (e.g. \`--ml-on-surface: var(--ds-text)\`).
+  If both hold, any class for that concern on the slot tag duplicates and fights the token
+  theming. If either fails — no token for the effect, or the token exists but the global
+  stylesheet never assigns it (so the molecule is stuck on its default, off-theme) — then
+  styling it on the slot tag with the \`--ds-*\` variables IS allowed. Typical always-allowed
+  cases are layout/alignment concerns no token expresses (e.g. \`line-clamp-2\` on a
+  description, \`flex flex-col gap-3\` on a content area). A slot tag that needs no such
+  adjustment gets NO \`data-class\` at all.
+- What you MAY style freely is **your own plain HTML placed inside the slots** (divs/spans):
+  layout, spacing, typography and text colors, using the same \`--ds-*\` variables. Never
+  fight styles the molecule already applies to its slots.
 - **\`data-class\`, not \`class\`, on the molecule host and on slot TAGS.** Molecules read extra
   CSS classes from the \`data-class\` attribute (see each usage skill): a \`class\` attribute there
   is ignored. Your own plain HTML elements (divs/spans INSIDE a slot) use normal \`class\`.
 - Layout-only utilities on the molecule host are fine (grid placement, width, margin) — e.g.
   \`data-class="col-span-2"\` — they position the component without re-theming it.
 
-Example — molecule tag stays clean; only the slot CONTENT you author gets styling:
+Example — molecule tag and slot tags stay clean (tokens theme them); slot tags get
+\`data-class\` only for layout/truncation; your own HTML inside the slots gets the \`--ds-*\` styling:
 
 \`\`\`html
 <groupviewcard--ml-vertical-card .isEditing=\${true} data-class="col-span-2">
   <CardHeader>
-    <CardTitle data-class="font-[family-name:var(--ds-font-display)] text-lg font-semibold">
-      \${this.msg.criarOuAtualizarItemEstoqueLabel}
-    </CardTitle>
-    <CardDescription data-class="text-sm text-[color:var(--ds-muted)]">
+    <!-- slot tags: no class for anything in the group's --ml-* token table (here:
+         color/font/border/…) — tokens already theme them; line-clamp has no token -->
+    <CardTitle>\${this.msg.criarOuAtualizarItemEstoqueLabel}</CardTitle>
+    <CardDescription data-class="line-clamp-2">
       \${this.msg.loadingListarItensEstoque}
     </CardDescription>
   </CardHeader>
@@ -214,5 +227,9 @@ molecules included; dark mode is the \`.dark\` toggle on \`<html>\` and needs no
 - Invent a \`--ds-*\` variable that is not in the stylesheet.
 - Reference or override any \`--ml-*\` variable — molecule theming is automatic.
 - Re-theme a molecule (its tag or internals); style only the content you put in its slots.
+- Put a class on a slot TAG whose concern is already covered by a group \`--ml-*\` token
+  (USAGE skill table) THAT the DS global stylesheet reconciles. Slot-tag \`data-class\` is
+  ONLY for effects the group's tokens cannot express — or for tokens the global stylesheet
+  left unassigned.
 - Emit a \`<style>\` block, local CSS, gradients or fonts the stylesheet does not declare.
 `;

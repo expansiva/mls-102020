@@ -5,9 +5,11 @@
 //
 // Hybrid model: the DS/layout rules FILTER the group's variants by STYLE
 // (filterCompatibleVariants); the LLM then picks the one whose MEANING fits the element
-// (field name / inputType / purpose × candidate descriptions), OR rejects all — even when
-// there is a single candidate: a semantically wrong molecule is worse than none (the element
-// keeps its plain control). Writes `variantSelections` = [{id, group, tag}] for agentGenDefs.
+// (field name / inputType / purpose × candidate descriptions). Rejection is the exception,
+// not the default: a GENERIC candidate (no domain/format assumption in its description) fits
+// any element of its input kind and must not be rejected; only a SPECIFIC candidate whose
+// specialization the element does not match may be turned down (the element then keeps its
+// plain control). Writes `variantSelections` = [{id, group, tag}] for agentGenDefs.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { buildWorkItem } from '/_102020_/l2/dsMatch/derivePaths.js';
@@ -159,7 +161,7 @@ function buildHumanPrompt(elements: ElementCandidates[]): string {
   }).join('\n');
 
   return [
-    `## Elements — for EACH, pick the ONE candidate whose meaning fits the element, or "none"`,
+    `## Elements — for EACH, pick the ONE candidate whose meaning fits the element. "none" is allowed ONLY when every candidate is specific to a domain the element does not match — a generic candidate is never "none".`,
     blocks,
   ].join('\n\n');
 }
@@ -188,11 +190,22 @@ list of CANDIDATE molecules (already filtered to be style-compatible), each with
 Pick the ONE candidate whose PURPOSE best matches what the element actually IS.
 
 ## Rules
-- Decide by MEANING: e.g. a field "customerName" → a generic text input, NOT an address/CPF/phone
-  molecule; "postalCode"/"cep" → an address molecule; "email" → an email molecule.
+- The candidates are ALREADY style-compatible (layout filtering is done). You judge ONLY whether
+  each candidate's PURPOSE fits the element's meaning — never re-judge style or appearance.
+- First classify each candidate from its own description:
+  - GENERIC: handles any value of its input kind, with no assumption about the data's domain,
+    format or content. A generic candidate fits ANY element of that input kind.
+  - SPECIFIC: its description assumes a particular domain, format, mask, validation or content
+    type. It fits ONLY an element whose meaning matches that specialization.
+- Pick by MEANING: prefer the SPECIFIC candidate when the element truly matches its
+  specialization; otherwise pick the GENERIC one.
+- Reject (\`tag\`: null) ONLY when the candidate is COMPLETELY out of scope for what the element
+  is — in practice: every candidate is SPECIFIC to a domain the element does not belong to
+  (e.g. a document-number input offered for a person-name field). A GENERIC candidate of the
+  right input kind is NEVER out of scope — do NOT reject it because the field looks technical,
+  unusual or too simple; rejection leaves the element with a bare plain control, which is worse
+  than a generic molecule.
 - Choose the \`tag\` EXACTLY as listed for that element. Never invent a tag.
-- Reject when nothing fits: set \`tag\` to null — EVEN IF there is only one candidate. A semantically
-  wrong molecule is worse than none (the element keeps its plain control).
 - One entry per element id.
 
 ## Output format
