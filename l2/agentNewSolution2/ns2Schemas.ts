@@ -439,8 +439,9 @@ const operationContextResolutionSchema = {
   required: ['targetRef', 'source', 'originRef', 'description'],
   properties: {
     inputId: str,
-    // targetRef is the operation/BFF/ontology field being resolved. fieldRef is kept out on purpose:
-    // previous generations confused the target with runtime origins such as actorSession/currentWorkspace.
+    // targetRef is the operation/BFF/ontology field being resolved: Entity.field, input.<inputId>,
+    // filter.<name> or a catalogued runtime attr. fieldRef is kept out on purpose: previous
+    // generations confused the target with runtime origins such as actorSession/currentWorkspace.
     targetRef: str,
     source: contextSource,
     originRef: str,

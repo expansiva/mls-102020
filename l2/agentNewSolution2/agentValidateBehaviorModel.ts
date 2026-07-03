@@ -120,7 +120,7 @@ export async function computeBehaviorHealthReport(context: mls.msg.ExecutionCont
     if (currentOperationIds.has(o.operationId)) validateBffNaming(o, moduleName, errors);
   }
 
-  validateJourneyContract(journeyMap, workflowDefs, operationDefs, currentOperationIds, knownActors, errors, warnings);
+  validateJourneyContract(journeyMap, workflowDefs, operationDefs, currentOperationIds, ontology, knownEntities, knownActors, errors, warnings);
 
   // Fan-out completeness: a defined artifact per classified behavior.
   const definedWorkflows = new Set(workflowDefs.map(w => w.workflowId));
@@ -236,7 +236,7 @@ function validateOperationContract(operation: OperationDefinition, ontology: Rec
       if (!inputId) errors.push({ severity: 'error', code: 'operation.input.id.missing', message: `${where}: input without inputId` });
       if (!fieldRef || !isKnownOntologyRefOrField(fieldRef, ontology, knownEntities)) errors.push({ severity: 'error', code: 'operation.input.field.unknown', message: `${where}: input '${inputId || '?'}' fieldRef '${fieldRef}' does not resolve in saved ontology` });
       if (!isKnownContextSource(source)) errors.push({ severity: 'error', code: 'operation.input.source.invalid', message: `${where}: input '${inputId || '?'}' has invalid source '${source}'` });
-      if (input.required === true && source === 'userInput' && isIdentifierRef(inputId || fieldRef)) {
+      if (input.required === true && source === 'userInput' && isTechnicalIdentifierRef(inputId, fieldRef, ontology, knownEntities)) {
         errors.push({ severity: 'error', code: 'operation.input.requiredId.manual', message: `${where}: required identifier input '${inputId || fieldRef}' cannot be plain userInput; resolve it from route, selection, workflow or context` });
       }
     }
@@ -246,6 +246,7 @@ function validateOperationContract(operation: OperationDefinition, ontology: Rec
   if (!contexts) {
     errors.push({ severity: 'error', code: 'operation.contextResolution.missing', message: `${where}: missing contextResolution[]` });
   } else {
+    const inputIds = new Set((operation.inputs || []).map(input => input.inputId).filter(Boolean));
     for (const ctx of contexts) {
       if (!isRecord(ctx)) continue;
       const targetRef = typeof ctx.targetRef === 'string' ? ctx.targetRef : '';
@@ -253,7 +254,7 @@ function validateOperationContract(operation: OperationDefinition, ontology: Rec
       const source = typeof ctx.source === 'string' ? ctx.source : '';
       const inputId = typeof ctx.inputId === 'string' ? ctx.inputId : '';
       if (!isKnownContextSource(source)) errors.push({ severity: 'error', code: 'operation.context.source.invalid', message: `${where}: context source '${source}' is invalid` });
-      validateContextResolutionRef(where, operation.operationId, inputId, targetRef, originRef, source, ontology, knownEntities, journey, errors);
+      validateContextResolutionRef(where, operation.operationId, inputId, targetRef, originRef, source, inputIds, ontology, knownEntities, journey, errors);
       if (source === 'userInput') warnings.push({ severity: 'warning', code: 'operation.context.userInput', message: `${where}: contextResolution '${targetRef}' should usually be runtime context, not userInput` });
     }
   }
@@ -266,6 +267,7 @@ function validateContextResolutionRef(
   targetRef: string,
   originRef: string,
   source: string,
+  inputIds: Set<string>,
   ontology: Record<string, unknown>,
   knownEntities: Set<string>,
   journey: JourneyMap | null,
@@ -273,8 +275,8 @@ function validateContextResolutionRef(
 ): void {
   if (!targetRef) {
     errors.push({ severity: 'error', code: 'operation.context.target.missing', message: `${where}: contextResolution missing targetRef` });
-  } else if (!isKnownOntologyFieldRef(targetRef, ontology, knownEntities) && !isRuntimeContextRef(targetRef)) {
-    errors.push({ severity: 'error', code: 'operation.context.target.unknown', message: `${where}: context targetRef '${targetRef}' must be Entity.field or a catalogued runtime context attribute` });
+  } else if (!isValidContextTargetRef(targetRef, inputIds, ontology, knownEntities)) {
+    errors.push({ severity: 'error', code: 'operation.context.target.unknown', message: `${where}: context targetRef '${targetRef}' must be Entity.field, input.<inputId>, filter.<name>, or a catalogued runtime context attribute` });
   }
   if (!originRef) {
     errors.push({ severity: 'error', code: 'operation.context.origin.missing', message: `${where}: contextResolution for '${targetRef || '?'}' missing originRef` });
@@ -319,6 +321,8 @@ function validateJourneyContract(
   workflows: { workflowId: string; actors: string[]; capabilities?: { priority?: string }[] }[],
   operations: OperationDefinition[],
   currentOperationIds: Set<string>,
+  ontology: Record<string, unknown>,
+  knownEntities: Set<string>,
   knownActors: Set<string>,
   errors: HealthFinding[],
   warnings: HealthFinding[],
@@ -387,7 +391,7 @@ function validateJourneyContract(
       if ((input.source === 'routeParam' || input.source === 'previousStepOutput') && !hasJourneySourceForOperationInput(journey, operation.operationId, input.inputId, input.source)) {
         errors.push({ severity: 'error', code: 'journey.input.edge.missing', message: `operation '${operation.operationId}' input '${input.inputId}' source '${input.source}' must match a journey inputResolution and navigation edge` });
       }
-      if (!input.required || !isIdentifierRef(input.inputId || input.fieldRef) || input.source === 'userInput') continue;
+      if (!input.required || !isTechnicalIdentifierRef(input.inputId, input.fieldRef, ontology, knownEntities) || !requiresJourneyInputResolution(input.source)) continue;
       if (!inputResolutions.has(`${operation.operationId}:${input.inputId}`)) errors.push({ severity: 'error', code: 'journey.input.resolution.missing', message: `operation '${operation.operationId}' required identifier '${input.inputId}' has source '${input.source}' but no journey inputResolution row` });
     }
   }
@@ -450,6 +454,54 @@ function splitQualifiedFieldRef(ref: string): { entity: string; field: string } 
 
 function isRuntimeContextRef(ref: string): boolean {
   return Object.values(L4_CONTEXT_ORIGIN_CATALOG).some(values => (values as readonly string[]).includes(ref));
+}
+
+function isValidContextTargetRef(ref: string, inputIds: Set<string>, ontology: Record<string, unknown>, knownEntities: Set<string>): boolean {
+  return isKnownOntologyFieldRef(ref, ontology, knownEntities) || isRuntimeContextRef(ref) || isBffContextTargetRef(ref, inputIds);
+}
+
+function isBffContextTargetRef(ref: string, inputIds: Set<string>): boolean {
+  const split = splitScopedRef(ref);
+  if (!split) return false;
+  if (split.scope === 'input') return inputIds.has(split.name);
+  return split.scope === 'filter';
+}
+
+function splitScopedRef(ref: string): { scope: string; name: string } | null {
+  const dot = ref.indexOf('.');
+  if (dot <= 0 || dot === ref.length - 1) return null;
+  const scope = ref.slice(0, dot);
+  const name = ref.slice(dot + 1);
+  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(scope) || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(name)) return null;
+  return { scope, name };
+}
+
+function requiresJourneyInputResolution(source: string): boolean {
+  return ['selectedEntity', 'activeLifecycleInstance', 'workflowState', 'routeParam', 'previousStepOutput'].includes(source);
+}
+
+function isTechnicalIdentifierRef(inputId: string, fieldRef: string, ontology: Record<string, unknown>, knownEntities: Set<string>): boolean {
+  const split = splitQualifiedFieldRef(fieldRef);
+  if (!split) return isKnownEntityRef(fieldRef, knownEntities) && isIdentifierRef(inputId);
+  const field = getOntologyField(split.entity, split.field, ontology);
+  if (!field) return isPrimaryEntityIdField(split.entity, split.field);
+  const type = typeof field.type === 'string' ? field.type : '';
+  if (type && isKnownEntityRef(type, knownEntities)) return true;
+  return isPrimaryEntityIdField(split.entity, split.field) && (type === 'uuid' || isIdentifierRef(split.field));
+}
+
+function getOntologyField(entityId: string, fieldId: string, ontology: Record<string, unknown>): Record<string, unknown> | null {
+  const entity = ontology[entityId];
+  const fields = isRecord(entity) && Array.isArray(entity.fields) ? entity.fields : [];
+  const field = fields.find(item => isRecord(item) && item.fieldId === fieldId);
+  return isRecord(field) ? field : null;
+}
+
+function isPrimaryEntityIdField(entityId: string, fieldId: string): boolean {
+  const localEntity = (entityId.split(':').pop() || entityId).trim();
+  if (!localEntity) return false;
+  const expected = `${localEntity.charAt(0).toLowerCase()}${localEntity.slice(1)}Id`;
+  return fieldId === expected || fieldId === 'id';
 }
 
 function hasJourneySourceForOperationInput(journey: JourneyMap | null, operationId: string, inputId: string, source: string): boolean {

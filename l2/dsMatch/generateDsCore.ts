@@ -121,7 +121,7 @@ export function sanitizeGeneratedDs(raw: any, req: GenerateDsRequest): SanitizeD
 
     // palette — the user's brand colors win; else the LLM's valid ones; else derive from roles
     const reqPalette = (req.palette ?? []).map(normalizeHex).filter((c): c is string => !!c);
-    const llmPalette = (Array.isArray(t.palette) ? t.palette : []).map(normalizeHex).filter((c): c is string => !!c);
+    const llmPalette = (Array.isArray(t.palette) ? t.palette : []).map(normalizeHex).filter((c: any): c is string => !!c);
     const palette = (reqPalette.length ? reqPalette : llmPalette).slice(0, 8);
     if (!palette.length) palette.push(color.primary.light, color.background.light, color.text.light);
 

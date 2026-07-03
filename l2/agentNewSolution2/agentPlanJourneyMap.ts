@@ -225,24 +225,29 @@ In result.journeyMap:
   the same entity, workflow for lifecycle work, dashboard for query/report views, task/support as
   needed. Keep the underlying operationIds explicit and separate.
 - navigationEdges[]: directed edges between workspaces. Each edge declares the trigger and the data
-  transported, e.g. selected Order.id from list to detail.
-- inputResolutions[]: one row for each required identifier/input that is not plain typing by the
-  actor. The source must match one of the operation input sources.
-- acceptanceAssertions[]: objective journey checks, e.g. "actor can open the menu workspace without
-  typing an id" or "payment receives orderId from the selected order journey".
+  transported, such as a selected entity id from a list/search step to a detail/action step.
+- inputResolutions[]: one row for each required technical identifier that comes from journey state,
+  selection, route params or a previous step. Local runtime sources (actorSession, currentWorkspace,
+  systemDefault) do not need a journey row unless the value is also transported between workspaces.
+  The source must match one of the operation input sources.
+- acceptanceAssertions[]: objective journey checks, such as "actor can open the workspace without
+  typing a technical id" or "the action receives the selected entity id from the journey".
 
 Rules:
 - Every operation with priority now must be reachable from a landing through a workspace and/or edge.
 - navigationEdges[] cannot be empty when there is more than one reachable step. Declare the minimal
   edges needed for the business journey: entity management list -> detail/action with the selected
   Entity.id transported, and workflow step -> next step with the workflow entity id transported.
-- Required id inputs should come from selectedEntity, routeParam, activeLifecycleInstance,
-  workflowState or previousStepOutput. Do not model "type an id manually" as a normal journey.
+- Required technical id inputs should come from selectedEntity, routeParam, activeLifecycleInstance,
+  workflowState, previousStepOutput or local runtime context (actorSession/currentWorkspace/
+  systemDefault). Do not model "type a raw id manually" as a normal journey.
 - For entityManagement workspaces, model the list-to-action transition explicitly. A self-edge is
   acceptable when the list/detail/action live in the same workspace, but its data[] must still carry
-  the selected entity id (for example selected MenuItem.menuItemId).
+  the selected entity id using the source selectedEntity.
 - routeParam and previousStepOutput inputs must have a matching inputResolution AND an edge data row
   that explains where the value travels from.
+- selectedEntity, activeLifecycleInstance and workflowState technical ids must have inputResolution
+  rows explaining the selection or lifecycle/workflow state that supplies the id.
 - A workspace actor must be authorized for every operation it exposes.
 - entityManagement is an experience grouping only; do not merge or delete operation contracts.
 - Prefer simple, obvious workspaces over speculative UX structure.
