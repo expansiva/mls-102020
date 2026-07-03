@@ -92,11 +92,22 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
 
   if (status === 'completed' && output && output.status === 'ok') {
     const moduleName = getApprovedModuleName(context);
-    if (moduleName) {
+    if (!moduleName) {
+      status = 'failed';
+      traceMsg = `approved module name unavailable while saving entity ${selector}`;
+    } else {
+      const fileInfo = ontologyEntityFileInfo(moduleName, output.result.entityDefinition.entityId);
+      const exportName = `${moduleName}Entity${capitalize(output.result.entityDefinition.entityId)}`;
       try {
-        await saveDefsArtifact(ontologyEntityFileInfo(moduleName, output.result.entityDefinition.entityId), `${moduleName}Entity${capitalize(output.result.entityDefinition.entityId)}`, output.result.entityDefinition);
-      } catch (error) {
-        console.warn(`[${AGENT_NAME}] save failed for ${selector}`, error);
+        await saveDefsArtifact(fileInfo, exportName, output.result.entityDefinition);
+      } catch (firstError) {
+        try {
+          await saveDefsArtifact(fileInfo, exportName, output.result.entityDefinition);
+        } catch (secondError) {
+          status = 'failed';
+          traceMsg = `save failed for entity ${selector}: ${secondError instanceof Error ? secondError.message : String(secondError)}`;
+          console.error(`[${AGENT_NAME}] ${traceMsg}`, firstError);
+        }
       }
     }
   }

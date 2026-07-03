@@ -2,8 +2,9 @@
 
 // NEW (Stage 1). Classify every priority-now capability into a Workflow (stateful, triggered,
 // multi-actor over time) OR an Operation (direct single-actor action on one entity). Absorb the user
-// stories HERE as each owner's embedded `story` (NOT persisted as a journeys artifact). Output the
-// behavior index (workflows[] + operations[], each with its story and the ontology entities it touches).
+// stories HERE as each owner's embedded `story`; agentPlanJourneyMap later turns them into the module
+// journey artifact. Output the behavior index (workflows[] + operations[], each with its story and the
+// ontology entities it touches).
 // Entity references must be canonical ontology ids — the analise11/12 guardrail.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
@@ -164,8 +165,8 @@ Call the "{{toolName}}" tool with: status, result, questions, trace. Do not retu
 In result:
 - workflows[]: { workflowId, title, actor, entities[], capabilityIds[], operationIds[], story }.
 - operations[]: { operationId, title, actor, entity, kind, capabilityId, story }.
-- story = { actor, goal, soThat?, steps[], outcome } — derive it from the clarification/scope; this
-  absorbs the user journey (do NOT emit a separate journeys artifact).
+- story = { actor, goal, soThat?, steps[], outcome } — derive it from the clarification/scope. These
+  stories are the source material for the later journey map.
 
 Rules:
 - Use canonical ONTOLOGY entity ids for entities/entity (the provided ids), never aggregate/group names.

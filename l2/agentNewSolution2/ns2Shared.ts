@@ -235,9 +235,8 @@ export function summarizeRecords(items: unknown[] | undefined, keys: string[]): 
   });
 }
 
-// Experience/build status carried ON each owner (workflow/operation), consumed by the reconciler
-// agents (agentChangeFrontend / agentChangeBackend per their spec): they process owners whose status
-// is != 'done' and flip it as they go. Stage 1 (greenfield) seeds every owner as 'toCreate'.
+// Experience/build status for generation todo files. Stage 1 seeds l5/{module}/todoFrontend.defs.ts
+// and todoBackend.defs.ts with every workflow/operation owner as 'toCreate'; l4 owners stay read-only.
 export type ExperienceStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
 export const EXPERIENCE_STATUS_INITIAL: ExperienceStatus = 'toCreate';
 

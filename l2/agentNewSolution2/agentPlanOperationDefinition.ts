@@ -18,8 +18,6 @@ import {
   normalizeStringList,
   optionalString,
   resolveCapabilityInfo,
-  EXPERIENCE_STATUS_INITIAL,
-  type ExperienceStatus,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import { getApprovedModuleName, operationFileInfo, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
@@ -42,6 +40,10 @@ export interface OperationDefinition {
   writes: string[];
   rulesApplied: string[];
   story: { actor: string; goal: string; soThat?: string; steps: string[]; outcome: string };
+  accessPattern: OperationAccessPattern;
+  inputs: OperationInput[];
+  contextResolution: OperationContextResolution[];
+  acceptanceAssertions?: string[];
   // Deterministic handoff for frontend/backend. Stage 2 must use commandName/bffName in l2 contracts;
   // Stage 3 must use the same bffName as the route key. The LLM does not author these names.
   pageId?: string;
@@ -50,11 +52,32 @@ export interface OperationDefinition {
   // Mechanically attached at save (not from the LLM): the capability this operation realizes + its
   // priority — makes the operation the source of truth for "which feature + phase" it covers.
   capability?: { capabilityId: string; title: string; actor?: string; priority?: string };
-  // Independent reconciler statuses: agentChangeFrontend reads/writes statusFrontend, agentChangeBackend
-  // reads/writes statusBackend. Each is toCreate|toUpdate|toRemove|inProgress|done; both seeded
-  // 'toCreate' on creation. Decoupling them avoids the single-status ambiguity between the two stages.
-  statusFrontend?: ExperienceStatus;
-  statusBackend?: ExperienceStatus;
+}
+export type OperationContextSource = 'userInput' | 'actorSession' | 'currentWorkspace' | 'selectedEntity' | 'activeLifecycleInstance' | 'workflowState' | 'routeParam' | 'previousStepOutput' | 'systemDefault';
+export interface OperationAccessPattern {
+  kind: 'list' | 'getById' | 'lookup' | 'commandInput';
+  description: string;
+  entity?: string;
+  keyField?: string;
+  filters?: string[];
+  sort?: string[];
+  pagination?: 'none' | 'optional' | 'required';
+  selection?: 'none' | 'single' | 'multiple';
+  output?: string[];
+}
+export interface OperationInput {
+  inputId: string;
+  fieldRef: string;
+  required: boolean;
+  source: OperationContextSource;
+  description: string;
+}
+export interface OperationContextResolution {
+  inputId?: string;
+  targetRef: string;
+  source: OperationContextSource;
+  originRef: string;
+  description: string;
 }
 export interface OperationDefinitionResult { operationDefinition: OperationDefinition }
 export type OperationDefinitionOutput = PlannerOutput<OperationDefinitionResult>;
@@ -72,7 +95,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   const story = getBehaviorIndex(context).result.operations.find(o => o.operationId === args)?.story;
   const ontology = await getEnrichedOntology(context);
   const entityShape = ontology[indexItem.entity];
-  const reduced = { selector: args, indexItem, story, entityShape, ontologyEntityIds: Object.keys(ontology) };
+  const behavior = getBehaviorIndex(context).result;
+  const workflowOwner = behavior.workflows.find(w => (w.operationIds || []).includes(args));
+  const reduced = { selector: args, indexItem, story, workflowOwner, entityShape, ontologyEntityIds: Object.keys(ontology) };
   return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), `## Operation selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
 }
 
@@ -103,8 +128,6 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
         ?? behavior.workflows.find(w => (w.operationIds || []).includes(def.operationId))?.capabilityIds[0];
       def.capability = capabilityId ? resolveCapabilityInfo([capabilityId], getFinalizeOutput(context).result.capabilities as unknown[])[0] : undefined;
       attachBffNaming(context, def);
-      def.statusFrontend = EXPERIENCE_STATUS_INITIAL; // agentChangeFrontend picks up statusFrontend != 'done'
-      def.statusBackend = EXPERIENCE_STATUS_INITIAL;   // agentChangeBackend picks up statusBackend != 'done'
       await saveDefsArtifact(operationFileInfo(def.operationId), `operation${capitalize(def.operationId)}`, def);
     } catch (error) {
       console.warn(`[${AGENT_NAME}] save failed for ${selector}`, error);
@@ -148,8 +171,63 @@ function normalizeResult(value: unknown): OperationDefinitionResult {
       writes: normalizeStringList(d.writes, 'result.operationDefinition.writes'),
       rulesApplied: normalizeStringList(d.rulesApplied, 'result.operationDefinition.rulesApplied'),
       story: { actor: assertString(s.actor, 'story.actor'), goal: assertString(s.goal, 'story.goal'), soThat: optionalString(s.soThat), steps: normalizeStringList(s.steps, 'story.steps'), outcome: assertString(s.outcome, 'story.outcome') },
+      accessPattern: normalizeAccessPattern(d.accessPattern, 'result.operationDefinition.accessPattern'),
+      inputs: normalizeOperationInputs(d.inputs, 'result.operationDefinition.inputs'),
+      contextResolution: normalizeContextResolution(d.contextResolution, 'result.operationDefinition.contextResolution'),
+      acceptanceAssertions: normalizeStringList(d.acceptanceAssertions, 'result.operationDefinition.acceptanceAssertions'),
     },
   };
+}
+
+function normalizeAccessPattern(value: unknown, path: string): OperationAccessPattern {
+  const p = assertRecord(value, path);
+  const kind = assertString(p.kind, `${path}.kind`) as OperationAccessPattern['kind'];
+  if (!['list', 'getById', 'lookup', 'commandInput'].includes(kind)) throw new Error(`${path}.kind invalid`);
+  const pagination = optionalString(p.pagination) as OperationAccessPattern['pagination'];
+  const selection = optionalString(p.selection) as OperationAccessPattern['selection'];
+  return {
+    kind,
+    description: assertString(p.description, `${path}.description`),
+    entity: optionalString(p.entity),
+    keyField: optionalString(p.keyField),
+    filters: normalizeStringList(p.filters, `${path}.filters`),
+    sort: normalizeStringList(p.sort, `${path}.sort`),
+    pagination: pagination && ['none', 'optional', 'required'].includes(pagination) ? pagination : undefined,
+    selection: selection && ['none', 'single', 'multiple'].includes(selection) ? selection : undefined,
+    output: normalizeStringList(p.output, `${path}.output`),
+  };
+}
+
+function normalizeOperationInputs(value: unknown, path: string): OperationInput[] {
+  return assertArray(value || [], path).map((item, index) => {
+    const input = assertRecord(item, `${path}[${index}]`);
+    return {
+      inputId: assertString(input.inputId, `${path}[${index}].inputId`),
+      fieldRef: assertString(input.fieldRef, `${path}[${index}].fieldRef`),
+      required: input.required === true,
+      source: normalizeContextSource(input.source, `${path}[${index}].source`),
+      description: assertString(input.description, `${path}[${index}].description`),
+    };
+  });
+}
+
+function normalizeContextResolution(value: unknown, path: string): OperationContextResolution[] {
+  return assertArray(value || [], path).map((item, index) => {
+    const ctx = assertRecord(item, `${path}[${index}]`);
+    return {
+      inputId: optionalString(ctx.inputId),
+      targetRef: assertString(ctx.targetRef, `${path}[${index}].targetRef`),
+      source: normalizeContextSource(ctx.source, `${path}[${index}].source`),
+      originRef: assertString(ctx.originRef, `${path}[${index}].originRef`),
+      description: assertString(ctx.description, `${path}[${index}].description`),
+    };
+  });
+}
+
+function normalizeContextSource(value: unknown, path: string): OperationContextSource {
+  const source = assertString(value, path) as OperationContextSource;
+  if (['userInput', 'actorSession', 'currentWorkspace', 'selectedEntity', 'activeLifecycleInstance', 'workflowState', 'routeParam', 'previousStepOutput', 'systemDefault'].includes(source)) return source;
+  throw new Error(`${path} invalid`);
 }
 
 function attachBffNaming(context: mls.msg.ExecutionContext, def: OperationDefinition): void {
@@ -184,11 +262,43 @@ Call the "{{toolName}}" tool with: status, result, questions, trace. Do not retu
 
 In result.operationDefinition: operationId (== selector), title, actor (actorId), entity (canonical
 ontology id), kind (create|update|delete|query|view), reads[] and writes[] (ontology entities or
-"Entity.field" the operation reads/writes), rulesApplied[] (ruleIds), and the embedded story.
+"Entity.field" the operation reads/writes), rulesApplied[] (ruleIds), embedded story, accessPattern,
+inputs[], contextResolution[] and acceptanceAssertions[].
 
 Rules:
 - operationId must equal the selector. No tables. Do not invent page, command or route names; the
   agent attaches pageId, commandName and bffName deterministically after the tool call.
 - reads/writes reference canonical ontology ids (optionally "Entity.field"), never aggregate names.
+- accessPattern.kind must be exactly one of list|getById|lookup|commandInput. For query/view, choose
+  the user journey's best access: list for browsable sets, getById only when the journey already
+  carries a selected id, lookup for compact selectors. For create/update/delete use commandInput.
+- accessPattern.keyField, when present, must be fully qualified as Entity.field; never use a bare id.
+- inputs[] must list every BFF input the frontend/backend contract needs. Each input.fieldRef must be
+  an ontology field ref (Entity.field or Entity) and each input.source must be one of:
+  userInput, actorSession, currentWorkspace, selectedEntity, activeLifecycleInstance, workflowState,
+  routeParam, previousStepOutput, systemDefault.
+- Required technical identifier inputs must not be plain userInput. A technical identifier is a
+  primary id generated by the system or a field whose ontology type references another entity. Resolve
+  those ids from selectedEntity, routeParam, previousStepOutput, activeLifecycleInstance,
+  workflowState, actorSession, currentWorkspace or systemDefault. userInput is for business values the
+  actor types or chooses by label/value, not for raw entity ids.
+- contextResolution[] declares fields resolved by the system/runtime, never typed manually. Each item
+  must have targetRef, source and originRef:
+  - targetRef = the operation input, ontology field, BFF filter or runtime field being filled. Use one
+    of these exact forms: Entity.field for domain data, input.<inputId> for an operation input,
+    filter.<name> for a BFF/runtime filter, or one of the explicit runtime attributes below. Do not
+    use loose names such as "id", "workspaceId" or "referenceDate".
+  - source = one of the closed context sources.
+  - originRef = the concrete source path.
+  Valid originRef formats:
+  - actorSession: actorSession.actorId or actorSession.scope.
+  - currentWorkspace: currentWorkspace.workspaceId.
+  - systemDefault: systemDefault.now, systemDefault.uuid or systemDefault.locale.
+  - selectedEntity, activeLifecycleInstance, workflowState: Entity.field.
+- routeParam: routeParam.<name>, matching a journey edge/inputResolution.
+- previousStepOutput: previousStepOutput.<operationId>.<field>, matching a journey edge/inputResolution.
+  Do not put persistence/table/usecase internals here.
+- acceptanceAssertions[] must be objective checks for this operation, such as "opening the list
+  requires no typed technical id" or "the action uses the id selected in the journey".
 
 `;

@@ -9,6 +9,7 @@ const str = { type: 'string' } as const;
 const bool = { type: 'boolean' } as const;
 const strArray = { type: 'array', items: str } as const;
 const priority = { enum: ['now', 'soon', 'later', 'never'] } as const;
+const contextSource = { enum: ['userInput', 'actorSession', 'currentWorkspace', 'selectedEntity', 'activeLifecycleInstance', 'workflowState', 'routeParam', 'previousStepOutput', 'systemDefault'] } as const;
 
 // ── ontology ─────────────────────────────────────────────────────────────────────
 
@@ -419,6 +420,52 @@ export const operationIndexResultSchema = {
   },
 } as const;
 
+const operationInputSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['inputId', 'fieldRef', 'required', 'source', 'description'],
+  properties: {
+    inputId: str,
+    fieldRef: str, // Entity.field or Entity. Must resolve to ontology.
+    required: bool,
+    source: contextSource,
+    description: str,
+  },
+} as const;
+
+const operationContextResolutionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['targetRef', 'source', 'originRef', 'description'],
+  properties: {
+    inputId: str,
+    // targetRef is the operation/BFF/ontology field being resolved: Entity.field, input.<inputId>,
+    // filter.<name> or a catalogued runtime attr. fieldRef is kept out on purpose: previous
+    // generations confused the target with runtime origins such as actorSession/currentWorkspace.
+    targetRef: str,
+    source: contextSource,
+    originRef: str,
+    description: str,
+  },
+} as const;
+
+const operationAccessPatternSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['kind', 'description'],
+  properties: {
+    kind: { enum: ['list', 'getById', 'lookup', 'commandInput'] },
+    description: str,
+    entity: str,
+    keyField: str,
+    filters: strArray,
+    sort: strArray,
+    pagination: { enum: ['none', 'optional', 'required'] },
+    selection: { enum: ['none', 'single', 'multiple'] },
+    output: strArray,
+  },
+} as const;
+
 export const operationDefinitionResultSchema = {
   type: 'object',
   additionalProperties: false,
@@ -427,7 +474,7 @@ export const operationDefinitionResultSchema = {
     operationDefinition: {
       type: 'object',
       additionalProperties: false,
-      required: ['operationId', 'title', 'actor', 'entity', 'kind', 'reads', 'writes', 'rulesApplied', 'story'],
+      required: ['operationId', 'title', 'actor', 'entity', 'kind', 'reads', 'writes', 'rulesApplied', 'story', 'accessPattern', 'inputs', 'contextResolution'],
       properties: {
         operationId: str,
         title: str,
@@ -438,6 +485,90 @@ export const operationDefinitionResultSchema = {
         writes: strArray,
         rulesApplied: strArray,
         story: storySchema,
+        accessPattern: operationAccessPatternSchema,
+        inputs: { type: 'array', items: operationInputSchema },
+        contextResolution: { type: 'array', items: operationContextResolutionSchema },
+        acceptanceAssertions: strArray,
+      },
+    },
+  },
+} as const;
+
+// ── behavior: module journey map ────────────────────────────────────────────────
+
+const journeyLandingSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['actor', 'workspaceId', 'reason'],
+  properties: { actor: str, workspaceId: str, reason: str },
+} as const;
+
+const journeyWorkspaceSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['workspaceId', 'title', 'actor', 'kind', 'operationIds', 'purpose'],
+  properties: {
+    workspaceId: str,
+    title: str,
+    actor: str,
+    kind: { enum: ['entityManagement', 'workflow', 'dashboard', 'task', 'support'] },
+    entity: str,
+    workflowId: str,
+    operationIds: strArray,
+    purpose: str,
+  },
+} as const;
+
+const journeyDataTransportSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['name', 'from', 'to', 'source'],
+  properties: { name: str, from: str, to: str, source: contextSource, description: str },
+} as const;
+
+const journeyNavigationEdgeSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['from', 'to', 'trigger', 'data', 'description'],
+  properties: {
+    from: str,
+    to: str,
+    operationId: str,
+    trigger: str,
+    data: { type: 'array', items: journeyDataTransportSchema },
+    description: str,
+  },
+} as const;
+
+const journeyInputResolutionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['operationId', 'inputId', 'source', 'via', 'description'],
+  properties: {
+    operationId: str,
+    inputId: str,
+    source: contextSource,
+    via: str,
+    description: str,
+  },
+} as const;
+
+export const journeyMapResultSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['journeyMap'],
+  properties: {
+    journeyMap: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['moduleName', 'landings', 'workspaces', 'navigationEdges', 'inputResolutions', 'acceptanceAssertions'],
+      properties: {
+        moduleName: str,
+        landings: { type: 'array', items: journeyLandingSchema },
+        workspaces: { type: 'array', items: journeyWorkspaceSchema },
+        navigationEdges: { type: 'array', items: journeyNavigationEdgeSchema },
+        inputResolutions: { type: 'array', items: journeyInputResolutionSchema },
+        acceptanceAssertions: strArray,
       },
     },
   },

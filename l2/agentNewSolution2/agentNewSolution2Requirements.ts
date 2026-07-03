@@ -289,6 +289,10 @@ Generate ONE small first clarification. Do not ask about architecture, plugins, 
 implementation details yet. Use the same language as the user. Every question needs a useful default
 in its "answer" field.
 
+Include lightweight journey context. Ask who uses the module daily, what each actor sees first,
+which device/context matters, which capabilities are frequent, and where important ids come from.
+These answers feed the L4 journey map; they must stay about user work, not implementation.
+
 If the request is invalid for a module or solution, return:
 { "type": "result", "result": "Short error message in the user's language" }
 
@@ -304,6 +308,11 @@ For a valid request, return:
       "roles": { "type": "open", "question": "", "answer": "" },
       "publicTarget": { "type": "open", "question": "", "answer": "" },
       "mainGoal": { "type": "open", "question": "", "answer": "" },
+      "dailyUsage": { "type": "open", "question": "", "answer": "" },
+      "actorLanding": { "type": "open", "question": "", "answer": "" },
+      "deviceContext": { "type": "open", "question": "", "answer": "" },
+      "frequentCapabilities": { "type": "open", "question": "", "answer": "" },
+      "identifierSources": { "type": "open", "question": "", "answer": "" },
       "openQuestion1": { "type": "open", "question": "", "answer": "" }
     },
     "legends": [ "Localized note: this is the first clarification.", "Localized note: detailed planning comes later." ]
