@@ -66,7 +66,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     entityMap: mapEntity,
     relationships,
     rules: pickRecordsByIds(fp.rules as unknown[], ruleIds, ['ruleId']),
-    otherEntityIds: Object.keys(fp.ontology.entities).filter(id => id !== args),
+    // Send id + title + description of the other entities (not just ids) so a needed reference can be
+    // matched by meaning even when the exact name differs (e.g. line-item vs OrderItem).
+    otherEntities: Object.entries(fp.ontology.entities)
+      .filter(([id]) => id !== args)
+      .map(([id, meta]) => ({ entityId: id, ...(isRecord(meta) ? { title: meta.title, description: meta.description } : {}) })),
   };
   return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), `## Current entity selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
 }
@@ -83,7 +87,14 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     // The selector (ontology map key) is authoritative for the id.
     if (selector && output.result.entityDefinition.entityId !== selector) output.result.entityDefinition.entityId = selector;
     if (output.status === 'ok' && output.result.entityDefinition.fields.length === 0) throw new Error(`entity ${selector} has no fields`);
-    if (output.status === 'failed') { status = 'failed'; traceMsg = `${AGENT_NAME} returned failed`; }
+    // Any non-ok status (failed OR needs_input) fails the step loudly with the questions in the trace.
+    // needs_input used to fall through silently: the step stayed 'completed' and the entity was never
+    // saved, only surfacing later as plan.disk.divergence. Surfacing it lets the step be reprocessed.
+    if (output.status !== 'ok') {
+      status = 'failed';
+      const questions = Array.isArray(output.questions) && output.questions.length ? ` — questions: ${output.questions.join(' | ')}` : '';
+      traceMsg = `${AGENT_NAME} returned '${output.status}' for entity ${selector}${questions}`;
+    }
   } catch (error) {
     status = 'failed';
     traceMsg = error instanceof Error ? error.message : String(error);
@@ -204,7 +215,9 @@ Rules:
 - If you set ownership, it MUST be EXACTLY one of: moduleOwned, mdmOwned, horizontalOwned, pluginOwned,
   existingModuleOwned, external (keep the value from the entity map; never invent another). Omit it if unsure.
 - rulesApplied lists ruleIds (from the provided rules) constraining this entity.
-- Do not invent entities/rules/relationships; if a needed reference entity is missing from
-  otherEntityIds, return status "needs_input" with questions. Never return empty fields.
+- Do not invent entities/rules/relationships; the available entities are in "otherEntities" (each with
+  entityId + title + description). Match a needed reference by MEANING, not just exact name (e.g. an order
+  line item may already exist under a different id). Only if a genuinely needed reference entity is absent
+  from otherEntities, return status "needs_input" with specific questions. Never return empty fields.
 
 `;

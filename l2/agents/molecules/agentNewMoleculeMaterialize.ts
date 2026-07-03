@@ -224,13 +224,14 @@ async function processOutput(context: mls.msg.ExecutionContext, output: Result):
 
 
 
+    // Chain the .less materializer (it chains the playground once the styles are written).
     const newStep: mls.msg.AgentIntentAddStep = {
         type: "add-step",
         messageId: context.message.orderAt,
         threadId: context.message.threadId,
         taskId: context.task?.PK || '',
         parentStepId: 1,
-        stepTitle: 'Preparing playground',
+        stepTitle: 'Materializing styles',
         step:
         {
             type: 'agent',
@@ -238,8 +239,8 @@ async function processOutput(context: mls.msg.ExecutionContext, output: Result):
             interaction: null,
             status: 'waiting_human_input',
             nextSteps: [],
-            agentName: "agentNewMoleculePlayground",
-            prompt: JSON.stringify({ group: group, fileReference: data.fileReference }),
+            agentName: "agentMoleculeMaterializeLess",
+            prompt: JSON.stringify({ fileReference: data.fileReference, group, nextPlayground: true }),
             rags: null,
         }
     };

@@ -11,11 +11,11 @@ export class WidgetPlaygroundState extends LitElement {
 
     connectedCallback() {
         setState('playground', {});
-        super.connectedCallback();
-    }
-
-    firstUpdated() {
+        // Seed SÍNCRONO, antes de qualquer 1º render das moléculas da página: os upgrades
+        // só agendam o render como microtask, então semear aqui elimina a corrida em que
+        // uma molécula lê {{playground.*}} antes do estado existir (era no firstUpdated).
         this.initStatePlayground();
+        super.connectedCallback();
     }
 
     render() {
@@ -24,8 +24,10 @@ export class WidgetPlaygroundState extends LitElement {
 
     private initStatePlayground() {
         try {
-            if (!this.state) return;
-            const js = JSON.parse(this.state);
+            // getAttribute: a property pode ainda não ter sido sincronizada pelo Lit aqui.
+            const raw = this.getAttribute('state') || this.state;
+            if (!raw) return;
+            const js = JSON.parse(raw);
             Object.keys({ ...js }).forEach((k) => {
                 initState(k, js[k]);
             });

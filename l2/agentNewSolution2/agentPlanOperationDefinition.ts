@@ -19,7 +19,7 @@ import {
   optionalString,
   resolveCapabilityInfo,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
-import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
+import { createPlannerToolSchema, extractPlannerOutput, isRecord } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import { getApprovedModuleName, operationFileInfo, readOntologyEntities, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { operationDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getOperationIndex } from '/_102020_/l2/agentNewSolution2/agentPlanOperationIndex.js';
@@ -97,7 +97,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   const entityShape = ontology[indexItem.entity];
   const behavior = getBehaviorIndex(context).result;
   const workflowOwner = behavior.workflows.find(w => (w.operationIds || []).includes(args));
-  const reduced = { selector: args, indexItem, story, workflowOwner, entityShape, ontologyEntityIds: Object.keys(ontology) };
+  // Other entities go with id + title + description (not just ids) so a referenced entity is matched
+  // by meaning; the operation's own target entity still goes fully expanded in entityShape.
+  const ontologyEntities = Object.entries(ontology).map(([id, meta]) => ({ entityId: id, ...(isRecord(meta) ? { title: meta.title, description: meta.description } : {}) }));
+  const reduced = { selector: args, indexItem, story, workflowOwner, entityShape, ontologyEntities };
   return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), `## Operation selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
 }
 
@@ -111,7 +114,13 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     if (!payload) throw new Error('missing payload');
     output = extractPlannerOutput(payload, config);
     if (selector && output.result.operationDefinition.operationId !== selector) output.result.operationDefinition.operationId = selector;
-    if (output.status === 'failed') { status = 'failed'; traceMsg = `${AGENT_NAME} returned failed`; }
+    // Any non-ok status (failed OR needs_input) fails the step loudly with the questions in the trace,
+    // instead of silently completing without saving (which surfaced later as plan.disk.divergence).
+    if (output.status !== 'ok') {
+      status = 'failed';
+      const questions = Array.isArray(output.questions) && output.questions.length ? ` — questions: ${output.questions.join(' | ')}` : '';
+      traceMsg = `${AGENT_NAME} returned '${output.status}' for operation ${selector}${questions}`;
+    }
   } catch (error) {
     status = 'failed';
     traceMsg = error instanceof Error ? error.message : String(error);

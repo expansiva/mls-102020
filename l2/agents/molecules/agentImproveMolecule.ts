@@ -104,7 +104,32 @@ async function afterPromptStep(
 
     const page = context.task?.iaCompressed?.longMemory['page'] || payload.result.page;
     const position = context.task?.iaCompressed?.longMemory['position'] || 'left';
+    const target = payload.result.target || 'ts';
 
+    // Style-only change: skip the .ts materializer and update the .less directly (no playground).
+    if (target === 'less') {
+        const lessStep: mls.msg.AgentIntentAddStep = {
+            type: "add-step",
+            messageId: context.message.orderAt,
+            threadId: context.message.threadId,
+            taskId: context.task?.PK || '',
+            parentStepId: 1,
+            stepTitle: 'Materializing styles',
+            step: {
+                type: 'agent',
+                stepId: 0,
+                interaction: null,
+                status: 'waiting_human_input',
+                nextSteps: [],
+                agentName: "agentMoleculeMaterializeLess",
+                prompt: JSON.stringify({ fileReference: page, prompt: payload.result.prompt, nextPlayground: false }),
+                rags: null,
+            }
+        };
+        return [lessStep, updateStatus];
+    }
+
+    // ts or both → the .ts materializer runs (and chains the .less agent when target === 'both').
     const newStep: mls.msg.AgentIntentAddStep = {
         type: "add-step",
         messageId: context.message.orderAt,
@@ -119,7 +144,7 @@ async function afterPromptStep(
             status: 'waiting_human_input',
             nextSteps: [],
             agentName: "agentImproveMoleculeMaterialize",
-            prompt: JSON.stringify({ page, prompt: payload.result.prompt, position }),
+            prompt: JSON.stringify({ page, prompt: payload.result.prompt, position, target }),
             rags: null,
         }
     };
@@ -250,13 +275,18 @@ In this case, return a \`clarification\` output with the FULL updated requiremen
 Pre-populate all fields from the existing defs — only update what the improvement request changes.
 
 ### Option 2
-**DIRECT IMPROVEMENT** if the request:
-- Only changes visual style (colors, spacing, typography)
-- Only changes layout or animation details
-- Only fixes a bug without altering the functional contract
-- Only adjusts an internal implementation detail
+**DIRECT IMPROVEMENT** if the request does NOT change the functional/visual requirements (defs):
+- Changes visual style (colors, spacing, typography, borders, radius, shadows, CSS animations)
+- Changes layout details
+- Fixes a bug without altering the functional contract
+- Adjusts an internal implementation detail
 
-In this case, return a \`flexible\` output with the original page and prompt.
+In this case, return a \`flexible\` output with the original page and prompt, AND a \`target\` classifying which file(s) the change touches:
+- \`"less"\` — **only** visual styling that lives in the .less (colors, spacing, typography, borders, radius, shadows, pure-CSS animations). The .ts is not changed.
+- \`"ts"\` — only implementation/logic/bug fixes with no styling impact. The .less is not changed.
+- \`"both"\` — the change requires editing implementation AND styling.
+
+When unsure between \`ts\` and \`both\`, prefer \`both\`.
 
 ## Context
 ### Current molecule requirements (.defs.ts)
@@ -296,6 +326,7 @@ export interface TClarification {
 
 interface IDataPrompt {
     page: string; // .ts final
-    prompt: string; // original user prompt    
+    prompt: string; // original user prompt
+    target?: 'ts' | 'less' | 'both'; // which file(s) the improvement touches (Option 2 only)
 }
 //#endregion
