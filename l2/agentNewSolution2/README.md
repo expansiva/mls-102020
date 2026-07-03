@@ -10,21 +10,24 @@ name handoff. It stops before screens/contracts (Stage 2) and backend persistenc
 
 - `l4/{module}/module.defs.ts` — module meta, **`designContext`** (initial prompt + userLanguage +
   openDetails + priority decisions, so Stage 2 has the original intent), ontology index, relationships,
-  approved refs. **No top-level `capabilities`** (realized — with priority — on each workflow/operation)
-  and **no `actors`** (moved to `l4/actors`).
+  journey index, approved refs. **No top-level `capabilities`** (realized — with priority — on each
+  workflow/operation) and **no `actors`** (moved to `l4/actors`).
 - `l4/{module}/ontology/{EntityId}.defs.ts` — canonical entities (fields, enums, lifecycle).
 - `l4/actors/{module}Actors.defs.ts` — authorization roster: each actor + a JWT role scope
   `{module}:{actorId}` (e.g. `cafeFlow:managerOwner`) the runtime can enforce later.
 - `l4/rules/{module}Rules.defs.ts` — global rules.
 - `l4/workflows/{workflowId}.defs.ts` — global workflows (states aligned to the entity lifecycle, with embedded story) plus canonical `pageId`.
-- `l4/operations/{operationId}.defs.ts` — global operations = intent-level BFF contract (with story) plus canonical `pageId`, `commandName` and `bffName`.
+- `l4/operations/{operationId}.defs.ts` — global operations = intent-level BFF contract (with story,
+  access pattern, inputs and context resolution) plus canonical `pageId`, `commandName` and `bffName`.
+- `l4/{module}/journeys/{module}Journeys.defs.ts` — module journey map: actor landings, workspaces,
+  navigation edges, data transported and input origins. This is navigation/business intent, not layout.
 - `l5/project.json` (merge), `l5/{module}/process.defs.ts` (run record).
 
 Never produced here: page implementation files, l2 contract/shared/page defs, tables/persistence,
-layer_3/4 backend, metrics. Stage 1 only publishes the stable BFF names that those later artifacts
-must reuse.
-User stories live as the embedded `story` on each workflow/operation; no separate journeys artifact
-is produced.
+layer_3/4 backend, metrics. Stage 1 only publishes the stable BFF names and journey contract that
+those later artifacts must reuse.
+User stories live as the embedded `story` on each workflow/operation and are then consolidated into
+the module journey map.
 
 ## Tree (planId → agent)
 
@@ -45,6 +48,7 @@ is produced.
 | plan-workflow-definition | agentNs2WorkflowDefinition | fan-out (1/workflow) |
 | plan-operation-index | agentPlanOperationIndex | **new** — spawns operation fan-out |
 | plan-operation-definition | agentPlanOperationDefinition | **new** — fan-out (1/operation) |
+| plan-journey-map | agentPlanJourneyMap | **new** — L4 journey map |
 | org-handoff | agentNewSolution2Handoff | no-LLM container (separate from Final so only final-resume shows the "open summary" link) |
 | behavior-validate | agentValidateBehaviorModel | **new** — deterministic, non-blocking, reads saved l4 files |
 | final-resume | agentNewSolution2Final | **auto-finish** (no clarification): freezes run, cleans, completes; openStepView shows the summary |
@@ -80,8 +84,8 @@ is produced.
   the finish in a hook — not a UI event handler — avoids the silent-stall failure mode.)
 - **File-fallback after fan-outs.** Parallel fan-out children are pre-allocated, reused and deleted by
   the backend, so consumers that run after a fan-out (validate, final handoff) read the SAVED
-  `l4/.../*.defs.ts` via `ns2Artifacts.read{OntologyEntities,WorkflowDefs,OperationDefs}` — never the
-  task payloads.
+  `l4/.../*.defs.ts` via `ns2Artifacts.read{OntologyEntities,WorkflowDefs,OperationDefs,JourneyDefs}`
+  — never the task payloads.
 - **Actors as authz roster.** Actors are persisted to `l4/actors/{module}Actors.defs.ts` with a JWT
   `roleScope` (`{module}:{actorId}`).
 - **Capabilities realized on behaviors (no standalone artifact).** Each workflow carries
@@ -97,6 +101,10 @@ is produced.
   `pageId`, `commandName` and `bffName = {moduleName}.{pageId}.{commandName}`. The operation page is
   the workflow that orchestrates it, or the operation itself when no workflow owns it. Stage 2 and
   Stage 3 must reuse `bffName` instead of deriving route keys independently.
+- **Journey source of truth.** `agentPlanJourneyMap` groups operations into actor workspaces
+  (`entityManagement`, workflow, dashboard, task, support), declares landings and navigation edges,
+  and records where required ids come from. Stage 2 should consume this instead of creating isolated
+  pages from operations alone.
 - **Full behavior coverage.** Classification covers every non-`never` capability (now/soon/later), so
   user-requested key screens that landed as `soon` (dashboards, AI) still become operations → pages.
   Each stateful workflow must list `operationIds`; the index fills them from the classification if empty.

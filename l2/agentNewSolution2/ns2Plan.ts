@@ -28,6 +28,7 @@ export const PLAN_IDS = [
   'plan-workflow-definition',
   'plan-operation-index',
   'plan-operation-definition',
+  'plan-journey-map',
   // handoff
   'org-handoff',
   'behavior-validate',

@@ -103,6 +103,7 @@ async function persistDomain(context: mls.msg.ExecutionContext, result: Finalize
       module: result.module,
       designContext: buildDesignContext(context),
       ontology: { entities: buildOntologyIndex(moduleName, result.ontology.entities) },
+      journey: { defPath: `l4/${moduleName}/journeys/${moduleName}Journeys.defs.ts` },
       relationships: result.relationships,
       approvedArtifacts: result.approvedArtifacts,
     });

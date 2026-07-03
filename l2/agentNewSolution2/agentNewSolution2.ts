@@ -144,6 +144,7 @@ function buildPlannedTree(initialPlan: InitialNewSolution2Plan): PlannedAgentSte
     agentStep('plan-operation-definition', 'agentPlanOperationDefinition', title('plan-operation-definition'), ['plan-operation-index'], 'parallel_dynamic', {
       sourcePlanId: 'plan-operation-index', selectorField: 'operationId', argsField: 'operationId',
     }),
+    agentStep('plan-journey-map', 'agentPlanJourneyMap', title('plan-journey-map'), ['plan-workflow-definition', 'plan-operation-definition'], 'sequential'),
   ];
 
   const handoffChildren: PlannedStep[] = [
@@ -151,7 +152,7 @@ function buildPlannedTree(initialPlan: InitialNewSolution2Plan): PlannedAgentSte
     // on org-handoff itself. A passive container only completes once its children are terminal, so a
     // child that depends on its own container deadlocks (the child waits for the parent, the parent
     // waits for the child). Gating on the upstream lets validate run and the container auto-complete.
-    agentStep('behavior-validate', 'agentValidateBehaviorModel', title('behavior-validate'), ['plan-workflow-definition', 'plan-operation-definition'], 'sequential'),
+    agentStep('behavior-validate', 'agentValidateBehaviorModel', title('behavior-validate'), ['plan-journey-map'], 'sequential'),
     // Auto-finish (no blocking clarification): writes the run record with source refs, cleans
     // traces/inputs/outputs, completes the task. The summary is viewable later via openStepView.
     agentStep('final-resume', 'agentNewSolution2Final', title('final-resume'), ['behavior-validate'], 'sequential'),
@@ -161,7 +162,7 @@ function buildPlannedTree(initialPlan: InitialNewSolution2Plan): PlannedAgentSte
     agentStep('org-requirements', 'agentNewSolution2Requirements', title('org-requirements'), [], 'sequential', undefined, requirementsChildren, 'waiting_human_input'),
     agentStep('org-domain', 'agentNewSolution2Domain', title('org-domain'), ['org-requirements'], 'sequential', undefined, domainChildren),
     agentStep('org-behavior', 'agentNewSolution2Behavior', title('org-behavior'), ['org-domain'], 'sequential', undefined, behaviorChildren),
-    agentStep('org-handoff', 'agentNewSolution2Handoff', title('org-handoff'), ['plan-workflow-definition', 'plan-operation-definition'], 'sequential', undefined, handoffChildren),
+    agentStep('org-handoff', 'agentNewSolution2Handoff', title('org-handoff'), ['plan-journey-map'], 'sequential', undefined, handoffChildren),
   ];
 }
 
@@ -233,6 +234,7 @@ const titlesEn: Record<NewSolution2PlanId, string> = {
   'plan-workflow-definition': 'Define workflows',
   'plan-operation-index': 'Index operations',
   'plan-operation-definition': 'Define operations',
+  'plan-journey-map': 'Plan journey map',
   'org-handoff': 'Freeze behavior model',
   'behavior-validate': 'Validate behavior model',
   'final-resume': 'Stage 1 summary',
@@ -258,6 +260,7 @@ const titlesPt: Record<NewSolution2PlanId, string> = {
   'plan-workflow-definition': 'Definir workflows',
   'plan-operation-index': 'Indexar operacoes',
   'plan-operation-definition': 'Definir operacoes',
+  'plan-journey-map': 'Planejar mapa de jornada',
   'org-handoff': 'Congelar modelo de comportamento',
   'behavior-validate': 'Validar modelo de comportamento',
   'final-resume': 'Resumo da Etapa 1',

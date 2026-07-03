@@ -1,7 +1,8 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution2/ns2Artifacts.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 // File I/O for agentNewSolution2 (Stage 1). Writes the durable business model to l4 (BUSINESS):
-//   module-scoped  -> l4/{module}/module.defs.ts , l4/{module}/ontology/{EntityId}.defs.ts
+//   module-scoped  -> l4/{module}/module.defs.ts , l4/{module}/ontology/{EntityId}.defs.ts ,
+//                     l4/{module}/journeys/{module}Journeys.defs.ts
 //   global         -> l4/rules/{id}.defs.ts , l4/workflows/{id}.defs.ts , l4/operations/{id}.defs.ts
 //   project data   -> l5/project.json (merge) , l5/{module}/process.defs.ts (run record)
 // Trace/checkpoints live under l4 too and are wiped at finish (clearRunArtifacts); the permanent
@@ -188,6 +189,10 @@ export function workflowFileInfo(workflowId: string): FileInfo {
 export function operationFileInfo(operationId: string): FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: 'operations', shortName: toSafeShortName(operationId), extension: '.defs.ts' };
 }
+export function journeyFileInfo(moduleName: string): FileInfo {
+  const normalized = normalizeModuleFolderName(moduleName, 'module');
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalized}/journeys`, shortName: `${toSafeShortName(normalized)}Journeys`, extension: '.defs.ts' };
+}
 // Actors live in their own GLOBAL folder so they double as the authorization roster: each actor maps
 // to a JWT role scope `{module}:{actorId}` (e.g. cafeFlow:managerOwner) the runtime can enforce later.
 export function actorsFileInfo(moduleName: string): FileInfo {
@@ -240,6 +245,11 @@ export async function readWorkflowDefs(): Promise<Record<string, unknown>[]> {
 /** l4/operations/*.defs.ts -> operation definition objects. */
 export async function readOperationDefs(): Promise<Record<string, unknown>[]> {
   return readDefsObjectsInFolder(4, 'operations');
+}
+
+/** l4/{module}/journeys/*.defs.ts -> journey map objects. */
+export async function readJourneyDefs(moduleName: string): Promise<Record<string, unknown>[]> {
+  return readDefsObjectsInFolder(4, `${normalizeModuleFolderName(moduleName, 'module')}/journeys`);
 }
 
 /** Merge l5/project.json: preserve every top-level field, add/replace this module + dedupe deps/languages. */

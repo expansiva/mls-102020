@@ -42,6 +42,10 @@ export interface OperationDefinition {
   writes: string[];
   rulesApplied: string[];
   story: { actor: string; goal: string; soThat?: string; steps: string[]; outcome: string };
+  accessPattern: OperationAccessPattern;
+  inputs: OperationInput[];
+  contextResolution: OperationContextResolution[];
+  acceptanceAssertions?: string[];
   // Deterministic handoff for frontend/backend. Stage 2 must use commandName/bffName in l2 contracts;
   // Stage 3 must use the same bffName as the route key. The LLM does not author these names.
   pageId?: string;
@@ -55,6 +59,31 @@ export interface OperationDefinition {
   // 'toCreate' on creation. Decoupling them avoids the single-status ambiguity between the two stages.
   statusFrontend?: ExperienceStatus;
   statusBackend?: ExperienceStatus;
+}
+export type OperationContextSource = 'userInput' | 'actorSession' | 'currentWorkspace' | 'selectedEntity' | 'activeLifecycleInstance' | 'workflowState' | 'routeParam' | 'previousStepOutput' | 'systemDefault';
+export interface OperationAccessPattern {
+  kind: 'list' | 'getById' | 'lookup' | 'commandInput';
+  description: string;
+  entity?: string;
+  keyField?: string;
+  filters?: string[];
+  sort?: string[];
+  pagination?: 'none' | 'optional' | 'required';
+  selection?: 'none' | 'single' | 'multiple';
+  output?: string[];
+}
+export interface OperationInput {
+  inputId: string;
+  fieldRef: string;
+  required: boolean;
+  source: OperationContextSource;
+  description: string;
+}
+export interface OperationContextResolution {
+  inputId?: string;
+  fieldRef: string;
+  source: OperationContextSource;
+  description: string;
 }
 export interface OperationDefinitionResult { operationDefinition: OperationDefinition }
 export type OperationDefinitionOutput = PlannerOutput<OperationDefinitionResult>;
@@ -72,7 +101,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   const story = getBehaviorIndex(context).result.operations.find(o => o.operationId === args)?.story;
   const ontology = await getEnrichedOntology(context);
   const entityShape = ontology[indexItem.entity];
-  const reduced = { selector: args, indexItem, story, entityShape, ontologyEntityIds: Object.keys(ontology) };
+  const behavior = getBehaviorIndex(context).result;
+  const workflowOwner = behavior.workflows.find(w => (w.operationIds || []).includes(args));
+  const reduced = { selector: args, indexItem, story, workflowOwner, entityShape, ontologyEntityIds: Object.keys(ontology) };
   return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), `## Operation selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
 }
 
@@ -148,8 +179,62 @@ function normalizeResult(value: unknown): OperationDefinitionResult {
       writes: normalizeStringList(d.writes, 'result.operationDefinition.writes'),
       rulesApplied: normalizeStringList(d.rulesApplied, 'result.operationDefinition.rulesApplied'),
       story: { actor: assertString(s.actor, 'story.actor'), goal: assertString(s.goal, 'story.goal'), soThat: optionalString(s.soThat), steps: normalizeStringList(s.steps, 'story.steps'), outcome: assertString(s.outcome, 'story.outcome') },
+      accessPattern: normalizeAccessPattern(d.accessPattern, 'result.operationDefinition.accessPattern'),
+      inputs: normalizeOperationInputs(d.inputs, 'result.operationDefinition.inputs'),
+      contextResolution: normalizeContextResolution(d.contextResolution, 'result.operationDefinition.contextResolution'),
+      acceptanceAssertions: normalizeStringList(d.acceptanceAssertions, 'result.operationDefinition.acceptanceAssertions'),
     },
   };
+}
+
+function normalizeAccessPattern(value: unknown, path: string): OperationAccessPattern {
+  const p = assertRecord(value, path);
+  const kind = assertString(p.kind, `${path}.kind`) as OperationAccessPattern['kind'];
+  if (!['list', 'getById', 'lookup', 'commandInput'].includes(kind)) throw new Error(`${path}.kind invalid`);
+  const pagination = optionalString(p.pagination) as OperationAccessPattern['pagination'];
+  const selection = optionalString(p.selection) as OperationAccessPattern['selection'];
+  return {
+    kind,
+    description: assertString(p.description, `${path}.description`),
+    entity: optionalString(p.entity),
+    keyField: optionalString(p.keyField),
+    filters: normalizeStringList(p.filters, `${path}.filters`),
+    sort: normalizeStringList(p.sort, `${path}.sort`),
+    pagination: pagination && ['none', 'optional', 'required'].includes(pagination) ? pagination : undefined,
+    selection: selection && ['none', 'single', 'multiple'].includes(selection) ? selection : undefined,
+    output: normalizeStringList(p.output, `${path}.output`),
+  };
+}
+
+function normalizeOperationInputs(value: unknown, path: string): OperationInput[] {
+  return assertArray(value || [], path).map((item, index) => {
+    const input = assertRecord(item, `${path}[${index}]`);
+    return {
+      inputId: assertString(input.inputId, `${path}[${index}].inputId`),
+      fieldRef: assertString(input.fieldRef, `${path}[${index}].fieldRef`),
+      required: input.required === true,
+      source: normalizeContextSource(input.source, `${path}[${index}].source`),
+      description: assertString(input.description, `${path}[${index}].description`),
+    };
+  });
+}
+
+function normalizeContextResolution(value: unknown, path: string): OperationContextResolution[] {
+  return assertArray(value || [], path).map((item, index) => {
+    const ctx = assertRecord(item, `${path}[${index}]`);
+    return {
+      inputId: optionalString(ctx.inputId),
+      fieldRef: assertString(ctx.fieldRef, `${path}[${index}].fieldRef`),
+      source: normalizeContextSource(ctx.source, `${path}[${index}].source`),
+      description: assertString(ctx.description, `${path}[${index}].description`),
+    };
+  });
+}
+
+function normalizeContextSource(value: unknown, path: string): OperationContextSource {
+  const source = assertString(value, path) as OperationContextSource;
+  if (['userInput', 'actorSession', 'currentWorkspace', 'selectedEntity', 'activeLifecycleInstance', 'workflowState', 'routeParam', 'previousStepOutput', 'systemDefault'].includes(source)) return source;
+  throw new Error(`${path} invalid`);
 }
 
 function attachBffNaming(context: mls.msg.ExecutionContext, def: OperationDefinition): void {
@@ -184,11 +269,26 @@ Call the "{{toolName}}" tool with: status, result, questions, trace. Do not retu
 
 In result.operationDefinition: operationId (== selector), title, actor (actorId), entity (canonical
 ontology id), kind (create|update|delete|query|view), reads[] and writes[] (ontology entities or
-"Entity.field" the operation reads/writes), rulesApplied[] (ruleIds), and the embedded story.
+"Entity.field" the operation reads/writes), rulesApplied[] (ruleIds), embedded story, accessPattern,
+inputs[], contextResolution[] and acceptanceAssertions[].
 
 Rules:
 - operationId must equal the selector. No tables. Do not invent page, command or route names; the
   agent attaches pageId, commandName and bffName deterministically after the tool call.
 - reads/writes reference canonical ontology ids (optionally "Entity.field"), never aggregate names.
+- accessPattern.kind must be exactly one of list|getById|lookup|commandInput. For query/view, choose
+  the user journey's best access: list for browsable sets, getById only when the journey already
+  carries a selected id, lookup for compact selectors. For create/update/delete use commandInput.
+- inputs[] must list every BFF input the frontend/backend contract needs. Each input.fieldRef must be
+  an ontology field ref (Entity.field or Entity) and each input.source must be one of:
+  userInput, actorSession, currentWorkspace, selectedEntity, activeLifecycleInstance, workflowState,
+  routeParam, previousStepOutput, systemDefault.
+- Required identifier inputs (id fields) must not be plain userInput. Resolve them from routeParam,
+  selectedEntity, activeLifecycleInstance, workflowState or previousStepOutput whenever the system can
+  know the value. If the actor selects it from a list/detail, use selectedEntity or previousStepOutput.
+- contextResolution[] declares fields resolved by the system/runtime, never typed manually. Do not put
+  persistence/table/usecase internals here.
+- acceptanceAssertions[] must be objective checks for this operation, e.g. "opening the menu list
+  requires no typed id" or "payment uses the order id selected in the journey".
 
 `;

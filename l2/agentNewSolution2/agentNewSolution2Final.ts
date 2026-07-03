@@ -71,10 +71,12 @@ function buildRun(moduleName: string): ProcessRun {
       healthReport: 'l4/trace/behavior-health-report.json#report',
       workflows: 'l4/workflows/*.defs.ts',
       operations: 'l4/operations/*.defs.ts',
+      journeys: `l4/${moduleName}/journeys/*.defs.ts`,
       ontology: `l4/${moduleName}/ontology/*.defs.ts`,
     },
     handoffNotes: [
       'l4/workflows carries pageId. l4/operations carries pageId, commandName and bffName. Stage 2 contracts and Stage 3 controllers must use bffName as the shared route key instead of deriving {module}.{page}.{command} independently.',
+      'l4/{module}/journeys carries actor landings, workspaces, navigation edges and input origins. Stage 2 should use it to group operations into navigable workspaces instead of producing isolated pages.',
     ],
     nextSteps,
   };

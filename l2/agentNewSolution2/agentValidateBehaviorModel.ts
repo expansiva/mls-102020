@@ -12,14 +12,15 @@ import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finali
 import { getEnrichedOntology } from '/_102020_/l2/agentNewSolution2/agentNs2EntityDefinition.js';
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
 import { getWorkflowDefinitions } from '/_102020_/l2/agentNewSolution2/agentNs2WorkflowDefinition.js';
-import { getOperationDefinitions } from '/_102020_/l2/agentNewSolution2/agentPlanOperationDefinition.js';
+import { getOperationDefinitions, type OperationDefinition } from '/_102020_/l2/agentNewSolution2/agentPlanOperationDefinition.js';
+import { getJourneyMap, type JourneyMap } from '/_102020_/l2/agentNewSolution2/agentPlanJourneyMap.js';
 
 const AGENT_NAME = 'agentValidateBehaviorModel';
 
 export interface HealthFinding { severity: 'error' | 'warning'; code: string; message: string }
 export interface BehaviorHealthReport {
   passed: boolean;
-  counts: { entities: number; workflows: number; operations: number };
+  counts: { entities: number; workflows: number; operations: number; journeyWorkspaces: number };
   errors: HealthFinding[];
   warnings: HealthFinding[];
 }
@@ -52,6 +53,7 @@ export async function computeBehaviorHealthReport(context: mls.msg.ExecutionCont
   const behavior = getBehaviorIndex(context).result;
   const workflowDefs = await getWorkflowDefinitions(context);
   const operationDefs = await getOperationDefinitions(context);
+  const journeyMap = await getJourneyMap(context);
   const moduleName = getApprovedModuleName(context) || '';
 
   const knownEntities = getOntologyEntityIdSet(ontology);
@@ -111,8 +113,11 @@ export async function computeBehaviorHealthReport(context: mls.msg.ExecutionCont
     entityRef(o.entity, `operation ${o.operationId}`);
     for (const r of [...o.reads, ...o.writes]) entityRef(stripField(r), `operation ${o.operationId}`);
     ruleRefs(o.rulesApplied, `operation ${o.operationId}`);
+    validateOperationContract(o, knownEntities, errors, warnings);
     if (currentOperationIds.has(o.operationId)) validateBffNaming(o, moduleName, errors);
   }
+
+  validateJourneyContract(journeyMap, workflowDefs, operationDefs, currentOperationIds, knownActors, errors, warnings);
 
   // Fan-out completeness: a defined artifact per classified behavior.
   const definedWorkflows = new Set(workflowDefs.map(w => w.workflowId));
@@ -122,7 +127,7 @@ export async function computeBehaviorHealthReport(context: mls.msg.ExecutionCont
 
   return {
     passed: errors.length === 0,
-    counts: { entities: knownEntities.size, workflows: workflowDefs.length, operations: operationDefs.length },
+    counts: { entities: knownEntities.size, workflows: workflowDefs.length, operations: operationDefs.length, journeyWorkspaces: journeyMap?.workspaces.length || 0 },
     errors,
     warnings,
   };
@@ -144,4 +149,137 @@ function validateBffNaming(operation: { operationId: string; pageId?: string; co
   if (operation.bffName !== expected) {
     errors.push({ severity: 'error', code: 'operation.bffName.mismatch', message: `${where}: bffName '${operation.bffName}' must be '${expected}'` });
   }
+}
+
+function validateOperationContract(operation: OperationDefinition, knownEntities: Set<string>, errors: HealthFinding[], warnings: HealthFinding[]): void {
+  const where = `operation ${operation.operationId}`;
+  const access = isRecord(operation.accessPattern) ? operation.accessPattern : null;
+  if (!access) {
+    errors.push({ severity: 'error', code: 'operation.accessPattern.missing', message: `${where}: missing accessPattern` });
+  } else {
+    const kind = typeof access.kind === 'string' ? access.kind : '';
+    if (!['list', 'getById', 'lookup', 'commandInput'].includes(kind)) errors.push({ severity: 'error', code: 'operation.accessPattern.kind.invalid', message: `${where}: invalid accessPattern.kind '${kind}'` });
+    if ((operation.kind === 'query' || operation.kind === 'view') && kind === 'commandInput') {
+      errors.push({ severity: 'error', code: 'operation.accessPattern.query.invalid', message: `${where}: query/view must declare list, getById or lookup access, not commandInput` });
+    }
+    if (typeof access.entity === 'string' && !isKnownEntityRef(stripField(access.entity), knownEntities)) errors.push({ severity: 'error', code: 'operation.accessPattern.entity.unknown', message: `${where}: accessPattern entity '${access.entity}' does not resolve` });
+    if (typeof access.keyField === 'string' && !isKnownEntityRef(stripField(access.keyField), knownEntities)) errors.push({ severity: 'error', code: 'operation.accessPattern.key.unknown', message: `${where}: accessPattern keyField '${access.keyField}' does not resolve` });
+  }
+
+  const inputs = Array.isArray(operation.inputs) ? operation.inputs : null;
+  if (!inputs) {
+    errors.push({ severity: 'error', code: 'operation.inputs.missing', message: `${where}: missing inputs[]` });
+  } else {
+    for (const input of inputs) {
+      if (!isRecord(input)) continue;
+      const inputId = typeof input.inputId === 'string' ? input.inputId : '';
+      const fieldRef = typeof input.fieldRef === 'string' ? input.fieldRef : '';
+      const source = typeof input.source === 'string' ? input.source : '';
+      if (!inputId) errors.push({ severity: 'error', code: 'operation.input.id.missing', message: `${where}: input without inputId` });
+      if (!fieldRef || !isKnownEntityRef(stripField(fieldRef), knownEntities)) errors.push({ severity: 'error', code: 'operation.input.field.unknown', message: `${where}: input '${inputId || '?'}' fieldRef '${fieldRef}' does not resolve` });
+      if (!isKnownContextSource(source)) errors.push({ severity: 'error', code: 'operation.input.source.invalid', message: `${where}: input '${inputId || '?'}' has invalid source '${source}'` });
+      if (input.required === true && source === 'userInput' && isIdentifierRef(inputId || fieldRef)) {
+        errors.push({ severity: 'error', code: 'operation.input.requiredId.manual', message: `${where}: required identifier input '${inputId || fieldRef}' cannot be plain userInput; resolve it from route, selection, workflow or context` });
+      }
+    }
+  }
+
+  const contexts = Array.isArray(operation.contextResolution) ? operation.contextResolution : null;
+  if (!contexts) {
+    errors.push({ severity: 'error', code: 'operation.contextResolution.missing', message: `${where}: missing contextResolution[]` });
+  } else {
+    for (const ctx of contexts) {
+      if (!isRecord(ctx)) continue;
+      const fieldRef = typeof ctx.fieldRef === 'string' ? ctx.fieldRef : '';
+      const source = typeof ctx.source === 'string' ? ctx.source : '';
+      if (!fieldRef || !isKnownEntityRef(stripField(fieldRef), knownEntities)) errors.push({ severity: 'error', code: 'operation.context.field.unknown', message: `${where}: context fieldRef '${fieldRef}' does not resolve` });
+      if (!isKnownContextSource(source)) errors.push({ severity: 'error', code: 'operation.context.source.invalid', message: `${where}: context source '${source}' is invalid` });
+      if (source === 'userInput') warnings.push({ severity: 'warning', code: 'operation.context.userInput', message: `${where}: contextResolution '${fieldRef}' should usually be runtime context, not userInput` });
+    }
+  }
+}
+
+function validateJourneyContract(
+  journey: JourneyMap | null,
+  workflows: { workflowId: string; actors: string[]; capabilities?: { priority?: string }[] }[],
+  operations: OperationDefinition[],
+  currentOperationIds: Set<string>,
+  knownActors: Set<string>,
+  errors: HealthFinding[],
+  warnings: HealthFinding[],
+): void {
+  if (!journey) {
+    errors.push({ severity: 'error', code: 'journey.missing', message: 'missing l4 journey map; Stage 1 must produce l4/{module}/journeys/{module}Journeys.defs.ts' });
+    return;
+  }
+
+  const operationById = new Map(operations.map(operation => [operation.operationId, operation]));
+  const workspaceIds = new Set<string>();
+  const landingActors = new Set<string>();
+  const reachableOperationIds = new Set<string>();
+
+  for (const landing of journey.landings || []) {
+    if (!knownActors.has(landing.actor)) warnings.push({ severity: 'warning', code: 'journey.landing.actor.unknown', message: `journey landing '${landing.workspaceId}': unknown actor '${landing.actor}'` });
+    landingActors.add(landing.actor);
+  }
+
+  for (const workspace of journey.workspaces || []) {
+    if (workspaceIds.has(workspace.workspaceId)) errors.push({ severity: 'error', code: 'journey.workspace.duplicate', message: `journey workspace '${workspace.workspaceId}' is duplicated` });
+    workspaceIds.add(workspace.workspaceId);
+    if (!knownActors.has(workspace.actor)) warnings.push({ severity: 'warning', code: 'journey.workspace.actor.unknown', message: `journey workspace '${workspace.workspaceId}': unknown actor '${workspace.actor}'` });
+    if (workspace.kind === 'entityManagement' && !workspace.entity) warnings.push({ severity: 'warning', code: 'journey.entityManagement.entity.missing', message: `journey workspace '${workspace.workspaceId}': entityManagement should declare entity` });
+    for (const operationId of workspace.operationIds || []) {
+      reachableOperationIds.add(operationId);
+      const operation = operationById.get(operationId);
+      if (!operation) errors.push({ severity: 'error', code: 'journey.operation.unknown', message: `journey workspace '${workspace.workspaceId}': unknown operation '${operationId}'` });
+      else if (operation.actor !== workspace.actor) warnings.push({ severity: 'warning', code: 'journey.workspace.authorization', message: `journey workspace '${workspace.workspaceId}': operation '${operationId}' actor '${operation.actor}' differs from workspace actor '${workspace.actor}'` });
+    }
+  }
+
+  for (const landing of journey.landings || []) {
+    if (!workspaceIds.has(landing.workspaceId)) errors.push({ severity: 'error', code: 'journey.landing.workspace.unknown', message: `journey landing for actor '${landing.actor}' points to unknown workspace '${landing.workspaceId}'` });
+  }
+
+  for (const edge of journey.navigationEdges || []) {
+    if (!workspaceIds.has(edge.from)) errors.push({ severity: 'error', code: 'journey.edge.from.unknown', message: `journey edge '${edge.from}' -> '${edge.to}': source workspace does not exist` });
+    if (!workspaceIds.has(edge.to)) errors.push({ severity: 'error', code: 'journey.edge.to.unknown', message: `journey edge '${edge.from}' -> '${edge.to}': target workspace does not exist` });
+    if (edge.operationId) {
+      reachableOperationIds.add(edge.operationId);
+      if (!operationById.has(edge.operationId)) errors.push({ severity: 'error', code: 'journey.edge.operation.unknown', message: `journey edge '${edge.from}' -> '${edge.to}': unknown operation '${edge.operationId}'` });
+    }
+    for (const data of edge.data || []) if (!isKnownContextSource(data.source)) errors.push({ severity: 'error', code: 'journey.edge.data.source.invalid', message: `journey edge '${edge.from}' -> '${edge.to}': invalid data source '${data.source}'` });
+  }
+
+  const inputResolutions = new Set((journey.inputResolutions || []).map(item => `${item.operationId}:${item.inputId}`));
+  for (const resolution of journey.inputResolutions || []) {
+    if (!operationById.has(resolution.operationId)) errors.push({ severity: 'error', code: 'journey.input.operation.unknown', message: `journey inputResolution '${resolution.operationId}.${resolution.inputId}': unknown operation` });
+    if (!isKnownContextSource(resolution.source)) errors.push({ severity: 'error', code: 'journey.input.source.invalid', message: `journey inputResolution '${resolution.operationId}.${resolution.inputId}': invalid source '${resolution.source}'` });
+  }
+
+  for (const operation of operations) {
+    if (!currentOperationIds.has(operation.operationId)) continue;
+    const priority = operation.capability?.priority;
+    const mustBeReachable = !priority || priority === 'now';
+    if (mustBeReachable && !reachableOperationIds.has(operation.operationId)) errors.push({ severity: 'error', code: 'journey.operation.unreachable', message: `operation '${operation.operationId}' (${priority || 'unknown priority'}) is not reachable from any journey workspace/edge` });
+    if (mustBeReachable && operation.actor && !landingActors.has(operation.actor)) errors.push({ severity: 'error', code: 'journey.actor.landing.missing', message: `actor '${operation.actor}' owns now behavior but has no journey landing` });
+    for (const input of operation.inputs || []) {
+      if (!input.required || !isIdentifierRef(input.inputId || input.fieldRef) || input.source === 'userInput') continue;
+      if (!inputResolutions.has(`${operation.operationId}:${input.inputId}`)) warnings.push({ severity: 'warning', code: 'journey.input.resolution.missing', message: `operation '${operation.operationId}' required identifier '${input.inputId}' has source '${input.source}' but no journey inputResolution row` });
+    }
+  }
+
+  for (const workflow of workflows) {
+    const priority = (workflow.capabilities || []).find(cap => cap.priority)?.priority;
+    if (priority && priority !== 'now') continue;
+    for (const actor of workflow.actors || []) if (actor && !landingActors.has(actor)) errors.push({ severity: 'error', code: 'journey.actor.landing.missing', message: `actor '${actor}' owns now workflow '${workflow.workflowId}' but has no journey landing` });
+  }
+}
+
+function isKnownContextSource(value: string): boolean {
+  return ['userInput', 'actorSession', 'currentWorkspace', 'selectedEntity', 'activeLifecycleInstance', 'workflowState', 'routeParam', 'previousStepOutput', 'systemDefault'].includes(value);
+}
+
+function isIdentifierRef(value: string): boolean {
+  const last = (value.split('.').pop() || value).toLowerCase();
+  return last === 'id' || last.endsWith('id') || last.endsWith('_id') || last.endsWith('-id');
 }
