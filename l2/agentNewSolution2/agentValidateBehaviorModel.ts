@@ -244,7 +244,21 @@ function validateOperationContract(operation: OperationDefinition, ontology: Rec
     const kind = typeof access.kind === 'string' ? access.kind : '';
     if (!['list', 'getById', 'lookup', 'commandInput'].includes(kind)) errors.push({ severity: 'error', code: 'operation.accessPattern.kind.invalid', message: `${where}: invalid accessPattern.kind '${kind}'` });
     if ((operation.kind === 'query' || operation.kind === 'view') && kind === 'commandInput') {
-      errors.push({ severity: 'error', code: 'operation.accessPattern.query.invalid', message: `${where}: query/view must declare list, getById or lookup access, not commandInput` });
+      // A read-only analytical/assistant query may legitimately take a compute input payload
+      // (commandInput) — e.g. an AI assistant answering a free-form question. Allowed ONLY when it is
+      // not a disguised list or getById: no keyField (else getById) and no filters/sort/pagination/
+      // selection (else list/lookup), is read-only (no writes) and actually takes an input. Otherwise
+      // it is a mis-classified browse/selector and stays an error (list-vs-get protection preserved).
+      const looksLikeBrowse = !!access.keyField
+        || (Array.isArray(access.filters) && access.filters.length > 0)
+        || (Array.isArray(access.sort) && access.sort.length > 0)
+        || (typeof access.pagination === 'string' && access.pagination !== 'none')
+        || (typeof access.selection === 'string' && access.selection !== 'none');
+      const readOnly = !Array.isArray(operation.writes) || operation.writes.length === 0;
+      const hasComputeInput = Array.isArray(operation.inputs) && operation.inputs.length > 0;
+      if (looksLikeBrowse || !readOnly || !hasComputeInput) {
+        errors.push({ severity: 'error', code: 'operation.accessPattern.query.invalid', message: `${where}: query/view must declare list, getById or lookup access, not commandInput (commandInput on a query is allowed only for a read-only compute/assistant operation with an input payload and no list/getById signals)` });
+      }
     }
     if (typeof access.entity === 'string' && !isKnownEntityRef(stripField(access.entity), knownEntities)) errors.push({ severity: 'error', code: 'operation.accessPattern.entity.unknown', message: `${where}: accessPattern entity '${access.entity}' does not resolve` });
     if (typeof access.keyField === 'string' && !isKnownOntologyFieldRef(access.keyField, ontology, knownEntities)) errors.push({ severity: 'error', code: 'operation.accessPattern.key.unknown', message: `${where}: accessPattern keyField '${access.keyField}' must be fully qualified as Entity.field and resolve in saved ontology` });

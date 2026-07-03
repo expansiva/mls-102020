@@ -272,6 +272,9 @@ Rules:
 - accessPattern.kind must be exactly one of list|getById|lookup|commandInput. For query/view, choose
   the user journey's best access: list for browsable sets, getById only when the journey already
   carries a selected id, lookup for compact selectors. For create/update/delete use commandInput.
+  Exception: a read-only compute/assistant query (e.g. an AI assistant answering a free-form question)
+  may use commandInput — but only if it has NO keyField and NO filters/sort/pagination/selection
+  (otherwise it is a list/getById and must say so) and writes[] is empty.
 - accessPattern.keyField, when present, must be fully qualified as Entity.field; never use a bare id.
 - inputs[] must list every BFF input the frontend/backend contract needs. Each input.fieldRef must be
   an ontology field ref (Entity.field or Entity) and each input.source must be one of:
