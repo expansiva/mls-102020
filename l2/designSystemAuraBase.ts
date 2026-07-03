@@ -33,8 +33,17 @@ export interface ILayoutAxisDef {
     section: LayoutSectionKey;
     values: readonly string[];
     default: string;
-    /** UX groups this axis governs (transversal axes span many groups). */
+    /**
+     * UX groups this axis governs — drives the per-element `layoutRules` stamped on
+     * plain controls (dsMatch/plainControlRules). OMITTED means page-wide: the axis is
+     * implemented globally via DS tokens/CSS (density, motion), never per element.
+     */
     groups?: readonly string[];
+    /**
+     * Governs EVERY labeled input, even when the element's group is unknown (Agent1
+     * omitted it) — plainControlRules applies these to any field/filter as fallback.
+     */
+    inputTransversal?: boolean;
     /** part of the curated "essential" subset shown by default in the UI. */
     essential?: boolean;
 }
@@ -49,16 +58,21 @@ export const layoutSections: readonly ILayoutSection[] = [
     { key: 'visualization', label: 'Visualization',     desc: 'How collections and data are displayed.' },
 ];
 
+/** Every labeled-input group — governed by the input-transversal axes below. */
+const labeledInputGroups = ['groupEnterText', 'groupEnterNumber', 'groupEnterMoney', 'groupEnterBoolean', 'groupEnterDate', 'groupEnterDatetime', 'groupEnterTime', 'groupEnterDateInterval', 'groupEnterDatetimeInterval', 'groupEnterTimeInterval', 'groupSelectOne', 'groupSelectMany', 'groupSelectFileForUpload'] as const;
+
 // Keyed by axis name. `as const` preserves the literal value types so molecule
 // declarations can be validated against the exact allowed set.
 export const layoutAxes = {
-    // ── transversais (afetam muitos grupos) ──
+    // ── transversais (afetam muitos grupos; density/motion são page-wide → sem `groups`) ──
     density:        { label: 'Density',         section: 'transversal', values: ['comfortable', 'compact'],              default: 'comfortable', essential: true },
     motion:         { label: 'Motion',          section: 'transversal', values: ['full', 'reduced', 'none'],             default: 'full' },
     labelPlacement: { label: 'Label placement', section: 'transversal', values: ['top', 'inline', 'floating'],           default: 'top', essential: true,
-                      groups: ['groupEnterText', 'groupEnterNumber', 'groupEnterMoney', 'groupEnterBoolean', 'groupEnterDate', 'groupEnterDatetime', 'groupEnterTime', 'groupEnterDateInterval', 'groupEnterDatetimeInterval', 'groupEnterTimeInterval', 'groupSelectOne', 'groupSelectMany', 'groupSelectFileForUpload'] },
-    validation:     { label: 'Validation',      section: 'transversal', values: ['inline-below', 'tooltip', 'summary'],  default: 'inline-below', essential: true },
-    requiredMark:   { label: 'Required mark',   section: 'transversal', values: ['asterisk', 'optional-tag', 'none'],    default: 'asterisk', essential: true },
+                      inputTransversal: true, groups: labeledInputGroups },
+    validation:     { label: 'Validation',      section: 'transversal', values: ['inline-below', 'tooltip', 'summary'],  default: 'inline-below', essential: true,
+                      inputTransversal: true, groups: labeledInputGroups },
+    requiredMark:   { label: 'Required mark',   section: 'transversal', values: ['asterisk', 'optional-tag', 'none'],    default: 'asterisk', essential: true,
+                      inputTransversal: true, groups: labeledInputGroups },
     listOverflow:   { label: 'List overflow',   section: 'transversal', values: ['pagination', 'infinite', 'load-more'], default: 'pagination',
                       groups: ['groupViewData', 'groupViewTable', 'groupSelectMany'] },
 

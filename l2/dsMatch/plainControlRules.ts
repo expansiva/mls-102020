@@ -13,16 +13,18 @@
 // Which axes apply to an element:
 //   - group known (Agent2 rejected): the configured axes whose vocabulary `groups` list
 //     contains that group (layoutAxes[axis].groups — doc-maintained; task 11);
-//   - any field/filter (group known or not): plus the configured input-transversal render
-//     axes (labelPlacement, validation, requiredMark), which declare no `groups` in the
-//     vocabulary but govern every labeled input.
+//   - field/filter with UNKNOWN group (Agent1 omitted it): the configured axes flagged
+//     `inputTransversal` in the vocabulary (labelPlacement, validation, requiredMark),
+//     which govern every labeled input regardless of group.
+// Both facts live in the vocabulary (designSystemAuraBase) — nothing is hardcoded here.
 
 import { layoutAxes, layoutAxisKeys, type ILayoutAxisDef, type LayoutAxisKey } from '/_102020_/l2/designSystemAuraBase.js';
 import type { ResolvedLayoutRules } from '/_102020_/l2/dsMatch/types.js';
 import type { ElementKind } from '/_102020_/l2/dsMatch/layoutElements.js';
 
-/** Transversal render axes that govern any labeled input, even without a group. */
-export const INPUT_TRANSVERSAL_AXES: readonly LayoutAxisKey[] = ['labelPlacement', 'validation', 'requiredMark'];
+/** Axes flagged `inputTransversal` in the vocabulary — govern any labeled input, even without a group. */
+export const INPUT_TRANSVERSAL_AXES: readonly LayoutAxisKey[] =
+    layoutAxisKeys.filter(k => !!(layoutAxes[k] as ILayoutAxisDef).inputTransversal);
 
 /** Configured axes that govern `group`, via the vocabulary's axis→groups map. */
 export function axesForGroup(group: string, configuredAxes: Set<string>): LayoutAxisKey[] {
