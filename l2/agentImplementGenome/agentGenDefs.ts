@@ -5,7 +5,9 @@
 //   1. imports the ORIGIN page11 defs ({ definition, pipeline });
 //   2. reads Agent2's per-element variant picks (variantSelections = [{ id, group, tag }]);
 //   3. looks each tag up in the catalog and places a single `molecule` on the layout element
-//      (field/filter/action/container) — by id. Elements Agent2 rejected carry no molecule;
+//      (field/filter/action/container) — by id. Elements Agent2 rejected (tag: null) carry no
+//      molecule; instead they receive `layoutRules` — the configured layout axes the plain
+//      control must still implement (task 13, via rulesForPlainElement);
 //   4. repoints paths page11 → page{layout}{ds}, overrides the pipeline `skills`
 //      ([genome, DS, layout] + one usage skill per used molecule group) and adds the DS global
 //      css to `dependsFiles`, stamps pageVersion, and writes the defs.
@@ -21,6 +23,8 @@ import { buildMoleculeCatalog } from '/_102020_/l2/dsMatch/buildMoleculeCatalog.
 import type { AssignedMolecule } from '/_102020_/l2/dsMatch/resolveMolecules.js';
 import { listLayoutElements, indexById } from '/_102020_/l2/dsMatch/layoutElements.js';
 import { loadVariantSelections } from '/_102020_/l2/dsMatch/agent1.js';
+import { resolveRulesForPage } from '/_102020_/l2/dsMatch/resolveRulesForPage.js';
+import { rulesForPlainElement } from '/_102020_/l2/dsMatch/plainControlRules.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { resolveTagToFile } from '/_102020_/l2/utils.js';
 import { parseStepArgs, mkCompleted, mkFail, saveFile } from '/_102020_/l2/agentImplementGenome/planning.js';
@@ -73,15 +77,18 @@ async function beforePromptStep(
     const byId = indexById(listLayoutElements(definition.layout));
     console.info(`[agentGenDefs] ${a.page}: ${selections.length} variante(s) do Agent2 · ${byId.size} elemento(s) no layout · catálogo: ${catalog.length}`);
 
-    // 3. Place one `molecule` per selected element.
+    // 3. Place one `molecule` per selected element. `tag: null` = Agent2 rejected/omitted —
+    //    no molecule, but the group survives so the plain control can receive `layoutRules`.
     const usagePaths = new Set<string>();
     const assigned: AssignedMolecule[] = [];
-    let placed = 0, unknownId = 0, unknownTag = 0;
+    const groupById = new Map<string, string>(); // molecule-less elements with a known group
+    let placed = 0, unknownId = 0, unknownTag = 0, rejectedCount = 0;
     for (const { id, group, tag } of selections) {
       const el = byId.get(id);
       if (!el) { console.warn(`[agentGenDefs]   ⚠ ${id}: id não existe no layout (ignorado)`); unknownId++; continue; }
+      if (!tag) { groupById.set(id, group); rejectedCount++; continue; }
       const entry = byTag.get(tag);
-      if (!entry) { console.warn(`[agentGenDefs]   ⚠ ${id}: tag fora do catálogo: ${tag}`); unknownTag++; continue; }
+      if (!entry) { console.warn(`[agentGenDefs]   ⚠ ${id}: tag fora do catálogo: ${tag}`); groupById.set(id, group); unknownTag++; continue; }
       const f = resolveTagToFile(tag);
       const molecule: AssignedMolecule = {
         project: entry.project,
@@ -96,7 +103,23 @@ async function beforePromptStep(
       console.info(`[agentGenDefs]   ✓ ${id} [${el.kind}/${el.intent}] → ${group} → ${tag}`);
       placed++;
     }
-    console.info(`[agentGenDefs] ${a.page}: ${placed} molécula(s) colocada(s) · ${unknownId} id-inválido · ${unknownTag} tag-inválida`);
+    console.info(`[agentGenDefs] ${a.page}: ${placed} molécula(s) colocada(s) · ${rejectedCount} rejeitada(s) · ${unknownId} id-inválido · ${unknownTag} tag-inválida`);
+
+    // 3b. Task 13 — molecule-less elements still follow the configured layout rules: stamp
+    //     `layoutRules` (axes governing the element's group + input transversals; only axes
+    //     the layout EXPLICITLY configured). Elements with a molecule get nothing — the
+    //     molecule was filtered by those axes and already implements them.
+    const { rules, configuredAxes } = await resolveRulesForPage(project, a.module, a.page!, a.layout);
+    let ruled = 0;
+    for (const el of byId.values()) {
+      if (el.ref.molecule) continue;
+      const layoutRules = rulesForPlainElement(el.kind, groupById.get(el.id) ?? null, rules, configuredAxes);
+      if (!layoutRules) continue;
+      el.ref.layoutRules = layoutRules;
+      console.info(`[agentGenDefs]   ◦ ${el.id} [${el.kind}] plain → layoutRules ${JSON.stringify(layoutRules)}`);
+      ruled++;
+    }
+    console.info(`[agentGenDefs] ${a.page}: ${ruled} elemento(s) plain com layoutRules`);
 
     // 4. Repoint paths, override skills + dependsFiles, stamp, write.
     // Usage skills go in the pipeline `skills` array (the materializer feeds `skills` to the LLM

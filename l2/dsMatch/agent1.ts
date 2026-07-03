@@ -21,11 +21,13 @@ export interface ElementGroup {
     group: string;
 }
 
-/** One element's chosen molecule variant (Agent2 output; id references a layout node). */
+/** One element's chosen molecule variant (Agent2 output; id references a layout node).
+ *  `tag: null` = Agent2 rejected/omitted the element — it keeps its plain control; the group
+ *  is preserved so agentGenDefs can stamp the layout rules that govern it (task 13). */
 export interface VariantSelection {
     id: string;
     group: string;
-    tag: string;
+    tag: string | null;
 }
 
 export interface Agent1Output {
@@ -87,10 +89,11 @@ export async function loadElementGroupSelections(defsRef: string): Promise<Eleme
         .map(s => ({ id: s.id, group: s.group }));
 }
 
-/** Read the element-level variant selections Agent2 wrote (`export const variantSelections`). */
+/** Read the element-level variant selections Agent2 wrote (`export const variantSelections`).
+ *  Accepts `tag: null` (rejected/omitted element — kept for its group, task 13). */
 export async function loadVariantSelections(defsRef: string): Promise<VariantSelection[]> {
     return parseConstArray(await readRawDefs(defsRef), 'variantSelections')
-        .filter(s => s && typeof s.id === 'string' && typeof s.group === 'string' && typeof s.tag === 'string')
+        .filter(s => s && typeof s.id === 'string' && typeof s.group === 'string' && (typeof s.tag === 'string' || s.tag === null))
         .map(s => ({ id: s.id, group: s.group, tag: s.tag }));
 }
 

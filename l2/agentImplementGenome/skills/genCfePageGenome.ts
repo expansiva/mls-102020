@@ -19,6 +19,8 @@ Definition is the page .defs.ts object:
 - layout.sections[] as the source of truth for render structure
 - dataBindings
 - layout elements (fields/filters/actions/intentions) MAY carry a \`molecule\` assignment
+- elements WITHOUT a molecule MAY carry \`layoutRules\` (\`{ axis: value }\`) — layout axes the
+  plain control must implement (see "molecule ABSENT")
 
 The page definition must not contain i18n values. All visible text values come from the shared .defs.ts / shared .ts context.
 
@@ -98,7 +100,19 @@ ANY element (a \`field\`/\`filter\`/\`column\`/\`action\`, or the intention itse
   value to the shared property (via \`field.stateKey\`) and its change/input/submit/click to existing
   shared handlers.
 - **\`molecule\` ABSENT** → render a plain control (native input / table / button), still bound to
-  the shared state/handlers and msg keys, styled with the \`--ds-*\` variables.
+  the shared state/handlers and msg keys, styled with the \`--ds-*\` variables. If the element
+  carries a \`layoutRules\` object (\`{ axis: value }\`), the plain control MUST implement every
+  axis it declares, with your own HTML + Tailwind + \`--ds-*\` vars — the molecule would have
+  done it, so its plain fallback must too. Examples of implementation (the axes/values come
+  from the defs, never hardcode a set):
+  - \`labelPlacement: "floating"\` → \`relative\` wrapper; \`<input class="peer …" placeholder=" ">\`;
+    \`<label>\` absolutely positioned that shrinks/moves up via \`peer-focus:\` +
+    \`peer-[:not(:placeholder-shown)]:\` classes.
+  - \`requiredMark: "asterisk"\` → asterisk appended to the label of required fields.
+  - \`validation: "inline-below"\` → the error/helper line renders directly below the control.
+  An axis you don't know how to implement → ignore it with a short TODO comment; never invent.
+  Elements WITH a molecule never get this treatment: their molecule already implements the
+  layout axes (it was selected by them) — \`layoutRules\` will not be present there.
 
 If a molecule needs a property/handler missing from shared .ts, degrade gracefully — never invent.
 
