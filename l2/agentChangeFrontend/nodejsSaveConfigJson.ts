@@ -51,22 +51,23 @@ function toSafeShortName(value: string): string { return value.trim().replace(/[
 function humanizeId(id: string): string { const spaced = id.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim(); return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : id; }
 function toKebab(str: string): string { return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase(); }
 
-/** Same tag convention as nodejsMaterializeL2.ts / _102020_/l2/utils.ts. */
+/** Tag for a generated page component. Page .ts files register the custom element in the LEGACY full
+ *  format `<folder-kebab>--<shortName>-<project>` (e.g. cafe-flow--web--desktop--page11--ws-cook-kitchen-102049),
+ *  regardless of whether the shortName contains hyphens. The previous "new format" special-case for
+ *  hyphenated shortNames produced a truncated tag (page11--ws-cook-kitchen) that did not match the
+ *  @customElement in the .ts, so the page rendered blank. Always use the legacy full format here. */
 function convertFileToTag(info: { shortName: string; project: number; folder?: string }): string {
   const kebabName = toKebab(info.shortName);
-  if (info.shortName.includes('-')) {
-    if (!info.folder) return kebabName;
-    const parts = info.folder.split('/');
-    return `${toKebab(parts[parts.length - 1] || '')}--${kebabName}`;
-  }
   const folderPrefix = info.folder ? `${toKebab(info.folder).replace(/\//g, '--')}--` : '';
   return `${folderPrefix}${kebabName}-${info.project}`;
 }
 
 interface DiscoveredPage { pageId: string; label: string; }
 
-/** Pages from l4 (workflows own their operations; remaining operations get their own page). */
-function discoverPages(clientRoot: string): DiscoveredPage[] {
+/** Pages from l4. Primary grouping is the journey WORKSPACES (one page per workspace, matching
+ *  agentChangeFrontend buildPagePlans); owners not covered by any workspace fall back to a per-owner
+ *  page. When there is no journey, uses the legacy per-workflow/per-operation grouping. */
+function discoverPages(clientRoot: string, moduleName: string): DiscoveredPage[] {
   const listDefs = (folder: string): Record<string, unknown>[] => {
     const dir = path.join(clientRoot, 'l4', folder);
     if (!fs.existsSync(dir)) return [];
@@ -76,26 +77,59 @@ function discoverPages(clientRoot: string): DiscoveredPage[] {
       .filter((data): data is Record<string, unknown> => !!data);
   };
 
-  const pages: DiscoveredPage[] = [];
-  const operationIdsUsedByWorkflow = new Set<string>();
-
-  for (const workflow of listDefs('workflows')) {
-    const workflowId = readString(workflow.workflowId);
-    if (!workflowId) continue;
-    for (const opId of readStringArray(workflow.operationIds)) operationIdsUsedByWorkflow.add(opId);
-    pages.push({
-      pageId: toSafeShortName(readString(workflow.pageId) || workflowId),
-      label: readString(workflow.title) || humanizeId(workflowId),
-    });
+  // Journey workspaces (l4/{module}/journeys/*.defs.ts).
+  const workspaces: { pageId: string; label: string; ops: Set<string>; wf: string }[] = [];
+  const journeyDir = path.join(clientRoot, 'l4', moduleName, 'journeys');
+  if (fs.existsSync(journeyDir)) {
+    for (const name of fs.readdirSync(journeyDir).filter(n => n.endsWith('.defs.ts'))) {
+      const data = readDefsData(path.join(journeyDir, name));
+      const list = data && Array.isArray(data.workspaces) ? data.workspaces as Record<string, unknown>[] : [];
+      for (const ws of list) {
+        if (!ws || typeof ws !== 'object') continue;
+        const wsId = readString(ws.workspaceId);
+        if (!wsId) continue;
+        workspaces.push({
+          pageId: toSafeShortName(wsId),
+          label: readString(ws.title) || humanizeId(wsId),
+          ops: new Set(readStringArray(ws.operationIds)),
+          wf: readString(ws.workflowId),
+        });
+      }
+    }
   }
 
-  for (const operation of listDefs('operations')) {
-    const operationId = readString(operation.operationId);
-    if (!operationId || operationIdsUsedByWorkflow.has(operationId)) continue;
-    pages.push({
-      pageId: toSafeShortName(readString(operation.pageId) || operationId),
-      label: readString(operation.title) || humanizeId(operationId),
-    });
+  const workflows = listDefs('workflows');
+  const operations = listDefs('operations');
+  const pages: DiscoveredPage[] = [];
+  const operationIdsUsedByWorkflow = new Set<string>();
+  for (const workflow of workflows) for (const opId of readStringArray(workflow.operationIds)) operationIdsUsedByWorkflow.add(opId);
+
+  if (workspaces.length > 0) {
+    const coveredOps = new Set<string>();
+    const coveredWf = new Set<string>();
+    for (const ws of workspaces) { pages.push({ pageId: ws.pageId, label: ws.label }); ws.ops.forEach(o => coveredOps.add(o)); if (ws.wf) coveredWf.add(ws.wf); }
+    // Leftover owners not covered by any workspace keep a legacy per-owner page.
+    for (const workflow of workflows) {
+      const workflowId = readString(workflow.workflowId);
+      if (!workflowId || coveredWf.has(workflowId)) continue;
+      pages.push({ pageId: toSafeShortName(readString(workflow.pageId) || workflowId), label: readString(workflow.title) || humanizeId(workflowId) });
+    }
+    for (const operation of operations) {
+      const operationId = readString(operation.operationId);
+      if (!operationId || operationIdsUsedByWorkflow.has(operationId) || coveredOps.has(operationId)) continue;
+      pages.push({ pageId: toSafeShortName(readString(operation.pageId) || operationId), label: readString(operation.title) || humanizeId(operationId) });
+    }
+  } else {
+    for (const workflow of workflows) {
+      const workflowId = readString(workflow.workflowId);
+      if (!workflowId) continue;
+      pages.push({ pageId: toSafeShortName(readString(workflow.pageId) || workflowId), label: readString(workflow.title) || humanizeId(workflowId) });
+    }
+    for (const operation of operations) {
+      const operationId = readString(operation.operationId);
+      if (!operationId || operationIdsUsedByWorkflow.has(operationId)) continue;
+      pages.push({ pageId: toSafeShortName(readString(operation.pageId) || operationId), label: readString(operation.title) || humanizeId(operationId) });
+    }
   }
 
   const seen = new Set<string>();
@@ -127,7 +161,7 @@ function main(): void {
   if (moduleNames.length !== 1) fail(`expected exactly 1 module in l5/project.json, found ${moduleNames.length}`);
   const moduleName = moduleNames[0];
 
-  const discovered = discoverPages(clientRoot);
+  const discovered = discoverPages(clientRoot, moduleName);
   if (discovered.length === 0) fail('no pages discovered from l4 workflows/operations');
   const pages = discovered.filter(page => {
     if (isMaterialized(clientRoot, moduleName, page.pageId)) return true;
