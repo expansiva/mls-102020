@@ -179,10 +179,14 @@ In result:
     AssetVehicle, AssetProperty, AssetEquipment, ContactChannel, Document, BankAccount, Animal), and
     modelingDecision explaining why it is standalone MDM instead of embedded/local. If the MDM object is
     scoped by another MDM/company/unit/location, set requiresAnchor=true and anchor
-    { entityId, relationshipType, description }. Use a 102034 relationship type such as Owns,
-    LocatedAt, SubsidiaryOf, BelongsToGroup, PartOfUnit, SupplierOf, CustomerOf, OffersProduct,
-    OffersService or HasContact. Use requiresAnchor=false only for globally meaningful records such as
-    the primary Company.
+    { entityId, source, originRef, relationshipType, description }. Use source="ontologyEntity" only
+    when entityId is another local ontology entity. When the scope is the current platform company,
+    keep entityId="Company" as the semantic label but set source="runtimeContext" and
+    originRef="businessContext.activeCompanyId"; do not add a relationship to Company unless Company is
+    also a real local ontology entity. Use a 102034 relationship type such as Owns, LocatedAt,
+    SubsidiaryOf, BelongsToGroup, PartOfUnit, SupplierOf, CustomerOf, OffersProduct, OffersService or
+    HasContact. Use requiresAnchor=false only for globally meaningful records such as the primary
+    Company.
   - Operational/transactional STATE is NEVER mdm. A status that moves during operation
     (occupied/available, open/closed, in-progress, balances, current charges/consumption) is a
     kind=core entity with its own table.
@@ -194,7 +198,9 @@ In result:
 - relationships: use known types only. Structural composition is type "partOf". MDM/business
   relationships use 102034 types such as Owns, LocatedAt, SubsidiaryOf, BelongsToGroup, PartOfUnit,
   SupplierOf, CustomerOf, OffersProduct, OffersService or HasContact. Every relationship must include
-  decisionReason explaining why this relation, not an ad hoc text, represents the domain.
+  decisionReason explaining why this relation, not an ad hoc text, represents the domain. Do not emit
+  relationships to platform runtime context labels such as the current Company; model those as MDM
+  anchors with source="runtimeContext".
 - behaviorPlan: mdm, horizontals, plugins, agents signals ({ title, reason }).
 
 Rules:

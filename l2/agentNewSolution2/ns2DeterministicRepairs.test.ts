@@ -5,6 +5,7 @@ import {
   repairComposedInputs,
   repairMdmEntityDefinition,
   repairRuntimeAnchorReferences,
+  repairRuntimeAnchorRelationships,
   type RepairableEntityDefinition,
   type RepairableOperationDefinition,
 } from '/_102020_/l2/agentNewSolution2/ns2DeterministicRepairs.js';
@@ -28,6 +29,56 @@ test('repairMdmEntityDefinition normalizes generated-module MDM metadata', () =>
   assert.equal(entity.kind, 'mdm');
   assert.equal(entity.ownership, 'mdmOwned');
   assert.equal(entity.moduleType, 'cafeFlow.Company');
+});
+
+test('repairMdmEntityDefinition forces runtimeContext when anchor origin comes from businessContext', () => {
+  const entity: RepairableEntityDefinition = {
+    entityId: 'StockItem',
+    ownership: 'mdmOwned',
+    kind: 'mdm',
+    moduleType: 'cafeFlow.StockItem',
+    anchor: {
+      entityId: 'Company',
+      source: 'ontologyEntity',
+      originRef: 'businessContext.activeCompanyId',
+      relationshipType: 'Owns',
+      description: 'Stock item belongs to the current company.',
+    },
+  };
+
+  repairMdmEntityDefinition(entity, 'cafeFlow');
+
+  assert.equal(entity.anchor?.source, 'runtimeContext');
+});
+
+test('repairRuntimeAnchorRelationships removes relationships to external runtime anchor labels', () => {
+  const plan = {
+    ontology: {
+      entities: {
+        StockItem: {
+          ownership: 'mdmOwned',
+          kind: 'mdm',
+          anchor: {
+            entityId: 'Company',
+            source: 'ontologyEntity',
+            originRef: 'businessContext.activeCompanyId',
+            relationshipType: 'Owns',
+            description: 'Stock item belongs to the current company.',
+          },
+        },
+        StockLevel: { kind: 'core' },
+      },
+    },
+    relationships: [
+      { relationshipId: 'relStockItemCompany', fromEntity: 'StockItem', toEntity: 'Company', type: 'Owns', decisionReason: 'Company owns stock.' },
+      { relationshipId: 'relStockLevelStockItem', fromEntity: 'StockLevel', toEntity: 'StockItem', type: 'partOf', decisionReason: 'Stock level belongs to item.' },
+    ],
+  };
+
+  repairRuntimeAnchorRelationships(plan);
+
+  assert.equal(plan.ontology.entities.StockItem.anchor.source, 'runtimeContext');
+  assert.deepEqual(plan.relationships.map(rel => rel.relationshipId), ['relStockLevelStockItem']);
 });
 
 test('repairComposedInputs adds missing partOf child input for commands that write children', () => {

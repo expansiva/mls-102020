@@ -16,6 +16,8 @@ import {
   createUpdateStatusIntent,
   findStepByPlanId,
   getPlannerOutput,
+  readPlatformSkill,
+  withPlatformSkill,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import {
@@ -32,6 +34,7 @@ import { finalizeResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.
 import { getBlueprintOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Blueprint.js';
 import { getBlueprintReviewOutput } from '/_102020_/l2/agentNewSolution2/agentNs2BlueprintReview.js';
 import { getImplementationDecisionResult } from '/_102020_/l2/agentNewSolution2/agentNewSolution2Requirements.js';
+import { repairRuntimeAnchorRelationships } from '/_102020_/l2/agentNewSolution2/ns2DeterministicRepairs.js';
 
 const AGENT_NAME = 'agentNs2Finalize';
 const TOOL_NAME = 'submitFinalDomainPlan';
@@ -60,8 +63,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   const blueprint = getBlueprintOutput(context);
   const review = getBlueprintReviewOutput(context);
   const decisions = getImplementationDecisionResult(context);
+  const platformSkill = await readPlatformSkill();
   const human = `## Blueprint\n${JSON.stringify(blueprint.result, null, 2)}\n\n## Review findings\n${JSON.stringify(review?.result ?? { findings: [] }, null, 2)}\n\n## Accepted decisions\n${JSON.stringify(decisions, null, 2)}\n`;
-  return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), human, toolSchema, TOOL_NAME)];
+  return [createPromptReadyIntent(context, parentStep, hookSequential, args, withPlatformSkill(systemPrompt.split('{{toolName}}').join(TOOL_NAME), platformSkill), human, toolSchema, TOOL_NAME)];
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
@@ -208,7 +212,7 @@ function normalizeResult(value: unknown): FinalizeResult {
   const result = assertRecord(value, 'result');
   const ontology = assertRecord(result.ontology, 'result.ontology');
   const approved = assertRecord(result.approvedArtifacts, 'result.approvedArtifacts');
-  return {
+  const normalized: FinalizeResult = {
     module: assertRecord(result.module, 'result.module'),
     actors: assertArray(result.actors, 'result.actors'),
     capabilities: assertArray(result.capabilities, 'result.capabilities'),
@@ -224,6 +228,8 @@ function normalizeResult(value: unknown): FinalizeResult {
     decisions: assertArray(result.decisions, 'result.decisions'),
     deferredItems: assertArray(result.deferredItems, 'result.deferredItems'),
   };
+  repairRuntimeAnchorRelationships(normalized);
+  return normalized;
 }
 
 const systemPrompt = `
@@ -247,5 +253,11 @@ Rules:
 - Every relationship keeps decisionReason. Use type "partOf" only for embedded/composed child data;
   use 102034 relationship types (Owns, LocatedAt, SubsidiaryOf, BelongsToGroup, PartOfUnit,
   SupplierOf, CustomerOf, OffersProduct, OffersService, HasContact, etc.) for MDM/business links.
+- The platform already provides the active business company/unit. If an MDM entity is scoped to the
+  current company, keep the semantic anchor label as Company but set anchor.source="runtimeContext"
+  and anchor.originRef="businessContext.activeCompanyId". Do NOT keep or add a normal relationship to
+  Company unless Company is also present in ontology.entities as a real module-owned business entity.
+- If a review finding says Company is platform-level/external, resolve it as runtime context, not as a
+  missing ontology entity and not as an ontology-to-ontology relationship.
 
 `;

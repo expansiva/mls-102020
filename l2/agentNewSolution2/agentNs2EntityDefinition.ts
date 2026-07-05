@@ -18,6 +18,8 @@ import {
   optionalString,
   optionalStringArray,
   pickRecordsByIds,
+  readPlatformSkill,
+  withPlatformSkill,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { extractPlannerOutput, createPlannerToolSchema } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import { getApprovedModuleName, ontologyEntityFileInfo, readOntologyEntities, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
@@ -78,7 +80,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       .filter(([id]) => id !== args)
       .map(([id, meta]) => ({ entityId: id, ...(isRecord(meta) ? { title: meta.title, description: meta.description } : {}) })),
   };
-  return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), `## Current entity selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
+  const platformSkill = await readPlatformSkill();
+  return [createPromptReadyIntent(context, parentStep, hookSequential, args, withPlatformSkill(systemPrompt.split('{{toolName}}').join(TOOL_NAME), platformSkill), `## Current entity selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
@@ -254,6 +257,10 @@ Rules:
     businessContext.activeUnitId or currentWorkspace.workspaceId. This is how generated modules anchor
     records to the active company/unit/workspace without inventing a local Company entity. In both cases
     keep anchor.entityId as the semantic anchor label and provide relationshipType + description.
+    If originRef is businessContext.activeCompanyId, source MUST be runtimeContext, never
+    ontologyEntity. Company in that case means the current platform business company, not a missing
+    ontology entity. Any persisted companyId field for that anchor is a uuid runtime reference, not
+    type Company, unless Company is present in otherEntities as a local ontology entity.
     relationshipType must be a 102034 MDM relationship such as Owns, LocatedAt, SubsidiaryOf,
     BelongsToGroup, PartOfUnit, SupplierOf, CustomerOf, OffersProduct, OffersService or HasContact.
   - requiresAnchor=false only for globally meaningful records such as the primary Company itself.

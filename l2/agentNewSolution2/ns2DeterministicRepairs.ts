@@ -7,6 +7,13 @@ export interface RepairableEntityDefinition {
   ownership?: string;
   kind?: string;
   moduleType?: string;
+  anchor?: {
+    entityId?: string;
+    source?: string;
+    originRef?: string;
+    relationshipType?: string;
+    description?: string;
+  };
 }
 
 export interface RepairableOperationInput {
@@ -34,6 +41,11 @@ export interface RepairableOperationDefinition {
   contextResolution?: RepairableOperationContextResolution[];
 }
 
+export interface RepairableDomainPlan {
+  ontology: { entities: Record<string, unknown> };
+  relationships: unknown[];
+}
+
 export function repairMdmEntityDefinition(def: RepairableEntityDefinition, moduleName: string): void {
   const isMdm = def.kind === 'mdm' || def.ownership === 'mdmOwned';
   if (!isMdm) return;
@@ -43,6 +55,34 @@ export function repairMdmEntityDefinition(def: RepairableEntityDefinition, modul
   if (moduleName && !def.moduleType?.startsWith(`${moduleName}.`)) {
     def.moduleType = `${moduleName}.${def.entityId}`;
   }
+  repairRuntimeContextAnchor(def);
+}
+
+export function repairRuntimeAnchorRelationships(plan: RepairableDomainPlan): void {
+  const entities = plan.ontology?.entities || {};
+  const entityIds = new Set(Object.keys(entities).filter(Boolean));
+  const runtimeAnchorPairs = new Set<string>();
+
+  for (const [entityId, rawEntity] of Object.entries(entities)) {
+    if (!isRecord(rawEntity)) continue;
+    const entity = rawEntity as RepairableEntityDefinition & Record<string, unknown>;
+    if (!entity.entityId) entity.entityId = entityId;
+    const anchor = repairRuntimeContextAnchor(entity);
+    const anchorEntityId = typeof anchor?.entityId === 'string' ? anchor.entityId : '';
+    if (!anchorEntityId || entityIds.has(anchorEntityId)) continue;
+    if (anchor?.source === 'runtimeContext') {
+      runtimeAnchorPairs.add(`${entityId}\u0000${anchorEntityId}`);
+      runtimeAnchorPairs.add(`${anchorEntityId}\u0000${entityId}`);
+    }
+  }
+
+  if (runtimeAnchorPairs.size === 0) return;
+  plan.relationships = (plan.relationships || []).filter((relationship) => {
+    if (!isRecord(relationship)) return true;
+    const fromEntity = typeof relationship.fromEntity === 'string' ? relationship.fromEntity : '';
+    const toEntity = typeof relationship.toEntity === 'string' ? relationship.toEntity : '';
+    return !runtimeAnchorPairs.has(`${fromEntity}\u0000${toEntity}`);
+  });
 }
 
 export function repairComposedInputs(
@@ -141,6 +181,15 @@ function uniqueInputId(base: string, used: Set<string>): string {
 
 function contextSourceForOriginRef(originRef: string): string {
   return originRef.slice(0, originRef.indexOf('.'));
+}
+
+function repairRuntimeContextAnchor(def: RepairableEntityDefinition): RepairableEntityDefinition['anchor'] | undefined {
+  const anchor = isRecord(def.anchor) ? def.anchor : undefined;
+  const originRef = typeof anchor?.originRef === 'string' ? anchor.originRef : '';
+  if (anchor && isRuntimeAnchorOriginRef(originRef)) {
+    anchor.source = 'runtimeContext';
+  }
+  return anchor;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

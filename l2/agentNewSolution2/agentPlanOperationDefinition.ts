@@ -17,7 +17,9 @@ import {
   getPlannerOutputs,
   normalizeStringList,
   optionalString,
+  readPlatformSkill,
   resolveCapabilityInfo,
+  withPlatformSkill,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput, isRecord } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import { getApprovedModuleName, operationFileInfo, readModuleRelationships, readOntologyEntities, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
@@ -102,7 +104,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   // by meaning; the operation's own target entity still goes fully expanded in entityShape.
   const ontologyEntities = Object.entries(ontology).map(([id, meta]) => ({ entityId: id, ...(isRecord(meta) ? { title: meta.title, description: meta.description } : {}) }));
   const reduced = { selector: args, indexItem, story, workflowOwner, entityShape, ontologyEntities };
-  return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), `## Operation selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
+  const platformSkill = await readPlatformSkill();
+  return [createPromptReadyIntent(context, parentStep, hookSequential, args, withPlatformSkill(systemPrompt.split('{{toolName}}').join(TOOL_NAME), platformSkill), `## Operation selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
@@ -335,6 +338,8 @@ Rules:
 - reads/writes reference canonical ontology ids (optionally "Entity.field"), never aggregate names.
   If an entity is scoped by anchor.source="runtimeContext", do not put the anchor label in reads/writes;
   add contextResolution from the anchor originRef instead.
+  Company as "the current company" is a runtime business context label: resolve it through
+  businessContext.activeCompanyId, not as a local ontology entity or user-provided input.
 - accessPattern.kind must be exactly one of list|getById|lookup|commandInput. For query/view, choose
   the user journey's best access: list for browsable sets, getById only when the journey already
   carries a selected id, lookup for compact selectors. For create/update/delete use commandInput.

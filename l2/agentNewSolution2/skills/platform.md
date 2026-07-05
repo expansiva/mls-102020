@@ -17,6 +17,12 @@ plan a module, horizontal, MDM domain, ontology entity, workflow or operation to
 - **Business context** — UI workspace/tenant is not the business company. When operations need the
   primary company or active unit, use `businessContext.activeCompanyId` / `businessContext.activeUnitId`
   in L4 context resolution and model other companies/branches/units as MDM relationships.
+  If a generated module only needs "the current company", do not create a local `Company` entity and
+  do not create ontology relationships to `Company`. For MDM records owned by the current company,
+  use an MDM anchor with semantic `entityId: "Company"`, `source: "runtimeContext"` and
+  `originRef: "businessContext.activeCompanyId"`. Only model `Company` as ontology data when the
+  module truly manages companies as business records, such as customers, suppliers, branches or
+  partner organizations.
 - **File / media storage** — uploading and serving files is provided. Reference media; do not model
   a file-storage module.
 - **LLM / AI proxy** — calling LLMs goes through the platform proxy. Plan AI behavior as
