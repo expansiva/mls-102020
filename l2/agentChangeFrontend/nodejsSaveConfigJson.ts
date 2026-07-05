@@ -31,6 +31,17 @@ function readJson<T>(file: string): T | null {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) as T; } catch { return null; }
 }
 
+function projectRuntimeMetadata(l5: L5ProjectJson, clientId: string) {
+  return {
+    projectId: l5.projectId || clientId,
+    domain: l5.domain,
+    port: l5.port,
+    databaseName: l5.databaseName,
+    environment: l5.environment,
+    studioEnabled: l5.studioEnabled,
+  };
+}
+
 /** Object literal of a generated .defs.ts (`export const x = {...};` or `... as const;`). */
 function readDefsData(file: string): Record<string, unknown> | null {
   let content: string;
@@ -247,7 +258,7 @@ function main(): void {
     };
 
   config.projects = config.projects || {};
-  config.projects[clientId] = { ...(config.projects[clientId] || {}), root: '.', type: 'client' };
+  config.projects[clientId] = { ...(config.projects[clientId] || {}), root: '.', type: 'client', runtime: projectRuntimeMetadata(l5, clientId) };
   config.projects[runtimeId] = { root: `../mls-${runtimeId}`, type: 'master frontend' };
   // Frontend shared libs used by the generated l2 code and by the master frontend.
   config.projects['102027'] = config.projects['102027'] || { root: '../mls-102027', type: 'lib' };

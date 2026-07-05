@@ -22,6 +22,7 @@ import {
   normalizeModuleFolderName,
   reserveModuleNameFromFolders,
 } from '/_102020_/l2/agentNewSolution2/ns2Plan.js';
+import { buildDefaultProjectMetadata } from '/_102020_/l2/agentNewSolution2/ns2ProjectMetadata.js';
 
 const ROOT_AGENT_NAME = 'agentNewSolution2';
 
@@ -272,6 +273,7 @@ export async function mergeProjectJson(moduleEntry: Record<string, unknown>, dep
   const existingFile = mls.stor.files[key];
   const existingRaw = existingFile ? await existingFile.getContent() : undefined;
   const base = typeof existingRaw === 'string' && isRecord(parseMaybeJson(existingRaw)) ? (parseMaybeJson(existingRaw) as Record<string, unknown>) : {};
+  const projectMetadata = buildDefaultProjectMetadata(mls.actualProject || 0);
 
   const moduleMap = new Map<string, Record<string, unknown>>();
   for (const m of (Array.isArray(base.modules) ? base.modules : []).filter(isRecord)) {
@@ -297,6 +299,7 @@ export async function mergeProjectJson(moduleEntry: Record<string, unknown>, dep
   }
 
   const merged = {
+    ...projectMetadata,
     ...base,
     modules: [...moduleMap.values()],
     ...(languageMap.size > 0 ? { languages: [...languageMap.values()] } : {}),

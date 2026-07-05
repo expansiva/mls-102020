@@ -147,8 +147,8 @@ In result:
 - capabilities: each with actor, priority and behaviorHint (workflow = stateful process over time;
   operation = direct single-actor action; either = unsure).
 - ontology.entities: an object map keyed by PascalCase id. Each value has title, description,
-  ownership (and kind/statusEnum/lifecycleStates when known). This is a MAP — do NOT detail fields
-  here (a later stage does). ontology.entities hold ONLY persistent DATA nouns (kind core/mdm/event/
+  ownership, modelingDecision (and kind/statusEnum/lifecycleStates when known). This is a MAP — do NOT
+  detail fields here (a later stage does). ontology.entities hold ONLY persistent DATA nouns (kind core/mdm/event/
   metric/supporting). NEVER put use-cases/workflows/queries here; never use Uc*/verb-named ids.
   - ownership is REQUIRED and MUST be EXACTLY one of: moduleOwned, mdmOwned, horizontalOwned,
     pluginOwned, existingModuleOwned, external. Use moduleOwned for entities this module owns
@@ -165,6 +165,15 @@ In result:
   - kind=mdm is ONLY stable cadastral master-data (identity/registration: people, companies,
     vehicles, rooms, furniture, menu/catalog), referenced by id; its statusEnum is a cadastral
     lifecycle (active/inactive), never an operational state.
+    For every mdm entity, set ownership=mdmOwned, kind=mdm, moduleType="<moduleName>.<EntityId>",
+    mdmSubtype from the 102034 ontology (Company, Location, Product, Service, Person, AssetGeneric,
+    AssetVehicle, AssetProperty, AssetEquipment, ContactChannel, Document, BankAccount, Animal), and
+    modelingDecision explaining why it is standalone MDM instead of embedded/local. If the MDM object is
+    scoped by another MDM/company/unit/location, set requiresAnchor=true and anchor
+    { entityId, relationshipType, description }. Use a 102034 relationship type such as Owns,
+    LocatedAt, SubsidiaryOf, BelongsToGroup, PartOfUnit, SupplierOf, CustomerOf, OffersProduct,
+    OffersService or HasContact. Use requiresAnchor=false only for globally meaningful records such as
+    the primary Company.
   - Operational/transactional STATE is NEVER mdm. A status that moves during operation
     (occupied/available, open/closed, in-progress, balances, current charges/consumption) is a
     kind=core entity with its own table.
@@ -173,7 +182,10 @@ In result:
     that references it by id — e.g. Table (mdm cadastro: number, room) + TableOccupancy
     (core: occupied/available, currentChargesTotal). Operations then write the core state, not the mdm record.
 - rules: centralized, stable ruleId.
-- relationships.
+- relationships: use known types only. Structural composition is type "partOf". MDM/business
+  relationships use 102034 types such as Owns, LocatedAt, SubsidiaryOf, BelongsToGroup, PartOfUnit,
+  SupplierOf, CustomerOf, OffersProduct, OffersService or HasContact. Every relationship must include
+  decisionReason explaining why this relation, not an ad hoc text, represents the domain.
 - behaviorPlan: mdm, horizontals, plugins, agents signals ({ title, reason }).
 
 Rules:

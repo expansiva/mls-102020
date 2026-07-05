@@ -27,7 +27,7 @@ import { getOperationDefinitions } from '/_102020_/l2/agentNewSolution2/agentPla
 const AGENT_NAME = 'agentPlanJourneyMap';
 const TOOL_NAME = 'submitJourneyMap';
 
-export type JourneyContextSource = 'userInput' | 'actorSession' | 'currentWorkspace' | 'selectedEntity' | 'activeLifecycleInstance' | 'workflowState' | 'routeParam' | 'previousStepOutput' | 'systemDefault';
+export type JourneyContextSource = 'userInput' | 'actorSession' | 'businessContext' | 'currentWorkspace' | 'selectedEntity' | 'activeLifecycleInstance' | 'workflowState' | 'routeParam' | 'previousStepOutput' | 'systemDefault';
 export type JourneyWorkspaceKind = 'entityManagement' | 'workflow' | 'dashboard' | 'task' | 'support';
 
 export interface JourneyLanding { actor: string; workspaceId: string; reason: string }
@@ -201,7 +201,7 @@ function normalizeWorkspaceKind(value: unknown, path: string): JourneyWorkspaceK
 
 function normalizeContextSource(value: unknown, path: string): JourneyContextSource {
   const source = assertString(value, path) as JourneyContextSource;
-  if (['userInput', 'actorSession', 'currentWorkspace', 'selectedEntity', 'activeLifecycleInstance', 'workflowState', 'routeParam', 'previousStepOutput', 'systemDefault'].includes(source)) return source;
+  if (['userInput', 'actorSession', 'businessContext', 'currentWorkspace', 'selectedEntity', 'activeLifecycleInstance', 'workflowState', 'routeParam', 'previousStepOutput', 'systemDefault'].includes(source)) return source;
   throw new Error(`${path} invalid`);
 }
 
@@ -227,8 +227,8 @@ In result.journeyMap:
 - navigationEdges[]: directed edges between workspaces. Each edge declares the trigger and the data
   transported, such as a selected entity id from a list/search step to a detail/action step.
 - inputResolutions[]: one row for each required technical identifier that comes from journey state,
-  selection, route params or a previous step. Local runtime sources (actorSession, currentWorkspace,
-  systemDefault) do not need a journey row unless the value is also transported between workspaces.
+  selection, route params or a previous step. Local runtime sources (actorSession, businessContext,
+  currentWorkspace, systemDefault) do not need a journey row unless the value is also transported between workspaces.
   The source must match one of the operation input sources.
 - acceptanceAssertions[]: objective journey checks, such as "actor can open the workspace without
   typing a technical id" or "the action receives the selected entity id from the journey".
@@ -239,8 +239,9 @@ Rules:
   edges needed for the business journey: entity management list -> detail/action with the selected
   Entity.id transported, and workflow step -> next step with the workflow entity id transported.
 - Required technical id inputs should come from selectedEntity, routeParam, activeLifecycleInstance,
-  workflowState, previousStepOutput or local runtime context (actorSession/currentWorkspace/
-  systemDefault). Do not model "type a raw id manually" as a normal journey.
+  workflowState, previousStepOutput or local runtime context (actorSession/businessContext/
+  currentWorkspace/systemDefault). Use businessContext.activeCompanyId for business company scope; do
+  not use currentWorkspace as a company filter. Do not model "type a raw id manually" as a normal journey.
 - For entityManagement workspaces, model the list-to-action transition explicitly. A self-edge is
   acceptable when the list/detail/action live in the same workspace, but its data[] must still carry
   the selected entity id using the source selectedEntity.

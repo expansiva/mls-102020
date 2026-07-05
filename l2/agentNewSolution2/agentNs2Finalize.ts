@@ -147,8 +147,8 @@ function buildDesignContext(context: mls.msg.ExecutionContext): Record<string, u
   return { initialPrompt, userLanguage, openDetails, decisions };
 }
 
-function buildOntologyIndex(moduleName: string, entities: Record<string, unknown>): Record<string, Record<string, string>> {
-  const index: Record<string, Record<string, string>> = {};
+function buildOntologyIndex(moduleName: string, entities: Record<string, unknown>): Record<string, Record<string, unknown>> {
+  const index: Record<string, Record<string, unknown>> = {};
   for (const entityId of Object.keys(entities || {}).filter(Boolean)) {
     const entity = isRecord(entities[entityId]) ? entities[entityId] as Record<string, unknown> : {};
     // Preserve title/description/kind so downstream fan-outs (entity/operation definition) can match
@@ -159,7 +159,13 @@ function buildOntologyIndex(moduleName: string, entities: Record<string, unknown
       ...(optionalString(entity.title) ? { title: optionalString(entity.title)! } : {}),
       ...(optionalString(entity.description) ? { description: optionalString(entity.description)! } : {}),
       ...(optionalString(entity.kind) ? { kind: optionalString(entity.kind)! } : {}),
+      ...(optionalString(entity.ownership) ? { ownership: optionalString(entity.ownership)! } : {}),
+      ...(optionalString(entity.modelingDecision) ? { modelingDecision: optionalString(entity.modelingDecision)! } : {}),
+      ...(optionalString(entity.moduleType) ? { moduleType: optionalString(entity.moduleType)! } : {}),
+      ...(optionalString(entity.mdmSubtype) ? { mdmSubtype: optionalString(entity.mdmSubtype)! } : {}),
     };
+    if (entity.requiresAnchor === true) index[entityId].requiresAnchor = true;
+    if (isRecord(entity.anchor)) index[entityId].anchor = entity.anchor;
   }
   return index;
 }
@@ -232,10 +238,14 @@ Call the "{{toolName}}" tool with: status, result, questions, trace. Do not retu
 In result: module, actors, capabilities (keep behaviorHint), ontology MAP (data nouns only — no fields
 here), rules, relationships, approvedArtifacts (mdm/horizontals/plugins/agents), decisions[], and
 deferredItems[]. Apply the review findings (fix gaps, drop use-case-shaped entities). Keep ids stable
-between the blueprint and here so later stages can resolve references.
+between the blueprint and here so later stages can resolve references. Preserve modelingDecision,
+moduleType, mdmSubtype, requiresAnchor and anchor on MDM entities.
 
 Rules:
 - Stage 1 only — no pages/tables/persistence/metrics.
 - Every entity reference uses the canonical ontology id (the entity map key), never an aggregate name.
+- Every relationship keeps decisionReason. Use type "partOf" only for embedded/composed child data;
+  use 102034 relationship types (Owns, LocatedAt, SubsidiaryOf, BelongsToGroup, PartOfUnit,
+  SupplierOf, CustomerOf, OffersProduct, OffersService, HasContact, etc.) for MDM/business links.
 
 `;

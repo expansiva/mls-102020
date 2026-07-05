@@ -15,6 +15,7 @@ Definition is the shared .defs.ts object:
 - states[]: the complete shared/global state inventory
 - actions[]: all BFF actions and all stateSetter actions used by render
 - initialLoads[]: query actions to run on connectedCallback
+- businessContextRefs[]: company/unit context dependencies declared by L4 operations
 - navigationRefs[]
 - i18nMeta: defaultLocale and activeLocales from the L4 module language metadata
 - i18n: the only place where UI text values live
@@ -79,8 +80,12 @@ For every item in states[]:
 - Property name is state.name when present; otherwise derive a safe camelCase name from stateKey.
 - Initial value comes from state.defaultValue.
 - actionStatus states use type "idle" | "loading" | "success" | "error" when valueSet matches.
-- queryResult collection states default to [] and use the matching contract output type when available.
+- queryResult states use the matching contract output type when available.
+- queryResult states with outputShape "array" default to [].
+- queryResult states with outputShape "paginated" default to { items: [], total: 0 } and must not be treated as an array; render/page code should read the items property for rows.
+- queryResult states with outputShape "object" default to null.
 - input states use string/number/boolean based on the matching contract field when available; otherwise unknown or string.
+- businessContext states are shared string state for visible company/unit context. They are not command form inputs and must not be sent as typed workspaceId filters unless an action explicitly references their stateKey.
 
 Maintain a mapping from stateKey to propertyName internally while generating code. Use it for all actions.
 
@@ -139,8 +144,10 @@ For every action in actions[]:
 - Call execBff with action.routeKey when present; otherwise use "{moduleName}.{pageId}.{commandRef}". The route key is the first argument, not an option field.
 - Use contract input/output interfaces only if they exist in contract .ts context.
 - Write response data into action.outputStateKeys by mapping each stateKey to a declared property and calling setState.
-- If the response is not ok, throw or set error state. If the action has outputStateKeys, write response.data, falling back to [] only for array output states.
+- If the response is not ok, preserve/set the error status and expose/log the response error; do not set success.
+- If the action has outputStateKeys, write response.data, falling back to the state's defaultValue only when response.data is nullish. Use [] only for array output states and { items: [], total: 0 } only for paginated output states.
 - Query actions used in initialLoads must be safe to call without explicit params.
+- Command actions may have refreshActionIds. After a successful command response and output-state write, call the referenced query actions by their methodName from Definition.actions. Use the existing query methods so they run with silent BFF mode and update their queryResult states. Set command success only after the refresh calls complete; if a refresh fails, leave the command in error instead of showing success with stale data.
 - Handler wrappers must use runBlockingUiAction for command actions and may call query methods directly for query actions.
 
 ## Lifecycle
@@ -159,6 +166,8 @@ disconnectedCallback:
 
 - If page11 references a stateKey that is not in Definition.states[], do not invent it.
 - If an action references an input/output stateKey that is missing from states[], leave a short TODO comment and keep code compiling.
+- Do not create manual input state for technical/runtime context such as workspaceId, actorSession, businessContext, currentWorkspace or systemDefault unless it is explicitly present in Definition.states[] as a user-facing input.
+- Business scope should come from visible company/unit context when the page provides it, or from the backend/session default; do not ask the user to type workspaceId as a business filter.
 - No local render state.
 - No DOM or HTML.
 - No guessed handler names.

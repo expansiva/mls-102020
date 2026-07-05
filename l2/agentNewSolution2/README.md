@@ -22,6 +22,9 @@ name handoff. It stops before screens/contracts (Stage 2) and backend persistenc
 - `l4/{module}/journeys/{module}Journeys.defs.ts` — module journey map: actor landings, workspaces,
   navigation edges, data transported and input origins. This is navigation/business intent, not layout.
 - `l5/project.json` (merge), `l5/{module}/process.defs.ts` (run record).
+  `l5/project.json` also carries visible runtime metadata for the per-project VM model:
+  `projectId`, numeric `domain` (`{projectId}.collab.codes`), `port` in the 2000-2999 range,
+  `databaseName`, `environment` and `studioEnabled`. Secrets stay in `.env`.
 
 Never produced here: page implementation files, l2 contract/shared/page defs, tables/persistence,
 layer_3/4 backend, metrics. Stage 1 only publishes the stable BFF names and journey contract that

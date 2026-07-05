@@ -12,6 +12,17 @@ import {
   type PlannerExtractConfig,
   type PlannerOutput,
 } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
+import {
+  frontendOutputShapeForOperation,
+  frontendQueryStateDefaults,
+  hasL4OperationInputs,
+  hasL4OperationOutputRefs,
+  isUserFacingOperationInput,
+  l4OperationInputs,
+  l4OperationOutputRefs,
+  normalizeOutputShape,
+  type CfeL4OperationInput,
+} from '/_102020_/l2/agentChangeFrontend/cfeL4Contract.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
 
 type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
@@ -202,6 +213,16 @@ export interface CfePageLayoutDefinition {
   sections: CfeLayoutSection[];
   i18n: Record<string, string>;
   dataBindings: { id: string; source: string; entity?: string; command?: string; description?: string; stateKey?: string; inputStateKeys?: string[] }[];
+}
+
+interface CfeBusinessContextRef {
+  operationId: string;
+  inputId?: string;
+  contextKey: string;
+  originRef: string;
+  targetRef: string;
+  required: boolean;
+  description: string;
 }
 
 export interface CfePageLayoutResult { pageLayout: CfePageLayoutDefinition }
@@ -905,6 +926,7 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
       },
       availableActions: commands.map(command => command.commandName).filter(Boolean),
       baseStateKeys: baseSharedStateKeys(page.pageId, commands),
+      businessContextRefs: collectBusinessContextRefs(operations),
       statePolicy: 'All filters, form fields, query results, action statuses and navigation requests are shared/global state. Page render must not own mutable state.',
     },
     ontology: { entities },
@@ -920,6 +942,7 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
       'Do not invent UI-only action names like select*, cancel, close, open, edit, view, remove or clear unless the exact name is in shared.availableActions.',
       'Every intention must include fields, columns, filters, toolbar, rowActions and actions arrays; use [] when empty.',
       'Only reference fields from contract inputs/outputs or ontology fields.',
+      'When shared.businessContextRefs is not empty, expose the current company/unit context as a context badge or selector; do not ask the user to type workspaceId or companyId as a plain text filter.',
       'Every form/filter field must be state-driven by shared; the generator will add explicit stateKey refs.',
       'Use userJourney.operationsInOrder and userJourney.recommendedStages to decide the order and purpose of sections/intentions.',
       'For multi-step pages, do not collapse the page into one generic form; represent the operational sequence with distinct intentions.',
@@ -1165,6 +1188,11 @@ function allowedLayoutFields(prepared: CfePreparedPage): Set<string> {
       }
     }
   }
+  for (const ref of collectBusinessContextRefs(prepared.operations)) {
+    allowed.add(ref.contextKey);
+    allowed.add(ref.originRef);
+    allowed.add(ref.targetRef);
+  }
   for (const entityId of unique([...prepared.page.entityIds, ...prepared.operations.flatMap(operationEntities)])) {
     const entity = prepared.promptContext.ontology && isRecord(prepared.promptContext.ontology)
       ? (prepared.promptContext.ontology.entities as unknown[] | undefined)?.find(item => isRecord(item) && item.entityId === entityId) as Record<string, unknown> | undefined
@@ -1191,7 +1219,12 @@ function deterministicLayoutFromBase(prepared: CfePreparedPage): CfePageLayoutDe
   const sectionId = `section.${prepared.page.pageId}.main`;
   const sectionTitleKey = `${sectionId}.title`;
   i18n[sectionTitleKey] = prepared.page.pageName;
-  const organisms = prepared.operations.map((operation, index) => deterministicOrganism(prepared, operation, index, i18n));
+  const contextOrganism = deterministicBusinessContextOrganism(prepared, i18n);
+  const operationOffset = contextOrganism ? 1 : 0;
+  const organisms = [
+    ...(contextOrganism ? [contextOrganism] : []),
+    ...prepared.operations.map((operation, index) => deterministicOrganism(prepared, operation, index + operationOffset, i18n)),
+  ];
   return {
     pageId: prepared.page.pageId,
     layoutId: `page.${prepared.page.pageId}`,
@@ -1212,6 +1245,50 @@ function deterministicLayoutFromBase(prepared: CfePreparedPage): CfePageLayoutDe
       description: readString(command.purpose),
     })),
   };
+}
+
+function deterministicBusinessContextOrganism(prepared: CfePreparedPage, i18n: Record<string, string>): CfeLayoutOrganism | null {
+  const refs = collectBusinessContextRefs(prepared.operations);
+  if (refs.length === 0) return null;
+  const organismId = `organism.${prepared.page.pageId}.businessContext`;
+  const organismTitleKey = `${organismId}.title`;
+  const intentId = `intent.${prepared.page.pageId}.businessContext.summary`;
+  const intentTitleKey = `${intentId}.title`;
+  i18n[organismTitleKey] = 'Contexto de negocio';
+  i18n[intentTitleKey] = 'Contexto de negocio';
+  return {
+    id: organismId,
+    type: 'contextSummary',
+    organismName: 'BusinessContext',
+    titleKey: organismTitleKey,
+    purpose: 'Mostrar o contexto de empresa/unidade usado pelas operacoes desta pagina.',
+    userActions: [],
+    requiredEntities: [],
+    readsFields: refs.map(ref => ref.targetRef),
+    writesFields: [],
+    rulesApplied: [],
+    order: 10,
+    intentions: [{
+      id: intentId,
+      intent: 'summary',
+      order: 10,
+      titleKey: intentTitleKey,
+      source: 'businessContext',
+      fields: refs.map((ref, index) => deterministicBusinessContextField(prepared.page.pageId, intentId, ref, index, i18n)),
+      columns: [],
+      filters: [],
+      toolbar: [],
+      rowActions: [],
+      actions: [],
+    }],
+  };
+}
+
+function deterministicBusinessContextField(pageId: string, intentId: string, ref: CfeBusinessContextRef, index: number, i18n: Record<string, string>): CfeLayoutField {
+  const id = `${intentId}.field.${ref.contextKey}`;
+  const labelKey = `${id}.label`;
+  i18n[labelKey] = ref.contextKey === 'activeUnitId' ? 'Unidade ativa' : 'Empresa ativa';
+  return { id, field: ref.contextKey, labelKey, order: (index + 1) * 10, source: ref.originRef, stateKey: businessContextStateKey(pageId, ref.contextKey) };
 }
 
 function deterministicOrganism(prepared: CfePreparedPage, operation: CfeOperationDef, index: number, i18n: Record<string, string>): CfeLayoutOrganism {
@@ -1268,6 +1345,7 @@ function deterministicField(id: string, field: string, index: number, i18n: Reco
 }
 
 function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Record<string, unknown> {
+  const businessContextRefs = collectBusinessContextRefs(prepared.operations);
   const states = sharedStates(prepared, layout);
   const actions = sharedActions(prepared, states);
   const initialLoads = prepared.commands
@@ -1293,6 +1371,7 @@ function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefini
     states,
     actions,
     initialLoads,
+    businessContextRefs,
     navigationRefs: prepared.navigationRefs,
     i18nMeta: prepared.i18nMeta,
     i18n: layout.i18n,
@@ -1337,15 +1416,31 @@ function sharedStates(prepared: CfePreparedPage, layout?: CfePageLayoutDefinitio
     }
 
     if (kind === 'query') {
+      const outputShape = normalizeOutputShape(command.outputShape);
+      const queryDefaults = frontendQueryStateDefaults(outputShape);
       addState(states, {
         stateKey: queryDataStateKey(prepared.page.pageId, commandName),
         name: queryStateName(commandName),
         kind: 'queryResult',
         contractRef: { commandName, direction: 'output' },
-        collection: true,
-        defaultValue: [],
+        outputShape,
+        collection: queryDefaults.collection,
+        defaultValue: queryDefaults.defaultValue,
       });
     }
+  }
+
+  for (const ref of collectBusinessContextRefs(prepared.operations)) {
+    addState(states, {
+      stateKey: businessContextStateKey(prepared.page.pageId, ref.contextKey),
+      name: ref.contextKey,
+      kind: 'businessContext',
+      source: ref.originRef,
+      targetRef: ref.targetRef,
+      required: ref.required,
+      selector: ref.contextKey === 'activeUnitId' ? 'unit' : 'company',
+      defaultValue: '',
+    });
   }
 
   if (layout) addLayoutSupplementalStates(prepared, layout, states);
@@ -1355,11 +1450,16 @@ function sharedStates(prepared: CfePreparedPage, layout?: CfePageLayoutDefinitio
 function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown>[]): Record<string, unknown>[] {
   const actions: Record<string, unknown>[] = [];
   const stateKeys = new Set(states.map(state => readString(state.stateKey)).filter(Boolean));
+  const queryActionIds = prepared.commands
+    .filter(command => readString(command.kind) === 'query')
+    .map(command => readString(command.commandName))
+    .filter(Boolean);
   for (const command of prepared.commands) {
     const commandName = readString(command.commandName);
     if (!commandName) continue;
     const kind = readString(command.kind) === 'query' ? 'query' : 'command';
     const commandOutputState = commandOutputStateKey(prepared.page.pageId, commandName);
+    const refreshActionIds = kind === 'command' ? queryActionIds.filter(actionId => actionId !== commandName) : [];
     actions.push({
       actionId: commandName,
       kind,
@@ -1371,6 +1471,7 @@ function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown
       inputStateKeys: commandFieldRecords(command.input).map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
       outputStateKeys: kind === 'query' ? [queryDataStateKey(prepared.page.pageId, commandName)] : (stateKeys.has(commandOutputState) ? [commandOutputState] : []),
       statusStateKey: actionStatusStateKey(prepared.page.pageId, commandName),
+      ...(refreshActionIds.length > 0 ? { refreshActionIds } : {}),
     });
   }
 
@@ -1429,6 +1530,9 @@ function validateSharedLayoutRefs(prepared: CfePreparedPage, layout: CfePageLayo
     if (commandRef && !commandNames.has(commandRef)) throw new Error(`shared action ${actionId} references unknown contract command ${commandRef}`);
     for (const stateKey of [...readStringArray(action.inputStateKeys), ...readStringArray(action.outputStateKeys), readString(action.statusStateKey), readString(action.stateKey)].filter(Boolean)) {
       if (!stateKeys.has(stateKey)) throw new Error(`shared action ${actionId} references missing state ${stateKey}`);
+    }
+    for (const refreshActionId of readStringArray(action.refreshActionIds)) {
+      if (!actionIds.has(refreshActionId)) throw new Error(`shared action ${actionId} refreshes missing action ${refreshActionId}`);
     }
   }
 
@@ -1577,6 +1681,77 @@ function addState(states: Map<string, Record<string, unknown>>, state: Record<st
   if (stateKey && !states.has(stateKey)) states.set(stateKey, state);
 }
 
+function collectBusinessContextRefs(operations: CfeOperationDef[]): CfeBusinessContextRef[] {
+  const refs: CfeBusinessContextRef[] = [];
+  for (const operation of operations) {
+    const resolutions = operationContextResolutions(operation.data);
+    for (const input of l4OperationInputs(operation.data)) {
+      if (input.source !== 'businessContext') continue;
+      const resolution = resolutions.find(item => item.inputId === input.inputId || item.targetRef === `input.${input.inputId}` || item.targetRef === input.fieldRef);
+      const originRef = resolution?.originRef || defaultBusinessContextOriginRef(input.inputId, input.fieldRef);
+      refs.push({
+        operationId: operation.operationId,
+        inputId: input.inputId,
+        contextKey: businessContextKey(originRef),
+        originRef,
+        targetRef: input.fieldRef,
+        required: input.required,
+        description: input.description,
+      });
+    }
+
+    for (const resolution of resolutions) {
+      if (resolution.source !== 'businessContext') continue;
+      const originRef = resolution.originRef || defaultBusinessContextOriginRef(resolution.inputId || '', resolution.targetRef);
+      refs.push({
+        operationId: operation.operationId,
+        inputId: resolution.inputId,
+        contextKey: businessContextKey(originRef),
+        originRef,
+        targetRef: resolution.targetRef,
+        required: true,
+        description: resolution.description,
+      });
+    }
+  }
+  return uniqueBusinessContextRefs(refs);
+}
+
+function operationContextResolutions(data: Record<string, unknown>): { inputId?: string; targetRef: string; source: string; originRef: string; description: string }[] {
+  const value = data.contextResolution;
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).map(item => ({
+    inputId: readString(item.inputId) || undefined,
+    targetRef: readString(item.targetRef),
+    source: readString(item.source),
+    originRef: readString(item.originRef),
+    description: readString(item.description),
+  })).filter(item => item.targetRef && item.source);
+}
+
+function uniqueBusinessContextRefs(refs: CfeBusinessContextRef[]): CfeBusinessContextRef[] {
+  const seen = new Set<string>();
+  const uniqueRefs: CfeBusinessContextRef[] = [];
+  for (const ref of refs) {
+    const key = `${ref.contextKey}:${ref.originRef}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniqueRefs.push(ref);
+  }
+  return uniqueRefs;
+}
+
+function businessContextKey(originRef: string): string {
+  const local = originRef.split('.').filter(Boolean).pop() || originRef;
+  if (local === 'activeUnitId') return 'activeUnitId';
+  return 'activeCompanyId';
+}
+
+function defaultBusinessContextOriginRef(inputId: string, fieldRef: string): string {
+  const text = `${inputId} ${fieldRef}`.toLowerCase();
+  return text.includes('unit') || text.includes('unidade') ? 'businessContext.activeUnitId' : 'businessContext.activeCompanyId';
+}
+
 function commandFieldRecords(value: unknown): { name: string; required?: boolean }[] {
   if (!Array.isArray(value)) return [];
   return value.map(item => isRecord(item) ? { name: readString(item.name), required: item.required === true } : { name: '' }).filter(item => item.name);
@@ -1641,6 +1816,7 @@ function inputStateKey(pageId: string, commandName: string, fieldName: string): 
 function queryDataStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.data.${commandName}`; }
 function commandOutputStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.output.${commandName}`; }
 function actionStatusStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.action.${commandName}.status`; }
+function businessContextStateKey(pageId: string, contextKey: string): string { return `ui.${pageId}.businessContext.${contextKey}`; }
 function inputStateName(commandName: string, fieldName: string): string { return `${commandName}${toPascalCase(fieldName)}`; }
 function queryStateName(commandName: string): string { return `${commandName}Data`; }
 function layoutFieldStateKey(pageId: string, field: CfeLayoutField): string { return `ui.${pageId}.layout.${toSafeShortName(field.id || field.field)}`; }
@@ -1780,14 +1956,16 @@ function commandFromOperation(operation: CfeOperationDef, entities: Map<string, 
   const entity = entities.get(primaryEntity);
   const kind = operation.kind === 'query' || operation.kind === 'view' ? 'query' : 'command';
   const commandName = operation.commandName || operation.operationId;
+  const outputShape = frontendOutputShapeForOperation({ ...operation.data, kind: operation.kind });
   return {
     commandName,
     ...(operation.bffName ? { bffName: operation.bffName } : {}),
     ...(operation.bffName ? { routeKey: operation.bffName } : {}),
     purpose: operation.title || humanizeId(operation.operationId),
     kind,
-    input: kind === 'query' ? queryInput(operation, entity) : commandInput(operation, entity),
-    output: kind === 'query' ? queryOutput(operation, entity) : commandOutput(entity),
+    outputShape,
+    input: kind === 'query' ? queryInput(operation, entity, entities) : commandInput(operation, entity, entities),
+    output: kind === 'query' ? queryOutput(operation, entity, entities) : commandOutput(operation, entity, entities),
     origin: {
       source: 'l4/operations',
       ownerId: `operation:${operation.operationId}`,
@@ -1814,7 +1992,7 @@ function pageDefinition(page: CfePagePlan, operations: CfeOperationDef[]): Recor
     pluginRefs: [],
     mdmRefs: [],
     origin: page.origin,
-    pageInputs: [],
+    pageInputs: collectBusinessContextRefs(operations),
     navigationRefs: [],
     sections: [{
       sectionName: page.pageName,
@@ -2095,29 +2273,97 @@ function entityFromData(data: Record<string, unknown>, fallbackId: string): CfeE
   return { entityId, title: readString(data.title) || humanizeId(entityId), fields, rulesApplied: readStringArray(data.rulesApplied), statusEnum: readStringArray(data.statusEnum), lifecycleStates: readStringArray(data.lifecycleStates) };
 }
 
-function queryInput(operation: CfeOperationDef, entity?: CfeEntityDef): unknown[] {
+function queryInput(operation: CfeOperationDef, entity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>): unknown[] {
+  const l4Input = operationInputFields(operation, entities);
+  if (l4Input) return l4Input;
   if (!entity) return [];
   const explicit = explicitEntityFieldNames(operation.reads, entity.entityId);
   const fields = entity.fields.filter(field => explicit.size > 0 ? explicit.has(field.fieldId) && isLikelyQueryFilterField(field.fieldId) : isLikelyQueryFilterField(field.fieldId));
   return fields.slice(0, 6).map(field => contractFieldFromEntityField(entity, field, { required: false }));
 }
-function queryOutput(operation: CfeOperationDef, entity?: CfeEntityDef): unknown[] {
+function queryOutput(operation: CfeOperationDef, entity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>): unknown[] {
+  const l4Output = operationOutputFields(operation, entity, entities);
+  if (l4Output) return l4Output;
   if (!entity) return [];
   const explicit = explicitEntityFieldNames(operation.reads, entity.entityId);
   const fields = explicit.size > 0 ? entity.fields.filter(field => explicit.has(field.fieldId)) : entity.fields.slice(0, 8);
   return fields.slice(0, 12).map(field => contractFieldFromEntityField(entity, field, { includeRequired: false }));
 }
-function commandInput(operation: CfeOperationDef, entity?: CfeEntityDef): unknown[] {
+function commandInput(operation: CfeOperationDef, entity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>): unknown[] {
+  const l4Input = operationInputFields(operation, entities);
+  if (l4Input) return l4Input;
   if (!entity) return [];
   const explicitFields = explicitEntityFieldNames(operation.writes, entity.entityId);
   const hasExplicit = explicitFields.size > 0;
   const isCreate = operation.kind === 'create';
   return entity.fields.filter(field => !isSystemField(field.fieldId)).filter(field => !hasExplicit || explicitFields.has(field.fieldId)).filter(field => !isCreate || !isLikelyIdField(field.fieldId)).slice(0, 10).map(field => contractFieldFromEntityField(entity, field, { required: field.required === true && !isLikelyIdField(field.fieldId) }));
 }
-function commandOutput(entity?: CfeEntityDef): unknown[] {
+function commandOutput(operation: CfeOperationDef, entity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>): unknown[] {
+  const l4Output = operationOutputFields(operation, entity, entities);
+  if (l4Output) return l4Output;
   if (!entity) return [];
   const idField = entity.fields.find(field => isLikelyIdField(field.fieldId)) || entity.fields[0];
   return idField ? [contractFieldFromEntityField(entity, idField, { includeRequired: false })] : [];
+}
+
+function operationInputFields(operation: CfeOperationDef, entities: Map<string, CfeEntityDef>): Record<string, unknown>[] | null {
+  if (!hasL4OperationInputs(operation.data)) return null;
+  return l4OperationInputs(operation.data)
+    .filter(isUserFacingOperationInput)
+    .map(input => contractFieldFromOperationInput(operation, input, entities));
+}
+
+function operationOutputFields(operation: CfeOperationDef, entity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>): Record<string, unknown>[] | null {
+  if (!hasL4OperationOutputRefs(operation.data)) return null;
+  return uniqueContractFields(l4OperationOutputRefs(operation.data).flatMap(ref => contractFieldsFromOutputRef(operation, entity, entities, ref)));
+}
+
+function contractFieldFromOperationInput(operation: CfeOperationDef, input: CfeL4OperationInput, entities: Map<string, CfeEntityDef>): Record<string, unknown> {
+  const resolved = resolveFieldRef(input.fieldRef, operation.entity, entities);
+  const out: Record<string, unknown> = resolved.entity && resolved.field
+    ? contractFieldFromEntityField(resolved.entity, resolved.field, { required: input.required })
+    : { name: input.inputId, type: frontendTypeForUnresolvedRef(input.fieldRef, entities), required: input.required };
+  out.name = input.inputId;
+  out.required = input.required;
+  if (input.description) out.description = input.description;
+  return out;
+}
+
+function contractFieldsFromOutputRef(operation: CfeOperationDef, fallbackEntity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>, ref: string): Record<string, unknown>[] {
+  const entityRef = normalizeEntityRef(ref);
+  const entityFromWholeRef = entities.get(entityRef);
+  if (!ref.includes('.') && entityFromWholeRef) {
+    return entityFromWholeRef.fields.slice(0, 12).map(field => contractFieldFromEntityField(entityFromWholeRef, field, { includeRequired: false }));
+  }
+
+  const resolved = resolveFieldRef(ref, fallbackEntity?.entityId || operation.entity, entities);
+  if (resolved.entity && resolved.field) return [contractFieldFromEntityField(resolved.entity, resolved.field, { includeRequired: false })];
+  const name = ref.includes('.') ? ref.split('.').pop() || ref : ref;
+  return name ? [{ name, type: 'string', required: false }] : [];
+}
+
+function resolveFieldRef(ref: string, fallbackEntityId: string, entities: Map<string, CfeEntityDef>): { entity?: CfeEntityDef; field?: CfeFieldDef } {
+  const [rawEntity, rawField] = ref.includes('.') ? ref.split('.') : [fallbackEntityId, ref];
+  const entity = entities.get(normalizeEntityRef(rawEntity || fallbackEntityId));
+  if (!entity) return {};
+  const field = entity.fields.find(candidate => candidate.fieldId === rawField);
+  return { entity, field };
+}
+
+function frontendTypeForUnresolvedRef(ref: string, entities: Map<string, CfeEntityDef>): string {
+  return entities.has(normalizeEntityRef(ref)) ? 'json' : 'string';
+}
+
+function uniqueContractFields(fields: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seen = new Set<string>();
+  const uniqueFields: Record<string, unknown>[] = [];
+  for (const field of fields) {
+    const name = readString(field.name);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    uniqueFields.push(field);
+  }
+  return uniqueFields;
 }
 
 function contractFieldFromEntityField(entity: CfeEntityDef, field: CfeFieldDef, options: { required?: boolean; includeRequired?: boolean } = {}): Record<string, unknown> {

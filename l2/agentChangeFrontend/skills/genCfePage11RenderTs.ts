@@ -67,6 +67,11 @@ For every field/column/filter:
 - Use field.stateKey to find the corresponding shared state from shared .defs.ts.
 - Then use the property name actually declared in shared .ts.
 - If no shared state/property exists, render the control read-only or skip the value. Do not invent a property.
+- If the shared state kind is businessContext, render it as a compact current-company/current-unit badge or selector area. Do not render it as a plain technical text input and do not label it workspaceId.
+- For queryResult states, inspect shared .defs.ts:
+  - outputShape "array": rows are the shared property itself.
+  - outputShape "paginated": rows are sharedProperty.items (fallback to [] when missing), and total/page/pageSize may be shown only when those properties exist on the state value.
+  - outputShape "object": render a summary/detail block, not an array table.
 
 For every action:
 - Use action.actionKey or action.action to find Definition.actions[] in shared .defs.ts.

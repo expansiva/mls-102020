@@ -33,6 +33,11 @@ export interface EntityDefinition {
   description: string;
   ownership?: string;
   kind?: string;
+  modelingDecision?: string;
+  moduleType?: string;
+  mdmSubtype?: string;
+  requiresAnchor?: boolean;
+  anchor?: { entityId: string; relationshipType: string; description: string };
   // Classification for kind:"event" entities so Stage 3 persists them (telemetry/audit) or routes
   // them to the outbox (reaction) instead of dropping them. Omitted for non-event entities.
   eventPolicy?: { purpose: string; retentionDays?: number };
@@ -166,6 +171,11 @@ function normalizeResult(value: unknown): EntityDefinitionResult {
       description: assertString(def.description, 'result.entityDefinition.description'),
       ownership: optionalString(def.ownership),
       kind: optionalString(def.kind),
+      modelingDecision: assertString(def.modelingDecision, 'result.entityDefinition.modelingDecision'),
+      moduleType: optionalString(def.moduleType),
+      mdmSubtype: optionalString(def.mdmSubtype),
+      requiresAnchor: def.requiresAnchor === true,
+      anchor: normalizeMdmAnchor(def.anchor),
       eventPolicy: normalizeEventPolicy(def.eventPolicy),
       fields: assertArray(def.fields || [], 'result.entityDefinition.fields').map((item, index) => assertRecord(item, `result.entityDefinition.fields[${index}]`)),
       statusEnum: optionalStringArray(def.statusEnum),
@@ -189,6 +199,14 @@ function normalizeEventPolicy(value: unknown): { purpose: string; retentionDays?
   return retentionDays === undefined ? { purpose } : { purpose, retentionDays };
 }
 
+function normalizeMdmAnchor(value: unknown): { entityId: string; relationshipType: string; description: string } | undefined {
+  if (!isRecord(value)) return undefined;
+  const entityId = optionalString(value.entityId);
+  const relationshipType = optionalString(value.relationshipType);
+  const description = optionalString(value.description);
+  return entityId && relationshipType && description ? { entityId, relationshipType, description } : undefined;
+}
+
 const systemPrompt = `
 <!-- modelType: codepro -->
 <!-- x-tool-strict: true -->
@@ -201,6 +219,8 @@ Call the "{{toolName}}" tool with: status, result, questions, trace. Do not retu
 
 Rules:
 - entityId must equal the selector exactly.
+- Keep ownership/kind/modelingDecision from the entity map. modelingDecision explains why this entity is
+  moduleOwned, mdmOwned, embedded-by-relationship, horizontal, plugin or external.
 - fields lists EVERY attribute: fieldId, type (uuid|string|text|number|money|boolean|date|datetime or
   an entity id for references), required, description. Include identity, references ({entity}Id for the
   relationships provided), business attributes and audit timestamps (createdAt/updatedAt) when persisted.
@@ -214,6 +234,16 @@ Rules:
   non-event entities.
 - If you set ownership, it MUST be EXACTLY one of: moduleOwned, mdmOwned, horizontalOwned, pluginOwned,
   existingModuleOwned, external (keep the value from the entity map; never invent another). Omit it if unsure.
+- For ownership=mdmOwned or kind=mdm, you MUST carry:
+  - moduleType in the canonical <moduleId>.<PascalType> format, e.g. cafeFlow.Table.
+  - mdmSubtype as one of the 102034 subtypes (Person, Company, Product, Service, Location,
+    AssetGeneric, AssetVehicle, AssetProperty, AssetEquipment, Animal, BankAccount, Document,
+    ContactChannel).
+  - requiresAnchor=true and anchor when the MDM record is scoped to a company, unit, location or parent
+    object. anchor = { entityId, relationshipType, description }; relationshipType must be a 102034 MDM
+    relationship such as Owns, LocatedAt, SubsidiaryOf, BelongsToGroup, PartOfUnit, SupplierOf,
+    CustomerOf, OffersProduct, OffersService or HasContact.
+  - requiresAnchor=false only for globally meaningful records such as the primary Company itself.
 - rulesApplied lists ruleIds (from the provided rules) constraining this entity.
 - Do not invent entities/rules/relationships; the available entities are in "otherEntities" (each with
   entityId + title + description). Match a needed reference by MEANING, not just exact name (e.g. an order
