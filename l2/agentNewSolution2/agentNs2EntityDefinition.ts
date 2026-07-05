@@ -38,7 +38,7 @@ export interface EntityDefinition {
   moduleType?: string;
   mdmSubtype?: string;
   requiresAnchor?: boolean;
-  anchor?: { entityId: string; relationshipType: string; description: string };
+  anchor?: { entityId: string; source?: 'ontologyEntity' | 'runtimeContext'; originRef?: string; relationshipType: string; description: string };
   // Classification for kind:"event" entities so Stage 3 persists them (telemetry/audit) or routes
   // them to the outbox (reaction) instead of dropping them. Omitted for non-event entities.
   eventPolicy?: { purpose: string; retentionDays?: number };
@@ -201,12 +201,16 @@ function normalizeEventPolicy(value: unknown): { purpose: string; retentionDays?
   return retentionDays === undefined ? { purpose } : { purpose, retentionDays };
 }
 
-function normalizeMdmAnchor(value: unknown): { entityId: string; relationshipType: string; description: string } | undefined {
+function normalizeMdmAnchor(value: unknown): EntityDefinition['anchor'] | undefined {
   if (!isRecord(value)) return undefined;
   const entityId = optionalString(value.entityId);
+  const source = optionalString(value.source);
+  const originRef = optionalString(value.originRef);
   const relationshipType = optionalString(value.relationshipType);
   const description = optionalString(value.description);
-  return entityId && relationshipType && description ? { entityId, relationshipType, description } : undefined;
+  return entityId && relationshipType && description
+    ? { entityId, ...(source ? { source: source as 'ontologyEntity' | 'runtimeContext' } : {}), ...(originRef ? { originRef } : {}), relationshipType, description }
+    : undefined;
 }
 
 const systemPrompt = `
@@ -244,9 +248,14 @@ Rules:
     AssetGeneric, AssetVehicle, AssetProperty, AssetEquipment, Animal, BankAccount, Document,
     ContactChannel).
   - requiresAnchor=true and anchor when the MDM record is scoped to a company, unit, location or parent
-    object. anchor = { entityId, relationshipType, description }; relationshipType must be a 102034 MDM
-    relationship such as Owns, LocatedAt, SubsidiaryOf, BelongsToGroup, PartOfUnit, SupplierOf,
-    CustomerOf, OffersProduct, OffersService or HasContact.
+    object. anchor.source defaults to "ontologyEntity": anchor.entityId must then be another local
+    ontology entity. If the scope is provided by runtime/session context instead of a local entity, set
+    anchor.source="runtimeContext" and anchor.originRef to businessContext.activeCompanyId,
+    businessContext.activeUnitId or currentWorkspace.workspaceId. This is how generated modules anchor
+    records to the active company/unit/workspace without inventing a local Company entity. In both cases
+    keep anchor.entityId as the semantic anchor label and provide relationshipType + description.
+    relationshipType must be a 102034 MDM relationship such as Owns, LocatedAt, SubsidiaryOf,
+    BelongsToGroup, PartOfUnit, SupplierOf, CustomerOf, OffersProduct, OffersService or HasContact.
   - requiresAnchor=false only for globally meaningful records such as the primary Company itself.
 - rulesApplied lists ruleIds (from the provided rules) constraining this entity.
 - Do not invent entities/rules/relationships; the available entities are in "otherEntities" (each with

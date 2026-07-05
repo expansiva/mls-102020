@@ -1,5 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution2/ns2MdmModeling.ts" enhancement="_blank"/>
 
+import { L4_CONTEXT_ORIGIN_CATALOG } from '/_102029_/l2/runtimeConfigTypes.js';
+
 export const MDM_SUBTYPES = [
   'Person',
   'Company',
@@ -47,6 +49,11 @@ export const MDM_RELATIONSHIP_TYPES = [
 
 export const STRUCTURAL_RELATIONSHIP_TYPES = ['partOf'] as const;
 export const L4_RELATIONSHIP_TYPES = [...MDM_RELATIONSHIP_TYPES, ...STRUCTURAL_RELATIONSHIP_TYPES] as const;
+export const MDM_ANCHOR_SOURCES = ['ontologyEntity', 'runtimeContext'] as const;
+export const MDM_RUNTIME_ANCHOR_ORIGIN_REFS = [
+  ...L4_CONTEXT_ORIGIN_CATALOG.businessContext,
+  ...L4_CONTEXT_ORIGIN_CATALOG.currentWorkspace,
+] as const;
 
 export interface MdmModelingIssue {
   severity: 'error' | 'warning';
@@ -124,8 +131,22 @@ function validateEntity(moduleName: string, entityId: string, entity: Record<str
 function validateAnchor(where: string, anchor: Record<string, unknown>, entityIds: Set<string>, issues: MdmModelingIssue[]): void {
   const entityId = readString(anchor.entityId);
   const relationshipType = readString(anchor.relationshipType);
-  if (!entityId || !entityIds.has(entityId)) {
-    issues.push({ severity: 'error', code: 'mdm.anchor.entity.unknown', message: `${where}: anchor.entityId '${entityId || '?'}' does not resolve to an ontology entity` });
+  const source = readString(anchor.source) || 'ontologyEntity';
+  const originRef = readString(anchor.originRef);
+  if (!isMdmAnchorSource(source)) {
+    issues.push({ severity: 'error', code: 'mdm.anchor.source.invalid', message: `${where}: anchor.source '${source || '?'}' must be one of ${MDM_ANCHOR_SOURCES.join(', ')}` });
+  }
+  if (!entityId) {
+    issues.push({ severity: 'error', code: 'mdm.anchor.entity.missing', message: `${where}: anchor.entityId is required as the semantic anchor label` });
+  } else if (source === 'ontologyEntity' && !entityIds.has(entityId)) {
+    issues.push({ severity: 'error', code: 'mdm.anchor.entity.unknown', message: `${where}: anchor.entityId '${entityId}' does not resolve to an ontology entity` });
+  }
+  if (source === 'runtimeContext') {
+    if (!originRef) {
+      issues.push({ severity: 'error', code: 'mdm.anchor.origin.missing', message: `${where}: runtimeContext anchor must declare originRef` });
+    } else if (!isRuntimeAnchorOriginRef(originRef)) {
+      issues.push({ severity: 'error', code: 'mdm.anchor.origin.invalid', message: `${where}: runtimeContext originRef '${originRef}' must be one of ${MDM_RUNTIME_ANCHOR_ORIGIN_REFS.join(', ')}` });
+    }
   }
   if (!relationshipType || !isMdmRelationshipType(relationshipType)) {
     issues.push({ severity: 'error', code: 'mdm.anchor.relationship.invalid', message: `${where}: anchor.relationshipType '${relationshipType || '?'}' must be a 102034 MDM relationship type` });
@@ -163,6 +184,14 @@ function isMdmRelationshipType(value: string): boolean {
 
 function isL4RelationshipType(value: string): boolean {
   return (L4_RELATIONSHIP_TYPES as readonly string[]).includes(value);
+}
+
+function isMdmAnchorSource(value: string): boolean {
+  return (MDM_ANCHOR_SOURCES as readonly string[]).includes(value);
+}
+
+export function isRuntimeAnchorOriginRef(value: string): boolean {
+  return (MDM_RUNTIME_ANCHOR_ORIGIN_REFS as readonly string[]).includes(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

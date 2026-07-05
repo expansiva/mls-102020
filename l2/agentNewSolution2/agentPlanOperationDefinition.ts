@@ -26,7 +26,7 @@ import { getOperationIndex } from '/_102020_/l2/agentNewSolution2/agentPlanOpera
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
 import { getEnrichedOntology } from '/_102020_/l2/agentNewSolution2/agentNs2EntityDefinition.js';
 import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finalize.js';
-import { repairComposedInputs } from '/_102020_/l2/agentNewSolution2/ns2DeterministicRepairs.js';
+import { repairComposedInputs, repairRuntimeAnchorReferences } from '/_102020_/l2/agentNewSolution2/ns2DeterministicRepairs.js';
 
 const AGENT_NAME = 'agentPlanOperationDefinition';
 const TOOL_NAME = 'submitOperationDefinition';
@@ -144,7 +144,11 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       try { normalizeIdRefs(def, await readOntologyEntities(getApprovedModuleName(context) || '')); } catch { /* ontology optional */ }
       try {
         const moduleName = getApprovedModuleName(context) || '';
-        if (moduleName) repairComposedInputs(def, await readOntologyEntities(moduleName), await readModuleRelationships(moduleName));
+        if (moduleName) {
+          const ontology = await readOntologyEntities(moduleName);
+          repairComposedInputs(def, ontology, await readModuleRelationships(moduleName));
+          repairRuntimeAnchorReferences(def, ontology);
+        }
       } catch { /* ontology optional */ }
     } catch (error) {
       status = 'failed';
@@ -329,6 +333,8 @@ Rules:
 - operationId must equal the selector. No tables. Do not invent page, command or route names; the
   agent attaches pageId, commandName and bffName deterministically after the tool call.
 - reads/writes reference canonical ontology ids (optionally "Entity.field"), never aggregate names.
+  If an entity is scoped by anchor.source="runtimeContext", do not put the anchor label in reads/writes;
+  add contextResolution from the anchor originRef instead.
 - accessPattern.kind must be exactly one of list|getById|lookup|commandInput. For query/view, choose
   the user journey's best access: list for browsable sets, getById only when the journey already
   carries a selected id, lookup for compact selectors. For create/update/delete use commandInput.

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   repairComposedInputs,
   repairMdmEntityDefinition,
+  repairRuntimeAnchorReferences,
   type RepairableEntityDefinition,
   type RepairableOperationDefinition,
 } from '/_102020_/l2/agentNewSolution2/ns2DeterministicRepairs.js';
@@ -58,4 +59,32 @@ test('repairComposedInputs adds missing partOf child input for commands that wri
   assert.equal(!!composedInput, true);
   assert.equal(composedInput?.source, 'systemDefault');
   assert.equal(composedInput?.required, true);
+});
+
+test('repairRuntimeAnchorReferences moves runtime anchor aliases from reads/writes into contextResolution', () => {
+  const operation: RepairableOperationDefinition = {
+    entity: 'Table',
+    kind: 'create',
+    reads: ['Company'],
+    writes: ['Table', 'Company'],
+    inputs: [],
+    contextResolution: [],
+  };
+
+  repairRuntimeAnchorReferences(operation, {
+    Table: {
+      kind: 'mdm',
+      anchor: {
+        entityId: 'Company',
+        source: 'runtimeContext',
+        originRef: 'businessContext.activeCompanyId',
+      },
+    },
+  });
+
+  assert.deepEqual(operation.reads, []);
+  assert.deepEqual(operation.writes, ['Table']);
+  assert.equal(operation.contextResolution?.[0]?.source, 'businessContext');
+  assert.equal(operation.contextResolution?.[0]?.targetRef, 'businessContext.activeCompanyId');
+  assert.equal(operation.contextResolution?.[0]?.originRef, 'businessContext.activeCompanyId');
 });

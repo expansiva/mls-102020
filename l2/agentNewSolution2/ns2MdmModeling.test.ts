@@ -46,6 +46,63 @@ test('collectMdmModelingIssues accepts complete mdm-owned entity metadata', () =
   assert.deepEqual(issues, []);
 });
 
+test('collectMdmModelingIssues accepts runtime-context mdm anchors without local anchor entity', () => {
+  const issues = collectMdmModelingIssues({
+    moduleName: 'cafeFlow',
+    entities: {
+      Table: {
+        title: 'Table',
+        description: 'Physical table registration.',
+        ownership: 'mdmOwned',
+        kind: 'mdm',
+        modelingDecision: 'Table registration is stable MDM scoped by the active company context.',
+        moduleType: 'cafeFlow.Table',
+        mdmSubtype: 'Location',
+        requiresAnchor: true,
+        anchor: {
+          entityId: 'Company',
+          source: 'runtimeContext',
+          originRef: 'businessContext.activeCompanyId',
+          relationshipType: 'Owns',
+          description: 'The active company owns the table registration.',
+        },
+      },
+    },
+    relationships: [],
+  });
+
+  assert.deepEqual(issues, []);
+});
+
+test('collectMdmModelingIssues rejects invalid runtime-context mdm anchor origins', () => {
+  const issues = collectMdmModelingIssues({
+    moduleName: 'cafeFlow',
+    entities: {
+      Table: {
+        title: 'Table',
+        description: 'Physical table registration.',
+        ownership: 'mdmOwned',
+        kind: 'mdm',
+        modelingDecision: 'Table registration is stable MDM scoped by runtime context.',
+        moduleType: 'cafeFlow.Table',
+        mdmSubtype: 'Location',
+        requiresAnchor: true,
+        anchor: {
+          entityId: 'Company',
+          source: 'runtimeContext',
+          originRef: 'Company.companyId',
+          relationshipType: 'Owns',
+          description: 'Invalid runtime source.',
+        },
+      },
+    },
+    relationships: [],
+  });
+  const codes = issues.map(issue => issue.code);
+
+  assert.equal(codes.includes('mdm.anchor.origin.invalid'), true);
+});
+
 test('collectMdmModelingIssues rejects incomplete mdm-owned entity metadata', () => {
   const issues = collectMdmModelingIssues({
     moduleName: 'cafeFlow',

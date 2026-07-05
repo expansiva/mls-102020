@@ -5,7 +5,7 @@
 // add semantic guards (id resolution). Stage 1 covers the behavior contract only — there are no
 // page/table/metric schemas here on purpose.
 
-import { L4_RELATIONSHIP_TYPES, MDM_RELATIONSHIP_TYPES, MDM_SUBTYPES } from '/_102020_/l2/agentNewSolution2/ns2MdmModeling.js';
+import { L4_RELATIONSHIP_TYPES, MDM_ANCHOR_SOURCES, MDM_RELATIONSHIP_TYPES, MDM_RUNTIME_ANCHOR_ORIGIN_REFS, MDM_SUBTYPES } from '/_102020_/l2/agentNewSolution2/ns2MdmModeling.js';
 
 const str = { type: 'string' } as const;
 const bool = { type: 'boolean' } as const;
@@ -19,6 +19,8 @@ const mdmAnchorSchema = {
   required: ['entityId', 'relationshipType', 'description'],
   properties: {
     entityId: str,
+    source: { enum: MDM_ANCHOR_SOURCES },
+    originRef: { enum: MDM_RUNTIME_ANCHOR_ORIGIN_REFS },
     relationshipType: { enum: MDM_RELATIONSHIP_TYPES },
     description: str,
   },

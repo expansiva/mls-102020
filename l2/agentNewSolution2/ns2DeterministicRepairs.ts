@@ -1,5 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution2/ns2DeterministicRepairs.ts" enhancement="_blank"/>
 
+import { isRuntimeAnchorOriginRef } from '/_102020_/l2/agentNewSolution2/ns2MdmModeling.js';
+
 export interface RepairableEntityDefinition {
   entityId: string;
   ownership?: string;
@@ -15,11 +17,21 @@ export interface RepairableOperationInput {
   description: string;
 }
 
+export interface RepairableOperationContextResolution {
+  inputId?: string;
+  targetRef: string;
+  source: string;
+  originRef: string;
+  description: string;
+}
+
 export interface RepairableOperationDefinition {
   entity: string;
   kind: string;
+  reads?: string[];
   writes: string[];
   inputs: RepairableOperationInput[];
+  contextResolution?: RepairableOperationContextResolution[];
 }
 
 export function repairMdmEntityDefinition(def: RepairableEntityDefinition, moduleName: string): void {
@@ -65,6 +77,48 @@ export function repairComposedInputs(
   }
 }
 
+export function repairRuntimeAnchorReferences(
+  def: RepairableOperationDefinition,
+  ontology: Record<string, Record<string, unknown>>,
+): void {
+  const runtimeAnchors = new Map<string, string>();
+  for (const entity of Object.values(ontology)) {
+    const anchor = isRecord(entity.anchor) ? entity.anchor : null;
+    const entityId = typeof anchor?.entityId === 'string' ? anchor.entityId : '';
+    const originRef = typeof anchor?.originRef === 'string' ? anchor.originRef : '';
+    if (anchor?.source === 'runtimeContext' && entityId && isRuntimeAnchorOriginRef(originRef)) {
+      runtimeAnchors.set(entityId, originRef);
+    }
+  }
+  if (runtimeAnchors.size === 0) return;
+
+  const touched = new Map<string, string>();
+  const filterRefs = (refs?: string[]) => (refs || []).filter((ref) => {
+    const alias = stripField(ref);
+    const originRef = runtimeAnchors.get(alias);
+    if (!originRef) return true;
+    touched.set(alias, originRef);
+    return false;
+  });
+
+  def.reads = filterRefs(def.reads);
+  def.writes = filterRefs(def.writes);
+  if (touched.size === 0) return;
+
+  if (!Array.isArray(def.contextResolution)) def.contextResolution = [];
+  for (const [alias, originRef] of touched) {
+    if (def.contextResolution.some(item => item.originRef === originRef && item.targetRef === originRef)) {
+      continue;
+    }
+    def.contextResolution.push({
+      targetRef: originRef,
+      source: contextSourceForOriginRef(originRef),
+      originRef,
+      description: `Resolve runtime anchor ${alias} from ${originRef}.`,
+    });
+  }
+}
+
 function stripField(ref: string): string {
   return ref.includes('.') ? ref.split('.')[0] : ref;
 }
@@ -83,6 +137,10 @@ function uniqueInputId(base: string, used: Set<string>): string {
   const inputId = `${base}${suffix}`;
   used.add(inputId);
   return inputId;
+}
+
+function contextSourceForOriginRef(originRef: string): string {
+  return originRef.slice(0, originRef.indexOf('.'));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
