@@ -157,8 +157,9 @@ In result:
   operation = direct single-actor action; either = unsure).
 - ontology.entities: an object map keyed by PascalCase id. Each value has title, description,
   ownership, modelingDecision (and kind/statusEnum/lifecycleStates when known). This is a MAP — do NOT
-  detail fields here (a later stage does). ontology.entities hold ONLY persistent DATA nouns (kind core/mdm/event/
-  metric/supporting). NEVER put use-cases/workflows/queries here; never use Uc*/verb-named ids.
+  repeat entityId inside each value and do NOT detail fields here (a later stage does).
+  ontology.entities hold ONLY persistent DATA nouns (kind core/mdm/event/metric/supporting). NEVER put
+  use-cases/workflows/queries here; never use Uc*/verb-named ids.
   - ownership is REQUIRED and MUST be EXACTLY one of: moduleOwned, mdmOwned, horizontalOwned,
     pluginOwned, existingModuleOwned, external. Use moduleOwned for entities this module owns
     (the default), mdmOwned for cadastral master-data. Never invent other values (e.g. "module",

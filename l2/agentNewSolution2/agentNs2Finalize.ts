@@ -243,9 +243,10 @@ Call the "{{toolName}}" tool with: status, result, questions, trace. Do not retu
 
 In result: module, actors, capabilities (keep behaviorHint), ontology MAP (data nouns only — no fields
 here), rules, relationships, approvedArtifacts (mdm/horizontals/plugins/agents), decisions[], and
-deferredItems[]. Apply the review findings (fix gaps, drop use-case-shaped entities). Keep ids stable
-between the blueprint and here so later stages can resolve references. Preserve modelingDecision,
-moduleType, mdmSubtype, requiresAnchor and anchor on MDM entities.
+deferredItems[]. ontology.entities is keyed by entity id; do NOT repeat entityId inside each map value.
+Apply the review findings (fix gaps, drop use-case-shaped entities). Keep ids stable between the
+blueprint and here so later stages can resolve references. Preserve modelingDecision, moduleType,
+mdmSubtype, requiresAnchor and anchor on MDM entities.
 
 Rules:
 - Stage 1 only — no pages/tables/persistence/metrics.
