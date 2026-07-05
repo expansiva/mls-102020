@@ -6,6 +6,7 @@
 // itself — l4 workflows/operations are the functional source of truth (pageId + title),
 // and a page is only registered when its l2 artifacts are materialized on disk
 // (contracts/<page>.ts + shared/<page>.ts + desktop/page11/<page>.ts).
+// Additional desktop/pageNN variants are registered as extra routes when materialized.
 // It merges the frontend part of the workspace ProjectsConfig into mls-<clientId>/config.json:
 // shellTemplates, publication, clientShell (l5 customize overrides win), projects
 // (master frontend + libs) and modules[].frontend.pages / navigation.
@@ -63,6 +64,16 @@ function convertFileToTag(info: { shortName: string; project: number; folder?: s
 }
 
 interface DiscoveredPage { pageId: string; label: string; }
+interface PageVariant {
+  variantId: string;
+  layout: string;
+  routePageId: string;
+  route: string;
+  source: string;
+  definition: string;
+  componentTag: string;
+  title: string;
+}
 
 /** Pages from l4. Primary grouping is the journey WORKSPACES (one page per workspace, matching
  *  agentChangeFrontend buildPagePlans); owners not covered by any workspace fall back to a per-owner
@@ -143,6 +154,43 @@ function isMaterialized(clientRoot: string, moduleName: string, pageId: string):
     .every(part => fs.existsSync(path.join(web, part, `${pageId}.ts`)));
 }
 
+function discoverPageVariants(clientRoot: string, clientId: string, moduleName: string, page: DiscoveredPage): PageVariant[] {
+  const desktopDir = path.join(clientRoot, 'l2', moduleName, 'web', 'desktop');
+  if (!fs.existsSync(desktopDir)) return [];
+
+  const layouts = fs.readdirSync(desktopDir)
+    .filter(name => /^page\d+$/.test(name) && name !== 'page11')
+    .sort((a, b) => a.localeCompare(b));
+
+  const variants: PageVariant[] = [];
+  const usedRoutePageIds = new Set<string>();
+
+  for (const layout of layouts) {
+    const tsPath = path.join(desktopDir, layout, `${page.pageId}.ts`);
+    const defsPath = path.join(desktopDir, layout, `${page.pageId}.defs.ts`);
+    if (!fs.existsSync(tsPath) || !fs.existsSync(defsPath)) continue;
+
+    const defs = readDefsData(defsPath);
+    const variantId = toSafeShortName(readString(defs?.variantId) || layout);
+    let routePageId = `${page.pageId}-${variantId}`;
+    if (usedRoutePageIds.has(routePageId)) routePageId = `${routePageId}-${layout}`;
+    usedRoutePageIds.add(routePageId);
+
+    variants.push({
+      variantId,
+      layout,
+      routePageId,
+      route: `/${moduleName}/${routePageId}`,
+      source: `l2/${moduleName}/web/desktop/${layout}/${page.pageId}.ts`,
+      definition: `l2/${moduleName}/web/desktop/${layout}/${page.pageId}.defs.ts`,
+      componentTag: convertFileToTag({ project: Number(clientId), folder: `${moduleName}/web/desktop/${layout}`, shortName: page.pageId }),
+      title: `${page.label} - ${variantId.toUpperCase()}`,
+    });
+  }
+
+  return variants;
+}
+
 function main(): void {
   const clientId = (process.argv[2] || '').replace(/^mls-/, '');
   if (!/^\d+$/.test(clientId)) fail('usage: tsx nodejsSaveConfigJson.ts <clientId>');
@@ -219,16 +267,28 @@ function main(): void {
     href: `/${moduleName}/${page.pageId}`,
     description: labels[page.pageId] || page.label,
   }));
+
+  const variantPages = pages.flatMap(page => discoverPageVariants(clientRoot, clientId, moduleName, page));
   mod.frontend = {
     layer: 'l2',
-    pages: pages.map((page): ProjectFrontendPageConfig => ({
-      pageId: page.pageId,
-      route: `/${moduleName}/${page.pageId}`,
-      source: `l2/${moduleName}/web/desktop/page11/${page.pageId}.ts`,
-      definition: `l2/${moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
-      componentTag: convertFileToTag({ project: Number(clientId), folder: `${moduleName}/web/desktop/page11`, shortName: page.pageId }),
-      title: labels[page.pageId] || page.label,
-    })),
+    pages: [
+      ...pages.map((page): ProjectFrontendPageConfig => ({
+        pageId: page.pageId,
+        route: `/${moduleName}/${page.pageId}`,
+        source: `l2/${moduleName}/web/desktop/page11/${page.pageId}.ts`,
+        definition: `l2/${moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
+        componentTag: convertFileToTag({ project: Number(clientId), folder: `${moduleName}/web/desktop/page11`, shortName: page.pageId }),
+        title: labels[page.pageId] || page.label,
+      })),
+      ...variantPages.map((page): ProjectFrontendPageConfig => ({
+        pageId: page.routePageId,
+        route: page.route,
+        source: page.source,
+        definition: page.definition,
+        componentTag: page.componentTag,
+        title: page.title,
+      })),
+    ],
   };
 
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
