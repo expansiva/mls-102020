@@ -28,7 +28,7 @@ import { getOperationIndex } from '/_102020_/l2/agentNewSolution2/agentPlanOpera
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
 import { getEnrichedOntology } from '/_102020_/l2/agentNewSolution2/agentNs2EntityDefinition.js';
 import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finalize.js';
-import { repairComposedInputs, repairRuntimeAnchorReferences } from '/_102020_/l2/agentNewSolution2/ns2DeterministicRepairs.js';
+import { repairComposedInputs, repairContextOnlyCommandInputQuery, repairRuntimeAnchorReferences } from '/_102020_/l2/agentNewSolution2/ns2DeterministicRepairs.js';
 
 const AGENT_NAME = 'agentPlanOperationDefinition';
 const TOOL_NAME = 'submitOperationDefinition';
@@ -151,6 +151,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
           const ontology = await readOntologyEntities(moduleName);
           repairComposedInputs(def, ontology, await readModuleRelationships(moduleName));
           repairRuntimeAnchorReferences(def, ontology);
+          repairContextOnlyCommandInputQuery(def, ontology);
         }
       } catch { /* ontology optional */ }
     } catch (error) {
@@ -345,7 +346,10 @@ Rules:
   carries a selected id, lookup for compact selectors. For create/update/delete use commandInput.
   Exception: a read-only compute/assistant query (e.g. an AI assistant answering a free-form question)
   may use commandInput — but only if it has NO keyField and NO filters/sort/pagination/selection
-  (otherwise it is a list/getById and must say so) and writes[] is empty.
+  (otherwise it is a list/getById and must say so), writes[] is empty, and inputs[] contains the
+  compute payload. If the only payload is runtime context such as the active company, declare an input
+  like companyId with source=businessContext and resolve it through contextResolution targetRef
+  input.companyId; do not leave it only as filter.companyId.
 - accessPattern.keyField, when present, must be fully qualified as Entity.field; never use a bare id.
 - Do not return status "needs_input" to ask whether a generic management command creates vs updates,
   or whether removal is a separate operation. Use deterministic defaults:

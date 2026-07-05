@@ -37,6 +37,17 @@ export interface RepairableOperationDefinition {
   kind: string;
   reads?: string[];
   writes: string[];
+  accessPattern?: {
+    kind?: string;
+    description?: string;
+    entity?: string;
+    keyField?: string;
+    filters?: string[];
+    sort?: string[];
+    pagination?: string;
+    selection?: string;
+    output?: string[];
+  };
   inputs: RepairableOperationInput[];
   contextResolution?: RepairableOperationContextResolution[];
 }
@@ -159,6 +170,40 @@ export function repairRuntimeAnchorReferences(
   }
 }
 
+export function repairContextOnlyCommandInputQuery(
+  def: RepairableOperationDefinition,
+  ontology: Record<string, Record<string, unknown>>,
+): void {
+  if (def.kind !== 'query' && def.kind !== 'view') return;
+  if (def.accessPattern?.kind !== 'commandInput') return;
+  if (Array.isArray(def.writes) && def.writes.length > 0) return;
+  if (Array.isArray(def.inputs) && def.inputs.length > 0) return;
+  if (hasBrowseSignals(def.accessPattern)) return;
+
+  const entityId = stripField(def.entity);
+  const entity = ontology[entityId];
+  if (!entity) return;
+
+  const contexts = Array.isArray(def.contextResolution) ? def.contextResolution : [];
+  const context = contexts.find(item => runtimeInputFieldForOriginRef(item.originRef));
+  if (!context) return;
+
+  const fieldId = runtimeInputFieldForOriginRef(context.originRef);
+  if (!fieldId || !fieldExists(entity, fieldId)) return;
+
+  const usedInputIds = new Set(def.inputs.map(input => input.inputId));
+  const inputId = uniqueInputId(fieldId, usedInputIds);
+  def.inputs.push({
+    inputId,
+    fieldRef: `${entityId}.${fieldId}`,
+    required: true,
+    source: context.source,
+    description: context.description || `Runtime context value resolved from ${context.originRef}.`,
+  });
+  context.inputId = inputId;
+  context.targetRef = `input.${inputId}`;
+}
+
 function stripField(ref: string): string {
   return ref.includes('.') ? ref.split('.')[0] : ref;
 }
@@ -181,6 +226,26 @@ function uniqueInputId(base: string, used: Set<string>): string {
 
 function contextSourceForOriginRef(originRef: string): string {
   return originRef.slice(0, originRef.indexOf('.'));
+}
+
+function hasBrowseSignals(accessPattern: NonNullable<RepairableOperationDefinition['accessPattern']>): boolean {
+  return !!accessPattern.keyField
+    || (Array.isArray(accessPattern.filters) && accessPattern.filters.length > 0)
+    || (Array.isArray(accessPattern.sort) && accessPattern.sort.length > 0)
+    || (typeof accessPattern.pagination === 'string' && accessPattern.pagination !== 'none')
+    || (typeof accessPattern.selection === 'string' && accessPattern.selection !== 'none');
+}
+
+function runtimeInputFieldForOriginRef(originRef: string): string {
+  if (originRef === 'businessContext.activeCompanyId') return 'companyId';
+  if (originRef === 'businessContext.activeUnitId') return 'unitId';
+  if (originRef === 'currentWorkspace.workspaceId') return 'workspaceId';
+  return '';
+}
+
+function fieldExists(entity: Record<string, unknown>, fieldId: string): boolean {
+  const fields = Array.isArray(entity.fields) ? entity.fields : [];
+  return fields.some(field => isRecord(field) && field.fieldId === fieldId);
 }
 
 function repairRuntimeContextAnchor(def: RepairableEntityDefinition): RepairableEntityDefinition['anchor'] | undefined {

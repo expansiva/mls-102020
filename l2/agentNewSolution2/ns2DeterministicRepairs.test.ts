@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   repairComposedInputs,
+  repairContextOnlyCommandInputQuery,
   repairMdmEntityDefinition,
   repairRuntimeAnchorReferences,
   repairRuntimeAnchorRelationships,
@@ -138,4 +139,45 @@ test('repairRuntimeAnchorReferences moves runtime anchor aliases from reads/writ
   assert.equal(operation.contextResolution?.[0]?.source, 'businessContext');
   assert.equal(operation.contextResolution?.[0]?.targetRef, 'businessContext.activeCompanyId');
   assert.equal(operation.contextResolution?.[0]?.originRef, 'businessContext.activeCompanyId');
+});
+
+test('repairContextOnlyCommandInputQuery turns runtime context into a compute input payload', () => {
+  const operation: RepairableOperationDefinition = {
+    entity: 'MenuItem',
+    kind: 'query',
+    reads: ['MenuItem', 'Order', 'OrderItem'],
+    writes: [],
+    accessPattern: {
+      kind: 'commandInput',
+      pagination: 'none',
+      selection: 'none',
+    },
+    inputs: [],
+    contextResolution: [
+      {
+        targetRef: 'filter.companyId',
+        source: 'businessContext',
+        originRef: 'businessContext.activeCompanyId',
+        description: 'Active company scope for AI suggestions.',
+      },
+    ],
+  };
+
+  repairContextOnlyCommandInputQuery(operation, {
+    MenuItem: {
+      fields: [{ fieldId: 'companyId', type: 'uuid', required: true, description: 'Company id.' }],
+    },
+  });
+
+  assert.deepEqual(operation.inputs, [
+    {
+      inputId: 'companyId',
+      fieldRef: 'MenuItem.companyId',
+      required: true,
+      source: 'businessContext',
+      description: 'Active company scope for AI suggestions.',
+    },
+  ]);
+  assert.equal(operation.contextResolution?.[0]?.inputId, 'companyId');
+  assert.equal(operation.contextResolution?.[0]?.targetRef, 'input.companyId');
 });
