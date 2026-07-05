@@ -23,6 +23,7 @@ import { extractPlannerOutput, createPlannerToolSchema } from '/_102020_/l2/agen
 import { getApprovedModuleName, ontologyEntityFileInfo, readOntologyEntities, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { entityDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finalize.js';
+import { repairMdmEntityDefinition } from '/_102020_/l2/agentNewSolution2/ns2DeterministicRepairs.js';
 
 const AGENT_NAME = 'agentNs2EntityDefinition';
 const TOOL_NAME = 'submitEntityDefinition';
@@ -91,6 +92,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     output = extractPlannerOutput(payload, config);
     // The selector (ontology map key) is authoritative for the id.
     if (selector && output.result.entityDefinition.entityId !== selector) output.result.entityDefinition.entityId = selector;
+    repairMdmEntityDefinition(output.result.entityDefinition, getApprovedModuleName(context) || '');
     if (output.status === 'ok' && output.result.entityDefinition.fields.length === 0) throw new Error(`entity ${selector} has no fields`);
     // Any non-ok status (failed OR needs_input) fails the step loudly with the questions in the trace.
     // needs_input used to fall through silently: the step stayed 'completed' and the entity was never
@@ -236,6 +238,8 @@ Rules:
   existingModuleOwned, external (keep the value from the entity map; never invent another). Omit it if unsure.
 - For ownership=mdmOwned or kind=mdm, you MUST carry:
   - moduleType in the canonical <moduleId>.<PascalType> format, e.g. cafeFlow.Table.
+    Never use platform.* or another module prefix for a generated module's MDM entity; the moduleType
+    prefix is always the approved module name of this solution.
   - mdmSubtype as one of the 102034 subtypes (Person, Company, Product, Service, Location,
     AssetGeneric, AssetVehicle, AssetProperty, AssetEquipment, Animal, BankAccount, Document,
     ContactChannel).

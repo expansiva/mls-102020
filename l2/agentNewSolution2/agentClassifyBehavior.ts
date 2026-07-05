@@ -174,6 +174,13 @@ Rules:
 - Every capability that is not "never" must be owned by exactly one workflow or operation.
 - Emit Operations for managing master-data / MDM entities (create/update/delete/query) even when the
   capability is implicit (e.g. manage categories, manage tables).
+- Do not collapse CRUD/admin capabilities into one vague operationId such as manageMenuItems,
+  manageCustomers or manageLeadStages. For CRM, catalogs, settings and other master-data screens,
+  split management into discrete reusable operations the BFF can expose without ambiguity:
+  list<EntityPlural>, create<Entity>, update<Entity>, and deactivate/archive/delete<Entity> only when
+  removal is explicitly in scope or the entity has a status/lifecycle field. Prefer soft
+  deactivation/status change over physical delete for business records unless the requirement says
+  hard delete.
 - workflow.operationIds: list the discrete reusable actions the workflow orchestrates AND emit each of
   those as an Operation in operations[] (e.g. createStockMovement, updateKitchenStatus,
   cancelOrderAndReconcile). A stateful workflow must NOT have an empty operationIds — every workflow

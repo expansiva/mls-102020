@@ -22,7 +22,13 @@ import {
   withPlatformSkill,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
-import { getApprovedModuleName, getInitialModuleName, reserveAvailableModuleName, saveAgentTrace } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import {
+  assertProjectModuleLayoutCoherent,
+  getApprovedModuleName,
+  getInitialModuleName,
+  reserveAvailableModuleName,
+  saveAgentTrace,
+} from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { MODULE_NAME_FINAL_PLAN_ID } from '/_102020_/l2/agentNewSolution2/ns2Plan.js';
 import { blueprintResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getSnapshot } from '/_102020_/l2/agentNewSolution2/ns2Snapshot.js';
@@ -76,12 +82,15 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   // folder, and record it as the 'module-name-final' result step every later agent resolves.
   if (status === 'completed' && output && output.status === 'ok' && !getApprovedModuleName(context)) {
     try {
+      await assertProjectModuleLayoutCoherent();
       const requested = (output.result.module as Record<string, unknown>).moduleName;
       const finalName = reserveAvailableModuleName(requested, getInitialModuleName(context));
       intents.push(createResultStepIntent(context, parentStep, MODULE_NAME_FINAL_PLAN_ID, ['plan-solution-blueprint'], `Module name: ${finalName}`, { moduleName: finalName }));
       console.log(`[${AGENT_NAME}] module name confirmed: ${finalName}`);
     } catch (error) {
-      console.warn(`[${AGENT_NAME}] module name confirmation failed`, error);
+      status = 'failed';
+      traceMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[${AGENT_NAME}] module name confirmation failed`, error);
     }
   }
 

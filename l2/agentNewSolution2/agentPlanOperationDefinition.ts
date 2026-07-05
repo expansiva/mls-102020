@@ -20,12 +20,13 @@ import {
   resolveCapabilityInfo,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput, isRecord } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
-import { getApprovedModuleName, operationFileInfo, readOntologyEntities, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import { getApprovedModuleName, operationFileInfo, readModuleRelationships, readOntologyEntities, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { operationDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getOperationIndex } from '/_102020_/l2/agentNewSolution2/agentPlanOperationIndex.js';
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
 import { getEnrichedOntology } from '/_102020_/l2/agentNewSolution2/agentNs2EntityDefinition.js';
 import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finalize.js';
+import { repairComposedInputs } from '/_102020_/l2/agentNewSolution2/ns2DeterministicRepairs.js';
 
 const AGENT_NAME = 'agentPlanOperationDefinition';
 const TOOL_NAME = 'submitOperationDefinition';
@@ -141,6 +142,10 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       // (convention '<entity>Id') when it resolves in the ontology — removes a common LLM slip that
       // otherwise hard-fails validation (operation.context.origin.unknown / accessPattern.key.unknown).
       try { normalizeIdRefs(def, await readOntologyEntities(getApprovedModuleName(context) || '')); } catch { /* ontology optional */ }
+      try {
+        const moduleName = getApprovedModuleName(context) || '';
+        if (moduleName) repairComposedInputs(def, await readOntologyEntities(moduleName), await readModuleRelationships(moduleName));
+      } catch { /* ontology optional */ }
     } catch (error) {
       status = 'failed';
       traceMsg = `prepare failed for operation ${selector}: ${error instanceof Error ? error.message : String(error)}`;
@@ -331,6 +336,21 @@ Rules:
   may use commandInput — but only if it has NO keyField and NO filters/sort/pagination/selection
   (otherwise it is a list/getById and must say so) and writes[] is empty.
 - accessPattern.keyField, when present, must be fully qualified as Entity.field; never use a bare id.
+- Do not return status "needs_input" to ask whether a generic management command creates vs updates,
+  or whether removal is a separate operation. Use deterministic defaults:
+  - If the selector is list<EntityPlural>, create<Entity>, update<Entity>, delete<Entity>,
+    deactivate<Entity> or archive<Entity>, define exactly that action and no other CRUD behavior.
+  - If a manage/configure/maintain<EntityPlural> selector still reaches this agent, treat it as one
+    bulk configuration command for a CRM/catalog/settings screen. It may create new items and update
+    existing items in the same submit (upsert collection). New items get ids from systemDefault.uuid;
+    existing items use selectedEntity, routeParam, workflowState or previousStepOutput ids. The actor
+    never types raw technical ids.
+  - Removal inside such a manage* command is soft only: set status/lifecycle to inactive/archived when
+    the ontology has such a field. If no status/lifecycle field exists, leave removal out of this
+    operation and add an acceptanceAssertion saying physical delete is not part of the command.
+  - Do not invent a separate delete/deactivate operation during this definition step; that belongs to
+    behavior classification. Example: manageMenuItems is a catalog upsert command for MenuItem rows;
+    it creates/updates menu items and only inactivates existing items if MenuItem has status/lifecycle.
 - inputs[] must list every BFF input the frontend/backend contract needs. Each input.fieldRef must be
   an ontology field ref (Entity.field or Entity) and each input.source must be one of:
   userInput, actorSession, businessContext, currentWorkspace, selectedEntity, activeLifecycleInstance, workflowState,

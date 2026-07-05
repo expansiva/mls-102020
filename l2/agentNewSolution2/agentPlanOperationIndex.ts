@@ -161,4 +161,11 @@ In result.operations, each: operationId, title, actor (actorId), entity (canonic
 kind (create|update|delete|query|view; dashboards are query/view). Keep operationId stable with the
 classification. Include direct actions even when a workflow also references them.
 
+Rules:
+- Preserve explicit CRUD operations from classification. Do not rename list/create/update/deactivate
+  operations into a single vague manage* operation.
+- If a manage* operation is already present in the classification, keep it only when the capability
+  explicitly describes one bulk/configuration command. Otherwise index the concrete operations already
+  present in the classification and leave the generic manage* out.
+
 `;
