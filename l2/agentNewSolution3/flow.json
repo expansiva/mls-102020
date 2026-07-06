@@ -38,7 +38,7 @@
     "widgetNs3Journeys.ts/.less": "human checkpoint 2 (graphical journeys + features/priorities + adjustment prompt)"
   },
   "treeOverview": [
-    "phase-understanding (visual): e1-clarification -> e1-draft -> checkpoint-draft",
+    "phase-understanding (visual): e1-clarification -> e1-clarification-answer -> e1-draft -> checkpoint-draft",
     "phase-business (visual): e2-journeys -> checkpoint-journeys (adjustment loop)",
     "phase-model (visual, planned): e3-ontology -> e4-actors-rules-refs",
     "phase-behavior (visual, planned): e5-workflows-operations -> e6-journey-map",
@@ -53,6 +53,16 @@
       "dependsOn": [],
       "goal": "1st human interaction. The agent container emits a runtime clarification payload, matching agentNewSolution2Requirements. Validate the prompt as early as possible: if invalid/insufficient (admission gate: empty, out of scope, no system intent), return an objective error + this clarification. Minimal opening questions; no architecture.",
       "input": ["user prompt"],
+      "output": { "result": "initial answers + userLanguage", "savedArtifact": null }
+    },
+    {
+      "planId": "e1-clarification-answer",
+      "agentName": "agentNs3Draft (clarification result)",
+      "type": "result",
+      "phase": 1,
+      "dependsOn": ["e1-clarification"],
+      "goal": "Task result created after the user submits clarification 1. This plan id is the dependency that unlocks e1-draft; e1-draft must not be manually moved to pending.",
+      "input": ["clarification widget value"],
       "output": { "result": "initial answers + userLanguage", "savedArtifact": null }
     },
     {
@@ -71,7 +81,7 @@
       "agentName": "agentNs3Draft",
       "type": "agent",
       "phase": 1,
-      "dependsOn": ["e1-clarification"],
+      "dependsOn": ["e1-clarification-answer"],
       "goal": "Analyze the prompt and deliver the draft (understanding contract, 1 page): proposed module, problem, presumed actors, scope in/out, classified open questions, language.",
       "input": ["prompt", "e1-clarification"],
       "output": {

@@ -173,7 +173,7 @@ export class WidgetNs3Draft102020 extends StateLitElement {
           stepId: 0,
           interaction: null,
           stepTitle: this._msg.adjustDraftStepTitle,
-          status: 'pending',
+          status: 'waiting_human_input',
           nextSteps: [],
           agentName: 'agentNs3Draft',
           prompt: JSON.stringify({ planId: 'e1-draft', adjustment: this._adjustment.trim(), previousModuleName: this._artifact.moduleName }),

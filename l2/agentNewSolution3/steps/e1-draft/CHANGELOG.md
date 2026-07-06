@@ -13,3 +13,4 @@
 - 2026-07-05: Aligned initial clarification with agentNewSolution2 format: `agentNs3Draft` now emits the runtime clarification payload instead of the root adding a ready-made clarification step.
 - 2026-07-06: Tolerate structured `.json` content from `mls.stor.getContent()` when reading E1 schema and artifacts in the collab.codes runtime.
 - 2026-07-06: Apply clarification results through a non-terminal parent step so completed agent containers are not modified by `add-step` intents.
+- 2026-07-06: Let dependency unlocking move E1 from `waiting_dependency` to `waiting_human_input`; removed manual `pending` promotion and made rerun steps start as `waiting_human_input`.

@@ -6,7 +6,7 @@ import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { isRecord, parseMaybeJson } from '/_102020_/l2/agentNewSolution3/helpers/ns3Fs.js';
 
 export const NS3_PLAN_IDS = [
-  'e1-clarification', 'e1-draft', 'checkpoint-draft', 'e2-journeys', 'checkpoint-journeys',
+  'e1-clarification', 'e1-clarification-answer', 'e1-draft', 'checkpoint-draft', 'e2-journeys', 'checkpoint-journeys',
   'e3-ontology', 'e4-actors-rules-refs', 'e5-workflows-operations', 'e6-journey-map', 'e7-validation-summary',
 ] as const;
 
@@ -156,7 +156,7 @@ function buildPlannedTree(plan: Ns3RootPlan, includePhase2: boolean): mls.msg.AI
   const title = (planId: Ns3PlanId) => getTitle(plan, planId);
   const phase1: mls.msg.AIPayload[] = [
     agentStep('e1-clarification', 'agentNs3Draft', title('e1-clarification'), [], 'waiting_human_input'),
-    agentStep('e1-draft', 'agentNs3Draft', title('e1-draft'), ['e1-clarification'], 'waiting_dependency'),
+    agentStep('e1-draft', 'agentNs3Draft', title('e1-draft'), ['e1-clarification-answer'], 'waiting_dependency'),
     clarificationStep('checkpoint-draft', title('checkpoint-draft'), ['e1-draft'], { planId: 'checkpoint-draft' }, 'waiting_dependency'),
   ];
   if (!includePhase2) return phase1;
@@ -240,10 +240,6 @@ async function applyInitialClarification(
   if (action === 'continue') {
     const answer = normalizeClarificationAnswer(value);
     intents.unshift(resultStep(context, parentStep, 'e1-clarification-answer', ['e1-clarification'], answer.title, answer));
-    const e1Step = findStepByPlanId(context, 'e1-draft');
-    if (e1Step && e1Step.status === 'waiting_dependency') {
-      intents.push(updateStatus(context, parentStep, e1Step, hookSequential, 'pending'));
-    }
   }
   const response = await mls.api.msgApplyIntents({ userId: context.message.senderId, intents });
   if (!response || response.statusCode !== 200) {
@@ -475,7 +471,9 @@ function readString(value: unknown): string | undefined {
 }
 
 const defaultTitles: Record<Ns3PlanId, string> = {
-  'e1-clarification': 'Clarify the initial request', 'e1-draft': 'Draft understanding',
+  'e1-clarification': 'Clarify the initial request',
+  'e1-clarification-answer': 'Initial clarification answer',
+  'e1-draft': 'Draft understanding',
   'checkpoint-draft': 'Approve draft', 'e2-journeys': 'Map journeys and features',
   'checkpoint-journeys': 'Approve journeys', 'e3-ontology': 'Plan ontology',
   'e4-actors-rules-refs': 'Plan actors, rules and references',

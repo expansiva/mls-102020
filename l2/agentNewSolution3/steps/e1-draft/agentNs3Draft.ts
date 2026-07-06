@@ -293,11 +293,6 @@ async function applyInitialClarification(
   if (action === 'continue') {
     const answer = normalizeClarificationAnswer(value);
     intents.unshift(resultStep(context, mutationParent, 'e1-clarification-answer', ['e1-clarification'], answer.title, answer));
-    const e1Step = findStepByPlanId(context, 'e1-draft');
-    if (e1Step && e1Step.status === 'waiting_dependency') {
-      const e1ParentStepId = findParentStepId(context, e1Step.stepId) || parentStep.stepId;
-      intents.push(updateStatus(context, { ...parentStep, stepId: e1ParentStepId }, e1Step, hookSequential, 'pending'));
-    }
   }
   const response = await mls.api.msgApplyIntents({ userId: context.message.senderId, intents });
   if (!response || response.statusCode !== 200) {
@@ -445,7 +440,7 @@ function addE1RerunStep(
       stepId: 0,
       interaction: null,
       stepTitle: options.stepTitle,
-      status: 'pending',
+      status: 'waiting_human_input',
       nextSteps: [],
       agentName: AGENT_NAME,
       prompt: JSON.stringify(options.prompt),
