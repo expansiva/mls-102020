@@ -6,6 +6,7 @@
 // itself — l4 workflows/operations are the functional source of truth (pageId + title),
 // and a page is only registered when its l2 artifacts are materialized on disk
 // (contracts/<page>.ts + shared/<page>.ts + desktop/page11/<page>.ts).
+// Additional desktop/pageNN variants are registered as extra routes when materialized.
 // It merges the frontend part of the workspace ProjectsConfig into mls-<clientId>/config.json:
 // shellTemplates, publication, clientShell (l5 customize overrides win), projects
 // (master frontend + libs) and modules[].frontend.pages / navigation.
@@ -30,6 +31,25 @@ function readJson<T>(file: string): T | null {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) as T; } catch { return null; }
 }
 
+function projectRuntimeMetadata(l5: L5ProjectJson, clientId: string) {
+  return {
+    projectId: l5.projectId || clientId,
+    domain: l5.domain,
+    port: l5.port,
+    databaseName: l5.databaseName,
+    environment: l5.environment,
+    studioEnabled: l5.studioEnabled,
+  };
+}
+
+function addL5Dependencies(config: ProjectsConfig, l5: L5ProjectJson, clientId: string): void {
+  for (const dep of l5.dependencies || []) {
+    const id = String(dep?.projectId || '').trim();
+    if (!/^\d+$/.test(id) || id === clientId) continue;
+    config.projects[id] = config.projects[id] || { root: `../mls-${id}`, type: 'lib' };
+  }
+}
+
 /** Object literal of a generated .defs.ts (`export const x = {...};` or `... as const;`). */
 function readDefsData(file: string): Record<string, unknown> | null {
   let content: string;
@@ -51,22 +71,33 @@ function toSafeShortName(value: string): string { return value.trim().replace(/[
 function humanizeId(id: string): string { const spaced = id.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim(); return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : id; }
 function toKebab(str: string): string { return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase(); }
 
-/** Same tag convention as nodejsMaterializeL2.ts / _102020_/l2/utils.ts. */
+/** Tag for a generated page component. Page .ts files register the custom element in the LEGACY full
+ *  format `<folder-kebab>--<shortName>-<project>` (e.g. cafe-flow--web--desktop--page11--ws-cook-kitchen-102049),
+ *  regardless of whether the shortName contains hyphens. The previous "new format" special-case for
+ *  hyphenated shortNames produced a truncated tag (page11--ws-cook-kitchen) that did not match the
+ *  @customElement in the .ts, so the page rendered blank. Always use the legacy full format here. */
 function convertFileToTag(info: { shortName: string; project: number; folder?: string }): string {
   const kebabName = toKebab(info.shortName);
-  if (info.shortName.includes('-')) {
-    if (!info.folder) return kebabName;
-    const parts = info.folder.split('/');
-    return `${toKebab(parts[parts.length - 1] || '')}--${kebabName}`;
-  }
   const folderPrefix = info.folder ? `${toKebab(info.folder).replace(/\//g, '--')}--` : '';
   return `${folderPrefix}${kebabName}-${info.project}`;
 }
 
 interface DiscoveredPage { pageId: string; label: string; }
+interface PageVariant {
+  variantId: string;
+  layout: string;
+  routePageId: string;
+  route: string;
+  source: string;
+  definition: string;
+  componentTag: string;
+  title: string;
+}
 
-/** Pages from l4 (workflows own their operations; remaining operations get their own page). */
-function discoverPages(clientRoot: string): DiscoveredPage[] {
+/** Pages from l4. Primary grouping is the journey WORKSPACES (one page per workspace, matching
+ *  agentChangeFrontend buildPagePlans); owners not covered by any workspace fall back to a per-owner
+ *  page. When there is no journey, uses the legacy per-workflow/per-operation grouping. */
+function discoverPages(clientRoot: string, moduleName: string): DiscoveredPage[] {
   const listDefs = (folder: string): Record<string, unknown>[] => {
     const dir = path.join(clientRoot, 'l4', folder);
     if (!fs.existsSync(dir)) return [];
@@ -76,26 +107,59 @@ function discoverPages(clientRoot: string): DiscoveredPage[] {
       .filter((data): data is Record<string, unknown> => !!data);
   };
 
-  const pages: DiscoveredPage[] = [];
-  const operationIdsUsedByWorkflow = new Set<string>();
-
-  for (const workflow of listDefs('workflows')) {
-    const workflowId = readString(workflow.workflowId);
-    if (!workflowId) continue;
-    for (const opId of readStringArray(workflow.operationIds)) operationIdsUsedByWorkflow.add(opId);
-    pages.push({
-      pageId: toSafeShortName(readString(workflow.pageId) || workflowId),
-      label: readString(workflow.title) || humanizeId(workflowId),
-    });
+  // Journey workspaces (l4/{module}/journeys/*.defs.ts).
+  const workspaces: { pageId: string; label: string; ops: Set<string>; wf: string }[] = [];
+  const journeyDir = path.join(clientRoot, 'l4', moduleName, 'journeys');
+  if (fs.existsSync(journeyDir)) {
+    for (const name of fs.readdirSync(journeyDir).filter(n => n.endsWith('.defs.ts'))) {
+      const data = readDefsData(path.join(journeyDir, name));
+      const list = data && Array.isArray(data.workspaces) ? data.workspaces as Record<string, unknown>[] : [];
+      for (const ws of list) {
+        if (!ws || typeof ws !== 'object') continue;
+        const wsId = readString(ws.workspaceId);
+        if (!wsId) continue;
+        workspaces.push({
+          pageId: toSafeShortName(wsId),
+          label: readString(ws.title) || humanizeId(wsId),
+          ops: new Set(readStringArray(ws.operationIds)),
+          wf: readString(ws.workflowId),
+        });
+      }
+    }
   }
 
-  for (const operation of listDefs('operations')) {
-    const operationId = readString(operation.operationId);
-    if (!operationId || operationIdsUsedByWorkflow.has(operationId)) continue;
-    pages.push({
-      pageId: toSafeShortName(readString(operation.pageId) || operationId),
-      label: readString(operation.title) || humanizeId(operationId),
-    });
+  const workflows = listDefs('workflows');
+  const operations = listDefs('operations');
+  const pages: DiscoveredPage[] = [];
+  const operationIdsUsedByWorkflow = new Set<string>();
+  for (const workflow of workflows) for (const opId of readStringArray(workflow.operationIds)) operationIdsUsedByWorkflow.add(opId);
+
+  if (workspaces.length > 0) {
+    const coveredOps = new Set<string>();
+    const coveredWf = new Set<string>();
+    for (const ws of workspaces) { pages.push({ pageId: ws.pageId, label: ws.label }); ws.ops.forEach(o => coveredOps.add(o)); if (ws.wf) coveredWf.add(ws.wf); }
+    // Leftover owners not covered by any workspace keep a legacy per-owner page.
+    for (const workflow of workflows) {
+      const workflowId = readString(workflow.workflowId);
+      if (!workflowId || coveredWf.has(workflowId)) continue;
+      pages.push({ pageId: toSafeShortName(readString(workflow.pageId) || workflowId), label: readString(workflow.title) || humanizeId(workflowId) });
+    }
+    for (const operation of operations) {
+      const operationId = readString(operation.operationId);
+      if (!operationId || operationIdsUsedByWorkflow.has(operationId) || coveredOps.has(operationId)) continue;
+      pages.push({ pageId: toSafeShortName(readString(operation.pageId) || operationId), label: readString(operation.title) || humanizeId(operationId) });
+    }
+  } else {
+    for (const workflow of workflows) {
+      const workflowId = readString(workflow.workflowId);
+      if (!workflowId) continue;
+      pages.push({ pageId: toSafeShortName(readString(workflow.pageId) || workflowId), label: readString(workflow.title) || humanizeId(workflowId) });
+    }
+    for (const operation of operations) {
+      const operationId = readString(operation.operationId);
+      if (!operationId || operationIdsUsedByWorkflow.has(operationId)) continue;
+      pages.push({ pageId: toSafeShortName(readString(operation.pageId) || operationId), label: readString(operation.title) || humanizeId(operationId) });
+    }
   }
 
   const seen = new Set<string>();
@@ -107,6 +171,43 @@ function isMaterialized(clientRoot: string, moduleName: string, pageId: string):
   const web = path.join(clientRoot, 'l2', moduleName, 'web');
   return ['contracts', 'shared', 'desktop/page11']
     .every(part => fs.existsSync(path.join(web, part, `${pageId}.ts`)));
+}
+
+function discoverPageVariants(clientRoot: string, clientId: string, moduleName: string, page: DiscoveredPage): PageVariant[] {
+  const desktopDir = path.join(clientRoot, 'l2', moduleName, 'web', 'desktop');
+  if (!fs.existsSync(desktopDir)) return [];
+
+  const layouts = fs.readdirSync(desktopDir)
+    .filter(name => /^page\d+$/.test(name) && name !== 'page11')
+    .sort((a, b) => a.localeCompare(b));
+
+  const variants: PageVariant[] = [];
+  const usedRoutePageIds = new Set<string>();
+
+  for (const layout of layouts) {
+    const tsPath = path.join(desktopDir, layout, `${page.pageId}.ts`);
+    const defsPath = path.join(desktopDir, layout, `${page.pageId}.defs.ts`);
+    if (!fs.existsSync(tsPath) || !fs.existsSync(defsPath)) continue;
+
+    const defs = readDefsData(defsPath);
+    const variantId = toSafeShortName(readString(defs?.variantId) || layout);
+    let routePageId = `${page.pageId}-${variantId}`;
+    if (usedRoutePageIds.has(routePageId)) routePageId = `${routePageId}-${layout}`;
+    usedRoutePageIds.add(routePageId);
+
+    variants.push({
+      variantId,
+      layout,
+      routePageId,
+      route: `/${moduleName}/${routePageId}`,
+      source: `l2/${moduleName}/web/desktop/${layout}/${page.pageId}.ts`,
+      definition: `l2/${moduleName}/web/desktop/${layout}/${page.pageId}.defs.ts`,
+      componentTag: convertFileToTag({ project: Number(clientId), folder: `${moduleName}/web/desktop/${layout}`, shortName: page.pageId }),
+      title: `${page.label} - ${variantId.toUpperCase()}`,
+    });
+  }
+
+  return variants;
 }
 
 function main(): void {
@@ -127,7 +228,7 @@ function main(): void {
   if (moduleNames.length !== 1) fail(`expected exactly 1 module in l5/project.json, found ${moduleNames.length}`);
   const moduleName = moduleNames[0];
 
-  const discovered = discoverPages(clientRoot);
+  const discovered = discoverPages(clientRoot, moduleName);
   if (discovered.length === 0) fail('no pages discovered from l4 workflows/operations');
   const pages = discovered.filter(page => {
     if (isMaterialized(clientRoot, moduleName, page.pageId)) return true;
@@ -165,11 +266,12 @@ function main(): void {
     };
 
   config.projects = config.projects || {};
-  config.projects[clientId] = { ...(config.projects[clientId] || {}), root: '.', type: 'client' };
+  config.projects[clientId] = { ...(config.projects[clientId] || {}), root: '.', type: 'client', runtime: projectRuntimeMetadata(l5, clientId) };
   config.projects[runtimeId] = { root: `../mls-${runtimeId}`, type: 'master frontend' };
   // Frontend shared libs used by the generated l2 code and by the master frontend.
   config.projects['102027'] = config.projects['102027'] || { root: '../mls-102027', type: 'lib' };
   config.projects['102029'] = config.projects['102029'] || { root: '../mls-102029', type: 'lib' };
+  addL5Dependencies(config, l5, clientId);
 
   const client = config.projects[clientId];
   client.modules = client.modules || [];
@@ -185,16 +287,28 @@ function main(): void {
     href: `/${moduleName}/${page.pageId}`,
     description: labels[page.pageId] || page.label,
   }));
+
+  const variantPages = pages.flatMap(page => discoverPageVariants(clientRoot, clientId, moduleName, page));
   mod.frontend = {
     layer: 'l2',
-    pages: pages.map((page): ProjectFrontendPageConfig => ({
-      pageId: page.pageId,
-      route: `/${moduleName}/${page.pageId}`,
-      source: `l2/${moduleName}/web/desktop/page11/${page.pageId}.ts`,
-      definition: `l2/${moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
-      componentTag: convertFileToTag({ project: Number(clientId), folder: `${moduleName}/web/desktop/page11`, shortName: page.pageId }),
-      title: labels[page.pageId] || page.label,
-    })),
+    pages: [
+      ...pages.map((page): ProjectFrontendPageConfig => ({
+        pageId: page.pageId,
+        route: `/${moduleName}/${page.pageId}`,
+        source: `l2/${moduleName}/web/desktop/page11/${page.pageId}.ts`,
+        definition: `l2/${moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
+        componentTag: convertFileToTag({ project: Number(clientId), folder: `${moduleName}/web/desktop/page11`, shortName: page.pageId }),
+        title: labels[page.pageId] || page.label,
+      })),
+      ...variantPages.map((page): ProjectFrontendPageConfig => ({
+        pageId: page.routePageId,
+        route: page.route,
+        source: page.source,
+        definition: page.definition,
+        componentTag: page.componentTag,
+        title: page.title,
+      })),
+    ],
   };
 
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);

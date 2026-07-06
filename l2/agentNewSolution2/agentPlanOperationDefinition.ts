@@ -17,15 +17,18 @@ import {
   getPlannerOutputs,
   normalizeStringList,
   optionalString,
+  readPlatformSkill,
   resolveCapabilityInfo,
+  withPlatformSkill,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput, isRecord } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
-import { getApprovedModuleName, operationFileInfo, readOntologyEntities, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import { getApprovedModuleName, operationFileInfo, readModuleRelationships, readOntologyEntities, readOperationDefs, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { operationDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getOperationIndex } from '/_102020_/l2/agentNewSolution2/agentPlanOperationIndex.js';
 import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBehavior.js';
 import { getEnrichedOntology } from '/_102020_/l2/agentNewSolution2/agentNs2EntityDefinition.js';
 import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finalize.js';
+import { repairComposedInputs, repairContextOnlyCommandInputQuery, repairRuntimeAnchorReferences } from '/_102020_/l2/agentNewSolution2/ns2DeterministicRepairs.js';
 
 const AGENT_NAME = 'agentPlanOperationDefinition';
 const TOOL_NAME = 'submitOperationDefinition';
@@ -53,7 +56,7 @@ export interface OperationDefinition {
   // priority — makes the operation the source of truth for "which feature + phase" it covers.
   capability?: { capabilityId: string; title: string; actor?: string; priority?: string };
 }
-export type OperationContextSource = 'userInput' | 'actorSession' | 'currentWorkspace' | 'selectedEntity' | 'activeLifecycleInstance' | 'workflowState' | 'routeParam' | 'previousStepOutput' | 'systemDefault';
+export type OperationContextSource = 'userInput' | 'actorSession' | 'businessContext' | 'currentWorkspace' | 'selectedEntity' | 'activeLifecycleInstance' | 'workflowState' | 'routeParam' | 'previousStepOutput' | 'systemDefault';
 export interface OperationAccessPattern {
   kind: 'list' | 'getById' | 'lookup' | 'commandInput';
   description: string;
@@ -101,7 +104,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   // by meaning; the operation's own target entity still goes fully expanded in entityShape.
   const ontologyEntities = Object.entries(ontology).map(([id, meta]) => ({ entityId: id, ...(isRecord(meta) ? { title: meta.title, description: meta.description } : {}) }));
   const reduced = { selector: args, indexItem, story, workflowOwner, entityShape, ontologyEntities };
-  return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), `## Operation selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
+  const platformSkill = await readPlatformSkill();
+  return [createPromptReadyIntent(context, parentStep, hookSequential, args, withPlatformSkill(systemPrompt.split('{{toolName}}').join(TOOL_NAME), platformSkill), `## Operation selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
@@ -141,6 +145,15 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       // (convention '<entity>Id') when it resolves in the ontology — removes a common LLM slip that
       // otherwise hard-fails validation (operation.context.origin.unknown / accessPattern.key.unknown).
       try { normalizeIdRefs(def, await readOntologyEntities(getApprovedModuleName(context) || '')); } catch { /* ontology optional */ }
+      try {
+        const moduleName = getApprovedModuleName(context) || '';
+        if (moduleName) {
+          const ontology = await readOntologyEntities(moduleName);
+          repairComposedInputs(def, ontology, await readModuleRelationships(moduleName));
+          repairRuntimeAnchorReferences(def, ontology);
+          repairContextOnlyCommandInputQuery(def, ontology);
+        }
+      } catch { /* ontology optional */ }
     } catch (error) {
       status = 'failed';
       traceMsg = `prepare failed for operation ${selector}: ${error instanceof Error ? error.message : String(error)}`;
@@ -255,7 +268,7 @@ function normalizeContextResolution(value: unknown, path: string): OperationCont
 
 function normalizeContextSource(value: unknown, path: string): OperationContextSource {
   const source = assertString(value, path) as OperationContextSource;
-  if (['userInput', 'actorSession', 'currentWorkspace', 'selectedEntity', 'activeLifecycleInstance', 'workflowState', 'routeParam', 'previousStepOutput', 'systemDefault'].includes(source)) return source;
+  if (['userInput', 'actorSession', 'businessContext', 'currentWorkspace', 'selectedEntity', 'activeLifecycleInstance', 'workflowState', 'routeParam', 'previousStepOutput', 'systemDefault'].includes(source)) return source;
   throw new Error(`${path} invalid`);
 }
 
@@ -324,16 +337,38 @@ Rules:
 - operationId must equal the selector. No tables. Do not invent page, command or route names; the
   agent attaches pageId, commandName and bffName deterministically after the tool call.
 - reads/writes reference canonical ontology ids (optionally "Entity.field"), never aggregate names.
+  If an entity is scoped by anchor.source="runtimeContext", do not put the anchor label in reads/writes;
+  add contextResolution from the anchor originRef instead.
+  Company as "the current company" is a runtime business context label: resolve it through
+  businessContext.activeCompanyId, not as a local ontology entity or user-provided input.
 - accessPattern.kind must be exactly one of list|getById|lookup|commandInput. For query/view, choose
   the user journey's best access: list for browsable sets, getById only when the journey already
   carries a selected id, lookup for compact selectors. For create/update/delete use commandInput.
   Exception: a read-only compute/assistant query (e.g. an AI assistant answering a free-form question)
   may use commandInput — but only if it has NO keyField and NO filters/sort/pagination/selection
-  (otherwise it is a list/getById and must say so) and writes[] is empty.
+  (otherwise it is a list/getById and must say so), writes[] is empty, and inputs[] contains the
+  compute payload. If the only payload is runtime context such as the active company, declare an input
+  like companyId with source=businessContext and resolve it through contextResolution targetRef
+  input.companyId; do not leave it only as filter.companyId.
 - accessPattern.keyField, when present, must be fully qualified as Entity.field; never use a bare id.
+- Do not return status "needs_input" to ask whether a generic management command creates vs updates,
+  or whether removal is a separate operation. Use deterministic defaults:
+  - If the selector is list<EntityPlural>, create<Entity>, update<Entity>, delete<Entity>,
+    deactivate<Entity> or archive<Entity>, define exactly that action and no other CRUD behavior.
+  - If a manage/configure/maintain<EntityPlural> selector still reaches this agent, treat it as one
+    bulk configuration command for a CRM/catalog/settings screen. It may create new items and update
+    existing items in the same submit (upsert collection). New items get ids from systemDefault.uuid;
+    existing items use selectedEntity, routeParam, workflowState or previousStepOutput ids. The actor
+    never types raw technical ids.
+  - Removal inside such a manage* command is soft only: set status/lifecycle to inactive/archived when
+    the ontology has such a field. If no status/lifecycle field exists, leave removal out of this
+    operation and add an acceptanceAssertion saying physical delete is not part of the command.
+  - Do not invent a separate delete/deactivate operation during this definition step; that belongs to
+    behavior classification. Example: manageMenuItems is a catalog upsert command for MenuItem rows;
+    it creates/updates menu items and only inactivates existing items if MenuItem has status/lifecycle.
 - inputs[] must list every BFF input the frontend/backend contract needs. Each input.fieldRef must be
   an ontology field ref (Entity.field or Entity) and each input.source must be one of:
-  userInput, actorSession, currentWorkspace, selectedEntity, activeLifecycleInstance, workflowState,
+  userInput, actorSession, businessContext, currentWorkspace, selectedEntity, activeLifecycleInstance, workflowState,
   routeParam, previousStepOutput, systemDefault.
 - Composition: if this create/update writes a child entity that is "partOf" the operation's root entity
   (e.g. OrderItem partOf Order), you MUST declare that child as a composed input (fieldRef = the child
@@ -343,7 +378,7 @@ Rules:
 - Required technical identifier inputs must not be plain userInput. A technical identifier is a
   primary id generated by the system or a field whose ontology type references another entity. Resolve
   those ids from selectedEntity, routeParam, previousStepOutput, activeLifecycleInstance,
-  workflowState, actorSession, currentWorkspace or systemDefault. userInput is for business values the
+  workflowState, actorSession, businessContext, currentWorkspace or systemDefault. userInput is for business values the
   actor types or chooses by label/value, not for raw entity ids.
 - contextResolution[] declares fields resolved by the system/runtime, never typed manually. Each item
   must have targetRef, source and originRef:
@@ -355,6 +390,8 @@ Rules:
   - originRef = the concrete source path.
   Valid originRef formats:
   - actorSession: actorSession.actorId or actorSession.scope.
+  - businessContext: businessContext.activeCompanyId or businessContext.activeUnitId. Use this for
+    business scope such as primary company/unit; do not use currentWorkspace as a company filter.
   - currentWorkspace: currentWorkspace.workspaceId.
   - systemDefault: systemDefault.now, systemDefault.uuid or systemDefault.locale.
   - selectedEntity, activeLifecycleInstance, workflowState: Entity.field.

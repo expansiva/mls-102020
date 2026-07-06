@@ -269,6 +269,7 @@ function buildContractTypecheckTest(outputPath: string, data: unknown): string |
     const outputName = `${commandPrefix}Output`;
     const outputItemName = `${commandPrefix}OutputItem`;
     const isQuery = command.kind === 'query';
+    const outputShape = commandOutputShape(command);
     const inputFields = Array.isArray(command.input) ? command.input.filter(isRecord) : [];
     const outputFields = Array.isArray(command.output) ? command.output.filter(isRecord) : [];
 
@@ -285,7 +286,13 @@ function buildContractTypecheckTest(outputPath: string, data: unknown): string |
 
     if (isQuery) {
       declarations.push(`type ${expectedOutputItemName} = ${objectType(outputFields, 'output')};`);
-      declarations.push(`type ${expectedOutputName} = ${expectedOutputItemName}[];`);
+      if (outputShape === 'paginated') {
+        declarations.push(`type ${expectedOutputName} = { items: ${expectedOutputItemName}[]; total: number; page?: number; pageSize?: number; };`);
+      } else if (outputShape === 'object') {
+        declarations.push(`type ${expectedOutputName} = ${expectedOutputItemName};`);
+      } else {
+        declarations.push(`type ${expectedOutputName} = ${expectedOutputItemName}[];`);
+      }
       assertions.push(`type ${assertName(outputItemName, commandName)} = Assert<Equal<${outputItemName}, ${expectedOutputItemName}>>;`);
       assertions.push(`type ${assertName(outputName, commandName)} = Assert<Equal<${outputName}, ${expectedOutputName}>>;`);
     } else {
@@ -420,19 +427,33 @@ function stateAssertionType(state: Record<string, unknown>, contractType?: strin
 
 function sharedStateContractType(outputPath: string, data: Record<string, unknown>, state: Record<string, unknown>, imports: Map<string, Set<string>>): string | null {
   const ref = isRecord(state.contractRef) ? state.contractRef : null;
-  if (!ref || ref.direction !== 'input') return null;
+  if (!ref || (ref.direction !== 'input' && ref.direction !== 'output')) return null;
   const commandName = typeof ref.commandName === 'string' && ref.commandName ? ref.commandName : null;
-  const field = typeof ref.field === 'string' && ref.field ? ref.field : null;
   const moduleName = typeof data.moduleName === 'string' && data.moduleName ? data.moduleName : moduleNameFromOutputPath(outputPath);
   const contractPath = sharedContractTsPath(outputPath, data);
-  if (!commandName || !field || !moduleName || !contractPath) return null;
+  if (!commandName || !moduleName || !contractPath) return null;
 
   const inputType = `${toPascalCase(moduleName)}${toPascalCase(commandName)}Input`;
+  const outputType = `${toPascalCase(moduleName)}${toPascalCase(commandName)}Output`;
   const importPath = relativeJsImportPath(outputPath, contractPath);
   const names = imports.get(importPath) ?? new Set<string>();
+  if (ref.direction === 'output') {
+    names.add(outputType);
+    imports.set(importPath, names);
+    return outputType;
+  }
+
+  const field = typeof ref.field === 'string' && ref.field ? ref.field : null;
+  if (!field) return null;
   names.add(inputType);
   imports.set(importPath, names);
   return `${inputType}[${JSON.stringify(field)}]`;
+}
+
+function commandOutputShape(command: Record<string, unknown>): 'array' | 'paginated' | 'object' {
+  if (command.outputShape === 'paginated') return 'paginated';
+  if (command.outputShape === 'object') return 'object';
+  return 'array';
 }
 
 function sharedContractTsPath(outputPath: string, data: Record<string, unknown>): string | null {

@@ -5,11 +5,26 @@
 // add semantic guards (id resolution). Stage 1 covers the behavior contract only — there are no
 // page/table/metric schemas here on purpose.
 
+import { L4_RELATIONSHIP_TYPES, MDM_ANCHOR_SOURCES, MDM_RELATIONSHIP_TYPES, MDM_RUNTIME_ANCHOR_ORIGIN_REFS, MDM_SUBTYPES } from '/_102020_/l2/agentNewSolution2/ns2MdmModeling.js';
+
 const str = { type: 'string' } as const;
 const bool = { type: 'boolean' } as const;
 const strArray = { type: 'array', items: str } as const;
 const priority = { enum: ['now', 'soon', 'later', 'never'] } as const;
-const contextSource = { enum: ['userInput', 'actorSession', 'currentWorkspace', 'selectedEntity', 'activeLifecycleInstance', 'workflowState', 'routeParam', 'previousStepOutput', 'systemDefault'] } as const;
+const contextSource = { enum: ['userInput', 'actorSession', 'businessContext', 'currentWorkspace', 'selectedEntity', 'activeLifecycleInstance', 'workflowState', 'routeParam', 'previousStepOutput', 'systemDefault'] } as const;
+
+const mdmAnchorSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['entityId', 'relationshipType', 'description'],
+  properties: {
+    entityId: str,
+    source: { enum: MDM_ANCHOR_SOURCES },
+    originRef: { enum: MDM_RUNTIME_ANCHOR_ORIGIN_REFS },
+    relationshipType: { enum: MDM_RELATIONSHIP_TYPES },
+    description: str,
+  },
+} as const;
 
 // ── ontology ─────────────────────────────────────────────────────────────────────
 
@@ -46,12 +61,17 @@ const eventPolicySchema = {
 const ontologyEntityMapSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['title', 'description', 'ownership'],
+  required: ['title', 'description', 'ownership', 'modelingDecision'],
   properties: {
     title: str,
     description: str,
     kind: { enum: ['core', 'mdm', 'event', 'metric', 'supporting'] },
     ownership: { enum: ['moduleOwned', 'mdmOwned', 'horizontalOwned', 'pluginOwned', 'existingModuleOwned', 'external'] },
+    modelingDecision: str,
+    moduleType: str, // required by semantic validator for kind=mdm / ownership=mdmOwned
+    mdmSubtype: { enum: MDM_SUBTYPES },
+    requiresAnchor: bool,
+    anchor: mdmAnchorSchema,
     eventPolicy: eventPolicySchema, // required-by-prompt when kind === 'event'
     statusEnum: strArray,
     lifecycleStates: strArray,
@@ -98,8 +118,8 @@ const ruleSchema = {
 const relationshipSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['relationshipId', 'fromEntity', 'toEntity', 'type', 'description'],
-  properties: { relationshipId: str, fromEntity: str, toEntity: str, type: str, description: str },
+  required: ['relationshipId', 'fromEntity', 'toEntity', 'type', 'description', 'decisionReason'],
+  properties: { relationshipId: str, fromEntity: str, toEntity: str, type: { enum: L4_RELATIONSHIP_TYPES }, description: str, decisionReason: str },
 } as const;
 
 // Embedded user story — the transient journey absorbed into each workflow/operation owner.
@@ -248,13 +268,18 @@ export const entityDefinitionResultSchema = {
     entityDefinition: {
       type: 'object',
       additionalProperties: false,
-      required: ['entityId', 'title', 'description', 'fields'],
+      required: ['entityId', 'title', 'description', 'modelingDecision', 'fields'],
       properties: {
         entityId: str,
         title: str,
         description: str,
         ownership: { enum: ['moduleOwned', 'mdmOwned', 'horizontalOwned', 'pluginOwned', 'existingModuleOwned', 'external'] },
         kind: str,
+        modelingDecision: str,
+        moduleType: str,
+        mdmSubtype: { enum: MDM_SUBTYPES },
+        requiresAnchor: bool,
+        anchor: mdmAnchorSchema,
         eventPolicy: eventPolicySchema, // carry the event classification onto the canonical entity def
         fields: { type: 'array', minItems: 1, items: entityFieldSchema },
         statusEnum: strArray,

@@ -288,7 +288,11 @@ export function isKnownEntityRef(ref: string, knownIds: Set<string>): boolean {
   return colon > 0; // qualified cross-module ref — accepted, owned by another module's ontology
 }
 
-/** Wrap a stray single string into an array for statusEnum/lifecycleStates (models sometimes do this). */
+/**
+ * Tolerate common model slips in the slim ontology MAP before schema validation:
+ * - statusEnum/lifecycleStates sometimes come back as a single string.
+ * - entityId is sometimes repeated inside the map value, but the map key is the canonical id.
+ */
 export function coerceOntologyEnumArrays(value: unknown): unknown {
   if (!isRecord(value)) return value;
   const ontology = isRecord(value.ontology) ? value.ontology : undefined;
@@ -296,6 +300,7 @@ export function coerceOntologyEnumArrays(value: unknown): unknown {
   if (!entities) return value;
   for (const entityValue of Object.values(entities)) {
     if (!isRecord(entityValue)) continue;
+    delete entityValue.entityId;
     for (const key of ['statusEnum', 'lifecycleStates']) {
       const current = entityValue[key];
       if (current === undefined || Array.isArray(current)) continue;

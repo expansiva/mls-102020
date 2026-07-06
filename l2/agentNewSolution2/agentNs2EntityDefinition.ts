@@ -18,11 +18,14 @@ import {
   optionalString,
   optionalStringArray,
   pickRecordsByIds,
+  readPlatformSkill,
+  withPlatformSkill,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { extractPlannerOutput, createPlannerToolSchema } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
 import { getApprovedModuleName, ontologyEntityFileInfo, readOntologyEntities, saveAgentTrace, saveDefsArtifact } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { entityDefinitionResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getFinalizeOutput } from '/_102020_/l2/agentNewSolution2/agentNs2Finalize.js';
+import { repairMdmEntityDefinition } from '/_102020_/l2/agentNewSolution2/ns2DeterministicRepairs.js';
 
 const AGENT_NAME = 'agentNs2EntityDefinition';
 const TOOL_NAME = 'submitEntityDefinition';
@@ -33,6 +36,11 @@ export interface EntityDefinition {
   description: string;
   ownership?: string;
   kind?: string;
+  modelingDecision?: string;
+  moduleType?: string;
+  mdmSubtype?: string;
+  requiresAnchor?: boolean;
+  anchor?: { entityId: string; source?: 'ontologyEntity' | 'runtimeContext'; originRef?: string; relationshipType: string; description: string };
   // Classification for kind:"event" entities so Stage 3 persists them (telemetry/audit) or routes
   // them to the outbox (reaction) instead of dropping them. Omitted for non-event entities.
   eventPolicy?: { purpose: string; retentionDays?: number };
@@ -72,7 +80,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       .filter(([id]) => id !== args)
       .map(([id, meta]) => ({ entityId: id, ...(isRecord(meta) ? { title: meta.title, description: meta.description } : {}) })),
   };
-  return [createPromptReadyIntent(context, parentStep, hookSequential, args, systemPrompt.split('{{toolName}}').join(TOOL_NAME), `## Current entity selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
+  const platformSkill = await readPlatformSkill();
+  return [createPromptReadyIntent(context, parentStep, hookSequential, args, withPlatformSkill(systemPrompt.split('{{toolName}}').join(TOOL_NAME), platformSkill), `## Current entity selector\n${args}\n\n## Reduced context\n${JSON.stringify(reduced, null, 2)}\n`, toolSchema, TOOL_NAME)];
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
@@ -86,6 +95,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     output = extractPlannerOutput(payload, config);
     // The selector (ontology map key) is authoritative for the id.
     if (selector && output.result.entityDefinition.entityId !== selector) output.result.entityDefinition.entityId = selector;
+    repairMdmEntityDefinition(output.result.entityDefinition, getApprovedModuleName(context) || '');
     if (output.status === 'ok' && output.result.entityDefinition.fields.length === 0) throw new Error(`entity ${selector} has no fields`);
     // Any non-ok status (failed OR needs_input) fails the step loudly with the questions in the trace.
     // needs_input used to fall through silently: the step stayed 'completed' and the entity was never
@@ -166,6 +176,11 @@ function normalizeResult(value: unknown): EntityDefinitionResult {
       description: assertString(def.description, 'result.entityDefinition.description'),
       ownership: optionalString(def.ownership),
       kind: optionalString(def.kind),
+      modelingDecision: assertString(def.modelingDecision, 'result.entityDefinition.modelingDecision'),
+      moduleType: optionalString(def.moduleType),
+      mdmSubtype: optionalString(def.mdmSubtype),
+      requiresAnchor: def.requiresAnchor === true,
+      anchor: normalizeMdmAnchor(def.anchor),
       eventPolicy: normalizeEventPolicy(def.eventPolicy),
       fields: assertArray(def.fields || [], 'result.entityDefinition.fields').map((item, index) => assertRecord(item, `result.entityDefinition.fields[${index}]`)),
       statusEnum: optionalStringArray(def.statusEnum),
@@ -189,6 +204,18 @@ function normalizeEventPolicy(value: unknown): { purpose: string; retentionDays?
   return retentionDays === undefined ? { purpose } : { purpose, retentionDays };
 }
 
+function normalizeMdmAnchor(value: unknown): EntityDefinition['anchor'] | undefined {
+  if (!isRecord(value)) return undefined;
+  const entityId = optionalString(value.entityId);
+  const source = optionalString(value.source);
+  const originRef = optionalString(value.originRef);
+  const relationshipType = optionalString(value.relationshipType);
+  const description = optionalString(value.description);
+  return entityId && relationshipType && description
+    ? { entityId, ...(source ? { source: source as 'ontologyEntity' | 'runtimeContext' } : {}), ...(originRef ? { originRef } : {}), relationshipType, description }
+    : undefined;
+}
+
 const systemPrompt = `
 <!-- modelType: codepro -->
 <!-- x-tool-strict: true -->
@@ -201,6 +228,8 @@ Call the "{{toolName}}" tool with: status, result, questions, trace. Do not retu
 
 Rules:
 - entityId must equal the selector exactly.
+- Keep ownership/kind/modelingDecision from the entity map. modelingDecision explains why this entity is
+  moduleOwned, mdmOwned, embedded-by-relationship, horizontal, plugin or external.
 - fields lists EVERY attribute: fieldId, type (uuid|string|text|number|money|boolean|date|datetime or
   an entity id for references), required, description. Include identity, references ({entity}Id for the
   relationships provided), business attributes and audit timestamps (createdAt/updatedAt) when persisted.
@@ -214,6 +243,27 @@ Rules:
   non-event entities.
 - If you set ownership, it MUST be EXACTLY one of: moduleOwned, mdmOwned, horizontalOwned, pluginOwned,
   existingModuleOwned, external (keep the value from the entity map; never invent another). Omit it if unsure.
+- For ownership=mdmOwned or kind=mdm, you MUST carry:
+  - moduleType in the canonical <moduleId>.<PascalType> format, e.g. cafeFlow.Table.
+    Never use platform.* or another module prefix for a generated module's MDM entity; the moduleType
+    prefix is always the approved module name of this solution.
+  - mdmSubtype as one of the 102034 subtypes (Person, Company, Product, Service, Location,
+    AssetGeneric, AssetVehicle, AssetProperty, AssetEquipment, Animal, BankAccount, Document,
+    ContactChannel).
+  - requiresAnchor=true and anchor when the MDM record is scoped to a company, unit, location or parent
+    object. anchor.source defaults to "ontologyEntity": anchor.entityId must then be another local
+    ontology entity. If the scope is provided by runtime/session context instead of a local entity, set
+    anchor.source="runtimeContext" and anchor.originRef to businessContext.activeCompanyId,
+    businessContext.activeUnitId or currentWorkspace.workspaceId. This is how generated modules anchor
+    records to the active company/unit/workspace without inventing a local Company entity. In both cases
+    keep anchor.entityId as the semantic anchor label and provide relationshipType + description.
+    If originRef is businessContext.activeCompanyId, source MUST be runtimeContext, never
+    ontologyEntity. Company in that case means the current platform business company, not a missing
+    ontology entity. Any persisted companyId field for that anchor is a uuid runtime reference, not
+    type Company, unless Company is present in otherEntities as a local ontology entity.
+    relationshipType must be a 102034 MDM relationship such as Owns, LocatedAt, SubsidiaryOf,
+    BelongsToGroup, PartOfUnit, SupplierOf, CustomerOf, OffersProduct, OffersService or HasContact.
+  - requiresAnchor=false only for globally meaningful records such as the primary Company itself.
 - rulesApplied lists ruleIds (from the provided rules) constraining this entity.
 - Do not invent entities/rules/relationships; the available entities are in "otherEntities" (each with
   entityId + title + description). Match a needed reference by MEANING, not just exact name (e.g. an order

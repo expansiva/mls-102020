@@ -22,6 +22,13 @@ import {
   normalizeModuleFolderName,
   reserveModuleNameFromFolders,
 } from '/_102020_/l2/agentNewSolution2/ns2Plan.js';
+import {
+  collectModuleConsistencyIssues,
+  formatModuleConsistencyIssues,
+  type ModuleArtifactPresence,
+  type ModuleConsistencyInput,
+} from '/_102020_/l2/agentNewSolution2/ns2ModuleConsistency.js';
+import { buildDefaultProjectMetadata } from '/_102020_/l2/agentNewSolution2/ns2ProjectMetadata.js';
 
 const ROOT_AGENT_NAME = 'agentNewSolution2';
 
@@ -60,14 +67,64 @@ export function reserveAvailableModuleName(requestedName: unknown, fallbackPromp
 }
 
 export function getExistingModuleFolders(): Set<string> {
-  const project = mls.actualProject || 0;
-  const folders = new Set<string>();
-  for (const file of Object.values(mls.stor.files)) {
-    if (file.project !== project || file.level === 3 || !file.folder) continue;
-    const first = file.folder.split('/')[0];
-    if (first) folders.add(first);
+  return new Set(getExistingModuleArtifacts().map((artifact) => artifact.moduleName));
+}
+
+export async function assertProjectModuleLayoutCoherent(allowPendingModuleName?: string): Promise<void> {
+  const snapshot = await readProjectModuleLayoutSnapshot();
+  if (allowPendingModuleName) {
+    snapshot.allowPendingModuleName = allowPendingModuleName;
   }
-  return folders;
+  const issues = collectModuleConsistencyIssues(snapshot);
+  if (issues.length > 0) {
+    throw new Error(formatModuleConsistencyIssues(issues));
+  }
+}
+
+function getExistingModuleArtifacts(): ModuleArtifactPresence[] {
+  const project = mls.actualProject || 0;
+  const modules = new Map<string, Set<number>>();
+  for (const file of Object.values(mls.stor.files)) {
+    if (file.project !== project || file.status === 'deleted' || !file.folder) continue;
+    if (![1, 2, 4, 5].includes(file.level)) continue;
+    const first = file.folder.split('/')[0];
+    if (!first || isGlobalL4Folder(file.level, first)) continue;
+    const moduleName = normalizeModuleFolderName(first, 'module');
+    const levels = modules.get(moduleName) ?? new Set<number>();
+    levels.add(file.level);
+    modules.set(moduleName, levels);
+  }
+  return [...modules.entries()].map(([moduleName, levels]) => ({
+    moduleName,
+    levels: [...levels].sort((a, b) => a - b),
+  }));
+}
+
+function isGlobalL4Folder(level: number, folder: string): boolean {
+  return level === 4 && ['actors', 'operations', 'rules', 'trace', 'workflows'].includes(folder);
+}
+
+async function readProjectModuleLayoutSnapshot(): Promise<ModuleConsistencyInput> {
+  const fileInfo: FileInfo = { project: mls.actualProject || 0, level: 5, folder: '', shortName: 'project', extension: '.json' };
+  const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+  if (!file || file.status === 'deleted') {
+    return { projectJsonPresent: false, projectModules: [], artifactModules: getExistingModuleArtifacts() };
+  }
+
+  const raw = await file.getContent();
+  const parsed = typeof raw === 'string' ? parseMaybeJson(raw) : null;
+  if (!isRecord(parsed)) {
+    throw new Error('l5/project.json is invalid JSON or does not contain an object');
+  }
+
+  return {
+    projectJsonPresent: true,
+    projectModules: (Array.isArray(parsed.modules) ? parsed.modules : [])
+      .filter(isRecord)
+      .map((moduleEntry) => readString(moduleEntry.moduleName))
+      .filter((name): name is string => Boolean(name)),
+    artifactModules: getExistingModuleArtifacts(),
+  };
 }
 
 function getRootPlanResult(context: mls.msg.ExecutionContext): Record<string, unknown> | undefined {
@@ -267,11 +324,13 @@ export async function readJourneyDefs(moduleName: string): Promise<Record<string
 
 /** Merge l5/project.json: preserve every top-level field, add/replace this module + dedupe deps/languages. */
 export async function mergeProjectJson(moduleEntry: Record<string, unknown>, dependencies: Record<string, unknown>[] = [], languages: string[] = []): Promise<void> {
+  await assertProjectModuleLayoutCoherent(readString(moduleEntry.moduleName));
   const fileInfo: FileInfo = { project: mls.actualProject || 0, level: 5, folder: '', shortName: 'project', extension: '.json' };
   const key = mls.stor.getKeyToFile(fileInfo);
   const existingFile = mls.stor.files[key];
   const existingRaw = existingFile ? await existingFile.getContent() : undefined;
   const base = typeof existingRaw === 'string' && isRecord(parseMaybeJson(existingRaw)) ? (parseMaybeJson(existingRaw) as Record<string, unknown>) : {};
+  const projectMetadata = buildDefaultProjectMetadata(mls.actualProject || 0);
 
   const moduleMap = new Map<string, Record<string, unknown>>();
   for (const m of (Array.isArray(base.modules) ? base.modules : []).filter(isRecord)) {
@@ -297,6 +356,7 @@ export async function mergeProjectJson(moduleEntry: Record<string, unknown>, dep
   }
 
   const merged = {
+    ...projectMetadata,
     ...base,
     modules: [...moduleMap.values()],
     ...(languageMap.size > 0 ? { languages: [...languageMap.values()] } : {}),

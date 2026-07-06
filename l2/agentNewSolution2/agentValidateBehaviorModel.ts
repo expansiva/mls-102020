@@ -14,6 +14,7 @@ import { getBehaviorIndex } from '/_102020_/l2/agentNewSolution2/agentClassifyBe
 import { type WorkflowDefinition } from '/_102020_/l2/agentNewSolution2/agentNs2WorkflowDefinition.js';
 import { type OperationDefinition } from '/_102020_/l2/agentNewSolution2/agentPlanOperationDefinition.js';
 import { getJourneyMap, type JourneyMap } from '/_102020_/l2/agentNewSolution2/agentPlanJourneyMap.js';
+import { collectMdmModelingIssues } from '/_102020_/l2/agentNewSolution2/ns2MdmModeling.js';
 import { L4_CONTEXT_ORIGIN_CATALOG } from '/_102029_/l2/runtimeConfigTypes.js';
 
 const AGENT_NAME = 'agentValidateBehaviorModel';
@@ -80,6 +81,13 @@ export async function computeBehaviorHealthReport(context: mls.msg.ExecutionCont
   const errors: HealthFinding[] = [];
   const warnings: HealthFinding[] = [];
   validatePlanDiskDivergence(fp.ontology.entities, behavior, ontology, workflowDefs, operationDefs, errors);
+  for (const issue of collectMdmModelingIssues({
+    moduleName,
+    entities: ontology,
+    relationships: moduleName ? await readModuleRelationships(moduleName) : [],
+  })) {
+    (issue.severity === 'error' ? errors : warnings).push(issue);
+  }
   const entityRef = (ref: string, where: string) => { if (!isKnownEntityRef(ref, knownEntities)) errors.push({ severity: 'error', code: 'entity.ref.unknown', message: `${where}: unknown entity ref '${ref}'` }); };
   const actorRef = (ref: string, where: string) => { if (ref && knownActors.size > 0 && !knownActors.has(ref)) warnings.push({ severity: 'warning', code: 'actor.unknown', message: `${where}: unknown actor '${ref}'` }); };
   const ruleRefs = (refs: string[], where: string) => { for (const r of refs) if (knownRules.size > 0 && !knownRules.has(r)) warnings.push({ severity: 'warning', code: 'rule.unknown', message: `${where}: unknown rule '${r}'` }); };
@@ -322,7 +330,7 @@ function validateContextResolutionRef(
     errors.push({ severity: 'error', code: 'operation.context.origin.missing', message: `${where}: contextResolution for '${targetRef || '?'}' missing originRef` });
     return;
   }
-  if (source === 'actorSession' || source === 'currentWorkspace' || source === 'systemDefault') {
+  if (source === 'actorSession' || source === 'businessContext' || source === 'currentWorkspace' || source === 'systemDefault') {
     const allowed = L4_CONTEXT_ORIGIN_CATALOG[source] as readonly string[];
     if (!allowed.includes(originRef)) {
       errors.push({ severity: 'error', code: 'operation.context.origin.invalid', message: `${where}: ${source} originRef '${originRef}' must be one of ${allowed.join(', ')}` });
@@ -465,7 +473,7 @@ function validateEntityManagementEdges(
 }
 
 function isKnownContextSource(value: string): boolean {
-  return ['userInput', 'actorSession', 'currentWorkspace', 'selectedEntity', 'activeLifecycleInstance', 'workflowState', 'routeParam', 'previousStepOutput', 'systemDefault'].includes(value);
+  return ['userInput', 'actorSession', 'businessContext', 'currentWorkspace', 'selectedEntity', 'activeLifecycleInstance', 'workflowState', 'routeParam', 'previousStepOutput', 'systemDefault'].includes(value);
 }
 
 function isIdentifierRef(value: string): boolean {

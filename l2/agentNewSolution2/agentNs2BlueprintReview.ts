@@ -87,6 +87,9 @@ Call the "{{toolName}}" tool with: status, result, questions, trace. Do not retu
 In result: a short summary and findings[] ({ severity error|warning|info, code, message, path? }).
 Look for: capabilities with no owning entity, entities with no actor/capability, missing lifecycle on
 stateful entities, rules referencing unknown entities, and behaviorHint mismatches (a clearly stateful
-process marked operation, or vice-versa). Do NOT comment on pages/tables/persistence (out of Stage 1).
+process marked operation, or vice-versa). For MDM entities, flag missing moduleType, mdmSubtype,
+modelingDecision, or required anchor/relationship. For relationships, flag free-text types, missing
+decisionReason, and cases where embedded partOf was used to avoid modeling a real MDM relationship.
+Do NOT comment on pages/tables/persistence (out of Stage 1).
 
 `;

@@ -22,7 +22,13 @@ import {
   withPlatformSkill,
 } from '/_102020_/l2/agentNewSolution2/ns2Shared.js';
 import { createPlannerToolSchema, extractPlannerOutput } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
-import { getApprovedModuleName, getInitialModuleName, reserveAvailableModuleName, saveAgentTrace } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+import {
+  assertProjectModuleLayoutCoherent,
+  getApprovedModuleName,
+  getInitialModuleName,
+  reserveAvailableModuleName,
+  saveAgentTrace,
+} from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
 import { MODULE_NAME_FINAL_PLAN_ID } from '/_102020_/l2/agentNewSolution2/ns2Plan.js';
 import { blueprintResultSchema } from '/_102020_/l2/agentNewSolution2/ns2Schemas.js';
 import { getSnapshot } from '/_102020_/l2/agentNewSolution2/ns2Snapshot.js';
@@ -76,12 +82,15 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   // folder, and record it as the 'module-name-final' result step every later agent resolves.
   if (status === 'completed' && output && output.status === 'ok' && !getApprovedModuleName(context)) {
     try {
+      await assertProjectModuleLayoutCoherent();
       const requested = (output.result.module as Record<string, unknown>).moduleName;
       const finalName = reserveAvailableModuleName(requested, getInitialModuleName(context));
       intents.push(createResultStepIntent(context, parentStep, MODULE_NAME_FINAL_PLAN_ID, ['plan-solution-blueprint'], `Module name: ${finalName}`, { moduleName: finalName }));
       console.log(`[${AGENT_NAME}] module name confirmed: ${finalName}`);
     } catch (error) {
-      console.warn(`[${AGENT_NAME}] module name confirmation failed`, error);
+      status = 'failed';
+      traceMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[${AGENT_NAME}] module name confirmation failed`, error);
     }
   }
 
@@ -147,9 +156,10 @@ In result:
 - capabilities: each with actor, priority and behaviorHint (workflow = stateful process over time;
   operation = direct single-actor action; either = unsure).
 - ontology.entities: an object map keyed by PascalCase id. Each value has title, description,
-  ownership (and kind/statusEnum/lifecycleStates when known). This is a MAP — do NOT detail fields
-  here (a later stage does). ontology.entities hold ONLY persistent DATA nouns (kind core/mdm/event/
-  metric/supporting). NEVER put use-cases/workflows/queries here; never use Uc*/verb-named ids.
+  ownership, modelingDecision (and kind/statusEnum/lifecycleStates when known). This is a MAP — do NOT
+  repeat entityId inside each value and do NOT detail fields here (a later stage does).
+  ontology.entities hold ONLY persistent DATA nouns (kind core/mdm/event/metric/supporting). NEVER put
+  use-cases/workflows/queries here; never use Uc*/verb-named ids.
   - ownership is REQUIRED and MUST be EXACTLY one of: moduleOwned, mdmOwned, horizontalOwned,
     pluginOwned, existingModuleOwned, external. Use moduleOwned for entities this module owns
     (the default), mdmOwned for cadastral master-data. Never invent other values (e.g. "module",
@@ -165,6 +175,19 @@ In result:
   - kind=mdm is ONLY stable cadastral master-data (identity/registration: people, companies,
     vehicles, rooms, furniture, menu/catalog), referenced by id; its statusEnum is a cadastral
     lifecycle (active/inactive), never an operational state.
+    For every mdm entity, set ownership=mdmOwned, kind=mdm, moduleType="<moduleName>.<EntityId>",
+    mdmSubtype from the 102034 ontology (Company, Location, Product, Service, Person, AssetGeneric,
+    AssetVehicle, AssetProperty, AssetEquipment, ContactChannel, Document, BankAccount, Animal), and
+    modelingDecision explaining why it is standalone MDM instead of embedded/local. If the MDM object is
+    scoped by another MDM/company/unit/location, set requiresAnchor=true and anchor
+    { entityId, source, originRef, relationshipType, description }. Use source="ontologyEntity" only
+    when entityId is another local ontology entity. When the scope is the current platform company,
+    keep entityId="Company" as the semantic label but set source="runtimeContext" and
+    originRef="businessContext.activeCompanyId"; do not add a relationship to Company unless Company is
+    also a real local ontology entity. Use a 102034 relationship type such as Owns, LocatedAt,
+    SubsidiaryOf, BelongsToGroup, PartOfUnit, SupplierOf, CustomerOf, OffersProduct, OffersService or
+    HasContact. Use requiresAnchor=false only for globally meaningful records such as the primary
+    Company.
   - Operational/transactional STATE is NEVER mdm. A status that moves during operation
     (occupied/available, open/closed, in-progress, balances, current charges/consumption) is a
     kind=core entity with its own table.
@@ -173,7 +196,12 @@ In result:
     that references it by id — e.g. Table (mdm cadastro: number, room) + TableOccupancy
     (core: occupied/available, currentChargesTotal). Operations then write the core state, not the mdm record.
 - rules: centralized, stable ruleId.
-- relationships.
+- relationships: use known types only. Structural composition is type "partOf". MDM/business
+  relationships use 102034 types such as Owns, LocatedAt, SubsidiaryOf, BelongsToGroup, PartOfUnit,
+  SupplierOf, CustomerOf, OffersProduct, OffersService or HasContact. Every relationship must include
+  decisionReason explaining why this relation, not an ad hoc text, represents the domain. Do not emit
+  relationships to platform runtime context labels such as the current Company; model those as MDM
+  anchors with source="runtimeContext".
 - behaviorPlan: mdm, horizontals, plugins, agents signals ({ title, reason }).
 
 Rules:

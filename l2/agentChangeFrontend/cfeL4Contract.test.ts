@@ -1,0 +1,55 @@
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/cfeL4Contract.test.ts" enhancement="_blank"/>
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  frontendOutputShapeForOperation,
+  frontendQueryStateDefaults,
+  isRuntimeResolvedInputSource,
+  isUserFacingOperationInput,
+  l4OperationInputs,
+} from '/_102020_/l2/agentChangeFrontend/cfeL4Contract.js';
+import { buildMaterializeTypecheckTest } from '/_102020_/l2/agentChangeFrontend/cfeMaterializeCore.js';
+
+test('frontendOutputShapeForOperation follows L4 accessPattern pagination', () => {
+  assert.equal(frontendOutputShapeForOperation({ kind: 'query', accessPattern: { kind: 'list', pagination: 'required' } }), 'paginated');
+  assert.equal(frontendOutputShapeForOperation({ kind: 'query', accessPattern: { kind: 'list', pagination: 'none' } }), 'array');
+  assert.equal(frontendOutputShapeForOperation({ kind: 'view', accessPattern: { kind: 'getById' } }), 'object');
+  assert.equal(frontendOutputShapeForOperation({ kind: 'create', accessPattern: { kind: 'commandInput' } }), 'object');
+});
+
+test('frontendQueryStateDefaults preserves paginated object shape', () => {
+  assert.deepEqual(frontendQueryStateDefaults('array'), { collection: true, defaultValue: [] });
+  assert.deepEqual(frontendQueryStateDefaults('paginated'), { collection: false, defaultValue: { items: [], total: 0 } });
+  assert.deepEqual(frontendQueryStateDefaults('object'), { collection: false, defaultValue: null });
+});
+
+test('L4 inputs keep only user-facing fields for UI state', () => {
+  const inputs = l4OperationInputs({
+    inputs: [
+      { inputId: 'nameFilter', fieldRef: 'Company.name', required: false, source: 'userInput', description: 'Filter by name.' },
+      { inputId: 'companyId', fieldRef: 'Company.companyId', required: true, source: 'businessContext', description: 'Active company.' },
+      { inputId: 'workspaceId', fieldRef: 'Workspace.workspaceId', required: true, source: 'currentWorkspace', description: 'Current UI workspace.' },
+    ],
+  });
+
+  assert.deepEqual(inputs.filter(isUserFacingOperationInput).map(input => input.inputId), ['nameFilter']);
+  assert.equal(isRuntimeResolvedInputSource('businessContext'), true);
+  assert.equal(isRuntimeResolvedInputSource('currentWorkspace'), true);
+  assert.equal(isRuntimeResolvedInputSource('userInput'), false);
+});
+
+test('generated contract typecheck expects paginated query output when outputShape is paginated', () => {
+  const source = buildMaterializeTypecheckTest({
+    id: 'orders__l2_contract',
+    type: 'l2_contract',
+    outputPath: '_102050_/l2/cafeFlow/web/contracts/orders.ts',
+  }, [{
+    commandName: 'listOrders',
+    kind: 'query',
+    outputShape: 'paginated',
+    input: [{ name: 'nameFilter', type: 'string', required: false }],
+    output: [{ name: 'orderId', type: 'string', required: true }],
+  }]);
+
+  assert.match(source || '', /type ExpectedCafeFlowListOrdersOutput = \{ items: ExpectedCafeFlowListOrdersOutputItem\[\]; total: number; page\?: number; pageSize\?: number; \};/);
+});

@@ -7,7 +7,7 @@ Generate the TypeScript contract file for one Stage 2 frontend page.
 
 This skill is only for the new agentChangeFrontend format:
 - Input Definition is an array of BFF command descriptors.
-- Each command has commandName, optional bffName/routeKey/origin metadata, purpose, kind, input[] and output[].
+- Each command has commandName, optional bffName/routeKey/origin metadata, purpose, kind, input[], output[] and outputShape.
 - Each field has name, type, required, enum and description when available.
 - The contract is frontend-facing BFF shape only. It must not depend on backend metadata such as entity/table refs, usecase refs, layer contracts, rulesApplied or source field provenance. bffName/routeKey/origin are .defs.ts maintenance metadata; do not emit them into the .ts types.
 
@@ -49,9 +49,19 @@ Primitive mapping:
 
 ## Command output shape
 
+Use command.outputShape as the source of truth. Defaults:
+- query without outputShape -> "array"
+- command without outputShape -> "object"
+
 For command.kind === "query":
 - Generate an OutputItem interface with fields from command.output[].
-- Generate Output as an array type alias of OutputItem.
+- If outputShape is "array", generate Output as an array type alias of OutputItem.
+- If outputShape is "paginated", generate Output as an interface with:
+  - items: OutputItem[]
+  - total: number
+  - page?: number
+  - pageSize?: number
+- If outputShape is "object", generate Output as a type alias of OutputItem.
 
 For command.kind !== "query":
 - Generate Output as a plain interface with fields from command.output[].

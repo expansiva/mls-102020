@@ -102,5 +102,7 @@ Use canonical ontology ids for masterEntities. Return an empty array when there 
 masterEntities are ONLY stable cadastral records (identity/registration), accessed by id with a
 cadastral status (active/inactive). NEVER list an entity that holds operational/transactional state
 (occupied/available, open/closed, balances, current charges) — that lives in a kind=core entity, not MDM.
+Every listed master entity must already be modeled in ontology as ownership=mdmOwned, kind=mdm with
+moduleType and mdmSubtype; relationships/anchors are modeled in the ontology relationships, not here.
 
 `;
