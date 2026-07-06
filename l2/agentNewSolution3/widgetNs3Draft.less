@@ -1,0 +1,125 @@
+collab-widget-ns3-draft-102020,
+widget-ns3-draft-102020 {
+  display: block;
+  color: #1f2933;
+
+  .ns3-draft {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-width: 980px;
+  }
+
+  .ns3-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid #d9e2ec;
+    padding-bottom: 10px;
+  }
+
+  h3 {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.25;
+  }
+
+  p {
+    margin: 4px 0 0;
+    color: #52606d;
+  }
+
+  p span {
+    font-family: monospace;
+    color: #334e68;
+  }
+
+  .ns3-gate {
+    border-radius: 6px;
+    font-size: 12px;
+    padding: 4px 8px;
+    white-space: nowrap;
+  }
+
+  .ns3-gate--ok {
+    background: #e3f9e5;
+    color: #0f5132;
+  }
+
+  .ns3-gate--bad,
+  .ns3-error {
+    background: #ffe3e3;
+    color: #9b1c1c;
+  }
+
+  .ns3-md {
+    background: #f8fafc;
+    border: 1px solid #d9e2ec;
+    border-radius: 8px;
+    color: #243b53;
+    font-family: inherit;
+    line-height: 1.45;
+    margin: 0;
+    overflow: auto;
+    padding: 14px;
+    white-space: pre-wrap;
+  }
+
+  .ns3-actions {
+    display: grid;
+    gap: 10px;
+  }
+
+  textarea {
+    border: 1px solid #bcccdc;
+    border-radius: 8px;
+    font: inherit;
+    min-height: 78px;
+    padding: 10px;
+    resize: vertical;
+  }
+
+  .ns3-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  button {
+    border: 1px solid #9fb3c8;
+    border-radius: 8px;
+    cursor: pointer;
+    font: inherit;
+    padding: 8px 14px;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .ns3-primary {
+    background: #186faf;
+    border-color: #186faf;
+    color: white;
+  }
+
+  .ns3-secondary {
+    background: white;
+    color: #243b53;
+  }
+
+  .ns3-state,
+  .ns3-done {
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .ns3-done {
+    background: #e3f9e5;
+    color: #0f5132;
+  }
+}
+

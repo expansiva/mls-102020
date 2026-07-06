@@ -1,0 +1,183 @@
+{
+  "flowId": "agentNewSolution3",
+  "schemaVersion": "2026-07-05-ns3-v1",
+  "specFirst": "This file was written BEFORE the code (PropostaAgentNewSolution3.md §2.5). The code is validated against it: each step declares inputs/outputs/gate, and an automated test checks that the implementation matches this spec. Maintenance changes the spec FIRST, then the code.",
+  "description": "Step-based pipeline with consistent checkpoints. Each step reads ONLY the frozen files from the previous step and writes ONLY its own files (zero canonical state in task payloads). Every checkpoint has 3 faces: machine artifact (JSON/defs.ts with versioned schema), human summary (md), and deterministic gate (code, no LLM). Phase 1 implements up to the 2nd human checkpoint (E1+E2); E3..E7 are declared as planned.",
+  "principles": [
+    "Compiler-style pipeline, not a task tree: no passive containers, no dynamic fan-out managed by the task backend (list iteration inside the step, retry per item).",
+    "Fail early: repair means rerun step N with the gate error in context (1 retry); if it persists, show a visible checkpoint failure with a readable partial artifact. No LLM critic/repair.",
+    "Step is the maintenance unit: 1 folder per step (agent, prompt.md, schema, gate, test, fixture, readme, CHANGELOG). helpers/ is minimal and policy-frozen (it does not know step-specific logic).",
+    "System that builds systems: local examples or point fixes embedded in prompts/gates are forbidden; fixes generalize or they do not enter.",
+    "No console: everything goes to trace; errors appear objectively in the task.",
+    "UI: the step list is a tree ONLY for presentation (visual grouping derived from this flow.json, with no orchestration/dependency semantics). Step strings are translated to the user's language, as in v2.",
+    "CLI-like: commands such as /rebuild e2 rerun a step while skipping already completed ones; dirty propagation (inputsHash) prevents skipping steps when upstream changed."
+  ],
+  "conventions": {
+    "module": "{module} = module name proposed in E1 and normalized by the E1 gate (first disk write; no temporary folder).",
+    "pipelineState": "l4/{module}/pipeline/pipeline.json = pipeline state: per step {status: pending|running|gate_failed|approved, inputsHash, artifactVersion, approvedAt, approvedBy: auto|human}. The runner is dumb: it reads pipeline.json and runs the next non-approved step. Resume means looking at the last approved gate.",
+    "artifacts": "Phase artifacts in l4/{module}/pipeline/e{N}-*.{json,md}. Final artifacts (from E3 onward) use the SAME paths/formats as v2 (l4/{module}/ontology, l4/actors, l4/rules, l4/workflows, l4/operations, l4/{module}/journeys, l5/{module}) so Stage 2/3 do not change.",
+    "schemas": "Versioned schemas/e{N}-*.schema.json files ($id with version). Schema and gate only change with a version bump + fixture update. Loosening a gate to pass a fix = upstream bug.",
+    "gates": "1 gate = 1 file = 1 .test.ts, inside the step folder. The gate validates schema + semantic invariants. Warnings do not block; errors block and trigger 1 retry with the error in context.",
+    "dirtyPropagation": "Each step writes the hash of consumed inputs to pipeline.json. If an approved upstream artifact changes (for example, the E2 adjustment loop), downstream steps become dirty and runner/CLI refuses skip.",
+    "versioning": "E2 adjustment-loop iterations generate e2-journeys.v{K}.json; 'approve' freezes the current version as e2-journeys.json and records the decision (source for the designContext in E3).",
+    "singleWritePath": "Widgets NEVER write artifacts directly: every change (edit or adjustment prompt) passes through the adjustment agent + gate before being presented again.",
+    "trace": "l4/{module}/pipeline/trace/e{N}-{agent}-{attempt}.json (LLM payloads, gate errors, timings).",
+    "rootPlan": "agentNewSolution3 returns userLanguage, validPrompt/invalidReason, localized step titles, uiLabels for checkpoint widgets, and clarification 1 questions.",
+    "i18n": "No hard-coded language; step strings, human summaries, and checkpoint uiLabels are generated in the user's language (userLanguage captured in E1)."
+  },
+  "folderLayout": {
+    "agentNewSolution3.ts": "root: receives the prompt, registers the task, builds the visual step tree, delegates to the runner",
+    "flow.json": "this spec",
+    "README.md": "overview + how to run/test",
+    "skills/": "platform.md (baseline: what NOT to model) + maintenance.md (mandatory LLM adjustment protocol)",
+    "helpers/": "ns3Fs.ts (read/write/path hardening), ns3Ids.ts (id normalization), ns3Gate.ts (gate runner + retry), ns3Pipeline.ts (pipeline.json, inputsHash, dirty), ns3Trace.ts",
+    "schemas/": "Versioned JSON Schemas for artifacts between steps",
+    "steps/e1-draft/": "readme.md, agentNs3Draft.ts, prompt.md, gate.ts, gate.test.ts, fixture/",
+    "steps/e2-journeys/": "readme.md, agentNs3Journeys.ts, agentNs3JourneysAdjustment.ts, prompt.md, promptAdjustment.md, gate.ts, gate.test.ts, fixture/",
+    "widgetNs3Draft.ts/.less": "human checkpoint 1 (draft summary + approve/adjust)",
+    "widgetNs3Journeys.ts/.less": "human checkpoint 2 (graphical journeys + features/priorities + adjustment prompt)"
+  },
+  "treeOverview": [
+    "phase-understanding (visual): e1-clarification -> e1-draft -> checkpoint-draft",
+    "phase-business (visual): e2-journeys -> checkpoint-journeys (adjustment loop)",
+    "phase-model (visual, planned): e3-ontology -> e4-actors-rules-refs",
+    "phase-behavior (visual, planned): e5-workflows-operations -> e6-journey-map",
+    "phase-closing (visual, planned): e7-validation-summary"
+  ],
+  "steps": [
+    {
+      "planId": "e1-clarification",
+      "agentName": "agentNewSolution3",
+      "type": "clarification",
+      "phase": 1,
+      "dependsOn": [],
+      "goal": "1st human interaction. Validate the prompt as early as possible: if invalid/insufficient (admission gate: empty, out of scope, no system intent), return an objective error + this clarification. Minimal opening questions; no architecture.",
+      "input": ["user prompt"],
+      "output": { "result": "initial answers + userLanguage", "savedArtifact": null }
+    },
+    {
+      "planId": "e1-clarification-extra",
+      "agentName": "agentNs3Draft",
+      "type": "clarification",
+      "phase": 1,
+      "dynamic": true,
+      "dependsOn": ["e1-draft"],
+      "goal": "Additional human clarification opened only when the E1 gate finds a blocking question. The partial e1-draft.json/.md remains saved, pipeline.json keeps e1-draft as gate_failed, and the answer reruns E1 with blockingAnswers and previousModuleName.",
+      "input": ["partial e1-draft.json", "blocking gate issues"],
+      "output": { "result": "blockingAnswers", "savedArtifact": null }
+    },
+    {
+      "planId": "e1-draft",
+      "agentName": "agentNs3Draft",
+      "type": "agent",
+      "phase": 1,
+      "dependsOn": ["e1-clarification"],
+      "goal": "Analyze the prompt and deliver the draft (understanding contract, 1 page): proposed module, problem, presumed actors, scope in/out, classified open questions, language.",
+      "input": ["prompt", "e1-clarification"],
+      "output": {
+        "result": "draft",
+        "savedArtifact": ["l4/{module}/pipeline/e1-draft.json", "l4/{module}/pipeline/e1-draft.md"]
+      },
+      "gate": {
+        "file": "steps/e1-draft/gate.ts",
+        "checks": ["valid e1-draft schema", "normalized and non-colliding module name", "every open question is classified (blocking | assumed with default)", "userLanguage is present"],
+        "onBlockingDoubt": "opens an additional clarification instead of continuing"
+      }
+    },
+    {
+      "planId": "checkpoint-draft",
+      "agentName": "widgetNs3Draft",
+      "type": "human_checkpoint",
+      "phase": 1,
+      "dependsOn": ["e1-draft"],
+      "goal": "User reads the draft (md), can request adjustment (short prompt -> rerun e1 with the request in context -> gate -> present again) or approve. Approval writes approvedBy=human to pipeline.json.",
+      "input": ["e1-draft.md"],
+      "output": { "result": "approval or adjustment request", "savedArtifact": "pipeline.json (e1 approved)" }
+    },
+    {
+      "planId": "e2-journeys",
+      "agentName": "agentNs3Journeys",
+      "type": "agent",
+      "phase": 1,
+      "dependsOn": ["checkpoint-draft"],
+      "goal": "Analyze/enrich user journeys and generate the feature catalog - WITHOUT ontology. Journeys by actor (steps with intent and result, no layout/page) + features with now/soon/later/never priority. Absorbs v2 discover-scope + recommend + decisions into ONE consistent delivery.",
+      "input": ["e1-draft.json (only)"],
+      "output": {
+        "result": "journeys + features",
+        "savedArtifact": ["l4/{module}/pipeline/e2-journeys.json", "l4/{module}/pipeline/e2-journeys.md"]
+      },
+      "gate": {
+        "file": "steps/e2-journeys/gate.ts",
+        "checks": ["valid e2-journeys schema", "every feature is referenced by at least one journey step", "every actor has at least one journey", "priorities are complete (now/soon/later/never)", "ids are normalized and unique", "every e1 actor is present (removed actors require an explicit recorded decision)"]
+      }
+    },
+    {
+      "planId": "checkpoint-journeys",
+      "agentName": "widgetNs3Journeys",
+      "type": "human_checkpoint",
+      "phase": 1,
+      "dependsOn": ["e2-journeys"],
+      "goal": "2nd human interaction - the most important business checkpoint. Graphical web component: journeys by actor (visual step map), features with editable priority, and an adjustment prompt. Loop: user request -> agentNs3JourneysAdjustment applies it to the artifact -> gate -> new version v{K} presented again. Approval freezes the current version.",
+      "input": ["e2-journeys.json (current version)"],
+      "output": {
+        "result": "e2 approved (end of Phase 1) or new iteration",
+        "savedArtifact": ["e2-journeys.v{K}.json (iterations)", "e2-journeys.json (frozen on approval)", "pipeline.json (e2 approved; e3+ dirty if re-approved)"]
+      },
+      "notes": "singleWritePath: the widget never writes directly; every change passes through the adjustment agent + gate. Loop decisions feed the designContext in E3."
+    },
+    {
+      "planId": "e3-ontology",
+      "type": "agent",
+      "phase": 2,
+      "status": "planned",
+      "dependsOn": ["checkpoint-journeys"],
+      "goal": "Ontology: 1 entity per file (fields, enums, lifecycle) + {module}DesignContext.defs.ts as an ontology item (original prompt, language, decisions, assumptions). Fan-out = list iteration inside the step, retry per item.",
+      "savedArtifact": ["l4/{module}/ontology/{EntityId}.defs.ts", "l4/{module}/pipeline/e3-ontology.md"]
+    },
+    {
+      "planId": "e4-actors-rules-refs",
+      "type": "agent",
+      "phase": 2,
+      "status": "planned",
+      "dependsOn": ["e3-ontology"],
+      "goal": "Actors (roster + roleScope JWT), global rules, MDM/horizontal/plugin references (reuse v2 patterns).",
+      "savedArtifact": ["l4/actors/{module}Actors.defs.ts", "l4/rules/{module}Rules.defs.ts"]
+    },
+    {
+      "planId": "e5-workflows-operations",
+      "type": "agent",
+      "phase": 2,
+      "status": "planned",
+      "dependsOn": ["e4-actors-rules-refs"],
+      "goal": "Classify + define workflows and operations (1 per file, embedded story, capability+priority, canonical pageId/commandName/bffName). Formal gate: workflow ALWAYS has non-empty operationIds.",
+      "savedArtifact": ["l4/workflows/{workflowId}.defs.ts", "l4/operations/{operationId}.defs.ts"]
+    },
+    {
+      "planId": "e6-journey-map",
+      "type": "agent",
+      "phase": 2,
+      "status": "planned",
+      "dependsOn": ["e5-workflows-operations"],
+      "goal": "Consolidated journey map: landings by actor, workspaces, navigation edges, input origins.",
+      "savedArtifact": ["l4/{module}/journeys/{module}Journeys.defs.ts"]
+    },
+    {
+      "planId": "e7-validation-summary",
+      "type": "agent",
+      "phase": 2,
+      "status": "planned",
+      "dependsOn": ["e6-journey-map"],
+      "goal": "Cheap global recheck (cross-consistency, blocking on error) + automatic closing: process.defs.ts, todoFrontend/todoBackend, reopenable summary.",
+      "savedArtifact": ["l4/trace/behavior-health-report.json", "l5/{module}/process.defs.ts", "l5/{module}/todoFrontend.defs.ts", "l5/{module}/todoBackend.defs.ts"]
+    }
+  ],
+  "cli": {
+    "commands": ["/status (readable pipeline.json)", "/rebuild e{N} (reruns the step; refuses if upstream is dirty)", "/replay e{N} fixture={name} (golden run: runs the step on the fixture and performs a structural invariant diff)"],
+    "reference": "same style as agentChangeFrontend/agentChangeBackend"
+  },
+  "handoffArtifacts": {
+    "phase1Produces": ["l4/{module}/pipeline/e1-draft.{json,md}", "l4/{module}/pipeline/e2-journeys.{json,md} (frozen)", "l4/{module}/pipeline/pipeline.json"],
+    "finalProduces": "identical to agentNewSolution2 (Stage 2/3 do not change)",
+    "explicitlyNotProduced": ["l2 pages", "persistence tables", "layer_3/4 backend", "metrics"]
+  }
+}
