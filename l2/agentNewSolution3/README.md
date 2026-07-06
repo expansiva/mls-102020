@@ -25,8 +25,21 @@ Implemented through human checkpoint 1:
 - Adjust reruns E1 through a new controlled attempt; the widget never writes artifacts directly.
 - Approve marks `e1-draft` as `approvedBy=human` in `pipeline.json`.
 
-E2 and human checkpoint 2 are out of this delivery. The item appears as planned, but
-`agentNs3Journeys` must not execute yet.
+E2 (`agentNs3Journeys`) is now implemented: from an approved (or gate-ok) E1 draft it generates
+`e2-journeys.json` + `e2-journeys.md` (journeys per actor + prioritized feature catalog), validated by
+`steps/e2-journeys/gate.ts` and generated with `modelType: codereasoning`. Human checkpoint 2 (the
+graphical `widgetNs3Journeys` and the adjustment loop) is NOT built yet: after E2 passes the gate the
+step completes and the artifacts can be read from `l4/{module}/pipeline/`.
+
+Resume: an empty `@@newSolution3` (the runtime strips the mention) resumes the first module whose
+Phase 1 is incomplete and re-enters at E2, so the clarification is not repeated. A non-empty prompt
+starts a new module.
+
+Known issue (blocks the in-app checkpoints): a checkpoint clarification only renders when it lives
+inside an agent's `interaction.payload` (the frontend routes via `getInteractionStepId`, which walks
+`interaction.payload`, not `nextSteps`). The current `checkpoint-draft` is added into `nextSteps`, so
+it renders as "No found parentInteraction" - this is the "system got lost" symptom and must be fixed
+before either checkpoint widget can be approved in Studio.
 
 ## Artifacts
 

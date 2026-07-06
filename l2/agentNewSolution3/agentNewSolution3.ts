@@ -3,7 +3,14 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
-import { isRecord, parseMaybeJson } from '/_102020_/l2/agentNewSolution3/helpers/ns3Fs.js';
+import {
+  isRecord,
+  listExistingModuleFolders,
+  ns3PipelineArtifactFileInfo,
+  parseMaybeJson,
+  readJsonArtifact,
+} from '/_102020_/l2/agentNewSolution3/helpers/ns3Fs.js';
+import { Ns3PipelineState, readNs3Pipeline } from '/_102020_/l2/agentNewSolution3/helpers/ns3Pipeline.js';
 
 export const NS3_PLAN_IDS = [
   'e1-clarification', 'e1-clarification-answer', 'e1-draft', 'checkpoint-draft', 'e2-journeys', 'checkpoint-journeys',
@@ -73,22 +80,69 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
   const normalized = (userPrompt || '').trim();
-  const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
+  // Empty "@@newSolution3" (the runtime strips the mention) means resume the first module whose
+  // Phase 1 is incomplete, so the user does not repeat the clarification they already answered.
+  if (!normalized) {
+    const resume = await findResumableNs3Module();
+    if (resume) return [buildRootMessageAI(agent, context, resume.sourcePrompt, { resumeModule: resume.moduleName, resumeTarget: resume.target })];
+  }
+  return [buildRootMessageAI(agent, context, normalized || '(empty prompt)', {})];
+}
+
+function buildRootMessageAI(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  content: string,
+  extraMemory: Record<string, string>,
+): mls.msg.AgentIntentAddMessageAI {
+  return {
     type: 'add-message-ai',
     request: {
       action: 'addMessageAI',
       agentName: agent.agentName,
       inputAI: [
         { type: 'system', content: systemPrompt.replace('{{planIds}}', NS3_PLAN_IDS.join(', ')) },
-        { type: 'human', content: normalized || '(empty prompt)' },
+        { type: 'human', content },
       ],
       taskTitle: 'newSolution3',
       threadId: context.message.threadId,
       userMessage: context.message.content,
-      longTermMemory: { taskName: 'newSolution3', flowName: 'agentNewSolution3' },
+      longTermMemory: { taskName: 'newSolution3', flowName: 'agentNewSolution3', ...extraMemory },
     },
   };
-  return [addMessageAI];
+}
+
+type Ns3ResumeTarget = 'e1-draft' | 'e2-journeys';
+
+interface Ns3ResumeInfo {
+  moduleName: string;
+  sourcePrompt: string;
+  target: Ns3ResumeTarget;
+}
+
+// Scan modules in the active project and return the first one whose Phase 1 artifacts are not done.
+// A step counts as done when it was approved or its last gate passed (the human checkpoint that
+// freezes it is layered on top and does not change which step must run next).
+async function findResumableNs3Module(): Promise<Ns3ResumeInfo | null> {
+  for (const moduleName of listExistingModuleFolders()) {
+    const pipeline = await readNs3Pipeline(moduleName);
+    if (!pipeline) continue;
+    const target = resolveResumeTarget(pipeline);
+    // Phase 1 resume currently re-enters at E2 only (E1 needs the clarification the fresh flow owns).
+    if (target !== 'e2-journeys') continue;
+    const draft = await readJsonArtifact<{ sourcePrompt?: string }>(ns3PipelineArtifactFileInfo(moduleName, 'e1-draft', '.json'), false);
+    if (!draft) continue;
+    return { moduleName, sourcePrompt: readString(draft.sourcePrompt) || moduleName, target };
+  }
+  return null;
+}
+
+function resolveResumeTarget(pipeline: Ns3PipelineState): Ns3ResumeTarget | null {
+  const e1 = pipeline.steps['e1-draft'];
+  const e2 = pipeline.steps['e2-journeys'];
+  if (!e1 || !(e1.status === 'approved' || e1.lastGate?.ok)) return 'e1-draft';
+  if (!e2 || !(e2.status === 'approved' || e2.lastGate?.ok)) return 'e2-journeys';
+  return null;
 }
 
 async function afterPromptStep(
@@ -100,6 +154,17 @@ async function afterPromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   try {
     const rootPlan = normalizeRootPlan(step.interaction?.payload?.[0]);
+    const resumeModule = readString(context.task?.iaCompressed?.longMemory?.resumeModule);
+    if (resumeModule) {
+      return buildResumeTree(resumeModule).map(resumeStep => ({
+        type: 'add-step',
+        messageId: context.message.orderAt,
+        threadId: context.message.threadId,
+        taskId: context.task?.PK || '',
+        parentStepId: step.stepId,
+        step: resumeStep,
+      } as mls.msg.AgentIntentAddStep));
+    }
     const addSteps = buildPlannedTree(rootPlan, rootPlan.validPrompt).map(plannedStep => ({
       type: 'add-step',
       messageId: context.message.orderAt,
@@ -162,7 +227,7 @@ function buildPlannedTree(plan: Ns3RootPlan, includePhase2: boolean): mls.msg.AI
   if (!includePhase2) return phase1;
   return [
     ...phase1,
-    plannedStep('e2-journeys', title('e2-journeys'), ['checkpoint-draft']),
+    agentStep('e2-journeys', 'agentNs3Journeys', title('e2-journeys'), ['checkpoint-draft'], 'waiting_dependency'),
     plannedStep('checkpoint-journeys', title('checkpoint-journeys'), ['e2-journeys']),
     plannedStep('e3-ontology', title('e3-ontology'), ['checkpoint-journeys']),
     plannedStep('e4-actors-rules-refs', title('e4-actors-rules-refs'), ['e3-ontology']),
@@ -224,6 +289,36 @@ function plannedStep(planId: Ns3PlanId, stepTitle: string, dependsOn: Ns3PlanId[
     result: JSON.stringify({ planId, status: 'planned' }),
     planning: { planId, dependsOn, executionMode: 'manual_later', executionHost: 'client', plannedOnly: true },
   } as mls.msg.AIResultStep;
+}
+
+// Resume tree: a completed anchor plus the E2 agent step that depends on it. The agent resolves the
+// module and reads e1-draft.json from disk, so no clarification/draft steps need to be rebuilt.
+function buildResumeTree(moduleName: string): mls.msg.AIPayload[] {
+  const anchorPlanId = 'e2-resume-anchor';
+  return [
+    {
+      type: 'result',
+      stepId: 0,
+      interaction: null,
+      stepTitle: 'Resume Phase 1',
+      status: 'completed',
+      nextSteps: [],
+      result: JSON.stringify({ planId: anchorPlanId, moduleName, resumedTo: 'e2-journeys' }, null, 2),
+      planning: { planId: anchorPlanId, dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
+    } as mls.msg.AIResultStep,
+    {
+      type: 'agent',
+      stepId: 0,
+      interaction: null,
+      stepTitle: defaultTitles['e2-journeys'],
+      status: 'waiting_dependency',
+      nextSteps: [],
+      agentName: 'agentNs3Journeys',
+      prompt: JSON.stringify({ planId: 'e2-journeys', moduleName }),
+      rags: [],
+      planning: { planId: 'e2-journeys', dependsOn: [anchorPlanId], executionMode: 'sequential', executionHost: 'client' },
+    } as mls.msg.AIAgentStep,
+  ];
 }
 
 async function applyInitialClarification(

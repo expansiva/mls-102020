@@ -23,6 +23,7 @@
     "singleWritePath": "Widgets NEVER write artifacts directly: every change (edit or adjustment prompt) passes through the adjustment agent + gate before being presented again.",
     "trace": "l4/{module}/pipeline/trace/e{N}-{agent}-{attempt}.json (LLM payloads, gate errors, timings).",
     "rootPlan": "agentNewSolution3 returns userLanguage, validPrompt/invalidReason, localized step titles, uiLabels for checkpoint widgets, and clarification 1 questions.",
+    "resume": "An empty '@@newSolution3' (the runtime strips the mention) resumes the first module whose Phase 1 is incomplete instead of starting a new one, so the user does not repeat the clarification. beforePromptImplicit scans l4/{module}/pipeline/pipeline.json; a step counts as done when approved OR its lastGate.ok is true. Phase 1 resume currently re-enters at e2-journeys only (a completed 'e2-resume-anchor' result + the e2-journeys agent step that depends on it); the agent resolves the module and reads e1-draft.json from disk. A non-empty prompt always starts a new module.",
     "i18n": "No hard-coded language; step strings, human summaries, and checkpoint uiLabels are generated in the user's language (userLanguage captured in E1)."
   },
   "folderLayout": {
@@ -133,7 +134,7 @@
         "result": "e2 approved (end of Phase 1) or new iteration",
         "savedArtifact": ["e2-journeys.v{K}.json (iterations)", "e2-journeys.json (frozen on approval)", "pipeline.json (e2 approved; e3+ dirty if re-approved)"]
       },
-      "notes": "singleWritePath: the widget never writes directly; every change passes through the adjustment agent + gate. Loop decisions feed the designContext in E3."
+      "notes": "singleWritePath: the widget never writes directly; every change passes through the adjustment agent + gate. Loop decisions feed the designContext in E3. IMPLEMENTATION STATUS (2026-07-06): the E2 agent, gate, schema, prompt (codereasoning) and fixture are implemented and e2-journeys writes e2-journeys.{json,md}; the graphical widget and the adjustment loop are NOT built yet. RENDERING CAVEAT: a checkpoint that renders a widget must be a clarification step that lives inside an agent's interaction.payload (getInteractionStepId walks interaction.payload, not nextSteps). A checkpoint clarification added into nextSteps shows 'No found parentInteraction' and never renders - this is the current checkpoint-draft bug and must be fixed before checkpoint-journeys is wired."
     },
     {
       "planId": "e3-ontology",

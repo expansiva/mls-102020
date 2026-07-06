@@ -1,0 +1,337 @@
+{
+  "schemaVersion": "2026-07-06-ns3-e2-v1",
+  "moduleName": "cafeFlow",
+  "moduleTitle": "CafeFlow - Gestão para Cafeterias e Lanchonetes",
+  "userLanguage": "pt-BR",
+  "version": 1,
+  "actors": [
+    {
+      "actorId": "atendente",
+      "name": "Atendente de caixa",
+      "description": "Registra pedidos no POS, acompanha o status e recebe pagamentos."
+    },
+    {
+      "actorId": "cozinha",
+      "name": "Equipe de cozinha",
+      "description": "Acompanha a fila de preparo e sinaliza quando cada item fica pronto."
+    },
+    {
+      "actorId": "gerente",
+      "name": "Gerente de turno",
+      "description": "Abre e fecha turnos, mantém cardápio e estoque, acompanha o dashboard e usa o assistente IA."
+    }
+  ],
+  "journeys": [
+    {
+      "journeyId": "lancarPedido",
+      "actorId": "atendente",
+      "title": "Lançar pedido no POS",
+      "goal": "registrar rapidamente um pedido de mesa ou takeout e enviá-lo à cozinha",
+      "soThat": "o cliente é atendido com agilidade e a cozinha recebe o pedido sem retrabalho",
+      "trigger": "um cliente faz um pedido no balcão",
+      "steps": [
+        {
+          "stepId": "abrirPedido",
+          "title": "Abrir novo pedido",
+          "intent": "o atendente inicia um pedido e escolhe se é para mesa ou takeout",
+          "result": "pedido aberto e vazio",
+          "featureRefs": ["posEntry"]
+        },
+        {
+          "stepId": "adicionarItens",
+          "title": "Adicionar itens do cardápio",
+          "intent": "o atendente busca itens no cardápio e adiciona ao pedido com quantidade e observações",
+          "result": "itens lançados no pedido",
+          "featureRefs": ["menuBrowse", "posEntry"]
+        },
+        {
+          "stepId": "enviarCozinha",
+          "title": "Enviar para a cozinha",
+          "intent": "o atendente confirma o pedido para que ele entre na fila de preparo",
+          "result": "pedido enviado à cozinha",
+          "featureRefs": ["kitchenQueue"]
+        },
+        {
+          "stepId": "acompanharStatus",
+          "title": "Acompanhar o status",
+          "intent": "o atendente vê o pedido avançar de recebido para pronto e chama o cliente",
+          "result": "status do pedido visível em tempo real",
+          "featureRefs": ["orderTracking", "orderStatus"]
+        },
+        {
+          "stepId": "registrarPagamento",
+          "title": "Registrar pagamento",
+          "intent": "o atendente informa a forma de pagamento e o valor recebido para fechar o pedido",
+          "result": "pagamento registrado e pedido concluído",
+          "featureRefs": ["paymentRecord"]
+        }
+      ],
+      "outcome": "pedido registrado, enviado à cozinha, acompanhado até pronto e pago",
+      "businessRules": [
+        "Um pedido só pode ser enviado à cozinha com pelo menos um item.",
+        "O pagamento é registrado manualmente (dinheiro, Pix ou cartão), sem integração com maquininha.",
+        "Um pedido pago não pode receber novos itens."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "consultarCardapio",
+      "actorId": "atendente",
+      "title": "Consultar cardápio no POS",
+      "goal": "encontrar rapidamente um item e ver seus detalhes durante o atendimento",
+      "soThat": "o atendimento não trava por dúvida sobre preço ou disponibilidade",
+      "steps": [
+        {
+          "stepId": "abrirCardapio",
+          "title": "Abrir o cardápio",
+          "intent": "o atendente abre a lista de itens disponíveis no POS",
+          "featureRefs": ["menuBrowse"]
+        },
+        {
+          "stepId": "filtrarItem",
+          "title": "Filtrar ou buscar",
+          "intent": "o atendente filtra por categoria ou busca pelo nome do item",
+          "featureRefs": ["menuBrowse"]
+        }
+      ],
+      "outcome": "item localizado com preço e disponibilidade para o atendimento",
+      "businessRules": [
+        "Itens marcados como indisponíveis não podem ser adicionados a um pedido."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "prepararFila",
+      "actorId": "cozinha",
+      "title": "Preparar a fila de pedidos",
+      "goal": "produzir os pedidos recebidos e manter o status sincronizado com o salão",
+      "soThat": "o atendente e o cliente sabem quando o pedido está pronto",
+      "trigger": "um novo pedido entra na fila de preparo",
+      "steps": [
+        {
+          "stepId": "verFila",
+          "title": "Ver a fila",
+          "intent": "a cozinha consulta os pedidos pendentes em ordem de chegada",
+          "featureRefs": ["kitchenQueue"]
+        },
+        {
+          "stepId": "iniciarPreparo",
+          "title": "Iniciar o preparo",
+          "intent": "a cozinha marca o pedido como em preparo",
+          "featureRefs": ["orderStatus"]
+        },
+        {
+          "stepId": "marcarPronto",
+          "title": "Marcar como pronto",
+          "intent": "a cozinha sinaliza que o item está pronto para retirada",
+          "result": "status atualizado para pronto e visível no POS",
+          "featureRefs": ["orderStatus"]
+        }
+      ],
+      "outcome": "pedidos produzidos e status sincronizados entre cozinha e salão",
+      "businessRules": [
+        "O status de um pedido só avança (recebido → em preparo → pronto), nunca retrocede sem cancelamento explícito."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "abrirTurno",
+      "actorId": "gerente",
+      "title": "Abrir o turno diário",
+      "goal": "abrir o turno do dia com o saldo inicial de caixa",
+      "soThat": "as vendas do dia ficam associadas a um turno e o caixa parte de um valor conhecido",
+      "steps": [
+        {
+          "stepId": "informarAbertura",
+          "title": "Informar abertura",
+          "intent": "o gerente inicia a abertura do turno do dia",
+          "featureRefs": ["shiftControl"]
+        },
+        {
+          "stepId": "registrarSaldoInicial",
+          "title": "Registrar saldo inicial",
+          "intent": "o gerente informa o valor inicial do caixa",
+          "result": "turno aberto e caixa inicial registrado",
+          "featureRefs": ["shiftControl"]
+        }
+      ],
+      "outcome": "turno diário aberto e pronto para receber pedidos",
+      "businessRules": [
+        "Só pode existir um turno aberto por vez.",
+        "Pedidos só podem ser lançados com um turno aberto."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "fecharTurno",
+      "actorId": "gerente",
+      "title": "Fechar o turno diário",
+      "goal": "encerrar o turno com conferência de caixa e obter o relatório de fechamento",
+      "soThat": "o gerente concilia o caixa e revisa o desempenho do dia",
+      "steps": [
+        {
+          "stepId": "iniciarFechamento",
+          "title": "Iniciar fechamento",
+          "intent": "o gerente inicia o fechamento do turno atual",
+          "featureRefs": ["shiftControl"]
+        },
+        {
+          "stepId": "informarValores",
+          "title": "Informar valores de fechamento",
+          "intent": "o gerente informa o valor contado em caixa para conferência",
+          "featureRefs": ["shiftControl"]
+        },
+        {
+          "stepId": "gerarRelatorio",
+          "title": "Gerar relatório de fechamento",
+          "intent": "o gerente gera o relatório com vendas e conciliação do turno",
+          "result": "relatório de fechamento disponível",
+          "featureRefs": ["shiftReport"]
+        }
+      ],
+      "outcome": "turno fechado, caixa conciliado e relatório de fechamento gerado",
+      "businessRules": [
+        "Um turno com pedidos ainda abertos não pode ser fechado.",
+        "O relatório de fechamento usa apenas os pedidos e pagamentos do próprio turno."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "gerenciarCardapio",
+      "actorId": "gerente",
+      "title": "Gerenciar o cardápio",
+      "goal": "manter itens e categorias do cardápio atualizados e vinculados aos ingredientes",
+      "steps": [
+        {
+          "stepId": "editarCategorias",
+          "title": "Organizar categorias",
+          "intent": "o gerente cria, edita ou remove categorias do cardápio",
+          "featureRefs": ["menuManagement"]
+        },
+        {
+          "stepId": "editarItens",
+          "title": "Manter itens",
+          "intent": "o gerente cria e edita itens com categoria e preço, e ativa ou desativa a disponibilidade",
+          "featureRefs": ["menuManagement"]
+        },
+        {
+          "stepId": "vincularIngredientes",
+          "title": "Vincular ingredientes",
+          "intent": "o gerente associa os ingredientes de estoque consumidos por cada item",
+          "result": "item pronto para baixar estoque ao ser vendido",
+          "featureRefs": ["stockLink"]
+        }
+      ],
+      "outcome": "cardápio atualizado e itens vinculados aos ingredientes de estoque",
+      "businessRules": [
+        "Um item sem preço não pode ficar disponível para venda."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "gerenciarEstoque",
+      "actorId": "gerente",
+      "title": "Controlar o estoque de ingredientes",
+      "goal": "manter as quantidades de ingredientes atualizadas e reagir a estoque baixo",
+      "steps": [
+        {
+          "stepId": "cadastrarIngrediente",
+          "title": "Cadastrar ingrediente",
+          "intent": "o gerente cadastra ingredientes e a quantidade atual",
+          "featureRefs": ["stockControl"]
+        },
+        {
+          "stepId": "ajustarQuantidade",
+          "title": "Ajustar quantidade",
+          "intent": "o gerente registra entradas e correções de quantidade",
+          "featureRefs": ["stockControl"]
+        },
+        {
+          "stepId": "verAlertas",
+          "title": "Ver alertas de estoque baixo",
+          "intent": "o gerente vê quais ingredientes estão abaixo do mínimo para repor",
+          "featureRefs": ["lowStockAlert"]
+        }
+      ],
+      "outcome": "estoque de ingredientes atualizado e alertas de baixa visíveis",
+      "businessRules": [
+        "O controle é apenas por quantidade atual, sem lotes nem validade.",
+        "A venda de um item baixa automaticamente os ingredientes vinculados."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "acompanharDashboard",
+      "actorId": "gerente",
+      "title": "Acompanhar o dashboard do dia",
+      "goal": "acompanhar vendas, itens mais vendidos e estoque baixo em um só lugar",
+      "steps": [
+        {
+          "stepId": "abrirDashboard",
+          "title": "Abrir o dashboard",
+          "intent": "o gerente abre o painel operacional do dia",
+          "featureRefs": ["salesDashboard"]
+        },
+        {
+          "stepId": "analisarIndicadores",
+          "title": "Analisar indicadores",
+          "intent": "o gerente vê vendas do dia, itens mais vendidos e ingredientes em baixa",
+          "featureRefs": ["salesDashboard", "lowStockAlert"]
+        }
+      ],
+      "outcome": "visão operacional do dia disponível para decisão",
+      "businessRules": [
+        "O dashboard mostra apenas dados do turno aberto ou do dia corrente."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "usarAssistenteIa",
+      "actorId": "gerente",
+      "title": "Usar o assistente IA",
+      "goal": "obter um resumo de vendas do dia e sugestões de itens para promover",
+      "soThat": "o gerente decide promoções com base nos últimos 7 dias sem montar relatórios à mão",
+      "steps": [
+        {
+          "stepId": "pedirResumo",
+          "title": "Pedir resumo de vendas",
+          "intent": "o gerente solicita o resumo de vendas do dia ao assistente",
+          "result": "resumo de vendas apresentado no idioma configurado",
+          "featureRefs": ["aiSalesSummary"]
+        },
+        {
+          "stepId": "pedirSugestoes",
+          "title": "Pedir sugestões de promoção",
+          "intent": "o gerente solicita sugestões de itens para promover com base nos últimos 7 dias",
+          "result": "sugestões de promoção apresentadas",
+          "featureRefs": ["aiPromotionSuggestions"]
+        }
+      ],
+      "outcome": "gerente recebe resumo e sugestões geradas pela IA da plataforma",
+      "businessRules": [
+        "As chamadas de IA passam pelo proxy de LLM da plataforma.",
+        "O assistente usa apenas dados de vendas e estoque do próprio módulo."
+      ],
+      "notes": ""
+    }
+  ],
+  "features": [
+    { "featureId": "menuBrowse", "title": "Consulta de cardápio no POS", "priority": "now", "actorIds": ["atendente"] },
+    { "featureId": "posEntry", "title": "Lançamento de pedido no POS", "priority": "now", "actorIds": ["atendente"] },
+    { "featureId": "orderTracking", "title": "Acompanhamento de status do pedido", "priority": "now", "actorIds": ["atendente"] },
+    { "featureId": "paymentRecord", "title": "Registro manual de pagamento", "priority": "now", "actorIds": ["atendente"] },
+    { "featureId": "kitchenQueue", "title": "Fila de pedidos da cozinha", "priority": "now", "actorIds": ["cozinha", "atendente"] },
+    { "featureId": "orderStatus", "title": "Atualização de status pela cozinha", "priority": "now", "actorIds": ["cozinha"] },
+    { "featureId": "shiftControl", "title": "Abertura e fechamento de turno", "priority": "now", "actorIds": ["gerente"] },
+    { "featureId": "shiftReport", "title": "Relatório de fechamento de turno", "priority": "now", "actorIds": ["gerente"] },
+    { "featureId": "menuManagement", "title": "Gestão de itens e categorias do cardápio", "priority": "now", "actorIds": ["gerente"] },
+    { "featureId": "stockControl", "title": "Controle simples de estoque", "priority": "now", "actorIds": ["gerente"] },
+    { "featureId": "salesDashboard", "title": "Dashboard de vendas do dia", "priority": "now", "actorIds": ["gerente"] },
+    { "featureId": "stockLink", "title": "Vínculo de ingredientes ao item do cardápio", "priority": "soon", "actorIds": ["gerente"], "rationale": "Habilita a baixa automática de estoque, mas o controle básico já funciona sem ele." },
+    { "featureId": "lowStockAlert", "title": "Alertas de estoque baixo", "priority": "soon", "actorIds": ["gerente"] },
+    { "featureId": "aiSalesSummary", "title": "Assistente IA: resumo de vendas do dia", "priority": "soon", "actorIds": ["gerente"] },
+    { "featureId": "aiPromotionSuggestions", "title": "Assistente IA: sugestões de promoção (7 dias)", "priority": "later", "actorIds": ["gerente"], "rationale": "Valor incremental; depende de histórico acumulado de vendas." }
+  ],
+  "decisions": [],
+  "createdAt": "2026-07-06T00:00:00.000Z"
+}
