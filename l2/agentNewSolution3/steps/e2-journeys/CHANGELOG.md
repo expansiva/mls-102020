@@ -2,6 +2,20 @@
 
 # CHANGELOG - steps/e2-journeys
 
+## 2026-07-06 - T09 journey review widget
+
+- Added `widgetNs3Journeys.ts` and scoped `widgetNs3Journeys.less`.
+- Added `widgetNs3JourneysLogic.ts` with pure helpers for edit application and the
+  `checkpoint-journeys-answer` review payload.
+- The widget renders actor lanes, journey list/detail, tabs for overview/business rules/notes,
+  feature priority chips, version/history, prompt bar, and a change preview.
+- User edits are registered in an immutable change log and emitted through `ns3-journeys-change`.
+  Approve/adjust emits `ns3-journeys-review`; the widget still does not write artifacts directly.
+- Added `agentNs3Journeys.openStepView`, so the existing task feedback "open/abrir" action can mount
+  the journey widget from persisted `e2-journeys.json` without changing the collab-messages UI.
+- Verified the new files with filtered `tsc`; the repository-wide typecheck still fails in unrelated
+  `mls-102032` files.
+
 ## 2026-07-06 - E2 content engine (T07/T08 + fixture)
 
 - Added `schemas/e2-journeys.schema.json` (versioned `2026-07-06-ns3-e2-v1`).
@@ -19,6 +33,6 @@
   gate + markdown-render checked via a standalone TypeScript-transpile harness (the repo test runner
   could not run in this Linux sandbox due to a native esbuild binary mismatch).
 
-Deferred (next round): graphical widget `widgetNs3Journeys`, the adjustment loop
+Deferred (next round): checkpoint integration for `widgetNs3Journeys`, the adjustment loop
 `agentNs3JourneysAdjustment`, versioning `e2-journeys.v{K}.json`, and the checkpoint-rendering fix
-(see flow.json checkpoint-journeys notes).
+outside this folder (see flow.json checkpoint-journeys notes).

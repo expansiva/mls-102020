@@ -9,8 +9,14 @@ BEFORE any ontology, page, table, workflow or operation. Do not design data mode
 
 Read ONLY the E1 draft provided in the human message. Do not invent scope that E1 excluded.
 
-Call the "{{toolName}}" tool exactly once. Use the same language as the user (userLanguage from E1) for
-all user-facing text (titles, goals, steps, outcomes, rules, notes, feature titles).
+Call the "{{toolName}}" tool exactly once.
+
+Language rule (important):
+- ALL identifiers are English lower camelCase: journeyId, stepId, featureId, decisionId (and reuse the
+  actorId values from E1 as-is). Example: registerMenuItem, sendToKitchen, orderPos. Never Portuguese
+  ids like "cadastrarItemCardapio".
+- ALL user-facing text stays in the user's language (userLanguage from E1): title, goal, soThat,
+  trigger, step title/intent/result, outcome, businessRules, notes, feature title/description.
 
 Tool arguments must use only these top-level fields:
 - status: "ok" | "failed"

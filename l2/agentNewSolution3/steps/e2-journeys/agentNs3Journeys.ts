@@ -49,6 +49,7 @@ export function createAgent(): IAgentAsync {
     visibility: 'private',
     beforePromptStep,
     afterPromptStep,
+    openStepView,
   };
 }
 
@@ -169,6 +170,44 @@ async function resolveE2Module(requested?: string): Promise<string> {
     if (!pipeline?.steps['e2-journeys'] || pipeline.steps['e2-journeys'].status !== 'approved') return module;
   }
   throw new Error(`[${AGENT_NAME}] no module with an e1-draft ready for E2`);
+}
+
+async function openStepView(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  step: mls.msg.AIAgentStep,
+): Promise<HTMLElement> {
+  await import('/_102020_/l2/agentNewSolution3/steps/e2-journeys/widgetNs3Journeys.js');
+  const moduleName = await resolveOpenViewModule(step);
+  const el = document.createElement('widget-ns3-journeys-102020');
+  (el as unknown as { value: unknown }).value = moduleName
+    ? { moduleName, mode: 'new-module' }
+    : { readOnly: true };
+  return el;
+}
+
+async function resolveOpenViewModule(step: mls.msg.AIAgentStep): Promise<string> {
+  const parsedArgs = parseArgs(step.prompt);
+  if (parsedArgs.moduleName) return normalizeModuleFolderName(parsedArgs.moduleName);
+
+  const payloadModule = readModuleNameFromE2Payload(step.interaction?.payload?.[0]);
+  if (payloadModule) return payloadModule;
+
+  for (const module of listExistingModuleFolders()) {
+    const artifact = await readJsonArtifact<Ns3E2JourneysArtifact>(ns3PipelineArtifactFileInfo(module, 'e2-journeys', '.json'), false);
+    if (artifact?.moduleName) return artifact.moduleName;
+  }
+  return '';
+}
+
+function readModuleNameFromE2Payload(payload: unknown): string {
+  try {
+    const output = extractE2Output(payload);
+    const moduleName = readString(output.result.moduleName);
+    return moduleName ? normalizeModuleFolderName(moduleName) : '';
+  } catch {
+    return '';
+  }
 }
 
 function addGateRetryStep(

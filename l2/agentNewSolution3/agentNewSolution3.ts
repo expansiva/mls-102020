@@ -219,20 +219,18 @@ async function beforeClarificationStep(
 
 function buildPlannedTree(plan: Ns3RootPlan, includePhase2: boolean): mls.msg.AIPayload[] {
   const title = (planId: Ns3PlanId) => getTitle(plan, planId);
-  // Human checkpoint 1 is an agent step that EMITS the review clarification into its OWN
-  // interaction.payload (same shape as e1-clarification / agentNewSolution2Requirements). It must NOT
-  // be a container (an agent with a child clarification step): the parent can only complete after its
-  // children finish, and the child cannot start until the parent completes -> deadlock (step stuck
-  // in_progress). On approve the widget writes a 'checkpoint-draft-answer' result that unlocks E2.
+  // Only TWO human interactions (PropostaAgentNewSolution3 §8): (1) the opening clarification and
+  // (2) the journeys checkpoint (E2). E1 (rascunho / understanding contract) runs AUTOMATICALLY -
+  // its green gate auto-approves and the pipeline goes straight to E2 (e2-journeys dependsOn e1-draft).
+  // There is no draft-approval checkpoint.
   const phase1: mls.msg.AIPayload[] = [
     agentStep('e1-clarification', 'agentNs3Draft', title('e1-clarification'), [], 'waiting_human_input'),
     agentStep('e1-draft', 'agentNs3Draft', title('e1-draft'), ['e1-clarification-answer'], 'waiting_dependency'),
-    agentStep('checkpoint-draft', 'agentNs3Draft', title('checkpoint-draft'), ['e1-draft'], 'waiting_dependency'),
   ];
   if (!includePhase2) return phase1;
   return [
     ...phase1,
-    agentStep('e2-journeys', 'agentNs3Journeys', title('e2-journeys'), ['checkpoint-draft-answer'], 'waiting_dependency'),
+    agentStep('e2-journeys', 'agentNs3Journeys', title('e2-journeys'), ['e1-draft'], 'waiting_dependency'),
     plannedStep('checkpoint-journeys', title('checkpoint-journeys'), ['e2-journeys']),
     plannedStep('e3-ontology', title('e3-ontology'), ['checkpoint-journeys']),
     plannedStep('e4-actors-rules-refs', title('e4-actors-rules-refs'), ['e3-ontology']),

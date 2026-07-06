@@ -18,6 +18,7 @@ import {
 import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution3/helpers/ns3Ids.js';
 import { Ns3GateCheck, errorIssue, runNs3Gate } from '/_102020_/l2/agentNewSolution3/helpers/ns3Gate.js';
 import {
+  approveNs3Step,
   createNs3Pipeline,
   markNs3StepRunning,
   readNs3Pipeline,
@@ -72,23 +73,6 @@ async function beforePromptStep(
   if (!context.task) throw new Error(`[${AGENT_NAME}] task invalid`);
   const parsedArgs = parseArgs(args);
   const rootPlan = getRootPlan(context);
-  if (parsedArgs.planId === 'checkpoint-draft') {
-    // Emit the review clarification into THIS agent step's interaction.payload (same mechanism as
-    // e1-clarification). afterPromptStep keeps the payload; beforeClarificationStep renders
-    // widgetNs3Draft. No container/child step (which would deadlock).
-    const moduleName = parsedArgs.previousModuleName || findLatestE1ModuleName(context) || '';
-    return [{
-      type: 'prompt_ready',
-      args: args || JSON.stringify({ planId: 'checkpoint-draft' }),
-      messageId: context.message.orderAt,
-      threadId: context.message.threadId,
-      taskId: context.task.PK,
-      hookSequential,
-      parentStepId: parentStep.stepId,
-      systemPrompt: checkpointSystemPrompt,
-      humanPrompt: `## Module\n${moduleName}\n## User language\n${rootPlan.userLanguage}\n`,
-    } as mls.msg.AgentIntentPromptReady];
-  }
   if (parsedArgs.planId === 'e1-clarification') {
     return [{
       type: 'prompt_ready',
@@ -147,7 +131,6 @@ async function afterPromptStep(
   try {
     const parsedArgs = parseArgs(step.prompt);
     if (parsedArgs.planId === 'e1-clarification') return handleInitialClarificationPayload(context, parentStep, step, hookSequential);
-    if (parsedArgs.planId === 'checkpoint-draft') return handleCheckpointDraftPayload(context, parentStep, step, hookSequential);
     const output = extractE1Output(step.interaction?.payload?.[0]);
     if (output.status === 'failed') {
       return [updateStatus(context, parentStep, step, hookSequential, 'failed', output.trace.join('\n') || 'E1 draft returned failed')];
@@ -200,8 +183,11 @@ async function afterPromptStep(
 
     await writeNs3Trace(artifact.moduleName, 'e1-draft', AGENT_NAME, attempt, { artifact, gate });
 
-    // The checkpoint-draft wrapper (dependsOn e1-draft) runs automatically once e1-draft completes
-    // and renders its child clarification. No explicit activation needed here.
+    // E1 is NOT a human checkpoint (only 2 human interactions: clarification and journeys). A green
+    // gate auto-approves the draft and the pipeline continues straight to E2 (e2-journeys dependsOn
+    // e1-draft). The e1-draft.md stays on disk as the understanding contract / E2 input.
+    pipeline = approveNs3Step(pipeline, 'e1-draft', 'auto');
+    await writeNs3Pipeline(pipeline);
     return [updateStatus(context, parentStep, step, hookSequential, 'completed')];
   } catch (error) {
     const traceMsg = error instanceof Error ? error.message : String(error);
@@ -241,24 +227,6 @@ async function beforeClarificationStep(
     });
     div.appendChild(el);
     return div;
-  }
-  if (parsed.planId === 'checkpoint-draft') {
-    await import('/_102020_/l2/agentNewSolution3/widgetNs3Draft.js');
-    const rootPlan = getRootPlan(context);
-    const el = document.createElement('widget-ns3-draft-102020');
-    (el as unknown as { value: unknown }).value = {
-      taskId: context.task?.PK || '',
-      moduleName: parsed.moduleName || findLatestE1ModuleName(context) || '',
-      stepId: step.stepId,
-      parentStepId: parentStep.stepId,
-      rerunParentStepId: findParentStepId(context, parentStep.stepId) || parentStep.stepId,
-      hookSequential,
-      senderId: context.message.senderId,
-      threadId: context.message.threadId,
-      messageId: context.message.orderAt,
-      uiLabels: rootPlan.uiLabels,
-    };
-    return el;
   }
   if (parsed.planId === 'e1-clarification-extra') {
     await import('/_102025_/l2/widgetQuestionsForClarification.js');
@@ -307,20 +275,6 @@ function handleInitialClarificationPayload(
   return [];
 }
 
-function handleCheckpointDraftPayload(
-  context: mls.msg.ExecutionContext,
-  parentStep: mls.msg.AIAgentStep,
-  step: mls.msg.AIAgentStep,
-  hookSequential: number,
-): mls.msg.AgentIntent[] {
-  const payload = step.interaction?.payload?.[0];
-  const parsed = parseMaybeJson(payload);
-  const result = isRecord(parsed) && parsed.type === 'flexible' ? parseMaybeJson(parsed.result) : parsed;
-  if (!isRecord(result) || result.type !== 'clarification') {
-    return [updateStatus(context, parentStep, step, hookSequential, 'failed', `invalid checkpoint payload: ${JSON.stringify(payload)}`)];
-  }
-  return []; // keep the clarification payload; beforeClarificationStep renders widgetNs3Draft
-}
 
 async function applyInitialClarification(
   context: mls.msg.ExecutionContext,
@@ -346,37 +300,6 @@ async function applyInitialClarification(
   context.task = ret.task;
   if (ret.message) context.message = ret.message;
   if (action === 'continue') await continuePoolingTask(context);
-}
-
-function activateCheckpointClarification(
-  context: mls.msg.ExecutionContext,
-  parentStep: mls.msg.AIAgentStep,
-  moduleName: string,
-  hookSequential: number,
-): mls.msg.AgentIntent {
-  const existing = findStepByPlanId(context, 'checkpoint-draft');
-  if (existing) {
-    const parentStepId = findParentStepId(context, existing.stepId) || parentStep.stepId;
-    return updateStatus(context, { ...parentStep, stepId: parentStepId }, existing, hookSequential, 'pending', `checkpoint-draft ready for ${moduleName}`);
-  }
-  const rootPlan = getRootPlan(context);
-  return {
-    type: 'add-step',
-    messageId: context.message.orderAt,
-    threadId: context.message.threadId,
-    taskId: context.task?.PK || '',
-    parentStepId: parentStep.stepId,
-    step: {
-      type: 'clarification',
-      stepId: 0,
-      interaction: null,
-      stepTitle: rootPlan.titles['checkpoint-draft'] || 'Approve draft',
-      status: 'pending',
-      nextSteps: [],
-      json: JSON.stringify({ planId: 'checkpoint-draft', moduleName, userLanguage: rootPlan.userLanguage }),
-      planning: { planId: 'checkpoint-draft', dependsOn: ['e1-draft'], executionMode: 'sequential', executionHost: 'client' },
-    } as mls.msg.AIClarificationStep,
-  };
 }
 
 function addBlockingClarification(
@@ -864,15 +787,6 @@ Return only valid JSON:
 }
 `;
 
-const checkpointSystemPrompt = `
-<!-- modelType: codefast -->
-
-You gate the E1 draft review checkpoint for agentNewSolution3. The draft is rendered by a widget that
-reads the saved artifact; you only need to open the checkpoint.
-
-Return ONLY this JSON, with nothing added or changed:
-{ "type": "clarification", "json": { "planId": "checkpoint-draft" } }
-`;
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;

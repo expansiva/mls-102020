@@ -31,3 +31,18 @@ Rules:
 - Do not create ontology, pages, tables, workflows or operations.
 - `businessRules` and `notes` are per-journey human inputs; adjustments must preserve them.
 - The widget never writes artifacts; adjustments always rerun this step through the gate.
+
+Widget (`widgetNs3Journeys.ts`):
+- Custom element: `<widget-ns3-journeys-102020>`.
+- Input: either the full `Ns3E2JourneysArtifact` as `value`, or `{ moduleName, project? }` to load
+  `l4/{module}/pipeline/e2-journeys.json` from `mls.actualProject` or an explicit project such as
+  `102051`.
+- Renders actor lanes, searchable journey list, selected journey detail, editable
+  `businessRules[]`/`notes`, editable feature priority chips, version/history, and the prompt bar.
+- Emits `ns3-journeys-change` for local edits and `ns3-journeys-review` with payload type
+  `checkpoint-journeys-answer` for approve/adjust.
+- The review payload includes `edits`, immutable `changes`, and a `proposedArtifact`, but persistence
+  remains the responsibility of the checkpoint/adjustment flow.
+- `agentNs3Journeys.openStepView` mounts this widget through the existing task feedback "open/abrir"
+  action. It rebuilds state from persisted `e2-journeys.json`, matching the `agentNewSolution2Final`
+  pattern.

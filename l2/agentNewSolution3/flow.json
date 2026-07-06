@@ -39,8 +39,8 @@
     "widgetNs3Journeys.ts/.less": "human checkpoint 2 (graphical journeys + features/priorities + adjustment prompt)"
   },
   "treeOverview": [
-    "phase-understanding (visual): e1-clarification -> e1-clarification-answer -> e1-draft -> checkpoint-draft",
-    "phase-business (visual): e2-journeys -> checkpoint-journeys (adjustment loop)",
+    "phase-understanding (visual): e1-clarification -> e1-clarification-answer -> e1-draft (auto-approved, NO human checkpoint)",
+    "phase-business (visual): e2-journeys -> checkpoint-journeys (2nd and last human interaction; adjustment loop)",
     "phase-model (visual, planned): e3-ontology -> e4-actors-rules-refs",
     "phase-behavior (visual, planned): e5-workflows-operations -> e6-journey-map",
     "phase-closing (visual, planned): e7-validation-summary"
@@ -97,20 +97,21 @@
     },
     {
       "planId": "checkpoint-draft",
-      "agentName": "widgetNs3Draft",
-      "type": "human_checkpoint",
+      "agentName": "(none)",
+      "type": "auto",
       "phase": 1,
+      "status": "removed",
       "dependsOn": ["e1-draft"],
-      "goal": "User reads the draft (md), can request adjustment (short prompt -> rerun e1 with the request in context -> gate -> present again) or approve. Approval writes approvedBy=human to pipeline.json.",
+      "goal": "REMOVED (2026-07-06). Per PropostaAgentNewSolution3 §8 there are only TWO human interactions (clarification and journeys), so E1 is NOT a human checkpoint. E1 auto-approves on a green gate (approveNs3Step 'auto') and the pipeline goes straight to E2. The e1-draft.md remains on disk as the understanding contract / E2 input. widgetNs3Draft.* stays in the repo but is not wired.",
       "input": ["e1-draft.md"],
-      "output": { "result": "approval or adjustment request", "savedArtifact": "pipeline.json (e1 approved)" }
+      "output": { "result": "auto-approval (no human screen)", "savedArtifact": "pipeline.json (e1 approvedBy=auto)" }
     },
     {
       "planId": "e2-journeys",
       "agentName": "agentNs3Journeys",
       "type": "agent",
       "phase": 1,
-      "dependsOn": ["checkpoint-draft"],
+      "dependsOn": ["e1-draft"],
       "goal": "Analyze/enrich user journeys and generate the feature catalog - WITHOUT ontology. Journeys by actor (steps with intent and result, no layout/page) + features with now/soon/later/never priority. Absorbs v2 discover-scope + recommend + decisions into ONE consistent delivery.",
       "input": ["e1-draft.json (only)"],
       "output": {
