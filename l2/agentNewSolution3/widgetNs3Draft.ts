@@ -148,7 +148,10 @@ export class WidgetNs3Draft102020 extends StateLitElement {
       const pipeline = approveNs3Step(this._pipeline || await readNs3Pipeline(this._artifact.moduleName) || this._newPipelineFallback(), 'e1-draft', 'human');
       await writeNs3Pipeline(pipeline);
       this._pipeline = pipeline;
-      await this._completeCheckpoint('completed', 'checkpoint-draft approved');
+      // Write the answer result (completes checkpoint-draft via children + unlocks e2-journeys),
+      // then complete the review clarification. Order matters: the result is added while the parent
+      // agent is still open.
+      await this._applyIntents([this._checkpointAnswerStep(), this._checkpointStatus('completed', 'checkpoint-draft approved')]);
       this._done = true;
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
@@ -190,8 +193,25 @@ export class WidgetNs3Draft102020 extends StateLitElement {
     }
   }
 
-  private async _completeCheckpoint(status: mls.msg.AIStepStatus, traceMsg: string): Promise<void> {
-    await this._applyIntents([this._checkpointStatus(status, traceMsg)]);
+  private _checkpointAnswerStep(): mls.msg.AgentIntentAddStep {
+    const v = this.value!;
+    return {
+      type: 'add-step',
+      messageId: v.messageId,
+      threadId: v.threadId,
+      taskId: v.taskId,
+      parentStepId: v.parentStepId,
+      step: {
+        type: 'result',
+        stepId: 0,
+        interaction: null,
+        stepTitle: 'Draft approved',
+        status: 'completed',
+        nextSteps: [],
+        result: JSON.stringify({ planId: 'checkpoint-draft-answer', moduleName: this._artifact?.moduleName ?? v.moduleName, approved: true }),
+        planning: { planId: 'checkpoint-draft-answer', dependsOn: ['checkpoint-draft'], executionMode: 'manual_later', executionHost: 'client' },
+      } as mls.msg.AIResultStep,
+    };
   }
 
   private _checkpointStatus(status: mls.msg.AIStepStatus, traceMsg: string): mls.msg.AgentIntentUpdateStatus {

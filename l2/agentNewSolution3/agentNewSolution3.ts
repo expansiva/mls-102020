@@ -219,22 +219,20 @@ async function beforeClarificationStep(
 
 function buildPlannedTree(plan: Ns3RootPlan, includePhase2: boolean): mls.msg.AIPayload[] {
   const title = (planId: Ns3PlanId) => getTitle(plan, planId);
-  // Human checkpoint 1 mirrors the proven agentNewSolutionFinal shape: a no-LLM wrapper agent step
-  // whose CHILD clarification renders the custom widget. The clarification must live nested under an
-  // agent (not as a flat sibling) so the frontend can resolve its owning agent and mount the widget.
-  const checkpointDraft = agentStep('checkpoint-draft', 'agentNs3Draft', title('checkpoint-draft'), ['e1-draft'], 'waiting_dependency');
-  checkpointDraft.nextSteps = [
-    clarificationStep('checkpoint-draft-view', title('checkpoint-draft'), ['checkpoint-draft'], { planId: 'checkpoint-draft-view' }, 'waiting_dependency'),
-  ];
+  // Human checkpoint 1 is an agent step that EMITS the review clarification into its OWN
+  // interaction.payload (same shape as e1-clarification / agentNewSolution2Requirements). It must NOT
+  // be a container (an agent with a child clarification step): the parent can only complete after its
+  // children finish, and the child cannot start until the parent completes -> deadlock (step stuck
+  // in_progress). On approve the widget writes a 'checkpoint-draft-answer' result that unlocks E2.
   const phase1: mls.msg.AIPayload[] = [
     agentStep('e1-clarification', 'agentNs3Draft', title('e1-clarification'), [], 'waiting_human_input'),
     agentStep('e1-draft', 'agentNs3Draft', title('e1-draft'), ['e1-clarification-answer'], 'waiting_dependency'),
-    checkpointDraft,
+    agentStep('checkpoint-draft', 'agentNs3Draft', title('checkpoint-draft'), ['e1-draft'], 'waiting_dependency'),
   ];
   if (!includePhase2) return phase1;
   return [
     ...phase1,
-    agentStep('e2-journeys', 'agentNs3Journeys', title('e2-journeys'), ['checkpoint-draft-view'], 'waiting_dependency'),
+    agentStep('e2-journeys', 'agentNs3Journeys', title('e2-journeys'), ['checkpoint-draft-answer'], 'waiting_dependency'),
     plannedStep('checkpoint-journeys', title('checkpoint-journeys'), ['e2-journeys']),
     plannedStep('e3-ontology', title('e3-ontology'), ['checkpoint-journeys']),
     plannedStep('e4-actors-rules-refs', title('e4-actors-rules-refs'), ['e3-ontology']),
