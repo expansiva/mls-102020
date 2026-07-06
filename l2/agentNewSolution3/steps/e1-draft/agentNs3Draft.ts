@@ -16,7 +16,7 @@ import {
   writeMarkdownArtifact,
 } from '/_102020_/l2/agentNewSolution3/helpers/ns3Fs.js';
 import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution3/helpers/ns3Ids.js';
-import { runNs3Gate } from '/_102020_/l2/agentNewSolution3/helpers/ns3Gate.js';
+import { Ns3GateCheck, errorIssue, runNs3Gate } from '/_102020_/l2/agentNewSolution3/helpers/ns3Gate.js';
 import {
   createNs3Pipeline,
   markNs3StepRunning,
@@ -39,6 +39,14 @@ import {
 
 const AGENT_NAME = 'agentNs3Draft';
 const TOOL_NAME = 'submitNs3Draft';
+type PlannerStatus = 'ok' | 'needs_input' | 'failed';
+
+interface Ns3E1PlannerOutput {
+  status: PlannerStatus;
+  result: Record<string, unknown>;
+  questions: string[];
+  trace: string[];
+}
 
 export function createAgent(): IAgentAsync {
   return {
@@ -103,7 +111,7 @@ async function beforePromptStep(
     taskId: context.task.PK,
     hookSequential,
     parentStepId: parentStep.stepId,
-    systemPrompt: `${prompt}\n\n${platform}\n\n${buildToolInstruction()}`,
+    systemPrompt: `${prompt.split('{{toolName}}').join(TOOL_NAME)}\n\n${platform}\n\n${buildToolInstruction()}`,
     humanPrompt,
     tools: [createToolSchema(schema)],
     toolChoice: { type: 'function', function: { name: TOOL_NAME } },
@@ -122,7 +130,11 @@ async function afterPromptStep(
   try {
     const parsedArgs = parseArgs(step.prompt);
     if (parsedArgs.planId === 'e1-clarification') return handleInitialClarificationPayload(context, parentStep, step, hookSequential);
-    const rawArtifact = extractE1Result(step.interaction?.payload?.[0]);
+    const output = extractE1Output(step.interaction?.payload?.[0]);
+    if (output.status === 'failed') {
+      return [updateStatus(context, parentStep, step, hookSequential, 'failed', output.trace.join('\n') || 'E1 draft returned failed')];
+    }
+    const rawArtifact = output.result;
     const currentModule = parsedArgs.previousModuleName || readString(rawArtifact.moduleName);
     const existing = listExistingModuleFolders();
     if (currentModule) existing.delete(currentModule);
@@ -147,7 +159,7 @@ async function afterPromptStep(
       artifact,
       inputs: gateInputs,
       pipeline,
-      validate: item => validateE1DraftInvariants(item),
+      validate: item => applyPlannerOutputToGateCheck(validateE1DraftInvariants(item), output),
     });
     if (gate.pipeline) pipeline = gate.pipeline;
     await writeNs3Pipeline(pipeline);
@@ -160,8 +172,8 @@ async function afterPromptStep(
       const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
       await writeNs3Trace(moduleNameForTrace, 'e1-draft', AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
       const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, 'failed', traceMsg)];
-      if (gate.needsHumanInput) {
-        intents.unshift(addBlockingClarification(context, parentStep, artifact, gate.errors.map(issue => issue.message)));
+      if (output.status === 'needs_input' && gate.needsHumanInput) {
+        intents.unshift(addBlockingClarification(context, parentStep, artifact, questionsForHuman(output, gate.errors.map(issue => issue.message))));
       } else if (attempt < 2) {
         intents.unshift(addGateRetryStep(context, parentStep, artifact, gate.retryContext || traceMsg));
       }
@@ -556,32 +568,116 @@ function createToolSchema(resultSchema: Record<string, unknown>): mls.msg.LLMToo
   } as unknown as mls.msg.LLMTool;
 }
 
-function extractE1Result(payload: unknown): Record<string, unknown> {
+function extractE1Output(payload: unknown): Ns3E1PlannerOutput {
   const parsed = parseMaybeJson(payload);
   if (!isRecord(parsed)) throw new Error('missing E1 payload');
-  const flexible = parsed.type === 'flexible' ? parseMaybeJson(parsed.result) : parsed;
-  if (isRecord(flexible) && isRecord(flexible.result)) return flexible.result;
-  if (isRecord(flexible) && flexible.toolName === TOOL_NAME) return extractToolArguments(flexible.arguments);
-  const toolCall = extractOpenAiToolCall(flexible);
-  if (toolCall) return toolCall;
-  if (isRecord(flexible)) return flexible;
-  throw new Error('E1 payload does not contain a result object');
+  if (parsed.type === 'result') throw new Error(readString(parsed.result) || 'E1 returned result error');
+
+  const direct = tryNormalizeE1Envelope(parsed);
+  if (direct) return direct;
+
+  if (parsed.type === 'flexible') {
+    const flexible = parseMaybeJson(parsed.result);
+    const fromFlexible = tryNormalizeE1Envelope(flexible);
+    if (fromFlexible) return fromFlexible;
+    const fromFlexibleTool = tryExtractToolOutput(flexible);
+    if (fromFlexibleTool) return fromFlexibleTool;
+    const fromFlexibleOpenAi = tryExtractOpenAiToolCall(flexible);
+    if (fromFlexibleOpenAi) return fromFlexibleOpenAi;
+  }
+
+  const fromTool = tryExtractToolOutput(parsed);
+  if (fromTool) return fromTool;
+  const fromOpenAi = tryExtractOpenAiToolCall(parsed);
+  if (fromOpenAi) return fromOpenAi;
+  throw new Error(`payload does not contain a recognized ${TOOL_NAME} output`);
 }
 
-function extractToolArguments(value: unknown): Record<string, unknown> {
+function tryExtractToolOutput(value: unknown): Ns3E1PlannerOutput | null {
+  const record = parseMaybeJson(value);
+  if (!isRecord(record) || record.toolName !== TOOL_NAME) return null;
+  return normalizeToolArguments(record.arguments);
+}
+
+function normalizeToolArguments(value: unknown, depth = 0): Ns3E1PlannerOutput {
   const args = parseMaybeJson(value);
   if (!isRecord(args)) throw new Error('tool arguments must be an object');
-  if (isRecord(args.result)) return args.result;
-  throw new Error('tool arguments missing result');
+  const direct = tryNormalizeE1Envelope(args);
+  if (direct) return direct;
+  if (args.arguments !== undefined && depth < 3) return normalizeToolArguments(args.arguments, depth + 1);
+  throw new Error(`tool arguments do not contain ${TOOL_NAME} output`);
 }
 
-function extractOpenAiToolCall(value: unknown): Record<string, unknown> | null {
+function tryExtractOpenAiToolCall(value: unknown): Ns3E1PlannerOutput | null {
   if (!isRecord(value) || !Array.isArray(value.tool_calls)) return null;
   for (const call of value.tool_calls) {
     if (!isRecord(call) || !isRecord(call.function) || call.function.name !== TOOL_NAME) continue;
-    return extractToolArguments(call.function.arguments);
+    return normalizeToolArguments(call.function.arguments);
   }
   return null;
+}
+
+function tryNormalizeE1Envelope(value: unknown): Ns3E1PlannerOutput | null {
+  const output = parseMaybeJson(value);
+  if (!isRecord(output) || output.result === undefined) return null;
+  const result = parseMaybeJson(output.result);
+  if (!isRecord(result) || isToolWrapper(result)) return null;
+  return {
+    status: normalizePlannerStatus(output.status),
+    result,
+    questions: normalizeStringArray(output.questions),
+    trace: normalizeStringArray(output.trace),
+  };
+}
+
+function isToolWrapper(value: unknown): boolean {
+  const record = parseMaybeJson(value);
+  return isRecord(record) && record.toolName === TOOL_NAME && record.arguments !== undefined;
+}
+
+function normalizePlannerStatus(value: unknown): PlannerStatus {
+  if (value === undefined) return 'ok';
+  if (value === 'ok' || value === 'needs_input' || value === 'failed') return value;
+  throw new Error(`invalid planner status: ${String(value)}`);
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(item => readString(item)).filter((item): item is string => !!item) : [];
+}
+
+function applyPlannerOutputToGateCheck(
+  check: Ns3GateCheck<Ns3E1DraftArtifact>,
+  output: Ns3E1PlannerOutput,
+): Ns3GateCheck<Ns3E1DraftArtifact> {
+  if (output.status === 'needs_input') {
+    const hasBlockingIssue = check.issues.some(issue => issue.code === 'blocking_question');
+    const outputQuestionIssues = hasBlockingIssue
+      ? []
+      : output.questions.map(question => errorIssue('blocking_question', question, 'questions'));
+    const missingQuestionsIssue = !hasBlockingIssue && outputQuestionIssues.length === 0
+      ? [errorIssue('needs_input_without_questions', 'status "needs_input" requires at least one question', 'questions')]
+      : [];
+    return {
+      ...check,
+      issues: [...check.issues, ...outputQuestionIssues, ...missingQuestionsIssue],
+      needsHumanInput: outputQuestionIssues.length > 0 || hasBlockingIssue,
+    };
+  }
+  return {
+    ...check,
+    needsHumanInput: false,
+    issues: check.issues.map(issue => issue.code === 'blocking_question'
+      ? errorIssue(
+        'unexpected_blocking_question',
+        `status "${output.status}" cannot request human input through result.openQuestions; use status "needs_input" or classify it as assumed with defaultAnswer. Original question: ${issue.message}`,
+        issue.path,
+      )
+      : issue),
+  };
+}
+
+function questionsForHuman(output: Ns3E1PlannerOutput, fallback: string[]): string[] {
+  return output.questions.length > 0 ? output.questions : fallback;
 }
 
 async function readE1Schema(): Promise<Record<string, unknown>> {
@@ -673,7 +769,7 @@ function findLatestE1ModuleName(context: mls.msg.ExecutionContext): string | nul
     const parsedArgs = parseArgs(agentStep.prompt);
     if (parsedArgs.previousModuleName) return parsedArgs.previousModuleName;
     try {
-      const rawArtifact = extractE1Result(agentStep.interaction?.payload?.[0]);
+      const rawArtifact = extractE1Output(agentStep.interaction?.payload?.[0]).result;
       const moduleName = readString(rawArtifact.moduleName);
       if (moduleName) return normalizeModuleFolderName(moduleName);
     } catch {
@@ -694,13 +790,17 @@ function findParentStepId(context: mls.msg.ExecutionContext, childStepId: number
 
 function buildToolInstruction(): string {
   return `
-Call the "${TOOL_NAME}" tool with:
+Call the "${TOOL_NAME}" tool with only these top-level arguments:
 {
   "status": "ok" | "needs_input" | "failed",
   "result": E1 artifact matching the JSON schema,
   "questions": [],
   "trace": []
 }
+
+Do not include "type", "toolName", or "arguments" in the tool arguments.
+When status is "ok", questions must be empty and result.openQuestions must not contain blocking items.
+Use status "needs_input" only when E1 cannot safely continue without a human answer.
 `;
 }
 
