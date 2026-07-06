@@ -42,6 +42,14 @@ function projectRuntimeMetadata(l5: L5ProjectJson, clientId: string) {
   };
 }
 
+function addL5Dependencies(config: ProjectsConfig, l5: L5ProjectJson, clientId: string): void {
+  for (const dep of l5.dependencies || []) {
+    const id = String(dep?.projectId || '').trim();
+    if (!/^\d+$/.test(id) || id === clientId) continue;
+    config.projects[id] = config.projects[id] || { root: `../mls-${id}`, type: 'lib' };
+  }
+}
+
 /** Object literal of a generated .defs.ts (`export const x = {...};` or `... as const;`). */
 function readDefsData(file: string): Record<string, unknown> | null {
   let content: string;
@@ -263,6 +271,7 @@ function main(): void {
   // Frontend shared libs used by the generated l2 code and by the master frontend.
   config.projects['102027'] = config.projects['102027'] || { root: '../mls-102027', type: 'lib' };
   config.projects['102029'] = config.projects['102029'] || { root: '../mls-102029', type: 'lib' };
+  addL5Dependencies(config, l5, clientId);
 
   const client = config.projects[clientId];
   client.modules = client.modules || [];

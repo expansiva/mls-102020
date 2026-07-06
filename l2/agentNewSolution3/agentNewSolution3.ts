@@ -154,9 +154,8 @@ async function beforeClarificationStep(
 
 function buildPlannedTree(plan: Ns3RootPlan, includePhase2: boolean): mls.msg.AIPayload[] {
   const title = (planId: Ns3PlanId) => getTitle(plan, planId);
-  const firstStatus: mls.msg.AIStepStatus = 'pending';
   const phase1: mls.msg.AIPayload[] = [
-    clarificationStep('e1-clarification', title('e1-clarification'), [], plan.clarification, firstStatus),
+    agentStep('e1-clarification', 'agentNs3Draft', title('e1-clarification'), [], 'waiting_human_input'),
     agentStep('e1-draft', 'agentNs3Draft', title('e1-draft'), ['e1-clarification'], 'waiting_dependency'),
     clarificationStep('checkpoint-draft', title('checkpoint-draft'), ['e1-draft'], { planId: 'checkpoint-draft' }, 'waiting_dependency'),
   ];
@@ -340,19 +339,51 @@ function normalizeRootPlan(payload: unknown): Ns3RootPlan {
     invalidReason: readString(record.invalidReason),
     titles,
     uiLabels,
-    clarification: normalizeClarification(record.clarification, userLanguage, titles['e1-clarification']),
+    clarification: normalizeClarification(record.clarification, userLanguage, titles['e1-clarification'], prompt),
   };
 }
 
-function normalizeClarification(value: unknown, userLanguage: string, title?: string): Ns3Clarification {
+function normalizeClarification(value: unknown, userLanguage: string, title?: string, userPrompt = ''): Ns3Clarification {
   const record = isRecord(value) ? value : {};
-  const questions = isRecord(record.questions) ? record.questions as Record<string, Ns3ClarificationQuestion> : defaultQuestions(userLanguage);
+  const fallbackQuestions = defaultQuestions(userLanguage, userPrompt);
+  const rawQuestions = isRecord(record.questions) ? record.questions as Record<string, Ns3ClarificationQuestion> : fallbackQuestions;
+  const questions = normalizeClarificationQuestions(rawQuestions, fallbackQuestions);
   return {
     userLanguage: readString(record.userLanguage) || userLanguage,
     title: readString(record.title) || title || 'Clarification 1',
     legends: Array.isArray(record.legends) ? record.legends.filter((item): item is string => typeof item === 'string') : [],
     questions,
   };
+}
+
+function normalizeClarificationQuestions(
+  rawQuestions: Record<string, Ns3ClarificationQuestion>,
+  fallbackQuestions: Record<string, Ns3ClarificationQuestion>,
+): Record<string, Ns3ClarificationQuestion> {
+  const normalized: Record<string, Ns3ClarificationQuestion> = {};
+  for (const [key, fallback] of Object.entries(fallbackQuestions)) {
+    const question = rawQuestions[key] || fallback;
+    const text = readString(question.question) || fallback.question;
+    const answer = question.answer === undefined || question.answer === '' ? fallback.answer : question.answer;
+    normalized[key] = {
+      ...question,
+      type: question.type || fallback.type,
+      question: text,
+      answer,
+      ...(question.options || fallback.options ? { options: question.options || fallback.options } : {}),
+    };
+  }
+  for (const [key, question] of Object.entries(rawQuestions)) {
+    if (normalized[key]) continue;
+    const text = readString(question.question) || key;
+    normalized[key] = {
+      ...question,
+      type: question.type || 'open',
+      question: text,
+      answer: question.answer === undefined ? '' : question.answer,
+    };
+  }
+  return normalized;
 }
 
 function normalizeClarificationAnswer(value: Ns3Clarification): Ns3ClarificationAnswer {
@@ -363,13 +394,69 @@ function normalizeClarificationAnswer(value: Ns3Clarification): Ns3Clarification
   };
 }
 
-function defaultQuestions(userLanguage: string): Record<string, Ns3ClarificationQuestion> {
+function defaultQuestions(userLanguage: string, userPrompt = ''): Record<string, Ns3ClarificationQuestion> {
+  const defaults = deriveClarificationDefaults(userPrompt, userLanguage);
   return {
-    moduleName: { type: 'open', question: 'What short module name do you want?', answer: '' },
-    mainActors: { type: 'open', question: 'Who uses this module day to day?', answer: '' },
-    mainGoal: { type: 'open', question: 'What main outcome should this module deliver?', answer: '' },
-    boundaries: { type: 'open', question: 'What should stay out of this module for now?', answer: '' },
+    moduleName: { type: 'open', question: 'What short module name do you want?', answer: defaults.moduleName },
+    mainActors: { type: 'open', question: 'Who uses this module day to day?', answer: defaults.mainActors },
+    mainGoal: { type: 'open', question: 'What main outcome should this module deliver?', answer: defaults.mainGoal },
+    boundaries: { type: 'open', question: 'What should stay out of this module for now?', answer: defaults.boundaries },
   };
+}
+
+function deriveClarificationDefaults(userPrompt: string, userLanguage: string): Record<'moduleName' | 'mainActors' | 'mainGoal' | 'boundaries', string> {
+  const prompt = userPrompt.replace(/\s+/g, ' ').trim();
+  const portuguese = prefersPortuguese(prompt, userLanguage);
+  const moduleName = extractFirstMatch(prompt, [
+    /(?:chamado|chamada|called|named)\s+["']?([A-Za-z][\w-]{1,48})/i,
+    /(?:app|module|modulo|módulo|solucao|solução)\s+([A-Za-z][\w-]{1,48})/i,
+  ]) || 'module';
+  const mainGoal = extractSection(prompt, ['Foco:', 'Focus:', 'Objetivo:', 'Goal:']) || truncateText(prompt, 220);
+  const mainActors = extractSection(prompt, ['Atores:', 'Actors:', 'Usuários:', 'Usuarios:', 'Users:'])
+    || inferActorsFromPrompt(prompt, portuguese);
+  const boundaries = extractSection(prompt, ['Fora de escopo:', 'Out of scope:', 'Limites:', 'Boundaries:'])
+    || (portuguese
+      ? 'Usar apenas o escopo de negócio descrito no prompt; adiar detalhes de implementação, banco de dados e layout para etapas posteriores.'
+      : 'Use only the business scope described in the prompt; defer implementation details, database design, and page layout until later steps.');
+  return { moduleName, mainActors, mainGoal, boundaries };
+}
+
+function inferActorsFromPrompt(prompt: string, portuguese: boolean): string {
+  const lower = prompt.toLowerCase();
+  if (lower.includes('cafe') || lower.includes('café') || lower.includes('cafeteria') || lower.includes('lanchonete')) {
+    return portuguese ? 'Atendente/operador de POS, equipe de cozinha e gestor da loja.' : 'Attendant/POS operator, kitchen staff, and store manager.';
+  }
+  return portuguese ? 'Principais usuários de negócio descritos no prompt.' : 'Primary business users described by the prompt.';
+}
+
+function prefersPortuguese(prompt: string, userLanguage: string): boolean {
+  const text = `${userLanguage} ${prompt}`.toLowerCase();
+  return text.includes('pt-br') || text.includes('portugu') || text.includes('módulo') || text.includes('solução');
+}
+
+function extractFirstMatch(text: string, patterns: RegExp[]): string | undefined {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) return match[1].trim();
+  }
+  return undefined;
+}
+
+function extractSection(text: string, labels: string[]): string | undefined {
+  for (const label of labels) {
+    const index = text.toLowerCase().indexOf(label.toLowerCase());
+    if (index < 0) continue;
+    const after = text.slice(index + label.length).trim();
+    const stop = after.search(/\s(?:Entidades principais|Telas chave|Funcionalidade LLM|Foco|Entities|Screens|Key screens|LLM feature|Focus|linguagem|language):/i);
+    return truncateText((stop >= 0 ? after.slice(0, stop) : after).trim(), 240);
+  }
+  return undefined;
+}
+
+function truncateText(text: string, maxLength: number): string {
+  const clean = text.trim();
+  if (clean.length <= maxLength) return clean;
+  return `${clean.slice(0, maxLength - 1).trim()}...`;
 }
 
 function getTitle(plan: Ns3RootPlan, planId: Ns3PlanId): string {
@@ -415,7 +502,8 @@ true, "invalidReason": "", "userPrompt": "...", "titles": { "plan id": "localize
 Rules: invalid/vague prompts set validPrompt=false and invalidReason, but still produce clarification.
 Include titles for these plan ids and UI labels in the user's language. Do not invent dependencies or
 phase-2 executable agents. Do not ask architecture, ontology, page, database or workflow questions in
-clarification 1.
+clarification 1. Every clarification question must include a visible, useful default answer derived
+from the user's prompt; use an empty answer only when the prompt provides no safe default.
 
 {{planIds}}
 `;

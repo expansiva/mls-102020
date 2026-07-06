@@ -47,11 +47,11 @@
   "steps": [
     {
       "planId": "e1-clarification",
-      "agentName": "agentNewSolution3",
-      "type": "clarification",
+      "agentName": "agentNs3Draft",
+      "type": "agent",
       "phase": 1,
       "dependsOn": [],
-      "goal": "1st human interaction. Validate the prompt as early as possible: if invalid/insufficient (admission gate: empty, out of scope, no system intent), return an objective error + this clarification. Minimal opening questions; no architecture.",
+      "goal": "1st human interaction. The agent container emits a runtime clarification payload, matching agentNewSolution2Requirements. Validate the prompt as early as possible: if invalid/insufficient (admission gate: empty, out of scope, no system intent), return an objective error + this clarification. Minimal opening questions; no architecture.",
       "input": ["user prompt"],
       "output": { "result": "initial answers + userLanguage", "savedArtifact": null }
     },

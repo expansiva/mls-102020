@@ -10,3 +10,4 @@
 - 2026-07-05: C05 moved checkpoint labels to root-plan `uiLabels` with local English fallback only.
 - 2026-07-05: C06 aligned `flow.json` with the implemented root clarification, dynamic blocking clarification, and `uiLabels`.
 - 2026-07-05: C07 hardened required prompt reads, pipeline fallback, trace fallback, description text, and unused imports.
+- 2026-07-05: Aligned initial clarification with agentNewSolution2 format: `agentNs3Draft` now emits the runtime clarification payload instead of the root adding a ready-made clarification step.

@@ -64,6 +64,19 @@ async function beforePromptStep(
   if (!context.task) throw new Error(`[${AGENT_NAME}] task invalid`);
   const parsedArgs = parseArgs(args);
   const rootPlan = getRootPlan(context);
+  if (parsedArgs.planId === 'e1-clarification') {
+    return [{
+      type: 'prompt_ready',
+      args: args || JSON.stringify({ planId: 'e1-clarification' }),
+      messageId: context.message.orderAt,
+      threadId: context.message.threadId,
+      taskId: context.task.PK,
+      hookSequential,
+      parentStepId: parentStep.stepId,
+      systemPrompt: clarificationSystemPrompt,
+      humanPrompt: `## Initial user prompt\n${rootPlan.userPrompt}\n\n## Root plan seed\n${JSON.stringify(rootPlan.clarification, null, 2)}\n`,
+    } as mls.msg.AgentIntentPromptReady];
+  }
   const clarification = getInitialClarificationAnswer(context);
   const previous = parsedArgs.previousModuleName ? await readJsonArtifact<Ns3E1DraftArtifact>(ns3PipelineArtifactFileInfo(parsedArgs.previousModuleName, 'e1-draft', '.json'), false) : null;
   const schema = await readE1Schema();
@@ -108,6 +121,7 @@ async function afterPromptStep(
   let moduleNameForTrace: string | null = null;
   try {
     const parsedArgs = parseArgs(step.prompt);
+    if (parsedArgs.planId === 'e1-clarification') return handleInitialClarificationPayload(context, parentStep, step, hookSequential);
     const rawArtifact = extractE1Result(step.interaction?.payload?.[0]);
     const currentModule = parsedArgs.previousModuleName || readString(rawArtifact.moduleName);
     const existing = listExistingModuleFolders();
@@ -176,6 +190,28 @@ async function beforeClarificationStep(
   json: unknown,
 ): Promise<HTMLElement> {
   const parsed = parseStepJson(json);
+  if (parsed.planId === 'e1-clarification') {
+    await import('/_102025_/l2/widgetQuestionsForClarification.js');
+    const rootPlan = getRootPlan(context);
+    const clarification = normalizeClarificationForWidget(parsed, rootPlan.clarification);
+    const div = document.createElement('div');
+    const el = document.createElement('widget-questions-for-clarification-102025');
+    (el as unknown as { value: unknown }).value = {
+      taskId: context.task?.PK || '',
+      stepId: step.stepId,
+      title: clarification.title,
+      legends: clarification.legends,
+      userLanguage: clarification.userLanguage,
+      questions: clarification.questions,
+    };
+    el.setAttribute('mode', 'new');
+    el.addEventListener('clarification-finish', (event: Event) => {
+      const detail = (event as CustomEvent<{ value: Ns3Clarification; action: 'continue' | 'cancel' }>).detail;
+      void applyInitialClarification(context, parentStep, step, hookSequential, detail.value, detail.action);
+    });
+    div.appendChild(el);
+    return div;
+  }
   if (parsed.planId === 'checkpoint-draft') {
     await import('/_102020_/l2/agentNewSolution3/widgetNs3Draft.js');
     const rootPlan = getRootPlan(context);
@@ -220,6 +256,54 @@ async function beforeClarificationStep(
     return el;
   }
   throw new Error(`[${AGENT_NAME}] unsupported clarification ${parsed.planId || '(missing)'}`);
+}
+
+function handleInitialClarificationPayload(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+): mls.msg.AgentIntent[] {
+  const payload = step.interaction?.payload?.[0];
+  const parsed = parseMaybeJson(payload);
+  const result = isRecord(parsed) && parsed.type === 'flexible' ? parseMaybeJson(parsed.result) : parsed;
+  if (isRecord(result) && result.type === 'result') {
+    return [updateStatus(context, parentStep, step, hookSequential, 'failed', readString(result.result) || 'Invalid prompt')];
+  }
+  if (!isRecord(result) || result.type !== 'clarification' || !isRecord(result.json)) {
+    return [updateStatus(context, parentStep, step, hookSequential, 'failed', `invalid clarification payload: ${JSON.stringify(payload)}`)];
+  }
+  return [];
+}
+
+async function applyInitialClarification(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIClarificationStep,
+  hookSequential: number,
+  value: Ns3Clarification,
+  action: 'continue' | 'cancel',
+): Promise<void> {
+  if (!context.task) throw new Error(`[${AGENT_NAME}] task invalid`);
+  const status: mls.msg.AIStepStatus = action === 'continue' ? 'completed' : 'failed';
+  const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, status)];
+  if (action === 'continue') {
+    const answer = normalizeClarificationAnswer(value);
+    intents.unshift(resultStep(context, parentStep, 'e1-clarification-answer', ['e1-clarification'], answer.title, answer));
+    const e1Step = findStepByPlanId(context, 'e1-draft');
+    if (e1Step && e1Step.status === 'waiting_dependency') {
+      const e1ParentStepId = findParentStepId(context, e1Step.stepId) || parentStep.stepId;
+      intents.push(updateStatus(context, { ...parentStep, stepId: e1ParentStepId }, e1Step, hookSequential, 'pending'));
+    }
+  }
+  const response = await mls.api.msgApplyIntents({ userId: context.message.senderId, intents });
+  if (!response || response.statusCode !== 200) {
+    throw new Error((response as mls.msg.ResponseBase | undefined)?.msg || 'Error applying initial clarification');
+  }
+  const ret = response as mls.msg.ResponseApplyIntents;
+  context.task = ret.task;
+  if (ret.message) context.message = ret.message;
+  if (action === 'continue') await continuePoolingTask(context);
 }
 
 function activateCheckpointClarification(
@@ -394,6 +478,43 @@ function resultStep(
   };
 }
 
+function normalizeClarificationForWidget(parsed: ParsedStepJson, fallback: Ns3Clarification): Ns3Clarification {
+  const questions = isRecord(parsed.questions) ? parsed.questions : fallback.questions;
+  return {
+    userLanguage: parsed.userLanguage || fallback.userLanguage || '',
+    title: parsed.title || fallback.title || 'Clarification 1',
+    legends: parsed.legends?.length ? parsed.legends : fallback.legends || [],
+    questions: normalizeQuestions(questions as Record<string, Ns3Clarification['questions'][string]>, fallback.questions),
+  };
+}
+
+function normalizeQuestions(
+  questions: Record<string, Ns3Clarification['questions'][string]>,
+  fallback: Record<string, Ns3Clarification['questions'][string]>,
+): Record<string, Ns3Clarification['questions'][string]> {
+  const normalized: Record<string, Ns3Clarification['questions'][string]> = {};
+  for (const [key, question] of Object.entries({ ...fallback, ...questions })) {
+    const fallbackQuestion = fallback[key];
+    const answer = question.answer === undefined || question.answer === '' ? fallbackQuestion?.answer ?? '' : question.answer;
+    normalized[key] = {
+      ...question,
+      type: question.type || fallbackQuestion?.type || 'open',
+      question: readString(question.question) || fallbackQuestion?.question || key,
+      answer,
+      ...(question.options || fallbackQuestion?.options ? { options: question.options || fallbackQuestion?.options } : {}),
+    };
+  }
+  return normalized;
+}
+
+function normalizeClarificationAnswer(value: Ns3Clarification): Ns3ClarificationAnswer {
+  return {
+    title: value.title || 'Clarification 1',
+    userLanguage: value.userLanguage || '',
+    answers: Object.fromEntries(Object.entries(value.questions || {}).map(([key, question]) => [key, question.answer ?? ''])),
+  };
+}
+
 function updateStatus(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIPayload,
@@ -494,11 +615,23 @@ function parseArgs(value: unknown): {
   } : {};
 }
 
-function parseStepJson(value: unknown): { planId?: string; moduleName?: string; questions?: Record<string, Ns3Clarification['questions'][string]> } {
+interface ParsedStepJson {
+  planId?: string;
+  moduleName?: string;
+  title?: string;
+  userLanguage?: string;
+  legends?: string[];
+  questions?: Record<string, Ns3Clarification['questions'][string]>;
+}
+
+function parseStepJson(value: unknown): ParsedStepJson {
   const parsed = parseMaybeJson(value);
   return isRecord(parsed) ? {
     planId: readString(parsed.planId),
     moduleName: readString(parsed.moduleName),
+    title: readString(parsed.title),
+    userLanguage: readString(parsed.userLanguage),
+    legends: Array.isArray(parsed.legends) ? parsed.legends.filter((item): item is string => typeof item === 'string') : undefined,
     questions: isRecord(parsed.questions) ? parsed.questions as Record<string, Ns3Clarification['questions'][string]> : undefined,
   } : {};
 }
@@ -548,6 +681,34 @@ Call the "${TOOL_NAME}" tool with:
 }
 `;
 }
+
+const clarificationSystemPrompt = `
+<!-- modelType: codefast -->
+
+You are the initial clarification agent for agentNewSolution3.
+
+Generate ONE small first clarification in the same language as the user. Do not ask about
+architecture, ontology, pages, database, workflows, MDM, plugins, or implementation details yet.
+Every question must include a useful visible default in its "answer" field derived from the user's
+prompt. Use an empty answer only when no safe default exists.
+
+Return only valid JSON:
+{
+  "type": "clarification",
+  "json": {
+    "planId": "e1-clarification",
+    "userLanguage": "ISO code such as pt-BR or en",
+    "title": "Clarification 1",
+    "questions": {
+      "moduleName": { "type": "open", "question": "", "answer": "" },
+      "mainActors": { "type": "open", "question": "", "answer": "" },
+      "mainGoal": { "type": "open", "question": "", "answer": "" },
+      "boundaries": { "type": "open", "question": "", "answer": "" }
+    },
+    "legends": ["Localized note: this is the first clarification."]
+  }
+}
+`;
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
