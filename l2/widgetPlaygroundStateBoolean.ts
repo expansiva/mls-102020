@@ -2,8 +2,8 @@
 
 import { html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import { propertyDataSource } from '/_102027_/l2/collabDecorators.js';
-import { CollabLitElement } from '/_102027_/l2/collabLitElement.js'
+import { propertyDataSource } from '/_102029_/l2/collabDecorators.js';
+import { CollabLitElement } from '/_102029_/l2/collabLitElement.js'
 
 @customElement('widget-playground-state-boolean-102020')
 export class WcInputBoolean102020 extends CollabLitElement {

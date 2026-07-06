@@ -3,7 +3,7 @@
 import { html } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { customElement, property, state } from 'lit/decorators.js';
-import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
+import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { languages as allLanguages, findLanguageByCode, ICollabLanguage } from '/_102027_/l2/collabLanguages.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';

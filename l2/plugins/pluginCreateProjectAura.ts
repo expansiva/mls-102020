@@ -2,7 +2,7 @@
 
 import { html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { CollabLitElement } from '/_102027_/l2/collabLitElement.js';
+import { CollabLitElement } from '/_102029_/l2/collabLitElement.js';
 import { createAllFiles, IReqCreateAllFiles } from '/_102027_/l2/libStor.js';
 import { createConfigFile } from '/_102027_/l2/libProjectConfig.js';
 import { createModel } from '/_102027_/l2/libModel.js';

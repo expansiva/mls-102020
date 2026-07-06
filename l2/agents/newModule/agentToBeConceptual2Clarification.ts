@@ -2,7 +2,7 @@
 
 import { html, nothing } from 'lit';
 import { customElement, state, property, query } from 'lit/decorators.js';
-import { CollabLitElement } from '/_102027_/l2/collabLitElement.js';
+import { CollabLitElement } from '/_102029_/l2/collabLitElement.js';
 import { Suggestion } from '/_102020_/l2/agents/newModule/agentToBeConceptual2.js'
 import { ModuleToBe, RulesRegistry, EntityDefinition, CapabilityDefinition } from '/_102020_/l2/agents/newModule/agentToBeConceptual.js' 
 

@@ -2,7 +2,7 @@
 
 import { html, TemplateResult } from 'lit';
 import { customElement, state, query } from 'lit/decorators.js';
-import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
+import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getMaterializeOrchestrator } from '/_102020_/l2/agents/newModule/materializeOrchestrator.js';
 import { addModuleNav, addModuleRoute } from "/_102020_/l2/newModule/astModuleFront.js";
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';

@@ -3,7 +3,7 @@
 import { html, TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { convertFileToTag } from "/_102020_/l2/utils.js";
-import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
+import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 
 /// **collab_i18n_start**
 const message_pt = {
