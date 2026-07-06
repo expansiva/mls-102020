@@ -35,11 +35,14 @@ export async function readStorText(fileInfo: Ns3FileInfo, required = false): Pro
     return '';
   }
   const raw = await file.getContent();
-  if (typeof raw !== 'string') {
-    if (required) throw new Error(`[readStorText] file content is not text: ${toDisplayPath(fileInfo)}`);
-    return '';
+  if (typeof raw === 'string') {
+    return raw;
   }
-  return raw;
+  if (fileInfo.extension === '.json' && (isRecord(raw) || Array.isArray(raw))) {
+    return `${JSON.stringify(raw, null, 2)}\n`;
+  }
+  if (required) throw new Error(`[readStorText] file content is not text: ${toDisplayPath(fileInfo)}`);
+  return '';
 }
 
 export async function readJsonArtifact<T = unknown>(fileInfo: Ns3FileInfo, required = false): Promise<T | null> {
@@ -123,4 +126,3 @@ function toMlsFileReference(fileInfo: Ns3FileInfo): string {
   const folder = fileInfo.folder ? `${fileInfo.folder}/` : '';
   return `_${fileInfo.project}_/l${fileInfo.level}/${folder}${fileInfo.shortName}${fileInfo.extension}`;
 }
-

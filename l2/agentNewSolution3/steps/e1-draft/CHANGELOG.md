@@ -11,3 +11,4 @@
 - 2026-07-05: C06 aligned `flow.json` with the implemented root clarification, dynamic blocking clarification, and `uiLabels`.
 - 2026-07-05: C07 hardened required prompt reads, pipeline fallback, trace fallback, description text, and unused imports.
 - 2026-07-05: Aligned initial clarification with agentNewSolution2 format: `agentNs3Draft` now emits the runtime clarification payload instead of the root adding a ready-made clarification step.
+- 2026-07-06: Tolerate structured `.json` content from `mls.stor.getContent()` when reading E1 schema and artifacts in the collab.codes runtime.
