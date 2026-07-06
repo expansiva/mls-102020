@@ -13,7 +13,7 @@ import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
 import { loadAgent, executeBeforePrompt } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
-import { languages } from '/_102027_/l2/collabLanguages.js';
+import { findLanguageByCode } from '/_102027_/l2/collabLanguages.js';
 
 
 import { getDependenciesByHtml } from '/_102020_/l2/buildFile.js';
@@ -878,7 +878,7 @@ export class ServicePreview extends ServiceBase {
 
     const languagesOptions = Object.keys(this.languages).map((lg) => {
       const obj = this.languages[lg];
-      const icon = languages.find((lang) => lang.code === obj.acronym)?.svg || '';
+      const icon = findLanguageByCode(obj.acronym)?.svg || '';
       const newOpt: IOptions = {
         text: obj.name,
         icon,
@@ -889,12 +889,18 @@ export class ServicePreview extends ServiceBase {
     if (this.menu.tools.languages) this.menu.tools.languages.options = languagesOptions;
 
     AuraInitState();
-    const stateLang = getAuraState().actualLanguage || document.documentElement.lang?.split('-')[0] || undefined;
+    const stateLang = getAuraState().actualLanguage || document.documentElement.lang || undefined;
     console.info(stateLang)
     if (stateLang) {
-      const idx = Object.values(this.languages).findIndex(l => l.acronym === stateLang);
+      const entries = Object.values(this.languages);
+      const normalized = stateLang.toLowerCase();
+      let idx = entries.findIndex(l => l.acronym.toLowerCase() === normalized);
+      if (idx < 0) {
+        const base = normalized.split('-')[0];
+        idx = entries.findIndex(l => l.acronym.split('-')[0].toLowerCase() === base);
+      }
       if (idx >= 0) {
-        this.lang = stateLang;
+        this.lang = entries[idx].acronym;
         this.menu.tools.languages.selected = idx;
         globalState.globalVariation = idx;
         if (window.top) (window.top.window as any).globalVariation = idx;

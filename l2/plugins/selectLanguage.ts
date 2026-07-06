@@ -5,7 +5,7 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102027_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { languages as allLanguages, ICollabLanguage } from '/_102027_/l2/collabLanguages.js';
+import { languages as allLanguages, findLanguageByCode, ICollabLanguage } from '/_102027_/l2/collabLanguages.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
@@ -182,7 +182,7 @@ export class PluginSelectLanguage extends StateLitElement {
         if (hasRunning('language:remove')) return;
 
         clearScope('language:remove');
-        const langObj = (allLanguages as ICollabLanguage[]).find(l => l.code === lang);
+        const langObj = findLanguageByCode(lang);
         const taskKey = `language:remove:${lang}`;
         const prompt = JSON.stringify([{ languages: [{ code: lang, name: langObj?.name ?? lang }], projectId: this.selectedProject.project }]);
 
@@ -315,7 +315,7 @@ export class PluginSelectLanguage extends StateLitElement {
 
     private _renderSelected() {
         const lang = this._selectedLang!;
-        const langObj = (allLanguages as any[]).find(l => l.code === lang);
+        const langObj = findLanguageByCode(lang);
         const fullName = langObj?.name ?? lang;
         const svg = langObj?.svg ?? '';
         const max = this._languages.length + 1;
@@ -378,7 +378,7 @@ export class PluginSelectLanguage extends StateLitElement {
             .map((lang, i) => ({ lang, selectValue: i + 1 }))
             .filter(({ lang }) => {
                 if (!q) return true;
-                const name = (allLanguages as ICollabLanguage[]).find(l => l.code === lang)?.name ?? '';
+                const name = findLanguageByCode(lang)?.name ?? '';
                 return lang.toLowerCase().includes(q) || name.toLowerCase().includes(q);
             });
 
@@ -618,7 +618,7 @@ export class PluginSelectLanguage extends StateLitElement {
     }
 
     private _renderLangCard(lang: string, selectValue: number) {
-        const langObj = (allLanguages as any[]).find(l => l.code === lang);
+        const langObj = findLanguageByCode(lang);
         const fullName = langObj?.name ?? lang;
         const svg = langObj?.svg ?? '';
         return html`
