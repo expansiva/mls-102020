@@ -1,10 +1,28 @@
 /// <mls fileReference="_102020_/l2/enhancementStyleAura.ts" enhancement="_blank"/>
 
+/**
+ * Style enhancement for Aura components.
+ *
+ * Validates the root selectors of a component's `.less` file, ensuring every
+ * top-level rule is scoped to the component itself. Allowed root selector
+ * formats (where `wc-example` is the component tag):
+ *
+ *   - `wc-example { ... }`                          — the component tag
+ *   - `wc-example.class1 { ... }`                   — tag with a class
+ *   - `.class1[data-widget="wc-example"] { ... }`   — class scoped by data-widget attribute
+ *   - `div[data-widget="wc-example"] { ... }`       — element scoped by data-widget attribute
+ *   - `collab-nav-3-service[data-service="..."]`    — nav3 menu service selector
+ *
+ * Invalid selectors are reported as Monaco error markers in the editor and
+ * flag the stor file with `hasError`.
+ */
+
 import { convertFileToTag } from '/_102020_/l2/utils.js'
 import { removeTokensFromSource, removeCommentLines } from '/_102027_/l2/libCompileStyle.js';
 
 export const requires: mls.l2.enhancement.IRequire[] = [];
 
+/** Enhancement hook: re-validates the style model whenever its content changes. */
 export const onAfterChange = (models: mls.editor.IModels) => {
 
     const modelStyle: mls.editor.IModelStyle | undefined = models.style;
@@ -17,6 +35,7 @@ export const onAfterChange = (models: mls.editor.IModels) => {
     }
 };
 
+/** Enhancement hook: syncs the stor file error flag whenever editor markers change. */
 export const onAfterMarkersChange = (models: mls.editor.IModels) => {
     const modelStyle: mls.editor.IModelStyle | undefined = models.style;
     if (!modelStyle) return '';
@@ -28,11 +47,16 @@ export const onAfterMarkersChange = (models: mls.editor.IModels) => {
     }
 };
 
+/** Enhancement hook: no post-compile processing is needed for Aura styles. */
 export const onAfterCompile = async (modelStyle: mls.editor.IModelStyle): Promise<void> => {
     return;
 }
 
 
+/**
+ * Updates the stor file `hasError` flag based on the current Monaco markers
+ * of the style model (true when at least one marker has Error severity).
+ */
 export async function verifyMarkersError(modelStyle: mls.editor.IModelStyle) {
     if (modelStyle && modelStyle.model) {
         const markers = monaco.editor.getModelMarkers({ resource: modelStyle.model.uri });
@@ -41,6 +65,21 @@ export async function verifyMarkersError(modelStyle: mls.editor.IModelStyle) {
     }
 }
 
+/**
+ * Validates all root (top-level) selectors of the component's `.less` file.
+ *
+ * The source is formatted in memory, stripped of tokens and comment lines,
+ * then each root selector is matched against the allowed formats:
+ *
+ *   - `<tag>` — exactly the component tag (e.g. `wc-example`)
+ *   - `<tag>.<class>` — component tag followed by a single class (e.g. `wc-example.class1`)
+ *   - `.<class>[data-widget="<tag>"]` — class scoped by the data-widget attribute
+ *   - `<element>[data-widget="<tag>"]` — HTML element scoped by the data-widget attribute (e.g. `div[data-widget="wc-example"]`)
+ *   - `collab-nav-3-service[data-service="_<project>_<shortName>"]` — nav3 menu selector
+ *
+ * Selectors that don't match produce Monaco error markers at their line and
+ * set `hasError` on the corresponding `.less` stor file.
+ */
 export async function validateStyle(modelStyle: mls.editor.IModelStyle) {
 
     const model: monaco.editor.ITextModel = modelStyle.model;
@@ -79,6 +118,11 @@ export async function validateStyle(modelStyle: mls.editor.IModelStyle) {
     setErrorOnEditor(markers, model, tagName);
 }
 
+/**
+ * Formats the model content using Monaco's LESS formatter without touching
+ * the original model, by running "format document" on a temporary detached
+ * editor. Returns the formatted text.
+ */
 async function formatTextInMemory(model: monaco.editor.ITextModel) {
 
     const tempModel = monaco.editor.createModel(model.getValue(), 'less');
@@ -95,6 +139,11 @@ async function formatTextInMemory(model: monaco.editor.ITextModel) {
     }
 }
 
+/**
+ * Replaces the model's `markerSource` markers with one error marker per
+ * invalid-selector position. Called with an empty array, it clears all
+ * previous validation errors.
+ */
 function setErrorOnEditor(position: monaco.Position[], model: monaco.editor.ITextModel, tag: string) {
     monaco.editor.setModelMarkers(model, 'markerSource', []);
     const markers: monaco.editor.IMarkerData[] = [];
@@ -112,6 +161,10 @@ function setErrorOnEditor(position: monaco.Position[], model: monaco.editor.ITex
     monaco.editor.setModelMarkers(model, 'markerSource', markers);
 }
 
+/**
+ * Finds the first line whose trimmed content equals `searchText`.
+ * Returns a Position at column 1, or null when not found.
+ */
 function getLineByText(model: monaco.editor.ITextModel, searchText: string) {
     const lineCount = model.getLineCount();
     for (let lineNumber = 1; lineNumber <= lineCount; lineNumber++) {
@@ -123,6 +176,11 @@ function getLineByText(model: monaco.editor.ITextModel, searchText: string) {
     return null;
 }
 
+/**
+ * Locates the line where a selector opens its block (`<selector>{`),
+ * comparing with all whitespace removed so formatting differences don't
+ * matter. Returns a Position at column 1, or null when not found.
+ */
 function getLineSelectorByText(model: monaco.editor.ITextModel, searchText: string) {
     const lineCount = model.getLineCount();
     const s1 = searchText + '{';
