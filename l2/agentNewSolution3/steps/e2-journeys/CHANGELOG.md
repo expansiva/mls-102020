@@ -13,6 +13,8 @@
   Approve/adjust emits `ns3-journeys-review`; the widget still does not write artifacts directly.
 - Added `agentNs3Journeys.openStepView`, so the existing task feedback "open/abrir" action can mount
   the journey widget from persisted `e2-journeys.json` without changing the collab-messages UI.
+- Changed `e2-journeys.md` from a full catalog copy to an audit summary/delta. The complete source of
+  truth stays in `e2-journeys.json` and the widget.
 - Verified the new files with filtered `tsc`; the repository-wide typecheck still fails in unrelated
   `mls-102032` files.
 

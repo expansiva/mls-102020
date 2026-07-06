@@ -9,6 +9,7 @@ import { runNs3Gate } from '/_102020_/l2/agentNewSolution3/helpers/ns3Gate.js';
 import {
   Ns3E2JourneysArtifact,
   prepareE2JourneysArtifact,
+  renderE2JourneysMarkdown,
   validateE2JourneysInvariants,
 } from '/_102020_/l2/agentNewSolution3/steps/e2-journeys/gate.js';
 
@@ -133,4 +134,27 @@ test('E2 gate accepts a removed E1 actor when a decision records it', async () =
     validate: item => validateE2JourneysInvariants(item, { e1ActorIds: ['attendant', 'cook', 'manager'] }),
   });
   assert.equal(result.ok, true);
+});
+
+test('E2 markdown is an audit summary instead of a full catalog copy', () => {
+  const artifact = validArtifact();
+  const markdown = renderE2JourneysMarkdown(artifact, { generatedAt: '2026-07-06T00:00:00.000Z' });
+  assert.match(markdown, /E2 Journey Audit/);
+  assert.match(markdown, /Source of Truth/);
+  assert.match(markdown, /Initial E2 version created/);
+  assert.doesNotMatch(markdown, /## Journeys by Actor/);
+  assert.doesNotMatch(markdown, /## Feature Catalog/);
+});
+
+test('E2 markdown records deltas against the previous version', () => {
+  const previous = validArtifact();
+  const next = validArtifact();
+  next.features[0].priority = 'soon';
+  const markdown = renderE2JourneysMarkdown(next, {
+    previous,
+    adjustment: 'Move POS order entry to soon.',
+    generatedAt: '2026-07-06T00:00:00.000Z',
+  });
+  assert.match(markdown, /Adjustment request: Move POS order entry to soon\./);
+  assert.match(markdown, /Feature priority changed: POS order entry \(now -> soon\)\./);
 });

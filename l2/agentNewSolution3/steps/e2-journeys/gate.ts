@@ -78,6 +78,13 @@ export interface E2GateOptions {
   e1ActorIds?: Iterable<string>;
 }
 
+export interface E2MarkdownAuditOptions {
+  previous?: Ns3E2JourneysArtifact | null;
+  adjustment?: string;
+  retryContext?: string;
+  generatedAt?: string;
+}
+
 const PRIORITIES: readonly Ns3E2Priority[] = ['now', 'soon', 'later', 'never'];
 const DECISION_KINDS: readonly Ns3E2DecisionKind[] = ['actorRemoved', 'featurePriority', 'scopeChange', 'other'];
 
@@ -246,63 +253,110 @@ export function validateE2JourneysInvariants(
   return { artifact, issues, needsHumanInput: false };
 }
 
-export function renderE2JourneysMarkdown(artifact: Ns3E2JourneysArtifact): string {
-  const featureById = new Map(artifact.features.map(feature => [feature.featureId, feature]));
+export function renderE2JourneysMarkdown(artifact: Ns3E2JourneysArtifact, options: E2MarkdownAuditOptions = {}): string {
+  const previous = options.previous || null;
+  const changes = previous ? describeE2Changes(previous, artifact) : [
+    `Initial E2 version created with ${artifact.actors.length} actor(s), ${artifact.journeys.length} journey(ies), and ${artifact.features.length} feature(s).`,
+  ];
   const lines: string[] = [
-    `# ${artifact.moduleTitle} - Journeys and Features`,
+    `# ${artifact.moduleTitle} - E2 Journey Audit`,
     '',
     `Module: \`${artifact.moduleName}\``,
     `Language: ${artifact.userLanguage}`,
     `Version: v${artifact.version}`,
+    `Generated at: ${options.generatedAt || artifact.createdAt}`,
     '',
-    '## Journeys by Actor',
+    '## Source of Truth',
+    '- Full structured artifact: `e2-journeys.json`',
+    '- This markdown is an audit summary, not a duplicate copy of the journey catalog.',
+    '',
+    '## Current Snapshot',
+    `- Actors: ${artifact.actors.length}`,
+    `- Journeys: ${artifact.journeys.length}`,
+    `- Features: ${artifact.features.length}`,
+    `- Feature priorities: ${renderPriorityCounts(artifact)}`,
   ];
 
-  for (const actor of artifact.actors) {
-    const actorJourneys = artifact.journeys.filter(journey => journey.actorId === actor.actorId);
-    lines.push('', `### ${actor.name} (\`${actor.actorId}\`)`);
-    if (actor.description) lines.push(actor.description);
-    if (actorJourneys.length === 0) {
-      lines.push('- No journeys.');
-      continue;
-    }
-    for (const journey of actorJourneys) {
-      lines.push('', `#### ${journey.title} (\`${journey.journeyId}\`)`);
-      lines.push(`- Goal: ${journey.goal}`);
-      if (journey.soThat) lines.push(`- So that: ${journey.soThat}`);
-      if (journey.trigger) lines.push(`- Trigger: ${journey.trigger}`);
-      lines.push('- Steps:');
-      journey.steps.forEach((step, index) => {
-        const refs = step.featureRefs.map(ref => featureById.get(ref)?.title || ref).join(', ');
-        lines.push(`  ${index + 1}. ${step.title} - ${step.intent}${refs ? ` _(features: ${refs})_` : ''}`);
-      });
-      lines.push(`- Outcome: ${journey.outcome}`);
-      if (journey.businessRules.length) {
-        lines.push('- Business rules:');
-        journey.businessRules.forEach(rule => lines.push(`  - ${rule}`));
-      }
-      if (journey.notes) lines.push(`- Notes: ${journey.notes}`);
-    }
+  if (options.adjustment || options.retryContext) {
+    lines.push('', '## Review Input');
+    if (options.adjustment) lines.push(`- Adjustment request: ${options.adjustment}`);
+    if (options.retryContext) lines.push(`- Gate retry context: ${singleLine(options.retryContext)}`);
   }
 
-  lines.push('', '## Feature Catalog');
-  for (const priority of PRIORITIES) {
-    const featuresForPriority = artifact.features.filter(feature => feature.priority === priority);
-    if (featuresForPriority.length === 0) continue;
-    lines.push('', `### ${priority}`);
-    featuresForPriority.forEach(feature => {
-      const actors = feature.actorIds.join(', ');
-      lines.push(`- ${feature.title} (\`${feature.featureId}\`)${feature.description ? `: ${feature.description}` : ''}${actors ? ` [${actors}]` : ''}`);
-    });
-  }
+  lines.push('', '## Changes');
+  changes.forEach(change => lines.push(`- ${change}`));
 
   if (artifact.decisions.length) {
-    lines.push('', '## Decisions');
+    lines.push('', '## Recorded Decisions');
     artifact.decisions.forEach(decision => lines.push(`- [${decision.kind}] ${decision.summary}${decision.target ? ` (${decision.target})` : ''}`));
   }
 
+  lines.push('', '## Audit Note');
+  lines.push('- Human review should use the widget or the JSON artifact for the full journey content.');
+  lines.push('- Future adjustment loops should append request/result events and promote only approved versions.');
+
   lines.push('');
   return `${lines.join('\n')}\n`;
+}
+
+function describeE2Changes(previous: Ns3E2JourneysArtifact, next: Ns3E2JourneysArtifact): string[] {
+  const changes: string[] = [];
+  changes.push(...describeCollectionChanges('Actor', previous.actors, next.actors, actor => actor.actorId, actor => actor.name));
+  changes.push(...describeCollectionChanges('Journey', previous.journeys, next.journeys, journey => journey.journeyId, journey => journey.title));
+  changes.push(...describeCollectionChanges('Feature', previous.features, next.features, feature => feature.featureId, feature => feature.title));
+
+  const previousFeatures = new Map(previous.features.map(feature => [feature.featureId, feature]));
+  next.features.forEach(feature => {
+    const old = previousFeatures.get(feature.featureId);
+    if (!old) return;
+    if (old.priority !== feature.priority) changes.push(`Feature priority changed: ${feature.title} (${old.priority} -> ${feature.priority}).`);
+    if (old.title !== feature.title) changes.push(`Feature title changed: ${old.title} -> ${feature.title}.`);
+  });
+
+  const previousJourneys = new Map(previous.journeys.map(journey => [journey.journeyId, journey]));
+  next.journeys.forEach(journey => {
+    const old = previousJourneys.get(journey.journeyId);
+    if (!old) return;
+    if (old.title !== journey.title) changes.push(`Journey title changed: ${old.title} -> ${journey.title}.`);
+    if (old.steps.length !== journey.steps.length) changes.push(`Journey step count changed: ${journey.title} (${old.steps.length} -> ${journey.steps.length}).`);
+    if (!sameStringArray(old.businessRules, journey.businessRules)) changes.push(`Business rules changed: ${journey.title}.`);
+    if ((old.notes || '') !== (journey.notes || '')) changes.push(`Notes changed: ${journey.title}.`);
+  });
+
+  if (changes.length === 0) changes.push('No structural changes detected against the previous version.');
+  return changes;
+}
+
+function describeCollectionChanges<T>(
+  label: string,
+  previous: readonly T[],
+  next: readonly T[],
+  getId: (value: T) => string,
+  getTitle: (value: T) => string,
+): string[] {
+  const changes: string[] = [];
+  const previousById = new Map(previous.map(item => [getId(item), item]));
+  const nextById = new Map(next.map(item => [getId(item), item]));
+  nextById.forEach((item, id) => {
+    if (!previousById.has(id)) changes.push(`${label} added: ${getTitle(item)} (\`${id}\`).`);
+  });
+  previousById.forEach((item, id) => {
+    if (!nextById.has(id)) changes.push(`${label} removed: ${getTitle(item)} (\`${id}\`).`);
+  });
+  return changes;
+}
+
+function renderPriorityCounts(artifact: Ns3E2JourneysArtifact): string {
+  return PRIORITIES.map(priority => `${priority}=${artifact.features.filter(feature => feature.priority === priority).length}`).join(', ');
+}
+
+function sameStringArray(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function singleLine(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
 }
 
 function normalizePriority(value: unknown): Ns3E2Priority {

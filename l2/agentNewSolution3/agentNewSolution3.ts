@@ -14,6 +14,7 @@ import { Ns3PipelineState, readNs3Pipeline } from '/_102020_/l2/agentNewSolution
 
 export const NS3_PLAN_IDS = [
   'e1-clarification', 'e1-clarification-answer', 'e1-draft', 'checkpoint-draft', 'e2-journeys', 'checkpoint-journeys',
+  'checkpoint-journeys-answer',
   'e3-ontology', 'e4-actors-rules-refs', 'e5-workflows-operations', 'e6-journey-map', 'e7-validation-summary',
 ] as const;
 
@@ -112,7 +113,7 @@ function buildRootMessageAI(
   };
 }
 
-type Ns3ResumeTarget = 'e1-draft' | 'e2-journeys';
+type Ns3ResumeTarget = 'e1-draft' | 'e2-journeys' | 'checkpoint-journeys';
 
 interface Ns3ResumeInfo {
   moduleName: string;
@@ -128,8 +129,9 @@ async function findResumableNs3Module(): Promise<Ns3ResumeInfo | null> {
     const pipeline = await readNs3Pipeline(moduleName);
     if (!pipeline) continue;
     const target = resolveResumeTarget(pipeline);
-    // Phase 1 resume currently re-enters at E2 only (E1 needs the clarification the fresh flow owns).
-    if (target !== 'e2-journeys') continue;
+    // Phase 1 resume re-enters at E2 or at the E2 human checkpoint. E1 needs the
+    // clarification that the fresh flow owns, so it is not rebuilt from resume.
+    if (target !== 'e2-journeys' && target !== 'checkpoint-journeys') continue;
     const draft = await readJsonArtifact<{ sourcePrompt?: string }>(ns3PipelineArtifactFileInfo(moduleName, 'e1-draft', '.json'), false);
     if (!draft) continue;
     return { moduleName, sourcePrompt: readString(draft.sourcePrompt) || moduleName, target };
@@ -140,8 +142,10 @@ async function findResumableNs3Module(): Promise<Ns3ResumeInfo | null> {
 function resolveResumeTarget(pipeline: Ns3PipelineState): Ns3ResumeTarget | null {
   const e1 = pipeline.steps['e1-draft'];
   const e2 = pipeline.steps['e2-journeys'];
+  const checkpoint = pipeline.steps['checkpoint-journeys'];
   if (!e1 || !(e1.status === 'approved' || e1.lastGate?.ok)) return 'e1-draft';
   if (!e2 || !(e2.status === 'approved' || e2.lastGate?.ok)) return 'e2-journeys';
+  if (!checkpoint || checkpoint.status !== 'approved') return 'checkpoint-journeys';
   return null;
 }
 
@@ -156,7 +160,8 @@ async function afterPromptStep(
     const rootPlan = normalizeRootPlan(step.interaction?.payload?.[0]);
     const resumeModule = readString(context.task?.iaCompressed?.longMemory?.resumeModule);
     if (resumeModule) {
-      return buildResumeTree(resumeModule).map(resumeStep => ({
+      const resumeTarget = normalizeResumeTarget(readString(context.task?.iaCompressed?.longMemory?.resumeTarget));
+      return buildResumeTree(resumeModule, resumeTarget).map(resumeStep => ({
         type: 'add-step',
         messageId: context.message.orderAt,
         threadId: context.message.threadId,
@@ -231,8 +236,8 @@ function buildPlannedTree(plan: Ns3RootPlan, includePhase2: boolean): mls.msg.AI
   return [
     ...phase1,
     agentStep('e2-journeys', 'agentNs3Journeys', title('e2-journeys'), ['e1-draft'], 'waiting_dependency'),
-    plannedStep('checkpoint-journeys', title('checkpoint-journeys'), ['e2-journeys']),
-    plannedStep('e3-ontology', title('e3-ontology'), ['checkpoint-journeys']),
+    agentStep('checkpoint-journeys', 'agentNs3Journeys', title('checkpoint-journeys'), ['e2-journeys'], 'waiting_dependency'),
+    plannedStep('e3-ontology', title('e3-ontology'), ['checkpoint-journeys-answer']),
     plannedStep('e4-actors-rules-refs', title('e4-actors-rules-refs'), ['e3-ontology']),
     plannedStep('e5-workflows-operations', title('e5-workflows-operations'), ['e4-actors-rules-refs']),
     plannedStep('e6-journey-map', title('e6-journey-map'), ['e5-workflows-operations']),
@@ -294,13 +299,29 @@ function plannedStep(planId: Ns3PlanId, stepTitle: string, dependsOn: Ns3PlanId[
   } as mls.msg.AIResultStep;
 }
 
-// Resume tree: a single E2 agent step that is ready to run. It must NOT be `waiting_dependency`:
+// Resume tree: a single ready agent step. It must NOT be `waiting_dependency`:
 // collab-messages only re-evaluates dependencies when some step COMPLETES (addTaskAISteps ->
 // unlockWaitingDependencySteps), so a waiting_dependency step added on its own would stay parked with
 // no hook. A single, non-waiting_dependency agent step gets its beforePromptStep enqueued immediately
-// (addTaskAISteps, isIntentionsSteps branch). The agent resolves the module and reads e1-draft.json
-// from disk, so no clarification/draft steps need to be rebuilt.
-function buildResumeTree(moduleName: string): mls.msg.AIPayload[] {
+// (addTaskAISteps, isIntentionsSteps branch). The agent resolves artifacts from disk, so no
+// clarification/draft steps need to be rebuilt.
+function buildResumeTree(moduleName: string, target: Ns3ResumeTarget = 'e2-journeys'): mls.msg.AIPayload[] {
+  if (target === 'checkpoint-journeys') {
+    return [
+      {
+        type: 'agent',
+        stepId: 0,
+        interaction: null,
+        stepTitle: defaultTitles['checkpoint-journeys'],
+        status: 'waiting_human_input',
+        nextSteps: [],
+        agentName: 'agentNs3Journeys',
+        prompt: JSON.stringify({ planId: 'checkpoint-journeys', moduleName }),
+        rags: [],
+        planning: { planId: 'checkpoint-journeys', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+      } as mls.msg.AIAgentStep,
+    ];
+  }
   return [
     {
       type: 'agent',
@@ -315,6 +336,12 @@ function buildResumeTree(moduleName: string): mls.msg.AIPayload[] {
       planning: { planId: 'e2-journeys', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
     } as mls.msg.AIAgentStep,
   ];
+}
+
+function normalizeResumeTarget(value?: string): Ns3ResumeTarget {
+  return value === 'checkpoint-journeys' || value === 'e1-draft' || value === 'e2-journeys'
+    ? value
+    : 'e2-journeys';
 }
 
 async function applyInitialClarification(
@@ -566,7 +593,9 @@ const defaultTitles: Record<Ns3PlanId, string> = {
   'e1-clarification-answer': 'Initial clarification answer',
   'e1-draft': 'Draft understanding',
   'checkpoint-draft': 'Approve draft', 'e2-journeys': 'Map journeys and features',
-  'checkpoint-journeys': 'Approve journeys', 'e3-ontology': 'Plan ontology',
+  'checkpoint-journeys': 'Approve journeys',
+  'checkpoint-journeys-answer': 'Journeys approval answer',
+  'e3-ontology': 'Plan ontology',
   'e4-actors-rules-refs': 'Plan actors, rules and references',
   'e5-workflows-operations': 'Plan workflows and operations',
   'e6-journey-map': 'Consolidate journey map', 'e7-validation-summary': 'Validate and summarize',

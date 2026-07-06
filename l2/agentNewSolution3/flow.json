@@ -34,7 +34,7 @@
     "helpers/": "ns3Fs.ts (read/write/path hardening), ns3Ids.ts (id normalization), ns3Gate.ts (gate runner + retry), ns3Pipeline.ts (pipeline.json, inputsHash, dirty), ns3Trace.ts",
     "schemas/": "Versioned JSON Schemas for artifacts between steps",
     "steps/e1-draft/": "readme.md, agentNs3Draft.ts, prompt.md, gate.ts, gate.test.ts, fixture/",
-    "steps/e2-journeys/": "readme.md, agentNs3Journeys.ts, agentNs3JourneysAdjustment.ts, prompt.md, promptAdjustment.md, gate.ts, gate.test.ts, fixture/",
+    "steps/e2-journeys/": "readme.md, agentNs3Journeys.ts, prompt.md, gate.ts, gate.test.ts, fixture/, widgetNs3Journeys.ts/.less and widgetNs3JourneysLogic.ts",
     "widgetNs3Draft.ts/.less": "human checkpoint 1 (draft summary + approve/adjust)",
     "widgetNs3Journeys.ts/.less": "human checkpoint 2 (graphical journeys + features/priorities + adjustment prompt)"
   },
@@ -125,24 +125,37 @@
     },
     {
       "planId": "checkpoint-journeys",
-      "agentName": "widgetNs3Journeys",
-      "type": "human_checkpoint",
+      "agentName": "agentNs3Journeys",
+      "type": "agent_clarification_checkpoint",
       "phase": 1,
       "dependsOn": ["e2-journeys"],
-      "goal": "2nd human interaction - the most important business checkpoint. Graphical web component: journeys by actor (visual step map), features with editable priority, and an adjustment prompt. Loop: user request -> agentNs3JourneysAdjustment applies it to the artifact -> gate -> new version v{K} presented again. Approval freezes the current version.",
+      "goal": "2nd human interaction - the most important business checkpoint. The agent emits a clarification payload owned by this step; beforeClarificationStep renders widgetNs3Journeys. The widget shows journeys by actor, feature priorities, editable notes/rules, and an adjustment prompt. Loop: user request -> a new dynamic e2-journeys adjustment step applies it -> gate -> new version v{K} presented again. Approval freezes the current version.",
       "input": ["e2-journeys.json (current version)"],
       "output": {
-        "result": "e2 approved (end of Phase 1) or new iteration",
-        "savedArtifact": ["e2-journeys.v{K}.json (iterations)", "e2-journeys.json (frozen on approval)", "pipeline.json (e2 approved; e3+ dirty if re-approved)"]
+        "result": "clarification UI submitted by the user; approval creates checkpoint-journeys-answer, adjustment creates a new e2-journeys run",
+        "savedArtifact": ["e2-journeys.v{K}.json/.md (adjustment iterations)", "e2-journeys.json/.md (current/frozen candidate)", "e2-journeys-audit.json (review payloads and version transitions)", "pipeline.json (e2/checkpoint approved on final approval)"]
       },
-      "notes": "singleWritePath: the widget never writes directly; every change passes through the adjustment agent + gate. Loop decisions feed the designContext in E3. IMPLEMENTATION STATUS (2026-07-06): the E2 agent, gate, schema, prompt (codereasoning) and fixture are implemented and e2-journeys writes e2-journeys.{json,md}; the graphical widget and the adjustment loop are NOT built yet. CHECKPOINT RENDERING PATTERN: a checkpoint that renders a custom widget must be a clarification nested UNDER an agent step (not a flat sibling in nextSteps), mirroring agentNewSolutionFinal. checkpoint-draft was fixed this way (no-LLM wrapper agent 'checkpoint-draft' + child clarification 'checkpoint-draft-view'); checkpoint-journeys must follow the same shape when its widget is built."
+      "notes": "singleWritePath: the widget never writes artifacts directly. All approvals/adjustments are stored as task steps and in e2-journeys-audit.json. Strong implementation pattern (2026-07-06): custom checkpoint UI is a clarification emitted in the owning agent interaction payload, as documented in skills/collab_messages.md and used by agentNewSolution2Requirements. Dynamic adjustment steps reuse agentNs3Journeys instead of a separate agent file, keeping generation/gate/write behavior in one maintenance unit."
+    },
+    {
+      "planId": "checkpoint-journeys-answer",
+      "agentName": "agentNs3Journeys (clarification result)",
+      "type": "result",
+      "phase": 1,
+      "dependsOn": ["checkpoint-journeys"],
+      "goal": "Task result created only when the user approves the E2 journeys checkpoint. This is the dependency that unlocks E3; adjustment requests intentionally do not create this result.",
+      "input": ["widgetNs3Journeys review payload with action=approve"],
+      "output": {
+        "result": "approved moduleName/version plus change summary",
+        "savedArtifact": ["pipeline.json with e2-journeys and checkpoint-journeys approvedBy=human", "e2-journeys-audit.json approval event"]
+      }
     },
     {
       "planId": "e3-ontology",
       "type": "agent",
       "phase": 2,
       "status": "planned",
-      "dependsOn": ["checkpoint-journeys"],
+      "dependsOn": ["checkpoint-journeys-answer"],
       "goal": "Ontology: 1 entity per file (fields, enums, lifecycle) + {module}DesignContext.defs.ts as an ontology item (original prompt, language, decisions, assumptions). Fan-out = list iteration inside the step, retry per item.",
       "savedArtifact": ["l4/{module}/ontology/{EntityId}.defs.ts", "l4/{module}/pipeline/e3-ontology.md"]
     },

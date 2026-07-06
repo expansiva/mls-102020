@@ -12,7 +12,7 @@ Inputs:
 
 Outputs:
 - `l4/{module}/pipeline/e2-journeys.json`
-- `l4/{module}/pipeline/e2-journeys.md`
+- `l4/{module}/pipeline/e2-journeys.md` (audit summary/delta; JSON is the source of truth)
 - `l4/{module}/pipeline/pipeline.json`
 - Trace files under `l4/{module}/pipeline/trace/`
 
@@ -31,6 +31,7 @@ Rules:
 - Do not create ontology, pages, tables, workflows or operations.
 - `businessRules` and `notes` are per-journey human inputs; adjustments must preserve them.
 - The widget never writes artifacts; adjustments always rerun this step through the gate.
+- The markdown artifact records what changed; it must not duplicate the full JSON catalog.
 
 Widget (`widgetNs3Journeys.ts`):
 - Custom element: `<widget-ns3-journeys-102020>`.
