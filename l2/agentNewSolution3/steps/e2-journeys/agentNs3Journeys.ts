@@ -230,7 +230,9 @@ function checkpointPromptReady(
 }
 
 function buildCheckpointSystemPrompt(moduleName: string): string {
-  return `Return JSON only. Do not call tools. Do not explain.
+  return `<!-- modelType: codefast -->
+
+Return JSON only. Do not call tools. Do not explain.
 
 Required payload:
 {
