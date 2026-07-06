@@ -161,7 +161,7 @@ async function afterPromptStep(
       await writeNs3Trace(moduleNameForTrace, 'e1-draft', AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
       const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, 'failed', traceMsg)];
       if (gate.needsHumanInput) {
-        intents.unshift(addBlockingClarification(context, step, artifact, gate.errors.map(issue => issue.message)));
+        intents.unshift(addBlockingClarification(context, parentStep, artifact, gate.errors.map(issue => issue.message)));
       } else if (attempt < 2) {
         intents.unshift(addGateRetryStep(context, parentStep, artifact, gate.retryContext || traceMsg));
       }
@@ -207,7 +207,8 @@ async function beforeClarificationStep(
     el.setAttribute('mode', 'new');
     el.addEventListener('clarification-finish', (event: Event) => {
       const detail = (event as CustomEvent<{ value: Ns3Clarification; action: 'continue' | 'cancel' }>).detail;
-      void applyInitialClarification(context, parentStep, step, hookSequential, detail.value, detail.action);
+      applyInitialClarification(context, parentStep, step, hookSequential, detail.value, detail.action)
+        .catch(error => console.error(`[${AGENT_NAME}] ${error?.message || error}`));
     });
     div.appendChild(el);
     return div;
@@ -251,7 +252,8 @@ async function beforeClarificationStep(
     el.setAttribute('mode', 'new');
     el.addEventListener('clarification-finish', (event: Event) => {
       const detail = (event as CustomEvent<{ value: Ns3Clarification; action: 'continue' | 'cancel' }>).detail;
-      void applyBlockingClarification(context, parentStep, step, hookSequential, detail.value, detail.action, parsed.moduleName || findLatestE1ModuleName(context) || '');
+      applyBlockingClarification(context, parentStep, step, hookSequential, detail.value, detail.action, parsed.moduleName || findLatestE1ModuleName(context) || '')
+        .catch(error => console.error(`[${AGENT_NAME}] ${error?.message || error}`));
     });
     return el;
   }
@@ -286,10 +288,11 @@ async function applyInitialClarification(
 ): Promise<void> {
   if (!context.task) throw new Error(`[${AGENT_NAME}] task invalid`);
   const status: mls.msg.AIStepStatus = action === 'continue' ? 'completed' : 'failed';
-  const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, status)];
+  const mutationParent = findMutableParentStep(context, parentStep);
+  const intents: mls.msg.AgentIntent[] = [updateStatus(context, mutationParent, step, hookSequential, status)];
   if (action === 'continue') {
     const answer = normalizeClarificationAnswer(value);
-    intents.unshift(resultStep(context, parentStep, 'e1-clarification-answer', ['e1-clarification'], answer.title, answer));
+    intents.unshift(resultStep(context, mutationParent, 'e1-clarification-answer', ['e1-clarification'], answer.title, answer));
     const e1Step = findStepByPlanId(context, 'e1-draft');
     if (e1Step && e1Step.status === 'waiting_dependency') {
       const e1ParentStepId = findParentStepId(context, e1Step.stepId) || parentStep.stepId;
@@ -396,15 +399,16 @@ async function applyBlockingClarification(
 ): Promise<void> {
   if (!context.task) throw new Error(`[${AGENT_NAME}] task invalid`);
   const status: mls.msg.AIStepStatus = action === 'continue' ? 'completed' : 'failed';
-  const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, status)];
+  const mutationParent = findMutableParentStep(context, parentStep);
+  const intents: mls.msg.AgentIntent[] = [updateStatus(context, mutationParent, step, hookSequential, status)];
   if (action === 'continue') {
     const answers = Object.fromEntries(Object.entries(value.questions || {}).map(([key, question]) => [key, question.answer ?? '']));
-    intents.unshift(resultStep(context, parentStep, `e1-clarification-extra-answer-${step.stepId}`, ['e1-clarification-extra'], value.title || 'Blocking clarification answer', {
+    intents.unshift(resultStep(context, mutationParent, `e1-clarification-extra-answer-${step.stepId}`, ['e1-clarification-extra'], value.title || 'Blocking clarification answer', {
       title: value.title,
       userLanguage: value.userLanguage,
       answers,
     }));
-    intents.push(addE1RerunStep(context, parentStep, {
+    intents.push(addE1RerunStep(context, mutationParent, {
       planId: `e1-draft-blocking-${step.stepId}`,
       stepTitle: 'Apply blocking clarification',
       prompt: {
@@ -639,6 +643,29 @@ function parseStepJson(value: unknown): ParsedStepJson {
 function findStepByPlanId(context: mls.msg.ExecutionContext, planId: string): mls.msg.AIPayload | null {
   if (!context.task) return null;
   return getAllSteps(context.task.iaCompressed?.nextSteps).find(item => (item as { planning?: { planId?: string } }).planning?.planId === planId) || null;
+}
+
+function findStepById(context: mls.msg.ExecutionContext, stepId: number): mls.msg.AIPayload | null {
+  if (!context.task) return null;
+  return getAllSteps(context.task.iaCompressed?.nextSteps).find(item => item.stepId === stepId) || null;
+}
+
+function findMutableParentStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep): mls.msg.AIAgentStep {
+  const current = findStepById(context, parentStep.stepId);
+  if (isMutableAgentStep(current)) return current;
+
+  const ownerParentId = findParentStepId(context, parentStep.stepId);
+  const ownerParent = ownerParentId ? findStepById(context, ownerParentId) : null;
+  if (isMutableAgentStep(ownerParent)) return ownerParent;
+
+  const root = context.task?.iaCompressed?.nextSteps?.[0] || null;
+  if (isMutableAgentStep(root)) return root;
+
+  return parentStep;
+}
+
+function isMutableAgentStep(step: mls.msg.AIPayload | null): step is mls.msg.AIAgentStep {
+  return step?.type === 'agent' && step.status !== 'completed' && step.status !== 'failed';
 }
 
 function findLatestE1ModuleName(context: mls.msg.ExecutionContext): string | null {
