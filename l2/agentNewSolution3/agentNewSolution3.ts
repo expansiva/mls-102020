@@ -219,15 +219,22 @@ async function beforeClarificationStep(
 
 function buildPlannedTree(plan: Ns3RootPlan, includePhase2: boolean): mls.msg.AIPayload[] {
   const title = (planId: Ns3PlanId) => getTitle(plan, planId);
+  // Human checkpoint 1 mirrors the proven agentNewSolutionFinal shape: a no-LLM wrapper agent step
+  // whose CHILD clarification renders the custom widget. The clarification must live nested under an
+  // agent (not as a flat sibling) so the frontend can resolve its owning agent and mount the widget.
+  const checkpointDraft = agentStep('checkpoint-draft', 'agentNs3Draft', title('checkpoint-draft'), ['e1-draft'], 'waiting_dependency');
+  checkpointDraft.nextSteps = [
+    clarificationStep('checkpoint-draft-view', title('checkpoint-draft'), ['checkpoint-draft'], { planId: 'checkpoint-draft-view' }, 'waiting_dependency'),
+  ];
   const phase1: mls.msg.AIPayload[] = [
     agentStep('e1-clarification', 'agentNs3Draft', title('e1-clarification'), [], 'waiting_human_input'),
     agentStep('e1-draft', 'agentNs3Draft', title('e1-draft'), ['e1-clarification-answer'], 'waiting_dependency'),
-    clarificationStep('checkpoint-draft', title('checkpoint-draft'), ['e1-draft'], { planId: 'checkpoint-draft' }, 'waiting_dependency'),
+    checkpointDraft,
   ];
   if (!includePhase2) return phase1;
   return [
     ...phase1,
-    agentStep('e2-journeys', 'agentNs3Journeys', title('e2-journeys'), ['checkpoint-draft'], 'waiting_dependency'),
+    agentStep('e2-journeys', 'agentNs3Journeys', title('e2-journeys'), ['checkpoint-draft-view'], 'waiting_dependency'),
     plannedStep('checkpoint-journeys', title('checkpoint-journeys'), ['e2-journeys']),
     plannedStep('e3-ontology', title('e3-ontology'), ['checkpoint-journeys']),
     plannedStep('e4-actors-rules-refs', title('e4-actors-rules-refs'), ['e3-ontology']),
@@ -241,7 +248,7 @@ function agentStep(
   planId: Ns3PlanId,
   agentName: string,
   stepTitle: string,
-  dependsOn: Ns3PlanId[],
+  dependsOn: string[],
   status: mls.msg.AIStepStatus,
 ): mls.msg.AIAgentStep {
   return {
@@ -259,9 +266,9 @@ function agentStep(
 }
 
 function clarificationStep(
-  planId: Ns3PlanId,
+  planId: string,
   stepTitle: string,
-  dependsOn: Ns3PlanId[],
+  dependsOn: string[],
   json: unknown,
   status: mls.msg.AIStepStatus,
 ): mls.msg.AIClarificationStep {
@@ -291,32 +298,25 @@ function plannedStep(planId: Ns3PlanId, stepTitle: string, dependsOn: Ns3PlanId[
   } as mls.msg.AIResultStep;
 }
 
-// Resume tree: a completed anchor plus the E2 agent step that depends on it. The agent resolves the
-// module and reads e1-draft.json from disk, so no clarification/draft steps need to be rebuilt.
+// Resume tree: a single E2 agent step that is ready to run. It must NOT be `waiting_dependency`:
+// collab-messages only re-evaluates dependencies when some step COMPLETES (addTaskAISteps ->
+// unlockWaitingDependencySteps), so a waiting_dependency step added on its own would stay parked with
+// no hook. A single, non-waiting_dependency agent step gets its beforePromptStep enqueued immediately
+// (addTaskAISteps, isIntentionsSteps branch). The agent resolves the module and reads e1-draft.json
+// from disk, so no clarification/draft steps need to be rebuilt.
 function buildResumeTree(moduleName: string): mls.msg.AIPayload[] {
-  const anchorPlanId = 'e2-resume-anchor';
   return [
-    {
-      type: 'result',
-      stepId: 0,
-      interaction: null,
-      stepTitle: 'Resume Phase 1',
-      status: 'completed',
-      nextSteps: [],
-      result: JSON.stringify({ planId: anchorPlanId, moduleName, resumedTo: 'e2-journeys' }, null, 2),
-      planning: { planId: anchorPlanId, dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
-    } as mls.msg.AIResultStep,
     {
       type: 'agent',
       stepId: 0,
       interaction: null,
       stepTitle: defaultTitles['e2-journeys'],
-      status: 'waiting_dependency',
+      status: 'waiting_human_input',
       nextSteps: [],
       agentName: 'agentNs3Journeys',
       prompt: JSON.stringify({ planId: 'e2-journeys', moduleName }),
       rags: [],
-      planning: { planId: 'e2-journeys', dependsOn: [anchorPlanId], executionMode: 'sequential', executionHost: 'client' },
+      planning: { planId: 'e2-journeys', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
     } as mls.msg.AIAgentStep,
   ];
 }

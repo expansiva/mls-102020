@@ -72,6 +72,11 @@ async function beforePromptStep(
   if (!context.task) throw new Error(`[${AGENT_NAME}] task invalid`);
   const parsedArgs = parseArgs(args);
   const rootPlan = getRootPlan(context);
+  if (parsedArgs.planId === 'checkpoint-draft') {
+    // No-LLM wrapper: completing this step makes its child clarification (checkpoint-draft-view)
+    // eligible to render widgetNs3Draft. Same pattern as agentNewSolutionFinal.
+    return [updateStatus(context, parentStep, step, hookSequential, 'completed')];
+  }
   if (parsedArgs.planId === 'e1-clarification') {
     return [{
       type: 'prompt_ready',
@@ -182,10 +187,9 @@ async function afterPromptStep(
 
     await writeNs3Trace(artifact.moduleName, 'e1-draft', AGENT_NAME, attempt, { artifact, gate });
 
-    return [
-      activateCheckpointClarification(context, parentStep, artifact.moduleName, hookSequential),
-      updateStatus(context, parentStep, step, hookSequential, 'completed'),
-    ];
+    // The checkpoint-draft wrapper (dependsOn e1-draft) runs automatically once e1-draft completes
+    // and renders its child clarification. No explicit activation needed here.
+    return [updateStatus(context, parentStep, step, hookSequential, 'completed')];
   } catch (error) {
     const traceMsg = error instanceof Error ? error.message : String(error);
     if (moduleNameForTrace) await writeNs3Trace(moduleNameForTrace, 'e1-draft', AGENT_NAME, 1, { stepId: step.stepId }, traceMsg);
@@ -225,7 +229,7 @@ async function beforeClarificationStep(
     div.appendChild(el);
     return div;
   }
-  if (parsed.planId === 'checkpoint-draft') {
+  if (parsed.planId === 'checkpoint-draft-view') {
     await import('/_102020_/l2/agentNewSolution3/widgetNs3Draft.js');
     const rootPlan = getRootPlan(context);
     const el = document.createElement('widget-ns3-draft-102020');
