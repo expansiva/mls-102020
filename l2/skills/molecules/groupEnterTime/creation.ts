@@ -150,7 +150,7 @@ import { render as litRender } from 'lit';
 | Member | Visibility | Description |
 |--------|------------|-------------|
 | \`portalContainer\` | \`protected\` | \`HTMLDivElement \\| null\` — the portal element appended to \`<body>\` |
-| \`portalClassName\` | \`protected\` | \`string\` — CSS class added to the portal (subclasses set it for scoped styling) |
+| \`portalWidgetName\` | \`protected\` | \`string\` — value of the \`data-widget\` attribute set on the portal container (the molecule tag name; the \`.less\` targets it via \`div[data-widget="..."]\`) |
 | \`getPortalTemplate()\` | \`protected\` | Returns \`TemplateResult\` with the time picker content. Subclasses override this to render themed variants |
 
 ### Lifecycle integration

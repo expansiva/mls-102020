@@ -150,7 +150,7 @@ import { render as litRender } from 'lit';
 | Member | Visibility | Description |
 |--------|------------|-------------|
 | \`portalContainer\` | \`protected\` | \`HTMLDivElement \\| null\` — the portal element appended to \`<body>\` |
-| \`portalClassName\` | \`protected\` | \`string\` — CSS class added to the portal (subclasses set it for scoped styling) |
+| \`portalWidgetName\` | \`protected\` | \`string\` — value of the \`data-widget\` attribute set on the portal container (the molecule tag name; the \`.less\` targets it via \`div[data-widget="..."]\`) |
 | \`getPortalTemplate()\` | \`protected\` | Returns \`TemplateResult\` with the calendar panel content. Subclasses override this to render themed variants |
 
 ### Lifecycle integration
@@ -168,7 +168,7 @@ import { render as litRender } from 'lit';
 private createPortal() {
   if (this.portalContainer) return;
   this.portalContainer = document.createElement('div');
-  if (this.portalClassName) this.portalContainer.classList.add(this.portalClassName);
+  if (this.portalWidgetName) this.portalContainer.setAttribute('data-widget', this.portalWidgetName);
   document.body.appendChild(this.portalContainer);
   this.updatePanelPosition();
   this.renderPortalContent();
@@ -227,7 +227,7 @@ The calendar panel is rendered exclusively via \`renderPortalContent()\`.
 
 \\\`\\\`\\\`less
 my-component,
-.my-portal-class {
+div[data-widget="my-component"] {
   .calendar-panel { /* panel styles */ }
   .calendar-day   { /* day cell styles */ }
 }

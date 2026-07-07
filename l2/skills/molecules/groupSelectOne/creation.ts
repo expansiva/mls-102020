@@ -188,7 +188,7 @@ import { render as litRender } from 'lit';
 | Member | Visibility | Description |
 |--------|------------|-------------|
 | \`portalContainer\` | \`protected\` | \`HTMLDivElement \\| null\` — the portal element appended to \`<body>\` |
-| \`portalClassName\` | \`protected\` | \`string\` — CSS class added to the portal (empty by default; subclasses set it for scoped styling, e.g. \`'glass-cs-portal'\`) |
+| \`portalWidgetName\` | \`protected\` | \`string\` — value of the \`data-widget\` attribute set on the portal container (empty by default; each molecule sets its tag name, e.g. \`'groupselectone--ml-select-dropdown'\`; the \`.less\` targets it via \`div[data-widget="..."]\`) |
 | \`getPortalTemplate()\` | \`protected\` | Returns \`TemplateResult\` with the panel content. Subclasses override this to render themed variants |
 
 ### Lifecycle integration
@@ -206,7 +206,7 @@ import { render as litRender } from 'lit';
 private createPortal() {
   if (this.portalContainer) return;
   this.portalContainer = document.createElement('div');
-  if (this.portalClassName) this.portalContainer.classList.add(this.portalClassName);
+  if (this.portalWidgetName) this.portalContainer.setAttribute('data-widget', this.portalWidgetName);
   document.body.appendChild(this.portalContainer);
   this.updatePanelPosition();
   this.renderPortalContent();
@@ -264,7 +264,7 @@ Use a shared selector in the \`.less\` file:
 
 \\\`\\\`\\\`less
 my-component,
-.my-portal-class {
+div[data-widget="my-component"] {
   .panel { /* panel styles */ }
   .item  { /* item styles */ }
 }
