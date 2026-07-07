@@ -68,12 +68,13 @@ async function beforePromptStep(
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
   if (!context.task) throw new Error(`[${AGENT_NAME}] task invalid`);
-  const parsedArgs = parseArgs(args);
+  const hookArgs = args || step.prompt || JSON.stringify({ planId: 'e2-journeys' });
+  const parsedArgs = parseArgs(hookArgs);
   if (parsedArgs.planId === 'checkpoint-journeys') {
     const moduleName = await resolveE2ReviewModule(parsedArgs.moduleName);
     const artifact = await readJsonArtifact<Ns3E2JourneysArtifact>(ns3PipelineArtifactFileInfo(moduleName, 'e2-journeys', '.json'), true);
     if (!artifact) throw new Error(`[${AGENT_NAME}] e2-journeys.json not found for ${moduleName}`);
-    return [checkpointPromptReady(context, parentStep, hookSequential, moduleName, artifact)];
+    return [checkpointPromptReady(context, parentStep, hookSequential, moduleName, artifact, hookArgs)];
   }
 
   const moduleName = await resolveE2Module(parsedArgs.moduleName);
@@ -97,7 +98,7 @@ async function beforePromptStep(
 
   return [{
     type: 'prompt_ready',
-    args: JSON.stringify({ planId: 'e2-journeys', moduleName }),
+    args: hookArgs,
     messageId: context.message.orderAt,
     threadId: context.message.threadId,
     taskId: context.task.PK,
@@ -211,10 +212,11 @@ function checkpointPromptReady(
   hookSequential: number,
   moduleName: string,
   artifact: Ns3E2JourneysArtifact,
+  hookArgs: string,
 ): mls.msg.AgentIntentPromptReady {
   return {
     type: 'prompt_ready',
-    args: JSON.stringify({ planId: 'checkpoint-journeys', moduleName }),
+    args: hookArgs,
     messageId: context.message.orderAt,
     threadId: context.message.threadId,
     taskId: context.task?.PK || '',
