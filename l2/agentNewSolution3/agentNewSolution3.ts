@@ -237,11 +237,21 @@ function buildPlannedTree(plan: Ns3RootPlan, includePhase2: boolean): mls.msg.AI
     ...phase1,
     agentStep('e2-journeys', 'agentNs3Journeys', title('e2-journeys'), ['e1-draft'], 'waiting_dependency'),
     agentStep('checkpoint-journeys', 'agentNs3Journeys', title('checkpoint-journeys'), ['e2-journeys'], 'waiting_dependency'),
-    plannedStep('e3-ontology', title('e3-ontology'), ['checkpoint-journeys-answer']),
-    plannedStep('e4-actors-rules-refs', title('e4-actors-rules-refs'), ['e3-ontology']),
-    plannedStep('e5-workflows-operations', title('e5-workflows-operations'), ['e4-actors-rules-refs']),
-    plannedStep('e6-journey-map', title('e6-journey-map'), ['e5-workflows-operations']),
-    plannedStep('e7-validation-summary', title('e7-validation-summary'), ['e6-journey-map']),
+    ...buildPhase2Steps(plan),
+  ];
+}
+
+// Phase-2 steps depend on the previous step's 'eN-done' anchor result (NOT on the agent step planId):
+// retries/adjustment runs have dynamic planIds and unlockWaitingDependencySteps only unlocks on a
+// COMPLETED step per planId, so whichever run passes the gate emits the anchor and the chain moves on.
+export function buildPhase2Steps(plan: Ns3RootPlan): mls.msg.AIAgentStep[] {
+  const title = (planId: Ns3PlanId) => getTitle(plan, planId);
+  return [
+    agentStep('e3-ontology', 'agentNs3Ontology', title('e3-ontology'), ['checkpoint-journeys-answer'], 'waiting_dependency'),
+    agentStep('e4-actors-rules-refs', 'agentNs3ActorsRules', title('e4-actors-rules-refs'), ['e3-done'], 'waiting_dependency'),
+    agentStep('e5-workflows-operations', 'agentNs3Behavior', title('e5-workflows-operations'), ['e4-done'], 'waiting_dependency'),
+    agentStep('e6-journey-map', 'agentNs3JourneyMap', title('e6-journey-map'), ['e5-done'], 'waiting_dependency'),
+    agentStep('e7-validation-summary', 'agentNs3Validation', title('e7-validation-summary'), ['e6-done'], 'waiting_dependency'),
   ];
 }
 
@@ -284,19 +294,6 @@ function clarificationStep(
     json: JSON.stringify({ planId, ...jsonRecord }),
     planning: { planId, dependsOn, executionMode: 'sequential', executionHost: 'client' },
   } as mls.msg.AIClarificationStep;
-}
-
-function plannedStep(planId: Ns3PlanId, stepTitle: string, dependsOn: Ns3PlanId[]): mls.msg.AIResultStep {
-  return {
-    type: 'result',
-    stepId: 0,
-    interaction: null,
-    stepTitle: `${stepTitle} (planned)`,
-    status: 'waiting_dependency',
-    nextSteps: [],
-    result: JSON.stringify({ planId, status: 'planned' }),
-    planning: { planId, dependsOn, executionMode: 'manual_later', executionHost: 'client', plannedOnly: true },
-  } as mls.msg.AIResultStep;
 }
 
 // Resume tree: a single ready agent step. It must NOT be `waiting_dependency`:
