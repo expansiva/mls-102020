@@ -677,6 +677,10 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
         const theme: IDesignSystemTokens = { themeName: name, description, color, typography, global, dsIndex };
         if (fonts.length) theme.fonts = fonts;
+        // Carry forward the reconciliation agent's field: it is NOT edited by this form, but
+        // writeTheme replaces the whole entry — omitting it here would wipe it on every save.
+        const recon = this._selectedEntry?.theme?.tokenReconciliation;
+        if (recon) theme.tokenReconciliation = recon;
         return theme;
     }
 
