@@ -114,13 +114,7 @@ async function writeThemes(project: number, themes: IDesignSystemTokens[]): Prom
         }, true, true, false);
         return;
     }
-
-    // Existing file (possibly open in the editor): same path as _102027_ serializeTokens.
-    const libCommon = await import('/_102027_/l2/libCommom.js');
-    await libCommon.forceServiceInstance(2, '_100554_serviceSource');
-    const serviceSource = mls.services['100554_serviceSource_left'];
-    if (!serviceSource) throw new Error('[writeThemes] Service source is not instancied');
-
+    
     const libModel = await import('/_102027_/l2/libModel.js');
     const models = await libModel.createAllModels(storFile);
     if (!models || !models.ts) throw new Error(`[writeThemes] Invalid models for file: ${project}_designSystem`);
@@ -131,6 +125,5 @@ async function writeThemes(project: number, themes: IDesignSystemTokens[]): Prom
         ? replaceTokensBlock(oldCode, `\n${renderThemes(themes)}\n`)
         : renderDesignSystemSource(project, themes));
     if (newCode === oldCode) return;
-
-    serviceSource.setValueInModeKeepingUndo(models.ts.model, newCode, true);
+    models.ts.model.setValue(newCode);
 }
