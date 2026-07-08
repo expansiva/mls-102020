@@ -12,7 +12,6 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 // [DESATIVADO temporariamente] avaliando se module.ts/moduleGenome ainda é necessário.
 // import { registerPageGenome } from '/_102020_/l2/dsMatch/registerPageGenome.js';
-import { buildGlobalCss } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
 import { parseStepArgs, mkCompleted, mkFail } from '/_102020_/l2/agentImplementGenome/planning.js';
 
 export function createAgent(): IAgentAsync {
@@ -46,9 +45,8 @@ async function beforePromptStep(
       // await registerPageGenome(project, a.module, a.layout, a.ds, a.device);
       // console.info(`[agentRegisterGenome] module.ts atualizado (web/${a.device}/page${a.layout}${a.ds})`);
 
-      // Regenerate THIS run's DS stylesheet (styles/<ds>/global.css) from its tokens (Phase B).
-      await buildGlobalCss(project, a.ds);
-      console.info(`[agentRegisterGenome] global.css do DS ${a.ds} regerado`);
+      // Styling tokens live in designSystem.ts (single home) — nothing to regenerate here:
+      // the Design System plugin/reconciliation agent write it directly.
     }
     console.info('[agentRegisterGenome] ✓ fluxo agentImplementGenome concluído');
     return [mkCompleted(context, parentStep, step, hookSequential)];

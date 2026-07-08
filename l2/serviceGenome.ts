@@ -11,6 +11,7 @@ import { convertFileToTag, isPageFile } from '/_102020_/l2/utils.js';
 import { getLastOpenedFiles, saveOpenedFile } from '/_102027_/l2/libCommom.js';
 import { createModel } from '/_102027_/l2/libModel.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { dsIndexNameMap } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
 import '/_102020_/l2/plugins/selectPage.js';
@@ -180,12 +181,14 @@ export class ServiceGenome102020 extends ServiceBase {
     }
 
     private async _initDsKnob() {
-        const config = await this._loadProjectConfig();
-        const dsMap: Record<number, { name: string }> = config?.designSystems ?? {};
+        // DS identity lives in designSystem.ts (dsIndex → themeName), not in project.json.
+        const project = getAuraState().actualProject;
+        if (!project) return;
+        const dsMap = await dsIndexNameMap(project);
         const keys = Object.keys(dsMap).map(Number).sort((a, b) => a - b);
         if (!keys.length) return;
         const labels: Record<number, string> = { 0: 'All' };
-        keys.forEach(k => { labels[k] = dsMap[k].name; });
+        keys.forEach(k => { labels[k] = dsMap[String(k)]; });
         const customKey = keys[keys.length - 1] + 1;
         labels[customKey] = '+';
         this._onDsConfig(new CustomEvent('ds-config', {
