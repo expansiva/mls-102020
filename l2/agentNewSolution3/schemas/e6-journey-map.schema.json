@@ -1,0 +1,58 @@
+{
+  "$id": "collab.codes/agentNewSolution3/e6-journey-map/2026-07-07-ns3-e6-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "moduleName", "workspaces", "landings", "navigationEdges"],
+  "properties": {
+    "schemaVersion": { "const": "2026-07-07-ns3-e6-v1" },
+    "moduleName": { "type": "string", "minLength": 1, "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "note": { "type": "string" },
+    "workspaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["workspaceId", "title", "actor", "kind", "entity", "operationIds", "purpose"],
+        "properties": {
+          "workspaceId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
+          "title": { "type": "string", "minLength": 1 },
+          "actor": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["workflow", "operation"] },
+          "entity": { "type": "string", "minLength": 1 },
+          "workflowId": { "type": "string", "minLength": 1 },
+          "operationIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "purpose": { "type": "string", "minLength": 5 }
+        }
+      }
+    },
+    "landings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["actorId", "workspaceId"],
+        "properties": {
+          "actorId": { "type": "string", "minLength": 1 },
+          "workspaceId": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "navigationEdges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "type": "string", "minLength": 1 },
+          "to": { "type": "string", "minLength": 1 },
+          "operationId": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}

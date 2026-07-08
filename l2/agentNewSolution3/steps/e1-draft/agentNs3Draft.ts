@@ -188,7 +188,8 @@ async function afterPromptStep(
     // e1-draft). The e1-draft.md stays on disk as the understanding contract / E2 input.
     pipeline = approveNs3Step(pipeline, 'e1-draft', 'auto');
     await writeNs3Pipeline(pipeline);
-    return [updateStatus(context, parentStep, step, hookSequential, 'completed')];
+    // Artifact is on disk; drop the LLM input/payload from the task record (DynamoDB 400KB).
+    return [updateStatus(context, parentStep, step, hookSequential, 'completed', undefined, 'input_output')];
   } catch (error) {
     const traceMsg = error instanceof Error ? error.message : String(error);
     if (moduleNameForTrace) await writeNs3Trace(moduleNameForTrace, 'e1-draft', AGENT_NAME, 1, { stepId: step.stepId }, traceMsg);
@@ -488,8 +489,9 @@ function updateStatus(
   hookSequential: number,
   status: mls.msg.AIStepStatus,
   traceMsg?: string,
+  cleaner?: 'input' | 'input_output',
 ): mls.msg.AgentIntentUpdateStatus {
-  return {
+  const intent: mls.msg.AgentIntentUpdateStatus = {
     type: 'update-status',
     hookSequential,
     messageId: context.message.orderAt,
@@ -500,6 +502,10 @@ function updateStatus(
     status,
     traceMsg,
   };
+  // 'input_output' drops the step's LLM input/payload/trace from the task record once the
+  // artifact is safely on disk (DynamoDB item limit is 400KB).
+  if (cleaner) intent.cleaner = cleaner;
+  return intent;
 }
 
 function createToolSchema(resultSchema: Record<string, unknown>): mls.msg.LLMTool {

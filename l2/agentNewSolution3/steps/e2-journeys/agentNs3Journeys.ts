@@ -194,7 +194,7 @@ async function afterPromptStep(
         summary: parsedArgs.adjustment || '',
       });
     }
-    const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, 'completed', `e2-journeys ready for ${artifact.moduleName}`)];
+    const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, 'completed', `e2-journeys ready for ${artifact.moduleName}`, 'input_output')];
     if (parsedArgs.afterAdjustment || !hasStepWithPlanId(context, 'checkpoint-journeys')) {
       intents.unshift(addCheckpointReviewStep(context, parentStep, artifact.moduleName));
     }
@@ -304,12 +304,15 @@ async function applyJourneysReview(
   if (!context.task) throw new Error(`[${AGENT_NAME}] task invalid`);
   if (!payload || payload.type !== 'checkpoint-journeys-answer') throw new Error(`[${AGENT_NAME}] invalid journeys review payload`);
   const moduleName = normalizeModuleFolderName(payload.moduleName);
+  // Anchor mutations on a non-terminal agent step: the backend rejects add-step /
+  // update-status on a completed/failed parent (addTaskAISteps "Parent step cannot be modified").
+  const mutationParent = findMutableParentStep(context, parentStep);
   const intents: mls.msg.AgentIntent[] = [
-    updateStatus(context, parentStep, step, hookSequential, 'completed', `checkpoint-journeys ${payload.action}`),
+    updateStatus(context, mutationParent, step, hookSequential, 'completed', `checkpoint-journeys ${payload.action}`),
   ];
 
   if (payload.action === 'approve') {
-    intents.unshift(resultStep(context, parentStep, 'checkpoint-journeys-answer', ['checkpoint-journeys'], 'Journeys approved', {
+    intents.unshift(resultStep(context, mutationParent, 'checkpoint-journeys-answer', ['checkpoint-journeys'], 'Journeys approved', {
       type: 'checkpoint-journeys-answer',
       moduleName,
       approved: true,
@@ -317,10 +320,18 @@ async function applyJourneysReview(
       changes: payload.changes,
       edits: payload.edits,
     }));
+    // Resume mode builds only the e2/checkpoint steps, so the phase-2 chain may not exist yet.
+    // Add the missing steps BEFORE the completed answer result lands (open waiting_dependency
+    // children also keep the parent chain from auto-completing at approval).
+    intents.unshift(...(await buildMissingPhase2AddSteps(context, mutationParent)));
   } else if (payload.action === 'adjust') {
     const requestPlanId = `checkpoint-journeys-adjustment-request-${Date.now()}`;
     const adjustment = buildReviewAdjustmentText(payload);
-    intents.unshift(resultStep(context, parentStep, requestPlanId, ['checkpoint-journeys'], 'Journeys adjustment request', {
+    // Intent order matters: the OPEN adjustment step must land BEFORE the completed
+    // result step. Otherwise setStepCompletedIfChildrenCompleted sees only completed
+    // children (the pending clarification in interaction.payload is not counted),
+    // auto-completes the parent chain, and the add-step below is rejected.
+    intents.unshift(resultStep(context, mutationParent, requestPlanId, ['checkpoint-journeys'], 'Journeys adjustment request', {
       type: 'checkpoint-journeys-adjustment-request',
       moduleName,
       version: payload.version,
@@ -328,7 +339,7 @@ async function applyJourneysReview(
       edits: payload.edits,
       changes: payload.changes,
     }));
-    intents.push(addAdjustmentRunStep(context, parentStep, moduleName, adjustment, requestPlanId, payload));
+    intents.unshift(addAdjustmentRunStep(context, mutationParent, moduleName, adjustment, requestPlanId, payload));
   } else {
     throw new Error(`[${AGENT_NAME}] unsupported journeys review action: ${String(payload.action)}`);
   }
@@ -579,6 +590,60 @@ function parseCheckpointJson(value: unknown): { planId?: string; moduleName?: st
   } : {};
 }
 
+// Resume mode (agentNewSolution3.buildResumeTree) creates only the e2/checkpoint steps.
+// On approval the phase-2 chain must exist so 'checkpoint-journeys-answer' can unlock e3.
+async function buildMissingPhase2AddSteps(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+): Promise<mls.msg.AgentIntentAddStep[]> {
+  const { buildPhase2Steps, getRootPlan } = await import('/_102020_/l2/agentNewSolution3/agentNewSolution3.js');
+  const steps = buildPhase2Steps(getRootPlan(context));
+  return steps
+    .filter(step => !hasStepWithPlanId(context, step.planning?.planId || ''))
+    .map(step => ({
+      type: 'add-step',
+      messageId: context.message.orderAt,
+      threadId: context.message.threadId,
+      taskId: context.task?.PK || '',
+      parentStepId: parentStep.stepId,
+      step,
+    } as mls.msg.AgentIntentAddStep));
+}
+
+// Same pattern as e1 (agentNs3Draft.ts): when the original parent was auto-completed
+// by setStepCompletedIfChildrenCompleted, fall back to the nearest mutable agent step.
+function findMutableParentStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep): mls.msg.AIAgentStep {
+  const current = findStepById(context, parentStep.stepId);
+  if (isMutableAgentStep(current)) return current;
+
+  const ownerParentId = findParentStepId(context, parentStep.stepId);
+  const ownerParent = ownerParentId ? findStepById(context, ownerParentId) : null;
+  if (isMutableAgentStep(ownerParent)) return ownerParent;
+
+  const root = context.task?.iaCompressed?.nextSteps?.[0] || null;
+  if (isMutableAgentStep(root)) return root;
+
+  return parentStep;
+}
+
+function isMutableAgentStep(step: mls.msg.AIPayload | null): step is mls.msg.AIAgentStep {
+  return step?.type === 'agent' && step.status !== 'completed' && step.status !== 'failed';
+}
+
+function findStepById(context: mls.msg.ExecutionContext, stepId: number): mls.msg.AIPayload | null {
+  if (!context.task) return null;
+  return getAllSteps(context.task.iaCompressed?.nextSteps).find(item => item.stepId === stepId) || null;
+}
+
+function findParentStepId(context: mls.msg.ExecutionContext, childStepId: number): number | null {
+  if (!context.task) return null;
+  for (const item of getAllSteps(context.task.iaCompressed?.nextSteps)) {
+    if (item.nextSteps?.some(child => child.stepId === childStepId)) return item.stepId;
+    if (item.interaction?.payload?.some(child => child.stepId === childStepId)) return item.stepId;
+  }
+  return null;
+}
+
 function hasStepWithPlanId(context: mls.msg.ExecutionContext, planId: string): boolean {
   if (!context.task) return false;
   return getAllSteps(context.task.iaCompressed?.nextSteps).some(item =>
@@ -620,8 +685,9 @@ function updateStatus(
   hookSequential: number,
   status: mls.msg.AIStepStatus,
   traceMsg?: string,
+  cleaner?: 'input' | 'input_output',
 ): mls.msg.AgentIntentUpdateStatus {
-  return {
+  const intent: mls.msg.AgentIntentUpdateStatus = {
     type: 'update-status',
     hookSequential,
     messageId: context.message.orderAt,
@@ -632,6 +698,10 @@ function updateStatus(
     status,
     traceMsg,
   };
+  // 'input_output' drops the step's LLM input/payload/trace from the task record once the
+  // artifact is safely on disk (DynamoDB item limit is 400KB).
+  if (cleaner) intent.cleaner = cleaner;
+  return intent;
 }
 
 function createToolSchema(resultSchema: Record<string, unknown>): mls.msg.LLMTool {
