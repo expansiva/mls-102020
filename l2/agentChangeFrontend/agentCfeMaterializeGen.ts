@@ -61,7 +61,7 @@ async function beforePromptStep(
   } catch (error) {
     const message = formatError('beforePromptStep', error);
     console.error(`[${agent.agentName}] ${message}`);
-    return [mkStatus(context, parentStep, step, hookSequential, 'failed', message)];
+    return [mkFailureStatus(context, parentStep, step, hookSequential, isRepairRun(args || step.prompt), message)];
   }
 }
 
@@ -75,31 +75,34 @@ async function afterPromptStep(
   try {
     consumeMaterializeStudioMessages();
     const genArgs = parseGenStepArgs(step.prompt);
+    // attempt >= 2 marks a REPAIR run (normal step added by the phase verify step, with the
+    // compiler error as repairHint -> buildHumanPrompt); attempt undefined marks a fan-out slot.
+    const repairRun = (genArgs.attempt ?? 1) >= 2;
     const { defPath } = genArgs;
     const defsContent = defPath ? await getContentByMlsPath(defPath) : null;
     const parsedDefs = defsContent ? parseDefs(defsContent) : null;
     const pipelineItem = parsedDefs?.item;
 
     if (!pipelineItem) {
-      return [mkStatus(context, parentStep, step, hookSequential, 'failed', `pipeline not found in defs: ${defPath || '(missing defPath)'}`)];
+      return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, `pipeline not found in defs: ${defPath || '(missing defPath)'}`)];
     }
 
     const raw = step.interaction?.payload?.[0] as unknown;
     const output = extractToolCallArgs<ToolOutput>(raw, GEN_TOOL_NAME);
     if (!output?.code) {
       const detail = `missing generated code; payload=${describePayload(raw)}`;
-      return [mkStatus(context, parentStep, step, hookSequential, 'failed', `${detail}\nmanual rerun required; Studio retry is disabled to avoid orphaned prompt hooks during continue/recovery.`)];
+      return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, detail, true)];
     }
 
     const parsed = parseMlsPath(pipelineItem.outputPath);
     if (!parsed) {
-      return [mkStatus(context, parentStep, step, hookSequential, 'failed', `invalid outputPath: ${pipelineItem.outputPath}`)];
+      return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, `invalid outputPath: ${pipelineItem.outputPath}`)];
     }
 
     const code = applyHeader(pipelineItem.outputPath, output.code);
     const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, code);
     if (!saved) {
-      return [mkStatus(context, parentStep, step, hookSequential, 'failed', withStudioDiagnostics(`saveGeneratedTs failed for ${pipelineItem.outputPath}`))];
+      return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, withStudioDiagnostics(`saveGeneratedTs failed for ${pipelineItem.outputPath}`))];
     }
 
     const typecheckTest = buildMaterializeTypecheckTest(pipelineItem, parsedDefs ? parsedDefs.data : null);
@@ -107,7 +110,7 @@ async function afterPromptStep(
     if (typecheckPath && typecheckTest) {
       const testSaved = await saveGeneratedTsByMlsPath(typecheckPath, typecheckTest);
       if (!testSaved) {
-        return [mkStatus(context, parentStep, step, hookSequential, 'failed', withStudioDiagnostics(`saveGeneratedTs failed for ${typecheckPath}`))];
+        return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, withStudioDiagnostics(`saveGeneratedTs failed for ${typecheckPath}`))];
       }
     }
 
@@ -119,14 +122,14 @@ async function afterPromptStep(
     if (compileErrors.length > 0) {
       const checkedFiles = typecheckPath ? `${pipelineItem.outputPath} + ${typecheckPath}` : pipelineItem.outputPath;
       const traceMsg = `compile/typecheck failed for ${checkedFiles}:\n${compileErrors.slice(0, 8).join('\n')}`;
-      return [mkStatus(context, parentStep, step, hookSequential, 'failed', `${withStudioDiagnostics(traceMsg, studioDiagnostics)}\nmanual rerun required; Studio retry is disabled to avoid orphaned prompt hooks during continue/recovery.`)];
+      return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, withStudioDiagnostics(traceMsg, studioDiagnostics), true)];
     }
 
     return [mkStatus(context, parentStep, step, hookSequential, 'completed', studioDiagnostics.length ? formatStudioDiagnostics(studioDiagnostics) : undefined, 'input_output')];
   } catch (error) {
     const message = formatError('afterPromptStep', error);
     console.error(`[${agent.agentName}] ${message}`);
-    return [mkStatus(context, parentStep, step, hookSequential, 'failed', message)];
+    return [mkFailureStatus(context, parentStep, step, hookSequential, isRepairRun(step.prompt), message)];
   }
 }
 
@@ -218,6 +221,38 @@ function mkStatus(
     traceMsg,
     cleaner,
   };
+}
+
+// Fan-out-safe failure policy (skills/collab_messages.md): a 'failed' PARALLEL child fails the
+// whole task, so fan-out slots (attempt undefined) NEVER return 'failed' and never add steps —
+// they complete with a 'MATERIALIZE-FAILED: ' trace and the phase verify step
+// (agentCfeMaterializePhase, mode 'verify') runs ONE bounded repair round with the compiler
+// error in context (specAuraForge §11). Repair runs (attempt >= 2) are normal steps: their
+// failure is the final visible failure after the budget is exhausted.
+function mkFailureStatus(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  repairRun: boolean,
+  detail: string,
+  manualRerunHint = false,
+): mls.msg.AgentIntentUpdateStatus {
+  if (repairRun) {
+    const suffix = manualRerunHint ? '\nmanual rerun required; Studio retry is disabled to avoid orphaned prompt hooks during continue/recovery.' : '';
+    return mkStatus(context, parentStep, step, hookSequential, 'failed', `${detail}${suffix}`);
+  }
+  return mkStatus(context, parentStep, step, hookSequential, 'completed', `MATERIALIZE-FAILED: ${detail}`, 'input_output');
+}
+
+// Lenient attempt read for catch paths (raw may be missing or invalid JSON).
+function isRepairRun(raw: string | undefined): boolean {
+  try {
+    const parsed = raw ? JSON.parse(raw) : null;
+    return isRecord(parsed) && typeof parsed.attempt === 'number' && parsed.attempt >= 2;
+  } catch {
+    return false;
+  }
 }
 
 function withStudioDiagnostics(message: string, diagnostics = consumeMaterializeStudioMessages()): string {
