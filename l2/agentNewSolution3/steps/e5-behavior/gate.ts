@@ -479,6 +479,11 @@ export function validateE5Workflow(
     if (!operationIds.has(transition.on)) {
       issues.push(errorIssue('workflow.transition.operation.unknown', `workflow ${artifact.workflowId}: transition "on" "${transition.on}" is not one of the workflow operationIds`));
     }
+    // Self-transition in the INITIAL state usually means E3 missed a pre-hand-off state
+    // (e.g. Order without a "registered"/"draft" state before sentToKitchen) — cafeFlow run finding.
+    if (transition.from === transition.to && artifact.states.length > 0 && transition.from === artifact.states[0]) {
+      issues.push(warningIssue('workflow.transition.self.initial', `workflow ${artifact.workflowId}: self-transition in the initial state "${transition.from}" (operation ${transition.on}) — the entity statusEnum probably misses an explicit initial state`));
+    }
   }
 
   // States must mirror the primary entity lifecycle (equal or subset of statusEnum).

@@ -1,16 +1,21 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution3/steps/e5-behavior/agentNs3Behavior.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// E5 — workflows + operations. Three kinds of runs handled by ONE agent (single maintenance unit):
+// E5 — workflows + operations. Runs handled by ONE agent (single maintenance unit):
 // - planId "e5-workflows-operations": the CLASSIFICATION call. Reads e2-journeys.json,
 //   e3-model.json and e4-actors-rules.json, produces e5-classification.json (which workflows
-//   and operations exist, mapped to features/actors/entities) and starts the item chain.
-// - planId "e5-workflow": one ITEM call per workflow (sequential chain). Produces
-//   l4/workflows/{workflowId}.defs.ts (states/transitions/story + deterministic attach).
-// - planId "e5-operation": one ITEM call per operation. Produces
-//   l4/operations/{operationId}.defs.ts (reads/writes/accessPattern/inputs + deterministic attach).
-// Item order: all workflows in declared order, then all operations. The LAST item writes
-// e5-behavior.md, approves the pipeline step and emits the completed "e5-done" anchor.
-// Retry = 1 per run, with the gate error in context (dynamic "-retry" step). No LLM critic.
+//   and operations exist, mapped to features/actors/entities) and starts the workflows parallel
+//   fan-out (hosted under this step) plus the 'e5-operations-phase' barrier step.
+// - planId "e5-workflow" / "e5-operation": one fan-out CHILD per item (collab-messages parallel
+//   system, 5 slots, compact selector args 'workflow:orderLifecycle' / 'operation:createOrder').
+//   Each workflow call produces l4/workflows/{workflowId}.defs.ts (states/transitions/story +
+//   deterministic attach); each operation call produces l4/operations/{operationId}.defs.ts
+//   (reads/writes/accessPattern/inputs + deterministic attach). Children NEVER return 'failed'.
+// - planId "e5-operations-phase" (no LLM): unlocked when the e5-workflows-operations step
+//   (classification + workflows fan-out) completes — the workflows→operations barrier. Starts the
+//   operations fan-out and the 'e5-finalize' step.
+// - planId "e5-finalize" (no LLM): verifies every defs file on disk, runs ONE sequential repair
+//   round for missing items, then writes e5-behavior.md, approves the pipeline step and emits the
+//   completed "e5-done" anchor. Retry = 1 for the classification gate. No LLM critic.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
@@ -35,6 +40,8 @@ import {
 import {
   ns3AgentStepIntent,
   ns3FindMutableParentStep,
+  ns3ParallelStepIntent,
+  ns3ParseSelector,
   ns3ResultStepIntent,
   ns3UpdateStatusIntent,
 } from '/_102020_/l2/agentNewSolution3/helpers/ns3Steps.js';
@@ -90,7 +97,7 @@ interface E5Args {
   planId?: string;
   moduleName?: string;
   itemId?: string;
-  itemIndex?: number;
+  repairAttempt?: number;
   retryAttempt?: number;
   retryContext?: string;
 }
@@ -116,11 +123,6 @@ interface Ns3E4ActorsRulesArtifact {
   rules: Ns3E4Rule[];
 }
 
-interface Ns3E5Item {
-  itemType: 'workflow' | 'operation';
-  id: string;
-}
-
 async function beforePromptStep(
   agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
@@ -131,10 +133,13 @@ async function beforePromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   if (!context.task) throw new Error(`[${AGENT_NAME}] task invalid`);
   const hookArgs = args || step.prompt || JSON.stringify({ planId: STEP_ID });
-  const parsedArgs = parseE5Args(hookArgs);
+  // Parallel fan-out children receive the compact selector ('workflow:orderLifecycle') as args.
+  const parsedArgs = selectorToE5Args(ns3ParseSelector(hookArgs)) || parseE5Args(hookArgs);
 
   if (parsedArgs.planId === 'e5-workflow') return [await buildWorkflowPrompt(context, parentStep, hookSequential, parsedArgs, hookArgs)];
   if (parsedArgs.planId === 'e5-operation') return [await buildOperationPrompt(context, parentStep, hookSequential, parsedArgs, hookArgs)];
+  if (parsedArgs.planId === 'e5-operations-phase') return runE5OperationsPhase(context, parentStep, step, hookSequential, parsedArgs);
+  if (parsedArgs.planId === 'e5-finalize') return runE5Finalize(context, parentStep, step, hookSequential, parsedArgs);
   return [await buildClassificationPrompt(context, parentStep, hookSequential, parsedArgs, hookArgs)];
 }
 
@@ -199,7 +204,7 @@ async function buildWorkflowPrompt(
   parsedArgs: E5Args,
   hookArgs: string,
 ): Promise<mls.msg.AgentIntentPromptReady> {
-  const moduleName = normalizeModuleFolderName(parsedArgs.moduleName || '');
+  const moduleName = parsedArgs.moduleName ? normalizeModuleFolderName(parsedArgs.moduleName) : await resolveE5Module();
   const classification = await readClassification(moduleName);
   const target = classification.workflows.find(item => item.workflowId === parsedArgs.itemId);
   if (!target) throw new Error(`[${AGENT_NAME}] workflow ${parsedArgs.itemId} not found in e5-classification.json`);
@@ -277,7 +282,7 @@ async function buildOperationPrompt(
   parsedArgs: E5Args,
   hookArgs: string,
 ): Promise<mls.msg.AgentIntentPromptReady> {
-  const moduleName = normalizeModuleFolderName(parsedArgs.moduleName || '');
+  const moduleName = parsedArgs.moduleName ? normalizeModuleFolderName(parsedArgs.moduleName) : await resolveE5Module();
   const classification = await readClassification(moduleName);
   const target = classification.operations.find(item => item.operationId === parsedArgs.itemId);
   if (!target) throw new Error(`[${AGENT_NAME}] operation ${parsedArgs.itemId} not found in e5-classification.json`);
@@ -345,7 +350,7 @@ async function afterPromptStep(
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
   const mutationParent = ns3FindMutableParentStep(context, parentStep);
-  const parsedArgs = parseE5Args(step.prompt);
+  const parsedArgs = selectorToE5Args(ns3ParseSelector(step.prompt)) || parseE5Args(step.prompt);
   try {
     if (parsedArgs.planId === 'e5-workflow') return await handleWorkflowResult(context, mutationParent, step, hookSequential, parsedArgs);
     if (parsedArgs.planId === 'e5-operation') return await handleOperationResult(context, mutationParent, step, hookSequential, parsedArgs);
@@ -354,6 +359,12 @@ async function afterPromptStep(
     const traceMsg = error instanceof Error ? error.message : String(error);
     if (parsedArgs.moduleName) {
       await writeNs3Trace(normalizeModuleFolderName(parsedArgs.moduleName), STEP_ID, AGENT_NAME, parsedArgs.retryAttempt || 1, { stepId: step.stepId }, traceMsg);
+    }
+    // Workflow/operation runs live inside the parallel fan-out: a 'failed' child fails the parent
+    // (and the task). Complete-with-trace instead; the e5-finalize repair round regenerates the
+    // missing files.
+    if (parsedArgs.planId === 'e5-workflow' || parsedArgs.planId === 'e5-operation') {
+      return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `item run failed | ${traceMsg}`, 'input_output')];
     }
     return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
@@ -414,19 +425,39 @@ async function handleClassificationResult(
           planId: `e5-workflows-operations-retry-${Date.now()}`,
           prompt: { planId: STEP_ID, moduleName, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
         }),
-        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
+        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`, 'input_output'),
       ];
     }
     return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 
   await writeNs3Trace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate });
-  const items = buildE5Items(artifact);
-  // Chain start: first item BEFORE completing this step (parent auto-completion rule).
-  return [
-    buildItemStepIntent(context, mutationParent, moduleName, artifact, 0),
-    ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e5-classification ready for ${moduleName} (${artifact.workflows.length} workflows, ${artifact.operations.length} operations, ${items.length} items)`),
-  ];
+  // Parallel fan-out (collab-messages parallel system, 5 slots, slots reused and deleted at the
+  // end): one child per workflow, hosted under THIS step so its completion waits for the fan-out.
+  // The 'e5-operations-phase' step unlocks when this step's planId completes — that is the
+  // workflows→operations barrier (workflows are defined before their owned operations). The
+  // e5-finalize step (added by the phase) verifies files, repairs, approves and emits 'e5-done'.
+  const workflowIds = artifact.workflows.map(item => item.workflowId);
+  const intents: mls.msg.AgentIntent[] = [];
+  if (workflowIds.length > 0) {
+    intents.push(ns3ParallelStepIntent(context, step, {
+      agentName: AGENT_NAME,
+      planId: 'e5-workflows-parallel',
+      stepTitle: `Defining ${workflowIds.length} workflows`,
+      args: workflowIds.map(id => `workflow:${id}`),
+      maxParallel: 5,
+    }));
+  }
+  intents.push(ns3AgentStepIntent(context, mutationParent, {
+    agentName: AGENT_NAME,
+    stepTitle: 'Define operations',
+    planId: 'e5-operations-phase',
+    dependsOn: [STEP_ID],
+    status: 'waiting_dependency',
+    prompt: { planId: 'e5-operations-phase', moduleName },
+  }));
+  intents.push(ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e5-classification ready for ${moduleName} (${artifact.workflows.length} workflows, ${artifact.operations.length} operations)`, 'input_output'));
+  return intents;
 }
 
 async function handleWorkflowResult(
@@ -436,16 +467,18 @@ async function handleWorkflowResult(
   hookSequential: number,
   parsedArgs: E5Args,
 ): Promise<mls.msg.AgentIntent[]> {
-  const moduleName = normalizeModuleFolderName(parsedArgs.moduleName || '');
+  const moduleName = parsedArgs.moduleName ? normalizeModuleFolderName(parsedArgs.moduleName) : await resolveE5Module();
   const classification = await readClassification(moduleName);
   const target = classification.workflows.find(item => item.workflowId === parsedArgs.itemId);
   if (!target) throw new Error(`[${AGENT_NAME}] workflow ${parsedArgs.itemId} not found in e5-classification.json`);
   const shared = await readSharedGateInputs(moduleName);
-  const itemIndex = parsedArgs.itemIndex ?? 0;
 
+  // Fan-out child policy: NEVER return 'failed' (a failed parallel child fails the parent/task) and
+  // never add steps from inside the fan-out (slot/progress counters). On any problem, complete with
+  // the trace; e5-finalize detects the missing file and runs the repair round.
   const output = extractNs3ToolOutput(step.interaction?.payload?.[0], WORKFLOW_TOOL);
   if (output.status === 'failed') {
-    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', output.trace.join('\n') || 'E5 workflow returned failed')];
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `workflow returned failed | ${output.trace.join('\n')}`, 'input_output')];
   }
 
   const artifact = prepareE5Workflow(output.result);
@@ -468,19 +501,7 @@ async function handleWorkflowResult(
   if (!gate.ok) {
     const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
     await writeNs3Trace(moduleName, `e5-workflow-${target.workflowId}`, AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
-    // Keep the item chain alive on attempt 1 (see classification comment).
-    if (attempt < 2) {
-      return [
-        ns3AgentStepIntent(context, mutationParent, {
-          agentName: AGENT_NAME,
-          stepTitle: `Retry workflow ${target.workflowId}`,
-          planId: `e5-workflow-retry-${Date.now()}`,
-          prompt: { planId: 'e5-workflow', moduleName, itemId: target.workflowId, itemIndex, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
-        }),
-        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
-      ];
-    }
-    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed | ${traceMsg}`, 'input_output')];
   }
 
   const defs = attachWorkflowDeterministic(artifact, { classification: target, features: shared.features });
@@ -490,8 +511,7 @@ async function handleWorkflowResult(
     defs,
   );
   await writeNs3Trace(moduleName, `e5-workflow-${target.workflowId}`, AGENT_NAME, attempt, { artifact: defs, gate });
-
-  return nextItemOrFinalize(context, mutationParent, step, hookSequential, moduleName, classification, itemIndex, `${target.workflowId} defs saved`);
+  return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${target.workflowId} defs saved`, 'input_output')];
 }
 
 async function handleOperationResult(
@@ -501,7 +521,7 @@ async function handleOperationResult(
   hookSequential: number,
   parsedArgs: E5Args,
 ): Promise<mls.msg.AgentIntent[]> {
-  const moduleName = normalizeModuleFolderName(parsedArgs.moduleName || '');
+  const moduleName = parsedArgs.moduleName ? normalizeModuleFolderName(parsedArgs.moduleName) : await resolveE5Module();
   const classification = await readClassification(moduleName);
   const target = classification.operations.find(item => item.operationId === parsedArgs.itemId);
   if (!target) throw new Error(`[${AGENT_NAME}] operation ${parsedArgs.itemId} not found in e5-classification.json`);
@@ -509,11 +529,11 @@ async function handleOperationResult(
     ? classification.workflows.find(item => item.workflowId === target.workflowId)
     : undefined;
   const shared = await readSharedGateInputs(moduleName);
-  const itemIndex = parsedArgs.itemIndex ?? 0;
 
+  // Fan-out child policy: see handleWorkflowResult — never 'failed', never add steps.
   const output = extractNs3ToolOutput(step.interaction?.payload?.[0], OPERATION_TOOL);
   if (output.status === 'failed') {
-    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', output.trace.join('\n') || 'E5 operation returned failed')];
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `operation returned failed | ${output.trace.join('\n')}`, 'input_output')];
   }
 
   const artifact = prepareE5Operation(output.result);
@@ -539,19 +559,7 @@ async function handleOperationResult(
   if (!gate.ok) {
     const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
     await writeNs3Trace(moduleName, `e5-operation-${target.operationId}`, AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
-    // Keep the item chain alive on attempt 1 (see classification comment).
-    if (attempt < 2) {
-      return [
-        ns3AgentStepIntent(context, mutationParent, {
-          agentName: AGENT_NAME,
-          stepTitle: `Retry operation ${target.operationId}`,
-          planId: `e5-operation-retry-${Date.now()}`,
-          prompt: { planId: 'e5-operation', moduleName, itemId: target.operationId, itemIndex, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
-        }),
-        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
-      ];
-    }
-    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed | ${traceMsg}`, 'input_output')];
   }
 
   await writeDefsArtifact(
@@ -560,50 +568,101 @@ async function handleOperationResult(
     defs,
   );
   await writeNs3Trace(moduleName, `e5-operation-${target.operationId}`, AGENT_NAME, attempt, { artifact: defs, gate });
-
-  return nextItemOrFinalize(context, mutationParent, step, hookSequential, moduleName, classification, itemIndex, `${target.operationId} defs saved`);
+  return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${target.operationId} defs saved`, 'input_output')];
 }
 
-async function nextItemOrFinalize(
+// e5-operations-phase (no LLM): unlocked when the e5-workflows-operations step (classification +
+// workflows fan-out) completes — the workflows→operations barrier. Starts the operations fan-out
+// (hosted under THIS step) and the e5-finalize step that unlocks when this step's planId completes.
+async function runE5OperationsPhase(
   context: mls.msg.ExecutionContext,
-  mutationParent: mls.msg.AIAgentStep,
+  parentStep: mls.msg.AIAgentStep,
   step: mls.msg.AIAgentStep,
   hookSequential: number,
-  moduleName: string,
-  classification: Ns3E5ClassificationArtifact,
-  itemIndex: number,
-  completedMsg: string,
+  parsedArgs: E5Args,
 ): Promise<mls.msg.AgentIntent[]> {
-  const items = buildE5Items(classification);
-  const nextIndex = itemIndex + 1;
-  if (nextIndex < items.length) {
-    return [
-      buildItemStepIntent(context, mutationParent, moduleName, classification, nextIndex),
-      ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', completedMsg),
-    ];
+  const mutationParent = ns3FindMutableParentStep(context, parentStep);
+  const moduleName = parsedArgs.moduleName ? normalizeModuleFolderName(parsedArgs.moduleName) : await resolveE5Module();
+  const classification = await readClassification(moduleName);
+  const operationIds = classification.operations.map(item => item.operationId);
+
+  const intents: mls.msg.AgentIntent[] = [];
+  // Zero operations: skip the fan-out — e5-finalize still validates the disk state.
+  if (operationIds.length > 0) {
+    intents.push(ns3ParallelStepIntent(context, step, {
+      agentName: AGENT_NAME,
+      planId: 'e5-operations-parallel',
+      stepTitle: `Defining ${operationIds.length} operations`,
+      args: operationIds.map(id => `operation:${id}`),
+      maxParallel: 5,
+    }));
   }
-  return finalizeE5(context, mutationParent, step, hookSequential, moduleName, classification);
+  intents.push(ns3AgentStepIntent(context, mutationParent, {
+    agentName: AGENT_NAME,
+    stepTitle: 'Finalize behaviors',
+    planId: 'e5-finalize',
+    dependsOn: ['e5-operations-phase'],
+    status: 'waiting_dependency',
+    prompt: { planId: 'e5-finalize', moduleName },
+  }));
+  intents.push(ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `operations phase started for ${moduleName} (${operationIds.length} operations)`));
+  return intents;
 }
 
-// Last item: summary markdown, pipeline approval and the completed 'e5-done' anchor.
-async function finalizeE5(
+// e5-finalize (no LLM): unlocked when the e5-operations-phase step (barrier + operations fan-out)
+// completes. Verifies every workflow/operation defs file on disk; missing ones get ONE sequential
+// repair round (normal steps, outside the fan-out), then a second finalize checks again. On green:
+// summary markdown, pipeline approval and the completed 'e5-done' anchor.
+async function runE5Finalize(
   context: mls.msg.ExecutionContext,
-  mutationParent: mls.msg.AIAgentStep,
+  parentStep: mls.msg.AIAgentStep,
   step: mls.msg.AIAgentStep,
   hookSequential: number,
-  moduleName: string,
-  classification: Ns3E5ClassificationArtifact,
+  parsedArgs: E5Args,
 ): Promise<mls.msg.AgentIntent[]> {
+  const mutationParent = ns3FindMutableParentStep(context, parentStep);
+  const moduleName = parsedArgs.moduleName ? normalizeModuleFolderName(parsedArgs.moduleName) : await resolveE5Module();
+  const classification = await readClassification(moduleName);
+
   const workflows: Ns3E5WorkflowDefs[] = [];
+  const operations: Ns3E5OperationDefs[] = [];
+  const missing: { planId: 'e5-workflow' | 'e5-operation'; itemId: string }[] = [];
   for (const workflow of classification.workflows) {
     const saved = await readJsonDefs<Ns3E5WorkflowDefs>('workflows', workflow.workflowId);
     if (saved) workflows.push(saved);
+    else missing.push({ planId: 'e5-workflow', itemId: workflow.workflowId });
   }
-  const operations: Ns3E5OperationDefs[] = [];
   for (const operation of classification.operations) {
     const saved = await readJsonDefs<Ns3E5OperationDefs>('operations', operation.operationId);
     if (saved) operations.push(saved);
+    else missing.push({ planId: 'e5-operation', itemId: operation.operationId });
   }
+
+  if (missing.length > 0 && !parsedArgs.repairAttempt) {
+    const repairs = missing.map((item, index) => ns3AgentStepIntent(context, mutationParent, {
+      agentName: AGENT_NAME,
+      stepTitle: `Repair ${item.planId === 'e5-workflow' ? 'workflow' : 'operation'} ${item.itemId}`,
+      planId: `e5-repair-${index + 1}-${item.itemId}`,
+      prompt: { planId: item.planId, moduleName, itemId: item.itemId, retryAttempt: 2 },
+    }));
+    const repairPlanIds = repairs.map(intent => (intent.step.planning as { planId: string }).planId);
+    return [
+      ...repairs,
+      ns3AgentStepIntent(context, mutationParent, {
+        agentName: AGENT_NAME,
+        stepTitle: 'Finalize behaviors (after repair)',
+        planId: 'e5-finalize-2',
+        dependsOn: repairPlanIds,
+        status: 'waiting_dependency',
+        prompt: { planId: 'e5-finalize', moduleName, repairAttempt: 2 },
+      }),
+      ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${missing.length} items missing (${missing.map(item => item.itemId).join(', ')}); repair round started`),
+    ];
+  }
+  if (missing.length > 0) {
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `items missing after repair round: ${missing.map(item => item.itemId).join(', ')}`)];
+  }
+
   await writeMarkdownArtifact(
     ns3PipelineArtifactFileInfo(moduleName, 'e5-behavior', '.md'),
     renderE5Markdown(classification, workflows, operations, { generatedAt: new Date().toISOString() }),
@@ -626,31 +685,6 @@ async function finalizeE5(
     }),
     ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e5-workflows-operations approved for ${moduleName}`),
   ];
-}
-
-// Item order is deterministic: all workflows in declared order, then all operations.
-function buildE5Items(classification: Ns3E5ClassificationArtifact): Ns3E5Item[] {
-  return [
-    ...classification.workflows.map(item => ({ itemType: 'workflow' as const, id: item.workflowId })),
-    ...classification.operations.map(item => ({ itemType: 'operation' as const, id: item.operationId })),
-  ];
-}
-
-function buildItemStepIntent(
-  context: mls.msg.ExecutionContext,
-  mutationParent: mls.msg.AIAgentStep,
-  moduleName: string,
-  classification: Ns3E5ClassificationArtifact,
-  itemIndex: number,
-): mls.msg.AgentIntentAddStep {
-  const items = buildE5Items(classification);
-  const item = items[itemIndex];
-  return ns3AgentStepIntent(context, mutationParent, {
-    agentName: AGENT_NAME,
-    stepTitle: `${item.itemType === 'workflow' ? 'Workflow' : 'Operation'} ${item.id} (${itemIndex + 1}/${items.length})`,
-    planId: `e5-${item.itemType}-${itemIndex + 1}-${item.id}`,
-    prompt: { planId: item.itemType === 'workflow' ? 'e5-workflow' : 'e5-operation', moduleName, itemId: item.id, itemIndex },
-  });
 }
 
 interface E5SharedGateInputs {
@@ -744,6 +778,14 @@ async function readNs3Text(folder: string, shortName: string, extension: string,
   return readStorText(ns3L2File(`${NS3_AGENT_FOLDER}/${folder}`, shortName, extension), required);
 }
 
+// Compact fan-out selectors ('workflow:orderLifecycle', 'operation:createOrder') map to item args;
+// JSON prompts (repair steps, retries) keep flowing through parseE5Args.
+function selectorToE5Args(selector: { kind: string; id: string } | null): E5Args | null {
+  if (selector?.kind === 'workflow') return { planId: 'e5-workflow', itemId: selector.id };
+  if (selector?.kind === 'operation') return { planId: 'e5-operation', itemId: selector.id };
+  return null;
+}
+
 function parseE5Args(value: unknown): E5Args {
   const parsed = parseMaybeJson(value);
   if (!isRecord(parsed)) return {};
@@ -751,7 +793,7 @@ function parseE5Args(value: unknown): E5Args {
     planId: readString(parsed.planId),
     moduleName: readString(parsed.moduleName),
     itemId: readString(parsed.itemId),
-    itemIndex: typeof parsed.itemIndex === 'number' ? parsed.itemIndex : undefined,
+    repairAttempt: typeof parsed.repairAttempt === 'number' ? parsed.repairAttempt : undefined,
     retryAttempt: typeof parsed.retryAttempt === 'number' ? parsed.retryAttempt : undefined,
     retryContext: readString(parsed.retryContext),
   };

@@ -32,5 +32,9 @@ Result rules:
   per user action); an empty steps array fails the gate and wastes a retry. Write the steps by
   walking the related journey steps in order.
 
+The FIRST transition of the workflow should move the entity OUT of its initial state (the first
+value of the entity statusEnum). A self-transition in the initial state usually means E3 missed a
+pre-hand-off state — prefer modelling the real state change.
+
 Do NOT output pageId, capabilities, statusFrontend or statusBackend — they are attached
 deterministically by code after this call.

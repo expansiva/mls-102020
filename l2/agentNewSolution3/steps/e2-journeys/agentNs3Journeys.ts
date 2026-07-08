@@ -194,7 +194,7 @@ async function afterPromptStep(
         summary: parsedArgs.adjustment || '',
       });
     }
-    const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, 'completed', `e2-journeys ready for ${artifact.moduleName}`)];
+    const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, 'completed', `e2-journeys ready for ${artifact.moduleName}`, 'input_output')];
     if (parsedArgs.afterAdjustment || !hasStepWithPlanId(context, 'checkpoint-journeys')) {
       intents.unshift(addCheckpointReviewStep(context, parentStep, artifact.moduleName));
     }
@@ -685,8 +685,9 @@ function updateStatus(
   hookSequential: number,
   status: mls.msg.AIStepStatus,
   traceMsg?: string,
+  cleaner?: 'input' | 'input_output',
 ): mls.msg.AgentIntentUpdateStatus {
-  return {
+  const intent: mls.msg.AgentIntentUpdateStatus = {
     type: 'update-status',
     hookSequential,
     messageId: context.message.orderAt,
@@ -697,6 +698,10 @@ function updateStatus(
     status,
     traceMsg,
   };
+  // 'input_output' drops the step's LLM input/payload/trace from the task record once the
+  // artifact is safely on disk (DynamoDB item limit is 400KB).
+  if (cleaner) intent.cleaner = cleaner;
+  return intent;
 }
 
 function createToolSchema(resultSchema: Record<string, unknown>): mls.msg.LLMTool {

@@ -10,6 +10,10 @@
 
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 
+// cleaner: pass 'input_output' when the step's artifact is already persisted to disk — the LLM
+// input/payload/trace on the task record are then dead weight (DynamoDB item limit is 400KB;
+// a full run without cleaning reached ~15k lines). Never clean steps whose interaction.payload
+// hosts a clarification child (checkpoint steps) — payload=null would drop the child from the tree.
 export function ns3UpdateStatusIntent(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIPayload,
@@ -17,8 +21,9 @@ export function ns3UpdateStatusIntent(
   hookSequential: number,
   status: mls.msg.AIStepStatus,
   traceMsg?: string,
+  cleaner?: 'input' | 'input_output',
 ): mls.msg.AgentIntentUpdateStatus {
-  return {
+  const intent: mls.msg.AgentIntentUpdateStatus = {
     type: 'update-status',
     hookSequential,
     messageId: context.message.orderAt,
@@ -28,6 +33,48 @@ export function ns3UpdateStatusIntent(
     stepId: step.stepId,
     status,
     traceMsg,
+  };
+  if (cleaner) intent.cleaner = cleaner;
+  return intent;
+}
+
+// Parallel fan-out parent (collab-messages parallel system, same shape as
+// agentNewSolution2/ns2Shared.createParallelDynamicAgentStepIntent): the backend pre-allocates up
+// to maxParallel child slots under this parent, calls the agent's beforePromptStep once per compact
+// arg, reuses slots as items finish and DELETES finished children (task size stays small). The
+// parent auto-completes when every child is terminal — but a 'failed' child fails the parent, so
+// fan-out children must complete-with-trace on gate failures and let a finalize step repair.
+export function ns3ParallelStepIntent(
+  context: mls.msg.ExecutionContext,
+  hostStep: mls.msg.AIAgentStep,
+  options: { agentName: string; planId: string; stepTitle: string; args: string[]; maxParallel?: number },
+): mls.msg.AgentIntentAddStep {
+  if (!context.task) throw new Error('[ns3ParallelStepIntent] task invalid');
+  if (options.args.length === 0) throw new Error('[ns3ParallelStepIntent] args empty');
+  return {
+    type: 'add-step',
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task.PK,
+    parentStepId: hostStep.stepId,
+    step: {
+      type: 'agent',
+      stepId: 0,
+      interaction: {
+        input: [{ type: 'system', content: '<!-- modelType: codeinstruct -->' }],
+        cost: 0,
+        trace: [`queued ${options.args.length} parallel args for ${options.agentName}`],
+        payload: null,
+      },
+      stepTitle: options.stepTitle,
+      status: 'in_progress',
+      nextSteps: [],
+      agentName: options.agentName,
+      prompt: JSON.stringify({ planId: options.planId }),
+      rags: [],
+      planning: { planId: options.planId, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' },
+    } as mls.msg.AIAgentStep,
+    executionMode: { type: 'parallel', args: options.args, maxParallel: options.maxParallel || 5 },
   };
 }
 
@@ -88,6 +135,14 @@ export function ns3AgentStepIntent(
       planning: { planId: args.planId, dependsOn: args.dependsOn || [], executionMode: 'sequential', executionHost: 'client' },
     } as mls.msg.AIAgentStep,
   };
+}
+
+// Compact parallel-child selector ('entity:Order', 'workflow:orderLifecycle', 'operation:createOrder').
+// Parallel child hooks receive the raw compact arg instead of a JSON prompt.
+export function ns3ParseSelector(value: unknown): { kind: string; id: string } | null {
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^([a-z]+):([A-Za-z][A-Za-z0-9]*)$/);
+  return match ? { kind: match[1], id: match[2] } : null;
 }
 
 export function ns3HasStepWithPlanId(context: mls.msg.ExecutionContext, planId: string): boolean {

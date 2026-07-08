@@ -266,7 +266,7 @@ async function handleMapResult(
           planId: `e6-journey-map-retry-${Date.now()}`,
           prompt: { planId: STEP_ID, moduleName, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
         }),
-        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
+        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`, 'input_output'),
       ];
     }
     return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
@@ -298,7 +298,7 @@ async function handleMapResult(
       stepTitle: 'Journey map ready',
       result: { type: DONE_ANCHOR, moduleName, workspaces: artifact.workspaces.map(workspace => workspace.workspaceId) },
     }),
-    ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e6-journey-map approved for ${moduleName} (${artifact.workspaces.length} workspaces)`),
+    ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e6-journey-map approved for ${moduleName} (${artifact.workspaces.length} workspaces)`, 'input_output'),
   ];
 }
 

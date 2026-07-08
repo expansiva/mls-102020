@@ -31,6 +31,8 @@ import {
 import {
   ns3AgentStepIntent,
   ns3FindMutableParentStep,
+  ns3ParallelStepIntent,
+  ns3ParseSelector,
   ns3ResultStepIntent,
   ns3UpdateStatusIntent,
 } from '/_102020_/l2/agentNewSolution3/helpers/ns3Steps.js';
@@ -76,7 +78,7 @@ interface E3Args {
   planId?: string;
   moduleName?: string;
   entityId?: string;
-  entityIndex?: number;
+  repairAttempt?: number;
   retryAttempt?: number;
   retryContext?: string;
 }
@@ -91,9 +93,12 @@ async function beforePromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   if (!context.task) throw new Error(`[${AGENT_NAME}] task invalid`);
   const hookArgs = args || step.prompt || JSON.stringify({ planId: STEP_ID });
-  const parsedArgs = parseE3Args(hookArgs);
+  // Parallel fan-out children receive the compact selector ('entity:Order') as args.
+  const selector = ns3ParseSelector(hookArgs);
+  const parsedArgs = selector?.kind === 'entity' ? { planId: 'e3-entity', entityId: selector.id } : parseE3Args(hookArgs);
 
   if (parsedArgs.planId === 'e3-entity') return [await buildEntityPrompt(context, parentStep, hookSequential, parsedArgs, hookArgs)];
+  if (parsedArgs.planId === 'e3-finalize') return runE3Finalize(context, parentStep, step, hookSequential, parsedArgs);
   return [await buildModelPrompt(context, parentStep, hookSequential, parsedArgs, hookArgs)];
 }
 
@@ -142,7 +147,7 @@ async function buildEntityPrompt(
   parsedArgs: E3Args,
   hookArgs: string,
 ): Promise<mls.msg.AgentIntentPromptReady> {
-  const moduleName = normalizeModuleFolderName(parsedArgs.moduleName || '');
+  const moduleName = parsedArgs.moduleName ? normalizeModuleFolderName(parsedArgs.moduleName) : await resolveE3Module();
   const model = await readJsonArtifact<Ns3E3ModelArtifact>(ns3PipelineArtifactFileInfo(moduleName, 'e3-model', '.json'), true);
   if (!model) throw new Error(`[${AGENT_NAME}] e3-model.json not found for ${moduleName}`);
   const target = model.entities.find(entity => entity.entityId === parsedArgs.entityId);
@@ -196,7 +201,8 @@ async function afterPromptStep(
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
   const mutationParent = ns3FindMutableParentStep(context, parentStep);
-  const parsedArgs = parseE3Args(step.prompt);
+  const selector = ns3ParseSelector(step.prompt);
+  const parsedArgs = selector?.kind === 'entity' ? { planId: 'e3-entity', entityId: selector.id } : parseE3Args(step.prompt);
   try {
     if (parsedArgs.planId === 'e3-entity') return await handleEntityResult(context, mutationParent, step, hookSequential, parsedArgs);
     return await handleModelResult(context, mutationParent, step, hookSequential, parsedArgs);
@@ -204,6 +210,11 @@ async function afterPromptStep(
     const traceMsg = error instanceof Error ? error.message : String(error);
     if (parsedArgs.moduleName) {
       await writeNs3Trace(normalizeModuleFolderName(parsedArgs.moduleName), STEP_ID, AGENT_NAME, parsedArgs.retryAttempt || 1, { stepId: step.stepId }, traceMsg);
+    }
+    // Entity runs live inside the parallel fan-out: a 'failed' child fails the parent (and the
+    // task). Complete-with-trace instead; the e3-finalize repair round regenerates missing files.
+    if (parsedArgs.planId === 'e3-entity') {
+      return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `entity run failed | ${traceMsg}`, 'input_output')];
     }
     return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
@@ -263,17 +274,34 @@ async function handleModelResult(
           planId: `e3-ontology-retry-${Date.now()}`,
           prompt: { planId: STEP_ID, moduleName, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
         }),
-        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
+        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`, 'input_output'),
       ];
     }
     return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 
   await writeNs3Trace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate });
-  // Chain start: first entity item BEFORE completing this step (parent auto-completion rule).
+  // Parallel fan-out (collab-messages parallel system, 5 slots, slots reused and deleted at the
+  // end): one child per entity, hosted under THIS step so its completion waits for the fan-out.
+  // The e3-finalize step unlocks when this step's planId completes, verifies every entity file,
+  // runs one sequential repair round for the missing ones, then approves and emits 'e3-done'.
   return [
-    buildEntityStepIntent(context, mutationParent, moduleName, artifact, 0),
-    ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e3-model ready for ${moduleName} (${artifact.entities.length} entities)`),
+    ns3ParallelStepIntent(context, step, {
+      agentName: AGENT_NAME,
+      planId: 'e3-entities-parallel',
+      stepTitle: `Detailing ${artifact.entities.length} entities`,
+      args: artifact.entities.map(entity => `entity:${entity.entityId}`),
+      maxParallel: 5,
+    }),
+    ns3AgentStepIntent(context, mutationParent, {
+      agentName: AGENT_NAME,
+      stepTitle: 'Finalize ontology',
+      planId: 'e3-finalize',
+      dependsOn: [STEP_ID],
+      status: 'waiting_dependency',
+      prompt: { planId: 'e3-finalize', moduleName },
+    }),
+    ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e3-model ready for ${moduleName} (${artifact.entities.length} entities)`, 'input_output'),
   ];
 }
 
@@ -284,14 +312,16 @@ async function handleEntityResult(
   hookSequential: number,
   parsedArgs: E3Args,
 ): Promise<mls.msg.AgentIntent[]> {
-  const moduleName = normalizeModuleFolderName(parsedArgs.moduleName || '');
+  const moduleName = parsedArgs.moduleName ? normalizeModuleFolderName(parsedArgs.moduleName) : await resolveE3Module();
   const model = await readJsonArtifact<Ns3E3ModelArtifact>(ns3PipelineArtifactFileInfo(moduleName, 'e3-model', '.json'), true);
   if (!model) throw new Error(`[${AGENT_NAME}] e3-model.json not found for ${moduleName}`);
-  const entityIndex = parsedArgs.entityIndex ?? 0;
 
+  // Fan-out child policy: NEVER return 'failed' (a failed parallel child fails the parent/task) and
+  // never add steps from inside the fan-out (slot/progress counters). On any problem, complete with
+  // the trace; e3-finalize detects the missing file and runs the repair round.
   const output = extractNs3ToolOutput(step.interaction?.payload?.[0], ENTITY_TOOL);
   if (output.status === 'failed') {
-    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', output.trace.join('\n') || 'E3 entity returned failed')];
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `entity returned failed | ${output.trace.join('\n')}`, 'input_output')];
   }
 
   const artifact = prepareE3EntityArtifact({ ...output.result, entityId: parsedArgs.entityId || output.result.entityId });
@@ -307,19 +337,7 @@ async function handleEntityResult(
   if (!gate.ok) {
     const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
     await writeNs3Trace(moduleName, `e3-entity-${artifact.entityId}`, AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
-    // Keep the chain alive on attempt 1: 'failed' would fail the whole task and orphan the retry.
-    if (attempt < 2) {
-      return [
-        ns3AgentStepIntent(context, mutationParent, {
-          agentName: AGENT_NAME,
-          stepTitle: `Retry entity ${artifact.entityId}`,
-          planId: `e3-entity-retry-${Date.now()}`,
-          prompt: { planId: 'e3-entity', moduleName, entityId: artifact.entityId, entityIndex, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
-        }),
-        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
-      ];
-    }
-    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed | ${traceMsg}`, 'input_output')];
   }
 
   await writeDefsArtifact(
@@ -328,31 +346,58 @@ async function handleEntityResult(
     artifact,
   );
   await writeNs3Trace(moduleName, `e3-entity-${artifact.entityId}`, AGENT_NAME, attempt, { artifact, gate });
-
-  const nextIndex = entityIndex + 1;
-  if (nextIndex < model.entities.length) {
-    return [
-      buildEntityStepIntent(context, mutationParent, moduleName, model, nextIndex),
-      ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${artifact.entityId} defs saved`),
-    ];
-  }
-  return finalizeE3(context, mutationParent, step, hookSequential, moduleName, model);
+  return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${artifact.entityId} defs saved`, 'input_output')];
 }
 
-// Last item: index markdown, pipeline approval and the completed 'e3-done' anchor.
-async function finalizeE3(
+// e3-finalize (no LLM): unlocked when the e3-ontology step (plan + fan-out) completes. Verifies
+// every entity file on disk; missing ones get ONE sequential repair round (normal steps, outside
+// the fan-out), then a second finalize checks again. On green: index markdown, pipeline approval
+// and the completed 'e3-done' anchor.
+async function runE3Finalize(
   context: mls.msg.ExecutionContext,
-  mutationParent: mls.msg.AIAgentStep,
+  parentStep: mls.msg.AIAgentStep,
   step: mls.msg.AIAgentStep,
   hookSequential: number,
-  moduleName: string,
-  model: Ns3E3ModelArtifact,
+  parsedArgs: E3Args,
 ): Promise<mls.msg.AgentIntent[]> {
+  const mutationParent = ns3FindMutableParentStep(context, parentStep);
+  const moduleName = parsedArgs.moduleName ? normalizeModuleFolderName(parsedArgs.moduleName) : await resolveE3Module();
+  const model = await readJsonArtifact<Ns3E3ModelArtifact>(ns3PipelineArtifactFileInfo(moduleName, 'e3-model', '.json'), true);
+  if (!model) throw new Error(`[${AGENT_NAME}] e3-model.json not found for ${moduleName}`);
+
   const entities: Ns3E3EntityArtifact[] = [];
+  const missing: string[] = [];
   for (const modelEntity of model.entities) {
     const saved = await readJsonDefs<Ns3E3EntityArtifact>(moduleName, modelEntity.entityId);
     if (saved) entities.push(saved);
+    else missing.push(modelEntity.entityId);
   }
+
+  if (missing.length > 0 && !parsedArgs.repairAttempt) {
+    const repairs = missing.map((entityId, index) => ns3AgentStepIntent(context, mutationParent, {
+      agentName: AGENT_NAME,
+      stepTitle: `Repair entity ${entityId}`,
+      planId: `e3-entity-repair-${index + 1}-${entityId}`,
+      prompt: { planId: 'e3-entity', moduleName, entityId, retryAttempt: 2 },
+    }));
+    const repairPlanIds = repairs.map(intent => (intent.step.planning as { planId: string }).planId);
+    return [
+      ...repairs,
+      ns3AgentStepIntent(context, mutationParent, {
+        agentName: AGENT_NAME,
+        stepTitle: 'Finalize ontology (after repair)',
+        planId: 'e3-finalize-2',
+        dependsOn: repairPlanIds,
+        status: 'waiting_dependency',
+        prompt: { planId: 'e3-finalize', moduleName, repairAttempt: 2 },
+      }),
+      ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${missing.length} entities missing (${missing.join(', ')}); repair round started`),
+    ];
+  }
+  if (missing.length > 0) {
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `entities missing after repair round: ${missing.join(', ')}`)];
+  }
+
   await writeMarkdownArtifact(
     ns3PipelineArtifactFileInfo(moduleName, 'e3-ontology', '.md'),
     renderE3OntologyMarkdown(model, entities, { generatedAt: new Date().toISOString() }),
@@ -370,22 +415,6 @@ async function finalizeE3(
     }),
     ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e3-ontology approved for ${moduleName}`),
   ];
-}
-
-function buildEntityStepIntent(
-  context: mls.msg.ExecutionContext,
-  mutationParent: mls.msg.AIAgentStep,
-  moduleName: string,
-  model: Ns3E3ModelArtifact,
-  entityIndex: number,
-): mls.msg.AgentIntentAddStep {
-  const entity = model.entities[entityIndex];
-  return ns3AgentStepIntent(context, mutationParent, {
-    agentName: AGENT_NAME,
-    stepTitle: `Entity ${entity.entityId} (${entityIndex + 1}/${model.entities.length})`,
-    planId: `e3-entity-${entityIndex + 1}-${entity.entityId}`,
-    prompt: { planId: 'e3-entity', moduleName, entityId: entity.entityId, entityIndex },
-  });
 }
 
 async function resolveE3Module(requested?: string): Promise<string> {
@@ -430,7 +459,7 @@ function parseE3Args(value: unknown): E3Args {
     planId: readString(parsed.planId),
     moduleName: readString(parsed.moduleName),
     entityId: readString(parsed.entityId),
-    entityIndex: typeof parsed.entityIndex === 'number' ? parsed.entityIndex : undefined,
+    repairAttempt: typeof parsed.repairAttempt === 'number' ? parsed.repairAttempt : undefined,
     retryAttempt: typeof parsed.retryAttempt === 'number' ? parsed.retryAttempt : undefined,
     retryContext: readString(parsed.retryContext),
   };

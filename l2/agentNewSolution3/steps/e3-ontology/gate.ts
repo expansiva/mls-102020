@@ -261,6 +261,11 @@ export function validateE3EntityInvariants(
     if (field.enum && field.type !== 'string') {
       issues.push(errorIssue('field.enum.type', `entity ${entity.entityId}: field ${field.fieldId} declares enum but type is ${field.type} (must be string)`, field.fieldId));
     }
+    for (const value of field.enum || []) {
+      if (looksNonEnglishValue(value)) {
+        issues.push(warningIssue('field.enum.language', `entity ${entity.entityId}: enum value "${value}" on ${field.fieldId} does not look like English lower camelCase`, field.fieldId));
+      }
+    }
   }
 
   const primaryId = `${lowerFirst(entity.entityId)}Id`;
@@ -339,6 +344,19 @@ export function toPascalCase(value: string): string {
 
 export function lowerFirst(value: string): string {
   return value ? `${value.slice(0, 1).toLowerCase()}${value.slice(1)}` : value;
+}
+
+// Heuristic guard for the values-in-English convention (identifiers/enums are English camelCase,
+// only titles/descriptions use the user's language). Non-ASCII characters or common Portuguese
+// value words are a strong signal the LLM localized a VALUE.
+const NON_ENGLISH_VALUE_WORDS = new Set([
+  'unidade', 'porcao', 'litro', 'caixa', 'pacote', 'aberto', 'fechado', 'pendente',
+  'pronto', 'entregue', 'cancelado', 'ativo', 'inativo', 'mesa', 'retirada',
+]);
+
+export function looksNonEnglishValue(value: string): boolean {
+  if (/[^\x00-\x7F]/.test(value)) return true;
+  return NON_ENGLISH_VALUE_WORDS.has(value.toLowerCase());
 }
 
 export function sameStringSet(a: string[], b: string[]): boolean {

@@ -48,7 +48,18 @@ How to find the entities (be COMPLETE, this is the foundation of the whole modul
 Lifecycle discipline: when journeys mention states (business rules like "only X when status is Y"),
 declare the FULL statusEnum in English lower camelCase covering every state the rules imply, including
 terminal ones (closed, cancelled, voided). lifecycleStates should equal statusEnum for stateful
-entities and be omitted otherwise.
+entities and be omitted otherwise. When the journey has a create/review/confirm step BEFORE the first
+hand-off (e.g. the attendant reviews the order before sending it to the kitchen), the statusEnum MUST
+include an explicit initial state (e.g. "registered" or "draft") before the hand-off state — the first
+workflow operation must move the entity out of its initial state, never self-transition in it.
+
+Language of VALUES: statusEnum values, field enum values and units are English lower camelCase
+("unit", "kg", "liter", "portion", "registered") — NEVER Portuguese words like "unidade" or "porcao".
+Only titles/descriptions use the user's language.
+
+kind "event" is ONLY for immutable append-only facts compensated by a new event (posted/voided).
+Anything with a resolution lifecycle (an alert that becomes resolved, a request that gets approved)
+is operational STATE — kind core or supporting, not event.
 
 Every non-never E2 feature must be represented: at least one entity lists it in sourceRefs.featureIds.
 Missing coverage is a gate warning that will come back to you as a retry.

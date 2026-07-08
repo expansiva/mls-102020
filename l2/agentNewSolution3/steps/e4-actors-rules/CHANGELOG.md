@@ -7,3 +7,4 @@
   warning; e4-done anchor).
 - 2026-07-08 — fix: defs written with stor extension '.defs.ts' (was '.ts'; files were invisible to Stage 2/3, which filter extension === '.defs.ts').
 - 2026-07-08 — fix: gate-failed run with a retry in flight is now completed-with-trace instead of 'failed' ('failed' marks the whole task failed and orphans the retry — msgtask1 evidence).
+- 2026-07-08 — interaction cleaner ('input_output') on completed runs with artifacts on disk (DynamoDB 400KB).

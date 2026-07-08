@@ -25,7 +25,8 @@ Field rules:
   "createdAt" (datetime, required) and, except for event entities, "updatedAt" (datetime, required).
 - Stateful entities (statusEnum in the plan) MUST have a "status" field: type string, required, with
   "enum" exactly equal to the plan statusEnum.
-- enum: only on string fields, listing every allowed value in English lower camelCase.
+- enum: only on string fields, listing every allowed value in English lower camelCase — units and
+  categories included ("kg", "liter", "portion", "unit"); NEVER Portuguese values like "unidade".
 - description: one line in the user's language explaining the business meaning (not the type).
 
 Completeness checklist — derive fields from the business rules and journey steps:

@@ -207,7 +207,7 @@ async function handleActorsRulesResult(
           planId: `e4-actors-rules-refs-retry-${Date.now()}`,
           prompt: { planId: STEP_ID, moduleName, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
         }),
-        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
+        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`, 'input_output'),
       ];
     }
     return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
@@ -249,7 +249,7 @@ async function handleActorsRulesResult(
         rules: artifact.rules.map(rule => rule.ruleId),
       },
     }),
-    ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e4-actors-rules approved for ${moduleName} (${artifact.actors.length} actors, ${artifact.rules.length} rules)`),
+    ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e4-actors-rules approved for ${moduleName} (${artifact.actors.length} actors, ${artifact.rules.length} rules)`, 'input_output'),
   ];
 }
 
