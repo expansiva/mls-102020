@@ -48,7 +48,6 @@ export class PreviewModeAura {
         this.mountTailwindDarkMode(this.ifr);
         this.mountTokens(this.json.tokens || '', this.file);
         this.addGlobalCss(this.json.globalCss);
-        this.addDsGlobalCss(this.json.dsGlobalCss || '');
         this.addJsReference(this.ifr, this.level || '2');
         const s = document.createElement('script') as HTMLScriptElement;
         s.textContent = result.outputFiles[0].text;
@@ -247,7 +246,6 @@ export class PreviewModeAura {
             this.strTailwindDarkMode(),
             this.json.tokens ? `<style id="${this.getIdTokens(this.file)}">${this.json.tokens}</style>` : '',
             this.json.globalCss ? `<style id="global_css" type="text/tailwindcss">${this.json.globalCss}</style>` : '',
-            this.json.dsGlobalCss ? `<style id="ds_global">${this.json.dsGlobalCss}</style>` : '',
             ...extraStyles.map(s => `<style id="${s.id}">${s.css}</style>`),
         ].filter(Boolean).join('\n');
 
@@ -518,25 +516,6 @@ customElements.define=function(n,c,o){if(!customElements.get(n))return window['o
         }
     }
 
-    /**
-     * Inject the Aura per-DS stylesheet (global.css). Plain <style> (NOT text/tailwindcss):
-     * it is only CSS custom properties + @import/@font-face for fonts.
-     */
-    private addDsGlobalCss(css: string) {
-        if (!css) return;
-        try {
-            const iframe = window.preview.iframe;
-            if (!iframe || !iframe.contentDocument) return;
-            const old = iframe.contentDocument.querySelector('style#ds_global');
-            if (old) old.remove();
-            const style = document.createElement('style');
-            style.textContent = css;
-            style.id = 'ds_global';
-            iframe.contentDocument.head.appendChild(style);
-        } catch (e: any) {
-            console.info('Error addDsGlobalCss: ' + e.message);
-        }
-    }
 
     private addJsReference(ifr: HTMLIFrameElement, level: string) {
 

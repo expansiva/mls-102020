@@ -3,7 +3,7 @@
 import { getTokensCss, getGlobalCss } from '/_102027_/l2/designSystemBase.js';
 import { getPath } from '/_102027_/l2/utils';
 import { convertFileToTag, resolveTagToFile } from '/_102020_/l2/utils';
-import { readDsGlobalCss } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
+import { themeByIndex } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
 
 
 export interface IJSONDependence {
@@ -14,7 +14,6 @@ export interface IJSONDependence {
     importsLinks: { ref: string, rel: string }[],
     tokens: string | undefined,
     globalCss: string,
-    dsGlobalCss: string,            // Aura per-DS stylesheet (Phase B): class-scoped --ds-* vars
     errors: { tag: string, error: string }[]
 }
 
@@ -58,12 +57,14 @@ async function getDependencies(storFile: mls.stor.IFileInfo, fileName: string, h
         importsJs.push(previewEditorL3Import);
     }
 
-    let tokens: string | undefined = await getTokensCss(project, theme);
-    let globalCss: string | undefined = await getGlobalCss(project, theme);
-    // Per-DS stylesheet: a page variation folder encodes its DS as `page<layout><ds>`.
-    // Inject only that DS's file; non-page files have no DS → no styling injected.
+    // A page variation folder encodes its DS as `page<layout><ds>`; the generated
+    // designSystem.ts keys that DS's tokens entry by the DS NAME (themeName). Pages
+    // without a DS entry (e.g. default DS) fall back to the editor's active theme.
     const pageDs = pageDsFromFolder(folder);
-    let dsGlobalCss: string = pageDs ? await readDsGlobalCss(project, pageDs) : '';
+    const dsTheme = pageDs ? await dsNameFromIndex(project, pageDs) : null;
+    let tokens: string | undefined = dsTheme ? await getTokensCss(project, dsTheme) : '';
+    if (!tokens) tokens = await getTokensCss(project, theme);
+    let globalCss: string | undefined = await getGlobalCss(project, theme);
 
     return {
         file: fileName,
@@ -72,11 +73,31 @@ async function getDependencies(storFile: mls.stor.IFileInfo, fileName: string, h
         importsJs: Array.from(new Set(importsJs)),
         importsLinks: Array.from(new Set(importsLinks)),
         globalCss,
-        dsGlobalCss,
         tokens,
         errors
     }
 
+}
+
+/**
+ * The theme (DS name) a file's tokens should use, derived from its folder: page variation
+ * folders encode the DS index (`page<layout><ds>`), which matches the `dsIndex` of an entry
+ * in designSystem.ts. Null when the folder is not a page variation or the DS has no entry
+ * (caller falls back to the editor's active theme).
+ */
+export async function dsThemeForFolder(project: number, folder: string): Promise<string | null> {
+    const pageDs = pageDsFromFolder(folder);
+    return pageDs ? dsNameFromIndex(project, pageDs) : null;
+}
+
+/** DS index → DS name (the `themeName` of its entry in designSystem.ts, matched by dsIndex). */
+async function dsNameFromIndex(project: number, ds: string): Promise<string | null> {
+    try {
+        const theme = await themeByIndex(project, ds);
+        return theme?.themeName ?? null;
+    } catch {
+        return null;
+    }
 }
 
 

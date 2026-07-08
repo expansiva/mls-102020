@@ -4,7 +4,7 @@
   "specFirst": "This file was written BEFORE the code (PropostaAgentNewSolution3.md §2.5). The code is validated against it: each step declares inputs/outputs/gate, and an automated test checks that the implementation matches this spec. Maintenance changes the spec FIRST, then the code.",
   "description": "Step-based pipeline with consistent checkpoints. Each step reads ONLY the frozen files from the previous step and writes ONLY its own files (zero canonical state in task payloads). Every checkpoint has 3 faces: machine artifact (JSON/defs.ts with versioned schema), human summary (md), and deterministic gate (code, no LLM). Phase 1 implements up to the 2nd human checkpoint (E1+E2); E3..E7 are declared as planned.",
   "principles": [
-    "Compiler-style pipeline, not a task tree: no passive containers, no dynamic fan-out managed by the task backend (list iteration inside the step, retry per item).",
+    "Compiler-style pipeline, not a task tree: no passive containers. Fan-out uses the collab-messages parallel system (REVISED 2026-07-08 - the proposal's 'list iteration inside the step' is not possible: LLM calls only happen via prompt_ready, one per step run; the parallel system adds bounded concurrency, slot cleanup and good UX). Disk artifacts + the finalize repair round keep the determinism the proposal wanted.",
     "Fail early: repair means rerun step N with the gate error in context (1 retry); if it persists, show a visible checkpoint failure with a readable partial artifact. No LLM critic/repair.",
     "Step is the maintenance unit: 1 folder per step (agent, prompt.md, schema, gate, test, fixture, readme, CHANGELOG). helpers/ is minimal and policy-frozen (it does not know step-specific logic).",
     "System that builds systems: local examples or point fixes embedded in prompts/gates are forbidden; fixes generalize or they do not enter.",
@@ -17,13 +17,17 @@
     "pipelineState": "l4/{module}/pipeline/pipeline.json = pipeline state: per step {status: pending|running|gate_failed|approved, inputsHash, artifactVersion, approvedAt, approvedBy: auto|human}. The runner is dumb: it reads pipeline.json and runs the next non-approved step. Resume means looking at the last approved gate.",
     "artifacts": "Phase artifacts in l4/{module}/pipeline/e{N}-*.{json,md}. Final artifacts (from E3 onward) use the SAME paths/formats as v2 (l4/{module}/ontology, l4/actors, l4/rules, l4/workflows, l4/operations, l4/{module}/journeys, l5/{module}) so Stage 2/3 do not change.",
     "schemas": "Versioned schemas/e{N}-*.schema.json files ($id with version). Schema and gate only change with a version bump + fixture update. Loosening a gate to pass a fix = upstream bug.",
-    "gates": "1 gate = 1 file = 1 .test.ts, inside the step folder. The gate validates schema + semantic invariants. Warnings do not block; errors block and trigger 1 retry with the error in context.",
+    "gates": "1 gate = 1 file = 1 .test.ts, inside the step folder. The gate validates schema + semantic invariants. Warnings do not block; errors block and trigger 1 retry with the error in context. IMPORTANT (2026-07-08): a gate-failed run with a retry in flight is completed-with-trace, NOT failed - update-status 'failed' marks the whole task as failed and orphans the retry (collab-messages updateStepStatus). Visible failure happens only when the retry also fails. This is safe because downstream never depends on run planIds, only on the eN-done anchors.",
     "dirtyPropagation": "Each step writes the hash of consumed inputs to pipeline.json. If an approved upstream artifact changes (for example, the E2 adjustment loop), downstream steps become dirty and runner/CLI refuses skip.",
     "versioning": "E2 adjustment-loop iterations generate e2-journeys.v{K}.json; 'approve' freezes the current version as e2-journeys.json and records the decision (source for the designContext in E3).",
     "singleWritePath": "Widgets NEVER write artifacts directly: every change (edit or adjustment prompt) passes through the adjustment agent + gate before being presented again.",
     "trace": "l4/{module}/pipeline/trace/e{N}-{agent}-{attempt}.json (LLM payloads, gate errors, timings).",
     "rootPlan": "agentNewSolution3 returns userLanguage, validPrompt/invalidReason, localized step titles, uiLabels for checkpoint widgets, and clarification 1 questions.",
-    "resume": "An empty '@@newSolution3' (the runtime strips the mention) resumes the first module whose Phase 1 is incomplete instead of starting a new one, so the user does not repeat the clarification. beforePromptImplicit scans l4/{module}/pipeline/pipeline.json; a step counts as done when approved OR its lastGate.ok is true. Phase 1 resume currently re-enters at e2-journeys only (a completed 'e2-resume-anchor' result + the e2-journeys agent step that depends on it); the agent resolves the module and reads e1-draft.json from disk. A non-empty prompt always starts a new module.",
+    "resume": "An empty '@@newSolution3' (the runtime strips the mention) resumes the first module whose Phase 1 is incomplete instead of starting a new one, so the user does not repeat the clarification. beforePromptImplicit scans l4/{module}/pipeline/pipeline.json; a step counts as done when approved OR its lastGate.ok is true. Phase 1 resume re-enters at e2-journeys or the journeys checkpoint; phase-2 resume (2026-07-08) re-enters at the next unapproved/dirty phase-2 step (pipeline.json order) rebuilding the chain from that step on - the first rebuilt step runs immediately and the rest keep their eN-done anchor dependencies. A non-empty prompt always starts a new module.",
+    "doneAnchors": "Every phase-2 step eN publishes a completed 'result' step with planId 'eN-done' when (and only when) its gate passes. Downstream steps dependsOn ['eN-done'], never on the agent step planId: retries and adjustment runs have dynamic planIds, and unlockWaitingDependencySteps only unlocks on a COMPLETED step per planId, so the anchor is the stable contract regardless of which run succeeded.",
+    "itemChains": "REVISED 2026-07-08 (was: sequential chains). Fan-out (E3 entities, E5 workflows/operations) uses the collab-messages PARALLEL system (5 slots, slot reuse, finished children deleted): the plan/classification step hosts the fan-out under itself (compact selector args 'entity:X'/'workflow:X'/'operation:X'), so its completion waits for the fan-out and anchors the next step. Fan-out children NEVER return 'failed' (a failed child fails the parent/task) and never add steps; on gate failure they complete-with-trace. A no-LLM finalize step ('e3-finalize'/'e5-finalize', with 'e5-operations-phase' as the workflows-to-operations barrier) verifies every defs file on disk, runs ONE sequential repair round for missing items, then writes the summary .md, approves the pipeline step and emits the 'eN-done' anchor. Completed runs pass cleaner 'input_output' so LLM payloads leave the task record (DynamoDB 400KB).",
+    "designContextPlacement": "DEVIATION from PropostaAgentNewSolution3 §3-E3 (designContext as an ontology item): agentChangeBackend treats EVERY file under l4/{module}/ontology/ as a data entity (cbShared.readBackendScan) and would fold a DesignContext pseudo-entity into aggregate derivation. The design context therefore lives where Stage 2/3 already read it: module.defs.ts designContext (assembled in E7 from e1-draft + e2 decisions + audit), plus the pipeline artifacts which remain on disk.",
+    "consumerContract": "Verified against agentChangeFrontend/cfeCreateShared.ts and agentChangeBackend/cbShared.ts (2026-07-07): consumers require ontology entity files (entityId,title,kind,ownership,fields,statusEnum,lifecycleStates,eventPolicy), module.defs.ts (module block, designContext.userLanguage, ontology.entities index, relationships), workflows (workflowId,pageId,title,actors,operationIds,entities,rulesApplied,story,capabilities), operations (operationId,commandName,pageId,bffName,entity,kind,reads,writes,accessPattern{kind,keyField Entity.field,pagination,output},inputs{inputId,fieldRef,required,source},contextResolution,rulesApplied,story,capability), journeys defs (workspaces{workspaceId,title,actor,kind,entity,workflowId,operationIds,purpose}, navigationEdges advisory), and l5 todoFrontend/todoBackend ({layer,moduleName,owners{ownerType,ownerId,status:'toCreate'}} - the ONLY generation-status source; inline statusFrontend/statusBackend are legacy). bffName = {module}.{pageId}.{commandName}; pageId = owning workflowId (else operationId); commandName = operationId - all attached deterministically, never by the LLM. l4/actors, l4/rules and l5/process.defs.ts are contract/documentation artifacts (not machine-read by Stage 2/3).",
     "i18n": "No hard-coded language; step strings, human summaries, and checkpoint uiLabels are generated in the user's language (userLanguage captured in E1)."
   },
   "folderLayout": {
@@ -152,48 +156,94 @@
     },
     {
       "planId": "e3-ontology",
+      "agentName": "agentNs3Ontology",
       "type": "agent",
       "phase": 2,
-      "status": "planned",
       "dependsOn": ["checkpoint-journeys-answer"],
-      "goal": "Ontology: 1 entity per file (fields, enums, lifecycle) + {module}DesignContext.defs.ts as an ontology item (original prompt, language, decisions, assumptions). Fan-out = list iteration inside the step, retry per item.",
-      "savedArtifact": ["l4/{module}/ontology/{EntityId}.defs.ts", "l4/{module}/pipeline/e3-ontology.md"]
+      "goal": "Ontology plan + per-entity generation. The plan call reads e2-journeys.json (+ e1-draft.json) and produces e3-model.json: the module block (title/purpose/businessDomain/languages/visualStyle), a slim entity index (entityId PascalCase, title, description, kind core|supporting|event|metric|mdm, ownership, statusEnum/lifecycleStates, sourceRefs to journeys/features/businessRules) and relationships. Then a sequential item chain generates one FULL entity per file (fields with types uuid|string|text|number|money|boolean|date|datetime|<EntityId>, enums, audit fields, statusEnum aligned with journey business rules).",
+      "input": ["e2-journeys.json (frozen)", "e1-draft.json"],
+      "output": {
+        "result": "entity model plan, then one canonical entity per file",
+        "savedArtifact": ["l4/{module}/pipeline/e3-model.json", "l4/{module}/ontology/{EntityId}.defs.ts", "l4/{module}/pipeline/e3-ontology.md"]
+      },
+      "gate": {
+        "file": "steps/e3-ontology/gate.ts",
+        "checks": ["valid e3-model schema", "PascalCase unique entity ids; anti Uc*/usecase/verb guard", "relationships resolve to declared entities", "every non-never E2 feature is covered by >=1 entity sourceRef (warning)", "per entity: valid e3-entity schema, unique camelCase fieldIds, valid field types (<EntityId> refs resolve), enum fields carry enum values, statusEnum consistent with lifecycleStates, id + createdAt/updatedAt audit fields present"]
+      },
+      "doneAnchor": "e3-done"
     },
     {
       "planId": "e4-actors-rules-refs",
+      "agentName": "agentNs3ActorsRules",
       "type": "agent",
       "phase": 2,
-      "status": "planned",
-      "dependsOn": ["e3-ontology"],
-      "goal": "Actors (roster + roleScope JWT), global rules, MDM/horizontal/plugin references (reuse v2 patterns).",
-      "savedArtifact": ["l4/actors/{module}Actors.defs.ts", "l4/rules/{module}Rules.defs.ts"]
+      "dependsOn": ["e3-done"],
+      "goal": "Single call: actor roster (roleScope '{module}:{actorId}'), the consolidated rule set (E2 per-journey businessRules are the primary source - every journey rule maps to a ruleId or is explicitly absorbed) and external references (MDM/horizontals/plugins/agents) that E7 writes into module.defs.ts approvedArtifacts.",
+      "input": ["e2-journeys.json", "e3-model.json", "ontology entity files"],
+      "output": {
+        "result": "actors + rules + external refs",
+        "savedArtifact": ["l4/actors/{module}Actors.defs.ts", "l4/rules/{module}Rules.defs.ts", "l4/{module}/pipeline/e4-actors-rules.json", "l4/{module}/pipeline/e4-actors-rules.md"]
+      },
+      "gate": {
+        "file": "steps/e4-actors-rules/gate.ts",
+        "checks": ["valid e4 schema", "every E2 actor is in the roster (extra supporting actors allowed)", "roleScope format {module}:{actorId}", "unique camelCase ruleIds", "every rule appliesTo resolves to an E3 entity", "every E2 journey businessRule maps to a ruleId (unmapped = warning)"]
+      },
+      "doneAnchor": "e4-done"
     },
     {
       "planId": "e5-workflows-operations",
+      "agentName": "agentNs3Behavior",
       "type": "agent",
       "phase": 2,
-      "status": "planned",
-      "dependsOn": ["e4-actors-rules-refs"],
-      "goal": "Classify + define workflows and operations (1 per file, embedded story, capability+priority, canonical pageId/commandName/bffName). Formal gate: workflow ALWAYS has non-empty operationIds.",
-      "savedArtifact": ["l4/workflows/{workflowId}.defs.ts", "l4/operations/{operationId}.defs.ts"]
+      "dependsOn": ["e4-done"],
+      "goal": "Classification call first: e5-classification.json maps every non-never E2 feature to workflows (stateful, with owned operationIds) and standalone operations, declaring actor/entity/kind per item. Then a sequential item chain: one LLM call per workflow (states/transitions aligned with the primary entity lifecycle, embedded story) and per operation (reads/writes, accessPattern with keyField 'Entity.field', inputs with declared sources, contextResolution, acceptanceAssertions derived from journey step results). pageId/commandName/bffName/capability are attached deterministically after each call - never by the LLM.",
+      "input": ["e2-journeys.json", "e3-model.json + ontology files", "e4-actors-rules.json"],
+      "output": {
+        "result": "classification, then one behavior per file",
+        "savedArtifact": ["l4/{module}/pipeline/e5-classification.json", "l4/workflows/{workflowId}.defs.ts", "l4/operations/{operationId}.defs.ts", "l4/{module}/pipeline/e5-behavior.md"]
+      },
+      "gate": {
+        "file": "steps/e5-behavior/gate.ts",
+        "checks": ["valid schemas (classification, workflow, operation)", "every non-never E2 feature realized by >=1 workflow/operation", "every workflow has non-empty operationIds and every referenced operation is classified", "workflow states align with the primary entity statusEnum/lifecycleStates", "transitions reference declared states and classified operations", "operation kind in create|update|delete|query|view", "reads/writes/entity resolve to E3 entities", "accessPattern.keyField is 'Entity.field' with a real field", "inputs sources valid; required inputs have inputId+fieldRef+source", "bffName == {module}.{pageId}.{commandName} (deterministic attach re-checked)"]
+      },
+      "doneAnchor": "e5-done"
     },
     {
       "planId": "e6-journey-map",
+      "agentName": "agentNs3JourneyMap",
       "type": "agent",
       "phase": 2,
-      "status": "planned",
-      "dependsOn": ["e5-workflows-operations"],
-      "goal": "Consolidated journey map: landings by actor, workspaces, navigation edges, input origins.",
-      "savedArtifact": ["l4/{module}/journeys/{module}Journeys.defs.ts"]
+      "dependsOn": ["e5-done"],
+      "goal": "Single call over frozen workflows/operations + E2 journeys: consolidated navigation map - workspaces (page grouping unit read by agentChangeFrontend: workspaceId/title/actor/kind/entity/workflowId/operationIds/purpose), landings per actor and navigation edges (advisory for Stage 2).",
+      "input": ["e2-journeys.json", "e5-classification.json", "workflow/operation defs summaries"],
+      "output": {
+        "result": "journey map",
+        "savedArtifact": ["l4/{module}/journeys/{module}Journeys.defs.ts", "l4/{module}/pipeline/e6-journey-map.md"]
+      },
+      "gate": {
+        "file": "steps/e6-journey-map/gate.ts",
+        "checks": ["valid e6 schema", "every operation appears in >=1 workspace", "workspace workflowId/operationIds/actor/entity resolve", "unique workspaceIds", "every actor with now-priority behaviors has a landing (warning)", "edges reference existing pageIds (warning)"]
+      },
+      "doneAnchor": "e6-done"
     },
     {
       "planId": "e7-validation-summary",
+      "agentName": "agentNs3Validation",
       "type": "agent",
       "phase": 2,
-      "status": "planned",
-      "dependsOn": ["e6-journey-map"],
-      "goal": "Cheap global recheck (cross-consistency, blocking on error) + automatic closing: process.defs.ts, todoFrontend/todoBackend, reopenable summary.",
-      "savedArtifact": ["l4/trace/behavior-health-report.json", "l5/{module}/process.defs.ts", "l5/{module}/todoFrontend.defs.ts", "l5/{module}/todoBackend.defs.ts"]
+      "noLlm": true,
+      "dependsOn": ["e6-done"],
+      "goal": "Deterministic (no LLM) global recheck + closing. Reads ONLY saved files: cross-consistency checks (v2 code style: workflow.operation.unknown, entity.ref.unknown, capability coverage, journey workspace coverage, bff naming) written to behavior-health-report.json (errors block). Then assembles module.defs.ts (module block from e3-model, designContext from e1-draft + e2 decisions/audit, ontology index from entity files, relationships, approvedArtifacts from e4 refs), seeds l5 todoFrontend/todoBackend (one owner per workflow/operation, status toCreate) and l5 process.defs.ts, and writes the reopenable e7-validation.md summary.",
+      "input": ["all saved l4 artifacts (files only, never payload)"],
+      "output": {
+        "result": "health report + closing artifacts",
+        "savedArtifact": ["l4/trace/behavior-health-report.json", "l4/{module}/module.defs.ts", "l5/{module}/todoFrontend.defs.ts", "l5/{module}/todoBackend.defs.ts", "l5/{module}/process.defs.ts", "l4/{module}/pipeline/e7-validation.md"]
+      },
+      "gate": {
+        "file": "steps/e7-validation/gate.ts",
+        "checks": ["health report has zero errors (warnings do not block)", "module.defs.ts index matches the ontology files on disk", "todo owners exactly match generated workflows+operations"]
+      },
+      "doneAnchor": "e7-done"
     }
   ],
   "cli": {

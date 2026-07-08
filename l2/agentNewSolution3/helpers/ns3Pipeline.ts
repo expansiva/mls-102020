@@ -41,6 +41,18 @@ export const NS3_PHASE1_STEP_IDS = [
   'checkpoint-journeys',
 ] as const;
 
+// Full pipeline order (phase 1 + phase 2). Used for dirty propagation and
+// next-step resolution across the whole pipeline. Phase-2 steps are ensured
+// on demand (ensureNs3Step) the first time they run.
+export const NS3_STEP_ORDER = [
+  ...NS3_PHASE1_STEP_IDS,
+  'e3-ontology',
+  'e4-actors-rules-refs',
+  'e5-workflows-operations',
+  'e6-journey-map',
+  'e7-validation-summary',
+] as const;
+
 export function createNs3Pipeline(moduleNameInput: string, stepIds: readonly string[] = NS3_PHASE1_STEP_IDS): Ns3PipelineState {
   const now = new Date().toISOString();
   const moduleName = normalizeModuleFolderName(moduleNameInput);
@@ -116,7 +128,7 @@ export function approveNs3Step(
 export function markNs3DownstreamDirty(
   state: Ns3PipelineState,
   fromStepId: string,
-  order: readonly string[] = NS3_PHASE1_STEP_IDS,
+  order: readonly string[] = NS3_STEP_ORDER,
 ): Ns3PipelineState {
   const next = clonePipeline(state);
   const start = order.indexOf(fromStepId);
@@ -133,7 +145,7 @@ export function markNs3DownstreamDirty(
   return next;
 }
 
-export function nextNs3UnapprovedStep(state: Ns3PipelineState, order: readonly string[] = NS3_PHASE1_STEP_IDS): string | null {
+export function nextNs3UnapprovedStep(state: Ns3PipelineState, order: readonly string[] = NS3_STEP_ORDER): string | null {
   for (const stepId of order) {
     const step = state.steps[stepId];
     if (!step || step.status !== 'approved' || step.dirty) return stepId;

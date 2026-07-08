@@ -14,6 +14,7 @@
 // the existing entries, the type annotation and `as const`.
 
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { themeByIndex } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
 import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
 import { DEFAULT_DEVICE } from '/_102020_/l2/dsMatch/derivePaths.js';
 
@@ -78,7 +79,7 @@ export async function registerPageGenome(
 ): Promise<GenomeEntry> {
 
     const config: any = await getConfigProject(project);
-    const dsName = config?.designSystems?.[String(ds)]?.name ?? String(ds);
+    const dsName = (await themeByIndex(project, ds))?.themeName ?? String(ds);
     const layoutName = config?.layouts?.[String(layout)]?.name ?? String(layout);
 
     const entry = buildGenomeEntry(layout, ds, dsName, layoutName, device);

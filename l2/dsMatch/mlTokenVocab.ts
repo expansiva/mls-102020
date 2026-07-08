@@ -9,19 +9,17 @@
 // agent maps each to a --ds-* expression (see agentReconcileTokens + buildGlobalCss).
 
 import { collabImport } from '/_102027_/l2/collabImport.js';
+import { type DsTokenReconciliation } from '/_102029_/l2/designSystemBase.js';
+
+// The reconciliation shape lives on the DS entry in `_<project>_/l2/designSystem.ts`
+// (single home of the tokens). The interface is defined in the runtime-clean _102029_
+// core; re-export it here so the reconcile agent keeps one import site.
+export type { DsTokenReconciliation };
 
 export interface MlToken {
     token: string;       // e.g. '--ml-on-surface'
     default: string;     // e.g. '#1c1b1f'
     description: string; // e.g. 'Primary text'
-}
-
-/** Stored on `designSystems[ds].tokenReconciliation` — the --ml-* → --ds-* mapping for the DS. */
-export interface DsTokenReconciliation {
-    version: string;                        // `${dsTokensHash}/${mlVocabHash}` — staleness key
-    usedGroups?: string[];                  // groups whose --ml-* were reconciled (accumulates)
-    map: Record<string, string | null>;     // --ml-* → css expr (var(--ds-*)/derived); null = keep default
-    pinned?: Record<string, string>;         // manual overrides — win over the agent, emitted last
 }
 
 // ─── pure: parse the usage skill's Design Tokens table ───────────────────────

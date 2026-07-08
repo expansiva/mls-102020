@@ -9,8 +9,8 @@
 //      molecule; instead they receive `layoutRules` — the configured layout axes the plain
 //      control must still implement (task 13, via rulesForPlainElement);
 //   4. repoints paths page11 → page{layout}{ds}, overrides the pipeline `skills`
-//      ([genome, DS, layout] + one usage skill per used molecule group) and adds the DS global
-//      css to `dependsFiles`, stamps pageVersion, and writes the defs.
+//      ([genome, DS, layout] + one usage skill per used molecule group) and adds the DS tokens
+//      module (designSystem.ts) to `dependsFiles`, stamps pageVersion, and writes the defs.
 //
 // The semantic choice is done upstream (group = Agent1, variant = Agent2); this step only PLACES.
 
@@ -18,7 +18,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { collabImport } from '/_102027_/l2/collabImport.js';
 import { buildWorkItem, variationFolder } from '/_102020_/l2/dsMatch/derivePaths.js';
 import { buildPageDsStamp, renderDsVersionExport } from '/_102020_/l2/dsMatch/dsVersion.js';
-import { dsGlobalCssRef } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
+import { designSystemTsRef } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
 import { buildMoleculeCatalog } from '/_102020_/l2/dsMatch/buildMoleculeCatalog.js';
 import type { AssignedMolecule } from '/_102020_/l2/dsMatch/resolveMolecules.js';
 import { listLayoutElements, indexById } from '/_102020_/l2/dsMatch/layoutElements.js';
@@ -126,14 +126,14 @@ async function beforePromptStep(
     // as skill sections; a `?key=skill` suffix on dependsFiles is understood by nobody).
     repointPaths(pipeline, a.layout, a.ds);
     const baseSkills = await resolvePageSkills(project, a.layout, a.ds);
-    const cssRef = dsGlobalCssRef(project, a.ds);
+    const cssRef = designSystemTsRef(project);
     const usageList = [...usagePaths].sort();
     const skills = [...baseSkills, ...usageList];
     for (const p of pipeline) {
       if (skills.length) p.skills = skills;
       p.dependsFiles = mergeDepends(p.dependsFiles, cssRef);
     }
-    console.info(`[agentGenDefs] ${a.page}: skills=[${baseSkills.join(', ')}] + ${usageList.length} usage skill(s) · +css=${cssRef}`);
+    console.info(`[agentGenDefs] ${a.page}: skills=[${baseSkills.join(', ')}] + ${usageList.length} usage skill(s) · +ds=${cssRef}`);
 
     let finalSrc = renderDefs(item.defsDestino, definition, pipeline, dedupeAssigned(assigned));
 
@@ -187,7 +187,7 @@ async function resolvePageSkills(project: number, layout: number | string, ds: n
   return [GENOME_SKILL, dsSkill, layoutSkill].filter(Boolean);
 }
 
-/** Merge the DS global stylesheet into dependsFiles (plain path — no query suffixes). */
+/** Merge the DS tokens module (designSystem.ts) into dependsFiles (plain path — no query suffixes). */
 function mergeDepends(existing: unknown, cssRef: string): string[] {
   const out: string[] = Array.isArray(existing) ? existing.filter((x): x is string => typeof x === 'string') : [];
   if (!out.includes(cssRef)) out.push(cssRef);

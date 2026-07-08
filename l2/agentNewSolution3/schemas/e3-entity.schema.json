@@ -1,0 +1,41 @@
+{
+  "$id": "collab.codes/agentNewSolution3/e3-entity/2026-07-07-ns3-e3-entity-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entityId", "title", "description", "kind", "ownership", "fields"],
+  "properties": {
+    "entityId": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$", "maxLength": 60 },
+    "title": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 10 },
+    "kind": { "enum": ["core", "supporting", "event", "metric", "mdm"] },
+    "ownership": { "enum": ["moduleOwned", "mdmOwned", "horizontalOwned", "pluginOwned", "existingModuleOwned", "external"] },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fieldId", "type", "required", "description"],
+        "properties": {
+          "fieldId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
+          "type": { "type": "string", "minLength": 1 },
+          "required": { "type": "boolean" },
+          "description": { "type": "string", "minLength": 3 },
+          "enum": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "statusEnum": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "lifecycleStates": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "eventPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["purpose"],
+      "properties": {
+        "purpose": { "enum": ["telemetry", "audit", "reaction"] },
+        "retentionDays": { "type": "integer" }
+      }
+    },
+    "rulesApplied": { "type": "array", "items": { "type": "string" } }
+  }
+}

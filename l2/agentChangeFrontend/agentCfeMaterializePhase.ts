@@ -1,8 +1,27 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/agentCfeMaterializePhase.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
+// Two prompt modes handled by ONE agent (discriminated by the `mode` field in the prompt JSON):
+// - default (phase): hosts the materialization fan-out under itself plus a 'verify' step
+//   unlocked by the fan-out planId. The phase step only completes after fanout + verify + any
+//   repair steps (deferred completion), preserving the phase barrier for downstream dependencies.
+// - 'verify' (no LLM): re-checks every item artifact on disk (content + compile + typecheck test)
+//   and runs ONE bounded repair round with the compiler error in context (specAuraForge §11).
+//   Second round still broken -> visible 'failed' (repair budget exhausted).
+
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createAddStepIntent, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/cfeCreateShared.js';
-import type { GenStepArgs } from '/_102020_/l2/agentChangeFrontend/cfeMaterializeStudio.js';
+import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
+import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/cfeCreateShared.js';
+import {
+  buildCompileRepairHint,
+  buildMissingCodeRepairHint,
+  parseDefs,
+  testPathForOutputPath,
+} from '/_102020_/l2/agentChangeFrontend/cfeMaterializeCore.js';
+import {
+  compileMlsPathAndGetErrors,
+  getContentByMlsPath,
+  type GenStepArgs,
+} from '/_102020_/l2/agentChangeFrontend/cfeMaterializeStudio.js';
 
 interface MaterializePhaseArgs {
   planId: string;
@@ -13,9 +32,23 @@ interface MaterializePhaseArgs {
   maxParallel?: number;
 }
 
+interface MaterializeVerifyArgs {
+  planId: string;
+  items: GenStepArgs[];
+  attempt: number;
+}
+
+interface BrokenItem {
+  item: GenStepArgs;
+  outputPath: string | null;
+  errors: string[];
+}
+
+const AGENT_NAME = 'agentCfeMaterializePhase';
+
 export function createAgent(): IAgentAsync {
   return {
-    agentName: 'agentCfeMaterializePhase',
+    agentName: AGENT_NAME,
     agentProject: 102020,
     agentFolder: 'agentChangeFrontend',
     agentDescription: 'Launch one sequential materialization phase after its dependency barrier is complete',
@@ -26,16 +59,37 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
-    const args = parsePhaseArgs(step.prompt);
+    const parsed = parsePromptRecord(step.prompt);
+    // Verify mode runs compile checks with no LLM and returns its intents directly.
+    if (readString(parsed.mode) === 'verify') {
+      return await runVerify(context, parentStep, step, hookSequential, parseVerifyArgs(parsed));
+    }
+
+    const args = parsePhaseArgs(parsed);
     if (args.items.length === 0) {
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'no materialization items in phase')];
     }
 
     const fanout = createFanoutStep(args.fanoutPlanId, args.fanoutTitle, args.items.length);
     const parallelArgs = args.items.map(item => JSON.stringify(item));
+    // Verify step (no LLM): unlocked when the fan-out host completes; checks the artifacts on
+    // disk because fan-out children never return 'failed' (they complete with a
+    // 'MATERIALIZE-FAILED: ' trace — see agentCfeMaterializeGen and skills/collab_messages.md).
+    // Hosted under this phase step so the phase barrier covers fanout + verify + repairs.
+    const verifyPlanId = `${args.planId}-verify`;
+    const verify = createAgentStepPayload(
+      verifyPlanId,
+      AGENT_NAME,
+      `Verify ${args.title}`,
+      { mode: 'verify', planId: verifyPlanId, items: args.items, attempt: 1 },
+      [args.fanoutPlanId],
+      'sequential',
+      'waiting_dependency',
+    );
     const trace = `queued ${args.items.length} materialization item(s)`;
     return [
       createAddStepIntent(context, step, fanout, parallelArgs, args.maxParallel ?? 5),
+      createAddStepIntent(context, step, verify),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
     ];
   } catch (error) {
@@ -45,10 +99,112 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   }
 }
 
-function parsePhaseArgs(prompt: string | undefined): MaterializePhaseArgs {
+// Verify mode (no LLM): each item is BROKEN when its outputPath content is missing/empty, the
+// output compile reports errors, or the companion typecheck test file (when present) fails to
+// compile. Broken items get ONE repair round: normal agentCfeMaterializeGen steps (outside the
+// fan-out) with attempt=2 and the compiler error as repairHint, which flows into
+// buildHumanPrompt through the existing parseGenStepArgs plumbing.
+async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args: MaterializeVerifyArgs): Promise<mls.msg.AgentIntent[]> {
+  const broken: BrokenItem[] = [];
+  for (const item of args.items) {
+    const checked = await verifyItem(item);
+    if (checked.errors.length > 0) broken.push(checked);
+  }
+
+  if (broken.length === 0) {
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `all ${args.items.length} materialization item(s) verified`)];
+  }
+
+  const summary = broken.map(entry => `${entry.item.planId}: ${entry.errors[0]}`).join('\n');
+  if (args.attempt >= 2) {
+    // Second round still broken: this is the final VISIBLE failure (fails the whole task).
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `repair budget exhausted (1/1):\n${summary}`)];
+  }
+
+  // Anchor new steps on a non-terminal agent step (the phase step stays in_progress while its
+  // children are open thanks to deferred completion; fall back if it was auto-completed).
+  const anchor = findMutableParentStep(context, parentStep);
+  const repairs = broken.map(entry => createAddStepIntent(context, anchor, createAgentStepPayload(
+    `${entry.item.planId}-repair`,
+    'agentCfeMaterializeGen',
+    `Repair ${entry.item.planId}`,
+    { planId: entry.item.planId, defPath: entry.item.defPath, attempt: 2, repairHint: buildRepairHint(entry) },
+    [],
+    'sequential',
+    'waiting_human_input',
+  )));
+  const secondVerifyPlanId = `${args.planId}-2`;
+  const secondVerify = createAddStepIntent(context, anchor, createAgentStepPayload(
+    secondVerifyPlanId,
+    AGENT_NAME,
+    'Verify materialization (after repair)',
+    { mode: 'verify', planId: secondVerifyPlanId, items: broken.map(entry => entry.item), attempt: 2 },
+    broken.map(entry => `${entry.item.planId}-repair`),
+    'sequential',
+    'waiting_dependency',
+  ));
+  // Intent ORDER matters (parent auto-completion sweep): open steps first, completed status last.
+  return [
+    ...repairs,
+    secondVerify,
+    createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${broken.length} broken item(s), repair round started:\n${summary}`),
+  ];
+}
+
+async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
+  const defsContent = await getContentByMlsPath(item.defPath);
+  const pipelineItem = defsContent ? parseDefs(defsContent).item : null;
+  if (!pipelineItem) return { item, outputPath: null, errors: [`pipeline not found in defs: ${item.defPath}`] };
+
+  const outputPath = pipelineItem.outputPath;
+  const content = await getContentByMlsPath(outputPath);
+  if (!content || !content.trim()) return { item, outputPath, errors: [`generated file missing or empty: ${outputPath}`] };
+
+  const errors = [...await compileMlsPathAndGetErrors(outputPath)];
+  const testPath = testPathForOutputPath(outputPath);
+  const testContent = await getContentByMlsPath(testPath);
+  if (testContent && testContent.trim()) errors.push(...await compileMlsPathAndGetErrors(testPath));
+  return { item, outputPath, errors };
+}
+
+function buildRepairHint(entry: BrokenItem): string {
+  const lines = entry.errors.slice(0, 8);
+  if (!entry.outputPath) return lines.join('\n');
+  if (lines[0]?.startsWith('generated file missing')) return buildMissingCodeRepairHint(entry.outputPath, lines[0]);
+  return buildCompileRepairHint(entry.outputPath, lines);
+}
+
+// Local copy of the ns3 findMutableParentStep pattern (skills/collab_messages.md): if the
+// original parent was auto-completed by setStepCompletedIfChildrenCompleted, anchor new steps
+// on the nearest non-terminal agent step (owner parent, then root).
+function findMutableParentStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep): mls.msg.AIAgentStep {
+  const steps = getAllSteps(context.task?.iaCompressed?.nextSteps);
+  const current = steps.find(item => item.stepId === parentStep.stepId) || null;
+  if (isMutableAgentStep(current)) return current;
+
+  const owner = steps.find(item =>
+    item.nextSteps?.some(child => child.stepId === parentStep.stepId) ||
+    item.interaction?.payload?.some(child => child.stepId === parentStep.stepId)) || null;
+  if (isMutableAgentStep(owner)) return owner;
+
+  const root = context.task?.iaCompressed?.nextSteps?.[0] || null;
+  if (isMutableAgentStep(root)) return root;
+
+  return parentStep;
+}
+
+function isMutableAgentStep(step: mls.msg.AIPayload | null): step is mls.msg.AIAgentStep {
+  return step?.type === 'agent' && step.status !== 'completed' && step.status !== 'failed';
+}
+
+function parsePromptRecord(prompt: string | undefined): Record<string, unknown> {
   if (!prompt) throw new Error('missing phase prompt');
   const parsed = JSON.parse(prompt);
   if (!isRecord(parsed)) throw new Error('phase prompt must be an object');
+  return parsed;
+}
+
+function parsePhaseArgs(parsed: Record<string, unknown>): MaterializePhaseArgs {
   const planId = readString(parsed.planId);
   const fanoutPlanId = readString(parsed.fanoutPlanId) || `${planId}-fanout`;
   const title = readString(parsed.title);
@@ -64,6 +220,14 @@ function parsePhaseArgs(prompt: string | undefined): MaterializePhaseArgs {
     items,
     maxParallel: typeof parsed.maxParallel === 'number' ? parsed.maxParallel : undefined,
   };
+}
+
+function parseVerifyArgs(parsed: Record<string, unknown>): MaterializeVerifyArgs {
+  const planId = readString(parsed.planId);
+  if (!planId) throw new Error('verify prompt missing planId');
+  const items = Array.isArray(parsed.items) ? parsed.items.map(readGenStepArgs) : [];
+  const attempt = typeof parsed.attempt === 'number' && Number.isInteger(parsed.attempt) ? parsed.attempt : 1;
+  return { planId, items, attempt };
 }
 
 function readGenStepArgs(value: unknown): GenStepArgs {

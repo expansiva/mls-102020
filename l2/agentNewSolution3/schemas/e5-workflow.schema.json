@@ -1,0 +1,44 @@
+{
+  "$id": "collab.codes/agentNewSolution3/e5-workflow/2026-07-07-ns3-e5-workflow-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["workflowId", "title", "executionMode", "trigger", "actors", "states", "transitions", "operationIds", "entities", "rulesApplied", "story"],
+  "properties": {
+    "workflowId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
+    "title": { "type": "string", "minLength": 1 },
+    "executionMode": { "enum": ["sequential", "parallel_static", "parallel_dynamic"] },
+    "trigger": { "type": "string", "minLength": 3 },
+    "actors": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "states": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "transitions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to", "on"],
+        "properties": {
+          "from": { "type": "string", "minLength": 1 },
+          "to": { "type": "string", "minLength": 1 },
+          "on": { "type": "string", "minLength": 1 },
+          "by": { "type": "string", "minLength": 1 },
+          "guard": { "type": "string", "minLength": 3 }
+        }
+      }
+    },
+    "operationIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "entities": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "rulesApplied": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "story": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor", "goal", "steps", "outcome"],
+      "properties": {
+        "actor": { "type": "string", "minLength": 1 },
+        "goal": { "type": "string", "minLength": 3 },
+        "steps": { "type": "array", "minItems": 2, "items": { "type": "string", "minLength": 3 } },
+        "outcome": { "type": "string", "minLength": 3 }
+      }
+    }
+  }
+}
