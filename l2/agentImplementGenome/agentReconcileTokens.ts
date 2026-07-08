@@ -8,8 +8,9 @@
 //   designSystem.ts; if the version (theme signature/mlVocabHash) is unchanged, skip the LLM.
 //   Otherwise prompt the LLM to map each --ml-* → a --ds-* expression (direct/derived/keep).
 // afterPromptStep  → validate the picks against the vocab + the DS's real --ds-* vars, merge the
-//   manual `pinned` overrides, write the resulting ml-* tokens INTO the designSystem.ts entry
-//   (single home of the tokens) and keep the agent state in designSystems[ds].tokenReconciliation.
+//   manual `pinned` overrides, and write the resulting `tokenReconciliation` (map + version +
+//   usedGroups + pinned) INTO the designSystem.ts entry — the single home of both the tokens
+//   and their reconciliation (the render applies the map at :root, see designSystemBase.ts).
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { buildWorkItem } from '/_102020_/l2/dsMatch/derivePaths.js';
@@ -19,7 +20,6 @@ import {
   buildMlVocab, readPageGroups, mlVocabHash, dsTokensHash,
   type MlToken, type DsTokenReconciliation,
 } from '/_102020_/l2/dsMatch/mlTokenVocab.js';
-import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { parseStepArgs, mkCompleted, mkFail } from '/_102020_/l2/agentImplementGenome/planning.js';
 
 export function createAgent(): IAgentAsync {
@@ -54,18 +54,17 @@ function themeDsVars(theme: IDesignSystemTokens): string[] {
   return [...new Set(names)];
 }
 
-/** Staleness signature of the DS styling — EXCLUDES the ml-* tokens this agent writes,
- *  otherwise every reconciliation would invalidate its own version. */
+/** Staleness signature of the DS styling. The reconciliation now lives in its own
+ *  `tokenReconciliation` field (not flattened into `global`), so the styling tokens can be
+ *  hashed as-is — writing the reconciliation never invalidates its own version. */
 function themeSignature(theme: IDesignSystemTokens): string {
-  const global = Object.fromEntries(Object.entries(theme.global ?? {}).filter(([k]) => !/^ml-/.test(k)));
-  return dsTokensHash({ color: theme.color, typography: theme.typography, global, fonts: theme.fonts });
+  return dsTokensHash({ color: theme.color, typography: theme.typography, global: theme.global, fonts: theme.fonts });
 }
 
 async function deriveInputs(project: number, a: ReturnType<typeof parseStepArgs>): Promise<ReconInputs | null> {
-  const config: any = await getConfigProject(project);
   const theme = await themeByIndex(project, a.ds);
   if (!theme) return null; // DS without an entry in designSystem.ts → nothing to reconcile
-  const existing: DsTokenReconciliation | undefined = config?.designSystems?.[String(a.ds)]?.tokenReconciliation;
+  const existing: DsTokenReconciliation | undefined = theme.tokenReconciliation;
 
   // Used groups = groups of THIS run's pages ∪ groups already reconciled (accumulates per DS).
   const runPages = Array.isArray(a.pages) ? a.pages : (a.page ? [a.page] : []);
@@ -174,8 +173,9 @@ async function afterPromptStep(
     const reconciliation: DsTokenReconciliation = { version: inputs.version, usedGroups: inputs.usedGroups, map, ...(pinned ? { pinned } : {}) };
 
     if (!context.isTest) {
-      await persistReconciliation(project, a.ds, reconciliation);          // agent state (staleness/pinning)
-      await writeMlTokens(project, inputs.theme, map, pinned);             // result → designSystem.ts entry
+      // Single home: the whole reconciliation (map + version + usedGroups + pinned) rides on
+      // the DS entry; the render applies the map at :root (designSystemBase.getMlTokensCss).
+      await writeTheme(project, { ...inputs.theme, tokenReconciliation: reconciliation });
     }
     console.info(`[agentReconcileTokens] ✓ ds=${a.ds}: ${direct} direct · ${derived} derived · ${kept} keep · ${dropped} descartado(s) · gravado (version=${inputs.version})`);
     return [mkCompleted(context, parentStep, step, hookSequential)];
@@ -193,36 +193,6 @@ function refsOnlyKnownDsVars(expr: string, dsVars: Set<string>): boolean {
   const refs = expr.match(/--ds-[a-z0-9-]+/gi) ?? [];
   if (refs.length === 0) return false; // must lean on the DS (raw-only exprs are rejected here)
   return refs.every(r => dsVars.has(r));
-}
-
-/** Persist designSystems[ds].tokenReconciliation (merge into the DS entry, keep other buckets). */
-async function persistReconciliation(project: number, ds: number | string, reconciliation: DsTokenReconciliation): Promise<void> {
-  const config: any = await getConfigProject(project);
-  if (!config) throw new Error('project config not found');
-  const designSystems = (config.designSystems && typeof config.designSystems === 'object') ? config.designSystems : {};
-  const key = String(ds);
-  designSystems[key] = { ...(designSystems[key] ?? {}), tokenReconciliation: reconciliation };
-  config.designSystems = designSystems;
-  await updateConfigProject(project, config);
-}
-
-/** Write the reconciled ml-* tokens into the DS's theme entry (replacing previous ml-*).
- *  `pinned` overrides win; null/absent = molecule keeps its default (no token emitted). */
-async function writeMlTokens(
-  project: number,
-  theme: IDesignSystemTokens,
-  map: Record<string, string | null>,
-  pinned: Record<string, string> | undefined,
-): Promise<void> {
-  const final: Record<string, string | null> = { ...map, ...(pinned ?? {}) };
-  const global: Record<string, string> = Object.fromEntries(
-    Object.entries(theme.global ?? {}).filter(([k]) => !/^ml-/.test(k)),
-  );
-  for (const [k, v] of Object.entries(final)) {
-    if (typeof v !== 'string' || !v.trim()) continue;
-    global[k.replace(/^--/, '')] = v;
-  }
-  await writeTheme(project, { ...theme, global });
 }
 
 /** Human prompt: the DS's --ds-* targets (with values) + the --ml-* vocabulary to map. */

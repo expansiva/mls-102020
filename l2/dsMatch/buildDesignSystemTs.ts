@@ -11,8 +11,9 @@
 // to their array position + 1.
 //
 // The Design System plugin edits the entries directly (token names are free-form — the
-// file IS the model); the reconciliation agent writes ml-* tokens into `global`; the
-// runtime (`_102029_/l2/designSystemBase.getTokensCss`) renders the selected entry as CSS.
+// file IS the model); the reconciliation agent writes the entry's `tokenReconciliation`
+// (--ml-* → --ds-* map); the runtime (`_102029_/l2/designSystemBase.getTokensCss`) renders
+// the selected entry as CSS, applying the reconciliation map at :root.
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import { replaceTokensBlock, getTokens } from '/_102027_/l2/designSystemBase.js';
