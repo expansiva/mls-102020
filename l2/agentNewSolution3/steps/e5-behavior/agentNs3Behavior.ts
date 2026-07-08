@@ -439,13 +439,15 @@ async function handleClassificationResult(
   // e5-finalize step (added by the phase) verifies files, repairs, approves and emits 'e5-done'.
   const workflowIds = artifact.workflows.map(item => item.workflowId);
   const intents: mls.msg.AgentIntent[] = [];
+  const stepTitle: string = `Defining {{completed}}/{{total}} workflows, failed {{failed}}`;
+
   if (workflowIds.length > 0) {
     intents.push(ns3ParallelStepIntent(context, step, {
       agentName: AGENT_NAME,
       planId: 'e5-workflows-parallel',
-      stepTitle: `Defining ${workflowIds.length} workflows`,
+      stepTitle,
       args: workflowIds.map(id => `workflow:${id}`),
-      maxParallel: 5,
+      maxParallel: 20,
     }));
   }
   intents.push(ns3AgentStepIntent(context, mutationParent, {
@@ -587,14 +589,16 @@ async function runE5OperationsPhase(
   const operationIds = classification.operations.map(item => item.operationId);
 
   const intents: mls.msg.AgentIntent[] = [];
+  const stepTitle: string = `Defining {{completed}}/{{total}} operations, failed {{failed}}`;
+
   // Zero operations: skip the fan-out — e5-finalize still validates the disk state.
   if (operationIds.length > 0) {
     intents.push(ns3ParallelStepIntent(context, step, {
       agentName: AGENT_NAME,
       planId: 'e5-operations-parallel',
-      stepTitle: `Defining ${operationIds.length} operations`,
+      stepTitle,
       args: operationIds.map(id => `operation:${id}`),
-      maxParallel: 5,
+      maxParallel: 20,
     }));
   }
   intents.push(ns3AgentStepIntent(context, mutationParent, {

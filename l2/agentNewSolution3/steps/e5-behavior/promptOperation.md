@@ -30,9 +30,25 @@ Result rules:
   description}]. commandInput operations MUST declare at least one input. Valid sources:
   userInput | actorSession | businessContext | currentWorkspace | selectedEntity |
   activeLifecycleInstance | workflowState | routeParam | previousStepOutput | systemDefault.
-- contextResolution: how NON-userInput values are resolved: [{inputId?, targetRef, source,
-  originRef?, description}] — e.g. the current shift id from businessContext, the selected record
-  from selectedEntity.
+- contextResolution: how NON-userInput values are resolved server-side: [{inputId?, targetRef,
+  source, originRef, description}]. EVERY entry MUST carry originRef AND description — originRef is
+  the resolution recipe the backend generator materializes; without it the generated handler has no
+  way to obtain the value and wrongly demands it from the request.
+  - Catalogued sources use EXACTLY one of these originRef values:
+    - actorSession: `actorSession.actorId` | `actorSession.scope`
+    - businessContext: `businessContext.activeCompanyId` | `businessContext.activeUnitId`
+    - currentWorkspace: `currentWorkspace.workspaceId`
+    - systemDefault: `systemDefault.now` | `systemDefault.uuid` | `systemDefault.locale`
+  - "The currently open/active X" (the open shift, the active session record, the current cash
+    register) is source `activeLifecycleInstance` with originRef `X.xId` ('Entity.field' of the
+    lifecycle entity, e.g. `Shift.shiftId`) — NEVER businessContext (its catalog has no such field).
+  - selectedEntity / workflowState / previousStepOutput also use 'Entity.field' originRefs pointing
+    at a real field of a declared entity.
+  - routeParam uses originRef `routeParam.<name>`.
+  - description states HOW the backend resolves the value (e.g. "the single Shift with status
+    open"), not what the value means.
+  Required inputs whose source is not userInput/routeParam are resolved server-side via these
+  entries and must NEVER become required request fields.
 - acceptanceAssertions: min 1 — VERIFIABLE statements derived from the journey step results and
   business rules ("After confirmation the order exists with status draft"). They become the
   acceptance tests of the generated command; never vague ("works correctly").

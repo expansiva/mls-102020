@@ -43,3 +43,6 @@ states within the primary entity statusEnum, actors/entities/rules resolve); ope
 reads/writes/entity resolve, keyField field exists in the entity defs on disk, query kinds require
 output[], commandInput requires inputs, valid sources, write kinds require writes, deterministic
 pageId/commandName/bffName recheck). 1 retry per run with the gate error in context.
+Origin contract: every contextResolution entry carries a REQUIRED originRef (catalogued runtime
+attribute or 'Entity.field') + description — the server-side resolution recipe agentChangeBackend
+materializes; without it the generated handler wrongly demands the value from the request.

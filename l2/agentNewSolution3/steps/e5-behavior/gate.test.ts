@@ -143,7 +143,7 @@ function validOperation(): Ns3E5OperationArtifact {
       { inputId: 'menuItemId', fieldRef: 'MenuItem.menuItemId', required: true, source: 'userInput', description: 'Selected menu item' },
     ],
     contextResolution: [
-      { targetRef: 'Order.status', source: 'systemDefault', description: 'New orders start as draft' },
+      { targetRef: 'Order.createdAt', source: 'systemDefault', originRef: 'systemDefault.now', description: 'Creation timestamp comes from the server clock' },
     ],
     acceptanceAssertions: ['After confirmation the order exists with status draft'],
   });
@@ -250,6 +250,47 @@ void test('e5 operation gate blocks commandInput without inputs', async () => {
   });
   assert.equal(gate.ok, false);
   assert.ok(gate.errors.some(issue => issue.code === 'operation.inputs.empty'));
+});
+
+void test('e5 operation gate blocks a contextResolution entry without originRef', async () => {
+  const defs = attachedOperation();
+  defs.contextResolution = [
+    { targetRef: 'Order.createdAt', source: 'systemDefault', originRef: '', description: 'Creation timestamp comes from the server clock' },
+  ];
+  const check = validateE5Operation(defs, operationContext());
+  assert.ok(check.issues.some(issue => issue.severity === 'error' && issue.code === 'operation.context.origin.missing'));
+});
+
+void test('e5 operation gate blocks a businessContext originRef outside the catalog', async () => {
+  const defs = attachedOperation();
+  defs.contextResolution = [
+    { inputId: 'shiftId', targetRef: 'Order.orderId', source: 'businessContext', originRef: 'businessContext.shiftId', description: 'The current shift' },
+  ];
+  const check = validateE5Operation(defs, operationContext());
+  assert.ok(check.issues.some(issue => issue.severity === 'error' && issue.code === 'operation.context.origin.invalid'));
+});
+
+void test('e5 operation gate accepts an activeLifecycleInstance originRef resolving to a known entity field', async () => {
+  const defs = attachedOperation();
+  defs.contextResolution = [
+    { inputId: 'shiftId', targetRef: 'Shift.shiftId', source: 'activeLifecycleInstance', originRef: 'Shift.shiftId', description: 'The single Shift with status open' },
+  ];
+  const context: E5OperationGateContext = {
+    ...operationContext(),
+    entityIds: ['Order', 'MenuItem', 'Shift'],
+    entityDefs: { ...entityDefs, Shift: { fields: [{ fieldId: 'shiftId' }, { fieldId: 'status' }], statusEnum: ['open', 'closed'] } },
+  };
+  const check = validateE5Operation(defs, context);
+  assert.ok(!check.issues.some(issue => issue.code.startsWith('operation.context.origin')), check.issues.map(issue => issue.message).join('; '));
+});
+
+void test('e5 operation gate blocks an activeLifecycleInstance originRef on an unknown entity', async () => {
+  const defs = attachedOperation();
+  defs.contextResolution = [
+    { inputId: 'shiftId', targetRef: 'Order.orderId', source: 'activeLifecycleInstance', originRef: 'GhostShift.shiftId', description: 'The single GhostShift with status open' },
+  ];
+  const check = validateE5Operation(defs, operationContext());
+  assert.ok(check.issues.some(issue => issue.severity === 'error' && issue.code === 'operation.context.origin.unknown'));
 });
 
 void test('e5 operation gate blocks a bffName drifting from the deterministic value', async () => {

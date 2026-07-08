@@ -1,5 +1,5 @@
 {
-  "$id": "collab.codes/agentNewSolution3/e5-operation/2026-07-07-ns3-e5-operation-v1",
+  "$id": "collab.codes/agentNewSolution3/e5-operation/2026-07-07-ns3-e5-operation-v2",
   "type": "object",
   "additionalProperties": false,
   "required": ["operationId", "title", "actor", "entity", "kind", "reads", "writes", "rulesApplied", "story", "accessPattern", "inputs", "contextResolution", "acceptanceAssertions"],
@@ -59,7 +59,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["targetRef", "source", "description"],
+        "required": ["targetRef", "source", "originRef", "description"],
         "properties": {
           "inputId": { "type": "string", "minLength": 1 },
           "targetRef": { "type": "string", "minLength": 3 },

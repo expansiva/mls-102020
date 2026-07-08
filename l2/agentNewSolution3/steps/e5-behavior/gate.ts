@@ -22,6 +22,19 @@ export const NS3_E5_SOURCES = [
 // Highest first: capability priority = highest priority among the item featureRefs.
 export const NS3_E5_PRIORITY_ORDER = ['now', 'soon', 'later', 'never'] as const;
 
+// copied from _102029_/l2/runtimeConfigTypes.ts L4_CONTEXT_ORIGIN_CATALOG — keep in sync.
+// Local copy on purpose: importing runtimeConfigTypes could pull browser deps into the
+// node test harness, and this gate must stay pure.
+export const NS3_L4_CONTEXT_ORIGIN_CATALOG = {
+  actorSession: ['actorSession.actorId', 'actorSession.scope'],
+  businessContext: ['businessContext.activeCompanyId', 'businessContext.activeUnitId'],
+  currentWorkspace: ['currentWorkspace.workspaceId'],
+  systemDefault: ['systemDefault.now', 'systemDefault.uuid', 'systemDefault.locale'],
+} as const;
+
+// Sources whose originRef must resolve to a saved entity field ('Entity.field').
+const ENTITY_ORIGIN_SOURCES = ['selectedEntity', 'activeLifecycleInstance', 'workflowState', 'previousStepOutput'] as const;
+
 export type Ns3OperationKind = typeof NS3_OPERATION_KINDS[number];
 export type Ns3E5ExecutionMode = typeof NS3_E5_EXECUTION_MODES[number];
 export type Ns3E5AccessPatternKind = typeof NS3_E5_ACCESS_PATTERN_KINDS[number];
@@ -136,7 +149,9 @@ export interface Ns3E5ContextResolution {
   inputId?: string;
   targetRef: string;
   source: Ns3E5Source;
-  originRef?: string;
+  // REQUIRED: the server-side resolution recipe. Without it agentChangeBackend has no way to
+  // materialize the value and the generated handler demands it from the request (viewDashboard incident).
+  originRef: string;
   description: string;
 }
 
@@ -300,7 +315,8 @@ export function prepareE5Operation(input: unknown): Ns3E5OperationArtifact {
       ...(readString(item.inputId) ? { inputId: readString(item.inputId) } : {}),
       targetRef: readString(item.targetRef) || '',
       source: (readString(item.source) || '') as Ns3E5Source,
-      ...(readString(item.originRef) ? { originRef: readString(item.originRef) } : {}),
+      // Empty string when missing so the schema (minLength 1) and the gate both report it.
+      originRef: readString(item.originRef) || '',
       description: readString(item.description) || '',
     })),
     acceptanceAssertions: readStringArray(record.acceptanceAssertions),
@@ -568,7 +584,9 @@ export function validateE5Operation(
   for (const resolution of defs.contextResolution) {
     if (!(NS3_E5_SOURCES as readonly string[]).includes(resolution.source)) {
       issues.push(errorIssue('operation.context.source.invalid', `operation ${defs.operationId}: contextResolution "${resolution.targetRef}" source "${resolution.source}" is not a valid source`, resolution.targetRef));
+      continue;
     }
+    validateContextOriginRef(defs.operationId, resolution, context, issues);
   }
 
   if (WRITE_OPERATION_KINDS.includes(defs.kind) && defs.writes.length === 0) {
@@ -651,6 +669,57 @@ function validateKeyField(defs: Ns3E5OperationDefs, context: E5OperationGateCont
   }
   if (!entityDefs.fields.some(field => field.fieldId === fieldId)) {
     issues.push(errorIssue('operation.accessPattern.key.unknown', `operation ${defs.operationId}: keyField field "${fieldId}" does not exist in ${entityId} defs`));
+  }
+}
+
+// Ported from agentNewSolution2 validateContextResolutionRef: every contextResolution entry must
+// carry a resolvable originRef — the server-side resolution recipe agentChangeBackend materializes.
+function validateContextOriginRef(
+  operationId: string,
+  resolution: Ns3E5ContextResolution,
+  context: E5OperationGateContext,
+  issues: Ns3GateIssue[],
+): void {
+  const { source, originRef, targetRef } = resolution;
+  if (!originRef) {
+    issues.push(errorIssue('operation.context.origin.missing', `operation ${operationId}: contextResolution "${targetRef || '?'}" is missing originRef (the server-side resolution recipe)`, targetRef));
+    return;
+  }
+  if (source === 'actorSession' || source === 'businessContext' || source === 'currentWorkspace' || source === 'systemDefault') {
+    const allowed = NS3_L4_CONTEXT_ORIGIN_CATALOG[source] as readonly string[];
+    if (!allowed.includes(originRef)) {
+      issues.push(errorIssue('operation.context.origin.invalid', `operation ${operationId}: ${source} originRef "${originRef}" must be one of ${allowed.join(', ')}`, targetRef));
+    }
+    return;
+  }
+  if ((ENTITY_ORIGIN_SOURCES as readonly string[]).includes(source)) {
+    const parts = originRef.split('.');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+      issues.push(errorIssue('operation.context.origin.unknown', `operation ${operationId}: ${source} originRef "${originRef}" must have the format "Entity.field"`, targetRef));
+      return;
+    }
+    const [entityId, fieldId] = parts;
+    if (!context.entityIds.includes(entityId)) {
+      issues.push(errorIssue('operation.context.origin.unknown', `operation ${operationId}: ${source} originRef entity "${entityId}" is not an E3 entity`, targetRef));
+      return;
+    }
+    const entityDefs = context.entityDefs[entityId];
+    if (!entityDefs) {
+      // Entity is known but its defs are not on disk yet: downgrade the field check to a warning.
+      issues.push(warningIssue('operation.context.origin.unverified', `operation ${operationId}: ${source} originRef entity "${entityId}" has no defs on disk; field "${fieldId}" cannot be verified`, targetRef));
+      return;
+    }
+    if (!entityDefs.fields.some(field => field.fieldId === fieldId)) {
+      issues.push(errorIssue('operation.context.origin.unknown', `operation ${operationId}: ${source} originRef field "${fieldId}" does not exist in ${entityId} defs`, targetRef));
+    }
+    return;
+  }
+  if (source === 'routeParam' && !/^routeParam\.[A-Za-z0-9_-]+$/.test(originRef)) {
+    issues.push(errorIssue('operation.context.origin.invalid', `operation ${operationId}: routeParam originRef "${originRef}" must be routeParam.<name>`, targetRef));
+    return;
+  }
+  if (source === 'userInput' && !/^userInput\.[A-Za-z0-9_-]+$/.test(originRef)) {
+    issues.push(errorIssue('operation.context.origin.invalid', `operation ${operationId}: userInput originRef "${originRef}" must be userInput.<name>`, targetRef));
   }
 }
 

@@ -285,13 +285,15 @@ async function handleModelResult(
   // end): one child per entity, hosted under THIS step so its completion waits for the fan-out.
   // The e3-finalize step unlocks when this step's planId completes, verifies every entity file,
   // runs one sequential repair round for the missing ones, then approves and emits 'e3-done'.
+  const stepTitle: string = `Detailing {{completed}}/{{total}} entities, failed {{failed}}`;
+
   return [
     ns3ParallelStepIntent(context, step, {
       agentName: AGENT_NAME,
       planId: 'e3-entities-parallel',
-      stepTitle: `Detailing ${artifact.entities.length} entities`,
+      stepTitle,
       args: artifact.entities.map(entity => `entity:${entity.entityId}`),
-      maxParallel: 5,
+      maxParallel: 20,
     }),
     ns3AgentStepIntent(context, mutationParent, {
       agentName: AGENT_NAME,
