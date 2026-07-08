@@ -28,7 +28,7 @@ Context Files must include:
 - shared .defs.ts: source of states, actions and i18n values
 - shared .ts: source of actual class name, @property names, handlers and msg keys
 - contract .defs.ts and contract .ts for type reference when needed
-- the DS global stylesheet (styles/<ds>/global.css) and one molecule USAGE skill per used group
+- the DS tokens module (designSystem.ts) and one molecule USAGE skill per used group
 
 ## Mandatory first step
 
@@ -118,8 +118,8 @@ If a molecule needs a property/handler missing from shared .ts, degrade graceful
 
 ### Molecules are ALREADY themed — do not restyle them
 
-Molecule internals consume \`--ml-*\` CSS variables, and the design-system stylesheet already
-reconciles those to the DS (e.g. \`--ml-on-surface: var(--ds-text)\`). Theming is AUTOMATIC.
+Molecule internals consume \`--ml-*\` CSS variables, and the design-system tokens already
+reconcile those to the DS (e.g. token \`ml-on-surface: var(--ds-text)\`). Theming is AUTOMATIC.
 
 - Do NOT put color/background/border/radius/shadow classes on the molecule tag to "theme" it.
 - Do NOT set or override any \`--ml-*\` variable (inline, in a class, anywhere).
@@ -127,11 +127,11 @@ reconciles those to the DS (e.g. \`--ml-on-surface: var(--ds-text)\`). Theming i
 - **Slot TAGS are already themed by the molecule tokens** (\`--ml-*\`). A concern is
   "covered" — and therefore FORBIDDEN on the slot tag — only when BOTH hold:
   1. the group's USAGE skill token table has a token for it, AND
-  2. the DS global stylesheet actually sets/reconciles that \`--ml-*\` token to the DS
-     (e.g. \`--ml-on-surface: var(--ds-text)\`).
+  2. the DS tokens module actually sets/reconciles that \`ml-*\` token to the DS
+     (e.g. \`ml-on-surface: var(--ds-text)\`).
   If both hold, any class for that concern on the slot tag duplicates and fights the token
-  theming. If either fails — no token for the effect, or the token exists but the global
-  stylesheet never assigns it (so the molecule is stuck on its default, off-theme) — then
+  theming. If either fails — no token for the effect, or the token exists but the DS module
+  never assigns it (so the molecule is stuck on its default, off-theme) — then
   styling it on the slot tag with the \`--ds-*\` variables IS allowed. Typical always-allowed
   cases are layout/alignment concerns no token expresses (e.g. \`line-clamp-2\` on a
   description, \`flex flex-col gap-3\` on a content area). A slot tag that needs no such
@@ -172,18 +172,17 @@ Example — molecule tag and slot tags stay clean (tokens theme them); slot tags
 You do NOT receive the design-system JSON. You receive the DS TOKENS MODULE
 (\`_<project>_/l2/designSystem.ts\`), already loaded by this page's pipeline. Each entry of its
 \`tokens\` array is one design system (\`themeName\` = the DS name); every token key becomes a CSS
-variable at runtime — \`ds-primary\` → \`--ds-primary\` — and keys prefixed \`_dark-\` are the
-dark-mode values. The variables land on \`:root\` (dark overrides on
+variable at runtime — token \`ds-primary\` → \`var(--ds-primary)\` — and keys prefixed \`_dark-\`
+are the dark-mode values of the same variable. The variables land on \`:root\` (dark overrides on
 \`[data-theme="dark"], :root.dark\`), generated dynamically at bootstrap/preview. It defines:
 
-- \`ds-*\` tokens — the vocabulary YOU style with (as \`var(--ds-*)\`): color roles (e.g. \`--ds-bg\`,
-  \`--ds-surface\`, \`--ds-text\`, \`--ds-muted\`, \`--ds-primary\`, \`--ds-accent\`, \`--ds-border\`,
-  \`--ds-success\`, \`--ds-danger\`), font roles (\`--ds-font-<role>\`), and possibly \`--ds-radius\`
-  and \`--ds-border-w\`;
-- \`ml-*\` tokens — molecule theming, reconciled to the \`--ds-*\` vars. These belong to the
+- the styling tokens — the vocabulary YOU style with, as \`var(--<token>)\`. Names are free-form
+  (\`ds-*\` is the common convention: e.g. \`--ds-bg\`, \`--ds-text\`, \`--ds-primary\`,
+  \`--ds-font-<role>\`, \`--ds-radius\`);
+- \`ml-*\` tokens — molecule theming, reconciled by the pipeline. These belong to the
   molecules; you never reference or override them.
 
-**READ the tokens module first** and use ONLY the \`--ds-*\` variables that actually exist in it.
+**READ the tokens module first** and use ONLY variables whose tokens actually exist in it.
 Never invent a variable; never hardcode a hex color. Do NOT emit a \`<style>\` block and do NOT
 add any wrapper class — components render in the light DOM
 (\`createRenderRoot() { return this; }\`), so the \`:root\` variables cascade into everything,

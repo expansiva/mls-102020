@@ -13,7 +13,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { buildWorkItem } from '/_102020_/l2/dsMatch/derivePaths.js';
-import { readThemes, writeTheme } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
+import { themeByIndex, writeTheme } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
 import { IDesignSystemTokens } from '/_102029_/l2/designSystemBase.js';
 import {
   buildMlVocab, readPageGroups, mlVocabHash, dsTokensHash,
@@ -63,12 +63,9 @@ function themeSignature(theme: IDesignSystemTokens): string {
 
 async function deriveInputs(project: number, a: ReturnType<typeof parseStepArgs>): Promise<ReconInputs | null> {
   const config: any = await getConfigProject(project);
-  const dsEntry = config?.designSystems?.[String(a.ds)];
-  const dsName = dsEntry?.name;
-  if (!dsName) return null;
-  const theme = (await readThemes(project)).find(t => t.themeName === dsName);
-  if (!theme) return null; // DS without styling tokens (no entry in designSystem.ts) → nothing to reconcile
-  const existing: DsTokenReconciliation | undefined = dsEntry.tokenReconciliation;
+  const theme = await themeByIndex(project, a.ds);
+  if (!theme) return null; // DS without an entry in designSystem.ts → nothing to reconcile
+  const existing: DsTokenReconciliation | undefined = config?.designSystems?.[String(a.ds)]?.tokenReconciliation;
 
   // Used groups = groups of THIS run's pages ∪ groups already reconciled (accumulates per DS).
   const runPages = Array.isArray(a.pages) ? a.pages : (a.page ? [a.page] : []);
@@ -225,7 +222,7 @@ async function writeMlTokens(
     if (typeof v !== 'string' || !v.trim()) continue;
     global[k.replace(/^--/, '')] = v;
   }
-  await writeTheme(project, { ...theme, global }, { merge: false });
+  await writeTheme(project, { ...theme, global });
 }
 
 /** Human prompt: the DS's --ds-* targets (with values) + the --ml-* vocabulary to map. */

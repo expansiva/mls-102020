@@ -5,6 +5,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getAuraState } from '/_102020_/l2/auraState.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { dsIndexNameMap } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
 import '/_102020_/l2/plugins/navHeader.js';
 import '/_102020_/l2/plugins/selectLayoutRules.js';
 
@@ -164,7 +165,13 @@ export class PluginSelectLayout extends StateLitElement {
             this._layoutOptions = Object.entries(layoutsMap)
                 .map(([k, v]) => ({ value: Number(k), name: v.name, skill: v.skill, enabled: false }))
                 .sort((a, b) => a.value - b.value);
-            this._designSystems = config?.designSystems ?? {};
+            // DS identity lives in designSystem.ts — map dsIndex → { name } for the genome value.
+            const dsNames = await dsIndexNameMap(project);
+            const designSystems: Record<number, { name: string; skill: string }> = {};
+            for (const [k, name] of Object.entries(dsNames)) {
+                designSystems[Number(k)] = { name, skill: config?.designSystems?.[k]?.skill ?? '' };
+            }
+            this._designSystems = designSystems;
         } catch { /* no project config */ }
         // @ts-ignore
         this.requestUpdate();

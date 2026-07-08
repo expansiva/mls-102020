@@ -17,6 +17,7 @@
 // cross-project invalidation). See resolveRulesForPage and filterCompatibleVariants.
 
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { themeByIndex } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
 import { resolveRulesForPage } from '/_102020_/l2/dsMatch/resolveRulesForPage.js';
 import { pageRef, DEFAULT_DEVICE } from '/_102020_/l2/dsMatch/derivePaths.js';
 import { buildMoleculeCatalog } from '/_102020_/l2/dsMatch/buildMoleculeCatalog.js';
@@ -184,8 +185,7 @@ export async function buildPageDsStamp(
     defsContent: string,
 ): Promise<PageDsStamp> {
     const { rules, configuredAxes } = await resolveRulesForPage(project, module, page, layout); // rules from LAYOUT
-    const config: any = await getConfigProject(project);
-    const dsEntry = config?.designSystems?.[String(ds)] ?? {};
+    const dsTheme = await themeByIndex(project, ds);
     const catalog = await buildMoleculeCatalog();
     const byKey = new Map(catalog.map(m => [`${m.project}|${m.tag}`, m]));
 
@@ -198,7 +198,7 @@ export async function buildPageDsStamp(
     return {
         layout,
         ds,
-        dsName: dsEntry.name ?? String(ds),
+        dsName: dsTheme?.themeName ?? String(ds),
         rulesHash: effectiveRulesSignature(configuredFrom(rules, configuredAxes)),
         moleculesSeen,
         generatedAt,

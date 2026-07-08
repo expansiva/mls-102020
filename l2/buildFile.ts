@@ -3,7 +3,7 @@
 import { getTokensCss, getGlobalCss } from '/_102027_/l2/designSystemBase.js';
 import { getPath } from '/_102027_/l2/utils';
 import { convertFileToTag, resolveTagToFile } from '/_102020_/l2/utils';
-import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { themeByIndex } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
 
 
 export interface IJSONDependence {
@@ -81,21 +81,20 @@ async function getDependencies(storFile: mls.stor.IFileInfo, fileName: string, h
 
 /**
  * The theme (DS name) a file's tokens should use, derived from its folder: page variation
- * folders encode the DS index (`page<layout><ds>`), which project.json maps to the DS name —
- * the `themeName` of its entry in the generated designSystem.ts. Null when the folder is not
- * a page variation or the DS has no name (caller falls back to the editor's active theme).
+ * folders encode the DS index (`page<layout><ds>`), which matches the `dsIndex` of an entry
+ * in designSystem.ts. Null when the folder is not a page variation or the DS has no entry
+ * (caller falls back to the editor's active theme).
  */
 export async function dsThemeForFolder(project: number, folder: string): Promise<string | null> {
     const pageDs = pageDsFromFolder(folder);
     return pageDs ? dsNameFromIndex(project, pageDs) : null;
 }
 
-/** DS index → DS name (the `themeName` of its entry in the generated designSystem.ts). */
+/** DS index → DS name (the `themeName` of its entry in designSystem.ts, matched by dsIndex). */
 async function dsNameFromIndex(project: number, ds: string): Promise<string | null> {
     try {
-        const config: any = await getConfigProject(project);
-        const name = config?.designSystems?.[ds]?.name;
-        return typeof name === 'string' && name ? name : null;
+        const theme = await themeByIndex(project, ds);
+        return theme?.themeName ?? null;
     } catch {
         return null;
     }

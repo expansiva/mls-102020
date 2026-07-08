@@ -348,8 +348,11 @@ export class PluginCreateProject extends CollabLitElement {
 
   private async createInitialDSFile(project: number) {
     const fileName = 'designSystem';
-    // Generated format, empty themes: entries appear when a DS gets tokens (buildDesignSystemTs).
-    const content = renderDesignSystemSource(project, []);
+    // The default DS is a real entry in designSystem.ts (single home of identity + tokens).
+    const content = renderDesignSystemSource(project, [{
+      dsIndex: '1', themeName: 'default', description: 'Default design system',
+      color: {}, typography: {}, global: {},
+    }]);
     await this.createNewFileL2(fileName, content);
     const key = mls.stor.getKeyToFiles(project, 2, fileName, '', '.ts');
     const storFile = mls.stor.files[key];
