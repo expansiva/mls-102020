@@ -845,6 +845,35 @@ export class ServicePreview extends ServiceBase {
     container.innerHTML = '';
     if ((window as any).preview) (window as any).preview.iframe = undefined;
     this.configureTools(false);
+    this.pruneDeadStateSubscribers();
+  }
+
+  /**
+  * Removes state subscribers whose realm is dead (elements of a destroyed preview
+  * iframe). Destroying an iframe does NOT fire disconnectedCallback, so molecules
+  * never unsubscribe; the next notify would hit them and crash inside their dead
+  * realm (getState resolves no state manager there), aborting the whole notify
+  * queue — live components lose their notifications.
+  * Criterion: element with ownerDocument.defaultView === null. isConnected is NOT
+  * reliable here (orphans stay connected to the dead iframe's document).
+  * Hygiene only: any internal failure must never affect the preview flow.
+  */
+  private pruneDeadStateSubscribers() {
+    try {
+      const gsm: any = (globalState as any).globalStateManagment;
+      const map: any = gsm?.componentMap;
+      if (!(map instanceof Map)) return;
+      for (const [key, set] of Array.from(map as Map<string, Set<any>>)) {
+        if (!(set instanceof Set)) continue;
+        for (const c of Array.from(set)) {
+          const isDeadElement = !!c && c.nodeType === 1 && !!c.ownerDocument && !c.ownerDocument.defaultView;
+          if (isDeadElement) set.delete(c);
+        }
+        if (set.size === 0) map.delete(key);
+      }
+    } catch (e: any) {
+      console.info('[servicePreview] pruneDeadStateSubscribers skipped:', e?.message);
+    }
   }
 
 
