@@ -1,13 +1,13 @@
 /// <mls fileReference="_102020_/l2/agentImplementGenome/agentReconcileTokens.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// Reconcile molecule tokens (--ml-*) to the design-system tokens (--ds-*). ONE per DS
+// Reconcile molecule tokens (--ml-*) to the DS's own tokens (free-form --* vars). ONE per DS
 // (barrier over all gen:<page> steps) — NOT per page: the --ml-* vocabulary is shared across
 // groups and the mapping is semantic (role→role), so it's a property of (DS, used-groups).
 //
 // beforePromptStep → collect the used groups' --ml-* vocabulary + the DS's theme entry from
 //   designSystem.ts; if the version (theme signature/mlVocabHash) is unchanged, skip the LLM.
-//   Otherwise prompt the LLM to map each --ml-* → a --ds-* expression (direct/derived/keep).
-// afterPromptStep  → validate the picks against the vocab + the DS's real --ds-* vars, merge the
+//   Otherwise prompt the LLM to map each --ml-* → a DS-token expression (direct/derived/keep).
+// afterPromptStep  → validate the picks against the vocab + the DS's real token vars, merge the
 //   manual `pinned` overrides, and write the resulting `tokenReconciliation` (map + version +
 //   usedGroups + pinned) INTO the designSystem.ts entry — the single home of both the tokens
 //   and their reconciliation (the render applies the map at :root, see designSystemBase.ts).
@@ -27,7 +27,7 @@ export function createAgent(): IAgentAsync {
     agentName: 'agentReconcileTokens',
     agentProject: 102020,
     agentFolder: 'agentImplementGenome',
-    agentDescription: 'Map molecule tokens (--ml-*) to the DS tokens (--ds-*), once per DS',
+    agentDescription: 'Map molecule tokens (--ml-*) to the DS tokens, once per DS',
     visibility: 'private',
     beforePromptStep,
     afterPromptStep,
@@ -45,12 +45,22 @@ interface ReconInputs {
   version: string;
 }
 
-/** The DS's --ds-* vars, derived from its theme entry (skips _dark-/ml-/custom keys). */
+/** The DS's token vars — the CSS custom properties the entry actually defines, derived from
+ *  its real (free-form) token names across color/typography/global. Token names are the
+ *  single source of truth in the unified model (no fixed `ds-*` prefix); dark values live under
+ *  `_dark-<name>` (same var, overridden in the dark block) so they are skipped, and any `ml-*`
+ *  (reconciliation outputs) are skipped so the agent never targets its own results. */
 function themeDsVars(theme: IDesignSystemTokens): string[] {
   const names: string[] = [];
-  for (const k of Object.keys(theme.color ?? {})) if (/^ds-/.test(k)) names.push(`--${k}`);
-  for (const k of Object.keys(theme.typography ?? {})) if (/^ds-font-/.test(k)) names.push(`--${k}`);
-  for (const k of Object.keys(theme.global ?? {})) if (k === 'ds-radius' || k === 'ds-border-w') names.push(`--${k}`);
+  const collect = (map?: Record<string, string>) => {
+    for (const k of Object.keys(map ?? {})) {
+      if (k.startsWith('_dark-') || k.startsWith('ml-')) continue;
+      names.push(`--${k}`);
+    }
+  };
+  collect(theme.color);
+  collect(theme.typography);
+  collect(theme.global);
   return [...new Set(names)];
 }
 
@@ -109,7 +119,7 @@ async function beforePromptStep(
       return [mkCompleted(context, parentStep, step, hookSequential)];
     }
 
-    console.info(`[agentReconcileTokens] ▶ ds=${a.ds}${a.forceReconcile ? ' [FORCE]' : ''}: ${inputs.vocab.length} token(s) --ml-* de ${inputs.usedGroups.length} grupo(s) → ${inputs.dsVars.size} var(s) --ds-*`);
+    console.info(`[agentReconcileTokens] ▶ ds=${a.ds}${a.forceReconcile ? ' [FORCE]' : ''}: ${inputs.vocab.length} token(s) --ml-* de ${inputs.usedGroups.length} grupo(s) → ${inputs.dsVars.size} token(s) do DS`);
     const humanPrompt = buildHumanPrompt(inputs.theme, inputs.vocab);
 
     const continueParallel: mls.msg.AgentIntentPromptReady = {
@@ -164,7 +174,7 @@ async function afterPromptStep(
       const kind = m?.kind;
       const dsExpr = typeof m?.dsExpr === 'string' ? m.dsExpr.trim() : null;
       if (kind === 'keep' || !dsExpr) { map[mlToken] = null; kept++; continue; }
-      if (!refsOnlyKnownDsVars(dsExpr, inputs.dsVars)) { map[mlToken] = null; dropped++; continue; } // unknown --ds-* → keep default
+      if (!refsOnlyKnownDsVars(dsExpr, inputs.dsVars)) { map[mlToken] = null; dropped++; continue; } // unknown var → keep default
       map[mlToken] = dsExpr;
       if (kind === 'derived') derived++; else direct++;
     }
@@ -188,30 +198,33 @@ async function afterPromptStep(
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-/** True if every `--ds-…` referenced by the expression is a real var of this DS. */
+/** True if every `--…` custom property referenced by the expression is a real var of this DS. */
 function refsOnlyKnownDsVars(expr: string, dsVars: Set<string>): boolean {
-  const refs = expr.match(/--ds-[a-z0-9-]+/gi) ?? [];
+  const refs = expr.match(/--[a-z0-9-]+/gi) ?? [];
   if (refs.length === 0) return false; // must lean on the DS (raw-only exprs are rejected here)
   return refs.every(r => dsVars.has(r));
 }
 
-/** Human prompt: the DS's --ds-* targets (with values) + the --ml-* vocabulary to map. */
+/** Human prompt: the DS's real token targets (name + value, grouped) + the --ml-* vocabulary. */
 function buildHumanPrompt(theme: IDesignSystemTokens, vocab: MlToken[]): string {
-  const dsTargets: string[] = [];
-  for (const [key, light] of Object.entries(theme.color ?? {})) {
-    if (!/^ds-/.test(key)) continue; // skip _dark- pairs and custom tokens
-    dsTargets.push(`- var(--${key}): ${key.replace(/^ds-/, '')}${light ? ` — ${light}` : ''}`);
-  }
-  for (const key of Object.keys(theme.typography ?? {})) {
-    if (/^ds-font-/.test(key)) dsTargets.push(`- var(--${key}): ${key.replace(/^ds-font-/, '')} font`);
-  }
-  if (theme.global?.['ds-radius']) dsTargets.push('- var(--ds-radius): corner radius');
-  if (theme.global?.['ds-border-w']) dsTargets.push('- var(--ds-border-w): border width');
+  const section = (title: string, map?: Record<string, string>): string => {
+    const lines: string[] = [];
+    for (const [key, value] of Object.entries(map ?? {})) {
+      if (key.startsWith('_dark-') || key.startsWith('ml-')) continue; // dark override / own output
+      lines.push(`- var(--${key})${value ? `: ${value}` : ''}`);
+    }
+    return lines.length ? `### ${title}\n${lines.join('\n')}` : '';
+  };
+  const dsTargets = [
+    section('Colors', theme.color),
+    section('Typography', theme.typography),
+    section('Global (spacing/radius/transition/…)', theme.global),
+  ].filter(Boolean).join('\n\n');
 
   const mlList = vocab.map(t => `- ${t.token} (default ${t.default || '—'}): ${t.description || ''}`.trimEnd());
 
   return [
-    `## Design system tokens (--ds-*) — the ONLY vars you may reference\n${dsTargets.join('\n')}`,
+    `## Design system tokens — the ONLY vars you may reference\n${dsTargets}`,
     `## Molecule tokens (--ml-*) — map EACH one\n${mlList.join('\n')}`,
   ].join('\n\n');
 }
@@ -222,17 +235,18 @@ const system1 = `
 You must return ONLY a valid JSON object. No preamble, no markdown fences. Start with { and end with }
 
 ## Task
-Map each molecule design token (--ml-*) to the project's design-system tokens (--ds-*), so the
-molecules follow the design system. For EACH --ml-* token pick the best expression:
-- direct  → "var(--ds-<role>)" when a DS role matches the token's meaning (e.g. primary text → var(--ds-text)).
-- derived → a CSS expression built ONLY from --ds-* vars for shades / hover / dim / on-color contrast
-            when there is no exact DS role (e.g. color-mix(in srgb, var(--ds-surface) 92%, #000)).
+Map each molecule design token (--ml-*) to the project's design-system tokens (the --* vars
+listed in the human prompt), so the molecules follow the design system. For EACH --ml-* token
+pick the best expression:
+- direct  → "var(--<token>)" when a DS token matches the meaning (e.g. primary text → var(--text-primary-color)).
+- derived → a CSS expression built ONLY from the listed --* vars for shades / hover / dim / on-color
+            contrast when no single token fits (e.g. color-mix(in srgb, var(--bg-primary-color) 92%, #000)).
 - keep    → dsExpr = null, when NO DS token fits (the molecule keeps its own default).
 
 ## Rules
-- Reference --ds-* var names EXACTLY as listed. NEVER invent a --ds-* var.
-- Prefer var(--ds-*) whenever a role fits; raw color is tolerated ONLY inside a derived expression
-  for on-color contrast (e.g. text on primary) when the DS has no matching role.
+- Reference the DS var names EXACTLY as listed. NEVER invent a var that is not in the list.
+- Prefer a var() whenever a token fits; raw color is tolerated ONLY inside a derived expression
+  for on-color contrast (e.g. text on primary) when the DS has no matching token.
 - Decide by MEANING (the token's description), not by name similarity.
 - Exactly one entry per --ml-* token given. kind must match dsExpr (keep ⇔ dsExpr null).
 
