@@ -4,16 +4,17 @@
 // (barrier over all gen:<page> steps) — NOT per page: the --ml-* vocabulary is shared across
 // groups and the mapping is semantic (role→role), so it's a property of (DS, used-groups).
 //
-// beforePromptStep → collect the used groups' --ml-* vocabulary + DS tokens; if the version
-//   (dsTokensHash/mlVocabHash) is unchanged, skip the LLM. Otherwise prompt the LLM to map each
-//   --ml-* → a --ds-* expression (direct var / derived / keep-default).
+// beforePromptStep → collect the used groups' --ml-* vocabulary + the DS's theme entry from
+//   designSystem.ts; if the version (theme signature/mlVocabHash) is unchanged, skip the LLM.
+//   Otherwise prompt the LLM to map each --ml-* → a --ds-* expression (direct/derived/keep).
 // afterPromptStep  → validate the picks against the vocab + the DS's real --ds-* vars, merge the
-//   manual `pinned` overrides, and write designSystems[ds].tokenReconciliation.
-// The deterministic buildGlobalCss (register step) then emits the --ml-*: var(--ds-*) block.
+//   manual `pinned` overrides, write the resulting ml-* tokens INTO the designSystem.ts entry
+//   (single home of the tokens) and keep the agent state in designSystems[ds].tokenReconciliation.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { buildWorkItem } from '/_102020_/l2/dsMatch/derivePaths.js';
-import { dsVarNames } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
+import { readThemes, writeTheme } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
+import { IDesignSystemTokens } from '/_102029_/l2/designSystemBase.js';
 import {
   buildMlVocab, readPageGroups, mlVocabHash, dsTokensHash,
   type MlToken, type DsTokenReconciliation,
@@ -36,7 +37,7 @@ export function createAgent(): IAgentAsync {
 // ─── shared derivation (deterministic; recomputed in before + after) ─────────
 
 interface ReconInputs {
-  tokens: any;
+  theme: IDesignSystemTokens;
   existing: DsTokenReconciliation | undefined;
   usedGroups: string[];
   vocab: MlToken[];
@@ -44,11 +45,29 @@ interface ReconInputs {
   version: string;
 }
 
+/** The DS's --ds-* vars, derived from its theme entry (skips _dark-/ml-/custom keys). */
+function themeDsVars(theme: IDesignSystemTokens): string[] {
+  const names: string[] = [];
+  for (const k of Object.keys(theme.color ?? {})) if (/^ds-/.test(k)) names.push(`--${k}`);
+  for (const k of Object.keys(theme.typography ?? {})) if (/^ds-font-/.test(k)) names.push(`--${k}`);
+  for (const k of Object.keys(theme.global ?? {})) if (k === 'ds-radius' || k === 'ds-border-w') names.push(`--${k}`);
+  return [...new Set(names)];
+}
+
+/** Staleness signature of the DS styling — EXCLUDES the ml-* tokens this agent writes,
+ *  otherwise every reconciliation would invalidate its own version. */
+function themeSignature(theme: IDesignSystemTokens): string {
+  const global = Object.fromEntries(Object.entries(theme.global ?? {}).filter(([k]) => !/^ml-/.test(k)));
+  return dsTokensHash({ color: theme.color, typography: theme.typography, global, fonts: theme.fonts });
+}
+
 async function deriveInputs(project: number, a: ReturnType<typeof parseStepArgs>): Promise<ReconInputs | null> {
   const config: any = await getConfigProject(project);
   const dsEntry = config?.designSystems?.[String(a.ds)];
-  const tokens = dsEntry?.tokens;
-  if (!tokens || typeof tokens !== 'object') return null; // DS without visual tokens → nothing to reconcile
+  const dsName = dsEntry?.name;
+  if (!dsName) return null;
+  const theme = (await readThemes(project)).find(t => t.themeName === dsName);
+  if (!theme) return null; // DS without styling tokens (no entry in designSystem.ts) → nothing to reconcile
   const existing: DsTokenReconciliation | undefined = dsEntry.tokenReconciliation;
 
   // Used groups = groups of THIS run's pages ∪ groups already reconciled (accumulates per DS).
@@ -59,9 +78,9 @@ async function deriveInputs(project: number, a: ReturnType<typeof parseStepArgs>
   const usedGroups = [...new Set([...(existing?.usedGroups ?? []), ...runGroups])].sort();
 
   const vocab = await buildMlVocab(usedGroups);
-  const dsVars = new Set(dsVarNames(tokens));
-  const version = `${dsTokensHash(tokens)}/${mlVocabHash(vocab)}`;
-  return { tokens, existing, usedGroups, vocab, dsVars, version };
+  const dsVars = new Set(themeDsVars(theme));
+  const version = `${themeSignature(theme)}/${mlVocabHash(vocab)}`;
+  return { theme, existing, usedGroups, vocab, dsVars, version };
 }
 
 // ─── before: staleness gate + prompt ─────────────────────────────────────────
@@ -82,7 +101,7 @@ async function beforePromptStep(
     const inputs = await deriveInputs(project, a);
 
     if (!inputs) {
-      console.info(`[agentReconcileTokens] ds=${a.ds}: DS sem 'tokens' no config → nada a reconciliar. pages=${JSON.stringify(runPagesDiag)}`);
+      console.info(`[agentReconcileTokens] ds=${a.ds}: DS sem entrada de tokens no designSystem.ts → nada a reconciliar. pages=${JSON.stringify(runPagesDiag)}`);
       return [mkCompleted(context, parentStep, step, hookSequential)];
     }
     if (inputs.vocab.length === 0) {
@@ -95,7 +114,7 @@ async function beforePromptStep(
     }
 
     console.info(`[agentReconcileTokens] ▶ ds=${a.ds}${a.forceReconcile ? ' [FORCE]' : ''}: ${inputs.vocab.length} token(s) --ml-* de ${inputs.usedGroups.length} grupo(s) → ${inputs.dsVars.size} var(s) --ds-*`);
-    const humanPrompt = buildHumanPrompt(inputs.tokens, inputs.vocab);
+    const humanPrompt = buildHumanPrompt(inputs.theme, inputs.vocab);
 
     const continueParallel: mls.msg.AgentIntentPromptReady = {
       type: 'prompt_ready',
@@ -157,7 +176,10 @@ async function afterPromptStep(
     const pinned = inputs.existing?.pinned;
     const reconciliation: DsTokenReconciliation = { version: inputs.version, usedGroups: inputs.usedGroups, map, ...(pinned ? { pinned } : {}) };
 
-    if (!context.isTest) await persistReconciliation(project, a.ds, reconciliation);
+    if (!context.isTest) {
+      await persistReconciliation(project, a.ds, reconciliation);          // agent state (staleness/pinning)
+      await writeMlTokens(project, inputs.theme, map, pinned);             // result → designSystem.ts entry
+    }
     console.info(`[agentReconcileTokens] ✓ ds=${a.ds}: ${direct} direct · ${derived} derived · ${kept} keep · ${dropped} descartado(s) · gravado (version=${inputs.version})`);
     return [mkCompleted(context, parentStep, step, hookSequential)];
   } catch (error) {
@@ -187,18 +209,37 @@ async function persistReconciliation(project: number, ds: number | string, recon
   await updateConfigProject(project, config);
 }
 
-/** Human prompt: the DS's --ds-* targets (with values) + the --ml-* vocabulary to map. */
-function buildHumanPrompt(tokens: any, vocab: MlToken[]): string {
-  const dsTargets: string[] = [];
-  for (const [role, val] of Object.entries((tokens.color ?? {}) as Record<string, { light?: string }>)) {
-    const name = role === 'background' ? '--ds-bg' : `--ds-${role}`;
-    dsTargets.push(`- var(${name}): ${role}${val?.light ? ` — ${val.light}` : ''}`);
+/** Write the reconciled ml-* tokens into the DS's theme entry (replacing previous ml-*).
+ *  `pinned` overrides win; null/absent = molecule keeps its default (no token emitted). */
+async function writeMlTokens(
+  project: number,
+  theme: IDesignSystemTokens,
+  map: Record<string, string | null>,
+  pinned: Record<string, string> | undefined,
+): Promise<void> {
+  const final: Record<string, string | null> = { ...map, ...(pinned ?? {}) };
+  const global: Record<string, string> = Object.fromEntries(
+    Object.entries(theme.global ?? {}).filter(([k]) => !/^ml-/.test(k)),
+  );
+  for (const [k, v] of Object.entries(final)) {
+    if (typeof v !== 'string' || !v.trim()) continue;
+    global[k.replace(/^--/, '')] = v;
   }
-  const fonts = tokens.typography?.fonts;
-  if (Array.isArray(fonts) && fonts.length) for (const f of fonts) { if (f?.name) dsTargets.push(`- var(--ds-font-${f.name}): ${f.name} font`); }
-  else { if (tokens.typography?.fontDisplay) dsTargets.push('- var(--ds-font-display): display font'); if (tokens.typography?.fontBody) dsTargets.push('- var(--ds-font-body): body font'); }
-  if (tokens.shape?.radius) dsTargets.push('- var(--ds-radius): corner radius');
-  if (tokens.shape?.borderWidth != null) dsTargets.push('- var(--ds-border-w): border width');
+  await writeTheme(project, { ...theme, global }, { merge: false });
+}
+
+/** Human prompt: the DS's --ds-* targets (with values) + the --ml-* vocabulary to map. */
+function buildHumanPrompt(theme: IDesignSystemTokens, vocab: MlToken[]): string {
+  const dsTargets: string[] = [];
+  for (const [key, light] of Object.entries(theme.color ?? {})) {
+    if (!/^ds-/.test(key)) continue; // skip _dark- pairs and custom tokens
+    dsTargets.push(`- var(--${key}): ${key.replace(/^ds-/, '')}${light ? ` — ${light}` : ''}`);
+  }
+  for (const key of Object.keys(theme.typography ?? {})) {
+    if (/^ds-font-/.test(key)) dsTargets.push(`- var(--${key}): ${key.replace(/^ds-font-/, '')} font`);
+  }
+  if (theme.global?.['ds-radius']) dsTargets.push('- var(--ds-radius): corner radius');
+  if (theme.global?.['ds-border-w']) dsTargets.push('- var(--ds-border-w): border width');
 
   const mlList = vocab.map(t => `- ${t.token} (default ${t.default || '—'}): ${t.description || ''}`.trimEnd());
 

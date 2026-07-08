@@ -3,9 +3,10 @@
 export const skill = `
 # SKILL: Design System tokens — how \`designSystem.ts\` is built and becomes CSS
 
-Each project owns ONE generated tokens module at \`_<project>_/l2/designSystem.ts\`, built from
-ALL \`designSystems[*].tokens\` in project.json — one \`tokens[]\` entry per design system, with
-\`themeName\` = the DS name. At runtime (dev preview and the production bootstrap alike),
+Each project owns ONE tokens module at \`_<project>_/l2/designSystem.ts\` — the SINGLE home of
+the styling tokens: one \`tokens[]\` entry per design system, with \`themeName\` = the DS name
+(project.json keeps only identity + generation config). At runtime (dev preview and the
+production bootstrap alike),
 \`getTokensCss\` from \`_102029_/l2/designSystemBase\` turns the selected entry into the \`--ds-*\`
 CSS variables that the page render (\`genCfePageGenome\`) consumes through \`var(--ds-*)\`. This is
 the VARIABLE, per-DS half of the pipeline: different tokens → different theme entry, same rules.
@@ -14,7 +15,7 @@ Pure token → code. Never invent a value: if it is not in the tokens, do not em
 
 ---
 
-## 1. Token contract (\`designSystems[<ds>].tokens\`)
+## 1. Authoring contract (the Design System plugin form model)
 
 \`\`\`jsonc
 {

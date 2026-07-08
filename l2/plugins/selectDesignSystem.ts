@@ -5,7 +5,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { type DsTokens, type DsColorRole, type DsFont } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
-import { buildDesignSystemTs } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
+import { readThemes, themeToDsTokens, dsTokensToTheme, writeTheme } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
@@ -223,7 +223,7 @@ const messages: Record<string, MessageType> = {
 interface IDsEntry { key: number; name: string; description: string; skill: string; tokens: DsTokens; }
 interface IRole { name: string; light: string; dark: string; }
 
-// Per-DS skill slot: the rules for this DS's styles/<ds>/global.css. The fixed base render
+// Per-DS skill slot: the DS rules fed to the page pipeline. The fixed base render
 // skill (genCfePageGenome) is prepended by agentGenDefs — it is NOT stored per DS.
 const DS_SKILL_DEFAULT = '_102020_/l2/agentImplementGenome/skills/genCfePageDesignSystem.ts';
 
@@ -390,14 +390,39 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this.requestUpdate();
         try {
             const config: any = await getConfigProject(projectId);
-            const dsMap = (config?.designSystems ?? {}) as Record<string, { name: string; skill?: string; tokens?: DsTokens }>;
-            this._entries = Object.keys(dsMap).map(Number).sort((a, b) => a - b).map(k => ({
-                key: k,
-                name: dsMap[k].name,
-                description: (dsMap[k] as any).description ?? '',
-                skill: dsMap[k].skill ?? DS_SKILL_DEFAULT,
-                tokens: dsMap[k].tokens ?? {},
-            }));
+            const dsMap = (config?.designSystems ?? {}) as Record<string, { name: string; skill?: string; styleHints?: DsTokens; tokens?: DsTokens }>;
+            // The styling tokens live in designSystem.ts (one theme entry per DS, keyed by name);
+            // project.json contributes identity + authoring styleHints (palette/scale/density/elevation).
+            const themes = await readThemes(projectId);
+            this._entries = Object.keys(dsMap).map(Number).sort((a, b) => a - b).map(k => {
+                const name = dsMap[k].name;
+                const theme = themes.find(t => t.themeName === name);
+                const css = theme ? themeToDsTokens(theme) : null;
+                // legacy fallback: configs written before the unification still carry full `tokens`
+                const hints = dsMap[k].styleHints ?? dsMap[k].tokens ?? {};
+                const tokens: DsTokens = {
+                    palette: hints.palette ?? [],
+                    color: css?.color ?? hints.color ?? {},
+                    typography: {
+                        ...(css?.typography ?? (hints.typography?.fonts || hints.typography?.fontDisplay || hints.typography?.fontBody
+                            ? { fonts: hints.typography?.fonts, fontDisplay: hints.typography?.fontDisplay, fontBody: hints.typography?.fontBody }
+                            : {})),
+                        scale: hints.typography?.scale,
+                        weightHeading: hints.typography?.weightHeading,
+                        tracking: hints.typography?.tracking,
+                    },
+                    shape: css?.shape ?? hints.shape ?? {},
+                    density: hints.density,
+                    elevation: hints.elevation,
+                };
+                return {
+                    key: k,
+                    name,
+                    description: (dsMap[k] as any).description ?? '',
+                    skill: dsMap[k].skill ?? DS_SKILL_DEFAULT,
+                    tokens,
+                };
+            });
         } catch {
             this._entries = [];
         }
@@ -993,10 +1018,9 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
         this._saving = true;
         this._saveError = '';
+        const previousName = isNew ? undefined : this._selectedEntry?.name;
         try {
-            await this._persist(this.projectId, key, name, this._desc.trim(), this._skill || DS_SKILL_DEFAULT, tokens);
-            // Regenerate this DS's stylesheet (styles/<ds>/global.css) so servicePreview reflects it.
-            await buildDesignSystemTs(this.projectId);
+            await this._persist(this.projectId, key, name, this._desc.trim(), this._skill || DS_SKILL_DEFAULT, tokens, previousName);
         } catch (err) {
             console.error('[selectDesignSystem] save failed', err);
             this._saveError = this.msg.saveError;
@@ -1017,19 +1041,40 @@ export class PluginSelectDesignSystem extends StateLitElement {
         }
     }
 
-    private async _persist(projectId: number, key: number, name: string, description: string, skill: string, tokens: DsTokens | null): Promise<void> {
+    private async _persist(projectId: number, key: number, name: string, description: string, skill: string, tokens: DsTokens | null, previousName?: string): Promise<void> {
         const config: any = await getConfigProject(projectId);
         if (!config) throw new Error('project config not found');
         const current = config.designSystems;
         const designSystems: Record<string, any> =
             (current && typeof current === 'object' && !Array.isArray(current)) ? current : {};
         const existing = designSystems[key] ?? {};
-        // tokens === null → default DS: keep identity only, leave any existing tokens untouched.
-        designSystems[key] = tokens === null
-            ? { ...existing, name, description, skill }
-            : { ...existing, name, description, skill, tokens };
+
+        // project.json: identity + authoring styleHints (never the CSS tokens — those live in
+        // designSystem.ts). The legacy `tokens` field is dropped on save (migration completes).
+        const entry: Record<string, any> = { ...existing, name, description, skill };
+        delete entry.tokens;
+        if (tokens !== null) {
+            entry.styleHints = {
+                palette: tokens.palette ?? [],
+                typography: {
+                    scale: tokens.typography?.scale,
+                    weightHeading: tokens.typography?.weightHeading,
+                    tracking: tokens.typography?.tracking,
+                },
+                density: tokens.density,
+                elevation: tokens.elevation,
+            };
+        }
+        designSystems[key] = entry;
         config.designSystems = designSystems;
         await updateConfigProject(projectId, config);
+
+        // designSystem.ts: the CSS-materializable half, as this DS's theme entry (keyed by
+        // name — previousName keeps the match on rename). merge preserves ml-*/custom tokens.
+        // tokens === null → default DS: identity only, no theme entry.
+        if (tokens !== null) {
+            await writeTheme(projectId, dsTokensToTheme(name, description, tokens), { previousName });
+        }
     }
 
     // ── shared chrome ───────────────────────────────────────────────────
