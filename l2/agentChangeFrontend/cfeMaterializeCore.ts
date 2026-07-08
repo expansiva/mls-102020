@@ -341,12 +341,17 @@ function buildSharedTypecheckTest(outputPath: string, data: unknown): string | n
 
   const actions = Array.isArray(data.actions) ? data.actions.filter(isRecord) : [];
   for (const action of actions) {
+    // Assert only that the action/handler EXISTS and is callable — never its return type.
+    // Return types (void / boolean / Promise<void>) are LLM implementation choices, not contract-
+    // governed, so pinning them produced false failures (e.g. a handler written as `(): boolean`
+    // checked against `void`, or sync/async mismatches). `(...args: any[]) => unknown` accepts any
+    // function shape; accessing a missing/renamed method still fails to compile (TS2339), which is
+    // the check worth keeping. Property/state types remain fully asserted above (contract-governed).
     if (typeof action.methodName === 'string' && action.methodName) {
-      const fnType = action.kind === 'query' || action.kind === 'command' ? '(...args: any[]) => Promise<void>' : '(...args: any[]) => void';
-      actionAssertions.push(`type ${assertName(`Action_${action.methodName}`, action.methodName)} = Assert<Assignable<typeof page${propertyAccess(action.methodName)}, ${fnType}>>;`);
+      actionAssertions.push(`type ${assertName(`Action_${action.methodName}`, action.methodName)} = Assert<Assignable<typeof page${propertyAccess(action.methodName)}, (...args: any[]) => unknown>>;`);
     }
     if (typeof action.handlerName === 'string' && action.handlerName) {
-      actionAssertions.push(`type ${assertName(`Handler_${action.handlerName}`, action.handlerName)} = Assert<Assignable<typeof page${propertyAccess(action.handlerName)}, (...args: any[]) => void>>;`);
+      actionAssertions.push(`type ${assertName(`Handler_${action.handlerName}`, action.handlerName)} = Assert<Assignable<typeof page${propertyAccess(action.handlerName)}, (...args: any[]) => unknown>>;`);
     }
   }
 

@@ -24,6 +24,7 @@ import {
   type CfeL4OperationInput,
 } from '/_102020_/l2/agentChangeFrontend/cfeL4Contract.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
+import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentChangeFrontend/uxTemplates/selectUxTemplates.js';
 
 type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
 type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
@@ -138,6 +139,7 @@ export interface CfePreparedPage {
   baseDefinition: Record<string, unknown>;
   visualStyle: unknown;
   i18nMeta: { defaultLocale: string; activeLocales: string[] };
+  variants: number;
   promptContext: Record<string, unknown>;
 }
 
@@ -225,7 +227,10 @@ interface CfeBusinessContextRef {
   description: string;
 }
 
-export interface CfePageLayoutResult { pageLayout: CfePageLayoutDefinition }
+export interface CfePageLayoutVariant { templateId?: string; pageLayout: CfePageLayoutDefinition }
+// pageLayout is the primary variant (genome page11). pageVariants are the extra UX variants
+// (genome page21, page31...) — same pageId/commands, different structure (item 4).
+export interface CfePageLayoutResult { pageLayout: CfePageLayoutDefinition; pageVariants?: CfePageLayoutVariant[] }
 export type CfePageLayoutOutput = PlannerOutput<CfePageLayoutResult>;
 
 const CFE_LAYOUT_TOOL_NAME = 'submitCfePageLayout';
@@ -329,37 +334,49 @@ const layoutSectionSchema = {
   },
 } as const;
 
+const pageLayoutObjectSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['pageId', 'layoutId', 'sections', 'i18n', 'dataBindings'],
+  properties: {
+    pageId: strSchema,
+    layoutId: strSchema,
+    sections: { type: 'array', minItems: 1, items: layoutSectionSchema },
+    i18n: { type: 'object', additionalProperties: i18nValueSchema },
+    dataBindings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'source'],
+        properties: {
+          id: strSchema,
+          source: strSchema,
+          entity: strSchema,
+          command: strSchema,
+          description: strSchema,
+          stateKey: strSchema,
+          inputStateKeys: strArraySchema,
+        },
+      },
+    },
+  },
+} as const;
+
 export const cfePageLayoutResultSchema = {
   type: 'object',
   additionalProperties: false,
   required: ['pageLayout'],
   properties: {
-    pageLayout: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['pageId', 'layoutId', 'sections', 'i18n', 'dataBindings'],
-      properties: {
-        pageId: strSchema,
-        layoutId: strSchema,
-        sections: { type: 'array', minItems: 1, items: layoutSectionSchema },
-        i18n: { type: 'object', additionalProperties: i18nValueSchema },
-        dataBindings: {
-          type: 'array',
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['id', 'source'],
-            properties: {
-              id: strSchema,
-              source: strSchema,
-              entity: strSchema,
-              command: strSchema,
-              description: strSchema,
-              stateKey: strSchema,
-              inputStateKeys: strArraySchema,
-            },
-          },
-        },
+    pageLayout: pageLayoutObjectSchema,
+    // Item 4: extra UX variants. Each shares pageId/commands with pageLayout; only structure differs.
+    pageVariants: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['pageLayout'],
+        properties: { templateId: strSchema, pageLayout: pageLayoutObjectSchema },
       },
     },
   },
@@ -368,24 +385,27 @@ export const cfePageLayoutResultSchema = {
 export const cfePageLayoutToolSchema = createRelaxedCfePageLayoutToolSchema();
 export const cfePageLayoutToolName = CFE_LAYOUT_TOOL_NAME;
 
+function relaxPageLayoutSchema(pageLayoutSchema: any): void {
+  if (!pageLayoutSchema || typeof pageLayoutSchema !== 'object') return;
+  pageLayoutSchema.required = ['pageId', 'layoutId', 'sections'];
+  const sectionSchema = pageLayoutSchema.properties?.sections?.items;
+  if (sectionSchema && typeof sectionSchema === 'object') {
+    sectionSchema.required = ['id', 'type', 'mode', 'order', 'organisms'];
+    const organismSchema = sectionSchema.properties?.organisms?.items;
+    if (organismSchema && typeof organismSchema === 'object') {
+      organismSchema.required = ['id', 'type', 'organismName', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'intentions'];
+    }
+  }
+}
+
 function createRelaxedCfePageLayoutToolSchema(): mls.msg.LLMTool {
   const resultSchema = JSON.parse(JSON.stringify(cfePageLayoutResultSchema)) as Record<string, any>;
   allowAdditionalProperties(resultSchema);
 
-  const pageLayoutSchema = resultSchema.properties?.pageLayout;
-  if (pageLayoutSchema && typeof pageLayoutSchema === 'object') {
-    pageLayoutSchema.required = ['pageId', 'layoutId', 'sections'];
-    const sectionSchema = pageLayoutSchema.properties?.sections?.items;
-    if (sectionSchema && typeof sectionSchema === 'object') {
-      sectionSchema.required = ['id', 'type', 'mode', 'order', 'organisms'];
-      const organismSchema = sectionSchema.properties?.organisms?.items;
-      if (organismSchema && typeof organismSchema === 'object') {
-        organismSchema.required = ['id', 'type', 'organismName', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'intentions'];
-      }
-    }
-  }
+  relaxPageLayoutSchema(resultSchema.properties?.pageLayout);
+  relaxPageLayoutSchema(resultSchema.properties?.pageVariants?.items?.properties?.pageLayout);
 
-  const tool = createPlannerToolSchema(CFE_LAYOUT_TOOL_NAME, 'Submit the semantic layout for one frontend page.', resultSchema) as mls.msg.LLMTool;
+  const tool = createPlannerToolSchema(CFE_LAYOUT_TOOL_NAME, 'Submit the semantic layout for a frontend page (primary variant plus optional extra UX variants).', resultSchema) as mls.msg.LLMTool;
   const parameters = (tool as any).function?.parameters;
   if (parameters && Array.isArray(parameters.required)) parameters.required = ['status', 'result'];
   return tool;
@@ -520,8 +540,9 @@ export async function preparePageCreate(page: CfePagePlan): Promise<CfePreparedP
   const baseDefinition = pageDefinition(page, operations);
   const visualStyle = context.moduleVisualStyle[page.moduleName];
   const i18nMeta = context.moduleI18n[page.moduleName] || { defaultLocale: 'en', activeLocales: ['en'] };
-  const promptContext = buildLayoutPromptContext(context, page, operations, commands, baseDefinition, visualStyle);
-  return { project: context.project, page, operations, commands, navigationRefs, baseDefinition, visualStyle, i18nMeta, promptContext };
+  const variants = await readModuleVariants(context.project, page.moduleName);
+  const promptContext = buildLayoutPromptContext(context, page, operations, commands, baseDefinition, visualStyle, variants);
+  return { project: context.project, page, operations, commands, navigationRefs, baseDefinition, visualStyle, i18nMeta, variants, promptContext };
 }
 
 export async function saveContractDefs(prepared: CfePreparedPage): Promise<void> {
@@ -536,7 +557,7 @@ export async function saveSharedDefs(prepared: CfePreparedPage, layout: CfePageL
   await savePageCreateMarker(prepared, 'done');
 }
 
-export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Promise<CfePageLayoutDefinition> {
+export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, genome = 'page11'): Promise<CfePageLayoutDefinition> {
   const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutActions(prepared, layout));
   validatePageLayout(prepared, repairedLayout);
   const enrichedLayout = enrichLayoutWithStateRefs(prepared, repairedLayout);
@@ -550,8 +571,50 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
     },
     dataBindings: enrichedLayout.dataBindings,
   };
-  await saveFrontendDefs(pageFileInfo(prepared.project, prepared.page), 'definition', definition, pagePipeline(prepared.project, prepared.page, prepared.visualStyle));
+  await saveFrontendDefs(pageFileInfo(prepared.project, prepared.page, genome), 'definition', definition, pagePipeline(prepared.project, prepared.page, prepared.visualStyle, genome));
   return enrichedLayout;
+}
+
+// Item 4: save the primary variant (page11) plus any extra UX variants (page21, page31...),
+// then save ONE shared as the union of all variants. All variants share pageId/contract, so
+// their stateKeys (pageId + command + field) coincide and the union is cheap.
+export async function savePageVariants(prepared: CfePreparedPage, result: CfePageLayoutResult): Promise<void> {
+  const enrichedLayouts: CfePageLayoutDefinition[] = [await savePageLayoutDefs(prepared, result.pageLayout, pageGenome(0))];
+  let variantIndex = 1;
+  for (const variant of result.pageVariants || []) {
+    if (variantIndex >= prepared.variants || variantIndex >= MAX_UX_VARIANTS) break;
+    enrichedLayouts.push(await savePageLayoutDefs(prepared, variant.pageLayout, pageGenome(variantIndex)));
+    variantIndex++;
+  }
+  await saveSharedDefsFromLayouts(prepared, enrichedLayouts);
+}
+
+// Build shared from the union of all (already enriched) variant layouts. States are contract-keyed,
+// so the primary already covers the base; extra variants only add layout-only display states.
+async function saveSharedDefsFromLayouts(prepared: CfePreparedPage, enrichedLayouts: CfePageLayoutDefinition[]): Promise<void> {
+  const unionLayout = mergeLayoutsForShared(enrichedLayouts);
+  const definition = sharedDefinition(prepared, unionLayout);
+  await saveFrontendDefs(sharedFileInfo(prepared.project, prepared.page), 'definition', definition, sharedPipeline(prepared.project, prepared.page, prepared.commands));
+  await savePageCreateMarker(prepared, 'done');
+}
+
+function mergeLayoutsForShared(layouts: CfePageLayoutDefinition[]): CfePageLayoutDefinition {
+  const primary = layouts[0];
+  const i18n: Record<string, string> = {};
+  const dataBindings: CfePageLayoutDefinition['dataBindings'] = [];
+  const seenBinding = new Set<string>();
+  const sections: CfeLayoutSection[] = [];
+  for (const layout of layouts) {
+    Object.assign(i18n, layout.i18n);
+    for (const binding of layout.dataBindings) {
+      if (seenBinding.has(binding.id)) continue;
+      seenBinding.add(binding.id);
+      dataBindings.push(binding);
+    }
+    // Keep every section (dup ids are harmless here: shared collects stateKeys, deduped downstream).
+    sections.push(...layout.sections);
+  }
+  return { pageId: primary.pageId, layoutId: primary.layoutId, sections, i18n, dataBindings };
 }
 
 export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[] }> {
@@ -678,17 +741,31 @@ const cfePageLayoutConfig: PlannerExtractConfig<CfePageLayoutResult> = {
   normalizeResult: normalizeCfePageLayoutResult,
 };
 
+function normalizePageLayout(value: unknown, path: string, fallback?: { i18n?: unknown; dataBindings?: unknown }): CfePageLayoutDefinition {
+  const pageLayout = assertRecord(value, path);
+  return {
+    pageId: assertString(pageLayout.pageId, `${path}.pageId`),
+    layoutId: assertString(pageLayout.layoutId, `${path}.layoutId`),
+    sections: assertArray(pageLayout.sections, `${path}.sections`).map((item, index) => normalizeLayoutSection(item, `${path}.sections[${index}]`)),
+    i18n: normalizeI18n(pageLayout.i18n ?? fallback?.i18n),
+    dataBindings: normalizeDataBindings(pageLayout.dataBindings ?? fallback?.dataBindings),
+  };
+}
+
 function normalizeCfePageLayoutResult(value: unknown): CfePageLayoutResult {
   const result = assertRecord(value, 'result');
-  const pageLayout = assertRecord(isRecord(result.pageLayout) ? result.pageLayout : result, 'result.pageLayout');
+  const pageLayoutRaw = isRecord(result.pageLayout) ? result.pageLayout : result;
+  const variantsRaw = Array.isArray(result.pageVariants) ? result.pageVariants : [];
+  const pageVariants = variantsRaw.map((item, index) => {
+    const variant = assertRecord(item, `result.pageVariants[${index}]`);
+    return {
+      templateId: optionalString(variant.templateId),
+      pageLayout: normalizePageLayout(variant.pageLayout, `result.pageVariants[${index}].pageLayout`),
+    };
+  });
   return {
-    pageLayout: {
-      pageId: assertString(pageLayout.pageId, 'result.pageLayout.pageId'),
-      layoutId: assertString(pageLayout.layoutId, 'result.pageLayout.layoutId'),
-      sections: assertArray(pageLayout.sections, 'result.pageLayout.sections').map((item, index) => normalizeLayoutSection(item, `sections[${index}]`)),
-      i18n: normalizeI18n(pageLayout.i18n ?? result.i18n),
-      dataBindings: normalizeDataBindings(pageLayout.dataBindings ?? result.dataBindings),
-    },
+    pageLayout: normalizePageLayout(pageLayoutRaw, 'result.pageLayout', { i18n: result.i18n, dataBindings: result.dataBindings }),
+    pageVariants,
   };
 }
 
@@ -885,7 +962,7 @@ function normalizeOrder(value: unknown, path: string): number {
   throw new Error(`${path} must be an integer`);
 }
 
-function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[], baseDefinition: Record<string, unknown>, visualStyle: unknown): Record<string, unknown> {
+function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[], baseDefinition: Record<string, unknown>, visualStyle: unknown, variants = 1): Record<string, unknown> {
   const entityIds = new Set([...page.entityIds, ...operations.flatMap(operationEntities)]);
   const entities = Array.from(entityIds).map(entityId => context.entities.get(entityId)).filter(Boolean).map(entity => ({
     entityId: entity!.entityId,
@@ -906,6 +983,12 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
     i18n: context.moduleI18n[page.moduleName] || { defaultLocale: 'en', activeLocales: ['en'] },
     workflows,
     userJourney: buildPageUserJourney(context, page, operations, commands),
+    // Deterministic UX template candidates (registry selectionPolicy). The LLM composes the page
+    // from these (structure) plus the uxGuidance skill (behavior). Template wins on conflict.
+    // For variants>1, one candidate per variant (page11 uses the best, page21/page31 the next ones).
+    uxTemplateCandidates: selectUxTemplateCandidates(deriveUxSignals(context, page, operations, commands), Math.max(1, variants)),
+    variants: Math.max(1, variants),
+    pageGenomes: Array.from({ length: Math.max(1, variants) }, (_unused, index) => pageGenome(index)),
     operations: operations.map(operation => ({
       operationId: operation.operationId,
       title: operation.title,
@@ -946,7 +1029,45 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
       'Every form/filter field must be state-driven by shared; the generator will add explicit stateKey refs.',
       'Use userJourney.operationsInOrder and userJourney.recommendedStages to decide the order and purpose of sections/intentions.',
       'For multi-step pages, do not collapse the page into one generic form; represent the operational sequence with distinct intentions.',
+      'Pick the final UX structure from promptContext.uxTemplateCandidates (highest score first). Follow the chosen template userJourney, layoutGuidance and validationChecks; do not adopt a structure that its rejectsWhen forbids.',
+      'Template defines structure; the UX guidance skill defines slot behavior. When they conflict, the template wins.',
+      'promptContext.variants is how many UX variants to produce. Put the best-fit variant in result.pageLayout; if variants>1, return result.pageVariants with one entry per remaining variant, each using the next distinct uxTemplateCandidate. All variants share the same pageId, commands and fields; only the structure differs.',
     ],
+  };
+}
+
+// Machine-derivable UX signals for template scoring. Prose signals stay for the LLM.
+function deriveUxSignals(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[]): UxScreenSignals {
+  const queryCommands = commands.filter(command => readString(command.kind) === 'query');
+  const mutationCommands = commands.filter(command => readString(command.kind) !== 'query');
+  const hasStatusOrLifecycle = unique(operations.flatMap(operationEntities))
+    .map(entityId => context.entities.get(entityId))
+    .some(entity => Boolean(entity && (entity.statusEnum.length > 0 || entity.lifecycleStates.length > 0)));
+  const isWorkflow = page.sourceKind === 'workflow';
+
+  const accessPatterns: string[] = [];
+  if (queryCommands.length > 0) accessPatterns.push('list');
+  if (isWorkflow && hasStatusOrLifecycle) accessPatterns.push('queue', 'board');
+  if (mutationCommands.length > 0) accessPatterns.push('commandInput');
+  if (queryCommands.length > 0 && mutationCommands.length === 0 && operations.length === 1) accessPatterns.push('detail');
+
+  const operationKinds = unique([
+    ...operations.map(operation => operation.kind).filter(Boolean),
+    ...(isWorkflow ? ['transition'] : []),
+    ...(mutationCommands.length > 0 ? ['command'] : []),
+    ...(queryCommands.length > 0 ? ['query'] : []),
+  ]);
+
+  const selection = queryCommands.length > 0 && mutationCommands.length > 0 ? 'single' : 'none';
+
+  return {
+    workspaceKind: readString((page.origin as Record<string, unknown>).workspaceKind),
+    accessPatterns: unique(accessPatterns),
+    selection,
+    operationKinds,
+    hasStatusOrLifecycle,
+    hasQueryList: queryCommands.length > 0,
+    isMultiStep: isWorkflow || operations.length > 1 || mutationCommands.length > 1,
   };
 }
 
@@ -2031,12 +2152,13 @@ function sharedPipeline(project: number, page: CfePagePlan, commands: Record<str
   }];
 }
 
-function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown): unknown[] {
+function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, genome = 'page11'): unknown[] {
+  const idSuffix = genome === 'page11' ? '' : `__${genome}`;
   return [{
-    id: `${page.pageId}__l2_page`,
+    id: `${page.pageId}${idSuffix}__l2_page`,
     type: 'l2_page',
-    outputPath: `_${project}_/l2/${page.moduleName}/web/desktop/page11/${page.pageId}.ts`,
-    defPath: `_${project}_/l2/${page.moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
+    outputPath: `_${project}_/l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.ts`,
+    defPath: `_${project}_/l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.defs.ts`,
     dependsFiles: [
       `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.defs.ts`,
       `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`,
@@ -2110,6 +2232,25 @@ async function readFrontendTodoState(project: number): Promise<CfeTodoState> {
     }
   }
   return { files, moduleNames: Array.from(moduleNames).sort(), ownersByKey, warnings, errors };
+}
+
+// Item 4: number of UX variants to generate for a module, read from l5/{module}/todoFrontend.defs.ts
+// (module-level `variants`). Absent -> 1 (backward-compatible). Clamped to [1, MAX_UX_VARIANTS].
+// ns3 is expected to emit this field (default 3); until then it is set manually in todoFrontend.
+async function readModuleVariants(project: number, moduleName: string): Promise<number> {
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
+    if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoFrontend') continue;
+    const parsed = parseDefsSource(String(await file.getContent()));
+    if (!parsed) continue;
+    const fileModule = readString(parsed.data.moduleName) || String(file.folder || '');
+    if (fileModule !== moduleName) continue;
+    const raw = parsed.data.variants;
+    const value = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isFinite(value) || value < 1) return 1;
+    return Math.min(Math.floor(value), MAX_UX_VARIANTS);
+  }
+  return 1;
 }
 
 async function setTodoFrontendStatuses(project: number, wanted: Set<string>, status: OwnerStatus): Promise<string[]> {
@@ -2195,11 +2336,15 @@ function frontendComponentTag(project: number, page: CfePagePlan): string {
   return convertFileToTag({ project, folder: `${page.moduleName}/web/desktop/page11`, shortName: page.pageId });
 }
 
+// page[ux][ui] genome. UX variants (item 4) vary the UX digit and keep UI=1: page11, page21, page31.
+const MAX_UX_VARIANTS = 3;
+function pageGenome(variantIndex: number): string { return `page${variantIndex + 1}1`; }
+
 function contractFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/contracts`, shortName: page.pageId, extension: '.defs.ts' }; }
 function sharedFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/shared`, shortName: page.pageId, extension: '.defs.ts' }; }
-function pageFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/page11`, shortName: page.pageId, extension: '.defs.ts' }; }
-function pageTsFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/page11`, shortName: page.pageId, extension: '.ts' }; }
-function pageHtmlFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/page11`, shortName: page.pageId, extension: '.html' }; }
+function pageFileInfo(project: number, page: CfePagePlan, genome = 'page11'): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/${genome}`, shortName: page.pageId, extension: '.defs.ts' }; }
+function pageTsFileInfo(project: number, page: CfePagePlan, genome = 'page11'): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/${genome}`, shortName: page.pageId, extension: '.ts' }; }
+function pageHtmlFileInfo(project: number, page: CfePagePlan, genome = 'page11'): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/${genome}`, shortName: page.pageId, extension: '.html' }; }
 function pageCreateMarkerFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/trace/frontend-create-pages`, shortName: page.pageId, extension: '.json' }; }
 function pageRegisterMarkerFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/trace/frontend-register-pages`, shortName: page.pageId, extension: '.json' }; }
 
