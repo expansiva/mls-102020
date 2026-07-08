@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { runNs3Gate } from '/_102020_/l2/agentNewSolution3/helpers/ns3Gate.js';
 import {
+  repairE6WorkflowIds,
   E6GateContext,
   Ns3E6JourneyMapArtifact,
   prepareE6JourneyMap,
@@ -145,4 +146,28 @@ void test('e6 gate warns when a now-priority actor has no landing', async () => 
   });
   assert.equal(gate.ok, true, gate.errors.map(issue => issue.message).join('; '));
   assert.ok(gate.warnings.some(issue => issue.code === 'actor.landing.missing'));
+});
+
+void test('e6 repair infers missing workflowId from the classification', () => {
+  const artifact = {
+    schemaVersion: '2026-07-07-ns3-e6-v1',
+    moduleName: 'cafeFlow',
+    note: 'x',
+    workspaces: [
+      { workspaceId: 'posWorkspace', title: 'POS', actor: 'attendant', kind: 'workflow', entity: 'Order', operationIds: ['createOrder', 'sendOrderToKitchen'], purpose: 'x' },
+      { workspaceId: 'ambiguous', title: 'A', actor: 'attendant', kind: 'workflow', entity: 'Order', operationIds: ['orphanOp'], purpose: 'x' },
+    ],
+    landings: [{ actorId: 'attendant', workspaceId: 'posWorkspace' }],
+    navigationEdges: [],
+  } as never;
+  const repaired = repairE6WorkflowIds(artifact, {
+    workflows: [{ workflowId: 'orderLifecycle', operationIds: ['createOrder', 'sendOrderToKitchen'] }],
+    operations: [
+      { operationId: 'createOrder', workflowId: 'orderLifecycle' },
+      { operationId: 'sendOrderToKitchen', workflowId: 'orderLifecycle' },
+      { operationId: 'orphanOp' },
+    ],
+  });
+  assert.equal(repaired.workspaces[0].workflowId, 'orderLifecycle');
+  assert.equal(repaired.workspaces[1].workflowId, undefined);
 });

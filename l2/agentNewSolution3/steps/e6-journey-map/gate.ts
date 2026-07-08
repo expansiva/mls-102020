@@ -62,6 +62,37 @@ export interface E6GateContext {
 // prepare
 // ---------------------------------------------------------------------------
 
+// workflowId is DERIVABLE from the classification (each operation knows its owning workflow), and
+// the LLM systematically omits it (cafeFlow run: both attempts failed 'workspace.workflow.missing').
+// Deterministic repair, per the "derivable values are attached by code" convention: for a
+// kind='workflow' workspace without workflowId, infer it when its operations resolve to exactly ONE
+// owning workflow. Ambiguity (0 or >1 candidates) is left for the gate to report.
+export function repairE6WorkflowIds(
+  artifact: Ns3E6JourneyMapArtifact,
+  classification: {
+    workflows: { workflowId: string; operationIds: string[] }[];
+    operations: { operationId: string; workflowId?: string }[];
+  },
+): Ns3E6JourneyMapArtifact {
+  const ownerByOperation = new Map<string, string>();
+  for (const workflow of classification.workflows) {
+    for (const operationId of workflow.operationIds) ownerByOperation.set(operationId, workflow.workflowId);
+  }
+  for (const operation of classification.operations) {
+    if (operation.workflowId) ownerByOperation.set(operation.operationId, operation.workflowId);
+  }
+  for (const workspace of artifact.workspaces) {
+    if (workspace.kind !== 'workflow' || workspace.workflowId) continue;
+    const candidates = new Set(
+      workspace.operationIds
+        .map(operationId => ownerByOperation.get(operationId))
+        .filter((workflowId): workflowId is string => !!workflowId),
+    );
+    if (candidates.size === 1) workspace.workflowId = [...candidates][0];
+  }
+  return artifact;
+}
+
 export function prepareE6JourneyMap(input: unknown, context: Pick<E6GateContext, 'moduleName'>): Ns3E6JourneyMapArtifact {
   const record = isRecord(input) ? input : {};
   const workspaces = Array.isArray(record.workspaces) ? record.workspaces.filter(isRecord) : [];

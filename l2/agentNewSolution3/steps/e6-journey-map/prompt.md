@@ -21,7 +21,8 @@ Language rule:
 The result must contain:
 - workspaces: FEW coherent workspaces. For each: workspaceId, title, actor (one roster actorId),
   kind ("workflow" | "operation"), entity (the primary declared entity), workflowId (REQUIRED when
-  kind is "workflow"), operationIds (at least 1, all from the classification) and purpose (ONE line:
+  kind is "workflow" — copy the exact workflowId from the classification that owns the workspace
+  operations; do NOT leave it out even though the operations imply it), operationIds (at least 1, all from the classification) and purpose (ONE line:
   what the actor accomplishes on this page).
 - landings: for each actor, the FIRST workspace they open when entering the module
   ({ actorId, workspaceId, reason? }).

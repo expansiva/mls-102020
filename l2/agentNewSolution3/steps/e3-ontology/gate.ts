@@ -346,9 +346,11 @@ export function lowerFirst(value: string): string {
   return value ? `${value.slice(0, 1).toLowerCase()}${value.slice(1)}` : value;
 }
 
-// Heuristic guard for the values-in-English convention (identifiers/enums are English camelCase,
-// only titles/descriptions use the user's language). Non-ASCII characters or common Portuguese
-// value words are a strong signal the LLM localized a VALUE.
+// Heuristic guard for the values-are-code-identifiers convention (enums/units are English
+// camelCase regardless of userLanguage; only titles/descriptions are localized). It cannot prove
+// a value is English: the non-ASCII check catches any accented language (unité, açúcar, café) and
+// the word list holds LOCALIZED VALUES ALREADY SEEN IN RUNS (currently pt-BR — extend it when a
+// run in another language leaks values). Warning-level by design; the prompt is the real defense.
 const NON_ENGLISH_VALUE_WORDS = new Set([
   'unidade', 'porcao', 'litro', 'caixa', 'pacote', 'aberto', 'fechado', 'pendente',
   'pronto', 'entregue', 'cancelado', 'ativo', 'inativo', 'mesa', 'retirada',

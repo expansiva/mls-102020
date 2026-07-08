@@ -49,6 +49,7 @@ import {
   E6GateContext,
   prepareE6JourneyMap,
   renderE6Markdown,
+  repairE6WorkflowIds,
   validateE6Invariants,
 } from '/_102020_/l2/agentNewSolution3/steps/e6-journey-map/gate.js';
 
@@ -223,7 +224,7 @@ async function handleMapResult(
   }
 
   // Deterministic attach: moduleName + note come from code, never from the LLM.
-  const artifact = prepareE6JourneyMap(output.result, { moduleName });
+  const artifact = repairE6WorkflowIds(prepareE6JourneyMap(output.result, { moduleName }), inputs.classification);
   const gateContext: E6GateContext = {
     moduleName,
     classificationWorkflowIds: inputs.classification.workflows.map(workflow => workflow.workflowId),

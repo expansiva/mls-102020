@@ -53,9 +53,10 @@ hand-off (e.g. the attendant reviews the order before sending it to the kitchen)
 include an explicit initial state (e.g. "registered" or "draft") before the hand-off state — the first
 workflow operation must move the entity out of its initial state, never self-transition in it.
 
-Language of VALUES: statusEnum values, field enum values and units are English lower camelCase
-("unit", "kg", "liter", "portion", "registered") — NEVER Portuguese words like "unidade" or "porcao".
-Only titles/descriptions use the user's language.
+Language of VALUES: statusEnum values, field enum values and units are CODE IDENTIFIERS, always
+English lower camelCase ("unit", "kg", "liter", "portion", "registered") — never localized into the
+user's language or any other language, whatever userLanguage is. The ONLY localized fields are
+title, description and purpose.
 
 kind "event" is ONLY for immutable append-only facts compensated by a new event (posted/voided).
 Anything with a resolution lifecycle (an alert that becomes resolved, a request that gets approved)
