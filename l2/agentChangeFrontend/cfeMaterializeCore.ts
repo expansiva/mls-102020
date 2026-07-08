@@ -422,6 +422,13 @@ function stateAssertionType(state: Record<string, unknown>, contractType?: strin
     if (types.length === 1 && types[0] === 'unknown') types[0] = contractType;
     else types.push(contractType);
   }
+  // A state initialized with null (the async-loaded contract data pattern: `T | null = null`)
+  // is nullable, so the expected type must include null — otherwise Assignable<T | null, T>
+  // fails with TS2344 on EVERY contract state (cafeFlow bug_changeFrontend1). 'unknown' already
+  // absorbs null, so skip in that case.
+  if ((state.defaultValue === null || state.nullable === true) && !types.includes('unknown')) {
+    types.push('null');
+  }
   return uniqueTypeUnion(types);
 }
 
