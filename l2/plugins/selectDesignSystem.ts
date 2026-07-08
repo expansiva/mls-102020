@@ -4,7 +4,8 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { buildGlobalCss, type DsTokens, type DsColorRole, type DsFont } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
+import { type DsTokens, type DsColorRole, type DsFont } from '/_102020_/l2/dsMatch/buildGlobalCss.js';
+import { buildDesignSystemTs } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
@@ -995,7 +996,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         try {
             await this._persist(this.projectId, key, name, this._desc.trim(), this._skill || DS_SKILL_DEFAULT, tokens);
             // Regenerate this DS's stylesheet (styles/<ds>/global.css) so servicePreview reflects it.
-            await buildGlobalCss(this.projectId, key);
+            await buildDesignSystemTs(this.projectId);
         } catch (err) {
             console.error('[selectDesignSystem] save failed', err);
             this._saveError = this.msg.saveError;

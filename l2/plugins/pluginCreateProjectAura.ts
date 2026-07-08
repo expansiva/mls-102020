@@ -11,11 +11,11 @@ import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
 import { setProjectDetails, checkIfHasLocalProject, setLocalProjectName, setLocalProjectDependencies, isValidProjectName } from '/_102027_/l2/libCommom.js';
 
 import {
-  template_ds,
   template_l2Project,
   projectTypes,
   type IProjectType
 } from '/_102027_/l2/libNewProject.js';
+import { renderDesignSystemSource } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
 
 
 /// **collab_i18n_start**
@@ -348,7 +348,8 @@ export class PluginCreateProject extends CollabLitElement {
 
   private async createInitialDSFile(project: number) {
     const fileName = 'designSystem';
-    const content = template_ds.template.trim().replace(/\[project\]/g, project.toString());
+    // Generated format, empty themes: entries appear when a DS gets tokens (buildDesignSystemTs).
+    const content = renderDesignSystemSource(project, []);
     await this.createNewFileL2(fileName, content);
     const key = mls.stor.getKeyToFiles(project, 2, fileName, '', '.ts');
     const storFile = mls.stor.files[key];

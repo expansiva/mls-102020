@@ -169,18 +169,21 @@ Example — molecule tag and slot tags stay clean (tokens theme them); slot tags
 
 ## Design system — what you receive (and what you don't)
 
-You do NOT receive the design-system JSON. You receive the DS GLOBAL STYLESHEET
-(\`_<project>_/l2/styles/<ds>/global.css\`), already loaded by this page's pipeline. It defines,
-on \`:root\` (with dark overrides on \`:root.dark\`):
+You do NOT receive the design-system JSON. You receive the DS TOKENS MODULE
+(\`_<project>_/l2/designSystem.ts\`), already loaded by this page's pipeline. Each entry of its
+\`tokens\` array is one design system (\`themeName\` = the DS name); every token key becomes a CSS
+variable at runtime — \`ds-primary\` → \`--ds-primary\` — and keys prefixed \`_dark-\` are the
+dark-mode values. The variables land on \`:root\` (dark overrides on
+\`[data-theme="dark"], :root.dark\`), generated dynamically at bootstrap/preview. It defines:
 
-- \`--ds-*\` variables — the vocabulary YOU style with: color roles (e.g. \`--ds-bg\`,
+- \`ds-*\` tokens — the vocabulary YOU style with (as \`var(--ds-*)\`): color roles (e.g. \`--ds-bg\`,
   \`--ds-surface\`, \`--ds-text\`, \`--ds-muted\`, \`--ds-primary\`, \`--ds-accent\`, \`--ds-border\`,
   \`--ds-success\`, \`--ds-danger\`), font roles (\`--ds-font-<role>\`), and possibly \`--ds-radius\`
   and \`--ds-border-w\`;
-- \`--ml-*\` variables — molecule theming, reconciled to the \`--ds-*\` vars. These belong to the
+- \`ml-*\` tokens — molecule theming, reconciled to the \`--ds-*\` vars. These belong to the
   molecules; you never reference or override them.
 
-**READ the stylesheet first** and use ONLY the \`--ds-*\` variables that actually exist in it.
+**READ the tokens module first** and use ONLY the \`--ds-*\` variables that actually exist in it.
 Never invent a variable; never hardcode a hex color. Do NOT emit a \`<style>\` block and do NOT
 add any wrapper class — components render in the light DOM
 (\`createRenderRoot() { return this; }\`), so the \`:root\` variables cascade into everything,
