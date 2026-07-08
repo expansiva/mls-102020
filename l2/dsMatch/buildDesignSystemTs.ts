@@ -72,6 +72,19 @@ function renderThemes(themes: IDesignSystemTokens[]): string {
     return themes.map(t => JSON.stringify(t, null, 4)).join(',\n\n');
 }
 
+/** Self-heal: keep only the FIRST `/// <mls …>` file-reference line, drop any duplicates.
+ *  A duplicated header (once introduced) is otherwise carried forward by every block rewrite. */
+function dedupeHeader(code: string): string {
+    let seen = false;
+    return code.split('\n').filter(line => {
+        if (/^\s*\/\/\/\s*<mls\s/.test(line)) {
+            if (seen) return false;
+            seen = true;
+        }
+        return true;
+    }).join('\n');
+}
+
 /** Full source of the designSystem.ts (also the initial file of new Aura projects). */
 export function renderDesignSystemSource(project: number, themes: IDesignSystemTokens[]): string {
     return `/// <mls fileReference="_${project}_/l2/designSystem.ts" enhancement="_blank" />
@@ -114,9 +127,9 @@ async function writeThemes(project: number, themes: IDesignSystemTokens[]): Prom
 
     const oldCode = models.ts.model.getValue();
     const hasBlock = /export\s+const\s+tokens\s*:\s*IDesignSystemTokens\[\]\s*=\s*\[/.test(oldCode);
-    const newCode = hasBlock
+    const newCode = dedupeHeader(hasBlock
         ? replaceTokensBlock(oldCode, `\n${renderThemes(themes)}\n`)
-        : renderDesignSystemSource(project, themes);
+        : renderDesignSystemSource(project, themes));
     if (newCode === oldCode) return;
 
     serviceSource.setValueInModeKeepingUndo(models.ts.model, newCode, true);

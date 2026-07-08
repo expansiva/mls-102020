@@ -648,12 +648,16 @@ export class PluginSelectDesignSystem extends StateLitElement {
     // ── persistence ─────────────────────────────────────────────────────
     /** The form rows, back as ONE theme entry (exactly what will live in designSystem.ts). */
     private _buildTheme(dsIndex: string, name: string, description: string): IDesignSystemTokens {
+        // Two passes so the entry lists ALL light tokens first, then ALL `_dark-` tokens —
+        // not interleaved light/dark/light/dark (matches the canonical entry shape + getCssVars).
         const color: Record<string, string> = {};
         for (const r of this._colors) {
             const n = r.name.trim();
-            if (!n) continue;
-            color[n] = r.light;
-            if (r.dark.trim()) color[`_dark-${n}`] = r.dark.trim();
+            if (n) color[n] = r.light;
+        }
+        for (const r of this._colors) {
+            const n = r.name.trim();
+            if (n && r.dark.trim()) color[`_dark-${n}`] = r.dark.trim();
         }
         const typography: Record<string, string> = {};
         for (const r of this._typo) if (r.name.trim()) typography[r.name.trim()] = r.value;
