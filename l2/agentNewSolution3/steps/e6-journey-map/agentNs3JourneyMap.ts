@@ -256,23 +256,26 @@ async function handleMapResult(
     await writeNs3Pipeline(pipeline);
     const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
     await writeNs3Trace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
-    // Retry step goes BEFORE the failed update-status in the batch (parent auto-completion rule).
-    const intents: mls.msg.AgentIntent[] = [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
+    // Keep the pipeline alive on attempt 1: 'failed' would fail the whole task and orphan the retry
+    // (downstream depends only on the 'e6-done' anchor, so completing this run unlocks nothing).
     if (attempt < 2) {
-      intents.unshift(ns3AgentStepIntent(context, mutationParent, {
-        agentName: AGENT_NAME,
-        stepTitle: 'Retry E6 journey map gate',
-        planId: `e6-journey-map-retry-${Date.now()}`,
-        prompt: { planId: STEP_ID, moduleName, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
-      }));
+      return [
+        ns3AgentStepIntent(context, mutationParent, {
+          agentName: AGENT_NAME,
+          stepTitle: 'Retry E6 journey map gate',
+          planId: `e6-journey-map-retry-${Date.now()}`,
+          prompt: { planId: STEP_ID, moduleName, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
+        }),
+        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
+      ];
     }
-    return intents;
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 
   pipeline = approveNs3Step(pipeline, STEP_ID, 'auto');
   await writeNs3Pipeline(pipeline);
   await writeDefsArtifact(
-    { project: mls.actualProject || 0, level: 4, folder: `${moduleName}/journeys`, shortName: `${moduleName}Journeys`, extension: '.ts' },
+    { project: mls.actualProject || 0, level: 4, folder: `${moduleName}/journeys`, shortName: `${moduleName}Journeys`, extension: '.defs.ts' },
     `${moduleName}Journeys`,
     {
       moduleName: artifact.moduleName,
@@ -421,7 +424,7 @@ async function summarizeOperationDefs(classification: Ns3E5ClassificationArtifac
 // Defs files are `export const x = {...} as const;` — extract the JSON block
 // (same convention as agentNs3Ontology.readJsonDefs).
 async function readJsonDefs<T>(folder: string, shortName: string): Promise<T | null> {
-  const raw = await readStorText({ project: mls.actualProject || 0, level: 4, folder, shortName, extension: '.ts' }, false);
+  const raw = await readStorText({ project: mls.actualProject || 0, level: 4, folder, shortName, extension: '.defs.ts' }, false);
   if (!raw.trim()) return null;
   const start = raw.indexOf('= {');
   const end = raw.lastIndexOf('} as const;');

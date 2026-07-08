@@ -113,7 +113,12 @@ function buildRootMessageAI(
   };
 }
 
-type Ns3ResumeTarget = 'e1-draft' | 'e2-journeys' | 'checkpoint-journeys';
+export const NS3_PHASE2_PLAN_IDS = [
+  'e3-ontology', 'e4-actors-rules-refs', 'e5-workflows-operations', 'e6-journey-map', 'e7-validation-summary',
+] as const;
+export type Ns3Phase2PlanId = typeof NS3_PHASE2_PLAN_IDS[number];
+
+type Ns3ResumeTarget = 'e1-draft' | 'e2-journeys' | 'checkpoint-journeys' | Ns3Phase2PlanId;
 
 interface Ns3ResumeInfo {
   moduleName: string;
@@ -129,9 +134,9 @@ async function findResumableNs3Module(): Promise<Ns3ResumeInfo | null> {
     const pipeline = await readNs3Pipeline(moduleName);
     if (!pipeline) continue;
     const target = resolveResumeTarget(pipeline);
-    // Phase 1 resume re-enters at E2 or at the E2 human checkpoint. E1 needs the
-    // clarification that the fresh flow owns, so it is not rebuilt from resume.
-    if (target !== 'e2-journeys' && target !== 'checkpoint-journeys') continue;
+    // Resume re-enters at E2, at the E2 human checkpoint, or at the next unapproved phase-2 step.
+    // E1 needs the clarification that the fresh flow owns, so it is not rebuilt from resume.
+    if (!target || target === 'e1-draft') continue;
     const draft = await readJsonArtifact<{ sourcePrompt?: string }>(ns3PipelineArtifactFileInfo(moduleName, 'e1-draft', '.json'), false);
     if (!draft) continue;
     return { moduleName, sourcePrompt: readString(draft.sourcePrompt) || moduleName, target };
@@ -146,6 +151,10 @@ function resolveResumeTarget(pipeline: Ns3PipelineState): Ns3ResumeTarget | null
   if (!e1 || !(e1.status === 'approved' || e1.lastGate?.ok)) return 'e1-draft';
   if (!e2 || !(e2.status === 'approved' || e2.lastGate?.ok)) return 'e2-journeys';
   if (!checkpoint || checkpoint.status !== 'approved') return 'checkpoint-journeys';
+  for (const planId of NS3_PHASE2_PLAN_IDS) {
+    const stepState = pipeline.steps[planId];
+    if (!stepState || stepState.status !== 'approved' || stepState.dirty) return planId;
+  }
   return null;
 }
 
@@ -161,7 +170,7 @@ async function afterPromptStep(
     const resumeModule = readString(context.task?.iaCompressed?.longMemory?.resumeModule);
     if (resumeModule) {
       const resumeTarget = normalizeResumeTarget(readString(context.task?.iaCompressed?.longMemory?.resumeTarget));
-      return buildResumeTree(resumeModule, resumeTarget).map(resumeStep => ({
+      return buildResumeTree(resumeModule, resumeTarget, rootPlan).map(resumeStep => ({
         type: 'add-step',
         messageId: context.message.orderAt,
         threadId: context.message.threadId,
@@ -302,7 +311,22 @@ function clarificationStep(
 // no hook. A single, non-waiting_dependency agent step gets its beforePromptStep enqueued immediately
 // (addTaskAISteps, isIntentionsSteps branch). The agent resolves artifacts from disk, so no
 // clarification/draft steps need to be rebuilt.
-function buildResumeTree(moduleName: string, target: Ns3ResumeTarget = 'e2-journeys'): mls.msg.AIPayload[] {
+function buildResumeTree(moduleName: string, target: Ns3ResumeTarget = 'e2-journeys', plan?: Ns3RootPlan): mls.msg.AIPayload[] {
+  // Phase-2 resume: rebuild the chain from the target step on. The FIRST step must NOT be
+  // waiting_dependency (nothing completes in a fresh task to unlock it); the following steps keep
+  // their eN-done anchor dependencies, which the preceding steps emit in this new task. Every step
+  // carries moduleName so the agents skip the module scan.
+  if ((NS3_PHASE2_PLAN_IDS as readonly string[]).includes(target)) {
+    const phase2 = plan ? buildPhase2Steps(plan) : buildPhase2Steps(normalizeRootPlanForResume());
+    const startIndex = phase2.findIndex(step => step.planning?.planId === target);
+    return phase2.slice(startIndex < 0 ? 0 : startIndex).map((step, index) => {
+      const prompt = JSON.stringify({ planId: step.planning?.planId, moduleName });
+      if (index === 0) {
+        return { ...step, status: 'waiting_human_input', prompt, planning: { ...step.planning, dependsOn: [] } } as mls.msg.AIAgentStep;
+      }
+      return { ...step, prompt } as mls.msg.AIAgentStep;
+    });
+  }
   if (target === 'checkpoint-journeys') {
     return [
       {
@@ -336,9 +360,15 @@ function buildResumeTree(moduleName: string, target: Ns3ResumeTarget = 'e2-journ
 }
 
 function normalizeResumeTarget(value?: string): Ns3ResumeTarget {
-  return value === 'checkpoint-journeys' || value === 'e1-draft' || value === 'e2-journeys'
-    ? value
-    : 'e2-journeys';
+  if (value === 'checkpoint-journeys' || value === 'e1-draft' || value === 'e2-journeys') return value;
+  if (value && (NS3_PHASE2_PLAN_IDS as readonly string[]).includes(value)) return value as Ns3Phase2PlanId;
+  return 'e2-journeys';
+}
+
+// Resume runs still execute the root LLM call, so localized titles normally come from it; this
+// fallback only guards the path where the payload is unusable.
+function normalizeRootPlanForResume(): Ns3RootPlan {
+  return normalizeRootPlan({ userPrompt: '(resume)', validPrompt: true });
 }
 
 async function applyInitialClarification(

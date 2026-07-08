@@ -27,8 +27,10 @@ Result rules:
 - operationIds: EXACTLY the classification set (same ids, no additions, no omissions).
 - entities: min 1 — every entity the workflow touches, from the valid entity ids.
 - rulesApplied: the E4 ruleIds this workflow enforces, only from the provided rule list ([] if none).
-- story: {actor, goal, steps (min 2), outcome} — the happy path narrative in the user's language,
-  derived from the related journeys.
+- story: {actor, goal, steps, outcome} — the happy path narrative in the user's language, derived
+  from the related journeys. story.steps is REQUIRED and must contain 2 to 6 short sentences (one
+  per user action); an empty steps array fails the gate and wastes a retry. Write the steps by
+  walking the related journey steps in order.
 
 Do NOT output pageId, capabilities, statusFrontend or statusBackend — they are attached
 deterministically by code after this call.

@@ -404,16 +404,20 @@ async function handleClassificationResult(
   if (!gate.ok) {
     const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
     await writeNs3Trace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
-    const intents: mls.msg.AgentIntent[] = [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
+    // Keep the pipeline alive on attempt 1: 'failed' would fail the whole task and orphan the retry
+    // (downstream depends only on the 'e5-done' anchor, so completing this run unlocks nothing).
     if (attempt < 2) {
-      intents.unshift(ns3AgentStepIntent(context, mutationParent, {
-        agentName: AGENT_NAME,
-        stepTitle: 'Retry E5 classification gate',
-        planId: `e5-workflows-operations-retry-${Date.now()}`,
-        prompt: { planId: STEP_ID, moduleName, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
-      }));
+      return [
+        ns3AgentStepIntent(context, mutationParent, {
+          agentName: AGENT_NAME,
+          stepTitle: 'Retry E5 classification gate',
+          planId: `e5-workflows-operations-retry-${Date.now()}`,
+          prompt: { planId: STEP_ID, moduleName, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
+        }),
+        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
+      ];
     }
-    return intents;
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 
   await writeNs3Trace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate });
@@ -464,21 +468,24 @@ async function handleWorkflowResult(
   if (!gate.ok) {
     const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
     await writeNs3Trace(moduleName, `e5-workflow-${target.workflowId}`, AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
-    const intents: mls.msg.AgentIntent[] = [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
+    // Keep the item chain alive on attempt 1 (see classification comment).
     if (attempt < 2) {
-      intents.unshift(ns3AgentStepIntent(context, mutationParent, {
-        agentName: AGENT_NAME,
-        stepTitle: `Retry workflow ${target.workflowId}`,
-        planId: `e5-workflow-retry-${Date.now()}`,
-        prompt: { planId: 'e5-workflow', moduleName, itemId: target.workflowId, itemIndex, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
-      }));
+      return [
+        ns3AgentStepIntent(context, mutationParent, {
+          agentName: AGENT_NAME,
+          stepTitle: `Retry workflow ${target.workflowId}`,
+          planId: `e5-workflow-retry-${Date.now()}`,
+          prompt: { planId: 'e5-workflow', moduleName, itemId: target.workflowId, itemIndex, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
+        }),
+        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
+      ];
     }
-    return intents;
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 
   const defs = attachWorkflowDeterministic(artifact, { classification: target, features: shared.features });
   await writeDefsArtifact(
-    { project: mls.actualProject || 0, level: 4, folder: 'workflows', shortName: target.workflowId, extension: '.ts' },
+    { project: mls.actualProject || 0, level: 4, folder: 'workflows', shortName: target.workflowId, extension: '.defs.ts' },
     `workflow${toPascalCase(target.workflowId)}`,
     defs,
   );
@@ -532,20 +539,23 @@ async function handleOperationResult(
   if (!gate.ok) {
     const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
     await writeNs3Trace(moduleName, `e5-operation-${target.operationId}`, AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
-    const intents: mls.msg.AgentIntent[] = [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
+    // Keep the item chain alive on attempt 1 (see classification comment).
     if (attempt < 2) {
-      intents.unshift(ns3AgentStepIntent(context, mutationParent, {
-        agentName: AGENT_NAME,
-        stepTitle: `Retry operation ${target.operationId}`,
-        planId: `e5-operation-retry-${Date.now()}`,
-        prompt: { planId: 'e5-operation', moduleName, itemId: target.operationId, itemIndex, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
-      }));
+      return [
+        ns3AgentStepIntent(context, mutationParent, {
+          agentName: AGENT_NAME,
+          stepTitle: `Retry operation ${target.operationId}`,
+          planId: `e5-operation-retry-${Date.now()}`,
+          prompt: { planId: 'e5-operation', moduleName, itemId: target.operationId, itemIndex, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
+        }),
+        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
+      ];
     }
-    return intents;
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 
   await writeDefsArtifact(
-    { project: mls.actualProject || 0, level: 4, folder: 'operations', shortName: target.operationId, extension: '.ts' },
+    { project: mls.actualProject || 0, level: 4, folder: 'operations', shortName: target.operationId, extension: '.defs.ts' },
     `operation${toPascalCase(target.operationId)}`,
     defs,
   );
@@ -714,7 +724,7 @@ async function resolveE5Module(requested?: string): Promise<string> {
 
 // Defs files are `export const x = {...} as const;` — extract the JSON block.
 async function readJsonDefs<T>(folder: string, shortName: string): Promise<T | null> {
-  const raw = await readStorText({ project: mls.actualProject || 0, level: 4, folder, shortName, extension: '.ts' }, false);
+  const raw = await readStorText({ project: mls.actualProject || 0, level: 4, folder, shortName, extension: '.defs.ts' }, false);
   if (!raw.trim()) return null;
   const start = raw.indexOf('= {');
   const end = raw.lastIndexOf('} as const;');

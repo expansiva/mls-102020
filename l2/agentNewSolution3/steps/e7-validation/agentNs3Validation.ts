@@ -177,17 +177,17 @@ async function runE7(
   const now = new Date().toISOString();
   const journeyDefPath = `l4/${moduleName}/journeys/${moduleName}Journeys.defs.ts`;
   const moduleDefs = buildNs3ModuleDefs({ moduleName, model, entities, e1Draft, e2, e4ExternalRefs: e4.externalRefs, journeyDefPath });
-  await writeDefsArtifact({ project, level: 4, folder: moduleName, shortName: 'module', extension: '.ts' }, `${moduleName}Module`, moduleDefs);
+  await writeDefsArtifact({ project, level: 4, folder: moduleName, shortName: 'module', extension: '.defs.ts' }, `${moduleName}Module`, moduleDefs);
 
   // SAME owners list in both layers — the single generation-status source for Stage 2/3.
   const owners = buildNs3TodoOwners({ moduleName, workflowDefs, operationDefs });
   await writeDefsArtifact(
-    { project, level: 5, folder: moduleName, shortName: 'todoFrontend', extension: '.ts' },
+    { project, level: 5, folder: moduleName, shortName: 'todoFrontend', extension: '.defs.ts' },
     `${moduleName}TodoFrontend`,
     { schemaVersion: TODO_SCHEMA_VERSION, moduleName, layer: 'frontend', updatedAt: now, owners },
   );
   await writeDefsArtifact(
-    { project, level: 5, folder: moduleName, shortName: 'todoBackend', extension: '.ts' },
+    { project, level: 5, folder: moduleName, shortName: 'todoBackend', extension: '.defs.ts' },
     `${moduleName}TodoBackend`,
     { schemaVersion: TODO_SCHEMA_VERSION, moduleName, layer: 'backend', updatedAt: now, owners },
   );
@@ -209,7 +209,7 @@ async function runE7(
     },
   ];
   await writeDefsArtifact(
-    { project, level: 5, folder: moduleName, shortName: 'process', extension: '.ts' },
+    { project, level: 5, folder: moduleName, shortName: 'process', extension: '.defs.ts' },
     `${moduleName}Process`,
     {
       schemaVersion: PROCESS_SCHEMA_VERSION,
@@ -271,7 +271,7 @@ async function resolveE7Module(requested?: string): Promise<string> {
 
 // Defs files are `export const x = {...} as const;` — extract the JSON block.
 async function readJsonDefs<T>(level: number, folder: string, shortName: string): Promise<T | null> {
-  const raw = await readStorText({ project: mls.actualProject || 0, level, folder, shortName, extension: '.ts' }, false);
+  const raw = await readStorText({ project: mls.actualProject || 0, level, folder, shortName, extension: '.defs.ts' }, false);
   if (!raw.trim()) return null;
   const start = raw.indexOf('= {');
   const end = raw.lastIndexOf('} as const;');

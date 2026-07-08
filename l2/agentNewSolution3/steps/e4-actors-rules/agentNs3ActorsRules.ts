@@ -197,20 +197,24 @@ async function handleActorsRulesResult(
   if (!gate.ok) {
     const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
     await writeNs3Trace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
-    const intents: mls.msg.AgentIntent[] = [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
+    // Keep the pipeline alive on attempt 1: 'failed' would fail the whole task and orphan the retry
+    // (downstream depends only on the 'e4-done' anchor, so completing this run unlocks nothing).
     if (attempt < 2) {
-      intents.unshift(ns3AgentStepIntent(context, mutationParent, {
-        agentName: AGENT_NAME,
-        stepTitle: 'Retry E4 actors/rules gate',
-        planId: `e4-actors-rules-refs-retry-${Date.now()}`,
-        prompt: { planId: STEP_ID, moduleName, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
-      }));
+      return [
+        ns3AgentStepIntent(context, mutationParent, {
+          agentName: AGENT_NAME,
+          stepTitle: 'Retry E4 actors/rules gate',
+          planId: `e4-actors-rules-refs-retry-${Date.now()}`,
+          prompt: { planId: STEP_ID, moduleName, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
+        }),
+        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
+      ];
     }
-    return intents;
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 
   await writeDefsArtifact(
-    { project: mls.actualProject || 0, level: 4, folder: 'actors', shortName: `${moduleName}Actors`, extension: '.ts' },
+    { project: mls.actualProject || 0, level: 4, folder: 'actors', shortName: `${moduleName}Actors`, extension: '.defs.ts' },
     `${moduleName}Actors`,
     {
       moduleName,
@@ -219,7 +223,7 @@ async function handleActorsRulesResult(
   );
   // Rules defs are written even when the rule set is empty (contract artifact for Stage 2/3).
   await writeDefsArtifact(
-    { project: mls.actualProject || 0, level: 4, folder: 'rules', shortName: `${moduleName}Rules`, extension: '.ts' },
+    { project: mls.actualProject || 0, level: 4, folder: 'rules', shortName: `${moduleName}Rules`, extension: '.defs.ts' },
     `${moduleName}Rules`,
     {
       ruleSetId: `${moduleName}Rules`,

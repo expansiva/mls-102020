@@ -252,16 +252,21 @@ async function handleModelResult(
   if (!gate.ok) {
     const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
     await writeNs3Trace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
-    const intents: mls.msg.AgentIntent[] = [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
+    // 'failed' marks the WHOLE task failed and orphans the retry (collab-messages updateStepStatus).
+    // With a retry in flight, complete this run carrying the gate trace; downstream only depends on
+    // the eN-done anchors, so nothing unlocks. Visible failure happens on the second attempt only.
     if (attempt < 2) {
-      intents.unshift(ns3AgentStepIntent(context, mutationParent, {
-        agentName: AGENT_NAME,
-        stepTitle: 'Retry E3 model gate',
-        planId: `e3-ontology-retry-${Date.now()}`,
-        prompt: { planId: STEP_ID, moduleName, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
-      }));
+      return [
+        ns3AgentStepIntent(context, mutationParent, {
+          agentName: AGENT_NAME,
+          stepTitle: 'Retry E3 model gate',
+          planId: `e3-ontology-retry-${Date.now()}`,
+          prompt: { planId: STEP_ID, moduleName, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
+        }),
+        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
+      ];
     }
-    return intents;
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 
   await writeNs3Trace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate });
@@ -302,20 +307,23 @@ async function handleEntityResult(
   if (!gate.ok) {
     const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
     await writeNs3Trace(moduleName, `e3-entity-${artifact.entityId}`, AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
-    const intents: mls.msg.AgentIntent[] = [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
+    // Keep the chain alive on attempt 1: 'failed' would fail the whole task and orphan the retry.
     if (attempt < 2) {
-      intents.unshift(ns3AgentStepIntent(context, mutationParent, {
-        agentName: AGENT_NAME,
-        stepTitle: `Retry entity ${artifact.entityId}`,
-        planId: `e3-entity-retry-${Date.now()}`,
-        prompt: { planId: 'e3-entity', moduleName, entityId: artifact.entityId, entityIndex, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
-      }));
+      return [
+        ns3AgentStepIntent(context, mutationParent, {
+          agentName: AGENT_NAME,
+          stepTitle: `Retry entity ${artifact.entityId}`,
+          planId: `e3-entity-retry-${Date.now()}`,
+          prompt: { planId: 'e3-entity', moduleName, entityId: artifact.entityId, entityIndex, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
+        }),
+        ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`),
+      ];
     }
-    return intents;
+    return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 
   await writeDefsArtifact(
-    { project: mls.actualProject || 0, level: 4, folder: `${moduleName}/ontology`, shortName: artifact.entityId, extension: '.ts' },
+    { project: mls.actualProject || 0, level: 4, folder: `${moduleName}/ontology`, shortName: artifact.entityId, extension: '.defs.ts' },
     `${moduleName}Entity${artifact.entityId}`,
     artifact,
   );
@@ -395,7 +403,7 @@ async function resolveE3Module(requested?: string): Promise<string> {
 
 // Ontology defs files are `export const x = {...} as const;` — extract the JSON block.
 async function readJsonDefs<T>(moduleName: string, shortName: string): Promise<T | null> {
-  const raw = await readStorText({ project: mls.actualProject || 0, level: 4, folder: `${moduleName}/ontology`, shortName, extension: '.ts' }, false);
+  const raw = await readStorText({ project: mls.actualProject || 0, level: 4, folder: `${moduleName}/ontology`, shortName, extension: '.defs.ts' }, false);
   if (!raw.trim()) return null;
   const start = raw.indexOf('= {');
   const end = raw.lastIndexOf('} as const;');
