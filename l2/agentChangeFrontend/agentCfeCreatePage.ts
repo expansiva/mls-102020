@@ -110,6 +110,9 @@ Tool argument shape:
   (genomes page21, page31...), each using the next distinct uxTemplateCandidate. Omit it when variants is 1.
 - Every pageVariants[].pageLayout has the same pageId, commands and fields as result.pageLayout; only the
   UX structure differs. Do not invent new commands/fields per variant.
+- Every variant (result.pageLayout AND each pageVariants entry) must INDEPENDENTLY represent every
+  operation: each operation must appear in at least one organism.userActions in that layout. A layout
+  that omits an operation is rejected — do not split operations across variants.
 - questions must be [] when there are no questions.
 - trace must be [] when there is no trace to report.
 - Do not put i18n or dataBindings beside result.pageLayout; keep them inside each pageLayout.

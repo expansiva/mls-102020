@@ -579,12 +579,20 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
 // then save ONE shared as the union of all variants. All variants share pageId/contract, so
 // their stateKeys (pageId + command + field) coincide and the union is cheap.
 export async function savePageVariants(prepared: CfePreparedPage, result: CfePageLayoutResult): Promise<void> {
+  // The primary variant (page11) is strict: a page must have at least one complete, valid layout.
   const enrichedLayouts: CfePageLayoutDefinition[] = [await savePageLayoutDefs(prepared, result.pageLayout, pageGenome(0))];
+  // Extra UX variants degrade gracefully: a variant that fails validation (e.g. the LLM dropped an
+  // operation in that layout) is skipped with a warning instead of failing the whole page.
   let variantIndex = 1;
   for (const variant of result.pageVariants || []) {
     if (variantIndex >= prepared.variants || variantIndex >= MAX_UX_VARIANTS) break;
-    enrichedLayouts.push(await savePageLayoutDefs(prepared, variant.pageLayout, pageGenome(variantIndex)));
+    const genome = pageGenome(variantIndex);
     variantIndex++;
+    try {
+      enrichedLayouts.push(await savePageLayoutDefs(prepared, variant.pageLayout, genome));
+    } catch (error) {
+      recordCreateWarning(`skipped UX variant ${genome} for ${prepared.page.pageId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
   await saveSharedDefsFromLayouts(prepared, enrichedLayouts);
 }
