@@ -5,11 +5,9 @@ import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { AuraInitState, getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { dsIndexNameMap } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
 import '/_102020_/l2/plugins/selectModule.js';
-import '/_102020_/l2/plugins/selectDesignSystem.js';
 import '/_102020_/l2/plugins/selectDevice.js';
 import '/_102020_/l2/plugins/selectAssetsComponents.js';
 import '/_102020_/l2/plugins/selectAssetsPlugins.js';
@@ -17,13 +15,9 @@ import '/_102020_/l2/plugins/selectAssetsMedia.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
-// Display-only: the "designSystem" knob reads UI (full name on the tooltip). Internally it is
-// still the design system (config keys, folders, args unchanged).
 const message_en = {
     svcTitle: 'Project',
     module: 'Module',
-    designSystem: 'UI',
-    designSystemFull: 'User Interface (design system)',
     device: 'Device',
     assets: 'Assets',
 };
@@ -33,16 +27,12 @@ const messages: Record<string, MessageType> = {
     pt: {
         svcTitle: 'Projeto',
         module: 'Módulo',
-        designSystem: 'UI',
-        designSystemFull: 'User Interface (design system)',
         device: 'Dispositivo',
         assets: 'Assets',
     },
     es: {
         svcTitle: 'Proyecto',
         module: 'Módulo',
-        designSystem: 'UI',
-        designSystemFull: 'User Interface (design system)',
         device: 'Dispositivo',
         assets: 'Assets',
     },
@@ -132,13 +122,11 @@ export class ServiceProject102020 extends ServiceBase {
     @state() private _moduleConfig: IKnobConfig = DISABLED_CONFIG('module');
 
     @state() private _moduleValue: number | null = null;
-    @state() private _dsValue: number | null = 1;
     @state() private _deviceValue: number | null = 1;
     @state() private _assetsValue: number | null = 1;
 
     @state() private _selectedKnob: string = 'module';
 
-    @state() private _dsConfig: IKnobConfig = DISABLED_CONFIG('designSystem');
     @state() private _deviceConfig: IKnobConfig = { ...DEVICE_CONFIG };
     @state() private _assetsConfig: IKnobConfig = { ...ASSETS_CONFIG };
 
@@ -170,34 +158,7 @@ export class ServiceProject102020 extends ServiceBase {
             const entry = Object.entries(DEVICE_PATH_MAP).find(([, v]) => v === actualDevice);
             this._deviceValue = entry ? Number(entry[0]) : 1;
         }
-        this._initDsConfig(project);
         this.requestUpdate();
-    }
-
-    private async _onDsCreated(value: number) {
-        // New DS persisted: rebuild the knob (new entry + fresh "+" slot), then select it.
-        const project = getAuraState().actualProject;
-        if (project != null) await this._initDsConfig(project);
-        this._setKnobValue('designSystem', value);
-    }
-
-    private async _initDsConfig(projectId: number): Promise<void> {
-        try {
-            const dsMap = await dsIndexNameMap(projectId);
-            const keys = Object.keys(dsMap).map(Number).sort((a, b) => a - b);
-            const labels: Record<number, string> = { 0: 'All' };
-            keys.forEach(k => { labels[k] = dsMap[String(k)]; });
-            const customKey = keys.length ? keys[keys.length - 1] + 1 : 1;
-            labels[customKey] = '+';
-            this._dsConfig = { key: 'designSystem', min: 0, max: customKey, labels };
-            const actualDs = getAuraState().actualDesignSystem;
-            if (actualDs !== null && actualDs > 0 && actualDs < customKey) {
-                this._dsValue = actualDs;
-            } else if (this._dsValue === null) {
-                this._dsValue = 0;
-            }
-            this.requestUpdate();
-        } catch { /* ignore */ }
     }
 
     private _buildModuleConfig(modules: IModule[]): IKnobConfig {
@@ -217,7 +178,6 @@ export class ServiceProject102020 extends ServiceBase {
     private get _knobValues(): Record<string, number | null> {
         return {
             module: this._moduleValue,
-            designSystem: this._dsValue,
             device: this._deviceValue,
             assets: this._assetsValue,
         };
@@ -226,7 +186,6 @@ export class ServiceProject102020 extends ServiceBase {
     private _getKnobConfig(key: string): IKnobConfig {
         switch (key) {
             case 'module': return this._moduleConfig;
-            case 'designSystem': return this._dsConfig;
             case 'device': {
                 const moduleSelected = this._moduleValue !== null
                     && this._moduleValue > 0
@@ -249,15 +208,6 @@ export class ServiceProject102020 extends ServiceBase {
                 this._moduleValue = value;
                 break;
             }
-            case 'designSystem':
-                this._dsValue = value;
-                // Skip 0 (the "All" listing) and the "+" slot (add DS); only real DS persist.
-                if (value !== null && value > 0 && value <= this._dsConfig.max
-                    && this._dsConfig.labels[value] !== '+') {
-                    setAuraState('actualDesignSystem', value);
-                    saveAuraProject();
-                }
-                break;
             case 'device':
                 this._deviceValue = value;
                 setAuraState('actualDevice', value !== null ? DEVICE_PATH_MAP[value] ?? null : null);
@@ -317,7 +267,6 @@ export class ServiceProject102020 extends ServiceBase {
                 gap-0
             " style="--knob-scale: 0.5">
                 ${this._renderKnobItem('module')}
-                ${this._renderKnobItem('designSystem')}
                 ${this._renderKnobItem('device')}
                 ${this._renderKnobItem('assets')}
             </div>
@@ -376,9 +325,6 @@ export class ServiceProject102020 extends ServiceBase {
         return html`
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col gap-3 px-4 py-4 flex-1"
-                    @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
-                    @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}
-                    @ds-config=${(e: CustomEvent) => { this._dsConfig = { key: 'designSystem', min: e.detail.min, max: e.detail.max, labels: e.detail.labels }; this.requestUpdate(); }}
                     @select-assets=${(e: CustomEvent) => this._setKnobValue('assets', e.detail.value)}
                 >
                     ${this._renderContextStatusArea()}
@@ -396,14 +342,6 @@ export class ServiceProject102020 extends ServiceBase {
                         .value=${this._moduleValue}
                         @select-module=${(e: CustomEvent) => this._setKnobValue('module', e.detail.value)}
                     ></plugins--select-module-102020>
-                `;
-            case 'designSystem':
-                // Phase B — DS = styling. Same tokens editor as the genome (project-wide tokens).
-                return html`
-                    <plugins--select-design-system-102020
-                        .projectId=${getAuraState().actualProject}
-                        .value=${this._dsValue}
-                    ></plugins--select-design-system-102020>
                 `;
             case 'device':
                 return html`
