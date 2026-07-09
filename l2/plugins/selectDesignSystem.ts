@@ -62,6 +62,8 @@ const message_en = {
     saving: 'Saving…',
     saveError: 'Could not save the design system.',
     tokensSuffix: 'tokens',
+    defaultNote: 'The default design system (1) uses pure Tailwind for styling — there are no tokens to configure here.',
+    defaultBadge: 'Tailwind',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -111,6 +113,8 @@ const messages: Record<string, MessageType> = {
         saving: 'Salvando…',
         saveError: 'Não foi possível salvar o design system.',
         tokensSuffix: 'tokens',
+        defaultNote: 'O design system padrão (1) usa Tailwind puro para estilização — não há tokens para configurar aqui.',
+        defaultBadge: 'Tailwind',
     },
     es: {
         title: 'Design System',
@@ -157,6 +161,8 @@ const messages: Record<string, MessageType> = {
         saving: 'Guardando…',
         saveError: 'No se pudo guardar el design system.',
         tokensSuffix: 'tokens',
+        defaultNote: 'El design system por defecto (1) usa Tailwind puro para estilizar — no hay tokens que configurar aquí.',
+        defaultBadge: 'Tailwind',
     },
 };
 /// **collab_i18n_end**
@@ -242,6 +248,16 @@ export class PluginSelectDesignSystem extends StateLitElement {
     private get _selectedEntry(): IDsEntry | null {
         if (this.value === null || this.value <= 0) return null;
         return this._entries.find(e => e.key === this.value) ?? null;
+    }
+
+    /** The default DS (lowest dsIndex, conventionally "1") styles with pure Tailwind — no tokens. */
+    private _isDefaultKey(key: number): boolean {
+        if (!this._entries.length) return false;
+        return key === Math.min(...this._entries.map(e => e.key));
+    }
+    private get _isDefaultDs(): boolean {
+        const entry = this._selectedEntry;
+        return !!entry && this._isDefaultKey(entry.key);
     }
 
     private get msg(): MessageType { return messages[this.getMessageKey(messages)]; }
@@ -364,8 +380,12 @@ export class PluginSelectDesignSystem extends StateLitElement {
                         : html`<span class="flex-1 bg-gray-100 dark:bg-gray-800"></span>`}
                 </div>
                 <div class="flex gap-2 flex-wrap text-[10px] text-gray-400 dark:text-gray-500">
-                    <span>${tokenCount} ${this.msg.tokensSuffix}</span>
-                    ${t.fonts?.length ? html`<span>${t.fonts.length} fonts</span>` : nothing}
+                    ${this._isDefaultKey(entry.key)
+                        ? html`<span class="font-semibold text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 rounded px-1.5 py-0.5">${this.msg.defaultBadge}</span>`
+                        : html`
+                            <span>${tokenCount} ${this.msg.tokensSuffix}</span>
+                            ${t.fonts?.length ? html`<span>${t.fonts.length} fonts</span>` : nothing}
+                        `}
                 </div>
             </div>
         `;
@@ -385,14 +405,28 @@ export class PluginSelectDesignSystem extends StateLitElement {
     private _renderEdit() {
         const entry = this._selectedEntry;
         if (!entry) return nothing;
+        // Default DS: identity only (name/desc) + a Tailwind notice — no token editor.
+        const body = this._isDefaultDs
+            ? html`${this._renderDefaultNote()}`
+            : html`${this._renderEditor()}`;
         return html`
             <div class="flex flex-col gap-3">
                 ${this._navHeader(entry.name, this.msg.desc, this.value ?? 0)}
                 ${this._renderNameField()}
                 ${this._renderDescField()}
-                ${this._renderEditor()}
+                ${body}
                 ${this._renderSave(this.msg.save)}
             </div>
+        `;
+    }
+
+    private _renderDefaultNote() {
+        return html`
+            <div class="rounded-md border border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10 px-2.5 py-2 flex items-start gap-2">
+                <svg class="w-3.5 h-3.5 mt-0.5 shrink-0 text-indigo-500 dark:text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span class="text-[11px] text-indigo-700 dark:text-indigo-300 leading-snug">${this.msg.defaultNote}</span>
+            </div>
+            ${this._saveError ? this._renderSaveError() : nothing}
         `;
     }
 
@@ -648,6 +682,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
     // ── persistence ─────────────────────────────────────────────────────
     /** The form rows, back as ONE theme entry (exactly what will live in designSystem.ts). */
     private _buildTheme(dsIndex: string, name: string, description: string): IDesignSystemTokens {
+        // Default DS styles with pure Tailwind — persist identity only, never any tokens.
+        if (this._isDefaultDs) return { themeName: name, description, color: {}, typography: {}, global: {}, dsIndex };
         // Two passes so the entry lists ALL light tokens first, then ALL `_dark-` tokens —
         // not interleaved light/dark/light/dark (matches the canonical entry shape + getCssVars).
         const color: Record<string, string> = {};
