@@ -1,4 +1,5 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution3/steps/e2-journeys/agentNs3Journeys.ts" enhancement="_102027_/l2/enhancementAgent"/>
+import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
@@ -382,7 +383,7 @@ async function approveJourneysCheckpoint(moduleName: string, payload: Ns3Journey
 }
 
 async function applyIntentsAndRefresh(context: mls.msg.ExecutionContext, intents: mls.msg.AgentIntent[]): Promise<void> {
-  const response = await mls.api.msgApplyIntents({ userId: context.message.senderId, intents });
+  const response = await msgApplyIntents({ userId: context.message.senderId, intents });
   if (!response || response.statusCode !== 200) {
     throw new Error((response as mls.msg.ResponseBase | undefined)?.msg || 'Error applying journeys checkpoint');
   }

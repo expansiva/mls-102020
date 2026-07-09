@@ -1,4 +1,5 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/agentNewSolutionRequirements.ts" enhancement="_102027_/l2/enhancementAgent"/>
+import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { hydrateNewSolutionOutputs } from '/_102020_/l2/agentNewSolution/agentPlanningShared.js';
@@ -214,7 +215,7 @@ async function applyClarificationResult(
     }
   }
 
-  const response = await mls.api.msgApplyIntents({
+  const response = await msgApplyIntents({
     userId: context.message.senderId,
     intents,
   });
@@ -265,7 +266,7 @@ async function applyImplementationDecisionResult(
     intents.unshift(createImplementationDecisionResultIntent(context, parentStep, decisionResult));
   }
 
-  const response = await mls.api.msgApplyIntents({
+  const response = await msgApplyIntents({
     userId: context.message.senderId,
     intents,
   });
