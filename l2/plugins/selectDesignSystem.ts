@@ -912,13 +912,16 @@ export class PluginSelectDesignSystem extends StateLitElement {
         const dsIndex = isNew ? String(this._customKey) : (this._selectedEntry?.dsIndex ?? String(this._customKey));
         const key = Number(dsIndex);
 
+        const skill = this._skill || DS_SKILL_DEFAULT;
+        const theme = this._buildTheme(dsIndex, name, this._desc.trim());
+
         this._saving = true;
         this._saveError = '';
         try {
             // designSystem.ts — identity + tokens (the single home), matched by dsIndex.
-            await writeTheme(this.projectId, this._buildTheme(dsIndex, name, this._desc.trim()));
+            await writeTheme(this.projectId, theme);
             // project.json — only the generation config bucket for this dsIndex.
-            await this._persistConfig(this.projectId, dsIndex, this._skill || DS_SKILL_DEFAULT);
+            await this._persistConfig(this.projectId, dsIndex, skill);
         } catch (err) {
             console.error('[selectDesignSystem] save failed', err);
             this._saveError = this.msg.saveError;
@@ -927,6 +930,9 @@ export class PluginSelectDesignSystem extends StateLitElement {
         }
 
         await this._load(this.projectId);
+        // The compiled designSystem.js lags behind the just-written .ts, so _load can miss a
+        // brand-new entry — upsert it optimistically so the list + knob reflect the save now.
+        this._ensureEntry(key, dsIndex, name, this._desc.trim(), skill, theme);
         this._saving = false;
 
         if (isNew) {
@@ -937,6 +943,14 @@ export class PluginSelectDesignSystem extends StateLitElement {
             this._editingKey = key;
             this.dispatchEvent(new CustomEvent('save-ds', { detail: { key, isNew, name }, bubbles: true, composed: true }));
         }
+    }
+
+    /** Optimistically add/replace an entry in the in-memory list (heals stale post-save reads). */
+    private _ensureEntry(key: number, dsIndex: string, name: string, description: string, skill: string, theme: IDesignSystemTokens): void {
+        const entry: IDsEntry = { key, dsIndex, name, description, skill, theme };
+        const idx = this._entries.findIndex(e => e.key === key);
+        const next = idx >= 0 ? this._entries.map((e, i) => (i === idx ? entry : e)) : [...this._entries, entry];
+        this._entries = next.sort((a, b) => a.key - b.key);
     }
 
     /** project.json designSystems[dsIndex] = GENERATION config only (no identity, no tokens). */
