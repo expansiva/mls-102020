@@ -22,11 +22,15 @@ import '/_102020_/l2/plugins/selectMolecule.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
+// Display-only: the "layout" knob reads UX and the "designSystem" knob reads UI (full name on
+// the tooltip). Internally everything is still layout/designSystem (config keys, folders, args).
 const message_en = {
     svcTitle: 'Genome',
     page: 'Pages',
-    layout: 'Layout',
-    designSystem: 'Design System',
+    layout: 'UX',
+    layoutFull: 'User Experience (layout)',
+    designSystem: 'UI',
+    designSystemFull: 'User Interface (design system)',
     molecules: 'Molecules',
     noPageSelected: 'No page selected',
     notAPage: 'Current file is not a page',
@@ -37,8 +41,10 @@ const messages: Record<string, MessageType> = {
     pt: {
         svcTitle: 'Genome',
         page: 'Páginas',
-        layout: 'Layout',
-        designSystem: 'Design System',
+        layout: 'UX',
+        layoutFull: 'User Experience (layout)',
+        designSystem: 'UI',
+        designSystemFull: 'User Interface (design system)',
         molecules: 'Moléculas',
         noPageSelected: 'Nenhuma página selecionada',
         notAPage: 'O arquivo atual não é uma página',
@@ -46,8 +52,10 @@ const messages: Record<string, MessageType> = {
     es: {
         svcTitle: 'Genome',
         page: 'Páginas',
-        layout: 'Layout',
-        designSystem: 'Design System',
+        layout: 'UX',
+        layoutFull: 'User Experience (layout)',
+        designSystem: 'UI',
+        designSystemFull: 'User Interface (design system)',
         molecules: 'Moléculas',
         noPageSelected: 'Ninguna página seleccionada',
         notAPage: 'El archivo actual no es una página',
@@ -646,9 +654,10 @@ export class ServiceGenome102020 extends ServiceBase {
         const noContext = key !== 'page' && !this._isPageContext;
 
         const label = this.msg[key as keyof MessageType] || key;
+        const fullLabel = this.msg[`${key}Full` as keyof MessageType] || label; // tooltip: name in full
 
         return html`
-            <div class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''} ${noContext ? 'opacity-30 pointer-events-none' : ''}">
+            <div title=${fullLabel} class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''} ${noContext ? 'opacity-30 pointer-events-none' : ''}">
                 <collab-select-knob-102027
                     .min=${config.min}
                     .max=${config.max}
