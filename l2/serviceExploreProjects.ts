@@ -20,7 +20,8 @@ const message_en = {
     svcTitle: 'Explore Projects',
     organization: 'Organization',
     project: 'Project',
-    designSystem: 'Design System',
+    designSystem: 'UI',
+    designSystemFull: 'User Interface (design system)',
     language: 'Language',
     orgScenarioTitle: 'Select Organization',
     orgScenarioDesc: 'An organization groups multiple projects under the same umbrella. Select one to browse the projects available to your team.',
@@ -50,7 +51,8 @@ const messages: Record<string, MessageType> = {
         svcTitle: 'Explorar Projetos',
         organization: 'Organização',
         project: 'Projeto',
-        designSystem: 'Design System',
+        designSystem: 'UI',
+        designSystemFull: 'User Interface (design system)',
         language: 'Idioma',
         orgScenarioTitle: 'Selecionar Organização',
         orgScenarioDesc: 'Uma organização agrupa vários projetos sob o mesmo guarda-chuva. Selecione uma para navegar pelos projetos disponíveis para o seu time.',
@@ -77,7 +79,8 @@ const messages: Record<string, MessageType> = {
         svcTitle: 'Explorar Proyectos',
         organization: 'Organización',
         project: 'Proyecto',
-        designSystem: 'Design System',
+        designSystem: 'UI',
+        designSystemFull: 'User Interface (design system)',
         language: 'Idioma',
         orgScenarioTitle: 'Seleccionar Organización',
         orgScenarioDesc: 'Una organización agrupa múltiples proyectos bajo el mismo paraguas. Seleccione una para explorar los proyectos disponibles para su equipo.',
@@ -484,9 +487,10 @@ export class ServiceExploreProjects102020 extends ServiceBase {
         const isContext = this._selectedKnob === key;
         const isDisabled = config.disabled ?? false;
         const label = this.msg[key as keyof MessageType] || key;
+        const fullLabel = this.msg[`${key}Full` as keyof MessageType] || label; // tooltip: name in full
 
         return html`
-            <div class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''}">
+            <div title=${fullLabel} class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''}">
                 <collab-select-knob-102027
                     .min=${config.min}
                     .max=${config.max}

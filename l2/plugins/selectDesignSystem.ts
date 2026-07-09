@@ -22,7 +22,7 @@ import '/_102020_/l2/plugins/navHeader.js';
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
 const message_en = {
-    title: 'Design System',
+    title: 'UI · User Interface',
     desc: 'The design systems of this project — tokens live in designSystem.ts.',
     needsProject: 'Select a project first to see its design systems.',
     allTitle: 'All Design Systems',
@@ -85,7 +85,7 @@ type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
     en: message_en,
     pt: {
-        title: 'Design System',
+        title: 'UI · User Interface',
         desc: 'Os design systems deste projeto — os tokens moram no designSystem.ts.',
         needsProject: 'Selecione um projeto primeiro para ver os design systems.',
         allTitle: 'Todos os Design Systems',
@@ -145,7 +145,7 @@ const messages: Record<string, MessageType> = {
         mandatoryHint: 'Token obrigatório — valor editável, não pode ser removido.',
     },
     es: {
-        title: 'Design System',
+        title: 'UI · User Interface',
         desc: 'Los design systems de este proyecto — los tokens viven en designSystem.ts.',
         needsProject: 'Seleccione un proyecto primero para ver sus design systems.',
         allTitle: 'Todos los Design Systems',

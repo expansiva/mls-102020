@@ -17,10 +17,13 @@ import '/_102020_/l2/plugins/selectAssetsMedia.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
+// Display-only: the "designSystem" knob reads UI (full name on the tooltip). Internally it is
+// still the design system (config keys, folders, args unchanged).
 const message_en = {
     svcTitle: 'Project',
     module: 'Module',
-    designSystem: 'Design System',
+    designSystem: 'UI',
+    designSystemFull: 'User Interface (design system)',
     device: 'Device',
     assets: 'Assets',
 };
@@ -30,14 +33,16 @@ const messages: Record<string, MessageType> = {
     pt: {
         svcTitle: 'Projeto',
         module: 'Módulo',
-        designSystem: 'Design System',
+        designSystem: 'UI',
+        designSystemFull: 'User Interface (design system)',
         device: 'Dispositivo',
         assets: 'Assets',
     },
     es: {
         svcTitle: 'Proyecto',
         module: 'Módulo',
-        designSystem: 'Design System',
+        designSystem: 'UI',
+        designSystemFull: 'User Interface (design system)',
         device: 'Dispositivo',
         assets: 'Assets',
     },
@@ -325,9 +330,10 @@ export class ServiceProject102020 extends ServiceBase {
         const isContext = this._selectedKnob === key;
         const isDisabled = config.disabled ?? false;
         const label = this.msg[key as keyof MessageType] || key;
+        const fullLabel = this.msg[`${key}Full` as keyof MessageType] || label; // tooltip: name in full
 
         return html`
-            <div class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''}">
+            <div title=${fullLabel} class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''}">
                 <collab-select-knob-102027
                     .min=${config.min}
                     .max=${config.max}

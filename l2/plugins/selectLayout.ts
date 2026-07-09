@@ -12,7 +12,7 @@ import '/_102020_/l2/plugins/selectLayoutRules.js';
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
 const message_en = {
-    title: 'Layout',
+    title: 'UX · User Experience',
     allTitle: 'All Layouts',
     desc: 'The layout defines the structural arrangement of UI elements on the page.',
     standard: 'Standard',
@@ -43,7 +43,7 @@ type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
     en: message_en,
     pt: {
-        title: 'Layout',
+        title: 'UX · User Experience',
         allTitle: 'Todos os Layouts',
         desc: 'O layout define o arranjo estrutural dos elementos na página.',
         standard: 'Padrão',
@@ -71,7 +71,7 @@ const messages: Record<string, MessageType> = {
         saveError: 'Não foi possível salvar o layout.',
     },
     es: {
-        title: 'Layout',
+        title: 'UX · User Experience',
         allTitle: 'Todos los Layouts',
         desc: 'El layout define la disposición estructural de los elementos en la página.',
         standard: 'Estándar',
