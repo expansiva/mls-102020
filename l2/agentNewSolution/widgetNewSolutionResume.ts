@@ -1,4 +1,5 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/widgetNewSolutionResume.ts" enhancement="_102027_/l2/enhancementLit"/>
+import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 
 import { html, TemplateResult, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -446,7 +447,7 @@ export class WidgetNewSolutionResume102020 extends StateLitElement {
       status: 'completed',
       cleaner: 'input_output',
     };
-    const response = await mls.api.msgApplyIntents({ userId: v.senderId, intents: [intent] });
+    const response = await msgApplyIntents({ userId: v.senderId, intents: [intent] });
     if (!response || response.statusCode !== 200) {
       throw new Error((response as mls.msg.ResponseBase | undefined)?.msg || 'Error finishing resume step');
     }
@@ -486,7 +487,7 @@ export class WidgetNewSolutionResume102020 extends StateLitElement {
       }
 
       if (intents.length === 0) return;
-      await mls.api.msgApplyIntents({ userId: v.senderId, intents });
+      await msgApplyIntents({ userId: v.senderId, intents });
     } catch (error) {
       console.warn('[widgetNewSolutionResume](cleanLeftoverPayloads) failed', error);
     }
@@ -502,7 +503,7 @@ export class WidgetNewSolutionResume102020 extends StateLitElement {
         s.type === 'agent' && (s as mls.msg.AIAgentStep & { agentName?: string }).agentName === 'agentNewSolution'
       );
       if (!root || root.status === 'completed') return;
-      await mls.api.msgApplyIntents({
+      await msgApplyIntents({
         userId: v.senderId,
         intents: [{
           type: 'update-status',

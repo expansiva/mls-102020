@@ -1,4 +1,5 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution2/agentNewSolution2Requirements.ts" enhancement="_102027_/l2/enhancementAgent"/>
+import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 
 // Requirements container for agentNewSolution2. Owns two clarifications rendered with the shared
 // widget-questions-for-clarification-102025: (1) the first small clarification (no architecture),
@@ -129,7 +130,7 @@ async function applyDecisionResult(agent: IAgentMeta, context: mls.msg.Execution
 }
 
 async function applyAndContinue(agent: IAgentMeta, context: mls.msg.ExecutionContext, intents: mls.msg.AgentIntent[], action: 'continue' | 'cancel'): Promise<void> {
-  const response = await mls.api.msgApplyIntents({ userId: context.message.senderId, intents });
+  const response = await msgApplyIntents({ userId: context.message.senderId, intents });
   if (!response || response.statusCode !== 200) throw new Error((response as mls.msg.ResponseBase | undefined)?.msg || 'Error applying clarification result');
   const ret = response as mls.msg.ResponseApplyIntents;
   context.task = ret.task;

@@ -1,4 +1,5 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution3/widgetNs3Draft.ts" enhancement="_102027_/l2/enhancementLit"/>
+import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 
 import { html, TemplateResult, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -231,7 +232,7 @@ export class WidgetNs3Draft102020 extends StateLitElement {
   }
 
   private async _applyIntents(intents: mls.msg.AgentIntent[]): Promise<void> {
-    const response = await mls.api.msgApplyIntents({ userId: this.value!.senderId, intents });
+    const response = await msgApplyIntents({ userId: this.value!.senderId, intents });
     if (!response || response.statusCode !== 200) {
       throw new Error((response as mls.msg.ResponseBase | undefined)?.msg || 'Error applying checkpoint action');
     }

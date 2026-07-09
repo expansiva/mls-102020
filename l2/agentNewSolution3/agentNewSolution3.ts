@@ -1,4 +1,5 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution3/agentNewSolution3.ts" enhancement="_102027_/l2/enhancementAgent"/>
+import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
@@ -386,7 +387,7 @@ async function applyInitialClarification(
     const answer = normalizeClarificationAnswer(value);
     intents.unshift(resultStep(context, parentStep, 'e1-clarification-answer', ['e1-clarification'], answer.title, answer));
   }
-  const response = await mls.api.msgApplyIntents({ userId: context.message.senderId, intents });
+  const response = await msgApplyIntents({ userId: context.message.senderId, intents });
   if (!response || response.statusCode !== 200) {
     throw new Error((response as mls.msg.ResponseBase | undefined)?.msg || 'Error applying clarification');
   }

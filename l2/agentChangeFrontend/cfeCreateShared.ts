@@ -651,7 +651,7 @@ export async function registerGeneratedFrontendPages(): Promise<{ pagesRegistere
   const validPages = checkedPages.filter(item => item.ok).map(item => item.page);
   const skippedPages = checkedPages.filter(item => !item.ok).map(item => item.page.pageId);
   await Promise.all(validPages.map(page => savePageHtml(context.project, page)));
-  await updateL5FrontendSignature(context.project);
+  await updateL5FrontendSignature(context.project, validPages);
   await Promise.all(validPages.map(page => savePageRegisterMarker(context.project, page, 'done')));
   return { pagesRegistered: validPages.map(page => page.pageId), skippedPages };
 }
@@ -984,6 +984,21 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
     .filter(id => id.startsWith('workflow:'))
     .map(id => context.workflows.get(id.slice('workflow:'.length))?.data)
     .filter(Boolean);
+
+  // Deterministic UX template candidates (registry selectionPolicy). Each candidate is a distinct
+  // template. We assign one distinct template per variant/genome (variant i -> candidate i) so the
+  // variants never reuse a template; the effective variant count is capped by how many distinct
+  // candidates actually fit this screen.
+  const candidates = selectUxTemplateCandidates(deriveUxSignals(context, page, operations, commands), Math.max(1, variants));
+  const effectiveVariants = Math.min(Math.max(1, variants), candidates.length);
+  const variantPlan = candidates.slice(0, effectiveVariants).map((candidate, index) => ({
+    genome: pageGenome(index),
+    templateId: candidate.id,
+    title: candidate.title,
+    userJourney: candidate.userJourney,
+    layoutGuidance: candidate.layoutGuidance,
+  }));
+
   return {
     page,
     baseDefinition,
@@ -991,12 +1006,12 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
     i18n: context.moduleI18n[page.moduleName] || { defaultLocale: 'en', activeLocales: ['en'] },
     workflows,
     userJourney: buildPageUserJourney(context, page, operations, commands),
-    // Deterministic UX template candidates (registry selectionPolicy). The LLM composes the page
-    // from these (structure) plus the uxGuidance skill (behavior). Template wins on conflict.
-    // For variants>1, one candidate per variant (page11 uses the best, page21/page31 the next ones).
-    uxTemplateCandidates: selectUxTemplateCandidates(deriveUxSignals(context, page, operations, commands), Math.max(1, variants)),
-    variants: Math.max(1, variants),
-    pageGenomes: Array.from({ length: Math.max(1, variants) }, (_unused, index) => pageGenome(index)),
+    // UX template candidates for reference (structure) + the uxGuidance skill (behavior). Template
+    // wins on conflict. variantPlan pins one distinct template per variant/genome, in order.
+    uxTemplateCandidates: candidates,
+    variants: effectiveVariants,
+    pageGenomes: variantPlan.map(entry => entry.genome),
+    variantPlan,
     operations: operations.map(operation => ({
       operationId: operation.operationId,
       title: operation.title,
@@ -1039,7 +1054,7 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
       'For multi-step pages, do not collapse the page into one generic form; represent the operational sequence with distinct intentions.',
       'Pick the final UX structure from promptContext.uxTemplateCandidates (highest score first). Follow the chosen template userJourney, layoutGuidance and validationChecks; do not adopt a structure that its rejectsWhen forbids.',
       'Template defines structure; the UX guidance skill defines slot behavior. When they conflict, the template wins.',
-      'promptContext.variants is how many UX variants to produce. Put the best-fit variant in result.pageLayout; if variants>1, return result.pageVariants with one entry per remaining variant, each using the next distinct uxTemplateCandidate. All variants share the same pageId, commands and fields; only the structure differs.',
+      'promptContext.variantPlan pins one DISTINCT template per variant/genome in order: variantPlan[0] is result.pageLayout (page11); variantPlan[1..] are result.pageVariants[] in the same order. Build each variant strictly from its assigned template (templateId + that template userJourney/layoutGuidance). Never reuse a template across variants and never produce more than variantPlan.length variants. All variants share the same pageId, commands and fields; only the structure differs.',
     ],
   };
 }
@@ -2172,6 +2187,9 @@ function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, 
       `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`,
       `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.defs.ts`,
       `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`,
+      // Design system tokens (optional context): lets page11 theme its colors via var(--token).
+      // Missing file is tolerated by the materializer (readSections skips null content).
+      `_${project}_/l2/designSystem.ts`,
     ],
     dependsOn: [`${page.pageId}__l2_shared`],
     skills: ['_102020_/l2/agentChangeFrontend/skills/genCfePage11RenderTs.ts'],
@@ -2188,13 +2206,48 @@ async function saveFrontendDefs(fileInfo: FileInfo, exportName: string, definiti
 // The workspace config.json is no longer written by this agent: it is composed at publish
 // time from l5/project.json + on-disk artifacts (see nodejsSaveConfigJson.ts). The agent
 // only signs the client-owned l5/project.json so the publish can resolve the composer.
-async function updateL5FrontendSignature(project: number): Promise<void> {
+async function updateL5FrontendSignature(project: number, pages: CfePagePlan[] = []): Promise<void> {
   const fileInfo: FileInfo = { project, level: 5, folder: '', shortName: 'project', extension: '.json' };
   const existing = await readJsonFile(fileInfo);
   const cfg = isRecord(existing) ? existing : {};
   const masters = isRecord(cfg.masters) ? cfg.masters : (cfg.masters = {});
   masters.frontend = { masterProject: 102020, agentFolder: 'agentChangeFrontend', runtimeProject: 102033 };
+  cfg.layouts = buildLayoutsConfig(project, pages, isRecord(cfg.layouts) ? cfg.layouts : {});
   await saveStorContent(fileInfo, `${JSON.stringify(cfg, null, 2)}\n`);
+}
+
+// Record which UX variants exist, so collab.codes / the runtime can show and cycle them. Project-level
+// and MERGE-only: keep every existing layout entry (never shrink) and add newly generated indices that
+// are missing. A layout index N is "generated" when any page has a materialized web/desktop/page{N}1 .ts.
+// Existing names/props are preserved; index 1 defaults to "Default", others to "Ux N".
+function buildLayoutsConfig(project: number, pages: CfePagePlan[], previous: Record<string, unknown>): Record<string, unknown> {
+  const layouts: Record<string, unknown> = {};
+  const layoutName = (index: number, prev: Record<string, unknown>): string => readString(prev.name) || (index === 1 ? 'Default' : `Ux ${index}`);
+
+  // Keep everything already declared at project level.
+  for (const key of Object.keys(previous)) {
+    const prev = isRecord(previous[key]) ? previous[key] : {};
+    layouts[key] = { ...prev, name: layoutName(Number(key), prev) };
+  }
+
+  // Add newly generated indices that are not present yet.
+  const generated = new Set<number>();
+  for (const page of pages) {
+    for (let variantIndex = 0; variantIndex < MAX_UX_VARIANTS; variantIndex++) {
+      const file = mls.stor.files[mls.stor.getKeyToFile(pageTsFileInfo(project, page, pageGenome(variantIndex)))];
+      if (file && file.status !== 'deleted') generated.add(variantIndex + 1);
+    }
+  }
+  if (generated.size === 0 && Object.keys(layouts).length === 0) generated.add(1);
+  for (const index of generated) {
+    const key = String(index);
+    if (!layouts[key]) layouts[key] = { name: layoutName(index, {}) };
+  }
+
+  // Stable numeric-ascending order.
+  const ordered: Record<string, unknown> = {};
+  for (const key of Object.keys(layouts).sort((left, right) => Number(left) - Number(right))) ordered[key] = layouts[key];
+  return ordered;
 }
 
 // Update generation status only in l5/{module}/todoFrontend.defs.ts. The l4 owner defs are
@@ -2335,13 +2388,20 @@ async function hasRegisteredFrontend(project: number, page: CfePagePlan): Promis
   return isRecord(marker) && marker.status === 'done';
 }
 
+// Item 4: write a preview .html for every genome variant that has a materialized .ts (page11 always,
+// page21/page31 when present). Each variant's html references its own component tag (folder-derived).
 async function savePageHtml(project: number, page: CfePagePlan): Promise<void> {
-  const tag = frontendComponentTag(project, page);
-  await saveStorContent(pageHtmlFileInfo(project, page), `<${tag}></${tag}>`);
+  for (let index = 0; index < MAX_UX_VARIANTS; index++) {
+    const genome = pageGenome(index);
+    const tsFile = mls.stor.files[mls.stor.getKeyToFile(pageTsFileInfo(project, page, genome))];
+    if (!tsFile || tsFile.status === 'deleted') continue;
+    const tag = frontendComponentTag(project, page, genome);
+    await saveStorContent(pageHtmlFileInfo(project, page, genome), `<${tag}></${tag}>`);
+  }
 }
 
-function frontendComponentTag(project: number, page: CfePagePlan): string {
-  return convertFileToTag({ project, folder: `${page.moduleName}/web/desktop/page11`, shortName: page.pageId });
+function frontendComponentTag(project: number, page: CfePagePlan, genome = 'page11'): string {
+  return convertFileToTag({ project, folder: `${page.moduleName}/web/desktop/${genome}`, shortName: page.pageId });
 }
 
 // page[ux][ui] genome. UX variants (item 4) vary the UX digit and keep UI=1: page11, page21, page31.
