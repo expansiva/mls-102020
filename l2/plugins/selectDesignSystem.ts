@@ -4,8 +4,12 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { IDesignSystemTokens, DsFont } from '/_102029_/l2/designSystemBase.js';
+import { IDesignSystemTokens, DsFont, isMandatoryToken, defaultTokensTemplate } from '/_102029_/l2/designSystemBase.js';
 import { readThemes, writeTheme, themeDsIndex } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
+import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
+import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
+import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
+import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import '/_102020_/l2/plugins/navHeader.js';
 
 // DESIGN SYSTEM = the entries of `_<project>_/l2/designSystem.ts` — the SINGLE home of
@@ -64,6 +68,18 @@ const message_en = {
     tokensSuffix: 'tokens',
     defaultNote: 'The default design system (1) uses pure Tailwind for styling — there are no tokens to configure here.',
     defaultBadge: 'Tailwind',
+    paletteTitle: 'Palette',
+    paletteTag: 'brand',
+    paletteHint: 'Brand colors. Click a swatch to edit, + to add, hover to remove. Used by "Generate with AI".',
+    aiTitle: 'Generate with AI',
+    aiTag: 'palette → tokens',
+    aiHint: 'The AI maps the palette (and optional brief) to the mandatory tokens and fills this form as a draft — review and save.',
+    aiBriefPlaceholder: 'optional: sophisticated law firm, dark tones, serif display…',
+    aiUsePalette: 'Use the palette above as brand colors',
+    aiGenerate: 'Generate',
+    aiGenerating: 'Generating…',
+    aiError: 'Could not generate the design system. Try again.',
+    mandatoryHint: 'Mandatory token — value editable, cannot be removed.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -115,6 +131,18 @@ const messages: Record<string, MessageType> = {
         tokensSuffix: 'tokens',
         defaultNote: 'O design system padrão (1) usa Tailwind puro para estilização — não há tokens para configurar aqui.',
         defaultBadge: 'Tailwind',
+        paletteTitle: 'Paleta',
+        paletteTag: 'marca',
+        paletteHint: 'Cores da marca. Clique num quadro para editar, + adiciona, passe o mouse para remover. Usada pelo "Gerar com IA".',
+        aiTitle: 'Gerar com IA',
+        aiTag: 'paleta → tokens',
+        aiHint: 'A IA mapeia a paleta (e um brief opcional) para os tokens obrigatórios e preenche este formulário como rascunho — revise e salve.',
+        aiBriefPlaceholder: 'opcional: escritório de advocacia sofisticado, tons escuros, display serifada…',
+        aiUsePalette: 'Usar a paleta acima como cores da marca',
+        aiGenerate: 'Gerar',
+        aiGenerating: 'Gerando…',
+        aiError: 'Não foi possível gerar o design system. Tente novamente.',
+        mandatoryHint: 'Token obrigatório — valor editável, não pode ser removido.',
     },
     es: {
         title: 'Design System',
@@ -163,6 +191,18 @@ const messages: Record<string, MessageType> = {
         tokensSuffix: 'tokens',
         defaultNote: 'El design system por defecto (1) usa Tailwind puro para estilizar — no hay tokens que configurar aquí.',
         defaultBadge: 'Tailwind',
+        paletteTitle: 'Paleta',
+        paletteTag: 'marca',
+        paletteHint: 'Colores de marca. Clic en un cuadro para editar, + agrega, pasa el mouse para quitar. Usada por "Generar con IA".',
+        aiTitle: 'Generar con IA',
+        aiTag: 'paleta → tokens',
+        aiHint: 'La IA mapea la paleta (y un brief opcional) a los tokens obligatorios y llena este formulario como borrador — revisa y guarda.',
+        aiBriefPlaceholder: 'opcional: bufete de abogados sofisticado, tonos oscuros, display con serifa…',
+        aiUsePalette: 'Usar la paleta de arriba como colores de marca',
+        aiGenerate: 'Generar',
+        aiGenerating: 'Generando…',
+        aiError: 'No se pudo generar el design system. Inténtalo de nuevo.',
+        mandatoryHint: 'Token obligatorio — valor editable, no se puede eliminar.',
     },
 };
 /// **collab_i18n_end**
@@ -185,19 +225,8 @@ const GOOGLE_FONTS = [
 const SYSTEM_FONTS = ['system-ui', 'Georgia', 'Times New Roman', 'Arial', 'Helvetica', 'Verdana', 'Courier New'];
 const FALLBACKS = ['sans-serif', 'serif', 'monospace'];
 
-// Starter tokens for the Add view — a suggestion, not a vocabulary: every name is editable.
-const STARTER: Pick<IDesignSystemTokens, 'color' | 'typography' | 'global'> & { fonts: DsFont[] } = {
-    color: {
-        'ds-primary': '#3B82F6', '_dark-ds-primary': '#60A5FA',
-        'ds-bg': '#FFFFFF', '_dark-ds-bg': '#0B0B0B',
-        'ds-surface': '#FFFFFF', '_dark-ds-surface': '#171717',
-        'ds-text': '#111111', '_dark-ds-text': '#F5F5F5',
-        'ds-border': '#E5E7EB', '_dark-ds-border': '#262626',
-    },
-    typography: { 'ds-font-display': 'system-ui, sans-serif', 'ds-font-body': 'system-ui, sans-serif' },
-    global: { 'ds-radius': '0.375rem', 'ds-border-w': '1px' },
-    fonts: [],
-};
+// Suggested brand palette to seed the Add view (fully editable; the AI maps it to the tokens).
+const STARTER_PALETTE = ['#3B82F6', '#1E293B', '#F8FAFC', '#E2E8F0', '#22C55E'];
 
 // ─── Component ───────────────────────────────────────────────────────
 
@@ -223,6 +252,14 @@ export class PluginSelectDesignSystem extends StateLitElement {
     @state() private _nameError = false;
     @state() private _saving = false;
     @state() private _saveError = '';
+
+    // ── AI generation (Add view): palette → agentGenerateDs → draft loaded into this form ──
+    @state() private _palette: string[] = [];
+    @state() private _aiBrief = '';
+    @state() private _aiUsePalette = true;
+    @state() private _generating = false;
+    @state() private _genError = '';
+    private _threadCache = new Map<string, Promise<any>>();
 
     connectedCallback() {
         super.connectedCallback();
@@ -306,10 +343,14 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._name = '';
         this._desc = '';
         this._skill = DS_SKILL_DEFAULT;
-        this._colors = this._colorRowsFrom(STARTER.color);
-        this._typo = this._valueRowsFrom(STARTER.typography);
-        this._global = this._valueRowsFrom(STARTER.global);
+        // A new DS starts from the canonical mandatory template (all tokens present, editable).
+        const template = defaultTokensTemplate();
+        this._colors = this._colorRowsFrom(template.color);
+        this._typo = this._valueRowsFrom(template.typography);
+        this._global = this._valueRowsFrom(template.global);
         this._fonts = [];
+        this._palette = [...STARTER_PALETTE];
+        this._aiBrief = ''; this._genError = ''; this._generating = false;
         this._nameError = false; this._saveError = ''; this._saving = false;
     }
 
@@ -322,7 +363,18 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._typo = this._valueRowsFrom(t.typography ?? {});
         this._global = this._valueRowsFrom(t.global ?? {});
         this._fonts = (t.fonts ?? []).map(f => ({ ...f, weights: f.weights ? [...f.weights] : undefined }));
+        this._palette = [];
+        this._aiBrief = ''; this._genError = ''; this._generating = false;
         this._nameError = false; this._saveError = ''; this._saving = false;
+    }
+
+    /** Load an AI-generated draft's tokens into the form (name/desc kept if the user typed them). */
+    private _loadDraftTokens(tokens: { color?: Record<string, string>; typography?: Record<string, string>; global?: Record<string, string> }, name: string, desc: string): void {
+        this._colors = this._colorRowsFrom(tokens.color ?? {});
+        this._typo = this._valueRowsFrom(tokens.typography ?? {});
+        this._global = this._valueRowsFrom(tokens.global ?? {});
+        if (name) this._name = name;
+        if (desc) this._desc = desc;
     }
 
     /** color map → rows, pairing `<token>` + `_dark-<token>` into light/dark columns. */
@@ -436,10 +488,120 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 ${this._navHeader(this.msg.addTitle, this.msg.addDesc, this._customKey)}
                 ${this._renderNameField()}
                 ${this._renderDescField()}
+                ${this._renderPaletteSection()}
+                ${this._renderAiSection()}
                 ${this._renderEditor()}
                 ${this._renderSave(this.msg.create)}
             </div>
         `;
+    }
+
+    // ── palette + AI generation (Add view) ──────────────────────────────
+    private _renderPaletteSection() {
+        return this._section(this.msg.paletteTitle, this.msg.paletteTag, true, html`
+            <p class="text-[11px] text-gray-400 dark:text-gray-500">${this.msg.paletteHint}</p>
+            <div class="flex flex-wrap gap-2 items-center">
+                ${this._palette.map((hex, i) => this._renderSwatch(hex, i))}
+                <button class="w-11 h-11 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-400 hover:text-indigo-500 hover:border-indigo-400 text-xl cursor-pointer"
+                    @click=${() => { this._palette = [...this._palette, '#888888']; }}>+</button>
+            </div>
+        `);
+    }
+
+    private _renderSwatch(hex: string, i: number) {
+        return html`
+            <label class="relative w-11 h-11 rounded-lg border border-black/10 overflow-hidden cursor-pointer group" style="background:${hex}">
+                <input type="color" class="absolute inset-0 opacity-0 cursor-pointer" .value=${hex}
+                    @input=${(e: Event) => { const v = (e.target as HTMLInputElement).value.toUpperCase(); this._palette = this._palette.map((c, j) => j === i ? v : c); }} />
+                <span class="absolute inset-x-0 bottom-0 text-[7px] text-center bg-black/40 text-white font-mono">${hex}</span>
+                <button class="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-black/50 text-white text-[10px] leading-none hidden group-hover:grid place-items-center cursor-pointer"
+                    @click=${(e: Event) => { e.preventDefault(); this._palette = this._palette.filter((_, j) => j !== i); }}>×</button>
+            </label>
+        `;
+    }
+
+    private _renderAiSection() {
+        const canGenerate = !this._generating && (this._aiUsePalette ? this._palette.length > 0 : this._aiBrief.trim().length > 0);
+        return this._section(this.msg.aiTitle, this.msg.aiTag, true, html`
+            <p class="text-[11px] text-gray-400 dark:text-gray-500">${this.msg.aiHint}</p>
+            <textarea rows="2"
+                class="w-full text-[11px]! px-2.5 py-1.5 rounded-md resize-y border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                placeholder=${this.msg.aiBriefPlaceholder} .value=${this._aiBrief}
+                ?disabled=${this._generating}
+                @input=${(e: Event) => { this._aiBrief = (e.target as HTMLTextAreaElement).value; }}></textarea>
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" class="accent-indigo-500" .checked=${this._aiUsePalette}
+                    ?disabled=${this._generating}
+                    @change=${(e: Event) => { this._aiUsePalette = (e.target as HTMLInputElement).checked; }} />
+                <span class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.aiUsePalette}</span>
+                <span class="flex h-3.5 w-12 rounded overflow-hidden border border-black/10 ${this._aiUsePalette ? '' : 'opacity-40'}">
+                    ${this._palette.slice(0, 6).map(c => html`<span class="flex-1" style="background:${c}"></span>`)}
+                </span>
+            </label>
+            ${this._genError ? html`<div class="rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 px-2.5 py-1.5"><span class="text-[11px] text-red-600 dark:text-red-400">${this._genError}</span></div>` : nothing}
+            <button class="self-start text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                ?disabled=${!canGenerate} @click=${() => this._onGenerate()}>
+                ${this._generating ? this.msg.aiGenerating : this.msg.aiGenerate}</button>
+        `);
+    }
+
+    private async _onGenerate(): Promise<void> {
+        if (!this.projectId || this._generating) return;
+        const brief = this._aiBrief.trim();
+        const palette = this._aiUsePalette ? this._palette.filter(c => /^#[0-9a-fA-F]{6}$/.test(c)) : [];
+        if (!brief && palette.length === 0) return;
+
+        // One-shot correlation id: the agent echoes it on config.dsDraft — a missing/mismatched
+        // id after the task means the generation failed (or an older draft is lying around).
+        const requestId = `dsgen-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+        const prompt = JSON.stringify({
+            projectId: this.projectId,
+            brief: brief || undefined,
+            palette: palette.length ? palette : undefined,
+            nameHint: this._name.trim() || undefined,
+            language: this.getMessageKey(messages),
+            requestId,
+        });
+
+        this._generating = true;
+        this._genError = '';
+        try {
+            await this._executeAgent('agentGenerateDs', prompt);
+            const config: any = await getConfigProject(this.projectId);
+            const draft = config?.dsDraft;
+            if (!draft || draft.requestId !== requestId || !draft.tokens) throw new Error('generation produced no draft');
+            this._loadDraftTokens(draft.tokens, this._name.trim() || draft.name || '', this._desc.trim() || draft.description || '');
+            delete config.dsDraft; // consume the one-shot draft
+            await updateConfigProject(this.projectId, config);
+        } catch (err) {
+            console.error('[selectDesignSystem] generate failed', err);
+            this._genError = this.msg.aiError;
+        }
+        this._generating = false;
+    }
+
+    private async _executeAgent(agentName: string, prompt: string): Promise<void> {
+        const fullName = '_102020_/l2/serviceExploreProjects';
+        let threadPromise = this._threadCache.get(fullName);
+        if (!threadPromise) {
+            threadPromise = (async () => {
+                let thread = await getThreadByName(fullName);
+                if (!thread) thread = await createThread(fullName, [], 'company');
+                return thread;
+            })();
+            this._threadCache.set(fullName, threadPromise);
+        }
+        const thread = await threadPromise;
+        const userId = getUserId();
+        const threadId = thread?.threadId;
+        if (!userId || !threadId) throw new Error('no user/thread for agent execution');
+
+        const moduleAgent = await loadAgent(agentName);
+        if (!moduleAgent) throw new Error('Invalid agent');
+        const context = getTemporaryContext(threadId, userId, prompt);
+        for await (const _event of executeBeforePromptStream(moduleAgent, context)) {
+            // consume the whole lifecycle (LLM + afterPromptStep) — result lands on config.dsDraft
+        }
     }
 
     // ── the editor (colors + typography/fonts + global) ────────────────
@@ -488,16 +650,27 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     private _renderColorRow(row: IColorRow, i: number) {
+        const locked = isMandatoryToken('color', row.name);
         return html`
             <div class="grid grid-cols-[1fr_96px_96px_18px] gap-1.5 items-center">
-                <input class="min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none"
-                    .value=${row.name} placeholder="token"
+                <input class="min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none read-only:opacity-70 read-only:cursor-not-allowed"
+                    .value=${row.name} placeholder="token" ?readonly=${locked} title=${locked ? this.msg.mandatoryHint : ''}
                     @input=${(e: Event) => { row.name = (e.target as HTMLInputElement).value.trim(); }} />
                 ${this._colorCell(row, 'light')}
                 ${this._colorCell(row, 'dark')}
-                <button class="text-gray-400 hover:text-red-500 text-base cursor-pointer rounded h-6 leading-none"
-                    @click=${() => { this._colors = this._colors.filter((_, j) => j !== i); }}>×</button>
+                ${locked ? this._lockCell() : html`
+                    <button class="text-gray-400 hover:text-red-500 text-base cursor-pointer rounded h-6 leading-none"
+                        @click=${() => { this._colors = this._colors.filter((_, j) => j !== i); }}>×</button>`}
             </div>
+        `;
+    }
+
+    /** Lock glyph shown instead of a remove button for mandatory (non-deletable) tokens. */
+    private _lockCell() {
+        return html`
+            <span class="grid place-items-center h-6 text-gray-300 dark:text-gray-600" title=${this.msg.mandatoryHint}>
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </span>
         `;
     }
 
@@ -521,7 +694,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
     // typography: value rows + the font-loading cards
     private _renderTypographySection() {
         return this._section(this.msg.typographyTitle, this.msg.typographyTag, false, html`
-            ${this._renderValueRows(this._typo, rows => { this._typo = rows; })}
+            ${this._renderValueRows(this._typo, 'typography', rows => { this._typo = rows; })}
             <div class="border-t border-gray-100 dark:border-gray-800/70 pt-3 flex flex-col gap-2">
                 <div class="flex items-center gap-2">
                     <span class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.fontsTitle}</span>
@@ -540,27 +713,30 @@ export class PluginSelectDesignSystem extends StateLitElement {
     // global: plain token | value rows
     private _renderGlobalSection() {
         return this._section(this.msg.globalTitle, this.msg.globalTag, false,
-            this._renderValueRows(this._global, rows => { this._global = rows; }));
+            this._renderValueRows(this._global, 'global', rows => { this._global = rows; }));
     }
 
-    private _renderValueRows(rows: IValueRow[], commit: (rows: IValueRow[]) => void) {
+    private _renderValueRows(rows: IValueRow[], section: 'typography' | 'global', commit: (rows: IValueRow[]) => void) {
         return html`
             <div class="grid grid-cols-[1fr_1fr_18px] gap-1.5 items-center text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 px-0.5">
                 <span>${this.msg.tokenCol}</span><span>${this.msg.valueCol}</span><span></span>
             </div>
             <div class="flex flex-col gap-1.5">
-                ${rows.map((r, i) => html`
+                ${rows.map((r, i) => {
+                    const locked = isMandatoryToken(section, r.name);
+                    return html`
                     <div class="grid grid-cols-[1fr_1fr_18px] gap-1.5 items-center">
-                        <input class="min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none"
-                            .value=${r.name} placeholder="token"
+                        <input class="min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none read-only:opacity-70 read-only:cursor-not-allowed"
+                            .value=${r.name} placeholder="token" ?readonly=${locked} title=${locked ? this.msg.mandatoryHint : ''}
                             @input=${(e: Event) => { r.name = (e.target as HTMLInputElement).value.trim(); }} />
                         <input class="min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-400 rounded-md px-1.5 py-1.5 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:outline-none focus:border-indigo-400"
                             .value=${r.value} placeholder="value"
                             @input=${(e: Event) => { r.value = (e.target as HTMLInputElement).value; }} />
-                        <button class="text-gray-400 hover:text-red-500 text-base cursor-pointer rounded h-6 leading-none"
-                            @click=${() => { commit(rows.filter((_, j) => j !== i)); }}>×</button>
+                        ${locked ? this._lockCell() : html`
+                            <button class="text-gray-400 hover:text-red-500 text-base cursor-pointer rounded h-6 leading-none"
+                                @click=${() => { commit(rows.filter((_, j) => j !== i)); }}>×</button>`}
                     </div>
-                `)}
+                `;})}
             </div>
             <button class="self-start text-xs font-semibold px-3 py-1.5 rounded-md border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors cursor-pointer"
                 @click=${() => { commit([...rows, { name: '', value: '' }]); }}>${this.msg.addToken}</button>
@@ -710,6 +886,13 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 if (f.source === 'custom' && f.faces?.length) out.faces = f.faces;
                 return out;
             });
+
+        // Defensive: never let a mandatory token go missing (e.g. a stale entry, or a rename that
+        // slipped past the read-only lock) — re-inject the template default for any absent key.
+        const template = defaultTokensTemplate();
+        for (const k of Object.keys(template.color)) if (!(k in color)) color[k] = template.color[k];
+        for (const k of Object.keys(template.typography)) if (!(k in typography)) typography[k] = template.typography[k];
+        for (const k of Object.keys(template.global)) if (!(k in global)) global[k] = template.global[k];
 
         const theme: IDesignSystemTokens = { themeName: name, description, color, typography, global, dsIndex };
         if (fonts.length) theme.fonts = fonts;

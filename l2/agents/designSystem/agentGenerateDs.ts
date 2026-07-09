@@ -1,23 +1,24 @@
 /// <mls fileReference="_102020_/l2/agents/designSystem/agentGenerateDs.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// Generate a Design System draft with the LLM (task 12). Invoked by the selectDesignSystem
-// plugin (Add view) with { projectId, brief?, palette?, nameHint?, language?, requestId }:
-// - brief only  → the LLM invents palette + tokens (mode 2);
-// - palette too → the LLM derives roles/typography FROM the given brand colors (mode 3).
+// Generate a Design System draft with the LLM (DS-3). Invoked by the selectDesignSystem plugin
+// (Add view) with { projectId, palette?, brief?, nameHint?, language?, requestId }. The LLM maps
+// the brand palette to the 11 mandatory COLOR FAMILY anchors (light + dark); generateDsCore then
+// EXPANDS them into the full mandatory token set and fills global/typography from the canonical
+// template (`_102029_`). The result is a complete `{color,typography,global}` in the NEW unified
+// shape — no `ds-*` roles, no enums.
 //
 // beforePromptImplicit → validates the request and sends ONE generation prompt.
-// afterPromptStep      → sanitizes the LLM's DsTokens (generateDsCore) and writes the one-shot
-//   draft to config.dsDraft (NOT designSystems — nothing is committed). The plugin awaits the
-//   task, reads dsDraft by requestId, loads it into the Add form and deletes the draft; the
-//   user reviews and saves through the normal path (_persist + buildGlobalCss).
+// afterPromptStep      → sanitizes (generateDsCore) and writes the one-shot draft to config.dsDraft
+//   (NOT designSystems — nothing is committed). The plugin awaits the task, reads dsDraft by
+//   requestId, loads it into the Add form and deletes the draft; the user reviews and saves.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { mkCompleted, mkFail } from '/_102020_/l2/agentImplementGenome/planning.js';
+import { MANDATORY_COLOR_FAMILIES } from '/_102029_/l2/designSystemBase.js';
+import { skill as dsTokenStandard } from '/_102020_/l2/agents/designSystem/skills/dsTokenStandard.js';
 import {
   buildGenerateDsHumanPrompt, sanitizeGeneratedDs,
-  CANONICAL_ROLES, REQUIRED_ROLES, SCALES, WEIGHTS, TRACKINGS, RADII, BORDERS, DENSITIES,
-  ELEVATIONS, FALLBACKS, GOOGLE_FONTS,
   type GenerateDsRequest,
 } from '/_102020_/l2/dsMatch/generateDsCore.js';
 
@@ -26,7 +27,7 @@ export function createAgent(): IAgentAsync {
     agentName: 'agentGenerateDs',
     agentProject: 102020,
     agentFolder: 'agents/designSystem',
-    agentDescription: 'Generate a design-system tokens draft (DsTokens) from a brief and/or brand palette',
+    agentDescription: 'Generate a design-system tokens draft from a brand palette (mandatory-token standard)',
     visibility: 'private',
     beforePromptImplicit,
     afterPromptStep,
@@ -96,8 +97,8 @@ async function afterPromptStep(
       createdAt: new Date().toISOString(),
     };
     if (!context.isTest) await persistDraft(req.projectId, draft);
-    const roleCount = Object.keys(sanitized.value.tokens.color ?? {}).length;
-    console.info(`[agentGenerateDs] ✓ draft "${sanitized.value.name || '(sem nome)'}": ${roleCount} role(s), palette=[${(sanitized.value.tokens.palette ?? []).join(',')}]`);
+    const colorCount = Object.keys(sanitized.value.tokens.color ?? {}).length;
+    console.info(`[agentGenerateDs] ✓ draft "${sanitized.value.name || '(sem nome)'}": ${colorCount} color token(s) · palette=[${(req.palette ?? []).join(',')}]`);
     return [mkCompleted(context, parentStep, step, hookSequential)];
   } catch (error) {
     const msg = `[agentGenerateDs] ${error instanceof Error ? error.message : String(error)}`;
@@ -121,30 +122,15 @@ const system1 = `
 
 You must return ONLY a valid JSON object. No preamble, no markdown fences. Start with { and end with }
 
-## Task
-You are a senior brand/product designer. Create the visual tokens of a design system (light AND
-dark themes) from the brief and/or the brand palette in the human message.
+You are a senior brand/product designer. Given a brand palette (and optional brief), pick the
+color ANCHORS of a design system following the standard below. Return light AND dark anchors for
+each of the ${MANDATORY_COLOR_FAMILIES.length} families — nothing else (the system expands the
+shades/states and fills typography/spacing).
 
-## Rules
-- Color roles: use ONLY these names: ${CANONICAL_ROLES.join(', ')}.
-  ALWAYS include at least: ${REQUIRED_ROLES.join(', ')}. Every role needs "light" and "dark" as #RRGGBB.
-- The dark theme is a real design, not a naive inversion: readable text (contrast ≥ 4.5:1 with
-  background/surface in BOTH themes), calmer saturations on dark backgrounds.
-- "palette" = 4 to 6 brand source colors. If the human message gives a brand palette, copy it
-  VERBATIM into "palette" and derive every role from those colors.
-- Typography: 2 font roles minimum ("display" and "body"), source "google" with real Google Fonts
-  families (suggestions: ${GOOGLE_FONTS.join(', ')}) and weights like [400, 600, 700].
-  fallback ∈ ${FALLBACKS.join(' | ')}.
-- Closed vocabularies — pick exactly one value each:
-  scale ∈ ${SCALES.join(' | ')} · weightHeading ∈ ${WEIGHTS.join(' | ')} · tracking ∈ ${TRACKINGS.join(' | ')}
-  radius ∈ ${RADII.join(' | ')} · borderWidth ∈ ${BORDERS.join(' | ')} · density ∈ ${DENSITIES.join(' | ')} · elevation ∈ ${ELEVATIONS.join(' | ')}
-- "name": short, lowercase, evocative (e.g. "sunset"); keep the given name if the human message has one.
-- "description": one sentence on the intended feel/use, in the requested language.
-- Make the choices COHERENT with the brief (e.g. law firm → serif display, muted colors, low radius;
-  kids app → vibrant, rounded, spacious).
+${dsTokenStandard}
 
 ## Example (format reference — do NOT copy the values)
-{"type":"flexible","result":{"name":"earthy","description":"Warm, organic feel for an artisan marketplace.","tokens":{"palette":["#C85A2A","#F2C57C","#F6F1EB","#3B2F2F"],"color":{"primary":{"light":"#C85A2A","dark":"#E0723F"},"accent":{"light":"#F2C57C","dark":"#F2C57C"},"background":{"light":"#F6F1EB","dark":"#1B1714"},"surface":{"light":"#FFFFFF","dark":"#262019"},"text":{"light":"#3B2F2F","dark":"#F6F1EB"},"muted":{"light":"#8A7F75","dark":"#A89A8C"},"border":{"light":"#E4DACE","dark":"#3A322B"},"success":{"light":"#2E7D32","dark":"#4CAF50"},"danger":{"light":"#C0392B","dark":"#E57368"}},"typography":{"fonts":[{"name":"display","source":"google","family":"Fraunces","weights":[400,600,700],"fallback":"serif"},{"name":"body","source":"google","family":"Inter","weights":[400,500],"fallback":"sans-serif"}],"scale":"comfortable","weightHeading":"600","tracking":"tight"},"shape":{"radius":"lg","borderWidth":"1"},"density":"cozy","elevation":"soft"}}}
+{"type":"flexible","result":{"name":"earthy","description":"Warm, organic feel for an artisan marketplace.","families":{"text-primary":{"light":"#3b2f2f","dark":"#f6f1eb"},"text-secondary":{"light":"#8a7f75","dark":"#a89a8c"},"bg-primary":{"light":"#f6f1eb","dark":"#1b1714"},"bg-secondary":{"light":"#efe7dc","dark":"#262019"},"grey":{"light":"#e6e6e6","dark":"#575757"},"error":{"light":"#c0392b","dark":"#e57368"},"success":{"light":"#2e7d32","dark":"#4caf50"},"warning":{"light":"#e0a020","dark":"#eead2b"},"info":{"light":"#0a6dc9","dark":"#0b81ef"},"active":{"light":"#c85a2a","dark":"#e0723f"},"link":{"light":"#c85a2a","dark":"#e0723f"}}}}
 
 ## Output format
 [[OutputSection]]
@@ -156,19 +142,7 @@ export type Output = {
   result: {
     name: string;
     description: string;
-    tokens: {
-      palette: string[];
-      color: Record<string, { light: string; dark: string }>;
-      typography: {
-        fonts: Array<{ name: string; source: 'system' | 'google' | 'custom'; family: string; weights?: number[]; fallback?: string; url?: string }>;
-        scale: string;
-        weightHeading: string;
-        tracking: string;
-      };
-      shape: { radius: string; borderWidth: string };
-      density: string;
-      elevation: string;
-    };
+    families: Record<string, { light: string; dark: string }>;
   };
 };
 //#endregion
