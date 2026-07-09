@@ -98,16 +98,21 @@ const systemPrompt = `
 
 You are ${AGENT_NAME}, the page-layout agent for collab.codes Stage 2 frontend creation.
 
-Create the semantic layout for ONE page. Produce promptContext.variants UX variant(s): the primary in
-result.pageLayout (genome page11) and the rest in result.pageVariants (genomes page21, page31...).
-Call the "${cfePageLayoutToolName}" tool with { status, result, questions, trace }. Do not return prose.
+Create the semantic layout for ONE page. Produce exactly promptContext.variantPlan.length UX variant(s):
+the primary in result.pageLayout (variantPlan[0], genome page11) and the rest in result.pageVariants
+(variantPlan[1..], genomes page21, page31...). Call the "${cfePageLayoutToolName}" tool with
+{ status, result, questions, trace }. Do not return prose.
 
 Tool argument shape:
 - status must be "ok".
-- result contains { pageLayout } and, when promptContext.variants > 1, also { pageVariants }.
-- result.pageLayout is the primary UX variant (genome page11), built from the highest-score uxTemplateCandidate.
-- result.pageVariants is an array with one entry { templateId, pageLayout } per additional variant
-  (genomes page21, page31...), each using the next distinct uxTemplateCandidate. Omit it when variants is 1.
+- result contains { pageLayout } and, when promptContext.variantPlan has more than one entry, also { pageVariants }.
+- result.pageLayout is the primary variant, built from variantPlan[0].templateId (genome page11).
+- result.pageVariants has one entry { templateId, pageLayout } per remaining variantPlan entry, IN ORDER:
+  pageVariants[i].templateId must equal variantPlan[i+1].templateId (genomes page21, page31...). Omit
+  pageVariants when variantPlan has a single entry. Never reuse a templateId; never emit more entries
+  than variantPlan defines.
+- Build each variant strictly from ITS assigned template (that template's userJourney/layoutGuidance in
+  promptContext.uxTemplateCandidates) so the variants are structurally distinct, not near-duplicates.
 - Every pageVariants[].pageLayout has the same pageId, commands and fields as result.pageLayout; only the
   UX structure differs. Do not invent new commands/fields per variant.
 - Every variant (result.pageLayout AND each pageVariants entry) must INDEPENDENTLY represent every
