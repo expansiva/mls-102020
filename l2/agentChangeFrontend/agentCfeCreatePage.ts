@@ -11,9 +11,9 @@ import {
   preparePageCreate,
   readCreateContext,
   saveContractDefs,
-  savePageLayoutDefs,
-  saveSharedDefs,
+  savePageVariants,
 } from '/_102020_/l2/agentChangeFrontend/cfeCreateShared.js';
+import { skill as uxGuidanceSkill } from '/_102020_/l2/agentChangeFrontend/skills/uxGuidance.js';
 
 const AGENT_NAME = 'agentCfeCreatePage';
 
@@ -70,8 +70,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const page = createContext.pages.find(item => item.pageId === pageId);
     if (!page) throw new Error(`page not found for layout save: ${pageId}`);
     const prepared = await preparePageCreate(page);
-    const layout = await savePageLayoutDefs(prepared, output.result.pageLayout);
-    await saveSharedDefs(prepared, layout);
+    await savePageVariants(prepared, output.result);
     const diagnostics = consumeCreateDiagnostics();
     const trace = diagnostics.length ? formatCreateDiagnostics(diagnostics) : undefined;
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
@@ -99,15 +98,24 @@ const systemPrompt = `
 
 You are ${AGENT_NAME}, the page-layout agent for collab.codes Stage 2 frontend creation.
 
-Create the semantic layout for exactly ONE page11 .defs.ts file. Call the "${cfePageLayoutToolName}"
-tool with { status, result, questions, trace }. Do not return prose.
+Create the semantic layout for ONE page. Produce promptContext.variants UX variant(s): the primary in
+result.pageLayout (genome page11) and the rest in result.pageVariants (genomes page21, page31...).
+Call the "${cfePageLayoutToolName}" tool with { status, result, questions, trace }. Do not return prose.
 
 Tool argument shape:
 - status must be "ok".
-- result must contain only { pageLayout }.
+- result contains { pageLayout } and, when promptContext.variants > 1, also { pageVariants }.
+- result.pageLayout is the primary UX variant (genome page11), built from the highest-score uxTemplateCandidate.
+- result.pageVariants is an array with one entry { templateId, pageLayout } per additional variant
+  (genomes page21, page31...), each using the next distinct uxTemplateCandidate. Omit it when variants is 1.
+- Every pageVariants[].pageLayout has the same pageId, commands and fields as result.pageLayout; only the
+  UX structure differs. Do not invent new commands/fields per variant.
+- Every variant (result.pageLayout AND each pageVariants entry) must INDEPENDENTLY represent every
+  operation: each operation must appear in at least one organism.userActions in that layout. A layout
+  that omits an operation is rejected — do not split operations across variants.
 - questions must be [] when there are no questions.
 - trace must be [] when there is no trace to report.
-- Do not put i18n, dataBindings or any pageLayout field beside result.pageLayout.
+- Do not put i18n or dataBindings beside result.pageLayout; keep them inside each pageLayout.
 
 The result must preserve the section -> organism structure:
 - result.pageLayout.sections[] is the source of truth for page sections.
@@ -150,4 +158,13 @@ Layout rules:
 - All visible text must be referenced by titleKey, labelKey or emptyKey and declared in i18n.
 - Prefer useful operational layouts: list/search/table for query/view commands, form/action panel for
   create/update/delete commands, status/summary/action intentions for workflows.
+
+## UX template selection
+- promptContext.uxTemplateCandidates lists deterministically scored templates (highest score first).
+  Pick the final structure from these candidates; do not invent a structure that a candidate's
+  rejectsWhen forbids. Follow the chosen template's userJourney, layoutGuidance and validationChecks.
+- The template defines structure; the guidance below defines how to fill the slots. When they
+  conflict, the template wins.
+
+${uxGuidanceSkill}
 `;
