@@ -223,12 +223,13 @@ function mkStatus(
   };
 }
 
-// Fan-out-safe failure policy (skills/collab_messages.md): a 'failed' PARALLEL child fails the
-// whole task, so fan-out slots (attempt undefined) NEVER return 'failed' and never add steps —
-// they complete with a 'MATERIALIZE-FAILED: ' trace and the phase verify step
-// (agentCfeMaterializePhase, mode 'verify') runs ONE bounded repair round with the compiler
-// error in context (specAuraForge §11). Repair runs (attempt >= 2) are normal steps: their
-// failure is the final visible failure after the budget is exhausted.
+// Failure policy (skills/collab_messages.md): a 'failed' PARALLEL child fails the whole task, so
+// fan-out slots NEVER return 'failed'. Repair runs (attempt >= 2) must also be able to continue to
+// the NEXT repair round, so they don't self-fail either. Every failure path here completes with a
+// 'MATERIALIZE-FAILED: ' trace; the phase 'verify' step (agentCfeMaterializePhase, mode 'verify') is
+// the SOLE failure gate — it runs bounded repair rounds with the compiler error in context
+// (specAuraForge §11) and fails the task visibly only after the repair budget is exhausted. This
+// mirrors the CLI (nodejsMaterializeL2), which retries with fed-back tsc errors before giving up.
 function mkFailureStatus(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
@@ -238,10 +239,6 @@ function mkFailureStatus(
   detail: string,
   manualRerunHint = false,
 ): mls.msg.AgentIntentUpdateStatus {
-  if (repairRun) {
-    const suffix = manualRerunHint ? '\nmanual rerun required; Studio retry is disabled to avoid orphaned prompt hooks during continue/recovery.' : '';
-    return mkStatus(context, parentStep, step, hookSequential, 'failed', `${detail}${suffix}`);
-  }
   return mkStatus(context, parentStep, step, hookSequential, 'completed', `MATERIALIZE-FAILED: ${detail}`, 'input_output');
 }
 

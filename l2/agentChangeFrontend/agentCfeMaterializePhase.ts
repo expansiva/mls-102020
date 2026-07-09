@@ -45,6 +45,10 @@ interface BrokenItem {
 }
 
 const AGENT_NAME = 'agentCfeMaterializePhase';
+// Bounded repair rounds after the initial fan-out (verify attempt 1). Set to 2 so the Studio's
+// effective budget (fan-out + 2 repairs = 3 tries) matches the CLI (nodejsMaterializeL2), which
+// converges on typical compile errors by feeding the tsc output back into the prompt.
+const MATERIALIZE_REPAIR_ROUNDS = 2;
 
 export function createAgent(): IAgentAsync {
   return {
@@ -116,38 +120,40 @@ async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.
   }
 
   const summary = broken.map(entry => `${entry.item.planId}: ${entry.errors[0]}`).join('\n');
-  if (args.attempt >= 2) {
-    // Second round still broken: this is the final VISIBLE failure (fails the whole task).
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `repair budget exhausted (1/1):\n${summary}`)];
+  if (args.attempt > MATERIALIZE_REPAIR_ROUNDS) {
+    // Repair budget exhausted: this is the final VISIBLE failure (fails the whole task).
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `repair budget exhausted (${MATERIALIZE_REPAIR_ROUNDS}/${MATERIALIZE_REPAIR_ROUNDS}):\n${summary}`)];
   }
 
   // Anchor new steps on a non-terminal agent step (the phase step stays in_progress while its
   // children are open thanks to deferred completion; fall back if it was auto-completed).
+  const nextAttempt = args.attempt + 1;
+  const roundLabel = `${nextAttempt - 1}/${MATERIALIZE_REPAIR_ROUNDS}`;
   const anchor = findMutableParentStep(context, parentStep);
   const repairs = broken.map(entry => createAddStepIntent(context, anchor, createAgentStepPayload(
-    `${entry.item.planId}-repair`,
+    `${entry.item.planId}-repair-${nextAttempt}`,
     'agentCfeMaterializeGen',
-    `Repair ${entry.item.planId}`,
-    { planId: entry.item.planId, defPath: entry.item.defPath, attempt: 2, repairHint: buildRepairHint(entry) },
+    `Repair ${entry.item.planId} (${roundLabel})`,
+    { planId: entry.item.planId, defPath: entry.item.defPath, attempt: nextAttempt, repairHint: buildRepairHint(entry) },
     [],
     'sequential',
     'waiting_human_input',
   )));
-  const secondVerifyPlanId = `${args.planId}-2`;
-  const secondVerify = createAddStepIntent(context, anchor, createAgentStepPayload(
-    secondVerifyPlanId,
+  const nextVerifyPlanId = `${args.planId}-v${nextAttempt}`;
+  const nextVerify = createAddStepIntent(context, anchor, createAgentStepPayload(
+    nextVerifyPlanId,
     AGENT_NAME,
     'Verify materialization (after repair)',
-    { mode: 'verify', planId: secondVerifyPlanId, items: broken.map(entry => entry.item), attempt: 2 },
-    broken.map(entry => `${entry.item.planId}-repair`),
+    { mode: 'verify', planId: nextVerifyPlanId, items: broken.map(entry => entry.item), attempt: nextAttempt },
+    broken.map(entry => `${entry.item.planId}-repair-${nextAttempt}`),
     'sequential',
     'waiting_dependency',
   ));
   // Intent ORDER matters (parent auto-completion sweep): open steps first, completed status last.
   return [
     ...repairs,
-    secondVerify,
-    createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${broken.length} broken item(s), repair round started:\n${summary}`),
+    nextVerify,
+    createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${broken.length} broken item(s), repair round ${roundLabel} started:\n${summary}`),
   ];
 }
 

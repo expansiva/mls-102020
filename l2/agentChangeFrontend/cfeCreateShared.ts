@@ -390,10 +390,12 @@ function relaxPageLayoutSchema(pageLayoutSchema: any): void {
   pageLayoutSchema.required = ['pageId', 'layoutId', 'sections'];
   const sectionSchema = pageLayoutSchema.properties?.sections?.items;
   if (sectionSchema && typeof sectionSchema === 'object') {
-    sectionSchema.required = ['id', 'type', 'mode', 'order', 'organisms'];
+    // 'type' is not required: it has a deterministic default ('section'/'organism') applied during
+    // normalization, so requiring it only fails the tool call on harmless LLM omissions.
+    sectionSchema.required = ['id', 'mode', 'order', 'organisms'];
     const organismSchema = sectionSchema.properties?.organisms?.items;
     if (organismSchema && typeof organismSchema === 'object') {
-      organismSchema.required = ['id', 'type', 'organismName', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'intentions'];
+      organismSchema.required = ['id', 'organismName', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'intentions'];
     }
   }
 }
@@ -783,7 +785,8 @@ function normalizeLayoutSection(value: unknown, path: string): CfeLayoutSection 
   const sectionName = optionalString(section.sectionName) || id.split('.').pop() || id;
   return {
     id,
-    type: assertString(section.type, `${path}.type`) === 'sectionTab' ? 'sectionTab' : 'section',
+    // type is optional in the relaxed tool schema; default to 'section' when the LLM omits it.
+    type: optionalString(section.type) === 'sectionTab' ? 'sectionTab' : 'section',
     sectionName,
     titleKey: optionalString(section.titleKey) || fallbackLayoutTitleKey(id),
     mode: assertString(section.mode, `${path}.mode`),
@@ -797,7 +800,8 @@ function normalizeLayoutOrganism(value: unknown, path: string): CfeLayoutOrganis
   const id = assertString(organism.id, `${path}.id`);
   return {
     id,
-    type: assertString(organism.type, `${path}.type`),
+    // type is optional in the relaxed tool schema; default to 'organism' when the LLM omits it.
+    type: optionalString(organism.type) || 'organism',
     organismName: assertString(organism.organismName, `${path}.organismName`),
     titleKey: optionalString(organism.titleKey) || fallbackLayoutTitleKey(id),
     purpose: assertString(organism.purpose, `${path}.purpose`),
