@@ -20,7 +20,9 @@ import type {
   ProjectNavigationEntry,
   ProjectsConfig,
 } from '/_102029_/l2/runtimeConfigTypes.js';
-import { serializeRuntimeConfig } from '/_102029_/l2/runtimeConfigEmit.js';
+// Relative path (not /_102029_/...) because this file runs standalone via tsx at publish:
+// tsx resolves relative .ts, but does not swap .js→.ts for path-mapped (/_XXX_/) runtime imports.
+import { serializeRuntimeConfig } from '../../../mls-102029/l2/runtimeConfigEmit.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 const ROOT = process.env.SAVE_CONFIG_ROOT ? path.resolve(process.env.SAVE_CONFIG_ROOT) : path.resolve(HERE, '../../../');
@@ -239,10 +241,11 @@ function main(): void {
   if (pages.length === 0) fail('no discovered page is materialized in l2; run the materialization first');
 
   const customize = l5.customize || {};
-  // Intermediate JSON accumulates both composer passes (frontend + backend); the final
-  // l5/runtimeConfig.ts is emitted from it below (order-independent between the two CLIs).
-  const buildPath = path.join(clientRoot, 'l5', 'runtimeConfig.build.json');
-  const config = (readJson<ProjectsConfig>(buildPath) || {}) as ProjectsConfig;
+  // config.json (root) is still the artifact the publish pipeline consumes (build.mjs,
+  // validateClientConfig, runMigrate) and the runtime (102033/102034) reads — keep writing it.
+  // We ALSO emit l5/runtimeConfig.ts (typed, for the Studio) from the same object below.
+  const configPath = path.join(clientRoot, 'config.json');
+  const config = (readJson<ProjectsConfig>(configPath) || {}) as ProjectsConfig;
 
   config.defaultProjectId = config.defaultProjectId || clientId;
   config.shellTemplates = customize.shellTemplates
@@ -274,6 +277,9 @@ function main(): void {
   // Frontend shared libs used by the generated l2 code and by the master frontend.
   config.projects['102027'] = config.projects['102027'] || { root: '../mls-102027', type: 'lib' };
   config.projects['102029'] = config.projects['102029'] || { root: '../mls-102029', type: 'lib' };
+  // 102036 (collab-messages base) is imported by 102027 (aiAgentOrchestration/aiAgentHelper),
+  // so it must be part of the client's project set (build + runtime).
+  config.projects['102036'] = config.projects['102036'] || { root: '../mls-102036', type: 'lib' };
   addL5Dependencies(config, l5, clientId);
 
   const client = config.projects[clientId];
@@ -314,10 +320,10 @@ function main(): void {
     ],
   };
 
-  fs.writeFileSync(buildPath, `${JSON.stringify(config, null, 2)}\n`);
+  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
   const tsPath = path.join(clientRoot, 'l5', 'runtimeConfig.ts');
   fs.writeFileSync(tsPath, serializeRuntimeConfig(config, clientId));
-  console.log(`[nodejsSaveRuntimeConfig:frontend] composed ${pages.length} page(s) for module '${moduleName}' → ${tsPath}`);
+  console.log(`[nodejsSaveRuntimeConfig:frontend] composed ${pages.length} page(s) for module '${moduleName}' → ${configPath} + ${tsPath}`);
 }
 
 main();
