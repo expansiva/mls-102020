@@ -20,6 +20,7 @@ import type {
   ProjectNavigationEntry,
   ProjectsConfig,
 } from '/_102029_/l2/runtimeConfigTypes.js';
+import { serializeRuntimeConfig } from '/_102029_/l2/runtimeConfigEmit.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 const ROOT = process.env.SAVE_CONFIG_ROOT ? path.resolve(process.env.SAVE_CONFIG_ROOT) : path.resolve(HERE, '../../../');
@@ -238,8 +239,10 @@ function main(): void {
   if (pages.length === 0) fail('no discovered page is materialized in l2; run the materialization first');
 
   const customize = l5.customize || {};
-  const configPath = path.join(clientRoot, 'config.json');
-  const config = (readJson<ProjectsConfig>(configPath) || {}) as ProjectsConfig;
+  // Intermediate JSON accumulates both composer passes (frontend + backend); the final
+  // l5/runtimeConfig.ts is emitted from it below (order-independent between the two CLIs).
+  const buildPath = path.join(clientRoot, 'l5', 'runtimeConfig.build.json');
+  const config = (readJson<ProjectsConfig>(buildPath) || {}) as ProjectsConfig;
 
   config.defaultProjectId = config.defaultProjectId || clientId;
   config.shellTemplates = customize.shellTemplates
@@ -311,8 +314,10 @@ function main(): void {
     ],
   };
 
-  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
-  console.log(`[nodejsSaveConfigJson:frontend] composed ${pages.length} page(s) for module '${moduleName}' into ${configPath}`);
+  fs.writeFileSync(buildPath, `${JSON.stringify(config, null, 2)}\n`);
+  const tsPath = path.join(clientRoot, 'l5', 'runtimeConfig.ts');
+  fs.writeFileSync(tsPath, serializeRuntimeConfig(config, clientId));
+  console.log(`[nodejsSaveRuntimeConfig:frontend] composed ${pages.length} page(s) for module '${moduleName}' → ${tsPath}`);
 }
 
 main();
