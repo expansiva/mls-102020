@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   frontendOutputShapeForOperation,
   frontendQueryStateDefaults,
+  frontendInputPresentation,
   isRuntimeResolvedInputSource,
   isUserFacingOperationInput,
   l4OperationInputs,
@@ -23,19 +24,26 @@ test('frontendQueryStateDefaults preserves paginated object shape', () => {
   assert.deepEqual(frontendQueryStateDefaults('object'), { collection: false, defaultValue: null });
 });
 
-test('L4 inputs keep only user-facing fields for UI state', () => {
+test('L4 inputs retain every browser boundary input and classify contextual inputs', () => {
   const inputs = l4OperationInputs({
     inputs: [
       { inputId: 'nameFilter', fieldRef: 'Company.name', required: false, source: 'userInput', description: 'Filter by name.' },
       { inputId: 'companyId', fieldRef: 'Company.companyId', required: true, source: 'businessContext', description: 'Active company.' },
       { inputId: 'workspaceId', fieldRef: 'Workspace.workspaceId', required: true, source: 'currentWorkspace', description: 'Current UI workspace.' },
+      { inputId: 'statusReportId', fieldRef: 'StatusReport.statusReportId', required: true, source: 'routeParam', description: 'Share link route parameter.' },
+      { inputId: 'selectedId', fieldRef: 'StatusReport.statusReportId', required: true, source: 'selectedEntity', description: 'Selected report.' },
     ],
   });
 
-  assert.deepEqual(inputs.filter(isUserFacingOperationInput).map(input => input.inputId), ['nameFilter']);
+  assert.deepEqual(inputs.filter(isUserFacingOperationInput).map(input => input.inputId), ['nameFilter', 'statusReportId', 'selectedId']);
+  assert.equal(frontendInputPresentation(inputs[0]), 'form');
+  assert.equal(frontendInputPresentation(inputs[3]), 'route');
+  assert.equal(frontendInputPresentation(inputs[4]), 'selection');
   assert.equal(isRuntimeResolvedInputSource('businessContext'), true);
   assert.equal(isRuntimeResolvedInputSource('currentWorkspace'), true);
   assert.equal(isRuntimeResolvedInputSource('userInput'), false);
+  assert.equal(isRuntimeResolvedInputSource('routeParam'), false);
+  assert.equal(isRuntimeResolvedInputSource('selectedEntity'), false);
 });
 
 test('generated contract typecheck expects paginated query output when outputShape is paginated', () => {

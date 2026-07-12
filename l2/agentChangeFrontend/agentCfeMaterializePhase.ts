@@ -42,6 +42,7 @@ interface BrokenItem {
   item: GenStepArgs;
   outputPath: string | null;
   errors: string[];
+  typecheck: 'not-applicable' | 'passed' | 'failed';
 }
 
 const AGENT_NAME = 'agentCfeMaterializePhase';
@@ -109,14 +110,16 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 // fan-out) with attempt=2 and the compiler error as repairHint, which flows into
 // buildHumanPrompt through the existing parseGenStepArgs plumbing.
 async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args: MaterializeVerifyArgs): Promise<mls.msg.AgentIntent[]> {
-  const broken: BrokenItem[] = [];
+  const checkedItems: BrokenItem[] = [];
   for (const item of args.items) {
     const checked = await verifyItem(item);
-    if (checked.errors.length > 0) broken.push(checked);
+    checkedItems.push(checked);
   }
+  const broken = checkedItems.filter(checked => checked.errors.length > 0);
 
   if (broken.length === 0) {
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `all ${args.items.length} materialization item(s) verified`)];
+    const trace = checkedItems.map(checked => `${checked.item.planId}: ${checked.typecheck}`).join('; ');
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `all ${args.items.length} materialization item(s) verified; typechecks: ${trace}`)];
   }
 
   const summary = broken.map(entry => `${entry.item.planId}: ${entry.errors[0]}`).join('\n');
@@ -160,18 +163,20 @@ async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.
 async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   const defsContent = await getContentByMlsPath(item.defPath);
   const pipelineItem = defsContent ? parseDefs(defsContent).item : null;
-  if (!pipelineItem) return { item, outputPath: null, errors: [`pipeline not found in defs: ${item.defPath}`] };
+  if (!pipelineItem) return { item, outputPath: null, errors: [`pipeline not found in defs: ${item.defPath}`], typecheck: 'not-applicable' };
 
   const outputPath = pipelineItem.outputPath;
   const content = await getContentByMlsPath(outputPath);
-  if (!content || !content.trim()) return { item, outputPath, errors: [`generated file missing or empty: ${outputPath}`] };
+  if (!content || !content.trim()) return { item, outputPath, errors: [`generated file missing or empty: ${outputPath}`], typecheck: 'not-applicable' };
 
   const errors = [...await compileMlsPathAndGetErrors(outputPath)];
   const testPath = testPathForOutputPath(outputPath);
   const testContent = await getContentByMlsPath(testPath);
-  if (testContent && testContent.trim()) errors.push(...await compileMlsPathAndGetErrors(testPath));
-  return { item, outputPath, errors };
+  const typecheckErrors = testContent && testContent.trim() ? await compileMlsPathAndGetErrors(testPath) : [];
+  errors.push(...typecheckErrors);
+  return { item, outputPath, errors, typecheck: testContent && testContent.trim() ? (typecheckErrors.length ? 'failed' : 'passed') : 'not-applicable' };
 }
+
 
 function buildRepairHint(entry: BrokenItem): string {
   const lines = entry.errors.slice(0, 8);

@@ -17,6 +17,7 @@ import {
   frontendQueryStateDefaults,
   hasL4OperationInputs,
   hasL4OperationOutputRefs,
+  frontendInputPresentation,
   isUserFacingOperationInput,
   l4OperationInputs,
   l4OperationOutputRefs,
@@ -1468,7 +1469,11 @@ function deterministicOrganism(prepared: CfePreparedPage, operation: CfeOperatio
   const emptyKey = `${intentId}.empty`;
   i18n[intentTitleKey] = operation.title || humanizeId(operation.operationId);
   i18n[emptyKey] = 'Nenhum registro encontrado';
-  const fields = commandFields(command.input).map((field, fieldIndex) => deterministicField(`${intentId}.field.${field}`, field, fieldIndex, i18n));
+  // Only userInput fields are form controls. Route and selection values are browser context and
+  // remain in the contract/action state without being rendered as values the user can type.
+  const fields = commandFieldRecords(command.input)
+    .filter(field => field.presentation === 'form')
+    .map((field, fieldIndex) => deterministicField(`${intentId}.field.${field.name}`, field.name, fieldIndex, i18n));
   const columns = commandFields(command.output).map((field, fieldIndex) => deterministicField(`${intentId}.column.${field}`, field, fieldIndex, i18n));
   const actionKey = `${intentId}.action.${operation.operationId}`;
   i18n[actionKey] = operation.title || humanizeId(operation.operationId);
@@ -1522,6 +1527,8 @@ function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefini
     pageId: prepared.page.pageId,
     pageName: prepared.page.pageName,
     moduleName: prepared.page.moduleName,
+    baseClassName: `${toPascalCase(prepared.page.moduleName)}${toPascalCase(prepared.page.pageId)}Base`,
+    routePattern: pageRoutePattern(prepared.page, prepared.operations),
     sourceKind: prepared.page.sourceKind,
     ownerIds: prepared.page.ownerIds,
     operationIds: prepared.page.operationIds,
@@ -1576,6 +1583,8 @@ function sharedStates(prepared: CfePreparedPage, layout?: CfePageLayoutDefinitio
         stateKey: inputStateKey(prepared.page.pageId, commandName, field.name),
         name: inputStateName(commandName, field.name),
         kind: 'input',
+        source: field.source,
+        presentation: field.presentation,
         contractRef: { commandName, direction: 'input', field: field.name },
         defaultValue: defaultValueForField(field),
       });
@@ -1635,6 +1644,12 @@ function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown
       methodName: kind === 'query' ? `load${toPascalCase(commandName)}` : commandName,
       handlerName: `handle${toPascalCase(commandName)}Click`,
       inputStateKeys: commandFieldRecords(command.input).map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
+      routeParamInputStateKeys: commandFieldRecords(command.input)
+        .filter(field => field.presentation === 'route')
+        .map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
+      selectedEntityInputStateKeys: commandFieldRecords(command.input)
+        .filter(field => field.presentation === 'selection')
+        .map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
       outputStateKeys: kind === 'query' ? [queryDataStateKey(prepared.page.pageId, commandName)] : (stateKeys.has(commandOutputState) ? [commandOutputState] : []),
       statusStateKey: actionStatusStateKey(prepared.page.pageId, commandName),
       ...(refreshActionIds.length > 0 ? { refreshActionIds } : {}),
@@ -1918,9 +1933,14 @@ function defaultBusinessContextOriginRef(inputId: string, fieldRef: string): str
   return text.includes('unit') || text.includes('unidade') ? 'businessContext.activeUnitId' : 'businessContext.activeCompanyId';
 }
 
-function commandFieldRecords(value: unknown): { name: string; required?: boolean }[] {
+function commandFieldRecords(value: unknown): { name: string; required?: boolean; source?: string; presentation?: string }[] {
   if (!Array.isArray(value)) return [];
-  return value.map(item => isRecord(item) ? { name: readString(item.name), required: item.required === true } : { name: '' }).filter(item => item.name);
+  return value.map(item => isRecord(item) ? {
+    name: readString(item.name),
+    required: item.required === true,
+    source: readString(item.source),
+    presentation: readString(item.presentation) || 'form',
+  } : { name: '' }).filter(item => item.name);
 }
 
 function baseSharedStateKeys(pageId: string, commands: Record<string, unknown>[]): string[] {
@@ -2560,8 +2580,18 @@ function contractFieldFromOperationInput(operation: CfeOperationDef, input: CfeL
     : { name: input.inputId, type: frontendTypeForUnresolvedRef(input.fieldRef, entities), required: input.required };
   out.name = input.inputId;
   out.required = input.required;
+  out.source = input.source;
+  out.presentation = frontendInputPresentation(input) || 'context';
   if (input.description) out.description = input.description;
   return out;
+}
+
+function pageRoutePattern(page: CfePagePlan, operations: CfeOperationDef[]): string {
+  const routeParams = unique(operations.flatMap(operation => l4OperationInputs(operation.data)
+    .filter(input => frontendInputPresentation(input) === 'route')
+    .map(input => input.inputId)));
+  const base = `/${page.moduleName}/${page.pageId}`;
+  return routeParams.reduce((route, inputId) => `${route}/:${inputId}?`, base);
 }
 
 function contractFieldsFromOutputRef(operation: CfeOperationDef, fallbackEntity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>, ref: string): Record<string, unknown>[] {

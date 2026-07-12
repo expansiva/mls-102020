@@ -1,5 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/cfeL4Contract.ts" enhancement="_blank"/>
 
+import { clientInputPresentation, isClientBoundarySource, type ClientInputPresentation } from '/_102029_/l2/clientBoundarySources.js';
+
 export type CfeFrontendOutputShape = 'array' | 'paginated' | 'object';
 export type CfeOperationInputSource =
   | 'userInput'
@@ -30,10 +32,8 @@ const RUNTIME_RESOLVED_SOURCES = new Set<string>([
   'actorSession',
   'businessContext',
   'currentWorkspace',
-  'selectedEntity',
   'activeLifecycleInstance',
   'workflowState',
-  'routeParam',
   'previousStepOutput',
   'systemDefault',
 ]);
@@ -70,7 +70,12 @@ export function isRuntimeResolvedInputSource(source: unknown): boolean {
 }
 
 export function isUserFacingOperationInput(input: CfeL4OperationInput): boolean {
-  return input.source === 'userInput';
+  return isClientBoundarySource(input.source);
+}
+
+/** userInput is editable; selectedEntity and routeParam are browser context, never form fields. */
+export function frontendInputPresentation(input: CfeL4OperationInput): ClientInputPresentation | null {
+  return clientInputPresentation(input.source);
 }
 
 export function hasL4OperationInputs(operationData: unknown): boolean {
