@@ -93,7 +93,7 @@ function formatCreateDiagnostics(diagnostics: string[]): string {
 }
 
 const systemPrompt = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: codehigh -->
 <!-- x-tool-strict: true -->
 
 You are ${AGENT_NAME}, the page-layout agent for collab.codes Stage 2 frontend creation.

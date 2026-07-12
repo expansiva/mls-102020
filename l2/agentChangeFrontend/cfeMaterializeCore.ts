@@ -155,7 +155,7 @@ export const GEN_TOOL = {
   },
 } as const;
 
-export const DEFAULT_MODEL_TYPE = 'codeinstruct';
+export const DEFAULT_MODEL_TYPE = 'codehigh';
 export const MATERIALIZE_REPAIR_ATTEMPTS = 1;
 
 export function parseModelType(systemPrompt: string): string | null {
