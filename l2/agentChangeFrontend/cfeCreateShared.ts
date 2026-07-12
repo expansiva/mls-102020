@@ -2679,6 +2679,8 @@ async function saveStorContent(fileInfo: FileInfo, source: string): Promise<void
   const key = mls.stor.getKeyToFile(fileInfo);
   let storFile = mls.stor.files[key];
   if (!storFile) storFile = await createStorFile({ ...fileInfo, source }, false, false, false);
+  if (storFile.status !== 'renamed' && storFile.status !== 'new') storFile.status = 'changed';
+  storFile.updatedAt = new Date().toISOString();
   await mls.stor.localStor.setContent(storFile, { contentType: 'string', content: source });
 }
 

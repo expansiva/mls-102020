@@ -50,7 +50,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
     'scan-create-l4',
     'agentCfeCreateScanL4',
     'Ler L4 e criar paginas pendentes',
-    { command: command.kind, reset, materialize: command.materialize, forceMaterialize: false },
+    { command: command.kind, reset, materialize: command.materialize, forceMaterialize: command.kind === 'rebuild-all' },
     [],
     'sequential',
     'waiting_human_input',
