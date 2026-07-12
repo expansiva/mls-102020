@@ -9,7 +9,7 @@ import {
   isUserFacingOperationInput,
   l4OperationInputs,
 } from '/_102020_/l2/agentChangeFrontend/cfeL4Contract.js';
-import { buildMaterializeTypecheckTest } from '/_102020_/l2/agentChangeFrontend/cfeMaterializeCore.js';
+import { buildMaterializeTypecheckTest, normalizeGeneratedCode } from '/_102020_/l2/agentChangeFrontend/cfeMaterializeCore.js';
 
 test('frontendOutputShapeForOperation follows L4 accessPattern pagination', () => {
   assert.equal(frontendOutputShapeForOperation({ kind: 'query', accessPattern: { kind: 'list', pagination: 'required' } }), 'paginated');
@@ -60,4 +60,12 @@ test('generated contract typecheck expects paginated query output when outputSha
   }]);
 
   assert.match(source || '', /type ExpectedCafeFlowListOrdersOutput = \{ items: ExpectedCafeFlowListOrdersOutputItem\[\]; total: number; page\?: number; pageSize\?: number; \};/);
+});
+
+test('materialization fixes deterministic page seams without changing generated render logic', () => {
+  const page = normalizeGeneratedCode({ id: 'report__l2_page', type: 'l2_page', outputPath: '_102048_/l2/buildFlowFsm/web/desktop/page11/report.ts' }, { baseClassName: 'BuildFlowFsmReportBase' }, "import { WrongBase } from '/_102048_/l2/buildFlowFsm/web/shared/report.ts';\nexport class ReportPage extends WrongBase {}");
+  assert.match(page, /import \{ BuildFlowFsmReportBase \} from '\/_102048_\/l2\/buildFlowFsm\/web\/shared\/report\.js';/);
+
+  const shared = normalizeGeneratedCode({ id: 'report__l2_shared', type: 'l2_shared', outputPath: '_102048_/l2/buildFlowFsm/web/shared/report.ts' }, { baseClassName: 'BuildFlowFsmReportBase' }, 'export class WrongBase extends CollabLitElement {}');
+  assert.match(shared, /export class BuildFlowFsmReportBase extends CollabLitElement/);
 });

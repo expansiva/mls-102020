@@ -2166,6 +2166,7 @@ function pageDefinition(page: CfePagePlan, operations: CfeOperationDef[]): Recor
   return {
     pageId: page.pageId,
     pageName: page.pageName,
+    baseClassName: `${toPascalCase(page.moduleName)}${toPascalCase(page.pageId)}Base`,
     actor: page.actorIds[0] || 'user',
     purpose: `Executar ${page.pageName}.`,
     capabilities: page.capabilities,

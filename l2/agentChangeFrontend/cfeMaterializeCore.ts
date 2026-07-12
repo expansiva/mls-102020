@@ -231,6 +231,26 @@ export function applyHeader(outputPath: string, code: string): string {
   return `${header}\n\n${trimmed}`;
 }
 
+/**
+ * Repair deterministic seams that are part of the generated-file contract, not presentation.
+ * The model still owns the implementation; it cannot choose a different shared import extension
+ * or base class name because both are already fixed by the page/shared definitions.
+ */
+export function normalizeGeneratedCode(item: PipelineItem, data: unknown, code: string): string {
+  if (!isRecord(data)) return code;
+  if (item.type === 'l2_shared') {
+    const baseClassName = typeof data.baseClassName === 'string' ? data.baseClassName : '';
+    if (!baseClassName) return code;
+    return code.replace(/export\s+class\s+[A-Za-z_$][A-Za-z0-9_$]*\s+extends\s+CollabLitElement\b/, `export class ${baseClassName} extends CollabLitElement`);
+  }
+  if (item.type !== 'l2_page') return code;
+
+  const baseClassName = typeof data.baseClassName === 'string' ? data.baseClassName : '';
+  return code
+    .replace(/(from\s+['"][^'"]+\/web\/shared\/[^'"]+)\.ts(['"])/g, '$1.js$2')
+    .replace(/(import\s*\{\s*)[A-Za-z_$][A-Za-z0-9_$]*(\s*\}\s*from\s*['"][^'"]+\/web\/shared\/[^'"]+\.js['"])/g, (_match, start, end) => baseClassName ? `${start}${baseClassName}${end}` : _match);
+}
+
 export function testPathForOutputPath(outputPath: string): string {
   return outputPath.replace(/\.ts$/, '.test.ts');
 }

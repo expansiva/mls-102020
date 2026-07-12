@@ -11,6 +11,7 @@ import {
   GEN_TOOL,
   GEN_TOOL_NAME,
   parseDefs,
+  normalizeGeneratedCode,
   testPathForOutputPath,
   type PipelineItem,
 } from '/_102020_/l2/agentChangeFrontend/cfeMaterializeCore.js';
@@ -99,7 +100,7 @@ async function afterPromptStep(
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, `invalid outputPath: ${pipelineItem.outputPath}`)];
     }
 
-    const code = applyHeader(pipelineItem.outputPath, output.code);
+    const code = applyHeader(pipelineItem.outputPath, normalizeGeneratedCode(pipelineItem, parsedDefs.data, output.code));
     const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, code);
     if (!saved) {
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, withStudioDiagnostics(`saveGeneratedTs failed for ${pipelineItem.outputPath}`))];
