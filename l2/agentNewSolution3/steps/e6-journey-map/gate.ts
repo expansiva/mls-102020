@@ -99,10 +99,12 @@ export function repairE6WorkflowIds(
 // The workspace kind is DERIVABLE from the classification facts — never trusted from the LLM
 // (the 102051 run labeled entity CRUDs as "workflow", which rejected the list-first CRUD template
 // downstream by construction). Deterministic rule, applied after the LLM call:
-//   1. any operation owned by a workflow            -> 'workflow'
-//   2. all standalone, sharing the workspace entity,
-//      with create AND update kinds (managed set)   -> 'entityManagement'
-//   3. otherwise                                    -> 'operation'
+//   1. any operation owned by a workflow                     -> 'workflow'
+//   2. all standalone, create AND update on the workspace
+//      entity, other-entity operations read-only (query/view
+//      side lists like low-stock alerts don't demote a
+//      management page)                                      -> 'entityManagement'
+//   3. otherwise                                             -> 'operation'
 export function deriveE6WorkspaceKinds(
   artifact: Ns3E6JourneyMapArtifact,
   classification: {
@@ -131,9 +133,10 @@ export function deriveE6WorkspaceKinds(
       continue;
     }
 
-    const kinds = new Set(operations.map(operation => operation.kind));
-    const sameEntity = operations.every(operation => operation.entity === workspace.entity);
-    if (sameEntity && kinds.has('create') && kinds.has('update')) {
+    const ownKinds = new Set(operations.filter(operation => operation.entity === workspace.entity).map(operation => operation.kind));
+    const foreignOpsReadOnly = operations.every(operation =>
+      operation.entity === workspace.entity || operation.kind === 'query' || operation.kind === 'view');
+    if (ownKinds.has('create') && ownKinds.has('update') && foreignOpsReadOnly) {
       workspace.kind = 'entityManagement';
       delete workspace.workflowId; // management pages never bind to a workflow
       continue;

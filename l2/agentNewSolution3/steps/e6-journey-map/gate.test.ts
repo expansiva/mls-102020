@@ -178,6 +178,9 @@ void test('e6 workspace kinds are derived deterministically from the classificat
     workspaces: [
       // LLM mislabeled the entity CRUD page as "workflow" (the 102051 defect): must become entityManagement.
       { workspaceId: 'menuManagement', title: 'Menu', actor: 'manager', kind: 'workflow', entity: 'MenuItem', workflowId: 'orderLifecycle', operationIds: ['createMenuItem', 'updateMenuItem', 'browseMenuItems'], purpose: 'Maintain the menu catalog.' },
+      // Management page with an auxiliary read-only query on ANOTHER entity (102052 stockManagement
+      // case: low-stock alerts) — the side list must not demote the page to 'operation'.
+      { workspaceId: 'stockManagement', title: 'Stock', actor: 'manager', kind: 'operation', entity: 'StockItem', operationIds: ['createStockItem', 'updateStockItem', 'queryStockItems', 'queryLowStockAlerts'], purpose: 'Maintain stock items and follow alerts.' },
       // Workflow-owned operations: stays workflow even if the LLM said otherwise.
       { workspaceId: 'kitchenQueue', title: 'Queue', actor: 'kitchen', kind: 'operation', entity: 'Order', operationIds: ['markOrderReady'], purpose: 'Advance pending orders.' },
       // Standalone query only (dashboard): residual kind operation.
@@ -193,6 +196,10 @@ void test('e6 workspace kinds are derived deterministically from the classificat
       { operationId: 'createMenuItem', kind: 'create', entity: 'MenuItem' },
       { operationId: 'updateMenuItem', kind: 'update', entity: 'MenuItem' },
       { operationId: 'browseMenuItems', kind: 'query', entity: 'MenuItem' },
+      { operationId: 'createStockItem', kind: 'create', entity: 'StockItem' },
+      { operationId: 'updateStockItem', kind: 'update', entity: 'StockItem' },
+      { operationId: 'queryStockItems', kind: 'query', entity: 'StockItem' },
+      { operationId: 'queryLowStockAlerts', kind: 'query', entity: 'StockLowAlert' },
       { operationId: 'markOrderReady', workflowId: 'orderLifecycle', kind: 'update', entity: 'Order' },
       { operationId: 'viewSales', kind: 'view', entity: 'Order' },
     ],
@@ -200,6 +207,7 @@ void test('e6 workspace kinds are derived deterministically from the classificat
 
   assert.equal(derived.workspaces[0].kind, 'entityManagement');
   assert.equal(derived.workspaces[0].workflowId, undefined);
-  assert.equal(derived.workspaces[1].kind, 'workflow');
-  assert.equal(derived.workspaces[2].kind, 'operation');
+  assert.equal(derived.workspaces[1].kind, 'entityManagement'); // stockManagement with foreign read-only alert list
+  assert.equal(derived.workspaces[2].kind, 'workflow');
+  assert.equal(derived.workspaces[3].kind, 'operation');
 });
