@@ -7,9 +7,13 @@
 
 import { errorIssue, Ns3GateIssue, warningIssue } from '/_102020_/l2/agentNewSolution3/helpers/ns3Gate.js';
 
-export const E5_CLASSIFICATION_SCHEMA_VERSION = '2026-07-07-ns3-e5-v1';
+export const E5_CLASSIFICATION_SCHEMA_VERSION = '2026-07-11-ns3-e5-v2';
 
 export const NS3_OPERATION_KINDS = ['create', 'update', 'delete', 'query', 'view'] as const;
+// Explicit business decision for every managed (mdm/cadastral) entity: how records leave the base.
+// 'delete' requires a delete operation; 'inactivate' requires a lifecycle state; 'immutable'
+// requires a reason. Silent omission (the 102051 gap: no delete anywhere) is a gate error.
+export const NS3_E5_DELETION_POLICIES = ['delete', 'inactivate', 'immutable'] as const;
 export const NS3_E5_EXECUTION_MODES = ['sequential', 'parallel_static', 'parallel_dynamic'] as const;
 export const NS3_E5_ACCESS_PATTERN_KINDS = ['list', 'getById', 'lookup', 'commandInput'] as const;
 export const NS3_E5_PAGINATIONS = ['none', 'optional', 'required'] as const;
@@ -69,12 +73,24 @@ export interface Ns3E5ClassificationOperation {
   workflowId?: string;
 }
 
+export type Ns3E5DeletionPolicy = typeof NS3_E5_DELETION_POLICIES[number];
+
+export interface Ns3E5ManagedEntity {
+  entity: string;
+  deletionPolicy: Ns3E5DeletionPolicy;
+  /** Required when deletionPolicy is 'inactivate': a state of the entity statusEnum. */
+  inactivationState?: string;
+  /** Required when deletionPolicy is 'immutable': the business justification. */
+  reason?: string;
+}
+
 export interface Ns3E5ClassificationArtifact {
   schemaVersion: typeof E5_CLASSIFICATION_SCHEMA_VERSION;
   moduleName: string;
   createdAt: string;
   workflows: Ns3E5ClassificationWorkflow[];
   operations: Ns3E5ClassificationOperation[];
+  managedEntities: Ns3E5ManagedEntity[];
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +216,8 @@ export interface E5ClassificationGateContext {
   actorIds: string[];
   entityIds: string[];
   features: Ns3E5FeatureRef[];
+  /** E3 entity defs on disk — used to verify managedEntities.inactivationState against statusEnum. */
+  entityDefs: Record<string, Ns3E5EntityDefsInfo>;
 }
 
 export interface E5WorkflowGateContext {
@@ -250,6 +268,13 @@ export function prepareE5Classification(input: unknown, context: { moduleName: s
       kind: (readString(item.kind) || '') as Ns3OperationKind,
       featureRefs: readStringArray(item.featureRefs),
       ...(readString(item.workflowId) ? { workflowId: readString(item.workflowId) } : {}),
+    })),
+    managedEntities: (Array.isArray(record.managedEntities) ? record.managedEntities.filter(isRecord) : []).map(item => ({
+      entity: readString(item.entity) || '',
+      // Invalid values pass through so the schema check reports them (no silent fallback).
+      deletionPolicy: (readString(item.deletionPolicy) || '') as Ns3E5DeletionPolicy,
+      ...(readString(item.inactivationState) ? { inactivationState: readString(item.inactivationState) } : {}),
+      ...(readString(item.reason) ? { reason: readString(item.reason) } : {}),
     })),
   };
 }
@@ -467,7 +492,80 @@ export function validateE5Classification(
     issues.push(errorIssue('classification.empty', 'classification declares no workflows and no operations'));
   }
 
+  validateManagedEntities(artifact, context, issues);
+
   return { artifact, issues };
+}
+
+// Managed (mdm/cadastral) entities: any entity with a STANDALONE write operation (create/update/
+// delete outside a workflow) is under management and requires an explicit deletionPolicy. This is
+// the guard against the 102051 gap (CRUDs generated without delete and without a declared
+// inactivation — the omission was silent).
+function validateManagedEntities(
+  artifact: Ns3E5ClassificationArtifact,
+  context: E5ClassificationGateContext,
+  issues: Ns3GateIssue[],
+): void {
+  const standaloneWrites = new Map<string, Set<Ns3OperationKind>>();
+  for (const operation of artifact.operations) {
+    if (operation.workflowId) continue;
+    if (!WRITE_OPERATION_KINDS.includes(operation.kind)) continue;
+    const kinds = standaloneWrites.get(operation.entity) ?? new Set<Ns3OperationKind>();
+    kinds.add(operation.kind);
+    standaloneWrites.set(operation.entity, kinds);
+  }
+
+  const declared = new Map(artifact.managedEntities.map(item => [item.entity, item]));
+
+  for (const [entity, kinds] of standaloneWrites) {
+    const policy = declared.get(entity);
+    if (!policy) {
+      issues.push(errorIssue('classification.managedEntity.missing', `entity "${entity}" has standalone write operations but no managedEntities entry — declare its deletionPolicy (delete | inactivate | immutable)`, entity));
+      continue;
+    }
+    if (policy.deletionPolicy === 'delete' && !kinds.has('delete')) {
+      issues.push(errorIssue('classification.managedEntity.delete.missing', `entity "${entity}" declares deletionPolicy "delete" but has no standalone delete operation`, entity));
+    }
+    if (policy.deletionPolicy === 'inactivate') {
+      const state = policy.inactivationState || '';
+      if (!state) {
+        issues.push(errorIssue('classification.managedEntity.inactivation.missing', `entity "${entity}" declares deletionPolicy "inactivate" but no inactivationState`, entity));
+      } else {
+        const defs = context.entityDefs[entity];
+        if (!defs) {
+          issues.push(warningIssue('classification.managedEntity.inactivation.unverified', `entity "${entity}": no defs on disk; inactivationState "${state}" cannot be verified`, entity));
+        } else if (!(defs.statusEnum || []).includes(state)) {
+          issues.push(errorIssue('classification.managedEntity.inactivation.unknown', `entity "${entity}": inactivationState "${state}" is not in the entity statusEnum [${(defs.statusEnum || []).join(', ')}]`, entity));
+        }
+      }
+      if (!kinds.has('update')) {
+        issues.push(errorIssue('classification.managedEntity.inactivation.noUpdate', `entity "${entity}" declares deletionPolicy "inactivate" but has no standalone update operation to change the state`, entity));
+      }
+    }
+    if (policy.deletionPolicy === 'immutable') {
+      if (!(policy.reason || '').trim()) {
+        issues.push(errorIssue('classification.managedEntity.immutable.reason', `entity "${entity}" declares deletionPolicy "immutable" without a business reason`, entity));
+      }
+      if (kinds.has('delete')) {
+        issues.push(errorIssue('classification.managedEntity.immutable.conflict', `entity "${entity}" declares deletionPolicy "immutable" but has a standalone delete operation`, entity));
+      }
+    }
+    // Management completeness: an entity under management needs create+update (browse/query is
+    // checked downstream by the workspace derivation, not here).
+    if (!kinds.has('create')) {
+      issues.push(warningIssue('classification.managedEntity.create.missing', `entity "${entity}" is under management but has no standalone create operation`, entity));
+    }
+  }
+
+  for (const policy of artifact.managedEntities) {
+    if (!context.entityIds.includes(policy.entity)) {
+      issues.push(errorIssue('classification.managedEntity.entity.unknown', `managedEntities entry "${policy.entity}" is not an E3 entity`, policy.entity));
+      continue;
+    }
+    if (!standaloneWrites.has(policy.entity)) {
+      issues.push(warningIssue('classification.managedEntity.unused', `managedEntities entry "${policy.entity}" has no standalone write operations — entry is inert`, policy.entity));
+    }
+  }
 }
 
 export function validateE5Workflow(

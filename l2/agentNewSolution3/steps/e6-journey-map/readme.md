@@ -26,3 +26,13 @@ On a green gate: writes `l4/{module}/journeys/{module}Journeys.defs.ts` (export
 `{module}Journeys`, data `{moduleName, note, workspaces, landings, navigationEdges}`) +
 `pipeline/e6-journey-map.md`, approves the pipeline step (`auto`) and emits the completed
 `e6-done` anchor that unlocks E7.
+
+## Workspace kind derivation (2026-07-11)
+
+`kind` is canonical (`workflow | operation | entityManagement`) and DERIVED deterministically from
+the classification after the LLM call (`deriveE6WorkspaceKinds`, before `repairE6WorkflowIds`):
+workspaces with workflow-owned operations are `workflow`; all-standalone create+update on the
+workspace entity is `entityManagement` (list-first CRUD pages downstream — tabular_classic);
+anything else is `operation`. The LLM label is not trusted: the 102051 run labeled entity CRUDs as
+"workflow", which rejected the CRUD template in Stage 2 by construction. `entityManagement`
+workspaces never carry a workflowId (gate error).

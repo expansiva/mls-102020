@@ -46,3 +46,14 @@ pageId/commandName/bffName recheck). 1 retry per run with the gate error in cont
 Origin contract: every contextResolution entry carries a REQUIRED originRef (catalogued runtime
 attribute or 'Entity.field') + description — the server-side resolution recipe agentChangeBackend
 materializes; without it the generated handler wrongly demands the value from the request.
+
+## Managed entities (2026-07-11)
+
+The classification also declares `managedEntities`: one entry per entity maintained through
+standalone write operations, with an explicit `deletionPolicy` — `delete` (a delete operation must
+exist), `inactivate` (an `inactivationState` from the entity statusEnum + an update operation) or
+`immutable` (a business `reason`; delete operations are forbidden). The gate blocks any entity with
+standalone writes that has no entry: how records leave the base is a business decision, never a
+silent omission (the 102051 modules shipped CRUDs with no delete at all). Management operations are
+a COMPLETE standalone set per entity (browse + create + update, plus delete when the policy says
+so) — create and update are never merged into one ambiguous operation.
