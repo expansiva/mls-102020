@@ -218,6 +218,8 @@ export interface E5ClassificationGateContext {
   features: Ns3E5FeatureRef[];
   /** E3 entity defs on disk — used to verify managedEntities.inactivationState against statusEnum. */
   entityDefs: Record<string, Ns3E5EntityDefsInfo>;
+  /** E3 entity kinds (core|supporting|event|metric|mdm) — scopes the managedEntities requirement. */
+  entityKinds: Record<string, string>;
 }
 
 export interface E5WorkflowGateContext {
@@ -497,30 +499,51 @@ export function validateE5Classification(
   return { artifact, issues };
 }
 
-// Managed (mdm/cadastral) entities: any entity with a STANDALONE write operation (create/update/
-// delete outside a workflow) is under management and requires an explicit deletionPolicy. This is
-// the guard against the 102051 gap (CRUDs generated without delete and without a declared
-// inactivation — the omission was silent).
+// Managed (mdm/cadastral) entities and the deletionPolicy requirement. Scope (refined after the
+// 102048 run — kind must not force a single UX and core lifecycle entities exit via their own
+// states):
+//   - mdm entity with ANY write operation (standalone or workflow-owned): entry REQUIRED (error).
+//   - non-mdm entity with standalone writes and NO statusEnum: entry required (error) — nothing
+//     else models how records leave the base.
+//   - non-mdm entity with standalone writes and a statusEnum: entry recommended (warning) — the
+//     lifecycle usually models the exit (e.g. Project.cancelled).
+// This is the guard against the 102051 gap (CRUDs without delete/inactivation, silently).
 function validateManagedEntities(
   artifact: Ns3E5ClassificationArtifact,
   context: E5ClassificationGateContext,
   issues: Ns3GateIssue[],
 ): void {
   const standaloneWrites = new Map<string, Set<Ns3OperationKind>>();
+  const anyWrites = new Map<string, Set<Ns3OperationKind>>();
   for (const operation of artifact.operations) {
-    if (operation.workflowId) continue;
     if (!WRITE_OPERATION_KINDS.includes(operation.kind)) continue;
+    const all = anyWrites.get(operation.entity) ?? new Set<Ns3OperationKind>();
+    all.add(operation.kind);
+    anyWrites.set(operation.entity, all);
+    if (operation.workflowId) continue;
     const kinds = standaloneWrites.get(operation.entity) ?? new Set<Ns3OperationKind>();
     kinds.add(operation.kind);
     standaloneWrites.set(operation.entity, kinds);
   }
 
+  // Entities whose policy must be validated: mdm with any write + entities with standalone writes.
+  const underManagement = new Map<string, Set<Ns3OperationKind>>(standaloneWrites);
+  for (const [entity, kinds] of anyWrites) {
+    if (context.entityKinds[entity] === 'mdm' && !underManagement.has(entity)) {
+      underManagement.set(entity, kinds);
+    }
+  }
+
   const declared = new Map(artifact.managedEntities.map(item => [item.entity, item]));
 
-  for (const [entity, kinds] of standaloneWrites) {
+  for (const [entity, kinds] of underManagement) {
     const policy = declared.get(entity);
     if (!policy) {
-      issues.push(errorIssue('classification.managedEntity.missing', `entity "${entity}" has standalone write operations but no managedEntities entry — declare its deletionPolicy (delete | inactivate | immutable)`, entity));
+      const isMdm = context.entityKinds[entity] === 'mdm';
+      const hasLifecycle = (context.entityDefs[entity]?.statusEnum || []).length > 0;
+      const message = `entity "${entity}" has write operations but no managedEntities entry — declare its deletionPolicy (delete | inactivate | immutable)`;
+      if (isMdm || !hasLifecycle) issues.push(errorIssue('classification.managedEntity.missing', message, entity));
+      else issues.push(warningIssue('classification.managedEntity.missing', `${message}; its statusEnum may already model the exit — declare it explicitly if so (inactivate)`, entity));
       continue;
     }
     if (policy.deletionPolicy === 'delete' && !kinds.has('delete')) {
@@ -562,10 +585,55 @@ function validateManagedEntities(
       issues.push(errorIssue('classification.managedEntity.entity.unknown', `managedEntities entry "${policy.entity}" is not an E3 entity`, policy.entity));
       continue;
     }
-    if (!standaloneWrites.has(policy.entity)) {
-      issues.push(warningIssue('classification.managedEntity.unused', `managedEntities entry "${policy.entity}" has no standalone write operations — entry is inert`, policy.entity));
+    if (!underManagement.has(policy.entity)) {
+      issues.push(warningIssue('classification.managedEntity.unused', `managedEntities entry "${policy.entity}" has no write operations under management — entry is inert`, policy.entity));
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// finalize reconciliation (102048 finding: workflow engulfment)
+// ---------------------------------------------------------------------------
+
+export interface Ns3E5Demotion {
+  workflowId: string;
+  operationId: string;
+}
+
+/**
+ * Operations listed in a workflow that neither create the lifecycle instance (the trigger) nor
+ * cause any REAL transition (from !== to) do not belong to the workflow — they are management/
+ * cadastral operations that must be standalone. Deterministic; runs at e5-finalize over the saved
+ * workflow defs (transitions only exist after the per-workflow calls, so the classification gate
+ * cannot see this).
+ */
+export function computeE5WorkflowDemotions(
+  workflows: Array<Pick<Ns3E5WorkflowArtifact, 'workflowId' | 'operationIds' | 'transitions'>>,
+  classification: Ns3E5ClassificationArtifact,
+): Ns3E5Demotion[] {
+  const kindById = new Map(classification.operations.map(operation => [operation.operationId, operation.kind]));
+  const demotions: Ns3E5Demotion[] = [];
+  for (const workflow of workflows) {
+    const realTransitionOns = new Set(
+      workflow.transitions.filter(transition => transition.from !== transition.to).map(transition => transition.on),
+    );
+    for (const operationId of workflow.operationIds) {
+      if (kindById.get(operationId) === 'create') continue; // the trigger stays
+      if (realTransitionOns.has(operationId)) continue;
+      demotions.push({ workflowId: workflow.workflowId, operationId });
+    }
+  }
+  return demotions;
+}
+
+/** Rewrites the deterministic attach of a demoted operation: standalone pageId/bffName. */
+export function demoteE5OperationDefs(defs: Ns3E5OperationDefs, moduleName: string): Ns3E5OperationDefs {
+  return {
+    ...defs,
+    pageId: defs.operationId,
+    commandName: defs.operationId,
+    bffName: `${moduleName}.${defs.operationId}.${defs.operationId}`,
+  };
 }
 
 export function validateE5Workflow(
@@ -593,10 +661,13 @@ export function validateE5Workflow(
     if (!operationIds.has(transition.on)) {
       issues.push(errorIssue('workflow.transition.operation.unknown', `workflow ${artifact.workflowId}: transition "on" "${transition.on}" is not one of the workflow operationIds`));
     }
-    // Self-transition in the INITIAL state usually means E3 missed a pre-hand-off state
-    // (e.g. Order without a "registered"/"draft" state before sentToKitchen) — cafeFlow run finding.
-    if (transition.from === transition.to && artifact.states.length > 0 && transition.from === artifact.states[0]) {
-      issues.push(warningIssue('workflow.transition.self.initial', `workflow ${artifact.workflowId}: self-transition in the initial state "${transition.from}" (operation ${transition.on}) — the entity statusEnum probably misses an explicit initial state`));
+    // Self-transitions are FORBIDDEN (102048 finding): "planning -> planning on updateProject" is
+    // a cadastral edit dressed as a transition — it laundered management operations into workflows,
+    // emptied managedEntities and created accidental state guards on data edits. An operation that
+    // does not change the state does not belong to the workflow: drop the transition (creation is
+    // the trigger, not a transition; data edits are standalone operations).
+    if (transition.from === transition.to) {
+      issues.push(errorIssue('workflow.transition.self', `workflow ${artifact.workflowId}: self-transition "${transition.from}" -> "${transition.to}" on ${transition.on} — transitions must change the state; remove it (creation is the workflow trigger; cadastral edits are standalone operations)`));
     }
   }
 

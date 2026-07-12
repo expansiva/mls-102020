@@ -9,6 +9,7 @@ import { runNs3Gate } from '/_102020_/l2/agentNewSolution3/helpers/ns3Gate.js';
 import {
   attachOperationDeterministic,
   attachWorkflowDeterministic,
+  computeE5WorkflowDemotions,
   E5ClassificationGateContext,
   E5OperationGateContext,
   E5WorkflowGateContext,
@@ -83,6 +84,7 @@ const classificationContext: E5ClassificationGateContext = {
   entityIds: ['Order', 'MenuItem'],
   features,
   entityDefs,
+  entityKinds: { Order: 'core', MenuItem: 'mdm' },
 };
 
 function validWorkflow(): Ns3E5WorkflowArtifact {
@@ -256,6 +258,68 @@ void test('e5 classification gate requires a reason for the immutable policy and
   assert.equal(gate.ok, false);
   assert.ok(gate.errors.some(issue => issue.code === 'classification.managedEntity.immutable.reason'));
   assert.ok(gate.errors.some(issue => issue.code === 'classification.managedEntity.immutable.conflict'));
+});
+
+void test('e5 workflow gate blocks self-transitions (102048 engulfment finding)', async () => {
+  const workflow = validWorkflow();
+  workflow.transitions.push({ from: 'draft', to: 'draft', on: 'updateOrderStatus' });
+  const gate = await runNs3Gate({
+    stepId: 'e5-workflows-operations',
+    schema: workflowSchema,
+    artifact: workflow,
+    validate: item => validateE5Workflow(item, workflowContext()),
+  });
+  assert.equal(gate.ok, false);
+  assert.ok(gate.errors.some(issue => issue.code === 'workflow.transition.self'));
+});
+
+void test('e5 finalize demotions: workflow-listed op without a real transition is demoted (create trigger stays)', () => {
+  const classification = validClassification();
+  // updateOrderStatus loses its real transitions; createOrder is the trigger (create) and stays.
+  const demotions = computeE5WorkflowDemotions([
+    { workflowId: 'orderLifecycle', operationIds: ['createOrder', 'updateOrderStatus'], transitions: [
+      { from: 'draft', to: 'draft', on: 'updateOrderStatus' },
+    ] },
+  ], classification);
+  assert.deepEqual(demotions, [{ workflowId: 'orderLifecycle', operationId: 'updateOrderStatus' }]);
+
+  // With a real transition, nothing is demoted.
+  const none = computeE5WorkflowDemotions([
+    { workflowId: 'orderLifecycle', operationIds: ['createOrder', 'updateOrderStatus'], transitions: [
+      { from: 'draft', to: 'sentToKitchen', on: 'updateOrderStatus' },
+    ] },
+  ], classification);
+  assert.deepEqual(none, []);
+});
+
+void test('e5 managed entities: mdm entity with workflow-owned writes still requires a policy; core with lifecycle only warns', async () => {
+  const artifact = validClassification();
+  // Move ALL MenuItem ops into a fake workflow (the engulfment pattern) and drop the policy.
+  artifact.workflows.push({ workflowId: 'menuLifecycle', title: 'Menu', actorId: 'attendant', primaryEntity: 'MenuItem', featureRefs: ['menuManage'], operationIds: ['createMenuItem', 'updateMenuItem', 'deleteMenuItem'] });
+  for (const operation of artifact.operations) {
+    if (operation.entity === 'MenuItem' && operation.kind !== 'query') operation.workflowId = 'menuLifecycle';
+  }
+  artifact.managedEntities = [];
+  const gate = await runNs3Gate({
+    stepId: 'e5-workflows-operations',
+    schema: classificationSchema,
+    artifact,
+    validate: item => validateE5Classification(item, classificationContext),
+  });
+  assert.equal(gate.ok, false);
+  assert.ok(gate.errors.some(issue => issue.code === 'classification.managedEntity.missing' && issue.path === 'MenuItem'));
+
+  // Core entity with statusEnum and standalone write: missing entry is only a warning.
+  const artifact2 = validClassification();
+  artifact2.operations.push({ operationId: 'updateOrderNotes', title: 'Update order notes', actorId: 'attendant', entity: 'Order', kind: 'update', featureRefs: ['orderPos'] });
+  const gate2 = await runNs3Gate({
+    stepId: 'e5-workflows-operations',
+    schema: classificationSchema,
+    artifact: artifact2,
+    validate: item => validateE5Classification(item, classificationContext),
+  });
+  assert.equal(gate2.ok, true, gate2.errors.map(issue => issue.message).join('; '));
+  assert.ok(gate2.warnings.some(issue => issue.code === 'classification.managedEntity.missing' && issue.path === 'Order'));
 });
 
 void test('e5 workflow gate blocks transitions referencing unknown states or operations', async () => {

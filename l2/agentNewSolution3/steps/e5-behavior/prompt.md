@@ -44,6 +44,11 @@ How to classify (be COMPLETE but MINIMAL):
    activate/inactivate lifecycle maintained by one actor (menu items, stock items) is NOT a
    workflow — it is master-data upkeep, modeled as standalone operations. Browsing and dashboards
    are standalone operations too.
+   An UPDATE operation belongs to a workflow ONLY when it CHANGES the entity state (causes a real
+   transition, like updateOrderStatus). Editing the entity DATA (name, address, notes) is a
+   standalone operation even when the entity has a lifecycle — do NOT list it in workflow
+   operationIds (the workflow call would need a fake self-transition to host it, which is a gate
+   error, and the finalize demotes it anyway).
 3. Management of an mdm entity is a COMPLETE set of standalone operations: ONE 'query' browse, ONE
    'create', ONE 'update', and — when deletionPolicy is 'delete' — ONE 'delete'. Never merge create
    and update into a single ambiguous operation (their contracts differ: update targets an existing
