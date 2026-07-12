@@ -682,7 +682,6 @@ export function createUpdateStatusIntent(context: mls.msg.ExecutionContext, pare
 
 function recordCreateWarning(message: string): void {
   const full = `[agentCfeCreatePage] ${message}`;
-  console.warn(full);
   const w = window as any;
   if (!Array.isArray(w.__agentChangeFrontendCreateDiagnostics)) w.__agentChangeFrontendCreateDiagnostics = [];
   w.__agentChangeFrontendCreateDiagnostics.push(full);
@@ -1292,13 +1291,32 @@ function validateIntent(ids: Set<string>, i18nKeys: Set<string>, actions: Set<st
   if (intent.titleKey) assertI18nKey(i18nKeys, intent.titleKey, `${intent.id}.titleKey`);
   if (intent.emptyKey) assertI18nKey(i18nKeys, intent.emptyKey, `${intent.id}.emptyKey`);
   for (const action of [intent.action, intent.submitAction].filter(Boolean) as string[]) assertAction(actions, action, intent.id);
-  for (const field of [...intent.fields, ...intent.columns, ...intent.filters]) {
-    registerId(ids, field.id, `field:${field.id}`);
+  // Element ids only need to be unique within their own list. The same underlying field or
+  // action legitimately reuses its stable id across lists and intents (e.g. a field shown both
+  // as a form field and a list column, or a total surfaced by more than one operation on the
+  // page). Those references collapse to a single shared state downstream (addLayoutSupplementalStates
+  // dedupes by stateKey), so a page-global id set produced false "duplicate layout id" failures.
+  validateLayoutFieldGroup(intent.fields, 'field', i18nKeys, fields);
+  validateLayoutFieldGroup(intent.columns, 'column', i18nKeys, fields);
+  validateLayoutFieldGroup(intent.filters, 'filter', i18nKeys, fields);
+  validateLayoutActionGroup(intent.toolbar, 'toolbar', i18nKeys, actions);
+  validateLayoutActionGroup(intent.rowActions, 'rowAction', i18nKeys, actions);
+  validateLayoutActionGroup(intent.actions, 'action', i18nKeys, actions);
+}
+
+function validateLayoutFieldGroup(group: CfeLayoutField[], kind: string, i18nKeys: Set<string>, fields: Set<string>): void {
+  const groupIds = new Set<string>();
+  for (const field of group) {
+    registerId(groupIds, field.id, `${kind}:${field.id}`);
     assertI18nKey(i18nKeys, field.labelKey, `${field.id}.labelKey`);
     if (!fields.has(field.field)) throw new Error(`${field.id}.field references unknown field ${field.field}`);
   }
-  for (const action of [...intent.toolbar, ...intent.rowActions, ...intent.actions]) {
-    registerId(ids, action.id, `action:${action.id}`);
+}
+
+function validateLayoutActionGroup(group: CfeLayoutAction[], kind: string, i18nKeys: Set<string>, actions: Set<string>): void {
+  const groupIds = new Set<string>();
+  for (const action of group) {
+    registerId(groupIds, action.id, `${kind}:${action.id}`);
     assertI18nKey(i18nKeys, action.labelKey, `${action.id}.labelKey`);
     assertAction(actions, action.action, action.id);
   }
