@@ -25,7 +25,7 @@
     "stage1Contract": "l4 is BUSINESS. agentNewSolution2 produces ontology, workflows, operations, rules, actors and process metadata only. It does not produce pages or per-page bffCommands.",
     "schemaPattern": "_102020_/l2/agentNewSolution2/ns2Schemas.ts + ns2Extract.ts (strict JSON-schema tool output enforced by collab-llm and locally revalidated)",
     "parallelDynamicPattern": "_102020_/l2/agentNewSolution2/flow.json (plan-entity-definition, plan-workflow-definition, plan-operation-definition)",
-    "parallelBarrierPattern": "_102020_/l2/agentImplementGenome/agentImplementGenome.ts (select:<page> -> variant:<page> -> gen:<page> -> register barrier)",
+    "parallelBarrierPattern": "_102020_/l2/aura/agentImplementGenome/agentImplementGenome.ts (select:<page> -> variant:<page> -> gen:<page> -> register barrier)",
     "pagePatternExample": "_102043_/l2/cafeFlow/web/desktop/page11/cardapioEstoque.defs.ts",
     "contractPatternExample": "_102043_/l2/cafeFlow/web/contracts/cardapioEstoque.defs.ts",
     "sharedPatternExample": "_102043_/l2/cafeFlow/web/shared/cardapioEstoque.defs.ts",

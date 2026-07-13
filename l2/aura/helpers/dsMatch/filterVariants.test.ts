@@ -1,0 +1,70 @@
+/// <mls fileReference="_102020_/l2/aura/helpers/dsMatch/filterVariants.test.ts" enhancement="_blank" />
+
+// Tests for filterCompatibleVariants (pure). Exposes `runFilterVariantsTests()`.
+
+import { filterCompatibleVariants } from '/_102020_/l2/aura/helpers/dsMatch/filterVariants.js';
+import type { ResolvedLayoutRules, MoleculeCatalogEntry } from '/_102020_/l2/aura/helpers/dsMatch/types.js';
+
+function entry(group: string, variant: string, layoutConfig: Record<string, string>): MoleculeCatalogEntry {
+    return { project: 102040, group, variant, tag: `${group.toLowerCase()}--${variant}`, layoutConfig, objective: '', description: '', usagePath: '' };
+}
+function ds(rules: Record<string, string>): ResolvedLayoutRules { return rules as ResolvedLayoutRules; }
+function assert(cond: boolean, msg: string): void { if (!cond) throw new Error(`[filterVariants.test] FAIL: ${msg}`); }
+function variants(list: MoleculeCatalogEntry[]): string[] { return list.map(m => m.variant).sort(); }
+
+const catalog: MoleculeCatalogEntry[] = [
+    entry('groupViewData', 'ml-calendar-view', { recordsView: 'calendar' }),
+    entry('groupViewData', 'ml-card-grid', { recordsView: 'grid' }),
+    entry('groupViewData', 'ml-kanban-board', { recordsView: 'kanban' }),
+    entry('groupViewData', 'ml-vertical-record-list', { recordsView: 'list' }),
+    entry('groupEnterText', 'ml-enter-text', {}),                                  // wildcard
+    entry('groupEnterText', 'ml-floating-text-input', { labelPlacement: 'floating' }),
+];
+
+export function runFilterVariantsTests(): { passed: number } {
+    let passed = 0;
+
+    // 1. DS silent on recordsView → ALL groupViewData variants are valid candidates.
+    {
+        const r = filterCompatibleVariants('groupViewData', ds({}), new Set<string>(), catalog);
+        assert(r.length === 4, `expected all 4 viewData variants, got ${r.length}`);
+        passed++;
+    }
+
+    // 2. DS recordsView=grid (configured) → only the grid variant survives.
+    {
+        const r = filterCompatibleVariants('groupViewData', ds({ recordsView: 'grid' }), new Set(['recordsView']), catalog);
+        assert(JSON.stringify(variants(r)) === JSON.stringify(['ml-card-grid']), `expected only grid, got ${variants(r)}`);
+        passed++;
+    }
+
+    // 3. DS recordsView=table (configured) on groupViewData → EMPTY (table lives in groupViewTable).
+    {
+        const r = filterCompatibleVariants('groupViewData', ds({ recordsView: 'table' }), new Set(['recordsView']), catalog);
+        assert(r.length === 0, `expected empty, got ${variants(r)}`);
+        passed++;
+    }
+
+    // 4. Wildcard survives when NO candidate declares the configured value.
+    {
+        // labelPlacement configured = top → floating variant out (wrong value); the wildcard
+        // stays because no remaining candidate declares labelPlacement at all.
+        const r = filterCompatibleVariants('groupEnterText', ds({ labelPlacement: 'top' }), new Set(['labelPlacement']), catalog);
+        assert(JSON.stringify(variants(r)) === JSON.stringify(['ml-enter-text']), `expected wildcard only, got ${variants(r)}`);
+        // labelPlacement NOT configured → both valid.
+        const r2 = filterCompatibleVariants('groupEnterText', ds({}), new Set<string>(), catalog);
+        assert(r2.length === 2, `expected both text variants, got ${r2.length}`);
+        passed++;
+    }
+
+    // 5. Explicit match beats wildcard: layout wants floating and a variant DECLARES it →
+    //    the undeclared (wildcard) variant does not attend the layout and is no candidate.
+    {
+        const r = filterCompatibleVariants('groupEnterText', ds({ labelPlacement: 'floating' }), new Set(['labelPlacement']), catalog);
+        assert(JSON.stringify(variants(r)) === JSON.stringify(['ml-floating-text-input']), `expected floating only, got ${variants(r)}`);
+        passed++;
+    }
+
+    console.log(`[filterVariants.test] OK — ${passed} cases`);
+    return { passed };
+}

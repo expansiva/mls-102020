@@ -3,17 +3,17 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
-import { AuraInitState, getAuraState, setAuraState, saveAuraProject, getActualLanguage, setActualLanguage } from '/_102020_/l2/auraState.js';
+import { AuraInitState, getAuraState, setAuraState, saveAuraProject, getActualLanguage, setActualLanguage } from '/_102020_/l2/aura/helpers/auraState.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { readModuleLanguages } from '/_102020_/l2/moduleLanguages.js';
+import { readModuleLanguages } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
-import '/_102020_/l2/plugins/selectModule.js';
-import '/_102020_/l2/plugins/selectLanguage.js';
-import '/_102020_/l2/plugins/selectDevice.js';
-import '/_102020_/l2/plugins/selectAssetsComponents.js';
-import '/_102020_/l2/plugins/selectAssetsPlugins.js';
-import '/_102020_/l2/plugins/selectAssetsMedia.js';
+import '/_102020_/l2/aura/plugins/selectModule.js';
+import '/_102020_/l2/aura/plugins/selectLanguage.js';
+import '/_102020_/l2/aura/plugins/selectDevice.js';
+import '/_102020_/l2/aura/plugins/selectAssetsComponents.js';
+import '/_102020_/l2/aura/plugins/selectAssetsPlugins.js';
+import '/_102020_/l2/aura/plugins/selectAssetsMedia.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -409,28 +409,28 @@ export class ServiceProject102020 extends ServiceBase {
         switch (this._selectedKnob) {
             case 'module':
                 return html`
-                    <plugins--select-module-102020
+                    <aura--plugins--select-module-102020
                         .modules=${this._modules}
                         .value=${this._moduleValue}
                         @select-module=${(e: CustomEvent) => this._setKnobValue('module', e.detail.value)}
-                    ></plugins--select-module-102020>
+                    ></aura--plugins--select-module-102020>
                 `;
             case 'language': {
                 return html`
-                    <plugins--select-language-102020
+                    <aura--plugins--select-language-102020
                         .selectedProject=${this._selectedProjectRef}
                         .selectedModule=${this._selectedModule?.name ?? getAuraState().actualModule}
                         .value=${this._langValue}
-                    ></plugins--select-language-102020>
+                    ></aura--plugins--select-language-102020>
                 `;
             }
             case 'device':
                 return html`
-                    <plugins--select-device-102020
+                    <aura--plugins--select-device-102020
                         .value=${this._deviceValue}
                         .selectedModule=${this._selectedModule}
                         @select-device=${(e: CustomEvent) => this._setKnobValue('device', e.detail.value)}
-                    ></plugins--select-device-102020>
+                    ></aura--plugins--select-device-102020>
                 `;
             case 'assets':
                 return this._renderAssetsPanel();
@@ -443,24 +443,24 @@ export class ServiceProject102020 extends ServiceBase {
         switch (this._assetsValue) {
             case 1:
                 return html`
-                    <plugins--select-assets-components-102020
+                    <aura--plugins--select-assets-components-102020
                         .selectedModule=${this._selectedModule}
                         .device=${this._deviceValue}
-                    ></plugins--select-assets-components-102020>
+                    ></aura--plugins--select-assets-components-102020>
                 `;
             case 2:
                 return html`
-                    <plugins--select-assets-plugins-102020
+                    <aura--plugins--select-assets-plugins-102020
                         .selectedModule=${this._selectedModule}
                         .device=${this._deviceValue}
-                    ></plugins--select-assets-plugins-102020>
+                    ></aura--plugins--select-assets-plugins-102020>
                 `;
             case 3:
                 return html`
-                    <plugins--select-assets-media-102020
+                    <aura--plugins--select-assets-media-102020
                         .selectedModule=${this._selectedModule}
                         .device=${this._deviceValue}
-                    ></plugins--select-assets-media-102020>
+                    ></aura--plugins--select-assets-media-102020>
                 `;
             default:
                 return nothing;

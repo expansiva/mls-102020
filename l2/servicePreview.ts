@@ -5,7 +5,7 @@ import { customElement, property, state, query } from 'lit/decorators.js';
 import { globalState, setState, initState, getState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { getTokensCss, getTokensLess, removeTokensFromSource } from '/_102027_/l2/designSystemBase.js';
-import { readModuleLanguages } from '/_102020_/l2/moduleLanguages.js';
+import { readModuleLanguages } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { getLastOpenedFiles } from '/_102027_/l2/libCommom.js';
 import { compileStyleUsingStorFile } from '/_102027_/l2/libCompileStyle.js';
 import { createModel } from '/_102027_/l2/libModel.js';
@@ -24,7 +24,7 @@ import '/_102027_/l2/collabSpliterVerticalVarFixed.js';
 import '/_102027_/l2/collabSpliterHorizontalVarFixed.js';
 
 import { PreviewModeAura } from '/_102020_/l2/previewModeAura.js';
-import { AuraInitState, getAuraState, getActualLanguage, setActualLanguage, saveAuraProject } from '/_102020_/l2/auraState.js';
+import { AuraInitState, getAuraState, getActualLanguage, setActualLanguage, saveAuraProject } from '/_102020_/l2/aura/helpers/auraState.js';
 import { IJSONDependence } from '/_102027_/l2/libCompile.js';
 import { OpenedFileL2 } from '/_102027_/l2/libCommom.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu, IOptions } from '/_102027_/l2/serviceBase.js';

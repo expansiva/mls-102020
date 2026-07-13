@@ -25,7 +25,7 @@ import {
   type CfeL4OperationInput,
 } from '/_102020_/l2/agentChangeFrontend/cfeL4Contract.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
-import { parseDefsSource } from '/_102020_/l2/moduleLanguages.js';
+import { parseDefsSource } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentChangeFrontend/uxTemplates/selectUxTemplates.js';
 
 type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;

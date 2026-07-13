@@ -3,7 +3,7 @@
 import { getTokensCss, getGlobalCss } from '/_102027_/l2/designSystemBase.js';
 import { getPath } from '/_102027_/l2/utils';
 import { convertFileToTag, resolveTagToFile } from '/_102020_/l2/utils';
-import { themeByIndex } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
+import { themeByIndex } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 
 
 export interface IJSONDependence {

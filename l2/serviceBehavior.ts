@@ -3,11 +3,11 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
-import { AuraInitState, getAuraState } from '/_102020_/l2/auraState.js';
+import { AuraInitState, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
-import '/_102020_/l2/plugins/selectWorkflow.js';
-import '/_102020_/l2/plugins/selectRule.js';
+import '/_102020_/l2/aura/plugins/selectWorkflow.js';
+import '/_102020_/l2/aura/plugins/selectRule.js';
 
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -277,18 +277,18 @@ export class ServiceBehavior102020 extends ServiceBase {
         switch (this._selectedKnob) {
             case 'workflow':
                 return html`
-                    <plugins--select-workflow-102020
+                    <aura--plugins--select-workflow-102020
                         .value=${this._workflowValue}
                         .reloadToken=${this._workflowReloadToken}
-                    ></plugins--select-workflow-102020>
+                    ></aura--plugins--select-workflow-102020>
                 `;
             case 'rule':
                 return html`
-                    <plugins--select-rule-102020
+                    <aura--plugins--select-rule-102020
                         .selectedModule=${this._selectedModule}
                         .value=${this._ruleValue}
                         @select-rule=${(e: CustomEvent) => this._setKnobValue('rule', e.detail.value)}
-                    ></plugins--select-rule-102020>
+                    ></aura--plugins--select-rule-102020>
                 `;
             default:
                 return nothing;

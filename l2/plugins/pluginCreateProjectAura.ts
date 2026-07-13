@@ -15,7 +15,7 @@ import {
   projectTypes,
   type IProjectType
 } from '/_102027_/l2/libNewProject.js';
-import { renderDesignSystemSource } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
+import { renderDesignSystemSource } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 
 
 /// **collab_i18n_start**

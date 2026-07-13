@@ -4,13 +4,13 @@ import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { checkIfHasLocalProject, getLocalProjectName } from '/_102027_/l2/libCommom.js';
-import { AuraInitState, getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
-import { dsIndexNameMap } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
+import { AuraInitState, getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/aura/helpers/auraState.js';
+import { dsIndexNameMap } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
-import '/_102020_/l2/plugins/selectOrganization.js';
-import '/_102020_/l2/plugins/selectProject.js';
-import '/_102020_/l2/plugins/selectDesignSystem.js';
+import '/_102020_/l2/aura/plugins/selectOrganization.js';
+import '/_102020_/l2/aura/plugins/selectProject.js';
+import '/_102020_/l2/aura/plugins/selectDesignSystem.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -484,27 +484,27 @@ export class ServiceExploreProjects102020 extends ServiceBase {
         switch (this._selectedKnob) {
             case 'organization':
                 return html`
-                    <plugins--select-organization-102020
+                    <aura--plugins--select-organization-102020
                         .orgs=${this._orgs}
                         .value=${this._orgValue}
                         @select-org=${(e: CustomEvent) => this._setKnobValue('organization', e.detail.value)}
-                    ></plugins--select-organization-102020>
+                    ></aura--plugins--select-organization-102020>
                 `;
             case 'project':
                 return html`
-                    <plugins--select-project-102020
+                    <aura--plugins--select-project-102020
                         .selectedOrg=${this._selectedOrg}
                         .value=${this._projectValue}
                         @select-project=${(e: CustomEvent) => this._setKnobValue('project', e.detail.value)}
-                    ></plugins--select-project-102020>
+                    ></aura--plugins--select-project-102020>
                 `;
             case 'designSystem':
                 // Phase B — DS = styling. Same tokens editor as the genome (project-wide tokens).
                 return html`
-                    <plugins--select-design-system-102020
+                    <aura--plugins--select-design-system-102020
                         .projectId=${this._selectedProject?.project ?? null}
                         .value=${this._dsValue}
-                    ></plugins--select-design-system-102020>
+                    ></aura--plugins--select-design-system-102020>
                 `;
             default:
                 return nothing;
