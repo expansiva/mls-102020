@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/serviceBehavior.ts" enhancement="_102027_/l2/enhancementLit"/>
+/// <mls fileReference="_102020_/l2/aura/service/serviceBehavior.ts" enhancement="_102027_/l2/enhancementLit"/>
 
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
@@ -50,7 +50,7 @@ interface IKnobConfig {
 
 // ─── Service ─────────────────────────────────────────────────────────
 
-@customElement('service-behavior-102020')
+@customElement('aura--service--service-behavior-102020')
 export class ServiceBehavior102020 extends ServiceBase {
 
     public details: IService = {
@@ -59,7 +59,7 @@ export class ServiceBehavior102020 extends ServiceBase {
         position: 'left',
         tooltip: 'Behavior',
         visible: true,
-        widget: '_102020_serviceBehavior',
+        widget: '_102020_aura/service/serviceBehavior',
         level: [6],
     };
 

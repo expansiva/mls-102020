@@ -39,7 +39,7 @@ export class PluginCollabCoreIndex extends PluginBaseIndex {
                 scope: ['l4ServicesLeft'],
                 priority: 1,
                 auth: ['*'],
-                widget: '_102020_serviceBehavior'
+                widget: '_102020_aura/service/serviceBehavior'
             },
             {
                 category: 'Services',
