@@ -387,11 +387,10 @@ export class PluginSelectProject extends StateLitElement {
 
     private _onPluginItemClick(item: IPluginItem) {
         this._selectedPlugin = item.action.widget;
-        const match = item.action.widget.match(/^_(\d+)_(.+)$/);
-        if (!match) return;
-        // @ts-ignore
+        const path = getPath(item.action.widget);
+        if (!path) return;
         const storFileItem = Object.values(mls.stor.files as Record<string, any>)
-            .find((f: any) => f.project === Number(match[1]) && f.shortName === match[2]);
+            .find((f: any) => f.project === Number(path.project) && f.shortName === path.shortName && f.folder === path.folder);
         if (!storFileItem) return;
         const tag = convertFileToTag(storFileItem);
         const el = document.createElement(tag);
