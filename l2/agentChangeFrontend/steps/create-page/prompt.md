@@ -37,6 +37,9 @@ The result must preserve the section -> organism structure:
 
 Layout rules:
 - Stable ids are required for sections, organisms, intentions, fields, columns and actions.
+- Section, organism and intention ids must be UNIQUE within each layout (and distinct from layoutId).
+  Never give two sections the same id: derive each section id from its own sectionName, not from the
+  pageId. A layout with a repeated id is rejected.
 - Every section must include sectionName.
 - Prefer including result.pageLayout.i18n and result.pageLayout.dataBindings; use {} and [] when empty.
 - result.pageLayout.i18n must be a flat object of "key": "localized text for the project default locale";

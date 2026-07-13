@@ -563,7 +563,7 @@ export async function saveSharedDefs(prepared: CfePreparedPage, layout: CfePageL
 }
 
 export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, genome = 'page11'): Promise<CfePageLayoutDefinition> {
-  const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutActions(prepared, layout));
+  const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, layout)));
   validatePageLayout(prepared, repairedLayout);
   const enrichedLayout = enrichLayoutWithStateRefs(prepared, repairedLayout);
   const definition = {
@@ -1215,6 +1215,41 @@ function repairUnknownLayoutActions(prepared: CfePreparedPage, layout: CfePageLa
     recordCreateWarning(`dropped unknown layout action(s) for ${prepared.page.pageId}: ${dropped.join('; ')}`);
   }
   return dropped.length > 0 ? { ...layout, sections } : layout;
+}
+
+// Section/organism/intention ids are structural only (nothing references them: wiring uses action
+// names, field refs, stateKeys and dataBinding ids), so renaming an LLM-duplicated id is safe.
+// Without this repair a duplicated section id fails the strict page11 validation and kills the
+// whole page (seen in 102049: two sections sharing sec_petManagement / sec_schedulingCapacity).
+function repairDuplicateLayoutIds(pageId: string, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const seen = new Set<string>([layout.layoutId]);
+  const renamed: string[] = [];
+  const uniqueId = (id: string, path: string): string => {
+    if (!seen.has(id)) { seen.add(id); return id; }
+    let suffix = 2;
+    while (seen.has(`${id}${suffix}`)) suffix++;
+    const next = `${id}${suffix}`;
+    seen.add(next);
+    renamed.push(`${path}: ${id} -> ${next}`);
+    return next;
+  };
+
+  const sections = layout.sections.map(section => ({
+    ...section,
+    id: uniqueId(section.id, `section:${section.sectionName}`),
+    organisms: section.organisms.map(organism => ({
+      ...organism,
+      id: uniqueId(organism.id, `organism:${organism.organismName}`),
+      intentions: organism.intentions.map(intent => ({
+        ...intent,
+        id: uniqueId(intent.id, `intent:${intent.intent}`),
+      })),
+    })),
+  }));
+
+  if (renamed.length === 0) return layout;
+  recordCreateWarning(`renamed duplicate layout id(s) for ${pageId}: ${renamed.join('; ')}`);
+  return { ...layout, sections };
 }
 
 function repairMissingLayoutI18n(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
