@@ -1,14 +1,14 @@
-/// <mls fileReference="_102020_/l2/agentChangeFrontend/agentCfeRegisterFrontend.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/finalize/agentCfeCreateFinalize.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createUpdateStatusIntent, registerGeneratedFrontendPages } from '/_102020_/l2/agentChangeFrontend/cfeCreateShared.js';
+import { createUpdateStatusIntent, finalizeGeneratedPages } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 
 export function createAgent(): IAgentAsync {
   return {
-    agentName: 'agentCfeRegisterFrontend',
+    agentName: 'agentCfeCreateFinalize',
     agentProject: 102020,
-    agentFolder: 'agentChangeFrontend',
-    agentDescription: 'Register materialized frontend pages in config.json and generate preview HTML',
+    agentFolder: 'agentChangeFrontend/steps/finalize',
+    agentDescription: 'Mark created frontend owners done after materialization and frontend registration',
     visibility: 'private',
     beforePromptStep,
   };
@@ -16,8 +16,8 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
-    const result = await registerGeneratedFrontendPages();
-    const trace = `pagesRegistered=${result.pagesRegistered.length}; skippedPages=${result.skippedPages.length}`;
+    const result = await finalizeGeneratedPages();
+    const trace = `pagesDone=${result.pagesDone.length}; ownersDone=${result.ownersDone.length}; skippedPages=${result.skippedPages.length}`;
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

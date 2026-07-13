@@ -96,6 +96,10 @@ Render page11 as a simple operational page:
 - compact summary blocks for summary intentions
 - button rows for actionList intentions
 - simple status lists for workflowStatus intentions
+- for every command action, render a textual feedback region driven by its action status: success uses feedback.successMessageKey; error uses the AppError text from errorStateKey when present, otherwise feedback.errorMessageKey. It must be dismissible and must never be only an icon or glyph.
+- represent loading consistently: query/list intentions show a placeholder or skeleton while their query state is loading; command buttons show a spinner/progress label and are disabled while their action is loading.
+- collapse repeated hierarchy: render the page title once as h1. A section/organism/intention title that resolves to the same message as its parent must not be rendered again. Use the next distinct title as h2, then render blocks without another repeated title.
+- use the Definition.visualStyle direction when it exists. Translate only evidenced signals into layout density: data-dense/status-driven favors compact tables and grouped statuses; dashboard-first favors summary before detail; otherwise retain the simple operational layout. Do not invent colors, chart data or components from the style string.
 
 Do not import or render molecule packages in page11.
 Do not render custom molecule/web-component tags.

@@ -24,8 +24,8 @@ import {
   testPathForOutputPath,
   type PipelineItem,
   type PlannedItem,
-} from './cfeMaterializeCore.js';
-import { callCollabLlm, parseGenResult, type LlmConfig, type LlmResult } from './nodejsMaterializeLlmClient.js';
+} from './helpers/cfeMaterializeCore.js';
+import { callCollabLlm, parseGenResult, type LlmConfig, type LlmResult } from './helpers/nodejsMaterializeLlmClient.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 let ROOT = process.env.MATERIALIZE_L2_ROOT ? path.resolve(process.env.MATERIALIZE_L2_ROOT) : path.resolve(HERE, '../../../');
@@ -74,6 +74,8 @@ function writePagePreviewHtml(item: PipelineItem): string | null {
 function readIfExists(abs: string): string | null {
   try { return fs.readFileSync(abs, 'utf8'); } catch { return null; }
 }
+
+type EnvMap = Record<string, string>;
 
 function mtimeMs(abs: string): number | null {
   try { return fs.statSync(abs).mtimeMs; } catch { return null; }
@@ -198,13 +200,91 @@ function assemble(item: PipelineItem, data: unknown, modelType: string): { syste
 }
 
 function loadConfig(explicitPath: string | undefined): LlmConfig {
-  const p = explicitPath || process.env.MATERIALIZE_L2_CONFIG || path.join(HERE, 'materializeL2.config.json');
-  const raw = readIfExists(p);
-  if (raw == null) throw new Error(`config not found: ${p} (copy materializeL2.config.sample.json and fill baseUrl + token)`);
-  let cfg: LlmConfig;
-  try { cfg = JSON.parse(raw); } catch { throw new Error(`config is not valid JSON: ${p}`); }
-  if (!cfg.baseUrl || !cfg.token) throw new Error(`config must set baseUrl and token: ${p}`);
+  const legacyPath = explicitPath || process.env.MATERIALIZE_L2_CONFIG;
+  const cfg = legacyPath ? loadJsonConfig(legacyPath) : configFromEnv('L2', 'agentChangeFrontend');
+  if (!cfg.baseUrl || !cfg.token) throw new Error('config must set baseUrl and token');
   return cfg;
+}
+
+function loadJsonConfig(configPath: string): LlmConfig {
+  const raw = readIfExists(configPath);
+  if (raw == null) throw new Error(`config not found: ${configPath}`);
+  try {
+    return JSON.parse(raw) as LlmConfig;
+  } catch {
+    throw new Error(`config is not valid JSON: ${configPath}`);
+  }
+}
+
+function configFromEnv(prefix: 'L1' | 'L2', defaultAgentName: string): LlmConfig {
+  const envPath = process.env.MLS_BASE_ENV ? path.resolve(process.env.MLS_BASE_ENV) : path.join(ROOT, '.env');
+  const fileEnv = readEnvFile(envPath);
+  const env: EnvMap = { ...fileEnv, ...process.env as EnvMap };
+  const cfg: LlmConfig = {
+    baseUrl: envValue(env, `${prefix}_COLLAB_LLM_BASE_URL`, 'COLLAB_LLM_BASE_URL', 'MATERIALIZE_LLM_BASE_URL', 'baseUrl'),
+    token: envValue(env, `${prefix}_COLLAB_LLM_TOKEN`, 'COLLAB_LLM_TOKEN', 'MATERIALIZE_LLM_TOKEN', 'token'),
+    orgId: envValue(env, `${prefix}_COLLAB_LLM_ORG_ID`, 'COLLAB_LLM_ORG_ID', 'MATERIALIZE_LLM_ORG_ID', 'orgId'),
+    userId: envValue(env, `${prefix}_COLLAB_LLM_USER_ID`, 'COLLAB_LLM_USER_ID', 'MATERIALIZE_LLM_USER_ID', 'userId') || defaultAgentName,
+    agentName: envValue(env, `${prefix}_COLLAB_LLM_AGENT_NAME`, 'COLLAB_LLM_AGENT_NAME', 'MATERIALIZE_LLM_AGENT_NAME', 'agentName') || defaultAgentName,
+    toolStrict: envBool(env, `${prefix}_COLLAB_LLM_TOOL_STRICT`, 'COLLAB_LLM_TOOL_STRICT', 'MATERIALIZE_LLM_TOOL_STRICT', 'toolStrict') ?? true,
+    timeoutMs: envNumber(env, `${prefix}_COLLAB_LLM_TIMEOUT_MS`, 'COLLAB_LLM_TIMEOUT_MS', 'MATERIALIZE_LLM_TIMEOUT_MS', 'timeoutMs'),
+    temperature: envNumber(env, `${prefix}_COLLAB_LLM_TEMPERATURE`, 'COLLAB_LLM_TEMPERATURE', 'MATERIALIZE_LLM_TEMPERATURE', 'temperature'),
+    maxTokens: envNumber(env, `${prefix}_COLLAB_LLM_MAX_TOKENS`, 'COLLAB_LLM_MAX_TOKENS', 'MATERIALIZE_LLM_MAX_TOKENS', 'maxTokens'),
+  };
+  const modelTypeOverride = envValue(env, `MATERIALIZE_${prefix}_MODEL_TYPE`, `${prefix}_COLLAB_LLM_MODEL_TYPE`, 'COLLAB_LLM_MODEL_TYPE', 'MATERIALIZE_LLM_MODEL_TYPE', 'modelTypeOverride');
+  if (modelTypeOverride) cfg.modelTypeOverride = modelTypeOverride;
+  if (!cfg.baseUrl || !cfg.token) {
+    throw new Error(`LLM config not found. Set COLLAB_LLM_BASE_URL and COLLAB_LLM_TOKEN in ${envPath} (or pass --config for a legacy JSON config).`);
+  }
+  return cfg;
+}
+
+function readEnvFile(envPath: string): EnvMap {
+  const raw = readIfExists(envPath);
+  if (!raw) return {};
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('{')) {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value)]));
+  }
+  const env: EnvMap = {};
+  for (const line of raw.split(/\r?\n/)) {
+    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line);
+    if (!m) continue;
+    env[m[1]] = unquoteEnvValue(m[2]);
+  }
+  return env;
+}
+
+function unquoteEnvValue(value: string): string {
+  const trimmed = value.trim();
+  const commentIndex = trimmed.indexOf(' #');
+  const raw = commentIndex >= 0 ? trimmed.slice(0, commentIndex).trim() : trimmed;
+  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) return raw.slice(1, -1);
+  return raw;
+}
+
+function envValue(env: EnvMap, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = env[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function envNumber(env: EnvMap, ...keys: string[]): number | undefined {
+  const value = envValue(env, ...keys);
+  if (!value) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function envBool(env: EnvMap, ...keys: string[]): boolean | undefined {
+  const value = envValue(env, ...keys).toLowerCase();
+  if (!value) return undefined;
+  if (['1', 'true', 'yes', 'on'].includes(value)) return true;
+  if (['0', 'false', 'no', 'off'].includes(value)) return false;
+  return undefined;
 }
 
 interface Args {

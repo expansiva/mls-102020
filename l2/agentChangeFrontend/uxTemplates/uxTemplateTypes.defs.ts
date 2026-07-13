@@ -68,6 +68,16 @@ export interface UxTemplateSlots {
   actionPresentation: Record<string, UxActionPresentation>;
 }
 
+export interface UxTemplateWiring {
+  minimumStates: string[];
+  transitions: string[];
+  microcopy: {
+    actionLabels: 'domainAction';
+    emptyState: 'nextStep';
+    mutationFeedback: 'textualDismissible';
+  };
+}
+
 export interface UxTemplateDefinition {
   id: string;
   title: string;
@@ -81,5 +91,7 @@ export interface UxTemplateDefinition {
   layoutGuidance: string[];
   llmGuidance: string[];
   validationChecks: string[];
+  /** Structured interaction contract. Omitted by legacy templates only; selection derives it from slots. */
+  wiring?: UxTemplateWiring;
   exampleUseCases: string[];
 }

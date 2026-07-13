@@ -1,6 +1,6 @@
-/// <mls fileReference="_102020_/l2/agentChangeFrontend/cfeMaterializeStudio.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.ts" enhancement="_blank"/>
 
-import { parseDefs, type PipelineItem } from '/_102020_/l2/agentChangeFrontend/cfeMaterializeCore.js';
+import { parseDefs, type PipelineItem } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import { createStorFile } from '/_102027_/l2/libStor.js';
 
 declare const mls: any;

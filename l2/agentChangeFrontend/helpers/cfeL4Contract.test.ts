@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentChangeFrontend/cfeL4Contract.test.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.test.ts" enhancement="_blank"/>
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -8,8 +8,8 @@ import {
   isRuntimeResolvedInputSource,
   isUserFacingOperationInput,
   l4OperationInputs,
-} from '/_102020_/l2/agentChangeFrontend/cfeL4Contract.js';
-import { buildMaterializeTypecheckTest, normalizeGeneratedCode } from '/_102020_/l2/agentChangeFrontend/cfeMaterializeCore.js';
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
+import { buildMaterializeTypecheckTest, normalizeGeneratedCode } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
 test('frontendOutputShapeForOperation follows L4 accessPattern pagination', () => {
   assert.equal(frontendOutputShapeForOperation({ kind: 'query', accessPattern: { kind: 'list', pagination: 'required' } }), 'paginated');

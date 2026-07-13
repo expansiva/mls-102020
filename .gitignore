@@ -25,3 +25,4 @@ Temporary Items
 /dist/
 /obj/
 /l2/agents/NewSolution
+/l2/agentChangeFrontend/materializeL2.config.json

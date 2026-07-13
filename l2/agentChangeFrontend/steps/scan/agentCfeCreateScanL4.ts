@@ -1,7 +1,7 @@
-/// <mls fileReference="_102020_/l2/agentChangeFrontend/agentCfeCreateScanL4.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/scan/agentCfeCreateScanL4.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readCreateContext } from '/_102020_/l2/agentChangeFrontend/cfeCreateShared.js';
+import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readCreateContext } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 
 interface ScanArgs {
   materialize?: boolean;
@@ -12,7 +12,7 @@ export function createAgent(): IAgentAsync {
   return {
     agentName: 'agentCfeCreateScanL4',
     agentProject: 102020,
-    agentFolder: 'agentChangeFrontend',
+    agentFolder: 'agentChangeFrontend/steps/scan',
     agentDescription: 'Scan todoFrontend=toCreate owners (l4 read-only) and start create fan-out',
     visibility: 'private',
     beforePromptStep,

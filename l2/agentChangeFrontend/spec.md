@@ -7,6 +7,8 @@ Documento auto-contido (não depende de outros arquivos).
 
 > **Atualização 2026-07-03 (journeys + micro user flow):** o agrupamento de páginas passa a derivar dos **workspaces** do `l4/{module}/journeys` (uma página por workspace; fallback legado por workflow/operation quando não há journey). A ordenação de campos/organismos usa o **micro user flow** derivado de `operation.story.steps` (+ `workflow.story.steps`), passado no `promptContext.userJourney.microUserFlow` e registrado no `origin` da página (rastreabilidade). **Guardrail:** o micro user flow é de nível de intenção e é re-derivado da `story` a cada geração — NÃO é uma seção de layout persistida no page11; assim outros genomes (page12…) podem reinterpretá-lo livremente. As `navigationEdges` do journey são advisory (trace), não bloqueiam.
 
+> **Atualização 2026-07-13 (modernização):** a implementação console-only v0.1 (`agentCfeV01*` e `cfeV01Shared`) foi removida do código. O `flow.json` agora descreve o fluxo real create-v1 (`scan-create-l4 -> create-page-fanout -> materialize-create-l2 -> fases -> register -> finalize`). A seção v0.1 abaixo permanece apenas como registro histórico.
+
 ## Propósito
 
 Olhar o status dos owners no `l5/todoFrontend` e **fazer só o que está pendente** (um "to-be"): criar/atualizar/remover as **telas** + parte **shared** + **contrato BFF** + **layout** da página, chamar a **materialização** (`.defs.ts → .ts`) e assinar o **l5/project.json** (`masters.frontend`). No fim, muda o status no `todoFrontend` (o l4 é read-only). O `config.json` do workspace é composto no publish (nodejsSaveConfigJson.ts), não pelo agente. Pode ser chamado **a qualquer momento** e fazer **um único item** (uma tela, um arquivo). É idempotente: re-rodar só toca no que ainda não está `done`.
@@ -496,9 +498,9 @@ O `flow.json` v1 passa a ser **create-only, com `.defs.ts` + materialização `.
 - agentes LLM devem seguir o padrão do `agentNewSolution2`: saída via JSON schema/tool strict (`collab-llm`) e validação local antes de gravar;
 - aliases de modelo e recomendação por tipo de agente ficam registrados no `flow.json`.
 
-## Versão 0.1 para teste
+## Versão 0.1 para teste (histórico removido)
 
-Antes de gerar arquivos, a implementação inicial criada para teste faz somente:
+Antes de gerar arquivos, a implementação inicial criada para teste fazia somente:
 
 - `agentChangeFrontend` inicia o fluxo v0.1;
 - `agentCfeV01ScanL4` lê `l4`, encontra owners com `statusFrontend = toCreate` e monta páginas candidatas;
@@ -507,6 +509,8 @@ Antes de gerar arquivos, a implementação inicial criada para teste faz somente
 - `agentCfeV01PageChildConsole` imprime no console cada fase por página;
 - `agentCfeV01FinalConsole` imprime o resumo após a barreira final;
 - não grava `.defs.ts`, não grava `config.json`, não altera `statusFrontend` e não materializa nada.
+
+Removido em 2026-07-13 por estar fora do fluxo atual e confundir a manutenção por LLM. A referência acima é histórica, não um contrato de implementação.
 
 ## Implementação create-v1
 
@@ -517,9 +521,9 @@ Após validar o paralelo, a implementação real inicial para `toCreate` está d
 - `agentCfeCreatePage` gera `web/contracts/{page}.defs.ts` de forma determinística, chama LLM com JSON schema/tool strict para o layout semântico, grava `web/desktop/page11/{page}.defs.ts` e depois gera `web/shared/{page}.defs.ts` a partir de `contractRef + layout reconciliado`;
 - `agentCfeCreatePage` também grava `l2/{module}/trace/frontend-create-pages/{page}.json` como `inProgress` no início e `done` só depois de layout e shared validados, para evitar que uma página antiga seja aceita por engano;
 - `agentCfeMaterializeL2` lê os pipelines gerados, cria launchers sequenciais por fase (`contracts -> shared -> page11`) e cada `agentCfeMaterializePhase` inicia um fan-out paralelo com `agentCfeMaterializeGen` somente depois da fase anterior completar sem erro;
-- `agentCfeRegisterFrontend` gera o `.html` de preview, atualiza `l0/config.json` e grava marcador de registro por página;
+- `agentCfeRegisterFrontend` gera o `.html` de preview, assina `l5/project.json` e grava marcador de registro por página; o `config.json` é composto no publish;
 - `agentCfeCreateFinalize` grava `l2/{module}/trace/frontend-create-report.json` e muda os owners gerados para `statusFrontend = done` somente após materialização e registro;
-- `cfeCreateShared` concentra leitura do L4, geração determinística dos comandos, schema/validação do layout, gravação dos `.defs.ts`, merge do config e atualização de status.
+- `cfeCreateShared` concentra leitura do L4, geração determinística dos comandos, schema/validação do layout, gravação dos `.defs.ts`, registro/assinatura e atualização de status.
 
 O layout LLM deve manter a estrutura de `sections -> organisms` e enriquecer cada organismo com `intentions`, `id` estável, `order`, `labelKey/titleKey/emptyKey`, referências a actions do shared, campos do contrato/ontologia e `dataBindings`. O `page11` não deve referenciar moléculas, grupos, tags ou pacotes de componentes. Se a saída falhar no schema ou na validação semântica, a página não é marcada como concluída.
 

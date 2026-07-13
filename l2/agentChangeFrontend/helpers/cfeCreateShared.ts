@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentChangeFrontend/cfeCreateShared.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import {
@@ -11,7 +11,7 @@ import {
   optionalString,
   type PlannerExtractConfig,
   type PlannerOutput,
-} from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfePlanner.js';
 import {
   frontendOutputShapeForOperation,
   frontendQueryStateDefaults,
@@ -23,7 +23,7 @@ import {
   l4OperationOutputRefs,
   normalizeOutputShape,
   type CfeL4OperationInput,
-} from '/_102020_/l2/agentChangeFrontend/cfeL4Contract.js';
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { parseDefsSource } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentChangeFrontend/uxTemplates/selectUxTemplates.js';
@@ -540,6 +540,7 @@ export async function preparePageCreate(page: CfePagePlan): Promise<CfePreparedP
   const context = await readCreateContext();
   const operations = page.operationIds.map(id => context.operations.get(id) || syntheticOperation(page, id, context.project));
   const commands = operations.map(operation => commandFromOperation(operation, context.entities));
+  recordTechnicalIdLookupGaps(page, commands);
   const navigationRefs: unknown[] = [];
   const baseDefinition = pageDefinition(page, operations);
   const visualStyle = context.moduleVisualStyle[page.moduleName];
@@ -562,11 +563,13 @@ export async function saveSharedDefs(prepared: CfePreparedPage, layout: CfePageL
 }
 
 export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, genome = 'page11'): Promise<CfePageLayoutDefinition> {
-  const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutActions(prepared, layout));
+  const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, layout)));
   validatePageLayout(prepared, repairedLayout);
   const enrichedLayout = enrichLayoutWithStateRefs(prepared, repairedLayout);
   const definition = {
     ...prepared.baseDefinition,
+    templateId: selectedTemplateId(prepared, genome),
+    visualStyle: prepared.visualStyle,
     sections: layoutSectionSummary(enrichedLayout.sections),
     layout: {
       id: enrichedLayout.layoutId,
@@ -593,6 +596,10 @@ export async function savePageVariants(prepared: CfePreparedPage, result: CfePag
     const genome = pageGenome(variantIndex);
     variantIndex++;
     try {
+      const expectedTemplateId = selectedTemplateId(prepared, genome);
+      if (variant.templateId && expectedTemplateId && variant.templateId !== expectedTemplateId) {
+        throw new Error(`variant ${genome} templateId ${variant.templateId} does not match selected template ${expectedTemplateId}`);
+      }
       enrichedLayouts.push(await savePageLayoutDefs(prepared, variant.pageLayout, genome));
     } catch (error) {
       recordCreateWarning(`skipped UX variant ${genome} for ${prepared.page.pageId}: ${error instanceof Error ? error.message : String(error)}`);
@@ -998,10 +1005,7 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
   const effectiveVariants = Math.min(Math.max(1, variants), candidates.length);
   const variantPlan = candidates.slice(0, effectiveVariants).map((candidate, index) => ({
     genome: pageGenome(index),
-    templateId: candidate.id,
-    title: candidate.title,
-    userJourney: candidate.userJourney,
-    layoutGuidance: candidate.layoutGuidance,
+    template: candidate,
   }));
 
   return {
@@ -1011,9 +1015,6 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
     i18n: context.moduleI18n[page.moduleName] || { defaultLocale: 'en', activeLocales: ['en'] },
     workflows,
     userJourney: buildPageUserJourney(context, page, operations, commands),
-    // UX template candidates for reference (structure) + the uxGuidance skill (behavior). Template
-    // wins on conflict. variantPlan pins one distinct template per variant/genome, in order.
-    uxTemplateCandidates: candidates,
     variants: effectiveVariants,
     pageGenomes: variantPlan.map(entry => entry.genome),
     variantPlan,
@@ -1057,9 +1058,9 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
       'Every form/filter field must be state-driven by shared; the generator will add explicit stateKey refs.',
       'Use userJourney.operationsInOrder and userJourney.recommendedStages to decide the order and purpose of sections/intentions.',
       'For multi-step pages, do not collapse the page into one generic form; represent the operational sequence with distinct intentions.',
-      'Pick the final UX structure from promptContext.uxTemplateCandidates (highest score first). Follow the chosen template userJourney, layoutGuidance and validationChecks; do not adopt a structure that its rejectsWhen forbids.',
+      'promptContext.variantPlan contains the ONLY allowed UX template for each genome. Follow its template.userJourney, template.layoutGuidance, template.wiring and template.validationChecks as hard requirements.',
       'Template defines structure; the UX guidance skill defines slot behavior. When they conflict, the template wins.',
-      'promptContext.variantPlan pins one DISTINCT template per variant/genome in order: variantPlan[0] is result.pageLayout (page11); variantPlan[1..] are result.pageVariants[] in the same order. Build each variant strictly from its assigned template (templateId + that template userJourney/layoutGuidance). Never reuse a template across variants and never produce more than variantPlan.length variants. All variants share the same pageId, commands and fields; only the structure differs.',
+      'promptContext.variantPlan pins one DISTINCT template per variant/genome in order: variantPlan[0] is result.pageLayout (page11); variantPlan[1..] are result.pageVariants[] in the same order. Build each variant strictly from its assigned template. Never reuse a template across variants and never produce more than variantPlan.length variants. All variants share the same pageId, commands and fields; only the structure differs.',
     ],
   };
 }
@@ -1214,6 +1215,41 @@ function repairUnknownLayoutActions(prepared: CfePreparedPage, layout: CfePageLa
     recordCreateWarning(`dropped unknown layout action(s) for ${prepared.page.pageId}: ${dropped.join('; ')}`);
   }
   return dropped.length > 0 ? { ...layout, sections } : layout;
+}
+
+// Section/organism/intention ids are structural only (nothing references them: wiring uses action
+// names, field refs, stateKeys and dataBinding ids), so renaming an LLM-duplicated id is safe.
+// Without this repair a duplicated section id fails the strict page11 validation and kills the
+// whole page (seen in 102049: two sections sharing sec_petManagement / sec_schedulingCapacity).
+function repairDuplicateLayoutIds(pageId: string, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const seen = new Set<string>([layout.layoutId]);
+  const renamed: string[] = [];
+  const uniqueId = (id: string, path: string): string => {
+    if (!seen.has(id)) { seen.add(id); return id; }
+    let suffix = 2;
+    while (seen.has(`${id}${suffix}`)) suffix++;
+    const next = `${id}${suffix}`;
+    seen.add(next);
+    renamed.push(`${path}: ${id} -> ${next}`);
+    return next;
+  };
+
+  const sections = layout.sections.map(section => ({
+    ...section,
+    id: uniqueId(section.id, `section:${section.sectionName}`),
+    organisms: section.organisms.map(organism => ({
+      ...organism,
+      id: uniqueId(organism.id, `organism:${organism.organismName}`),
+      intentions: organism.intentions.map(intent => ({
+        ...intent,
+        id: uniqueId(intent.id, `intent:${intent.intent}`),
+      })),
+    })),
+  }));
+
+  if (renamed.length === 0) return layout;
+  recordCreateWarning(`renamed duplicate layout id(s) for ${pageId}: ${renamed.join('; ')}`);
+  return { ...layout, sections };
 }
 
 function repairMissingLayoutI18n(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
@@ -1380,6 +1416,19 @@ function allowedLayoutFields(prepared: CfePreparedPage): Set<string> {
 function commandFields(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.map(item => isRecord(item) ? readString(item.name) : '').filter(Boolean);
+}
+
+function recordTechnicalIdLookupGaps(page: CfePagePlan, commands: Record<string, unknown>[]): void {
+  const lookupFields = new Set(commands
+    .filter(command => readString(command.kind) === 'query')
+    .flatMap(command => commandFieldRecords(command.output).map(field => field.name)));
+  for (const command of commands) {
+    if (readString(command.kind) === 'query') continue;
+    for (const field of commandFieldRecords(command.input)) {
+      if (field.presentation !== 'form' || !/Id$/i.test(field.name) || lookupFields.has(field.name)) continue;
+      recordCreateWarning(`L4 lookup gap for ${page.pageId}.${readString(command.commandName)}.${field.name}: no query output can populate a contextual selector`);
+    }
+  }
 }
 
 function deterministicLayoutFromBase(prepared: CfePreparedPage): CfePageLayoutDefinition {
@@ -1603,6 +1652,21 @@ function sharedStates(prepared: CfePreparedPage, layout?: CfePageLayoutDefinitio
         collection: queryDefaults.collection,
         defaultValue: queryDefaults.defaultValue,
       });
+    } else {
+      addState(states, {
+        stateKey: commandOutputStateKey(prepared.page.pageId, commandName),
+        name: `${commandName}Output`,
+        kind: 'commandOutput',
+        contractRef: { commandName, direction: 'output' },
+        defaultValue: null,
+      });
+      addState(states, {
+        stateKey: actionErrorStateKey(prepared.page.pageId, commandName),
+        name: `${commandName}Error`,
+        kind: 'actionError',
+        actionRef: commandName,
+        defaultValue: '',
+      });
     }
   }
 
@@ -1653,6 +1717,17 @@ function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown
         .map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
       outputStateKeys: kind === 'query' ? [queryDataStateKey(prepared.page.pageId, commandName)] : (stateKeys.has(commandOutputState) ? [commandOutputState] : []),
       statusStateKey: actionStatusStateKey(prepared.page.pageId, commandName),
+      ...(kind === 'command' ? {
+        errorStateKey: actionErrorStateKey(prepared.page.pageId, commandName),
+        feedback: {
+          successMessageKey: `action.${commandName}.success`,
+          errorMessageKey: `action.${commandName}.error`,
+          dismissible: true,
+        },
+        clearInputStateKeys: commandFieldRecords(command.input)
+          .filter(field => field.presentation === 'form' || field.presentation === 'selection')
+          .map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
+      } : {}),
       ...(refreshActionIds.length > 0 ? { refreshActionIds } : {}),
     });
   }
@@ -1698,7 +1773,7 @@ function layoutSupplementalState(prepared: CfePreparedPage, stateKey: string): R
   if (stateKey.includes('.output.')) {
     return { stateKey, name, kind: 'commandOutput', defaultValue: null };
   }
-  return { stateKey, name, kind: 'layoutState', defaultValue: '' };
+  throw new Error(`unbound layout state ${stateKey}: layout-only state must bind to a contract input, command output or query result`);
 }
 
 function validateSharedLayoutRefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, states: Record<string, unknown>[], actions: Record<string, unknown>[], initialLoads: Record<string, unknown>[]): void {
@@ -1710,7 +1785,7 @@ function validateSharedLayoutRefs(prepared: CfePreparedPage, layout: CfePageLayo
     const actionId = readString(action.actionId);
     const commandRef = readString(action.commandRef);
     if (commandRef && !commandNames.has(commandRef)) throw new Error(`shared action ${actionId} references unknown contract command ${commandRef}`);
-    for (const stateKey of [...readStringArray(action.inputStateKeys), ...readStringArray(action.outputStateKeys), readString(action.statusStateKey), readString(action.stateKey)].filter(Boolean)) {
+    for (const stateKey of [...readStringArray(action.inputStateKeys), ...readStringArray(action.outputStateKeys), readString(action.statusStateKey), readString(action.errorStateKey), readString(action.stateKey), ...readStringArray(action.clearInputStateKeys)].filter(Boolean)) {
       if (!stateKeys.has(stateKey)) throw new Error(`shared action ${actionId} references missing state ${stateKey}`);
     }
     for (const refreshActionId of readStringArray(action.refreshActionIds)) {
@@ -1761,8 +1836,6 @@ function enrichLayoutWithStateRefs(prepared: CfePreparedPage, layout: CfePageLay
             } else if (isQuery && outputField) {
               field.field = outputField;
               field.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
-            } else {
-              field.stateKey = layoutFieldStateKey(prepared.page.pageId, field);
             }
           }
           for (const field of intent.columns) {
@@ -1774,8 +1847,6 @@ function enrichLayoutWithStateRefs(prepared: CfePreparedPage, layout: CfePageLay
             } else if (inputField) {
               field.field = inputField;
               field.stateKey = inputStateKey(prepared.page.pageId, commandName, inputField);
-            } else {
-              field.stateKey = layoutFieldStateKey(prepared.page.pageId, field);
             }
           }
         }
@@ -1952,6 +2023,7 @@ function baseSharedStateKeys(pageId: string, commands: Record<string, unknown>[]
     keys.push(actionStatusStateKey(pageId, commandName));
     keys.push(...commandFieldRecords(command.input).map(field => inputStateKey(pageId, commandName, field.name)));
     if (readString(command.kind) === 'query') keys.push(queryDataStateKey(pageId, commandName));
+    else keys.push(commandOutputStateKey(pageId, commandName), actionErrorStateKey(pageId, commandName));
   }
   return unique(keys);
 }
@@ -2003,6 +2075,7 @@ function inputStateKey(pageId: string, commandName: string, fieldName: string): 
 function queryDataStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.data.${commandName}`; }
 function commandOutputStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.output.${commandName}`; }
 function actionStatusStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.action.${commandName}.status`; }
+function actionErrorStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.action.${commandName}.error`; }
 function businessContextStateKey(pageId: string, contextKey: string): string { return `ui.${pageId}.businessContext.${contextKey}`; }
 function inputStateName(commandName: string, fieldName: string): string { return `${commandName}${toPascalCase(fieldName)}`; }
 function queryStateName(commandName: string): string { return `${commandName}Data`; }
@@ -2451,6 +2524,13 @@ function frontendComponentTag(project: number, page: CfePagePlan, genome = 'page
 // page[ux][ui] genome. UX variants (item 4) vary the UX digit and keep UI=1: page11, page21, page31.
 const MAX_UX_VARIANTS = 3;
 function pageGenome(variantIndex: number): string { return `page${variantIndex + 1}1`; }
+
+function selectedTemplateId(prepared: CfePreparedPage, genome: string): string | undefined {
+  const variantPlan = Array.isArray(prepared.promptContext.variantPlan) ? prepared.promptContext.variantPlan : [];
+  const variant = variantPlan.find(item => isRecord(item) && readString(item.genome) === genome);
+  const template = variant && isRecord(variant.template) ? variant.template : undefined;
+  return template ? readString(template.id) || undefined : undefined;
+}
 
 function contractFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/contracts`, shortName: page.pageId, extension: '.defs.ts' }; }
 function sharedFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/shared`, shortName: page.pageId, extension: '.defs.ts' }; }
