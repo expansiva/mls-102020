@@ -25,6 +25,7 @@ import {
   type CfeL4OperationInput,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
+import { parseDefsSource } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentChangeFrontend/uxTemplates/selectUxTemplates.js';
 
 type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
@@ -2704,14 +2705,6 @@ function fieldRefs(values: string[]): string[] { return values.filter(value => v
 function inferModule(entityIds: string[], entityToModule: Map<string, string>, fallbackModule: string): string { return entityIds.map(id => entityToModule.get(id)).find(Boolean) || fallbackModule; }
 function normalizeEntityRefs(values: string[]): string[] { return unique(values.map(normalizeEntityRef).filter(Boolean)); }
 function normalizeEntityRef(value: string): string { return value.split('.')[0].trim(); }
-
-function parseDefsSource(content: string): { exportName: string; data: Record<string, unknown> } | null {
-  const exportMatch = content.match(/export\s+const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=/);
-  const start = content.indexOf('= ');
-  const end = content.lastIndexOf(' as const;');
-  if (!exportMatch || start === -1 || end === -1 || end <= start) return null;
-  try { const parsed = JSON.parse(content.slice(start + 2, end)); return isRecord(parsed) ? { exportName: exportMatch[1], data: parsed } : null; } catch { return null; }
-}
 
 async function readJsonFile(fileInfo: FileInfo): Promise<unknown> {
   try {

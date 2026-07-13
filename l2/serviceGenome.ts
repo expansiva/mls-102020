@@ -4,21 +4,21 @@ import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { getState, setState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
-import { AuraInitState, getAuraState, setAuraState, saveAuraProject, IAuraPage } from '/_102020_/l2/auraState.js';
+import { AuraInitState, getAuraState, setAuraState, saveAuraProject, IAuraPage } from '/_102020_/l2/aura/helpers/auraState.js';
 import { skills as listOfGroups } from '/_102020_/l2/skills/molecules/index.js';
 import { replaceComponentTag } from '/_102020_/l2/previewTextEditor.js';
 import { convertFileToTag, isPageFile } from '/_102020_/l2/utils.js';
 import { getLastOpenedFiles, saveOpenedFile } from '/_102027_/l2/libCommom.js';
 import { createModel } from '/_102027_/l2/libModel.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { dsIndexNameMap } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
+import { dsIndexNameMap } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
-import '/_102020_/l2/plugins/selectPage.js';
-import '/_102020_/l2/plugins/selectLayout.js';
-import '/_102020_/l2/plugins/selectLayoutRules.js';
-import '/_102020_/l2/plugins/selectDesignSystem.js';
-import '/_102020_/l2/plugins/selectMolecule.js';
+import '/_102020_/l2/aura/plugins/selectPage.js';
+import '/_102020_/l2/aura/plugins/selectLayout.js';
+import '/_102020_/l2/aura/plugins/selectLayoutRules.js';
+import '/_102020_/l2/aura/plugins/selectDesignSystem.js';
+import '/_102020_/l2/aura/plugins/selectMolecule.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -720,10 +720,10 @@ export class ServiceGenome102020 extends ServiceBase {
     private _renderContextStatusArea() {
         // The page picker works without a page in context — it's how one gets selected.
         if (this._selectedKnob === 'page') return html`
-            <plugins--select-page-102020
+            <aura--plugins--select-page-102020
                 .value=${this._pageValue}
                 .reloadToken=${this._pageReloadToken}
-            ></plugins--select-page-102020>
+            ></aura--plugins--select-page-102020>
         `;
         if (!this._isPageContext) return html`
             <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5">
@@ -744,18 +744,18 @@ export class ServiceGenome102020 extends ServiceBase {
                 const isRealLayout = !!this._layoutValue && this._layoutValue > 0 && this._layoutValue < this._layoutConfig.max;
                 return html`
                     <div class="flex flex-col gap-4">
-                        <plugins--select-layout-102020
+                        <aura--plugins--select-layout-102020
                             .value=${this._layoutValue}
                             .pageFile=${this._currentPageFile}
-                        ></plugins--select-layout-102020>
+                        ></aura--plugins--select-layout-102020>
                         ${isRealLayout ? html`
-                            <plugins--select-layout-rules-102020
+                            <aura--plugins--select-layout-rules-102020
                                 .projectId=${getAuraState().actualProject}
                                 .layout=${this._layoutValue}
                                 .module=${mod}
                                 .page=${page}
                                 .readOnly=${this._layoutValue === 1}
-                            ></plugins--select-layout-rules-102020>
+                            ></aura--plugins--select-layout-rules-102020>
                         ` : nothing}
                     </div>
                 `;
@@ -764,21 +764,21 @@ export class ServiceGenome102020 extends ServiceBase {
                 // Phase B — DS = styling. The editor reads/writes designSystems[ds].tokens and
                 // regenerates global.css on save. Knob: 0=All, 1..N=edit, last=Add.
                 return html`
-                    <plugins--select-design-system-102020
+                    <aura--plugins--select-design-system-102020
                         .projectId=${getAuraState().actualProject}
                         .value=${this._dsValue}
-                    ></plugins--select-design-system-102020>
+                    ></aura--plugins--select-design-system-102020>
                 `;
             case 'molecules':
                 return html`
-                    <plugins--select-molecule-102020
+                    <aura--plugins--select-molecule-102020
                         .group=${this._selectedMoleculeGroup}
                         .description=${this._selectedMoleculeGroupDescription}
                         .files=${this._selectedMoleculeFiles}
                         .value=${this._moleculesValue}
                         .replaceMode=${this._moleculeReplaceMode}
                         .error=${this._moleculeError}
-                    ></plugins--select-molecule-102020>
+                    ></aura--plugins--select-molecule-102020>
                 `;
             default:
                 return nothing;

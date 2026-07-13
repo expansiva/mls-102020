@@ -8,7 +8,7 @@ import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import { openElementInServiceDetails, saveOpenedFile } from '/_102027_/l2/libCommom.js';
 import { createModel } from '/_102027_/l2/libModel.js';
 import { collabImport } from '/_102027_/l2/collabImport.js';
-import { setAuraState, saveAuraProject, getAuraState, type IAuraPage } from '/_102020_/l2/auraState.js';
+import { setAuraState, saveAuraProject, getAuraState, type IAuraPage } from '/_102020_/l2/aura/helpers/auraState.js';
 
 export const collabEnvironment: CollabMessagesEnvironment = {
     getAgents,
