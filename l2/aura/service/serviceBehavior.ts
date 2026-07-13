@@ -9,8 +9,6 @@ import '/_102027_/l2/collabSelectKnob.js';
 import '/_102020_/l2/aura/plugins/selectWorkflow.js';
 import '/_102020_/l2/aura/plugins/selectRule.js';
 
-
-// ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
 const message_en = {
     svcTitle: 'Behavior',
@@ -33,8 +31,6 @@ const messages: Record<string, MessageType> = {
 };
 /// **collab_i18n_end**
 
-// ─── Types ───────────────────────────────────────────────────────────
-
 interface IModule {
     name: string;
     path: string;
@@ -47,8 +43,6 @@ interface IKnobConfig {
     labels: Record<number, string>;
     disabled?: boolean;
 }
-
-// ─── Service ─────────────────────────────────────────────────────────
 
 @customElement('aura--service--service-behavior-102020')
 export class ServiceBehavior102020 extends ServiceBase {
@@ -81,7 +75,7 @@ export class ServiceBehavior102020 extends ServiceBase {
         this.requestUpdate();
     }
 
-    // ─── State ────────────────────────────────────────────────────────
+    //State
 
     @state() private msg: MessageType = message_en;
 
@@ -96,7 +90,7 @@ export class ServiceBehavior102020 extends ServiceBase {
 
     @state() private _selectedKnob: string = 'workflow';
 
-    // ─── Data Loading ─────────────────────────────────────────────────
+    //Data Loading
 
     private async _loadData() {
         const project = getAuraState().actualProject;
@@ -118,8 +112,7 @@ export class ServiceBehavior102020 extends ServiceBase {
         return this._modules.find(m => m.name === actualModule) ?? null;
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────
-
+    //Helpers
     private get _knobValues(): Record<string, number | null> {
         return {
             workflow: this._workflowValue,
@@ -144,7 +137,7 @@ export class ServiceBehavior102020 extends ServiceBase {
         this.requestUpdate();
     }
 
-    // ─── Event Handlers ───────────────────────────────────────────────
+    //Event Handlers
 
     private _onKnobChange(key: string, e: CustomEvent) {
         this._selectedKnob = key;
@@ -157,7 +150,7 @@ export class ServiceBehavior102020 extends ServiceBase {
         this.requestUpdate();
     }
 
-    // ─── Lifecycle ────────────────────────────────────────────────────
+    //Lifecycle
 
     connectedCallback() {
         super.connectedCallback();
@@ -165,7 +158,7 @@ export class ServiceBehavior102020 extends ServiceBase {
         this._loadData();
     }
 
-    // ─── Render ───────────────────────────────────────────────────────
+    //Render
 
     createRenderRoot() { return this; }
 
@@ -181,7 +174,7 @@ export class ServiceBehavior102020 extends ServiceBase {
         `;
     }
 
-    // ─── Knob Row ─────────────────────────────────────────────────────
+    //Knob Row
 
     private _renderKnobRow() {
         return html`
@@ -242,7 +235,7 @@ export class ServiceBehavior102020 extends ServiceBase {
         `;
     }
 
-    // ─── Details Row ──────────────────────────────────────────────────
+    //Details Row
 
     private _onWorkflowConfig(e: CustomEvent) {
         const { min, max, labels } = e.detail;
