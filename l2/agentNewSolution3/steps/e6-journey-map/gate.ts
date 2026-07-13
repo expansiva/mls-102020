@@ -15,7 +15,7 @@ export const NS3_WORKSPACE_KINDS = ['workflow', 'operation', 'entityManagement']
 
 export type Ns3E6WorkspaceKind = typeof NS3_WORKSPACE_KINDS[number];
 
-// Consumer contract (agentChangeFrontend/cfeCreateShared.ts): workspaces are the
+// Consumer contract (agentChangeFrontend/helpers/.ts): workspaces are the
 // page-grouping unit — one page per workspace; the fields read are exactly
 // workspaceId, title, actor, kind, entity, workflowId, operationIds, purpose.
 export interface Ns3E6Workspace {

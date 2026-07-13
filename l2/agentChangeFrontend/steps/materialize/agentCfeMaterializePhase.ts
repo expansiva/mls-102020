@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentChangeFrontend/agentCfeMaterializePhase.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializePhase.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 // Two prompt modes handled by ONE agent (discriminated by the `mode` field in the prompt JSON):
 // - default (phase): hosts the materialization fan-out under itself plus a 'verify' step
@@ -10,18 +10,19 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
-import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/cfeCreateShared.js';
+import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import {
   buildCompileRepairHint,
   buildMissingCodeRepairHint,
   parseDefs,
   testPathForOutputPath,
-} from '/_102020_/l2/agentChangeFrontend/cfeMaterializeCore.js';
+  validateGeneratedPageQuality,
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import {
   compileMlsPathAndGetErrors,
   getContentByMlsPath,
   type GenStepArgs,
-} from '/_102020_/l2/agentChangeFrontend/cfeMaterializeStudio.js';
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
 
 interface MaterializePhaseArgs {
   planId: string;
@@ -55,7 +56,7 @@ export function createAgent(): IAgentAsync {
   return {
     agentName: AGENT_NAME,
     agentProject: 102020,
-    agentFolder: 'agentChangeFrontend',
+    agentFolder: 'agentChangeFrontend/steps/materialize',
     agentDescription: 'Launch one sequential materialization phase after its dependency barrier is complete',
     visibility: 'private',
     beforePromptStep,
@@ -174,6 +175,15 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   const testContent = await getContentByMlsPath(testPath);
   const typecheckErrors = testContent && testContent.trim() ? await compileMlsPathAndGetErrors(testPath) : [];
   errors.push(...typecheckErrors);
+  if (pipelineItem.type === 'l2_page' && defsContent) {
+    const sharedDefsPath = sharedDefsPathForPageOutput(outputPath);
+    const sharedDefs = sharedDefsPath ? await getContentByMlsPath(sharedDefsPath) : null;
+    if (!sharedDefs) {
+      errors.push(`shared defs missing for page quality validation: ${sharedDefsPath || outputPath}`);
+    } else {
+      errors.push(...validateGeneratedPageQuality(parseDefs(defsContent).data, parseDefs(sharedDefs).data, content));
+    }
+  }
   return { item, outputPath, errors, typecheck: testContent && testContent.trim() ? (typecheckErrors.length ? 'failed' : 'passed') : 'not-applicable' };
 }
 
@@ -183,6 +193,11 @@ function buildRepairHint(entry: BrokenItem): string {
   if (!entry.outputPath) return lines.join('\n');
   if (lines[0]?.startsWith('generated file missing')) return buildMissingCodeRepairHint(entry.outputPath, lines[0]);
   return buildCompileRepairHint(entry.outputPath, lines);
+}
+
+function sharedDefsPathForPageOutput(outputPath: string): string | null {
+  const match = outputPath.match(/^(.*\/web)\/(?:desktop|mobile)\/page\d+\/([^/]+)\.ts$/);
+  return match ? `${match[1]}/shared/${match[2]}.defs.ts` : null;
 }
 
 // Local copy of the ns3 findMutableParentStep pattern (skills/collab_messages.md): if the

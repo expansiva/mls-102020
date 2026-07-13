@@ -65,19 +65,8 @@ interface IModuleFrontendDef { navigation?: IConfigNavItem[]; routes?: IModuleRo
 // Prefers the new typed module <project>/l5/runtimeConfig.ts (imported → versioned cache +
 // web service). Falls back to the legacy <project>/l5/config.json (raw text + JSON.parse)
 // while the l5 build/serve is being wired up.
+// Single source of truth: <project>/l5/config.json (read from the stor).
 async function readWorkspaceConfig(project: number): Promise<IWorkspaceConfig | undefined> {
-    // 1) New format: l5/runtimeConfig.ts (module import).
-    try {
-        const storFile = mls.stor.files[mls.stor.getKeyToFiles(project, 5, 'runtimeConfig', '', '.ts')];
-        const isDev = !!storFile?.inLocalStorage;
-        const url = `/_${project}_/l5/runtimeConfig.js${isDev ? `?t=${Date.now()}` : ''}`;
-        const mod = await import(/* @vite-ignore */ url);
-        if (mod?.runtimeConfig?.projects) return mod.runtimeConfig as IWorkspaceConfig;
-    } catch (err) {
-        console.info('[readWorkspaceConfig] l5/runtimeConfig.ts not available, falling back to config.json', err);
-    }
-
-    // 2) Legacy fallback: l5/config.json (raw text).
     try {
         const key = mls.stor.getKeyToFiles(project, 5, 'config', '', '.json');
         const storFile = mls.stor.files[key];

@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentChangeFrontend/agentCfeMaterializeL2.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializeL2.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
@@ -7,26 +7,26 @@ import {
   parseMlsPath,
   parsePipelineFromContent,
   type GenStepArgs,
-} from '/_102020_/l2/agentChangeFrontend/cfeMaterializeStudio.js';
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
 import {
   isStale,
   layerRank,
   orderItems,
   testPathForOutputPath,
   type PipelineItem,
-} from '/_102020_/l2/agentChangeFrontend/cfeMaterializeCore.js';
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import {
   createAddStepIntent,
   createAgentStepPayload,
   createUpdateStatusIntent,
   listGeneratedCreatePages,
-} from '/_102020_/l2/agentChangeFrontend/cfeCreateShared.js';
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 
 export function createAgent(): IAgentAsync {
   return {
     agentName: 'agentCfeMaterializeL2',
     agentProject: 102020,
-    agentFolder: 'agentChangeFrontend',
+    agentFolder: 'agentChangeFrontend/steps/materialize',
     agentDescription: 'Materialize generated frontend L2 .defs.ts into .ts/.html before final status update',
     visibility: 'private',
     beforePromptStep,

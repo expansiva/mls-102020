@@ -22,7 +22,6 @@ import type {
 } from '/_102029_/l2/runtimeConfigTypes.js';
 // Relative path (not /_102029_/...) because this file runs standalone via tsx at publish:
 // tsx resolves relative .ts, but does not swap .js→.ts for path-mapped (/_XXX_/) runtime imports.
-import { serializeRuntimeConfig } from '../../../mls-102029/l2/runtimeConfigEmit.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 const ROOT = process.env.SAVE_CONFIG_ROOT ? path.resolve(process.env.SAVE_CONFIG_ROOT) : path.resolve(HERE, '../../../');
@@ -263,9 +262,8 @@ function main(): void {
   if (pages.length === 0) fail('no discovered page is materialized in l2; run the materialization first');
 
   const customize = l5.customize || {};
-  // The JSON config is a generated build/runtime artifact. Keep it outside the
-  // client repo to avoid duplicating l5/project.json and l5/runtimeConfig.ts.
-  const configPath = generatedConfigPath(clientId);
+  // Single source of truth: l5/config.json (read by the Studio apps, the publish and the runtime).
+  const configPath = path.join(clientRoot, 'l5', 'config.json');
   const config = (readJson<ProjectsConfig>(configPath) || {}) as ProjectsConfig;
 
   config.defaultProjectId = config.defaultProjectId || clientId;
@@ -342,9 +340,7 @@ function main(): void {
   };
 
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
-  const tsPath = path.join(clientRoot, 'l5', 'runtimeConfig.ts');
-  fs.writeFileSync(tsPath, serializeRuntimeConfig(config, clientId));
-  console.log(`[nodejsSaveRuntimeConfig:frontend] composed ${pages.length} page(s) for module '${moduleName}' → ${configPath} + ${tsPath}`);
+  console.log(`[nodejsSaveRuntimeConfig:frontend] composed ${pages.length} page(s) for module '${moduleName}' → ${configPath}`);
 }
 
 main();

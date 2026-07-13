@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentChangeFrontend/agentCfeMaterializeGen.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializeGen.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
@@ -14,7 +14,7 @@ import {
   normalizeGeneratedCode,
   testPathForOutputPath,
   type PipelineItem,
-} from '/_102020_/l2/agentChangeFrontend/cfeMaterializeCore.js';
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import {
   compileAndGetErrors,
   compileMlsPathAndGetErrors,
@@ -25,7 +25,7 @@ import {
   saveGeneratedTs,
   saveGeneratedTsByMlsPath,
   type GenStepArgs,
-} from '/_102020_/l2/agentChangeFrontend/cfeMaterializeStudio.js';
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
 
 interface ToolOutput {
   code: string;
@@ -37,7 +37,7 @@ export function createAgent(): IAgentAsync {
   return {
     agentName: AGENT_NAME,
     agentProject: 102020,
-    agentFolder: 'agentChangeFrontend',
+    agentFolder: 'agentChangeFrontend/steps/materialize',
     agentDescription: 'Generate one frontend L2 .ts file from an agentChangeFrontend .defs.ts pipeline item',
     visibility: 'private',
     beforePromptStep,

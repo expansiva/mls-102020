@@ -20,11 +20,17 @@ This matches the generated frontend pipeline: shared reads contract `.ts`, and p
 
 ## Configure
 
-Copy the sample and fill the local config. Do not commit the real token.
+The CLI reads the shared `mls-base/.env` by default. Keep the token there; `.env` is git-ignored.
 
-```sh
-cp materializeL2.config.sample.json materializeL2.config.json
+```env
+COLLAB_LLM_BASE_URL=https://llm.collab.codes
+COLLAB_LLM_TOKEN=...
+COLLAB_LLM_ORG_ID=Collab.codes
+MATERIALIZE_L2_MODEL_TYPE=codehigh
 ```
+
+The CLI still accepts a legacy JSON config through `--config <path>` or `MATERIALIZE_L2_CONFIG`, but
+the default path is the shared `.env`.
 
 ## Run
 
@@ -34,7 +40,7 @@ From `mls-base`:
 pnpm materializeL2 -- --self-test
 pnpm materializeL2 -- 102050 cafeFlow --dry-run --force
 pnpm materializeL2 -- 102050 cafeFlow --only aiSalesSummary --dry-run --force
-pnpm materializeL2 -- 102050 cafeFlow --config mls-102020/l1/agentMaterializeL2/materializeL2.config.json --check --force
+pnpm materializeL2 -- 102050 cafeFlow --check --force
 ```
 
 Flags: `--dry-run`, `--force`, `--only <substr>`, `--check`, `--config <path>`, `--root <path>`,

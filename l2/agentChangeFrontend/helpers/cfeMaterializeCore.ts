@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentChangeFrontend/cfeMaterializeCore.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.ts" enhancement="_blank"/>
 
 // Pure materialization core for agentChangeFrontend (.defs.ts -> .ts). It has no fs, no mls.* and
 // no DOM dependency so the Node runner and the Studio agent can reuse parser, ordering, staleness
@@ -37,6 +37,66 @@ export interface MaterializeEnv {
 }
 
 export interface GenResult { code: string; }
+
+/**
+ * Deterministic UX hygiene checks for a materialized page. They intentionally inspect only
+ * contracts present in the page/shared defs and generated page code; missing L4 data is not
+ * guessed here. The materialization phase feeds a failure back to the page generator.
+ */
+export function validateGeneratedPageQuality(pageDefinition: unknown, sharedDefinition: unknown, pageCode: string): string[] {
+  if (!isRecord(pageDefinition) || !isRecord(sharedDefinition)) return [];
+  const errors: string[] = [];
+  const pageId = stringValue(pageDefinition.pageId);
+  const layout = isRecord(pageDefinition.layout) ? pageDefinition.layout : null;
+  const sections = Array.isArray(layout?.sections) ? layout.sections.filter(isRecord) : [];
+  const i18n = isRecord(sharedDefinition.i18n) ? sharedDefinition.i18n : {};
+  const states = Array.isArray(sharedDefinition.states) ? sharedDefinition.states.filter(isRecord) : [];
+  const actions = Array.isArray(sharedDefinition.actions) ? sharedDefinition.actions.filter(isRecord) : [];
+  const stateByKey = new Map(states.map(state => [stringValue(state.stateKey), state]));
+
+  for (const state of states) {
+    if (stringValue(state.kind) === 'layoutState') errors.push(`layoutState without binding: ${stringValue(state.stateKey)}`);
+  }
+
+  for (const section of sections) {
+    for (const organism of arrayRecords(section.organisms)) {
+      for (const intent of arrayRecords(organism.intentions)) {
+        const title = stringValue(intent.titleKey);
+        const empty = stringValue(intent.emptyKey);
+        if (title && empty && stringValue(i18n[title]) && stringValue(i18n[title]) === stringValue(i18n[empty])) {
+          errors.push(`empty state repeats intention title: ${stringValue(intent.id)}`);
+        }
+        for (const field of [...arrayRecords(intent.fields), ...arrayRecords(intent.filters)]) {
+          const fieldName = stringValue(field.field);
+          const state = stateByKey.get(stringValue(field.stateKey));
+          if (/Id$/i.test(fieldName) && stringValue(state?.kind) === 'input' && stringValue(state?.presentation) === 'form') {
+            errors.push(`technical id is an editable text field: ${stringValue(intent.id)}.${fieldName}`);
+          }
+        }
+      }
+    }
+  }
+
+  for (const action of actions) {
+    if (stringValue(action.kind) !== 'command') continue;
+    const actionId = stringValue(action.actionId);
+    const feedback = isRecord(action.feedback) ? action.feedback : null;
+    const successKey = stringValue(feedback?.successMessageKey);
+    const errorKey = stringValue(feedback?.errorMessageKey);
+    if (!successKey || !errorKey || !stringValue(i18n[successKey]) || !stringValue(i18n[errorKey])) {
+      errors.push(`mutation feedback i18n missing: ${actionId}`);
+      continue;
+    }
+    if (!stringValue(action.errorStateKey) || !Array.isArray(action.clearInputStateKeys)) {
+      errors.push(`mutation feedback wiring incomplete: ${actionId}`);
+    }
+    if (pageCode && (!pageCode.includes(`this.msg['${successKey}']`) || !pageCode.includes(`this.msg['${errorKey}']`))) {
+      errors.push(`generated page does not render textual mutation feedback: ${actionId}`);
+    }
+  }
+
+  return errors.map(error => pageId ? `${pageId}: ${error}` : error);
+}
 
 export const CONTRACTS_102029: readonly string[] = [
   '_102029_/l2/collabLitElement.ts',
@@ -558,4 +618,12 @@ function assertName(rawName: string, fallback: string): string {
 
 function isRecord(value: unknown): value is Record<string, any> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function arrayRecords(value: unknown): Record<string, any>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
 }

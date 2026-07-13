@@ -161,6 +161,8 @@ For every action in actions[]:
 - If the action has outputStateKeys, write response.data, falling back to the state's defaultValue only when response.data is nullish. Use [] only for array output states and { items: [], total: 0 } only for paginated output states.
 - Query actions used in initialLoads must be safe to call without explicit params.
 - Command actions may have refreshActionIds. After a successful command response and output-state write, call the referenced query actions by their methodName from Definition.actions. Use the existing query methods so they run with silent BFF mode and update their queryResult states. Set command success only after the refresh calls complete; if a refresh fails, leave the command in error instead of showing success with stale data.
+- Command actions may have errorStateKey, feedback and clearInputStateKeys. On a failed response, store the backend AppError message in errorStateKey before setting error. On success, refresh first, then clear every clearInputStateKeys property/state and set success. Do not replace backend error text with a generic label.
+- feedback.successMessageKey and feedback.errorMessageKey are the textual, dismissible feedback contract used by page11. The success key describes the completed domain action; the error key is only a fallback when the backend did not provide an AppError message.
 - Handler wrappers must use runBlockingUiAction for command actions and may call query methods directly for query actions.
 
 ## Lifecycle

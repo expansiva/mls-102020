@@ -1,7 +1,7 @@
-/// <mls fileReference="_102020_/l2/agentChangeFrontend/agentCfeHelp.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/help/agentCfeHelp.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createAddStepIntent, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/cfeCreateShared.js';
+import { createAddStepIntent, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 
 interface HelpArgs {
   reason?: string;
@@ -12,7 +12,7 @@ export function createAgent(): IAgentAsync {
   return {
     agentName: 'agentCfeHelp',
     agentProject: 102020,
-    agentFolder: 'agentChangeFrontend',
+    agentFolder: 'agentChangeFrontend/steps/help',
     agentDescription: 'Return agentChangeFrontend CLI help and finish the task',
     visibility: 'private',
     beforePromptStep,

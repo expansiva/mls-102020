@@ -38,8 +38,7 @@ export function ns3UpdateStatusIntent(
   return intent;
 }
 
-// Parallel fan-out parent (collab-messages parallel system, same shape as
-// agentNewSolution2/ns2Shared.createParallelDynamicAgentStepIntent): the backend pre-allocates up
+// Parallel fan-out parent (collab-messages parallel system): the backend pre-allocates up
 // to maxParallel child slots under this parent, calls the agent's beforePromptStep once per compact
 // arg, reuses slots as items finish and DELETES finished children (task size stays small). The
 // parent auto-completes when every child is terminal — but a 'failed' child fails the parent, so
