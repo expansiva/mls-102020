@@ -6,6 +6,8 @@ import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { setProjectDetails, loadPluginProject, openElementInServiceDetails, deleteLocalProject } from '/_102027_/l2/libCommom.js';
 import { getAuraState, setAuraState, saveAuraProject, deleteAuraProject } from '/_102020_/l2/aura/helpers/auraState.js';
 import { convertFileToTag } from '/_102020_/l2/utils';
+import { getPath } from '/_102027_/l2/utils';
+
 import '/_102020_/l2/aura/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -176,9 +178,9 @@ export class PluginSelectProject extends StateLitElement {
                     let title = action.widget;
                     let getSvg: (() => unknown) | null = null;
                     try {
-                        const match = action.widget.match(/^_(\d+)_(.+)$/);
-                        if (match) {
-                            const mod = await import(`/_${match[1]}_/l2/${match[2]}.js`);
+                        const path = getPath(action.widget);
+                        if(path) {
+                            const mod = await import(`/_${path.project}/l2/${path.folder ? path.folder + '/' : ''}${path.shortName}.js`);
                             const pd = mod?.pluginData;
                             if (pd) {
                                 title = pd.title ?? title;
