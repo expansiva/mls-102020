@@ -10,6 +10,8 @@ This file is headless: it owns state, i18n, backend calls and handlers. It never
 
 Definition is the shared .defs.ts object:
 - pageId, pageName, moduleName, sourceKind, ownerIds, operationIds
+- baseClassName: precomputed deterministic ModulePascalPagePascalBase class name
+- routePattern: registered page route, with optional :param? segments when the page accepts route params
 - contractRef: points to contract .defs.ts and contract .ts
 - layoutRef: points to page11 .defs.ts
 - states[]: the complete shared/global state inventory
@@ -45,7 +47,8 @@ Generate:
   - setState, getState, subscribe, unsubscribe or initState only from /_102029_/l2/collabState.js when used
   - runBlockingUiAction only from /_102029_/l2/interactionRuntime.js when BFF click handlers are generated
   - contract types from /_{project}_/l2/{moduleName}/web/contracts/{pageName}.js, using only interfaces/types that exist in the contract .ts context
-- export class {ModulePascal}{PagePascal}Base extends CollabLitElement
+- export class Definition.baseClassName extends CollabLitElement. This name is precomputed: copy it
+  exactly. Never derive a name from pageName/title and never choose a class name yourself.
 
 Do not use customElement.
 Do not implement render().
@@ -141,6 +144,16 @@ For every action in actions[]:
 - Generate handlerName exactly as action.handlerName when present.
 - Set statusStateKey to "loading" before execBff, then "success" or "error".
 - Build params from action.inputStateKeys by reading mapped properties.
+- state.presentation === "form" is the only editable input. "selection" comes from the current
+  selected entity/context and "route" comes from the URL; never render either as a typed field.
+- Before an action call, parse Definition.routePattern against window.location.pathname and put each
+  action.routeParamInputStateKeys value into its mapped property/params. Decode URL segments safely.
+  Do not overwrite an already supplied contextual value with an empty string.
+- If a required route param is absent, do not call execBff. Set the action status to idle, keep the
+  query output at its default empty value and expose the existing empty-state UI instead of producing
+  a 400. This applies to initialLoads and manual refreshes alike.
+- action.selectedEntityInputStateKeys are contextual selection values. Include their mapped state
+  values in params when present, but never generate an editable form control for them.
 - Call execBff with action.routeKey when present; otherwise use "{moduleName}.{pageId}.{commandRef}". The route key is the first argument, not an option field.
 - Use contract input/output interfaces only if they exist in contract .ts context.
 - Write response data into action.outputStateKeys by mapping each stateKey to a declared property and calling setState.
@@ -166,7 +179,7 @@ disconnectedCallback:
 
 - If page11 references a stateKey that is not in Definition.states[], do not invent it.
 - If an action references an input/output stateKey that is missing from states[], leave a short TODO comment and keep code compiling.
-- Do not create manual input state for technical/runtime context such as workspaceId, actorSession, businessContext, currentWorkspace or systemDefault unless it is explicitly present in Definition.states[] as a user-facing input.
+- Do not create manual input state for technical/runtime context such as workspaceId, actorSession, businessContext, currentWorkspace or systemDefault unless it is explicitly present in Definition.states[]. Route and selected-entity states supplied by Definition are contextual browser inputs, not manual controls.
 - Business scope should come from visible company/unit context when the page provides it, or from the backend/session default; do not ask the user to type workspaceId as a business filter.
 - No local render state.
 - No DOM or HTML.

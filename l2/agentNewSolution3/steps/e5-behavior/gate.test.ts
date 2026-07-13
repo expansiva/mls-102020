@@ -9,6 +9,7 @@ import { runNs3Gate } from '/_102020_/l2/agentNewSolution3/helpers/ns3Gate.js';
 import {
   attachOperationDeterministic,
   attachWorkflowDeterministic,
+  computeE5WorkflowDemotions,
   E5ClassificationGateContext,
   E5OperationGateContext,
   E5WorkflowGateContext,
@@ -66,8 +67,13 @@ function validClassification(): Ns3E5ClassificationArtifact {
     operations: [
       { operationId: 'createOrder', title: 'Create order', actorId: 'attendant', entity: 'Order', kind: 'create', featureRefs: ['orderPos'], workflowId: 'orderLifecycle' },
       { operationId: 'updateOrderStatus', title: 'Update order status', actorId: 'attendant', entity: 'Order', kind: 'update', featureRefs: ['kitchenQueue'], workflowId: 'orderLifecycle' },
-      { operationId: 'manageMenuItems', title: 'Manage menu items', actorId: 'attendant', entity: 'MenuItem', kind: 'update', featureRefs: ['menuManage'] },
+      { operationId: 'createMenuItem', title: 'Create menu item', actorId: 'attendant', entity: 'MenuItem', kind: 'create', featureRefs: ['menuManage'] },
+      { operationId: 'updateMenuItem', title: 'Update menu item', actorId: 'attendant', entity: 'MenuItem', kind: 'update', featureRefs: ['menuManage'] },
+      { operationId: 'deleteMenuItem', title: 'Delete menu item', actorId: 'attendant', entity: 'MenuItem', kind: 'delete', featureRefs: ['menuManage'] },
       { operationId: 'browseMenuItems', title: 'Browse menu items', actorId: 'attendant', entity: 'MenuItem', kind: 'query', featureRefs: ['menuManage'] },
+    ],
+    managedEntities: [
+      { entity: 'MenuItem', deletionPolicy: 'delete' },
     ],
   }, { moduleName: 'cafeFlow' });
 }
@@ -77,6 +83,8 @@ const classificationContext: E5ClassificationGateContext = {
   actorIds: ['attendant'],
   entityIds: ['Order', 'MenuItem'],
   features,
+  entityDefs,
+  entityKinds: { Order: 'core', MenuItem: 'mdm' },
 };
 
 function validWorkflow(): Ns3E5WorkflowArtifact {
@@ -197,6 +205,123 @@ void test('e5 classification gate blocks an uncovered now feature and warns on s
   assert.ok(gate.warnings.some(issue => issue.code === 'classification.feature.uncovered' && issue.path === 'export'));
 });
 
+void test('e5 classification gate blocks a managed entity without a deletionPolicy entry', async () => {
+  const artifact = validClassification();
+  artifact.managedEntities = [];
+  const gate = await runNs3Gate({
+    stepId: 'e5-workflows-operations',
+    schema: classificationSchema,
+    artifact,
+    validate: item => validateE5Classification(item, classificationContext),
+  });
+  assert.equal(gate.ok, false);
+  assert.ok(gate.errors.some(issue => issue.code === 'classification.managedEntity.missing' && issue.path === 'MenuItem'));
+});
+
+void test('e5 classification gate blocks policy delete without a delete operation', async () => {
+  const artifact = validClassification();
+  artifact.operations = artifact.operations.filter(operation => operation.operationId !== 'deleteMenuItem');
+  const gate = await runNs3Gate({
+    stepId: 'e5-workflows-operations',
+    schema: classificationSchema,
+    artifact,
+    validate: item => validateE5Classification(item, classificationContext),
+  });
+  assert.equal(gate.ok, false);
+  assert.ok(gate.errors.some(issue => issue.code === 'classification.managedEntity.delete.missing'));
+});
+
+void test('e5 classification gate validates the inactivate policy against the statusEnum', async () => {
+  const artifact = validClassification();
+  artifact.operations = artifact.operations.filter(operation => operation.operationId !== 'deleteMenuItem');
+  artifact.managedEntities = [{ entity: 'MenuItem', deletionPolicy: 'inactivate', inactivationState: 'ghostState' }];
+  const gate = await runNs3Gate({
+    stepId: 'e5-workflows-operations',
+    schema: classificationSchema,
+    artifact,
+    validate: item => validateE5Classification(item, classificationContext),
+  });
+  assert.equal(gate.ok, false);
+  // MenuItem has no statusEnum in the fixture defs, so any state is unknown.
+  assert.ok(gate.errors.some(issue => issue.code === 'classification.managedEntity.inactivation.unknown'));
+});
+
+void test('e5 classification gate requires a reason for the immutable policy and forbids delete', async () => {
+  const artifact = validClassification();
+  artifact.managedEntities = [{ entity: 'MenuItem', deletionPolicy: 'immutable' }];
+  const gate = await runNs3Gate({
+    stepId: 'e5-workflows-operations',
+    schema: classificationSchema,
+    artifact,
+    validate: item => validateE5Classification(item, classificationContext),
+  });
+  assert.equal(gate.ok, false);
+  assert.ok(gate.errors.some(issue => issue.code === 'classification.managedEntity.immutable.reason'));
+  assert.ok(gate.errors.some(issue => issue.code === 'classification.managedEntity.immutable.conflict'));
+});
+
+void test('e5 workflow gate blocks self-transitions (102048 engulfment finding)', async () => {
+  const workflow = validWorkflow();
+  workflow.transitions.push({ from: 'draft', to: 'draft', on: 'updateOrderStatus' });
+  const gate = await runNs3Gate({
+    stepId: 'e5-workflows-operations',
+    schema: workflowSchema,
+    artifact: workflow,
+    validate: item => validateE5Workflow(item, workflowContext()),
+  });
+  assert.equal(gate.ok, false);
+  assert.ok(gate.errors.some(issue => issue.code === 'workflow.transition.self'));
+});
+
+void test('e5 finalize demotions: workflow-listed op without a real transition is demoted (create trigger stays)', () => {
+  const classification = validClassification();
+  // updateOrderStatus loses its real transitions; createOrder is the trigger (create) and stays.
+  const demotions = computeE5WorkflowDemotions([
+    { workflowId: 'orderLifecycle', operationIds: ['createOrder', 'updateOrderStatus'], transitions: [
+      { from: 'draft', to: 'draft', on: 'updateOrderStatus' },
+    ] },
+  ], classification);
+  assert.deepEqual(demotions, [{ workflowId: 'orderLifecycle', operationId: 'updateOrderStatus' }]);
+
+  // With a real transition, nothing is demoted.
+  const none = computeE5WorkflowDemotions([
+    { workflowId: 'orderLifecycle', operationIds: ['createOrder', 'updateOrderStatus'], transitions: [
+      { from: 'draft', to: 'sentToKitchen', on: 'updateOrderStatus' },
+    ] },
+  ], classification);
+  assert.deepEqual(none, []);
+});
+
+void test('e5 managed entities: mdm entity with workflow-owned writes still requires a policy; core with lifecycle only warns', async () => {
+  const artifact = validClassification();
+  // Move ALL MenuItem ops into a fake workflow (the engulfment pattern) and drop the policy.
+  artifact.workflows.push({ workflowId: 'menuLifecycle', title: 'Menu', actorId: 'attendant', primaryEntity: 'MenuItem', featureRefs: ['menuManage'], operationIds: ['createMenuItem', 'updateMenuItem', 'deleteMenuItem'] });
+  for (const operation of artifact.operations) {
+    if (operation.entity === 'MenuItem' && operation.kind !== 'query') operation.workflowId = 'menuLifecycle';
+  }
+  artifact.managedEntities = [];
+  const gate = await runNs3Gate({
+    stepId: 'e5-workflows-operations',
+    schema: classificationSchema,
+    artifact,
+    validate: item => validateE5Classification(item, classificationContext),
+  });
+  assert.equal(gate.ok, false);
+  assert.ok(gate.errors.some(issue => issue.code === 'classification.managedEntity.missing' && issue.path === 'MenuItem'));
+
+  // Core entity with statusEnum and standalone write: missing entry is only a warning.
+  const artifact2 = validClassification();
+  artifact2.operations.push({ operationId: 'updateOrderNotes', title: 'Update order notes', actorId: 'attendant', entity: 'Order', kind: 'update', featureRefs: ['orderPos'] });
+  const gate2 = await runNs3Gate({
+    stepId: 'e5-workflows-operations',
+    schema: classificationSchema,
+    artifact: artifact2,
+    validate: item => validateE5Classification(item, classificationContext),
+  });
+  assert.equal(gate2.ok, true, gate2.errors.map(issue => issue.message).join('; '));
+  assert.ok(gate2.warnings.some(issue => issue.code === 'classification.managedEntity.missing' && issue.path === 'Order'));
+});
+
 void test('e5 workflow gate blocks transitions referencing unknown states or operations', async () => {
   const workflow = validWorkflow();
   workflow.transitions.push({ from: 'ghostState', to: 'closed', on: 'createOrder' });
@@ -312,12 +437,12 @@ void test('e5 deterministic attach produces {module}.{pageId}.{commandName}', as
 
   // Standalone operation: pageId falls back to the operationId.
   const classification = validClassification();
-  const standalone = attachOperationDeterministic({ ...validOperation(), operationId: 'manageMenuItems' }, {
+  const standalone = attachOperationDeterministic({ ...validOperation(), operationId: 'updateMenuItem' }, {
     moduleName: 'cafeFlow',
-    classification: classification.operations[2],
+    classification: classification.operations.find(operation => operation.operationId === 'updateMenuItem')!,
     features,
   });
-  assert.equal(standalone.bffName, 'cafeFlow.manageMenuItems.manageMenuItems');
+  assert.equal(standalone.bffName, 'cafeFlow.updateMenuItem.updateMenuItem');
   assert.equal(standalone.capability.priority, 'soon');
 
   const workflowDefs = attachWorkflowDeterministic(validWorkflow(), {

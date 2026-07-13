@@ -10,6 +10,7 @@ This file extends the shared base class and only renders. It must not own state,
 
 Definition is the page11 .defs.ts object:
 - page metadata
+- baseClassName: the deterministic shared base class that this page must import and extend
 - navigationRefs
 - sections[] compatibility summary
 - layout.sections[] as the source of truth for render structure
@@ -40,7 +41,8 @@ Generate:
 - MLS header from target outputPath, with enhancement="_102020_/l2/enhancementAura".
 - import { html } from 'lit';
 - import { customElement } from 'lit/decorators.js';
-- import the exact base class from /_{project}_/l2/{moduleName}/web/shared/{pageName}.js
+- import Definition.baseClassName exactly from /_{project}_/l2/{moduleName}/web/shared/{pageName}.js.
+  The extension is always .js, never .ts.
 - @customElement tag from outputPath using the same rule as /_102020_/l2/utils.ts convertFileToTag:
   - Insert "-" before every uppercase letter that follows a lowercase letter or digit.
   - Lowercase the result.
@@ -48,7 +50,7 @@ Generate:
   - Append "-{project}" to the page shortName.
   - Example: folder cafeFlow/web/desktop/page11, page aiSalesSummary, project 102050 becomes cafe-flow--web--desktop--page11--ai-sales-summary-102050.
   - Never collapse camelCase into lowercase-only names such as aisalessummary.
-- export class {ModulePascal}DesktopPage11{PagePascal}Page extends {BaseClassName}
+- export class {ModulePascal}DesktopPage11{PagePascal}Page extends Definition.baseClassName
 - The only class method is render().
 
 Do not add @property fields.

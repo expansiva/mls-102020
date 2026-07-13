@@ -58,6 +58,8 @@ import { Ns3E3EntityArtifact, Ns3E3ModelArtifact, toPascalCase } from '/_102020_
 import {
   attachOperationDeterministic,
   attachWorkflowDeterministic,
+  computeE5WorkflowDemotions,
+  demoteE5OperationDefs,
   Ns3E5ClassificationArtifact,
   Ns3E5EntityDefsInfo,
   Ns3E5FeatureRef,
@@ -395,6 +397,8 @@ async function handleClassificationResult(
     actorIds: actorsRules.actors.map(actor => actor.actorId),
     entityIds: model.entities.map(entity => entity.entityId),
     features: toFeatureRefs(journeys),
+    entityDefs: await readEntityDefsInfo(moduleName, model),
+    entityKinds: Object.fromEntries(model.entities.map(entity => [entity.entityId, entity.kind])),
   };
   const schema = await readE5Schema('e5-classification.schema');
   let pipeline = await readNs3Pipeline(moduleName) || createNs3Pipeline(moduleName);
@@ -667,6 +671,66 @@ async function runE5Finalize(
     return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `items missing after repair round: ${missing.map(item => item.itemId).join(', ')}`)];
   }
 
+  // ── Deterministic reconciliation (102048 finding: workflow engulfment) ─────
+  // Operations listed in a workflow without causing any REAL transition (and not the create
+  // trigger) are demoted to standalone: classification + workflow defs + operation defs are
+  // rewritten. Only possible here — transitions exist only after the per-workflow calls.
+  const demotions = computeE5WorkflowDemotions(workflows, classification);
+  if (demotions.length > 0) {
+    const demotedIds = new Set(demotions.map(item => item.operationId));
+    for (const workflow of workflows) {
+      const toRemove = demotions.filter(item => item.workflowId === workflow.workflowId).map(item => item.operationId);
+      if (toRemove.length === 0) continue;
+      workflow.operationIds = workflow.operationIds.filter(id => !toRemove.includes(id));
+      workflow.transitions = workflow.transitions.filter(transition => transition.from !== transition.to || !demotedIds.has(transition.on));
+      await writeDefsArtifact(
+        { project: mls.actualProject || 0, level: 4, folder: 'workflows', shortName: workflow.workflowId, extension: '.defs.ts' },
+        `workflow${toPascalCase(workflow.workflowId)}`,
+        workflow,
+      );
+    }
+    for (const operation of operations) {
+      if (!demotedIds.has(operation.operationId)) continue;
+      const demoted = demoteE5OperationDefs(operation, moduleName);
+      Object.assign(operation, demoted);
+      await writeDefsArtifact(
+        { project: mls.actualProject || 0, level: 4, folder: 'operations', shortName: operation.operationId, extension: '.defs.ts' },
+        `operation${toPascalCase(operation.operationId)}`,
+        demoted,
+      );
+    }
+    for (const workflow of classification.workflows) {
+      workflow.operationIds = workflow.operationIds.filter(id => !demotedIds.has(id));
+    }
+    for (const operation of classification.operations) {
+      if (demotedIds.has(operation.operationId)) delete operation.workflowId;
+    }
+    await writeJsonArtifact(ns3PipelineArtifactFileInfo(moduleName, 'e5-classification', '.json'), classification);
+    await writeNs3Trace(moduleName, STEP_ID, AGENT_NAME, 1, { demotions }, `demoted to standalone (no real transition): ${demotions.map(item => `${item.operationId} (from ${item.workflowId})`).join(', ')}`);
+
+    // Re-run the classification invariants post-demotion: demoted entities may now require a
+    // managedEntities entry — the business decision cannot be silently skipped (the 102048 bypass).
+    const journeys = await readJsonArtifact<Ns3E2JourneysArtifact>(ns3PipelineArtifactFileInfo(moduleName, 'e2-journeys', '.json'), true);
+    const model = await readJsonArtifact<Ns3E3ModelArtifact>(ns3PipelineArtifactFileInfo(moduleName, 'e3-model', '.json'), true);
+    const actorsRules = await readE4Artifact(moduleName);
+    if (journeys && model) {
+      const recheck = validateE5Classification(classification, {
+        moduleName,
+        actorIds: actorsRules.actors.map(actor => actor.actorId),
+        entityIds: model.entities.map(entity => entity.entityId),
+        features: toFeatureRefs(journeys),
+        entityDefs: await readEntityDefsInfo(moduleName, model),
+        entityKinds: Object.fromEntries(model.entities.map(entity => [entity.entityId, entity.kind])),
+      });
+      const errors = recheck.issues.filter(issue => issue.severity === 'error');
+      if (errors.length > 0) {
+        const traceMsg = errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
+        await writeNs3Trace(moduleName, STEP_ID, AGENT_NAME, 2, { demotions, errors }, traceMsg);
+        return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `post-demotion classification invalid (business decision needed):\n${traceMsg}`)];
+      }
+    }
+  }
+
   await writeMarkdownArtifact(
     ns3PipelineArtifactFileInfo(moduleName, 'e5-behavior', '.md'),
     renderE5Markdown(classification, workflows, operations, { generatedAt: new Date().toISOString() }),
@@ -699,14 +763,8 @@ interface E5SharedGateInputs {
   entityDefs: Record<string, Ns3E5EntityDefsInfo>;
 }
 
-// Roster/entity/rule ids + entity defs read once per item run and shared by both gates.
-async function readSharedGateInputs(moduleName: string): Promise<E5SharedGateInputs> {
-  const journeys = await readJsonArtifact<Ns3E2JourneysArtifact>(ns3PipelineArtifactFileInfo(moduleName, 'e2-journeys', '.json'), true);
-  if (!journeys) throw new Error(`[${AGENT_NAME}] e2-journeys.json not found for ${moduleName}`);
-  const model = await readJsonArtifact<Ns3E3ModelArtifact>(ns3PipelineArtifactFileInfo(moduleName, 'e3-model', '.json'), true);
-  if (!model) throw new Error(`[${AGENT_NAME}] e3-model.json not found for ${moduleName}`);
-  const actorsRules = await readE4Artifact(moduleName);
-
+// Entity defs on disk (E3 output) indexed for the gates — fields + statusEnum only.
+async function readEntityDefsInfo(moduleName: string, model: Ns3E3ModelArtifact): Promise<Record<string, Ns3E5EntityDefsInfo>> {
   const entityDefs: Record<string, Ns3E5EntityDefsInfo> = {};
   for (const entity of model.entities) {
     const saved = await readJsonDefs<Ns3E3EntityArtifact>(`${moduleName}/ontology`, entity.entityId);
@@ -716,6 +774,18 @@ async function readSharedGateInputs(moduleName: string): Promise<E5SharedGateInp
       ...(saved.statusEnum?.length ? { statusEnum: [...saved.statusEnum] } : {}),
     };
   }
+  return entityDefs;
+}
+
+// Roster/entity/rule ids + entity defs read once per item run and shared by both gates.
+async function readSharedGateInputs(moduleName: string): Promise<E5SharedGateInputs> {
+  const journeys = await readJsonArtifact<Ns3E2JourneysArtifact>(ns3PipelineArtifactFileInfo(moduleName, 'e2-journeys', '.json'), true);
+  if (!journeys) throw new Error(`[${AGENT_NAME}] e2-journeys.json not found for ${moduleName}`);
+  const model = await readJsonArtifact<Ns3E3ModelArtifact>(ns3PipelineArtifactFileInfo(moduleName, 'e3-model', '.json'), true);
+  if (!model) throw new Error(`[${AGENT_NAME}] e3-model.json not found for ${moduleName}`);
+  const actorsRules = await readE4Artifact(moduleName);
+
+  const entityDefs = await readEntityDefsInfo(moduleName, model);
 
   return {
     actorIds: actorsRules.actors.map(actor => actor.actorId),

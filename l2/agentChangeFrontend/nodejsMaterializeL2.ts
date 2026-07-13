@@ -25,7 +25,7 @@ import {
   type PipelineItem,
   type PlannedItem,
 } from './cfeMaterializeCore.js';
-import { callCollabLlm, parseGenResult, type LlmConfig, type LlmResult } from './cfeMaterializeLlmClient.js';
+import { callCollabLlm, parseGenResult, type LlmConfig, type LlmResult } from './nodejsMaterializeLlmClient.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 let ROOT = process.env.MATERIALIZE_L2_ROOT ? path.resolve(process.env.MATERIALIZE_L2_ROOT) : path.resolve(HERE, '../../../');

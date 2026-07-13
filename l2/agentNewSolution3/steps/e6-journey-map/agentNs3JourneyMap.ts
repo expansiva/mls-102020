@@ -47,6 +47,7 @@ import { Ns3E2JourneysArtifact } from '/_102020_/l2/agentNewSolution3/steps/e2-j
 import { Ns3E3ModelArtifact } from '/_102020_/l2/agentNewSolution3/steps/e3-ontology/gate.js';
 import {
   E6GateContext,
+  deriveE6WorkspaceKinds,
   prepareE6JourneyMap,
   renderE6Markdown,
   repairE6WorkflowIds,
@@ -223,8 +224,13 @@ async function handleMapResult(
     return [ns3UpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', output.trace.join('\n') || 'E6 journey map returned failed')];
   }
 
-  // Deterministic attach: moduleName + note come from code, never from the LLM.
-  const artifact = repairE6WorkflowIds(prepareE6JourneyMap(output.result, { moduleName }), inputs.classification);
+  // Deterministic attaches: moduleName + note come from code, never from the LLM.
+  // Workspace kind is derived from the classification facts FIRST (the LLM label is not
+  // trusted — see deriveE6WorkspaceKinds), then workflowIds are inferred for workflow pages.
+  const artifact = repairE6WorkflowIds(
+    deriveE6WorkspaceKinds(prepareE6JourneyMap(output.result, { moduleName }), inputs.classification),
+    inputs.classification,
+  );
   const gateContext: E6GateContext = {
     moduleName,
     classificationWorkflowIds: inputs.classification.workflows.map(workflow => workflow.workflowId),

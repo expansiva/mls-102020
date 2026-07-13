@@ -20,10 +20,14 @@ Result rules:
 - actors: min 1, only ids from the provided actor list (the classification actorId first).
 - states: mirror the primary entity lifecycle — use ONLY values from its statusEnum (the full set,
   or a subset when the workflow covers part of the lifecycle). Never invent states.
-- transitions: [{from, to, on, by?, guard?}], min 1. "from"/"to" MUST be declared states. "on" MUST
-  be one of the workflow operationIds — every transition is CAUSED by an operation, never by time
-  or magic. "by" is the acting actorId. "guard" is a one-line condition when a business rule
-  constrains the transition.
+- transitions: [{from, to, on, by?, guard?}], min 1. "from"/"to" MUST be declared states AND must
+  DIFFER (from !== to): a self-transition is a gate ERROR — an operation that does not change the
+  state (a cadastral/data edit, or the creation itself) is NOT hosted by a transition. Creation is
+  the workflow trigger; it needs no transition. "on" MUST be one of the workflow operationIds —
+  every transition is CAUSED by an operation, never by time or magic. "by" is the acting actorId.
+  "guard" is a one-line condition when a business rule constrains the transition.
+  An operationId that causes no transition is allowed only for the create trigger — any other
+  operation without a real transition is demoted to standalone at finalize.
 - operationIds: EXACTLY the classification set (same ids, no additions, no omissions).
 - entities: min 1 — every entity the workflow touches, from the valid entity ids.
 - rulesApplied: the E4 ruleIds this workflow enforces, only from the provided rule list ([] if none).
@@ -33,8 +37,8 @@ Result rules:
   walking the related journey steps in order.
 
 The FIRST transition of the workflow should move the entity OUT of its initial state (the first
-value of the entity statusEnum). A self-transition in the initial state usually means E3 missed a
-pre-hand-off state — prefer modelling the real state change.
+value of the entity statusEnum). If you feel the need for a self-transition, the state model is
+wrong or the operation does not belong here — never emit one.
 
 Do NOT output pageId, capabilities, statusFrontend or statusBackend — they are attached
 deterministically by code after this call.

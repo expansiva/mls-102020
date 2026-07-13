@@ -42,9 +42,14 @@ interface BrokenItem {
   item: GenStepArgs;
   outputPath: string | null;
   errors: string[];
+  typecheck: 'not-applicable' | 'passed' | 'failed';
 }
 
 const AGENT_NAME = 'agentCfeMaterializePhase';
+// Bounded repair rounds after the initial fan-out (verify attempt 1). Set to 2 so the Studio's
+// effective budget (fan-out + 2 repairs = 3 tries) matches the CLI (nodejsMaterializeL2), which
+// converges on typical compile errors by feeding the tsc output back into the prompt.
+const MATERIALIZE_REPAIR_ROUNDS = 2;
 
 export function createAgent(): IAgentAsync {
   return {
@@ -105,67 +110,73 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 // fan-out) with attempt=2 and the compiler error as repairHint, which flows into
 // buildHumanPrompt through the existing parseGenStepArgs plumbing.
 async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args: MaterializeVerifyArgs): Promise<mls.msg.AgentIntent[]> {
-  const broken: BrokenItem[] = [];
+  const checkedItems: BrokenItem[] = [];
   for (const item of args.items) {
     const checked = await verifyItem(item);
-    if (checked.errors.length > 0) broken.push(checked);
+    checkedItems.push(checked);
   }
+  const broken = checkedItems.filter(checked => checked.errors.length > 0);
 
   if (broken.length === 0) {
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `all ${args.items.length} materialization item(s) verified`)];
+    const trace = checkedItems.map(checked => `${checked.item.planId}: ${checked.typecheck}`).join('; ');
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `all ${args.items.length} materialization item(s) verified; typechecks: ${trace}`)];
   }
 
   const summary = broken.map(entry => `${entry.item.planId}: ${entry.errors[0]}`).join('\n');
-  if (args.attempt >= 2) {
-    // Second round still broken: this is the final VISIBLE failure (fails the whole task).
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `repair budget exhausted (1/1):\n${summary}`)];
+  if (args.attempt > MATERIALIZE_REPAIR_ROUNDS) {
+    // Repair budget exhausted: this is the final VISIBLE failure (fails the whole task).
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `repair budget exhausted (${MATERIALIZE_REPAIR_ROUNDS}/${MATERIALIZE_REPAIR_ROUNDS}):\n${summary}`)];
   }
 
   // Anchor new steps on a non-terminal agent step (the phase step stays in_progress while its
   // children are open thanks to deferred completion; fall back if it was auto-completed).
+  const nextAttempt = args.attempt + 1;
+  const roundLabel = `${nextAttempt - 1}/${MATERIALIZE_REPAIR_ROUNDS}`;
   const anchor = findMutableParentStep(context, parentStep);
   const repairs = broken.map(entry => createAddStepIntent(context, anchor, createAgentStepPayload(
-    `${entry.item.planId}-repair`,
+    `${entry.item.planId}-repair-${nextAttempt}`,
     'agentCfeMaterializeGen',
-    `Repair ${entry.item.planId}`,
-    { planId: entry.item.planId, defPath: entry.item.defPath, attempt: 2, repairHint: buildRepairHint(entry) },
+    `Repair ${entry.item.planId} (${roundLabel})`,
+    { planId: entry.item.planId, defPath: entry.item.defPath, attempt: nextAttempt, repairHint: buildRepairHint(entry) },
     [],
     'sequential',
     'waiting_human_input',
   )));
-  const secondVerifyPlanId = `${args.planId}-2`;
-  const secondVerify = createAddStepIntent(context, anchor, createAgentStepPayload(
-    secondVerifyPlanId,
+  const nextVerifyPlanId = `${args.planId}-v${nextAttempt}`;
+  const nextVerify = createAddStepIntent(context, anchor, createAgentStepPayload(
+    nextVerifyPlanId,
     AGENT_NAME,
     'Verify materialization (after repair)',
-    { mode: 'verify', planId: secondVerifyPlanId, items: broken.map(entry => entry.item), attempt: 2 },
-    broken.map(entry => `${entry.item.planId}-repair`),
+    { mode: 'verify', planId: nextVerifyPlanId, items: broken.map(entry => entry.item), attempt: nextAttempt },
+    broken.map(entry => `${entry.item.planId}-repair-${nextAttempt}`),
     'sequential',
     'waiting_dependency',
   ));
   // Intent ORDER matters (parent auto-completion sweep): open steps first, completed status last.
   return [
     ...repairs,
-    secondVerify,
-    createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${broken.length} broken item(s), repair round started:\n${summary}`),
+    nextVerify,
+    createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${broken.length} broken item(s), repair round ${roundLabel} started:\n${summary}`),
   ];
 }
 
 async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   const defsContent = await getContentByMlsPath(item.defPath);
   const pipelineItem = defsContent ? parseDefs(defsContent).item : null;
-  if (!pipelineItem) return { item, outputPath: null, errors: [`pipeline not found in defs: ${item.defPath}`] };
+  if (!pipelineItem) return { item, outputPath: null, errors: [`pipeline not found in defs: ${item.defPath}`], typecheck: 'not-applicable' };
 
   const outputPath = pipelineItem.outputPath;
   const content = await getContentByMlsPath(outputPath);
-  if (!content || !content.trim()) return { item, outputPath, errors: [`generated file missing or empty: ${outputPath}`] };
+  if (!content || !content.trim()) return { item, outputPath, errors: [`generated file missing or empty: ${outputPath}`], typecheck: 'not-applicable' };
 
   const errors = [...await compileMlsPathAndGetErrors(outputPath)];
   const testPath = testPathForOutputPath(outputPath);
   const testContent = await getContentByMlsPath(testPath);
-  if (testContent && testContent.trim()) errors.push(...await compileMlsPathAndGetErrors(testPath));
-  return { item, outputPath, errors };
+  const typecheckErrors = testContent && testContent.trim() ? await compileMlsPathAndGetErrors(testPath) : [];
+  errors.push(...typecheckErrors);
+  return { item, outputPath, errors, typecheck: testContent && testContent.trim() ? (typecheckErrors.length ? 'failed' : 'passed') : 'not-applicable' };
 }
+
 
 function buildRepairHint(entry: BrokenItem): string {
   const lines = entry.errors.slice(0, 8);
@@ -243,7 +254,7 @@ function createFanoutStep(planId: string, title: string, total: number): mls.msg
     type: 'agent',
     stepId: 0,
     interaction: {
-      input: [{ type: 'system', content: '<!-- modelType: codeinstruct -->' }],
+      input: [{ type: 'system', content: '<!-- modelType: codehigh -->' }],
       cost: 0,
       trace: [`queued ${total} materialization item(s)`],
       payload: null,

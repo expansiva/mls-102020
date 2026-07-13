@@ -17,6 +17,7 @@ import {
   frontendQueryStateDefaults,
   hasL4OperationInputs,
   hasL4OperationOutputRefs,
+  frontendInputPresentation,
   isUserFacingOperationInput,
   l4OperationInputs,
   l4OperationOutputRefs,
@@ -390,10 +391,12 @@ function relaxPageLayoutSchema(pageLayoutSchema: any): void {
   pageLayoutSchema.required = ['pageId', 'layoutId', 'sections'];
   const sectionSchema = pageLayoutSchema.properties?.sections?.items;
   if (sectionSchema && typeof sectionSchema === 'object') {
-    sectionSchema.required = ['id', 'type', 'mode', 'order', 'organisms'];
+    // 'type' is not required: it has a deterministic default ('section'/'organism') applied during
+    // normalization, so requiring it only fails the tool call on harmless LLM omissions.
+    sectionSchema.required = ['id', 'mode', 'order', 'organisms'];
     const organismSchema = sectionSchema.properties?.organisms?.items;
     if (organismSchema && typeof organismSchema === 'object') {
-      organismSchema.required = ['id', 'type', 'organismName', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'intentions'];
+      organismSchema.required = ['id', 'organismName', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'intentions'];
     }
   }
 }
@@ -680,7 +683,6 @@ export function createUpdateStatusIntent(context: mls.msg.ExecutionContext, pare
 
 function recordCreateWarning(message: string): void {
   const full = `[agentCfeCreatePage] ${message}`;
-  console.warn(full);
   const w = window as any;
   if (!Array.isArray(w.__agentChangeFrontendCreateDiagnostics)) w.__agentChangeFrontendCreateDiagnostics = [];
   w.__agentChangeFrontendCreateDiagnostics.push(full);
@@ -783,7 +785,8 @@ function normalizeLayoutSection(value: unknown, path: string): CfeLayoutSection 
   const sectionName = optionalString(section.sectionName) || id.split('.').pop() || id;
   return {
     id,
-    type: assertString(section.type, `${path}.type`) === 'sectionTab' ? 'sectionTab' : 'section',
+    // type is optional in the relaxed tool schema; default to 'section' when the LLM omits it.
+    type: optionalString(section.type) === 'sectionTab' ? 'sectionTab' : 'section',
     sectionName,
     titleKey: optionalString(section.titleKey) || fallbackLayoutTitleKey(id),
     mode: assertString(section.mode, `${path}.mode`),
@@ -797,7 +800,8 @@ function normalizeLayoutOrganism(value: unknown, path: string): CfeLayoutOrganis
   const id = assertString(organism.id, `${path}.id`);
   return {
     id,
-    type: assertString(organism.type, `${path}.type`),
+    // type is optional in the relaxed tool schema; default to 'organism' when the LLM omits it.
+    type: optionalString(organism.type) || 'organism',
     organismName: assertString(organism.organismName, `${path}.organismName`),
     titleKey: optionalString(organism.titleKey) || fallbackLayoutTitleKey(id),
     purpose: assertString(organism.purpose, `${path}.purpose`),
@@ -1288,13 +1292,32 @@ function validateIntent(ids: Set<string>, i18nKeys: Set<string>, actions: Set<st
   if (intent.titleKey) assertI18nKey(i18nKeys, intent.titleKey, `${intent.id}.titleKey`);
   if (intent.emptyKey) assertI18nKey(i18nKeys, intent.emptyKey, `${intent.id}.emptyKey`);
   for (const action of [intent.action, intent.submitAction].filter(Boolean) as string[]) assertAction(actions, action, intent.id);
-  for (const field of [...intent.fields, ...intent.columns, ...intent.filters]) {
-    registerId(ids, field.id, `field:${field.id}`);
+  // Element ids only need to be unique within their own list. The same underlying field or
+  // action legitimately reuses its stable id across lists and intents (e.g. a field shown both
+  // as a form field and a list column, or a total surfaced by more than one operation on the
+  // page). Those references collapse to a single shared state downstream (addLayoutSupplementalStates
+  // dedupes by stateKey), so a page-global id set produced false "duplicate layout id" failures.
+  validateLayoutFieldGroup(intent.fields, 'field', i18nKeys, fields);
+  validateLayoutFieldGroup(intent.columns, 'column', i18nKeys, fields);
+  validateLayoutFieldGroup(intent.filters, 'filter', i18nKeys, fields);
+  validateLayoutActionGroup(intent.toolbar, 'toolbar', i18nKeys, actions);
+  validateLayoutActionGroup(intent.rowActions, 'rowAction', i18nKeys, actions);
+  validateLayoutActionGroup(intent.actions, 'action', i18nKeys, actions);
+}
+
+function validateLayoutFieldGroup(group: CfeLayoutField[], kind: string, i18nKeys: Set<string>, fields: Set<string>): void {
+  const groupIds = new Set<string>();
+  for (const field of group) {
+    registerId(groupIds, field.id, `${kind}:${field.id}`);
     assertI18nKey(i18nKeys, field.labelKey, `${field.id}.labelKey`);
     if (!fields.has(field.field)) throw new Error(`${field.id}.field references unknown field ${field.field}`);
   }
-  for (const action of [...intent.toolbar, ...intent.rowActions, ...intent.actions]) {
-    registerId(ids, action.id, `action:${action.id}`);
+}
+
+function validateLayoutActionGroup(group: CfeLayoutAction[], kind: string, i18nKeys: Set<string>, actions: Set<string>): void {
+  const groupIds = new Set<string>();
+  for (const action of group) {
+    registerId(groupIds, action.id, `${kind}:${action.id}`);
     assertI18nKey(i18nKeys, action.labelKey, `${action.id}.labelKey`);
     assertAction(actions, action.action, action.id);
   }
@@ -1446,7 +1469,11 @@ function deterministicOrganism(prepared: CfePreparedPage, operation: CfeOperatio
   const emptyKey = `${intentId}.empty`;
   i18n[intentTitleKey] = operation.title || humanizeId(operation.operationId);
   i18n[emptyKey] = 'Nenhum registro encontrado';
-  const fields = commandFields(command.input).map((field, fieldIndex) => deterministicField(`${intentId}.field.${field}`, field, fieldIndex, i18n));
+  // Only userInput fields are form controls. Route and selection values are browser context and
+  // remain in the contract/action state without being rendered as values the user can type.
+  const fields = commandFieldRecords(command.input)
+    .filter(field => field.presentation === 'form')
+    .map((field, fieldIndex) => deterministicField(`${intentId}.field.${field.name}`, field.name, fieldIndex, i18n));
   const columns = commandFields(command.output).map((field, fieldIndex) => deterministicField(`${intentId}.column.${field}`, field, fieldIndex, i18n));
   const actionKey = `${intentId}.action.${operation.operationId}`;
   i18n[actionKey] = operation.title || humanizeId(operation.operationId);
@@ -1500,6 +1527,8 @@ function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefini
     pageId: prepared.page.pageId,
     pageName: prepared.page.pageName,
     moduleName: prepared.page.moduleName,
+    baseClassName: `${toPascalCase(prepared.page.moduleName)}${toPascalCase(prepared.page.pageId)}Base`,
+    routePattern: pageRoutePattern(prepared.page, prepared.operations),
     sourceKind: prepared.page.sourceKind,
     ownerIds: prepared.page.ownerIds,
     operationIds: prepared.page.operationIds,
@@ -1554,6 +1583,8 @@ function sharedStates(prepared: CfePreparedPage, layout?: CfePageLayoutDefinitio
         stateKey: inputStateKey(prepared.page.pageId, commandName, field.name),
         name: inputStateName(commandName, field.name),
         kind: 'input',
+        source: field.source,
+        presentation: field.presentation,
         contractRef: { commandName, direction: 'input', field: field.name },
         defaultValue: defaultValueForField(field),
       });
@@ -1613,6 +1644,12 @@ function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown
       methodName: kind === 'query' ? `load${toPascalCase(commandName)}` : commandName,
       handlerName: `handle${toPascalCase(commandName)}Click`,
       inputStateKeys: commandFieldRecords(command.input).map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
+      routeParamInputStateKeys: commandFieldRecords(command.input)
+        .filter(field => field.presentation === 'route')
+        .map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
+      selectedEntityInputStateKeys: commandFieldRecords(command.input)
+        .filter(field => field.presentation === 'selection')
+        .map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
       outputStateKeys: kind === 'query' ? [queryDataStateKey(prepared.page.pageId, commandName)] : (stateKeys.has(commandOutputState) ? [commandOutputState] : []),
       statusStateKey: actionStatusStateKey(prepared.page.pageId, commandName),
       ...(refreshActionIds.length > 0 ? { refreshActionIds } : {}),
@@ -1896,9 +1933,14 @@ function defaultBusinessContextOriginRef(inputId: string, fieldRef: string): str
   return text.includes('unit') || text.includes('unidade') ? 'businessContext.activeUnitId' : 'businessContext.activeCompanyId';
 }
 
-function commandFieldRecords(value: unknown): { name: string; required?: boolean }[] {
+function commandFieldRecords(value: unknown): { name: string; required?: boolean; source?: string; presentation?: string }[] {
   if (!Array.isArray(value)) return [];
-  return value.map(item => isRecord(item) ? { name: readString(item.name), required: item.required === true } : { name: '' }).filter(item => item.name);
+  return value.map(item => isRecord(item) ? {
+    name: readString(item.name),
+    required: item.required === true,
+    source: readString(item.source),
+    presentation: readString(item.presentation) || 'form',
+  } : { name: '' }).filter(item => item.name);
 }
 
 function baseSharedStateKeys(pageId: string, commands: Record<string, unknown>[]): string[] {
@@ -2124,6 +2166,7 @@ function pageDefinition(page: CfePagePlan, operations: CfeOperationDef[]): Recor
   return {
     pageId: page.pageId,
     pageName: page.pageName,
+    baseClassName: `${toPascalCase(page.moduleName)}${toPascalCase(page.pageId)}Base`,
     actor: page.actorIds[0] || 'user',
     purpose: `Executar ${page.pageName}.`,
     capabilities: page.capabilities,
@@ -2538,8 +2581,18 @@ function contractFieldFromOperationInput(operation: CfeOperationDef, input: CfeL
     : { name: input.inputId, type: frontendTypeForUnresolvedRef(input.fieldRef, entities), required: input.required };
   out.name = input.inputId;
   out.required = input.required;
+  out.source = input.source;
+  out.presentation = frontendInputPresentation(input) || 'context';
   if (input.description) out.description = input.description;
   return out;
+}
+
+function pageRoutePattern(page: CfePagePlan, operations: CfeOperationDef[]): string {
+  const routeParams = unique(operations.flatMap(operation => l4OperationInputs(operation.data)
+    .filter(input => frontendInputPresentation(input) === 'route')
+    .map(input => input.inputId)));
+  const base = `/${page.moduleName}/${page.pageId}`;
+  return routeParams.reduce((route, inputId) => `${route}/:${inputId}?`, base);
 }
 
 function contractFieldsFromOutputRef(operation: CfeOperationDef, fallbackEntity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>, ref: string): Record<string, unknown>[] {
@@ -2626,6 +2679,8 @@ async function saveStorContent(fileInfo: FileInfo, source: string): Promise<void
   const key = mls.stor.getKeyToFile(fileInfo);
   let storFile = mls.stor.files[key];
   if (!storFile) storFile = await createStorFile({ ...fileInfo, source }, false, false, false);
+  if (storFile.status !== 'renamed' && storFile.status !== 'new') storFile.status = 'changed';
+  storFile.updatedAt = new Date().toISOString();
   await mls.stor.localStor.setContent(storFile, { contentType: 'string', content: source });
 }
 

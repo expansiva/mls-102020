@@ -20,6 +20,9 @@ import type {
   ProjectNavigationEntry,
   ProjectsConfig,
 } from '/_102029_/l2/runtimeConfigTypes.js';
+// Relative path (not /_102029_/...) because this file runs standalone via tsx at publish:
+// tsx resolves relative .ts, but does not swap .js→.ts for path-mapped (/_XXX_/) runtime imports.
+import { serializeRuntimeConfig } from '../../../mls-102029/l2/runtimeConfigEmit.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 const ROOT = process.env.SAVE_CONFIG_ROOT ? path.resolve(process.env.SAVE_CONFIG_ROOT) : path.resolve(HERE, '../../../');
@@ -29,6 +32,12 @@ function warn(msg: string): void { console.warn(`[nodejsSaveConfigJson:frontend]
 
 function readJson<T>(file: string): T | null {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) as T; } catch { return null; }
+}
+
+function generatedConfigPath(clientId: string): string {
+  const dir = path.join(ROOT, '.generated', 'configs');
+  fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, `mls-${clientId}.config.json`);
 }
 
 function projectRuntimeMetadata(l5: L5ProjectJson, clientId: string) {
@@ -82,7 +91,7 @@ function convertFileToTag(info: { shortName: string; project: number; folder?: s
   return `${folderPrefix}${kebabName}-${info.project}`;
 }
 
-interface DiscoveredPage { pageId: string; label: string; }
+interface DiscoveredPage { pageId: string; label: string; routeParams: string[]; }
 interface PageVariant {
   variantId: string;
   layout: string;
@@ -130,6 +139,16 @@ function discoverPages(clientRoot: string, moduleName: string): DiscoveredPage[]
 
   const workflows = listDefs('workflows');
   const operations = listDefs('operations');
+  const operationsById = new Map(operations.map(operation => [readString(operation.operationId), operation]));
+  const routeParamsFor = (operationIds: string[]): string[] => [...new Set(operationIds.flatMap(operationId => {
+    const operation = operationsById.get(operationId);
+    const inputs = operation && Array.isArray(operation.inputs) ? operation.inputs as Record<string, unknown>[] : [];
+    return inputs
+      .filter(input => readString(input?.source) === 'routeParam')
+      .map(input => readString(input?.inputId))
+      .filter(Boolean);
+  }))];
+  const page = (pageId: string, label: string, operationIds: string[]): DiscoveredPage => ({ pageId, label, routeParams: routeParamsFor(operationIds) });
   const pages: DiscoveredPage[] = [];
   const operationIdsUsedByWorkflow = new Set<string>();
   for (const workflow of workflows) for (const opId of readStringArray(workflow.operationIds)) operationIdsUsedByWorkflow.add(opId);
@@ -137,34 +156,38 @@ function discoverPages(clientRoot: string, moduleName: string): DiscoveredPage[]
   if (workspaces.length > 0) {
     const coveredOps = new Set<string>();
     const coveredWf = new Set<string>();
-    for (const ws of workspaces) { pages.push({ pageId: ws.pageId, label: ws.label }); ws.ops.forEach(o => coveredOps.add(o)); if (ws.wf) coveredWf.add(ws.wf); }
+    for (const ws of workspaces) { pages.push(page(ws.pageId, ws.label, [...ws.ops])); ws.ops.forEach(o => coveredOps.add(o)); if (ws.wf) coveredWf.add(ws.wf); }
     // Leftover owners not covered by any workspace keep a legacy per-owner page.
     for (const workflow of workflows) {
       const workflowId = readString(workflow.workflowId);
       if (!workflowId || coveredWf.has(workflowId)) continue;
-      pages.push({ pageId: toSafeShortName(readString(workflow.pageId) || workflowId), label: readString(workflow.title) || humanizeId(workflowId) });
+      pages.push(page(toSafeShortName(readString(workflow.pageId) || workflowId), readString(workflow.title) || humanizeId(workflowId), readStringArray(workflow.operationIds)));
     }
     for (const operation of operations) {
       const operationId = readString(operation.operationId);
       if (!operationId || operationIdsUsedByWorkflow.has(operationId) || coveredOps.has(operationId)) continue;
-      pages.push({ pageId: toSafeShortName(readString(operation.pageId) || operationId), label: readString(operation.title) || humanizeId(operationId) });
+      pages.push(page(toSafeShortName(readString(operation.pageId) || operationId), readString(operation.title) || humanizeId(operationId), [operationId]));
     }
   } else {
     for (const workflow of workflows) {
       const workflowId = readString(workflow.workflowId);
       if (!workflowId) continue;
-      pages.push({ pageId: toSafeShortName(readString(workflow.pageId) || workflowId), label: readString(workflow.title) || humanizeId(workflowId) });
+      pages.push(page(toSafeShortName(readString(workflow.pageId) || workflowId), readString(workflow.title) || humanizeId(workflowId), readStringArray(workflow.operationIds)));
     }
     for (const operation of operations) {
       const operationId = readString(operation.operationId);
       if (!operationId || operationIdsUsedByWorkflow.has(operationId)) continue;
-      pages.push({ pageId: toSafeShortName(readString(operation.pageId) || operationId), label: readString(operation.title) || humanizeId(operationId) });
+      pages.push(page(toSafeShortName(readString(operation.pageId) || operationId), readString(operation.title) || humanizeId(operationId), [operationId]));
     }
   }
 
   const seen = new Set<string>();
   return pages.filter(page => seen.has(page.pageId) ? false : (seen.add(page.pageId), true))
     .sort((a, b) => a.pageId.localeCompare(b.pageId));
+}
+
+function pageRoute(moduleName: string, pageId: string, routeParams: string[]): string {
+  return routeParams.reduce((route, param) => `${route}/:${param}?`, `/${moduleName}/${pageId}`);
 }
 
 function isMaterialized(clientRoot: string, moduleName: string, pageId: string): boolean {
@@ -199,7 +222,7 @@ function discoverPageVariants(clientRoot: string, clientId: string, moduleName: 
       variantId,
       layout,
       routePageId,
-      route: `/${moduleName}/${routePageId}`,
+      route: pageRoute(moduleName, routePageId, page.routeParams),
       source: `l2/${moduleName}/web/desktop/${layout}/${page.pageId}.ts`,
       definition: `l2/${moduleName}/web/desktop/${layout}/${page.pageId}.defs.ts`,
       componentTag: convertFileToTag({ project: Number(clientId), folder: `${moduleName}/web/desktop/${layout}`, shortName: page.pageId }),
@@ -215,8 +238,10 @@ function main(): void {
   if (!/^\d+$/.test(clientId)) fail('usage: tsx nodejsSaveConfigJson.ts <clientId>');
 
   const clientRoot = path.join(ROOT, `mls-${clientId}`);
-  const l5 = readJson<L5ProjectJson>(path.join(clientRoot, 'l5', 'project.json'));
-  if (!l5) fail(`cannot read ${path.join(clientRoot, 'l5', 'project.json')}`);
+  const runtimeL5Path = path.join(clientRoot, 'l5', 'runtime.project.json');
+  const l5Path = fs.existsSync(runtimeL5Path) ? runtimeL5Path : path.join(clientRoot, 'l5', 'project.json');
+  const l5 = readJson<L5ProjectJson>(l5Path);
+  if (!l5) fail(`cannot read ${l5Path}`);
 
   const signature = l5.masters?.frontend;
   if (!signature) fail('l5/project.json has no masters.frontend signature (run agentChangeFrontend or add it)');
@@ -238,7 +263,9 @@ function main(): void {
   if (pages.length === 0) fail('no discovered page is materialized in l2; run the materialization first');
 
   const customize = l5.customize || {};
-  const configPath = path.join(clientRoot, 'config.json');
+  // The JSON config is a generated build/runtime artifact. Keep it outside the
+  // client repo to avoid duplicating l5/project.json and l5/runtimeConfig.ts.
+  const configPath = generatedConfigPath(clientId);
   const config = (readJson<ProjectsConfig>(configPath) || {}) as ProjectsConfig;
 
   config.defaultProjectId = config.defaultProjectId || clientId;
@@ -271,6 +298,9 @@ function main(): void {
   // Frontend shared libs used by the generated l2 code and by the master frontend.
   config.projects['102027'] = config.projects['102027'] || { root: '../mls-102027', type: 'lib' };
   config.projects['102029'] = config.projects['102029'] || { root: '../mls-102029', type: 'lib' };
+  // 102036 (collab-messages base) is imported by 102027 (aiAgentOrchestration/aiAgentHelper),
+  // so it must be part of the client's project set (build + runtime).
+  config.projects['102036'] = config.projects['102036'] || { root: '../mls-102036', type: 'lib' };
   addL5Dependencies(config, l5, clientId);
 
   const client = config.projects[clientId];
@@ -294,7 +324,7 @@ function main(): void {
     pages: [
       ...pages.map((page): ProjectFrontendPageConfig => ({
         pageId: page.pageId,
-        route: `/${moduleName}/${page.pageId}`,
+        route: pageRoute(moduleName, page.pageId, page.routeParams),
         source: `l2/${moduleName}/web/desktop/page11/${page.pageId}.ts`,
         definition: `l2/${moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
         componentTag: convertFileToTag({ project: Number(clientId), folder: `${moduleName}/web/desktop/page11`, shortName: page.pageId }),
@@ -312,7 +342,9 @@ function main(): void {
   };
 
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
-  console.log(`[nodejsSaveConfigJson:frontend] composed ${pages.length} page(s) for module '${moduleName}' into ${configPath}`);
+  const tsPath = path.join(clientRoot, 'l5', 'runtimeConfig.ts');
+  fs.writeFileSync(tsPath, serializeRuntimeConfig(config, clientId));
+  console.log(`[nodejsSaveRuntimeConfig:frontend] composed ${pages.length} page(s) for module '${moduleName}' → ${configPath} + ${tsPath}`);
 }
 
 main();

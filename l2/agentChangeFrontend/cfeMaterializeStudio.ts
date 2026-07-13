@@ -80,8 +80,9 @@ export function getFileModified(
     const key = mls.stor.getKeyToFile({ project, level, folder, shortName, extension });
     const file = (mls.stor.files as Record<string, any>)[key];
     if (!file || file.status === 'deleted') return null;
+    if (file.status === 'new' || file.status === 'changed') return Number.MAX_SAFE_INTEGER;
     if (file.updatedAt) return Date.parse(file.updatedAt);
-    return file.status === 'new' || file.status === 'changed' ? Number.MAX_SAFE_INTEGER : null;
+    return null;
   } catch {
     return null;
   }
@@ -132,6 +133,8 @@ export async function saveGeneratedTs(
     if (!file) {
       file = await createStorFile({ ...fileInfo, source: content }, true, false, false);
     }
+    if (file.status !== 'renamed' && file.status !== 'new') file.status = 'changed';
+    file.updatedAt = new Date().toISOString();
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
     const model = await getGeneratedModel(project, level, folder, shortName, extension);
     if (model?.model && model.model.getValue?.() !== content) model.model.setValue(content);

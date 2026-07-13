@@ -8,7 +8,10 @@ export const E6_JOURNEY_MAP_SCHEMA_VERSION = '2026-07-07-ns3-e6-v1';
 // Deterministic note attached after the LLM call (never produced by the model).
 export const E6_JOURNEY_MAP_NOTE = 'Consolidated navigation map derived from workflows/operations stories (view, not source).';
 
-export const NS3_WORKSPACE_KINDS = ['workflow', 'operation'] as const;
+// Canonical workspace kinds — the consumer (Stage 2 template selection) depends on this enum:
+// 'entityManagement' selects list-first CRUD templates (tabular_classic); 'workflow' selects
+// process/queue templates; 'operation' is the residual (dashboards, reports, commands).
+export const NS3_WORKSPACE_KINDS = ['workflow', 'operation', 'entityManagement'] as const;
 
 export type Ns3E6WorkspaceKind = typeof NS3_WORKSPACE_KINDS[number];
 
@@ -93,6 +96,57 @@ export function repairE6WorkflowIds(
   return artifact;
 }
 
+// The workspace kind is DERIVABLE from the classification facts — never trusted from the LLM
+// (the 102051 run labeled entity CRUDs as "workflow", which rejected the list-first CRUD template
+// downstream by construction). Deterministic rule, applied after the LLM call:
+//   1. any operation owned by a workflow                     -> 'workflow'
+//   2. all standalone, create AND update on the workspace
+//      entity, other-entity operations read-only (query/view
+//      side lists like low-stock alerts don't demote a
+//      management page)                                      -> 'entityManagement'
+//   3. otherwise                                             -> 'operation'
+export function deriveE6WorkspaceKinds(
+  artifact: Ns3E6JourneyMapArtifact,
+  classification: {
+    workflows: { workflowId: string; operationIds: string[] }[];
+    operations: { operationId: string; workflowId?: string; kind?: string; entity?: string }[];
+  },
+): Ns3E6JourneyMapArtifact {
+  const ownerByOperation = new Map<string, string>();
+  for (const workflow of classification.workflows) {
+    for (const operationId of workflow.operationIds) ownerByOperation.set(operationId, workflow.workflowId);
+  }
+  const byId = new Map(classification.operations.map(operation => [operation.operationId, operation]));
+  for (const operation of classification.operations) {
+    if (operation.workflowId) ownerByOperation.set(operation.operationId, operation.workflowId);
+  }
+
+  for (const workspace of artifact.workspaces) {
+    const operations = workspace.operationIds
+      .map(operationId => byId.get(operationId))
+      .filter((operation): operation is NonNullable<typeof operation> => !!operation);
+    if (operations.length === 0) continue; // unknown operations: left for the gate to report
+
+    const hasWorkflowOperation = workspace.operationIds.some(operationId => ownerByOperation.has(operationId));
+    if (hasWorkflowOperation) {
+      workspace.kind = 'workflow';
+      continue;
+    }
+
+    const ownKinds = new Set(operations.filter(operation => operation.entity === workspace.entity).map(operation => operation.kind));
+    const foreignOpsReadOnly = operations.every(operation =>
+      operation.entity === workspace.entity || operation.kind === 'query' || operation.kind === 'view');
+    if (ownKinds.has('create') && ownKinds.has('update') && foreignOpsReadOnly) {
+      workspace.kind = 'entityManagement';
+      delete workspace.workflowId; // management pages never bind to a workflow
+      continue;
+    }
+
+    workspace.kind = 'operation';
+  }
+  return artifact;
+}
+
 export function prepareE6JourneyMap(input: unknown, context: Pick<E6GateContext, 'moduleName'>): Ns3E6JourneyMapArtifact {
   const record = isRecord(input) ? input : {};
   const workspaces = Array.isArray(record.workspaces) ? record.workspaces.filter(isRecord) : [];
@@ -169,6 +223,9 @@ export function validateE6Invariants(
       } else if (!knownWorkflows.has(workspace.workflowId)) {
         issues.push(errorIssue('workspace.workflow.unknown', `workspace ${workspace.workspaceId} references unclassified workflow ${workspace.workflowId}`, workspace.workspaceId));
       }
+    }
+    if (workspace.kind === 'entityManagement' && workspace.workflowId) {
+      issues.push(errorIssue('workspace.management.workflow', `workspace ${workspace.workspaceId} has kind "entityManagement" but declares workflowId ${workspace.workflowId} — management pages never bind to a workflow`, workspace.workspaceId));
     }
     if (!knownActors.has(workspace.actor)) {
       issues.push(errorIssue('workspace.actor.unknown', `workspace ${workspace.workspaceId}: actor ${workspace.actor} is not in the E4 roster`, workspace.workspaceId));

@@ -20,10 +20,14 @@ Language rule:
 
 The result must contain:
 - workspaces: FEW coherent workspaces. For each: workspaceId, title, actor (one roster actorId),
-  kind ("workflow" | "operation"), entity (the primary declared entity), workflowId (REQUIRED when
-  kind is "workflow" — copy the exact workflowId from the classification that owns the workspace
-  operations; do NOT leave it out even though the operations imply it), operationIds (at least 1, all from the classification) and purpose (ONE line:
-  what the actor accomplishes on this page).
+  kind ("workflow" | "operation" | "entityManagement"), entity (the primary declared entity),
+  workflowId (REQUIRED when kind is "workflow" — copy the exact workflowId from the classification
+  that owns the workspace operations; do NOT leave it out even though the operations imply it),
+  operationIds (at least 1, all from the classification) and purpose (ONE line:
+  what the actor accomplishes on this page). The kind is re-derived deterministically from the
+  classification after your answer (workflow-owned operations -> "workflow"; standalone
+  create+update on the workspace entity -> "entityManagement"; otherwise -> "operation") — declare
+  it coherently with that rule.
 - landings: for each actor, the FIRST workspace they open when entering the module
   ({ actorId, workspaceId, reason? }).
 - navigationEdges: the natural handoffs between workspaces ({ from, to, operationId?, description? }).
@@ -34,7 +38,10 @@ How to group (a workspace = one screen/page a specific actor works in):
    actors work different stages of the same workflow (e.g. attendant registers, kitchen prepares),
    split into one workspace per actor, each with the operations that actor uses.
 2. Standalone mdm/management operations group into management workspaces per entity (kind
-   "operation"): one page where the responsible actor maintains that entity.
+   "entityManagement"): ONE page where the responsible actor maintains that entity, hosting its
+   browse/create/update(/delete) operations together — Stage 2 renders these list-first (table,
+   row selection, add button). Other standalone groupings (dashboards, reports, direct commands)
+   keep kind "operation".
 3. Every classified operation must live in at least one workspace — an unassigned operation is a
    gate error that comes back to you as a retry.
 4. Do NOT create workspaces for actors, entities or features without operations, and do not repeat

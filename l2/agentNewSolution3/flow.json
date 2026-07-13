@@ -204,7 +204,7 @@
       },
       "gate": {
         "file": "steps/e5-behavior/gate.ts",
-        "checks": ["valid schemas (classification, workflow, operation)", "every non-never E2 feature realized by >=1 workflow/operation", "every workflow has non-empty operationIds and every referenced operation is classified", "workflow states align with the primary entity statusEnum/lifecycleStates", "transitions reference declared states and classified operations", "operation kind in create|update|delete|query|view", "reads/writes/entity resolve to E3 entities", "accessPattern.keyField is 'Entity.field' with a real field", "inputs sources valid; required inputs have inputId+fieldRef+source", "bffName == {module}.{pageId}.{commandName} (deterministic attach re-checked)"]
+        "checks": ["valid schemas (classification, workflow, operation)", "every non-never E2 feature realized by >=1 workflow/operation", "every workflow has non-empty operationIds and every referenced operation is classified", "workflow states align with the primary entity statusEnum/lifecycleStates", "transitions reference declared states and classified operations", "operation kind in create|update|delete|query|view", "reads/writes/entity resolve to E3 entities", "accessPattern.keyField is 'Entity.field' with a real field", "inputs sources valid; required inputs have inputId+fieldRef+source", "bffName == {module}.{pageId}.{commandName} (deterministic attach re-checked)", "every entity with standalone write operations has a managedEntities entry (deletionPolicy delete|inactivate|immutable)", "policy delete requires a delete operation; inactivate requires a statusEnum inactivationState + update operation; immutable requires a reason and forbids delete", "self-transitions (from == to) are a workflow gate error", "finalize demotes workflow-listed operations without a real transition (create trigger exempt) and re-validates managedEntities post-demotion", "managedEntities requirement scoped by E3 entity kind (mdm = error; core with statusEnum = warning)"]
       },
       "doneAnchor": "e5-done"
     },
@@ -222,7 +222,7 @@
       },
       "gate": {
         "file": "steps/e6-journey-map/gate.ts",
-        "checks": ["valid e6 schema", "every operation appears in >=1 workspace", "workspace workflowId/operationIds/actor/entity resolve", "unique workspaceIds", "every actor with now-priority behaviors has a landing (warning)", "edges reference existing pageIds (warning)"]
+        "checks": ["valid e6 schema", "every operation appears in >=1 workspace", "workspace workflowId/operationIds/actor/entity resolve", "unique workspaceIds", "every actor with now-priority behaviors has a landing (warning)", "edges reference existing pageIds (warning)", "workspace kind derived deterministically from the classification (workflow-owned ops -> workflow; standalone create+update on the entity -> entityManagement; else operation)", "entityManagement workspaces never declare workflowId"]
       },
       "doneAnchor": "e6-done"
     },
