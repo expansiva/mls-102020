@@ -180,7 +180,7 @@ export class PluginSelectProject extends StateLitElement {
                     try {
                         const path = getPath(action.widget);
                         if(path) {
-                            const mod = await import(`/_${path.project}/l2/${path.folder ? path.folder + '/' : ''}${path.shortName}.js`);
+                            const mod = await import(`/_${path.project}_/l2/${path.folder ? path.folder + '/' : ''}${path.shortName}.js`);
                             const pd = mod?.pluginData;
                             if (pd) {
                                 title = pd.title ?? title;
