@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/serviceProject.ts" enhancement="_102027_/l2/enhancementLit"/>
+/// <mls fileReference="_102020_/l2/aura/services/serviceProject.ts" enhancement="_102027_/l2/enhancementLit"/>
 
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
@@ -92,7 +92,7 @@ const DEVICE_PATH_MAP: Record<number, string> = {
 
 // ─── Service ─────────────────────────────────────────────────────────
 
-@customElement('service-project-102020')
+@customElement('aura--services--service-project-102020')
 export class ServiceProject102020 extends ServiceBase {
 
     public details: IService = {
@@ -101,7 +101,7 @@ export class ServiceProject102020 extends ServiceBase {
         position: 'left',
         tooltip: 'Project',
         visible: true,
-        widget: '_102020_serviceProject',
+        widget: '_102020_/l2/aura/services/serviceProject',
         level: [6],
     };
 

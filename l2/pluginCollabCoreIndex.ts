@@ -18,28 +18,28 @@ export class PluginCollabCoreIndex extends PluginBaseIndex {
                 scope: ['l3ServicesLeft'],
                 priority: 1,
                 auth: ['*'],
-                widget: '_102020_serviceGenome'
+                widget: '_102020_/l2/aura/services/serviceGenome'
             },
             {
                 category: 'Services',
                 scope: ['l6ServicesLeft'],
                 priority: 1,
                 auth: ['*'],
-                widget: '_102020_serviceExploreProjects'
+                widget: '_102020_/l2/aura/services/serviceExploreProjects'
             },
             {
                 category: 'Services',
                 scope: ['l5ServicesLeft'],
                 priority: 1,
                 auth: ['*'],
-                widget: '_102020_serviceProject'
+                widget: '_102020_/l2/aura/services/serviceProject'
             },
             {
                 category: 'Services',
                 scope: ['l4ServicesLeft'],
                 priority: 1,
                 auth: ['*'],
-                widget: '_102020_aura/service/serviceBehavior'
+                widget: '_102020_/l2/aura/services/serviceBehavior'
             },
             {
                 category: 'Services',

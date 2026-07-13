@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/serviceGenome.ts" enhancement="_102027_/l2/enhancementLit"/>
+/// <mls fileReference="_102020_/l2/aura/services/serviceGenome.ts" enhancement="_102027_/l2/enhancementLit"/>
 
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
@@ -90,7 +90,7 @@ const DISABLED_CONFIG = (key: string): IKnobConfig => ({
 
 // ─── Service ─────────────────────────────────────────────────────────
 
-@customElement('service-genome-102020')
+@customElement('aura--services--service-genome-102020')
 export class ServiceGenome102020 extends ServiceBase {
 
     public details: IService = {
@@ -99,7 +99,7 @@ export class ServiceGenome102020 extends ServiceBase {
         position: 'right',
         tooltip: 'Genome',
         visible: true,
-        widget: '_102020_serviceGenome',
+        widget: '_102020_/l2/aura/services/serviceGenome',
         level: [3],
     };
 

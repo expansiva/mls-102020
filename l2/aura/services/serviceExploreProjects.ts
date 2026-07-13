@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/serviceExploreProjects.ts" enhancement="_102027_/l2/enhancementLit"/>
+/// <mls fileReference="_102020_/l2/aura/services/serviceExploreProjects.ts" enhancement="_102027_/l2/enhancementLit"/>
 
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
@@ -132,7 +132,7 @@ const LOCAL_ORG_NAME = 'Local Projects';
 
 // ─── Service ─────────────────────────────────────────────────────────
 
-@customElement('service-explore-projects-102020')
+@customElement('aura--services--service-explore-projects-102020')
 export class ServiceExploreProjects102020 extends ServiceBase {
 
     public details: IService = {
@@ -141,7 +141,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
         position: 'left',
         tooltip: 'Explore Projects',
         visible: true,
-        widget: '_102020_serviceExploreProjects',
+        widget: '_102020_/l2/aura/services/serviceExploreProjects',
         level: [6],
     };
 
