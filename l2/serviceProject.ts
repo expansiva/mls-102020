@@ -189,6 +189,16 @@ export class ServiceProject102020 extends ServiceBase {
             && this._moduleValue <= this._modules.length;
     }
 
+    // Stable IProject reference for the selectLanguage plugin — a fresh object literal on
+    // every render would retrigger the plugin's willUpdate (identity change) in a loop.
+    private _projectRef: { project: number; name: string; doSelect: boolean } | null = null;
+    private get _selectedProjectRef(): { project: number; name: string; doSelect: boolean } | null {
+        const project = getAuraState().actualProject;
+        if (!project) return (this._projectRef = null);
+        if (this._projectRef?.project !== project) this._projectRef = { project, name: '', doSelect: true };
+        return this._projectRef;
+    }
+
     // Language knob config comes from the selected module's l4/<module>/module.defs.ts.
     private async _initLangConfig(): Promise<void> {
         const project = getAuraState().actualProject;
@@ -406,10 +416,9 @@ export class ServiceProject102020 extends ServiceBase {
                     ></plugins--select-module-102020>
                 `;
             case 'language': {
-                const project = getAuraState().actualProject;
                 return html`
                     <plugins--select-language-102020
-                        .selectedProject=${project ? { project, name: '', doSelect: true } : null}
+                        .selectedProject=${this._selectedProjectRef}
                         .selectedModule=${this._selectedModule?.name ?? getAuraState().actualModule}
                         .value=${this._langValue}
                     ></plugins--select-language-102020>

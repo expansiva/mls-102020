@@ -122,13 +122,23 @@ export class PluginSelectLanguage extends StateLitElement {
         this._unsubTasks?.();
     }
 
+    // Reload guard by VALUE (project id + module name): parents may pass a fresh
+    // selectedProject object each render, and reloading on identity alone loops.
+    private _loadedKey: string | null = null;
+
     willUpdate(changed: Map<string, unknown>) {
         if (changed.has('selectedProject') || changed.has('selectedModule')) {
-            this._languages = [];
-            this._search = '';
-            this._addSearch = '';
-            this._addSelected = [];
-            if (this.selectedProject && this.selectedModule) this._loadLanguages();
+            const key = this.selectedProject && this.selectedModule
+                ? `${this.selectedProject.project}/${this.selectedModule}`
+                : null;
+            if (key !== this._loadedKey) {
+                this._loadedKey = key;
+                this._languages = [];
+                this._search = '';
+                this._addSearch = '';
+                this._addSelected = [];
+                if (key) this._loadLanguages();
+            }
         }
         if (changed.has('value')) {
             this._search = '';
