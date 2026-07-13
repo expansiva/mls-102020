@@ -124,47 +124,48 @@ async function getPaths(languages: { code: string, name: string }[], project: nu
     if (!project) throw new Error(`[getPaths] invalid project`);
     // Languages are per module — never touch the whole project by accident.
     if (!moduleName) throw new Error(`[getPaths] moduleName is required`);
-    const module = await import(`/_${project}_/l2/project.js`);
-    if (!module?.projectConfig?.modules) throw new Error(`[getPaths] no modules configured in project`);
-    const modules: { name: string, path: string }[] = module.projectConfig.modules.filter((m: { name: string }) => m.name === moduleName);
-    if (modules.length === 0) throw new Error(`[getPaths] module not found in project: ${moduleName}`);
 
+    const sharedFolder = await getSharedFolder(project, moduleName);
     const result: { languages: string[], fileReference: string }[] = [];
 
-    for (const mod of modules) {
-  
-        const moduleConfig = await import(`/_${project}_/l2/${mod.name}/module.js`);
-        if (!moduleConfig?.skills) continue;
+    const sharedFiles = Object.values(mls.stor.files).filter((f: mls.stor.IFileInfo) =>
+        f.project === project &&
+        f.folder === sharedFolder &&
+        f.extension === '.ts'
+    );
 
-        const sharedFolder = `${moduleConfig.skills.web.sharedPath}`
-            .replace(/^\/?_\d+_\/l2\//, '')
-            .replace(/^\/|\/$/g, '');
+    for (const storFile of sharedFiles as mls.stor.IFileInfo[]) {
+        const model = await storFile.getOrCreateModel();
+        if (!model) continue;
+        const source: string = model.model.getValue();
 
-        const sharedFiles = Object.values(mls.stor.files).filter((f: mls.stor.IFileInfo) =>
-            f.project === project &&
-            f.folder === sharedFolder &&
-            f.extension === '.ts'
-        );
+        const presentLangs = languages
+            .filter(lang => _hasLanguageInI18nBlock(source, lang.code))
+            .map(lang => lang.code);
 
-        for (const storFile of sharedFiles as mls.stor.IFileInfo[]) {
-            const model = await storFile.getOrCreateModel();
-            if (!model) continue;
-            const source: string = model.model.getValue();
+        if (presentLangs.length === 0) continue;
 
-            const presentLangs = languages
-                .filter(lang => _hasLanguageInI18nBlock(source, lang.code))
-                .map(lang => lang.code);
-
-            if (presentLangs.length === 0) continue;
-
-            // @ts-ignore
-            const fileReference = mls.stor.convertFileToFileReference(storFile);
-            result.push({ languages: presentLangs, fileReference });
-        }
-
+        // @ts-ignore
+        const fileReference = mls.stor.convertFileToFileReference(storFile);
+        result.push({ languages: presentLangs, fileReference });
     }
 
     return result;
+}
+
+// Legacy modules declare skills.web.sharedPath in l2/<module>/module.js; NS2 modules have
+// no module.js and follow the l2/<module>/web/shared convention (see cfeCreateShared).
+async function getSharedFolder(project: number, moduleName: string): Promise<string> {
+    try {
+        const moduleConfig = await import(`/_${project}_/l2/${moduleName}/module.js`);
+        const sharedPath = moduleConfig?.skills?.web?.sharedPath;
+        if (sharedPath) {
+            return `${sharedPath}`
+                .replace(/^\/?_\d+_\/l2\//, '')
+                .replace(/^\/|\/$/g, '');
+        }
+    } catch { /* no module.js — NS2 module */ }
+    return `${moduleName}/web/shared`;
 }
 
 function _hasLanguageInI18nBlock(source: string, lang: string): boolean {
