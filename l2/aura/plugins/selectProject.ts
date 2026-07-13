@@ -389,10 +389,7 @@ export class PluginSelectProject extends StateLitElement {
         this._selectedPlugin = item.action.widget;
         const path = getPath(item.action.widget);
         if (!path) return;
-        const storFileItem = Object.values(mls.stor.files as Record<string, any>)
-            .find((f: any) => f.project === Number(path.project) && f.shortName === path.shortName && f.folder === path.folder);
-        if (!storFileItem) return;
-        const tag = convertFileToTag(storFileItem);
+        const tag = convertFileToTag(path);
         const el = document.createElement(tag);
         el.setAttribute('autoPrepare', 'true');
         openElementInServiceDetails(el);
