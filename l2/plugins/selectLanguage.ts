@@ -4,13 +4,13 @@ import { html } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
-import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { readModuleLanguages, writeModuleLanguages } from '/_102020_/l2/moduleLanguages.js';
 import { languages as allLanguages, findLanguageByCode, ICollabLanguage } from '/_102027_/l2/collabLanguages.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
-import { getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
+import { getActualLanguage, setActualLanguage, saveAuraProject } from '/_102020_/l2/auraState.js';
 import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
 import { ITask, setTask, getTask, getTasksByScope, hasRunning, clearScope, subscribeTaskManager } from '/_102020_/l2/taskManager.js';
 import '/_102020_/l2/plugins/navHeader.js';
@@ -19,20 +19,21 @@ import '/_102020_/l2/plugins/navHeader.js';
 /// **collab_i18n_start**
 const message_en = {
     title: 'Language',
-    desc: 'The language defines the locale used for i18n content generation. Each language produces translated variations of the project pages.',
+    desc: 'The language defines the locale used for i18n content generation. Each language produces translated variations of the module pages.',
     needsProject: 'Select a project first to see the available languages.',
+    needsModule: 'Select a module first to see the available languages.',
     allTitle: 'All Languages',
-    allDesc: 'Languages configured for this project.',
+    allDesc: 'Languages configured for this module.',
     customTitle: 'Add Language',
-    customDesc: 'Add a new language to this project.',
-    noLanguages: 'No languages configured for this project.',
+    customDesc: 'Add a new language to this module.',
+    noLanguages: 'No languages configured for this module.',
     noResults: 'No languages match your search.',
     searchPlaceholder: 'Search languages…',
     add: 'Add',
     loading: 'Loading languages…',
     createNew: 'Add Language',
     removeTitle: 'Remove Language',
-    removeDesc: 'This language will be permanently removed from the selected project.',
+    removeDesc: 'This language will be permanently removed from the selected module.',
     removeBtn: 'Remove',
     followTask: 'Follow task',
 };
@@ -41,39 +42,41 @@ const messages: Record<string, MessageType> = {
     en: message_en,
     pt: {
         title: 'Idioma',
-        desc: 'O idioma define o locale usado para geração de conteúdo i18n. Cada idioma produz variações traduzidas das páginas do projeto.',
+        desc: 'O idioma define o locale usado para geração de conteúdo i18n. Cada idioma produz variações traduzidas das páginas do módulo.',
         needsProject: 'Selecione um projeto primeiro para ver os idiomas disponíveis.',
+        needsModule: 'Selecione um módulo primeiro para ver os idiomas.',
         allTitle: 'Todos os Idiomas',
-        allDesc: 'Idiomas configurados neste projeto.',
+        allDesc: 'Idiomas configurados neste módulo.',
         customTitle: 'Adicionar Idioma',
-        customDesc: 'Adicione um novo idioma a este projeto.',
-        noLanguages: 'Nenhum idioma configurado neste projeto.',
+        customDesc: 'Adicione um novo idioma a este módulo.',
+        noLanguages: 'Nenhum idioma configurado neste módulo.',
         noResults: 'Nenhum idioma corresponde à sua busca.',
         searchPlaceholder: 'Buscar idiomas…',
         add: 'Adicionar',
         loading: 'Carregando idiomas…',
         createNew: 'Adicionar Idioma',
         removeTitle: 'Remover Idioma',
-        removeDesc: 'Este idioma será removido permanentemente do projeto selecionado.',
+        removeDesc: 'Este idioma será removido permanentemente do módulo selecionado.',
         removeBtn: 'Remover',
         followTask: 'Acompanhar task',
     },
     es: {
         title: 'Idioma',
-        desc: 'El idioma define el locale para la generación de contenido i18n. Cada idioma produce variaciones traducidas de las páginas del proyecto.',
+        desc: 'El idioma define el locale para la generación de contenido i18n. Cada idioma produce variaciones traducidas de las páginas del módulo.',
         needsProject: 'Seleccione un proyecto primero para ver los idiomas disponibles.',
+        needsModule: 'Seleccione un módulo primero para ver los idiomas.',
         allTitle: 'Todos los Idiomas',
-        allDesc: 'Idiomas configurados en este proyecto.',
+        allDesc: 'Idiomas configurados en este módulo.',
         customTitle: 'Agregar Idioma',
-        customDesc: 'Agregue un nuevo idioma a este proyecto.',
-        noLanguages: 'No hay idiomas configurados en este proyecto.',
+        customDesc: 'Agregue un nuevo idioma a este módulo.',
+        noLanguages: 'No hay idiomas configurados en este módulo.',
         noResults: 'Ningún idioma coincide con su búsqueda.',
         searchPlaceholder: 'Buscar idiomas…',
         add: 'Agregar',
         loading: 'Cargando idiomas…',
         createNew: 'Agregar Idioma',
         removeTitle: 'Eliminar Idioma',
-        removeDesc: 'Este idioma será eliminado permanentemente del proyecto seleccionado.',
+        removeDesc: 'Este idioma será eliminado permanentemente del módulo seleccionado.',
         removeBtn: 'Eliminar',
         followTask: 'Seguir tarea',
     },
@@ -95,6 +98,7 @@ interface IProject {
 export class PluginSelectLanguage extends StateLitElement {
 
     @property({ attribute: false }) selectedProject: IProject | null = null;
+    @property({ attribute: false }) selectedModule: string | null = null;
     @property({ attribute: false }) value: number | null = null;
 
     @state() private _languages: string[] = [];
@@ -103,7 +107,6 @@ export class PluginSelectLanguage extends StateLitElement {
     @state() private _addSearch: string = '';
     @state() private _addSelected: string[] = [];
     @state() private _dropdownOpen: boolean = false;
-    @state() config: mls.l5_common.ProjectConfig | undefined;
 
     private _unsubTasks: (() => void) | undefined;
     private threadCache = new Map<string, Promise<any>>();
@@ -120,12 +123,12 @@ export class PluginSelectLanguage extends StateLitElement {
     }
 
     willUpdate(changed: Map<string, unknown>) {
-        if (changed.has('selectedProject')) {
+        if (changed.has('selectedProject') || changed.has('selectedModule')) {
             this._languages = [];
             this._search = '';
             this._addSearch = '';
             this._addSelected = [];
-            if (this.selectedProject) this._loadLanguages(this.selectedProject.project);
+            if (this.selectedProject && this.selectedModule) this._loadLanguages();
         }
         if (changed.has('value')) {
             this._search = '';
@@ -154,6 +157,7 @@ export class PluginSelectLanguage extends StateLitElement {
 
     render() {
         if (!this.selectedProject) return this._renderNeedsProject();
+        if (!this.selectedModule) return this._renderNeedsModule();
         if (this._loading) return this._renderLoading();
         if (this._isAll) return this._renderAll();
         if (this._isCustom) return this._renderCustom();
@@ -162,12 +166,12 @@ export class PluginSelectLanguage extends StateLitElement {
 
     // ─── Async ───────────────────────────────────────────────────────
 
-    private async _loadLanguages(projectId: number) {
+    private async _loadLanguages() {
+        if (!this.selectedProject || !this.selectedModule) return;
         this._loading = true;
         this.requestUpdate();
         try {
-            this.config = await getConfigProject(projectId);
-            this._languages = (this.config as any)?.languages?.map((i: any) => i.language) ?? [];
+            this._languages = await readModuleLanguages(this.selectedProject.project, this.selectedModule);
         } catch {
             this._languages = [];
         }
@@ -178,28 +182,25 @@ export class PluginSelectLanguage extends StateLitElement {
 
     private async _executeRemoveLanguage() {
         const lang = this._selectedLang;
-        if (!lang || !this.selectedProject) return;
+        if (!lang || !this.selectedProject || !this.selectedModule) return;
         if (hasRunning('language:remove')) return;
 
         clearScope('language:remove');
         const langObj = findLanguageByCode(lang);
         const taskKey = `language:remove:${lang}`;
-        const prompt = JSON.stringify([{ languages: [{ code: lang, name: langObj?.name ?? lang }], projectId: this.selectedProject.project }]);
+        const prompt = JSON.stringify([{ languages: [{ code: lang, name: langObj?.name ?? lang }], projectId: this.selectedProject.project, moduleName: this.selectedModule }]);
 
         setTask(taskKey, { status: 'running', startedAt: Date.now() });
 
         try {
             await this.executeAgent('agentRemoveLanguage', prompt);
-            if (this.config && this.selectedProject) {
-                const existing: any[] = (this.config as any).languages ?? [];
-                const updated = { ...(this.config as any), languages: existing.filter((i: any) => i.language !== lang) };
-                await updateConfigProject(this.selectedProject.project, updated);
-                this.config = updated as any;
-                this._languages = updated.languages.map((i: any) => i.language);
-                const currentLang = getAuraState().actualLanguage;
-                if (currentLang && !this._languages.includes(currentLang)) {
-                    const firstValid = this._languages[0] ?? null;
-                    setAuraState('actualLanguage', firstValid);
+            if (this.selectedProject && this.selectedModule) {
+                const updated = this._languages.filter(l => l !== lang);
+                await writeModuleLanguages(this.selectedProject.project, this.selectedModule, updated);
+                this._languages = updated;
+                const currentLang = getActualLanguage(this.selectedModule);
+                if (currentLang && !updated.includes(currentLang)) {
+                    setActualLanguage(this.selectedModule, updated[0] ?? null);
                     saveAuraProject();
                 }
                 this._dispatchConfig();
@@ -251,7 +252,7 @@ export class PluginSelectLanguage extends StateLitElement {
     }
 
     private async _executeAddLanguage() {
-        if (this._addSelected.length === 0) return;
+        if (this._addSelected.length === 0 || !this.selectedProject || !this.selectedModule) return;
         const runningAddTasks = getTasksByScope('language:add');
         if ([...runningAddTasks.values()].some(t => t.status === 'running')) return;
 
@@ -262,7 +263,7 @@ export class PluginSelectLanguage extends StateLitElement {
             const obj = (allLanguages as ICollabLanguage[]).find(l => l.code === code);
             return { code, name: obj?.name ?? code };
         });
-        const prompt = JSON.stringify([{ languages: langObjs, projectId: this.selectedProject?.project ?? 0 }]);
+        const prompt = JSON.stringify([{ languages: langObjs, projectId: this.selectedProject.project, moduleName: this.selectedModule }]);
 
         setTask(taskKey, { status: 'running', startedAt: Date.now() });
         this._addSelected = [];
@@ -272,18 +273,10 @@ export class PluginSelectLanguage extends StateLitElement {
             await this.executeAgent('agentAddLanguage', prompt, (data) => {
                 this._taskInfoByKey.set(taskKey, data);
             });
-            if (this.config && this.selectedProject) {
-                const existing: any[] = (this.config as any).languages ?? [];
-                const newEntries = langs
-                    .filter(code => !existing.some((i: any) => i.language === code))
-                    .map(code => {
-                        const info = (allLanguages as ICollabLanguage[]).find(l => l.code === code);
-                        return { language: code, name: info?.name ?? code, path: `/${code}` };
-                    });
-                const updated = { ...(this.config as any), languages: [...existing, ...newEntries] };
-                await updateConfigProject(this.selectedProject.project, updated);
-                this.config = updated as any;
-                this._languages = updated.languages.map((i: any) => i.language);
+            if (this.selectedProject && this.selectedModule) {
+                const updated = [...this._languages, ...langs.filter(code => !this._languages.includes(code))];
+                await writeModuleLanguages(this.selectedProject.project, this.selectedModule, updated);
+                this._languages = updated;
                 this._dispatchConfig();
                 this._dispatchSelect(0);
             }
@@ -300,6 +293,15 @@ export class PluginSelectLanguage extends StateLitElement {
             <div class="flex flex-col gap-3">
                 ${this._renderHeader(this.msg.title, this.msg.desc)}
                 ${this._renderNotice(this.msg.needsProject)}
+            </div>
+        `;
+    }
+
+    private _renderNeedsModule() {
+        return html`
+            <div class="flex flex-col gap-3">
+                ${this._renderHeader(this.msg.title, this.msg.desc)}
+                ${this._renderNotice(this.msg.needsModule)}
             </div>
         `;
     }
@@ -656,8 +658,8 @@ export class PluginSelectLanguage extends StateLitElement {
 
     private _dispatchSelect(value: number) {
         const langCode = value > 0 && value <= this._languages.length ? this._languages[value - 1] : null;
-        if (langCode) {
-            setAuraState('actualLanguage', langCode);
+        if (langCode && this.selectedModule) {
+            setActualLanguage(this.selectedModule, langCode);
             saveAuraProject();
         }
         this.dispatchEvent(new CustomEvent('select-language', {

@@ -23,8 +23,8 @@ async function beforePromptImplicit(
     userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
 
-    const [dataUser] = JSON.parse(userPrompt) as { languages: { code: string, name: string }[], projectId: number }[];
-    const paths: { languages: string[], fileReference: string }[] = await getPaths(dataUser.languages, dataUser.projectId);
+    const [dataUser] = JSON.parse(userPrompt) as { languages: { code: string, name: string }[], projectId: number, moduleName: string }[];
+    const paths: { languages: string[], fileReference: string }[] = await getPaths(dataUser.languages, dataUser.projectId, dataUser.moduleName);
     if (paths.length === 0) throw new Error('No find files to add language');
 
     const inputs: mls.msg.IAMessageInputType[] = [{ type: "system", content: system1.replace('{{ skillLanguage }}', skilli18n) }];
@@ -122,16 +122,18 @@ async function afterPromptStep(
 
 }
 
-async function getPaths(languages: { code: string, name: string }[], project: number): Promise<{ languages: string[], fileReference: string }[]> {
+async function getPaths(languages: { code: string, name: string }[], project: number, moduleName: string): Promise<{ languages: string[], fileReference: string }[]> {
     if (!project) throw new Error(`[getPaths] invalid project`);
+    // Languages are per module — never translate the whole project by accident.
+    if (!moduleName) throw new Error(`[getPaths] moduleName is required`);
     const moduleProject = await import(`/_${project}_/l2/project.js`);
 
     if (!moduleProject?.projectConfig?.modules) throw new Error(`[getPaths] no modules configured in project`);
-    const modules: { name: string, path: string }[] = moduleProject.projectConfig.modules;
+    const modules: { name: string, path: string }[] = moduleProject.projectConfig.modules.filter((m: { name: string }) => m.name === moduleName);
+    if (modules.length === 0) throw new Error(`[getPaths] module not found in project: ${moduleName}`);
     const result: { languages: string[], fileReference: string }[] = [];
 
     for (const mod of modules) {
-        ;
         const moduleConfig = await import(`/_${project}_/l2/${mod.name}/module.js`);
         if (!moduleConfig?.skills) continue;
 

@@ -5,7 +5,7 @@ import { customElement, property, state, query } from 'lit/decorators.js';
 import { globalState, setState, initState, getState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { getTokensCss, getTokensLess, removeTokensFromSource } from '/_102027_/l2/designSystemBase.js';
-import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { readModuleLanguages } from '/_102020_/l2/moduleLanguages.js';
 import { getLastOpenedFiles } from '/_102027_/l2/libCommom.js';
 import { compileStyleUsingStorFile } from '/_102027_/l2/libCompileStyle.js';
 import { createModel } from '/_102027_/l2/libModel.js';
@@ -24,7 +24,7 @@ import '/_102027_/l2/collabSpliterVerticalVarFixed.js';
 import '/_102027_/l2/collabSpliterHorizontalVarFixed.js';
 
 import { PreviewModeAura } from '/_102020_/l2/previewModeAura.js';
-import { AuraInitState, getAuraState } from '/_102020_/l2/auraState.js';
+import { AuraInitState, getAuraState, getActualLanguage, setActualLanguage, saveAuraProject } from '/_102020_/l2/auraState.js';
 import { IJSONDependence } from '/_102027_/l2/libCompile.js';
 import { OpenedFileL2 } from '/_102027_/l2/libCommom.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu, IOptions } from '/_102027_/l2/serviceBase.js';
@@ -205,6 +205,10 @@ export class ServicePreview extends ServiceBase {
     if (key === 'aura.actualLanguage' && value) {
       this.changeLanguagePreview(value);
     }
+    if (key === 'aura.actualModule') {
+      // Module changed → reload the module's languages and its effective language.
+      this.setLanguages();
+    }
   }
 
   private initStatesPreview() {
@@ -318,6 +322,11 @@ export class ServicePreview extends ServiceBase {
     if (this.menu.tools.languages.selected === undefined) return;
     const opMenu = this.menu.tools.languages.options[this.menu.tools.languages.selected as number].text;
     const lang = this.languages[opMenu].acronym;
+    const module = getAuraState()?.actualModule;
+    if (module) {
+      setActualLanguage(module, lang);
+      saveAuraProject();
+    }
     setState('preview.language', lang);
 
     return true;
@@ -883,29 +892,22 @@ export class ServicePreview extends ServiceBase {
 
   private async setLanguages() {
 
+    AuraInitState();
     const project = mls.actualProject;
+    const module = getAuraState()?.actualModule ?? null;
 
-    if (!project) {
-      this.languages = {
-        'English': { acronym: 'en', name: 'English' }
-      }
-    } else {
-      const config = await getConfigProject(project);
-
-      if (!config || !config.languages || config.languages.length === 0) {
-        this.languages = {
-          'English': { acronym: 'en', name: 'English' }
-        }
-      } else {
-        config.languages.forEach((entry) => {
-          this.languages[`${entry.name}`] = {
-            acronym: entry.language,
-            name: entry.name,
-
-          }
-        });
-      }
+    // Languages come from the module (l4/<module>/module.defs.ts). Without a selected
+    // module the preview must not break — minimal fallback menu.
+    let codes: string[] = ['en'];
+    if (project && module) {
+      try { codes = await readModuleLanguages(project, module); } catch { codes = ['en']; }
     }
+
+    this.languages = {};
+    codes.forEach((code) => {
+      const name = findLanguageByCode(code)?.name ?? code;
+      this.languages[name] = { acronym: code, name };
+    });
 
     const languagesOptions = Object.keys(this.languages).map((lg) => {
       const obj = this.languages[lg];
@@ -919,23 +921,24 @@ export class ServicePreview extends ServiceBase {
 
     if (this.menu.tools.languages) this.menu.tools.languages.options = languagesOptions;
 
-    AuraInitState();
-    const stateLang = getAuraState().actualLanguage || document.documentElement.lang || undefined;
-    console.info(stateLang)
+    // Per-module language; module without a saved language falls back to the 1st of module.defs.
+    const stateLang = (module ? getActualLanguage(module) : null) || document.documentElement.lang || undefined;
+    const entries = Object.values(this.languages);
+    let idx = -1;
     if (stateLang) {
-      const entries = Object.values(this.languages);
       const normalized = stateLang.toLowerCase();
-      let idx = entries.findIndex(l => l.acronym.toLowerCase() === normalized);
+      idx = entries.findIndex(l => l.acronym.toLowerCase() === normalized);
       if (idx < 0) {
         const base = normalized.split('-')[0];
         idx = entries.findIndex(l => l.acronym.split('-')[0].toLowerCase() === base);
       }
-      if (idx >= 0) {
-        this.lang = entries[idx].acronym;
-        this.menu.tools.languages.selected = idx;
-        globalState.globalVariation = idx;
-        if (window.top) (window.top.window as any).globalVariation = idx;
-      }
+    }
+    if (idx < 0) idx = 0;
+    if (entries[idx]) {
+      this.lang = entries[idx].acronym;
+      this.menu.tools.languages.selected = idx;
+      globalState.globalVariation = idx;
+      if (window.top) (window.top.window as any).globalVariation = idx;
     }
 
     if (this.menu.refresh) this.menu.refresh();
@@ -1171,6 +1174,7 @@ export class ServicePreview extends ServiceBase {
     subscribe('preview.language', this);
     subscribe('preview.file', this);
     subscribe('aura.actualLanguage', this);
+    subscribe('aura.actualModule', this);
     window.addEventListener('task-change', this.onTaskChange);
   }
 
@@ -1186,6 +1190,7 @@ export class ServicePreview extends ServiceBase {
     unsubscribe('preview.language', this);
     unsubscribe('preview.file', this);
     unsubscribe('aura.actualLanguage', this);
+    unsubscribe('aura.actualModule', this);
     window.removeEventListener('task-change', this.onTaskChange);
   }
 

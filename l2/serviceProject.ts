@@ -3,11 +3,13 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
-import { AuraInitState, getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
+import { AuraInitState, getAuraState, setAuraState, saveAuraProject, getActualLanguage, setActualLanguage } from '/_102020_/l2/auraState.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { readModuleLanguages } from '/_102020_/l2/moduleLanguages.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
 import '/_102020_/l2/plugins/selectModule.js';
+import '/_102020_/l2/plugins/selectLanguage.js';
 import '/_102020_/l2/plugins/selectDevice.js';
 import '/_102020_/l2/plugins/selectAssetsComponents.js';
 import '/_102020_/l2/plugins/selectAssetsPlugins.js';
@@ -18,6 +20,7 @@ import '/_102020_/l2/plugins/selectAssetsMedia.js';
 const message_en = {
     svcTitle: 'Project',
     module: 'Module',
+    language: 'Language',
     device: 'Device',
     assets: 'Assets',
 };
@@ -27,12 +30,14 @@ const messages: Record<string, MessageType> = {
     pt: {
         svcTitle: 'Projeto',
         module: 'Módulo',
+        language: 'Idioma',
         device: 'Dispositivo',
         assets: 'Assets',
     },
     es: {
         svcTitle: 'Proyecto',
         module: 'Módulo',
+        language: 'Idioma',
         device: 'Dispositivo',
         assets: 'Assets',
     },
@@ -122,11 +127,13 @@ export class ServiceProject102020 extends ServiceBase {
     @state() private _moduleConfig: IKnobConfig = DISABLED_CONFIG('module');
 
     @state() private _moduleValue: number | null = null;
+    @state() private _langValue: number | null = null;
     @state() private _deviceValue: number | null = 1;
     @state() private _assetsValue: number | null = 1;
 
     @state() private _selectedKnob: string = 'module';
 
+    @state() private _langConfig: IKnobConfig = DISABLED_CONFIG('language');
     @state() private _deviceConfig: IKnobConfig = { ...DEVICE_CONFIG };
     @state() private _assetsConfig: IKnobConfig = { ...ASSETS_CONFIG };
 
@@ -149,6 +156,7 @@ export class ServiceProject102020 extends ServiceBase {
             const actualModule = getAuraState().actualModule;
             const idx = actualModule ? modules.findIndex(m => m.name === actualModule) : -1;
             this._moduleValue = idx >= 0 ? idx + 1 : 0;
+            this._initLangConfig();
         } catch {
             this._modules = [];
             this._moduleConfig = DISABLED_CONFIG('module');
@@ -175,9 +183,52 @@ export class ServiceProject102020 extends ServiceBase {
         return this._modules[this._moduleValue - 1];
     }
 
+    private get _moduleSelected(): boolean {
+        return this._moduleValue !== null
+            && this._moduleValue > 0
+            && this._moduleValue <= this._modules.length;
+    }
+
+    // Language knob config comes from the selected module's l4/<module>/module.defs.ts.
+    private async _initLangConfig(): Promise<void> {
+        const project = getAuraState().actualProject;
+        const module = this._selectedModule?.name ?? null;
+        if (!project || !module) {
+            this._langConfig = DISABLED_CONFIG('language');
+            this._langValue = null;
+            this.requestUpdate();
+            return;
+        }
+        try {
+            const languages = await readModuleLanguages(project, module);
+            const labels: Record<number, string> = { 0: 'All' };
+            languages.forEach((lang, i) => { labels[i + 1] = lang; });
+            labels[languages.length + 1] = '+';
+            this._onLangConfig(new CustomEvent('lang-config', {
+                detail: { min: 0, max: languages.length + 1, labels },
+            }));
+        } catch {
+            this._langConfig = DISABLED_CONFIG('language');
+            this.requestUpdate();
+        }
+    }
+
+    private _onLangConfig(e: CustomEvent) {
+        this._langConfig = { key: 'language', min: e.detail.min, max: e.detail.max, labels: e.detail.labels };
+        const actualLanguage = getActualLanguage(this._selectedModule?.name);
+        if (actualLanguage) {
+            const entry = Object.entries(e.detail.labels as Record<number, string>).find(([, v]) => v === actualLanguage);
+            this._langValue = entry ? Number(entry[0]) : 0;
+        } else {
+            if (this._langValue === null) this._langValue = 0;
+        }
+        this.requestUpdate();
+    }
+
     private get _knobValues(): Record<string, number | null> {
         return {
             module: this._moduleValue,
+            language: this._langValue,
             device: this._deviceValue,
             assets: this._assetsValue,
         };
@@ -186,18 +237,12 @@ export class ServiceProject102020 extends ServiceBase {
     private _getKnobConfig(key: string): IKnobConfig {
         switch (key) {
             case 'module': return this._moduleConfig;
-            case 'device': {
-                const moduleSelected = this._moduleValue !== null
-                    && this._moduleValue > 0
-                    && this._moduleValue <= this._modules.length;
-                return moduleSelected ? this._deviceConfig : DISABLED_CONFIG('device');
-            }
-            case 'assets': {
-                const moduleSelected = this._moduleValue !== null
-                    && this._moduleValue > 0
-                    && this._moduleValue <= this._modules.length;
-                return moduleSelected ? this._assetsConfig : DISABLED_CONFIG('assets');
-            }
+            case 'language':
+                return this._moduleSelected ? this._langConfig : DISABLED_CONFIG('language');
+            case 'device':
+                return this._moduleSelected ? this._deviceConfig : DISABLED_CONFIG('device');
+            case 'assets':
+                return this._moduleSelected ? this._assetsConfig : DISABLED_CONFIG('assets');
             default: return DISABLED_CONFIG(key);
         }
     }
@@ -206,6 +251,20 @@ export class ServiceProject102020 extends ServiceBase {
         switch (key) {
             case 'module': {
                 this._moduleValue = value;
+                this._langValue = null;
+                this._initLangConfig();
+                break;
+            }
+            case 'language': {
+                this._langValue = value;
+                const langCode = (value !== null && value > 0 && value < this._langConfig.max)
+                    ? this._langConfig.labels[value] ?? null
+                    : null;
+                const module = this._selectedModule?.name;
+                if (langCode && module) {
+                    setActualLanguage(module, langCode);
+                    saveAuraProject();
+                }
                 break;
             }
             case 'device':
@@ -267,6 +326,7 @@ export class ServiceProject102020 extends ServiceBase {
                 gap-0
             " style="--knob-scale: 0.5">
                 ${this._renderKnobItem('module')}
+                ${this._renderKnobItem('language')}
                 ${this._renderKnobItem('device')}
                 ${this._renderKnobItem('assets')}
             </div>
@@ -326,6 +386,8 @@ export class ServiceProject102020 extends ServiceBase {
             <div class="flex flex-col flex-1">
                 <div class="flex flex-col gap-3 px-4 py-4 flex-1"
                     @select-assets=${(e: CustomEvent) => this._setKnobValue('assets', e.detail.value)}
+                    @lang-config=${(e: CustomEvent) => this._onLangConfig(e)}
+                    @select-language=${(e: CustomEvent) => this._setKnobValue('language', e.detail.value)}
                 >
                     ${this._renderContextStatusArea()}
                 </div>
@@ -343,6 +405,16 @@ export class ServiceProject102020 extends ServiceBase {
                         @select-module=${(e: CustomEvent) => this._setKnobValue('module', e.detail.value)}
                     ></plugins--select-module-102020>
                 `;
+            case 'language': {
+                const project = getAuraState().actualProject;
+                return html`
+                    <plugins--select-language-102020
+                        .selectedProject=${project ? { project, name: '', doSelect: true } : null}
+                        .selectedModule=${this._selectedModule?.name ?? getAuraState().actualModule}
+                        .value=${this._langValue}
+                    ></plugins--select-language-102020>
+                `;
+            }
             case 'device':
                 return html`
                     <plugins--select-device-102020

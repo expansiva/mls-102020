@@ -5,13 +5,11 @@ import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { checkIfHasLocalProject, getLocalProjectName } from '/_102027_/l2/libCommom.js';
 import { AuraInitState, getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/auraState.js';
-import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { dsIndexNameMap } from '/_102020_/l2/dsMatch/buildDesignSystemTs.js';
 
 import '/_102027_/l2/collabSelectKnob.js';
 import '/_102020_/l2/plugins/selectOrganization.js';
 import '/_102020_/l2/plugins/selectProject.js';
-import '/_102020_/l2/plugins/selectLanguage.js';
 import '/_102020_/l2/plugins/selectDesignSystem.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -22,7 +20,6 @@ const message_en = {
     project: 'Project',
     designSystem: 'UI',
     designSystemFull: 'User Interface (design system)',
-    language: 'Language',
     orgScenarioTitle: 'Select Organization',
     orgScenarioDesc: 'An organization groups multiple projects under the same umbrella. Select one to browse the projects available to your team.',
     orgAllTitle: 'All Organizations',
@@ -38,9 +35,6 @@ const message_en = {
     projectNeedsOrg: 'Select an organization first to see the available projects.',
     dsScenarioTitle: 'Select Design System',
     dsNeedsProject: 'Select a project first to see the available design systems.',
-    langScenarioTitle: 'Select Language',
-    langScenarioDesc: 'The language defines the locale used for i18n content generation. Each language produces translated variations of the project pages.',
-    langNeedsProject: 'Select a project first to see the available languages.',
     projects: 'projects',
     noOrgs: 'No organizations found.',
 };
@@ -53,7 +47,6 @@ const messages: Record<string, MessageType> = {
         project: 'Projeto',
         designSystem: 'UI',
         designSystemFull: 'User Interface (design system)',
-        language: 'Idioma',
         orgScenarioTitle: 'Selecionar Organização',
         orgScenarioDesc: 'Uma organização agrupa vários projetos sob o mesmo guarda-chuva. Selecione uma para navegar pelos projetos disponíveis para o seu time.',
         orgAllTitle: 'Todas as Organizações',
@@ -69,9 +62,6 @@ const messages: Record<string, MessageType> = {
         projectNeedsOrg: 'Selecione uma organização primeiro para ver os projetos disponíveis.',
         dsScenarioTitle: 'Selecionar Design System',
         dsNeedsProject: 'Selecione um projeto primeiro para ver os design systems disponíveis.',
-        langScenarioTitle: 'Selecionar Idioma',
-        langScenarioDesc: 'O idioma define o locale usado para geração de conteúdo i18n. Cada idioma produz variações traduzidas das páginas do projeto.',
-        langNeedsProject: 'Selecione um projeto primeiro para ver os idiomas disponíveis.',
         projects: 'projetos',
         noOrgs: 'Nenhuma organização encontrada.',
     },
@@ -81,7 +71,6 @@ const messages: Record<string, MessageType> = {
         project: 'Proyecto',
         designSystem: 'UI',
         designSystemFull: 'User Interface (design system)',
-        language: 'Idioma',
         orgScenarioTitle: 'Seleccionar Organización',
         orgScenarioDesc: 'Una organización agrupa múltiples proyectos bajo el mismo paraguas. Seleccione una para explorar los proyectos disponibles para su equipo.',
         orgAllTitle: 'Todas las Organizaciones',
@@ -97,9 +86,6 @@ const messages: Record<string, MessageType> = {
         projectNeedsOrg: 'Seleccione una organización primero para ver los proyectos disponibles.',
         dsScenarioTitle: 'Seleccionar Design System',
         dsNeedsProject: 'Seleccione un proyecto primero para ver los sistemas de diseño disponibles.',
-        langScenarioTitle: 'Seleccionar Idioma',
-        langScenarioDesc: 'El idioma define el locale para la generación de contenido i18n. Cada idioma produce variaciones traducidas de las páginas del proyecto.',
-        langNeedsProject: 'Seleccione un proyecto primero para ver los idiomas disponibles.',
         projects: 'proyectos',
         noOrgs: 'No se encontraron organizaciones.',
     },
@@ -183,13 +169,11 @@ export class ServiceExploreProjects102020 extends ServiceBase {
     @state() private _orgValue: number | null = null;
     @state() private _projectValue: number | null = null;
     @state() private _dsValue: number | null = null;
-    @state() private _langValue: number | null = null;
 
     @state() private _selectedKnob: string = 'organization';
 
     @state() private _projectConfig: IKnobConfig = DISABLED_CONFIG('project');
     @state() private _dsConfig: IKnobConfig = DISABLED_CONFIG('designSystem');
-    @state() private _langConfig: IKnobConfig = DISABLED_CONFIG('language');
 
     // ─── Org Loading ──────────────────────────────────────────────────
 
@@ -216,24 +200,8 @@ export class ServiceExploreProjects102020 extends ServiceBase {
             if (matchedProjectPos >= 0 && actualProjectId) {
                 this._selectedKnob = 'project';
                 this._initDsConfig(actualProjectId);
-                this._initLangConfig(actualProjectId);
             }
         }
-    }
-
-    private async _initLangConfig(projectId: number): Promise<void> {
-        try {
-            const libUrl: string = '/_102027_/l2/libProjectConfig.js';
-            const { getConfigProject } = await import(libUrl);
-            const config = await getConfigProject(projectId);
-            const languages: string[] = (config as any)?.languages?.map((i: any) => i.language) ?? [];
-            const labels: Record<number, string> = { 0: 'All' };
-            languages.forEach((lang, i) => { labels[i + 1] = lang; });
-            labels[languages.length + 1] = '+';
-            this._onLangConfig(new CustomEvent('lang-config', {
-                detail: { min: 0, max: languages.length + 1, labels },
-            }));
-        } catch { /* ignore — project may have no languages configured */ }
     }
 
     private _getOrgsFromMls(): IOrg[] {
@@ -313,7 +281,6 @@ export class ServiceExploreProjects102020 extends ServiceBase {
             organization: this._orgValue,
             project: this._projectValue,
             designSystem: this._dsValue,
-            language: this._langValue,
         };
     }
 
@@ -322,7 +289,6 @@ export class ServiceExploreProjects102020 extends ServiceBase {
             case 'organization': return this._orgConfig;
             case 'project': return this._projectConfig;
             case 'designSystem': return this._dsConfig;
-            case 'language': return this._langConfig;
             default: return DISABLED_CONFIG(key);
         }
     }
@@ -332,7 +298,6 @@ export class ServiceExploreProjects102020 extends ServiceBase {
             case 'organization':
                 this._orgValue = value;
                 this._dsValue = null;
-                this._langValue = null;
                 const org = this._orgs[value !== null ? value - 1 : -1];
                 if (org) {
                     this._projectConfig = this._buildProjectConfigFromOrg(org);
@@ -342,21 +307,17 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                     this._projectValue = null;
                 }
                 this._dsConfig = DISABLED_CONFIG('designSystem');
-                this._langConfig = DISABLED_CONFIG('language');
                 break;
             case 'project':
                 this._projectValue = value;
                 this._dsValue = null;
-                this._langValue = null;
                 const orgLen = this._selectedOrg?.projects.length ?? 0;
                 const isRealProject = value !== null && value > 0 && value <= orgLen;
                 const candidateProject = isRealProject ? (this._selectedOrg?.projects[(value as number) - 1] ?? null) : null;
                 if (candidateProject) {
                     this._initDsConfig(candidateProject.project);
-                    this._initLangConfig(candidateProject.project);
                 } else {
                     this._dsConfig = DISABLED_CONFIG('designSystem');
-                    this._langConfig = DISABLED_CONFIG('language');
                 }
                 break;
             case 'designSystem':
@@ -367,17 +328,6 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                     saveAuraProject();
                 }
                 break;
-            case 'language': {
-                this._langValue = value;
-                const langCode = (value !== null && value > 0 && value < this._langConfig.max)
-                    ? this._langConfig.labels[value] ?? null
-                    : null;
-                if (langCode) {
-                    setAuraState('actualLanguage', langCode);
-                    saveAuraProject();
-                }
-                break;
-            }
         }
         this.requestUpdate();
     }
@@ -391,18 +341,6 @@ export class ServiceExploreProjects102020 extends ServiceBase {
 
     private _onKnobClick(key: string) {
         this._selectedKnob = key;
-        this.requestUpdate();
-    }
-
-    private _onLangConfig(e: CustomEvent) {
-        this._langConfig = { key: 'language', min: e.detail.min, max: e.detail.max, labels: e.detail.labels };
-        const actualLanguage = getAuraState().actualLanguage;
-        if (actualLanguage) {
-            const entry = Object.entries(e.detail.labels as Record<number, string>).find(([, v]) => v === actualLanguage);
-            this._langValue = entry ? Number(entry[0]) : 0;
-        } else {
-            if (this._langValue === null) this._langValue = 0;
-        }
         this.requestUpdate();
     }
 
@@ -476,7 +414,6 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                 ${this._renderKnobItem('organization')}
                 ${this._renderKnobItem('project')}
                 ${this._renderKnobItem('designSystem')}
-                ${this._renderKnobItem('language')}
             </div>
         `;
     }
@@ -568,15 +505,6 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                         .projectId=${this._selectedProject?.project ?? null}
                         .value=${this._dsValue}
                     ></plugins--select-design-system-102020>
-                `;
-            case 'language':
-                return html`
-                    <plugins--select-language-102020
-                        .selectedProject=${this._selectedProject}
-                        .value=${this._langValue}
-                        @lang-config=${(e: CustomEvent) => this._onLangConfig(e)}
-                        @select-language=${(e: CustomEvent) => this._setKnobValue('language', e.detail.value)}
-                    ></plugins--select-language-102020>
                 `;
             default:
                 return nothing;
