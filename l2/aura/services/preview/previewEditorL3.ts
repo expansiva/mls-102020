@@ -1,11 +1,11 @@
-/// <mls fileReference="_102020_/l2/previewEditorL3.ts" enhancement="_102027_/l2/enhancementLit.ts"/>
+/// <mls fileReference="_102020_/l2/aura/services/preview/previewEditorL3.ts" enhancement="_102027_/l2/enhancementLit.ts"/>
 
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { customElement } from 'lit/decorators.js';
 import { setState, initState, getState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
-import { findTextOriginByOccurrence, findTextOriginByKey, applyTextEdit, type TextOrigin } from '/_102020_/l2/previewTextEditor.js';
+import { findTextOriginByOccurrence, findTextOriginByKey, applyTextEdit, type TextOrigin } from '/_102020_/l2/aura/services/preview/previewTextEditor.js';
 
-@customElement('preview-editor-l3-102020')
+@customElement('aura--services--preview--preview-editor-l3-102020')
 class PreviewEditorL3 extends StateLitElement {
 
   private overlayEl!: HTMLDivElement;
@@ -253,7 +253,7 @@ class PreviewEditorL3 extends StateLitElement {
 
       const parentTag = parent.tagName.toLowerCase();
 
-      if (parentTag.includes('-') && parentTag !== 'preview-editor-l3-102020') {
+      if (parentTag.includes('-') && parentTag !== 'aura--services--preview--preview-editor-l3-102020') {
         const pageTag = this.findPageComponent();
         if (pageTag && parentTag !== pageTag) {
           return parent;
@@ -620,7 +620,7 @@ class PreviewEditorL3 extends StateLitElement {
   private findPageComponent(): string | null {
     for (const child of Array.from(this.children)) {
       const tag = child.tagName.toLowerCase();
-      if (tag.includes('-') && !child.classList.contains('l3-control') && tag !== 'preview-editor-l3-102020') {
+      if (tag.includes('-') && !child.classList.contains('l3-control') && tag !== 'aura--services--preview--preview-editor-l3-102020') {
         return tag;
       }
     }

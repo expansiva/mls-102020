@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/servicePreview.ts" enhancement="_102027_/l2/enhancementLit.ts"/>
+/// <mls fileReference="_102020_/l2/aura/services/preview/servicePreview.ts" enhancement="_102027_/l2/enhancementLit.ts"/>
 
 import { html, css } from 'lit';
 import { customElement, property, state, query } from 'lit/decorators.js';
@@ -16,14 +16,14 @@ import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import { findLanguageByCode } from '/_102027_/l2/collabLanguages.js';
 
 
-import { getDependenciesByHtml, dsThemeForFolder } from '/_102020_/l2/buildFile.js';
+import { getDependenciesByHtml, dsThemeForFolder } from '/_102020_/l2/aura/services/preview/buildFile.js';
 
 import '/_102025_/l2/collabMessagesPrompt.js';
 
 import '/_102027_/l2/collabSpliterVerticalVarFixed.js';
 import '/_102027_/l2/collabSpliterHorizontalVarFixed.js';
 
-import { PreviewModeAura } from '/_102020_/l2/previewModeAura.js';
+import { PreviewModeAura } from '/_102020_/l2/aura/services/preview/previewModeAura.js';
 import { AuraInitState, getAuraState, getActualLanguage, setActualLanguage, saveAuraProject } from '/_102020_/l2/aura/helpers/auraState.js';
 import { IJSONDependence } from '/_102027_/l2/libCompile.js';
 import { OpenedFileL2 } from '/_102027_/l2/libCommom.js';
@@ -56,7 +56,7 @@ const messages: { [key: string]: MessageType } = {
 }
 /// **collab_i18n_end**
 
-@customElement('service-preview-102020')
+@customElement('aura--services--preview--service-preview-102020')
 export class ServicePreview extends ServiceBase {
 
   private msg: MessageType = messages['en'];
@@ -111,7 +111,7 @@ export class ServicePreview extends ServiceBase {
     position: 'right',
     tooltip: 'Aura Preview',
     visible: true,
-    widget: '_102020_servicePreview',
+    widget: '_102020_/l2/aura/services/preview/servicePreview',
     level: [2, 3, 4]
   }
 
@@ -526,7 +526,7 @@ export class ServicePreview extends ServiceBase {
       // SHARED mode (same-origin): access to parent.mls etc.
       // NO process isolation (a loop can freeze — mitigated by
       // Layer 1 / the notify circuit breaker).
-      iframe.src = '/_102020_servicePreview';
+      iframe.src = '/_102020_/l2/aura/services/preview/servicePreview';
       iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
     } else {
       // ISOLATED mode (opaque origin): a freeze does NOT freeze the app.
@@ -804,7 +804,7 @@ export class ServicePreview extends ServiceBase {
       doc.body.innerHTML = '';
 
       if (this.isL3) {
-        const l3P = document.createElement('preview-editor-l3-102020');
+        const l3P = document.createElement('aura--services--preview--preview-editor-l3-102020');
         l3P.innerHTML = domVirtual.innerHTML;
         doc.body.appendChild(l3P);
 

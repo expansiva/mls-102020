@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/previewTextEditor.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/aura/services/preview/previewTextEditor.ts" enhancement="_blank"/>
 
 import { resolveTagToFile } from '/_102020_/l2/utils.js';
 

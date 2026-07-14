@@ -11,7 +11,7 @@ export class PluginCollabCoreIndex extends PluginBaseIndex {
                 scope: ['l2ServicesRight', 'l3ServicesRight', 'l4ServicesRight'],
                 priority: 1,
                 auth: ['*'],
-                widget: '_102020_servicePreview'
+                widget: '_102020_/l2/aura/services/preview/servicePreview'
             },
             {
                 category: 'Services',

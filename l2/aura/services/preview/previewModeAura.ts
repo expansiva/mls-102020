@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/previewModeAura.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/aura/services/preview/previewModeAura.ts" enhancement="_blank"/>
 
 import { IJSONDependence } from '/_102027_/l2/libCompile.js';
 import { setErrorOnModel, getPath } from '/_102027_/l2/utils.js';

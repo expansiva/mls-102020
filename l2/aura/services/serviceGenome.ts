@@ -6,7 +6,7 @@ import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/
 import { getState, setState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
 import { AuraInitState, getAuraState, setAuraState, saveAuraProject, IAuraPage } from '/_102020_/l2/aura/helpers/auraState.js';
 import { skills as listOfGroups } from '/_102020_/l2/skills/molecules/index.js';
-import { replaceComponentTag } from '/_102020_/l2/previewTextEditor.js';
+import { replaceComponentTag } from '/_102020_/l2/aura/services/preview/previewTextEditor.js';
 import { convertFileToTag, isPageFile } from '/_102020_/l2/utils.js';
 import { getLastOpenedFiles, saveOpenedFile } from '/_102027_/l2/libCommom.js';
 import { createModel } from '/_102027_/l2/libModel.js';
