@@ -423,11 +423,7 @@ function createRelaxedCfePageLayoutToolSchema(): mls.msg.LLMTool {
   allowAdditionalProperties(resultSchema);
 
   relaxPageLayoutSchema(resultSchema.properties?.pageLayout);
-  const variantSchema = resultSchema.properties?.pageVariants?.items;
-  relaxPageLayoutSchema(variantSchema?.properties?.pageLayout);
-  // Extra variants are best-effort (savePageVariants already skips invalid ones). Do not let an
-  // incomplete extra variant reject an otherwise valid primary layout at the proxy boundary.
-  if (variantSchema && typeof variantSchema === 'object') variantSchema.required = [];
+  relaxPageLayoutSchema(resultSchema.properties?.pageVariants?.items?.properties?.pageLayout);
 
   const tool = createPlannerToolSchema(CFE_LAYOUT_TOOL_NAME, 'Submit the semantic layout for a frontend page (primary variant plus optional extra UX variants).', resultSchema) as mls.msg.LLMTool;
   const parameters = (tool as any).function?.parameters;
@@ -812,23 +808,12 @@ function normalizeCfePageLayoutResult(value: unknown): CfePageLayoutResult {
   const result = assertRecord(value, 'result');
   const pageLayoutRaw = isRecord(result.pageLayout) ? result.pageLayout : result;
   const variantsRaw = Array.isArray(result.pageVariants) ? result.pageVariants : [];
-  const pageVariants = variantsRaw.flatMap((item, index) => {
+  const pageVariants = variantsRaw.map((item, index) => {
     const variant = assertRecord(item, `result.pageVariants[${index}]`);
-    // Some providers occasionally flatten an extra pageLayout into the variant object. Accept
-    // that recoverable shape; skip entries that contain no complete layout at all.
-    const variantLayout = isRecord(variant.pageLayout)
-      ? variant.pageLayout
-      : isRecord(variant) && variant.pageId !== undefined && variant.layoutId !== undefined && variant.sections !== undefined
-        ? variant
-        : null;
-    if (!variantLayout) {
-      recordCreateWarning(`skipped incomplete LLM UX variant ${index + 1}: missing pageLayout`);
-      return [];
-    }
-    return [{
+    return {
       templateId: optionalString(variant.templateId),
-      pageLayout: normalizePageLayout(variantLayout, `result.pageVariants[${index}].pageLayout`),
-    }];
+      pageLayout: normalizePageLayout(variant.pageLayout, `result.pageVariants[${index}].pageLayout`),
+    };
   });
   return {
     pageLayout: normalizePageLayout(pageLayoutRaw, 'result.pageLayout', { i18n: result.i18n, dataBindings: result.dataBindings }),

@@ -17,9 +17,6 @@ Tool argument shape:
   pageVariants[i].templateId must equal variantPlan[i+1].templateId (genomes page21, page31...). Omit
   pageVariants when variantPlan has a single entry. Never reuse a templateId; never emit more entries
   than variantPlan defines.
-- A valid, complete result.pageLayout and valid JSON tool call take priority over extra variants. If an
-  extra variant cannot be completed within the response, omit that entire pageVariants entry; never
-  emit a partial entry or leave an object unfinished.
 - Build each variant strictly from ITS assigned template in promptContext.variantPlan; no unselected
   template is present in the prompt. Variants must be structurally distinct, not near-duplicates.
 - Every pageVariants[].pageLayout has the same pageId, commands and fields as result.pageLayout; only the
