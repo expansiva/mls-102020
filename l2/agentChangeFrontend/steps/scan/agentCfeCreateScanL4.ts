@@ -34,23 +34,29 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'No todoFrontend=toCreate owners.')];
     }
 
-    const pageIds = createContext.pages.map(page => page.pageId);
-    const createPages = createAgentStepPayload(
-      'create-pages',
-      'agentCfeCreatePagePhase',
-      'Criar e revisar paginas',
-      { planId: 'create-pages', pageIds, maxParallel: 5 },
+    const args = createContext.pages.map(page => JSON.stringify({ pageId: page.pageId }));
+    const fanout = createAgentStepPayload(
+      'create-page-fanout',
+      'agentCfeCreatePage',
+      'Criar paginas {{completed}}/{{total}}, falhas {{failed}}',
+      { planId: 'create-page-fanout' },
       [],
-      'sequential',
-      'waiting_human_input',
+      'parallel_dynamic',
+      'in_progress',
     );
+    fanout.interaction = {
+      input: [{ type: 'system', content: '<!-- modelType: codefast -->' }],
+      cost: 0,
+      trace: [`queued ${args.length} page(s) for create`],
+      payload: null,
+    };
 
     const intents: mls.msg.AgentIntent[] = [
-      createAddStepIntent(context, parentStep, createPages),
+      createAddStepIntent(context, parentStep, fanout, args),
     ];
 
     if (scanArgs.materialize !== false) {
-      const materialize = createMaterializeStep(scanArgs, ['create-pages']);
+      const materialize = createMaterializeStep(scanArgs, ['create-page-fanout']);
       intents.push(createAddStepIntent(context, parentStep, materialize));
     }
 
@@ -60,7 +66,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       step,
       hookSequential,
       'completed',
-      `Queued ${pageIds.length} page(s) for create/review${scanArgs.materialize === false ? ' (defs-only).' : '.'}`,
+      `Queued ${args.length} page(s)${scanArgs.materialize === false ? ' (defs-only).' : '.'}`,
     ));
     return intents;
   } catch (error) {

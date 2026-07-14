@@ -4,12 +4,11 @@
 
 ## Role
 
-`agentCfeCreatePagePhase` hosts `create-page-fanout`, deterministic review and one bounded repair round behind a single dependency barrier. `agentCfeCreatePage` only generates one page. `agentCfeCreatePageReview` reads the saved page/shared defs, runs the executable layout checks and schedules normal sequential repair steps for rejected pages.
+`agentCfeCreatePage` is the worker used by `create-page-fanout`. It creates one page's contract deterministically, asks the LLM for the semantic layout, then saves page variants and shared state/actions through deterministic reconciliation.
 
 ## Input
 
-- Phase args: `{ "planId": "create-pages", "pageIds": ["..."], "maxParallel": 5 }`.
-- Worker args: `{ "pageId": "..." }`; repair adds `qualityFeedback`.
+- Step args: `{ "pageId": "..." }`.
 - Reduced context from `preparePageCreate`.
 - `prompt.md` plus `skills/uxGuidance.ts`.
 
@@ -19,13 +18,9 @@
 - `l2/{module}/web/shared/{page}.defs.ts`.
 - `l2/{module}/web/desktop/page11/{page}.defs.ts` and variants when configured.
 - Trace diagnostics for warnings.
-- Review PASS/PENDING trace after at most one repair round.
 
 ## Invariants
 
 - The LLM only generates layout; contract and shared reconciliation remain deterministic.
 - Every layout variant must represent all operations independently.
 - Legal actions are only `shared.availableActions`; unknown UI-only actions are rejected or reconciled.
-- Fan-out children never retry, add steps or fail the parent; they persist a reviewable candidate or complete with a pending trace.
-- Repair is owned by a sequential review step with unique planIds, followed by one final review.
-- Materialization depends on the `create-pages` phase barrier, not directly on the fan-out.

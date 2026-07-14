@@ -34,7 +34,7 @@ export function createAgent(): IAgentAsync {
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   try {
     consumeCreateDiagnostics();
-    const { pageId, qualityFeedback } = parseCreatePageArgs(args || step.prompt);
+    const { pageId } = parseCreatePageArgs(args || step.prompt);
     const createContext = await readCreateContext();
     const page = createContext.pages.find(item => item.pageId === pageId);
     if (!page) throw new Error(`page not found for create: ${pageId}`);
@@ -48,7 +48,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         hookSequential,
         args || step.prompt || JSON.stringify({ pageId }),
         systemPrompt,
-        `## Page selector\n${pageId}\n\n## Reduced L4 + contract/shared context\n${JSON.stringify(prepared.promptContext, null, 2)}${qualityFeedback ? `\n\n## Deterministic quality feedback (repair every item)\n${qualityFeedback}` : ''}\n`,
+        `## Page selector\n${pageId}\n\n## Reduced L4 + contract/shared context\n${JSON.stringify(prepared.promptContext, null, 2)}\n`,
         cfePageLayoutToolSchema,
         cfePageLayoutToolName,
       ),
@@ -83,6 +83,25 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof CfePageQualityError && pageId && qualityAttempt < 1) {
+      const createContext = await readCreateContext();
+      const page = createContext.pages.find(item => item.pageId === pageId);
+      if (page) {
+        const prepared = await preparePageCreate(page);
+        const systemPrompt = await buildSystemPrompt();
+        const args = JSON.stringify({ pageId, qualityAttempt: qualityAttempt + 1 });
+        return [createPromptReadyIntent(
+          context,
+          parentStep,
+          hookSequential,
+          args,
+          systemPrompt,
+          `## Page selector\n${pageId}\n\n## Reduced L4 + contract/shared context\n${JSON.stringify(prepared.promptContext, null, 2)}\n\n## Deterministic quality feedback (repair every item)\n${message}\n`,
+          cfePageLayoutToolSchema,
+          cfePageLayoutToolName,
+        )];
+      }
+    }
     console.error(`[${agent.agentName}] ${message}`);
     if (error instanceof CfePageQualityError && pageId && pageResult) {
       const createContext = await readCreateContext();
@@ -92,13 +111,13 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
         await savePageVariants(prepared, pageResult, true);
         const diagnostics = consumeCreateDiagnostics();
         const trace = [
-          `UX-QUALITY-PENDING attempt=${qualityAttempt}: ${message}`,
+          `UX-QUALITY-PENDING after bounded repair: ${message}`,
           ...(diagnostics.length ? [formatCreateDiagnostics(diagnostics)] : []),
         ].join('\n');
         return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
       }
     }
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `PAGE-CREATE-PENDING: ${message}`)];
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
 }
 
