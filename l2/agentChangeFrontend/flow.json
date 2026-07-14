@@ -1,6 +1,6 @@
 {
   "flowId": "agentChangeFrontend",
-  "schemaVersion": "2026-07-13-v2-real-flow-modernized",
+  "schemaVersion": "2026-07-14-v3-page-review",
   "description": "Stage 2 frontend reconciler. The flow scans L4/L5, creates frontend .defs.ts files for L5 todoFrontend=create work, materializes stale L2 runtime files, registers pages, and finalizes L5 owner status. L4 remains read-only. config.json is composed at publish time by nodejsSaveConfigJson.ts.",
   "specFirst": {
     "policy": "This flow.json is the contract. Future structural changes must update this file before code.",
@@ -93,6 +93,7 @@
     "Fan-out progress titles must expose completed, total and failed counters.",
     "Dynamic child args stay compact and unique.",
     "A worker should prefer completed-with-trace plus downstream verification when one item can be repaired without failing the whole pipeline.",
+    "Create-page fan-out children never retry or add steps; the create-pages phase owns deterministic review and one sequential repair round.",
     "PlanIds must be unique; runtime-generated planIds are documented by pattern below."
   ],
   "steps": [
@@ -134,10 +135,26 @@
       "modelAlias": "deterministic",
       "goal": "Read create context, decide whether page creation and/or materialization are required, and enqueue the next concrete steps.",
       "emits": [
-        "create-page-fanout",
+        "create-pages",
         "materialize-create-l2"
       ],
       "noWorkBehavior": "If no pages are pending and materialize=false, complete with no further steps."
+    },
+    {
+      "planId": "create-pages",
+      "agentName": "agentCfeCreatePagePhase",
+      "file": "l2/agentChangeFrontend/steps/create-page/agentCfeCreatePagePhase.ts",
+      "stepFolder": "steps/create-page",
+      "executionMode": "sequential phase barrier",
+      "dependsOn": [
+        "scan-create-l4"
+      ],
+      "modelAlias": "deterministic",
+      "goal": "Host page generation fan-out, deterministic review and the bounded sequential repair round under one dependency barrier.",
+      "emits": [
+        "create-page-fanout",
+        "create-page-review"
+      ]
     },
     {
       "planId": "create-page-fanout",
@@ -168,6 +185,22 @@
       ]
     },
     {
+      "planId": "create-page-review",
+      "agentName": "agentCfeCreatePageReview",
+      "file": "l2/agentChangeFrontend/steps/create-page/agentCfeCreatePageReview.ts",
+      "stepFolder": "steps/create-page",
+      "executionMode": "sequential verify/repair",
+      "dependsOn": [
+        "create-page-fanout"
+      ],
+      "modelAlias": "deterministic",
+      "goal": "Re-evaluate page/shared defs on disk; create one normal repair step per rejected page and run one final review.",
+      "repairPlanIdConvention": "create-page-repair-{pageId}-2",
+      "reviewPlanIdConvention": "create-page-review-{attempt}",
+      "repairBudget": 1,
+      "exhaustedBehavior": "Complete with UX-QUALITY-PENDING trace; never loop or fail the whole task."
+    },
+    {
       "planId": "materialize-create-l2",
       "agentName": "agentCfeMaterializeL2",
       "file": "l2/agentChangeFrontend/steps/materialize/agentCfeMaterializeL2.ts",
@@ -175,7 +208,7 @@
       "executionMode": "sequential",
       "dependsOn": [
         "scan-create-l4",
-        "create-page-fanout when emitted"
+        "create-pages when emitted"
       ],
       "modelAlias": "deterministic",
       "goal": "Plan stale or missing materialization work from generated .defs.ts pipelines and enqueue ordered phase barriers.",

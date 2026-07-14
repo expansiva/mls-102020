@@ -517,8 +517,10 @@ Removido em 2026-07-13 por estar fora do fluxo atual e confundir a manutenção 
 Após validar o paralelo, a implementação real inicial para `toCreate` está dividida assim:
 
 - `agentChangeFrontend` inicia o fluxo create-only;
-- `agentCfeCreateScanL4` lê o `l4`, encontra owners com `statusFrontend = toCreate`, cria o fan-out real `create-page-fanout` e agenda a materialização;
+- `agentCfeCreateScanL4` lê o `l4`, encontra owners com `statusFrontend = toCreate`, cria a phase barrier `create-pages` e agenda a materialização dependente dessa phase;
+- `agentCfeCreatePagePhase` hospeda o fan-out real `create-page-fanout` e o review determinístico `create-page-review`; a phase só termina depois do fan-out, review e eventual reparo;
 - `agentCfeCreatePage` gera `web/contracts/{page}.defs.ts` de forma determinística, chama LLM com JSON schema/tool strict para o layout semântico, grava `web/desktop/page11/{page}.defs.ts` e depois gera `web/shared/{page}.defs.ts` a partir de `contractRef + layout reconciliado`;
+- `agentCfeCreatePageReview` reabre os `.defs.ts` de página/shared, executa os checks de qualidade e, quando necessário, cria um step sequencial de reparo por página seguido de um único review final; orçamento esgotado produz `UX-QUALITY-PENDING`, nunca retry via `prompt_ready` no `afterPromptStep`;
 - `agentCfeCreatePage` também grava `l2/{module}/trace/frontend-create-pages/{page}.json` como `inProgress` no início e `done` só depois de layout e shared validados, para evitar que uma página antiga seja aceita por engano;
 - `agentCfeMaterializeL2` lê os pipelines gerados, cria launchers sequenciais por fase (`contracts -> shared -> page11`) e cada `agentCfeMaterializePhase` inicia um fan-out paralelo com `agentCfeMaterializeGen` somente depois da fase anterior completar sem erro;
 - `agentCfeRegisterFrontend` gera o `.html` de preview, assina `l5/project.json` e grava marcador de registro por página; o `config.json` é composto no publish;

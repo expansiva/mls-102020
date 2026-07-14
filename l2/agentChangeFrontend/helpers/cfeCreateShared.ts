@@ -697,7 +697,7 @@ export async function registerGeneratedFrontendPages(): Promise<{ pagesRegistere
   return { pagesRegistered: validPages.map(page => page.pageId), skippedPages };
 }
 
-export function parseCreatePageArgs(prompt: string | undefined): { pageId: string; qualityAttempt: number } {
+export function parseCreatePageArgs(prompt: string | undefined): { pageId: string; qualityAttempt: number; qualityFeedback: string } {
   if (!prompt) throw new Error('missing page args');
   const parsed = JSON.parse(prompt);
   const pageId = isRecord(parsed) ? readString(parsed.pageId) : '';
@@ -705,7 +705,8 @@ export function parseCreatePageArgs(prompt: string | undefined): { pageId: strin
   const qualityAttempt = isRecord(parsed) && typeof parsed.qualityAttempt === 'number' && Number.isInteger(parsed.qualityAttempt)
     ? parsed.qualityAttempt
     : 0;
-  return { pageId, qualityAttempt };
+  const qualityFeedback = isRecord(parsed) ? readString(parsed.qualityFeedback) : '';
+  return { pageId, qualityAttempt, qualityFeedback };
 }
 
 export function createUpdateStatusIntent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, status: mls.msg.AIStepStatus, traceMsg?: string): mls.msg.AgentIntentUpdateStatus {
