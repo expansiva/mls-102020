@@ -6,7 +6,7 @@
 // or one template per variant (item 4). Prose signals (requiredSignals / rejectsWhen) are
 // NOT scored here — they are passed to the LLM as context.
 
-import type { UxTemplateDefinition, UxTemplateWiring, UxValidationCheck } from "/_102020_/l2/agentChangeFrontend/uxTemplates/uxTemplateTypes.defs.js";
+import type { UxTemplateDefinition, UxTemplateWiring } from "/_102020_/l2/agentChangeFrontend/uxTemplates/uxTemplateTypes.defs.js";
 import { uxTemplates, uxTemplateRegistry } from "/_102020_/l2/agentChangeFrontend/uxTemplates/index.defs.js";
 
 // Machine-derivable signals for one screen. Derived in cfeCreateShared from the page plan + L4.
@@ -23,13 +23,12 @@ export interface UxScreenSignals {
 export interface UxTemplateCandidate {
   id: string;
   title: string;
-  version: number;
   score: number;              // 0..1
   highConfidence: boolean;    // score >= registry threshold
   userJourney: string;
   layoutGuidance: string[];
   llmGuidance: string[];
-  validationChecks: UxValidationCheck[];
+  validationChecks: string[];
   wiring: UxTemplateWiring;
   appliesWhen: UxTemplateDefinition["appliesWhen"];
   rejectsWhen: string[];
@@ -90,16 +89,41 @@ function toCandidate(template: UxTemplateDefinition, score: number, threshold: n
   return {
     id: template.id,
     title: template.title,
-    version: template.version,
     score: Number(score.toFixed(3)),
     highConfidence: score >= threshold,
     userJourney: template.userJourney,
     layoutGuidance: template.layoutGuidance,
     llmGuidance: template.llmGuidance,
     validationChecks: template.validationChecks,
-    wiring: template.wiring,
+    wiring: template.wiring || deriveWiring(template),
     appliesWhen: template.appliesWhen,
     rejectsWhen: template.rejectsWhen,
+  };
+}
+
+function deriveWiring(template: UxTemplateDefinition): UxTemplateWiring {
+  const actionKinds = Object.keys(template.slots.actionPresentation);
+  const hasSelection = template.appliesWhen.selection.some(selection => selection !== 'none')
+    || template.slots.contextualInputs.includes('selectedEntity');
+  const hasDraft = template.appliesWhen.accessPatterns.includes('commandInput')
+    || actionKinds.some(kind => ['create', 'update', 'adjust', 'command'].includes(kind));
+  const hasMutation = actionKinds.some(kind => kind !== 'query' && kind !== 'view');
+  return {
+    minimumStates: [
+      ...(hasSelection ? ['selectedId'] : []),
+      ...(hasDraft ? ['formDraft'] : []),
+      'loading',
+      ...(hasMutation ? ['mutationFeedback'] : []),
+    ],
+    transitions: [
+      ...(hasSelection && hasDraft ? ['rowSelect->selectedId->prepopulateDraft'] : []),
+      ...(hasMutation ? ['submit->textualFeedback->refresh->clearFormAndSelection'] : []),
+    ],
+    microcopy: {
+      actionLabels: 'domainAction',
+      emptyState: 'nextStep',
+      mutationFeedback: 'textualDismissible',
+    },
   };
 }
 

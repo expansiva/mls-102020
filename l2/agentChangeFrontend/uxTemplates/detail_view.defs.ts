@@ -50,17 +50,13 @@ export const detailViewTemplate = {
     "Design the page as a record profile.",
     "Do not repeat list filters.",
     "Use read-only detail fields unless an edit action is active.",
-    "Preserve traceability to the selected entity.",
-    "Microcopy example: subtitle 'Review order details and history', action 'Update order', empty state 'Return to the list and select an order'."
+    "Preserve traceability to the selected entity."
   ],
-  wiring: {
-    minimumStates: ["selectedId", "formDraft", "loading", "mutationFeedback"],
-    transitions: ["rowSelect->selectedId->prepopulateDraft", "submit->textualFeedback->refresh->clearFormAndSelection"],
-    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
-  },
   validationChecks: [
-    { id: "has-detail-surface" },
-    { id: "has-selection-context" }
+    "The page has a selected or routed entity source.",
+    "Technical ids are not editable.",
+    "Update/delete actions use contextual identity.",
+    "Related records do not introduce unsupported commands."
   ],
   exampleUseCases: [
     "Customer profile.",
@@ -71,3 +67,4 @@ export const detailViewTemplate = {
 } as const satisfies UxTemplateDefinition;
 
 export default detailViewTemplate;
+

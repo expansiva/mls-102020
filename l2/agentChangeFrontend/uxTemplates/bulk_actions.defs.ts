@@ -51,18 +51,13 @@ export const bulkActionsTemplate = {
     "Design for careful batch operations.",
     "Make scope and consequences visible.",
     "Avoid accidental destructive actions.",
-    "Keep per-row actions secondary to the bulk toolbar.",
-    "Microcopy example: subtitle 'Apply a status to selected stock items', action 'Activate selected items', empty state 'Select at least one item to continue'."
+    "Keep per-row actions secondary to the bulk toolbar."
   ],
-  wiring: {
-    minimumStates: ["selectedId", "formDraft", "loading", "mutationFeedback"],
-    transitions: ["rowSelect->selectedId->prepopulateDraft", "submit->textualFeedback->refresh->clearFormAndSelection"],
-    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
-  },
   validationChecks: [
-    { id: "has-list" },
-    { id: "has-bulk-selection" },
-    { id: "has-destructive-confirmation" }
+    "The L4 model supports multiple selection.",
+    "Every bulk action maps to a real command.",
+    "Selected ids are contextual inputs, not typed fields.",
+    "Destructive batch actions require confirmation."
   ],
   exampleUseCases: [
     "Bulk activate or deactivate users.",
@@ -73,3 +68,4 @@ export const bulkActionsTemplate = {
 } as const satisfies UxTemplateDefinition;
 
 export default bulkActionsTemplate;
+

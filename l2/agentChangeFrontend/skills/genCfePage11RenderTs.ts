@@ -97,7 +97,6 @@ Render page11 as a simple operational page:
 - button rows for actionList intentions
 - simple status lists for workflowStatus intentions
 - for every command action, render a textual feedback region driven by its action status: success uses feedback.successMessageKey; error uses the AppError text from errorStateKey when present, otherwise feedback.errorMessageKey. It must be dismissible and must never be only an icon or glyph.
-- bind the feedback dismiss control only to the handler declared by feedback.dismissActionId; never clear status inline.
 - represent loading consistently: query/list intentions show a placeholder or skeleton while their query state is loading; command buttons show a spinner/progress label and are disabled while their action is loading.
 - collapse repeated hierarchy: render the page title once as h1. A section/organism/intention title that resolves to the same message as its parent must not be rendered again. Use the next distinct title as h2, then render blocks without another repeated title.
 - use the Definition.visualStyle direction when it exists. Translate only evidenced signals into layout density: data-dense/status-driven favors compact tables and grouped statuses; dashboard-first favors summary before detail; otherwise retain the simple operational layout. Do not invent colors, chart data or components from the style string.
@@ -135,14 +134,6 @@ molecules) but themed by the project's design system.
 - Query refresh buttons may call existing query handlers.
 - No inline assignment like this.field = value.
 - Inline arrows are allowed only to pass item context to an existing shared handler.
-- For a row action with context "row", read action.rowRef from that row and call the existing
-  stateSetter for the action's selectedEntityInputStateKey before its command handler. Disable the
-  action when rowRef or the setter is unavailable; never submit the current form against an unrelated row.
-- Before opening or submitting an edit action, copy every action.prefillRefs value from the row into
-  its existing form stateSetter. Never invent draft properties or assign them inline.
-- A row/action with confirmation=true must ask for explicit confirmation before calling its handler.
-- A field with inputType "select" must render a select whose options come from its declared query
-  source; never degrade it to a free-text input.
 
 ## Guardrails
 

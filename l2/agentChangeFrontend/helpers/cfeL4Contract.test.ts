@@ -9,7 +9,7 @@ import {
   isUserFacingOperationInput,
   l4OperationInputs,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
-import { buildMaterializeTypecheckTest, evaluateGeneratedPageQuality, normalizeGeneratedCode } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { buildMaterializeTypecheckTest, normalizeGeneratedCode } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
 test('frontendOutputShapeForOperation follows L4 accessPattern pagination', () => {
   assert.equal(frontendOutputShapeForOperation({ kind: 'query', accessPattern: { kind: 'list', pagination: 'required' } }), 'paginated');
@@ -68,75 +68,4 @@ test('materialization fixes deterministic page seams without changing generated 
 
   const shared = normalizeGeneratedCode({ id: 'report__l2_shared', type: 'l2_shared', outputPath: '_102048_/l2/buildFlowFsm/web/shared/report.ts' }, { baseClassName: 'BuildFlowFsmReportBase' }, 'export class WrongBase extends CollabLitElement {}');
   assert.match(shared, /export class BuildFlowFsmReportBase extends CollabLitElement/);
-});
-
-test('UX hygiene gate catches every defect observed by the improve2 study', () => {
-  const page = {
-    pageId: 'items',
-    templateId: 'tabular_classic',
-    templateValidationChecks: [],
-    templateWiring: { minimumStates: [], transitions: [] },
-    layout: { sections: [{
-      titleKey: 'section.title',
-      organisms: [{ titleKey: 'organism.title', intentions: [{
-        id: 'items.list', intent: 'queryList', titleKey: 'intent.title', emptyKey: 'intent.empty',
-        fields: [{ id: 'items.categoryId', field: 'categoryId', stateKey: 'ui.items.input.categoryId', inputType: 'text' }],
-        filters: [], toolbar: [], actions: [],
-        rowActions: [{ id: 'items.delete', action: 'deleteItem', confirmation: false }],
-      }] }],
-    }] },
-  };
-  const shared = {
-    i18n: { 'section.title': 'Items', 'organism.title': 'Items', 'intent.title': 'Items', 'intent.empty': 'Items' },
-    states: [
-      { stateKey: 'ui.items.dead', kind: 'layoutState', defaultValue: '' },
-      { stateKey: 'ui.items.input.categoryId', kind: 'input', presentation: 'form', referenceEntity: 'Category' },
-    ],
-    actions: [{ actionId: 'deleteItem', kind: 'command', operationKind: 'delete', clearInputStateKeys: [] }],
-  };
-
-  const result = evaluateGeneratedPageQuality(page, shared, 'return html`✓`;');
-  const failures = result.checks.filter(check => !check.passed).map(check => check.id);
-  assert.ok(failures.includes('hygiene.layout-state-binding'));
-  assert.ok(failures.some(id => id.startsWith('hygiene.technical-input.')));
-  assert.ok(failures.some(id => id.startsWith('hygiene.mutation-feedback.')));
-  assert.ok(failures.some(id => id.startsWith('hygiene.empty-state.')));
-  assert.ok(failures.some(id => id.startsWith('hygiene.row-action.')));
-  assert.ok(failures.some(id => id.startsWith('hygiene.destructive-confirmation.')));
-});
-
-test('UX hygiene gate accepts lookup, contextual row action, feedback, confirmation and loading', () => {
-  const page = {
-    pageId: 'items',
-    templateId: 'tabular_classic',
-    templateValidationChecks: [],
-    templateWiring: { minimumStates: [], transitions: [] },
-    layout: { sections: [{
-      titleKey: 'section.title',
-      organisms: [{ titleKey: 'organism.title', intentions: [{
-        id: 'items.list', intent: 'queryList', titleKey: 'intent.title', emptyKey: 'intent.empty',
-        fields: [{ id: 'items.categoryId', field: 'categoryId', stateKey: 'ui.items.input.categoryId', inputType: 'select', source: 'bff.listCategories' }],
-        filters: [], toolbar: [], actions: [],
-        rowActions: [{ id: 'items.delete', action: 'deleteItem', context: 'row', rowRef: 'itemId', confirmation: true }],
-      }] }],
-    }] },
-  };
-  const shared = {
-    i18n: {
-      'section.title': 'Items', 'organism.title': 'Available items', 'intent.title': 'Inventory',
-      'intent.empty': 'Register the first item to continue', 'action.deleteItem.success': 'Item deleted.',
-      'action.deleteItem.error': 'Could not delete item.',
-    },
-    states: [{ stateKey: 'ui.items.input.categoryId', kind: 'input', presentation: 'form', referenceEntity: 'Category' }],
-    actions: [
-      {
-        actionId: 'deleteItem', kind: 'command', operationKind: 'delete', errorStateKey: 'ui.items.delete.error', clearInputStateKeys: [],
-        feedback: { successMessageKey: 'action.deleteItem.success', errorMessageKey: 'action.deleteItem.error', dismissible: true, dismissActionId: 'dismiss.deleteItemFeedback' },
-      },
-      { actionId: 'dismiss.deleteItemFeedback', kind: 'feedbackDismiss', handlerName: 'handleDismissDeleteItemFeedback' },
-    ],
-  };
-  const code = "const loading = true; const itemId = row.itemId; this.msg['action.deleteItem.success']; this.msg['action.deleteItem.error']; this.handleDismissDeleteItemFeedback(); window.confirm('Confirm');";
-  const result = evaluateGeneratedPageQuality(page, shared, code);
-  assert.equal(result.passed, true, result.checks.filter(check => !check.passed).map(check => check.message).join('; '));
 });

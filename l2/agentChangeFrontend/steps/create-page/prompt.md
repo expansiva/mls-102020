@@ -17,8 +17,8 @@ Tool argument shape:
   pageVariants[i].templateId must equal variantPlan[i+1].templateId (genomes page21, page31...). Omit
   pageVariants when variantPlan has a single entry. Never reuse a templateId; never emit more entries
   than variantPlan defines.
-- Build each variant strictly from ITS assigned template in promptContext.variantPlan; no unselected
-  template is present in the prompt. Variants must be structurally distinct, not near-duplicates.
+- Build each variant strictly from ITS assigned template (that template's userJourney/layoutGuidance in
+  promptContext.uxTemplateCandidates) so the variants are structurally distinct, not near-duplicates.
 - Every pageVariants[].pageLayout has the same pageId, commands and fields as result.pageLayout; only the
   UX structure differs. Do not invent new commands/fields per variant.
 - Every variant (result.pageLayout AND each pageVariants entry) must INDEPENDENTLY represent every
@@ -91,12 +91,6 @@ Layout rules:
 - Never render an input ending in `Id` as free text. Use selection/context/hidden input only when
   supported by the supplied contract and page data. When the supplied L4 data has no lookup source,
   leave the field out of the layout rather than inventing a lookup.
-- When a referenced entity has a real query source, declare `inputType: "select"` and set `source`
-  to that `bff.<query>` binding. A technical id column is a last resort: prefer an exposed
-  name/title/label/code field from the same query output.
-- Every row action must describe row context with `context: "row"` and `rowRef` set to a stable
-  output field. Put every row field used to prefill an editable draft in `prefillRefs`.
-  Destructive actions additionally declare `confirmation: true`.
 - Do not add an unbound layout-only state. A displayed value must bind to a contract input, command
   output, query result or business context.
 - Use one title per hierarchy level. A subtitle must add purpose, not repeat the title; empty-state

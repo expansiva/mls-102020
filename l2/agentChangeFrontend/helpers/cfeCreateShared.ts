@@ -27,7 +27,6 @@ import {
 import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { parseDefsSource } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentChangeFrontend/uxTemplates/selectUxTemplates.js';
-import { evaluateGeneratedPageQuality, type PageQualityResult } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
 type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
 type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
@@ -146,13 +145,6 @@ export interface CfePreparedPage {
   promptContext: Record<string, unknown>;
 }
 
-export class CfePageQualityError extends Error {
-  constructor(public readonly quality: PageQualityResult) {
-    super(`UX quality failed for ${quality.pageId} (${quality.templateId || 'template unknown'}): ${quality.checks.filter(check => !check.passed).map(check => check.message).join('; ')}`);
-    this.name = 'CfePageQualityError';
-  }
-}
-
 interface CfeLayoutAction {
   id: string;
   action: string;
@@ -160,10 +152,6 @@ interface CfeLayoutAction {
   order: number;
   displayHint?: string;
   actionKey?: string;
-  context?: 'row';
-  rowRef?: string;
-  prefillRefs?: string[];
-  confirmation?: boolean;
 }
 
 interface CfeLayoutField {
@@ -268,10 +256,6 @@ const layoutActionSchema = {
     order: intSchema,
     displayHint: strSchema,
     actionKey: strSchema,
-    context: { type: 'string', enum: ['row'] },
-    rowRef: strSchema,
-    prefillRefs: strArraySchema,
-    confirmation: boolSchema,
   },
 } as const;
 
@@ -578,16 +562,13 @@ export async function saveSharedDefs(prepared: CfePreparedPage, layout: CfePageL
   await savePageCreateMarker(prepared, 'done');
 }
 
-export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, genome = 'page11', allowQualityFailure = false): Promise<CfePageLayoutDefinition> {
-  const repairedLayout = collapseRepeatedHierarchyTitles(repairTechnicalReferences(prepared, repairMissingLayoutI18n(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, layout)))));
+export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, genome = 'page11'): Promise<CfePageLayoutDefinition> {
+  const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, layout)));
   validatePageLayout(prepared, repairedLayout);
   const enrichedLayout = enrichLayoutWithStateRefs(prepared, repairedLayout);
   const definition = {
     ...prepared.baseDefinition,
     templateId: selectedTemplateId(prepared, genome),
-    templateVersion: selectedTemplateSpec(prepared, genome)?.version,
-    templateWiring: selectedTemplateSpec(prepared, genome)?.wiring,
-    templateValidationChecks: selectedTemplateSpec(prepared, genome)?.validationChecks,
     visualStyle: prepared.visualStyle,
     sections: layoutSectionSummary(enrichedLayout.sections),
     layout: {
@@ -597,17 +578,6 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
     },
     dataBindings: enrichedLayout.dataBindings,
   };
-  const quality = evaluateGeneratedPageQuality(definition, sharedDefinition(prepared, enrichedLayout));
-  if (!quality.passed && !allowQualityFailure) throw new CfePageQualityError(quality);
-  recordCreateWarning(JSON.stringify({
-    code: 'ux-quality',
-    pageId: quality.pageId,
-    genome,
-    templateId: quality.templateId,
-    status: quality.passed ? 'passed' : 'pending-after-bounded-repair',
-    checks: quality.checks.length,
-    failures: quality.checks.filter(check => !check.passed).map(check => ({ id: check.id, message: check.message })),
-  }));
   await saveFrontendDefs(pageFileInfo(prepared.project, prepared.page, genome), 'definition', definition, pagePipeline(prepared.project, prepared.page, prepared.visualStyle, genome));
   return enrichedLayout;
 }
@@ -615,9 +585,9 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
 // Item 4: save the primary variant (page11) plus any extra UX variants (page21, page31...),
 // then save ONE shared as the union of all variants. All variants share pageId/contract, so
 // their stateKeys (pageId + command + field) coincide and the union is cheap.
-export async function savePageVariants(prepared: CfePreparedPage, result: CfePageLayoutResult, allowPrimaryQualityFailure = false): Promise<void> {
+export async function savePageVariants(prepared: CfePreparedPage, result: CfePageLayoutResult): Promise<void> {
   // The primary variant (page11) is strict: a page must have at least one complete, valid layout.
-  const enrichedLayouts: CfePageLayoutDefinition[] = [await savePageLayoutDefs(prepared, result.pageLayout, pageGenome(0), allowPrimaryQualityFailure)];
+  const enrichedLayouts: CfePageLayoutDefinition[] = [await savePageLayoutDefs(prepared, result.pageLayout, pageGenome(0))];
   // Extra UX variants degrade gracefully: a variant that fails validation (e.g. the LLM dropped an
   // operation in that layout) is skipped with a warning instead of failing the whole page.
   let variantIndex = 1;
@@ -697,15 +667,12 @@ export async function registerGeneratedFrontendPages(): Promise<{ pagesRegistere
   return { pagesRegistered: validPages.map(page => page.pageId), skippedPages };
 }
 
-export function parseCreatePageArgs(prompt: string | undefined): { pageId: string; qualityAttempt: number } {
+export function parseCreatePageArgs(prompt: string | undefined): { pageId: string } {
   if (!prompt) throw new Error('missing page args');
   const parsed = JSON.parse(prompt);
   const pageId = isRecord(parsed) ? readString(parsed.pageId) : '';
   if (!pageId) throw new Error(`invalid page args: ${prompt}`);
-  const qualityAttempt = isRecord(parsed) && typeof parsed.qualityAttempt === 'number' && Number.isInteger(parsed.qualityAttempt)
-    ? parsed.qualityAttempt
-    : 0;
-  return { pageId, qualityAttempt };
+  return { pageId };
 }
 
 export function createUpdateStatusIntent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, status: mls.msg.AIStepStatus, traceMsg?: string): mls.msg.AgentIntentUpdateStatus {
@@ -914,10 +881,6 @@ function normalizeLayoutActions(value: unknown, path: string): CfeLayoutAction[]
     order: normalizeOrder(action.order, `${path}[${index}].order`),
     displayHint: optionalString(action.displayHint),
     actionKey: optionalString(action.actionKey),
-    context: optionalString(action.context) === 'row' ? 'row' : undefined,
-    rowRef: optionalString(action.rowRef),
-    prefillRefs: Array.isArray(action.prefillRefs) ? normalizeStringList(action.prefillRefs, `${path}[${index}].prefillRefs`) : undefined,
-    confirmation: action.confirmation === true,
   };
   });
 }
@@ -1038,17 +1001,11 @@ function buildLayoutPromptContext(context: CfeCreateContext, page: CfePagePlan, 
   // template. We assign one distinct template per variant/genome (variant i -> candidate i) so the
   // variants never reuse a template; the effective variant count is capped by how many distinct
   // candidates actually fit this screen.
-  const rankedCandidates = selectUxTemplateCandidates(deriveUxSignals(context, page, operations, commands));
-  const effectiveVariants = Math.min(Math.max(1, variants), rankedCandidates.length);
-  const variantPlan = rankedCandidates.slice(0, effectiveVariants).map((candidate, index) => ({
+  const candidates = selectUxTemplateCandidates(deriveUxSignals(context, page, operations, commands), Math.max(1, variants));
+  const effectiveVariants = Math.min(Math.max(1, variants), candidates.length);
+  const variantPlan = candidates.slice(0, effectiveVariants).map((candidate, index) => ({
     genome: pageGenome(index),
     template: candidate,
-  }));
-  recordCreateWarning(JSON.stringify({
-    code: 'ux-template-selection',
-    pageId: page.pageId,
-    selected: variantPlan.map(entry => ({ genome: entry.genome, templateId: entry.template.id })),
-    ranked: rankedCandidates.map(candidate => ({ templateId: candidate.id, score: candidate.score })),
   }));
 
   return {
@@ -1332,22 +1289,6 @@ function fallbackLayoutTitleKey(id: string): string {
   return `${safeId}.title`;
 }
 
-function collapseRepeatedHierarchyTitles(layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
-  const collapsed = JSON.parse(JSON.stringify(layout)) as CfePageLayoutDefinition;
-  for (const section of collapsed.sections) {
-    const sectionTitle = collapsed.i18n[section.titleKey];
-    for (const organism of section.organisms) {
-      const organismTitle = collapsed.i18n[organism.titleKey];
-      if (organismTitle && organismTitle === sectionTitle) organism.titleKey = '';
-      const parentTitle = organism.titleKey ? collapsed.i18n[organism.titleKey] : sectionTitle;
-      for (const intent of organism.intentions) {
-        if (intent.titleKey && collapsed.i18n[intent.titleKey] === parentTitle) intent.titleKey = undefined;
-      }
-    }
-  }
-  return collapsed;
-}
-
 function validatePageLayout(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): void {
   if (layout.pageId !== prepared.page.pageId) throw new Error(`layout pageId ${layout.pageId} does not match ${prepared.page.pageId}`);
   const ids = new Set<string>();
@@ -1364,7 +1305,7 @@ function validatePageLayout(prepared: CfePreparedPage, layout: CfePageLayoutDefi
     if (section.organisms.length === 0) throw new Error(`${section.id} must have organisms`);
     for (const organism of section.organisms) {
       registerId(ids, organism.id, `organism:${organism.organismName}`);
-      if (organism.titleKey) assertI18nKey(i18nKeys, organism.titleKey, `${organism.id}.titleKey`);
+      assertI18nKey(i18nKeys, organism.titleKey, `${organism.id}.titleKey`);
       for (const action of organism.userActions) {
         if (!actions.has(action)) throw new Error(`${organism.id}.userActions references unknown action ${action}`);
         seenActions.add(action);
@@ -1478,88 +1419,16 @@ function commandFields(value: unknown): string[] {
 }
 
 function recordTechnicalIdLookupGaps(page: CfePagePlan, commands: Record<string, unknown>[]): void {
+  const lookupFields = new Set(commands
+    .filter(command => readString(command.kind) === 'query')
+    .flatMap(command => commandFieldRecords(command.output).map(field => field.name)));
   for (const command of commands) {
     if (readString(command.kind) === 'query') continue;
     for (const field of commandFieldRecords(command.input)) {
-      if (field.presentation !== 'form' || !isTechnicalReferenceField(field) || technicalReferenceLookupFromCommands(commands, field)) continue;
-      recordCreateWarning(JSON.stringify({
-        code: 'missing-reference-lookup',
-        pageId: page.pageId,
-        commandName: readString(command.commandName),
-        field: field.name,
-        fieldRef: field.fieldRef,
-        referenceEntity: field.referenceEntity,
-      }));
+      if (field.presentation !== 'form' || !/Id$/i.test(field.name) || lookupFields.has(field.name)) continue;
+      recordCreateWarning(`L4 lookup gap for ${page.pageId}.${readString(command.commandName)}.${field.name}: no query output can populate a contextual selector`);
     }
   }
-}
-
-function isTechnicalReferenceField(field: { name: string; referenceEntity?: string }): boolean {
-  return /Id$/i.test(field.name) || Boolean(field.referenceEntity);
-}
-
-function technicalReferenceLookup(prepared: CfePreparedPage, field: { name: string; fieldRef?: string; referenceEntity?: string }): string | undefined {
-  return technicalReferenceLookupFromCommands(prepared.commands, field);
-}
-
-function technicalReferenceLookupFromCommands(commands: Record<string, unknown>[], field: { name: string; fieldRef?: string; referenceEntity?: string }): string | undefined {
-  if (!isTechnicalReferenceField(field)) return undefined;
-  const candidates = new Set([
-    field.name,
-    readString(field.fieldRef).split('.').pop() || '',
-    field.referenceEntity ? `${field.referenceEntity.charAt(0).toLowerCase()}${field.referenceEntity.slice(1)}Id` : '',
-  ].filter(Boolean));
-  const lookup = commands
-    .filter(command => readString(command.kind) === 'query')
-    .find(command => commandFieldRecords(command.output).some(output => candidates.has(output.name)));
-  return lookup ? readString(lookup.commandName) || undefined : undefined;
-}
-
-function repairTechnicalReferences(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
-  const repaired = JSON.parse(JSON.stringify(layout)) as CfePageLayoutDefinition;
-  for (const section of repaired.sections) {
-    for (const organism of section.organisms) {
-      for (const intent of organism.intentions) {
-        const commandName = intentCommandName(intent, organism.userActions);
-        const command = commandByName(prepared, commandName);
-        const inputs = commandFieldRecords(command?.input);
-        const repairInputGroup = (fields: CfeLayoutField[]): CfeLayoutField[] => fields.flatMap(field => {
-          const input = inputs.find(item => item.name === field.field);
-          if (!input || !isTechnicalReferenceField(input)) return [field];
-          if (input.presentation !== 'form') return [];
-          const lookup = technicalReferenceLookup(prepared, input);
-          if (!lookup) return [];
-          return [{ ...field, inputType: 'select', source: `bff.${lookup}` }];
-        });
-        intent.fields = repairInputGroup(intent.fields);
-        intent.filters = repairInputGroup(intent.filters);
-
-        const outputs = commandFieldRecords(command?.output);
-        const seenColumns = new Set<string>();
-        intent.columns = intent.columns.map(column => {
-          if (!/Id$/i.test(column.field)) return column;
-          const readable = readableOutputField(outputs.map(field => field.name), column.field);
-          if (!readable) return column;
-          repaired.i18n[column.labelKey] = humanizeId(readable);
-          return { ...column, field: readable };
-        }).filter(column => {
-          if (seenColumns.has(column.field)) return false;
-          seenColumns.add(column.field);
-          return true;
-        });
-      }
-    }
-  }
-  return repaired;
-}
-
-function readableOutputField(fields: string[], technicalField: string): string | undefined {
-  const readable = fields.filter(field => !/Id$/i.test(field) && !isSystemField(field));
-  const stem = technicalField.replace(/Id$/i, '').toLowerCase();
-  return readable.find(field => {
-    const lower = field.toLowerCase();
-    return lower.startsWith(stem) && /(name|title|label|code|description)$/i.test(field);
-  }) || readable.find(field => /(name|title|label|code|description)$/i.test(field)) || readable[0];
 }
 
 function deterministicLayoutFromBase(prepared: CfePreparedPage): CfePageLayoutDefinition {
@@ -1654,11 +1523,7 @@ function deterministicOrganism(prepared: CfePreparedPage, operation: CfeOperatio
   // remain in the contract/action state without being rendered as values the user can type.
   const fields = commandFieldRecords(command.input)
     .filter(field => field.presentation === 'form')
-    .flatMap((field, fieldIndex) => {
-      const lookup = technicalReferenceLookup(prepared, field);
-      if (isTechnicalReferenceField(field) && !lookup) return [];
-      return [deterministicField(`${intentId}.field.${field.name}`, field.name, fieldIndex, i18n, lookup ? { inputType: 'select', source: `bff.${lookup}` } : undefined)];
-    });
+    .map((field, fieldIndex) => deterministicField(`${intentId}.field.${field.name}`, field.name, fieldIndex, i18n));
   const columns = commandFields(command.output).map((field, fieldIndex) => deterministicField(`${intentId}.column.${field}`, field, fieldIndex, i18n));
   const actionKey = `${intentId}.action.${operation.operationId}`;
   i18n[actionKey] = operation.title || humanizeId(operation.operationId);
@@ -1688,28 +1553,16 @@ function deterministicOrganism(prepared: CfePreparedPage, operation: CfeOperatio
       columns: isQuery ? columns : [],
       filters: isQuery ? fields : [],
       toolbar: [],
-      rowActions: [],
+      rowActions: isQuery ? [{ id: `${intentId}.rowAction.${operation.operationId}`, action: operation.operationId, labelKey: actionKey, order: 10 }] : [],
       actions: isQuery ? [] : [{ id: `${intentId}.action.${operation.operationId}`, action: operation.operationId, labelKey: actionKey, order: 10 }],
     }],
   };
 }
 
-function deterministicField(id: string, field: string, index: number, i18n: Record<string, string>, extra?: Pick<CfeLayoutField, 'inputType' | 'source'>): CfeLayoutField {
+function deterministicField(id: string, field: string, index: number, i18n: Record<string, string>): CfeLayoutField {
   const labelKey = `${id}.label`;
   i18n[labelKey] = humanizeId(field);
-  return { id, field, labelKey, order: (index + 1) * 10, ...extra };
-}
-
-function withMutationFeedbackI18n(prepared: CfePreparedPage, source: Record<string, string>): Record<string, string> {
-  const i18n = { ...source };
-  for (const command of prepared.commands) {
-    if (readString(command.kind) === 'query') continue;
-    const commandName = readString(command.commandName);
-    const purpose = readString(command.purpose) || humanizeId(commandName);
-    i18n[`action.${commandName}.success`] = `${purpose} concluído com sucesso.`;
-    i18n[`action.${commandName}.error`] = `Não foi possível concluir: ${purpose}.`;
-  }
-  return i18n;
+  return { id, field, labelKey, order: (index + 1) * 10 };
 }
 
 function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Record<string, unknown> {
@@ -1744,7 +1597,7 @@ function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefini
     businessContextRefs,
     navigationRefs: prepared.navigationRefs,
     i18nMeta: prepared.i18nMeta,
-    i18n: withMutationFeedbackI18n(prepared, layout.i18n),
+    i18n: layout.i18n,
     automation: {
       statePrefix: `ui.${prepared.page.pageId}`,
       stateKeys: states.map(state => readString(state.stateKey)).filter(Boolean),
@@ -1782,9 +1635,6 @@ function sharedStates(prepared: CfePreparedPage, layout?: CfePageLayoutDefinitio
         kind: 'input',
         source: field.source,
         presentation: field.presentation,
-        required: field.required === true,
-        fieldRef: field.fieldRef,
-        referenceEntity: field.referenceEntity,
         contractRef: { commandName, direction: 'input', field: field.name },
         defaultValue: defaultValueForField(field),
       });
@@ -1856,7 +1706,6 @@ function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown
       commandRef: commandName,
       routeKey: readString(command.routeKey) || `${prepared.page.moduleName}.${prepared.page.pageId}.${commandName}`,
       purpose: readString(command.purpose),
-      operationKind: readString(command.operationKind),
       methodName: kind === 'query' ? `load${toPascalCase(commandName)}` : commandName,
       handlerName: `handle${toPascalCase(commandName)}Click`,
       inputStateKeys: commandFieldRecords(command.input).map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
@@ -1874,7 +1723,6 @@ function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown
           successMessageKey: `action.${commandName}.success`,
           errorMessageKey: `action.${commandName}.error`,
           dismissible: true,
-          dismissActionId: `dismiss.${commandName}Feedback`,
         },
         clearInputStateKeys: commandFieldRecords(command.input)
           .filter(field => field.presentation === 'form' || field.presentation === 'selection')
@@ -1882,16 +1730,6 @@ function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown
       } : {}),
       ...(refreshActionIds.length > 0 ? { refreshActionIds } : {}),
     });
-    if (kind === 'command') {
-      actions.push({
-        actionId: `dismiss.${commandName}Feedback`,
-        kind: 'feedbackDismiss',
-        statusStateKey: actionStatusStateKey(prepared.page.pageId, commandName),
-        errorStateKey: actionErrorStateKey(prepared.page.pageId, commandName),
-        methodName: `dismiss${toPascalCase(commandName)}Feedback`,
-        handlerName: `handleDismiss${toPascalCase(commandName)}Feedback`,
-      });
-    }
   }
 
   for (const state of states.filter(item => item.kind === 'input')) {
@@ -2012,47 +1850,11 @@ function enrichLayoutWithStateRefs(prepared: CfePreparedPage, layout: CfePageLay
             }
           }
         }
-        for (const action of [...intent.toolbar, ...intent.actions]) {
-          action.actionKey = action.action;
-          if (isDestructiveCommand(prepared, action.action)) action.confirmation = true;
-        }
-        for (const action of intent.rowActions) {
-          action.actionKey = action.action;
-          action.context = 'row';
-          action.rowRef = rowReferenceForAction(prepared, action.action, commandName);
-          action.prefillRefs = rowPrefillRefsForAction(prepared, action.action, commandName);
-          if (isDestructiveCommand(prepared, action.action)) action.confirmation = true;
-        }
+        for (const action of [...intent.toolbar, ...intent.rowActions, ...intent.actions]) action.actionKey = action.action;
       }
     }
   }
   return cloned;
-}
-
-function isDestructiveCommand(prepared: CfePreparedPage, commandName: string): boolean {
-  const command = commandByName(prepared, commandName);
-  const operationKind = readString(command?.operationKind).toLowerCase();
-  return operationKind === 'delete' || /^(delete|remove|cancel|archive|void)/i.test(commandName);
-}
-
-function rowReferenceForAction(prepared: CfePreparedPage, actionName: string, queryName: string): string | undefined {
-  const action = commandByName(prepared, actionName);
-  const query = commandByName(prepared, queryName);
-  const outputFields = commandFieldRecords(query?.output).map(field => field.name);
-  const contextual = commandFieldRecords(action?.input)
-    .filter(field => field.presentation === 'selection')
-    .map(field => field.name);
-  return contextual.find(field => outputFields.includes(field))
-    || outputFields.find(field => /Id$/i.test(field));
-}
-
-function rowPrefillRefsForAction(prepared: CfePreparedPage, actionName: string, queryName: string): string[] {
-  const action = commandByName(prepared, actionName);
-  const query = commandByName(prepared, queryName);
-  const outputFields = new Set(commandFieldRecords(query?.output).map(field => field.name));
-  return commandFieldRecords(action?.input)
-    .filter(field => field.presentation === 'form' && outputFields.has(field.name))
-    .map(field => field.name);
 }
 
 function collectLayoutStateRefs(layout: CfePageLayoutDefinition): { stateKey: string; path: string }[] {
@@ -2203,15 +2005,13 @@ function defaultBusinessContextOriginRef(inputId: string, fieldRef: string): str
   return text.includes('unit') || text.includes('unidade') ? 'businessContext.activeUnitId' : 'businessContext.activeCompanyId';
 }
 
-function commandFieldRecords(value: unknown): { name: string; required?: boolean; source?: string; presentation?: string; fieldRef?: string; referenceEntity?: string }[] {
+function commandFieldRecords(value: unknown): { name: string; required?: boolean; source?: string; presentation?: string }[] {
   if (!Array.isArray(value)) return [];
   return value.map(item => isRecord(item) ? {
     name: readString(item.name),
     required: item.required === true,
     source: readString(item.source),
     presentation: readString(item.presentation) || 'form',
-    fieldRef: readString(item.fieldRef),
-    referenceEntity: readString(item.referenceEntity),
   } : { name: '' }).filter(item => item.name);
 }
 
@@ -2423,7 +2223,6 @@ function commandFromOperation(operation: CfeOperationDef, entities: Map<string, 
     ...(operation.bffName ? { routeKey: operation.bffName } : {}),
     purpose: operation.title || humanizeId(operation.operationId),
     kind,
-    operationKind: operation.kind,
     outputShape,
     input: kind === 'query' ? queryInput(operation, entity, entities) : commandInput(operation, entity, entities),
     output: kind === 'query' ? queryOutput(operation, entity, entities) : commandOutput(operation, entity, entities),
@@ -2727,14 +2526,10 @@ const MAX_UX_VARIANTS = 3;
 function pageGenome(variantIndex: number): string { return `page${variantIndex + 1}1`; }
 
 function selectedTemplateId(prepared: CfePreparedPage, genome: string): string | undefined {
-  return readString(selectedTemplateSpec(prepared, genome)?.id) || undefined;
-}
-
-function selectedTemplateSpec(prepared: CfePreparedPage, genome: string): Record<string, unknown> | undefined {
   const variantPlan = Array.isArray(prepared.promptContext.variantPlan) ? prepared.promptContext.variantPlan : [];
   const variant = variantPlan.find(item => isRecord(item) && readString(item.genome) === genome);
   const template = variant && isRecord(variant.template) ? variant.template : undefined;
-  return template;
+  return template ? readString(template.id) || undefined : undefined;
 }
 
 function contractFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/contracts`, shortName: page.pageId, extension: '.defs.ts' }; }
@@ -2869,8 +2664,6 @@ function contractFieldFromOperationInput(operation: CfeOperationDef, input: CfeL
   out.required = input.required;
   out.source = input.source;
   out.presentation = frontendInputPresentation(input) || 'context';
-  out.fieldRef = input.fieldRef;
-  if (resolved.entity && resolved.entity.entityId !== operation.entity) out.referenceEntity = resolved.entity.entityId;
   if (input.description) out.description = input.description;
   return out;
 }

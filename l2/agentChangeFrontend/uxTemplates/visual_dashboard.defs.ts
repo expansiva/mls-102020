@@ -51,17 +51,13 @@ export const visualDashboardTemplate = {
     "Do not invent coordinates or floor plan data.",
     "Use visual grouping only when backed by ontology fields.",
     "Keep legends and status labels explicit.",
-    "Treat object selection like selectedEntity context.",
-    "Microcopy example: subtitle 'See table availability by area', action 'Open table', empty state 'Configure tables to populate this view'."
+    "Treat object selection like selectedEntity context."
   ],
-  wiring: {
-    minimumStates: ["selectedId", "loading"],
-    transitions: ["rowSelect->selectedId->prepopulateDraft"],
-    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
-  },
   validationChecks: [
-    { id: "has-visual-fallback" },
-    { id: "has-selection-context" }
+    "The template has an explicit spatial signal.",
+    "A selected visual object maps to a stable entity key.",
+    "There is an accessible non-visual fallback.",
+    "No fake map data is invented by the layout."
   ],
   exampleUseCases: [
     "Restaurant floor map.",
@@ -72,3 +68,4 @@ export const visualDashboardTemplate = {
 } as const satisfies UxTemplateDefinition;
 
 export default visualDashboardTemplate;
+
