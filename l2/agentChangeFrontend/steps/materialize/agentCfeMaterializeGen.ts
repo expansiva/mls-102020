@@ -228,9 +228,9 @@ function mkStatus(
 // fan-out slots NEVER return 'failed'. Repair runs (attempt >= 2) must also be able to continue to
 // the NEXT repair round, so they don't self-fail either. Every failure path here completes with a
 // 'MATERIALIZE-FAILED: ' trace; the phase 'verify' step (agentCfeMaterializePhase, mode 'verify') is
-// the SOLE failure gate — it runs bounded repair rounds with the compiler error in context
-// (specAuraForge §11) and fails the task visibly only after the repair budget is exhausted. This
-// mirrors the CLI (nodejsMaterializeL2), which retries with fed-back tsc errors before giving up.
+// the completion gate — it runs bounded repair rounds with the compiler error in context
+// (specAuraForge §11). Exhaustion is recorded as CLI-materialization pending because the CLI can
+// continue from the generated artifacts without discarding the whole changeFrontend task.
 function mkFailureStatus(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
