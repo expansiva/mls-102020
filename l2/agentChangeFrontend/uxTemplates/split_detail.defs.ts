@@ -51,13 +51,19 @@ export const splitDetailTemplate = {
     "Write the layout as a focused workbench.",
     "Make selection state explicit in dataBindings.",
     "Use progressive disclosure inside the detail panel for advanced fields.",
-    "Keep the list scannable and the detail panel action-oriented."
+    "Keep the list scannable and the detail panel action-oriented.",
+    "Microcopy example: subtitle 'Review and update customer details', action 'Update customer', empty state 'Select a customer to view details'."
   ],
+  wiring: {
+    minimumStates: ["selectedId", "formDraft", "loading", "mutationFeedback"],
+    transitions: ["rowSelect->selectedId->prepopulateDraft", "submit->textualFeedback->refresh->clearFormAndSelection"],
+    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
+  },
   validationChecks: [
-    "The layout has one master list and one detail area.",
-    "A selected entity drives detail/edit/delete actions.",
-    "No selectedEntity input is manually typed.",
-    "The empty selection state is defined."
+    { id: "one-primary-list" },
+    { id: "has-detail-surface" },
+    { id: "has-selection-context" },
+    { id: "has-row-action-context" }
   ],
   exampleUseCases: [
     "Manage catalog items with many fields.",
@@ -68,4 +74,3 @@ export const splitDetailTemplate = {
 } as const satisfies UxTemplateDefinition;
 
 export default splitDetailTemplate;
-

@@ -165,6 +165,11 @@ For every action in actions[]:
 - feedback.successMessageKey and feedback.errorMessageKey are the textual, dismissible feedback contract used by page11. The success key describes the completed domain action; the error key is only a fallback when the backend did not provide an AppError message.
 - Handler wrappers must use runBlockingUiAction for command actions and may call query methods directly for query actions.
 
+3. kind === "feedbackDismiss"
+- Generate methodName and handlerName exactly as declared.
+- Set the mapped statusStateKey to "idle" and errorStateKey to "", call setState for both, and request an update.
+- This is the only handler page11 may use to dismiss mutation feedback.
+
 ## Lifecycle
 
 connectedCallback:

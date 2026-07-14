@@ -50,13 +50,16 @@ export const reportScreenTemplate = {
     "Design for analysis, not data maintenance.",
     "Use date ranges and grouping only if they are present in the contract or L4 story.",
     "Separate report generation from normal list refresh when both exist.",
-    "Keep report output read-only by default."
+    "Keep report output read-only by default.",
+    "Microcopy example: subtitle 'Analyze sales for the selected period', action 'Generate sales report', empty state 'Choose a period to generate the report'."
   ],
+  wiring: {
+    minimumStates: ["formDraft", "loading"],
+    transitions: [],
+    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
+  },
   validationChecks: [
-    "The page has report or aggregate semantics.",
-    "Export action maps to a real command if shown.",
-    "No unsupported CRUD actions are introduced.",
-    "Date range filters are business filters, not audit timestamps."
+    { id: "has-report" }
   ],
   exampleUseCases: [
     "Shift closing report.",
@@ -67,4 +70,3 @@ export const reportScreenTemplate = {
 } as const satisfies UxTemplateDefinition;
 
 export default reportScreenTemplate;
-

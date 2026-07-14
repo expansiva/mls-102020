@@ -49,13 +49,18 @@ export const kanbanPipelineTemplate = {
     "Emphasize flow and bottlenecks.",
     "Use card summaries instead of full field dumps.",
     "Keep transition actions contextual to the selected card.",
-    "Represent drag-and-drop only as a semantic enhancement, not a requirement for every renderer."
+    "Represent drag-and-drop only as a semantic enhancement, not a requirement for every renderer.",
+    "Microcopy example: subtitle 'Move opportunities through the sales stages', action 'Advance opportunity', empty state 'Add an opportunity to start the pipeline'."
   ],
+  wiring: {
+    minimumStates: ["selectedId", "loading", "mutationFeedback"],
+    transitions: ["rowSelect->selectedId->prepopulateDraft", "submit->textualFeedback->refresh->clearFormAndSelection"],
+    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
+  },
   validationChecks: [
-    "Board lanes map to known statuses or lifecycle states.",
-    "Each card has a stable selectedEntity key.",
-    "Transition actions do not require manually typed ids.",
-    "The template is not selected for plain entity management."
+    { id: "has-board" },
+    { id: "has-selection-context" },
+    { id: "has-row-action-context" }
   ],
   exampleUseCases: [
     "Sales opportunity pipeline.",

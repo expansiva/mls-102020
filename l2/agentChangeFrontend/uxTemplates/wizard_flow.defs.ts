@@ -50,13 +50,18 @@ export const wizardFlowTemplate = {
     "Follow operation story steps closely.",
     "Group fields by user decision, not by technical entity.",
     "Make progress and completion criteria clear.",
-    "Avoid inventing intermediate BFF actions."
+    "Avoid inventing intermediate BFF actions.",
+    "Microcopy example: subtitle 'Build the order in guided steps', action 'Confirm order', empty state 'Complete this step to continue'."
   ],
+  wiring: {
+    minimumStates: ["formDraft", "loading", "mutationFeedback"],
+    transitions: ["submit->textualFeedback->refresh->clearFormAndSelection"],
+    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
+  },
   validationChecks: [
-    "Steps map to story or grouped input intent.",
-    "There is one final submit unless L4 defines multiple commands.",
-    "No unsupported next/back actions are emitted as BFF commands.",
-    "Context inputs remain hidden or read-only."
+    { id: "has-wizard-steps" },
+    { id: "single-submit-action" },
+    { id: "all-form-inputs-covered" }
   ],
   exampleUseCases: [
     "Create a complex order.",

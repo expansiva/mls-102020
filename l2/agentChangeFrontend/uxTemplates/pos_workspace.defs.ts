@@ -50,13 +50,18 @@ export const posWorkspaceTemplate = {
     "Design for fast repeated input.",
     "Separate order context, item picker, line items and final action.",
     "Never turn cart line items into separate BFF saves unless L4 defines that.",
-    "Make current order state obvious."
+    "Make current order state obvious.",
+    "Microcopy example: subtitle 'Assemble the current order', action 'Confirm order', empty state 'Add the first item to the order'."
   ],
+  wiring: {
+    minimumStates: ["selectedId", "formDraft", "loading", "mutationFeedback"],
+    transitions: ["rowSelect->selectedId->prepopulateDraft", "submit->textualFeedback->refresh->clearFormAndSelection"],
+    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
+  },
   validationChecks: [
-    "The template is backed by an order/cart-like model.",
-    "Repeated child inputs are part of one parent command when required.",
-    "Settlement or final submit is clearly separated from item editing.",
-    "Context ids are not typed manually."
+    { id: "has-command-form" },
+    { id: "has-repeatable-input" },
+    { id: "single-submit-action" }
   ],
   exampleUseCases: [
     "Restaurant order entry.",
@@ -67,4 +72,3 @@ export const posWorkspaceTemplate = {
 } as const satisfies UxTemplateDefinition;
 
 export default posWorkspaceTemplate;
-

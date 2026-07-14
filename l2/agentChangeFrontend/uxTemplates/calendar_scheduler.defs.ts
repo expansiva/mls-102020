@@ -51,13 +51,19 @@ export const calendarSchedulerTemplate = {
     "Do not choose this template just because an entity has createdAt.",
     "Use business time fields, not audit timestamps.",
     "Make conflicts and availability visible if the contract supports them.",
-    "Keep cancellation/destructive actions confirmed."
+    "Keep cancellation/destructive actions confirmed.",
+    "Microcopy example: subtitle 'Schedule reservations by service time', action 'Book reservation', empty state 'Choose a date to see or create reservations'."
   ],
+  wiring: {
+    minimumStates: ["selectedId", "formDraft", "loading", "mutationFeedback"],
+    transitions: ["rowSelect->selectedId->prepopulateDraft", "submit->textualFeedback->refresh->clearFormAndSelection"],
+    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
+  },
   validationChecks: [
-    "The template is backed by business date/time fields.",
-    "Audit timestamps alone do not qualify.",
-    "Selected slot/date context is not manually typed when available.",
-    "Events can be listed if calendar rendering is unavailable."
+    { id: "has-calendar" },
+    { id: "has-list-fallback" },
+    { id: "has-selection-context" },
+    { id: "has-destructive-confirmation" }
   ],
   exampleUseCases: [
     "Table reservations.",

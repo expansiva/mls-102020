@@ -4,6 +4,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   cfePageLayoutToolName,
   cfePageLayoutToolSchema,
+  CfePageQualityError,
   createPromptReadyIntent,
   createUpdateStatusIntent,
   extractCfePageLayoutOutput,
@@ -60,25 +61,62 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
+  let pageId = '';
+  let qualityAttempt = 0;
+  let pageResult: Parameters<typeof savePageVariants>[1] | undefined;
   try {
     consumeCreateDiagnostics();
-    const { pageId } = parseCreatePageArgs(step.prompt);
+    ({ pageId, qualityAttempt } = parseCreatePageArgs(step.prompt));
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing LLM payload');
     const output = extractCfePageLayoutOutput(payload);
     if (output.status !== 'ok') throw new Error(output.questions.join('; ') || `${AGENT_NAME} returned ${output.status}`);
+    pageResult = output.result;
 
     const createContext = await readCreateContext();
     const page = createContext.pages.find(item => item.pageId === pageId);
     if (!page) throw new Error(`page not found for layout save: ${pageId}`);
     const prepared = await preparePageCreate(page);
-    await savePageVariants(prepared, output.result);
+    await savePageVariants(prepared, pageResult);
     const diagnostics = consumeCreateDiagnostics();
     const trace = diagnostics.length ? formatCreateDiagnostics(diagnostics) : undefined;
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof CfePageQualityError && pageId && qualityAttempt < 1) {
+      const createContext = await readCreateContext();
+      const page = createContext.pages.find(item => item.pageId === pageId);
+      if (page) {
+        const prepared = await preparePageCreate(page);
+        const systemPrompt = await buildSystemPrompt();
+        const args = JSON.stringify({ pageId, qualityAttempt: qualityAttempt + 1 });
+        return [createPromptReadyIntent(
+          context,
+          parentStep,
+          hookSequential,
+          args,
+          systemPrompt,
+          `## Page selector\n${pageId}\n\n## Reduced L4 + contract/shared context\n${JSON.stringify(prepared.promptContext, null, 2)}\n\n## Deterministic quality feedback (repair every item)\n${message}\n`,
+          cfePageLayoutToolSchema,
+          cfePageLayoutToolName,
+        )];
+      }
+    }
     console.error(`[${agent.agentName}] ${message}`);
+    if (error instanceof CfePageQualityError && pageId && pageResult) {
+      const createContext = await readCreateContext();
+      const page = createContext.pages.find(item => item.pageId === pageId);
+      if (page) {
+        const prepared = await preparePageCreate(page);
+        await savePageVariants(prepared, pageResult, true);
+        const diagnostics = consumeCreateDiagnostics();
+        const trace = [
+          `UX-QUALITY-PENDING after bounded repair: ${message}`,
+          ...(diagnostics.length ? [formatCreateDiagnostics(diagnostics)] : []),
+        ].join('\n');
+        return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
+      }
+    }
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
 }
@@ -91,7 +129,7 @@ function consumeCreateDiagnostics(): string[] {
 }
 
 function formatCreateDiagnostics(diagnostics: string[]): string {
-  return `Warnings:\n${diagnostics.map(item => `- ${item}`).join('\n')}`;
+  return `Generation trace:\n${diagnostics.map(item => `- ${item}`).join('\n')}`;
 }
 
 async function buildSystemPrompt(): Promise<string> {

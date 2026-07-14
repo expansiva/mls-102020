@@ -14,9 +14,9 @@ import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent }
 import {
   buildCompileRepairHint,
   buildMissingCodeRepairHint,
+  evaluateGeneratedPageQuality,
   parseDefs,
   testPathForOutputPath,
-  validateGeneratedPageQuality,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import {
   compileMlsPathAndGetErrors,
@@ -198,7 +198,11 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
       // .ts, never its .defs.ts; treating a defs-only issue as a repairable error loops until the
       // budget is exhausted. Keep the result auditable in the trace and let the create-page stage
       // own a future layout regeneration.
-      warnings.push(...validateGeneratedPageQuality(parseDefs(defsContent).data, parseDefs(sharedDefs).data, content));
+      const quality = evaluateGeneratedPageQuality(parseDefs(defsContent).data, parseDefs(sharedDefs).data, content);
+      const failures = quality.checks.filter(check => !check.passed);
+      errors.push(...failures.filter(check => check.scope === 'render').map(check => `UX render: ${check.message}`));
+      warnings.push(...failures.filter(check => check.scope === 'layout').map(check => `UX layout: ${check.message}`));
+      warnings.push(`UX quality ${quality.passed ? 'PASS' : 'FAIL'} page=${quality.pageId} template=${quality.templateId || 'unknown'} checks=${quality.checks.length} failures=${failures.length}`);
     }
   }
   return { item, outputPath, errors, warnings, typecheck: testContent && testContent.trim() ? (typecheckErrors.length ? 'failed' : 'passed') : 'not-applicable' };

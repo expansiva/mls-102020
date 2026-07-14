@@ -51,14 +51,19 @@ export const tabularClassicTemplate = {
     "Make the table the dominant surface.",
     "Keep forms hidden until the user creates or edits a record.",
     "Use concise column labels and hide audit timestamps unless they are relevant to the task.",
-    "Treat destructive actions as confirmations, not full forms."
+    "Treat destructive actions as confirmations, not full forms.",
+    "Microcopy example: subtitle 'Manage available stock items', primary action 'Register stock item', empty state 'Register the first stock item to continue'."
   ],
+  wiring: {
+    minimumStates: ["selectedId", "formDraft", "loading", "mutationFeedback"],
+    transitions: ["rowSelect->selectedId->prepopulateDraft", "submit->textualFeedback->refresh->clearFormAndSelection"],
+    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
+  },
   validationChecks: [
-    "The page has exactly one primary list.",
-    "Create is reachable from the toolbar.",
-    "Update and delete are reachable from row actions.",
-    "Inputs sourced from selectedEntity are not rendered as manual fields.",
-    "Delete asks for confirmation before submitting."
+    { id: "one-primary-list" },
+    { id: "has-selection-context" },
+    { id: "has-row-action-context" },
+    { id: "has-destructive-confirmation" }
   ],
   exampleUseCases: [
     "Manage restaurant tables.",
@@ -69,4 +74,3 @@ export const tabularClassicTemplate = {
 } as const satisfies UxTemplateDefinition;
 
 export default tabularClassicTemplate;
-
