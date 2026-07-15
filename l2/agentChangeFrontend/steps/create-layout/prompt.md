@@ -22,6 +22,11 @@ unique within the layout and distinct from `layoutId`. Include every operation a
 by `shared.actions`; do not invent actions, commands, fields, payloads, HTML, CSS, DOM,
 web-component tags or local mutable page state.
 
+Every operation (every query and command actionId in `shared.actions`) must appear in at least one
+`organism.userActions` in this layout. This includes browse/list queries: the organism that hosts a
+queryList intention lists that query's actionId in its `userActions`. A layout that omits an operation
+from all `userActions` is rejected.
+
 Use only `shared.states` and `shared.functions` for state and behavior. Every visible text uses a
 titleKey, labelKey or emptyKey declared in the flat `pageLayout.i18n` object. Every intention includes
 `fields`, `columns`, `filters`, `toolbar`, `rowActions` and `actions`, using `[]` when empty.

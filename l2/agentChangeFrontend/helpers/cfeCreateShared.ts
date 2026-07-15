@@ -562,7 +562,7 @@ export async function saveBaseSharedDefs(prepared: CfePreparedPage): Promise<voi
 }
 
 export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, genome = 'page11'): Promise<CfePageLayoutDefinition> {
-  const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutFields(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, layout))));
+  const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutFields(prepared, repairMissingOperationUserActions(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, layout)))));
   validatePageLayout(prepared, repairedLayout);
   const enrichedLayout = enrichLayoutWithStateRefs(prepared, repairedLayout);
   const definition = {
@@ -1280,6 +1280,42 @@ function repairUnknownLayoutActions(prepared: CfePreparedPage, layout: CfePageLa
     recordCreateWarning(`dropped unknown layout action(s) for ${prepared.page.pageId}: ${dropped.join('; ')}`);
   }
   return dropped.length > 0 ? { ...layout, sections } : layout;
+}
+
+// The strict "layout does not represent operation" check only counts organism.userActions, but the
+// LLM legitimately represents a query as a queryList intention (intent.action/toolbar/rowActions)
+// without repeating it in userActions (seen in 102051: browseMenuItems/browseStockItems killed
+// page11). When an expected operation is referenced by any intention of an organism, list it in
+// that organism's userActions instead of failing the variant.
+function repairMissingOperationUserActions(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const seen = new Set<string>(layout.sections.flatMap(section => section.organisms.flatMap(organism => organism.userActions)));
+  const missing = prepared.page.operationIds.filter(operationId => !seen.has(operationId));
+  if (missing.length === 0) return layout;
+
+  const intentActionRefs = (intent: CfeLayoutIntent): string[] => [
+    intent.action,
+    intent.submitAction,
+    ...[...intent.toolbar, ...intent.rowActions, ...intent.actions].map(action => action.action),
+  ].filter(Boolean) as string[];
+
+  const repaired: string[] = [];
+  const sections = layout.sections.map(section => ({
+    ...section,
+    organisms: section.organisms.map(organism => {
+      const refs = new Set(organism.intentions.flatMap(intentActionRefs));
+      const additions = missing.filter(operationId => refs.has(operationId) && !organism.userActions.includes(operationId));
+      if (additions.length === 0) return organism;
+      for (const operationId of additions) {
+        repaired.push(`${organism.id}+=${operationId}`);
+        missing.splice(missing.indexOf(operationId), 1);
+      }
+      return { ...organism, userActions: [...organism.userActions, ...additions] };
+    }),
+  }));
+
+  if (repaired.length === 0) return layout;
+  recordCreateWarning(`added intention-referenced operation(s) to userActions for ${prepared.page.pageId}: ${repaired.join('; ')}`);
+  return { ...layout, sections };
 }
 
 // Symmetric to repairUnknownLayoutActions: a field/column/filter whose field name is outside the
