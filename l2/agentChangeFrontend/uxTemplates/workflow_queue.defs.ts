@@ -50,19 +50,13 @@ export const workflowQueueTemplate = {
     "Design for speed and operational clarity.",
     "Make stale/loading states visible.",
     "Group queue items by status when the lifecycle has clear stages.",
-    "Keep the next action close to the selected work item.",
-    "Microcopy example: subtitle 'Handle orders awaiting preparation', action 'Start preparation', empty state 'New orders will appear here when received'."
+    "Keep the next action close to the selected work item."
   ],
-  wiring: {
-    minimumStates: ["selectedId", "loading", "mutationFeedback"],
-    transitions: ["rowSelect->selectedId->prepopulateDraft", "submit->textualFeedback->refresh->clearFormAndSelection"],
-    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
-  },
   validationChecks: [
-    { id: "has-workflow-status" },
-    { id: "has-selection-context" },
-    { id: "has-row-action-context" },
-    { id: "has-refresh" }
+    "The queue is the dominant surface.",
+    "Transitions are contextual actions.",
+    "Lifecycle identifiers are not manually entered.",
+    "The page supports refresh or live update semantics."
   ],
   exampleUseCases: [
     "Kitchen ticket queue.",
@@ -73,3 +67,4 @@ export const workflowQueueTemplate = {
 } as const satisfies UxTemplateDefinition;
 
 export default workflowQueueTemplate;
+

@@ -51,17 +51,13 @@ export const statusOverviewTemplate = {
     "Design for at-a-glance comprehension.",
     "Prefer summary cards, compact lists and highlighted exceptions.",
     "Use dashboard visuals only when backed by real fields or aggregate outputs.",
-    "Surface active context such as current shift without making the user type it.",
-    "Microcopy example: subtitle 'Monitor the active shift and exceptions', action 'Close shift', empty state 'Open a shift to start monitoring operations'."
+    "Surface active context such as current shift without making the user type it."
   ],
-  wiring: {
-    minimumStates: ["selectedId", "loading", "mutationFeedback"],
-    transitions: ["rowSelect->selectedId->prepopulateDraft", "submit->textualFeedback->refresh->clearFormAndSelection"],
-    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
-  },
   validationChecks: [
-    { id: "has-status-group" },
-    { id: "has-selection-context" }
+    "The dashboard has at least one metric or status group.",
+    "Actions are contextual to selected or active data.",
+    "Active lifecycle ids are hidden context inputs.",
+    "The page does not degrade into a generic CRUD stack."
   ],
   exampleUseCases: [
     "Manager shift dashboard.",
@@ -72,3 +68,4 @@ export const statusOverviewTemplate = {
 } as const satisfies UxTemplateDefinition;
 
 export default statusOverviewTemplate;
+

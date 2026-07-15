@@ -1,10 +1,10 @@
 {
   "flowId": "agentChangeFrontend",
-  "schemaVersion": "2026-07-13-v2-real-flow-modernized",
+  "schemaVersion": "2026-07-14-v3-contract-shared-layout-fanout",
   "description": "Stage 2 frontend reconciler. The flow scans L4/L5, creates frontend .defs.ts files for L5 todoFrontend=create work, materializes stale L2 runtime files, registers pages, and finalizes L5 owner status. L4 remains read-only. config.json is composed at publish time by nodejsSaveConfigJson.ts.",
   "specFirst": {
     "policy": "This flow.json is the contract. Future structural changes must update this file before code.",
-    "modernizationCheckpoint": "2026-07-13 removed phantom V01 and aspirational step declarations, extracted prompts, and moved step agents into steps/* folders. The steps below describe the currently implemented flow.",
+    "modernizationCheckpoint": "2026-07-14 split page creation into deterministic contract/shared, one-layout-per-LLM-call, and deterministic shared reconciliation barriers. The scan reads L4 once and workers reuse the execution cache.",
     "deferred": [
       "Split cfeCreateShared.ts by responsibility.",
       "Unify Studio and CLI materialization repair policy in cfeMaterializeCore."
@@ -28,14 +28,17 @@
     "currentCodeRoot": "l2/agentChangeFrontend",
     "stepFoldersCreated": [
       "steps/scan",
-      "steps/create-page",
+      "steps/create-contract-shared",
+      "steps/create-layout",
+      "steps/reconcile-shared",
+      "steps/verify-create-layouts",
       "steps/materialize",
       "steps/register",
       "steps/finalize",
       "steps/help"
     ],
     "promptFiles": [
-      "steps/create-page/prompt.md"
+      "steps/create-layout/prompt.md"
     ],
     "helpersFolder": "helpers/ contains shared/policy-frozen modules used across steps and CLIs: cfeCreateShared, cfeL4Contract, cfeMaterializeCore, cfeMaterializeStudio and nodejsMaterializeLlmClient.",
     "currentBoundary": "Step documentation, prompts, and step-owned TypeScript agents live under steps/. Shared helpers live under helpers/. Skills, uxTemplates, CLI entrypoints and the public root agent remain in l2/agentChangeFrontend."
@@ -90,6 +93,7 @@
   },
   "engineInvariants": [
     "parallel_dynamic fan-out parents use maxParallel 5 unless this file declares otherwise.",
+    "A parallel_dynamic parent that starts as waiting_dependency still initializes interaction.input before it is unlocked; runLLMStepParallel rejects a null parent interaction.",
     "Fan-out progress titles must expose completed, total and failed counters.",
     "Dynamic child args stay compact and unique.",
     "A worker should prefer completed-with-trace plus downstream verification when one item can be repaired without failing the whole pipeline.",
@@ -134,38 +138,101 @@
       "modelAlias": "deterministic",
       "goal": "Read create context, decide whether page creation and/or materialization are required, and enqueue the next concrete steps.",
       "emits": [
-        "create-page-fanout",
+        "create-contract-shared-fanout",
+        "create-layout-fanout",
+        "reconcile-shared-fanout",
+        "verify-create-layouts",
         "materialize-create-l2"
       ],
       "noWorkBehavior": "If no pages are pending and materialize=false, complete with no further steps."
     },
     {
-      "planId": "create-page-fanout",
-      "agentName": "agentCfeCreatePage",
-      "file": "l2/agentChangeFrontend/steps/create-page/agentCfeCreatePage.ts",
-      "stepFolder": "steps/create-page",
+      "planId": "create-contract-shared-fanout",
+      "agentName": "agentCfeCreateContractShared",
+      "file": "l2/agentChangeFrontend/steps/create-contract-shared/agentCfeCreateContractShared.ts",
+      "stepFolder": "steps/create-contract-shared",
       "executionMode": "parallel_dynamic",
       "dependsOn": [
         "scan-create-l4"
       ],
       "maxParallel": 5,
-      "progressTitle": "Criar paginas {{completed}}/{{total}}, falhas {{failed}}",
+      "progressTitle": "Criar contratos/shared {{completed}}/{{total}}, falhas {{failed}}",
       "dynamicArgs": {
         "shape": {
-          "pageId": "string"
+          "pageId": "string",
+          "runId": "string"
+        }
+      },
+      "modelAlias": "deterministic",
+      "goal": "For one page, save deterministic contract and base shared defs before any layout generation.",
+      "outputs": [
+        "l2/{module}/web/contracts/{page}.defs.ts",
+        "l2/{module}/web/shared/{page}.defs.ts"
+      ]
+    },
+    {
+      "planId": "create-layout-fanout",
+      "agentName": "agentCfeCreateLayout",
+      "file": "l2/agentChangeFrontend/steps/create-layout/agentCfeCreateLayout.ts",
+      "stepFolder": "steps/create-layout",
+      "executionMode": "parallel_dynamic",
+      "dependsOn": [
+        "create-contract-shared-fanout"
+      ],
+      "maxParallel": 5,
+      "progressTitle": "Criar layouts {{completed}}/{{total}}, falhas {{failed}}",
+      "dynamicArgs": {
+        "shape": {
+          "pageId": "string",
+          "genome": "string",
+          "templateId": "string",
+          "runId": "string"
         }
       },
       "modelAlias": "codehigh",
       "strictTool": true,
-      "prompt": "steps/create-page/prompt.md",
+      "prompt": "steps/create-layout/prompt.md",
       "tool": "cfePageLayoutToolName",
-      "goal": "For one page, save contract defs deterministically, request semantic page layout from the LLM, then save variants/shared state through deterministic reconciliation.",
+      "goal": "For one pinned page/genome/template tuple, request exactly one semantic page layout and save its defs. Every fan-out child completes with a trace; primary-layout strictness is evaluated after the fan-out barrier.",
       "outputs": [
-        "l2/{module}/web/contracts/{page}.defs.ts",
+        "l2/{module}/web/desktop/page{ux}1/{page}.defs.ts"
+      ]
+    },
+    {
+      "planId": "reconcile-shared-fanout",
+      "agentName": "agentCfeReconcileShared",
+      "file": "l2/agentChangeFrontend/steps/reconcile-shared/agentCfeReconcileShared.ts",
+      "stepFolder": "steps/reconcile-shared",
+      "executionMode": "parallel_dynamic",
+      "dependsOn": [
+        "create-layout-fanout"
+      ],
+      "maxParallel": 5,
+      "progressTitle": "Reconciliar shared {{completed}}/{{total}}, falhas {{failed}}",
+      "dynamicArgs": {
+        "shape": {
+          "pageId": "string",
+          "runId": "string"
+        }
+      },
+      "modelAlias": "deterministic",
+      "goal": "After every page variant attempt, merge saved layout state references into the single shared defs. Every fan-out child completes with a trace so pending slots remain valid.",
+      "outputs": [
         "l2/{module}/web/shared/{page}.defs.ts",
-        "l2/{module}/web/desktop/page11/{page}.defs.ts",
         "l2/{module}/trace/frontend-create-pages/{page}.json"
       ]
+    },
+    {
+      "planId": "verify-create-layouts",
+      "agentName": "agentCfeVerifyCreateLayouts",
+      "file": "l2/agentChangeFrontend/steps/verify-create-layouts/agentCfeVerifyCreateLayouts.ts",
+      "stepFolder": "steps/verify-create-layouts",
+      "executionMode": "sequential",
+      "dependsOn": [
+        "reconcile-shared-fanout"
+      ],
+      "modelAlias": "deterministic",
+      "goal": "Enforce primary page11 strictness after all parallel layout and reconciliation children are terminal. On missing primary layouts it fails sequentially and blocks materialization without invalidating a parallel parent."
     },
     {
       "planId": "materialize-create-l2",
@@ -175,7 +242,7 @@
       "executionMode": "sequential",
       "dependsOn": [
         "scan-create-l4",
-        "create-page-fanout when emitted"
+        "verify-create-layouts when emitted"
       ],
       "modelAlias": "deterministic",
       "goal": "Plan stale or missing materialization work from generated .defs.ts pipelines and enqueue ordered phase barriers.",
@@ -262,6 +329,15 @@
     }
   ],
   "removedLegacy": [
+    {
+      "removedAt": "2026-07-14",
+      "files": [
+        "steps/create-page/agentCfeCreatePage.ts",
+        "steps/create-page/cfePromptFiles.ts",
+        "steps/create-page/prompt.md"
+      ],
+      "reason": "The old one-page multi-variant LLM worker was replaced by contract/shared, single-layout, and reconciliation steps so pageVariants is no longer part of the tool contract."
+    },
     {
       "removedAt": "2026-07-13",
       "files": [

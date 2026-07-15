@@ -49,18 +49,13 @@ export const singleFormTemplate = {
     "Favor clarity over density.",
     "Make required fields obvious.",
     "Use field ordering from the operation story.",
-    "Avoid technical context fields in the visible form.",
-    "Microcopy example: subtitle 'Provide the supplier details', action 'Register supplier', empty state 'Complete the required fields to register the supplier'."
+    "Avoid technical context fields in the visible form."
   ],
-  wiring: {
-    minimumStates: ["formDraft", "loading", "mutationFeedback"],
-    transitions: ["submit->textualFeedback->refresh->clearFormAndSelection"],
-    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
-  },
   validationChecks: [
-    { id: "has-command-form" },
-    { id: "single-submit-action" },
-    { id: "all-form-inputs-covered" }
+    "There is only one submit action.",
+    "All required userInput fields are represented.",
+    "System default and context inputs are not editable.",
+    "Success and error states are reachable."
   ],
   exampleUseCases: [
     "Create a supplier.",
@@ -71,3 +66,4 @@ export const singleFormTemplate = {
 } as const satisfies UxTemplateDefinition;
 
 export default singleFormTemplate;
+

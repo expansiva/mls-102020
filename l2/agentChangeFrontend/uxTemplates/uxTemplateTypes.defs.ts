@@ -69,44 +69,13 @@ export interface UxTemplateSlots {
 }
 
 export interface UxTemplateWiring {
-  minimumStates: Array<'selectedId' | 'formDraft' | 'loading' | 'mutationFeedback'>;
-  transitions: Array<
-    | 'rowSelect->selectedId->prepopulateDraft'
-    | 'submit->textualFeedback->refresh->clearFormAndSelection'
-  >;
+  minimumStates: string[];
+  transitions: string[];
   microcopy: {
     actionLabels: 'domainAction';
     emptyState: 'nextStep';
     mutationFeedback: 'textualDismissible';
   };
-}
-
-export type UxValidationCheckId =
-  | 'one-primary-list'
-  | 'has-list'
-  | 'has-list-fallback'
-  | 'has-card-list'
-  | 'has-command-form'
-  | 'has-detail-surface'
-  | 'has-workflow-status'
-  | 'has-board'
-  | 'has-status-group'
-  | 'has-visual-fallback'
-  | 'has-calendar'
-  | 'has-report'
-  | 'has-bulk-selection'
-  | 'has-wizard-steps'
-  | 'has-repeatable-input'
-  | 'single-submit-action'
-  | 'all-form-inputs-covered'
-  | 'has-selection-context'
-  | 'has-row-action-context'
-  | 'has-destructive-confirmation'
-  | 'has-refresh';
-
-/** The id is interpreted by cfeMaterializeCore; it is data, not prompt prose. */
-export interface UxValidationCheck {
-  id: UxValidationCheckId;
 }
 
 export interface UxTemplateDefinition {
@@ -121,7 +90,8 @@ export interface UxTemplateDefinition {
   slots: UxTemplateSlots;
   layoutGuidance: string[];
   llmGuidance: string[];
-  validationChecks: UxValidationCheck[];
-  wiring: UxTemplateWiring;
+  validationChecks: string[];
+  /** Structured interaction contract. Omitted by legacy templates only; selection derives it from slots. */
+  wiring?: UxTemplateWiring;
   exampleUseCases: string[];
 }

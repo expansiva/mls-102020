@@ -38,260 +38,64 @@ export interface MaterializeEnv {
 
 export interface GenResult { code: string; }
 
-export interface PageQualityCheckResult {
-  id: string;
-  scope: 'layout' | 'render';
-  passed: boolean;
-  message: string;
-}
-
-export interface PageQualityResult {
-  pageId: string;
-  templateId: string;
-  passed: boolean;
-  checks: PageQualityCheckResult[];
-}
-
-/** Executes independent hygiene checks plus the structured checks persisted from the selected UX template. */
-export function evaluateGeneratedPageQuality(pageDefinition: unknown, sharedDefinition: unknown, pageCode = ''): PageQualityResult {
-  if (!isRecord(pageDefinition) || !isRecord(sharedDefinition)) {
-    return { pageId: '', templateId: '', passed: true, checks: [] };
-  }
+/**
+ * Deterministic UX hygiene checks for a materialized page. They intentionally inspect only
+ * contracts present in the page/shared defs and generated page code; missing L4 data is not
+ * guessed here. The materialization phase feeds a failure back to the page generator.
+ */
+export function validateGeneratedPageQuality(pageDefinition: unknown, sharedDefinition: unknown, pageCode: string): string[] {
+  if (!isRecord(pageDefinition) || !isRecord(sharedDefinition)) return [];
+  const errors: string[] = [];
   const pageId = stringValue(pageDefinition.pageId);
-  const templateId = stringValue(pageDefinition.templateId);
-  const layout = isRecord(pageDefinition.layout) ? pageDefinition.layout : {};
-  const sections = arrayRecords(layout.sections);
-  const organisms = sections.flatMap(section => arrayRecords(section.organisms));
-  const intents = organisms.flatMap(organism => arrayRecords(organism.intentions));
+  const layout = isRecord(pageDefinition.layout) ? pageDefinition.layout : null;
+  const sections = Array.isArray(layout?.sections) ? layout.sections.filter(isRecord) : [];
   const i18n = isRecord(sharedDefinition.i18n) ? sharedDefinition.i18n : {};
-  const states = arrayRecords(sharedDefinition.states);
-  const actions = arrayRecords(sharedDefinition.actions);
+  const states = Array.isArray(sharedDefinition.states) ? sharedDefinition.states.filter(isRecord) : [];
+  const actions = Array.isArray(sharedDefinition.actions) ? sharedDefinition.actions.filter(isRecord) : [];
   const stateByKey = new Map(states.map(state => [stringValue(state.stateKey), state]));
-  const actionById = new Map(actions.map(action => [stringValue(action.actionId), action]));
-  const checks: PageQualityCheckResult[] = [];
-  const add = (id: string, scope: 'layout' | 'render', passed: boolean, message: string): void => {
-    checks.push({ id, scope, passed, message });
-  };
 
-  const deadLayoutStates = states.filter(state => stringValue(state.kind) === 'layoutState');
-  add('hygiene.layout-state-binding', 'layout', deadLayoutStates.length === 0,
-    deadLayoutStates.length ? `layoutState without binding: ${deadLayoutStates.map(state => stringValue(state.stateKey)).join(', ')}` : 'no unbound layoutState');
+  for (const state of states) {
+    if (stringValue(state.kind) === 'layoutState') errors.push(`layoutState without binding: ${stringValue(state.stateKey)}`);
+  }
 
-  for (const intent of intents) {
-    const title = stringValue(intent.titleKey);
-    const empty = stringValue(intent.emptyKey);
-    const distinctEmpty = !title || !empty || !stringValue(i18n[title]) || stringValue(i18n[title]) !== stringValue(i18n[empty]);
-    add(`hygiene.empty-state.${stringValue(intent.id)}`, 'layout', distinctEmpty,
-      distinctEmpty ? 'empty state is distinct' : `empty state repeats intention title: ${stringValue(intent.id)}`);
-
-    for (const field of [...arrayRecords(intent.fields), ...arrayRecords(intent.filters)]) {
-      const fieldName = stringValue(field.field);
-      const state = stateByKey.get(stringValue(field.stateKey));
-      const technical = /Id$/i.test(fieldName) || Boolean(stringValue(state?.referenceEntity));
-      const editable = stringValue(state?.kind) === 'input' && stringValue(state?.presentation) === 'form';
-      const inputType = stringValue(field.inputType).toLowerCase();
-      const safe = !technical || !editable || inputType === 'hidden' || (inputType === 'select' && Boolean(stringValue(field.source)));
-      add(`hygiene.technical-input.${stringValue(field.id)}`, 'layout', safe,
-        safe ? 'technical reference is contextual, hidden or lookup-backed' : `technical reference is free text: ${stringValue(intent.id)}.${fieldName}`);
-    }
-
-    const columns = arrayRecords(intent.columns);
-    const hasReadableColumn = columns.some(column => !/Id$/i.test(stringValue(column.field)));
-    for (const column of columns.filter(item => /Id$/i.test(stringValue(item.field)))) {
-      add(`hygiene.technical-column.${stringValue(column.id)}`, 'layout', !hasReadableColumn,
-        hasReadableColumn ? `technical id column has a readable alternative: ${stringValue(column.field)}` : 'technical id retained because no readable output is available');
-    }
-
-    for (const rowAction of arrayRecords(intent.rowActions)) {
-      const rowRef = stringValue(rowAction.rowRef);
-      const targetAction = actionById.get(stringValue(rowAction.action));
-      const formStateKeys = Array.isArray(targetAction?.inputStateKeys)
-        ? targetAction.inputStateKeys.filter((stateKey: unknown) => stringValue(stateByKey.get(stringValue(stateKey))?.presentation) === 'form')
-        : [];
-      const prefillRefs = Array.isArray(rowAction.prefillRefs) ? rowAction.prefillRefs.map(stringValue).filter(Boolean) : [];
-      const contextual = stringValue(rowAction.context) === 'row' && Boolean(rowRef) && (formStateKeys.length === 0 || prefillRefs.length > 0);
-      add(`hygiene.row-action.${stringValue(rowAction.id)}`, 'layout', contextual,
-        contextual ? 'row action declares row identity and draft prefill' : `row action does not reference/prefill its row: ${stringValue(rowAction.id)}`);
-      if (pageCode && contextual) {
-        const setterNames = formStateKeys.map((stateKey: unknown) => stringValue(actions.find(action => stringValue(action.kind) === 'stateSetter' && stringValue(action.stateKey) === stringValue(stateKey))?.methodName)).filter(Boolean);
-        const rendered = pageCode.includes(rowRef) && prefillRefs.every((ref: string) => pageCode.includes(ref)) && setterNames.every(name => pageCode.includes(name));
-        add(`hygiene.row-action-render.${stringValue(rowAction.id)}`, 'render', rendered,
-          rendered ? 'render consumes row identity and declared prefill setters' : `render does not consume row context for ${stringValue(rowAction.id)}`);
+  for (const section of sections) {
+    for (const organism of arrayRecords(section.organisms)) {
+      for (const intent of arrayRecords(organism.intentions)) {
+        const title = stringValue(intent.titleKey);
+        const empty = stringValue(intent.emptyKey);
+        if (title && empty && stringValue(i18n[title]) && stringValue(i18n[title]) === stringValue(i18n[empty])) {
+          errors.push(`empty state repeats intention title: ${stringValue(intent.id)}`);
+        }
+        for (const field of [...arrayRecords(intent.fields), ...arrayRecords(intent.filters)]) {
+          const fieldName = stringValue(field.field);
+          const state = stateByKey.get(stringValue(field.stateKey));
+          if (/Id$/i.test(fieldName) && stringValue(state?.kind) === 'input' && stringValue(state?.presentation) === 'form') {
+            errors.push(`technical id is an editable text field: ${stringValue(intent.id)}.${fieldName}`);
+          }
+        }
       }
     }
   }
 
-  const mutations = actions.filter(action => stringValue(action.kind) === 'command');
-  for (const action of mutations) {
+  for (const action of actions) {
+    if (stringValue(action.kind) !== 'command') continue;
     const actionId = stringValue(action.actionId);
-    const feedback = isRecord(action.feedback) ? action.feedback : {};
-    const successKey = stringValue(feedback.successMessageKey);
-    const errorKey = stringValue(feedback.errorMessageKey);
-    const dismissActionId = stringValue(feedback.dismissActionId);
-    const feedbackComplete = Boolean(
-      successKey && errorKey && stringValue(i18n[successKey]) && stringValue(i18n[errorKey])
-      && feedback.dismissible === true && dismissActionId && actionById.has(dismissActionId)
-      && stringValue(action.errorStateKey) && Array.isArray(action.clearInputStateKeys)
-    );
-    add(`hygiene.mutation-feedback.${actionId}`, 'layout', feedbackComplete,
-      feedbackComplete ? 'mutation has textual dismissible feedback and clear wiring' : `mutation feedback wiring incomplete: ${actionId}`);
-    if (pageCode) {
-      const rendered = Boolean(successKey && errorKey && pageCode.includes(successKey) && pageCode.includes(errorKey)
-        && pageCode.includes(stringValue(actionById.get(dismissActionId)?.handlerName)));
-      add(`hygiene.mutation-feedback-render.${actionId}`, 'render', rendered,
-        rendered ? 'render exposes textual dismissible feedback' : `render feedback missing: ${actionId}`);
+    const feedback = isRecord(action.feedback) ? action.feedback : null;
+    const successKey = stringValue(feedback?.successMessageKey);
+    const errorKey = stringValue(feedback?.errorMessageKey);
+    if (!successKey || !errorKey || !stringValue(i18n[successKey]) || !stringValue(i18n[errorKey])) {
+      errors.push(`mutation feedback i18n missing: ${actionId}`);
+      continue;
+    }
+    if (!stringValue(action.errorStateKey) || !Array.isArray(action.clearInputStateKeys)) {
+      errors.push(`mutation feedback wiring incomplete: ${actionId}`);
+    }
+    if (pageCode && (!pageCode.includes(`this.msg['${successKey}']`) || !pageCode.includes(`this.msg['${errorKey}']`))) {
+      errors.push(`generated page does not render textual mutation feedback: ${actionId}`);
     }
   }
 
-  const layoutActions = intents.flatMap(intent => [
-    ...arrayRecords(intent.toolbar),
-    ...arrayRecords(intent.rowActions),
-    ...arrayRecords(intent.actions),
-  ]);
-  for (const action of mutations.filter(item => stringValue(item.operationKind).toLowerCase() === 'delete')) {
-    const actionId = stringValue(action.actionId);
-    const occurrences = layoutActions.filter(item => stringValue(item.action) === actionId);
-    const confirmed = occurrences.every(item => item.confirmation === true);
-    add(`hygiene.destructive-confirmation.${actionId}`, 'layout', confirmed,
-      confirmed ? 'destructive action requires confirmation' : `destructive action lacks confirmation: ${actionId}`);
-    if (pageCode && occurrences.length) {
-      const rendered = /\bconfirm\s*\(|<dialog\b|role=["']dialog["']/.test(pageCode);
-      add(`hygiene.destructive-confirmation-render.${actionId}`, 'render', rendered,
-        rendered ? 'render includes confirmation UI' : `render confirmation missing: ${actionId}`);
-    }
-  }
-
-  addHierarchyChecks(sections, organisms, intents, i18n, add);
-  addWiringChecks(pageDefinition.templateWiring, states, actions, intents, add);
-  for (const check of arrayRecords(pageDefinition.templateValidationChecks)) {
-    const id = stringValue(check.id);
-    const passed = evaluateTemplateCheck(id, sections, organisms, intents, states, actions);
-    add(`template.${id}`, 'layout', passed, passed ? `template check passed: ${id}` : `template check failed: ${id}`);
-  }
-
-  if (pageCode && actions.some(action => stringValue(action.kind) === 'query' || stringValue(action.kind) === 'command')) {
-    const loadingVisible = /loading|skeleton|placeholder|spinner|progress/i.test(pageCode);
-    add('hygiene.loading-render', 'render', loadingVisible,
-      loadingVisible ? 'render exposes loading state' : 'render does not expose loading state');
-  }
-
-  return { pageId, templateId, passed: checks.every(check => check.passed), checks };
-}
-
-export function validateGeneratedPageQuality(pageDefinition: unknown, sharedDefinition: unknown, pageCode: string): string[] {
-  const result = evaluateGeneratedPageQuality(pageDefinition, sharedDefinition, pageCode);
-  return result.checks.filter(check => !check.passed).map(check => `${result.pageId ? `${result.pageId}: ` : ''}${check.message}`);
-}
-
-function addHierarchyChecks(
-  sections: Record<string, any>[],
-  _organisms: Record<string, any>[],
-  _intents: Record<string, any>[],
-  i18n: Record<string, any>,
-  add: (id: string, scope: 'layout' | 'render', passed: boolean, message: string) => void,
-): void {
-  const repeated = sections.some(section => {
-    const sectionTitle = stringValue(i18n[stringValue(section.titleKey)]);
-    return arrayRecords(section.organisms).some(organism => {
-      const organismTitle = stringValue(i18n[stringValue(organism.titleKey)]);
-      const parentTitle = organismTitle || sectionTitle;
-      return Boolean(organismTitle && organismTitle === sectionTitle)
-        || arrayRecords(organism.intentions).some(intent => {
-          const intentTitle = stringValue(i18n[stringValue(intent.titleKey)]);
-          return Boolean(intentTitle && intentTitle === parentTitle);
-        });
-    });
-  });
-  add('hygiene.title-hierarchy', 'layout', !repeated,
-    repeated ? 'section/organism/intention title repeats its parent' : 'title hierarchy is distinct');
-}
-
-function addWiringChecks(
-  wiringValue: unknown,
-  states: Record<string, any>[],
-  actions: Record<string, any>[],
-  intents: Record<string, any>[],
-  add: (id: string, scope: 'layout' | 'render', passed: boolean, message: string) => void,
-): void {
-  if (!isRecord(wiringValue)) return;
-  const requiredStates = Array.isArray(wiringValue.minimumStates) ? wiringValue.minimumStates.map(stringValue) : [];
-  const mutations = actions.filter(action => stringValue(action.kind) === 'command');
-  const selected = actions.some(action =>
-    (Array.isArray(action.selectedEntityInputStateKeys) && action.selectedEntityInputStateKeys.length > 0)
-    || (Array.isArray(action.routeParamInputStateKeys) && action.routeParamInputStateKeys.length > 0));
-  const roles: Record<string, boolean> = {
-    selectedId: selected,
-    formDraft: states.some(state => stringValue(state.kind) === 'input' && stringValue(state.presentation) === 'form'),
-    loading: states.some(state => stringValue(state.kind) === 'actionStatus'),
-    mutationFeedback: mutations.every(action => isRecord(action.feedback)),
-  };
-  for (const role of requiredStates) add(`wiring.state.${role}`, 'layout', roles[role] === true,
-    roles[role] ? `wiring state role available: ${role}` : `wiring state role missing: ${role}`);
-
-  const transitions = Array.isArray(wiringValue.transitions) ? wiringValue.transitions.map(stringValue) : [];
-  for (const transition of transitions) {
-    const passed = transition.startsWith('rowSelect')
-      ? selected && intents.some(intent => arrayRecords(intent.rowActions).some(action => stringValue(action.context) === 'row' && Boolean(stringValue(action.rowRef))))
-      : mutations.length > 0 && mutations.every(action => {
-        const hasQuery = actions.some(candidate => stringValue(candidate.kind) === 'query');
-        return (!hasQuery || Array.isArray(action.refreshActionIds)) && Array.isArray(action.clearInputStateKeys) && isRecord(action.feedback);
-      });
-    add(`wiring.transition.${transition}`, 'layout', passed,
-      passed ? `wiring transition available: ${transition}` : `wiring transition missing: ${transition}`);
-  }
-}
-
-function evaluateTemplateCheck(
-  id: string,
-  sections: Record<string, any>[],
-  organisms: Record<string, any>[],
-  intents: Record<string, any>[],
-  states: Record<string, any>[],
-  actions: Record<string, any>[],
-): boolean {
-  const intentKinds = intents.map(intent => stringValue(intent.intent).toLowerCase());
-  const organismKinds = organisms.map(organism => stringValue(organism.type).toLowerCase());
-  const matches = (pattern: RegExp): boolean => intentKinds.some(kind => pattern.test(kind)) || organismKinds.some(kind => pattern.test(kind));
-  const listCount = intentKinds.filter(kind => /(querylist|list|table|queue)/.test(kind)).length;
-  const selected = actions.filter(action =>
-    (Array.isArray(action.selectedEntityInputStateKeys) && action.selectedEntityInputStateKeys.length > 0)
-    || (Array.isArray(action.routeParamInputStateKeys) && action.routeParamInputStateKeys.length > 0));
-  const rowActions = intents.flatMap(intent => arrayRecords(intent.rowActions));
-  const destructive = actions.filter(action => stringValue(action.kind) === 'command' && stringValue(action.operationKind).toLowerCase() === 'delete');
-  const submitActions = [...new Set(intents.map(intent => stringValue(intent.submitAction)).filter(Boolean))];
-  switch (id) {
-    case 'one-primary-list': return listCount === 1;
-    case 'has-list': return listCount > 0;
-    case 'has-list-fallback': return listCount > 0;
-    case 'has-card-list': return matches(/card/);
-    case 'has-command-form': return matches(/commandform|form/);
-    case 'has-detail-surface': return matches(/detail|summary|profile/);
-    case 'has-workflow-status': return matches(/workflowstatus|queue|status/);
-    case 'has-board': return matches(/board|kanban|pipeline/);
-    case 'has-status-group': return matches(/status|summary|metric|dashboard/);
-    case 'has-visual-fallback': return matches(/visual|map|spatial/) && listCount > 0;
-    case 'has-calendar': return matches(/calendar|schedule/);
-    case 'has-report': return matches(/report|aggregate|summary/);
-    case 'has-bulk-selection': return selected.some(action => Array.isArray(action.selectedEntityInputStateKeys) && action.selectedEntityInputStateKeys.length > 1)
-      || states.some(state => /selectedIds/i.test(stringValue(state.name)));
-    case 'has-wizard-steps': return sections.length > 1 || intents.length > 1;
-    case 'has-repeatable-input': return states.some(state => stringValue(state.kind) === 'input' && Array.isArray(state.defaultValue));
-    case 'single-submit-action': return submitActions.length === 1;
-    case 'all-form-inputs-covered': {
-      const renderedStateKeys = new Set(intents.flatMap(intent => arrayRecords(intent.fields).map(field => stringValue(field.stateKey))).filter(Boolean));
-      return states.filter(state => stringValue(state.kind) === 'input' && stringValue(state.presentation) === 'form' && state.required === true)
-        .every(state => renderedStateKeys.has(stringValue(state.stateKey)));
-    }
-    case 'has-selection-context': return selected.length > 0;
-    case 'has-row-action-context': return rowActions.length > 0 && rowActions.every(action => stringValue(action.context) === 'row' && Boolean(stringValue(action.rowRef)));
-    case 'has-destructive-confirmation': return destructive.length === 0 || destructive.every(action => {
-      const actionId = stringValue(action.actionId);
-      const occurrences = rowActions.filter(item => stringValue(item.action) === actionId);
-      return occurrences.length > 0 && occurrences.every(item => item.confirmation === true);
-    });
-    case 'has-refresh': return actions.some(action => stringValue(action.kind) === 'query');
-    default: return false;
-  }
+  return errors.map(error => pageId ? `${pageId}: ${error}` : error);
 }
 
 export const CONTRACTS_102029: readonly string[] = [

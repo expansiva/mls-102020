@@ -1,0 +1,9 @@
+<!-- mls fileReference="_102020_/l2/agentChangeFrontend/steps/create-layout/readme.md" enhancement="_blank" -->
+
+# create-layout
+
+One dynamic item is `{ pageId, genome, templateId, runId }`. It reuses the execution cache created by
+scan, supplies only the pinned template plus page/shared/user-journey/i18n context, and makes one LLM
+call that saves exactly one page layout. Every child completes com trace; a rejected item also writes
+`trace/frontend-create-layout-errors/{page}--{genome}.json`. The sequential `verify-create-layouts`
+barrier reports every current-run rejection in the task failure trace.

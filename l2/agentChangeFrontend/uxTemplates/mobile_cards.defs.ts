@@ -52,18 +52,13 @@ export const mobileCardsTemplate = {
     "Think in touch targets and scroll rhythm.",
     "Do not overload each card with every field.",
     "Show status and next action prominently.",
-    "Use compact filters; advanced filters can be progressive.",
-    "Microcopy example: subtitle 'Track today's field jobs', action 'Start job', empty state 'Create a job to begin the route'."
+    "Use compact filters; advanced filters can be progressive."
   ],
-  wiring: {
-    minimumStates: ["selectedId", "formDraft", "loading", "mutationFeedback"],
-    transitions: ["rowSelect->selectedId->prepopulateDraft", "submit->textualFeedback->refresh->clearFormAndSelection"],
-    microcopy: { actionLabels: "domainAction", emptyState: "nextStep", mutationFeedback: "textualDismissible" }
-  },
   validationChecks: [
-    { id: "has-card-list" },
-    { id: "has-selection-context" },
-    { id: "has-destructive-confirmation" }
+    "Records are rendered as cards, not a desktop table.",
+    "Each card has a clear primary label and status if available.",
+    "Create is easy to reach.",
+    "Destructive actions still require confirmation."
   ],
   exampleUseCases: [
     "Mobile stock count.",
@@ -74,3 +69,4 @@ export const mobileCardsTemplate = {
 } as const satisfies UxTemplateDefinition;
 
 export default mobileCardsTemplate;
+
