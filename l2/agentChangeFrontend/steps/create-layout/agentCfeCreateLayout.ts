@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/create-layout/agentCfeCreateLayout.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { cfePageLayoutToolName, cfePageLayoutToolSchema, createLayoutPromptContext, createPromptReadyIntent, createUpdateStatusIntent, extractCfePageLayoutOutput, prepareCreateRunPage, rememberCreateLayout, saveCreateLayoutFailureTrace, savePageLayoutDefs } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { GOAL_FIRST_TEMPLATE_ID, cfePageLayoutToolName, cfePageLayoutToolSchema, createLayoutPromptContext, createPromptReadyIntent, createUpdateStatusIntent, extractCfePageLayoutOutput, prepareCreateRunPage, rememberCreateLayout, saveCreateLayoutFailureTrace, savePageLayoutDefs, savePageObjectiveTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import { readCfePrompt } from '/_102020_/l2/agentChangeFrontend/steps/create-layout/cfePromptFiles.js';
 import { skill as uxGuidanceSkill } from '/_102020_/l2/agentChangeFrontend/skills/uxGuidance.js';
 
@@ -23,7 +23,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   try {
     const layoutArgs = parseArgs(args || step.prompt);
     const prepared = await prepareCreateRunPage(layoutArgs.runId, layoutArgs.pageId);
-    const systemPrompt = await buildSystemPrompt();
+    const systemPrompt = await buildSystemPrompt(layoutArgs.templateId);
     return [createPromptReadyIntent(
       context,
       parentStep,
@@ -51,7 +51,9 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const output = extractCfePageLayoutOutput(payload);
     if (output.status !== 'ok') throw new Error(output.questions.join('; ') || `${AGENT_NAME} returned ${output.status}`);
     const prepared = await prepareCreateRunPage(layoutArgs.runId, layoutArgs.pageId);
-    const savedLayout = await savePageLayoutDefs(prepared, output.result.pageLayout, layoutArgs.genome);
+    const objective = layoutArgs.templateId === GOAL_FIRST_TEMPLATE_ID ? output.result.objective : undefined;
+    const savedLayout = await savePageLayoutDefs(prepared, output.result.pageLayout, layoutArgs.genome, objective);
+    if (objective !== undefined) await savePageObjectiveTrace(prepared, layoutArgs.genome, objective);
     rememberCreateLayout(layoutArgs.runId, layoutArgs.pageId, layoutArgs.genome, savedLayout);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed')];
   } catch (error) {
@@ -85,8 +87,10 @@ function parseArgs(value: string | undefined): { pageId: string; genome: string;
   return { pageId, genome, templateId, runId };
 }
 
-async function buildSystemPrompt(): Promise<string> {
-  const prompt = await readCfePrompt('steps/create-layout', 'prompt');
+async function buildSystemPrompt(templateId: string): Promise<string> {
+  // page11 (pinned template) uses the baseline prompt; page21 (goal_first) uses the goal-first prompt.
+  const promptName = templateId === GOAL_FIRST_TEMPLATE_ID ? 'promptGoalFirst' : 'prompt';
+  const prompt = await readCfePrompt('steps/create-layout', promptName);
   return prompt
     .split('{{agentName}}').join(AGENT_NAME)
     .split('{{toolName}}').join(cfePageLayoutToolName)

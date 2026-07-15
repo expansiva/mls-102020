@@ -236,7 +236,7 @@ interface CfeBusinessContextRef {
   description: string;
 }
 
-export interface CfePageLayoutResult { pageLayout: CfePageLayoutDefinition }
+export interface CfePageLayoutResult { pageLayout: CfePageLayoutDefinition; objective?: unknown }
 export type CfePageLayoutOutput = PlannerOutput<CfePageLayoutResult>;
 
 const CFE_LAYOUT_TOOL_NAME = 'submitCfePageLayout';
@@ -544,8 +544,7 @@ export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateCo
       (createContext.entities.get(entityId)?.fields || []).map(field => field.fieldId).filter(Boolean),
     ]),
   );
-  const variants = await readModuleVariants(createContext.project, page.moduleName);
-  const variantPlan = buildLayoutVariantPlan(createContext, page, operations, commands, variants);
+  const variantPlan = buildLayoutVariantPlan(createContext, page, operations, commands);
   const userJourney = buildPageUserJourney(createContext, page, operations, commands);
   return { project: createContext.project, page, operations, commands, navigationRefs, baseDefinition, visualStyle, i18nMeta, entityFields, variantPlan, userJourney };
 }
@@ -561,7 +560,7 @@ export async function saveBaseSharedDefs(prepared: CfePreparedPage): Promise<voi
   await saveFrontendDefs(sharedFileInfo(prepared.project, prepared.page), 'definition', definition, sharedPipeline(prepared.project, prepared.page, prepared.commands));
 }
 
-export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, genome = 'page11'): Promise<CfePageLayoutDefinition> {
+export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, genome = 'page11', objective?: unknown): Promise<CfePageLayoutDefinition> {
   const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutFields(prepared, repairMissingOperationUserActions(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, layout)))));
   validatePageLayout(prepared, repairedLayout);
   const enrichedLayout = enrichLayoutWithStateRefs(prepared, repairedLayout);
@@ -569,6 +568,9 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
     ...prepared.baseDefinition,
     templateId: selectedTemplateId(prepared, genome),
     visualStyle: prepared.visualStyle,
+    // The goal-first genome (page21) carries the synthesized objective so the render skill can
+    // lay the page out around the actor's primary decision. Absent on the page11 baseline.
+    ...(isRecord(objective) ? { pageObjective: objective } : {}),
     sections: layoutSectionSummary(enrichedLayout.sections),
     layout: {
       id: enrichedLayout.layoutId,
@@ -579,6 +581,20 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
   };
   await saveFrontendDefs(pageFileInfo(prepared.project, prepared.page, genome), 'definition', definition, pagePipeline(prepared.project, prepared.page, prepared.visualStyle, genome));
   return enrichedLayout;
+}
+
+// Persist the goal-first page objective as a per-page trace (flow.json output
+// trace/frontend-page-objective/{page}.json). Best-effort: a trace write must never fail the run.
+export async function savePageObjectiveTrace(prepared: CfePreparedPage, genome: string, objective: unknown): Promise<void> {
+  if (!isRecord(objective)) return;
+  const fileInfo: FileInfo = {
+    project: prepared.project,
+    level: 2,
+    folder: `${prepared.page.moduleName}/trace/frontend-page-objective`,
+    shortName: prepared.page.pageId,
+    extension: '.json',
+  };
+  await saveStorContent(fileInfo, `${JSON.stringify({ savedAt: new Date().toISOString(), pageId: prepared.page.pageId, genome, objective }, null, 2)}\n`);
 }
 
 // Build shared from the union of all saved variants. States are contract-keyed, so the primary
@@ -646,6 +662,37 @@ export function listCreateRunPageArgs(runId: string): { pageId: string; runId: s
 export function createLayoutPromptContext(prepared: CfePreparedPage, genome: string, templateId: string): Record<string, unknown> {
   const variant = prepared.variantPlan.find(item => item.genome === genome);
   if (!variant || variant.templateId !== templateId) throw new Error(`template ${templateId} is not pinned for ${prepared.page.pageId}/${genome}`);
+  const common = baseLayoutPromptContext(prepared);
+  // page21 goal-first: no pinned template. Every scored candidate is supplied as inspiration
+  // and the layout call first synthesizes the page objective (see promptGoalFirst.md).
+  if (templateId === GOAL_FIRST_TEMPLATE_ID) {
+    const candidates = (variant.template as Record<string, unknown>).candidates;
+    return {
+      ...common,
+      mode: 'goal-first',
+      templateCatalog: Array.isArray(candidates) ? candidates : [variant.template],
+      renderVocabulary: goalFirstRenderVocabulary(),
+      // Trimmed journey: keep the neutral signal (microUserFlow, operationsInOrder, lifecycle) but
+      // drop recommendedStages and the commandForm-biased guidance — those pre-encode the
+      // "list on top, one stacked form per mutation" shape the goal-first genome exists to escape.
+      userJourney: goalFirstUserJourney(prepared.userJourney),
+    };
+  }
+  return { ...common, template: variant.template, userJourney: prepared.userJourney };
+}
+
+// The full userJourney (buildPageUserJourney) carries recommendedStages (a commandForm stage per
+// mutation) and a guidance array that instructs the baseline stacked layout. page11 needs both.
+// page21 (goal-first) must NOT receive them — they contradict the objective-first framing — so this
+// keeps only the neutral, useful signal.
+function goalFirstUserJourney(userJourney: Record<string, unknown>): Record<string, unknown> {
+  const { recommendedStages, guidance, ...rest } = userJourney;
+  void recommendedStages;
+  void guidance;
+  return rest;
+}
+
+function baseLayoutPromptContext(prepared: CfePreparedPage): Record<string, unknown> {
   const baseLayout = enrichLayoutWithStateRefs(prepared, deterministicLayoutFromBase(prepared));
   const shared = sharedDefinition(prepared, baseLayout);
   return {
@@ -682,9 +729,28 @@ export function createLayoutPromptContext(prepared: CfePreparedPage, genome: str
       },
       statePolicy: 'All filters, form fields, query results, action statuses and navigation requests are shared/global state. Page render must not own mutable state.',
     },
-    template: variant.template,
-    userJourney: prepared.userJourney,
     i18n: prepared.i18nMeta,
+  };
+}
+
+// Composite render patterns the goal-first genome (page21) may use, materialized by
+// genCfePage21RenderTs. Generic capability vocabulary — never example-specific. The closed
+// field/action catalog and the layout schema still apply; these only widen presentation.
+function goalFirstRenderVocabulary(): Record<string, unknown> {
+  return {
+    note: 'You are NOT limited to one queryList + one commandForm per operation. Compose the layout around the page objective using these presentation patterns. Every field/action still comes from shared.fieldCatalog and shared.actions; intents keep the same schema (fields/columns/filters/toolbar/rowActions/actions).',
+    displayHints: [
+      { hint: 'master-detail', use: 'A selectable list/board on one side and a contextual detail/action panel for the selected item on the other. Prefer this over stacking a separate form section below a list.' },
+      { hint: 'contextual-transition-actions', use: 'For a lifecycle/status mutation, render the allowed next states as one button per valid transition on the selected row/card. Never a free <select> over all enum values and never a manually typed id field.' },
+      { hint: 'card-board', use: 'Group items into lanes by status/stage; the primary action lives inline on each card.' },
+      { hint: 'inline-row-command', use: 'A one-decision command executed directly on a list row, without opening a separate form section.' },
+      { hint: 'summary-first', use: 'Lead with the decisive numbers/status the actor needs, then detail below.' },
+    ],
+    rules: [
+      'Order organisms by the page objective (primaryDecision first), informed by userJourney — not by mechanically mirroring every journey step as its own form.',
+      'A context-derived or system-owned field (ids, status, timestamps) is read-only context or a derived action, never a manual input.',
+      'Keep the layout honest: only actions/fields that exist in the catalog, only shared states.',
+    ],
   };
 }
 
@@ -922,6 +988,9 @@ function normalizeCfePageLayoutResult(value: unknown): CfePageLayoutResult {
   const pageLayoutRaw = isRecord(result.pageLayout) ? result.pageLayout : result;
   return {
     pageLayout: normalizePageLayout(pageLayoutRaw, 'result.pageLayout', { i18n: result.i18n, dataBindings: result.dataBindings }),
+    // Goal-first (page21) also emits the synthesized objective; passed through untyped and
+    // persisted for audit (page21 defs.pageObjective + trace). Absent for page11.
+    ...(result.objective !== undefined ? { objective: result.objective } : {}),
   };
 }
 
@@ -1120,14 +1189,19 @@ function normalizeOrder(value: unknown, path: string): number {
   throw new Error(`${path} must be an integer`);
 }
 
-function buildLayoutVariantPlan(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[], variants = 1): CfeLayoutVariantPlan[] {
-  const candidates = selectUxTemplateCandidates(deriveUxSignals(context, page, operations, commands), Math.max(1, variants));
-  const effectiveVariants = Math.min(Math.max(1, variants), candidates.length);
-  return candidates.slice(0, effectiveVariants).map((candidate, index) => ({
-    genome: pageGenome(index),
-    templateId: candidate.id,
-    template: candidate as unknown as Record<string, unknown>,
-  }));
+// Exactly two genomes per page (flow.json genomePolicy): page11 is the baseline with the top
+// deterministic template pinned; page21 is goal-first with no pinned template — every scored
+// candidate is supplied only as inspiration. The module-level todoFrontend.variants count is
+// intentionally ignored (always page11 + page21).
+export const GOAL_FIRST_TEMPLATE_ID = 'goal_first';
+
+function buildLayoutVariantPlan(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[]): CfeLayoutVariantPlan[] {
+  const candidates = selectUxTemplateCandidates(deriveUxSignals(context, page, operations, commands));
+  const primary = candidates[0];
+  return [
+    { genome: pageGenome(0), templateId: primary.id, template: primary as unknown as Record<string, unknown> },
+    { genome: pageGenome(1), templateId: GOAL_FIRST_TEMPLATE_ID, template: { mode: 'goal-first', candidates: candidates as unknown as Record<string, unknown>[] } },
+  ];
 }
 
 // Machine-derivable UX signals for template scoring. Prose signals stay for the LLM.
@@ -2421,10 +2495,17 @@ function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, 
       `_${project}_/l2/designSystem.ts`,
     ],
     dependsOn: [`${page.pageId}__l2_shared`],
-    skills: ['_102020_/l2/agentChangeFrontend/skills/genCfePage11RenderTs.ts'],
+    skills: [pageRenderSkillPath(genome)],
     visualStyle: typeof visualStyle === 'string' ? { description: visualStyle } : (isRecord(visualStyle) ? visualStyle : {}),
     agent: 'agentCfeMaterializeGen',
   }];
+}
+
+// Render skill per genome: page11 keeps the plain-operational baseline; page21 (goal-first) uses
+// the richer patterns (master-detail, contextual transition buttons, card board).
+function pageRenderSkillPath(genome: string): string {
+  const skillName = genome === 'page11' ? 'genCfePage11RenderTs' : 'genCfePage21RenderTs';
+  return `_102020_/l2/agentChangeFrontend/skills/${skillName}.ts`;
 }
 
 async function saveFrontendDefs(fileInfo: FileInfo, exportName: string, definition: unknown, pipeline: unknown[]): Promise<void> {
@@ -2524,25 +2605,6 @@ async function readFrontendTodoState(project: number): Promise<CfeTodoState> {
   return { files, moduleNames: Array.from(moduleNames).sort(), ownersByKey, warnings, errors };
 }
 
-// Item 4: number of UX variants to generate for a module, read from l5/{module}/todoFrontend.defs.ts
-// (module-level `variants`). Absent -> 1 (backward-compatible). Clamped to [1, MAX_UX_VARIANTS].
-// ns3 is expected to emit this field (default 3); until then it is set manually in todoFrontend.
-async function readModuleVariants(project: number, moduleName: string): Promise<number> {
-  for (const file of Object.values(mls.stor.files) as any[]) {
-    if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
-    if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoFrontend') continue;
-    const parsed = parseDefsSource(String(await file.getContent()));
-    if (!parsed) continue;
-    const fileModule = readString(parsed.data.moduleName) || String(file.folder || '');
-    if (fileModule !== moduleName) continue;
-    const raw = parsed.data.variants;
-    const value = typeof raw === 'number' ? raw : Number(raw);
-    if (!Number.isFinite(value) || value < 1) return 1;
-    return Math.min(Math.floor(value), MAX_UX_VARIANTS);
-  }
-  return 1;
-}
-
 async function setTodoFrontendStatuses(project: number, wanted: Set<string>, status: OwnerStatus): Promise<string[]> {
   const updated: string[] = [];
   for (const file of Object.values(mls.stor.files) as any[]) {
@@ -2633,8 +2695,9 @@ function frontendComponentTag(project: number, page: CfePagePlan, genome = 'page
   return convertFileToTag({ project, folder: `${page.moduleName}/web/desktop/${genome}`, shortName: page.pageId });
 }
 
-// page[ux][ui] genome. UX variants (item 4) vary the UX digit and keep UI=1: page11, page21, page31.
-const MAX_UX_VARIANTS = 3;
+// page[ux][ui] genome. UX variants vary the UX digit and keep UI=1. Fixed at two genomes
+// (flow.json genomePolicy): page11 (baseline) and page21 (goal-first). page31+ is deprecated.
+const MAX_UX_VARIANTS = 2;
 function pageGenome(variantIndex: number): string { return `page${variantIndex + 1}1`; }
 
 function selectedTemplateId(prepared: CfePreparedPage, genome: string): string | undefined {

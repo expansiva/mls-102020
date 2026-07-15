@@ -1,13 +1,15 @@
 {
   "flowId": "agentChangeFrontend",
-  "schemaVersion": "2026-07-14-v3-contract-shared-layout-fanout",
+  "schemaVersion": "2026-07-15-v4-two-genome-goal-first",
   "description": "Stage 2 frontend reconciler. The flow scans L4/L5, creates frontend .defs.ts files for L5 todoFrontend=create work, materializes stale L2 runtime files, registers pages, and finalizes L5 owner status. L4 remains read-only. config.json is composed at publish time by nodejsSaveConfigJson.ts.",
   "specFirst": {
     "policy": "This flow.json is the contract. Future structural changes must update this file before code.",
-    "modernizationCheckpoint": "2026-07-14 split page creation into deterministic contract/shared, one-layout-per-LLM-call, and deterministic shared reconciliation barriers. The scan reads L4 once and workers reuse the execution cache.",
+    "modernizationCheckpoint": "2026-07-15 fixed the UX variant policy to exactly two genomes per page and made the second genome goal-first. The module-level todoFrontend.variants count is now ignored: every page always generates page11 (deterministically pinned template, the baseline) and page21 (goal-first, no pinned template). The page21 layout call first synthesizes a page objective from the page/journey/shared context and only then designs the layout; the objective is emitted in the layout tool result and persisted (page21 defs.pageObjective + trace) so it is audited, not discarded. page21 materializes through a dedicated render skill (genCfePage21RenderTs) with richer patterns (contextual transition buttons, master-detail, card board) while page11 keeps genCfePage11RenderTs. 2026-07-14 split page creation into deterministic contract/shared, one-layout-per-LLM-call, and deterministic shared reconciliation barriers. The scan reads L4 once and workers reuse the execution cache.",
+    "genomePolicy": "Exactly two genomes per page: page11 (baseline, top deterministic template pinned) and page21 (goal-first, templateId 'goal_first', all scored candidates supplied only as inspiration). MAX_UX_VARIANTS=2. Only page11 is enforced by verify-create-layouts; page21 is best-effort and completes-with-trace on failure.",
     "deferred": [
       "Split cfeCreateShared.ts by responsibility.",
-      "Unify Studio and CLI materialization repair policy in cfeMaterializeCore."
+      "Unify Studio and CLI materialization repair policy in cfeMaterializeCore.",
+      "page11 quick-wins (transition-as-buttons in buildPageUserJourney/genCfePage11RenderTs, selectUxTemplates device/rejectsWhen weighting): intentionally NOT applied so page11 stays the stable baseline; the UX improvement lives in page21."
     ]
   },
   "entry": {
@@ -60,10 +62,14 @@
     "l2/{module}/web/contracts/{page}.defs.ts",
     "l2/{module}/web/shared/{page}.defs.ts",
     "l2/{module}/web/desktop/page11/{page}.defs.ts",
+    "l2/{module}/web/desktop/page21/{page}.defs.ts",
     "l2/{module}/web/contracts/{page}.ts",
     "l2/{module}/web/shared/{page}.ts",
     "l2/{module}/web/desktop/page11/{page}.ts",
     "l2/{module}/web/desktop/page11/{page}.html",
+    "l2/{module}/web/desktop/page21/{page}.ts",
+    "l2/{module}/web/desktop/page21/{page}.html",
+    "l2/{module}/trace/frontend-page-objective/{page}.json",
     "l2/{module}/trace/frontend-create-pages/{page}.json",
     "l2/{module}/trace/frontend-create-report.json",
     "l2/{module}/trace/frontend-register-pages/{page}.json",
@@ -192,10 +198,13 @@
       "modelAlias": "codehigh",
       "strictTool": true,
       "prompt": "steps/create-layout/prompt.md",
+      "promptGoalFirst": "steps/create-layout/promptGoalFirst.md",
       "tool": "cfePageLayoutToolName",
-      "goal": "For one pinned page/genome/template tuple, request exactly one semantic page layout and save its defs. Every fan-out child completes with a trace; primary-layout strictness is evaluated after the fan-out barrier.",
+      "goal": "For one pinned page/genome/template tuple, request exactly one semantic page layout and save its defs. genome=page11 uses the pinned-template prompt (prompt.md, baseline). genome=page21 uses the goal-first prompt (promptGoalFirst.md): it first synthesizes a page objective from the page/journey/shared context, then designs a layout free of a pinned template, and emits the objective in result.objective (persisted to the page21 defs.pageObjective and a trace). Every fan-out child completes with a trace; primary page11-layout strictness is evaluated after the fan-out barrier, page21 is best-effort.",
       "outputs": [
-        "l2/{module}/web/desktop/page{ux}1/{page}.defs.ts"
+        "l2/{module}/web/desktop/page11/{page}.defs.ts",
+        "l2/{module}/web/desktop/page21/{page}.defs.ts",
+        "l2/{module}/trace/frontend-page-objective/{page}.json"
       ]
     },
     {
