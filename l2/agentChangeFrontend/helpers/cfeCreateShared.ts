@@ -639,6 +639,10 @@ export async function listCreateRunLayoutArgs(runId: string): Promise<{ pageId: 
   return args;
 }
 
+export function listCreateRunPageArgs(runId: string): { pageId: string; runId: string }[] {
+  return getCreateRun(runId).context.pages.map(page => ({ pageId: page.pageId, runId }));
+}
+
 export function createLayoutPromptContext(prepared: CfePreparedPage, genome: string, templateId: string): Record<string, unknown> {
   const variant = prepared.variantPlan.find(item => item.genome === genome);
   if (!variant || variant.templateId !== templateId) throw new Error(`template ${templateId} is not pinned for ${prepared.page.pageId}/${genome}`);

@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/scan/agentCfeCreateScanL4.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, listCreateRunLayoutArgs, readCreateContext, startCreateRun } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readCreateContext, startCreateRun } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 
 interface ScanArgs {
   materialize?: boolean;
@@ -36,7 +36,6 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 
     const runId = `cfe-${context.message.orderAt}`;
     startCreateRun(runId, createContext);
-    const layoutArgs = await listCreateRunLayoutArgs(runId);
     const pageArgs = createContext.pages.map(page => JSON.stringify({ pageId: page.pageId, runId }));
     const contractSharedFanout = createAgentStepPayload(
       'create-contract-shared-fanout',
@@ -54,43 +53,22 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       payload: null,
     };
 
-    const layoutFanout = createAgentStepPayload(
-      'create-layout-fanout',
-      'agentCfeCreateLayout',
-      'Criar layouts {{completed}}/{{total}}, falhas {{failed}}',
-      { planId: 'create-layout-fanout' },
+    // A parallel_dynamic parent starts immediately when addParallelArgs receives its dynamic
+    // arguments. Therefore dependent fan-outs must be created by a sequential phase only after
+    // the prior barrier completes; waiting_dependency on the fan-out itself is ineffective.
+    const layoutPhase = createAgentStepPayload(
+      'create-layout-phase',
+      'agentCfeCreateLayoutPhase',
+      'Preparar criação de layouts',
+      { planId: 'create-layout-phase', runId },
       ['create-contract-shared-fanout'],
-      'parallel_dynamic',
-      'waiting_dependency',
-    );
-    // A dependent parallel parent is unlocked directly into parallel dispatch. The backend requires
-    // this interaction/input to exist before it can claim any child slot (runLLMStepParallel).
-    layoutFanout.interaction = createParallelFanoutInteraction(`queued ${layoutArgs.length} pinned layout item(s)`);
-    const reconcileFanout = createAgentStepPayload(
-      'reconcile-shared-fanout',
-      'agentCfeReconcileShared',
-      'Reconciliar shared {{completed}}/{{total}}, falhas {{failed}}',
-      { planId: 'reconcile-shared-fanout' },
-      ['create-layout-fanout'],
-      'parallel_dynamic',
-      'waiting_dependency',
-    );
-    reconcileFanout.interaction = createParallelFanoutInteraction(`queued ${pageArgs.length} shared reconciliation item(s)`);
-    const verifyLayouts = createAgentStepPayload(
-      'verify-create-layouts',
-      'agentCfeVerifyCreateLayouts',
-      'Verificar layouts primarios',
-      { planId: 'verify-create-layouts', runId },
-      ['reconcile-shared-fanout'],
       'sequential',
       'waiting_dependency',
     );
 
     const intents: mls.msg.AgentIntent[] = [
       createAddStepIntent(context, parentStep, contractSharedFanout, pageArgs),
-      createAddStepIntent(context, parentStep, layoutFanout, layoutArgs.map(item => JSON.stringify(item))),
-      createAddStepIntent(context, parentStep, reconcileFanout, pageArgs),
-      createAddStepIntent(context, parentStep, verifyLayouts),
+      createAddStepIntent(context, parentStep, layoutPhase),
     ];
 
     if (scanArgs.materialize !== false) {
@@ -104,7 +82,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       step,
       hookSequential,
       'completed',
-      `Scanned L4 once; queued ${pageArgs.length} page contract/shared item(s), ${layoutArgs.length} pinned layout item(s) and reconciliation${scanArgs.materialize === false ? ' (defs-only).' : '.'}`,
+      `Scanned L4 once; queued ${pageArgs.length} page contract/shared item(s) and the guarded layout phase${scanArgs.materialize === false ? ' (defs-only).' : '.'}`,
     ));
     return intents;
   } catch (error) {
@@ -112,15 +90,6 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     console.error(`[${agent.agentName}] ${message}`);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
-}
-
-function createParallelFanoutInteraction(trace: string): mls.msg.AIInteraction {
-  return {
-    input: [{ type: 'system', content: '<!-- deterministic parallel fan-out host -->' }],
-    cost: 0,
-    trace: [trace],
-    payload: null,
-  };
 }
 
 function parseScanArgs(prompt: string | undefined): ScanArgs {
