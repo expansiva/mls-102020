@@ -26,6 +26,12 @@ Use only `shared.states` and `shared.functions` for state and behavior. Every vi
 titleKey, labelKey or emptyKey declared in the flat `pageLayout.i18n` object. Every intention includes
 `fields`, `columns`, `filters`, `toolbar`, `rowActions` and `actions`, using `[]` when empty.
 
+Field names are a closed vocabulary. Every `field` value in `fields`, `columns` and `filters` MUST be
+an exact name from `shared.fieldCatalog`: an action's `inputFields`/`outputFields` in `byAction`, or an
+entity field in `byEntity`. Columns of a query intention come from that query's `outputFields`. A name
+that is not in the catalog does not exist — never guess names like `orderNumber` or `currentLevel`;
+a layout referencing an unknown field is rejected.
+
 Read `userJourney` before choosing the order. Follow the pinned template's `userJourney`,
 `layoutGuidance`, `wiring` and `validationChecks`; it defines the structure. A mutation must include
 textual success/error feedback keys `action.{command}.success` and `action.{command}.error`.

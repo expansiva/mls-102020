@@ -562,7 +562,7 @@ export async function saveBaseSharedDefs(prepared: CfePreparedPage): Promise<voi
 }
 
 export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, genome = 'page11'): Promise<CfePageLayoutDefinition> {
-  const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, layout)));
+  const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutFields(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, layout))));
   validatePageLayout(prepared, repairedLayout);
   const enrichedLayout = enrichLayoutWithStateRefs(prepared, repairedLayout);
   const definition = {
@@ -668,6 +668,18 @@ export function createLayoutPromptContext(prepared: CfePreparedPage, genome: str
       })),
       initialLoads: shared.initialLoads,
       businessContextRefs: shared.businessContextRefs,
+      // Field vocabulary for layout fields/columns/filters. The strict validator rejects any
+      // field name outside this catalog, so the LLM must see the exact allowed names (query
+      // output fields are otherwise invisible: queryResult states only carry an outputShape).
+      fieldCatalog: {
+        byAction: prepared.commands.map(command => ({
+          actionId: readString(command.commandName),
+          kind: readString(command.kind) === 'query' ? 'query' : 'command',
+          inputFields: commandFieldRecords(command.input).map(field => field.name),
+          outputFields: commandFieldRecords(command.output).map(field => field.name),
+        })),
+        byEntity: prepared.entityFields,
+      },
       statePolicy: 'All filters, form fields, query results, action statuses and navigation requests are shared/global state. Page render must not own mutable state.',
     },
     template: variant.template,
@@ -1268,6 +1280,36 @@ function repairUnknownLayoutActions(prepared: CfePreparedPage, layout: CfePageLa
     recordCreateWarning(`dropped unknown layout action(s) for ${prepared.page.pageId}: ${dropped.join('; ')}`);
   }
   return dropped.length > 0 ? { ...layout, sections } : layout;
+}
+
+// Symmetric to repairUnknownLayoutActions: a field/column/filter whose field name is outside the
+// allowed vocabulary is dropped with a warning instead of failing the whole variant (seen in
+// 102051: invented query columns like orderNumber/currentLevel killed every page11 layout).
+function repairUnknownLayoutFields(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const allowed = allowedLayoutFields(prepared);
+  const dropped: string[] = [];
+  const cleanFieldList = (fields: CfeLayoutField[], path: string): CfeLayoutField[] => fields.filter(field => {
+    if (allowed.has(field.field)) return true;
+    dropped.push(`${path}.${field.id}=${field.field}`);
+    return false;
+  });
+
+  const sections = layout.sections.map(section => ({
+    ...section,
+    organisms: section.organisms.map(organism => ({
+      ...organism,
+      intentions: organism.intentions.map(intent => ({
+        ...intent,
+        fields: cleanFieldList(intent.fields, `${intent.id}.fields`),
+        columns: cleanFieldList(intent.columns, `${intent.id}.columns`),
+        filters: cleanFieldList(intent.filters, `${intent.id}.filters`),
+      })),
+    })),
+  }));
+
+  if (dropped.length === 0) return layout;
+  recordCreateWarning(`dropped unknown layout field(s) for ${prepared.page.pageId}: ${dropped.join('; ')}`);
+  return { ...layout, sections };
 }
 
 // Section/organism/intention ids are structural only (nothing references them: wiring uses action
