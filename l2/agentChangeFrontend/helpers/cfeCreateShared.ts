@@ -701,6 +701,57 @@ export function verifyCreateRunPrimaryLayouts(runId: string): string[] {
     .map(page => `${page.pageId}: missing primary page11 layout`);
 }
 
+export async function saveCreateLayoutFailureTrace(
+  runId: string,
+  pageId: string,
+  genome: string,
+  templateId: string,
+  stage: 'beforePromptStep' | 'afterPromptStep',
+  message: string,
+): Promise<void> {
+  const prepared = await prepareCreateRunPage(runId, pageId);
+  const fileInfo: FileInfo = {
+    project: prepared.project,
+    level: 2,
+    folder: `${prepared.page.moduleName}/trace/frontend-create-layout-errors`,
+    shortName: `${toSafeShortName(pageId)}--${toSafeShortName(genome)}`,
+    extension: '.json',
+  };
+  await saveStorContent(fileInfo, `${JSON.stringify({
+    savedAt: new Date().toISOString(),
+    runId,
+    pageId,
+    genome,
+    templateId,
+    stage,
+    message,
+    agent: 'agentCfeCreateLayout',
+  }, null, 2)}\n`);
+}
+
+export async function listCreateRunLayoutFailureTraces(runId: string): Promise<string[]> {
+  const run = getCreateRun(runId);
+  const traces: string[] = [];
+  for (const page of run.context.pages) {
+    const prepared = await prepareCreateRunPage(runId, page.pageId);
+    for (const variant of prepared.variantPlan) {
+      const fileInfo: FileInfo = {
+        project: prepared.project,
+        level: 2,
+        folder: `${prepared.page.moduleName}/trace/frontend-create-layout-errors`,
+        shortName: `${toSafeShortName(page.pageId)}--${toSafeShortName(variant.genome)}`,
+        extension: '.json',
+      };
+      const trace = await readJsonFile(fileInfo);
+      const record = isRecord(trace) ? trace : null;
+      if (!record || readString(record.runId) !== runId) continue;
+      const message = readString(record.message);
+      if (message) traces.push(`${page.pageId}/${variant.genome}: ${message}`);
+    }
+  }
+  return traces;
+}
+
 function mergeLayoutsForShared(layouts: CfePageLayoutDefinition[]): CfePageLayoutDefinition {
   const primary = layouts[0];
   const i18n: Record<string, string> = {};

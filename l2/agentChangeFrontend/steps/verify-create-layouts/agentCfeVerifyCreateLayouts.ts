@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/verify-create-layouts/agentCfeVerifyCreateLayouts.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createUpdateStatusIntent, verifyCreateRunPrimaryLayouts } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { createUpdateStatusIntent, listCreateRunLayoutFailureTraces, verifyCreateRunPrimaryLayouts } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -18,8 +18,13 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   try {
     const runId = parseRunId(step.prompt);
     const failures = verifyCreateRunPrimaryLayouts(runId);
-    if (failures.length > 0) throw new Error(`Primary layout validation failed:\n${failures.join('\n')}`);
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'All primary page11 layouts were saved.')];
+    const layoutErrors = await listCreateRunLayoutFailureTraces(runId);
+    if (failures.length > 0) {
+      const details = layoutErrors.length ? `\n\nLayout worker errors:\n${layoutErrors.join('\n')}` : '';
+      throw new Error(`Primary layout validation failed:\n${failures.join('\n')}${details}`);
+    }
+    const details = layoutErrors.length ? `\n\nLayout worker errors (non-primary variants):\n${layoutErrors.join('\n')}` : '';
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `All primary page11 layouts were saved.${details}`)];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[${agent.agentName}] ${message}`);
