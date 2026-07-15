@@ -4,4 +4,5 @@
 
 One dynamic item is `{ pageId, genome, templateId, runId }`. It reuses the execution cache created by
 scan, supplies only the pinned template plus page/shared/user-journey/i18n context, and makes one LLM
-call that saves exactly one page layout. `page11` is strict; extra UX variants complete with a warning.
+call that saves exactly one page layout. Every child completes com trace; the sequential
+`verify-create-layouts` barrier enforces the strict `page11` requirement after the fan-out drains.

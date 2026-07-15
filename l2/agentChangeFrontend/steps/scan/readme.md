@@ -15,7 +15,8 @@
 
 - No pages: optional `materialize-create-l2` when materialization is enabled.
 - Pages: deterministic `create-contract-shared-fanout`, then `create-layout-fanout` with one pinned
-  page/genome/template item per LLM call, then `reconcile-shared-fanout`.
+  page/genome/template item per LLM call, then `reconcile-shared-fanout` and the sequential
+  `verify-create-layouts` gate before materialization.
 
 ## Invariants
 

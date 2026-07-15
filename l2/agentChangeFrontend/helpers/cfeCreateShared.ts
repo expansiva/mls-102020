@@ -690,6 +690,13 @@ export async function reconcileCreateRunPage(runId: string, pageId: string): Pro
   await reconcileSharedDefs(prepared, savedLayouts);
 }
 
+export function verifyCreateRunPrimaryLayouts(runId: string): string[] {
+  const run = getCreateRun(runId);
+  return run.context.pages
+    .filter(page => !run.layoutsByPage.get(page.pageId)?.has('page11'))
+    .map(page => `${page.pageId}: missing primary page11 layout`);
+}
+
 function mergeLayoutsForShared(layouts: CfePageLayoutDefinition[]): CfePageLayoutDefinition {
   const primary = layouts[0];
   const i18n: Record<string, string> = {};

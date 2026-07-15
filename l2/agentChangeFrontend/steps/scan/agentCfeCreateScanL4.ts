@@ -63,6 +63,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       'parallel_dynamic',
       'waiting_dependency',
     );
+    // A dependent parallel parent is unlocked directly into parallel dispatch. The backend requires
+    // this interaction/input to exist before it can claim any child slot (runLLMStepParallel).
+    layoutFanout.interaction = createParallelFanoutInteraction(`queued ${layoutArgs.length} pinned layout item(s)`);
     const reconcileFanout = createAgentStepPayload(
       'reconcile-shared-fanout',
       'agentCfeReconcileShared',
@@ -72,15 +75,26 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       'parallel_dynamic',
       'waiting_dependency',
     );
+    reconcileFanout.interaction = createParallelFanoutInteraction(`queued ${pageArgs.length} shared reconciliation item(s)`);
+    const verifyLayouts = createAgentStepPayload(
+      'verify-create-layouts',
+      'agentCfeVerifyCreateLayouts',
+      'Verificar layouts primarios',
+      { planId: 'verify-create-layouts', runId },
+      ['reconcile-shared-fanout'],
+      'sequential',
+      'waiting_dependency',
+    );
 
     const intents: mls.msg.AgentIntent[] = [
       createAddStepIntent(context, parentStep, contractSharedFanout, pageArgs),
       createAddStepIntent(context, parentStep, layoutFanout, layoutArgs.map(item => JSON.stringify(item))),
       createAddStepIntent(context, parentStep, reconcileFanout, pageArgs),
+      createAddStepIntent(context, parentStep, verifyLayouts),
     ];
 
     if (scanArgs.materialize !== false) {
-      const materialize = createMaterializeStep(scanArgs, ['reconcile-shared-fanout']);
+      const materialize = createMaterializeStep(scanArgs, ['verify-create-layouts']);
       intents.push(createAddStepIntent(context, parentStep, materialize));
     }
 
@@ -98,6 +112,15 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     console.error(`[${agent.agentName}] ${message}`);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
+}
+
+function createParallelFanoutInteraction(trace: string): mls.msg.AIInteraction {
+  return {
+    input: [{ type: 'system', content: '<!-- deterministic parallel fan-out host -->' }],
+    cost: 0,
+    trace: [trace],
+    payload: null,
+  };
 }
 
 function parseScanArgs(prompt: string | undefined): ScanArgs {

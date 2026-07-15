@@ -37,13 +37,14 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[${agent.agentName}] ${message}`);
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `CREATE-LAYOUT-FAILED: ${message}`)];
   }
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
-  const layoutArgs = parseArgs(step.prompt);
+  let layoutArgs: { pageId: string; genome: string; templateId: string; runId: string } | undefined;
   try {
+    layoutArgs = parseArgs(step.prompt);
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing LLM payload');
     const output = extractCfePageLayoutOutput(payload);
@@ -55,11 +56,10 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[${agent.agentName}] ${message}`);
-    // The primary layout is the required page definition. Extra UX variants are optional and leave
-    // a visible trace instead of aborting the whole page when a single variant is invalid.
-    const status = layoutArgs.genome === 'page11' ? 'failed' : 'completed';
-    const trace = layoutArgs.genome === 'page11' ? message : `Skipped optional ${layoutArgs.genome}: ${message}`;
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, status, trace)];
+    const variant = layoutArgs ? `${layoutArgs.pageId}/${layoutArgs.genome}` : 'unparsed layout args';
+    // Fan-out children always complete: the sequential verify-create-layouts gate enforces the
+    // primary page11 requirement after all pending parallel slots have been drained.
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `CREATE-LAYOUT-FAILED (${variant}): ${message}`)];
   }
 }
 

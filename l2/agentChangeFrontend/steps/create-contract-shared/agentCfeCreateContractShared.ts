@@ -24,7 +24,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[${agent.agentName}] ${message}`);
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `CREATE-CONTRACT-SHARED-FAILED: ${message}`)];
   }
 }
 

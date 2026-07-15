@@ -31,6 +31,7 @@
       "steps/create-contract-shared",
       "steps/create-layout",
       "steps/reconcile-shared",
+      "steps/verify-create-layouts",
       "steps/materialize",
       "steps/register",
       "steps/finalize",
@@ -92,6 +93,7 @@
   },
   "engineInvariants": [
     "parallel_dynamic fan-out parents use maxParallel 5 unless this file declares otherwise.",
+    "A parallel_dynamic parent that starts as waiting_dependency still initializes interaction.input before it is unlocked; runLLMStepParallel rejects a null parent interaction.",
     "Fan-out progress titles must expose completed, total and failed counters.",
     "Dynamic child args stay compact and unique.",
     "A worker should prefer completed-with-trace plus downstream verification when one item can be repaired without failing the whole pipeline.",
@@ -139,6 +141,7 @@
         "create-contract-shared-fanout",
         "create-layout-fanout",
         "reconcile-shared-fanout",
+        "verify-create-layouts",
         "materialize-create-l2"
       ],
       "noWorkBehavior": "If no pages are pending and materialize=false, complete with no further steps."
@@ -190,7 +193,7 @@
       "strictTool": true,
       "prompt": "steps/create-layout/prompt.md",
       "tool": "cfePageLayoutToolName",
-      "goal": "For one pinned page/genome/template tuple, request exactly one semantic page layout and save its defs. The primary page11 is strict; extra variants complete with a warning when invalid.",
+      "goal": "For one pinned page/genome/template tuple, request exactly one semantic page layout and save its defs. Every fan-out child completes with a trace; primary-layout strictness is evaluated after the fan-out barrier.",
       "outputs": [
         "l2/{module}/web/desktop/page{ux}1/{page}.defs.ts"
       ]
@@ -213,11 +216,23 @@
         }
       },
       "modelAlias": "deterministic",
-      "goal": "After every page variant is saved, merge its layout state references into the single shared defs and mark the page create trace done.",
+      "goal": "After every page variant attempt, merge saved layout state references into the single shared defs. Every fan-out child completes with a trace so pending slots remain valid.",
       "outputs": [
         "l2/{module}/web/shared/{page}.defs.ts",
         "l2/{module}/trace/frontend-create-pages/{page}.json"
       ]
+    },
+    {
+      "planId": "verify-create-layouts",
+      "agentName": "agentCfeVerifyCreateLayouts",
+      "file": "l2/agentChangeFrontend/steps/verify-create-layouts/agentCfeVerifyCreateLayouts.ts",
+      "stepFolder": "steps/verify-create-layouts",
+      "executionMode": "sequential",
+      "dependsOn": [
+        "reconcile-shared-fanout"
+      ],
+      "modelAlias": "deterministic",
+      "goal": "Enforce primary page11 strictness after all parallel layout and reconciliation children are terminal. On missing primary layouts it fails sequentially and blocks materialization without invalidating a parallel parent."
     },
     {
       "planId": "materialize-create-l2",
@@ -227,7 +242,7 @@
       "executionMode": "sequential",
       "dependsOn": [
         "scan-create-l4",
-        "reconcile-shared-fanout when emitted"
+        "verify-create-layouts when emitted"
       ],
       "modelAlias": "deterministic",
       "goal": "Plan stale or missing materialization work from generated .defs.ts pipelines and enqueue ordered phase barriers.",
