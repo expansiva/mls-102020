@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/scan/agentCfeCreateScanL4.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readCreateContext } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, listCreateRunLayoutArgs, readCreateContext, startCreateRun } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 
 interface ScanArgs {
   materialize?: boolean;
@@ -34,29 +34,53 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'No todoFrontend=toCreate owners.')];
     }
 
-    const args = createContext.pages.map(page => JSON.stringify({ pageId: page.pageId }));
-    const fanout = createAgentStepPayload(
-      'create-page-fanout',
-      'agentCfeCreatePage',
-      'Criar paginas {{completed}}/{{total}}, falhas {{failed}}',
-      { planId: 'create-page-fanout' },
+    const runId = `cfe-${context.message.orderAt}`;
+    startCreateRun(runId, createContext);
+    const layoutArgs = await listCreateRunLayoutArgs(runId);
+    const pageArgs = createContext.pages.map(page => JSON.stringify({ pageId: page.pageId, runId }));
+    const contractSharedFanout = createAgentStepPayload(
+      'create-contract-shared-fanout',
+      'agentCfeCreateContractShared',
+      'Criar contratos/shared {{completed}}/{{total}}, falhas {{failed}}',
+      { planId: 'create-contract-shared-fanout' },
       [],
       'parallel_dynamic',
       'in_progress',
     );
-    fanout.interaction = {
+    contractSharedFanout.interaction = {
       input: [{ type: 'system', content: '<!-- modelType: codefast -->' }],
       cost: 0,
-      trace: [`queued ${args.length} page(s) for create`],
+      trace: [`cached one L4 create context; queued ${pageArgs.length} deterministic contract/shared item(s)`],
       payload: null,
     };
 
+    const layoutFanout = createAgentStepPayload(
+      'create-layout-fanout',
+      'agentCfeCreateLayout',
+      'Criar layouts {{completed}}/{{total}}, falhas {{failed}}',
+      { planId: 'create-layout-fanout' },
+      ['create-contract-shared-fanout'],
+      'parallel_dynamic',
+      'waiting_dependency',
+    );
+    const reconcileFanout = createAgentStepPayload(
+      'reconcile-shared-fanout',
+      'agentCfeReconcileShared',
+      'Reconciliar shared {{completed}}/{{total}}, falhas {{failed}}',
+      { planId: 'reconcile-shared-fanout' },
+      ['create-layout-fanout'],
+      'parallel_dynamic',
+      'waiting_dependency',
+    );
+
     const intents: mls.msg.AgentIntent[] = [
-      createAddStepIntent(context, parentStep, fanout, args),
+      createAddStepIntent(context, parentStep, contractSharedFanout, pageArgs),
+      createAddStepIntent(context, parentStep, layoutFanout, layoutArgs.map(item => JSON.stringify(item))),
+      createAddStepIntent(context, parentStep, reconcileFanout, pageArgs),
     ];
 
     if (scanArgs.materialize !== false) {
-      const materialize = createMaterializeStep(scanArgs, ['create-page-fanout']);
+      const materialize = createMaterializeStep(scanArgs, ['reconcile-shared-fanout']);
       intents.push(createAddStepIntent(context, parentStep, materialize));
     }
 
@@ -66,7 +90,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       step,
       hookSequential,
       'completed',
-      `Queued ${args.length} page(s)${scanArgs.materialize === false ? ' (defs-only).' : '.'}`,
+      `Scanned L4 once; queued ${pageArgs.length} page contract/shared item(s), ${layoutArgs.length} pinned layout item(s) and reconciliation${scanArgs.materialize === false ? ' (defs-only).' : '.'}`,
     ));
     return intents;
   } catch (error) {

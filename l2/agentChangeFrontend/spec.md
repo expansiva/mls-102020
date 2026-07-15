@@ -5,9 +5,9 @@ Documento auto-contido (não depende de outros arquivos).
 
 > **Atualização 2026-07-03 (P0 executado):** o status de geração migrou para `l5/{module}/todoFrontend.defs.ts` (fonte única, espelho do `todoBackend`). O **l4 é read-only** para este agente. Onde o texto histórico abaixo diz "`statusFrontend` no l4", leia "status do owner no `l5/todoFrontend`". O `agentNewSolution2` semeia os owners no `todoFrontend` com `status = toCreate`.
 
-> **Atualização 2026-07-03 (journeys + micro user flow):** o agrupamento de páginas passa a derivar dos **workspaces** do `l4/{module}/journeys` (uma página por workspace; fallback legado por workflow/operation quando não há journey). A ordenação de campos/organismos usa o **micro user flow** derivado de `operation.story.steps` (+ `workflow.story.steps`), passado no `promptContext.userJourney.microUserFlow` e registrado no `origin` da página (rastreabilidade). **Guardrail:** o micro user flow é de nível de intenção e é re-derivado da `story` a cada geração — NÃO é uma seção de layout persistida no page11; assim outros genomes (page12…) podem reinterpretá-lo livremente. As `navigationEdges` do journey são advisory (trace), não bloqueiam.
+> **Atualização 2026-07-03 (journeys + micro user flow):** o agrupamento de páginas passa a derivar dos **workspaces** do `l4/{module}/journeys` (uma página por workspace; fallback legado por workflow/operation quando não há journey). A ordenação de campos/organismos usa o **micro user flow** derivado de `operation.story.steps` (+ `workflow.story.steps`), passado no contexto reduzido de layout como `userJourney.microUserFlow` e registrado no `origin` da página (rastreabilidade). **Guardrail:** o micro user flow é de nível de intenção e é re-derivado da `story` a cada geração — NÃO é uma seção de layout persistida no page11; assim outros genomes (page12…) podem reinterpretá-lo livremente. As `navigationEdges` do journey são advisory (trace), não bloqueiam.
 
-> **Atualização 2026-07-13 (modernização):** a implementação console-only v0.1 (`agentCfeV01*` e `cfeV01Shared`) foi removida do código. O `flow.json` agora descreve o fluxo real create-v1 (`scan-create-l4 -> create-page-fanout -> materialize-create-l2 -> fases -> register -> finalize`). A seção v0.1 abaixo permanece apenas como registro histórico.
+> **Atualização 2026-07-14 (create-page):** o fluxo separa `scan-create-l4 -> create-contract-shared-fanout -> create-layout-fanout -> reconcile-shared-fanout -> materialize-create-l2`. O scan lê L4 uma vez; cada chamada LLM produz somente um layout para um template pinado.
 
 ## Propósito
 
@@ -517,9 +517,9 @@ Removido em 2026-07-13 por estar fora do fluxo atual e confundir a manutenção 
 Após validar o paralelo, a implementação real inicial para `toCreate` está dividida assim:
 
 - `agentChangeFrontend` inicia o fluxo create-only;
-- `agentCfeCreateScanL4` lê o `l4`, encontra owners com `statusFrontend = toCreate`, cria o fan-out real `create-page-fanout` e agenda a materialização;
-- `agentCfeCreatePage` gera `web/contracts/{page}.defs.ts` de forma determinística, chama LLM com JSON schema/tool strict para o layout semântico, grava `web/desktop/page11/{page}.defs.ts` e depois gera `web/shared/{page}.defs.ts` a partir de `contractRef + layout reconciliado`;
-- `agentCfeCreatePage` também grava `l2/{module}/trace/frontend-create-pages/{page}.json` como `inProgress` no início e `done` só depois de layout e shared validados, para evitar que uma página antiga seja aceita por engano;
+- `agentCfeCreateScanL4` lê o L4 uma vez, encontra owners com `statusFrontend = toCreate`, mantém o contexto da execução em cache e agenda as três barreiras de criação mais a materialização;
+- `agentCfeCreateContractShared` gera `web/contracts/{page}.defs.ts` e o shared base de forma determinística; `agentCfeCreateLayout` chama a LLM uma vez por `{ pageId, genome, templateId }` para gravar uma definição de layout; `agentCfeReconcileShared` une os estados das variantes salvas no shared;
+- a reconciliação grava `l2/{module}/trace/frontend-create-pages/{page}.json` como `done` somente depois de layout primário e shared validados, para evitar que uma página antiga seja aceita por engano;
 - `agentCfeMaterializeL2` lê os pipelines gerados, cria launchers sequenciais por fase (`contracts -> shared -> page11`) e cada `agentCfeMaterializePhase` inicia um fan-out paralelo com `agentCfeMaterializeGen` somente depois da fase anterior completar sem erro;
 - `agentCfeRegisterFrontend` gera o `.html` de preview, assina `l5/project.json` e grava marcador de registro por página; o `config.json` é composto no publish;
 - `agentCfeCreateFinalize` grava `l2/{module}/trace/frontend-create-report.json` e muda os owners gerados para `statusFrontend = done` somente após materialização e registro;
