@@ -1,0 +1,39 @@
+<plugin-agent-playground-100554  style="display:none"> <promptcustom type="memory" group="A"> {
+  "fileReference": "_102020_/l2/molecules/groupselectone/ml-select-one-dropdown.ts",
+  "description": "Molecule de dropdown para seleção de um item em lista, com suporte a grupos, busca, estados (loading/erro/desabilitado) e modo de visualização, conforme contrato groupSelectOne.",
+  "prompt": "Criar um componente de dropdown para o usuário selecionar um item em uma lista",
+  "group": "groupSelectOne",
+  "functionalRequirements": [
+    "Deve pertencer ao grupo groupSelectOne e usar exclusivamente as propriedades, eventos e slot tags do contrato.",
+    "Deve aceitar os slot tags Label, Helper, Trigger, Item, Group e Empty, respeitando a hierarquia definida pelo contrato.",
+    "Cada Item deve representar uma opção selecionável, usando o atributo value como valor emitido e o conteúdo interno como rótulo exibido.",
+    "Group deve permitir agrupar itens com um rótulo por meio do atributo label, exibindo seus itens associados.",
+    "A propriedade value deve armazenar e emitir apenas o value do Item selecionado; quando value for null, nenhum item estará selecionado.",
+    "Em modo de edição (isEditing=true), o clique no trigger deve alternar o estado isOpen, exceto quando disabled, readonly ou loading estiverem ativos.",
+    "Selecionar um Item não desabilitado deve definir value, fechar o painel (isOpen=false) e disparar o evento change com { value }.",
+    "Ao perder foco no trigger, deve disparar o evento blur; ao receber foco, deve disparar o evento focus.",
+    "Pressionar Escape deve fechar o painel sem alterar o value.",
+    "Clique fora do componente deve fechar o painel quando estiver aberto.",
+    "Quando searchable=true, deve permitir filtrar os itens exibidos conforme searchQuery, incluindo itens dentro de grupos.",
+    "Quando loading=true, o painel não deve abrir e o trigger deve exibir indicação de carregamento.",
+    "Quando required=true e value=null, o componente deve entrar em estado de erro até que um item seja selecionado.",
+    "Itens com atributo disabled devem ser renderizados como não selecionáveis e ignorar cliques.",
+    "Em modo de visualização (isEditing=false), deve renderizar apenas o rótulo selecionado ou placeholder/“—”, sem trigger, painel, helper, erro ou eventos.",
+    "Quando error for string não vazia, deve exibir a mensagem de erro e marcar o estado inválido; quando error vazio, deve exibir Helper se existir.",
+    "Quando não houver itens disponíveis (ou todos filtrados), deve exibir o slot Empty ou a mensagem padrão correspondente.",
+    "Deve expor as informações de acessibilidade do contrato: combobox no trigger, listbox no painel, option nos itens, aria-selected, aria-disabled, aria-expanded, aria-required e aria-invalid conforme estados.",
+    "Deve suportar navegação por teclado com ArrowDown/ArrowUp para navegar, Enter para selecionar e Escape para fechar, conforme contrato."
+  ],
+  "visualRequirements": [
+    "O Label (quando presente) deve ser exibido acima ou ao lado do campo conforme layout padrão do grupo, em modo edição e visualização.",
+    "O trigger deve exibir o rótulo do item selecionado; quando não houver seleção, deve exibir o conteúdo do slot Trigger ou o placeholder.",
+    "O painel de seleção deve ser visível apenas quando isOpen=true e apresentar lista de itens e grupos conforme fornecidos.",
+    "Itens selecionados devem ter estilo de destaque visual; itens desabilitados devem aparecer com opacidade reduzida.",
+    "O estado loading deve apresentar indicação visual no trigger e suprimir a abertura do painel.",
+    "O estado error deve aplicar estilo de erro no campo e exibir a mensagem de erro abaixo; em ausência de erro, exibir Helper quando disponível.",
+    "O estado disabled deve apresentar opacidade reduzida e bloquear interações; o estado readonly deve bloquear interações mantendo texto selecionável.",
+    "Em modo visualização, o valor deve aparecer como texto estático, usando placeholder ou “—” quando não houver seleção.",
+    "Quando searchable=true, a entrada de busca deve aparecer no topo do painel antes da lista de itens.",
+    "Deve suportar modo escuro com pares semânticos de cores definidos no contrato global (bg, text, border, hover, focus, error)."
+  ]
+} </promptcustom> </plugin-agent-playground-100554>

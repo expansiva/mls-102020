@@ -75,12 +75,12 @@ This applies to all HTML in the playground: \`<demo>\` element and \`<template>\
 ### 3.1 Formato
 
 \`\`\`html
-<widget-playground-state-102020 state='playgroundDinamicState'></widget-playground-state-102020> // playgroundDinamicState will be replaced after, dont change
+<aura--molecules--playground--widget-playground-state-102020 state='playgroundDinamicState'></aura--molecules--playground--widget-playground-state-102020> // playgroundDinamicState will be replaced after, dont change
 \`\`\`
 
 ### 3.2 Posição no HTML
 
-O \`widget-playground-state-102020\` DEVE vir ANTES de qualquer demo no HTML.
+O \`aura--molecules--playground--widget-playground-state-102020\` DEVE vir ANTES de qualquer demo no HTML.
 
 ### 3.3 Valores Default por Tipo
 
@@ -98,27 +98,27 @@ O \`widget-playground-state-102020\` DEVE vir ANTES de qualquer demo no HTML.
 
 | Tipo da Propriedade | Widget |
 |---------------------|--------|
-| string | \`widget-playground-state-text-102020\` |
-| string \| null | \`widget-playground-state-text-102020\` |
-| number | \`widget-playground-state-number-102020\` |
-| number \| null | \`widget-playground-state-number-102020\` |
-| boolean | \`widget-playground-state-boolean-102020\` |
+| string | \`aura--molecules--playground--widget-playground-state-text-102020\` |
+| string \| null | \`aura--molecules--playground--widget-playground-state-text-102020\` |
+| number | \`aura--molecules--playground--widget-playground-state-number-102020\` |
+| number \| null | \`aura--molecules--playground--widget-playground-state-number-102020\` |
+| boolean | \`aura--molecules--playground--widget-playground-state-boolean-102020\` |
 
 ### 4.2 Exemplos
 
 **String:**
 \`\`\`html
-<widget-playground-state-text-102020 label="error" value="{{playground.basic.error}}"></widget-playground-state-text-102020>
+<aura--molecules--playground--widget-playground-state-text-102020 label="error" value="{{playground.basic.error}}"></aura--molecules--playground--widget-playground-state-text-102020>
 \`\`\`
 
 **Number:**
 \`\`\`html
-<widget-playground-state-number-102020 label="value" value="{{playground.basic.value}}"></widget-playground-state-number-102020>
+<aura--molecules--playground--widget-playground-state-number-102020 label="value" value="{{playground.basic.value}}"></aura--molecules--playground--widget-playground-state-number-102020>
 \`\`\`
 
 **Boolean:**
 \`\`\`html
-<widget-playground-state-boolean-102020 label="showIcon" value="{{playground.basic.showIcon}}"></widget-playground-state-boolean-102020>
+<aura--molecules--playground--widget-playground-state-boolean-102020 label="showIcon" value="{{playground.basic.showIcon}}"></aura--molecules--playground--widget-playground-state-boolean-102020>
 \`\`\`
 
 ---
@@ -149,7 +149,7 @@ All elements MUST include \`dark:\` variants so the playground renders correctly
 
 1. Container
 2. Header
-3. \`widget-playground-state-102020\` (SEMPRE antes das demos)
+3. \`aura--molecules--playground--widget-playground-state-102020\` (SEMPRE antes das demos)
 4. Section com demos
 
 ### 6.2 Demo Card
@@ -163,8 +163,8 @@ All elements MUST include \`dark:\` variants so the playground renders correctly
     <span class="inline-block px-3 py-1 bg-sky-100 dark:bg-sky-900 text-sky-700 dark:text-sky-300 rounded-full text-sm font-medium">skill group</span>
   </header>
 
-  <widget-playground-state-102020 state='playgroundDinamicState'>
-  </widget-playground-state-102020>
+  <aura--molecules--playground--widget-playground-state-102020 state='playgroundDinamicState'>
+  </aura--molecules--playground--widget-playground-state-102020>
 
   <section class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
     <article class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-6">
@@ -181,14 +181,14 @@ All elements MUST include \`dark:\` variants so the playground renders correctly
       <details class="mt-4">
         <summary class="cursor-pointer text-sm font-medium text-slate-500 dark:text-slate-400">Properties</summary>
         <div class="mt-2 p-4 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-900">
-          <widget-playground-state-number-102020 label="value" value="{{playground.basic.value}}"></widget-playground-state-number-102020>
-          <widget-playground-state-text-102020 label="error" value="{{playground.basic.error}}"></widget-playground-state-text-102020>
+          <aura--molecules--playground--widget-playground-state-number-102020 label="value" value="{{playground.basic.value}}"></aura--molecules--playground--widget-playground-state-number-102020>
+          <aura--molecules--playground--widget-playground-state-text-102020 label="error" value="{{playground.basic.error}}"></aura--molecules--playground--widget-playground-state-text-102020>
         </div>
       </details>
       <details class="mt-2">
         <summary class="cursor-pointer text-sm font-medium text-slate-500 dark:text-slate-400">HTML</summary>
         <div class="mt-2">
-          <widget-playground-state-preview-code-102020 target="demo-basic">
+          <aura--molecules--playground--widget-playground-state-preview-code-102020 target="demo-basic">
             <template>
 <molecules--ml-component 
   value="{{playground.basic.value}}"
@@ -198,7 +198,7 @@ All elements MUST include \`dark:\` variants so the playground renders correctly
   <Label>Field</Label>
 </molecules--ml-component>
             </template>
-          </widget-playground-state-preview-code-102020>
+          </aura--molecules--playground--widget-playground-state-preview-code-102020>
         </div>
       </details>
     </article>
@@ -226,14 +226,14 @@ O elemento \`<demo>\` DEVE:
 
 ### 6.4 HTML Editor Widget
 
-O \`widget-playground-state-preview-code-102020\` recebe:
+O \`aura--molecules--playground--widget-playground-state-preview-code-102020\` recebe:
 - \`target\`: id do elemento demo (para atualizar ao editar)
 - \`<template>\`: código HTML fonte (para exibir formatado no editor)
 
 **IMPORTANTE:** O HTML deve estar duplicado - no \`<demo>\` E no \`<template>\`.
 
 \`\`\`html
-<widget-playground-state-preview-code-102020 target="demo-basic">
+<aura--molecules--playground--widget-playground-state-preview-code-102020 target="demo-basic">
   <template>
 <molecules--ml-component 
   value="{{playground.basic.value}}"
@@ -241,7 +241,7 @@ O \`widget-playground-state-preview-code-102020\` recebe:
   <Label>Field</Label>
 </molecules--ml-component>
   </template>
-</widget-playground-state-preview-code-102020>
+</aura--molecules--playground--widget-playground-state-preview-code-102020>
 \`\`\`
 
 O widget:
@@ -255,12 +255,12 @@ O widget:
 
 - [ ] Tag name copied verbatim from \`@customElement(...)\` in the \`.ts\` file
 - [ ] Opening tag and closing tag are identical strings
-- [ ] widget-playground-state-102020 vem ANTES das demos
+- [ ] aura--molecules--playground--widget-playground-state-102020 vem ANTES das demos
 - [ ] Cada demo tem namespace próprio
 - [ ] Cada \`<demo>\` tem id único e contém o HTML do componente
-- [ ] string → widget-playground-state-text-102020
-- [ ] number → widget-playground-state-number-102020
-- [ ] boolean → widget-playground-state-boolean-102020
+- [ ] string → aura--molecules--playground--widget-playground-state-text-102020
+- [ ] number → aura--molecules--playground--widget-playground-state-number-102020
+- [ ] boolean → aura--molecules--playground--widget-playground-state-boolean-102020
 - [ ] HTML duplicado: no \`<demo>\` E no \`<template>\` do editor
 - [ ] \`<demo>\` sem class/style
 - [ ] Page root tem \`dark:bg-slate-900\`
