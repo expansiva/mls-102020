@@ -746,7 +746,6 @@ export class ServiceGenome102020 extends ServiceBase {
                     <div class="flex flex-col gap-4">
                         <aura--plugins--select-layout-102020
                             .value=${this._layoutValue}
-                            .pageFile=${this._currentPageFile}
                         ></aura--plugins--select-layout-102020>
                         ${isRealLayout ? html`
                             <aura--plugins--select-layout-rules-102020

@@ -5,7 +5,6 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { dsIndexNameMap } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
 import '/_102020_/l2/aura/plugins/selectLayoutRules.js';
 
@@ -25,8 +24,6 @@ const message_en = {
     sidebarDesc: 'Persistent side navigation alongside a main content area.',
     bento: 'Bento Grids',
     bentoDesc: 'Mosaic-style grid of cards with variable sizes and positions.',
-    notCreated: 'Layout not yet created for page',
-    addLayout: 'Add Layout',
     adding: 'Adding…',
     addTitle: 'New Layout',
     addDesc: 'Create a new layout: pick a base skill (or custom) and configure its component rules.',
@@ -56,8 +53,6 @@ const messages: Record<string, MessageType> = {
         sidebarDesc: 'Navegação lateral persistente ao lado de uma área de conteúdo principal.',
         bento: 'Bento Grids',
         bentoDesc: 'Grade mosaico de cards com tamanhos e posições variáveis.',
-        notCreated: 'Layout ainda não criado para a página',
-        addLayout: 'Adicionar Layout',
         adding: 'Adicionando…',
         addTitle: 'Novo Layout',
         addDesc: 'Crie um novo layout: escolha uma skill base (ou custom) e configure as rules de componentes.',
@@ -84,8 +79,6 @@ const messages: Record<string, MessageType> = {
         sidebarDesc: 'Navegación lateral persistente junto a un área de contenido principal.',
         bento: 'Bento Grids',
         bentoDesc: 'Cuadrícula mosaico de tarjetas con tamaños y posiciones variables.',
-        notCreated: 'Layout aún no creado para la página',
-        addLayout: 'Agregar Layout',
         adding: 'Agregando…',
         addTitle: 'Nuevo Layout',
         addDesc: 'Cree un nuevo layout: elija una skill base (o custom) y configure sus reglas de componentes.',
@@ -107,7 +100,6 @@ interface ILayoutOption {
     value: number;
     name: string;
     skill: string;
-    enabled: boolean;
 }
 
 // Presets for the "Add layout" form: each sets the layout name + its render skill.
@@ -125,12 +117,8 @@ const LAYOUT_PRESETS: { name: string; skill: string }[] = [
 export class PluginSelectLayout extends StateLitElement {
 
     @property({ attribute: false }) value: number | null = 0;
-    @property({ attribute: false }) pageFile: mls.stor.IFileInfo | null = null;
 
     @state() private _layoutOptions: ILayoutOption[] = [];
-    @state() private _designSystems: Record<number, { name: string; skill: string }> = {};
-    @state() private _saving: boolean = false;
-    @state() private _saveError: string = '';
 
     // ─── "Add layout" form state ──────────────────────────────────────
     @state() private _addPreset: string | null = null;   // preset name | 'custom' | null
@@ -150,12 +138,6 @@ export class PluginSelectLayout extends StateLitElement {
         this._loadProjectConfig();
     }
 
-    willUpdate(changed: Map<string, unknown>) {
-        if (changed.has('pageFile')) {
-            this._loadGenome();
-        }
-    }
-
     private async _loadProjectConfig(): Promise<void> {
         const project = getAuraState().actualProject;
         if (!project) return;
@@ -163,51 +145,9 @@ export class PluginSelectLayout extends StateLitElement {
             const config: any = await getConfigProject(project);
             const layoutsMap: Record<number, { name: string; skill: string }> = config?.layouts ?? {};
             this._layoutOptions = Object.entries(layoutsMap)
-                .map(([k, v]) => ({ value: Number(k), name: v.name, skill: v.skill, enabled: false }))
+                .map(([k, v]) => ({ value: Number(k), name: v.name, skill: v.skill }))
                 .sort((a, b) => a.value - b.value);
-            // DS identity lives in designSystem.ts — map dsIndex → { name } for the genome value.
-            const dsNames = await dsIndexNameMap(project);
-            const designSystems: Record<number, { name: string; skill: string }> = {};
-            for (const [k, name] of Object.entries(dsNames)) {
-                designSystems[Number(k)] = { name, skill: config?.designSystems?.[k]?.skill ?? '' };
-            }
-            this._designSystems = designSystems;
         } catch { /* no project config */ }
-        // @ts-ignore
-        this.requestUpdate();
-    }
-
-    private async _loadGenome(): Promise<void> {
-
-        this._layoutOptions = this._layoutOptions.map(o => ({ ...o, enabled: false }));
-        if (!this.pageFile) return;
-
-        if (!this._layoutOptions.length) await this._loadProjectConfig();
-
-        const project = getAuraState().actualProject;
-        const modulePrefix = getAuraState().actualModule ?? '';
-        if (!project || !modulePrefix) return;
-
-        const folder = this.pageFile.folder ?? '';
-        const genomeKey = folder.substring(modulePrefix.length + 1); // e.g. "web/desktop/page11"
-        if (!genomeKey) return;
-
-        const parts = genomeKey.split('/');
-        const pageSeg = parts[parts.length - 1];        // "page11"
-        const dsDigit = pageSeg.replace(/^page\d/, ''); // DS digit(s), e.g. "1"
-        const deviceParts = parts.slice(0, -1);         // ["web","desktop"]
-        const shortName = this.pageFile.shortName;
-
-        // A layout is "created" for this page when its page<layout><ds> variation
-        // file exists in the stor.
-        const checked = await Promise.all(this._layoutOptions.map(async (o) => {
-            const variation = `page${o.value}${dsDigit}`;
-            const varFolder = [modulePrefix, ...deviceParts, variation].join('/');
-            const storFiles = await mls.stor.getFiles({ project, shortName, folder: varFolder, loadContent: false });
-            return { ...o, enabled: !!storFiles.ts };
-        }));
-        this._layoutOptions = checked;
-
         // @ts-ignore
         this.requestUpdate();
     }
@@ -272,7 +212,6 @@ export class PluginSelectLayout extends StateLitElement {
         }
 
         if (!selectedOption) return nothing;
-        const isConfigured = selectedOption.enabled;
         return html`
             <div class="flex flex-col gap-3">
                 <aura--plugins--nav-header-102020
@@ -285,36 +224,26 @@ export class PluginSelectLayout extends StateLitElement {
                     @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
                 ></aura--plugins--nav-header-102020>
 
-                ${isConfigured
-                    ? this._renderLayoutCard(selectedOption, true)
-                    : this._renderNotCreatedBanner(selectedOption)}
+                ${this._renderLayoutCard(selectedOption, true)}
             </div>
         `;
     }
 
-    private _isConfiguredLayout(opt: ILayoutOption): boolean {
-        return opt.enabled;
-    }
-
     private _renderLayoutCard(opt: ILayoutOption, isSelected: boolean) {
-        const hasLayout = this._isConfiguredLayout(opt);
         const label = this._getLayoutLabel(opt.name);
         const desc = this._getLayoutDesc(opt.name);
-        const pageName = this.pageFile?.shortName ?? '';
 
         return html`
             <div
                 class="
-                    rounded-xl border p-2.5 transition-all flex flex-col gap-2
+                    rounded-xl border p-2.5 transition-all flex flex-col gap-2 cursor-pointer
                     ${isSelected
-                        ? 'border-indigo-400 dark:border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 shadow-sm cursor-pointer'
-                        : hasLayout
-                            ? 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-700 cursor-pointer'
-                            : 'border-gray-100 dark:border-gray-800/50 bg-gray-50 dark:bg-gray-900/50 cursor-default'}
+                        ? 'border-indigo-400 dark:border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 shadow-sm'
+                        : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-700'}
                 "
-                @click=${() => hasLayout ? this._dispatchSelect(opt.value) : undefined}
+                @click=${() => this._dispatchSelect(opt.value)}
             >
-                <div class="w-full aspect-[4/3] rounded-lg overflow-hidden ${hasLayout ? '' : 'opacity-40'}
+                <div class="w-full aspect-[4/3] rounded-lg overflow-hidden
                     ${isSelected ? 'bg-indigo-100 dark:bg-indigo-900/30' : 'bg-gray-100 dark:bg-gray-800'}
                 ">
                     ${this._renderDiagram(opt.name, isSelected)}
@@ -322,45 +251,12 @@ export class PluginSelectLayout extends StateLitElement {
                 <div class="flex flex-col gap-0.5">
                     <div class="flex items-center gap-1.5">
                         ${isSelected ? html`<div class="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400 shrink-0"></div>` : nothing}
-                        <span class="text-xs font-semibold ${hasLayout ? '' : 'opacity-50'}
+                        <span class="text-xs font-semibold
                             ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-700 dark:text-gray-200'}
                         ">${label}</span>
                     </div>
-                    ${hasLayout
-                        ? html`<span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug">${desc}</span>`
-                        : html`<span class="text-[10px] text-amber-500 dark:text-amber-400 leading-snug italic">${this.msg.notCreated} ${pageName}</span>`
-                    }
+                    <span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug">${desc}</span>
                 </div>
-            </div>
-        `;
-    }
-
-    private _renderNotCreatedBanner(opt: ILayoutOption) {
-        const pageName = this.pageFile?.shortName ?? '';
-        const label = this._getLayoutLabel(opt.name);
-        return html`
-            <div class="flex flex-col gap-2">
-                <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5">
-                    <span class="text-sm text-amber-600 dark:text-amber-400">${this.msg.notCreated} ${pageName}</span>
-                </div>
-                <button
-                    class="
-                        self-start text-sm px-3 py-1.5 rounded
-                        bg-indigo-500 dark:bg-indigo-600 text-white
-                        hover:bg-indigo-600 dark:hover:bg-indigo-500
-                        disabled:opacity-50 disabled:cursor-not-allowed
-                        transition-colors cursor-pointer
-                    "
-                    ?disabled=${this._saving}
-                    @click=${() => this._addLayoutToGenome(opt)}
-                >
-                    ${this._saving ? this.msg.adding : `+ ${this.msg.addLayout} (${label})`}
-                </button>
-                ${this._saveError ? html`
-                    <div class="rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 px-2.5 py-1.5">
-                        <span class="text-xs text-red-600 dark:text-red-400 font-mono">${this._saveError}</span>
-                    </div>
-                ` : nothing}
             </div>
         `;
     }
@@ -440,40 +336,6 @@ export class PluginSelectLayout extends StateLitElement {
                 <rect x="24" y="28" width="32" height="4" rx="1" fill="${header}" class="dark:hidden"/>
                 <rect x="24" y="28" width="32" height="4" rx="1" fill="${darkHeader}" class="hidden dark:block"/>
             </svg>`;
-    }
-
-    private async _addLayoutToGenome(opt: ILayoutOption): Promise<void> {
-        this._saving = true;
-        this._saveError = '';
-
-        try {
-            const modulePrefix = getAuraState().actualModule ?? '';
-            if (!modulePrefix || !this.pageFile) return;
-
-            const folder = this.pageFile.folder ?? '';
-            const genomeKey = folder.substring(modulePrefix.length + 1);
-            if (!genomeKey) return;
-
-            const parts = genomeKey.split('/');
-            const currentPage = parts[2] ?? '';
-            const dsDigit = currentPage.replace(/^page\d/, '');
-            const newPage = `page${opt.value}${dsDigit}`;
-            const newGenomeKey = [...parts.slice(0, 2), newPage].join('/');
-
-            const actualDsKey = getAuraState().actualDesignSystem;
-            const ds = actualDsKey !== null ? this._designSystems[actualDsKey] : null;
-
-            const genomeValue = {
-                designSystem: ds?.name ?? 'default',
-                device: getAuraState().actualDevice ?? 'web/desktop',
-                layout: opt.name,
-            };
-
-            console.log('[selectLayout] genome key   :', newGenomeKey);
-            console.log('[selectLayout] genome value :', genomeValue);
-        } finally {
-            this._saving = false;
-        }
     }
 
     // ─── "Add layout" form ────────────────────────────────────────────

@@ -5,6 +5,13 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { setLastModule } from '/_102027_/l2/libCommom.js';
 import { getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/aura/helpers/auraState.js';
+import { listVariationsStatus, type ModuleVariationStatus, type PageVariationStatus } from '/_102020_/l2/aura/helpers/dsMatch/variationStatus.js';
+import { setTask, getTask, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
+import { getState, setState } from '/_102029_/l2/collabState.js';
+import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
+import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
+import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
+import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -23,6 +30,19 @@ const message_en = {
     inDevelopment: 'In development',
     selectBtn: 'Select Module',
     actualModule: 'actual module',
+    variationsTitle: 'Variations',
+    variationsLoading: 'Checking variations…',
+    variationsError: 'Could not load the variations.',
+    statusFresh: 'up to date',
+    statusMaterialize: 'materialize pending',
+    statusGeneration: 'generation pending',
+    statusStale: 'outdated',
+    generateVariation: 'Generate variation',
+    materializeVariation: 'Materialize',
+    variationRunning: 'Running…',
+    variationDone: 'Task finished',
+    orphanLabel: 'orphan',
+    pagesWord: 'pages',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -41,6 +61,19 @@ const messages: Record<string, MessageType> = {
         inDevelopment: 'Em desenvolvimento',
         selectBtn: 'Selecionar Módulo',
         actualModule: 'módulo atual',
+        variationsTitle: 'Variações',
+        variationsLoading: 'Verificando variações…',
+        variationsError: 'Não foi possível carregar as variações.',
+        statusFresh: 'atualizado',
+        statusMaterialize: 'pendente materialize',
+        statusGeneration: 'pendente geração',
+        statusStale: 'desatualizada',
+        generateVariation: 'Gerar variação',
+        materializeVariation: 'Materializar',
+        variationRunning: 'Executando…',
+        variationDone: 'Task concluída',
+        orphanLabel: 'órfã',
+        pagesWord: 'páginas',
     },
     es: {
         title: 'Módulo',
@@ -56,6 +89,19 @@ const messages: Record<string, MessageType> = {
         inDevelopment: 'En desarrollo',
         selectBtn: 'Seleccionar Módulo',
         actualModule: 'módulo actual',
+        variationsTitle: 'Variaciones',
+        variationsLoading: 'Verificando variaciones…',
+        variationsError: 'No se pudieron cargar las variaciones.',
+        statusFresh: 'actualizado',
+        statusMaterialize: 'materialize pendiente',
+        statusGeneration: 'generación pendiente',
+        statusStale: 'desactualizada',
+        generateVariation: 'Generar variación',
+        materializeVariation: 'Materializar',
+        variationRunning: 'Ejecutando…',
+        variationDone: 'Tarea finalizada',
+        orphanLabel: 'huérfana',
+        pagesWord: 'páginas',
     },
 };
 /// **collab_i18n_end**
@@ -77,8 +123,29 @@ export class PluginSelectModule extends StateLitElement {
 
     @state() private _search: string = '';
 
+    // ─── Variations panel state ───────────────────────────────────────
+    @state() private _variations: ModuleVariationStatus[] | null = null;
+    @state() private _varsLoading: boolean = false;
+    @state() private _varsError: boolean = false;
+    @state() private _expandedVariation: string | null = null;
+    private _varsLoadedFor: string | null = null;
+    private _varsLoadSeq = 0;
+    private _threadCache = new Map<string, Promise<any>>();
+    private _unsubTasks: (() => void) | undefined;
+
+    connectedCallback() {
+        super.connectedCallback();
+        this._unsubTasks = subscribeTaskManager(() => this.requestUpdate());
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        this._unsubTasks?.();
+    }
+
     willUpdate(changed: Map<string, unknown>) {
         if (changed.has('value')) this._search = '';
+        this._maybeLoadVariations();
     }
 
     private get msg(): MessageType {
@@ -152,8 +219,211 @@ export class PluginSelectModule extends StateLitElement {
                         >${this.msg.selectBtn}</button>`
                     : nothing}
                 ${module ? this._renderModuleDetail(module) : nothing}
+                ${module ? this._renderVariationsPanel(module) : nothing}
             </div>
         `;
+    }
+
+    // ─── Variations panel ─────────────────────────────────────────────
+    // Consolidated per-variation (page{layout}{ds}) status of the selected module,
+    // with the pending action (generate / materialize) per variation.
+
+    private _maybeLoadVariations(): void {
+        const module = this._selectedModule;
+        if (!module) {
+            this._varsLoadedFor = null;
+            this._variations = null;
+            return;
+        }
+        const device = getAuraState().actualDevice ?? 'web/desktop';
+        const key = `${module.name}|${device}`;
+        if (key === this._varsLoadedFor) return;
+        this._varsLoadedFor = key;
+        this._expandedVariation = null;
+        this._loadVariations(module.name, device);
+    }
+
+    private _reloadVariations(): void {
+        this._varsLoadedFor = null;
+        this._maybeLoadVariations();
+    }
+
+    private async _loadVariations(moduleName: string, device: string): Promise<void> {
+        const seq = ++this._varsLoadSeq;
+        this._varsLoading = true;
+        this._varsError = false;
+        this._variations = null;
+        const project = getAuraState().actualProject;
+        if (!project) { this._varsLoading = false; return; }
+        try {
+            const variations = await listVariationsStatus(project, moduleName, device);
+            if (seq !== this._varsLoadSeq) return; // superseded by a newer load
+            this._variations = variations;
+        } catch {
+            if (seq !== this._varsLoadSeq) return;
+            this._varsError = true;
+        } finally {
+            if (seq === this._varsLoadSeq) this._varsLoading = false;
+        }
+    }
+
+    private _statusLabel(status: PageVariationStatus): string {
+        switch (status) {
+            case 'generation': return this.msg.statusGeneration;
+            case 'materialize': return this.msg.statusMaterialize;
+            case 'stale': return this.msg.statusStale;
+            default: return this.msg.statusFresh;
+        }
+    }
+
+    private _statusChipClass(status: PageVariationStatus): string {
+        switch (status) {
+            case 'generation': return 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400';
+            case 'materialize': return 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400';
+            case 'stale': return 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400';
+            default: return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400';
+        }
+    }
+
+    private _renderVariationsPanel(module: IModule) {
+        return html`
+            <div class="flex flex-col gap-1.5">
+                <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.variationsTitle}</span>
+                ${this._varsLoading
+                    ? html`<span class="text-xs text-gray-400 dark:text-gray-500 italic">${this.msg.variationsLoading}</span>`
+                    : nothing}
+                ${this._varsError
+                    ? html`<span class="text-xs text-red-500 dark:text-red-400">${this.msg.variationsError}</span>`
+                    : nothing}
+                ${this._variations?.map(v => this._renderVariationRow(module, v)) ?? nothing}
+            </div>
+        `;
+    }
+
+    private _renderVariationRow(module: IModule, v: ModuleVariationStatus) {
+        const taskKey = `variation:${module.name}:${v.variation}`;
+        const task = getTask(taskKey);
+        const running = task?.status === 'running';
+        const total = v.pages.length;
+        const affected = v.counts[v.status] ?? 0;
+        const expanded = this._expandedVariation === v.variation;
+        const needsMaterialize = v.status === 'materialize';
+        const needsGenerate = v.status === 'generation' || v.status === 'stale';
+
+        return html`
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2 flex flex-col gap-1.5">
+                <div
+                    class="flex items-center gap-2 cursor-pointer"
+                    @click=${() => { this._expandedVariation = expanded ? null : v.variation; }}
+                >
+                    <span class="text-sm font-mono font-semibold text-gray-700 dark:text-gray-200">${v.variation}</span>
+                    <span class="text-xs text-gray-400 dark:text-gray-500 truncate">${v.layoutName} · ${v.dsName}</span>
+                    ${v.orphan ? html`
+                        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                            ${this.msg.orphanLabel}
+                        </span>` : nothing}
+                    <span class="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${this._statusChipClass(v.status)}">
+                        ${this._statusLabel(v.status)}${v.status !== 'fresh' && total ? ` (${affected}/${total} ${this.msg.pagesWord})` : ''}
+                    </span>
+                </div>
+                ${expanded && total ? html`
+                    <div class="flex flex-col gap-1 pl-1">
+                        ${v.pages.map(p => html`
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-600 dark:text-gray-300 truncate">${p.page}</span>
+                                <span class="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${this._statusChipClass(p.status)}">
+                                    ${this._statusLabel(p.status)}
+                                </span>
+                            </div>
+                        `)}
+                    </div>
+                ` : nothing}
+                ${needsGenerate || needsMaterialize ? html`
+                    <button
+                        class="
+                            self-start text-xs px-2.5 py-1 rounded
+                            bg-indigo-500 dark:bg-indigo-600 text-white
+                            hover:bg-indigo-600 dark:hover:bg-indigo-500
+                            disabled:opacity-50 disabled:cursor-not-allowed
+                            transition-colors cursor-pointer
+                        "
+                        ?disabled=${running}
+                        @click=${(e: Event) => { e.stopPropagation(); this._onVariationAction(module, v); }}
+                    >${running ? this.msg.variationRunning : needsMaterialize ? this.msg.materializeVariation : this.msg.generateVariation}</button>
+                ` : nothing}
+                ${task && task.status === 'done' ? html`
+                    <span class="text-xs text-emerald-600 dark:text-emerald-400">✓ ${this.msg.variationDone}</span>` : nothing}
+                ${task && task.status === 'error' ? html`
+                    <span class="text-xs text-red-500 dark:text-red-400 truncate">${task.message ?? 'error'}</span>` : nothing}
+            </div>
+        `;
+    }
+
+    // Generate (agentImplementGenome + materialize) or materialize-only, per variation —
+    // same shape as selectPage's _onRegenerate, but scoped to the missing/stale pages.
+    private async _onVariationAction(module: IModule, v: ModuleVariationStatus): Promise<void> {
+        const taskKey = `variation:${module.name}:${v.variation}`;
+        if (getTask(taskKey)?.status === 'running') return;
+        // The agent's `device` is the segment after web/ (e.g. 'desktop'); aura stores 'web/desktop'.
+        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
+        const asIndex = (x: number | string) => Number.isFinite(Number(x)) ? Number(x) : x;
+
+        setTask(taskKey, { status: 'running', startedAt: Date.now() });
+        // Pause the preview while the agent rewrites the defs (avoids repaint thrash); restore after.
+        const prevPause = getState('preview.pausePreview');
+        try {
+            if (v.status === 'materialize') {
+                // Defs already written — only the rendered .ts pages are missing.
+                await this._executeAgent('agentMaterializeL2', '{}');
+            } else {
+                const pages = v.pages
+                    .filter(p => p.status === 'generation' || p.status === 'stale')
+                    .map(p => p.page);
+                const prompt = JSON.stringify({
+                    module: module.name,
+                    layout: asIndex(v.layout),
+                    ds: asIndex(v.ds),
+                    device,
+                    pages,
+                    materialize: true,
+                });
+                setState('preview.pausePreview', true);
+                await this._executeAgent('agentImplementGenome', prompt);
+                // Unpause before materialize so the .ts writes repaint the preview.
+                setState('preview.pausePreview', prevPause ?? false);
+                await this._executeAgent('agentMaterializeL2', '{}');
+            }
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
+        } catch (e: any) {
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: e?.message });
+        } finally {
+            setState('preview.pausePreview', prevPause ?? false);
+            this._reloadVariations();
+        }
+    }
+
+    private async _executeAgent(agentName: string, prompt: string): Promise<void> {
+        // Thread host: selectModule lives in serviceProject.
+        const fullName = '_102020_/l2/serviceProject';
+        let threadPromise = this._threadCache.get(fullName);
+        if (!threadPromise) {
+            threadPromise = (async () => {
+                let thread = await getThreadByName(fullName);
+                if (!thread) thread = await createThread(fullName, [], 'company');
+                return thread;
+            })();
+            this._threadCache.set(fullName, threadPromise);
+        }
+        const thread = await threadPromise;
+        const userId = getUserId();
+        const threadId = thread?.threadId;
+        if (!userId || !threadId) return;
+
+        const moduleAgent = await loadAgent(agentName);
+        if (!moduleAgent) throw new Error('Invalid agent');
+        const context = getTemporaryContext(threadId, userId, prompt);
+
+        for await (const _event of executeBeforePromptStream(moduleAgent, context)) { /* drain */ }
     }
 
     private _renderModuleDetail(module: IModule) {
