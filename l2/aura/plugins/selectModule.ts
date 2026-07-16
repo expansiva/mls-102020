@@ -3,7 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
-import { setLastModule } from '/_102027_/l2/libCommom.js';
+import { setLastModule, openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
 import { getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/aura/helpers/auraState.js';
 import { listVariationsStatus, type ModuleVariationStatus, type PageVariationStatus } from '/_102020_/l2/aura/helpers/dsMatch/variationStatus.js';
 import { setTask, getTask, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
@@ -43,6 +43,7 @@ const message_en = {
     variationDone: 'Task finished',
     orphanLabel: 'orphan',
     pagesWord: 'pages',
+    followTask: 'Follow task',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -74,6 +75,7 @@ const messages: Record<string, MessageType> = {
         variationDone: 'Task concluída',
         orphanLabel: 'órfã',
         pagesWord: 'páginas',
+        followTask: 'Acompanhar task',
     },
     es: {
         title: 'Módulo',
@@ -102,6 +104,7 @@ const messages: Record<string, MessageType> = {
         variationDone: 'Tarea finalizada',
         orphanLabel: 'huérfana',
         pagesWord: 'páginas',
+        followTask: 'Seguir tarea',
     },
 };
 /// **collab_i18n_end**
@@ -120,6 +123,7 @@ export class PluginSelectModule extends StateLitElement {
 
     @property({ attribute: false }) modules: IModule[] = [];
     @property({ attribute: false }) value: number | null = null;
+    @property({ attribute: false }) reloadToken: number = 0;
 
     @state() private _search: string = '';
 
@@ -131,6 +135,7 @@ export class PluginSelectModule extends StateLitElement {
     private _varsLoadedFor: string | null = null;
     private _varsLoadSeq = 0;
     private _threadCache = new Map<string, Promise<any>>();
+    private _taskInfoByKey = new Map<string, { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }>();
     private _unsubTasks: (() => void) | undefined;
 
     connectedCallback() {
@@ -145,6 +150,9 @@ export class PluginSelectModule extends StateLitElement {
 
     willUpdate(changed: Map<string, unknown>) {
         if (changed.has('value')) this._search = '';
+        // Service (re)open bumps the token: drop the guard so the stor is re-checked
+        // (files may have been deleted/created outside this panel).
+        if (changed.has('reloadToken')) this._varsLoadedFor = null;
         this._maybeLoadVariations();
     }
 
@@ -326,35 +334,44 @@ export class PluginSelectModule extends StateLitElement {
                         ${this._statusLabel(v.status)}${v.status !== 'fresh' && total ? ` (${affected}/${total} ${this.msg.pagesWord})` : ''}
                     </span>
                 </div>
-                ${expanded && total ? html`
-                    <div class="flex flex-col gap-1 pl-1">
-                        ${v.pages.map(p => html`
-                            <div class="flex items-center gap-2">
-                                <span class="text-xs text-gray-600 dark:text-gray-300 truncate">${p.page}</span>
-                                <span class="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${this._statusChipClass(p.status)}">
-                                    ${this._statusLabel(p.status)}
-                                </span>
-                            </div>
-                        `)}
+                ${expanded ? html`
+                    ${total ? html`
+                        <div class="flex flex-col gap-1 pl-1">
+                            ${v.pages.map(p => html`
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs text-gray-600 dark:text-gray-300 truncate">${p.page}</span>
+                                    <span class="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${this._statusChipClass(p.status)}">
+                                        ${this._statusLabel(p.status)}
+                                    </span>
+                                </div>
+                            `)}
+                        </div>
+                    ` : nothing}
+                    ${needsGenerate || needsMaterialize ? html`
+                        <button
+                            class="
+                                self-start text-xs px-2.5 py-1 rounded
+                                bg-indigo-500 dark:bg-indigo-600 text-white
+                                hover:bg-indigo-600 dark:hover:bg-indigo-500
+                                disabled:opacity-50 disabled:cursor-not-allowed
+                                transition-colors cursor-pointer
+                            "
+                            ?disabled=${running}
+                            @click=${(e: Event) => { e.stopPropagation(); this._onVariationAction(module, v); }}
+                        >${running ? this.msg.variationRunning : needsMaterialize ? this.msg.materializeVariation : this.msg.generateVariation}</button>
+                    ` : nothing}
+                ` : nothing}
+                ${task ? html`
+                    <div class="flex items-center gap-2 text-xs">
+                        ${task.status === 'running' ? html`<span class="text-indigo-500 dark:text-indigo-400 italic">${this.msg.variationRunning}</span>` : nothing}
+                        ${task.status === 'done' ? html`<span class="text-emerald-600 dark:text-emerald-400">✓ ${this.msg.variationDone}</span>` : nothing}
+                        ${task.status === 'error' ? html`<span class="text-red-500 dark:text-red-400 truncate">${task.message ?? 'error'}</span>` : nothing}
+                        ${this._taskInfoByKey.get(taskKey)?.task ? html`
+                            <button class="ml-auto text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
+                                @click=${(e: Event) => { e.stopPropagation(); this._openTask(taskKey); }}>${this.msg.followTask}</button>
+                        ` : nothing}
                     </div>
                 ` : nothing}
-                ${needsGenerate || needsMaterialize ? html`
-                    <button
-                        class="
-                            self-start text-xs px-2.5 py-1 rounded
-                            bg-indigo-500 dark:bg-indigo-600 text-white
-                            hover:bg-indigo-600 dark:hover:bg-indigo-500
-                            disabled:opacity-50 disabled:cursor-not-allowed
-                            transition-colors cursor-pointer
-                        "
-                        ?disabled=${running}
-                        @click=${(e: Event) => { e.stopPropagation(); this._onVariationAction(module, v); }}
-                    >${running ? this.msg.variationRunning : needsMaterialize ? this.msg.materializeVariation : this.msg.generateVariation}</button>
-                ` : nothing}
-                ${task && task.status === 'done' ? html`
-                    <span class="text-xs text-emerald-600 dark:text-emerald-400">✓ ${this.msg.variationDone}</span>` : nothing}
-                ${task && task.status === 'error' ? html`
-                    <span class="text-xs text-red-500 dark:text-red-400 truncate">${task.message ?? 'error'}</span>` : nothing}
             </div>
         `;
     }
@@ -371,10 +388,15 @@ export class PluginSelectModule extends StateLitElement {
         setTask(taskKey, { status: 'running', startedAt: Date.now() });
         // Pause the preview while the agent rewrites the defs (avoids repaint thrash); restore after.
         const prevPause = getState('preview.pausePreview');
+        // Surface "Follow task" as soon as the primary agent task exists.
+        const trackTask = (data: { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }) => {
+            this._taskInfoByKey.set(taskKey, data);
+            this.requestUpdate();
+        };
         try {
             if (v.status === 'materialize') {
                 // Defs already written — only the rendered .ts pages are missing.
-                await this._executeAgent('agentMaterializeL2', '{}');
+                await this._executeAgent('agentMaterializeL2', '{}', trackTask);
             } else {
                 const pages = v.pages
                     .filter(p => p.status === 'generation' || p.status === 'stale')
@@ -388,7 +410,7 @@ export class PluginSelectModule extends StateLitElement {
                     materialize: true,
                 });
                 setState('preview.pausePreview', true);
-                await this._executeAgent('agentImplementGenome', prompt);
+                await this._executeAgent('agentImplementGenome', prompt, trackTask);
                 // Unpause before materialize so the .ts writes repaint the preview.
                 setState('preview.pausePreview', prevPause ?? false);
                 await this._executeAgent('agentMaterializeL2', '{}');
@@ -402,7 +424,11 @@ export class PluginSelectModule extends StateLitElement {
         }
     }
 
-    private async _executeAgent(agentName: string, prompt: string): Promise<void> {
+    private async _executeAgent(
+        agentName: string,
+        prompt: string,
+        onTaskCreated?: (data: { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }) => void,
+    ): Promise<void> {
         // Thread host: selectModule lives in serviceProject.
         const fullName = '_102020_/l2/serviceProject';
         let threadPromise = this._threadCache.get(fullName);
@@ -423,7 +449,23 @@ export class PluginSelectModule extends StateLitElement {
         if (!moduleAgent) throw new Error('Invalid agent');
         const context = getTemporaryContext(threadId, userId, prompt);
 
-        for await (const _event of executeBeforePromptStream(moduleAgent, context)) { /* drain */ }
+        for await (const event of executeBeforePromptStream(moduleAgent, context)) {
+            if (event.type === 'task-created') {
+                onTaskCreated?.({ taskId: event.taskId, task: event.task, message: event.message });
+            }
+        }
+    }
+
+    private async _openTask(taskKey: string): Promise<void> {
+        const info = this._taskInfoByKey.get(taskKey);
+        if (!info?.task) return;
+        await import('/_102025_/l2/collabMessagesTaskInfo.js');
+        const el = document.createElement('collab-messages-task-info-102025');
+        el.setAttribute('messageId', info.message?.createAt ?? '');
+        if (info.task.PK) el.setAttribute('taskId', info.task.PK);
+        (el as any)['task'] = info.task;
+        (el as any)['message'] = info.message;
+        openElementInServiceDetails(el);
     }
 
     private _renderModuleDetail(module: IModule) {

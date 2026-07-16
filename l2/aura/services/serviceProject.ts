@@ -117,7 +117,9 @@ export class ServiceProject102020 extends ServiceBase {
         onClickMain: this.onClickMain.bind(this),
     };
 
-    onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {}
+    onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
+        this._moduleReloadToken += 1; // re-check the module variations on each service (re)open
+    }
 
     // ─── State ────────────────────────────────────────────────────────
 
@@ -125,6 +127,7 @@ export class ServiceProject102020 extends ServiceBase {
 
     @state() private _modules: IModule[] = [];
     @state() private _moduleConfig: IKnobConfig = DISABLED_CONFIG('module');
+    @state() private _moduleReloadToken: number = 0;
 
     @state() private _moduleValue: number | null = null;
     @state() private _langValue: number | null = null;
@@ -412,6 +415,7 @@ export class ServiceProject102020 extends ServiceBase {
                     <aura--plugins--select-module-102020
                         .modules=${this._modules}
                         .value=${this._moduleValue}
+                        .reloadToken=${this._moduleReloadToken}
                         @select-module=${(e: CustomEvent) => this._setKnobValue('module', e.detail.value)}
                     ></aura--plugins--select-module-102020>
                 `;
