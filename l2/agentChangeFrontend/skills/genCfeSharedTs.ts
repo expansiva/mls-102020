@@ -46,11 +46,20 @@ Generate:
   - execBff and type BffClientOptions from /_102029_/l2/bffClient.js
   - setState, getState, subscribe, unsubscribe or initState only from /_102029_/l2/collabState.js when used
   - runBlockingUiAction only from /_102029_/l2/interactionRuntime.js when BFF click handlers are generated
-  - contract types from /_{project}_/l2/{moduleName}/web/contracts/{pageName}.js, using only interfaces/types that exist in the contract .ts context
-- Immediately after the imports, RE-EXPORT EVERY interface/type exported by the contract .ts (all
-  Input, Output and Output row-item DTOs — not only the ones this class references directly), so page
-  renders import every DTO type from the shared module and never depend on the contract file:
+  - contract types this class USES to type @property fields and action IO: emit an
+    "import type { ...used types... } from '/_{project}_/l2/{moduleName}/web/contracts/{pageName}.js';".
+    This import is MANDATORY and SEPARATE from the re-export below. A re-export ("export type { X } from
+    '...'") does NOT create a local binding, so any contract type referenced inside this file (e.g.
+    "@property() data!: FooOutput") MUST also appear in this import — otherwise it is a "cannot find
+    name" compile error. Use only interfaces/types that exist in the contract .ts context.
+- Immediately after the imports, ALSO add a SEPARATE re-export statement listing EVERY interface/type
+  exported by the contract .ts (all Input, Output and Output row-item DTOs — not only the ones this
+  class references directly), so page renders import every DTO type from the shared module and never
+  depend on the contract file:
   export type { TypeA, TypeB } from '/_{project}_/l2/{moduleName}/web/contracts/{pageName}.js';
+  BOTH statements must be present and are NOT interchangeable: the "import type" (local bindings, only
+  the used types) AND the "export type ... from" (re-export, all types). Never merge them into a single
+  re-export — that would drop the local bindings and break compilation.
 - export class Definition.baseClassName extends CollabLitElement. This name is precomputed: copy it
   exactly. Never derive a name from pageName/title and never choose a class name yourself.
 
@@ -208,6 +217,11 @@ For every action in actions[]:
 - Handler wrappers must use runBlockingUiAction for command actions and may call query methods directly for query actions.
 
 ## Lifecycle
+
+Declare connectedCallback and disconnectedCallback with PUBLIC visibility to match CollabLitElement
+(they are public there). Write them as "connectedCallback(): void { ... }" /
+"disconnectedCallback(): void { ... }" — NEVER "protected connectedCallback" (a narrower visibility than
+the base member is a TS2415 "incorrectly extends" compile error). Use "override" if the base declares it.
 
 connectedCallback:
 - call super.connectedCallback()
