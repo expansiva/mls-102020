@@ -3,7 +3,7 @@
 // Tests for axesForGroup / rulesForPlainElement (pure). Exposes `runPlainControlRulesTests()`.
 
 import { axesForGroup, rulesForPlainElement } from '/_102020_/l2/aura/helpers/dsMatch/plainControlRules.js';
-import { layoutRuleDefaults } from '/_102020_/l2/designSystemAuraBase.js';
+import { layoutRuleDefaults } from '/_102020_/l2/aura/helpers/designSystemAuraBase.js';
 import type { ResolvedLayoutRules } from '/_102020_/l2/aura/helpers/dsMatch/types.js';
 
 function rules(over: Record<string, string>): ResolvedLayoutRules {

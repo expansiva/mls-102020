@@ -9,7 +9,7 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { layoutSections, layoutAxisList, type ILayoutAxisEntry, type ILayoutSection } from '/_102020_/l2/designSystemAuraBase.js';
+import { layoutSections, layoutAxisList, type ILayoutAxisEntry, type ILayoutSection } from '/_102020_/l2/aura/helpers/designSystemAuraBase.js';
 import { effectiveRulesProvenance, UNSET, type RuleSource } from '/_102020_/l2/aura/helpers/dsMatch/resolveRulesForPage.js';
 
 type RulesScope = 'project' | 'module' | 'page'; // 'project' = layout base

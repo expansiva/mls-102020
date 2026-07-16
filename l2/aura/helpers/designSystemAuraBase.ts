@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/designSystemAuraBase.ts" enhancement="_blank" />
+/// <mls fileReference="_102020_/l2/aura/helpers/designSystemAuraBase.ts" enhancement="_blank" />
 
 // Canonical vocabulary of layout RULE axes — single source of truth. Shared by:
 //   - the `selectLayoutRules` configuration UI (which axes/values to render);

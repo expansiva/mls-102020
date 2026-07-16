@@ -11,7 +11,7 @@
 //
 // It logs a readable report and returns it. `checks[].ok === false` flags a problem.
 
-import { layoutAxisKeys, layoutRuleDefaults, isValidAxisValue } from '/_102020_/l2/designSystemAuraBase.js';
+import { layoutAxisKeys, layoutRuleDefaults, isValidAxisValue } from '/_102020_/l2/aura/helpers/designSystemAuraBase.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { readLayoutRules } from '/_102020_/l2/aura/helpers/dsMatch/readDsRules.js';
 import { buildMoleculeCatalog } from '/_102020_/l2/aura/helpers/dsMatch/buildMoleculeCatalog.js';

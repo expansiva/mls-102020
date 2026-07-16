@@ -9,7 +9,7 @@
 // field).
 
 import { collabImport } from '/_102027_/l2/collabImport.js';
-import { isValidAxisValue } from '/_102020_/l2/designSystemAuraBase.js';
+import { isValidAxisValue } from '/_102020_/l2/aura/helpers/designSystemAuraBase.js';
 import type { MoleculeCatalogEntry } from '/_102020_/l2/aura/helpers/dsMatch/types.js';
 
 const MOLECULES_PROJECT = 102040;

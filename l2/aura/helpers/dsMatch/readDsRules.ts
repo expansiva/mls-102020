@@ -5,7 +5,7 @@
 // vocabulary `default` (an undeclared axis falls back to its default).
 
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { layoutRuleDefaults, isValidAxisValue, type LayoutAxisKey } from '/_102020_/l2/designSystemAuraBase.js';
+import { layoutRuleDefaults, isValidAxisValue, type LayoutAxisKey } from '/_102020_/l2/aura/helpers/designSystemAuraBase.js';
 import type { ResolvedLayoutRules } from '/_102020_/l2/aura/helpers/dsMatch/types.js';
 
 /**

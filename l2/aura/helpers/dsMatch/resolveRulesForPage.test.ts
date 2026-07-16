@@ -4,7 +4,7 @@
 // No mls runtime. Exposes `runResolveRulesForPageTests()`.
 
 import { mergeRuleLevels, toResolvedLayoutRules, effectiveRulesProvenance, UNSET } from '/_102020_/l2/aura/helpers/dsMatch/resolveRulesForPage.js';
-import { layoutRuleDefaults } from '/_102020_/l2/designSystemAuraBase.js';
+import { layoutRuleDefaults } from '/_102020_/l2/aura/helpers/designSystemAuraBase.js';
 
 function assert(cond: boolean, msg: string): void { if (!cond) throw new Error(`[resolveRulesForPage.test] FAIL: ${msg}`); }
 

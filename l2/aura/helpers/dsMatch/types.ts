@@ -4,7 +4,7 @@
 // skills/desingsystem/planodeexecucao.md). These types are the interface between
 // readDsRules (A1), buildMoleculeCatalog (A2) and matchVariant (A3).
 
-import type { LayoutAxisKey } from '/_102020_/l2/designSystemAuraBase.js';
+import type { LayoutAxisKey } from '/_102020_/l2/aura/helpers/designSystemAuraBase.js';
 
 /**
  * A DS with EVERY axis resolved to a concrete value. Axes not declared in

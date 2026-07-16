@@ -18,7 +18,7 @@
 //     which govern every labeled input regardless of group.
 // Both facts live in the vocabulary (designSystemAuraBase) — nothing is hardcoded here.
 
-import { layoutAxes, layoutAxisKeys, type ILayoutAxisDef, type LayoutAxisKey } from '/_102020_/l2/designSystemAuraBase.js';
+import { layoutAxes, layoutAxisKeys, type ILayoutAxisDef, type LayoutAxisKey } from '/_102020_/l2/aura/helpers/designSystemAuraBase.js';
 import type { ResolvedLayoutRules } from '/_102020_/l2/aura/helpers/dsMatch/types.js';
 import type { ElementKind } from '/_102020_/l2/aura/helpers/dsMatch/layoutElements.js';
 
