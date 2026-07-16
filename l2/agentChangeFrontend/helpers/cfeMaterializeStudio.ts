@@ -88,6 +88,12 @@ export function getFileModified(
   }
 }
 
+export function getFileModifiedByMlsPath(mlsPath: string): number | null {
+  const parsed = parseMlsPath(mlsPath);
+  if (!parsed) return null;
+  return getFileModified(parsed.project, parsed.level, parsed.folder, parsed.shortName, parsed.extension);
+}
+
 export async function getContentByMlsPath(mlsPath: string): Promise<string | null> {
   try {
     const info = mls.stor.convertFileReferenceToFile(mlsPath);
@@ -152,6 +158,28 @@ export async function saveGeneratedTsByMlsPath(mlsPath: string, content: string)
   return saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, content, parsed.extension);
 }
 
+// Plain text artifact writer (no editor model, no compile) — used to persist the shared compiled
+// .d.ts to trace/frontend-shared-dts so the CLI runtime can read the same context from disk.
+export async function saveArtifactTextByMlsPath(mlsPath: string, content: string): Promise<boolean> {
+  try {
+    const parsed = parseMlsPath(mlsPath);
+    if (!parsed) return false;
+    const fileInfo = { project: parsed.project, level: parsed.level, folder: parsed.folder, shortName: parsed.shortName, extension: parsed.extension };
+    const key = mls.stor.getKeyToFile(fileInfo);
+    let file = (mls.stor.files as Record<string, any>)[key];
+    if (!file) {
+      file = await createStorFile({ ...fileInfo, source: content }, true, false, false);
+    }
+    if (file.status !== 'renamed' && file.status !== 'new') file.status = 'changed';
+    file.updatedAt = new Date().toISOString();
+    await mls.stor.localStor.setContent(file, { contentType: 'string', content });
+    return true;
+  } catch (error) {
+    recordStudioMessage('error', 'saveArtifactTextByMlsPath failed', error);
+    return false;
+  }
+}
+
 export async function compileAndGetErrors(
   project: number,
   level: number,
@@ -176,6 +204,27 @@ export async function compileMlsPathAndGetErrors(mlsPath: string): Promise<strin
   const parsed = parseMlsPath(mlsPath);
   if (!parsed || !isGeneratedTsExtension(parsed.extension)) return [];
   return compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName, parsed.extension);
+}
+
+// Compiled .d.ts (prodDTS) of a runtime .ts model, compiling on demand when the model has not been
+// compiled yet in this session. Used to give the page-materialization LLM the EXACT public surface
+// of its base class (typed msg keys, @property names, handlers) instead of only the raw source.
+export async function getCompiledDtsByMlsPath(mlsPath: string): Promise<string | null> {
+  try {
+    const parsed = parseMlsPath(mlsPath);
+    if (!parsed || parsed.extension !== '.ts') return null;
+    const modelTs = await getGeneratedModel(parsed.project, parsed.level, parsed.folder, parsed.shortName, parsed.extension);
+    if (!modelTs?.model) return null;
+    if (!modelTs.compilerResults?.prodDTS) {
+      if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
+      await mls.l2.typescript.compile(modelTs);
+    }
+    const dts = modelTs.compilerResults?.prodDTS;
+    return typeof dts === 'string' && dts.trim() ? dts : null;
+  } catch (error) {
+    recordStudioMessage('error', 'getCompiledDtsByMlsPath failed', error);
+    return null;
+  }
 }
 
 export function extractToolCallArgs<T>(raw: unknown, toolName: string): T | null {

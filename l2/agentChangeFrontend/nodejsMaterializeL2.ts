@@ -10,18 +10,23 @@ import { execFileSync } from 'node:child_process';
 import {
   applyHeader,
   buildCompileRepairHint,
+  buildContextSection,
   buildHumanPrompt,
   buildMaterializeTypecheckTest,
   buildMissingCodeRepairHint,
+  buildSharedDtsSection,
   buildSystemPrompt,
   DEFAULT_MODEL_TYPE,
   expandContextRef,
+  isSharedRuntimeTsRef,
   isStale,
   layerRank,
   MATERIALIZE_REPAIR_ATTEMPTS,
   orderItems,
   parseDefs,
+  sharedDtsArtifactRef,
   testPathForOutputPath,
+  trimDefinitionForPrompt,
   type PipelineItem,
   type PlannedItem,
 } from './helpers/cfeMaterializeCore.js';
@@ -185,18 +190,40 @@ function assemble(item: PipelineItem, data: unknown, modelType: string): { syste
   const depReport: string[] = [];
   for (const d of item.dependsFiles ?? []) {
     for (const ref of expandContextRef(d)) {
+      // Context diet (flow.json materializationContextPolicy): for page items the shared base
+      // class is sent as its persisted compiled .d.ts (trace/frontend-shared-dts, written by the
+      // Studio materializer) when it is at least as fresh as the shared .ts; otherwise the raw
+      // source is the fallback (this runner has no compiler).
+      if (item.type === 'l2_page' && isSharedRuntimeTsRef(ref)) {
+        const dts = readFreshSharedDts(ref);
+        if (dts != null) {
+          depReport.push(`OK  ${ref} -> ${sharedDtsArtifactRef(ref)}`);
+          contextSections.push(buildSharedDtsSection(ref, dts));
+          continue;
+        }
+      }
       const r = readContext(ref);
       depReport.push(`${r.found ? 'OK ' : 'MISS'} ${ref === d ? d : `${d} -> ${ref}`}`);
-      if (r.found) contextSections.push(`### ${r.ref}\n\`\`\`ts\n${r.content}\n\`\`\``);
+      if (r.found) contextSections.push(buildContextSection(r.ref, r.content));
     }
   }
 
   return {
     system: buildSystemPrompt(skillSections, item.outputPath, modelType),
-    human: buildHumanPrompt(data, contextSections, item.outputPath),
+    human: buildHumanPrompt(trimDefinitionForPrompt(item.type, data), contextSections, item.outputPath),
     skillReport,
     depReport,
   };
+}
+
+function readFreshSharedDts(sharedTsRef: string): string | null {
+  const artifactRef = sharedDtsArtifactRef(sharedTsRef);
+  if (!artifactRef) return null;
+  const artifactMs = refMtimeMs(artifactRef);
+  const sharedMs = refMtimeMs(sharedTsRef);
+  if (artifactMs == null || (sharedMs != null && artifactMs < sharedMs)) return null;
+  const artifact = readContext(artifactRef);
+  return artifact.found && artifact.content.trim() ? artifact.content : null;
 }
 
 function loadConfig(explicitPath: string | undefined): LlmConfig {

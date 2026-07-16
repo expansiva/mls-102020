@@ -571,6 +571,10 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
     // The goal-first genome (page21) carries the synthesized objective so the render skill can
     // lay the page out around the actor's primary decision. Absent on the page11 baseline.
     ...(isRecord(objective) ? { pageObjective: objective } : {}),
+    // Closed msg-key vocabulary for the render step (keys only, never values — i18n values live in
+    // shared). Same pattern as fieldCatalog: the renderer may use ONLY these this.msg keys; invented
+    // or shortened keys (102051: 'lane.registered', 'organism.dashboard.empty') fail the strict tsc.
+    msgKeys: Object.keys(enrichedLayout.i18n).sort(),
     sections: layoutSectionSummary(enrichedLayout.sections),
     layout: {
       id: enrichedLayout.layoutId,
@@ -2486,13 +2490,14 @@ function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, 
     type: 'l2_page',
     outputPath: `_${project}_/l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.ts`,
     defPath: `_${project}_/l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.defs.ts`,
+    // Context diet (flow.json materializationContextPolicy): the *.defs.ts of shared/contracts are
+    // generator inputs, not render inputs — they no longer travel to the page LLM. The shared .ts is
+    // sent as its compiled .d.ts (self-describing via JSDoc); contracts .ts stays for the DTO shapes;
+    // designSystem.ts is summarized to token names by the context builder. Missing files are
+    // tolerated by the materializer (context readers skip null content).
     dependsFiles: [
-      `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.defs.ts`,
       `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`,
-      `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.defs.ts`,
       `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`,
-      // Design system tokens (optional context): lets page11 theme its colors via var(--token).
-      // Missing file is tolerated by the materializer (readSections skips null content).
       `_${project}_/l2/designSystem.ts`,
     ],
     dependsOn: [`${page.pageId}__l2_shared`],

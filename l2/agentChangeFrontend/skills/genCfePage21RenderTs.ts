@@ -19,24 +19,27 @@ Definition is the page21 .defs.ts object:
 - pageObjective: the synthesized goal for this page (actor, jobToBeDone, primaryDecision,
   decisiveInfo, usageFrequency, criticalActions[{action,presentation}], informationHierarchy,
   successCriteria, antiPatterns). Use it to drive ordering, density and how each action is presented.
+- msgKeys: the CLOSED vocabulary of this.msg keys this page may use (keys only, values live in shared)
 - navigationRefs
-- sections[] compatibility summary
 - layout.sections[] as the source of truth for render structure (organisms, intentions, displayHint)
 - dataBindings
 
 The page21 definition, like page11, must not contain i18n values. All visible text comes from the
-shared .defs.ts / shared .ts context.
+shared context (compiled .d.ts or raw .ts).
 
 ## Mandatory first step (identical to page11)
 
-Read the shared .ts context before writing code and extract:
+Read the shared base-class context (compiled .d.ts, or raw .ts as fallback) before writing code and extract:
 1. Base class name from export class.
-2. Every @property() field name.
-3. Every method whose name starts with handle.
-4. Every method referenced by shared actions.
-5. Every msg/message key available.
+2. Every @property() field name (its JSDoc 'state <stateKey>' links it to layout stateKeys).
+3. Every method whose name starts with handle (its JSDoc names the action it belongs to).
+4. Every action method and its JSDoc (inputs, output states, status state, feedback keys).
+5. Every msg/message key available (MessageType).
+6. Re-exported contract type names (export type { ... }).
 
 Use only those names in render(). Never invent property names, handler names or msg keys.
+Import DTO types from the shared module when it re-exports them; only fall back to the contracts
+module for a type the shared does not re-export.
 
 ## File shape (identical rules to page11)
 
@@ -59,16 +62,25 @@ Use Definition.layout.sections[]. Use section.titleKey, organism.titleKey, inten
 intention.emptyKey, field.labelKey and action.labelKey only as keys into this.msg. Access messages
 ONLY as typed member access on this.msg using the exact key string (e.g. this.msg['field.status.label']).
 NEVER cast this.msg and NEVER wrap it in a getMsg/t helper. Use each key EXACTLY as declared.
+Definition.msgKeys is the complete closed list of keys this page may use. NEVER use a this.msg key
+that is not in msgKeys — do not invent presentation keys and do not abbreviate
+('organism.dashboard.empty' when msgKeys has 'organism.dashboardSummary.empty' is a compile error).
+Status/lane labels with no key in msgKeys are rendered from the data value itself (e.g. item.status)
+or a literal with a TODO comment. A shared compiled .d.ts context section, when present, is the
+authoritative public surface (typed msg keys, properties, handlers) — it wins over your reading of
+the source.
 If a required key is genuinely absent, render a literal string with a short TODO comment.
 
-For every field/column/filter: resolve field.stateKey to the shared state (shared .defs.ts), then use
-the property name declared in shared .ts. If no shared state/property exists, render read-only or skip;
-never invent a property. businessContext states render as a compact current-company/current-unit
-badge. queryResult states: outputShape "array" -> rows are the property; "paginated" -> rows are
-property.items (fallback []); "object" -> summary/detail block.
+For every field/column/filter: resolve field.stateKey to the shared property whose JSDoc says
+'state <that stateKey>', then use that property name exactly. If no shared state/property exists,
+render read-only or skip; never invent a property. businessContext states (per JSDoc kind) render as
+a compact current-company/current-unit badge. queryResult states — read outputShape from the property
+JSDoc: "array" -> rows are the property; "paginated" -> rows are property.items (fallback []);
+"object" -> summary/detail block.
 
-For every action: resolve action.actionKey/action.action to Definition.actions[] (shared .defs.ts),
-bind only to handlerName/methodName that exists in shared .ts. If no handler exists, render disabled.
+For every action: resolve action.actionKey/action.action to the shared method whose JSDoc says
+'action <that actionId>' and bind only to handlers/methods that exist in the shared context
+(JSDoc 'handler for action ...'). If no handler exists, render disabled.
 
 ## Goal-first layout patterns (this is what differs from page11)
 
@@ -105,8 +117,9 @@ must not emit them. Order organisms by pageObjective.informationHierarchy / prim
 
 ## Design system colors (identical to page11)
 
-Color comes from design-system tokens, never hardcoded palettes. Read the actual token names from
-designSystem.ts when provided. Apply via Tailwind arbitrary-value utilities referencing the variable
+Color comes from design-system tokens, never hardcoded palettes. The context provides the token
+NAMES as a compact list (base tokens may also have -hover/-focus/-disabled variants); use ONLY names
+from that list. Apply via Tailwind arbitrary-value utilities referencing the variable
 WITH a neutral fallback inside var(), e.g. bg-[var(--ds-color-surface,#ffffff)],
 text-[var(--ds-color-text,#0f172a)], border-[var(--ds-color-border,#e2e8f0)]. Do not hardcode a
 palette color for themable surfaces/text/borders. Dark mode is handled by the design system variables.

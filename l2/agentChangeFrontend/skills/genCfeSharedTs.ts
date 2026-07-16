@@ -47,11 +47,34 @@ Generate:
   - setState, getState, subscribe, unsubscribe or initState only from /_102029_/l2/collabState.js when used
   - runBlockingUiAction only from /_102029_/l2/interactionRuntime.js when BFF click handlers are generated
   - contract types from /_{project}_/l2/{moduleName}/web/contracts/{pageName}.js, using only interfaces/types that exist in the contract .ts context
+- Immediately after the imports, RE-EXPORT every contract type this class uses, so page renders can
+  import types from the shared module instead of knowing the contract:
+  export type { TypeA, TypeB } from '/_{project}_/l2/{moduleName}/web/contracts/{pageName}.js';
 - export class Definition.baseClassName extends CollabLitElement. This name is precomputed: copy it
   exactly. Never derive a name from pageName/title and never choose a class name yourself.
 
 Do not use customElement.
 Do not implement render().
+
+## Self-describing JSDoc (mandatory)
+
+This class is consumed by page generators through its compiled .d.ts, and declaration emit preserves
+JSDoc — so every public/protected member MUST carry a one-line JSDoc that makes the .d.ts
+self-sufficient (no other file needed to understand the member). Formats:
+
+- Every @property field:
+  /** state <stateKey> — <kind><, outputShape: array|paginated|object when queryResult><, values: ... when enum-like> */
+- Every query/command method:
+  /** action <actionId> (<kind>) — route <routeKey>; inputs: <input field names or none>; writes <outputStateKeys or none>; status <statusStateKey><; feedback keys <successKey> / <errorKey> when present> */
+- Every handler:
+  /** handler for action <actionId> — bind UI events here */
+- Every stateSetter method:
+  /** setter for state <stateKey> */
+- The msg getter:
+  /** i18n catalog — MessageType keys are the CLOSED msg vocabulary for page renders */
+
+Use /** ... */ JSDoc syntax exactly (line comments // are stripped from the .d.ts). Keep each JSDoc
+to one line. The information comes from Definition.states[] and Definition.actions[] — never invent.
 
 ## Runtime API contracts
 

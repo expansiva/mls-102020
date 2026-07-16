@@ -11,29 +11,35 @@ This file extends the shared base class and only renders. It must not own state,
 Definition is the page11 .defs.ts object:
 - page metadata
 - baseClassName: the deterministic shared base class that this page must import and extend
+- msgKeys: the CLOSED vocabulary of this.msg keys this page may use (keys only, values live in shared)
 - navigationRefs
-- sections[] compatibility summary
 - layout.sections[] as the source of truth for render structure
 - dataBindings
 
-The page11 definition must not contain i18n values. All visible text values come from the shared .defs.ts / shared .ts context.
+The page11 definition must not contain i18n values. All visible text values come from the shared context.
 
-Context Files must include:
-- shared .defs.ts: source of states, actions and i18n values
-- shared .ts: source of actual class name, @property names, handlers and msg keys
-- contract .defs.ts and contract .ts for type reference when needed
+Context Files:
+- shared base class, normally as its compiled .d.ts (the authoritative public surface: exact typed
+  msg key set, @property names, handler signatures, plus JSDoc annotations mapping states/actions —
+  'state <stateKey>', 'action <actionId> ...', 'handler for action <actionId>'). When only the raw
+  shared .ts is present (fallback), use it the same way; when both appear, the .d.ts wins.
+- contract .ts: the DTO interfaces (input/output row shapes) for typing list items and payload fields.
+- design tokens section: the list of design-system token NAMES (see "Design system colors").
 
 ## Mandatory first step
 
-Read the shared .ts context before writing code and extract:
+Read the shared base-class context (compiled .d.ts, or raw .ts as fallback) before writing code and extract:
 1. Base class name from export class.
-2. Every @property() field name.
-3. Every method whose name starts with handle.
-4. Every method referenced by shared actions.
-5. Every msg/message key available.
+2. Every @property() field name (its JSDoc 'state <stateKey>' links it to layout stateKeys).
+3. Every method whose name starts with handle (its JSDoc names the action it belongs to).
+4. Every action method and its JSDoc (inputs, output states, status state, feedback keys).
+5. Every msg/message key available (MessageType).
+6. Re-exported contract type names (export type { ... }).
 
 Use only those names in render().
 Never invent property names, handler names or msg keys from conventions.
+Import DTO types from the shared module when it re-exports them; only fall back to the contracts
+module for a type the shared does not re-export.
 
 ## File shape
 
@@ -66,21 +72,26 @@ Use section.titleKey, organism.titleKey, intention.titleKey, intention.emptyKey,
 Access messages ONLY as typed member access on this.msg using the exact key string, e.g. this.msg['menuManagement.field.name.label']. The msg keys are declared in the shared .ts and are type-checked: a wrong or missing key must surface as a compile error — that is the desired behavior.
 NEVER cast this.msg (no "as Record<string, string>", no "as any") and NEVER wrap it in a helper such as getMsg/t/translate. Those erase key typing and let broken keys ship silently as empty strings.
 Use each key EXACTLY as it appears in the layout *Key field (which matches the shared i18n); do not shorten or re-derive it — e.g. never write 'section.board' when the declared key is 'menuManagement.section.main.title'.
+Definition.msgKeys is the complete closed list of keys this page may use. NEVER use a this.msg key
+that is not in msgKeys — do not invent presentation keys (no 'lane.registered', no 'status.x.label'
+unless listed) and do not abbreviate ('organism.dashboard.empty' when msgKeys has
+'organism.dashboardSummary.empty' is a compile error). Status/lane labels with no key in msgKeys are
+rendered from the data value itself (e.g. item.status) or a literal with a TODO comment.
 If a required key is genuinely absent from shared, render a literal string with a short TODO comment; never add a dynamic lookup that hides the missing key.
 
 For every field/column/filter:
-- Use field.stateKey to find the corresponding shared state from shared .defs.ts.
-- Then use the property name actually declared in shared .ts.
+- Use field.stateKey to find the shared property whose JSDoc says 'state <that stateKey>'.
+- Then use that property name exactly as declared in the shared context.
 - If no shared state/property exists, render the control read-only or skip the value. Do not invent a property.
-- If the shared state kind is businessContext, render it as a compact current-company/current-unit badge or selector area. Do not render it as a plain technical text input and do not label it workspaceId.
-- For queryResult states, inspect shared .defs.ts:
+- If the shared state kind (from its JSDoc) is businessContext, render it as a compact current-company/current-unit badge or selector area. Do not render it as a plain technical text input and do not label it workspaceId.
+- For queryResult states, read the outputShape from the property JSDoc:
   - outputShape "array": rows are the shared property itself.
   - outputShape "paginated": rows are sharedProperty.items (fallback to [] when missing), and total/page/pageSize may be shown only when those properties exist on the state value.
   - outputShape "object": render a summary/detail block, not an array table.
 
 For every action:
-- Use action.actionKey or action.action to find Definition.actions[] in shared .defs.ts.
-- Bind only to handlerName/methodName that exists in shared .ts.
+- Use action.actionKey or action.action to find the shared method whose JSDoc says 'action <that actionId>'.
+- Bind only to a handler/method that exists in the shared context (JSDoc 'handler for action ...').
 - If no handler exists, render the button disabled.
 
 ## Layout patterns
@@ -96,7 +107,7 @@ Render page11 as a simple operational page:
 - compact summary blocks for summary intentions
 - button rows for actionList intentions
 - simple status lists for workflowStatus intentions
-- for every command action, render a textual feedback region driven by its action status: success uses feedback.successMessageKey; error uses the AppError text from errorStateKey when present, otherwise feedback.errorMessageKey. It must be dismissible and must never be only an icon or glyph.
+- for every command action, render a textual feedback region driven by its action status: success uses the success feedback key from the action's JSDoc ('feedback keys'); error uses the AppError text from the error state when present, otherwise the error feedback key. It must be dismissible and must never be only an icon or glyph.
 - represent loading consistently: query/list intentions show a placeholder or skeleton while their query state is loading; command buttons show a spinner/progress label and are disabled while their action is loading.
 - collapse repeated hierarchy: render the page title once as h1. A section/organism/intention title that resolves to the same message as its parent must not be rendered again. Use the next distinct title as h2, then render blocks without another repeated title.
 - use the Definition.visualStyle direction when it exists. Translate only evidenced signals into layout density: data-dense/status-driven favors compact tables and grouped statuses; dashboard-first favors summary before detail; otherwise retain the simple operational layout. Do not invent colors, chart data or components from the style string.
@@ -111,8 +122,10 @@ Keep cards at rounded-lg or less. Use Tailwind utility classes for LAYOUT (spaci
 
 Color must come from the design-system tokens, not hardcoded palettes. This keeps page11 plain (no
 molecules) but themed by the project's design system.
-- The design system module (designSystem.ts) is provided in context when it exists. Read the ACTUAL
-  token names from it (token key "<t>" -> CSS variable var(--<t>); the "ds-*" prefix is the convention).
+- The context provides the design-system token NAMES as a compact list (token "<t>" -> CSS variable
+  var(--<t>)). Use ONLY names from that list; when the list says base tokens also have -hover/-focus/
+  -disabled variants, those variants are valid too. If no token list is present, use neutral
+  fallbacks only.
 - Apply colors via Tailwind arbitrary-value utilities that reference the variable, e.g.
   bg-[var(--ds-color-surface)], text-[var(--ds-color-text)], border-[var(--ds-color-border)],
   and the primary/accent token for main buttons.

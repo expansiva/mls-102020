@@ -109,6 +109,75 @@ export function expandContextRef(ref: string): string[] {
   return ref === '_102029_.d.ts' ? [...CONTRACTS_102029] : [ref];
 }
 
+// ---------------------------------------------------------------------------
+// Materialization context diet (flow.json materializationContextPolicy).
+// Shared by BOTH runtimes (Studio agentCfeMaterializeGen and nodejsMaterializeL2)
+// so the prompt shape never drifts between them.
+// ---------------------------------------------------------------------------
+
+/** True for the shared base-class runtime file of a page (web/shared/{page}.ts). */
+export function isSharedRuntimeTsRef(ref: string): boolean {
+  return /\/web\/shared\/[^/]+\.ts$/u.test(ref) && !ref.endsWith('.defs.ts');
+}
+
+/** Persisted compiled .d.ts artifact path for a shared runtime ref (trace/frontend-shared-dts). */
+export function sharedDtsArtifactRef(sharedTsRef: string): string | null {
+  const match = sharedTsRef.match(/^(.*)\/web\/shared\/([^/]+)\.ts$/u);
+  if (!match || sharedTsRef.endsWith('.defs.ts')) return null;
+  return `${match[1]}/trace/frontend-shared-dts/${match[2]}.txt`;
+}
+
+/** Context section for the compiled .d.ts of the shared base class. */
+export function buildSharedDtsSection(sharedTsRef: string, dts: string): string {
+  return `### ${sharedTsRef} (compiled .d.ts — the authoritative public surface of the base class: typed msg keys, @property names and handler signatures. The msg keys are a CLOSED vocabulary: use them EXACTLY, never invent or shorten. JSDoc 'state:'/'action' annotations map stateKeys to properties/handlers.)\n\`\`\`ts\n${dts}\n\`\`\``;
+}
+
+/** Default context section; designSystem.ts is summarized to its token names (values are irrelevant to render). */
+export function buildContextSection(ref: string, content: string): string {
+  if (/\/l2\/designSystem\.ts$/u.test(ref)) {
+    return `### ${ref} (design tokens — names only)\n${summarizeDesignSystemTokens(content)}`;
+  }
+  return `### ${ref}\n\`\`\`ts\n${content}\n\`\`\``;
+}
+
+// Token-name extraction: quoted keys with quoted values inside the tokens literal. State-suffix
+// variants (-hover/-focus/-disabled) are folded into a single rule line to keep the section small.
+function summarizeDesignSystemTokens(content: string): string {
+  const names = new Set<string>();
+  const keyValue = /"([a-z][a-z0-9-]*)"\s*:\s*"/gu;
+  for (let match = keyValue.exec(content); match; match = keyValue.exec(content)) {
+    const key = match[1];
+    if (key === 'themename' || key === 'description') continue;
+    names.add(key);
+  }
+  const bases = new Set<string>();
+  let folded = false;
+  for (const name of names) {
+    const base = name.replace(/-(?:hover|focus|disabled)$/u, '');
+    if (base !== name && names.has(base)) { folded = true; continue; }
+    bases.add(base);
+  }
+  if (bases.size === 0) return '(no tokens found — use neutral fallbacks only)';
+  return [
+    'Apply colors as var(--<token>, <neutral fallback>). Do not invent token names.',
+    ...(folded ? ['Each base token below also has -hover, -focus and -disabled variants.'] : []),
+    `tokens: ${[...bases].sort().join(', ')}`,
+  ].join('\n');
+}
+
+/**
+ * Definition payload sent to the page LLM: the 'sections' compatibility summary duplicates
+ * layout.sections and 'origin' is traceability, not render input. Both stay in the .defs.ts file;
+ * they are only filtered from the prompt. Other item types pass through untouched.
+ */
+export function trimDefinitionForPrompt(itemType: string, data: unknown): unknown {
+  if (itemType !== 'l2_page' || data === null || typeof data !== 'object' || Array.isArray(data)) return data;
+  const { sections, origin, ...rest } = data as Record<string, unknown>;
+  void sections;
+  void origin;
+  return rest;
+}
+
 const LAYER_RANK: Record<string, number> = {
   l2_contract: 0,
   l2_shared: 1,
