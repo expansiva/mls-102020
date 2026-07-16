@@ -384,6 +384,7 @@ export class ServiceGenome102020 extends ServiceBase {
                 if (value !== null && value > 0 && value < this._layoutConfig.max) {
                     setAuraState('actualLayout', value);
                     saveAuraProject();
+                    this._notifySitesPage();
                     this._repaintPageForCombination();
                     this._pageReloadToken += 1; // page list re-scans for the new variation
                 }
@@ -396,6 +397,7 @@ export class ServiceGenome102020 extends ServiceBase {
                     && this._dsConfig.labels[value] !== '+') {
                     setAuraState('actualDesignSystem', value);
                     saveAuraProject();
+                    this._notifySitesPage();
                     this._repaintPageForCombination();
                     this._pageReloadToken += 1; // page list re-scans for the new variation
                 }
@@ -496,6 +498,15 @@ export class ServiceGenome102020 extends ServiceBase {
     }
 
     // ─── Repaint preview on layout/DS change ──────────────────────────
+
+    /** Tell the runtime shell (mls.sites) which content variation is active — page21 →
+     *  setPage(21). No-op until the base registers its handlers; fired even when the
+     *  preview repaint is skipped (same folder), so the shell never drifts. */
+    private _notifySitesPage(): void {
+        const layout = getAuraState().actualLayout ?? 1;
+        const ds = getAuraState().actualDesignSystem ?? 1;
+        try { mls.sites.setPage(Number(`${layout}${ds}`)); } catch { /* base not registered */ }
+    }
 
     /** Current page file with its variation segment (page<L><D>) set to the current layout/DS. */
     private _variationPageFile(): mls.stor.IFileInfo | null {
