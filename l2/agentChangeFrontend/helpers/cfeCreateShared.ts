@@ -849,14 +849,15 @@ function mergeLayoutsForShared(layouts: CfePageLayoutDefinition[]): CfePageLayou
   return { pageId: primary.pageId, layoutId: primary.layoutId, sections, i18n, dataBindings };
 }
 
-export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[] }> {
+export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[]; configMsg: string }> {
   const context = await readCreateContext();
   const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) && await hasRegisteredFrontend(context.project, page) })));
   const validPages = checkedPages.filter(item => item.ok).map(item => item.page);
   const skippedPages = checkedPages.filter(item => !item.ok).map(item => item.page.pageId);
   const ownersDone = await updateOwnerStatuses(context, validPages.flatMap(page => page.ownerIds), 'done');
   await saveCreateReport(context.project, validPages, ownersDone, skippedPages);
-  return { pagesDone: validPages.map(page => page.pageId), ownersDone, skippedPages };
+  const configMsg = await saveFrontendWorkspaceConfig(context, validPages);
+  return { pagesDone: validPages.map(page => page.pageId), ownersDone, skippedPages, configMsg };
 }
 
 export async function listGeneratedCreatePages(): Promise<{ project: number; pages: CfePagePlan[]; skippedPages: string[] }> {
@@ -2513,9 +2514,6 @@ async function saveFrontendDefs(fileInfo: FileInfo, exportName: string, definiti
   await saveStorContent(fileInfo, `${header}export const ${exportName} = ${JSON.stringify(definition, null, 2)};\n\nexport const pipeline = ${JSON.stringify(pipeline, null, 2)} as const;\n`);
 }
 
-// The workspace config.json is no longer written by this agent: it is composed at publish
-// time from l5/project.json + on-disk artifacts (see nodejsSaveConfigJson.ts). The agent
-// only signs the client-owned l5/project.json so the publish can resolve the composer.
 async function updateL5FrontendSignature(project: number, pages: CfePagePlan[] = []): Promise<void> {
   const fileInfo: FileInfo = { project, level: 5, folder: '', shortName: 'project', extension: '.json' };
   const existing = await readJsonFile(fileInfo);
@@ -2524,6 +2522,181 @@ async function updateL5FrontendSignature(project: number, pages: CfePagePlan[] =
   masters.frontend = { masterProject: 102020, agentFolder: 'agentChangeFrontend', runtimeProject: 102033 };
   cfg.layouts = buildLayoutsConfig(project, pages, isRecord(cfg.layouts) ? cfg.layouts : {});
   await saveStorContent(fileInfo, `${JSON.stringify(cfg, null, 2)}\n`);
+}
+
+async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: CfePagePlan[]): Promise<string> {
+  const project = context.project;
+  if (!project) return 'l5/config.json skipped: project unavailable';
+  const l5 = await readProjectJson(project);
+  const frontendSignature = isRecord(l5.masters) && isRecord(l5.masters.frontend) ? l5.masters.frontend : {};
+  const runtimeId = readId(frontendSignature.runtimeProject) || '102033';
+  const config = await readWorkspaceConfig(project);
+  const customize = isRecord(l5.customize) ? l5.customize : {};
+
+  config.defaultProjectId = readId(config.defaultProjectId) || String(project);
+  config.shellTemplates = isRecord(customize.shellTemplates)
+    ? customize.shellTemplates
+    : (isRecord(config.shellTemplates) ? config.shellTemplates : { spa: `./_${runtimeId}_/l2/shared/spa/index.html`, pwa: `./_${runtimeId}_/l2/shared/pwa/index.html` });
+  config.publication = isRecord(customize.publication)
+    ? customize.publication
+    : (isRecord(config.publication) ? config.publication : { defaultTarget: 'web', targets: { web: { assetBaseUrl: '', serveStaticFromServer: true, minify: false, sourcemap: true } } });
+  config.clientShell = isRecord(customize.clientShell)
+    ? customize.clientShell
+    : (isRecord(config.clientShell) ? config.clientShell : {
+      mode: 'spa',
+      activeProfile: 'production',
+      regions: {
+        aside: {
+          activeProfile: 'defaultAura',
+          profiles: {
+            defaultAura: {
+              renderer: { entrypoint: `/_${runtimeId}_/l2/shared/layout/aura-aside.js`, source: `../mls-${runtimeId}/l2/shared/layout/aura-aside.ts`, tag: 'collab-aura-aside' },
+              widthPx: 280,
+            },
+          },
+        },
+      },
+    });
+
+  const projects = ensureRecordProperty(config, 'projects');
+  const client = ensureProjectConfig(projects, String(project), { root: '.', type: 'client', runtime: projectRuntimeMetadata(l5, String(project)) });
+  projects[runtimeId] = { root: `../mls-${runtimeId}`, type: 'master frontend' };
+  projects['102027'] = isRecord(projects['102027']) ? projects['102027'] : { root: '../mls-102027', type: 'lib' };
+  projects['102029'] = isRecord(projects['102029']) ? projects['102029'] : { root: '../mls-102029', type: 'lib' };
+  projects['102036'] = isRecord(projects['102036']) ? projects['102036'] : { root: '../mls-102036', type: 'lib' };
+  addWorkspaceDependencies(projects, l5, String(project));
+
+  const labels = isRecord(customize.navigationLabels) ? customize.navigationLabels : {};
+  const clientModules = Array.isArray(client.modules) ? client.modules.filter(isRecord) : [];
+  client.modules = clientModules;
+  const pagesByModule = new Map<string, CfePagePlan[]>();
+  for (const page of pages) {
+    if (!pagesByModule.has(page.moduleName)) pagesByModule.set(page.moduleName, []);
+    pagesByModule.get(page.moduleName)!.push(page);
+  }
+
+  for (const [moduleName, modulePages] of pagesByModule) {
+    let mod = clientModules.find(item => readString(item.moduleId) === moduleName);
+    if (!mod) { mod = { moduleId: moduleName, basePath: `/${moduleName}`, shellMode: 'spa' }; clientModules.push(mod); }
+    mod.basePath = readString(mod.basePath) || `/${moduleName}`;
+    mod.shellMode = readString(mod.shellMode) || 'spa';
+    mod.navigation = mergeByKey(asRecords(mod.navigation), modulePages.map(page => ({
+      id: page.pageId,
+      label: readString(labels[page.pageId]) || page.pageName,
+      href: `/${moduleName}/${page.pageId}`,
+      description: readString(labels[page.pageId]) || page.pageName,
+    })), 'id');
+    const existingFrontend = isRecord(mod.frontend) ? mod.frontend : {};
+    mod.frontend = {
+      ...existingFrontend,
+      layer: 'l2',
+      pages: mergeByKey(asRecords(existingFrontend.pages), modulePages.flatMap(page => frontendConfigPages(project, context, page, labels)), 'pageId'),
+    };
+  }
+
+  await saveWorkspaceConfig(project, config);
+  const pageCount = pages.reduce((sum, page) => sum + frontendConfigPages(project, context, page, labels).length, 0);
+  return `l5/config.json frontend merged (${pageCount} page route(s), ${pagesByModule.size} module(s))`;
+}
+
+function frontendConfigPages(project: number, context: CfeCreateContext, page: CfePagePlan, labels: Record<string, unknown>): Record<string, unknown>[] {
+  const operations = page.operationIds.map(id => context.operations.get(id)).filter((item): item is CfeOperationDef => !!item);
+  const title = readString(labels[page.pageId]) || page.pageName;
+  const primaryRoute = pageRoutePattern(page, operations);
+  const baseRoute = `/${page.moduleName}/${page.pageId}`;
+  const routeParams = primaryRoute.startsWith(baseRoute) ? primaryRoute.slice(baseRoute.length) : '';
+  const records: Record<string, unknown>[] = [{
+    pageId: page.pageId,
+    route: primaryRoute,
+    source: `l2/${page.moduleName}/web/desktop/page11/${page.pageId}.ts`,
+    definition: `l2/${page.moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
+    componentTag: frontendComponentTag(project, page, 'page11'),
+    title,
+  }];
+  for (let index = 1; index < MAX_UX_VARIANTS; index++) {
+    const genome = pageGenome(index);
+    const tsFile = mls.stor.files[mls.stor.getKeyToFile(pageTsFileInfo(project, page, genome))];
+    const defsFile = mls.stor.files[mls.stor.getKeyToFile(pageFileInfo(project, page, genome))];
+    if (!tsFile || tsFile.status === 'deleted' || !defsFile || defsFile.status === 'deleted') continue;
+    const variantId = genome;
+    records.push({
+      pageId: `${page.pageId}-${variantId}`,
+      route: `/${page.moduleName}/${page.pageId}-${variantId}${routeParams}`,
+      source: `l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.ts`,
+      definition: `l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.defs.ts`,
+      componentTag: frontendComponentTag(project, page, genome),
+      title: `${title} - ${variantId.toUpperCase()}`,
+    });
+  }
+  return records;
+}
+
+function mergeByKey(existing: Record<string, unknown>[], next: Record<string, unknown>[], key: string): Record<string, unknown>[] {
+  const map = new Map<string, Record<string, unknown>>();
+  for (const item of existing) {
+    const id = readString(item[key]);
+    if (id) map.set(id, item);
+  }
+  for (const item of next) {
+    const id = readString(item[key]);
+    if (id) map.set(id, item);
+  }
+  return [...map.values()];
+}
+
+function asRecords(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function ensureRecordProperty(target: Record<string, unknown>, key: string): Record<string, unknown> {
+  if (!isRecord(target[key])) target[key] = {};
+  return target[key] as Record<string, unknown>;
+}
+
+function ensureProjectConfig(projects: Record<string, unknown>, id: string, patch: Record<string, unknown>): Record<string, unknown> {
+  const existing = isRecord(projects[id]) ? projects[id] as Record<string, unknown> : {};
+  projects[id] = { ...existing, ...patch };
+  return projects[id] as Record<string, unknown>;
+}
+
+function addWorkspaceDependencies(projects: Record<string, unknown>, l5: Record<string, unknown>, clientId: string): void {
+  const deps = Array.isArray(l5.dependencies) ? l5.dependencies.filter(isRecord) : [];
+  for (const dep of deps) {
+    const id = readId(dep.projectId);
+    if (!/^\d+$/.test(id) || id === clientId) continue;
+    if (!isRecord(projects[id])) projects[id] = { root: `../mls-${id}`, type: 'lib' };
+  }
+}
+
+function projectRuntimeMetadata(l5: Record<string, unknown>, clientId: string): Record<string, unknown> {
+  return {
+    projectId: readId(l5.projectId) || clientId,
+    domain: l5.domain,
+    port: l5.port,
+    databaseName: l5.databaseName,
+    environment: l5.environment,
+    studioEnabled: l5.studioEnabled,
+  };
+}
+
+function readId(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return readString(value);
+}
+
+async function readProjectJson(project: number): Promise<Record<string, unknown>> {
+  const json = await readJsonFile({ project, level: 5, folder: '', shortName: 'project', extension: '.json' });
+  if (!isRecord(json)) throw new Error('l5/project.json not found or invalid; cannot compose l5/config.json');
+  return json;
+}
+
+async function readWorkspaceConfig(project: number): Promise<Record<string, unknown>> {
+  const json = await readJsonFile({ project, level: 5, folder: '', shortName: 'config', extension: '.json' });
+  return isRecord(json) ? json : {};
+}
+
+async function saveWorkspaceConfig(project: number, config: Record<string, unknown>): Promise<void> {
+  await saveStorContent({ project, level: 5, folder: '', shortName: 'config', extension: '.json' }, `${JSON.stringify(config, null, 2)}\n`);
 }
 
 // Record which UX variants exist, so collab.codes / the runtime can show and cycle them. Project-level

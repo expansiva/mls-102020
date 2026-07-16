@@ -19,5 +19,5 @@
 
 ## Invariants
 
-- `config.json` is not written here; it is composed at publish time.
+- `config.json` is not written in this register step; it is merged in the final frontend step and publish only validates it.
 - Registration happens after materialization barriers complete.

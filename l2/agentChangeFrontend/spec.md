@@ -11,14 +11,14 @@ Documento auto-contido (não depende de outros arquivos).
 
 ## Propósito
 
-Olhar o status dos owners no `l5/todoFrontend` e **fazer só o que está pendente** (um "to-be"): criar/atualizar/remover as **telas** + parte **shared** + **contrato BFF** + **layout** da página, chamar a **materialização** (`.defs.ts → .ts`) e assinar o **l5/project.json** (`masters.frontend`). No fim, muda o status no `todoFrontend` (o l4 é read-only). O `config.json` do workspace é composto no publish (nodejsSaveConfigJson.ts), não pelo agente. Pode ser chamado **a qualquer momento** e fazer **um único item** (uma tela, um arquivo). É idempotente: re-rodar só toca no que ainda não está `done`.
+Olhar o status dos owners no `l5/todoFrontend` e **fazer só o que está pendente** (um "to-be"): criar/atualizar/remover as **telas** + parte **shared** + **contrato BFF** + **layout** da página, chamar a **materialização** (`.defs.ts → .ts`), assinar o **l5/project.json** (`masters.frontend`) e gravar a parte frontend do `l5/config.json`. No fim, muda o status no `todoFrontend` (o l4 é read-only). O publish apenas valida o `config.json` gerado pelos agentes; não recompõe o arquivo. Pode ser chamado **a qualquer momento** e fazer **um único item** (uma tela, um arquivo). É idempotente: re-rodar só toca no que ainda não está `done`.
 
 ## Modelo compartilhado (contexto auto-contido)
 
 **Camadas:** `l4` = business; `l5` = dados de projeto. Caminhos relevantes:
 - Lê de `l4`: `l4/{module}/ontology/*`, `l4/workflows/*`, `l4/operations/*`, `l4/rules/*`, `l4/{module}/module.defs.ts`.
 - Escreve direto nos `.defs.ts` finais de frontend: `l2/{module}/web/contracts/{page}.defs.ts`, `l2/{module}/web/shared/{page}.defs.ts` e `l2/{module}/web/{device}/{layout}/{page}.defs.ts`; e materializa para `.ts`.
-- Assina o `l5/project.json` com `masters.frontend` (o menu/páginas do `config.json` é composto no publish a partir do l4 + l2 materializado).
+- Assina o `l5/project.json` com `masters.frontend` e grava o menu/páginas no `l5/config.json` a partir do l4 + l2 materializado, preservando dados gerados pelo backend.
 
 **Owners (de onde a tela nasce):**
 - **Workflow** = processo com estado/gatilho → telas de processo (1 tela por estado/passo) + BFF de transição.
@@ -521,7 +521,7 @@ Após validar o paralelo, a implementação real inicial para `toCreate` está d
 - `agentCfeCreateContractShared` gera `web/contracts/{page}.defs.ts` e o shared base de forma determinística; `agentCfeCreateLayout` chama a LLM uma vez por `{ pageId, genome, templateId }` para gravar uma definição de layout; `agentCfeReconcileShared` une os estados das variantes salvas no shared;
 - a reconciliação grava `l2/{module}/trace/frontend-create-pages/{page}.json` como `done` somente depois de layout primário e shared validados, para evitar que uma página antiga seja aceita por engano;
 - `agentCfeMaterializeL2` lê os pipelines gerados, cria launchers sequenciais por fase (`contracts -> shared -> page11`) e cada `agentCfeMaterializePhase` inicia um fan-out paralelo com `agentCfeMaterializeGen` somente depois da fase anterior completar sem erro;
-- `agentCfeRegisterFrontend` gera o `.html` de preview, assina `l5/project.json` e grava marcador de registro por página; o `config.json` é composto no publish;
+- `agentCfeRegisterFrontend` gera o `.html` de preview, assina `l5/project.json` e grava marcador de registro por página; o step final grava a parte frontend no `l5/config.json`;
 - `agentCfeCreateFinalize` grava `l2/{module}/trace/frontend-create-report.json` e muda os owners gerados para `statusFrontend = done` somente após materialização e registro;
 - `cfeCreateShared` concentra leitura do L4, geração determinística dos comandos, schema/validação do layout, gravação dos `.defs.ts`, registro/assinatura e atualização de status.
 
