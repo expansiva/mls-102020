@@ -5,7 +5,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { AuraInitState, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 
-import '/_102027_/l2/collabSelectKnob.js';
+import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
 import '/_102020_/l2/aura/plugins/selectWorkflow.js';
 import '/_102020_/l2/aura/plugins/selectRule.js';
 
@@ -199,7 +199,7 @@ export class ServiceBehavior102020 extends ServiceBase {
 
         return html`
             <div class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''}">
-                <collab-select-knob-102027
+                <aura--widgets--aura-select-knob-102020
                     .min=${config.min}
                     .max=${config.max}
                     .value=${value}
@@ -209,7 +209,7 @@ export class ServiceBehavior102020 extends ServiceBase {
                     .selected=${isContext}
                     .showTicks=${false}
                     @knob-change=${(e: CustomEvent) => this._onKnobChange(key, e)}
-                ></collab-select-knob-102027>
+                ></aura--widgets--aura-select-knob-102020>
 
                 <div
                     class="flex flex-col items-center gap-0.5 cursor-pointer"
