@@ -1,8 +1,29 @@
 {
-  "$id": "collab.codes/agentNewSolution3/e5-operation/2026-07-07-ns3-e5-operation-v2",
+  "$id": "collab.codes/agentNewSolution3/e5-operation/2026-07-16-ns3-e5-operation-v3",
   "type": "object",
   "additionalProperties": false,
-  "required": ["operationId", "title", "actor", "entity", "kind", "reads", "writes", "rulesApplied", "story", "accessPattern", "inputs", "contextResolution", "acceptanceAssertions"],
+  "required": ["operationId", "title", "actor", "entity", "kind", "reads", "writes", "rulesApplied", "story", "accessPattern", "outputShape", "inputs", "contextResolution", "acceptanceAssertions"],
+  "$defs": {
+    "outputField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "required"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "type": { "enum": ["string", "number", "boolean", "array", "object"] },
+        "required": { "type": "boolean" },
+        "fieldRef": { "type": "string", "minLength": 3 },
+        "item": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fields"],
+          "properties": {
+            "fields": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/outputField" } }
+          }
+        }
+      }
+    }
+  },
   "properties": {
     "operationId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
     "title": { "type": "string", "minLength": 1 },
@@ -37,6 +58,15 @@
         "pagination": { "enum": ["none", "optional", "required"] },
         "selection": { "enum": ["none", "single", "multiple"] },
         "output": { "type": "array", "items": { "type": "string", "minLength": 3 } }
+      }
+    },
+    "outputShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "fields"],
+      "properties": {
+        "kind": { "enum": ["object", "list", "paginated"] },
+        "fields": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/outputField" } }
       }
     },
     "inputs": {

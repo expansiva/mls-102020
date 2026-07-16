@@ -95,7 +95,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     );
     const trace = `queued ${args.items.length} materialization item(s)`;
     return [
-      createAddStepIntent(context, step, fanout, parallelArgs, args.maxParallel ?? 5),
+      createAddStepIntent(context, step, fanout, parallelArgs, args.maxParallel ?? 10),
       createAddStepIntent(context, step, verify),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
     ];

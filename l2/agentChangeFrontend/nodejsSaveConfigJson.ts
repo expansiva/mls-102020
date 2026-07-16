@@ -311,8 +311,14 @@ function main(): void {
   }));
 
   const variantPages = pages.flatMap(page => discoverPageVariants(clientRoot, clientId, moduleName, page));
+  // Item 2a: publish the generated page11 <page>.test.ts files (resolver .js form) so the devenv
+  // monitor Tests runner can discover them from config.json (never importing the client directly).
+  const pageTests = pages
+    .filter(page => fs.existsSync(path.join(clientRoot, 'l2', moduleName, 'web', 'desktop', 'page11', `${page.pageId}.test.ts`)))
+    .map(page => `_${clientId}_/l2/${moduleName}/web/desktop/page11/${page.pageId}.test.js`);
   mod.frontend = {
     layer: 'l2',
+    ...(pageTests.length > 0 ? { pageTests } : {}),
     pages: [
       ...pages.map((page): ProjectFrontendPageConfig => ({
         pageId: page.pageId,

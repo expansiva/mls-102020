@@ -2,6 +2,7 @@
 
 # Changelog
 
+- 2026-07-16 (item 4 — drop contract from page context): pagePipeline dependsFiles slimmed further to [shared .ts, designSystem.ts] — the contracts .ts was removed. Rationale: genCfeSharedTs re-exports EVERY contract DTO (Input/Output/OutputItem), so pages import all DTO types from the shared module; field names come from the page's own layout defs (fieldCatalog); the contract file still exists on disk and compiles via the shared dependency (page -> shared -> contract), so nothing about compilation changes. Verified against generated 102051: no page11/page21 .ts imports web/contracts (all import DTO types from web/shared re-exports). Render skills genCfePage11RenderTs/genCfePage21RenderTs updated to import DTO types EXCLUSIVELY from shared (contract fallback removed) and genCfeSharedTs mandates re-exporting every contract type. Takes effect on next defs regeneration; live validation on regen.
 - 2026-07-16 (v5 context diet): pagePipeline dependsFiles slimmed to [shared .ts, contracts .ts, designSystem.ts]. The shared .defs.ts and contracts .defs.ts are generator inputs, not render inputs — the state/action mapping now reaches the page LLM via the shared compiled .d.ts JSDoc (see steps/materialize CHANGELOG). Takes effect on the next defs regeneration.
 
 - 2026-07-14: replaced the multi-variant create-page call with one LLM call per pinned page/genome/template.

@@ -560,6 +560,82 @@ export async function saveBaseSharedDefs(prepared: CfePreparedPage): Promise<voi
   await saveFrontendDefs(sharedFileInfo(prepared.project, prepared.page), 'definition', definition, sharedPipeline(prepared.project, prepared.page, prepared.commands));
 }
 
+// ---- Item 2a: generated BFF page tests (page11) ----
+// Deterministic, declarative test cases (no LLM, no node:test) executed server-side by the monitor
+// Tests runner (devenv). Written next to the page11 render at web/desktop/page11/<page>.test.ts.
+// Params valued with the "<seedRef>" marker are resolved at run time from the harvested output of the
+// page's parameterless queries (real seeded ids/values), so a validation case's ONLY wrong input is
+// the omitted required field. Coverage: 1 "ok" case per BFF routine + 1 validation case per required
+// command field. Compiled outside the defs->materialize pipeline (no .defs.ts), like seeds.ts.
+const PAGE_TESTS_VARIANT = 'page11';
+const SEED_REF_MARKER = '<seedRef>';
+
+interface PageTestCase {
+  id: string;
+  routine: string;
+  params: Record<string, unknown>;
+  expect: { ok: boolean; errorCode?: string; minItems?: number; shape?: 'object' | 'array' | 'paginated' };
+  mutating?: boolean;
+}
+
+export async function savePageTestsFile(prepared: CfePreparedPage): Promise<void> {
+  const cases = buildPageTestCases(prepared);
+  if (cases.length === 0) return;
+  const fileInfo: FileInfo = { project: prepared.project, level: 2, folder: `${prepared.page.moduleName}/web/desktop/${PAGE_TESTS_VARIANT}`, shortName: prepared.page.pageId, extension: '.test.ts' };
+  await saveStorContent(fileInfo, renderPageTestsFile(prepared, cases));
+}
+
+function buildPageTestCases(prepared: CfePreparedPage): PageTestCase[] {
+  const cases: PageTestCase[] = [];
+  for (const command of prepared.commands) {
+    const commandName = readString(command.commandName);
+    if (!commandName) continue;
+    const kind = readString(command.kind) === 'query' ? 'query' : 'command';
+    const routine = readString(command.routeKey) || `${prepared.page.moduleName}.${prepared.page.pageId}.${commandName}`;
+    const inputFields = commandFieldRecords(command.input);
+    const requiredFields = inputFields.filter(field => field.required).map(field => field.name);
+    // Boundary cases omit a required FORM field only (route/selection ids stay present, resolved from
+    // the seed pool) — matching the spec example: keep stockItemId, omit unit -> VALIDATION_ERROR.
+    const requiredFormFields = inputFields
+      .filter(field => field.required && (field.presentation ?? 'form') === 'form')
+      .map(field => field.name);
+
+    if (kind === 'query') {
+      // shape asserts the wire shape the FE contract expects — the runner compares it against the
+      // ACTUAL backend response, catching object×array drift (Item 5) that minItems alone misses.
+      const outputShape = normalizeOutputShape(command.outputShape);
+      const shape = outputShape === 'array' ? 'array' : outputShape === 'paginated' ? 'paginated' : 'object';
+      const isList = shape === 'array' || shape === 'paginated';
+      cases.push({ id: `${commandName}.ok`, routine, params: seedRefParams(requiredFields), expect: isList ? { ok: true, shape, minItems: 1 } : { ok: true, shape } });
+    } else {
+      // Command "ok" case writes -> mutating (runner isolates it in a rolled-back transaction).
+      // A command returns its result object.
+      cases.push({ id: `${commandName}.ok`, routine, params: seedRefParams(requiredFields), expect: { ok: true, shape: 'object' }, mutating: true });
+      for (const field of requiredFormFields) {
+        cases.push({ id: `${commandName}.${field}.required`, routine, params: seedRefParams(requiredFields.filter(other => other !== field)), expect: { ok: false, errorCode: 'VALIDATION_ERROR' } });
+      }
+    }
+  }
+  return cases;
+}
+
+function seedRefParams(fields: string[]): Record<string, unknown> {
+  const params: Record<string, unknown> = {};
+  for (const field of fields) params[field] = SEED_REF_MARKER;
+  return params;
+}
+
+function renderPageTestsFile(prepared: CfePreparedPage, cases: PageTestCase[]): string {
+  const header = `/// <mls fileReference="_${prepared.project}_/l2/${prepared.page.moduleName}/web/desktop/${PAGE_TESTS_VARIANT}/${prepared.page.pageId}.test.ts" enhancement="_blank"/>`;
+  const body = { moduleName: prepared.page.moduleName, page: prepared.page.pageId, variant: PAGE_TESTS_VARIANT, cases };
+  return `${header}\n\n`
+    + `// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner (devenv only).\n`
+    + `// Data, not a runnable test module: no node:test import, so scripts/run-tests.mjs never captures it.\n`
+    + `// Params valued "${SEED_REF_MARKER}" are resolved at run time from the harvested output of this\n`
+    + `// page's parameterless queries.\n`
+    + `export const pageTests = ${JSON.stringify(body, null, 2)} as const;\n`;
+}
+
 export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, genome = 'page11', objective?: unknown): Promise<CfePageLayoutDefinition> {
   const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutFields(prepared, repairMissingOperationUserActions(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, layout)))));
   validatePageLayout(prepared, repairedLayout);
@@ -955,7 +1031,7 @@ export function createAgentStepPayload(planId: string, agentName: string, stepTi
   } as any;
 }
 
-export function createAddStepIntent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, args?: string[], maxParallel = 5): mls.msg.AgentIntentAddStep {
+export function createAddStepIntent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, args?: string[], maxParallel = 10): mls.msg.AgentIntentAddStep {
   const intent: mls.msg.AgentIntentAddStep = {
     type: 'add-step',
     messageId: context.message.orderAt,
@@ -1936,19 +2012,71 @@ function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown
     });
   }
 
+  const prefillBySelectorStateKey = buildManagePrefills(prepared, states);
   for (const state of states.filter(item => item.kind === 'input')) {
     const name = readString(state.name);
     if (!name) continue;
+    const prefill = prefillBySelectorStateKey.get(readString(state.stateKey));
     actions.push({
       actionId: `set.${name}`,
       kind: 'stateSetter',
       stateKey: state.stateKey,
       methodName: `set${toPascalCase(name)}`,
       handlerName: `handle${toPascalCase(name)}Change`,
+      ...(prefill ? { prefill } : {}),
     });
   }
 
   return actions;
+}
+
+// Item 1 (prefill): when a command has a selector input (route param or selected entity) whose id
+// also appears in a query result on the same page, selecting a row should pre-populate the command's
+// form inputs from the matching item. Emit a declarative `prefill` on the selector's stateSetter so
+// genCfeSharedTs can materialize the lookup deterministically (input <-> browse-column match by name).
+function buildManagePrefills(prepared: CfePreparedPage, states: Record<string, unknown>[]): Map<string, Record<string, unknown>> {
+  const prefills = new Map<string, Record<string, unknown>>();
+  const stateByKey = new Map(states.map(state => [readString(state.stateKey), state]));
+  const queryCommands = prepared.commands.filter(command => readString(command.kind) === 'query');
+  if (queryCommands.length === 0) return prefills;
+
+  for (const command of prepared.commands) {
+    if (readString(command.kind) === 'query') continue;
+    const commandName = readString(command.commandName);
+    if (!commandName) continue;
+    const fields = commandFieldRecords(command.input);
+    const selectorFields = fields.filter(field => field.presentation === 'route' || field.presentation === 'selection');
+    const formFields = fields.filter(field => field.presentation === 'form');
+    if (selectorFields.length === 0 || formFields.length === 0) continue;
+
+    for (const selector of selectorFields) {
+      let best: { queryName: string; matched: { name: string }[] } | undefined;
+      for (const query of queryCommands) {
+        const queryName = readString(query.commandName);
+        if (!queryName) continue;
+        const outputFields = new Set(commandFields(query.output));
+        if (!outputFields.has(selector.name)) continue; // query must expose the id to match rows by
+        const matched = formFields.filter(field => outputFields.has(field.name));
+        if (matched.length > (best?.matched.length ?? 0)) best = { queryName, matched };
+      }
+      if (!best || best.matched.length === 0) continue;
+
+      const dataStateKey = queryDataStateKey(prepared.page.pageId, best.queryName);
+      const dataState = stateByKey.get(dataStateKey);
+      prefills.set(inputStateKey(prepared.page.pageId, commandName, selector.name), {
+        command: commandName,
+        sourceStateKey: dataStateKey,
+        sourceOutputShape: readString(dataState?.outputShape) || 'array',
+        matchField: selector.name,
+        fields: best.matched.map(field => ({
+          itemField: field.name,
+          targetStateKey: inputStateKey(prepared.page.pageId, commandName, field.name),
+        })),
+      });
+    }
+  }
+
+  return prefills;
 }
 
 function addLayoutSupplementalStates(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, states: Map<string, Record<string, unknown>>): void {
@@ -1994,6 +2122,17 @@ function validateSharedLayoutRefs(prepared: CfePreparedPage, layout: CfePageLayo
     }
     for (const refreshActionId of readStringArray(action.refreshActionIds)) {
       if (!actionIds.has(refreshActionId)) throw new Error(`shared action ${actionId} refreshes missing action ${refreshActionId}`);
+    }
+    if (isRecord(action.prefill)) {
+      const prefill = action.prefill;
+      const sourceStateKey = readString(prefill.sourceStateKey);
+      if (!stateKeys.has(sourceStateKey)) throw new Error(`shared action ${actionId} prefill references missing source state ${sourceStateKey}`);
+      if (Array.isArray(prefill.fields)) {
+        for (const field of prefill.fields) {
+          const targetStateKey = isRecord(field) ? readString(field.targetStateKey) : '';
+          if (!stateKeys.has(targetStateKey)) throw new Error(`shared action ${actionId} prefill references missing target state ${targetStateKey}`);
+        }
+      }
     }
   }
 
@@ -2402,12 +2541,50 @@ function pageOrigin(sourceKind: CfePagePlan['sourceKind'], owner: CfeWorkflowDef
   };
 }
 
+// Option 3: canonical output structure declared by l4 (e5 `outputShape`). Reader mirrors the l4/backend
+// shape; when present it is AUTHORITATIVE — both masters copy it, neither re-infers, so the FE contract
+// and the backend usecase agree by construction (no order dependency, l4 stays the source of truth).
+interface CfeCanonicalOutputField { name: string; type: string; required: boolean; fieldRef?: string; item?: { fields: CfeCanonicalOutputField[] }; }
+interface CfeCanonicalOutputShape { kind: 'object' | 'list' | 'paginated'; fields: CfeCanonicalOutputField[]; }
+
+function readCanonicalOutputField(value: unknown): CfeCanonicalOutputField | null {
+  if (!isRecord(value)) return null;
+  const name = readString(value.name);
+  const type = readString(value.type);
+  if (!name || !type) return null;
+  const field: CfeCanonicalOutputField = { name, type, required: value.required === true };
+  const fieldRef = readString(value.fieldRef);
+  if (fieldRef) field.fieldRef = fieldRef;
+  if (isRecord(value.item) && Array.isArray(value.item.fields)) {
+    const fields = value.item.fields.map(readCanonicalOutputField).filter((f): f is CfeCanonicalOutputField => f !== null);
+    if (fields.length) field.item = { fields };
+  }
+  return field;
+}
+
+function readCanonicalOutputShape(operation: CfeOperationDef): CfeCanonicalOutputShape | null {
+  const raw = isRecord(operation.data) ? operation.data.outputShape : undefined;
+  if (!isRecord(raw)) return null;
+  const kind = readString(raw.kind);
+  if (kind !== 'object' && kind !== 'list' && kind !== 'paginated') return null;
+  const fields = Array.isArray(raw.fields) ? raw.fields.map(readCanonicalOutputField).filter((f): f is CfeCanonicalOutputField => f !== null) : [];
+  if (fields.length === 0) return null;
+  return { kind, fields };
+}
+
 function commandFromOperation(operation: CfeOperationDef, entities: Map<string, CfeEntityDef>): Record<string, unknown> {
   const primaryEntity = operation.entity || firstEntity(operationEntities(operation));
   const entity = entities.get(primaryEntity);
   const kind = operation.kind === 'query' || operation.kind === 'view' ? 'query' : 'command';
   const commandName = operation.commandName || operation.operationId;
-  const outputShape = frontendOutputShapeForOperation({ ...operation.data, kind: operation.kind });
+  // Prefer the l4 canonical outputShape (Option 3); fall back to the legacy l4-field-list inference.
+  const canonical = readCanonicalOutputShape(operation);
+  const outputShape = canonical
+    ? (canonical.kind === 'list' ? 'array' : canonical.kind === 'paginated' ? 'paginated' : 'object')
+    : frontendOutputShapeForOperation({ ...operation.data, kind: operation.kind });
+  const output = canonical
+    ? canonical.fields.map(field => ({ name: field.name, type: field.type, required: field.required }))
+    : (kind === 'query' ? queryOutput(operation, entity, entities) : commandOutput(operation, entity, entities));
   return {
     commandName,
     ...(operation.bffName ? { bffName: operation.bffName } : {}),
@@ -2415,8 +2592,11 @@ function commandFromOperation(operation: CfeOperationDef, entities: Map<string, 
     purpose: operation.title || humanizeId(operation.operationId),
     kind,
     outputShape,
+    // Full structured l4 shape (top-level + one level of item fields) — the contract generator builds
+    // the Output interface (incl. nested item interfaces) from this so it matches l4/backend exactly.
+    ...(canonical ? { canonicalOutputShape: canonical } : {}),
     input: kind === 'query' ? queryInput(operation, entity, entities) : commandInput(operation, entity, entities),
-    output: kind === 'query' ? queryOutput(operation, entity, entities) : commandOutput(operation, entity, entities),
+    output,
     origin: {
       source: 'l4/operations',
       ownerId: `operation:${operation.operationId}`,
@@ -2492,12 +2672,14 @@ function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, 
     defPath: `_${project}_/l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.defs.ts`,
     // Context diet (flow.json materializationContextPolicy): the *.defs.ts of shared/contracts are
     // generator inputs, not render inputs — they no longer travel to the page LLM. The shared .ts is
-    // sent as its compiled .d.ts (self-describing via JSDoc); contracts .ts stays for the DTO shapes;
-    // designSystem.ts is summarized to token names by the context builder. Missing files are
-    // tolerated by the materializer (context readers skip null content).
+    // sent as its compiled .d.ts (self-describing via JSDoc) and RE-EXPORTS every contract DTO type
+    // (Input/Output/OutputItem), so the page imports all DTO types from shared and never needs the
+    // contract in its context — the raw contract .ts was dropped here (item 4, 16/07). Field names
+    // come from this page's layout defs; the contract still exists on disk and is compiled via the
+    // shared dependency (page -> shared -> contract). designSystem.ts is summarized to token names by
+    // the context builder. Missing files are tolerated by the materializer (readers skip null content).
     dependsFiles: [
       `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`,
-      `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`,
       `_${project}_/l2/designSystem.ts`,
     ],
     dependsOn: [`${page.pageId}__l2_shared`],
@@ -2592,16 +2774,32 @@ async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: Cfe
       description: readString(labels[page.pageId]) || page.pageName,
     })), 'id');
     const existingFrontend = isRecord(mod.frontend) ? mod.frontend : {};
+    const pageTests = frontendPageTestPaths(project, modulePages);
     mod.frontend = {
       ...existingFrontend,
       layer: 'l2',
       pages: mergeByKey(asRecords(existingFrontend.pages), modulePages.flatMap(page => frontendConfigPages(project, context, page, labels)), 'pageId'),
+      ...(pageTests.length > 0 ? { pageTests } : {}),
     };
   }
 
   await saveWorkspaceConfig(project, config);
   const pageCount = pages.reduce((sum, page) => sum + frontendConfigPages(project, context, page, labels).length, 0);
   return `l5/config.json frontend merged (${pageCount} page route(s), ${pagesByModule.size} module(s))`;
+}
+
+// Item 2a: project-relative resolver paths (compiled .js, _<id>_/... form used by
+// resolveProjectModuleImportUrl) of the generated page11 test files that exist on disk.
+function frontendPageTestPaths(project: number, pages: CfePagePlan[]): string[] {
+  return pages
+    .filter(page => hasPageTestsFile(project, page))
+    .map(page => `_${project}_/l2/${page.moduleName}/web/desktop/${PAGE_TESTS_VARIANT}/${page.pageId}.test.js`);
+}
+
+function hasPageTestsFile(project: number, page: CfePagePlan): boolean {
+  const fileInfo: FileInfo = { project, level: 2, folder: `${page.moduleName}/web/desktop/${PAGE_TESTS_VARIANT}`, shortName: page.pageId, extension: '.test.ts' };
+  const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+  return !!file && file.status !== 'deleted';
 }
 
 function frontendConfigPages(project: number, context: CfeCreateContext, page: CfePagePlan, labels: Record<string, unknown>): Record<string, unknown>[] {

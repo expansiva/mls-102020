@@ -47,8 +47,9 @@ Generate:
   - setState, getState, subscribe, unsubscribe or initState only from /_102029_/l2/collabState.js when used
   - runBlockingUiAction only from /_102029_/l2/interactionRuntime.js when BFF click handlers are generated
   - contract types from /_{project}_/l2/{moduleName}/web/contracts/{pageName}.js, using only interfaces/types that exist in the contract .ts context
-- Immediately after the imports, RE-EXPORT every contract type this class uses, so page renders can
-  import types from the shared module instead of knowing the contract:
+- Immediately after the imports, RE-EXPORT EVERY interface/type exported by the contract .ts (all
+  Input, Output and Output row-item DTOs — not only the ones this class references directly), so page
+  renders import every DTO type from the shared module and never depend on the contract file:
   export type { TypeA, TypeB } from '/_{project}_/l2/{moduleName}/web/contracts/{pageName}.js';
 - export class Definition.baseClassName extends CollabLitElement. This name is precomputed: copy it
   exactly. Never derive a name from pageName/title and never choose a class name yourself.
@@ -108,8 +109,12 @@ For every item in states[]:
 - actionStatus states use type "idle" | "loading" | "success" | "error" when valueSet matches.
 - queryResult states use the matching contract output type when available.
 - queryResult states with outputShape "array" default to [].
-- queryResult states with outputShape "paginated" default to { items: [], total: 0 } and must not be treated as an array; render/page code should read the items property for rows.
-- queryResult states with outputShape "object" default to null.
+- queryResult states with outputShape "paginated" default to an object literal matching the contract
+  Output's OWN keys — the collection field keyed by its DECLARED name (e.g. { stockItems: [], total: 0 },
+  NOT assumed "items") plus its total; it must not be treated as an array. Rows come from that declared
+  array field, whichever name the contract uses.
+- queryResult states with outputShape "object" default to null. The object may contain array fields
+  (e.g. a dashboard's orders/topSellers/lowStockAlerts) — those are read by their declared names.
 - input states use string/number/boolean based on the matching contract field when available; otherwise unknown or string.
 - businessContext states are shared string state for visible company/unit context. They are not command form inputs and must not be sent as typed workspaceId filters unless an action explicitly references their stateKey.
 
@@ -161,6 +166,20 @@ For every action in actions[]:
 - Generate handlerName exactly as action.handlerName when present.
 - The method updates the mapped property, calls setState(action.stateKey, value), and requests update if needed.
 - The handler reads value from Event target for input/change events and delegates to the method.
+- PREFILL: when action.prefill is present (selecting a row must pre-populate a command form), after
+  setting this setter's own state and BEFORE returning, look up the selected item and populate the
+  command's form inputs:
+  - Read the collection from getState(action.prefill.sourceStateKey) (fall back to the mapped
+    property for that state). When action.prefill.sourceOutputShape === "paginated", read its .items
+    array; when "array", use the value directly. Treat a nullish/empty collection as no match.
+  - Find the item where String(item[action.prefill.matchField]) === String(value).
+  - If an item is found, for every entry in action.prefill.fields set the target input via
+    setState(entry.targetStateKey, item[entry.itemField]) AND update that state's mapped property so
+    the form reflects it; skip any entry whose item[entry.itemField] is null or undefined (never
+    overwrite a form value with empty).
+  - If no item is found (e.g. the selection was cleared or the value is empty), do not clear or
+    overwrite the form inputs — leave their current values untouched.
+  - Only use the state keys/fields listed in action.prefill; never invent additional field mappings.
 
 2. kind === "query" or kind === "command"
 - Generate methodName exactly as action.methodName.

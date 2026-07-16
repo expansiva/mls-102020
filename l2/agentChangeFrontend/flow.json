@@ -100,7 +100,7 @@
     }
   },
   "engineInvariants": [
-    "parallel_dynamic fan-out parents use maxParallel 5 unless this file declares otherwise.",
+    "parallel_dynamic fan-out parents use maxParallel 10 unless this file declares otherwise.",
     "A parallel_dynamic parent that starts as waiting_dependency still initializes interaction.input before it is unlocked; runLLMStepParallel rejects a null parent interaction.",
     "Fan-out progress titles must expose completed, total and failed counters.",
     "Dynamic child args stay compact and unique.",
@@ -163,7 +163,7 @@
       "dependsOn": [
         "scan-create-l4"
       ],
-      "maxParallel": 5,
+      "maxParallel": 10,
       "progressTitle": "Criar contratos/shared {{completed}}/{{total}}, falhas {{failed}}",
       "dynamicArgs": {
         "shape": {
@@ -187,7 +187,7 @@
       "dependsOn": [
         "create-contract-shared-fanout"
       ],
-      "maxParallel": 5,
+      "maxParallel": 10,
       "progressTitle": "Criar layouts {{completed}}/{{total}}, falhas {{failed}}",
       "dynamicArgs": {
         "shape": {
@@ -218,7 +218,7 @@
       "dependsOn": [
         "create-layout-fanout"
       ],
-      "maxParallel": 5,
+      "maxParallel": 10,
       "progressTitle": "Reconciliar shared {{completed}}/{{total}}, falhas {{failed}}",
       "dynamicArgs": {
         "shape": {
@@ -290,7 +290,7 @@
       "dependsOn": [
         "materialize-phase-{phase}"
       ],
-      "maxParallel": 5,
+      "maxParallel": 10,
       "modelAlias": "codehigh",
       "goal": "Generate one materialized runtime file from one pipeline item.",
       "dynamicArgs": {

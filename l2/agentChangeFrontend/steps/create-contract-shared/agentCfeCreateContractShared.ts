@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/create-contract-shared/agentCfeCreateContractShared.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createUpdateStatusIntent, parseCreatePageArgs, prepareCreateRunPage, saveBaseSharedDefs, saveContractDefs } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { createUpdateStatusIntent, parseCreatePageArgs, prepareCreateRunPage, saveBaseSharedDefs, saveContractDefs, savePageTestsFile } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -20,6 +20,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const prepared = await prepareCreateRunPage(runId, pageId);
     await saveContractDefs(prepared);
     await saveBaseSharedDefs(prepared);
+    await savePageTestsFile(prepared);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed')];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
