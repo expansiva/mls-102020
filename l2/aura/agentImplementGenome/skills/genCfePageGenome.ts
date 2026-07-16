@@ -96,7 +96,7 @@ ANY element (a \`field\`/\`filter\`/\`column\`/\`action\`, or the intention itse
 - **\`molecule\` PRESENT** → import it for its side effect (registers the custom element):
   \`import '<molecule.import>';\` — then render its tag \`<molecule.tag …></molecule.tag>\`. The tag
   IS the chosen variant; never swap it for another tag/group. Configure it from its group's USAGE
-  skill (the matching \`…/skills/molecules/<group>/usage.ts\` is provided): fill its slots, bind its
+  skill (the matching \`…/aura/molecules/skills/<group>/usage.ts\` is provided): fill its slots, bind its
   value to the shared property (via \`field.stateKey\`) and its change/input/submit/click to existing
   shared handlers.
 - **\`molecule\` ABSENT** → render a plain control (native input / table / button), still bound to

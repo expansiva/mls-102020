@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/molecules/index.ts" enhancement="_blank"/>
 
-import { skills } from '/_102020_/l2/skills/molecules/index.js';
+import { skills } from '/_102020_/l2/aura/molecules/skills/index.js';
 // ═══════════════════════════════════════════════════════════════
 // Types
 // ═══════════════════════════════════════════════════════════════

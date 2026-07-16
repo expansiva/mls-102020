@@ -62,7 +62,7 @@ export async function buildMoleculeCatalog(force = false): Promise<MoleculeCatal
                 layoutConfig: sanitizeLayoutConfig(mod.layoutConfig, ref),
                 objective: parseObjective(skill),
                 description: skill, // full .defs skill (Objective/Responsibilities/Constraints) for Agent2
-                usagePath: `_102020_/l2/skills/molecules/${group}/usage.ts`,
+                usagePath: `_102020_/l2/aura/molecules/skills/${group}/usage.ts`,
             });
         } catch (err) {
             console.error(`[buildMoleculeCatalog] failed to load ${ref}`, err);

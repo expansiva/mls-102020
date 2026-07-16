@@ -2,8 +2,8 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { appendLongTermMemory } from '/_102027_/l2/aiAgentHelper.js';
-import { skill as indexGroupPageSkill } from '/_102020_/l2/skills/molecules/indexGroupPage.js';
-import { skills as skillList } from '/_102020_/l2/skills/molecules/index';
+import { skill as indexGroupPageSkill } from '/_102020_/l2/aura/molecules/skills/indexGroupPage.js';
+import { skills as skillList } from '/_102020_/l2/aura/molecules/skills/index';
 import { createStorFile } from '/_102027_/l2/libStor.js';
 
 export function createAgent(): IAgentAsync {

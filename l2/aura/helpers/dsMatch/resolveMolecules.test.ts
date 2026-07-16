@@ -14,7 +14,7 @@ function entry(group: string, variant: string, layoutConfig: Record<string, stri
         layoutConfig,
         objective: `obj-${variant}`,
         description: `desc-${variant}`,
-        usagePath: `_102020_/l2/skills/molecules/${group}/usage.ts`,
+        usagePath: `_102020_/l2/aura/molecules/skills/${group}/usage.ts`,
     };
 }
 

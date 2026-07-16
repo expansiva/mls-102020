@@ -1,8 +1,8 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/agentsManageMolecules/agentNewMoleculePlayground.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { skill } from '/_102020_/l2/skills/molecules/playgroundGenerator.js';
-import { skills as skillList } from '/_102020_/l2/skills/molecules/index';
+import { skill } from '/_102020_/l2/aura/molecules/skills/playgroundGenerator.js';
+import { skills as skillList } from '/_102020_/l2/aura/molecules/skills/index';
 import { convertFileToTag } from '/_102020_/l2/utils'
 import { createStorFile } from '/_102027_/l2/libStor.js';
 

@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/agentsManageMolecules/agentNewMolecule.ts" enhancement="_102027_/l2/enhancementAgent.ts"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { skills as skillList } from '/_102020_/l2/skills/molecules/index';
+import { skills as skillList } from '/_102020_/l2/aura/molecules/skills/index';
 
 export function createAgent() {
     return {

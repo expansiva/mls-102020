@@ -4,8 +4,8 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { appendLongTermMemory } from '/_102027_/l2/aiAgentHelper.js';
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import { convertFileToTag } from '/_102020_/l2/utils';
-import { skill as skillMolecule } from '/_102020_/l2/skills/aura/moleculeGeneration2.js';
-import { skills as skillList } from '/_102020_/l2/skills/molecules/index';
+import { skill as skillMolecule } from '/_102020_/l2/aura/molecules/skills/moleculeGeneration.js';
+import { skills as skillList } from '/_102020_/l2/aura/molecules/skills/index';
 
 // Header enforced deterministically so a new molecule can never inherit the `_blank` scaffold header again.
 const LESS_ENHANCEMENT = '_102020_/l2/enhancementStyleAura';

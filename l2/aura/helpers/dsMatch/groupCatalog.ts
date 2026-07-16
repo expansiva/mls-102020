@@ -5,12 +5,12 @@
 //
 // The group LIST comes from the live molecule catalog (buildMoleculeCatalog) so it
 // never goes stale. Descriptions are NOT duplicated here: they come from the
-// canonical skills index `_102020_/l2/skills/molecules/index.ts` (the same source
+// canonical skills index `_102020_/l2/aura/molecules/skills/index.ts` (the same source
 // the creation/usage skills use). A humanized fallback covers any group the index
 // does not describe (e.g. groupNavigateMain).
 
 import { buildMoleculeCatalog } from '/_102020_/l2/aura/helpers/dsMatch/buildMoleculeCatalog.js';
-import { skills as moleculeSkills } from '/_102020_/l2/skills/molecules/index.js';
+import { skills as moleculeSkills } from '/_102020_/l2/aura/molecules/skills/index.js';
 
 export interface GroupInfo {
     group: string;        // camelCase, e.g. 'groupEnterText'

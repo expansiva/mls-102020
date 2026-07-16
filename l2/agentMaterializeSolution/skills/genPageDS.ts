@@ -22,7 +22,7 @@ The definition is the page{layout}{ds} \`.defs.ts\` object. The render structure
 Context files provided:
 - shared \`.defs.ts\` / shared \`.ts\`: the base class, @property states, handlers and msg keys.
 - the DS global stylesheet (\`styles/<ds>/global.css\`): visual tokens — already linked; just use them.
-- one molecule USAGE skill per used group (\`…/skills/molecules/<group>/usage.ts\`): the slots,
+- one molecule USAGE skill per used group (\`…/aura/molecules/skills/<group>/usage.ts\`): the slots,
   properties and variants of each molecule. ALWAYS consult the matching usage skill before
   rendering a molecule.
 

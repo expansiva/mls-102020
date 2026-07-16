@@ -2,7 +2,7 @@
 
 // Molecule token vocabulary (--ml-*) for DS↔molecule reconciliation.
 //
-// Each molecule group's usage skill (skills/molecules/<group>/usage.ts) declares a
+// Each molecule group's usage skill (aura/molecules/skills/<group>/usage.ts) declares a
 // "## Design Tokens" markdown table: `| `--ml-x` | `default` | Purpose |`. The --ml-*
 // names are a SHARED vocabulary across groups, so the reconciliation is resolved once per
 // DS (not per page): we collect the union of --ml-* tokens from the USED groups, then an
@@ -72,7 +72,7 @@ export function dsTokensHash(tokens: unknown): string {
 /** Read + parse one group's --ml-* tokens from its usage skill. */
 export async function readGroupUsageTokens(group: string): Promise<MlToken[]> {
     try {
-        const mod = await collabImport({ project: 102020, folder: `skills/molecules/${group}`, shortName: 'usage', extension: '.ts' });
+        const mod = await collabImport({ project: 102020, folder: `aura/molecules/skills/${group}`, shortName: 'usage', extension: '.ts' });
         const skill = (mod as any)?.skill;
         return typeof skill === 'string' ? parseMlTokensFromUsage(skill) : [];
     } catch {

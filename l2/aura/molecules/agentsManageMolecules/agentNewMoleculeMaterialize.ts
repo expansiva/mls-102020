@@ -8,8 +8,8 @@ import { createStorFile } from '/_102027_/l2/libStor.js';
 
 // import { skill as skillDesing } from '/_102020_/l2/skills/aura/design.js';
 import { skill as skillAura } from '/_102020_/l2/skills/aura/overview.js';
-import { skill as skillMolecule } from '/_102020_/l2/skills/aura/moleculeGeneration2.js';
-import { skills as skillList } from '/_102020_/l2/skills/molecules/index';
+import { skill as skillMolecule } from '/_102020_/l2/aura/molecules/skills/moleculeGeneration.js';
+import { skills as skillList } from '/_102020_/l2/aura/molecules/skills/index';
 
 export function createAgent(): IAgentAsync {
     return {
