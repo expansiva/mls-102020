@@ -27,6 +27,7 @@ Molecules are **UI-first** components that follow these rules:
 | **No Shadow DOM**      | Molecules do NOT use Shadow Root                                 |
 | **Independence**       | Molecules must function independently                            |
 | **Data Flow**          | Data flows DOWN from Organisms via properties; events flow UP    |
+| **Event Containment**  | Only the molecule's own CustomEvents may cross its tag. Native \`change\`/\`input\` from internal \`<input>\`/\`<textarea>\`/\`<select>\` must be stopped at the source with \`e.stopPropagation()\` (no Shadow DOM — they would leak out and collide with the CustomEvents) |
 | **Slot Tags**          | Use Slot Tags (unknown HTML elements) for internal structure     |
 | **Contract-Based**     | Each molecule belongs to a Skill Group with a defined contract   |
 | **Interchangeable**    | Molecules in the same group can be swapped without breaking      |
@@ -581,15 +582,17 @@ export class EnterMoneyMolecule extends MoleculeAuraElement {
 
   render() {
     return html\\\`
-      <input 
+      <input
         type="text"
         .value=\\\${this.rawValue}
         @input=\\\${this.handleInput}
+        @change=\\\${(e: Event) => e.stopPropagation()}
       />
     \\\`;
   }
 
   private handleInput(e: Event) {
+    e.stopPropagation(); // contain the native event — FIRST line, before any early return
     const input = e.target as HTMLInputElement;
     this.rawValue = input.value;
     this.value = this.parseRawToNumber(input.value);
@@ -675,6 +678,7 @@ Molecules that accept both binding types must implement **both mechanisms**.
   - **Yes** → a handler that **only** calls \`propagate...()\` + \`firstUpdated()\`/\`updated()\`; **never** reassign the bound property
 - [ ] In \`handleIcaStateChange\`, I confirmed that I do **not** assign to any \`@propertyDataSource\` property (only to derived \`@state\`)
 - [ ] Every decorator (\`@customElement\`, \`@state\`, \`@property\`, \`@propertyDataSource\`) and directive (\`unsafeHTML\`) I use is imported, from the correct module (see §4)
+- [ ] Every native \`<input>\`/\`<textarea>\`/\`<select>\` in the template contains BOTH its native \`change\` and \`input\` events: handler exists → \`e.stopPropagation()\` is the FIRST line of that handler; no handler for that event → inline \`@change=\${(e: Event) => e.stopPropagation()}\` (same for \`@input\`). \`type="hidden"\` inputs are exempt (see §14 EVENT HANDLERS)
 
 ---
 
@@ -969,6 +973,30 @@ export class [ComponentName]Molecule extends MoleculeAuraElement {
     }));
   }
 
+  // ---------------------------------------------------------------------------
+  // NATIVE EVENT CONTAINMENT (required when the template has <input>/<textarea>/<select>)
+  // ---------------------------------------------------------------------------
+  // There is no Shadow DOM: the native 'change'/'input' events of internal form
+  // elements bubble through the molecule tag and collide with the CustomEvents
+  // above (consumers reading e.detail.value would get undefined). Contain BOTH
+  // native events at the source, for EVERY internal form element:
+  //
+  //   - element HAS a handler for that event → e.stopPropagation() as the FIRST
+  //     line of the handler (before any disabled/readonly/loading early return):
+  //
+  //       private handleInput(e: Event) {
+  //         e.stopPropagation();
+  //         if (this.disabled || this.readonly) return;
+  //         // ... update state, then dispatch the molecule's CustomEvent
+  //       }
+  //
+  //   - element has NO handler for that event → inline containment in render():
+  //
+  //       <input .value=\\\${this.value} @input=\\\${this.handleInput} @change=\\\${(e: Event) => e.stopPropagation()} />
+  //
+  // Exempt: <input type="hidden"> (never fires user-driven change/input).
+  // Native 'blur'/'focus' do not bubble — no containment needed.
+
   // ===========================================================================
   // RENDER
   // ===========================================================================
@@ -1020,4 +1048,5 @@ The contract defines:
 | 2.7.0 | 06/11/2026 | Added section 11-B: \`updated()\` for Lit property bindings; updated section 14 template with both sync mechanisms |
 | 2.8.0 | 06/15/2026 | §5/§11: documented \`@propertyDataSource\` as a two-way binding; anti-loop rule (no reassigning inside \`handleIcaStateChange\`); propagation-only pattern for children |
 | 2.9.0 | 06/15/2026 | §4: explicit imports + symbol→module table (\`state\`, \`unsafeHTML\`); fixed wrong \`unsafeHTML\` import in §13; added correct import in §8 and §14 skeleton; import-completeness checklist item; removed invalid \`@@state\`/\`@state({ type })\` block |
+| 2.10.0 | 07/17/2026 | Native event containment: \`change\`/\`input\` from internal \`<input>\`/\`<textarea>\`/\`<select>\` must call \`e.stopPropagation()\` (no Shadow DOM — they leak through the molecule tag). New §2 principle, containment block in §14 EVENT HANDLERS, fixed §11 enter-money example, §11-B checklist item |
 `
