@@ -5,15 +5,14 @@
 //   unlocked by the fan-out planId. The phase step only completes after fanout + verify + any
 //   repair steps (deferred completion), preserving the phase barrier for downstream dependencies.
 // - 'verify' (no LLM): re-checks every item artifact on disk (content + compile + typecheck test)
-//   and runs ONE bounded repair round with the compiler error in context (specAuraForge §11).
-//   Second round still broken -> completed with a CLI-materialization pending trace.
+//   and launches one bounded repair round as a parallel fan-out (repair1/repair2) carrying only
+//   compact {planId, defPath, attempt} refs (specAuraForge §11). Rounds exhausted and still
+//   broken -> completed with a CLI-materialization pending trace.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import {
-  buildCompileRepairHint,
-  buildMissingCodeRepairHint,
   parseDefs,
   testPathForOutputPath,
   validateGeneratedPageQuality,
@@ -108,9 +107,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 
 // Verify mode (no LLM): each item is BROKEN when its outputPath content is missing/empty, the
 // output compile reports errors, or the companion typecheck test file (when present) fails to
-// compile. Broken items get ONE repair round: normal agentCfeMaterializeGen steps (outside the
-// fan-out) with attempt=2 and the compiler error as repairHint, which flows into
-// buildHumanPrompt through the existing parseGenStepArgs plumbing.
+// compile. Broken items get one repair round: a parallel fan-out of agentCfeMaterializeGen slots
+// whose args carry only {planId, defPath, attempt} — the gen agent recomputes the compiler
+// errors from disk (attempt >= 2) so no error text is persisted in step prompts.
 async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args: MaterializeVerifyArgs): Promise<mls.msg.AgentIntent[]> {
   const checkedItems: BrokenItem[] = [];
   for (const item of args.items) {
@@ -146,28 +145,28 @@ async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.
   const nextAttempt = args.attempt + 1;
   const roundLabel = `${nextAttempt - 1}/${MATERIALIZE_REPAIR_ROUNDS}`;
   const anchor = findMutableParentStep(context, parentStep);
-  const repairs = broken.map(entry => createAddStepIntent(context, anchor, createAgentStepPayload(
-    `${entry.item.planId}-repair-${nextAttempt}`,
-    'agentCfeMaterializeGen',
-    `Repair ${entry.item.planId} (${roundLabel})`,
-    { planId: entry.item.planId, defPath: entry.item.defPath, attempt: nextAttempt, repairHint: buildRepairHint(entry) },
-    [],
-    'sequential',
-    'waiting_human_input',
-  )));
+  // Each repair round is a parallel fan-out (repair1, repair2) whose args are ONLY the compact
+  // refs {planId, defPath, attempt}. The compiler errors are recomputed from disk by
+  // agentCfeMaterializeGen (attempt >= 2) and travel in the LLM input, which the interaction
+  // cleaner strips — never in a step prompt, which the cleaner keeps (DynamoDB 400KB cap;
+  // skills/collab_messages.md). Fan-out slots are also deleted when finished, unlike the old
+  // one-step-per-broken-item shape that stayed on the task record forever.
+  const repairPlanId = `${args.planId}-repair${nextAttempt - 1}`;
+  const repairFanout = createFanoutStep(repairPlanId, `Repair ${roundLabel}: {{completed}}/{{total}}, falhas {{failed}}`, broken.length);
+  const repairArgs = broken.map(entry => JSON.stringify({ planId: entry.item.planId, defPath: entry.item.defPath, attempt: nextAttempt }));
   const nextVerifyPlanId = `${args.planId}-v${nextAttempt}`;
   const nextVerify = createAddStepIntent(context, anchor, createAgentStepPayload(
     nextVerifyPlanId,
     AGENT_NAME,
     'Verify materialization (after repair)',
     { mode: 'verify', planId: nextVerifyPlanId, items: broken.map(entry => entry.item), attempt: nextAttempt },
-    broken.map(entry => `${entry.item.planId}-repair-${nextAttempt}`),
+    [repairPlanId],
     'sequential',
     'waiting_dependency',
   ));
   // Intent ORDER matters (parent auto-completion sweep): open steps first, completed status last.
   return [
-    ...repairs,
+    createAddStepIntent(context, anchor, repairFanout, repairArgs, 10),
     nextVerify,
     createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${broken.length} broken item(s), repair round ${roundLabel} started:\n${summary}`),
   ];
@@ -204,13 +203,6 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   return { item, outputPath, errors, warnings, typecheck: testContent && testContent.trim() ? (typecheckErrors.length ? 'failed' : 'passed') : 'not-applicable' };
 }
 
-
-function buildRepairHint(entry: BrokenItem): string {
-  const lines = entry.errors.slice(0, 8);
-  if (!entry.outputPath) return lines.join('\n');
-  if (lines[0]?.startsWith('generated file missing')) return buildMissingCodeRepairHint(entry.outputPath, lines[0]);
-  return buildCompileRepairHint(entry.outputPath, lines);
-}
 
 function sharedDefsPathForPageOutput(outputPath: string): string | null {
   const match = outputPath.match(/^(.*\/web)\/(?:desktop|mobile)\/page\d+\/([^/]+)\.ts$/);

@@ -3213,7 +3213,17 @@ function contractFieldFromOperationInput(operation: CfeOperationDef, input: CfeL
   out.source = input.source;
   out.presentation = frontendInputPresentation(input) || 'context';
   if (input.description) out.description = input.description;
+  if (isMultiSelectionKeyInput(operation, input)) out.type = `${typeof out.type === 'string' && out.type ? out.type : 'string'}[]`;
   return out;
+}
+
+// accessPattern.selection 'multiple' + input bound to the accessPattern keyField = a LIST of that
+// field (petShop setProductHighlights: productIds is Product.productId under multiple selection —
+// a scalar here drifts from the backend usecase, which receives an array; l4 judge trace 027).
+function isMultiSelectionKeyInput(operation: CfeOperationDef, input: CfeL4OperationInput): boolean {
+  const data = isRecord(operation.data) ? operation.data : {};
+  const accessPattern = isRecord(data.accessPattern) ? data.accessPattern : {};
+  return readString(accessPattern.selection) === 'multiple' && readString(accessPattern.keyField) === input.fieldRef;
 }
 
 function pageRoutePattern(page: CfePagePlan, operations: CfeOperationDef[]): string {

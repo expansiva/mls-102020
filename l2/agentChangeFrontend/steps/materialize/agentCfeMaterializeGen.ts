@@ -3,11 +3,15 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   applyHeader,
+  buildCompileRepairHint,
   buildContextSection,
   buildMaterializeTypecheckTest,
   buildHumanPrompt,
+  buildMissingCodeRepairHint,
+  buildRuntimeDtsSection,
   buildSharedDtsSection,
   buildSystemPrompt,
+  CONTRACTS_102029,
   DEFAULT_MODEL_TYPE,
   expandContextRef,
   GEN_TOOL,
@@ -66,7 +70,14 @@ async function beforePromptStep(
 
     const genArgs = parseGenStepArgs(args);
     const genContext = await buildGenContext(genArgs.defPath);
-    return [createPromptReadyIntent(context, parentStep, hookSequential, genArgs, genContext)];
+    // Repair rounds (attempt >= 2) arrive as fan-out slots carrying only compact refs — the
+    // compiler errors are recomputed from disk HERE and injected into the LLM input (cleaned
+    // later by the interaction cleaner), never persisted in a step prompt/args (DynamoDB 400KB
+    // cap; skills/collab_messages.md "Interaction cleaner").
+    const repairHint = (genArgs.attempt ?? 1) >= 2
+      ? genArgs.repairHint ?? await computeRepairHint(genContext.pipelineItem)
+      : undefined;
+    return [createPromptReadyIntent(context, parentStep, hookSequential, genArgs, genContext, repairHint)];
   } catch (error) {
     const message = formatError('beforePromptStep', error);
     console.error(`[${agent.agentName}] ${message}`);
@@ -84,8 +95,9 @@ async function afterPromptStep(
   try {
     consumeMaterializeStudioMessages();
     const genArgs = parseGenStepArgs(step.prompt);
-    // attempt >= 2 marks a REPAIR run (normal step added by the phase verify step, with the
-    // compiler error as repairHint -> buildHumanPrompt); attempt undefined marks a fan-out slot.
+    // attempt >= 2 marks a REPAIR fan-out slot (queued by the phase verify step with compact
+    // refs only; the compiler errors were recomputed in beforePromptStep). attempt undefined
+    // marks a first-pass fan-out slot.
     const repairRun = (genArgs.attempt ?? 1) >= 2;
     const { defPath } = genArgs;
     const defsContent = defPath ? await getContentByMlsPath(defPath) : null;
@@ -157,8 +169,12 @@ function createPromptReadyIntent(
     skillSections: string[];
     contextSections: string[];
   },
+  repairHint?: string,
 ): mls.msg.AgentIntentPromptReady {
-  const args = JSON.stringify(genArgs);
+  // args become the slot's persisted prompt — keep them compact (never carry the repair hint).
+  const { repairHint: omitted, ...compactArgs } = genArgs;
+  void omitted;
+  const args = JSON.stringify(compactArgs);
   return {
     type: 'prompt_ready',
     args,
@@ -168,10 +184,25 @@ function createPromptReadyIntent(
     hookSequential,
     parentStepId: parentStep.stepId,
     systemPrompt: buildSystemPrompt(genContext.skillSections, genContext.pipelineItem.outputPath, DEFAULT_MODEL_TYPE),
-    humanPrompt: buildHumanPrompt(trimDefinitionForPrompt(genContext.pipelineItem.type, genContext.definitionData), genContext.contextSections, genContext.pipelineItem.outputPath, genArgs.repairHint),
+    humanPrompt: buildHumanPrompt(trimDefinitionForPrompt(genContext.pipelineItem.type, genContext.definitionData), genContext.contextSections, genContext.pipelineItem.outputPath, repairHint),
     tools: [GEN_TOOL as unknown as mls.msg.LLMTool],
     toolChoice: { type: 'function', function: { name: GEN_TOOL_NAME } },
   };
+}
+
+// Rebuild the repair hint from disk for a fan-out repair slot: missing/empty artifact -> missing
+// code hint; otherwise compile the generated .ts (+ its typecheck test) and feed the errors back.
+async function computeRepairHint(pipelineItem: PipelineItem): Promise<string | undefined> {
+  const outputPath = pipelineItem.outputPath;
+  const content = await getContentByMlsPath(outputPath);
+  if (!content || !content.trim()) {
+    return buildMissingCodeRepairHint(outputPath, `generated file missing or empty: ${outputPath}`);
+  }
+  const errors = [...await compileMlsPathAndGetErrors(outputPath)];
+  const testPath = testPathForOutputPath(outputPath);
+  const testContent = await getContentByMlsPath(testPath);
+  if (testContent && testContent.trim()) errors.push(...await compileMlsPathAndGetErrors(testPath));
+  return errors.length ? buildCompileRepairHint(outputPath, errors.slice(0, 8)) : undefined;
 }
 
 async function buildGenContext(defPath: string): Promise<{
@@ -195,8 +226,12 @@ async function buildGenContext(defPath: string): Promise<{
 // Context diet (flow.json materializationContextPolicy): for page items the shared base class is
 // sent as its compiled .d.ts INSTEAD of the raw source — the compact, authoritative public surface
 // (typed msg keys, properties, handlers). Resolution order: fresh persisted artifact
-// (trace/frontend-shared-dts) -> compile on demand -> raw .ts fallback. designSystem.ts is
-// summarized to token names inside buildContextSection.
+// (trace/frontend-shared-dts) -> compile on demand -> raw .ts fallback. The _102029_ runtime
+// library files are likewise sent as compiled .d.ts (their implementation bodies are ~8k tokens
+// of noise per shared item). designSystem.ts is summarized to token names inside
+// buildContextSection.
+const RUNTIME_102029_REFS = new Set<string>(CONTRACTS_102029);
+
 async function readContextSections(pipelineItem: PipelineItem): Promise<string[]> {
   const sections: string[] = [];
   for (const requestedPath of pipelineItem.dependsFiles ?? []) {
@@ -205,6 +240,13 @@ async function readContextSections(pipelineItem: PipelineItem): Promise<string[]
         const dts = await resolveSharedDts(path);
         if (dts) {
           sections.push(buildSharedDtsSection(path, dts));
+          continue;
+        }
+      }
+      if (RUNTIME_102029_REFS.has(path)) {
+        const dts = await getCompiledDtsByMlsPath(path);
+        if (dts) {
+          sections.push(buildRuntimeDtsSection(path, dts));
           continue;
         }
       }

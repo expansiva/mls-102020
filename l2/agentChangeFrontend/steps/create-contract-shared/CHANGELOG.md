@@ -2,6 +2,13 @@
 
 # Changelog
 
+- 2026-07-16 (fix — multi-selection key input is a list): contractFieldFromOperationInput
+  (helpers/cfeCreateShared.ts) now emits `<type>[]` when the l4 operation has
+  `accessPattern.selection: 'multiple'` and the input's fieldRef equals `accessPattern.keyField`
+  (new isMultiSelectionKeyInput). petShop setProductHighlights declared `productIds: string` while
+  both the backend usecase and the generated shared send `string[]` — the l4 judge flagged it
+  (trace 027) but the derivation ignored selection. Current 102049 defs/test hand-aligned;
+  regenerates identically on the next run.
 - 2026-07-16 (item 2a — generated BFF page tests): the step now also writes a deterministic
   `web/desktop/page11/<page>.test.ts` per page (`savePageTestsFile`/`buildPageTestCases` in
   helpers/cfeCreateShared.ts) — declarative `pageTests` (no LLM, no node:test, no .defs.ts, like
