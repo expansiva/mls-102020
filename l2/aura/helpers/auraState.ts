@@ -77,6 +77,84 @@ export function getAuraState(): IAuraState {
     return getState(STATE_KEY) as IAuraState;
 }
 
+interface ParsedAuraPage {
+    actualPage: IAuraPage;
+    module: string | null;
+    device: string | null;
+    layout: number;
+    designSystem: number;
+}
+
+/**
+ * Parse a compiled page entrypoint or a config source path into the aura page identity.
+ * Accepts both the runtime entrypoint (`/_102045_/l2/cafeFlow/web/desktop/page11/kitchenQueue.js`)
+ * and the l0/config.json source (`l2/cafeFlow/web/desktop/page11/kitchenQueue.ts`).
+ * The folder encodes module (first segment), device (segments before the variation,
+ * e.g. `web/desktop`) and the variation folder `page<layout><designSystem>` (page11 →
+ * layout 1, DS 1). Returns null when the path is not a recognizable aura page.
+ */
+function parseAuraPageSource(project: number, source: string): ParsedAuraPage | null {
+    if (!project || !source) return null;
+    const path = source.trim().replace(/^\//, '').replace(/^_\d+_\//, '');
+    const match = path.match(/^l(\d+)\/(.+)\.(?:ts|js)$/);
+    if (!match) return null;
+
+    const level = parseInt(match[1], 10);
+    const afterLevel = match[2];
+    const lastSlash = afterLevel.lastIndexOf('/');
+    if (lastSlash < 0) return null;
+
+    const folder = afterLevel.substring(0, lastSlash);
+    const shortName = afterLevel.substring(lastSlash + 1);
+    if (!shortName) return null;
+
+    const segments = folder.split('/');
+    const module = segments[0] || null;
+    const variationSeg = segments[segments.length - 1] ?? '';
+    const variation = variationSeg.match(/^page(\d)(\d)$/);
+    const layout = variation ? parseInt(variation[1], 10) : 1;
+    const designSystem = variation ? parseInt(variation[2], 10) : 1;
+    const device = segments.slice(1, variation ? -1 : undefined).join('/') || null;
+
+    const actualPage: IAuraPage = { project, shortName, folder, level, extension: '.ts' };
+    return { actualPage, module, device, layout, designSystem };
+}
+
+/**
+ * Seed the Aura state from the running app's current page (studio-mode entry).
+ * The Aura shell resolves the active route's page source and calls this so the studio
+ * services (which read getAuraState()) operate on the page the user is looking at.
+ * Fills actualProject + actualPage and the module/device/variation the folder implies.
+ * @returns the resolved page, or null when the source is not a recognizable aura page.
+ */
+export function setAuraStateFromPageSource(project: number, source: string): IAuraPage | null {
+    const parsed = parseAuraPageSource(project, source);
+    if (!parsed) return null;
+
+    // Establish the full state shape once (initState never overwrites an existing key);
+    // the setAuraState calls below then apply the values and notify any live subscribers.
+    if (!getAuraState()) {
+        initState(STATE_KEY, {
+            actualProject: project,
+            actualModule: parsed.module,
+            actualLanguage: null,
+            actualLanguageByModule: null,
+            actualDevice: parsed.device,
+            actualLayout: parsed.layout,
+            actualDesignSystem: parsed.designSystem,
+            actualPage: parsed.actualPage,
+        } satisfies IAuraState);
+    }
+
+    setAuraState('actualProject', project);
+    setAuraState('actualModule', parsed.module);
+    setAuraState('actualDevice', parsed.device);
+    setAuraState('actualLayout', parsed.layout);
+    setAuraState('actualDesignSystem', parsed.designSystem);
+    setAuraState('actualPage', parsed.actualPage);
+    return parsed.actualPage;
+}
+
 export function setAuraState<K extends keyof IAuraState>(key: K, value: IAuraState[K]): void {
     setState(`${STATE_KEY}.${key}`, value);
     // Switching module changes the EFFECTIVE language — re-emit 'aura.actualLanguage' so
