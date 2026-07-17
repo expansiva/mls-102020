@@ -109,7 +109,7 @@ async function preparePrompts(context: mls.msg.ExecutionContext, data: IDataProm
     const systemPrompt = system1
         .replace("{{systemSkillMolecule}}", skillMolecule)
         .replace("{{systemSkillGroup}}", groupSkill || '(no group contract found)')
-        .replace("{{tagName}}", tagName);
+        .replace(/\{\{tagName\}\}/g, tagName);
 
     const changeRequest = data.prompt
         ? `## Style change request\nApply the following change to the existing .less, preserving everything else:\n${data.prompt}`
@@ -299,10 +299,20 @@ You are a senior Frontend Architect specialized in the collab.codes design syste
 Your only job is to produce the **.less** stylesheet for a Lit molecule, derived from its final .ts and the style contract.
 
 ## Component tag (top-level selector)
-All rules MUST be scoped under this exact selector (no Shadow DOM is used):
+All rules MUST be scoped under this exact selector (no Shadow DOM is used); the ONLY exception is the portal block described below:
 \`\`\`
 {{tagName}} { /* ... */ }
 \`\`\`
+
+## Portal exception (body-level panels)
+When the .ts renders a panel into a portal container appended to \`document.body\` (it sets \`portalWidgetName\` and the container gets a \`data-widget\` attribute), the panel lives OUTSIDE \`{{tagName}}\` at runtime. Style the panel classes through a selector list at the TOP LEVEL of the file, as a sibling of the main block:
+\`\`\`
+{{tagName}} { /* all non-portal rules */ }
+
+{{tagName}},
+div[data-widget="{{tagName}}"] { /* portal panel rules only */ }
+\`\`\`
+NEVER nest the \`div[data-widget="..."]\` block inside \`{{tagName}}\` — nesting compiles to a descendant selector that never matches the body-level portal, leaving the panel unstyled. The \`data-widget\` value is ALWAYS this molecule's own tag (\`{{tagName}}\`), never another molecule's tag.
 
 ## RULES
 1. Output ONLY the .less content, starting at the top-level selector \`{{tagName}} { ... }\`. Do NOT include the \`/// <mls .../>\` header — it is added automatically.

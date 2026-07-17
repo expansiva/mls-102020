@@ -176,6 +176,23 @@ The datetime picker panel is typically wider than the trigger input.
 Do not constrain the portal width to the trigger's \`rect.width\`.
 Let the panel use its natural width, aligned to the trigger's left edge.
 
+### CSS — shared selector for portal
+
+Panel styles must work both inside the component and in the body-level portal.
+Use a shared selector in the \`.less\` file:
+
+\\\`\\\`\\\`less
+my-component,
+div[data-widget="my-component"] {
+  .panel { /* panel styles */ }
+}
+\\\`\\\`\\\`
+
+Both selectors are TOP-LEVEL — the list is a sibling of the main
+\`my-component { ... }\` block, NEVER nested inside it (nesting compiles to a
+descendant selector that never matches the body-level portal, so the panel
+renders unstyled). \`my-component\` is always this molecule's OWN tag.
+
 ### Reference implementation
 
 \`mls-102040/l2/molecules/groupselectone/ml-card-selector.ts\` (same portal pattern)
@@ -329,6 +346,7 @@ Group-specific semantic classes will be defined during component migration.
 |---------|------|-------------|
 | 1.0.0 | 2026-04-17 | Initial creation reference |
 | 1.1.0 | 2026-06-22 | Added §6.1 Portal — composite date+time picker panel must render in \`<body>\` via \`litRender\`; single portal for both sections |
+| 1.2.0 | 2026-07-17 | Added CSS — shared selector for portal (top-level, never nested; own tag only) |
 
 
 `

@@ -243,6 +243,11 @@ div[data-widget="my-component"] {
 }
 \\\`\\\`\\\`
 
+Both selectors are TOP-LEVEL — the list is a sibling of the main
+\`my-component { ... }\` block, NEVER nested inside it (nesting compiles to a
+descendant selector that never matches the body-level portal, so the panel
+renders unstyled). \`my-component\` is always this molecule's OWN tag.
+
 ### Reference implementation
 
 \`mls-102040/l2/molecules/groupselectone/ml-card-selector.ts\` (same portal pattern)
@@ -335,4 +340,5 @@ Group-specific semantic classes will be defined during component migration.
 |---------|------|-------------|
 | 1.0.0 | 2026-04-21 | Initial creation reference |
 | 1.1.0 | 2026-06-22 | Added §7.1 Portal — suggestions panel must render in \`<body>\` via \`litRender\`; input stays in component, only suggestions go to portal |
+| 1.2.0 | 2026-07-17 | Portal CSS hardening — shared selector documented as top-level, never nested inside the tag scope; own tag only |
 `;

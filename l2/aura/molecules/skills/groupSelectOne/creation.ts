@@ -188,7 +188,7 @@ import { render as litRender } from 'lit';
 | Member | Visibility | Description |
 |--------|------------|-------------|
 | \`portalContainer\` | \`protected\` | \`HTMLDivElement \\| null\` — the portal element appended to \`<body>\` |
-| \`portalWidgetName\` | \`protected\` | \`string\` — value of the \`data-widget\` attribute set on the portal container (empty by default; each molecule sets its tag name, e.g. \`'groupselectone--ml-select-dropdown'\`; the \`.less\` targets it via \`div[data-widget="..."]\`) |
+| \`portalWidgetName\` | \`protected\` | \`string\` — value of the \`data-widget\` attribute set on the portal container (empty by default; each molecule sets its OWN tag name — never another molecule's; the \`.less\` targets it via \`div[data-widget="..."]\`) |
 | \`getPortalTemplate()\` | \`protected\` | Returns \`TemplateResult\` with the panel content. Subclasses override this to render themed variants |
 
 ### Lifecycle integration
@@ -269,6 +269,11 @@ div[data-widget="my-component"] {
   .item  { /* item styles */ }
 }
 \\\`\\\`\\\`
+
+Both selectors are TOP-LEVEL — the list is a sibling of the main
+\`my-component { ... }\` block, NEVER nested inside it (nesting compiles to a
+descendant selector that never matches the body-level portal, so the panel
+renders unstyled). \`my-component\` is always this molecule's OWN tag.
 
 ### Reference implementation
 
@@ -495,5 +500,6 @@ Group-specific semantic classes will be defined during component migration.
 | 1.1.0 | 2026-04-20 | Removed item parsing helpers; inline pattern in Rendering Logic |
 | 1.2.0 | 2026-06-15 | Added \`variant\` property (dropdown/radio/segmented/list/table); documented inline layouts and the \`table\` variant (flat \`Column\` headers + \`Cell\` rows, radio selection) based on \`ml-data-table-select\`; made Trigger/placeholder/isOpen/open-close and combobox a11y dropdown-scoped |
 | 1.3.0 | 2026-06-22 | Added §7.1 Portal — floating panel must render in \`<body>\` via \`litRender\` to escape CSS stacking contexts |
+| 1.4.0 | 2026-07-17 | Portal hardening — \`portalWidgetName\` must be the molecule's OWN tag (removed real-tag example); portal CSS block documented as top-level, never nested |
 
 `

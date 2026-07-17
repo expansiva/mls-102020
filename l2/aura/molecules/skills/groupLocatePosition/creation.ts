@@ -246,6 +246,23 @@ private updatePanelPosition() {
 }
 \\\`\\\`\\\`
 
+### CSS — shared selector for portal
+
+Panel styles must work both inside the component and in the body-level portal.
+Use a shared selector in the \`.less\` file:
+
+\\\`\\\`\\\`less
+my-component,
+div[data-widget="my-component"] {
+  .suggestions-panel { /* panel styles */ }
+}
+\\\`\\\`\\\`
+
+Both selectors are TOP-LEVEL — the list is a sibling of the main
+\`my-component { ... }\` block, NEVER nested inside it (nesting compiles to a
+descendant selector that never matches the body-level portal, so the panel
+renders unstyled). \`my-component\` is always this molecule's OWN tag.
+
 ### Reference implementation
 
 \`mls-102040/l2/molecules/groupselectone/ml-card-selector.ts\` (same portal pattern)
@@ -376,4 +393,5 @@ Group-specific semantic classes will be defined during component migration.
 | 1.0.0 | 2026-04-20 | Initial creation reference |
 | 1.1.0 | 2026-04-21 | Suggestions via Slot Tags; value simplified to "lat,lng" string |
 | 1.2.0 | 2026-06-22 | Added §6.1 Portal — suggestions panel must render in \`<body>\` via \`litRender\`; map preview stays inline |
+| 1.3.0 | 2026-07-17 | Added CSS — shared selector for portal (top-level, never nested; own tag only) |
 `;
