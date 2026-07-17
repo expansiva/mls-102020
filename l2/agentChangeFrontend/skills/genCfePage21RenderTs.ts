@@ -38,8 +38,8 @@ Read the shared base-class context (compiled .d.ts, or raw .ts as fallback) befo
 6. Re-exported contract type names (export type { ... }).
 
 Use only those names in render(). Never invent property names, handler names or msg keys.
-Import DTO types from the shared module when it re-exports them; only fall back to the contracts
-module for a type the shared does not re-export.
+Import DTO types EXCLUSIVELY from the shared module — it re-exports every contract type this page can
+need. Never import from the contracts module (it is not in context and the page must not depend on it).
 
 ## File shape (identical rules to page11)
 
@@ -75,8 +75,9 @@ For every field/column/filter: resolve field.stateKey to the shared property who
 'state <that stateKey>', then use that property name exactly. If no shared state/property exists,
 render read-only or skip; never invent a property. businessContext states (per JSDoc kind) render as
 a compact current-company/current-unit badge. queryResult states — read outputShape from the property
-JSDoc: "array" -> rows are the property; "paginated" -> rows are property.items (fallback []);
-"object" -> summary/detail block.
+JSDoc: "array" -> rows are the property; "paginated" -> rows are the property's DECLARED collection
+field (the array-typed key of the contract Output, e.g. property.stockItems — NOT a hardcoded ".items";
+fallback []); "object" -> summary/detail block, iterating any array-typed fields by their declared name.
 
 For every action: resolve action.actionKey/action.action to the shared method whose JSDoc says
 'action <that actionId>' and bind only to handlers/methods that exist in the shared context

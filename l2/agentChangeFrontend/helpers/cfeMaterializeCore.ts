@@ -132,6 +132,12 @@ export function buildSharedDtsSection(sharedTsRef: string, dts: string): string 
   return `### ${sharedTsRef} (compiled .d.ts — the authoritative public surface of the base class: typed msg keys, @property names and handler signatures. The msg keys are a CLOSED vocabulary: use them EXACTLY, never invent or shorten. JSDoc 'state:'/'action' annotations map stateKeys to properties/handlers.)\n\`\`\`ts\n${dts}\n\`\`\``;
 }
 
+/** Context section for a runtime library dependency sent as compiled .d.ts (context diet — the
+ * public surface is what the generated code consumes; implementation bodies only add tokens). */
+export function buildRuntimeDtsSection(ref: string, dts: string): string {
+  return `### ${ref} (compiled .d.ts — public surface only)\n\`\`\`ts\n${dts}\n\`\`\``;
+}
+
 /** Default context section; designSystem.ts is summarized to its token names (values are irrelevant to render). */
 export function buildContextSection(ref: string, content: string): string {
   if (/\/l2\/designSystem\.ts$/u.test(ref)) {
@@ -166,16 +172,25 @@ function summarizeDesignSystemTokens(content: string): string {
 }
 
 /**
- * Definition payload sent to the page LLM: the 'sections' compatibility summary duplicates
- * layout.sections and 'origin' is traceability, not render input. Both stay in the .defs.ts file;
- * they are only filtered from the prompt. Other item types pass through untouched.
+ * Definition payload sent to the LLM, minus what is not generation input: for pages the
+ * 'sections' compatibility summary duplicates layout.sections; for pages AND shared, 'origin'
+ * is traceability only. Everything stays in the .defs.ts file; it is only filtered from the
+ * prompt (excess context slows the call and invites hallucination).
  */
 export function trimDefinitionForPrompt(itemType: string, data: unknown): unknown {
-  if (itemType !== 'l2_page' || data === null || typeof data !== 'object' || Array.isArray(data)) return data;
-  const { sections, origin, ...rest } = data as Record<string, unknown>;
-  void sections;
-  void origin;
-  return rest;
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) return data;
+  if (itemType === 'l2_page') {
+    const { sections, origin, ...rest } = data as Record<string, unknown>;
+    void sections;
+    void origin;
+    return rest;
+  }
+  if (itemType === 'l2_shared') {
+    const { origin, ...rest } = data as Record<string, unknown>;
+    void origin;
+    return rest;
+  }
+  return data;
 }
 
 const LAYER_RANK: Record<string, number> = {
@@ -417,14 +432,10 @@ function buildContractTypecheckTest(outputPath: string, data: unknown): string |
     const inputName = `${commandPrefix}Input`;
     const outputName = `${commandPrefix}Output`;
     const outputItemName = `${commandPrefix}OutputItem`;
-    const isQuery = command.kind === 'query';
-    const outputShape = commandOutputShape(command);
     const inputFields = Array.isArray(command.input) ? command.input.filter(isRecord) : [];
-    const outputFields = Array.isArray(command.output) ? command.output.filter(isRecord) : [];
 
     imports.add(inputName);
     imports.add(outputName);
-    if (isQuery) imports.add(outputItemName);
 
     const expectedInputName = `Expected${inputName}`;
     const expectedOutputName = `Expected${outputName}`;
@@ -432,6 +443,30 @@ function buildContractTypecheckTest(outputPath: string, data: unknown): string |
 
     declarations.push(`type ${expectedInputName} = ${objectType(inputFields, 'input')};`);
     assertions.push(`type ${assertName(inputName, commandName)} = Assert<Equal<${inputName}, ${expectedInputName}>>;`);
+
+    // canonicalOutputShape is AUTHORITATIVE when present — the SAME rule the generation skill
+    // (genCfeContractTs) gives the LLM, so test and generated .ts share one source of truth.
+    // Only kind 'list' declares a {Prefix}{Command}OutputItem export.
+    const canonical = canonicalOutputShapeOf(command);
+    if (canonical) {
+      if (canonical.kind === 'list') {
+        imports.add(outputItemName);
+        declarations.push(`type ${expectedOutputItemName} = ${objectType(canonical.fields, 'output')};`);
+        declarations.push(`type ${expectedOutputName} = ${expectedOutputItemName}[];`);
+        assertions.push(`type ${assertName(outputItemName, commandName)} = Assert<Equal<${outputItemName}, ${expectedOutputItemName}>>;`);
+        assertions.push(`type ${assertName(outputName, commandName)} = Assert<Equal<${outputName}, ${expectedOutputName}>>;`);
+      } else {
+        declarations.push(`type ${expectedOutputName} = ${objectType(canonical.fields, 'output')};`);
+        assertions.push(`type ${assertName(outputName, commandName)} = Assert<Equal<${outputName}, ${expectedOutputName}>>;`);
+      }
+      continue;
+    }
+
+    // Legacy path (no canonicalOutputShape): outputShape heuristics over command.output.
+    const isQuery = command.kind === 'query';
+    const outputShape = commandOutputShape(command);
+    const outputFields = Array.isArray(command.output) ? command.output.filter(isRecord) : [];
+    if (isQuery) imports.add(outputItemName);
 
     if (isQuery) {
       declarations.push(`type ${expectedOutputItemName} = ${objectType(outputFields, 'output')};`);
@@ -533,13 +568,13 @@ function objectType(fields: Record<string, unknown>[], direction: 'input' | 'out
     const name = typeof field.name === 'string' && field.name ? field.name : null;
     if (!name) continue;
     const optional = direction === 'input' ? field.required !== true : field.required === false;
-    lines.push(`  ${propertyKey(name)}${optional ? '?' : ''}: ${fieldType(field)};`);
+    lines.push(`  ${propertyKey(name)}${optional ? '?' : ''}: ${fieldType(field, direction)};`);
   }
   lines.push('}');
   return lines.join('\n');
 }
 
-function fieldType(field: Record<string, unknown>): string {
+function fieldType(field: Record<string, unknown>, direction: 'input' | 'output'): string {
   if (Array.isArray(field.enum) && field.enum.length > 0 && field.enum.every(item => typeof item === 'string')) {
     return field.enum.map(item => JSON.stringify(item)).join(' | ');
   }
@@ -547,8 +582,19 @@ function fieldType(field: Record<string, unknown>): string {
   const rawType = String(field.type ?? 'unknown').trim();
   const t = rawType.toLowerCase();
   if (t.endsWith('[]')) return `${primitiveType(t.slice(0, -2))}[]`;
-  if (t === 'array' || t === 'list') return 'unknown[]';
+  // The generation skill (genCfeContractTs) types array/object fields from item.fields, so the
+  // Expected type must carry the same nested shape — Equal<> is structural, interface names in
+  // the generated .ts don't matter. unknown[] here made every array assertion unsatisfiable.
+  const itemFields = itemFieldsOf(field);
+  if (t === 'array' || t === 'list') return itemFields ? `${objectType(itemFields, direction)}[]` : 'unknown[]';
+  if (t === 'object' && itemFields) return objectType(itemFields, direction);
   return primitiveType(t);
+}
+
+function itemFieldsOf(field: Record<string, unknown>): Record<string, unknown>[] | null {
+  const item = isRecord(field.item) ? field.item : null;
+  const fields = item && Array.isArray(item.fields) ? item.fields.filter(isRecord) : null;
+  return fields && fields.length ? fields : null;
 }
 
 function primitiveType(type: string): string {
@@ -609,6 +655,16 @@ function sharedStateContractType(outputPath: string, data: Record<string, unknow
   names.add(inputType);
   imports.set(importPath, names);
   return `${inputType}[${JSON.stringify(field)}]`;
+}
+
+function canonicalOutputShapeOf(command: Record<string, unknown>): { kind: 'object' | 'list' | 'paginated'; fields: Record<string, unknown>[] } | null {
+  const shape = isRecord(command.canonicalOutputShape) ? command.canonicalOutputShape : null;
+  if (!shape) return null;
+  const kind = shape.kind;
+  if (kind !== 'object' && kind !== 'list' && kind !== 'paginated') return null;
+  const fields = Array.isArray(shape.fields) ? shape.fields.filter(isRecord) : [];
+  if (!fields.length) return null;
+  return { kind, fields };
 }
 
 function commandOutputShape(command: Record<string, unknown>): 'array' | 'paginated' | 'object' {

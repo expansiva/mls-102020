@@ -147,6 +147,13 @@ function validOperation(): Ns3E5OperationArtifact {
       selection: 'none',
       output: [],
     },
+    outputShape: {
+      kind: 'object',
+      fields: [
+        { name: 'orderId', type: 'string', required: true, fieldRef: 'Order.orderId' },
+        { name: 'status', type: 'string', required: true, fieldRef: 'Order.status' },
+      ],
+    },
     inputs: [
       { inputId: 'menuItemId', fieldRef: 'MenuItem.menuItemId', required: true, source: 'userInput', description: 'Selected menu item' },
     ],

@@ -153,6 +153,27 @@ export interface Ns3E5AccessPattern {
   output: string[];
 }
 
+// Canonical output STRUCTURE (Option 3): l4 declares the wire shape once so both masters copy it
+// deterministically (neither re-infers) — killing the FE×BE contract drift. Top-level shape + one
+// level of item fields. Entity-backed fields carry `fieldRef` (leaf/item types derive from the entity
+// as before); computed/aggregate fields (totalSales, topSellers, lowStockAlerts) have NO fieldRef and
+// declare their type — and, for computed collections, their item fields — inline (there is no entity to
+// derive them from, which is exactly why only the LLM knew them and why l4 must now carry them).
+export type Ns3E5OutputShapeKind = 'object' | 'list' | 'paginated';
+
+export interface Ns3E5OutputField {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+  required: boolean;
+  fieldRef?: string;
+  item?: { fields: Ns3E5OutputField[] };
+}
+
+export interface Ns3E5OutputShape {
+  kind: Ns3E5OutputShapeKind;
+  fields: Ns3E5OutputField[];
+}
+
 export interface Ns3E5OperationInput {
   inputId: string;
   fieldRef: string;
@@ -182,6 +203,7 @@ export interface Ns3E5OperationArtifact {
   rulesApplied: string[];
   story: Ns3E5Story;
   accessPattern: Ns3E5AccessPattern;
+  outputShape: Ns3E5OutputShape;
   inputs: Ns3E5OperationInput[];
   contextResolution: Ns3E5ContextResolution[];
   acceptanceAssertions: string[];
@@ -305,6 +327,30 @@ export function prepareE5Workflow(input: unknown): Ns3E5WorkflowArtifact {
   };
 }
 
+function readOutputField(input: unknown): Ns3E5OutputField | null {
+  if (!isRecord(input)) return null;
+  const name = readString(input.name) || '';
+  const type = (readString(input.type) || '') as Ns3E5OutputField['type'];
+  if (!name || !type) return null;
+  const field: Ns3E5OutputField = { name, type, required: input.required === true };
+  const fieldRef = readString(input.fieldRef);
+  if (fieldRef) field.fieldRef = fieldRef;
+  if (isRecord(input.item) && Array.isArray(input.item.fields)) {
+    const fields = input.item.fields.map(readOutputField).filter((f): f is Ns3E5OutputField => f !== null);
+    if (fields.length) field.item = { fields };
+  }
+  return field;
+}
+
+function readOutputShape(input: unknown): Ns3E5OutputShape {
+  const record = isRecord(input) ? input : {};
+  const kind = (readString(record.kind) || '') as Ns3E5OutputShapeKind;
+  const fields = Array.isArray(record.fields)
+    ? record.fields.map(readOutputField).filter((f): f is Ns3E5OutputField => f !== null)
+    : [];
+  return { kind, fields };
+}
+
 export function prepareE5Operation(input: unknown): Ns3E5OperationArtifact {
   const record = isRecord(input) ? input : {};
   const access = isRecord(record.accessPattern) ? record.accessPattern : {};
@@ -331,6 +377,7 @@ export function prepareE5Operation(input: unknown): Ns3E5OperationArtifact {
       selection: (readString(access.selection) || '') as Ns3E5Selection,
       output: readStringArray(access.output),
     },
+    outputShape: readOutputShape(record.outputShape),
     inputs: inputs.map(item => ({
       inputId: readString(item.inputId) || '',
       fieldRef: readString(item.fieldRef) || '',

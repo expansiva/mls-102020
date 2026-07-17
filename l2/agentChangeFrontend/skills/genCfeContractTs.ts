@@ -49,7 +49,23 @@ Primitive mapping:
 
 ## Command output shape
 
-Use command.outputShape as the source of truth. Defaults:
+**If command.canonicalOutputShape is present, it is AUTHORITATIVE — use it and IGNORE the heuristics
+below.** It is the canonical wire shape declared by l4 and copied verbatim by the backend; the Output
+type MUST match it EXACTLY (same field names, same required-ness, same array/object nesting) so the
+frontend and backend contracts agree by construction. canonicalOutputShape is { kind, fields[] };
+each field is { name, type, required, fieldRef?, item? }:
+- kind "object" -> generate Output as an interface with exactly these fields.
+- kind "list" -> generate Output as {Prefix}{CommandPascal}OutputItem[] where OutputItem has the
+  declared fields.
+- kind "paginated" -> generate Output as an interface with exactly the declared fields (the array field
+  keeps its DECLARED name — e.g. stockItems: ...[], NOT "items" — do not rename it).
+- For any field with type "array", its element type is a named interface built from item.fields
+  (name it after the field, e.g. orders -> {Prefix}Order / DashboardOrder); for type "object",
+  a named nested interface from item.fields. Scalar types map directly (string/number/boolean).
+- Fields with no fieldRef are computed/aggregate values — still emit them with their declared type.
+- Preserve field order; property required unless required === false; do NOT add, drop or rename fields.
+
+Otherwise (legacy, no canonicalOutputShape) use command.outputShape as the source of truth. Defaults:
 - query without outputShape -> "array"
 - command without outputShape -> "object"
 

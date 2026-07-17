@@ -26,6 +26,26 @@ Result rules:
   - filters/sort: optional 'Entity.field' refs. pagination: none | optional | required.
     selection: none | single | multiple.
   - output: the 'Entity.field' refs the screen shows — REQUIRED non-empty for list/getById/lookup.
+- outputShape — the CANONICAL structure of the response payload (REQUIRED). This is the single source
+  of truth for the wire contract: BOTH the backend usecase and the frontend contract are generated to
+  match it EXACTLY, so it must describe the FULL response the operation returns, not just entity fields.
+  - `{ kind, fields[] }`. kind: `object` (a single composed object), `list` (an array of items) or
+    `paginated` (items + a total). For `list`/`paginated`, `fields` describes ONE item.
+  - Each field: `{ name, type, required, fieldRef?, item? }`. type ∈ string|number|boolean|array|object.
+  - Entity-backed field → set `fieldRef: 'Entity.field'` (its scalar type comes from the entity).
+  - COMPUTED / AGGREGATE fields have NO fieldRef and MUST be declared here explicitly with their type
+    (e.g. a dashboard's `totalSales:number`, or collections `topSellers:array`, `lowStockAlerts:array`).
+    For a computed collection (`type:'array'`) or nested object (`type:'object'`), declare its item
+    fields inline via `item.fields[]` (one level) — there is no entity to derive them from, so the
+    acceptanceAssertions/story are your only source; enumerate every field the screen/consumer needs.
+  - Example (a dashboard-style view): `{ kind: 'object', fields: [ {name:'shiftId',type:'string',required:true,fieldRef:'Shift.shiftId'}, {name:'totalSales',type:'number',required:true}, {name:'orders',type:'array',required:true,item:{fields:[{name:'orderId',type:'string',required:true,fieldRef:'Order.orderId'},{name:'status',type:'string',required:true,fieldRef:'Order.status'}]}} ] }`.
+  - `fields` ALWAYS describes the TOP-LEVEL payload keys (never item fields directly). Shapes:
+    - `object`: a single object — `fields` are its keys (arrays among them carry their `item.fields`).
+    - `list`: the payload IS an array — `fields` are the item fields.
+    - `paginated`: an object holding a collection + a total — `fields` are the TOP-LEVEL keys: the
+      collection as a `type:'array'` field WITH its `item.fields` (name it as the payload does, e.g.
+      `stockItems`, NOT necessarily `items`) plus `total:number` (and optional `page`/`pageSize`).
+    Name every field with the EXACT key the payload uses — do not rename between runs.
 - inputs: what the user or system provides: [{inputId, fieldRef 'Entity.field', required, source,
   description}]. commandInput operations MUST declare at least one input. Valid sources:
   userInput | actorSession | businessContext | currentWorkspace | selectedEntity |

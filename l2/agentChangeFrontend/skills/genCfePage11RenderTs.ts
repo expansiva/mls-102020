@@ -22,8 +22,9 @@ Context Files:
 - shared base class, normally as its compiled .d.ts (the authoritative public surface: exact typed
   msg key set, @property names, handler signatures, plus JSDoc annotations mapping states/actions —
   'state <stateKey>', 'action <actionId> ...', 'handler for action <actionId>'). When only the raw
-  shared .ts is present (fallback), use it the same way; when both appear, the .d.ts wins.
-- contract .ts: the DTO interfaces (input/output row shapes) for typing list items and payload fields.
+  shared .ts is present (fallback), use it the same way; when both appear, the .d.ts wins. The shared
+  module RE-EXPORTS every DTO type (input/output/row-item), so all list-item and payload types are
+  imported from shared — the contract .ts is NOT part of the page context.
 - design tokens section: the list of design-system token NAMES (see "Design system colors").
 
 ## Mandatory first step
@@ -38,8 +39,8 @@ Read the shared base-class context (compiled .d.ts, or raw .ts as fallback) befo
 
 Use only those names in render().
 Never invent property names, handler names or msg keys from conventions.
-Import DTO types from the shared module when it re-exports them; only fall back to the contracts
-module for a type the shared does not re-export.
+Import DTO types EXCLUSIVELY from the shared module — it re-exports every contract type this page can
+need. Never import from the contracts module (it is not in context and the page must not depend on it).
 
 ## File shape
 
@@ -86,8 +87,11 @@ For every field/column/filter:
 - If the shared state kind (from its JSDoc) is businessContext, render it as a compact current-company/current-unit badge or selector area. Do not render it as a plain technical text input and do not label it workspaceId.
 - For queryResult states, read the outputShape from the property JSDoc:
   - outputShape "array": rows are the shared property itself.
-  - outputShape "paginated": rows are sharedProperty.items (fallback to [] when missing), and total/page/pageSize may be shown only when those properties exist on the state value.
-  - outputShape "object": render a summary/detail block, not an array table.
+  - outputShape "paginated": rows are the shared property's DECLARED collection field — read the field
+    name from the contract Output type (the array-typed property, e.g. sharedProperty.stockItems), NOT a
+    hardcoded ".items"; fall back to [] when missing. total/page/pageSize shown only if present.
+  - outputShape "object": render a summary/detail block. If the object has array-typed fields (e.g. a
+    dashboard's orders/topSellers/lowStockAlerts), iterate each by its DECLARED name for its own list.
 
 For every action:
 - Use action.actionKey or action.action to find the shared method whose JSDoc says 'action <that actionId>'.

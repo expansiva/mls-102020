@@ -207,7 +207,7 @@ function createMaterializePhaseSteps(context: mls.msg.ExecutionContext, parentSt
       phasePlanId,
       'agentCfeMaterializePhase',
       group.parentTitle,
-      { planId: phasePlanId, fanoutPlanId, title: group.parentTitle, fanoutTitle: group.progressTitle, items, maxParallel: 5 },
+      { planId: phasePlanId, fanoutPlanId, title: group.parentTitle, fanoutTitle: group.progressTitle, items, maxParallel: 10 },
       priorFanoutPlanIds,
       'sequential',
       priorFanoutPlanIds.length > 0 ? 'waiting_dependency' : 'waiting_human_input',
