@@ -3,7 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
-import '/_102020_/l2/plugins/markdownViewer.js';
+import '/_102020_/l2/aura/widgets/markdownViewer.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
@@ -162,13 +162,13 @@ export class PluginSelectOrganization extends StateLitElement {
                 bg-gray-50 dark:bg-gray-900/50
                 px-3 py-3
             ">
-                <plugins--markdown-viewer-102020
+                <aura--widgets--markdown-viewer-102020
                     .text=${description}
                     @md-save=${(e: CustomEvent) => {
                         this._descriptions.set(org.key, e.detail.value);
                         this.requestUpdate();
                     }}
-                ></plugins--markdown-viewer-102020>
+                ></aura--widgets--markdown-viewer-102020>
             </div>
         `;
     }
