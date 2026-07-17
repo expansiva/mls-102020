@@ -1851,6 +1851,11 @@ function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefini
   const actions = sharedActions(prepared, states);
   const initialLoads = prepared.commands
     .filter(command => readString(command.kind) === 'query')
+    // A query with a REQUIRED public input cannot run on connectedCallback: the input is empty at
+    // boot and the BFF correctly rejects it (run 102049 Lima: shared auto-fired searchProducts with
+    // {} -> 400 VALIDATION_ERROR searchTerm). Auto-load only parameterless/optional-input queries;
+    // the required-input ones run on user action (search button / row selection).
+    .filter(command => !commandFieldRecords(command.input).some(field => field.required))
     .map(command => ({ actionId: readString(command.commandName), stateKey: queryDataStateKey(prepared.page.pageId, readString(command.commandName)) }));
   validateSharedLayoutRefs(prepared, layout, states, actions, initialLoads);
   return {
