@@ -4,6 +4,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readCreateContext, startCreateRun } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 
 interface ScanArgs {
+  command?: string;
   materialize?: boolean;
   forceMaterialize?: boolean;
 }
@@ -40,7 +41,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const contractSharedFanout = createAgentStepPayload(
       'create-contract-shared-fanout',
       'agentCfeCreateContractShared',
-      'Criar contratos/shared {{completed}}/{{total}}, falhas {{failed}}',
+      // Deterministic fan-out (no LLM): children complete in beforePromptStep and never hit the
+      // progress-increment path, so a {{completed}}/{{total}} counter would freeze at 0/N. Use a
+      // plain title instead of a live counter.
+      'Criar contratos e shared',
       { planId: 'create-contract-shared-fanout' },
       [],
       'parallel_dynamic',
@@ -74,6 +78,20 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     if (scanArgs.materialize !== false) {
       const materialize = createMaterializeStep(scanArgs, ['verify-create-layouts']);
       intents.push(createAddStepIntent(context, parentStep, materialize));
+    } else if (scanArgs.command === 'rebuild-defs') {
+      // Defs-only rebuild: after the layout verification barrier, drop the derived .ts/.test.ts so
+      // the module keeps only the regenerated .defs.ts. Guarded by the CLI command, not just
+      // materialize=false, so the plain /run path (also materialize-driven) is never affected.
+      const cleanup = createAgentStepPayload(
+        'rebuild-defs-cleanup',
+        'agentCfeRebuildDefsCleanup',
+        'Limpar .ts derivados (rebuild defs)',
+        { planId: 'rebuild-defs-cleanup', modules: createContext.moduleNames },
+        ['verify-create-layouts'],
+        'sequential',
+        'waiting_dependency',
+      );
+      intents.push(createAddStepIntent(context, parentStep, cleanup));
     }
 
     intents.push(createUpdateStatusIntent(

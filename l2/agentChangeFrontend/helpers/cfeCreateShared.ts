@@ -647,10 +647,10 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
     // The goal-first genome (page21) carries the synthesized objective so the render skill can
     // lay the page out around the actor's primary decision. Absent on the page11 baseline.
     ...(isRecord(objective) ? { pageObjective: objective } : {}),
-    // Closed msg-key vocabulary for the render step (keys only, never values — i18n values live in
-    // shared). Same pattern as fieldCatalog: the renderer may use ONLY these this.msg keys; invented
-    // or shortened keys (102051: 'lane.registered', 'organism.dashboard.empty') fail the strict tsc.
-    msgKeys: Object.keys(enrichedLayout.i18n).sort(),
+    // The closed msg-key vocabulary is NOT duplicated here: the shared base class MessageType is the
+    // authoritative, type-checked key set, and the render skill reads it from the shared .d.ts. An
+    // invented or shortened key (102051: 'lane.registered', 'organism.dashboard.empty') still fails
+    // the strict tsc against that type — the page defs no longer needs its own msgKeys list.
     sections: layoutSectionSummary(enrichedLayout.sections),
     layout: {
       id: enrichedLayout.layoutId,
@@ -885,6 +885,42 @@ export async function saveCreateLayoutFailureTrace(
     message,
     agent: 'agentCfeCreateLayout',
   }, null, 2)}\n`);
+}
+
+export interface MaterializeVerifyBrokenTrace {
+  planId: string;
+  defPath: string;
+  outputPath: string | null;
+  typecheck: string;
+  errors: string[];
+  warnings: string[];
+}
+
+// Full, unbounded verify detail (every compile/typecheck error + warning per broken item) written to
+// the file system so the msg-task step trace can stay a short summary (DynamoDB 400KB task cap). One
+// file per verify invocation, keyed by its planId, at l2/trace/frontend-materialize-verify — NOT
+// module-scoped because a materialize phase spans every frontend module; each entry carries its full
+// defPath/outputPath. Best-effort: a trace write must never fail the verify. Returns the mls ref of
+// the written file (for the summary to point at) or null when it could not be written.
+export async function saveMaterializeVerifyTrace(planId: string, attempt: number, broken: MaterializeVerifyBrokenTrace[]): Promise<string | null> {
+  try {
+    const project = mls.actualProject || 0;
+    if (!project) return null;
+    const shortName = toSafeShortName(planId);
+    const fileInfo: FileInfo = { project, level: 2, folder: 'trace/frontend-materialize-verify', shortName, extension: '.json' };
+    await saveStorContent(fileInfo, `${JSON.stringify({
+      savedAt: new Date().toISOString(),
+      planId,
+      attempt,
+      brokenCount: broken.length,
+      broken,
+      agent: 'agentCfeMaterializePhase',
+    }, null, 2)}\n`);
+    return `_${project}_/l2/trace/frontend-materialize-verify/${shortName}.json`;
+  } catch (error) {
+    console.error(`[saveMaterializeVerifyTrace] ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
 }
 
 export async function listCreateRunLayoutFailureTraces(runId: string): Promise<string[]> {

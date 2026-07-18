@@ -23,7 +23,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const fanout = createAgentStepPayload(
       'reconcile-shared-fanout',
       'agentCfeReconcileShared',
-      'Reconciliar shared {{completed}}/{{total}}, falhas {{failed}}',
+      // Deterministic fan-out (no LLM): children complete in beforePromptStep and never hit the
+      // progress-increment path, so a {{completed}}/{{total}} counter would freeze at 0/N. Use a
+      // plain title instead of a live counter.
+      'Reconciliar shared',
       { planId: 'reconcile-shared-fanout' },
       [],
       'parallel_dynamic',

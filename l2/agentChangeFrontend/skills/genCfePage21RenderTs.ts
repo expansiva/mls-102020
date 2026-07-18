@@ -19,7 +19,6 @@ Definition is the page21 .defs.ts object:
 - pageObjective: the synthesized goal for this page (actor, jobToBeDone, primaryDecision,
   decisiveInfo, usageFrequency, criticalActions[{action,presentation}], informationHierarchy,
   successCriteria, antiPatterns). Use it to drive ordering, density and how each action is presented.
-- msgKeys: the CLOSED vocabulary of this.msg keys this page may use (keys only, values live in shared)
 - navigationRefs
 - layout.sections[] as the source of truth for render structure (organisms, intentions, displayHint)
 - dataBindings
@@ -62,13 +61,14 @@ Use Definition.layout.sections[]. Use section.titleKey, organism.titleKey, inten
 intention.emptyKey, field.labelKey and action.labelKey only as keys into this.msg. Access messages
 ONLY as typed member access on this.msg using the exact key string (e.g. this.msg['field.status.label']).
 NEVER cast this.msg and NEVER wrap it in a getMsg/t helper. Use each key EXACTLY as declared.
-Definition.msgKeys is the complete closed list of keys this page may use. NEVER use a this.msg key
-that is not in msgKeys — do not invent presentation keys and do not abbreviate
-('organism.dashboard.empty' when msgKeys has 'organism.dashboardSummary.empty' is a compile error).
-Status/lane labels with no key in msgKeys are rendered from the data value itself (e.g. item.status)
-or a literal with a TODO comment. A shared compiled .d.ts context section, when present, is the
-authoritative public surface (typed msg keys, properties, handlers) — it wins over your reading of
-the source.
+The shared base class MessageType (extracted in the mandatory first step) is the complete closed
+vocabulary of this.msg keys this page may use — the page defs carries no separate key list. NEVER use
+a this.msg key that is not declared in that MessageType — do not invent presentation keys and do not
+abbreviate ('organism.dashboard.empty' when the shared type declares 'organism.dashboardSummary.empty'
+is a compile error). Status/lane labels with no key in the shared MessageType are rendered from the
+data value itself (e.g. item.status) or a literal with a TODO comment. A shared compiled .d.ts context
+section, when present, is the authoritative public surface (typed msg keys, properties, handlers) — it
+wins over your reading of the source.
 If a required key is genuinely absent, render a literal string with a short TODO comment.
 
 For every field/column/filter: resolve field.stateKey to the shared property whose JSDoc says

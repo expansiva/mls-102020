@@ -58,6 +58,13 @@ name that is not in the catalog does not exist — never guess. Use only `shared
 declared in the flat `pageLayout.i18n` object. Every intention includes `fields`, `columns`,
 `filters`, `toolbar`, `rowActions` and `actions`, using `[]` when empty.
 
+i18n values (REQUIRED). Every titleKey, labelKey and emptyKey you reference MUST have a matching entry
+in `pageLayout.i18n` whose value is a natural, human-readable label written in the module language
+`i18n.defaultLocale` (from the supplied context — e.g. fr, es, pt-BR). Never omit a referenced key,
+never use the raw key as its value, and never emit an English or machine placeholder (e.g.
+"Sec discover") when the locale is not English. A key left without a real value is auto-filled by a
+language-neutral fallback that reads as a broken placeholder — supply the value yourself.
+
 Field triage (do this before placing any field, per the UX guidance below): context-derived and
 system-owned fields (ids, status, timestamps) are read-only context or derived actions, never manual
 inputs. A lifecycle/status transition is rendered as one button per allowed next state

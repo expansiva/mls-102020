@@ -1,0 +1,85 @@
+{
+  "$id": "collab.codes/agentNewSolution/e6-journey-map/2026-07-18-ns-e6-v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "moduleName", "workspaces", "landings", "navigationEdges"],
+  "properties": {
+    "schemaVersion": { "const": "2026-07-18-ns-e6-v4" },
+    "moduleName": { "type": "string", "minLength": 1, "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "note": { "type": "string" },
+    "workspaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["workspaceId", "title", "actors", "kind", "entity", "sections", "purpose"],
+        "properties": {
+          "workspaceId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
+          "title": { "type": "string", "minLength": 1 },
+          "actors": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "kind": { "enum": ["workflow", "operation", "entityManagement", "landing"] },
+          "entity": { "type": "string", "minLength": 1 },
+          "workflowId": { "type": "string", "minLength": 1 },
+          "purpose": { "type": "string", "minLength": 5 },
+          "sections": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sectionId", "intent", "organisms"],
+              "properties": {
+                "sectionId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
+                "intent": { "type": "string", "minLength": 3 },
+                "organisms": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["role"],
+                    "properties": {
+                      "operationId": { "type": "string", "minLength": 1 },
+                      "role": { "enum": ["primarySurface", "filterControl", "contextualAction", "detailPanel", "batchAction", "navigationEntry", "hero", "banner", "richText", "imageSet", "ctaLink", "showcase"] },
+                      "attachTo": { "type": "string", "minLength": 1 }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "operationIds": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "landings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["actorId", "workspaceId"],
+        "properties": {
+          "actorId": { "type": "string", "minLength": 1 },
+          "workspaceId": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "navigationEdges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "type": "string", "minLength": 1 },
+          "to": { "type": "string", "minLength": 1 },
+          "operationId": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}

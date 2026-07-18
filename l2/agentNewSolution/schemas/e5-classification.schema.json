@@ -1,0 +1,59 @@
+{
+  "$id": "collab.codes/agentNewSolution/e5-classification/2026-07-11-ns-e5-v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "moduleName", "workflows", "operations", "managedEntities"],
+  "properties": {
+    "schemaVersion": { "const": "2026-07-11-ns-e5-v2" },
+    "moduleName": { "type": "string", "minLength": 1, "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "createdAt": { "type": "string" },
+    "workflows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["workflowId", "title", "actorId", "primaryEntity", "featureRefs", "operationIds"],
+        "properties": {
+          "workflowId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
+          "title": { "type": "string", "minLength": 1 },
+          "actorId": { "type": "string", "minLength": 1 },
+          "primaryEntity": { "type": "string", "minLength": 1 },
+          "featureRefs": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "operationIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operationId", "title", "actorId", "entity", "kind", "featureRefs"],
+        "properties": {
+          "operationId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
+          "title": { "type": "string", "minLength": 1 },
+          "actorId": { "type": "string", "minLength": 1 },
+          "entity": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["create", "update", "delete", "query", "view"] },
+          "featureRefs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "workflowId": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "managedEntities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["entity", "deletionPolicy"],
+        "properties": {
+          "entity": { "type": "string", "minLength": 1 },
+          "deletionPolicy": { "enum": ["delete", "inactivate", "immutable"] },
+          "inactivationState": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

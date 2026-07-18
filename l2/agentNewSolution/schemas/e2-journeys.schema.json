@@ -1,0 +1,108 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewSolution/e2-journeys/2026-07-06-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agentNewSolution E2 Journeys",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "moduleName",
+    "moduleTitle",
+    "userLanguage",
+    "version",
+    "actors",
+    "journeys",
+    "features",
+    "decisions",
+    "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "2026-07-06-ns-e2-v1" },
+    "moduleName": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[a-z][a-zA-Z0-9]*$" },
+    "moduleTitle": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "userLanguage": { "type": "string", "minLength": 2, "maxLength": 20 },
+    "version": { "type": "integer", "minimum": 1 },
+    "actors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["actorId", "name"],
+        "properties": {
+          "actorId": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-zA-Z0-9]*$" },
+          "name": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "journeys": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["journeyId", "actorId", "title", "goal", "steps", "outcome", "businessRules", "notes"],
+        "properties": {
+          "journeyId": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-zA-Z0-9]*$" },
+          "actorId": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-zA-Z0-9]*$" },
+          "title": { "type": "string", "minLength": 1 },
+          "goal": { "type": "string", "minLength": 1 },
+          "soThat": { "type": "string" },
+          "trigger": { "type": "string" },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["stepId", "title", "intent", "featureRefs"],
+              "properties": {
+                "stepId": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-zA-Z0-9]*$" },
+                "title": { "type": "string", "minLength": 1 },
+                "intent": { "type": "string", "minLength": 1 },
+                "result": { "type": "string" },
+                "featureRefs": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+              }
+            }
+          },
+          "outcome": { "type": "string", "minLength": 1 },
+          "businessRules": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "features": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["featureId", "title", "priority", "actorIds"],
+        "properties": {
+          "featureId": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-zA-Z0-9]*$" },
+          "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "priority": { "enum": ["now", "soon", "later", "never"] },
+          "actorIds": { "type": "array", "items": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-zA-Z0-9]*$" } },
+          "rationale": { "type": "string" }
+        }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["decisionId", "kind", "summary"],
+        "properties": {
+          "decisionId": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-zA-Z0-9]*$" },
+          "kind": { "enum": ["actorRemoved", "featurePriority", "scopeChange", "other"] },
+          "summary": { "type": "string", "minLength": 1 },
+          "target": { "type": "string" }
+        }
+      }
+    },
+    "createdAt": { "type": "string", "minLength": 10 }
+  }
+}

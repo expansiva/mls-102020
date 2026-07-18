@@ -11,7 +11,6 @@ This file extends the shared base class and only renders. It must not own state,
 Definition is the page11 .defs.ts object:
 - page metadata
 - baseClassName: the deterministic shared base class that this page must import and extend
-- msgKeys: the CLOSED vocabulary of this.msg keys this page may use (keys only, values live in shared)
 - navigationRefs
 - layout.sections[] as the source of truth for render structure
 - dataBindings
@@ -73,10 +72,12 @@ Use section.titleKey, organism.titleKey, intention.titleKey, intention.emptyKey,
 Access messages ONLY as typed member access on this.msg using the exact key string, e.g. this.msg['menuManagement.field.name.label']. The msg keys are declared in the shared .ts and are type-checked: a wrong or missing key must surface as a compile error — that is the desired behavior.
 NEVER cast this.msg (no "as Record<string, string>", no "as any") and NEVER wrap it in a helper such as getMsg/t/translate. Those erase key typing and let broken keys ship silently as empty strings.
 Use each key EXACTLY as it appears in the layout *Key field (which matches the shared i18n); do not shorten or re-derive it — e.g. never write 'section.board' when the declared key is 'menuManagement.section.main.title'.
-Definition.msgKeys is the complete closed list of keys this page may use. NEVER use a this.msg key
-that is not in msgKeys — do not invent presentation keys (no 'lane.registered', no 'status.x.label'
-unless listed) and do not abbreviate ('organism.dashboard.empty' when msgKeys has
-'organism.dashboardSummary.empty' is a compile error). Status/lane labels with no key in msgKeys are
+The shared base class MessageType (extracted in the mandatory first step from the shared .d.ts/.ts)
+is the complete closed vocabulary of this.msg keys this page may use — the page defs carries no
+separate key list. NEVER use a this.msg key that is not declared in that MessageType — do not invent
+presentation keys (no 'lane.registered', no 'status.x.label' unless declared) and do not abbreviate
+('organism.dashboard.empty' when the shared type declares 'organism.dashboardSummary.empty' is a
+compile error under strict tsc). Status/lane labels with no key in the shared MessageType are
 rendered from the data value itself (e.g. item.status) or a literal with a TODO comment.
 If a required key is genuinely absent from shared, render a literal string with a short TODO comment; never add a dynamic lookup that hides the missing key.
 

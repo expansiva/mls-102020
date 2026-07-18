@@ -11,7 +11,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
-import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, saveMaterializeVerifyTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import {
   parseDefs,
   testPathForOutputPath,
@@ -126,7 +126,10 @@ async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `all ${args.items.length} materialization item(s) verified; typechecks: ${trace}`)];
   }
 
-  const summary = broken.map(entry => `${entry.item.planId}: ${entry.errors[0]}`).join('\n');
+  // Full detail (all errors + warnings per item) goes to the file system; the msg-task step trace
+  // keeps only a short summary that points at that file (DynamoDB 400KB task cap).
+  const traceRef = await saveMaterializeVerifyTrace(args.planId, args.attempt, broken.map(toBrokenTrace));
+  const summary = summarizeBroken(broken, traceRef);
   if (args.attempt > MATERIALIZE_REPAIR_ROUNDS) {
     // The generated artifacts can be repaired by the CLI after this task. Do not fail the whole
     // changeFrontend tree merely because Studio's bounded materialization repair was exhausted.
@@ -170,6 +173,36 @@ async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.
     nextVerify,
     createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${broken.length} broken item(s), repair round ${roundLabel} started:\n${summary}`),
   ];
+}
+
+// The msg-task step trace must stay a SUMMARY (kept by the interaction cleaner, subject to the
+// DynamoDB 400KB task cap): one line per broken item with its error/warning counts and a single
+// clipped representative error, plus a pointer to the file-system trace that holds the full detail.
+const MAX_SUMMARY_ITEMS = 40;
+const SUMMARY_ERROR_LEN = 200;
+
+function summarizeBroken(broken: BrokenItem[], traceRef: string | null): string {
+  const clip = (value: string): string => value.length > SUMMARY_ERROR_LEN ? `${value.slice(0, SUMMARY_ERROR_LEN)}…` : value;
+  const shown = broken.slice(0, MAX_SUMMARY_ITEMS);
+  const lines = shown.map(entry => {
+    const counts = `${entry.errors.length} error(s)${entry.warnings.length ? `, ${entry.warnings.length} warning(s)` : ''}`;
+    const first = entry.errors[0] ? ` — ${clip(entry.errors[0])}` : '';
+    return `${entry.item.planId} (typecheck=${entry.typecheck}): ${counts}${first}`;
+  });
+  if (broken.length > shown.length) lines.push(`…(+${broken.length - shown.length} more item(s))`);
+  lines.push(traceRef ? `full detail: ${traceRef}` : 'full detail: (verify trace could not be written)');
+  return lines.join('\n');
+}
+
+function toBrokenTrace(entry: BrokenItem) {
+  return {
+    planId: entry.item.planId,
+    defPath: entry.item.defPath,
+    outputPath: entry.outputPath,
+    typecheck: entry.typecheck,
+    errors: entry.errors,
+    warnings: entry.warnings,
+  };
 }
 
 async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {

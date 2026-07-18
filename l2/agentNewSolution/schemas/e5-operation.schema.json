@@ -1,0 +1,104 @@
+{
+  "$id": "collab.codes/agentNewSolution/e5-operation/2026-07-18-ns-e5-operation-v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["operationId", "title", "actors", "entity", "kind", "reads", "writes", "rulesApplied", "story", "accessPattern", "outputShape", "inputs", "contextResolution", "acceptanceAssertions"],
+  "$defs": {
+    "outputField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "required"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "type": { "enum": ["string", "number", "boolean", "array", "object"] },
+        "required": { "type": "boolean" },
+        "fieldRef": { "type": "string", "minLength": 3 },
+        "item": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fields"],
+          "properties": {
+            "fields": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/outputField" } }
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "operationId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
+    "title": { "type": "string", "minLength": 1 },
+    "actors": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "entity": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["create", "update", "delete", "query", "view"] },
+    "reads": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "writes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "rulesApplied": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "story": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor", "goal", "steps", "outcome"],
+      "properties": {
+        "actor": { "type": "string", "minLength": 1 },
+        "goal": { "type": "string", "minLength": 3 },
+        "steps": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 3 } },
+        "outcome": { "type": "string", "minLength": 3 }
+      }
+    },
+    "accessPattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "entity", "keyField", "pagination", "selection", "output"],
+      "properties": {
+        "kind": { "enum": ["list", "getById", "lookup", "commandInput"] },
+        "description": { "type": "string", "minLength": 3 },
+        "entity": { "type": "string", "minLength": 1 },
+        "keyField": { "type": "string", "minLength": 3 },
+        "filters": { "type": "array", "items": { "type": "string", "minLength": 3 } },
+        "sort": { "type": "array", "items": { "type": "string", "minLength": 3 } },
+        "pagination": { "enum": ["none", "optional", "required"] },
+        "selection": { "enum": ["none", "single", "multiple"] },
+        "output": { "type": "array", "items": { "type": "string", "minLength": 3 } }
+      }
+    },
+    "outputShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "fields"],
+      "properties": {
+        "kind": { "enum": ["object", "list", "paginated"] },
+        "fields": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/outputField" } }
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["inputId", "fieldRef", "required", "source", "description"],
+        "properties": {
+          "inputId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
+          "fieldRef": { "type": "string", "minLength": 3 },
+          "required": { "type": "boolean" },
+          "source": { "enum": ["userInput", "actorSession", "businessContext", "currentWorkspace", "selectedEntity", "activeLifecycleInstance", "workflowState", "routeParam", "previousStepOutput", "systemDefault"] },
+          "description": { "type": "string", "minLength": 3 }
+        }
+      }
+    },
+    "contextResolution": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["targetRef", "source", "originRef", "description"],
+        "properties": {
+          "inputId": { "type": "string", "minLength": 1 },
+          "targetRef": { "type": "string", "minLength": 3 },
+          "source": { "enum": ["userInput", "actorSession", "businessContext", "currentWorkspace", "selectedEntity", "activeLifecycleInstance", "workflowState", "routeParam", "previousStepOutput", "systemDefault"] },
+          "originRef": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 3 }
+        }
+      }
+    },
+    "acceptanceAssertions": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 5 } }
+  }
+}

@@ -233,6 +233,12 @@ disconnectedCallback:
 - unsubscribe any subscriptions created
 - call super.disconnectedCallback()
 
+State delivery (REQUIRED when the class subscribes itself):
+- Implement "handleIcaStateChange(key: string, value: unknown): void" — the notify contract of
+  collabState. Assign the value to the class field mapped to that stateKey (same mapping used by
+  initStateValue) and call this.requestUpdate(). Without it, data written by setState never
+  re-renders the page (102049: BFF returned rows, screen stayed empty).
+
 ## Guardrails
 
 - If page11 references a stateKey that is not in Definition.states[], do not invent it.

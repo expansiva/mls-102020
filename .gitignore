@@ -26,3 +26,4 @@ Temporary Items
 /obj/
 /l2/agents/NewSolution
 /l2/agentChangeFrontend/materializeL2.config.json
+.collab-fs.json
