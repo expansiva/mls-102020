@@ -36,6 +36,7 @@ import {
   nsResultStepIntent,
   nsUpdateStatusIntent,
 } from '/_102020_/l2/agentNewSolution/helpers/nsSteps.js';
+import { nsLlmInfraFailureIntents } from '/_102020_/l2/agentNewSolution/helpers/nsLlmRetry.js';
 import {
   approveNsStep,
   createNsPipeline,
@@ -44,7 +45,7 @@ import {
   readNsPipeline,
   writeNsPipeline,
 } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
-import { writeNsTrace } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
+import { writeNsTrace, nsPromptChars } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
 import { NsE2JourneysArtifact } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/gate.js';
 import {
   NsE3EntityArtifact,
@@ -82,6 +83,7 @@ interface E3Args {
   repairAttempt?: number;
   retryAttempt?: number;
   retryContext?: string;
+  llmRetry?: boolean;
 }
 
 async function beforePromptStep(
@@ -204,6 +206,14 @@ async function afterPromptStep(
   const mutationParent = nsFindMutableParentStep(context, parentStep);
   const selector = nsParseSelector(step.prompt);
   const parsedArgs = selector?.kind === 'entity' ? { planId: 'e3-entity', entityId: selector.id } : parseE3Args(step.prompt);
+  // P2: retry the single model call once on an LLM-CALL failure (fan-out entities have the finalize net).
+  if (parsedArgs.planId === STEP_ID) {
+    const infraIntents = nsLlmInfraFailureIntents({
+      context, mutationParent, step, hookSequential, agentName: AGENT_NAME, stepId: STEP_ID,
+      retryPrompt: { moduleName: parsedArgs.moduleName }, alreadyRetried: parsedArgs.llmRetry === true,
+    });
+    if (infraIntents) return infraIntents;
+  }
   try {
     if (parsedArgs.planId === 'e3-entity') return await handleEntityResult(context, mutationParent, step, hookSequential, parsedArgs);
     return await handleModelResult(context, mutationParent, step, hookSequential, parsedArgs);
@@ -281,7 +291,7 @@ async function handleModelResult(
     return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 
-  await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate });
+  await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate }, undefined, nsPromptChars(step));
   // Parallel fan-out (collab-messages parallel system, 5 slots, slots reused and deleted at the
   // end): one child per entity, hosted under THIS step so its completion waits for the fan-out.
   // The e3-finalize step unlocks when this step's planId completes, verifies every entity file,
@@ -467,6 +477,7 @@ function parseE3Args(value: unknown): E3Args {
     repairAttempt: typeof parsed.repairAttempt === 'number' ? parsed.repairAttempt : undefined,
     retryAttempt: typeof parsed.retryAttempt === 'number' ? parsed.retryAttempt : undefined,
     retryContext: readString(parsed.retryContext),
+    llmRetry: parsed.llmRetry === true,
   };
 }
 

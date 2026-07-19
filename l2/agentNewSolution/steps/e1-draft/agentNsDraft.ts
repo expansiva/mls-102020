@@ -3,6 +3,7 @@ import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
+import { nsLlmInfraFailureIntents } from '/_102020_/l2/agentNewSolution/helpers/nsLlmRetry.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import {
   NS_AGENT_FOLDER,
@@ -26,7 +27,7 @@ import {
   readNsPipeline,
   writeNsPipeline,
 } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
-import { writeNsTrace } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
+import { writeNsTrace, nsPromptChars } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
 import {
   NsE1DraftArtifact,
   prepareE1DraftArtifact,
@@ -133,6 +134,13 @@ async function afterPromptStep(
   try {
     const parsedArgs = parseArgs(step.prompt);
     if (parsedArgs.planId === 'e1-clarification') return handleInitialClarificationPayload(context, parentStep, step, hookSequential);
+    // P2: the e1-draft single call — retry once on an LLM-CALL failure (no payload) before failing.
+    const infraIntents = nsLlmInfraFailureIntents({
+      context, mutationParent: findMutableParentStep(context, parentStep), step, hookSequential,
+      agentName: AGENT_NAME, stepId: 'e1-draft',
+      retryPrompt: { previousModuleName: parsedArgs.previousModuleName }, alreadyRetried: parsedArgs.llmRetry === true,
+    });
+    if (infraIntents) return infraIntents;
     const output = extractE1Output(step.interaction?.payload?.[0]);
     if (output.status === 'failed') {
       return [updateStatus(context, parentStep, step, hookSequential, 'failed', output.trace.join('\n') || 'E1 draft returned failed')];
@@ -183,7 +191,7 @@ async function afterPromptStep(
       return intents;
     }
 
-    await writeNsTrace(artifact.moduleName, 'e1-draft', AGENT_NAME, attempt, { artifact, gate });
+    await writeNsTrace(artifact.moduleName, 'e1-draft', AGENT_NAME, attempt, { artifact, gate }, undefined, nsPromptChars(step));
 
     // E1 is NOT a human checkpoint (only 2 human interactions: clarification and journeys). A green
     // gate auto-approves the draft and the pipeline continues straight to E2 (e2-journeys dependsOn
@@ -670,6 +678,7 @@ function parseArgs(value: unknown): {
   blockingAnswers?: Record<string, unknown>;
   retryAttempt?: number;
   retryContext?: string;
+  llmRetry?: boolean;
 } {
   const parsed = parseMaybeJson(value);
   return isRecord(parsed) ? {
@@ -679,6 +688,7 @@ function parseArgs(value: unknown): {
     blockingAnswers: isRecord(parsed.blockingAnswers) ? parsed.blockingAnswers : undefined,
     retryAttempt: typeof parsed.retryAttempt === 'number' ? parsed.retryAttempt : undefined,
     retryContext: readString(parsed.retryContext),
+    llmRetry: parsed.llmRetry === true,
   } : {};
 }
 

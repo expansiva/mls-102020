@@ -110,8 +110,17 @@ Render page11 as a simple operational page:
 - plain forms for commandForm intentions
 - plain tables for queryList intentions
 - compact summary blocks for summary intentions
+- detail panels for detail intentions (a detailPanel organism): render the selected/loaded object's
+  fields as a read-only detail block beside or below its source list (master-detail), driven by the
+  detail query's object state; empty state when nothing is selected/loaded.
 - button rows for actionList intentions
 - simple status lists for workflowStatus intentions
+- content organisms (landing pages, organism.type 'content' or 'showcase'; intent hero/banner/richText/imageSet/ctaLink/showcase):
+  - hero/banner: a prominent title/subtitle block from the organism/intention msg keys; no data binding.
+  - richText: a paragraph/prose block from its msg key.
+  - imageSet/hero image: render an empty placeholder box (aspect-ratio container with a neutral surface token) — assets are out of scope this wave, never invent an image URL.
+  - showcase: a card grid fed by its query state (same queryResult reading rules as a list, but rendered as cards); read rows from the shared property's declared collection field.
+  - ctaLink: a navigation link/button. Bind it to the shared navigation action if one exists (JSDoc 'handler for action ...'); otherwise render an <a href> to the target route when the layout provides one, else a disabled button. Never fabricate a route.
 - for every command action, render a textual feedback region driven by its action status: success uses the success feedback key from the action's JSDoc ('feedback keys'); error uses the AppError text from the error state when present, otherwise the error feedback key. It must be dismissible and must never be only an icon or glyph.
 - represent loading consistently: query/list intentions show a placeholder or skeleton while their query state is loading; command buttons show a spinner/progress label and are disabled while their action is loading.
 - collapse repeated hierarchy: render the page title once as h1. A section/organism/intention title that resolves to the same message as its parent must not be rendered again. Use the next distinct title as h2, then render blocks without another repeated title.

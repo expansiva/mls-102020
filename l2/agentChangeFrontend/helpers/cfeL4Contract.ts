@@ -2,6 +2,8 @@
 
 import { clientInputPresentation, isClientBoundarySource, type ClientInputPresentation } from '/_102029_/l2/clientBoundarySources.js';
 
+export type { ClientInputPresentation } from '/_102029_/l2/clientBoundarySources.js';
+
 export type CfeFrontendOutputShape = 'array' | 'paginated' | 'object';
 export type CfeOperationInputSource =
   | 'userInput'
@@ -108,6 +110,223 @@ export function l4OperationOutputRefs(operationData: unknown): string[] {
   const operation = isRecord(operationData) ? operationData : {};
   const accessPattern = isRecord(operation.accessPattern) ? operation.accessPattern : {};
   return Array.isArray(accessPattern.output) ? accessPattern.output.map(readString).filter(Boolean) : [];
+}
+
+// ---- L4 v2: workspace bffCalls (the wire contract of a page) ----
+// A workspace declares bffCalls[] (projected views over 1..N operations) and sections[].organisms[]
+// (roles that reference a bffId via dataSource/action/attachTo). One bffCall => one page "command".
+// The precise TS types are the byte-copied l4 contract (l4/<module>/contracts/<ws>.<bffId>.ts); the
+// shapes below carry only what the deterministic pipeline needs (names, kind, required, presentation).
+
+export interface CfeBffCallField {
+  name: string;
+  from: string;
+  type?: string;
+  required?: boolean;
+  item?: { fields: CfeBffCallField[] };
+}
+
+export interface CfeBffCallOutput {
+  kind: CfeFrontendOutputShape;
+  fields: CfeBffCallField[];
+}
+
+export interface CfeBffCall {
+  bffId: string;
+  kind: 'query' | 'command';
+  route: string;
+  uses: string[];
+  input: CfeBffCallField[];
+  output: CfeBffCallOutput | null;
+}
+
+export type CfeOrganismRole =
+  | 'primarySurface'
+  | 'filterControl'
+  | 'detailPanel'
+  | 'contextualAction'
+  | 'batchAction'
+  | 'hero'
+  | 'banner'
+  | 'richText'
+  | 'imageSet'
+  | 'ctaLink'
+  | 'showcase';
+
+export interface CfeWorkspaceOrganism {
+  role: string;
+  dataSource?: string;   // query bffId (primarySurface / detailPanel / showcase)
+  action?: string;       // command bffId (contextualAction / batchAction)
+  attachTo?: string;     // query bffId whose inputs the filterControl drives
+  slice?: string;        // slice of a composed (uses N>1) output
+}
+
+export interface CfeWorkspaceSection {
+  sectionId: string;
+  intent: string;
+  organisms: CfeWorkspaceOrganism[];
+}
+
+const CONTENT_ORGANISM_ROLES = new Set<string>(['hero', 'banner', 'richText', 'imageSet', 'ctaLink', 'showcase']);
+
+export function isContentOrganismRole(role: unknown): boolean {
+  return CONTENT_ORGANISM_ROLES.has(readString(role));
+}
+
+function bffOutputKind(value: unknown): CfeFrontendOutputShape {
+  const kind = readString(value);
+  if (kind === 'paginated' || kind === 'object') return kind;
+  if (kind === 'list' || kind === 'array') return 'array';
+  return 'object';
+}
+
+function bffCallField(value: unknown): CfeBffCallField | null {
+  if (!isRecord(value)) return null;
+  const name = readString(value.name);
+  if (!name) return null;
+  const field: CfeBffCallField = { name, from: readString(value.from) };
+  const type = readString(value.type);
+  if (type) field.type = type;
+  if (value.required === true) field.required = true;
+  if (isRecord(value.item) && Array.isArray(value.item.fields)) {
+    const fields = value.item.fields.map(bffCallField).filter((f): f is CfeBffCallField => f !== null);
+    if (fields.length) field.item = { fields };
+  }
+  return field;
+}
+
+/** True when the workspace declares the l4 v2 bffCalls[] (vs the legacy operationIds-only shape). */
+export function hasWorkspaceBffCalls(data: unknown): boolean {
+  const workspace = isRecord(data) ? data : {};
+  return Array.isArray(workspace.bffCalls) && workspace.bffCalls.length > 0;
+}
+
+export function parseWorkspaceBffCalls(data: unknown): CfeBffCall[] {
+  const workspace = isRecord(data) ? data : {};
+  if (!Array.isArray(workspace.bffCalls)) return [];
+  return workspace.bffCalls
+    .filter(isRecord)
+    .map(raw => {
+      const bffId = readString(raw.bffId);
+      if (!bffId) return null;
+      const output = isRecord(raw.output)
+        ? { kind: bffOutputKind(raw.output.kind), fields: (Array.isArray(raw.output.fields) ? raw.output.fields : []).map(bffCallField).filter((f): f is CfeBffCallField => f !== null) }
+        : null;
+      const call: CfeBffCall = {
+        bffId,
+        kind: readString(raw.kind) === 'command' ? 'command' : 'query',
+        route: readString(raw.route),
+        uses: (Array.isArray(raw.uses) ? raw.uses : []).filter(isRecord).map(use => readString(use.operationId)).filter(Boolean),
+        input: (Array.isArray(raw.input) ? raw.input : []).map(bffCallField).filter((f): f is CfeBffCallField => f !== null),
+        output,
+      };
+      return call;
+    })
+    .filter((call): call is CfeBffCall => call !== null);
+}
+
+export function parseWorkspaceSections(data: unknown): CfeWorkspaceSection[] {
+  const workspace = isRecord(data) ? data : {};
+  if (!Array.isArray(workspace.sections)) return [];
+  return workspace.sections
+    .filter(isRecord)
+    .map((raw, index) => ({
+      sectionId: readString(raw.sectionId) || `section${index + 1}`,
+      intent: readString(raw.intent),
+      organisms: (Array.isArray(raw.organisms) ? raw.organisms : [])
+        .filter(isRecord)
+        .map(org => {
+          const organism: CfeWorkspaceOrganism = { role: readString(org.role) };
+          const dataSource = readString(org.dataSource);
+          const action = readString(org.action);
+          const attachTo = readString(org.attachTo);
+          const slice = readString(org.slice);
+          if (dataSource) organism.dataSource = dataSource;
+          if (action) organism.action = action;
+          if (attachTo) organism.attachTo = attachTo;
+          if (slice) organism.slice = slice;
+          return organism;
+        })
+        .filter(org => org.role),
+    }))
+    .filter(section => section.organisms.length > 0);
+}
+
+// ---- L4 v2: one bffCall => one page command (the shape prepared.commands entries share) ----
+// Resolves `required`/presentation for each input by tracing `from` = "<operationId>.<inputId>" back to
+// the referenced operation's inputs[]. Types stay the l4 contract's responsibility (byte-copied), so the
+// command only carries what shared state / page tests / layout context need.
+
+export interface CfeBffCommandInput {
+  name: string;
+  required: boolean;
+  presentation: ClientInputPresentation | null;
+  source: string;
+}
+
+export interface CfeBffCommandShape {
+  commandName: string;
+  kind: 'query' | 'command';
+  routeKey: string;
+  outputShape: CfeFrontendOutputShape;
+  canonicalOutputShape: { kind: CfeFrontendOutputShape; fields: { name: string; type: string; required: boolean; item?: { fields: unknown[] } }[] } | null;
+  input: CfeBffCommandInput[];
+  output: { name: string; type: string; required: boolean }[];
+}
+
+function fromOperationId(from: string): { operationId: string; path: string } {
+  const dot = from.indexOf('.');
+  if (dot < 0) return { operationId: '', path: from };
+  return { operationId: from.slice(0, dot), path: from.slice(dot + 1) };
+}
+
+/** Deterministic bffCall -> command shape. `operationInputs` maps operationId -> its l4 inputs[]. */
+export function bffCallCommandShape(bffCall: CfeBffCall, operationInputs: Map<string, CfeL4OperationInput[]>): CfeBffCommandShape {
+  const inputs: CfeBffCommandInput[] = bffCall.input.map(field => {
+    const ref = fromOperationId(field.from);
+    const opInput = (operationInputs.get(ref.operationId) || []).find(input => input.inputId === ref.path);
+    const source = opInput ? opInput.source : 'userInput';
+    return {
+      name: field.name,
+      required: field.required === true || (opInput ? opInput.required : false),
+      presentation: clientInputPresentation(source),
+      source,
+    };
+  });
+  const outputFields = bffCall.output ? bffCall.output.fields.map(field => ({ name: field.name, type: field.type || 'string', required: field.required !== false })) : [];
+  const outputKind: CfeFrontendOutputShape = bffCall.output ? bffCall.output.kind : 'object';
+  return {
+    commandName: bffCall.bffId,
+    kind: bffCall.kind,
+    routeKey: bffCall.route,
+    outputShape: outputKind,
+    canonicalOutputShape: bffCall.output ? { kind: outputKind, fields: outputFields } : null,
+    input: inputs,
+    output: outputFields,
+  };
+}
+
+// F3: byte-copy an l4 per-bffCall contract into l2. Bodies (Input/Output interfaces + `<bffId>Route`
+// const) are preserved verbatim; only the `/// <mls fileReference=…>` header is rewritten to the l2 path
+// (an l4 fileReference sitting in l2 would confuse enhancement/materialize) plus a "copied from l4" note.
+export function buildL2ContractCopy(rawL4Source: string, l2Ref: string, l4Ref: string): string {
+  const note = `// copied from l4 — do not edit (source: ${l4Ref})`;
+  const headerLine = `/// <mls fileReference="${l2Ref}" enhancement="_blank"/>`;
+  const lines = rawL4Source.replace(/\r\n/g, '\n').split('\n');
+  const headerIndex = lines.findIndex(line => line.includes('<mls fileReference='));
+  if (headerIndex >= 0) {
+    lines[headerIndex] = headerLine;
+    // Drop a blank line immediately after the header (if any) so the note sits directly under it.
+    const insertAt = headerIndex + 1;
+    lines.splice(insertAt, 0, note);
+    return `${lines.join('\n')}\n`.replace(/\n{3,}/g, '\n\n');
+  }
+  return `${headerLine}\n${note}\n\n${rawL4Source.replace(/\r\n/g, '\n').replace(/^\n+/, '')}`.replace(/\n{3,}/g, '\n\n');
+}
+
+/** True when a contract .ts was byte-copied from l4 (marked by buildL2ContractCopy) — preserved by cleanup. */
+export function isCopiedL4Contract(source: string): boolean {
+  return /copied from l4 — do not edit/.test(source);
 }
 
 function readString(value: unknown): string {

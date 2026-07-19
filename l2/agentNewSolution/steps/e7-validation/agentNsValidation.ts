@@ -145,17 +145,19 @@ async function runE7(
     const def = await readJsonDefs<NsE7OperationDef>(4, nsOperationsFolder(moduleName), operation.operationId);
     if (def) operationDefs.push(def);
   }
-  // D1 layout: the journey map is now split — navigation.defs.ts (landings/edges + workspaceIds index)
-  // + one file per workspace under workspaces/. Reassemble it into the shape the health report expects.
-  const navigation = await readJsonDefs<{ landings?: unknown[]; workspaceIds?: string[] }>(4, moduleName, 'navigation');
+  // P7 layout: the journey map is the siteMap.defs.ts index (workspaces id/landings/edges +
+  // workspaceIds) + one detail file per workspace under workspaces/. Fall back to navigation.defs.ts
+  // for pre-P7 modules (the writer stopped emitting it — this keeps old l4 layouts readable).
+  const siteMap = await readJsonDefs<{ landings?: unknown[]; workspaceIds?: string[] }>(4, moduleName, 'siteMap')
+    || await readJsonDefs<{ landings?: unknown[]; workspaceIds?: string[] }>(4, moduleName, 'navigation');
   let journeyMap: NsE7JourneyMap | null = null;
-  if (navigation) {
+  if (siteMap) {
     const workspaces: NsE7Workspace[] = [];
-    for (const workspaceId of navigation.workspaceIds || []) {
+    for (const workspaceId of siteMap.workspaceIds || []) {
       const workspace = await readJsonDefs<NsE7Workspace>(4, `${moduleName}/workspaces`, workspaceId);
       if (workspace) workspaces.push(workspace);
     }
-    journeyMap = { workspaces, landings: navigation.landings || [] };
+    journeyMap = { workspaces, landings: siteMap.landings || [] };
   }
 
   // 2. Mark the step running (with input hashes) and compute the health report.
@@ -191,7 +193,7 @@ async function runE7(
 
   // 4. Closing artifacts (same paths/formats Stage 2/3 already consume).
   const now = new Date().toISOString();
-  const journeyDefPath = `l4/${moduleName}/navigation.defs.ts`;
+  const journeyDefPath = `l4/${moduleName}/siteMap.defs.ts`;
   const moduleDefs = buildNsModuleDefs({ moduleName, model, entities, e1Draft, e2, e4ExternalRefs: e4.externalRefs, journeyDefPath });
   await writeDefsArtifact({ project, level: 4, folder: moduleName, shortName: 'module', extension: '.defs.ts' }, `${moduleName}Module`, moduleDefs);
 

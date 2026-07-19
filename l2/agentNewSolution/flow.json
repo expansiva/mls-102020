@@ -214,11 +214,11 @@
       "type": "agent",
       "phase": 2,
       "dependsOn": ["e5-done"],
-      "goal": "Single call over frozen workflows/operations + E2 journeys: consolidated navigation map - workspaces (page grouping unit read by agentChangeFrontend: workspaceId/title/actor/kind/entity/workflowId/operationIds/purpose), landings per actor and navigation edges (advisory for Stage 2).",
-      "input": ["e2-journeys.json", "e5-classification.json", "workflow/operation defs summaries"],
+      "goal": "P7 TWO-PHASE (newSolution_14): phase 1 'e6-journey-map' is a single LIGHT call producing the permanent SITE MAP (l4/{module}/siteMap.defs.ts — workspaces id/title/actors/kind/entity/workflowId/operationIds/purpose + landings + advisory edges; absorbs the old navigation.defs.ts). Phase 2 'e6-detail' is a parallel_dynamic fan-out (1 call per workspace) producing l4/{module}/workspaces/{workspaceId}.defs.ts (sections/organisms/bffCalls + sliceHash for incremental re-runs). 'e6-finalize' (no LLM) reassembles map+details and runs the authoritative validateE6Invariants + a repair round, then emits e6-done.",
+      "input": ["e2-journeys.json", "e5-classification.json", "operation defs summaries (light for phase 1; full projection vocab per-workspace for phase 2)"],
       "output": {
-        "result": "journey map",
-        "savedArtifact": ["l4/{module}/workspaces/{workspaceId}.defs.ts", "l4/{module}/navigation.defs.ts", "l4/{module}/pipeline/e6-journey-map.md"]
+        "result": "site map + per-workspace detail",
+        "savedArtifact": ["l4/{module}/siteMap.defs.ts", "l4/{module}/workspaces/{workspaceId}.defs.ts", "l4/{module}/journeys/{journeyId}.defs.ts", "l4/{module}/pipeline/e6-journey-map.md"]
       },
       "gate": {
         "file": "steps/e6-journey-map/gate.ts",

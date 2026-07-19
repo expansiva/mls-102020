@@ -32,6 +32,12 @@ user flow), `shared.actions`, `shared.states`, `shared.fieldCatalog` and the `te
 Use `renderVocabulary.displayHints` on intents/organisms (`displayHint`) to express richer patterns:
 master-detail, contextual transition buttons, card board, inline row command, summary-first.
 
+When the context includes `workspace` (l4 v2), its `sections[].organisms[]` are the AUTHORITATIVE
+skeleton: `primarySurface` is the section surface, `filterControl` folds into that surface's filters
+(never its own section), `detailPanel` is a master-detail panel, `contextualAction`/`batchAction` are
+row/toolbar commands on the surface, and `hero`/`banner`/`richText`/`imageSet`/`ctaLink`/`showcase` are
+landing content. Design a richer layout around these roles — never one section per query.
+
 ## Tool arguments
 
 - `status` is `"ok"`.

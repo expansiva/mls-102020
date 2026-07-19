@@ -273,6 +273,13 @@ export function buildPhase2Steps(plan: NsRootPlan): mls.msg.AIAgentStep[] {
   ];
 }
 
+// Single-call LLM steps (not the human clarifications, not the fan-out children) set
+// onFailure='wait_after_prompt' so the agent's afterPromptStep runs even when the LLM CALL itself
+// fails (no payload) — the step can then retry once instead of the framework killing the whole task
+// (P2/newSolution_14: task3 died at e6 on one transient LLM failure with no retry). The fan-out
+// children keep the default (their finalize repair round is the net).
+const NS_LLM_CALL_STEPS = new Set<NsPlanId>(['e1-draft', 'e2-journeys', 'e3-ontology', 'e4-actors-rules-refs', 'e5-workflows-operations', 'e6-journey-map']);
+
 function agentStep(
   planId: NsPlanId,
   agentName: string,
@@ -290,6 +297,7 @@ function agentStep(
     agentName,
     prompt: JSON.stringify({ planId }),
     rags: [],
+    ...(NS_LLM_CALL_STEPS.has(planId) ? { onFailure: 'wait_after_prompt' as const } : {}),
     planning: { planId, dependsOn, executionMode: 'sequential', executionHost: 'client' },
   } as mls.msg.AIAgentStep;
 }

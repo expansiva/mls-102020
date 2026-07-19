@@ -47,6 +47,7 @@ import {
   nsResultStepIntent,
   nsUpdateStatusIntent,
 } from '/_102020_/l2/agentNewSolution/helpers/nsSteps.js';
+import { nsLlmInfraFailureIntents } from '/_102020_/l2/agentNewSolution/helpers/nsLlmRetry.js';
 import {
   approveNsStep,
   createNsPipeline,
@@ -55,7 +56,7 @@ import {
   readNsPipeline,
   writeNsPipeline,
 } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
-import { writeNsTrace } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
+import { writeNsTrace, nsPromptChars, readLastNsTraceError } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
 import { NsE2JourneysArtifact } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/gate.js';
 import { NsE3EntityArtifact, NsE3ModelArtifact, toPascalCase } from '/_102020_/l2/agentNewSolution/steps/e3-ontology/gate.js';
 import {
@@ -105,6 +106,7 @@ interface E5Args {
   repairAttempt?: number;
   retryAttempt?: number;
   retryContext?: string;
+  llmRetry?: boolean;
 }
 
 // Local view of pipeline/e4-actors-rules.json — only the fields E5 consumes.
@@ -356,6 +358,15 @@ async function afterPromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   const mutationParent = nsFindMutableParentStep(context, parentStep);
   const parsedArgs = selectorToE5Args(nsParseSelector(step.prompt)) || parseE5Args(step.prompt);
+  // P2: only the classification is a single LLM call with no net (fan-out children have the finalize
+  // repair round; e5-operations-phase/e5-finalize make no LLM call). Retry the classification once.
+  if (parsedArgs.planId === STEP_ID) {
+    const infraIntents = nsLlmInfraFailureIntents({
+      context, mutationParent, step, hookSequential, agentName: AGENT_NAME, stepId: STEP_ID,
+      retryPrompt: { moduleName: parsedArgs.moduleName }, alreadyRetried: parsedArgs.llmRetry === true,
+    });
+    if (infraIntents) return infraIntents;
+  }
   try {
     if (parsedArgs.planId === 'e5-workflow') return await handleWorkflowResult(context, mutationParent, step, hookSequential, parsedArgs);
     if (parsedArgs.planId === 'e5-operation') return await handleOperationResult(context, mutationParent, step, hookSequential, parsedArgs);
@@ -438,7 +449,7 @@ async function handleClassificationResult(
     return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 
-  await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate });
+  await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate }, undefined, nsPromptChars(step));
   // Parallel fan-out (collab-messages parallel system, 5 slots, slots reused and deleted at the
   // end): one child per workflow, hosted under THIS step so its completion waits for the fan-out.
   // The 'e5-operations-phase' step unlocks when this step's planId completes — that is the
@@ -671,13 +682,17 @@ async function runE5Finalize(
     ];
   }
   if (missing.length > 0) {
-    // The reason each item is missing (its gate errors) lives in the per-item trace, NOT in this
-    // finalize step — point there so the failure is debuggable from the right place (user report:
-    // "o trace não está no step correto").
-    const where = missing
-      .map(item => `${item.itemId} → l4/${moduleName}/trace/${normalizeNsId(item.planId)}${toPascalCase(item.itemId)}-agentNsBehavior-*.json`)
-      .join('; ');
-    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `items missing after repair round (gate errors in each item's trace): ${where}`)];
+    // P5 (newSolution_14): the reason each item is missing (its gate errors) lives in the per-item
+    // trace, NOT in this finalize step. Inline the last recorded error of each missing item AND point
+    // at its trace path, so the failure is debuggable from the right place (user report: "o trace não
+    // está no step correto").
+    const lines = await Promise.all(missing.map(async item => {
+      const traceStepId = `${item.planId}-${item.itemId}`;
+      const error = await readLastNsTraceError(moduleName, traceStepId, AGENT_NAME);
+      const path = `l4/${moduleName}/trace/${normalizeNsId(item.planId)}${toPascalCase(item.itemId)}-agentNsBehavior-*.json`;
+      return `${item.itemId}: ${error || '(no trace error found)'} [${path}]`;
+    }));
+    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `items missing after repair round:\n${lines.join('\n')}`)];
   }
 
   // ── Deterministic reconciliation (102048 finding: workflow engulfment) ─────
@@ -885,6 +900,7 @@ function parseE5Args(value: unknown): E5Args {
     repairAttempt: typeof parsed.repairAttempt === 'number' ? parsed.repairAttempt : undefined,
     retryAttempt: typeof parsed.retryAttempt === 'number' ? parsed.retryAttempt : undefined,
     retryContext: readString(parsed.retryContext),
+    llmRetry: parsed.llmRetry === true,
   };
 }
 

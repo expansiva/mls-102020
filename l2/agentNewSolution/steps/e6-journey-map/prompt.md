@@ -45,17 +45,28 @@ The result must contain:
       real operation input); a FREE input with no operation field (pagination page/pageSize, a flag)
       declares an explicit `type` instead of `from`.
     - output?: { kind ("object"|"list"|"paginated"), fields: [{ name, from, type?, required?, item? }] }
-      — the PROJECTION. Every field's `from` traces to a real outputShape field: "<operationId>.<field>"
-      for top-level fields, "<operationId>.$items.<col>" for a collection column. select/rename/nest
-      ONLY — NO computed fields, aggregation or joins (that is a new usecase, not a projection). A
-      command with no projection is a 1:1 passthrough — declare it with just uses (no input/output).
+      — the PROJECTION. select/rename/nest ONLY — NO computed fields, aggregation or joins (that is a
+      new usecase, not a projection). A command with no projection is a 1:1 passthrough — declare it
+      with just uses (no input/output). SHAPE (critical — "lista de X" NUNCA é colunas planas no topo):
+      - "list"  → the fields ARE the item columns; each `from` = "<op>.$items.<col>". Emits Item[].
+        Ex.: `{ kind:"list", fields:[{name:"id",from:"browseX.$items.id"},{name:"name",from:"browseX.$items.name"}] }`
+      - "paginated" → an ENVELOPE: EXACTLY 1 field is `type:"array"` (the collection, `from:"<op>.$items"`,
+        with `item.fields` = the columns using "<op>.$items.<col>") + scalar envelope fields
+        (`total`/`page` via "<op>.total"). NEVER put `$items.<col>` at the top level.
+        Ex.: `{ kind:"paginated", fields:[ {name:"items",type:"array",from:"browseX.$items",item:{fields:[
+        {name:"id",from:"browseX.$items.id"}]}}, {name:"total",from:"browseX.total"} ] }`
+      - "object" → a flat record (getById/detail): each `from` = "<op>.<field>".
+      Top-level `from` uses the operation's `outputTopPaths` (field names, or `$items` for the whole
+      collection); an `item.fields` `from` uses `outputItemPaths` ("<op>.$items.<col>"). Copy the exact
+      names from the operation summary.
     - CRITICAL — every `from` MUST use a name that EXISTS in the operation summary. Each operation
-      summary lists `inputNames` (valid for input `from`, as "<op>.<inputName>") and `outputPaths`
-      (valid for output `from`, as "<op>.<path>"). COPY those names verbatim — do NOT invent, shorten
-      or rename them (e.g. if the outputPath is `$items.productId` write "op.$items.productId", never
-      "op.$items.id"; if the inputName is `petTypeId` never write `petType`). A `from` not present in
-      the summary is a gate error and forces a retry. If the page needs a field the operation does not
-      expose, that is a missing usecase — drop the field, do not fabricate the path.
+      summary lists `inputNames` (valid for input `from`, as "<op>.<inputName>"), `outputTopPaths`
+      (valid at the output TOP level) and `outputItemPaths` (valid INSIDE an item.fields block). COPY
+      those names verbatim — do NOT invent, shorten or rename them (e.g. write "op.$items.productId",
+      never "op.$items.id"; "op.petTypeId", never "op.petType"). A `from` not present in the summary,
+      or used at the wrong position (a `$items.<col>` at the top level), is a gate error and forces a
+      retry. If the page needs a field the operation does not expose, that is a missing usecase — drop
+      the field, do not fabricate the path.
       Do NOT declare `route` — it is derived (<module>.<workspaceId>.<bffId>). If you declare NO
       bffCalls, code synthesizes an identity call per organism (safe default); prefer declaring the
       projection when you know which columns the page shows.
@@ -65,14 +76,17 @@ The result must contain:
     A query organism sets `dataSource` = a query bffId; a command organism sets `action` = a command
     bffId. role classifies HOW it shows up:
     - "primarySurface"   — the section's main surface (a list/queue/board). EXACTLY 1 per section.
-      dataSource = its query bffCall.
+      dataSource = its query bffCall. A detailPanel belongs in the SAME section as the surface it
+      details — never give a detailPanel its own section (a section with a detailPanel and no
+      primarySurface fails the gate).
     - "filterControl"    — refines a surface (search/filter). MUST set attachTo = the query bffId it
       refines (its filters are that call's `input`).
-    - "contextualAction" — a command launched from the surface (action = a command bffId).
+    - "contextualAction" — a command launched from the surface (action = a command bffId). A delete of
+      a SINGLE selected row is a contextualAction, NOT a batchAction.
     - "detailPanel"      — a getById read shown as a side/detail panel (dataSource = a query bffCall
-      whose operation is getById).
-    - "batchAction"      — a command over a multi-selection or with no public input (action = a
-      command bffId).
+      whose operation is getById). Place it in the surface's section.
+    - "batchAction"      — a command over a MULTI-selection (accessPattern.selection = "multiple") or
+      with no public input (a bulk approve). A single-row command is a contextualAction, not this.
     - "navigationEntry"  — a link to a bffCall surfaced on ANOTHER workspace (dataSource = its bffId).
     When a surface consumes a COMPOSED call (uses N>1), set `slice` = the top-level output field it
     reads (e.g. dataSource "pageLoad", slice "catalog").

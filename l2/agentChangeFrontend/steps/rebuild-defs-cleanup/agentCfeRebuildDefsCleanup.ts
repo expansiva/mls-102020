@@ -10,10 +10,15 @@
 // the create run's modules and to the generated frontend folders (web/contracts, web/shared,
 // web/desktop/pageN, web/mobile/pageN). .defs.ts is preserved (distinct extension); non-frontend l2
 // files such as designSystem.ts / project.ts live at the l2 root folder and never match.
+//
+// F3 exception: the per-bffCall contract .ts under web/contracts is a DETERMINISTIC byte-copy of the
+// l4 contract of record (not an LLM-materialized artifact), so it is the source of truth for the wire
+// types and is PRESERVED (identified by the "copied from l4" marker). Only genuinely derived .ts go.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { deleteFile } from '/_102027_/l2/libStor.js';
 import { createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { isCopiedL4Contract } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
 
 interface CleanupArgs {
   modules: string[];
@@ -39,18 +44,29 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const project = mls.actualProject || 0;
     const deleted: string[] = [];
 
+    let keptContracts = 0;
+    let keptDefs = 0;
     for (const file of Object.values(mls.stor.files) as any[]) {
       if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
-      if (file.extension !== '.ts' && file.extension !== '.test.ts') continue;
       const folder = String(file.folder || '');
       if (!isGeneratedFrontendFolder(folder, modules)) continue;
+      if (file.extension === '.defs.ts') { keptDefs += 1; continue; }
+      if (file.extension !== '.ts' && file.extension !== '.test.ts') continue;
+      // Preserve the deterministic l4 contract byte-copies (F3): they are the wire contract of record.
+      if (file.extension === '.ts' && /\/web\/contracts$/.test(folder) && isCopiedL4Contract(String(await file.getContent()))) {
+        keptContracts += 1;
+        continue;
+      }
       await deleteFile(file);
       deleted.push(`_${project}_/l2/${folder}/${file.shortName}${file.extension}`);
     }
 
+    // F2: defs-only run — report the defs written and that nothing was materialized.
+    const keptNote = keptContracts > 0 ? `, kept ${keptContracts} l4 contract copy/-ies` : '';
+    const summaryLine = `rebuild-defs: ${keptDefs} defs gravados, 0 materializados (${deleted.length} .ts derivados removidos${keptNote})`;
     const trace = deleted.length === 0
-      ? 'rebuild-defs cleanup: no derived .ts/.test.ts to remove'
-      : `rebuild-defs cleanup: soft-deleted ${deleted.length} derived file(s), kept .defs.ts:\n${summarize(deleted)}`;
+      ? `${summaryLine} — nenhum .ts/.test.ts derivado para remover`
+      : `${summaryLine}:\n${summarize(deleted)}`;
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

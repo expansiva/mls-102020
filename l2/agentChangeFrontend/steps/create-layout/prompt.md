@@ -27,6 +27,15 @@ Every operation (every query and command actionId in `shared.actions`) must appe
 queryList intention lists that query's actionId in its `userActions`. A layout that omits an operation
 from all `userActions` is rejected.
 
+When the context includes `workspace` (l4 v2), its `sections[].organisms[]` are the AUTHORITATIVE
+skeleton — lay the page out around them, do NOT create one section per query. Map each organism `role`:
+`primarySurface` = the section's main surface (table/list/panel per its query output kind);
+`filterControl` = filters bound to the INPUTS of its `attachTo` query and folded INTO that surface, never
+a separate section; `detailPanel` = a detail/master-detail panel of its query; `contextualAction` /
+`batchAction` = a command action/form acting on the surface (row/toolbar action, not a stray form
+section); `hero`/`banner`/`richText`/`imageSet`/`ctaLink`/`showcase` = landing content. Each organism's
+`dataSource`/`action` is a bffCall id present in `shared.actions`.
+
 Use only `shared.states` and `shared.functions` for state and behavior. Every visible text uses a
 titleKey, labelKey or emptyKey declared in the flat `pageLayout.i18n` object. Every intention includes
 `fields`, `columns`, `filters`, `toolbar`, `rowActions` and `actions`, using `[]` when empty.

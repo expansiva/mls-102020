@@ -113,6 +113,7 @@ export function nsAgentStepIntent(
     dependsOn?: string[];
     prompt: Record<string, unknown>;
     status?: mls.msg.AIStepStatus;
+    onFailure?: mls.msg.AIAgentStep['onFailure'];
   },
 ): mls.msg.AgentIntentAddStep {
   return {
@@ -131,6 +132,7 @@ export function nsAgentStepIntent(
       agentName: args.agentName,
       prompt: JSON.stringify(args.prompt),
       rags: [],
+      ...(args.onFailure ? { onFailure: args.onFailure } : {}),
       planning: { planId: args.planId, dependsOn: args.dependsOn || [], executionMode: 'sequential', executionHost: 'client' },
     } as mls.msg.AIAgentStep,
   };

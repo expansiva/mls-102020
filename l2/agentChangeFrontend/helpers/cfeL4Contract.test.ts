@@ -8,6 +8,14 @@ import {
   isRuntimeResolvedInputSource,
   isUserFacingOperationInput,
   l4OperationInputs,
+  hasWorkspaceBffCalls,
+  parseWorkspaceBffCalls,
+  parseWorkspaceSections,
+  bffCallCommandShape,
+  isContentOrganismRole,
+  buildL2ContractCopy,
+  isCopiedL4Contract,
+  type CfeL4OperationInput,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
 import { buildMaterializeTypecheckTest, normalizeGeneratedCode } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
@@ -60,6 +68,117 @@ test('generated contract typecheck expects paginated query output when outputSha
   }]);
 
   assert.match(source || '', /type ExpectedCafeFlowListOrdersOutput = \{ items: ExpectedCafeFlowListOrdersOutputItem\[\]; total: number; page\?: number; pageSize\?: number; \};/);
+});
+
+// ---- L4 v2: workspace bffCalls -> page commands ----
+
+// Trimmed fixture mirroring l4/petShop/workspaces/catalog.defs.ts (a query surface + a detailPanel query).
+const CATALOG_WORKSPACE = {
+  workspaceId: 'catalog',
+  title: 'Catálogo de produtos',
+  actors: ['cliente'],
+  kind: 'operation',
+  bffCalls: [
+    {
+      bffId: 'catalogList',
+      kind: 'query',
+      uses: [{ operationId: 'browseCatalog' }],
+      input: [
+        { name: 'searchTerm', from: 'browseCatalog.searchTerm' },
+        { name: 'page', from: 'browseCatalog.page' },
+      ],
+      output: { kind: 'paginated', fields: [{ name: 'productId', from: 'browseCatalog.$items.productId' }, { name: 'name', from: 'browseCatalog.$items.name' }] },
+      route: 'petShop.catalog.catalogList',
+    },
+    {
+      bffId: 'productDetail',
+      kind: 'query',
+      uses: [{ operationId: 'viewProductDetail' }],
+      input: [{ name: 'productId', from: 'viewProductDetail.productId' }],
+      output: { kind: 'object', fields: [{ name: 'productId', from: 'viewProductDetail.productId' }] },
+      route: 'petShop.catalog.productDetail',
+    },
+  ],
+  sections: [
+    {
+      sectionId: 'catalog',
+      intent: 'Navegar, buscar e filtrar o catálogo',
+      organisms: [
+        { role: 'primarySurface', dataSource: 'catalogList' },
+        { role: 'filterControl', attachTo: 'catalogList' },
+        { role: 'detailPanel', dataSource: 'productDetail' },
+      ],
+    },
+  ],
+};
+
+test('hasWorkspaceBffCalls distinguishes l4 v2 workspaces from the legacy operationIds-only shape', () => {
+  assert.equal(hasWorkspaceBffCalls(CATALOG_WORKSPACE), true);
+  assert.equal(hasWorkspaceBffCalls({ workspaceId: 'legacy', operationIds: ['browseCatalog'] }), false);
+  assert.equal(hasWorkspaceBffCalls({ bffCalls: [] }), false);
+});
+
+test('parseWorkspaceBffCalls reads bffId/kind/route/uses/input/output projection', () => {
+  const calls = parseWorkspaceBffCalls(CATALOG_WORKSPACE);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].bffId, 'catalogList');
+  assert.equal(calls[0].kind, 'query');
+  assert.equal(calls[0].route, 'petShop.catalog.catalogList');
+  assert.deepEqual(calls[0].uses, ['browseCatalog']);
+  assert.equal(calls[0].output?.kind, 'paginated');
+  assert.deepEqual(calls[0].output?.fields.map(f => f.name), ['productId', 'name']);
+  assert.equal(calls[1].output?.kind, 'object');
+});
+
+test('parseWorkspaceSections keeps organism roles and their bffId references', () => {
+  const sections = parseWorkspaceSections(CATALOG_WORKSPACE);
+  assert.equal(sections.length, 1);
+  assert.deepEqual(sections[0].organisms.map(o => o.role), ['primarySurface', 'filterControl', 'detailPanel']);
+  assert.equal(sections[0].organisms[0].dataSource, 'catalogList');
+  assert.equal(sections[0].organisms[1].attachTo, 'catalogList');
+  assert.equal(sections[0].organisms[2].dataSource, 'productDetail');
+  assert.equal(isContentOrganismRole('showcase'), true);
+  assert.equal(isContentOrganismRole('primarySurface'), false);
+});
+
+test('bffCallCommandShape maps a query bffCall to a paginated command, resolving required from the operation', () => {
+  const operationInputs = new Map<string, CfeL4OperationInput[]>([
+    ['browseCatalog', [
+      { inputId: 'searchTerm', fieldRef: 'Product.name', required: false, source: 'userInput', description: '' },
+      { inputId: 'page', fieldRef: '', required: false, source: 'userInput', description: '' },
+    ]],
+  ]);
+  const [catalogList] = parseWorkspaceBffCalls(CATALOG_WORKSPACE);
+  const command = bffCallCommandShape(catalogList, operationInputs);
+  assert.equal(command.commandName, 'catalogList');
+  assert.equal(command.kind, 'query');
+  assert.equal(command.routeKey, 'petShop.catalog.catalogList');
+  assert.equal(command.outputShape, 'paginated');
+  assert.deepEqual(command.input.map(i => i.name), ['searchTerm', 'page']);
+  assert.equal(command.input[0].required, false);
+  assert.equal(command.input[0].presentation, 'form');
+  assert.deepEqual(command.output.map(o => o.name), ['productId', 'name']);
+  assert.equal(command.canonicalOutputShape?.kind, 'paginated');
+});
+
+test('buildL2ContractCopy rewrites the header for l2, keeps bodies verbatim, and marks the copy', () => {
+  const l4 = [
+    '/// <mls fileReference="_102049_/l4/petShop/contracts/catalog.catalogList.ts" enhancement="_blank"/>',
+    '',
+    '// GENERATED MECHANICALLY from _102049_/l4/petShop/workspaces/catalog.defs.ts — DO NOT EDIT.',
+    '',
+    'export interface CatalogListInput { searchTerm?: string; }',
+    "export const catalogListRoute = 'petShop.catalog.catalogList' as const;",
+    '',
+  ].join('\n');
+  const copy = buildL2ContractCopy(l4, '_102049_/l2/petShop/web/contracts/catalog.catalogList.ts', '_102049_/l4/petShop/contracts/catalog.catalogList.ts');
+  assert.match(copy, /<mls fileReference="_102049_\/l2\/petShop\/web\/contracts\/catalog\.catalogList\.ts"/);
+  assert.doesNotMatch(copy, /l4\/petShop\/contracts\/catalog\.catalogList\.ts" enhancement/); // no l4 ref in the header
+  assert.match(copy, /copied from l4 — do not edit \(source: _102049_\/l4\/petShop\/contracts\/catalog\.catalogList\.ts\)/);
+  assert.match(copy, /export interface CatalogListInput \{ searchTerm\?: string; \}/); // body verbatim
+  assert.match(copy, /export const catalogListRoute = 'petShop\.catalog\.catalogList' as const;/);
+  assert.equal(isCopiedL4Contract(copy), true);
+  assert.equal(isCopiedL4Contract(l4), false);
 });
 
 test('materialization fixes deterministic page seams without changing generated render logic', () => {

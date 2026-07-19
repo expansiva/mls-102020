@@ -267,7 +267,7 @@ export function computeNsHealthReport(input: NsE7HealthInput): NsE7HealthReport 
   // Journey coverage: every operation must be reachable from at least one workspace.
   const workspaces = input.journeyMap?.workspaces || [];
   if (!input.journeyMap) {
-    issues.push(errorIssue('journey.missing', `journey map defs not found (l4/${input.moduleName}/navigation.defs.ts + l4/${input.moduleName}/workspaces/)`));
+    issues.push(errorIssue('journey.missing', `journey map defs not found (l4/${input.moduleName}/siteMap.defs.ts + l4/${input.moduleName}/workspaces/)`));
   } else {
     const reachable = new Set<string>();
     for (const workspace of workspaces) {

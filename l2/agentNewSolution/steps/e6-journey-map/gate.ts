@@ -151,7 +151,9 @@ export interface NsE6OperationFact {
   hasPublicInput: boolean; // has an input whose source is userInput | selectedEntity | routeParam
   actors: string[]; // D6: the actors this operation serves (read tolerant of the old singular `actor`)
   inputNames: string[];  // A4.2: valid `from` suffixes for a bffCall.input entry (the operation inputIds)
-  outputPaths: string[]; // A4.2: valid `from` suffixes for a bffCall.output field (see collectNsOutputPaths)
+  // A4.2 + P1: valid `from` suffixes for a bffCall.output field, SPLIT BY POSITION (top vs item).
+  outputTopPaths: string[];
+  outputItemPaths: string[];
 }
 
 export interface E6GateContext {
@@ -168,13 +170,19 @@ export interface E6GateContext {
 // output-path derivation (A4.2) — shared with the fact builder in the agent
 // ---------------------------------------------------------------------------
 
-// The set of `from` suffixes (after the "<operationId>." prefix) a bffCall.output field may reference.
-//   list      -> $items, $items.<col>                 (the operation returns Item[])
-//   object    -> <field>                              (a flat record)
-//   paginated -> <field>, <arrayField>.$items.<col>,  plus the $items.<col> shorthand for the primary
-//                array field (matches the A2 projection style: browseX.$items.<col> + browseX.total)
-export function collectNsOutputPaths(shape: unknown): string[] {
-  const paths = new Set<string>();
+// P1 (newSolution_14): the valid `from` suffixes SPLIT BY POSITION, so the flat-list-mislabeled-as-
+// paginated shape is INEXPRESSIBLE (not merely detected). A projection field's `from` is validated
+// against `top` when the field sits at the bffCall output top level, and against `item` when it sits
+// inside an `item.fields` block (or is a top field of a `kind: list` bffCall — its fields ARE items).
+//   - top  = the operation's top-level output field NAMES, plus `$items` (the whole collection) when
+//            the op returns a collection. NEVER a bare `$items.<col>`.
+//   - item = the record columns: `$items.<col>` (primary-collection shorthand) and
+//            `<arrayField>.$items.<col>` (explicit).
+export interface NsE6OutputPathSets { top: string[]; item: string[] }
+
+export function collectNsOutputPathSets(shape: unknown): NsE6OutputPathSets {
+  const top = new Set<string>();
+  const item = new Set<string>();
   const record = isRecord(shape) ? shape : {};
   const kind = typeof record.kind === 'string' ? record.kind : '';
   const fields = Array.isArray(record.fields) ? record.fields.filter(isRecord) : [];
@@ -184,32 +192,38 @@ export function collectNsOutputPaths(shape: unknown): string[] {
     itemFields: isRecord(raw.item) && Array.isArray(raw.item.fields) ? raw.item.fields.filter(isRecord) : [],
   });
   if (kind === 'list') {
-    paths.add('$items');
+    // The operation returns Item[]: its top is the whole array; its columns are the fields.
+    top.add('$items');
     for (const raw of fields) {
       const f = asField(raw);
-      if (!f.name) continue;
-      paths.add(`$items.${f.name}`);
-      if (f.type === 'array') for (const sub of f.itemFields) if (typeof sub.name === 'string') paths.add(`$items.${f.name}.${sub.name}`);
+      if (f.name) item.add(`$items.${f.name}`);
     }
-    return [...paths];
+    return { top: [...top], item: [...item] };
   }
+  // object | paginated: top field names + $items (the primary collection); columns live under item.
   let primaryArrayItems: string[] | null = null;
   for (const raw of fields) {
     const f = asField(raw);
     if (!f.name) continue;
-    paths.add(f.name);
+    top.add(f.name);
     if (f.type === 'array' && f.itemFields.length) {
-      paths.add(`${f.name}.$items`);
       const subNames = f.itemFields.map(sub => (typeof sub.name === 'string' ? sub.name : '')).filter(Boolean);
-      for (const sub of subNames) paths.add(`${f.name}.$items.${sub}`);
+      for (const sub of subNames) item.add(`${f.name}.$items.${sub}`);
       if (!primaryArrayItems) primaryArrayItems = subNames;
     }
   }
   if (primaryArrayItems) {
-    paths.add('$items');
-    for (const sub of primaryArrayItems) paths.add(`$items.${sub}`);
+    top.add('$items'); // the whole primary collection (referenced by the bffCall's array field)
+    for (const sub of primaryArrayItems) item.add(`$items.${sub}`);
   }
-  return [...paths];
+  return { top: [...top], item: [...item] };
+}
+
+// Combined set (top ∪ item) — used only where position does not matter (the prompt vocabulary shown to
+// the LLM). The gate validates position-aware via collectNsOutputPathSets.
+export function collectNsOutputPaths(shape: unknown): string[] {
+  const { top, item } = collectNsOutputPathSets(shape);
+  return [...new Set([...top, ...item])];
 }
 
 // ---------------------------------------------------------------------------
@@ -535,35 +549,84 @@ function validateBffCall(
       issues.push(errorIssue('bff.input.from.unknown', `${label}: input "${entry.name}" from "${entry.from}" is not an input of ${resolved.op}`, workspace.workspaceId));
     }
   }
-  if (call.output) validateBffOutputFields(label, call.output.fields, usesOps, context, workspace.workspaceId, issues);
+  if (call.output) validateBffOutput(label, call.output, usesOps, context, workspace.workspaceId, issues);
 }
 
-function validateBffOutputFields(
+function isArrayField(field: NsE6BffField): boolean {
+  return field.type === 'array' && !!field.item && (field.item.fields?.length || 0) > 0;
+}
+
+// P1: validate the projected output BY SHAPE + BY POSITION.
+//   list      -> fields ARE item columns (no array/envelope allowed at top); each from is an item path.
+//   paginated -> EXACTLY 1 top array field (the collection) + scalar envelope (total/page); the array's
+//                from is a top path ($items), its item.fields are item paths.
+//   object    -> flat record; a nested array field's item.fields are item paths.
+function validateBffOutput(
   label: string,
-  fields: NsE6BffField[],
+  output: NsE6BffOutput,
   usesOps: Set<string>,
   context: E6GateContext,
   workspaceId: string,
   issues: NsGateIssue[],
 ): void {
-  for (const field of fields) {
-    if (!field.from) {
-      // A4.2: a projected field with no `from` invents data — forbidden.
-      issues.push(errorIssue('bff.field.from.missing', `${label}: output field "${field.name}" has no from`, workspaceId));
-    } else {
-      const resolved = resolveFrom(field.from);
-      if (!resolved || !usesOps.has(resolved.op)) {
-        issues.push(errorIssue('bff.output.from.unknownOp', `${label}: output field "${field.name}" from "${field.from}" does not reference an operation in uses`, workspaceId));
-      } else {
-        const fact = context.operationFacts[resolved.op];
-        if (!fact) {
-          issues.push(errorIssue('bff.fact.missing', `${label}: no operation def facts for ${resolved.op}`, workspaceId));
-        } else if (!fact.outputPaths.includes(resolved.rest)) {
-          issues.push(errorIssue('bff.output.from.unknown', `${label}: output field "${field.name}" from "${field.from}" does not resolve to an outputShape field of ${resolved.op}`, workspaceId));
-        }
+  const fields = output.fields || [];
+  if (output.kind === 'list') {
+    // P1.2: a list's fields are the item columns — an array/envelope field here is the flat-paginated
+    // mistake wearing a different hat.
+    for (const field of fields) {
+      if (isArrayField(field)) {
+        issues.push(errorIssue('bff.output.list.hasEnvelope', `${label}: output kind "list" field "${field.name}" is an array/envelope — a list's fields must be the item columns (use kind "paginated" for an { items[], total } envelope)`, workspaceId));
       }
+      validateBffOutputField(label, field, 'item', usesOps, context, workspaceId, issues);
     }
-    if (field.item?.fields?.length) validateBffOutputFields(label, field.item.fields, usesOps, context, workspaceId, issues);
+    return;
+  }
+  if (output.kind === 'paginated') {
+    const arrayFields = fields.filter(isArrayField);
+    if (arrayFields.length !== 1) {
+      issues.push(errorIssue('bff.output.paginated.noArray', `${label}: output kind "paginated" must have EXACTLY 1 array field (the collection) plus scalar envelope fields (total/page); found ${arrayFields.length} array field(s) — a flat list of item columns is not a paginated output`, workspaceId));
+    }
+    for (const field of fields) {
+      validateBffOutputField(label, field, 'top', usesOps, context, workspaceId, issues);
+      if (isArrayField(field)) for (const sub of field.item!.fields) validateBffOutputField(label, sub, 'item', usesOps, context, workspaceId, issues);
+    }
+    return;
+  }
+  // object
+  for (const field of fields) {
+    validateBffOutputField(label, field, 'top', usesOps, context, workspaceId, issues);
+    if (isArrayField(field)) for (const sub of field.item!.fields) validateBffOutputField(label, sub, 'item', usesOps, context, workspaceId, issues);
+  }
+}
+
+// A4.2 + P1.1: a field's `from` must resolve to an operation in `uses` and to a path VALID AT ITS
+// POSITION (top vs item) — so `<op>.$items.<col>` at the top level is inexpressible, not just detected.
+function validateBffOutputField(
+  label: string,
+  field: NsE6BffField,
+  position: 'top' | 'item',
+  usesOps: Set<string>,
+  context: E6GateContext,
+  workspaceId: string,
+  issues: NsGateIssue[],
+): void {
+  if (!field.from) {
+    issues.push(errorIssue('bff.field.from.missing', `${label}: output field "${field.name}" has no from`, workspaceId));
+    return;
+  }
+  const resolved = resolveFrom(field.from);
+  if (!resolved || !usesOps.has(resolved.op)) {
+    issues.push(errorIssue('bff.output.from.unknownOp', `${label}: output field "${field.name}" from "${field.from}" does not reference an operation in uses`, workspaceId));
+    return;
+  }
+  const fact = context.operationFacts[resolved.op];
+  if (!fact) {
+    issues.push(errorIssue('bff.fact.missing', `${label}: no operation def facts for ${resolved.op}`, workspaceId));
+    return;
+  }
+  const pool = position === 'item' ? fact.outputItemPaths : fact.outputTopPaths;
+  if (!pool.includes(resolved.rest)) {
+    issues.push(errorIssue('bff.output.from.unknown', `${label}: output field "${field.name}" from "${field.from}" is not a valid ${position}-level path of ${resolved.op} (a $items.<col> column belongs inside an item.fields block, not at the output top level)`, workspaceId));
   }
 }
 

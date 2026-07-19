@@ -34,7 +34,10 @@ The result must contain:
   'inactivate' — records leave the base via a lifecycle state: set inactivationState to a REAL
   statusEnum value of the entity; 'immutable' — records never leave: set reason with the business
   justification). An entity with standalone writes and no entry blocks the gate: how records leave
-  the base is an explicit business decision, never a silent omission.
+  the base is an explicit business decision, never a silent omission. This INCLUDES child/line-item
+  entities written by a workflow or a parent operation (e.g. a `ReservationItem` created with the
+  reservation): if ANY operation writes it, it needs an entry — declare `{ entity: "ReservationItem",
+  deletionPolicy: "delete" }` (or inactivate/immutable) even when there is no standalone CRUD page for it.
 
 How to classify (be COMPLETE but MINIMAL):
 1. Every non-never E2 feature must be covered by at least one workflow or operation featureRefs.

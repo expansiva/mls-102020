@@ -4,6 +4,7 @@ import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
+import { nsLlmInfraFailureIntents } from '/_102020_/l2/agentNewSolution/helpers/nsLlmRetry.js';
 import {
   NS_AGENT_FOLDER,
   isRecord,
@@ -26,7 +27,7 @@ import {
   readNsPipeline,
   writeNsPipeline,
 } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
-import { writeNsTrace } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
+import { writeNsTrace, nsPromptChars } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
 import { NsE1DraftArtifact } from '/_102020_/l2/agentNewSolution/steps/e1-draft/gate.js';
 import {
   NsE2JourneysArtifact,
@@ -134,6 +135,13 @@ async function afterPromptStep(
     if (parsedArgs.planId === 'checkpoint-journeys') {
       return handleCheckpointPromptResult(context, parentStep, step, hookSequential);
     }
+    // P2: the e2-journeys single call — retry once on an LLM-CALL failure (no payload) before failing.
+    const infraIntents = nsLlmInfraFailureIntents({
+      context, mutationParent: findMutableParentStep(context, parentStep), step, hookSequential,
+      agentName: AGENT_NAME, stepId: 'e2-journeys',
+      retryPrompt: { moduleName: parsedArgs.moduleName }, alreadyRetried: parsedArgs.llmRetry === true,
+    });
+    if (infraIntents) return infraIntents;
 
     const output = extractE2Output(step.interaction?.payload?.[0]);
     if (output.status === 'failed') {
@@ -192,7 +200,7 @@ async function afterPromptStep(
       return intents;
     }
 
-    await writeNsTrace(artifact.moduleName, 'e2-journeys', AGENT_NAME, attempt, { artifact, gate });
+    await writeNsTrace(artifact.moduleName, 'e2-journeys', AGENT_NAME, attempt, { artifact, gate }, undefined, nsPromptChars(step));
     if (parsedArgs.afterAdjustment) {
       await appendE2AuditEvent(artifact.moduleName, {
         eventId: createAuditEventId('adjustment-generated'),
@@ -882,6 +890,7 @@ function parseArgs(value: unknown): {
   retryAttempt?: number;
   retryContext?: string;
   reviewPayload?: unknown;
+  llmRetry?: boolean;
 } {
   const parsed = parseMaybeJson(value);
   return isRecord(parsed) ? {
@@ -892,6 +901,7 @@ function parseArgs(value: unknown): {
     retryAttempt: typeof parsed.retryAttempt === 'number' ? parsed.retryAttempt : undefined,
     retryContext: readString(parsed.retryContext),
     reviewPayload: parsed.reviewPayload,
+    llmRetry: parsed.llmRetry === true,
   } : {};
 }
 

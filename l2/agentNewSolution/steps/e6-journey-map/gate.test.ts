@@ -8,6 +8,7 @@ import { dirname, resolve } from 'node:path';
 import { runNsGate } from '/_102020_/l2/agentNewSolution/helpers/nsGate.js';
 import {
   collectNsOutputPaths,
+  collectNsOutputPathSets,
   deriveE6BffRoutes,
   deriveE6WorkspaceKinds,
   repairE6WorkflowIds,
@@ -22,10 +23,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const mapSchema = JSON.parse(readFileSync(resolve(here, '../../schemas/e6-journey-map.schema.json'), 'utf8')) as Record<string, unknown>;
 
 const operationFacts: Record<string, NsE6OperationFact> = {
-  createOrder: { accessPatternKind: 'commandInput', selection: 'none', opKind: 'create', hasPublicInput: true, actors: ['attendant'], inputNames: [], outputPaths: [] },
-  sendOrderToKitchen: { accessPatternKind: 'commandInput', selection: 'single', opKind: 'update', hasPublicInput: false, actors: ['attendant'], inputNames: [], outputPaths: [] },
-  markOrderReady: { accessPatternKind: 'commandInput', selection: 'multiple', opKind: 'update', hasPublicInput: false, actors: ['kitchen'], inputNames: [], outputPaths: [] },
-  manageMenuItem: { accessPatternKind: 'list', selection: 'multiple', opKind: 'update', hasPublicInput: false, actors: ['manager'], inputNames: [], outputPaths: [] },
+  createOrder: { accessPatternKind: 'commandInput', selection: 'none', opKind: 'create', hasPublicInput: true, actors: ['attendant'], inputNames: [], outputTopPaths: [], outputItemPaths: [] },
+  sendOrderToKitchen: { accessPatternKind: 'commandInput', selection: 'single', opKind: 'update', hasPublicInput: false, actors: ['attendant'], inputNames: [], outputTopPaths: [], outputItemPaths: [] },
+  markOrderReady: { accessPatternKind: 'commandInput', selection: 'multiple', opKind: 'update', hasPublicInput: false, actors: ['kitchen'], inputNames: [], outputTopPaths: [], outputItemPaths: [] },
+  manageMenuItem: { accessPatternKind: 'list', selection: 'multiple', opKind: 'update', hasPublicInput: false, actors: ['manager'], inputNames: [], outputTopPaths: [], outputItemPaths: [] },
 };
 
 const gateContext: E6GateContext = {
@@ -267,7 +268,7 @@ function landingContext(showcaseOpKind: NsE6OperationFact['opKind'] = 'query'): 
     entityIds: ['Highlight'],
     nowCapabilityActorIds: [],
     operationFacts: {
-      viewHighlights: { accessPatternKind: 'list', selection: 'none', opKind: showcaseOpKind, hasPublicInput: false, actors: ['public'], inputNames: [], outputPaths: [] },
+      viewHighlights: { accessPatternKind: 'list', selection: 'none', opKind: showcaseOpKind, hasPublicInput: false, actors: ['public'], inputNames: [], outputTopPaths: [], outputItemPaths: [] },
     },
   };
 }
@@ -410,27 +411,33 @@ void test('e6 workspace kinds are derived deterministically from the classificat
 });
 
 // ── bffCalls: explicit projection contracts (A4.1/A4.2/A4.5/A4.5b) + route derivation (N3) ─────────
+const paginatedProductsShape = { kind: 'paginated', fields: [
+  { name: 'products', type: 'array', item: { fields: [{ name: 'productId' }, { name: 'name' }, { name: 'price' }] } },
+  { name: 'total' },
+] };
 const bffFacts: Record<string, NsE6OperationFact> = {
   browseProducts: {
     accessPatternKind: 'list', selection: 'single', opKind: 'query', hasPublicInput: true, actors: ['cliente'],
     inputNames: ['searchTerm', 'productCategoryId'],
-    // paginated outputShape (products[] + total) — the $items shorthand + top-level total both resolve.
-    outputPaths: collectNsOutputPaths({ kind: 'paginated', fields: [
-      { name: 'products', type: 'array', item: { fields: [{ name: 'productId' }, { name: 'name' }, { name: 'price' }] } },
-      { name: 'total' },
-    ] }),
+    // paginated outputShape (products[] + total): top = products/total/$items; item = $items.<col>.
+    outputTopPaths: collectNsOutputPathSets(paginatedProductsShape).top,
+    outputItemPaths: collectNsOutputPathSets(paginatedProductsShape).item,
   },
   viewProduct: {
     accessPatternKind: 'getById', selection: 'none', opKind: 'view', hasPublicInput: true, actors: ['cliente'],
-    inputNames: ['productId'], outputPaths: collectNsOutputPaths({ kind: 'object', fields: [{ name: 'productId' }, { name: 'description' }] }),
+    inputNames: ['productId'],
+    outputTopPaths: collectNsOutputPathSets({ kind: 'object', fields: [{ name: 'productId' }, { name: 'description' }] }).top,
+    outputItemPaths: collectNsOutputPathSets({ kind: 'object', fields: [{ name: 'productId' }, { name: 'description' }] }).item,
   },
   reserveProduct: {
     accessPatternKind: 'commandInput', selection: 'none', opKind: 'create', hasPublicInput: true, actors: ['cliente'],
-    inputNames: ['productId'], outputPaths: [],
+    inputNames: ['productId'], outputTopPaths: [], outputItemPaths: [],
   },
   viewHighlights: {
     accessPatternKind: 'list', selection: 'none', opKind: 'query', hasPublicInput: false, actors: ['cliente'],
-    inputNames: [], outputPaths: collectNsOutputPaths({ kind: 'list', fields: [{ name: 'highlightId' }, { name: 'label' }] }),
+    inputNames: [],
+    outputTopPaths: collectNsOutputPathSets({ kind: 'list', fields: [{ name: 'highlightId' }, { name: 'label' }] }).top,
+    outputItemPaths: collectNsOutputPathSets({ kind: 'list', fields: [{ name: 'highlightId' }, { name: 'label' }] }).item,
   },
 };
 
@@ -621,4 +628,50 @@ void test('e6 gate blocks a duplicated bffId within a workspace (A4.1)', async (
   const gate = await bffGate(map);
   assert.equal(gate.ok, false);
   assert.ok(gate.errors.some(issue => issue.code === 'bff.id.duplicate'));
+});
+
+// ── P1 (newSolution_14): list/paginated shape — the flat-list-as-paginated defect ─────────────────
+void test('e6 gate blocks a paginated output with no array field, and $items.<col> at the top level (P1)', async () => {
+  // The petShop defect: kind paginated but flat item columns at the top (no { products[], total }).
+  const map = bffMap();
+  map.workspaces[0].bffCalls[0].output = { kind: 'paginated', fields: [
+    { name: 'productId', from: 'browseProducts.$items.productId' },
+    { name: 'name', from: 'browseProducts.$items.name' },
+  ] };
+  const gate = await bffGate(map);
+  assert.equal(gate.ok, false);
+  assert.ok(gate.errors.some(issue => issue.code === 'bff.output.paginated.noArray'), 'shape gate');
+  assert.ok(gate.errors.some(issue => issue.code === 'bff.output.from.unknown'), '$items.<col> is inexpressible at top');
+});
+
+void test('e6 gate blocks a list output that carries an array/envelope field (P1)', async () => {
+  const map = bffMap();
+  map.workspaces[0].bffCalls[0].output = { kind: 'list', fields: [
+    { name: 'products', type: 'array', from: 'browseProducts.$items', item: { fields: [
+      { name: 'productId', from: 'browseProducts.$items.productId' },
+    ] } },
+  ] };
+  const gate = await bffGate(map);
+  assert.equal(gate.ok, false);
+  assert.ok(gate.errors.some(issue => issue.code === 'bff.output.list.hasEnvelope'));
+});
+
+void test('e6 gate passes a well-formed list output (fields are the item columns) (P1)', async () => {
+  const map = bffMap();
+  map.workspaces[0].bffCalls[0].output = { kind: 'list', fields: [
+    { name: 'productId', from: 'browseProducts.$items.productId' },
+    { name: 'name', from: 'browseProducts.$items.name' },
+  ] };
+  const gate = await bffGate(map);
+  assert.equal(gate.ok, true, gate.errors.map(issue => issue.message).join('; '));
+});
+
+void test('collectNsOutputPathSets splits top (envelope + $items) from item (columns)', () => {
+  const sets = collectNsOutputPathSets({ kind: 'paginated', fields: [
+    { name: 'products', type: 'array', item: { fields: [{ name: 'productId' }, { name: 'name' }] } },
+    { name: 'total' },
+  ] });
+  assert.ok(sets.top.includes('products') && sets.top.includes('total') && sets.top.includes('$items'));
+  assert.ok(!sets.top.includes('$items.productId'), '$items.<col> is NOT a top path (P1)');
+  assert.ok(sets.item.includes('$items.productId') && sets.item.includes('products.$items.name'));
 });

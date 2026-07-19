@@ -100,6 +100,12 @@ Prefer these patterns over the baseline stacked-cards-and-forms shape:
 - **inline-row-command**: a one-decision command executed directly on a list row.
 - **summary-first**: when pageObjective.informationHierarchy leads with numbers/status, render a
   compact summary/stat row before the detail.
+- **landing / content organisms** (organism.type 'content'/'showcase'; intent hero/banner/richText/
+  imageSet/ctaLink/showcase): a marketing/landing composition — a hero (title/subtitle from msg keys) at
+  the top, a showcase card grid fed by its query state (same reading rules as a list, rendered as cards),
+  and a ctaLink bound to the shared navigation handler (or an <a href> to the layout-provided target
+  route, else a disabled button — never a fabricated route). imageSet/hero images are neutral placeholder
+  boxes (assets are out of scope this wave); never invent an image URL.
 
 Respect pageObjective.antiPatterns: if it lists "separate transition form" or "status select", you
 must not emit them. Order organisms by pageObjective.informationHierarchy / primaryDecision.

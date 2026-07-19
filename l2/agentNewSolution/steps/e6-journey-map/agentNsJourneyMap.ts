@@ -34,9 +34,12 @@ import {
 import {
   nsAgentStepIntent,
   nsFindMutableParentStep,
+  nsParallelStepIntent,
+  nsParseSelector,
   nsResultStepIntent,
   nsUpdateStatusIntent,
 } from '/_102020_/l2/agentNewSolution/helpers/nsSteps.js';
+import { nsLlmInfraFailureIntents } from '/_102020_/l2/agentNewSolution/helpers/nsLlmRetry.js';
 import {
   approveNsStep,
   createNsPipeline,
@@ -45,26 +48,46 @@ import {
   readNsPipeline,
   writeNsPipeline,
 } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
-import { writeNsTrace } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
+import { writeNsTrace, nsPromptChars } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
 import { readActors } from '/_102020_/l2/agentNewSolution/helpers/nsActors.js';
 import { NsE2JourneysArtifact } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/gate.js';
 import { NsE3ModelArtifact } from '/_102020_/l2/agentNewSolution/steps/e3-ontology/gate.js';
 import {
   E6GateContext,
+  E6_JOURNEY_MAP_NOTE,
+  E6_JOURNEY_MAP_SCHEMA_VERSION,
+  NsE6JourneyMapArtifact,
   NsE6OperationFact,
-  collectNsOutputPaths,
+  NsE6Workspace,
+  collectNsOutputPathSets,
   deriveE6BffRoutes,
-  deriveE6WorkspaceKinds,
   prepareE6JourneyMap,
   renderE6Markdown,
-  repairE6WorkflowIds,
   validateE6Invariants,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/gate.js';
+import {
+  E6SiteMapGateContext,
+  NsE6SiteMapArtifact,
+  computeE6WorkspaceSliceHash,
+  deriveE6SiteMapKinds,
+  prepareE6SiteMap,
+  validateE6SiteMap,
+  validateE6WorkspaceEquality,
+} from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/siteMap.js';
+import {
+  deriveE6Journeys,
+  readE6JourneySources,
+  validateE6Journeys,
+} from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/journeys.js';
 
 const AGENT_NAME = 'agentNsJourneyMap';
-const STEP_ID = 'e6-journey-map';
+const STEP_ID = 'e6-journey-map';        // phase 1: the site map (single call)
+const DETAIL_PHASE_PLAN = 'e6-detail-phase'; // no-LLM barrier that HOSTS the phase-2 fan-out (mirrors e5-operations-phase)
+const DETAIL_PLAN = 'e6-detail';         // phase 2: one parallel child per workspace
+const FINALIZE_PLAN = 'e6-finalize';     // no-LLM barrier: reassemble + authoritative gate
 const DONE_ANCHOR = 'e6-done';
-const MAP_TOOL = 'submitNsJourneyMap';
+const SITEMAP_TOOL = 'submitNsSiteMap';
+const DETAIL_TOOL = 'submitNsWorkspaceDetail';
 const STEP_FOLDER = `${NS_AGENT_FOLDER}/steps/e6-journey-map`;
 
 export function createAgent(): IAgentAsync {
@@ -82,8 +105,11 @@ export function createAgent(): IAgentAsync {
 interface E6Args {
   planId?: string;
   moduleName?: string;
+  workspaceId?: string;
   retryAttempt?: number;
+  repairAttempt?: number;
   retryContext?: string;
+  llmRetry?: boolean;
 }
 
 // Local view of pipeline/e5-classification.json (E5 owns the canonical types).
@@ -121,10 +147,13 @@ interface NsE6BehaviorSummary {
   pageId: string;
   storySteps: string[];
   // Operations only: the EXACT vocabulary a bffCall projection may reference (so the LLM writes real
-  // `from` paths, not guessed field names). inputNames -> `from: <op>.<inputId>`; outputPaths ->
-  // `from: <op>.<path>` (e.g. $items.<col>, total). Same set the A4.2 gate validates against.
+  // `from` paths, not guessed field names). inputNames -> `from: <op>.<inputId>`. Output paths are split
+  // by POSITION (P1): outputTopPaths go at the bffCall output TOP level (envelope: total/page, or $items
+  // = the whole collection); outputItemPaths go INSIDE an item.fields block (the record columns,
+  // `$items.<col>`). Same sets the A4.2/P1 gate validates against.
   inputNames?: string[];
-  outputPaths?: string[];
+  outputTopPaths?: string[];
+  outputItemPaths?: string[];
 }
 
 interface E6Inputs {
@@ -145,11 +174,17 @@ async function beforePromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   if (!context.task) throw new Error(`[${AGENT_NAME}] task invalid`);
   const hookArgs = args || step.prompt || JSON.stringify({ planId: STEP_ID });
-  const parsedArgs = parseE6Args(hookArgs);
-  return [await buildMapPrompt(context, parentStep, hookSequential, parsedArgs, hookArgs)];
+  // Parallel detail children receive the compact selector 'workspace:<workspaceId>'.
+  const selector = nsParseSelector(hookArgs);
+  const parsedArgs = selector?.kind === 'workspace' ? { planId: DETAIL_PLAN, workspaceId: selector.id } : parseE6Args(hookArgs);
+  if (parsedArgs.planId === DETAIL_PLAN) return [await buildDetailPrompt(context, parentStep, hookSequential, parsedArgs, hookArgs)];
+  if (parsedArgs.planId === DETAIL_PHASE_PLAN) return runE6DetailPhase(context, parentStep, step, hookSequential, parsedArgs);
+  if (parsedArgs.planId === FINALIZE_PLAN) return runE6Finalize(context, parentStep, step, hookSequential, parsedArgs);
+  return [await buildSiteMapPrompt(context, parentStep, hookSequential, parsedArgs, hookArgs)];
 }
 
-async function buildMapPrompt(
+// ── Phase 1: the SITE MAP (light, global) ──────────────────────────────────
+async function buildSiteMapPrompt(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
   hookSequential: number,
@@ -157,22 +192,15 @@ async function buildMapPrompt(
   hookArgs: string,
 ): Promise<mls.msg.AgentIntentPromptReady> {
   const inputs = await loadE6Inputs(parsedArgs.moduleName);
-  const workflowSummaries = await summarizeWorkflowDefs(inputs.moduleName, inputs.classification);
-  const operationSummaries = await summarizeOperationDefs(inputs.moduleName, inputs.classification);
-
-  const schema = await readE6Schema();
-  const prompt = await readNsText('steps/e6-journey-map', 'prompt', '.md', true);
+  const operationSummaries = await summarizeOperationsLight(inputs.moduleName, inputs.classification);
+  const schema = await readNsSchema('e6-sitemap.schema');
+  const prompt = await readNsText('steps/e6-journey-map', 'promptSiteMap', '.md', true);
   const journeysView = buildJourneysView(inputs.journeys);
   const humanPrompt = [
     '## E5 classification (frozen, primary source)',
     JSON.stringify(inputs.classification, null, 2),
     '',
-    '## Saved workflow definitions (summaries)',
-    JSON.stringify(workflowSummaries, null, 2),
-    '',
-    '## Saved operation definitions (summaries)',
-    '## For each operation: `inputNames` and `outputPaths` are the ONLY valid names for bffCall `from`',
-    '## paths — copy them verbatim ("<op>.<inputName>" / "<op>.<outputPath>"); inventing a name fails the gate.',
+    '## Operation summaries (id, actor, kind, entity, goal) — the operations to partition into pages',
     JSON.stringify(operationSummaries, null, 2),
     '',
     '## Actor roster (the only valid actor ids)',
@@ -196,10 +224,55 @@ async function buildMapPrompt(
     taskId: context.task?.PK || '',
     hookSequential,
     parentStepId: parentStep.stepId,
-    systemPrompt: `${prompt.split('{{toolName}}').join(MAP_TOOL)}\n\n${buildNsToolInstruction(MAP_TOOL, 'the E5 classification artifact is missing or unusable')}`,
+    systemPrompt: `${prompt.split('{{toolName}}').join(SITEMAP_TOOL)}\n\n${buildNsToolInstruction(SITEMAP_TOOL, 'the E5 classification artifact is missing or unusable')}`,
     humanPrompt,
-    tools: [createNsToolSchema(MAP_TOOL, 'Submit the E6 consolidated journey map.', schema)],
-    toolChoice: { type: 'function', function: { name: MAP_TOOL } },
+    tools: [createNsToolSchema(SITEMAP_TOOL, 'Submit the E6 site map (the page index).', schema)],
+    toolChoice: { type: 'function', function: { name: SITEMAP_TOOL } },
+  } as mls.msg.AgentIntentPromptReady;
+}
+
+// ── Phase 2: the DETAIL of ONE workspace (sections/organisms/bffCalls) ──────
+async function buildDetailPrompt(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  hookSequential: number,
+  parsedArgs: E6Args,
+  hookArgs: string,
+): Promise<mls.msg.AgentIntentPromptReady> {
+  const inputs = await loadE6Inputs(parsedArgs.moduleName);
+  const siteMap = await readSiteMapDefs(inputs.moduleName);
+  const slice = (siteMap?.workspaces || []).find(workspace => workspace.workspaceId === parsedArgs.workspaceId);
+  if (!slice) throw new Error(`[${AGENT_NAME}] workspace ${parsedArgs.workspaceId} not in siteMap`);
+  // FULL projection vocabulary of ONLY this workspace's operations (P3/P7: keeps the detail prompt small).
+  const allSummaries = await summarizeOperationDefs(inputs.moduleName, inputs.classification);
+  const operationSummaries = allSummaries.filter(summary => slice.operationIds.includes(summary.id));
+  const schema = await readNsSchema('e6-workspace.schema');
+  const prompt = await readNsText('steps/e6-journey-map', 'promptDetail', '.md', true);
+  const humanPrompt = [
+    '## Your workspace (from the approved site map — copy workspaceId/title/actors/kind verbatim)',
+    JSON.stringify(slice, null, 2),
+    '',
+    '## Operation summaries for THIS workspace only',
+    '## `inputNames`/`outputTopPaths`/`outputItemPaths` are the ONLY valid names for bffCall `from` —',
+    '## copy verbatim, respect position (outputItemPaths only inside item.fields).',
+    JSON.stringify(operationSummaries, null, 2),
+    '',
+    `## userLanguage: ${inputs.journeys.userLanguage}`,
+    parsedArgs.retryContext ? `\n## Gate retry context (fix exactly these problems)\n${parsedArgs.retryContext}\n` : '',
+  ].filter(Boolean).join('\n');
+
+  return {
+    type: 'prompt_ready',
+    args: hookArgs,
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    hookSequential,
+    parentStepId: parentStep.stepId,
+    systemPrompt: `${prompt.split('{{toolName}}').join(DETAIL_TOOL)}\n\n${buildNsToolInstruction(DETAIL_TOOL, 'the site map slice is missing or unusable')}`,
+    humanPrompt,
+    tools: [createNsToolSchema(DETAIL_TOOL, 'Submit ONE workspace detail (sections/organisms/bffCalls).', schema)],
+    toolChoice: { type: 'function', function: { name: DETAIL_TOOL } },
   } as mls.msg.AgentIntentPromptReady;
 }
 
@@ -211,19 +284,34 @@ async function afterPromptStep(
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
   const mutationParent = nsFindMutableParentStep(context, parentStep);
-  const parsedArgs = parseE6Args(step.prompt);
+  const selector = nsParseSelector(step.prompt);
+  const parsedArgs = selector?.kind === 'workspace' ? { planId: DETAIL_PLAN, workspaceId: selector.id } : parseE6Args(step.prompt);
+  // P2: only the site-map single call has no net — retry it once on an LLM-CALL failure. Detail children
+  // are covered by the finalize repair round.
+  if (parsedArgs.planId !== DETAIL_PLAN) {
+    const infraIntents = nsLlmInfraFailureIntents({
+      context, mutationParent, step, hookSequential, agentName: AGENT_NAME, stepId: STEP_ID,
+      retryPrompt: { moduleName: parsedArgs.moduleName }, alreadyRetried: !!parsedArgs.llmRetry,
+    });
+    if (infraIntents) return infraIntents;
+  }
   try {
-    return await handleMapResult(context, mutationParent, step, hookSequential, parsedArgs);
+    if (parsedArgs.planId === DETAIL_PLAN) return await handleDetailResult(context, mutationParent, step, hookSequential, parsedArgs);
+    return await handleSiteMapResult(context, mutationParent, step, hookSequential, parsedArgs);
   } catch (error) {
     const traceMsg = error instanceof Error ? error.message : String(error);
     if (parsedArgs.moduleName) {
-      await writeNsTrace(normalizeModuleFolderName(parsedArgs.moduleName), STEP_ID, AGENT_NAME, parsedArgs.retryAttempt || 1, { stepId: step.stepId }, traceMsg);
+      await writeNsTrace(normalizeModuleFolderName(parsedArgs.moduleName), STEP_ID, AGENT_NAME, 1, { stepId: step.stepId }, traceMsg);
+    }
+    // A failed DETAIL child would fail the whole fan-out — complete-with-trace and let finalize repair.
+    if (parsedArgs.planId === DETAIL_PLAN) {
+      return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `detail run failed | ${traceMsg}`, 'input_output')];
     }
     return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 }
 
-async function handleMapResult(
+async function handleSiteMapResult(
   context: mls.msg.ExecutionContext,
   mutationParent: mls.msg.AIAgentStep,
   step: mls.msg.AIAgentStep,
@@ -233,108 +321,235 @@ async function handleMapResult(
   const inputs = await loadE6Inputs(parsedArgs.moduleName);
   const moduleName = inputs.moduleName;
 
-  const output = extractNsToolOutput(step.interaction?.payload?.[0], MAP_TOOL);
+  const output = extractNsToolOutput(step.interaction?.payload?.[0], SITEMAP_TOOL);
   if (output.status === 'failed') {
-    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', output.trace.join('\n') || 'E6 journey map returned failed')];
+    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', output.trace.join('\n') || 'E6 site map returned failed')];
   }
 
-  // Deterministic attaches: moduleName + note come from code, never from the LLM.
-  // Workspace kind is derived from the classification facts FIRST (the LLM label is not
-  // trusted — see deriveE6WorkspaceKinds), then workflowIds are inferred for workflow pages.
-  const artifact = deriveE6BffRoutes(repairE6WorkflowIds(
-    deriveE6WorkspaceKinds(prepareE6JourneyMap(output.result, { moduleName }), inputs.classification),
-    inputs.classification,
-  ));
-  const gateContext: E6GateContext = {
-    moduleName,
-    classificationWorkflowIds: inputs.classification.workflows.map(workflow => workflow.workflowId),
-    classificationOperationIds: inputs.classification.operations.map(operation => operation.operationId),
-    rosterActorIds: inputs.rosterActorIds,
-    entityIds: inputs.model.entities.map(entity => entity.entityId),
-    nowCapabilityActorIds: computeNowCapabilityActorIds(inputs.classification, inputs.journeys),
-    operationFacts: await buildE6OperationFacts(moduleName, inputs.classification),
-  };
-  const gateInputs = {
-    e2CreatedAt: inputs.journeys.createdAt,
-    classificationWorkflowIds: gateContext.classificationWorkflowIds,
-    classificationOperationIds: gateContext.classificationOperationIds,
-    retryContext: parsedArgs.retryContext || '',
-  };
-  const schema = await readE6Schema();
+  const siteMapContext = buildSiteMapContext(inputs);
+  // Deterministic: moduleName/note from code; kind + workflowId DERIVED (never trusted from the LLM).
+  const siteMap = deriveE6SiteMapKinds(prepareE6SiteMap(output.result, { moduleName }), siteMapContext);
+  const schema = await readNsSchema('e6-sitemap.schema');
   let pipeline = await readNsPipeline(moduleName) || createNsPipeline(moduleName);
-  pipeline = markNsStepRunning(pipeline, STEP_ID, gateInputs);
-  const gate = await runNsGate({
-    stepId: STEP_ID,
-    schema,
-    artifact,
-    inputs: gateInputs,
-    pipeline,
-    validate: item => validateE6Invariants(item, gateContext),
-  });
+  pipeline = markNsStepRunning(pipeline, STEP_ID, { e2CreatedAt: inputs.journeys.createdAt, retryContext: parsedArgs.retryContext || '' });
+  const gate = await runNsGate({ stepId: STEP_ID, schema, artifact: siteMap, pipeline, validate: item => validateE6SiteMap(item, siteMapContext) });
   if (gate.pipeline) pipeline = gate.pipeline;
 
   const attempt = parsedArgs.retryAttempt || gate.attempts;
   if (!gate.ok) {
     await writeNsPipeline(pipeline);
     const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
-    await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
-    // Keep the pipeline alive on attempt 1: 'failed' would fail the whole task and orphan the retry
-    // (downstream depends only on the 'e6-done' anchor, so completing this run unlocks nothing).
+    await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, attempt, { siteMap, gate, retryContext: gate.retryContext }, traceMsg, nsPromptChars(step));
     if (attempt < 2) {
       return [
         nsAgentStepIntent(context, mutationParent, {
-          agentName: AGENT_NAME,
-          stepTitle: 'Retry E6 journey map gate',
-          planId: `e6-journey-map-retry-${Date.now()}`,
+          agentName: AGENT_NAME, stepTitle: 'Retry E6 site map gate',
+          planId: `e6-sitemap-retry-${Date.now()}`,
           prompt: { planId: STEP_ID, moduleName, retryAttempt: 2, retryContext: gate.retryContext || traceMsg },
         }),
-        nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `gate failed (attempt ${attempt}), retrying | ${traceMsg}`, 'input_output'),
+        nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `site map gate failed (attempt ${attempt}), retrying | ${traceMsg}`, 'input_output'),
       ];
     }
     return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
-
-  pipeline = approveNsStep(pipeline, STEP_ID, 'auto');
-  // newSolution_11 fix: re-running e6 (workspaces changed) must invalidate the already-approved e7 so
-  // its contracts regenerate — otherwise a partial re-run leaves stale contracts and e7 reports "no
-  // module waiting". No-op on the first run (e7 not yet approved). Mirrors e2's markNsDownstreamDirty.
-  pipeline = markNsDownstreamDirty(pipeline, STEP_ID);
   await writeNsPipeline(pipeline);
-  // D1 layout: one file per workspace under l4/{module}/workspaces/ (surgical edit + per-workspace
-  // staleness) + a single l4/{module}/navigation.defs.ts for the cross-workspace landings/edges
-  // (with a workspaceIds index so readers can reassemble without scanning the folder).
-  for (const workspace of artifact.workspaces) {
+
+  // The site map is the PERMANENT page index (absorbs the old navigation.defs.ts) + the workspaceIds
+  // index so e7/emitter/masters reassemble without scanning the folder.
+  await writeDefsArtifact(
+    { project: mls.actualProject || 0, level: 4, folder: moduleName, shortName: 'siteMap', extension: '.defs.ts' },
+    `${moduleName}SiteMap`,
+    { moduleName: siteMap.moduleName, note: siteMap.note, workspaces: siteMap.workspaces, landings: siteMap.landings, navigationEdges: siteMap.navigationEdges, workspaceIds: siteMap.workspaces.map(workspace => workspace.workspaceId) },
+  );
+  await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, attempt, { siteMap, gate }, undefined, nsPromptChars(step));
+
+  // Hand off to the no-LLM detail-phase BARRIER (mirrors e5: the LLM step never hosts the fan-out —
+  // that step goes terminal immediately once its payload is in, which would fire finalize before any
+  // detail child runs). The barrier hosts the fan-out and finalize depends on the barrier, not on this.
+  return [
+    nsAgentStepIntent(context, mutationParent, {
+      agentName: AGENT_NAME, stepTitle: 'Detail workspaces', planId: DETAIL_PHASE_PLAN,
+      dependsOn: [STEP_ID], status: 'waiting_dependency', prompt: { planId: DETAIL_PHASE_PLAN, moduleName },
+    }),
+    nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `site map approved for ${moduleName} (${siteMap.workspaces.length} workspaces); detailing`, 'input_output'),
+  ];
+}
+
+// e6-detail-phase (no LLM): unlocked when e6-journey-map (site map) completes. HOSTS the per-workspace
+// detail fan-out + the finalize barrier. Mirrors e5-operations-phase exactly (open fan-out child added
+// before the completed status; finalize dependsOn THIS phase step, so it waits for the children).
+async function runE6DetailPhase(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  parsedArgs: E6Args,
+): Promise<mls.msg.AgentIntent[]> {
+  const mutationParent = nsFindMutableParentStep(context, parentStep);
+  const moduleName = parsedArgs.moduleName ? normalizeModuleFolderName(parsedArgs.moduleName) : (await loadE6Inputs()).moduleName;
+  const siteMap = await readSiteMapDefs(moduleName);
+  const workspaceIds = (siteMap?.workspaces || []).map(workspace => workspace.workspaceId);
+
+  const intents: mls.msg.AgentIntent[] = [];
+  if (workspaceIds.length > 0) {
+    intents.push(nsParallelStepIntent(context, step, {
+      agentName: AGENT_NAME, planId: DETAIL_PLAN,
+      stepTitle: `Detailing {{completed}}/{{total}} workspaces, failed {{failed}}`,
+      args: workspaceIds.map(workspaceId => `workspace:${workspaceId}`),
+      maxParallel: 10,
+    }));
+  }
+  intents.push(nsAgentStepIntent(context, mutationParent, {
+    agentName: AGENT_NAME, stepTitle: 'Finalize journey map', planId: FINALIZE_PLAN,
+    dependsOn: [DETAIL_PHASE_PLAN], status: 'waiting_dependency', prompt: { planId: FINALIZE_PLAN, moduleName },
+  }));
+  intents.push(nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `detail phase started for ${moduleName} (${workspaceIds.length} workspaces)`));
+  return intents;
+}
+
+async function handleDetailResult(
+  context: mls.msg.ExecutionContext,
+  mutationParent: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  parsedArgs: E6Args,
+): Promise<mls.msg.AgentIntent[]> {
+  const inputs = await loadE6Inputs(parsedArgs.moduleName);
+  const moduleName = inputs.moduleName;
+  const siteMap = await readSiteMapDefs(moduleName);
+  const slice = (siteMap?.workspaces || []).find(workspace => workspace.workspaceId === parsedArgs.workspaceId);
+  if (!slice) throw new Error(`[${AGENT_NAME}] workspace ${parsedArgs.workspaceId} not in siteMap`);
+
+  const output = extractNsToolOutput(step.interaction?.payload?.[0], DETAIL_TOOL);
+  if (output.status === 'failed') {
+    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `detail returned failed | ${output.trace.join('\n')}`, 'input_output')];
+  }
+
+  // Normalize the single workspace (bffCall synthesis + route derivation) via the full-map prepare.
+  const prepared = deriveE6BffRoutes(prepareE6JourneyMap({ workspaces: [output.result], landings: [], navigationEdges: [] }, { moduleName }));
+  const workspace = prepared.workspaces[0];
+  if (!workspace) throw new Error(`[${AGENT_NAME}] detail produced no workspace for ${parsedArgs.workspaceId}`);
+  // Force the map-owned fields (kind/workflowId derived at phase 1; equality is still checked below).
+  workspace.kind = slice.kind;
+  if (slice.workflowId) workspace.workflowId = slice.workflowId; else delete workspace.workflowId;
+
+  // Detail gate (isolated fast-fail): equality-to-map + the per-workspace bffCall/organism checks (run
+  // validateE6Invariants scoped to THIS workspace so coverage passes; navigationEntry cross-page links
+  // are re-checked authoritatively at finalize).
+  const scopedContext = await buildSingleWorkspaceContext(inputs, workspace);
+  const localGate = validateE6Invariants(prepared, scopedContext);
+  const equality = validateE6WorkspaceEquality(workspace, slice);
+  const errors = [...equality, ...localGate.issues.filter(issue => issue.severity === 'error' && issue.code !== 'navigationEntry.target.unknown')];
+  const attempt = parsedArgs.retryAttempt || 1;
+  if (errors.length) {
+    const traceMsg = errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
+    await writeNsTrace(moduleName, `e6-detail-${slice.workspaceId}`, AGENT_NAME, attempt, { workspace, errors }, traceMsg, nsPromptChars(step));
+    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `detail gate failed for ${slice.workspaceId} | ${traceMsg}`, 'input_output')];
+  }
+
+  // Stamp the slice hash → incremental re-runs regenerate only workspaces whose slice changed.
+  const stamped = { ...workspace, sliceHash: computeE6WorkspaceSliceHash(slice) };
+  await writeDefsArtifact(
+    { project: mls.actualProject || 0, level: 4, folder: `${moduleName}/workspaces`, shortName: slice.workspaceId, extension: '.defs.ts' },
+    `${slice.workspaceId}Workspace`,
+    stamped,
+  );
+  await writeNsTrace(moduleName, `e6-detail-${slice.workspaceId}`, AGENT_NAME, attempt, { workspace: stamped }, undefined, nsPromptChars(step));
+  return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${slice.workspaceId} detail saved`, 'input_output')];
+}
+
+// ── Finalize (no LLM): reassemble map + details → the AUTHORITATIVE validateE6Invariants + repair ──
+async function runE6Finalize(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  parsedArgs: E6Args,
+): Promise<mls.msg.AgentIntent[]> {
+  const mutationParent = nsFindMutableParentStep(context, parentStep);
+  const inputs = await loadE6Inputs(parsedArgs.moduleName);
+  const moduleName = inputs.moduleName;
+  const siteMap = await readSiteMapDefs(moduleName);
+  if (!siteMap) throw new Error(`[${AGENT_NAME}] siteMap.defs.ts not found for ${moduleName}`);
+
+  // Reassemble the full journey map from the detail files + the siteMap landings/edges.
+  const workspaces: NsE6Workspace[] = [];
+  const missing: string[] = [];
+  for (const slice of siteMap.workspaces) {
+    const detail = await readJsonDefs<Record<string, unknown>>(`${moduleName}/workspaces`, slice.workspaceId);
+    if (detail && Array.isArray(detail.sections)) workspaces.push(prepareE6JourneyMap({ workspaces: [detail], landings: [], navigationEdges: [] }, { moduleName }).workspaces[0]);
+    else missing.push(slice.workspaceId);
+  }
+
+  // Repair round (one attempt): re-run the detail for any missing workspace.
+  if (missing.length > 0 && !parsedArgs.repairAttempt) {
+    const repairs = missing.map((workspaceId, index) => nsAgentStepIntent(context, mutationParent, {
+      agentName: AGENT_NAME, stepTitle: `Repair workspace ${workspaceId}`,
+      planId: `e6-detail-repair-${index + 1}-${workspaceId}`,
+      prompt: { planId: DETAIL_PLAN, moduleName, workspaceId, retryAttempt: 2 },
+    }));
+    const repairPlanIds = repairs.map(intent => (intent.step.planning as { planId: string }).planId);
+    return [
+      ...repairs,
+      nsAgentStepIntent(context, mutationParent, {
+        agentName: AGENT_NAME, stepTitle: 'Finalize journey map (after repair)', planId: 'e6-finalize-2',
+        dependsOn: repairPlanIds, status: 'waiting_dependency', prompt: { planId: FINALIZE_PLAN, moduleName, repairAttempt: 2 },
+      }),
+      nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${missing.length} workspaces missing (${missing.join(', ')}); repair round started`),
+    ];
+  }
+  if (missing.length > 0) {
+    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `workspaces missing after repair round: ${missing.join(', ')}`)];
+  }
+
+  const artifact: NsE6JourneyMapArtifact = {
+    schemaVersion: E6_JOURNEY_MAP_SCHEMA_VERSION, moduleName, note: E6_JOURNEY_MAP_NOTE,
+    workspaces, landings: siteMap.landings, navigationEdges: siteMap.navigationEdges,
+  };
+  const gateContext = await buildFullGateContext(inputs);
+  const check = validateE6Invariants(artifact, gateContext);
+  const errors = check.issues.filter(issue => issue.severity === 'error');
+  let pipeline = await readNsPipeline(moduleName) || createNsPipeline(moduleName);
+  if (errors.length > 0) {
+    const traceMsg = errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
+    await writeNsTrace(moduleName, FINALIZE_PLAN, AGENT_NAME, parsedArgs.repairAttempt || 1, { errors }, traceMsg);
+    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `journey map invalid after assembly:\n${traceMsg}`)];
+  }
+
+  // P8: the PERMANENT journeys artifact (narrative + operation/workspace links) — derived from the e2
+  // narrative + the classification (feature→op) + the site map (op→workspace). Never the LLM's.
+  const journeys = deriveE6Journeys(
+    readE6JourneySources(inputs.journeys),
+    inputs.classification.operations.map(operation => ({ operationId: operation.operationId, featureRefs: operation.featureRefs })),
+    siteMap.workspaces.map(workspace => ({ workspaceId: workspace.workspaceId, actors: workspace.actors, operationIds: workspace.operationIds })),
+  );
+  const journeysCheck = validateE6Journeys(journeys, { operationIds: gateContext.classificationOperationIds, workspaceIds: siteMap.workspaces.map(workspace => workspace.workspaceId) });
+  const journeyErrors = journeysCheck.issues.filter(issue => issue.severity === 'error');
+  if (journeyErrors.length > 0) {
+    const traceMsg = journeyErrors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
+    await writeNsTrace(moduleName, FINALIZE_PLAN, AGENT_NAME, parsedArgs.repairAttempt || 1, { journeyErrors }, traceMsg);
+    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `journeys invalid:\n${traceMsg}`)];
+  }
+  for (const journey of journeys) {
     await writeDefsArtifact(
-      { project: mls.actualProject || 0, level: 4, folder: `${moduleName}/workspaces`, shortName: workspace.workspaceId, extension: '.defs.ts' },
-      `${workspace.workspaceId}Workspace`,
-      workspace,
+      { project: mls.actualProject || 0, level: 4, folder: `${moduleName}/journeys`, shortName: journey.journeyId, extension: '.defs.ts' },
+      `${journey.journeyId}Journey`,
+      journey,
     );
   }
-  await writeDefsArtifact(
-    { project: mls.actualProject || 0, level: 4, folder: moduleName, shortName: 'navigation', extension: '.defs.ts' },
-    `${moduleName}Navigation`,
-    {
-      moduleName: artifact.moduleName,
-      note: artifact.note,
-      landings: artifact.landings,
-      navigationEdges: artifact.navigationEdges,
-      workspaceIds: artifact.workspaces.map(workspace => workspace.workspaceId),
-    },
-  );
-  await writeMarkdownArtifact(
-    nsPipelineArtifactFileInfo(moduleName, 'e6-journey-map', '.md'),
-    renderE6Markdown(artifact, { generatedAt: new Date().toISOString() }),
-  );
-  await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate });
+
+  pipeline = approveNsStep(pipeline, STEP_ID, 'auto');
+  pipeline = markNsDownstreamDirty(pipeline, STEP_ID); // re-run invalidates e7's contracts (newSolution_11)
+  await writeNsPipeline(pipeline);
+  await writeMarkdownArtifact(nsPipelineArtifactFileInfo(moduleName, 'e6-journey-map', '.md'), renderE6Markdown(artifact, { generatedAt: new Date().toISOString() }));
+  await writeNsTrace(moduleName, FINALIZE_PLAN, AGENT_NAME, 1, { workspaces: workspaces.length, journeys: journeys.length });
 
   return [
     nsResultStepIntent(context, mutationParent, {
-      planId: DONE_ANCHOR,
-      dependsOn: [STEP_ID],
-      stepTitle: 'Journey map ready',
-      result: { type: DONE_ANCHOR, moduleName, workspaces: artifact.workspaces.map(workspace => workspace.workspaceId) },
+      planId: DONE_ANCHOR, dependsOn: [STEP_ID], stepTitle: 'Journey map ready',
+      result: { type: DONE_ANCHOR, moduleName, workspaces: workspaces.map(workspace => workspace.workspaceId) },
     }),
-    nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e6-journey-map approved for ${moduleName} (${artifact.workspaces.length} workspaces)`, 'input_output'),
+    nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e6-journey-map approved for ${moduleName} (${workspaces.length} workspaces)`),
   ];
 }
 
@@ -447,6 +662,7 @@ async function summarizeOperationDefs(moduleName: string, classification: NsE5Cl
     const inputNames = (Array.isArray(defs?.inputs) ? defs!.inputs : [])
       .map(input => (isRecord(input) ? readString(input.inputId) : undefined))
       .filter((name): name is string => !!name);
+    const outputSets = collectNsOutputPathSets(isRecord(defs?.outputShape) ? defs!.outputShape : undefined);
     summaries.push({
       id: operation.operationId,
       title: readString(defs?.title) || operation.title,
@@ -457,7 +673,8 @@ async function summarizeOperationDefs(moduleName: string, classification: NsE5Cl
       storySteps: summarizeStory(defs?.story),
       // The projectable vocabulary — the LLM must copy these names verbatim into bffCall `from` paths.
       inputNames,
-      outputPaths: collectNsOutputPaths(isRecord(defs?.outputShape) ? defs!.outputShape : undefined),
+      outputTopPaths: outputSets.top,
+      outputItemPaths: outputSets.item,
     });
   }
   return summaries;
@@ -487,9 +704,11 @@ async function buildE6OperationFacts(
       // D6 back-compat: new defs carry `actors`, legacy defs carry singular `actor`. Fall back to the
       // classification actorId when a def is missing the field entirely.
       actors: readActors(defs).length ? readActors(defs) : [operation.actorId].filter(Boolean),
-      // A4.2 traceability: the valid `from` suffixes a bffCall projection may point at.
+      // A4.2 traceability: the valid `from` suffixes a bffCall projection may point at (split by
+      // position — P1 makes $items.<col> at the output top level inexpressible).
       inputNames: inputs.map(input => (isRecord(input) ? readString(input.inputId) : undefined)).filter((name): name is string => !!name),
-      outputPaths: collectNsOutputPaths(outputShape as { kind?: string; fields?: [] } | undefined),
+      outputTopPaths: collectNsOutputPathSets(outputShape).top,
+      outputItemPaths: collectNsOutputPathSets(outputShape).item,
     };
   }
   return facts;
@@ -537,15 +756,82 @@ function truncateLine(value: string): string {
 // misc
 // ---------------------------------------------------------------------------
 
-async function readE6Schema(): Promise<Record<string, unknown>> {
-  const raw = await readNsText('schemas', 'e6-journey-map.schema', '.json', true);
+async function readNsSchema(shortName: string): Promise<Record<string, unknown>> {
+  const raw = await readNsText('schemas', shortName, '.json', true);
   const parsed = parseMaybeJson(raw);
-  if (!isRecord(parsed)) throw new Error(`[${AGENT_NAME}] invalid schema e6-journey-map.schema`);
+  if (!isRecord(parsed)) throw new Error(`[${AGENT_NAME}] invalid schema ${shortName}`);
   return parsed;
 }
 
 async function readNsText(folder: string, shortName: string, extension: string, required = false): Promise<string> {
   return readStorText(nsL2File(`${NS_AGENT_FOLDER}/${folder}`, shortName, extension), required);
+}
+
+// Read the site map back from disk (l4/<module>/siteMap.defs.ts) as the phase-2 slice source.
+async function readSiteMapDefs(moduleName: string): Promise<NsE6SiteMapArtifact | null> {
+  const raw = await readJsonDefs<Record<string, unknown>>(moduleName, 'siteMap');
+  if (!raw) return null;
+  return prepareE6SiteMap(raw, { moduleName });
+}
+
+// Light operation summaries for the site map (no field vocabulary — the map only partitions pages).
+async function summarizeOperationsLight(moduleName: string, classification: NsE5ClassificationArtifact): Promise<Record<string, unknown>[]> {
+  const summaries: Record<string, unknown>[] = [];
+  for (const operation of classification.operations) {
+    const defs = await readJsonDefs<Record<string, unknown>>(nsOperationsFolder(moduleName), operation.operationId);
+    const accessPattern = isRecord(defs?.accessPattern) ? defs!.accessPattern : {};
+    summaries.push({
+      id: operation.operationId,
+      actor: operation.actorId,
+      kind: readString(defs?.kind) || operation.kind,
+      entity: operation.entity,
+      accessPatternKind: readString(accessPattern.kind) || '',
+      ...(operation.workflowId ? { workflowId: operation.workflowId } : {}),
+      goal: summarizeStory(defs?.story)[0] || readString(defs?.title) || operation.title,
+    });
+  }
+  return summaries;
+}
+
+function buildSiteMapContext(inputs: E6Inputs): E6SiteMapGateContext {
+  const operationOwnerWorkflow: Record<string, string | undefined> = {};
+  const operationKind: Record<string, string> = {};
+  const operationEntity: Record<string, string> = {};
+  for (const workflow of inputs.classification.workflows) {
+    for (const operationId of workflow.operationIds) operationOwnerWorkflow[operationId] = workflow.workflowId;
+  }
+  for (const operation of inputs.classification.operations) {
+    if (operation.workflowId) operationOwnerWorkflow[operation.operationId] = operation.workflowId;
+    operationKind[operation.operationId] = operation.kind;
+    operationEntity[operation.operationId] = operation.entity;
+  }
+  return {
+    moduleName: inputs.moduleName,
+    classificationWorkflowIds: inputs.classification.workflows.map(workflow => workflow.workflowId),
+    classificationOperationIds: inputs.classification.operations.map(operation => operation.operationId),
+    rosterActorIds: inputs.rosterActorIds,
+    entityIds: inputs.model.entities.map(entity => entity.entityId),
+    nowCapabilityActorIds: computeNowCapabilityActorIds(inputs.classification, inputs.journeys),
+    operationOwnerWorkflow, operationKind, operationEntity,
+  };
+}
+
+async function buildFullGateContext(inputs: E6Inputs): Promise<E6GateContext> {
+  return {
+    moduleName: inputs.moduleName,
+    classificationWorkflowIds: inputs.classification.workflows.map(workflow => workflow.workflowId),
+    classificationOperationIds: inputs.classification.operations.map(operation => operation.operationId),
+    rosterActorIds: inputs.rosterActorIds,
+    entityIds: inputs.model.entities.map(entity => entity.entityId),
+    nowCapabilityActorIds: computeNowCapabilityActorIds(inputs.classification, inputs.journeys),
+    operationFacts: await buildE6OperationFacts(inputs.moduleName, inputs.classification),
+  };
+}
+
+// Detail-gate context: scope the classification ops to THIS workspace so coverage passes in isolation.
+async function buildSingleWorkspaceContext(inputs: E6Inputs, workspace: NsE6Workspace): Promise<E6GateContext> {
+  const full = await buildFullGateContext(inputs);
+  return { ...full, classificationOperationIds: workspace.operationIds };
 }
 
 function parseE6Args(value: unknown): E6Args {
@@ -554,8 +840,11 @@ function parseE6Args(value: unknown): E6Args {
   return {
     planId: readString(parsed.planId),
     moduleName: readString(parsed.moduleName),
+    workspaceId: readString(parsed.workspaceId),
     retryAttempt: typeof parsed.retryAttempt === 'number' ? parsed.retryAttempt : undefined,
+    repairAttempt: typeof parsed.repairAttempt === 'number' ? parsed.repairAttempt : undefined,
     retryContext: readString(parsed.retryContext),
+    llmRetry: parsed.llmRetry === true,
   };
 }
 

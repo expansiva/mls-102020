@@ -84,7 +84,7 @@ function convertFileToTag(info: { shortName: string; project: number; folder?: s
   return `${folderPrefix}${kebabName}-${info.project}`;
 }
 
-interface DiscoveredPage { pageId: string; label: string; routeParams: string[]; }
+interface DiscoveredPage { pageId: string; label: string; routeParams: string[]; actors: string[]; landing: boolean; }
 interface PageVariant {
   variantId: string;
   layout: string;
@@ -100,33 +100,64 @@ interface PageVariant {
  *  agentChangeFrontend buildPagePlans); owners not covered by any workspace fall back to a per-owner
  *  page. When there is no journey, uses the legacy per-workflow/per-operation grouping. */
 function discoverPages(clientRoot: string, moduleName: string): DiscoveredPage[] {
-  const listDefs = (folder: string): Record<string, unknown>[] => {
-    const dir = path.join(clientRoot, 'l4', folder);
+  // Tolerant readers (l4 v2): each owner type lives either in the legacy flat l4/<folder>/ or the
+  // module-scoped l4/<module>/<folder>/. Read both and merge.
+  const listDefsIn = (dir: string): Record<string, unknown>[] => {
     if (!fs.existsSync(dir)) return [];
     return fs.readdirSync(dir)
       .filter(name => name.endsWith('.defs.ts'))
       .map(name => readDefsData(path.join(dir, name)))
       .filter((data): data is Record<string, unknown> => !!data);
   };
+  const listDefs = (folder: string): Record<string, unknown>[] => [
+    ...listDefsIn(path.join(clientRoot, 'l4', folder)),
+    ...listDefsIn(path.join(clientRoot, 'l4', moduleName, folder)),
+  ];
 
-  // Journey workspaces (l4/{module}/journeys/*.defs.ts).
-  const workspaces: { pageId: string; label: string; ops: Set<string>; wf: string }[] = [];
+  // Actors catalog + landings (l4/<module>/actors.defs.ts + siteMap.defs.ts | navigation.defs.ts).
+  const validActors = new Set(
+    (readDefsData(path.join(clientRoot, 'l4', moduleName, 'actors.defs.ts'))?.actors as Record<string, unknown>[] | undefined || [])
+      .map(actor => readString(actor?.actorId)).filter(Boolean),
+  );
+  const siteMapData = readDefsData(path.join(clientRoot, 'l4', moduleName, 'siteMap.defs.ts'))
+    || readDefsData(path.join(clientRoot, 'l4', moduleName, 'navigation.defs.ts'));
+  const landingWorkspaceIds = new Set(
+    (siteMapData && Array.isArray(siteMapData.landings) ? siteMapData.landings as Record<string, unknown>[] : [])
+      .map(landing => toSafeShortName(readString(landing?.workspaceId))).filter(Boolean),
+  );
+
+  // Workspaces: standalone l4/<module>/workspaces/*.defs.ts (v2) OR nested in journeys/*.defs.ts (legacy).
+  const workspaces: { pageId: string; label: string; ops: Set<string>; wf: string; actors: string[]; landing: boolean }[] = [];
+  const addWorkspace = (ws: Record<string, unknown>): void => {
+    const wsId = readString(ws.workspaceId);
+    if (!wsId) return;
+    const actors = readStringArray(ws.actors).length ? readStringArray(ws.actors) : (readString(ws.actor) ? [readString(ws.actor)] : []);
+    const bffUses = Array.isArray(ws.bffCalls)
+      ? (ws.bffCalls as Record<string, unknown>[]).flatMap(call => Array.isArray(call?.uses) ? (call.uses as Record<string, unknown>[]).map(use => readString(use?.operationId)) : [])
+      : [];
+    const pageId = toSafeShortName(wsId);
+    workspaces.push({
+      pageId,
+      label: readString(ws.title) || humanizeId(wsId),
+      ops: new Set([...readStringArray(ws.operationIds), ...bffUses].filter(Boolean)),
+      wf: readString(ws.workflowId),
+      actors: actors.filter(actor => validActors.size === 0 || validActors.has(actor)),
+      landing: readString(ws.kind) === 'landing' || landingWorkspaceIds.has(pageId),
+    });
+  };
+  const workspacesDir = path.join(clientRoot, 'l4', moduleName, 'workspaces');
+  if (fs.existsSync(workspacesDir)) {
+    for (const name of fs.readdirSync(workspacesDir).filter(n => n.endsWith('.defs.ts'))) {
+      const data = readDefsData(path.join(workspacesDir, name));
+      if (data) addWorkspace(data);
+    }
+  }
   const journeyDir = path.join(clientRoot, 'l4', moduleName, 'journeys');
-  if (fs.existsSync(journeyDir)) {
+  if (workspaces.length === 0 && fs.existsSync(journeyDir)) {
     for (const name of fs.readdirSync(journeyDir).filter(n => n.endsWith('.defs.ts'))) {
       const data = readDefsData(path.join(journeyDir, name));
       const list = data && Array.isArray(data.workspaces) ? data.workspaces as Record<string, unknown>[] : [];
-      for (const ws of list) {
-        if (!ws || typeof ws !== 'object') continue;
-        const wsId = readString(ws.workspaceId);
-        if (!wsId) continue;
-        workspaces.push({
-          pageId: toSafeShortName(wsId),
-          label: readString(ws.title) || humanizeId(wsId),
-          ops: new Set(readStringArray(ws.operationIds)),
-          wf: readString(ws.workflowId),
-        });
-      }
+      for (const ws of list) if (ws && typeof ws === 'object') addWorkspace(ws);
     }
   }
 
@@ -141,7 +172,11 @@ function discoverPages(clientRoot: string, moduleName: string): DiscoveredPage[]
       .map(input => readString(input?.inputId))
       .filter(Boolean);
   }))];
-  const page = (pageId: string, label: string, operationIds: string[]): DiscoveredPage => ({ pageId, label, routeParams: routeParamsFor(operationIds) });
+  const actorsForOps = (operationIds: string[]): string[] => [...new Set(operationIds
+    .map(operationId => readString(operationsById.get(operationId)?.actor))
+    .filter(actor => actor && (validActors.size === 0 || validActors.has(actor))))];
+  const page = (pageId: string, label: string, operationIds: string[], actors: string[], landing = false): DiscoveredPage =>
+    ({ pageId, label, routeParams: routeParamsFor(operationIds), actors: actors.length ? actors : actorsForOps(operationIds), landing });
   const pages: DiscoveredPage[] = [];
   const operationIdsUsedByWorkflow = new Set<string>();
   for (const workflow of workflows) for (const opId of readStringArray(workflow.operationIds)) operationIdsUsedByWorkflow.add(opId);
@@ -149,28 +184,28 @@ function discoverPages(clientRoot: string, moduleName: string): DiscoveredPage[]
   if (workspaces.length > 0) {
     const coveredOps = new Set<string>();
     const coveredWf = new Set<string>();
-    for (const ws of workspaces) { pages.push(page(ws.pageId, ws.label, [...ws.ops])); ws.ops.forEach(o => coveredOps.add(o)); if (ws.wf) coveredWf.add(ws.wf); }
+    for (const ws of workspaces) { pages.push(page(ws.pageId, ws.label, [...ws.ops], ws.actors, ws.landing)); ws.ops.forEach(o => coveredOps.add(o)); if (ws.wf) coveredWf.add(ws.wf); }
     // Leftover owners not covered by any workspace keep a legacy per-owner page.
     for (const workflow of workflows) {
       const workflowId = readString(workflow.workflowId);
       if (!workflowId || coveredWf.has(workflowId)) continue;
-      pages.push(page(toSafeShortName(readString(workflow.pageId) || workflowId), readString(workflow.title) || humanizeId(workflowId), readStringArray(workflow.operationIds)));
+      pages.push(page(toSafeShortName(readString(workflow.pageId) || workflowId), readString(workflow.title) || humanizeId(workflowId), readStringArray(workflow.operationIds), readStringArray(workflow.actors)));
     }
     for (const operation of operations) {
       const operationId = readString(operation.operationId);
       if (!operationId || operationIdsUsedByWorkflow.has(operationId) || coveredOps.has(operationId)) continue;
-      pages.push(page(toSafeShortName(readString(operation.pageId) || operationId), readString(operation.title) || humanizeId(operationId), [operationId]));
+      pages.push(page(toSafeShortName(readString(operation.pageId) || operationId), readString(operation.title) || humanizeId(operationId), [operationId], []));
     }
   } else {
     for (const workflow of workflows) {
       const workflowId = readString(workflow.workflowId);
       if (!workflowId) continue;
-      pages.push(page(toSafeShortName(readString(workflow.pageId) || workflowId), readString(workflow.title) || humanizeId(workflowId), readStringArray(workflow.operationIds)));
+      pages.push(page(toSafeShortName(readString(workflow.pageId) || workflowId), readString(workflow.title) || humanizeId(workflowId), readStringArray(workflow.operationIds), readStringArray(workflow.actors)));
     }
     for (const operation of operations) {
       const operationId = readString(operation.operationId);
       if (!operationId || operationIdsUsedByWorkflow.has(operationId)) continue;
-      pages.push(page(toSafeShortName(readString(operation.pageId) || operationId), readString(operation.title) || humanizeId(operationId), [operationId]));
+      pages.push(page(toSafeShortName(readString(operation.pageId) || operationId), readString(operation.title) || humanizeId(operationId), [operationId], []));
     }
   }
 
@@ -303,12 +338,27 @@ function main(): void {
   mod.shellMode = mod.shellMode || 'spa';
 
   const labels = customize.navigationLabels || {};
+  // F5: menu derived from workspaces + siteMap/actors. `actors` lets the shell filter the menu by the
+  // logged-in actor (menu is UX; route enforcement is changeBackend's job). `landing` marks the
+  // public/pre-login entry. Both ride as extra JSON fields (the shell reads them; types stay in 102029).
   mod.navigation = pages.map((page): ProjectNavigationEntry => ({
     id: page.pageId,
     label: labels[page.pageId] || page.label,
     href: `/${moduleName}/${page.pageId}`,
     description: labels[page.pageId] || page.label,
-  }));
+    ...(page.actors.length ? { actors: page.actors } : {}),
+    ...(page.landing ? { landing: true } : {}),
+  } as ProjectNavigationEntry & { actors?: string[]; landing?: boolean }));
+
+  // F5: landings (siteMap | navigation) -> initial route per actor. Only for pages that materialized.
+  const pageIds = new Set(pages.map(page => page.pageId));
+  const siteMapForLandings = readDefsData(path.join(clientRoot, 'l4', moduleName, 'siteMap.defs.ts'))
+    || readDefsData(path.join(clientRoot, 'l4', moduleName, 'navigation.defs.ts'));
+  const landings = ((siteMapForLandings && Array.isArray(siteMapForLandings.landings) ? siteMapForLandings.landings as Record<string, unknown>[] : [])
+    .map(landing => ({ actorId: readString(landing?.actorId), pageId: toSafeShortName(readString(landing?.workspaceId)) }))
+    .filter(landing => landing.actorId && pageIds.has(landing.pageId))
+    .map(landing => ({ actorId: landing.actorId, pageId: landing.pageId, route: `/${moduleName}/${landing.pageId}` })));
+  if (landings.length > 0) (mod as ProjectModuleConfig & { landings?: unknown[] }).landings = landings;
 
   const variantPages = pages.flatMap(page => discoverPageVariants(clientRoot, clientId, moduleName, page));
   // Item 2a: publish the generated page11 <page>.test.ts files (resolver .js form) so the devenv
@@ -327,7 +377,10 @@ function main(): void {
         definition: `l2/${moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
         componentTag: convertFileToTag({ project: Number(clientId), folder: `${moduleName}/web/desktop/page11`, shortName: page.pageId }),
         title: labels[page.pageId] || page.label,
-      })),
+        // F5: actors that may reach this page; landing pages are public/pre-login (no actor gate).
+        ...(page.actors.length ? { actors: page.actors } : {}),
+        ...(page.landing ? { public: true } : {}),
+      } as ProjectFrontendPageConfig & { actors?: string[]; public?: boolean })),
       ...variantPages.map((page): ProjectFrontendPageConfig => ({
         pageId: page.routePageId,
         route: page.route,

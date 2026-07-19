@@ -22,7 +22,15 @@ import {
   l4OperationInputs,
   l4OperationOutputRefs,
   normalizeOutputShape,
+  parseWorkspaceBffCalls,
+  parseWorkspaceSections,
+  bffCallCommandShape,
+  buildL2ContractCopy,
+  isContentOrganismRole,
   type CfeL4OperationInput,
+  type CfeBffCall,
+  type CfeWorkspaceSection,
+  type CfeWorkspaceOrganism,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { parseDefsSource } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
@@ -55,6 +63,9 @@ interface CfeOperationDef {
   inlineStatusFrontend: string;
   capability?: Record<string, unknown>;
   moduleName: string;
+  // Module taken verbatim from an l4 v2 module-scoped folder (l4/<module>/operations/…); empty for the
+  // legacy flat l4/operations/ layout, where the module is inferred from the operation's entities.
+  folderModule: string;
   fileInfo: FileInfo;
   exportName: string;
   data: Record<string, unknown>;
@@ -73,30 +84,43 @@ interface CfeWorkflowDef {
   inlineStatusFrontend: string;
   capabilities: Record<string, unknown>[];
   moduleName: string;
+  folderModule: string;
   fileInfo: FileInfo;
   exportName: string;
   data: Record<string, unknown>;
 }
 
-// L4 journey map (l4/{module}/journeys/{module}Journeys.defs.ts). Workspaces are the unit of
-// page grouping in the L4 v2 model: one page per workspace (an actor's coherent area), which
-// can split a single workflow across actors (e.g. orderLifecycle -> POS + kitchen workspaces).
+// L4 v2 workspace. Read either from a standalone l4/<module>/workspaces/<id>.defs.ts (preferred) or,
+// as a fallback, nested inside a legacy l4/<module>/journeys/<module>Journeys.defs.ts. Workspaces are
+// the unit of page grouping: one page per workspace (an actor's coherent area). The v2 workspace also
+// carries bffCalls[] (the projected wire contracts of the page) and sections[].organisms[] (roles that
+// reference a bffId); both are empty when reading a legacy operationIds-only workspace.
 interface CfeJourneyWorkspace {
   workspaceId: string;
   title: string;
-  actor: string;
-  kind: string;              // workflow | entityManagement | dashboard | ...
+  actor: string;             // first actor (back-compat)
+  actors: string[];          // v2: full actor list
+  kind: string;              // workflow | operation | entityManagement | landing | dashboard | ...
   entity: string;
   workflowId?: string;
   operationIds: string[];
   purpose: string;
+  bffCalls: CfeBffCall[];    // v2; [] for legacy
+  sections: CfeWorkspaceSection[]; // v2; [] for legacy
 }
+
+// A landing entry (l4/<module>/siteMap.defs.ts or navigation.defs.ts): the workspace an actor starts on.
+interface CfeLanding { actorId: string; workspaceId: string; reason: string }
 
 interface CfeJourneyMap {
   moduleName: string;
   workspaces: CfeJourneyWorkspace[];
   navigationEdges: Record<string, unknown>[];
+  landings: CfeLanding[];
 }
+
+// L4 v2 actor (l4/<module>/actors.defs.ts, singular). Menu/authz derive from this per module.
+interface CfeActorDef { actorId: string; title: string; description: string; roleScope: string }
 
 export interface CfePagePlan {
   pageId: string;
@@ -128,6 +152,10 @@ export interface CfeCreateContext {
   entities: Map<string, CfeEntityDef>;
   operations: Map<string, CfeOperationDef>;
   workflows: Map<string, CfeWorkflowDef>;
+  journeys: CfeJourneyMap[];
+  actorsByModule: Record<string, CfeActorDef[]>;
+  // Raw l4 contract .ts sources keyed by `<module>/<workspaceId>.<bffId>` — byte-copied into l2 (F3).
+  contractsRaw: Map<string, string>;
   pages: CfePagePlan[];
   warnings: string[];
 }
@@ -137,6 +165,10 @@ export interface CfePreparedPage {
   page: CfePagePlan;
   operations: CfeOperationDef[];
   commands: Record<string, unknown>[];
+  // L4 v2 workspace backing this page (bffCalls[]/sections[]); undefined for legacy operationIds pages.
+  workspace?: CfeJourneyWorkspace;
+  // F3: per-bffCall l2 contract byte-copies (l4 -> l2). Empty for legacy pages (contract via LLM skill).
+  contractCopies: CfeContractCopy[];
   navigationRefs: unknown[];
   baseDefinition: Record<string, unknown>;
   visualStyle: unknown;
@@ -150,6 +182,15 @@ export interface CfeLayoutVariantPlan {
   genome: string;
   templateId: string;
   template: Record<string, unknown>;
+}
+
+// F3: an l4->l2 contract copy. `tsRef` is the l2 contract path shared/pages import; `source` is the
+// byte-copied l4 body with an l2 header; `contractName` = `<workspaceId>.<bffId>`.
+export interface CfeContractCopy {
+  contractName: string;
+  fileInfo: FileInfo;
+  tsRef: string;
+  source: string;
 }
 
 interface CfeLayoutAction {
@@ -424,22 +465,60 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   const operations = new Map<string, CfeOperationDef>();
   const workflows = new Map<string, CfeWorkflowDef>();
   const journeys = new Map<string, CfeJourneyMap>();
+  // L4 v2 (leitores tolerantes): standalone workspaces/navigation/siteMap/actors read from their own
+  // files, keyed by module; merged with the legacy journeys-nested workspaces below (standalone wins).
+  const standaloneWorkspaces = new Map<string, CfeJourneyWorkspace[]>();
+  const navByModule = new Map<string, { edges: Record<string, unknown>[]; landings: CfeLanding[] }>();
+  const siteMapByModule = new Map<string, { edges: Record<string, unknown>[]; landings: CfeLanding[] }>();
+  const actorsByModule: Record<string, CfeActorDef[]> = {};
+  const contractsRaw = new Map<string, string>();
 
   for (const file of Object.values(mls.stor.files) as any[]) {
-    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted' || file.extension !== '.defs.ts') continue;
+    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
     const folder = String(file.folder || '');
     const shortName = String(file.shortName || '');
+    const extension = String(file.extension || '');
+
+    // F3: l4 contract of record (byte-copied to l2). These are plain .ts (not .defs.ts), so read them
+    // before the .defs.ts gate. Key = `<module>/<workspaceId>.<bffId>` (shortName carries ws.bffId).
+    if (folder.endsWith('/contracts') && extension === '.ts') {
+      const moduleName = folder.slice(0, folder.length - '/contracts'.length);
+      if (moduleName && shortName) contractsRaw.set(`${moduleName}/${shortName}`, String(await file.getContent()));
+      continue;
+    }
+    if (extension !== '.defs.ts') continue;
     const parsed = parseDefsSource(String(await file.getContent()));
     if (!parsed) continue;
-    const fileInfo: FileInfo = { project: file.project, level: file.level, folder, shortName, extension: file.extension };
+    const fileInfo: FileInfo = { project: file.project, level: file.level, folder, shortName, extension };
+    // Module-scoped folder path (l4/<module>/operations/…) -> <module>; flat legacy layout -> '' (infer
+    // from entities). Files that live directly under l4/<module>/ (module/actors/navigation/siteMap) have
+    // no slash: their module IS the folder.
+    const folderModule = folder.includes('/') ? folder.split('/')[0] : '';
+    const topModule = folder && !folder.includes('/') ? folder : '';
 
-    if (folder === 'workflows') {
-      const workflow = workflowFromData(parsed.data, fileInfo, parsed.exportName);
+    if (folder === 'workflows' || folder.endsWith('/workflows')) {
+      const workflow = workflowFromData(parsed.data, fileInfo, parsed.exportName, folderModule);
       if (workflow) workflows.set(workflow.workflowId, workflow);
-    } else if (folder === 'operations') {
-      const operation = operationFromData(parsed.data, fileInfo, parsed.exportName);
+    } else if (folder === 'operations' || folder.endsWith('/operations')) {
+      const operation = operationFromData(parsed.data, fileInfo, parsed.exportName, folderModule);
       if (operation) operations.set(operation.operationId, operation);
-    } else if (shortName === 'module' && folder && !folder.includes('/')) {
+    } else if (folder.endsWith('/workspaces')) {
+      const workspace = workspaceFromData(parsed.data);
+      if (workspace && folderModule) {
+        if (folderModule) ensureModule(modules, folderModule);
+        if (!standaloneWorkspaces.has(folderModule)) standaloneWorkspaces.set(folderModule, []);
+        standaloneWorkspaces.get(folderModule)!.push(workspace);
+      }
+    } else if (shortName === 'siteMap' && topModule) {
+      ensureModule(modules, topModule);
+      siteMapByModule.set(topModule, { edges: readRecordArray(parsed.data.navigationEdges), landings: landingsFromData(parsed.data) });
+    } else if (shortName === 'navigation' && topModule) {
+      ensureModule(modules, topModule);
+      navByModule.set(topModule, { edges: readRecordArray(parsed.data.navigationEdges), landings: landingsFromData(parsed.data) });
+    } else if (shortName === 'actors' && topModule) {
+      ensureModule(modules, topModule);
+      actorsByModule[topModule] = actorsFromData(parsed.data);
+    } else if (shortName === 'module' && topModule) {
       const moduleData = isRecord(parsed.data.module) ? parsed.data.module : parsed.data;
       const designContext = isRecord(parsed.data.designContext) ? parsed.data.designContext : {};
       const moduleName = readString(moduleData.moduleName) || folder;
@@ -461,6 +540,20 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
     }
   }
 
+  // Standalone workspaces (v2) supersede the legacy journeys-nested workspaces per module; navigation
+  // edges/landings come from siteMap (preferred) or navigation.defs.ts.
+  for (const [moduleName, workspaces] of standaloneWorkspaces) {
+    const nav = siteMapByModule.get(moduleName) || navByModule.get(moduleName) || { edges: [], landings: [] };
+    journeys.set(moduleName, { moduleName, workspaces, navigationEdges: nav.edges, landings: nav.landings });
+  }
+  // Modules that only ship siteMap/navigation (no standalone workspaces) still get their landings/edges.
+  for (const [moduleName, nav] of [...siteMapByModule, ...navByModule]) {
+    const existing = journeys.get(moduleName);
+    if (existing && existing.landings.length === 0 && existing.navigationEdges.length === 0) {
+      journeys.set(moduleName, { ...existing, navigationEdges: nav.edges, landings: nav.landings });
+    }
+  }
+
   const moduleNames = Array.from(modules.keys()).sort();
   const moduleFallback = moduleNames.length === 1 ? moduleNames[0] : 'unknown';
   const moduleVisualStyle: Record<string, unknown> = {};
@@ -471,8 +564,9 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
     moduleI18n[module.moduleName] = { defaultLocale, activeLocales: unique([defaultLocale, ...module.i18nLocales]) };
   }
 
-  for (const operation of operations.values()) operation.moduleName = inferModule(operationEntities(operation), entityToModule, moduleFallback);
-  for (const workflow of workflows.values()) workflow.moduleName = inferModule(workflow.entities, entityToModule, moduleFallback);
+  // L4 v2 modules the folder path directly; the legacy flat layout infers from the owner's entities.
+  for (const operation of operations.values()) operation.moduleName = operation.folderModule || inferModule(operationEntities(operation), entityToModule, moduleFallback);
+  for (const workflow of workflows.values()) workflow.moduleName = workflow.folderModule || inferModule(workflow.entities, entityToModule, moduleFallback);
 
   // Generation status is owned by l5/{module}/todoFrontend.defs.ts; the l4 owner defs are read-only
   // for this agent. Merge the todo status into each owner and fail loudly on plan/disk divergence.
@@ -518,7 +612,7 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
     if (edgeCount === 0) warnings.push(`journey ${journey.moduleName}: no navigationEdges; navigation falls back to selectedEntity from inputs`);
   }
 
-  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList), warnings };
+  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, journeys: journeyList, actorsByModule, contractsRaw, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList), warnings };
 }
 
 export async function generatePageDefs(page: CfePagePlan): Promise<void> {
@@ -532,7 +626,11 @@ export async function generatePageDefs(page: CfePagePlan): Promise<void> {
 export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateContext): Promise<CfePreparedPage> {
   const createContext = context || await readCreateContext();
   const operations = page.operationIds.map(id => createContext.operations.get(id) || syntheticOperation(page, id, createContext.project));
-  const commands = operations.map(operation => commandFromOperation(operation, createContext.entities));
+  // L4 v2: one command per bffCall (the wire contract of the page). Legacy: one command per operation.
+  const workspace = workspaceForPage(createContext, page);
+  const commands = workspace && workspace.bffCalls.length > 0
+    ? workspace.bffCalls.map(call => commandFromBffCall(call, workspace, page.moduleName, operations, createContext.entities))
+    : operations.map(operation => commandFromOperation(operation, createContext.entities));
   recordTechnicalIdLookupGaps(page, commands);
   const navigationRefs: unknown[] = [];
   const baseDefinition = pageDefinition(page, operations);
@@ -544,20 +642,98 @@ export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateCo
       (createContext.entities.get(entityId)?.fields || []).map(field => field.fieldId).filter(Boolean),
     ]),
   );
+  const contractCopies = workspace && workspace.bffCalls.length > 0 ? buildContractCopies(createContext, page, workspace) : [];
   const variantPlan = buildLayoutVariantPlan(createContext, page, operations, commands);
   const userJourney = buildPageUserJourney(createContext, page, operations, commands);
-  return { project: createContext.project, page, operations, commands, navigationRefs, baseDefinition, visualStyle, i18nMeta, entityFields, variantPlan, userJourney };
+  return { project: createContext.project, page, operations, commands, workspace, contractCopies, navigationRefs, baseDefinition, visualStyle, i18nMeta, entityFields, variantPlan, userJourney };
+}
+
+// F3: build one l2 contract byte-copy per bffCall from the raw l4 contract of record (contractsRaw,
+// keyed `<module>/<workspaceId>.<bffId>`). A missing l4 contract is a warning, not a failure — the run
+// proceeds with the copies it can make (the shared/page then reference only what exists).
+function buildContractCopies(createContext: CfeCreateContext, page: CfePagePlan, workspace: CfeJourneyWorkspace): CfeContractCopy[] {
+  const copies: CfeContractCopy[] = [];
+  for (const call of workspace.bffCalls) {
+    const contractName = `${workspace.workspaceId}.${call.bffId}`;
+    const raw = createContext.contractsRaw.get(`${page.moduleName}/${contractName}`);
+    if (!raw) {
+      recordCreateWarning(`l4 contract missing for ${page.moduleName}/${contractName}: expected l4/${page.moduleName}/contracts/${contractName}.ts (bffCall ${call.bffId})`);
+      continue;
+    }
+    const fileInfo: FileInfo = { project: createContext.project, level: 2, folder: `${page.moduleName}/web/contracts`, shortName: contractName, extension: '.ts' };
+    const tsRef = toDisplayRef(fileInfo);
+    const l4Ref = `_${createContext.project}_/l4/${page.moduleName}/contracts/${contractName}.ts`;
+    copies.push({ contractName, fileInfo, tsRef, source: buildL2ContractCopy(raw, tsRef, l4Ref) });
+  }
+  return copies;
+}
+
+// Resolve the l4 v2 workspace backing a page. buildPagePlans records the workspaceId in page.origin
+// ('l4-journey' source); match it within the page's module.
+function workspaceForPage(createContext: CfeCreateContext, page: CfePagePlan): CfeJourneyWorkspace | undefined {
+  const workspaceId = readString((page.origin as Record<string, unknown>).workspaceId);
+  if (!workspaceId) return undefined;
+  for (const journey of createContext.journeys) {
+    if (journey.moduleName !== page.moduleName) continue;
+    const found = journey.workspaces.find(ws => ws.workspaceId === workspaceId);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+// F3: one bffCall => one page command. Output/input shape and route come from the bffCall (the wire
+// contract of record); the precise TS types are the byte-copied l4 contract, so this only carries what
+// the deterministic pipeline consumes (shared state, page tests, layout context).
+function commandFromBffCall(bffCall: CfeBffCall, workspace: CfeJourneyWorkspace, moduleName: string, operations: CfeOperationDef[], entities: Map<string, CfeEntityDef>): Record<string, unknown> {
+  const operationInputs = new Map<string, CfeL4OperationInput[]>(
+    bffCall.uses.map(operationId => {
+      const operation = operations.find(op => op.operationId === operationId);
+      return [operationId, operation ? l4OperationInputs(operation.data) : []] as const;
+    }),
+  );
+  const shape = bffCallCommandShape(bffCall, operationInputs);
+  const primaryOperation = operations.find(op => op.operationId === bffCall.uses[0]);
+  const purpose = primaryOperation?.title || humanizeId(bffCall.bffId);
+  const rulesApplied = unique(bffCall.uses.flatMap(id => operations.find(op => op.operationId === id)?.rulesApplied || []));
+  const contractKey = `${workspace.workspaceId}.${bffCall.bffId}`;
+  return {
+    commandName: shape.commandName,
+    bffName: shape.routeKey,
+    routeKey: shape.routeKey,
+    purpose,
+    kind: shape.kind,
+    outputShape: shape.outputShape,
+    ...(shape.canonicalOutputShape ? { canonicalOutputShape: shape.canonicalOutputShape } : {}),
+    input: shape.input.map(field => ({ name: field.name, type: 'string', required: field.required, source: field.source, presentation: field.presentation })),
+    output: shape.output,
+    rulesApplied,
+    origin: {
+      source: 'l4/workspace-bffCall',
+      ownerId: `bffCall:${contractKey}`,
+      workspaceId: workspace.workspaceId,
+      bffId: bffCall.bffId,
+      route: bffCall.route,
+      uses: bffCall.uses,
+      defPath: `_${mls.actualProject || 0}_/l4/${moduleName}/contracts/${contractKey}.ts`,
+    },
+  };
 }
 
 export async function saveContractDefs(prepared: CfePreparedPage): Promise<void> {
   await savePageCreateMarker(prepared, 'inProgress');
+  // F3 (v2): the contract of record is the l4 bffCall contract, byte-copied to l2 deterministically —
+  // no LLM, no readCanonicalOutputShape, no per-page contract .defs.ts. The shared imports these .ts.
+  if (prepared.contractCopies.length > 0) {
+    for (const copy of prepared.contractCopies) await saveStorContent(copy.fileInfo, copy.source);
+    return;
+  }
   await saveFrontendDefs(contractFileInfo(prepared.project, prepared.page), 'definition', prepared.commands, contractPipeline(prepared.project, prepared.page));
 }
 
 export async function saveBaseSharedDefs(prepared: CfePreparedPage): Promise<void> {
   const baseLayout = enrichLayoutWithStateRefs(prepared, deterministicLayoutFromBase(prepared));
   const definition = sharedDefinition(prepared, baseLayout);
-  await saveFrontendDefs(sharedFileInfo(prepared.project, prepared.page), 'definition', definition, sharedPipeline(prepared.project, prepared.page, prepared.commands));
+  await saveFrontendDefs(sharedFileInfo(prepared.project, prepared.page), 'definition', definition, sharedPipeline(prepared));
 }
 
 // ---- Item 2a: generated BFF page tests (page11) ----
@@ -585,7 +761,7 @@ export async function savePageTestsFile(prepared: CfePreparedPage): Promise<void
   await saveStorContent(fileInfo, renderPageTestsFile(prepared, cases));
 }
 
-function buildPageTestCases(prepared: CfePreparedPage): PageTestCase[] {
+export function buildPageTestCases(prepared: CfePreparedPage): PageTestCase[] {
   const cases: PageTestCase[] = [];
   for (const command of prepared.commands) {
     const commandName = readString(command.commandName);
@@ -682,7 +858,7 @@ export async function savePageObjectiveTrace(prepared: CfePreparedPage, genome: 
 export async function reconcileSharedDefs(prepared: CfePreparedPage, enrichedLayouts: CfePageLayoutDefinition[]): Promise<void> {
   const unionLayout = mergeLayoutsForShared(enrichedLayouts);
   const definition = sharedDefinition(prepared, unionLayout);
-  await saveFrontendDefs(sharedFileInfo(prepared.project, prepared.page), 'definition', definition, sharedPipeline(prepared.project, prepared.page, prepared.commands));
+  await saveFrontendDefs(sharedFileInfo(prepared.project, prepared.page), 'definition', definition, sharedPipeline(prepared));
   await savePageCreateMarker(prepared, 'done');
 }
 
@@ -810,6 +986,20 @@ function baseLayoutPromptContext(prepared: CfePreparedPage): Record<string, unkn
       statePolicy: 'All filters, form fields, query results, action statuses and navigation requests are shared/global state. Page render must not own mutable state.',
     },
     i18n: prepared.i18nMeta,
+    // F4: the l4 v2 workspace declares the authoritative section/organism skeleton. The LLM lays out
+    // AROUND these roles — it does NOT invent a section per query. Absent for legacy operationIds pages.
+    ...(prepared.workspace && prepared.workspace.sections.length > 0 ? {
+      workspace: {
+        note: 'AUTHORITATIVE layout skeleton (l4 v2). Build the page from these sections and organism roles — do NOT turn every query into its own section. primarySurface = the section surface (list/table/panel per output kind); filterControl = filters bound to its surface query INPUTS (fold into that surface, never a separate section); detailPanel = a detail/master-detail panel of its query; contextualAction/batchAction = a command action/form acting on the surface; hero/banner/richText/imageSet/ctaLink/showcase = landing content. dataSource/action are bffCall ids present in shared.actions.',
+        purpose: prepared.workspace.purpose,
+        kind: prepared.workspace.kind,
+        sections: prepared.workspace.sections.map(section => ({
+          sectionId: section.sectionId,
+          intent: section.intent,
+          organisms: section.organisms.map(organism => ({ role: organism.role, dataSource: organism.dataSource, action: organism.action, attachTo: organism.attachTo, slice: organism.slice })),
+        })),
+      },
+    } : {}),
   };
 }
 
@@ -1747,7 +1937,13 @@ function recordTechnicalIdLookupGaps(page: CfePagePlan, commands: Record<string,
   }
 }
 
-function deterministicLayoutFromBase(prepared: CfePreparedPage): CfePageLayoutDefinition {
+export function deterministicLayoutFromBase(prepared: CfePreparedPage): CfePageLayoutDefinition {
+  // F4: when the l4 v2 workspace declares sections[].organisms[], the layout structure comes from the
+  // organism roles (1 primarySurface per section, filterControls fold into their surface, detailPanel is
+  // a panel, contextualAction/batchAction are command forms) — no longer "every query becomes a section".
+  if (prepared.workspace && prepared.workspace.sections.length > 0 && prepared.contractCopies.length > 0) {
+    return deterministicWorkspaceLayout(prepared, prepared.workspace);
+  }
   const i18n: Record<string, string> = {};
   const sectionId = `section.${prepared.page.pageId}.main`;
   const sectionTitleKey = `${sectionId}.title`;
@@ -1881,6 +2077,194 @@ function deterministicField(id: string, field: string, index: number, i18n: Reco
   return { id, field, labelKey, order: (index + 1) * 10 };
 }
 
+// F4: the deterministic seed layout for an l4 v2 workspace. One layout section per workspace section;
+// organisms come from the section's roles (not one per query). filterControl folds into its surface's
+// filters; contextualAction/batchAction become command forms; content roles (F6) become content organisms.
+function deterministicWorkspaceLayout(prepared: CfePreparedPage, workspace: CfeJourneyWorkspace): CfePageLayoutDefinition {
+  const i18n: Record<string, string> = {};
+  const pageId = prepared.page.pageId;
+  const commandByBff = new Map(prepared.commands.map(command => [readString(command.commandName), command]));
+  const sections: CfeLayoutSection[] = [];
+  workspace.sections.forEach((section, sectionIndex) => {
+    const sectionId = `section.${pageId}.${toSafeShortName(section.sectionId) || 'main'}`;
+    const sectionTitleKey = `${sectionId}.title`;
+    i18n[sectionTitleKey] = section.intent || prepared.page.pageName;
+    const organisms: CfeLayoutOrganism[] = [];
+    let order = 0;
+    let hasMutation = false;
+    for (const organism of section.organisms) {
+      if (organism.role === 'filterControl') continue; // folds into the surface it is attached to
+      order += 10;
+      const built = buildWorkspaceOrganism(pageId, organism, commandByBff, order, i18n);
+      if (!built) continue;
+      if (built.type === 'commandForm') hasMutation = true;
+      organisms.push(built);
+    }
+    if (organisms.length > 0) {
+      sections.push({ id: sectionId, type: 'section', sectionName: prepared.page.pageName, titleKey: sectionTitleKey, mode: hasMutation ? 'edit' : 'view', order: (sectionIndex + 1) * 10, organisms });
+    }
+  });
+  if (sections.length === 0) {
+    const fallbackId = `section.${pageId}.main`;
+    i18n[`${fallbackId}.title`] = prepared.page.pageName;
+    sections.push({ id: fallbackId, type: 'section', sectionName: prepared.page.pageName, titleKey: `${fallbackId}.title`, mode: 'view', order: 10, organisms: [] });
+  }
+  return {
+    pageId,
+    layoutId: `page.${pageId}`,
+    sections,
+    i18n,
+    dataBindings: prepared.commands.map(command => ({
+      id: `binding.${pageId}.${readString(command.commandName)}`,
+      source: `bff.${readString(command.commandName)}`,
+      command: readString(command.commandName),
+      description: readString(command.purpose),
+    })),
+  };
+}
+
+function buildWorkspaceOrganism(pageId: string, organism: CfeWorkspaceOrganism, commandByBff: Map<string, Record<string, unknown>>, order: number, i18n: Record<string, string>): CfeLayoutOrganism | null {
+  // Content roles (F6) carry no bffCall, except showcase which is fed by a query dataSource.
+  if (isContentOrganismRole(organism.role)) {
+    if (organism.role === 'showcase' && organism.dataSource && commandByBff.has(organism.dataSource)) {
+      return buildQueryOrganism(pageId, organism.dataSource, 'showcase', order, commandByBff, i18n);
+    }
+    return buildContentOrganism(pageId, organism.role, order, i18n);
+  }
+  const bffId = organism.dataSource || organism.action || '';
+  const command = bffId ? commandByBff.get(bffId) : undefined;
+  if (!command) return null;
+  if (readString(command.kind) === 'query') {
+    return buildQueryOrganism(pageId, bffId, organism.role === 'detailPanel' ? 'detail' : 'list', order, commandByBff, i18n);
+  }
+  return buildCommandOrganism(pageId, bffId, order, commandByBff, i18n);
+}
+
+function buildQueryOrganism(pageId: string, bffId: string, mode: 'list' | 'detail' | 'showcase', order: number, commandByBff: Map<string, Record<string, unknown>>, i18n: Record<string, string>): CfeLayoutOrganism {
+  const command = commandByBff.get(bffId) || {};
+  const title = readString(command.purpose) || humanizeId(bffId);
+  const organismId = `organism.${pageId}.${bffId}`;
+  const organismTitleKey = `${organismId}.title`;
+  i18n[organismTitleKey] = title;
+  const intentId = `intent.${pageId}.${bffId}.${mode}`;
+  const intentTitleKey = `${intentId}.title`;
+  const emptyKey = `${intentId}.empty`;
+  i18n[intentTitleKey] = title;
+  i18n[emptyKey] = 'Nenhum registro encontrado';
+  const columns = commandFields(command.output).map((field, index) => deterministicField(`${intentId}.column.${field}`, field, index, i18n));
+  const filters = commandFieldRecords(command.input).filter(field => field.presentation === 'form').map((field, index) => deterministicField(`${intentId}.filter.${field.name}`, field.name, index, i18n));
+  const intent = mode === 'detail' ? 'detail' : mode === 'showcase' ? 'showcase' : 'queryList';
+  return {
+    id: organismId,
+    type: mode === 'showcase' ? 'showcase' : 'queryResult',
+    organismName: toPascalCase(bffId),
+    titleKey: organismTitleKey,
+    purpose: title,
+    userActions: [bffId],
+    requiredEntities: [],
+    readsFields: [],
+    writesFields: [],
+    rulesApplied: Array.isArray(command.rulesApplied) ? command.rulesApplied.map(String) : [],
+    order,
+    intentions: [{
+      id: intentId,
+      intent,
+      order: 10,
+      titleKey: intentTitleKey,
+      source: `bff.${bffId}`,
+      binding: `binding.${pageId}.${bffId}`,
+      action: bffId,
+      emptyKey,
+      displayHint: mode === 'detail' ? 'master-detail' : undefined,
+      fields: mode === 'detail' ? columns : [],
+      columns: mode === 'detail' ? [] : columns,
+      filters: mode === 'detail' ? [] : filters,
+      toolbar: [],
+      rowActions: [],
+      actions: [],
+    }],
+  };
+}
+
+function buildCommandOrganism(pageId: string, bffId: string, order: number, commandByBff: Map<string, Record<string, unknown>>, i18n: Record<string, string>): CfeLayoutOrganism {
+  const command = commandByBff.get(bffId) || {};
+  const title = readString(command.purpose) || humanizeId(bffId);
+  const organismId = `organism.${pageId}.${bffId}`;
+  const organismTitleKey = `${organismId}.title`;
+  i18n[organismTitleKey] = title;
+  const intentId = `intent.${pageId}.${bffId}.form`;
+  const intentTitleKey = `${intentId}.title`;
+  const actionKey = `${intentId}.action.${bffId}`;
+  i18n[intentTitleKey] = title;
+  i18n[actionKey] = title;
+  const fields = commandFieldRecords(command.input).filter(field => field.presentation === 'form').map((field, index) => deterministicField(`${intentId}.field.${field.name}`, field.name, index, i18n));
+  return {
+    id: organismId,
+    type: 'commandForm',
+    organismName: toPascalCase(bffId),
+    titleKey: organismTitleKey,
+    purpose: title,
+    userActions: [bffId],
+    requiredEntities: [],
+    readsFields: [],
+    writesFields: [],
+    rulesApplied: Array.isArray(command.rulesApplied) ? command.rulesApplied.map(String) : [],
+    order,
+    intentions: [{
+      id: intentId,
+      intent: 'commandForm',
+      order: 10,
+      titleKey: intentTitleKey,
+      source: `bff.${bffId}`,
+      binding: `binding.${pageId}.${bffId}`,
+      submitAction: bffId,
+      fields,
+      columns: [],
+      filters: [],
+      toolbar: [],
+      rowActions: [],
+      actions: [{ id: `${intentId}.action.${bffId}`, action: bffId, labelKey: actionKey, order: 10 }],
+    }],
+  };
+}
+
+// F6: content organism (no bffCall) for landing roles hero/banner/richText/imageSet/ctaLink.
+function buildContentOrganism(pageId: string, role: string, order: number, i18n: Record<string, string>): CfeLayoutOrganism {
+  const organismId = `organism.${pageId}.${role}${order}`;
+  const organismTitleKey = `${organismId}.title`;
+  i18n[organismTitleKey] = humanizeId(role);
+  const intentId = `intent.${pageId}.${role}${order}.content`;
+  const intentTitleKey = `${intentId}.title`;
+  i18n[intentTitleKey] = humanizeId(role);
+  if (role === 'ctaLink') i18n[`${intentId}.label`] = 'Ver mais';
+  return {
+    id: organismId,
+    type: 'content',
+    organismName: toPascalCase(role),
+    titleKey: organismTitleKey,
+    purpose: humanizeId(role),
+    userActions: [],
+    requiredEntities: [],
+    readsFields: [],
+    writesFields: [],
+    rulesApplied: [],
+    order,
+    intentions: [{
+      id: intentId,
+      intent: role,
+      order: 10,
+      titleKey: intentTitleKey,
+      displayHint: role,
+      fields: [],
+      columns: [],
+      filters: [],
+      toolbar: [],
+      rowActions: [],
+      actions: [],
+    }],
+  };
+}
+
 function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Record<string, unknown> {
   const businessContextRefs = collectBusinessContextRefs(prepared.operations);
   const states = sharedStates(prepared, layout);
@@ -1904,10 +2288,20 @@ function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefini
     ownerIds: prepared.page.ownerIds,
     operationIds: prepared.page.operationIds,
     origin: prepared.page.origin,
-    contractRef: {
-      defPath: toDisplayRef(contractFileInfo(prepared.project, prepared.page)),
-      tsPath: contractTsPath(prepared.project, prepared.page),
-    },
+    // F3 (v2): the shared imports/re-exports EACH per-bffCall contract copy (one .ts per bffCall) and
+    // calls execBff with the imported `<bffId>Route` const — never a typed route string. Legacy: a
+    // single per-page contract .ts built by the LLM skill.
+    contractRef: prepared.contractCopies.length > 0
+      ? {
+          contracts: prepared.contractCopies.map(copy => {
+            const bffId = copy.contractName.split('.').slice(1).join('.');
+            return { commandName: bffId, tsPath: copy.tsRef, routeConst: `${bffId}Route` };
+          }),
+        }
+      : {
+          defPath: toDisplayRef(contractFileInfo(prepared.project, prepared.page)),
+          tsPath: contractTsPath(prepared.project, prepared.page),
+        },
     layoutRef: {
       defPath: toDisplayRef(pageFileInfo(prepared.project, prepared.page)),
       layoutId: layout.layoutId,
@@ -2687,17 +3081,19 @@ function contractPipeline(project: number, page: CfePagePlan): unknown[] {
   return [{ id: `${page.pageId}__l2_contract`, type: 'l2_contract', outputPath: `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`, defPath: `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.defs.ts`, dependsFiles: [], dependsOn: [], skills: ['_102020_/l2/agentChangeFrontend/skills/genCfeContractTs.ts'], agent: 'agentCfeMaterializeGen' }];
 }
 
-function sharedPipeline(project: number, page: CfePagePlan, commands: Record<string, unknown>[]): unknown[] {
+function sharedPipeline(prepared: CfePreparedPage): unknown[] {
+  const { project, page, commands, contractCopies } = prepared;
+  // F3 (v2): shared imports the per-bffCall contract copies (already on disk, deterministic) — no
+  // dependsOn a contract materialize item. Legacy: the single per-page contract .ts built by the skill.
+  const isV2 = contractCopies.length > 0;
+  const contractFiles = isV2 ? contractCopies.map(copy => copy.tsRef) : [`_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`];
   return [{
     id: `${page.pageId}__l2_shared`,
     type: 'l2_shared',
     outputPath: `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`,
     defPath: `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.defs.ts`,
-    dependsFiles: [
-      `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`,
-      '_102029_.d.ts',
-    ],
-    dependsOn: [`${page.pageId}__l2_contract`],
+    dependsFiles: [...contractFiles, '_102029_.d.ts'],
+    dependsOn: isV2 ? [] : [`${page.pageId}__l2_contract`],
     skills: ['_102020_/l2/agentChangeFrontend/skills/genCfeSharedTs.ts'],
     rulesApplied: unique(commands.flatMap(command => Array.isArray(command.rulesApplied) ? command.rulesApplied.map(String) : [])),
     agent: 'agentCfeMaterializeGen',
@@ -3077,13 +3473,25 @@ async function savePageRegisterMarker(project: number, page: CfePagePlan, status
 }
 
 async function hasGeneratedDefs(project: number, page: CfePagePlan): Promise<boolean> {
-  const defsExist = [contractFileInfo(project, page), sharedFileInfo(project, page), pageFileInfo(project, page)].every(fileInfo => {
+  const defsExist = [sharedFileInfo(project, page), pageFileInfo(project, page)].every(fileInfo => {
     const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
     return !!file && file.status !== 'deleted';
   });
-  if (!defsExist) return false;
+  // Contract exists either as the legacy per-page .defs.ts (v1) or as at least one per-bffCall byte-copy
+  // `<pageId>.<bffId>.ts` in the contracts folder (F3 v2).
+  if (!defsExist || !hasPageContractArtifact(project, page)) return false;
   const marker = await readJsonFile(pageCreateMarkerFileInfo(project, page));
   return isRecord(marker) && marker.status === 'done';
+}
+
+function hasPageContractArtifact(project: number, page: CfePagePlan): boolean {
+  const legacy = mls.stor.files[mls.stor.getKeyToFile(contractFileInfo(project, page))];
+  if (legacy && legacy.status !== 'deleted') return true;
+  const contractsFolder = `${page.moduleName}/web/contracts`;
+  return (Object.values(mls.stor.files) as any[]).some(file =>
+    file && file.project === project && file.level === 2 && file.status !== 'deleted'
+    && String(file.folder || '') === contractsFolder && file.extension === '.ts'
+    && String(file.shortName || '').startsWith(`${page.pageId}.`));
 }
 
 function hasMaterializedPageTs(project: number, page: CfePagePlan): boolean {
@@ -3129,10 +3537,10 @@ function pageHtmlFileInfo(project: number, page: CfePagePlan, genome = 'page11')
 function pageCreateMarkerFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/trace/frontend-create-pages`, shortName: page.pageId, extension: '.json' }; }
 function pageRegisterMarkerFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/trace/frontend-register-pages`, shortName: page.pageId, extension: '.json' }; }
 
-function operationFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string): CfeOperationDef | null {
+function operationFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string, folderModule = ''): CfeOperationDef | null {
   const operationId = readString(data.operationId);
   if (!operationId) return null;
-  return { operationId, commandName: readString(data.commandName) || operationId, pageId: readString(data.pageId), bffName: readString(data.bffName), title: readString(data.title) || humanizeId(operationId), actor: readString(data.actor), entity: normalizeEntityRef(readString(data.entity)), kind: readString(data.kind), reads: readStringArray(data.reads), writes: readStringArray(data.writes), rulesApplied: readStringArray(data.rulesApplied), storySteps: readStorySteps(data), todoStatus: '', inlineStatusFrontend: readString(data.statusFrontend), capability: isRecord(data.capability) ? data.capability : undefined, moduleName: '', fileInfo, exportName, data };
+  return { operationId, commandName: readString(data.commandName) || operationId, pageId: readString(data.pageId), bffName: readString(data.bffName), title: readString(data.title) || humanizeId(operationId), actor: readString(data.actor), entity: normalizeEntityRef(readString(data.entity)), kind: readString(data.kind), reads: readStringArray(data.reads), writes: readStringArray(data.writes), rulesApplied: readStringArray(data.rulesApplied), storySteps: readStorySteps(data), todoStatus: '', inlineStatusFrontend: readString(data.statusFrontend), capability: isRecord(data.capability) ? data.capability : undefined, moduleName: '', folderModule, fileInfo, exportName, data };
 }
 
 function syntheticOperation(page: CfePagePlan, operationId: string, project: number): CfeOperationDef {
@@ -3155,7 +3563,8 @@ function syntheticOperation(page: CfePagePlan, operationId: string, project: num
     inlineStatusFrontend: '',
     capability: page.capabilities[0] ? { capabilityId: page.capabilities[0] } : undefined,
     moduleName: page.moduleName,
-    fileInfo: { project, level: 4, folder: 'operations', shortName: operationId, extension: '.defs.ts' },
+    folderModule: page.moduleName,
+    fileInfo: { project, level: 4, folder: `${page.moduleName}/operations`, shortName: operationId, extension: '.defs.ts' },
     exportName: `synthetic${toPascalCase(operationId)}`,
     data: {},
   };
@@ -3169,27 +3578,59 @@ function inferOperationKind(operationId: string): string {
   return 'update';
 }
 
-function workflowFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string): CfeWorkflowDef | null {
+function workflowFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string, folderModule = ''): CfeWorkflowDef | null {
   const workflowId = readString(data.workflowId);
   if (!workflowId) return null;
-  return { workflowId, pageId: readString(data.pageId) || workflowId, title: readString(data.title) || humanizeId(workflowId), actors: readStringArray(data.actors), operationIds: readStringArray(data.operationIds), entities: normalizeEntityRefs(readStringArray(data.entities)), rulesApplied: readStringArray(data.rulesApplied), storySteps: readStorySteps(data), todoStatus: '', inlineStatusFrontend: readString(data.statusFrontend), capabilities: Array.isArray(data.capabilities) ? data.capabilities.filter(isRecord) : [], moduleName: '', fileInfo, exportName, data };
+  return { workflowId, pageId: readString(data.pageId) || workflowId, title: readString(data.title) || humanizeId(workflowId), actors: readStringArray(data.actors), operationIds: readStringArray(data.operationIds), entities: normalizeEntityRefs(readStringArray(data.entities)), rulesApplied: readStringArray(data.rulesApplied), storySteps: readStorySteps(data), todoStatus: '', inlineStatusFrontend: readString(data.statusFrontend), capabilities: Array.isArray(data.capabilities) ? data.capabilities.filter(isRecord) : [], moduleName: '', folderModule, fileInfo, exportName, data };
+}
+
+// A workspace, from either a standalone l4 v2 defs (raw = the whole file's default export) or a legacy
+// journeys-nested entry. bffCalls[]/sections[] are parsed when present (v2), [] otherwise.
+function workspaceFromData(raw: Record<string, unknown>): CfeJourneyWorkspace | null {
+  const workspaceId = readString(raw.workspaceId);
+  if (!workspaceId) return null;
+  const actors = readStringArray(raw.actors);
+  const actor = readString(raw.actor) || actors[0] || '';
+  const bffCalls = parseWorkspaceBffCalls(raw);
+  return {
+    workspaceId,
+    title: readString(raw.title),
+    actor,
+    actors: unique([...(actor ? [actor] : []), ...actors]),
+    kind: readString(raw.kind),
+    entity: normalizeEntityRef(readString(raw.entity)),
+    workflowId: readString(raw.workflowId) || undefined,
+    // v2 derives coverage from bffCalls[].uses; legacy carries operationIds directly.
+    operationIds: unique([...readStringArray(raw.operationIds), ...bffCalls.flatMap(call => call.uses)]),
+    purpose: readString(raw.purpose),
+    bffCalls,
+    sections: parseWorkspaceSections(raw),
+  };
 }
 
 function journeyFromData(data: Record<string, unknown>, folderModule: string): CfeJourneyMap | null {
   const moduleName = readString(data.moduleName) || folderModule;
   if (!moduleName) return null;
-  const workspaces = (Array.isArray(data.workspaces) ? data.workspaces.filter(isRecord) : []).map(raw => ({
-    workspaceId: readString(raw.workspaceId),
-    title: readString(raw.title),
-    actor: readString(raw.actor),
-    kind: readString(raw.kind),
-    entity: normalizeEntityRef(readString(raw.entity)),
-    workflowId: readString(raw.workflowId) || undefined,
-    operationIds: readStringArray(raw.operationIds),
-    purpose: readString(raw.purpose),
-  })).filter(ws => ws.workspaceId);
-  const navigationEdges = Array.isArray(data.navigationEdges) ? data.navigationEdges.filter(isRecord) : [];
-  return { moduleName, workspaces, navigationEdges };
+  const workspaces = (Array.isArray(data.workspaces) ? data.workspaces.filter(isRecord) : [])
+    .map(workspaceFromData)
+    .filter((ws): ws is CfeJourneyWorkspace => ws !== null);
+  return { moduleName, workspaces, navigationEdges: readRecordArray(data.navigationEdges), landings: landingsFromData(data) };
+}
+
+function landingsFromData(data: Record<string, unknown>): CfeLanding[] {
+  return (Array.isArray(data.landings) ? data.landings.filter(isRecord) : [])
+    .map(raw => ({ actorId: readString(raw.actorId), workspaceId: readString(raw.workspaceId), reason: readString(raw.reason) }))
+    .filter(landing => landing.actorId && landing.workspaceId);
+}
+
+function actorsFromData(data: Record<string, unknown>): CfeActorDef[] {
+  return (Array.isArray(data.actors) ? data.actors.filter(isRecord) : [])
+    .map(raw => ({ actorId: readString(raw.actorId), title: readString(raw.title) || humanizeId(readString(raw.actorId)), description: readString(raw.description), roleScope: readString(raw.roleScope) }))
+    .filter(actor => actor.actorId);
+}
+
+function readRecordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
 function entityFromData(data: Record<string, unknown>, fallbackId: string): CfeEntityDef | null {
