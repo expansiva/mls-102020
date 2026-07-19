@@ -82,7 +82,7 @@ export function createAgent(): IAgentAsync {
 }
 
 // Bump on every deploy so the console confirms the running build is the latest one.
-export const NS_AGENT_BUILD = 'build-12 (2026-07-19) two-phase e6 + command-form primarySurface + fanout=20 + /rebuild';
+export const NS_AGENT_BUILD = 'build-15 (2026-07-19) l4 contracts emit ONLY .defs.ts (no .ts, no .d.ts twin)';
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
   console.log(`[ns-build] agentNewSolution ${NS_AGENT_BUILD}`);

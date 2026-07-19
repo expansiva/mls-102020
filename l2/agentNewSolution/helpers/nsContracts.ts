@@ -5,7 +5,7 @@
 // operation: each bffCall projects only the fields its page renders, so the emitted Input/Output are
 // page-shaped. A wrong shape becomes a tsc error at the usecase/page import site by construction.
 //
-// One file per bffCall: l4/<module>/contracts/<workspaceId>.<bffId>.ts (+ .d.ts twin). NO l1/l2
+// One file per bffCall: l4/<module>/contracts/<workspaceId>.<bffId>.defs.ts (l4 holds ONLY .defs.ts). NO l1/l2
 // mirrors in this phase (the agent writes only l4/l5). kind semantics are FIXED:
 //   list      -> Output = Item[]
 //   object    -> Output = interface with the top-level fields
@@ -31,7 +31,7 @@ export interface NsBffContractEntry {
   output?: unknown;              // bffCall.output (projection) — absent for passthrough
   uses: Array<{ operationId: string }>;
   operations: Record<string, NsBffOperationView>;
-  fileRef: string;               // mls fileReference of the emitted .ts
+  fileRef: string;               // mls fileReference of the emitted .defs.ts
   sourceRef: string;             // path of the source workspace defs quoted in the note
 }
 
@@ -39,7 +39,6 @@ export interface NsBffContractResult {
   bffId: string;
   route: string;
   tsSource: string;
-  dtsSource: string;
 }
 
 // A field normalized for rendering: a scalar (tsType) or an array of nested fields (item).
@@ -267,16 +266,13 @@ export function buildNsBffContractSet(entries: NsBffContractEntry[]): NsBffContr
     const inputBlock = renderInput(P, entry, refTypes);
 
     const routeConst = `export const ${entry.bffId}Route = '${entry.route}' as const;`;
-    const routeDecl = `declare const ${entry.bffId}Route: '${entry.route}';\nexport { ${entry.bffId}Route };`;
     const note = `// GENERATED MECHANICALLY from ${entry.sourceRef} — DO NOT EDIT.\n`
       + `// Contract of record: bffCall ${entry.bffId} (${entry.kind}); Output kind=${outputKind}; route ${entry.route}.`;
 
     const tsSource = `/// <mls fileReference="${entry.fileRef}" enhancement="_blank"/>\n\n`
       + `${note}\n\n` + inputBlock.join('\n') + '\n\n' + outputBody.join('\n') + `\n\n${routeConst}\n`;
-    const dtsSource = `${note}\n// Declaration twin of ${entry.bffId}.ts (same shapes, ambient form).\n\n`
-      + inputBlock.join('\n') + '\n\n' + outputBody.join('\n') + `\n\n${routeDecl}\n`;
 
-    results.push({ bffId: entry.bffId, route: entry.route, tsSource, dtsSource });
+    results.push({ bffId: entry.bffId, route: entry.route, tsSource });
   }
   return results;
 }

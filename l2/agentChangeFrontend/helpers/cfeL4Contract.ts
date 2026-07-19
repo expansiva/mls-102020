@@ -306,27 +306,50 @@ export function bffCallCommandShape(bffCall: CfeBffCall, operationInputs: Map<st
   };
 }
 
-// F3: byte-copy an l4 per-bffCall contract into l2. Bodies (Input/Output interfaces + `<bffId>Route`
-// const) are preserved verbatim; only the `/// <mls fileReference=…>` header is rewritten to the l2 path
-// (an l4 fileReference sitting in l2 would confuse enhancement/materialize) plus a "copied from l4" note.
-export function buildL2ContractCopy(rawL4Source: string, l2Ref: string, l4Ref: string): string {
-  const note = `// copied from l4 — do not edit (source: ${l4Ref})`;
-  const headerLine = `/// <mls fileReference="${l2Ref}" enhancement="_blank"/>`;
-  const lines = rawL4Source.replace(/\r\n/g, '\n').split('\n');
-  const headerIndex = lines.findIndex(line => line.includes('<mls fileReference='));
-  if (headerIndex >= 0) {
-    lines[headerIndex] = headerLine;
-    // Drop a blank line immediately after the header (if any) so the note sits directly under it.
-    const insertAt = headerIndex + 1;
-    lines.splice(insertAt, 0, note);
-    return `${lines.join('\n')}\n`.replace(/\n{3,}/g, '\n\n');
-  }
-  return `${headerLine}\n${note}\n\n${rawL4Source.replace(/\r\n/g, '\n').replace(/^\n+/, '')}`.replace(/\n{3,}/g, '\n\n');
+// F3: the l2 contract .ts is GENERATED deterministically from the l4 workspace bffCall (l4 holds only
+// .defs.ts — never a compilable .ts; agentChangeFrontend never reads a .ts from l4). Emits the Input /
+// Output interfaces (Output is the projected item shape for a list/paginated bffCall) plus the
+// `<bffId>Route` const. A stable marker keeps the file recognizable so rebuild-defs cleanup preserves it.
+export interface CfeContractField { name: string; type: string; optional?: boolean }
+
+const GENERATED_CONTRACT_MARKER = 'GENERATED from l4 bffCall — do not edit';
+
+export function buildBffContractSource(args: {
+  l2Ref: string;
+  interfaceName: string;   // PascalCase(bffId)
+  bffId: string;
+  kind: string;            // query | command
+  outputKind: string;      // object | list | paginated
+  route: string;
+  input: CfeContractField[];
+  output: CfeContractField[];
+}): string {
+  const iface = (name: string, fields: CfeContractField[]): string => {
+    if (fields.length === 0) return `export interface ${name} {}`;
+    const body = fields.map(field => `  ${safeIdent(field.name)}${field.optional ? '?' : ''}: ${field.type};`).join('\n');
+    return `export interface ${name} {\n${body}\n}`;
+  };
+  return [
+    `/// <mls fileReference="${args.l2Ref}" enhancement="_blank"/>`,
+    '',
+    `// ${GENERATED_CONTRACT_MARKER} (bffCall ${args.bffId}, ${args.kind}; Output kind=${args.outputKind}; route ${args.route}).`,
+    '',
+    iface(`${args.interfaceName}Input`, args.input),
+    '',
+    iface(`${args.interfaceName}Output`, args.output),
+    '',
+    `export const ${args.bffId}Route = '${args.route}' as const;`,
+    '',
+  ].join('\n');
 }
 
-/** True when a contract .ts was byte-copied from l4 (marked by buildL2ContractCopy) — preserved by cleanup. */
+function safeIdent(name: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
+}
+
+/** True when a contract .ts was generated from an l4 bffCall — preserved by rebuild-defs cleanup. */
 export function isCopiedL4Contract(source: string): boolean {
-  return /copied from l4 — do not edit/.test(source);
+  return /from l4 bffCall — do not edit/.test(source);
 }
 
 function readString(value: unknown): string {

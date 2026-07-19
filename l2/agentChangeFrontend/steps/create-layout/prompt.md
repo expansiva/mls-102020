@@ -18,7 +18,15 @@ Tool arguments:
 
 The result must preserve the section -> organism -> intention structure. Stable ids are required for
 sections, organisms, intentions, fields, columns and actions; section/organism/intention ids must be
-unique within the layout and distinct from `layoutId`. Include every operation action exactly as exposed
+unique within the layout and distinct from `layoutId`.
+
+Section shape (STRICT): every entry of `pageLayout.sections` is an object with `id`, `type` (always the
+string "section", or "sectionTab" only for a tabbed area), `mode` ("view" or "edit"), `order`, and a
+NON-EMPTY `organisms` array. NEVER invent a section `type` like "content", "hero" or "landing", and never
+emit a section without `organisms`. Content blocks (hero, banner, richText, imageSet, ctaLink, showcase)
+are ORGANISMS placed inside a normal section's `organisms[]` (an organism whose `type` is "content" or
+"showcase"), NOT their own section type. A landing page is ONE section whose organisms are those content
+blocks. Include every operation action exactly as exposed
 by `shared.actions`; do not invent actions, commands, fields, payloads, HTML, CSS, DOM,
 web-component tags or local mutable page state.
 

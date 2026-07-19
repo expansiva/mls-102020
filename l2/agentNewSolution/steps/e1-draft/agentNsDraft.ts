@@ -147,17 +147,25 @@ async function afterPromptStep(
       return [updateStatus(context, parentStep, step, hookSequential, 'failed', output.trace.join('\n') || 'E1 draft returned failed')];
     }
     const rawArtifact = output.result;
-    const currentModule = parsedArgs.previousModuleName || readString(rawArtifact.moduleName);
-    // /rebuild (newSolution_18): REUSE the natural module name (don't force a collision-avoiding
-    // variant like petShopReserva) — the old module is cleaned below and regenerated in place.
     const rebuild = isNsRebuildMode(context.task?.iaCompressed?.longMemory);
-    const existing = rebuild ? new Set<string>() : listExistingModuleFolders();
-    if (currentModule) existing.delete(currentModule);
+    // Keep the NATURAL module name — no collision-avoiding numeric variant. The user asked (newSolution_19)
+    // for a HARD STOP when the module already exists, instead of silently generating on top of / beside it.
     const artifact = prepareE1DraftArtifact(rawArtifact, {
-      existingModules: existing,
       requestedModuleFallback: rootPlan.userPrompt,
     });
     moduleNameForTrace = artifact.moduleName;
+    // Collision guard: outside /rebuild, if a module with this name already exists (l1/l2/l4/l5), FAIL the
+    // task and tell the user to pass /rebuild (regenerate in place, cleaning l4+l5) or pick another name.
+    // A re-run/adjustment of the SAME module (previousModuleName) is not a collision.
+    if (!rebuild) {
+      const existing = listExistingModuleFolders();
+      if (parsedArgs.previousModuleName) existing.delete(normalizeModuleFolderName(parsedArgs.previousModuleName));
+      if (existing.has(artifact.moduleName)) {
+        const msg = `Módulo "${artifact.moduleName}" já existe. Use /rebuild para regerar por cima (limpa l4+l5) ou escolha outro nome.`;
+        await writeNsTrace(artifact.moduleName, 'e1-draft', AGENT_NAME, 1, { moduleName: artifact.moduleName, existing: Array.from(existing).slice(0, 20) }, msg);
+        return [updateStatus(context, parentStep, step, hookSequential, 'failed', msg)];
+      }
+    }
     // /rebuild: soft-delete the existing module's l4 + l5 (leftover operations/workspaces/contracts from
     // a prior run) so this generation starts clean. Idempotent (already-deleted files are skipped).
     if (rebuild) {

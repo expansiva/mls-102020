@@ -9,7 +9,7 @@ const g = globalThis as unknown as Record<string, any>;
 // later test file in the same process doesn't inherit it.
 const priorMls = g.mls;
 after(() => { g.mls = priorMls; });
-async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any }> {
+async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any; cfePageLayoutToolSchema: any }> {
   if (!g.window) g.window = { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
   if (!g.document) g.document = { documentElement: { lang: 'pt-BR' }, addEventListener() {}, removeEventListener() {}, createElement: () => ({ style: {} }) };
   // libModel.ts runs init() -> mls.events.addEventListener at import time; the setup-l2 stub omits
@@ -54,7 +54,8 @@ function file(level: number, folder: string, shortName: string, extension: strin
   return { project: PROJECT, level, folder, shortName, extension, status: 'active', getContent: async () => content };
 }
 
-function installPetShopStor(): void {
+function installPetShopStor(opts: { contracts?: boolean } = {}): void {
+  const withContracts = opts.contracts !== false;
   const files = [
     file(4, 'petShop', 'module', '.defs.ts', defs('petShopModule', JSON.stringify({ moduleName: 'petShop', visualStyle: {}, languages: ['pt-BR'] }))),
     file(4, 'petShop', 'actors', '.defs.ts', defs('petShopActors', JSON.stringify({ moduleName: 'petShop', actors: [{ actorId: 'cliente', title: 'Cliente', roleScope: 'petShop:cliente' }] }))),
@@ -102,10 +103,20 @@ function installPetShopStor(): void {
         { ownerType: 'operation', ownerId: 'viewProductDetail', status: 'toCreate' },
       ],
     }))),
+    // Orphan l5 from a prior module name (no l4 for 'legacyPet'): must be IGNORED, not fatal.
+    file(5, 'legacyPet', 'todoFrontend', '.defs.ts', defs('legacyPetTodoFrontend', JSON.stringify({
+      moduleName: 'legacyPet', layer: 'frontend', owners: [
+        { ownerType: 'operation', ownerId: 'oldBrowse', status: 'done' },
+        { ownerType: 'workflow', ownerId: 'oldFlow', status: 'toCreate' },
+      ],
+    }))),
   ];
+  // l4 .ts contracts are never read by this agent (l4 = only .defs.ts). The `contracts:false` mode drops
+  // them from the fixture to prove the pipeline never depends on them (contracts are generated in F3).
+  const effective = withContracts ? files : files.filter(f => !(f.folder.endsWith('/contracts') && f.extension === '.ts'));
   // Preserve g.mls.events (installed by loadModule for libModel init); only swap project + files.
   g.mls.actualProject = PROJECT;
-  g.mls.stor = { ...(g.mls.stor || {}), files: Object.fromEntries(files.map((f, i) => [`f${i}`, f])) };
+  g.mls.stor = { ...(g.mls.stor || {}), files: Object.fromEntries(effective.map((f, i) => [`f${i}`, f])) };
 }
 
 test('readCreateContext reads l4 v2: module-scoped operations, standalone workspace bffCalls, actors, landings', async () => {
@@ -126,15 +137,26 @@ test('readCreateContext reads l4 v2: module-scoped operations, standalone worksp
   // Actors + landings from their standalone files.
   assert.deepEqual((ctx.actorsByModule.petShop || []).map((a: { actorId: any; }) => a.actorId), ['cliente']);
   assert.equal(journey!.landings[0]?.workspaceId, 'catalog');
-  // Raw l4 contracts collected for F3 byte-copy.
-  assert.ok(ctx.contractsRaw.get('petShop/catalog.catalogList'));
-  assert.ok(ctx.contractsRaw.get('petShop/catalog.productDetail'));
+  // l4 is read as .defs.ts only — the context exposes no raw l4 .ts (contracts are generated in F3).
+  assert.equal('contractsRaw' in ctx, false);
   // One page per workspace, keyed by workspaceId.
   const page = ctx.pages.find((p: { pageId: string; }) => p.pageId === 'catalog');
   assert.ok(page, 'catalog page built from the workspace');
+  // An orphan l5 todoFrontend for a module with no l4 (legacyPet) is ignored, not fatal.
+  assert.equal(ctx.moduleNames.includes('legacyPet'), false);
 });
 
-test('preparePageCreate builds one command per bffCall and byte-copies the l4 contracts (F3)', async () => {
+test('orphan todoFrontend for a module absent from l4 does not block the run (module-rename leftover)', async () => {
+  // Repro of the Lima failure: l5/petShop left behind after petShop -> petShopReservaRetirada. readCreateContext
+  // must not throw "todoFrontend has owner(s) absent from l4"; the orphan module's l5 is simply skipped.
+  const { readCreateContext } = await loadModule();
+  installPetShopStor();
+  const ctx = await readCreateContext();
+  assert.ok(ctx.pages.some((p: any) => p.pageId === 'catalog'));
+  assert.equal(ctx.warnings.some((w: string) => w.includes("orphan todoFrontend for module 'legacyPet'")), true);
+});
+
+test('preparePageCreate builds one command per bffCall and GENERATES the l2 contracts from the bffCall (F3, no l4 .ts read)', async () => {
   const { readCreateContext, preparePageCreate } = await loadModule();
   installPetShopStor();
   const ctx = await readCreateContext();
@@ -146,12 +168,16 @@ test('preparePageCreate builds one command per bffCall and byte-copies the l4 co
   assert.equal(String((byName.get('catalogList')! as any).routeKey), 'petShop.catalog.catalogList');
   assert.equal(String((byName.get('catalogList')! as any).outputShape), 'paginated');
   assert.equal(String((byName.get('productDetail')! as any).outputShape), 'object');
-  // F3: two per-bffCall contract copies, byte-identical bodies with an l2 header + copy marker.
+  // F3: one generated l2 contract .ts per bffCall — Input/Output interfaces + route const, l2 header,
+  // generated marker; NEVER references an l4 .ts.
   assert.deepEqual(prepared.contractCopies.map((c: { contractName: any; }) => c.contractName).sort(), ['catalog.catalogList', 'catalog.productDetail']);
   const listCopy = prepared.contractCopies.find((c: { contractName: string; }) => c.contractName === 'catalog.catalogList')!;
   assert.equal(listCopy.fileInfo.folder, 'petShop/web/contracts');
   assert.match(listCopy.source, /<mls fileReference="_102049_\/l2\/petShop\/web\/contracts\/catalog\.catalogList\.ts"/);
-  assert.match(listCopy.source, /copied from l4 — do not edit/);
+  assert.doesNotMatch(listCopy.source, /l4\/petShop\/contracts/); // never an l4 .ts reference
+  assert.match(listCopy.source, /GENERATED from l4 bffCall — do not edit/);
+  assert.match(listCopy.source, /export interface CatalogListInput \{/);
+  assert.match(listCopy.source, /export interface CatalogListOutput \{/);
   assert.match(listCopy.source, /export const catalogListRoute = 'petShop\.catalog\.catalogList' as const;/);
 });
 
@@ -232,6 +258,37 @@ test('remapLayoutActionsToBff maps LLM operationId refs to their bffCall id, the
   assert.deepEqual(surface.userActions, ['catalogList']);
   assert.equal(surface.intentions[0].action, 'catalogList');
   assert.doesNotThrow(() => validatePageLayout(prepared, remapped));
+});
+
+test('seed is bffCall-keyed and contracts are generated even with NO l4 .ts present (l4 = only .defs.ts) — Lima regression', async () => {
+  // Repro of the "sem chamar a LLM" failure + the l4-.ts rule: l4 holds only .defs.ts, so there is no
+  // l4 .ts to read. Contracts are GENERATED from the bffCall, and the seed keys off bffCalls (never the
+  // legacy per-operation layout whose operationId refs are absent from shared.actions).
+  const { readCreateContext, preparePageCreate, deterministicLayoutFromBase, validatePageLayout } = await loadModule();
+  installPetShopStor({ contracts: false });
+  const ctx = await readCreateContext();
+  const page = ctx.pages.find((p: any) => p.pageId === 'catalog')!;
+  const prepared = await preparePageCreate(page, ctx);
+  // Contracts are generated from the bffCall regardless of any l4 .ts.
+  assert.equal(prepared.contractCopies.length, 2);
+  assert.ok(prepared.contractCopies.every((c: any) => !/l4\/.*\/contracts/.test(c.source)));
+  const layout = deterministicLayoutFromBase(prepared);
+  const organisms = layout.sections.flatMap((s: any) => s.organisms);
+  // Organisms reference bffCall ids (catalogList/productDetail), never the operationIds (browseCatalog...).
+  assert.ok(organisms.some((o: any) => o.userActions.includes('catalogList')));
+  assert.equal(organisms.some((o: any) => o.userActions.includes('browseCatalog') || o.userActions.includes('viewProductDetail')), false);
+  assert.doesNotThrow(() => validatePageLayout(prepared, layout));
+});
+
+test('relaxed layout tool schema tolerates LLM section drift (type not enum-pinned, mode optional)', async () => {
+  // Repro of the Lima ajv failure: LLM emitted sections/2 with a non-enum type and no mode. The relaxed
+  // tool schema must not enum-pin 'type' and must not require 'mode' (the normalizer defaults both).
+  const { cfePageLayoutToolSchema } = await loadModule();
+  const sectionItems = cfePageLayoutToolSchema?.function?.parameters?.properties?.result?.properties?.pageLayout?.properties?.sections?.items;
+  assert.ok(sectionItems, 'section items schema present');
+  assert.equal(sectionItems.required.includes('mode'), false, 'mode is not required');
+  assert.equal(Array.isArray(sectionItems.properties?.type?.enum), false, 'type is not enum-pinned');
+  assert.equal(sectionItems.required.includes('organisms'), true, 'organisms stays required');
 });
 
 test('landing workspace (F6) builds content organisms: hero + showcase(query) + ctaLink', async () => {

@@ -35,7 +35,7 @@ function emit(entry: Partial<NsBffContractEntry> & Pick<NsBffContractEntry, 'bff
     workspaceId: 'catalog',
     route: `petShop.catalog.${entry.bffId}`,
     kind: 'query',
-    fileRef: `_x_/l4/petShop/contracts/catalog.${entry.bffId}.ts`,
+    fileRef: `_x_/l4/petShop/contracts/catalog.${entry.bffId}.defs.ts`,
     sourceRef: '_x_/l4/petShop/workspaces/catalog.defs.ts',
     ...entry,
   };
@@ -104,11 +104,10 @@ void test('A4.7 — an empty projected Output throws (never emit {})', () => {
   }), /empty/);
 });
 
-void test('.d.ts twin carries the ambient route form and no fileReference header', () => {
+void test('.defs.ts is the single contract of record — fileReference header + exported route const (no .d.ts twin)', () => {
   const r = emit({
     bffId: 'reservar', kind: 'command', uses: [{ operationId: 'reserveProduct' }], operations: { reserveProduct },
   });
-  assert.doesNotMatch(r.dtsSource, /fileReference/);
-  assert.match(r.dtsSource, /declare const reservarRoute: 'petShop\.catalog\.reservar';/);
-  assert.match(r.dtsSource, /export \{ reservarRoute \};/);
+  assert.match(r.tsSource, /fileReference="_x_\/l4\/petShop\/contracts\/catalog\.reservar\.defs\.ts"/);
+  assert.match(r.tsSource, /export const reservarRoute = 'petShop\.catalog\.reservar' as const;/);
 });

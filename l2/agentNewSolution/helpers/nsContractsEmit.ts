@@ -7,7 +7,9 @@ import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution/helpers
 // D3 + newSolution_10 N4: emit the mechanical l4 contracts, one file per bffCall (the wire view), from
 // the FINAL workspaces + operations. Called at the very END of the flow (e7 — after e6 settled the
 // workspaces and their projections) to avoid the run-9 staleness. ONE location only in this phase:
-//   l4/<module>/contracts/<workspaceId>.<bffId>.ts (+ .d.ts twin)
+//   l4/<module>/contracts/<workspaceId>.<bffId>.defs.ts (l4 holds ONLY .defs.ts — no .ts, no .d.ts twin)
+// The source-of-record MUST be `.defs.ts` — l4 is not compiled, so a plain `.ts` there is picked up by
+// the wrong tsconfig and breaks readers (newSolution_21). Every other l4 artifact is already `.defs.ts`.
 // The l1/l2 mirrors are GONE (the agent now writes only l4/l5); the masters resolve l4 directly.
 
 function readString(value: unknown): string {
@@ -48,7 +50,7 @@ export async function emitNsBffContracts(moduleName: string, workspaces: unknown
         output: call.output,
         uses,
         operations: operationsById,
-        fileRef: `_${project}_/l4/${module}/contracts/${workspaceId}.${bffId}.ts`,
+        fileRef: `_${project}_/l4/${module}/contracts/${workspaceId}.${bffId}.defs.ts`,
         sourceRef: `_${project}_/l4/${module}/workspaces/${workspaceId}.defs.ts`,
       });
     }
@@ -59,9 +61,10 @@ export async function emitNsBffContracts(moduleName: string, workspaces: unknown
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
     const shortName = `${entries[i].workspaceId}.${result.bffId}`;
-    await writeStorTextAtomic({ project, level: 4, folder: `${module}/contracts`, shortName, extension: '.ts' }, result.tsSource);
-    await writeStorTextAtomic({ project, level: 4, folder: `${module}/contracts`, shortName, extension: '.d.ts' }, result.dtsSource);
-    written.push(`l4/${module}/contracts/${shortName}.ts`);
+    // l4 holds ONLY `.defs.ts` — never a plain `.ts` (l4's non-compile setup can't hold it) and never a
+    // `.d.ts` twin. agentChangeFrontend/agentChangeBackend read the `.defs.ts` as the contract of record.
+    await writeStorTextAtomic({ project, level: 4, folder: `${module}/contracts`, shortName, extension: '.defs.ts' }, result.tsSource);
+    written.push(`l4/${module}/contracts/${shortName}.defs.ts`);
   }
   return written;
 }

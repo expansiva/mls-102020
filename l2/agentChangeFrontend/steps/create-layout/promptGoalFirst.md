@@ -54,6 +54,12 @@ The layout must preserve the section → organism → intention structure. Stabl
 sections, organisms, intentions, fields, columns and actions; section/organism/intention ids must be
 unique within the layout and distinct from `layoutId`.
 
+Section shape (STRICT): every `sections` entry has `id`, `type` = "section" (or "sectionTab"), `mode`
+("view"/"edit"), `order` and a NON-EMPTY `organisms` array. Never invent a section `type` (no "content"/
+"hero"/"landing") and never emit a section without organisms. Content blocks (hero/banner/richText/
+imageSet/ctaLink/showcase) are ORGANISMS inside a normal section — an organism whose type is "content" or
+"showcase" — never a section type. A landing is ONE section whose organisms are those content blocks.
+
 Every operation (every query and command actionId in `shared.actions`) must appear in at least one
 `organism.userActions`. This includes browse/list queries. A layout that omits an operation from all
 `userActions` is rejected. Do not invent actions, commands, fields, payloads, HTML, CSS, DOM,

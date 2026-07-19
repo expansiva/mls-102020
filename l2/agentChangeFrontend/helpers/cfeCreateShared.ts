@@ -25,10 +25,12 @@ import {
   parseWorkspaceBffCalls,
   parseWorkspaceSections,
   bffCallCommandShape,
-  buildL2ContractCopy,
+  buildBffContractSource,
   isContentOrganismRole,
   type CfeL4OperationInput,
   type CfeBffCall,
+  type CfeBffCallField,
+  type CfeContractField,
   type CfeWorkspaceSection,
   type CfeWorkspaceOrganism,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
@@ -154,8 +156,6 @@ export interface CfeCreateContext {
   workflows: Map<string, CfeWorkflowDef>;
   journeys: CfeJourneyMap[];
   actorsByModule: Record<string, CfeActorDef[]>;
-  // Raw l4 contract .ts sources keyed by `<module>/<workspaceId>.<bffId>` — byte-copied into l2 (F3).
-  contractsRaw: Map<string, string>;
   pages: CfePagePlan[];
   warnings: string[];
 }
@@ -427,9 +427,14 @@ function relaxPageLayoutSchema(pageLayoutSchema: any): void {
   pageLayoutSchema.required = ['pageId', 'layoutId', 'sections'];
   const sectionSchema = pageLayoutSchema.properties?.sections?.items;
   if (sectionSchema && typeof sectionSchema === 'object') {
-    // 'type' is not required: it has a deterministic default ('section'/'organism') applied during
-    // normalization, so requiring it only fails the tool call on harmless LLM omissions.
-    sectionSchema.required = ['id', 'mode', 'order', 'organisms'];
+    // 'type' and 'mode' are not required and 'type' is NOT enum-constrained: both have deterministic
+    // defaults during normalization ('section' / 'view'). Requiring them or pinning the type enum only
+    // hard-fails the tool call (ajv, before our normalizer runs) on harmless LLM drift — e.g. a section
+    // typed 'content' or a section that omits 'mode'. organisms stays required (a section needs them).
+    sectionSchema.required = ['id', 'order', 'organisms'];
+    if (sectionSchema.properties?.type && typeof sectionSchema.properties.type === 'object') {
+      sectionSchema.properties.type = { type: 'string' };
+    }
     const organismSchema = sectionSchema.properties?.organisms?.items;
     if (organismSchema && typeof organismSchema === 'object') {
       organismSchema.required = ['id', 'organismName', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'intentions'];
@@ -471,21 +476,14 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   const navByModule = new Map<string, { edges: Record<string, unknown>[]; landings: CfeLanding[] }>();
   const siteMapByModule = new Map<string, { edges: Record<string, unknown>[]; landings: CfeLanding[] }>();
   const actorsByModule: Record<string, CfeActorDef[]> = {};
-  const contractsRaw = new Map<string, string>();
 
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
     const folder = String(file.folder || '');
     const shortName = String(file.shortName || '');
     const extension = String(file.extension || '');
-
-    // F3: l4 contract of record (byte-copied to l2). These are plain .ts (not .defs.ts), so read them
-    // before the .defs.ts gate. Key = `<module>/<workspaceId>.<bffId>` (shortName carries ws.bffId).
-    if (folder.endsWith('/contracts') && extension === '.ts') {
-      const moduleName = folder.slice(0, folder.length - '/contracts'.length);
-      if (moduleName && shortName) contractsRaw.set(`${moduleName}/${shortName}`, String(await file.getContent()));
-      continue;
-    }
+    // l4 holds ONLY .defs.ts (it is not a compilable layer). Never read a .ts/.d.ts from l4 — the l2
+    // contract .ts is generated deterministically from the bffCall in the workspace defs (F3).
     if (extension !== '.defs.ts') continue;
     const parsed = parseDefsSource(String(await file.getContent()));
     if (!parsed) continue;
@@ -570,7 +568,8 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
 
   // Generation status is owned by l5/{module}/todoFrontend.defs.ts; the l4 owner defs are read-only
   // for this agent. Merge the todo status into each owner and fail loudly on plan/disk divergence.
-  const todoState = await readFrontendTodoState(project);
+  // Scope the todo to modules that exist in l4 so an orphaned module's stale l5 never blocks the run.
+  const todoState = await readFrontendTodoState(project, new Set(moduleNames));
   const warnings: string[] = [...todoState.warnings];
   const ownerKeys = new Set<string>([
     ...Array.from(operations.values()).map(op => `operation:${op.operationId}`),
@@ -612,7 +611,7 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
     if (edgeCount === 0) warnings.push(`journey ${journey.moduleName}: no navigationEdges; navigation falls back to selectedEntity from inputs`);
   }
 
-  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, journeys: journeyList, actorsByModule, contractsRaw, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList), warnings };
+  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, journeys: journeyList, actorsByModule, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList), warnings };
 }
 
 export async function generatePageDefs(page: CfePagePlan): Promise<void> {
@@ -648,24 +647,81 @@ export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateCo
   return { project: createContext.project, page, operations, commands, workspace, contractCopies, navigationRefs, baseDefinition, visualStyle, i18nMeta, entityFields, variantPlan, userJourney };
 }
 
-// F3: build one l2 contract byte-copy per bffCall from the raw l4 contract of record (contractsRaw,
-// keyed `<module>/<workspaceId>.<bffId>`). A missing l4 contract is a warning, not a failure — the run
-// proceeds with the copies it can make (the shared/page then reference only what exists).
+// F3: GENERATE one l2 contract .ts per bffCall from the workspace defs (l4 holds only .defs.ts; we never
+// read a .ts from l4). Input/Output field types are resolved from the referenced operations' inputs /
+// outputShape; the Output interface is the projected item shape for a list/paginated bffCall.
 function buildContractCopies(createContext: CfeCreateContext, page: CfePagePlan, workspace: CfeJourneyWorkspace): CfeContractCopy[] {
   const copies: CfeContractCopy[] = [];
+  const operationsById = createContext.operations;
   for (const call of workspace.bffCalls) {
     const contractName = `${workspace.workspaceId}.${call.bffId}`;
-    const raw = createContext.contractsRaw.get(`${page.moduleName}/${contractName}`);
-    if (!raw) {
-      recordCreateWarning(`l4 contract missing for ${page.moduleName}/${contractName}: expected l4/${page.moduleName}/contracts/${contractName}.ts (bffCall ${call.bffId})`);
-      continue;
-    }
     const fileInfo: FileInfo = { project: createContext.project, level: 2, folder: `${page.moduleName}/web/contracts`, shortName: contractName, extension: '.ts' };
     const tsRef = toDisplayRef(fileInfo);
-    const l4Ref = `_${createContext.project}_/l4/${page.moduleName}/contracts/${contractName}.ts`;
-    copies.push({ contractName, fileInfo, tsRef, source: buildL2ContractCopy(raw, tsRef, l4Ref) });
+    const input: CfeContractField[] = call.input.map(field => ({
+      name: field.name,
+      type: bffFieldTsType(field, 'input', operationsById, createContext.entities),
+      optional: !bffInputRequired(field, operationsById),
+    }));
+    const output: CfeContractField[] = (call.output?.fields || []).map(field => ({
+      name: field.name,
+      type: bffFieldTsType(field, 'output', operationsById, createContext.entities),
+    }));
+    const source = buildBffContractSource({
+      l2Ref: tsRef,
+      interfaceName: toPascalCase(call.bffId),
+      bffId: call.bffId,
+      kind: call.kind,
+      outputKind: call.output?.kind || 'object',
+      route: call.route,
+      input,
+      output,
+    });
+    copies.push({ contractName, fileInfo, tsRef, source });
   }
   return copies;
+}
+
+// Resolve the TS type of a bffCall field by tracing its `from` = "<operationId>.<path>" back to the
+// operation's inputs (input) or outputShape (output; `$items.<field>` = the paginated/list item field).
+function bffFieldTsType(field: CfeBffCallField, direction: 'input' | 'output', operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): string {
+  if (field.type) return l4TypeToTs(field.type);
+  const dot = field.from.indexOf('.');
+  const operationId = dot < 0 ? '' : field.from.slice(0, dot);
+  const path = dot < 0 ? field.from : field.from.slice(dot + 1);
+  const operation = operationsById.get(operationId);
+  if (!operation) return 'string';
+  if (direction === 'input') {
+    const raw = (Array.isArray(operation.data.inputs) ? operation.data.inputs : []).filter(isRecord).find(item => readString(item.inputId) === path);
+    if (!raw) return 'string';
+    const explicit = readString(raw.type);
+    if (explicit) return l4TypeToTs(explicit);
+    const resolved = resolveFieldRef(readString(raw.fieldRef), operation.entity, entities);
+    return resolved.field ? l4TypeToTs(resolved.field.type) : 'string';
+  }
+  const shape = readCanonicalOutputShape(operation);
+  if (!shape) return 'string';
+  if (path.startsWith('$items.')) {
+    const itemField = shape.fields.find(f => f.item)?.item?.fields.find(f => f.name === path.slice('$items.'.length));
+    return itemField ? l4TypeToTs(itemField.type) : 'string';
+  }
+  const topField = shape.fields.find(f => f.name === path);
+  return topField ? l4TypeToTs(topField.type) : 'string';
+}
+
+function bffInputRequired(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>): boolean {
+  if (field.required === true) return true;
+  const dot = field.from.indexOf('.');
+  const operation = dot < 0 ? undefined : operationsById.get(field.from.slice(0, dot));
+  if (!operation) return false;
+  const inputId = dot < 0 ? field.from : field.from.slice(dot + 1);
+  const raw = (Array.isArray(operation.data.inputs) ? operation.data.inputs : []).filter(isRecord).find(item => readString(item.inputId) === inputId);
+  return raw ? raw.required === true : false;
+}
+
+// Map an l4 field type to a TS type for the generated contract (dates travel as ISO strings on the wire).
+function l4TypeToTs(type: string): string {
+  const frontend = toFrontendType(type);
+  return frontend === 'number' ? 'number' : frontend === 'boolean' ? 'boolean' : 'string';
 }
 
 // Resolve the l4 v2 workspace backing a page. buildPagePlans records the workspaceId in page.origin
@@ -1315,7 +1371,8 @@ function normalizeLayoutSection(value: unknown, path: string): CfeLayoutSection 
     type: optionalString(section.type) === 'sectionTab' ? 'sectionTab' : 'section',
     sectionName,
     titleKey: optionalString(section.titleKey) || fallbackLayoutTitleKey(id),
-    mode: assertString(section.mode, `${path}.mode`),
+    // mode is optional in the relaxed tool schema; default to 'view' (a read-only section) when omitted.
+    mode: optionalString(section.mode) || 'view',
     order: normalizeOrder(section.order, `${path}.order`),
     organisms: assertArray(section.organisms, `${path}.organisms`).map((item, index) => normalizeLayoutOrganism(item, `${path}.organisms[${index}]`)),
   };
@@ -1990,10 +2047,12 @@ function recordTechnicalIdLookupGaps(page: CfePagePlan, commands: Record<string,
 }
 
 export function deterministicLayoutFromBase(prepared: CfePreparedPage): CfePageLayoutDefinition {
-  // F4: when the l4 v2 workspace declares sections[].organisms[], the layout structure comes from the
-  // organism roles (1 primarySurface per section, filterControls fold into their surface, detailPanel is
-  // a panel, contextualAction/batchAction are command forms) — no longer "every query becomes a section".
-  if (prepared.workspace && prepared.workspace.sections.length > 0 && prepared.contractCopies.length > 0) {
+  // F4: when the l4 v2 workspace declares bffCalls, the layout is bffCall-keyed (organisms reference
+  // bffIds) — the SAME gate as prepared.commands, so the seed and shared.actions never diverge. Do NOT
+  // tie this to contractCopies (an F3/materialize concern): if the l4 contracts aren't available the
+  // commands are still bffCall-based, and a legacy per-operation seed here would reference operationIds
+  // that are absent from shared.actions (deterministic "missing shared action" failure, no LLM).
+  if (prepared.workspace && prepared.workspace.bffCalls.length > 0) {
     return deterministicWorkspaceLayout(prepared, prepared.workspace);
   }
   const i18n: Record<string, string> = {};
@@ -2136,8 +2195,14 @@ function deterministicWorkspaceLayout(prepared: CfePreparedPage, workspace: CfeJ
   const i18n: Record<string, string> = {};
   const pageId = prepared.page.pageId;
   const commandByBff = new Map(prepared.commands.map(command => [readString(command.commandName), command]));
+  // Prefer the declared sections/organisms; if the workspace has bffCalls but no sections, synthesize a
+  // single section with one organism per bffCall (query -> surface, command -> form) so the seed stays
+  // bffCall-keyed and covers every command (never falls back to operationId refs).
+  const workspaceSections: CfeWorkspaceSection[] = workspace.sections.length > 0
+    ? workspace.sections
+    : [{ sectionId: 'main', intent: workspace.purpose || prepared.page.pageName, organisms: workspace.bffCalls.map(call => ({ role: call.kind === 'command' ? 'contextualAction' : 'primarySurface', ...(call.kind === 'command' ? { action: call.bffId } : { dataSource: call.bffId }) })) }];
   const sections: CfeLayoutSection[] = [];
-  workspace.sections.forEach((section, sectionIndex) => {
+  workspaceSections.forEach((section, sectionIndex) => {
     const sectionId = `section.${pageId}.${toSafeShortName(section.sectionId) || 'main'}`;
     const sectionTitleKey = `${sectionId}.title`;
     i18n[sectionTitleKey] = section.intent || prepared.page.pageName;
@@ -3438,7 +3503,11 @@ function isOwnerStatus(status: string): boolean {
   return status === 'toCreate' || status === 'toUpdate' || status === 'toRemove' || status === 'inProgress' || status === 'done';
 }
 
-async function readFrontendTodoState(project: number): Promise<CfeTodoState> {
+// validModules = the modules present in l4 this run. A todoFrontend for a module with NO l4 (an orphan
+// left behind by a module rename/removal, e.g. l5/petShop after petShop -> petShopReservaRetirada) is
+// skipped, not fatal — otherwise its stale owners would read as "absent from l4" and block every rebuild.
+// Empty validModules disables the filter (preserves behavior when the l4 scan found no module).
+async function readFrontendTodoState(project: number, validModules: Set<string>): Promise<CfeTodoState> {
   const ownersByKey = new Map<string, CfeTodoOwner>();
   const moduleNames = new Set<string>();
   const warnings: string[] = [];
@@ -3447,13 +3516,17 @@ async function readFrontendTodoState(project: number): Promise<CfeTodoState> {
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
     if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoFrontend') continue;
-    files++;
     const parsed = parseDefsSource(String(await file.getContent()));
     if (!parsed) { errors.push(`invalid todoFrontend defs at l5/${String(file.folder || '')}/todoFrontend.defs.ts`); continue; }
     const data = parsed.data;
+    const moduleName = readString(data.moduleName) || String(file.folder || '');
+    if (validModules.size > 0 && moduleName && !validModules.has(moduleName)) {
+      warnings.push(`ignored orphan todoFrontend for module '${moduleName}' (no l4 present); stale l5 leftover from a module rename/removal`);
+      continue;
+    }
+    files++;
     const layer = readString(data.layer);
     if (layer && layer !== 'frontend') warnings.push(`todoFrontend ${String(file.folder || '')} has layer=${layer}; treating as frontend by filename`);
-    const moduleName = readString(data.moduleName) || String(file.folder || '');
     if (moduleName) moduleNames.add(moduleName);
     const owners = Array.isArray(data.owners) ? data.owners.filter(isRecord) : [];
     for (const raw of owners) {

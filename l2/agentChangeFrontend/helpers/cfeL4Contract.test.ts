@@ -13,7 +13,7 @@ import {
   parseWorkspaceSections,
   bffCallCommandShape,
   isContentOrganismRole,
-  buildL2ContractCopy,
+  buildBffContractSource,
   isCopiedL4Contract,
   type CfeL4OperationInput,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
@@ -161,24 +161,32 @@ test('bffCallCommandShape maps a query bffCall to a paginated command, resolving
   assert.equal(command.canonicalOutputShape?.kind, 'paginated');
 });
 
-test('buildL2ContractCopy rewrites the header for l2, keeps bodies verbatim, and marks the copy', () => {
-  const l4 = [
-    '/// <mls fileReference="_102049_/l4/petShop/contracts/catalog.catalogList.ts" enhancement="_blank"/>',
-    '',
-    '// GENERATED MECHANICALLY from _102049_/l4/petShop/workspaces/catalog.defs.ts — DO NOT EDIT.',
-    '',
-    'export interface CatalogListInput { searchTerm?: string; }',
-    "export const catalogListRoute = 'petShop.catalog.catalogList' as const;",
-    '',
-  ].join('\n');
-  const copy = buildL2ContractCopy(l4, '_102049_/l2/petShop/web/contracts/catalog.catalogList.ts', '_102049_/l4/petShop/contracts/catalog.catalogList.ts');
-  assert.match(copy, /<mls fileReference="_102049_\/l2\/petShop\/web\/contracts\/catalog\.catalogList\.ts"/);
-  assert.doesNotMatch(copy, /l4\/petShop\/contracts\/catalog\.catalogList\.ts" enhancement/); // no l4 ref in the header
-  assert.match(copy, /copied from l4 — do not edit \(source: _102049_\/l4\/petShop\/contracts\/catalog\.catalogList\.ts\)/);
-  assert.match(copy, /export interface CatalogListInput \{ searchTerm\?: string; \}/); // body verbatim
-  assert.match(copy, /export const catalogListRoute = 'petShop\.catalog\.catalogList' as const;/);
-  assert.equal(isCopiedL4Contract(copy), true);
-  assert.equal(isCopiedL4Contract(l4), false);
+test('buildBffContractSource generates l2 Input/Output interfaces + route const from a bffCall (no l4 .ts read)', () => {
+  const source = buildBffContractSource({
+    l2Ref: '_102049_/l2/petShop/web/contracts/catalog.catalogList.ts',
+    interfaceName: 'CatalogList',
+    bffId: 'catalogList',
+    kind: 'query',
+    outputKind: 'paginated',
+    route: 'petShop.catalog.catalogList',
+    input: [{ name: 'searchTerm', type: 'string', optional: true }, { name: 'page', type: 'number', optional: true }],
+    output: [{ name: 'productId', type: 'string' }, { name: 'name', type: 'string' }, { name: 'price', type: 'number' }],
+  });
+  assert.match(source, /<mls fileReference="_102049_\/l2\/petShop\/web\/contracts\/catalog\.catalogList\.ts"/);
+  assert.doesNotMatch(source, /l4\/petShop\/contracts/); // NEVER references an l4 .ts
+  assert.match(source, /export interface CatalogListInput \{\n {2}searchTerm\?: string;\n {2}page\?: number;\n\}/);
+  assert.match(source, /export interface CatalogListOutput \{\n {2}productId: string;\n {2}name: string;\n {2}price: number;\n\}/);
+  assert.match(source, /export const catalogListRoute = 'petShop\.catalog\.catalogList' as const;/);
+  assert.equal(isCopiedL4Contract(source), true);
+  assert.equal(isCopiedL4Contract('export const x = 1;'), false);
+});
+
+test('buildBffContractSource emits empty interfaces for a command with no projected fields', () => {
+  const source = buildBffContractSource({
+    l2Ref: '_1_/l2/m/web/contracts/w.act.ts', interfaceName: 'Act', bffId: 'act', kind: 'command', outputKind: 'object', route: 'm.w.act', input: [], output: [],
+  });
+  assert.match(source, /export interface ActInput \{\}/);
+  assert.match(source, /export interface ActOutput \{\}/);
 });
 
 test('materialization fixes deterministic page seams without changing generated render logic', () => {
