@@ -9,7 +9,7 @@ const g = globalThis as unknown as Record<string, any>;
 // later test file in the same process doesn't inherit it.
 const priorMls = g.mls;
 after(() => { g.mls = priorMls; });
-async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[] }> {
+async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any }> {
   if (!g.window) g.window = { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
   if (!g.document) g.document = { documentElement: { lang: 'pt-BR' }, addEventListener() {}, removeEventListener() {}, createElement: () => ({ style: {} }) };
   // libModel.ts runs init() -> mls.events.addEventListener at import time; the setup-l2 stub omits
@@ -191,6 +191,47 @@ test('buildPageTestCases (F7) derives cases from the bffCall route const + outpu
   assert.equal(list.expect.shape, 'paginated');
   assert.equal(detail.routine, 'petShop.catalog.productDetail');
   assert.equal(detail.expect.shape, 'object');
+});
+
+test('validatePageLayout accepts a v2 layout keyed by bffCall ids (bffId != operationId) — regression', async () => {
+  // Repro of the Lima failure: workspace bffId 'catalogList' wraps operationId 'browseCatalog'. The
+  // coverage check must count the bffCall id (the layout's action), NOT demand the underlying operationId.
+  const { readCreateContext, preparePageCreate, deterministicLayoutFromBase, validatePageLayout } = await loadModule();
+  installPetShopStor();
+  const ctx = await readCreateContext();
+  const page = ctx.pages.find((p: any) => p.pageId === 'catalog')!;
+  const prepared = await preparePageCreate(page, ctx);
+  // Sanity: the page owns operations whose ids differ from the bffCall ids the layout references.
+  assert.ok(page.operationIds.includes('browseCatalog'));
+  assert.ok(prepared.commands.some((c: any) => c.commandName === 'catalogList'));
+  const layout = deterministicLayoutFromBase(prepared);
+  assert.doesNotThrow(() => validatePageLayout(prepared, layout));
+});
+
+test('remapLayoutActionsToBff maps LLM operationId refs to their bffCall id, then validation passes — Lima regression', async () => {
+  // Repro: the LLM references operationId 'browseCatalog' (usecase behind bffId 'catalogList') and
+  // 'viewProductDetail' (behind 'productDetail'). The remap must rewrite them to the bffCall ids.
+  const { readCreateContext, preparePageCreate, deterministicLayoutFromBase, remapLayoutActionsToBff, validatePageLayout } = await loadModule();
+  installPetShopStor();
+  const ctx = await readCreateContext();
+  const page = ctx.pages.find((p: any) => p.pageId === 'catalog')!;
+  const prepared = await preparePageCreate(page, ctx);
+  // Start from the valid seed, then rewrite bffId refs back to operationIds to simulate the LLM output.
+  const seed = deterministicLayoutFromBase(prepared);
+  const opFor: Record<string, string> = { catalogList: 'browseCatalog', productDetail: 'viewProductDetail' };
+  const llmish = JSON.parse(JSON.stringify(seed));
+  for (const section of llmish.sections) for (const org of section.organisms) {
+    org.userActions = org.userActions.map((a: string) => opFor[a] || a);
+    for (const intent of org.intentions) if (intent.action && opFor[intent.action]) intent.action = opFor[intent.action];
+  }
+  // Sanity: the simulated layout references operationIds that are NOT shared actions.
+  assert.ok(llmish.sections[0].organisms.some((o: any) => o.userActions.includes('browseCatalog')));
+  const remapped = remapLayoutActionsToBff(prepared, llmish);
+  // After remap: operationIds are gone, bffCall ids restored, and validation passes.
+  const surface = remapped.sections[0].organisms.find((o: any) => o.id.endsWith('.catalogList'));
+  assert.deepEqual(surface.userActions, ['catalogList']);
+  assert.equal(surface.intentions[0].action, 'catalogList');
+  assert.doesNotThrow(() => validatePageLayout(prepared, remapped));
 });
 
 test('landing workspace (F6) builds content organisms: hero + showcase(query) + ctaLink', async () => {

@@ -12,7 +12,7 @@ import {
   readJsonArtifact,
 } from '/_102020_/l2/agentNewSolution/helpers/nsFs.js';
 import { NsPipelineState, readNsPipeline } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
-import { parseNsFastMode } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
+import { parseNsFastMode, parseNsRebuildMode } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
 
 export const NS_PLAN_IDS = [
   'e1-clarification', 'e1-clarification-answer', 'e1-draft', 'checkpoint-draft', 'e2-journeys', 'checkpoint-journeys',
@@ -82,14 +82,20 @@ export function createAgent(): IAgentAsync {
 }
 
 // Bump on every deploy so the console confirms the running build is the latest one.
-export const NS_AGENT_BUILD = 'build-10 (2026-07-18) D1 split: workspaces/<id> + navigation.defs.ts';
+export const NS_AGENT_BUILD = 'build-12 (2026-07-19) two-phase e6 + command-form primarySurface + fanout=20 + /rebuild';
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
   console.log(`[ns-build] agentNewSolution ${NS_AGENT_BUILD}`);
-  // /fast (D5): auto-accept the human clarifications. The flag rides longMemory; the token is
-  // stripped so the LLM sees a clean prompt (same idea as agentChangeFrontend's cliCommand).
-  const { fast, prompt: normalized } = parseNsFastMode((userPrompt || '').trim());
-  const fastMemory: Record<string, string> = fast ? { fastMode: 'true' } : {};
+  // /fast (D5): auto-accept the human clarifications. /rebuild (newSolution_18): clean the module's
+  // l4+l5 before regenerating. Both flags ride longMemory; the tokens are stripped so the LLM sees a
+  // clean prompt (same idea as agentChangeFrontend's cliCommand).
+  const fastParsed = parseNsFastMode((userPrompt || '').trim());
+  const rebuildParsed = parseNsRebuildMode(fastParsed.prompt);
+  const normalized = rebuildParsed.prompt;
+  const fastMemory: Record<string, string> = {
+    ...(fastParsed.fast ? { fastMode: 'true' } : {}),
+    ...(rebuildParsed.rebuild ? { rebuild: 'true' } : {}),
+  };
   // Empty "@@newSolution" (the runtime strips the mention) means resume the first module whose
   // Phase 1 is incomplete, so the user does not repeat the clarification they already answered.
   if (!normalized) {

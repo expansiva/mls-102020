@@ -26,3 +26,21 @@ export function isNsFastMode(longMemory: unknown): boolean {
   return typeof longMemory === 'object' && longMemory !== null
     && (longMemory as Record<string, unknown>)[NS_FAST_MEMORY_FLAG] === 'true';
 }
+
+// `/rebuild` mode (newSolution_18): when the module already exists, soft-delete its l4 + l5 artifacts
+// before regenerating — a clean slate so leftover data from a prior run (e.g. an old page/operation the
+// new spec dropped) never collides. Same longMemory channel as /fast; the cleanup runs once in e1.
+export const NS_REBUILD_MEMORY_FLAG = 'rebuild';
+export const NS_REBUILD_TRACE_NOTE = '[rebuild] módulo existente limpo (l4+l5) antes de regenerar';
+
+export function parseNsRebuildMode(prompt: string): { rebuild: boolean; prompt: string } {
+  const raw = String(prompt || '');
+  const rebuild = /(^|\s)\/rebuild(\s|$)/i.test(raw);
+  const cleaned = raw.replace(/(^|\s)\/rebuild(?=\s|$)/gi, '$1').replace(/\s+/g, ' ').trim();
+  return { rebuild, prompt: cleaned };
+}
+
+export function isNsRebuildMode(longMemory: unknown): boolean {
+  return typeof longMemory === 'object' && longMemory !== null
+    && (longMemory as Record<string, unknown>)[NS_REBUILD_MEMORY_FLAG] === 'true';
+}

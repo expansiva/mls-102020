@@ -521,6 +521,31 @@ void test('e6 gate passes on a workspace with explicit bffCall projections + com
   assert.equal(gate.ok, true, gate.errors.map(issue => issue.message).join('; '));
 });
 
+// newSolution_16: a command-only page (a "create X" form, no query) — its primarySurface is the
+// command FORM (action → command bffCall). changeFrontend renders this as single_form. Without it the
+// gate hard-fails (petShop reservationWorkspace = createReservation only).
+void test('e6 gate allows a command-form primarySurface and still requires dataSource surfaces to be queries', async () => {
+  const formContext: E6GateContext = { ...bffContext, classificationOperationIds: ['reserveProduct'] };
+  const raw = {
+    workspaces: [{
+      workspaceId: 'newReservation', title: 'Nova reserva', actors: ['cliente'], kind: 'operation', entity: 'Product',
+      purpose: 'Criar uma nova reserva de produto',
+      bffCalls: [{ bffId: 'reservar', kind: 'command', uses: [{ operationId: 'reserveProduct' }] }],
+      sections: [{ sectionId: 'formulario', intent: 'Preencher e enviar a reserva', organisms: [{ role: 'primarySurface', action: 'reservar' }] }],
+    }],
+    landings: [{ actorId: 'cliente', workspaceId: 'newReservation' }],
+    navigationEdges: [],
+  };
+  const ok = await runNsGate({ stepId: 'e6-journey-map', schema: mapSchema, artifact: prepareE6JourneyMap(raw, { moduleName: 'petShop' }), validate: item => validateE6Invariants(item, formContext) });
+  assert.equal(ok.ok, true, ok.errors.map(issue => issue.message).join('; '));
+
+  // A command via dataSource (a LIST surface) is still wrong — a list must be a query.
+  raw.workspaces[0].sections[0].organisms = [{ role: 'primarySurface', dataSource: 'reservar' } as never];
+  const bad = await runNsGate({ stepId: 'e6-journey-map', schema: mapSchema, artifact: prepareE6JourneyMap(raw, { moduleName: 'petShop' }), validate: item => validateE6Invariants(item, formContext) });
+  assert.equal(bad.ok, false);
+  assert.ok(bad.errors.some(issue => issue.code === 'organism.reference.kind'));
+});
+
 void test('collectNsOutputPaths enumerates the traceable from-suffixes for the real petShop shapes', () => {
   // browseReservations (list, NO envelope total) — a projection may point at $items.<col> only.
   const list = collectNsOutputPaths({ kind: 'list', fields: [{ name: 'reservationCode' }, { name: 'status' }] });

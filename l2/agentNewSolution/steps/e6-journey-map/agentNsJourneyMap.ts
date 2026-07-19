@@ -40,6 +40,7 @@ import {
   nsUpdateStatusIntent,
 } from '/_102020_/l2/agentNewSolution/helpers/nsSteps.js';
 import { nsLlmInfraFailureIntents } from '/_102020_/l2/agentNewSolution/helpers/nsLlmRetry.js';
+import { NS_AGENT_BUILD } from '/_102020_/l2/agentNewSolution/agentNewSolution.js';
 import {
   approveNsStep,
   createNsPipeline,
@@ -177,6 +178,9 @@ async function beforePromptStep(
   // Parallel detail children receive the compact selector 'workspace:<workspaceId>'.
   const selector = nsParseSelector(hookArgs);
   const parsedArgs = selector?.kind === 'workspace' ? { planId: DETAIL_PLAN, workspaceId: selector.id } : parseE6Args(hookArgs);
+  // Deploy check: confirms the CURRENT e6 build is live (the stale-compile issue — build-11 has the
+  // two-phase + command-form primarySurface). If the logs show an older build, compiled.zip is stale.
+  console.log(`[ns-build] ${AGENT_NAME} ${NS_AGENT_BUILD} | planId=${parsedArgs.planId || STEP_ID}${parsedArgs.workspaceId ? ` ws=${parsedArgs.workspaceId}` : ''}`);
   if (parsedArgs.planId === DETAIL_PLAN) return [await buildDetailPrompt(context, parentStep, hookSequential, parsedArgs, hookArgs)];
   if (parsedArgs.planId === DETAIL_PHASE_PLAN) return runE6DetailPhase(context, parentStep, step, hookSequential, parsedArgs);
   if (parsedArgs.planId === FINALIZE_PLAN) return runE6Finalize(context, parentStep, step, hookSequential, parsedArgs);
@@ -396,7 +400,7 @@ async function runE6DetailPhase(
       agentName: AGENT_NAME, planId: DETAIL_PLAN,
       stepTitle: `Detailing {{completed}}/{{total}} workspaces, failed {{failed}}`,
       args: workspaceIds.map(workspaceId => `workspace:${workspaceId}`),
-      maxParallel: 10,
+      maxParallel: 20, // match e3/e5 fan-outs (the platform runs ~half → ~10 concurrent, "de 10 em 10")
     }));
   }
   intents.push(nsAgentStepIntent(context, mutationParent, {

@@ -813,7 +813,11 @@ function renderPageTestsFile(prepared: CfePreparedPage, cases: PageTestCase[]): 
 }
 
 export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, genome = 'page11', objective?: unknown): Promise<CfePageLayoutDefinition> {
-  const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutFields(prepared, repairMissingOperationUserActions(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, layout)))));
+  // F4 (v2): the LLM often references the l4 operationId (e.g. browseHighlights) instead of the bffCall
+  // id that serves it (browseHighlightsQuery). Remap operationId action-refs to their owning bffId FIRST,
+  // before the drop/validate steps, since the mapping (bffCall.uses) is deterministic.
+  const bffMapped = remapLayoutActionsToBff(prepared, layout);
+  const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutFields(prepared, repairMissingOperationUserActions(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, bffMapped)))));
   validatePageLayout(prepared, repairedLayout);
   const enrichedLayout = enrichLayoutWithStateRefs(prepared, repairedLayout);
   const definition = {
@@ -1626,6 +1630,49 @@ function buildPageUserJourney(context: CfeCreateContext, page: CfePagePlan, oper
   };
 }
 
+// F4 (v2): map any layout action-ref that is an l4 operationId to the bffCall id that uses it. A ref
+// already equal to a command name (bffId) is left untouched; an operationId used by exactly one bffCall
+// is remapped; anything else is left as-is (the downstream drop/validate handles it). No-op for legacy
+// pages (no bffCalls). This lets the LLM think in operations while the wire model stays bffCall-keyed.
+export function remapLayoutActionsToBff(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const bffCalls = prepared.workspace?.bffCalls || [];
+  if (bffCalls.length === 0) return layout;
+  const commandNames = new Set(prepared.commands.map(command => readString(command.commandName)).filter(Boolean));
+  const opToBffIds = new Map<string, string[]>();
+  for (const call of bffCalls) {
+    for (const operationId of call.uses) {
+      if (!opToBffIds.has(operationId)) opToBffIds.set(operationId, []);
+      if (!opToBffIds.get(operationId)!.includes(call.bffId)) opToBffIds.get(operationId)!.push(call.bffId);
+    }
+  }
+  const remapped: string[] = [];
+  const remap = (action: string | undefined): string | undefined => {
+    if (!action || commandNames.has(action)) return action;
+    const bffIds = opToBffIds.get(action);
+    if (bffIds && bffIds.length === 1) { remapped.push(`${action}->${bffIds[0]}`); return bffIds[0]; }
+    return action;
+  };
+  const remapList = (actions: CfeLayoutAction[]): CfeLayoutAction[] => actions.map(action => ({ ...action, action: remap(action.action) || action.action }));
+  const sections = layout.sections.map(section => ({
+    ...section,
+    organisms: section.organisms.map(organism => ({
+      ...organism,
+      userActions: unique(organism.userActions.map(action => remap(action) || action)),
+      intentions: organism.intentions.map(intent => ({
+        ...intent,
+        action: remap(intent.action),
+        submitAction: remap(intent.submitAction),
+        toolbar: remapList(intent.toolbar),
+        rowActions: remapList(intent.rowActions),
+        actions: remapList(intent.actions),
+      })),
+    })),
+  }));
+  if (remapped.length === 0) return layout;
+  recordCreateWarning(`remapped operationId action-ref(s) to bffCall id for ${prepared.page.pageId}: ${unique(remapped).join('; ')}`);
+  return { ...layout, sections };
+}
+
 function repairUnknownLayoutActions(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
   const allowedActions = new Set(prepared.commands.map(command => readString(command.commandName)).filter(Boolean));
   const dropped: string[] = [];
@@ -1670,7 +1717,9 @@ function repairUnknownLayoutActions(prepared: CfePreparedPage, layout: CfePageLa
 // that organism's userActions instead of failing the variant.
 function repairMissingOperationUserActions(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
   const seen = new Set<string>(layout.sections.flatMap(section => section.organisms.flatMap(organism => organism.userActions)));
-  const missing = prepared.page.operationIds.filter(operationId => !seen.has(operationId));
+  // Coverage unit is the page action (command name = v1 operationId / v2 bffCall id), matching validateCreateLayout.
+  const actionNames = [...new Set(prepared.commands.map(command => readString(command.commandName)).filter(Boolean))];
+  const missing = actionNames.filter(actionName => !seen.has(actionName));
   if (missing.length === 0) return layout;
 
   const intentActionRefs = (intent: CfeLayoutIntent): string[] => [
@@ -1684,18 +1733,18 @@ function repairMissingOperationUserActions(prepared: CfePreparedPage, layout: Cf
     ...section,
     organisms: section.organisms.map(organism => {
       const refs = new Set(organism.intentions.flatMap(intentActionRefs));
-      const additions = missing.filter(operationId => refs.has(operationId) && !organism.userActions.includes(operationId));
+      const additions = missing.filter(actionName => refs.has(actionName) && !organism.userActions.includes(actionName));
       if (additions.length === 0) return organism;
-      for (const operationId of additions) {
-        repaired.push(`${organism.id}+=${operationId}`);
-        missing.splice(missing.indexOf(operationId), 1);
+      for (const actionName of additions) {
+        repaired.push(`${organism.id}+=${actionName}`);
+        missing.splice(missing.indexOf(actionName), 1);
       }
       return { ...organism, userActions: [...organism.userActions, ...additions] };
     }),
   }));
 
   if (repaired.length === 0) return layout;
-  recordCreateWarning(`added intention-referenced operation(s) to userActions for ${prepared.page.pageId}: ${repaired.join('; ')}`);
+  recordCreateWarning(`added intention-referenced action(s) to userActions for ${prepared.page.pageId}: ${repaired.join('; ')}`);
   return { ...layout, sections };
 }
 
@@ -1801,12 +1850,15 @@ function fallbackLayoutTitleKey(id: string): string {
   return `${safeId}.title`;
 }
 
-function validatePageLayout(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): void {
+export function validatePageLayout(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): void {
   if (layout.pageId !== prepared.page.pageId) throw new Error(`layout pageId ${layout.pageId} does not match ${prepared.page.pageId}`);
   const ids = new Set<string>();
   const i18nKeys = new Set(Object.keys(layout.i18n));
   const actions = new Set(prepared.commands.map(command => readString(command.commandName)).filter(Boolean));
-  const expectedActions = new Set(prepared.page.operationIds);
+  // Coverage unit is the page ACTION (v1: operationId == commandName; v2: bffCall id). Using the command
+  // names covers both — and for a composed v2 bffCall (uses N>1) one command legitimately represents all
+  // its operations, so we must not demand each underlying operationId appear in the layout.
+  const expectedActions = new Set(actions);
   const seenActions = new Set<string>();
   const fields = allowedLayoutFields(prepared);
 

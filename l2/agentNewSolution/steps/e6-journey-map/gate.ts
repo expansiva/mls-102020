@@ -677,6 +677,21 @@ function validateOrganism(
     return;
   }
 
+  // A primarySurface is usually a LIST/QUEUE surface (dataSource → query). But a COMMAND-ONLY page (a
+  // "create X" form whose only operation is a command) has the FORM as its surface: primarySurface via
+  // `action` → a command bffCall. changeFrontend renders exactly this as the single_form template
+  // (slots.primarySurface = "commandForm", appliesWhen.accessPatterns = ["commandInput"]). Without this,
+  // a command-only workspace is inexpressible (no query for the surface) and the gate hard-fails.
+  if (role === 'primarySurface' && organism.action && !organism.dataSource) {
+    const call = localBff.get(organism.action);
+    if (!call) {
+      issues.push(errorIssue('organism.reference.unknown', `${label}: primarySurface action "${organism.action}" is not a bffCall in this workspace`, workspace.workspaceId));
+    } else if (call.kind !== 'command') {
+      issues.push(errorIssue('organism.reference.kind', `${label}: primarySurface action "${organism.action}" must be a command bffCall (is ${call.kind})`, workspace.workspaceId));
+    }
+    return;
+  }
+
   // command-backed vs query-backed roles reference `action` / `dataSource` — a LOCAL bffCall.
   const isCommandRole = NS_COMMAND_BACKED_ROLES.has(role);
   const ref = isCommandRole ? organism.action : organism.dataSource;

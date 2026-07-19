@@ -37,6 +37,9 @@ skeleton: `primarySurface` is the section surface, `filterControl` folds into th
 (never its own section), `detailPanel` is a master-detail panel, `contextualAction`/`batchAction` are
 row/toolbar commands on the surface, and `hero`/`banner`/`richText`/`imageSet`/`ctaLink`/`showcase` are
 landing content. Design a richer layout around these roles — never one section per query.
+Every action reference (userActions and every intention action/submitAction/rowActions/toolbar/actions)
+MUST be a bffCall id from shared.actions — NEVER an l4 operationId. The operation is the usecase behind a
+bffCall (e.g. browseHighlights); reference the bffCall that serves it (e.g. browseHighlightsQuery).
 
 ## Tool arguments
 

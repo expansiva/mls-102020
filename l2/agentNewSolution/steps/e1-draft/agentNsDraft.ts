@@ -7,6 +7,7 @@ import { nsLlmInfraFailureIntents } from '/_102020_/l2/agentNewSolution/helpers/
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import {
   NS_AGENT_FOLDER,
+  cleanNsModule,
   isRecord,
   listExistingModuleFolders,
   nsL2File,
@@ -18,7 +19,7 @@ import {
   writeMarkdownArtifact,
 } from '/_102020_/l2/agentNewSolution/helpers/nsFs.js';
 import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution/helpers/nsIds.js';
-import { isNsFastMode } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
+import { isNsFastMode, isNsRebuildMode, NS_REBUILD_TRACE_NOTE } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
 import { NsGateCheck, errorIssue, runNsGate } from '/_102020_/l2/agentNewSolution/helpers/nsGate.js';
 import {
   approveNsStep,
@@ -147,13 +148,22 @@ async function afterPromptStep(
     }
     const rawArtifact = output.result;
     const currentModule = parsedArgs.previousModuleName || readString(rawArtifact.moduleName);
-    const existing = listExistingModuleFolders();
+    // /rebuild (newSolution_18): REUSE the natural module name (don't force a collision-avoiding
+    // variant like petShopReserva) — the old module is cleaned below and regenerated in place.
+    const rebuild = isNsRebuildMode(context.task?.iaCompressed?.longMemory);
+    const existing = rebuild ? new Set<string>() : listExistingModuleFolders();
     if (currentModule) existing.delete(currentModule);
     const artifact = prepareE1DraftArtifact(rawArtifact, {
       existingModules: existing,
       requestedModuleFallback: rootPlan.userPrompt,
     });
     moduleNameForTrace = artifact.moduleName;
+    // /rebuild: soft-delete the existing module's l4 + l5 (leftover operations/workspaces/contracts from
+    // a prior run) so this generation starts clean. Idempotent (already-deleted files are skipped).
+    if (rebuild) {
+      const removed = await cleanNsModule(artifact.moduleName);
+      if (removed.length) await writeNsTrace(artifact.moduleName, 'e1-draft', AGENT_NAME, 1, { rebuild: removed.length, sample: removed.slice(0, 20) }, NS_REBUILD_TRACE_NOTE);
+    }
     const gateInputs = {
       prompt: rootPlan.userPrompt,
       clarification: getInitialClarificationAnswer(context),

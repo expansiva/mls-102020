@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/helpers/nsFs.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-import { createStorFile } from '/_102027_/l2/libStor.js';
+import { createStorFile, deleteFile } from '/_102027_/l2/libStor.js';
 import { normalizeModuleFolderName, toExportIdentifier } from '/_102020_/l2/agentNewSolution/helpers/nsIds.js';
 
 export type NsFileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
@@ -118,6 +118,24 @@ export function listExistingModuleFolders(): Set<string> {
     modules.add(normalizeModuleFolderName(first));
   }
   return modules;
+}
+
+// `/rebuild` (newSolution_18): soft-delete EVERY l4 + l5 file of a module (folder first-segment ==
+// module) so a regeneration starts from a clean slate — leftover operations/workspaces/contracts from a
+// prior run never collide. deleteFile is a soft-delete (status='deleted', recoverable from collab-fs
+// trash). Module-scoped by construction; global l4 folders have a different first segment and are skipped.
+export async function cleanNsModule(moduleName: string): Promise<string[]> {
+  const project = mls.actualProject || 0;
+  const module = normalizeModuleFolderName(moduleName);
+  const deleted: string[] = [];
+  for (const file of Object.values(mls.stor.files)) {
+    if (file.project !== project || file.status === 'deleted' || !file.folder) continue;
+    if (file.level !== 4 && file.level !== 5) continue;
+    if (normalizeModuleFolderName(file.folder.split('/')[0]) !== module) continue;
+    await deleteFile(file);
+    deleted.push(`l${file.level}/${file.folder}/${file.shortName}${file.extension}`);
+  }
+  return deleted;
 }
 
 export function toDisplayPath(fileInfo: NsFileInfo): string {

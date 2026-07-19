@@ -36,6 +36,12 @@ a separate section; `detailPanel` = a detail/master-detail panel of its query; `
 section); `hero`/`banner`/`richText`/`imageSet`/`ctaLink`/`showcase` = landing content. Each organism's
 `dataSource`/`action` is a bffCall id present in `shared.actions`.
 
+CRITICAL: every action reference (each `userActions` entry and every intention `action`/`submitAction`/
+`rowActions`/`toolbar`/`actions`) MUST be a bffCall id from `shared.actions` — NEVER an l4 operationId.
+An operationId (the usecase BEHIND a bffCall, e.g. `browseHighlights`) is not an action; use the bffCall
+that serves it (e.g. `browseHighlightsQuery`). The bffCall ids are exactly the `shared.actions` actionIds
+and the `dataSource`/`action` values in the `workspace` skeleton.
+
 Use only `shared.states` and `shared.functions` for state and behavior. Every visible text uses a
 titleKey, labelKey or emptyKey declared in the flat `pageLayout.i18n` object. Every intention includes
 `fields`, `columns`, `filters`, `toolbar`, `rowActions` and `actions`, using `[]` when empty.
