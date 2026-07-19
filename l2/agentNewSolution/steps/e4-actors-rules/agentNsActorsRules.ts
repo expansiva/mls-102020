@@ -38,6 +38,7 @@ import {
 import {
   approveNsStep,
   createNsPipeline,
+  markNsDownstreamDirty,
   markNsStepRunning,
   readNsPipeline,
   writeNsPipeline,
@@ -189,7 +190,11 @@ async function handleActorsRulesResult(
     validate: item => validateE4Invariants(item, gateContext),
   });
   if (gate.pipeline) pipeline = gate.pipeline;
-  if (gate.ok) pipeline = approveNsStep(pipeline, STEP_ID, 'auto');
+  if (gate.ok) {
+    pipeline = approveNsStep(pipeline, STEP_ID, 'auto');
+    // newSolution_11 fix: re-running e4 invalidates approved downstream (e5/e6/e7). No-op on first run.
+    pipeline = markNsDownstreamDirty(pipeline, STEP_ID);
+  }
   await writeNsPipeline(pipeline);
   await writeJsonArtifact(nsPipelineArtifactFileInfo(moduleName, 'e4-actors-rules', '.json'), artifact);
 

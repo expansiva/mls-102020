@@ -8,6 +8,7 @@ import {
   createNsPipeline,
   markNsDownstreamDirty,
   nextNsUnapprovedStep,
+  NS_STEP_ORDER,
   recordNsGateResult,
 } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
 
@@ -31,5 +32,20 @@ test('approval and downstream dirty propagation are explicit', () => {
   assert.equal(pipeline.steps['e1-draft'].dirty, false);
   assert.equal(pipeline.steps['e2-journeys'].dirty, true);
   assert.equal(nextNsUnapprovedStep(pipeline, ['e1-draft', 'e2-journeys']), 'e2-journeys');
+});
+
+test('re-running e6 invalidates an approved e7 (newSolution_11) but is a no-op before e7 approves', () => {
+  // First run: e6 approves while e7 is still pending → e7 must NOT be flipped to dirty.
+  let pipeline = createNsPipeline('petShop', [...NS_STEP_ORDER]);
+  pipeline = approveNsStep(pipeline, 'e6-journey-map', 'auto');
+  pipeline = markNsDownstreamDirty(pipeline, 'e6-journey-map');
+  assert.equal(pipeline.steps['e7-validation-summary'].dirty ?? false, false);
+
+  // Whole pipeline approved, then e6 re-runs → e7 becomes dirty and is the next step to run again.
+  for (const stepId of NS_STEP_ORDER) pipeline = approveNsStep(pipeline, stepId, 'auto');
+  pipeline = markNsDownstreamDirty(pipeline, 'e6-journey-map');
+  assert.equal(pipeline.steps['e7-validation-summary'].dirty, true);
+  assert.equal(pipeline.steps['e6-journey-map'].dirty ?? false, false); // the step itself is not dirtied
+  assert.equal(nextNsUnapprovedStep(pipeline), 'e7-validation-summary');
 });
 

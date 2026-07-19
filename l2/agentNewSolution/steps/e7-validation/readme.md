@@ -15,7 +15,7 @@ module whose `pipeline.json` has `e6-journey-map` approved and E7 not yet approv
 `pipeline/e1-draft.json` (optional), `pipeline/e2-journeys.json`, `pipeline/e3-model.json`, every
 `l4/{module}/ontology/{EntityId}` entity defs, `pipeline/e4-actors-rules.json` (actors + rules +
 externalRefs), `pipeline/e5-classification.json`, every `l4/{module}/workflows/{id}` and `l4/{module}/operations/{id}`
-defs listed by the classification, and the `l4/{module}/journeys/{module}Journeys` defs from E6.
+defs listed by the classification, and the E6 journey map reassembled from `l4/{module}/navigation.defs.ts` (workspaceIds index + landings) + `l4/{module}/workspaces/{workspaceId}.defs.ts`.
 
 ## Health-report codes (`gate.ts:computeNsHealthReport`, v2 style)
 

@@ -2,104 +2,113 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildNsContractSet } from '/_102020_/l2/agentNewSolution/helpers/nsContracts.js';
+import { buildNsBffContractSet, NsBffContractEntry } from '/_102020_/l2/agentNewSolution/helpers/nsContracts.js';
 
-// Durable analog of the aceite (the prototype byte-diff runs against the untracked mls-102049-Old):
-// each fixture pins one emission branch so a future edit can't silently drift the contract shape.
+// newSolution_10 N4: the contract of record is the WORKSPACE bffCall (page-shaped view), one file per
+// bffCall. Each fixture pins one emission branch so a future edit can't silently drift the shape.
 
-function only(kind: string, data: Record<string, unknown>) {
-  return buildNsContractSet([{ data, fileRef: `_x_/l4/contracts/${data.operationId}.ts`, sourceRef: `_x_/l4/operations/${data.operationId}.defs.ts` }])[0];
+// A browseProducts-shaped paginated operation (the run-9 case: MUST NOT emit empty interfaces).
+const browseProducts = {
+  inputs: [
+    { inputId: 'searchTerm', source: 'userInput', required: false, fieldRef: 'Product.name' },
+    { inputId: 'actorId', source: 'actorSession', required: true, fieldRef: 'Actor.id' }, // non-public
+  ],
+  accessPattern: { pagination: 'required' },
+  outputShape: { kind: 'paginated', fields: [
+    { name: 'products', type: 'array', required: true, item: { fields: [
+      { name: 'productId', type: 'uuid', required: true },
+      { name: 'name', type: 'string', required: true },
+      { name: 'price', type: 'money', required: true },
+    ] } },
+    { name: 'total', type: 'int', required: true },
+  ] },
+};
+
+const reserveProduct = {
+  inputs: [{ inputId: 'productId', source: 'userInput', required: true, fieldRef: 'Product.productId' }],
+  accessPattern: { pagination: 'none' },
+  outputShape: { kind: 'object', fields: [{ name: 'reservationId', type: 'uuid', required: true }] },
+};
+
+function emit(entry: Partial<NsBffContractEntry> & Pick<NsBffContractEntry, 'bffId' | 'uses' | 'operations'>) {
+  const full: NsBffContractEntry = {
+    workspaceId: 'catalog',
+    route: `petShop.catalog.${entry.bffId}`,
+    kind: 'query',
+    fileRef: `_x_/l4/petShop/contracts/catalog.${entry.bffId}.ts`,
+    sourceRef: '_x_/l4/petShop/workspaces/catalog.defs.ts',
+    ...entry,
+  };
+  return buildNsBffContractSet([full])[0];
 }
 
-void test('kind=list emits Item interface + Output = Item[]', () => {
-  const r = only('list', {
-    operationId: 'viewHighlights', bffName: 'shop.viewHighlights.viewHighlights',
-    inputs: [], accessPattern: { pagination: 'none' },
-    outputShape: { kind: 'list', fields: [
-      { name: 'productId', type: 'string', required: true },
-      { name: 'price', type: 'money', required: true },
-      { name: 'note', type: 'text', required: false },
+void test('paginated projection emits a non-empty Output (products[] + total) — no empty interfaces (run 9)', () => {
+  const r = emit({
+    bffId: 'productList', uses: [{ operationId: 'browseProducts' }], operations: { browseProducts },
+    input: [{ name: 'searchTerm', from: 'browseProducts.searchTerm' }, { name: 'page', type: 'number' }],
+    output: { kind: 'paginated', fields: [
+      { name: 'products', from: 'browseProducts.$items', item: { fields: [
+        { name: 'productId', from: 'browseProducts.$items.productId' },
+        { name: 'name', from: 'browseProducts.$items.name' },
+      ] } },
+      { name: 'total', from: 'browseProducts.total' },
     ] },
   });
-  assert.equal(r.kind, 'list');
-  assert.match(r.tsSource, /export interface ViewHighlightsItem \{/);
+  assert.match(r.tsSource, /export interface ProductListProductsItem \{/);
   assert.match(r.tsSource, /productId: string;/);
-  assert.match(r.tsSource, /price: number;/);
-  assert.match(r.tsSource, /note\?: string;/);
-  assert.match(r.tsSource, /export type ViewHighlightsOutput = ViewHighlightsItem\[\];/);
-  assert.match(r.tsSource, /export const viewHighlightsRoute = 'shop\.viewHighlights\.viewHighlights' as const;/);
+  assert.match(r.tsSource, /export interface ProductListOutput \{/);
+  assert.match(r.tsSource, /products: ProductListProductsItem\[\];/);
+  assert.match(r.tsSource, /total: number;/);       // resolved from the source outputShape (int -> number)
+  assert.doesNotMatch(r.tsSource, /interface \w+Output \{\s*\}/); // never an empty interface
+  assert.match(r.tsSource, /searchTerm\?: string;/);
+  assert.match(r.tsSource, /page\?: number;/);       // free input carries its own type
+  assert.match(r.tsSource, /export const productListRoute = 'petShop\.catalog\.productList' as const;/);
 });
 
-void test('kind=object with a nested array field emits the nested Item before Output', () => {
-  const r = only('object', {
-    operationId: 'createReservation', bffName: 'shop.reservationLifecycle.createReservation',
-    inputs: [{ inputId: 'items', source: 'userInput', required: true, fieldRef: 'Reservation.items' }],
-    accessPattern: { pagination: 'none' },
-    outputShape: { kind: 'object', fields: [
-      { name: 'reservationId', type: 'uuid', required: true },
-      { name: 'items', type: 'array', required: true, item: { fields: [
-        { name: 'reservationItemId', type: 'uuid', required: true },
-        { name: 'quantity', type: 'int', required: true },
-      ] } },
+void test('list projection emits Output = Item[]', () => {
+  const r = emit({
+    bffId: 'destaques', uses: [{ operationId: 'browseProducts' }], operations: { browseProducts },
+    output: { kind: 'list', fields: [
+      { name: 'productId', from: 'browseProducts.$items.productId' },
+      { name: 'label', from: 'browseProducts.$items.name' },
     ] },
   });
-  assert.equal(r.kind, 'object');
-  // nested Item interface appears, and BEFORE the Output interface
-  const iItem = r.tsSource.indexOf('export interface CreateReservationItemsItem {');
-  const iOut = r.tsSource.indexOf('export interface CreateReservationOutput {');
-  assert.ok(iItem >= 0 && iOut >= 0 && iItem < iOut, 'nested Item must precede Output');
-  assert.match(r.tsSource, /items: CreateReservationItemsItem\[\];/);
+  assert.match(r.tsSource, /export interface DestaquesItem \{/);
+  assert.match(r.tsSource, /export type DestaquesOutput = DestaquesItem\[\];/);
 });
 
-void test('kind=list with a nested array field prepends the nested Item (the listReservations case)', () => {
-  const r = only('list', {
-    operationId: 'listReservations', bffName: 'shop.listReservations.listReservations',
-    inputs: [], accessPattern: { pagination: 'optional' },
-    outputShape: { kind: 'list', fields: [
-      { name: 'reservationId', type: 'uuid', required: true },
-      { name: 'items', type: 'array', required: true, item: { fields: [
-        { name: 'productId', type: 'uuid', required: true },
-      ] } },
-    ] },
+void test('command passthrough (no projection) emits the source operation outputShape', () => {
+  const r = emit({
+    bffId: 'reservar', kind: 'command', uses: [{ operationId: 'reserveProduct' }], operations: { reserveProduct },
   });
-  const iNested = r.tsSource.indexOf('export interface ListReservationsItemsItem {');
-  const iItem = r.tsSource.indexOf('export interface ListReservationsItem {');
-  assert.ok(iNested >= 0 && iItem >= 0 && iNested < iItem, 'nested Item must precede the list Item');
+  assert.match(r.tsSource, /export interface ReservarOutput \{/);
+  assert.match(r.tsSource, /reservationId: string;/);
+  assert.match(r.tsSource, /productId: string;/); // public input passthrough
 });
 
-void test('Input keeps only public sources and injects pagination', () => {
-  const r = only('list', {
-    operationId: 'browseCatalog', bffName: 'shop.browseCatalog.browseCatalog',
-    inputs: [
-      { inputId: 'searchTerm', source: 'userInput', required: false, fieldRef: 'Product.name' },
-      { inputId: 'actorId', source: 'actorSession', required: true, fieldRef: 'Actor.id' }, // dropped (not public)
-    ],
-    accessPattern: { pagination: 'required' },
-    outputShape: { kind: 'list', fields: [{ name: 'productId', type: 'uuid', required: true }, { name: 'name', type: 'string', required: true, fieldRef: 'Product.name' }] },
+void test('identity query (no input/output) derives Input from public inputs + pagination and Output from the shape', () => {
+  const r = emit({
+    bffId: 'browseProducts', uses: [{ operationId: 'browseProducts' }], operations: { browseProducts },
   });
   assert.match(r.tsSource, /searchTerm\?: string;/);
-  assert.doesNotMatch(r.tsSource, /actorId/); // non-public source excluded
+  assert.doesNotMatch(r.tsSource, /actorId/);   // non-public source excluded
   assert.match(r.tsSource, /page\?: number;/);
   assert.match(r.tsSource, /pageSize\?: number;/);
+  assert.match(r.tsSource, /products: BrowseProductsProductsItem\[\];/);
 });
 
-void test('no public inputs and no pagination -> placeholder comment', () => {
-  const r = only('object', {
-    operationId: 'expireReservations', bffName: 'shop.reservationLifecycle.expireReservations',
-    inputs: [{ inputId: 'now', source: 'systemDefault', required: true, fieldRef: 'x' }],
-    accessPattern: { pagination: 'none' },
-    outputShape: { kind: 'object', fields: [{ name: 'expiredCount', type: 'int', required: true }] },
-  });
-  assert.match(r.tsSource, /\/\/ sem inputs públicos \(resolvidos por contexto\)/);
+void test('A4.7 — an empty projected Output throws (never emit {})', () => {
+  assert.throws(() => emit({
+    bffId: 'empty', uses: [{ operationId: 'browseProducts' }], operations: { browseProducts },
+    output: { kind: 'object', fields: [] },
+  }), /empty/);
 });
 
 void test('.d.ts twin carries the ambient route form and no fileReference header', () => {
-  const r = only('list', {
-    operationId: 'viewHighlights', bffName: 'shop.viewHighlights.viewHighlights',
-    inputs: [], accessPattern: { pagination: 'none' },
-    outputShape: { kind: 'list', fields: [{ name: 'productId', type: 'uuid', required: true }] },
+  const r = emit({
+    bffId: 'reservar', kind: 'command', uses: [{ operationId: 'reserveProduct' }], operations: { reserveProduct },
   });
   assert.doesNotMatch(r.dtsSource, /fileReference/);
-  assert.match(r.dtsSource, /declare const viewHighlightsRoute: 'shop\.viewHighlights\.viewHighlights';/);
-  assert.match(r.dtsSource, /export \{ viewHighlightsRoute \};/);
+  assert.match(r.dtsSource, /declare const reservarRoute: 'petShop\.catalog\.reservar';/);
+  assert.match(r.dtsSource, /export \{ reservarRoute \};/);
 });

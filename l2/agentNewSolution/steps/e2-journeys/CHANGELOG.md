@@ -38,3 +38,5 @@
 Deferred (next round): checkpoint integration for `widgetNsJourneys`, the adjustment loop
 `agentNsJourneysAdjustment`, versioning `e2-journeys.v{K}.json`, and the checkpoint-rendering fix
 outside this folder (see flow.json checkpoint-journeys notes).
+
+- 2026-07-18 — N5 (newSolution_10): the journeys checkpoint apply paths (`applyJourneysReview` + the [fast] auto-approve) now complete with cleaner `input_output` — same hygiene as the e1 clarification. The answer is persisted in the `checkpoint-journeys-answer` (or adjustment-request) result step, so the widget interaction payload is dropped from the task record.

@@ -26,6 +26,7 @@ import {
   writeMarkdownArtifact,
 } from '/_102020_/l2/agentNewSolution/helpers/nsFs.js';
 import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution/helpers/nsIds.js';
+import { emitNsBffContracts } from '/_102020_/l2/agentNewSolution/helpers/nsContractsEmit.js';
 import {
   nsFindMutableParentStep,
   nsResultStepIntent,
@@ -52,6 +53,7 @@ import {
   NsE7Classification,
   NsE7ExternalRefs,
   NsE7JourneyMap,
+  NsE7Workspace,
   NsE7NextStep,
   NsE7OperationDef,
   NsE7WorkflowDef,
@@ -143,7 +145,18 @@ async function runE7(
     const def = await readJsonDefs<NsE7OperationDef>(4, nsOperationsFolder(moduleName), operation.operationId);
     if (def) operationDefs.push(def);
   }
-  const journeyMap = await readJsonDefs<NsE7JourneyMap>(4, `${moduleName}/journeys`, `${moduleName}Journeys`);
+  // D1 layout: the journey map is now split — navigation.defs.ts (landings/edges + workspaceIds index)
+  // + one file per workspace under workspaces/. Reassemble it into the shape the health report expects.
+  const navigation = await readJsonDefs<{ landings?: unknown[]; workspaceIds?: string[] }>(4, moduleName, 'navigation');
+  let journeyMap: NsE7JourneyMap | null = null;
+  if (navigation) {
+    const workspaces: NsE7Workspace[] = [];
+    for (const workspaceId of navigation.workspaceIds || []) {
+      const workspace = await readJsonDefs<NsE7Workspace>(4, `${moduleName}/workspaces`, workspaceId);
+      if (workspace) workspaces.push(workspace);
+    }
+    journeyMap = { workspaces, landings: navigation.landings || [] };
+  }
 
   // 2. Mark the step running (with input hashes) and compute the health report.
   let pipeline = await readNsPipeline(moduleName) || createNsPipeline(moduleName);
@@ -178,7 +191,7 @@ async function runE7(
 
   // 4. Closing artifacts (same paths/formats Stage 2/3 already consume).
   const now = new Date().toISOString();
-  const journeyDefPath = `l4/${moduleName}/journeys/${moduleName}Journeys.defs.ts`;
+  const journeyDefPath = `l4/${moduleName}/navigation.defs.ts`;
   const moduleDefs = buildNsModuleDefs({ moduleName, model, entities, e1Draft, e2, e4ExternalRefs: e4.externalRefs, journeyDefPath });
   await writeDefsArtifact({ project, level: 4, folder: moduleName, shortName: 'module', extension: '.defs.ts' }, `${moduleName}Module`, moduleDefs);
 
@@ -238,6 +251,18 @@ async function runE7(
     nsPipelineArtifactFileInfo(moduleName, 'e7-validation', '.md'),
     renderE7Markdown(report, { moduleName, nextSteps }),
   );
+
+  // newSolution_10 N4: the mechanical bffCall contracts are the LAST artifact of the flow (emitted
+  // here, after e6 settled the workspaces + projections — killing the run-9 staleness). l4 only; the
+  // l1/l2 mirrors are gone in this phase. A4.7: an empty projected Output throws → the step fails.
+  try {
+    const contractPaths = await emitNsBffContracts(moduleName, (journeyMap?.workspaces || []) as unknown[], operationDefs as unknown[]);
+    await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, 1, { contracts: contractPaths }, `emitted ${contractPaths.length} bffCall contract file(s)`);
+  } catch (error) {
+    const traceMsg = `contract emit failed: ${error instanceof Error ? error.message : String(error)}`;
+    await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, 1, { stepId: step.stepId }, traceMsg);
+    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
+  }
 
   // 5. Approve, trace, and close: completed 'e7-done' result BEFORE this step's
   // update-status (parent auto-completion sweep runs per intent).

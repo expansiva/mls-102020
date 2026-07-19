@@ -200,7 +200,7 @@
       "input": ["e2-journeys.json", "e3-model.json + ontology files", "e4-actors-rules.json"],
       "output": {
         "result": "classification, then one behavior per file",
-        "savedArtifact": ["l4/{module}/pipeline/e5-classification.json", "l4/{module}/workflows/{workflowId}.defs.ts", "l4/{module}/operations/{operationId}.defs.ts", "l4/{module}/pipeline/e5-behavior.md", "l4/{module}/contracts/{operationId}.ts", "l1/{module}/contracts/{operationId}.ts", "l2/{module}/web/contracts/{operationId}.ts"]
+        "savedArtifact": ["l4/{module}/pipeline/e5-classification.json", "l4/{module}/workflows/{workflowId}.defs.ts", "l4/{module}/operations/{operationId}.defs.ts", "l4/{module}/pipeline/e5-behavior.md"]
       },
       "gate": {
         "file": "steps/e5-behavior/gate.ts",
@@ -218,7 +218,7 @@
       "input": ["e2-journeys.json", "e5-classification.json", "workflow/operation defs summaries"],
       "output": {
         "result": "journey map",
-        "savedArtifact": ["l4/{module}/journeys/{module}Journeys.defs.ts", "l4/{module}/pipeline/e6-journey-map.md"]
+        "savedArtifact": ["l4/{module}/workspaces/{workspaceId}.defs.ts", "l4/{module}/navigation.defs.ts", "l4/{module}/pipeline/e6-journey-map.md"]
       },
       "gate": {
         "file": "steps/e6-journey-map/gate.ts",
@@ -237,7 +237,7 @@
       "input": ["all saved l4 artifacts (files only, never payload)"],
       "output": {
         "result": "health report + closing artifacts",
-        "savedArtifact": ["l4/{module}/trace/behavior-health-report.json", "l4/{module}/module.defs.ts", "l5/{module}/todoFrontend.defs.ts", "l5/{module}/todoBackend.defs.ts", "l5/{module}/process.defs.ts", "l4/{module}/pipeline/e7-validation.md"]
+        "savedArtifact": ["l4/{module}/trace/behavior-health-report.json", "l4/{module}/module.defs.ts", "l5/{module}/todoFrontend.defs.ts", "l5/{module}/todoBackend.defs.ts", "l5/{module}/process.defs.ts", "l4/{module}/pipeline/e7-validation.md", "l4/{module}/contracts/{workspaceId}.{bffId}.ts"]
       },
       "gate": {
         "file": "steps/e7-validation/gate.ts",

@@ -35,8 +35,8 @@ import {
   validateE2JourneysInvariants,
 } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/gate.js';
 import type { NsJourneysReviewPayload } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/widgetNsJourneysLogic.js';
-import { emptyNsJourneysWidgetEdits } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/widgetNsJourneysLogic.js';
 import { isNsFastMode } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
+import { emptyNsJourneysWidgetEdits } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/widgetNsJourneysLogic.js';
 
 const AGENT_NAME = 'agentNsJourneys';
 const TOOL_NAME = 'submitNsJourneys';
@@ -77,6 +77,13 @@ async function beforePromptStep(
     const moduleName = await resolveE2ReviewModule(parsedArgs.moduleName);
     const artifact = await readJsonArtifact<NsE2JourneysArtifact>(nsPipelineArtifactFileInfo(moduleName, 'e2-journeys', '.json'), true);
     if (!artifact) throw new Error(`[${AGENT_NAME}] e2-journeys.json not found for ${moduleName}`);
+    // /fast (D5): auto-approve the journeys checkpoint SERVER-SIDE, from the step handler (inside the
+    // pooling cycle) — the widget-timeout path can't work here because the checkpoint widget only
+    // renders after the user clicks "abrir". This emits the exact same approve the human path emits
+    // (checkpoint-journeys-answer + phase-2 add-steps + approveJourneysCheckpoint), so no widget/abrir.
+    if (isNsFastMode(context.task?.iaCompressed?.longMemory)) {
+      return await fastApproveCheckpoint(context, parentStep, step, hookSequential, moduleName, artifact);
+    }
     return [checkpointPromptReady(context, parentStep, hookSequential, moduleName, artifact, hookArgs)];
   }
 
@@ -286,39 +293,65 @@ async function beforeClarificationStep(
     throw new Error(`[${AGENT_NAME}] unsupported clarification ${parsed.planId || '(missing)'}`);
   }
   const moduleName = await resolveE2ReviewModule(parsed.moduleName);
-  // /fast (D5): auto-approve the journeys checkpoint with its OWN proposed version — reuse the exact
-  // human "approve" path (applyJourneysReview). Step stays visible in the tree, auto-answered.
-  if (isNsFastMode(context.task?.iaCompressed?.longMemory)) {
-    const artifact = await readJsonArtifact<NsE2JourneysArtifact>(nsPipelineArtifactFileInfo(moduleName, 'e2-journeys', '.json'), true);
-    if (!artifact) throw new Error(`[${AGENT_NAME}] e2-journeys.json not found for ${moduleName}`);
-    const fastApprove: NsJourneysReviewPayload = {
-      type: 'checkpoint-journeys-answer',
-      action: 'approve',
-      moduleName,
-      version: artifact.version,
-      approved: true,
-      adjustment: '',
-      edits: emptyNsJourneysWidgetEdits(),
-      changes: [],
-      proposedArtifact: artifact,
-    };
-    await writeNsTrace(moduleName, 'checkpoint-journeys', AGENT_NAME, 1, { fast: true, version: artifact.version }, '[fast] clarification auto-aceita');
-    void applyJourneysReview(context, parentStep, step, hookSequential, fastApprove)
-      .catch(error => console.error(`[${agent.agentName}] ${error instanceof Error ? error.message : String(error)}`));
-    const placeholder = document.createElement('div');
-    placeholder.setAttribute('data-ns-fast', 'checkpoint-auto-approved');
-    placeholder.textContent = '[fast] clarification auto-aceita';
-    return placeholder;
-  }
+  // Read the E2 artifact HERE (the checkpoint step runs after e2-journeys, so it is written) and hand
+  // it to the widget via value.artifact — the widget consumes it directly (widgetNsJourneys reads
+  // _config.artifact) instead of re-reading from disk, avoiding the "No E2 journey artifact found"
+  // render-timing gap (and letting /fast auto-approve fire, since the artifact is present immediately).
+  const artifact = await readJsonArtifact<NsE2JourneysArtifact>(nsPipelineArtifactFileInfo(moduleName, 'e2-journeys', '.json'), false);
   await import('/_102020_/l2/agentNewSolution/steps/e2-journeys/widgetNsJourneys.js');
   const el = document.createElement('widget-ns-journeys-102020');
-  (el as unknown as { value: unknown }).value = { moduleName, mode: 'new-module' };
+  // In /fast the checkpoint is auto-approved server-side (beforePromptStep) and this widget never
+  // renders. This path is the interactive (non-fast) review; artifact is handed in so the widget does
+  // not disk-read it (avoids the "No E2 journey artifact found" render-timing gap).
+  (el as unknown as { value: unknown }).value = { moduleName, mode: 'new-module', ...(artifact ? { artifact } : {}) };
   el.addEventListener('ns-journeys-review', (event: Event) => {
     const detail = (event as CustomEvent<NsJourneysReviewPayload>).detail;
     void applyJourneysReview(context, parentStep, step, hookSequential, detail)
       .catch(error => console.error(`[${agent.agentName}] ${error instanceof Error ? error.message : String(error)}`));
   });
   return el;
+}
+
+// /fast: approve the journeys checkpoint from the STEP handler (beforePromptStep), inside the pooling
+// cycle — emits the exact same intents the human "approve" path emits, so the checkpoint completes with
+// no widget and no "abrir". Returns the intents for the framework to apply; freezes the version on disk.
+async function fastApproveCheckpoint(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  moduleName: string,
+  artifact: NsE2JourneysArtifact,
+): Promise<mls.msg.AgentIntent[]> {
+  const payload: NsJourneysReviewPayload = {
+    type: 'checkpoint-journeys-answer',
+    action: 'approve',
+    moduleName,
+    version: artifact.version,
+    approved: true,
+    adjustment: '',
+    edits: emptyNsJourneysWidgetEdits(),
+    changes: [],
+    proposedArtifact: artifact,
+  };
+  const mutationParent = findMutableParentStep(context, parentStep);
+  const intents: mls.msg.AgentIntent[] = [
+    // N5: drop the checkpoint widget interaction on completion (the answer is persisted in the
+    // 'checkpoint-journeys-answer' result step) — same DynamoDB-400KB hygiene as the e1 clarification.
+    updateStatus(context, mutationParent, step, hookSequential, 'completed', 'checkpoint-journeys approve [fast]', 'input_output'),
+  ];
+  intents.unshift(resultStep(context, mutationParent, 'checkpoint-journeys-answer', ['checkpoint-journeys'], 'Journeys approved', {
+    type: 'checkpoint-journeys-answer',
+    moduleName,
+    approved: true,
+    version: payload.version,
+    changes: payload.changes,
+    edits: payload.edits,
+  }));
+  intents.unshift(...(await buildMissingPhase2AddSteps(context, mutationParent)));
+  await approveJourneysCheckpoint(moduleName, payload);
+  await writeNsTrace(moduleName, 'checkpoint-journeys', AGENT_NAME, 1, { fast: true, version: artifact.version }, '[fast] checkpoint auto-aprovado');
+  return intents;
 }
 
 async function applyJourneysReview(
@@ -335,7 +368,9 @@ async function applyJourneysReview(
   // update-status on a completed/failed parent (addTaskAISteps "Parent step cannot be modified").
   const mutationParent = findMutableParentStep(context, parentStep);
   const intents: mls.msg.AgentIntent[] = [
-    updateStatus(context, mutationParent, step, hookSequential, 'completed', `checkpoint-journeys ${payload.action}`),
+    // N5: drop the checkpoint widget interaction on completion (answer persisted separately in
+    // 'checkpoint-journeys-answer'/the adjustment-request result step).
+    updateStatus(context, mutationParent, step, hookSequential, 'completed', `checkpoint-journeys ${payload.action}`, 'input_output'),
   ];
 
   if (payload.action === 'approve') {

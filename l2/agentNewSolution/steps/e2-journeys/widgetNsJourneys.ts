@@ -48,6 +48,7 @@ export interface WidgetNsJourneysConfig {
   artifact?: NsE2JourneysArtifact;
   mode?: NsJourneysMode;
   readOnly?: boolean;
+  autoAcceptSeconds?: number;
   history?: NsJourneysIteration[];
   uiLabels?: Partial<NsJourneysLabels>;
 }
@@ -179,19 +180,31 @@ export class WidgetNsJourneys102020 extends StateLitElement {
   @state() private _businessRuleTexts: Record<string, string> = {};
   @state() private _journeyNotes: Record<string, string> = {};
   @state() private _changeLog: NsJourneysWidgetChangeRecord[] = [];
+  @state() private _autoApproveRemainingSeconds = 0;
 
   private _loadedFor = '';
   private _changeSequence = 0;
+  private _autoApproveTimer: number | null = null;
+  private _autoApproveTimerKey = '';
+  private _autoApproveCancelledFor = '';
 
   override async connectedCallback(): Promise<void> {
     super.connectedCallback();
     await this._load();
   }
 
+  override disconnectedCallback(): void {
+    this._clearAutoApproveTimer();
+    super.disconnectedCallback();
+  }
+
   override updated(changed: Map<PropertyKey, unknown>): void {
     super.updated(changed);
     const loadKey = this._loadKey();
-    if (changed.has('value') && loadKey !== this._loadedFor) void this._load();
+    if (changed.has('value')) {
+      if (loadKey !== this._loadedFor) void this._load();
+      else this._syncAutoApproveTimer();
+    }
   }
 
   private get _config(): WidgetNsJourneysConfig {
@@ -216,6 +229,7 @@ export class WidgetNsJourneys102020 extends StateLitElement {
     this._loadedFor = loadKey;
     this._loading = true;
     this._error = '';
+    this._clearAutoApproveTimer();
     this._resetReviewState();
     try {
       const artifact = this._artifactFromValue();
@@ -225,7 +239,7 @@ export class WidgetNsJourneys102020 extends StateLitElement {
       }
       const moduleName = this._config.moduleName;
       if (!moduleName) {
-        this._artifact = null;
+        this._setArtifact(null);
         return;
       }
       const fileInfo = nsPipelineArtifactFileInfo(moduleName, 'e2-journeys', '.json');
@@ -233,6 +247,7 @@ export class WidgetNsJourneys102020 extends StateLitElement {
       this._setArtifact(await readJsonArtifact<NsE2JourneysArtifact>(fileInfo, false));
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
+      this._setArtifact(null);
     } finally {
       this._loading = false;
     }
@@ -249,8 +264,15 @@ export class WidgetNsJourneys102020 extends StateLitElement {
     const selectedJourney = this._selectedJourney(artifact, visibleJourneys);
 
     return html`
-      <section class="ns-journeys">
+      <section
+        class="ns-journeys"
+        @click=${() => this._cancelAutoApprove()}
+        @focusin=${() => this._cancelAutoApprove()}
+        @input=${() => this._cancelAutoApprove()}
+        @keydown=${() => this._cancelAutoApprove()}
+      >
         ${this._renderHeader(artifact)}
+        ${this._renderAutoApproveCounter()}
         ${this._renderFilters(artifact, visibleJourneys)}
         ${this._renderActorMap(artifact)}
         <div class="ns-main">
@@ -281,6 +303,14 @@ export class WidgetNsJourneys102020 extends StateLitElement {
         </div>
       </header>
     `;
+  }
+
+  private _renderAutoApproveCounter(): TemplateResult | typeof nothing {
+    if (this._autoApproveRemainingSeconds <= 0) return nothing;
+    const text = this._artifact?.userLanguage === 'pt-BR'
+      ? `Auto-aprovando em ${this._autoApproveRemainingSeconds}s...`
+      : `Auto-approving in ${this._autoApproveRemainingSeconds}s...`;
+    return html`<div class="ns-auto-approve" role="status">${text}</div>`;
   }
 
   private _renderFilters(artifact: NsE2JourneysArtifact, visibleJourneys: NsE2Journey[]): TemplateResult {
@@ -609,6 +639,7 @@ export class WidgetNsJourneys102020 extends StateLitElement {
   private _setArtifact(artifact: NsE2JourneysArtifact | null): void {
     this._artifact = artifact;
     this._selectedJourneyId = artifact?.journeys[0]?.journeyId || '';
+    this._syncAutoApproveTimer();
   }
 
   private _artifactFromValue(): NsE2JourneysArtifact | null {
@@ -805,6 +836,7 @@ export class WidgetNsJourneys102020 extends StateLitElement {
   }
 
   private _submitReview(artifact: NsE2JourneysArtifact, action: NsJourneysReviewAction): void {
+    this._cancelAutoApprove();
     const edits = this._currentEdits();
     if (action === 'adjust' && !hasNsJourneysWidgetEdits(edits) && !this._adjustment.trim()) return;
     this._recordChange(
@@ -826,6 +858,51 @@ export class WidgetNsJourneys102020 extends StateLitElement {
       bubbles: true,
       composed: true,
     }));
+  }
+
+  private _syncAutoApproveTimer(): void {
+    const seconds = this._autoAcceptSeconds();
+    const key = this._autoApproveKey(seconds);
+    if (!this._artifact || this._readOnly || seconds <= 0 || this._autoApproveCancelledFor === key) {
+      this._clearAutoApproveTimer();
+      return;
+    }
+    if (this._autoApproveTimer !== null && this._autoApproveTimerKey === key) return;
+    this._clearAutoApproveTimer();
+    this._autoApproveTimerKey = key;
+    this._autoApproveRemainingSeconds = seconds;
+    this._autoApproveTimer = window.setInterval(() => {
+      this._autoApproveRemainingSeconds = Math.max(0, this._autoApproveRemainingSeconds - 1);
+      if (this._autoApproveRemainingSeconds === 0) {
+        const artifact = this._artifact;
+        this._clearAutoApproveTimer();
+        if (artifact) this._submitReview(artifact, 'approve');
+      }
+    }, 1000);
+  }
+
+  private _cancelAutoApprove(): void {
+    const seconds = this._autoAcceptSeconds();
+    if (seconds > 0) this._autoApproveCancelledFor = this._autoApproveKey(seconds);
+    this._clearAutoApproveTimer();
+  }
+
+  private _clearAutoApproveTimer(): void {
+    if (this._autoApproveTimer !== null) {
+      window.clearInterval(this._autoApproveTimer);
+      this._autoApproveTimer = null;
+    }
+    this._autoApproveTimerKey = '';
+    this._autoApproveRemainingSeconds = 0;
+  }
+
+  private _autoAcceptSeconds(): number {
+    const raw = (this.value as { autoAcceptSeconds?: unknown } | null)?.autoAcceptSeconds;
+    return typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 0;
+  }
+
+  private _autoApproveKey(seconds: number): string {
+    return `${this._artifact?.moduleName || this._config.moduleName || ''}:${this._artifact?.version || ''}:${this._artifact?.createdAt || ''}:${seconds}`;
   }
 }
 

@@ -39,6 +39,7 @@ import {
 import {
   approveNsStep,
   createNsPipeline,
+  markNsDownstreamDirty,
   markNsStepRunning,
   readNsPipeline,
   writeNsPipeline,
@@ -406,6 +407,8 @@ async function runE3Finalize(
   );
   let pipeline = await readNsPipeline(moduleName) || createNsPipeline(moduleName);
   pipeline = approveNsStep(pipeline, STEP_ID, 'auto');
+  // newSolution_11 fix: re-running e3 invalidates approved downstream (e4/e5/e6/e7). No-op on first run.
+  pipeline = markNsDownstreamDirty(pipeline, STEP_ID);
   await writeNsPipeline(pipeline);
 
   return [

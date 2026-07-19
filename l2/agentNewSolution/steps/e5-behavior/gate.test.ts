@@ -384,6 +384,60 @@ void test('e5 operation gate blocks commandInput without inputs', async () => {
   assert.ok(gate.errors.some(issue => issue.code === 'operation.inputs.empty'));
 });
 
+void test('e5 operation gate blocks an input with neither fieldRef nor type (gap A5)', async () => {
+  const defs = attachedOperation();
+  defs.inputs = [{ inputId: 'page', required: false, source: 'userInput', description: 'Page number' }];
+  const check = validateE5Operation(defs, operationContext());
+  assert.ok(check.issues.some(issue => issue.severity === 'error' && issue.code === 'operation.input.untyped'));
+});
+
+void test('e5 operation gate accepts a free input declaring an explicit type (gap A5)', async () => {
+  const defs = attachedOperation();
+  defs.inputs = [{ inputId: 'page', type: 'number', required: false, source: 'userInput', description: 'Page number' }];
+  const check = validateE5Operation(defs, operationContext());
+  assert.ok(!check.issues.some(issue => issue.code === 'operation.input.untyped'));
+});
+
+void test('attach backfills a getById key input fieldRef from accessPattern.keyField (petShop viewProductDetail case)', () => {
+  // The LLM dropped fieldRef+type on the getById route id; the deterministic attach must fill it from
+  // keyField so the run does not die on operation.input.untyped (newSolution_12).
+  const artifact = validOperation();
+  artifact.accessPattern = { ...artifact.accessPattern, kind: 'getById', keyField: 'Order.orderId' };
+  artifact.inputs = [{ inputId: 'orderId', required: true, source: 'routeParam', description: 'Order id from the route' }];
+  const classification = validClassification();
+  const defs = attachOperationDeterministic(artifact, {
+    moduleName: 'cafeFlow', classification: classification.operations[0], owningWorkflow: classification.workflows[0], features,
+  });
+  assert.equal(defs.inputs[0].fieldRef, 'Order.orderId'); // backfilled
+  const check = validateE5Operation(defs, operationContext());
+  assert.ok(!check.issues.some(issue => issue.code === 'operation.input.untyped'));
+});
+
+void test('attach backfills types for bare filter/pagination inputs of a query op (petShop searchProducts case)', () => {
+  // The LLM left every filter + pagination input untyped; attach must type them (pagination -> number,
+  // free filter -> string) so the query op persists instead of dying on operation.input.untyped
+  // (newSolution_13: searchProducts/browseProducts failed with 7 untyped inputs each, retry made it worse).
+  const artifact = validOperation();
+  artifact.accessPattern = { ...artifact.accessPattern, kind: 'list', keyField: 'Order.orderId' };
+  artifact.inputs = [
+    { inputId: 'priceRange', required: false, source: 'userInput', description: 'Price band filter' },
+    { inputId: 'sortBy', required: false, source: 'userInput', description: 'Sort order' },
+    { inputId: 'page', required: false, source: 'userInput', description: 'Page' },
+    { inputId: 'pageSize', required: false, source: 'userInput', description: 'Page size' },
+  ];
+  const classification = validClassification();
+  const defs = attachOperationDeterministic(artifact, {
+    moduleName: 'cafeFlow', classification: classification.operations[0], owningWorkflow: classification.workflows[0], features,
+  });
+  const byId = Object.fromEntries(defs.inputs.map(i => [i.inputId, i]));
+  assert.equal(byId.priceRange.type, 'string');
+  assert.equal(byId.sortBy.type, 'string');
+  assert.equal(byId.page.type, 'number');
+  assert.equal(byId.pageSize.type, 'number');
+  const check = validateE5Operation(defs, operationContext());
+  assert.ok(!check.issues.some(issue => issue.code === 'operation.input.untyped'));
+});
+
 void test('e5 operation gate blocks a contextResolution entry without originRef', async () => {
   const defs = attachedOperation();
   defs.contextResolution = [

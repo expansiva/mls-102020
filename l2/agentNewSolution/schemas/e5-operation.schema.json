@@ -74,10 +74,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["inputId", "fieldRef", "required", "source", "description"],
+        "required": ["inputId", "required", "source", "description"],
         "properties": {
           "inputId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
           "fieldRef": { "type": "string", "minLength": 3 },
+          "type": { "enum": ["string", "number", "boolean"] },
           "required": { "type": "boolean" },
           "source": { "enum": ["userInput", "actorSession", "businessContext", "currentWorkspace", "selectedEntity", "activeLifecycleInstance", "workflowState", "routeParam", "previousStepOutput", "systemDefault"] },
           "description": { "type": "string", "minLength": 3 }

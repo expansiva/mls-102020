@@ -49,8 +49,13 @@ Result rules:
       collection as a `type:'array'` field WITH its `item.fields` (name it as the payload does, e.g.
       `stockItems`, NOT necessarily `items`) plus `total:number` (and optional `page`/`pageSize`).
     Name every field with the EXACT key the payload uses — do not rename between runs.
-- inputs: what the user or system provides: [{inputId, fieldRef 'Entity.field', required, source,
-  description}]. commandInput operations MUST declare at least one input. Valid sources:
+- inputs: what the user or system provides: [{inputId, fieldRef?, type?, required, source,
+  description}]. EVERY input MUST be typeable: set `fieldRef: 'Entity.field'` (the type derives from
+  the field) OR, for a free input with no ontology field (pagination `page`/`pageSize`, a boolean
+  flag), set an explicit `type` ∈ string|number|boolean. An input with neither is a gate error. For a
+  getById/lookup key input (a routeParam id like `productId`), set `fieldRef` to the accessPattern
+  keyField (`Product.productId`) — do NOT leave it bare just because it is a route param.
+  commandInput operations MUST declare at least one input. Valid sources:
   userInput | actorSession | businessContext | currentWorkspace | selectedEntity |
   activeLifecycleInstance | workflowState | routeParam | previousStepOutput | systemDefault.
 - contextResolution: how NON-userInput values are resolved server-side: [{inputId?, targetRef,

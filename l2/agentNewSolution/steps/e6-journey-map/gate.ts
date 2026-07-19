@@ -9,7 +9,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export const E6_JOURNEY_MAP_SCHEMA_VERSION = '2026-07-18-ns-e6-v4';
+export const E6_JOURNEY_MAP_SCHEMA_VERSION = '2026-07-18-ns-e6-v5';
 
 // Deterministic note attached after the LLM call (never produced by the model).
 export const E6_JOURNEY_MAP_NOTE = 'Consolidated navigation map derived from workflows/operations stories (view, not source).';
@@ -26,34 +26,74 @@ export type NsE6WorkspaceKind = typeof NS_WORKSPACE_KINDS[number];
 export const NS_PUBLIC_ACTOR = 'public';
 
 // Organism role enum — the LLM CLASSIFIES and ANCHORS operations into these roles; it never
-// designs structure. Stage 2 (create-layout) reads the role to place each operation on the page.
+// designs structure. Stage 2 (create-layout) reads the role to place each organism on the page.
 //   primarySurface   — the section's main surface (list/queue/board); exactly 1 per section
-//   filterControl    — refines a surface (search/filter); MUST declare attachTo = the surface op
+//   filterControl    — refines a surface (search/filter); MUST declare attachTo = the query bffCall
 //   contextualAction — a command launched from the surface (e.g. createReservation)
 //   detailPanel      — a getById read shown as a side/detail panel
 //   batchAction      — a command over a multi-selection (or with no public input)
-//   navigationEntry  — a link/entry point to another workspace
+//   navigationEntry  — a link/entry point to a bffCall surfaced on another workspace
 export const NS_ORGANISM_ROLES = [
   'primarySurface', 'filterControl', 'contextualAction', 'detailPanel', 'batchAction', 'navigationEntry',
-  // content roles (D7) — for landing pages; only `showcase` is backed by an operation (a query).
+  // content roles (D7) — for landing pages; only `showcase` is backed by a bffCall (a query).
   'hero', 'banner', 'richText', 'imageSet', 'ctaLink', 'showcase',
 ] as const;
 
 export type NsE6OrganismRole = typeof NS_ORGANISM_ROLES[number];
 
-// Roles that MUST carry a real operationId (JSON `required` cannot express this conditionally, so the
-// gate enforces it — otherwise making operationId optional for content roles would silently let a real
-// primarySurface drop its operationId). `showcase` is operation-backed (a query); the pure content
-// roles below carry NO operationId. navigationEntry links to an operation surfaced on another page.
-const NS_OPERATION_BACKED_ROLES = new Set<NsE6OrganismRole>([
-  'primarySurface', 'filterControl', 'contextualAction', 'detailPanel', 'batchAction', 'navigationEntry', 'showcase',
-]);
+// A bffCall is consumed via `dataSource` (query-backed) or `action` (command-backed). navigationEntry
+// links to a bffCall living on ANOTHER workspace (a cross-page pointer, validated against the global
+// bffId set — never triggers a local identity-call synthesis).
+const NS_QUERY_BACKED_ROLES = new Set<NsE6OrganismRole>(['primarySurface', 'detailPanel', 'showcase', 'navigationEntry']);
+const NS_COMMAND_BACKED_ROLES = new Set<NsE6OrganismRole>(['contextualAction', 'batchAction']);
 const NS_CONTENT_ROLES = new Set<NsE6OrganismRole>(['hero', 'banner', 'richText', 'imageSet', 'ctaLink']);
 
+export const NS_BFF_KINDS = ['query', 'command'] as const;
+export type NsE6BffKind = typeof NS_BFF_KINDS[number];
+export type NsE6FieldType = 'string' | 'number' | 'boolean' | 'array' | 'object';
+
+// ── bffCall (the view contract): 1..N usecases composed + a projection of only what the page renders ──
+export interface NsE6BffUse {
+  operationId: string;
+  optional?: boolean; // only allowed on a composed (uses N>1) query call: usecase failed → slice null
+}
+
+export interface NsE6BffInput {
+  name: string;
+  from?: string; // <operationId>.<inputId> — absent only for free inputs (pagination/flags) that carry `type`
+  type?: NsE6FieldType;
+  required?: boolean;
+}
+
+export interface NsE6BffField {
+  name: string;
+  from: string; // <operationId>.<field> | <operationId>.$items.<field> — every projected field traces back
+  type?: NsE6FieldType;
+  required?: boolean;
+  item?: { fields: NsE6BffField[] };
+}
+
+export interface NsE6BffOutput {
+  kind: 'object' | 'list' | 'paginated';
+  fields: NsE6BffField[];
+}
+
+export interface NsE6BffCall {
+  bffId: string;
+  kind: NsE6BffKind;
+  uses: NsE6BffUse[];
+  input?: NsE6BffInput[];
+  output?: NsE6BffOutput; // absent for a command passthrough (1:1 with the operation)
+  route?: string; // DERIVED (<module>.<workspaceId>.<bffId>) — never declared by the LLM
+}
+
 export interface NsE6Organism {
-  operationId?: string; // absent for pure content roles (hero/banner/richText/imageSet/ctaLink)
+  operationId?: string; // legacy/simple LLM input only — normalized into dataSource/action by prepare
   role: NsE6OrganismRole;
-  attachTo?: string; // required when role === 'filterControl': the primarySurface operationId it refines
+  dataSource?: string; // bffId of the query call feeding this organism
+  action?: string;     // bffId of the command call this organism launches
+  attachTo?: string;   // filterControl: the query bffId it refines
+  slice?: string;      // which top-level output field of a COMPOSED call (uses N>1) this organism consumes
 }
 
 export interface NsE6Section {
@@ -63,9 +103,9 @@ export interface NsE6Section {
 }
 
 // Consumer contract (agentChangeFrontend/helpers/.ts): workspaces are the page-grouping unit —
-// one page per workspace. The page composition lives in `sections` (LLM source of truth);
-// `operationIds` is DERIVED by code (flattened from the organisms) so existing consumers and
-// the e7 coverage/capability checks keep reading the same flat field.
+// one page per workspace. `bffCalls` are the wire contracts (the view); `operationIds` is DERIVED by
+// code (flattened from bffCalls[].uses) so existing consumers and the e7 coverage/capability checks
+// keep reading the same flat field.
 export interface NsE6Workspace {
   workspaceId: string;
   title: string;
@@ -73,6 +113,7 @@ export interface NsE6Workspace {
   kind: NsE6WorkspaceKind;
   entity: string;
   workflowId?: string;
+  bffCalls: NsE6BffCall[];
   sections: NsE6Section[];
   operationIds: string[];
   purpose: string;
@@ -101,14 +142,16 @@ export interface NsE6JourneyMapArtifact {
   navigationEdges: NsE6NavigationEdge[];
 }
 
-// Per-operation facts needed by the deterministic organism gates (detailPanel/batchAction). Built
-// once from the frozen operation defs and passed in — the gate never reads disk (keeps it unit-testable).
+// Per-operation facts needed by the deterministic gates. Built once from the frozen operation defs and
+// passed in — the gate never reads disk (keeps it unit-testable).
 export interface NsE6OperationFact {
   accessPatternKind: 'list' | 'getById' | 'lookup' | 'commandInput';
   selection: 'none' | 'single' | 'multiple';
   opKind: 'create' | 'update' | 'delete' | 'query' | 'view';
   hasPublicInput: boolean; // has an input whose source is userInput | selectedEntity | routeParam
   actors: string[]; // D6: the actors this operation serves (read tolerant of the old singular `actor`)
+  inputNames: string[];  // A4.2: valid `from` suffixes for a bffCall.input entry (the operation inputIds)
+  outputPaths: string[]; // A4.2: valid `from` suffixes for a bffCall.output field (see collectNsOutputPaths)
 }
 
 export interface E6GateContext {
@@ -119,6 +162,54 @@ export interface E6GateContext {
   entityIds: string[];
   nowCapabilityActorIds: string[];
   operationFacts: Record<string, NsE6OperationFact>;
+}
+
+// ---------------------------------------------------------------------------
+// output-path derivation (A4.2) — shared with the fact builder in the agent
+// ---------------------------------------------------------------------------
+
+// The set of `from` suffixes (after the "<operationId>." prefix) a bffCall.output field may reference.
+//   list      -> $items, $items.<col>                 (the operation returns Item[])
+//   object    -> <field>                              (a flat record)
+//   paginated -> <field>, <arrayField>.$items.<col>,  plus the $items.<col> shorthand for the primary
+//                array field (matches the A2 projection style: browseX.$items.<col> + browseX.total)
+export function collectNsOutputPaths(shape: unknown): string[] {
+  const paths = new Set<string>();
+  const record = isRecord(shape) ? shape : {};
+  const kind = typeof record.kind === 'string' ? record.kind : '';
+  const fields = Array.isArray(record.fields) ? record.fields.filter(isRecord) : [];
+  const asField = (raw: Record<string, unknown>) => ({
+    name: typeof raw.name === 'string' ? raw.name : '',
+    type: typeof raw.type === 'string' ? raw.type : '',
+    itemFields: isRecord(raw.item) && Array.isArray(raw.item.fields) ? raw.item.fields.filter(isRecord) : [],
+  });
+  if (kind === 'list') {
+    paths.add('$items');
+    for (const raw of fields) {
+      const f = asField(raw);
+      if (!f.name) continue;
+      paths.add(`$items.${f.name}`);
+      if (f.type === 'array') for (const sub of f.itemFields) if (typeof sub.name === 'string') paths.add(`$items.${f.name}.${sub.name}`);
+    }
+    return [...paths];
+  }
+  let primaryArrayItems: string[] | null = null;
+  for (const raw of fields) {
+    const f = asField(raw);
+    if (!f.name) continue;
+    paths.add(f.name);
+    if (f.type === 'array' && f.itemFields.length) {
+      paths.add(`${f.name}.$items`);
+      const subNames = f.itemFields.map(sub => (typeof sub.name === 'string' ? sub.name : '')).filter(Boolean);
+      for (const sub of subNames) paths.add(`${f.name}.$items.${sub}`);
+      if (!primaryArrayItems) primaryArrayItems = subNames;
+    }
+  }
+  if (primaryArrayItems) {
+    paths.add('$items');
+    for (const sub of primaryArrayItems) paths.add(`$items.${sub}`);
+  }
+  return [...paths];
 }
 
 // ---------------------------------------------------------------------------
@@ -208,6 +299,18 @@ export function deriveE6WorkspaceKinds(
   return artifact;
 }
 
+// N3: the route is DERIVED from the workspace, never declared — <module>.<workspaceId>.<bffId>.
+// The emitter (N4) reads it from here; the operation bffName stays only as a deprecated back-compat
+// read. Applied after the LLM call, like the kind/workflowId derivations.
+export function deriveE6BffRoutes(artifact: NsE6JourneyMapArtifact): NsE6JourneyMapArtifact {
+  for (const workspace of artifact.workspaces) {
+    for (const call of workspace.bffCalls) {
+      call.route = `${artifact.moduleName}.${workspace.workspaceId}.${call.bffId}`;
+    }
+  }
+  return artifact;
+}
+
 export function prepareE6JourneyMap(input: unknown, context: Pick<E6GateContext, 'moduleName'>): NsE6JourneyMapArtifact {
   const record = isRecord(input) ? input : {};
   const workspaces = Array.isArray(record.workspaces) ? record.workspaces.filter(isRecord) : [];
@@ -220,6 +323,11 @@ export function prepareE6JourneyMap(input: unknown, context: Pick<E6GateContext,
     workspaces: workspaces.map(workspace => {
       const workflowId = readString(workspace.workflowId);
       const sections = readSections(workspace.sections);
+      // N2 default: when the LLM declares no explicit bffCalls, synthesize an identity call per
+      // organism reference (bffId == operationId) — 1 identity query per query organism, 1 passthrough
+      // command per command organism. This keeps A/B migration regression-free (the old operationId
+      // organisms degrade to identity views).
+      const bffCalls = normalizeBffCalls(readBffCalls(workspace.bffCalls), sections);
       return {
         workspaceId: readString(workspace.workspaceId) || '',
         title: readString(workspace.title) || '',
@@ -227,9 +335,10 @@ export function prepareE6JourneyMap(input: unknown, context: Pick<E6GateContext,
         kind: readEnum(workspace.kind, NS_WORKSPACE_KINDS, 'operation'),
         entity: readString(workspace.entity) || '',
         ...(workflowId ? { workflowId } : {}),
+        bffCalls,
         sections,
-        // Derived from the organisms (source of truth = sections). First occurrence wins, order preserved.
-        operationIds: deriveOperationIds(sections),
+        // Derived from the bffCalls' uses (source of truth). First occurrence wins, order preserved.
+        operationIds: deriveOperationIds(bffCalls),
         purpose: readString(workspace.purpose) || '',
       };
     }),
@@ -268,90 +377,49 @@ export function validateE6Invariants(
   const knownOperations = new Set(context.classificationOperationIds);
   const knownActors = new Set(context.rosterActorIds);
   const knownEntities = new Set(context.entityIds);
-  // Global organism coverage: each classified operation must be covered by EXACTLY ONE organism.
-  const organismCount = new Map<string, number>();
+  // Global sets: every bffId across the map (navigationEntry cross-page links) and every operation a
+  // bffCall consumes (A4.4 coverage — no orphan operation on any page).
+  const allBffIds = new Set<string>();
+  const usedOperationIds = new Set<string>();
+  for (const workspace of artifact.workspaces) {
+    for (const call of workspace.bffCalls) {
+      allBffIds.add(call.bffId);
+      for (const use of call.uses) usedOperationIds.add(use.operationId);
+    }
+  }
 
   for (const workspace of artifact.workspaces) {
     if (workspaceIds.has(workspace.workspaceId)) {
       issues.push(errorIssue('workspace.id.duplicate', `duplicated workspaceId ${workspace.workspaceId}`, workspace.workspaceId));
     }
     workspaceIds.add(workspace.workspaceId);
-    const workspaceActorUnion = new Set<string>(); // D6: ∪ of the owned operations' actors
+    const workspaceActorUnion = new Set<string>(); // D6: ∪ of the consumed operations' actors
+
+    // ── bffCalls (the view contracts) ──
+    const localBff = new Map<string, NsE6BffCall>();
+    for (const call of workspace.bffCalls) {
+      if (localBff.has(call.bffId)) {
+        issues.push(errorIssue('bff.id.duplicate', `workspace ${workspace.workspaceId}: duplicated bffId ${call.bffId}`, workspace.workspaceId));
+      }
+      localBff.set(call.bffId, call);
+      validateBffCall(workspace, call, context, knownOperations, workspaceActorUnion, issues);
+    }
 
     if (workspace.sections.length === 0) {
       issues.push(errorIssue('workspace.sections.empty', `workspace ${workspace.workspaceId} declares no sections`, workspace.workspaceId));
     }
     for (const section of workspace.sections) {
-      const surfaceOps = new Set(
-        section.organisms.filter(organism => organism.role === 'primarySurface').map(organism => organism.operationId),
-      );
+      const surfaceCount = section.organisms.filter(organism => organism.role === 'primarySurface').length;
       // Exactly 1 primarySurface per section — EXCEPT landing pages (D7: a landing dispenses
       // operations, its sections are content organisms with no primarySurface).
-      if (workspace.kind !== 'landing' && surfaceOps.size !== 1) {
-        issues.push(errorIssue('section.primarySurface.count', `workspace ${workspace.workspaceId} section ${section.sectionId} must declare exactly 1 primarySurface, found ${surfaceOps.size}`, workspace.workspaceId));
+      if (workspace.kind !== 'landing' && surfaceCount !== 1) {
+        issues.push(errorIssue('section.primarySurface.count', `workspace ${workspace.workspaceId} section ${section.sectionId} must declare exactly 1 primarySurface, found ${surfaceCount}`, workspace.workspaceId));
       }
       for (const organism of section.organisms) {
-        const opId = organism.operationId;
-        const hasOp = !!opId;
-        const operationBacked = NS_OPERATION_BACKED_ROLES.has(organism.role);
-        // operationId presence is role-dependent (JSON `required` can't express this): operation-backed
-        // roles need one, pure content organisms must not carry one.
-        if (operationBacked && !hasOp) {
-          issues.push(errorIssue('organism.operationId.missing', `workspace ${workspace.workspaceId} section ${section.sectionId}: role "${organism.role}" requires an operationId`, workspace.workspaceId));
-        }
-        if (!operationBacked && hasOp) {
-          issues.push(errorIssue('organism.operationId.unexpected', `workspace ${workspace.workspaceId} section ${section.sectionId}: content role "${organism.role}" must not carry an operationId (${organism.operationId})`, workspace.workspaceId));
-        }
-        // Content organisms only belong on landing pages (D7).
-        if (NS_CONTENT_ROLES.has(organism.role) && workspace.kind !== 'landing') {
-          issues.push(errorIssue('content.role.notLanding', `workspace ${workspace.workspaceId}: content role "${organism.role}" is only allowed on a landing page`, workspace.workspaceId));
-        }
-        if (opId && !knownOperations.has(opId)) {
-          issues.push(errorIssue('workspace.operation.unknown', `workspace ${workspace.workspaceId} section ${section.sectionId} references unclassified operation ${opId}`, workspace.workspaceId));
-        }
-        // Coverage + actor union count only OWNED operations (operationId present, role ≠ navigationEntry
-        // link). navigationEntry and pure content organisms are excluded. 'public' is a pseudo-actor and
-        // never enters the ⊇ union (a public op needs no explicit actor coverage).
-        const fact = opId ? context.operationFacts[opId] : undefined;
-        if (opId && organism.role !== 'navigationEntry') {
-          organismCount.set(opId, (organismCount.get(opId) || 0) + 1);
-          for (const actor of fact?.actors || []) if (actor !== NS_PUBLIC_ACTOR) workspaceActorUnion.add(actor);
-        }
-        if (organism.role === 'showcase') {
-          if (!fact) {
-            issues.push(errorIssue('organism.fact.missing', `workspace ${workspace.workspaceId}: no operation def facts for showcase ${organism.operationId}`, workspace.workspaceId));
-          } else if (fact.opKind !== 'query' && fact.opKind !== 'view') {
-            issues.push(errorIssue('showcase.notQuery', `workspace ${workspace.workspaceId}: showcase ${organism.operationId} must be a read-only query (kind=${fact.opKind})`, workspace.workspaceId));
-          }
-        }
-
-        if (organism.role === 'filterControl') {
-          if (!organism.attachTo) {
-            issues.push(errorIssue('filterControl.attachTo.missing', `workspace ${workspace.workspaceId}: filterControl ${organism.operationId} declares no attachTo`, workspace.workspaceId));
-          } else if (!surfaceOps.has(organism.attachTo)) {
-            issues.push(errorIssue('filterControl.attachTo.invalid', `workspace ${workspace.workspaceId}: filterControl ${organism.operationId} attaches to ${organism.attachTo}, which is not a primarySurface in section ${section.sectionId}`, workspace.workspaceId));
-          }
-        }
-        if (organism.role === 'detailPanel') {
-          if (!fact) {
-            issues.push(errorIssue('organism.fact.missing', `workspace ${workspace.workspaceId}: no operation def facts for detailPanel ${organism.operationId}`, workspace.workspaceId));
-          } else if (fact.accessPatternKind !== 'getById') {
-            issues.push(errorIssue('detailPanel.notGetById', `workspace ${workspace.workspaceId}: detailPanel ${organism.operationId} is accessPattern "${fact.accessPatternKind}", must be "getById"`, workspace.workspaceId));
-          }
-        }
-        if (organism.role === 'batchAction') {
-          if (!fact) {
-            issues.push(errorIssue('organism.fact.missing', `workspace ${workspace.workspaceId}: no operation def facts for batchAction ${organism.operationId}`, workspace.workspaceId));
-          } else {
-            const isCommand = fact.opKind === 'create' || fact.opKind === 'update' || fact.opKind === 'delete';
-            const eligible = isCommand && (fact.selection === 'multiple' || !fact.hasPublicInput);
-            if (!eligible) {
-              issues.push(errorIssue('batchAction.invalid', `workspace ${workspace.workspaceId}: batchAction ${organism.operationId} must be a command over a multiple selection or with no public input (kind=${fact.opKind}, selection=${fact.selection}, publicInput=${fact.hasPublicInput})`, workspace.workspaceId));
-            }
-          }
-        }
+        validateOrganism(workspace, section, organism, context, localBff, allBffIds, issues);
       }
     }
+
     if (workspace.kind === 'workflow') {
       if (!workspace.workflowId) {
         issues.push(errorIssue('workspace.workflow.missing', `workspace ${workspace.workspaceId} has kind "workflow" but declares no workflowId`, workspace.workspaceId));
@@ -370,9 +438,9 @@ export function validateE6Invariants(
         issues.push(errorIssue('workspace.actor.unknown', `workspace ${workspace.workspaceId}: actor ${actor} is not in the E4 roster`, workspace.workspaceId));
       }
     }
-    // D6 authorization gate: the workspace's actors must COVER every actor of the operations it hosts
-    // (workspace.actors ⊇ ∪ operation.actors) — otherwise a login that can open the page could not run
-    // one of its operations.
+    // D6 authorization gate: the workspace's actors must COVER every actor of the operations its
+    // bffCalls consume (workspace.actors ⊇ ∪ operation.actors) — otherwise a login that can open the
+    // page could not run one of its calls.
     const workspaceActors = new Set(workspace.actors);
     for (const actor of workspaceActorUnion) {
       if (!workspaceActors.has(actor)) {
@@ -384,12 +452,10 @@ export function validateE6Invariants(
     }
   }
 
+  // A4.4: every classified operation is used by ≥1 bffCall (no orphan operation on any page).
   for (const operationId of context.classificationOperationIds) {
-    const count = organismCount.get(operationId) || 0;
-    if (count === 0) {
-      issues.push(errorIssue('operation.unassigned', `classified operation ${operationId} does not appear in any organism`, operationId));
-    } else if (count > 1) {
-      issues.push(errorIssue('operation.coverage.duplicate', `classified operation ${operationId} appears in ${count} organisms — each operation must be covered by exactly 1`, operationId));
+    if (!usedOperationIds.has(operationId)) {
+      issues.push(errorIssue('operation.unassigned', `classified operation ${operationId} is used by no bffCall`, operationId));
     }
   }
 
@@ -418,6 +484,188 @@ export function validateE6Invariants(
   return { artifact, issues };
 }
 
+// A4.2 (traceability) + A4.5/A4.5b (composition) for one bffCall.
+function validateBffCall(
+  workspace: NsE6Workspace,
+  call: NsE6BffCall,
+  context: E6GateContext,
+  knownOperations: Set<string>,
+  workspaceActorUnion: Set<string>,
+  issues: NsGateIssue[],
+): void {
+  const label = `workspace ${workspace.workspaceId} bffCall ${call.bffId}`;
+  const usesOps = new Set<string>();
+  // A4.5: composed calls (uses N>1) are query-only — commands compose via a workflow/usecase, never here.
+  if (call.uses.length > 1 && call.kind !== 'query') {
+    issues.push(errorIssue('bff.command.composed', `${label}: kind "${call.kind}" cannot compose ${call.uses.length} operations (only query calls compose)`, workspace.workspaceId));
+  }
+  for (const use of call.uses) {
+    usesOps.add(use.operationId);
+    if (!knownOperations.has(use.operationId)) {
+      issues.push(errorIssue('workspace.operation.unknown', `${label}: uses unclassified operation ${use.operationId}`, workspace.workspaceId));
+    }
+    // A4.5b: `optional` only makes sense on a composed call (a single-use call has nothing to degrade to).
+    if (use.optional && call.uses.length <= 1) {
+      issues.push(errorIssue('bff.optional.notComposed', `${label}: use ${use.operationId} declares optional but the call composes a single operation`, workspace.workspaceId));
+    }
+    // Actor union follows the consumed operations (the call inherits the workspace actors for authz).
+    for (const actor of context.operationFacts[use.operationId]?.actors || []) {
+      if (actor !== NS_PUBLIC_ACTOR) workspaceActorUnion.add(actor);
+    }
+  }
+
+  // A4.2: every `from` resolves to a real input / outputShape field of an operation in `uses`.
+  for (const entry of call.input || []) {
+    if (!entry.from) {
+      // Free input (pagination/flags) — must then carry an explicit type (A5 convention).
+      if (!entry.type) {
+        issues.push(errorIssue('bff.input.untyped', `${label}: input "${entry.name}" must declare a from (traceable) or a type (free input)`, workspace.workspaceId));
+      }
+      continue;
+    }
+    const resolved = resolveFrom(entry.from);
+    if (!resolved || !usesOps.has(resolved.op)) {
+      issues.push(errorIssue('bff.input.from.unknownOp', `${label}: input "${entry.name}" from "${entry.from}" does not reference an operation in uses`, workspace.workspaceId));
+      continue;
+    }
+    const fact = context.operationFacts[resolved.op];
+    if (!fact) {
+      issues.push(errorIssue('bff.fact.missing', `${label}: no operation def facts for ${resolved.op}`, workspace.workspaceId));
+    } else if (!fact.inputNames.includes(resolved.rest)) {
+      issues.push(errorIssue('bff.input.from.unknown', `${label}: input "${entry.name}" from "${entry.from}" is not an input of ${resolved.op}`, workspace.workspaceId));
+    }
+  }
+  if (call.output) validateBffOutputFields(label, call.output.fields, usesOps, context, workspace.workspaceId, issues);
+}
+
+function validateBffOutputFields(
+  label: string,
+  fields: NsE6BffField[],
+  usesOps: Set<string>,
+  context: E6GateContext,
+  workspaceId: string,
+  issues: NsGateIssue[],
+): void {
+  for (const field of fields) {
+    if (!field.from) {
+      // A4.2: a projected field with no `from` invents data — forbidden.
+      issues.push(errorIssue('bff.field.from.missing', `${label}: output field "${field.name}" has no from`, workspaceId));
+    } else {
+      const resolved = resolveFrom(field.from);
+      if (!resolved || !usesOps.has(resolved.op)) {
+        issues.push(errorIssue('bff.output.from.unknownOp', `${label}: output field "${field.name}" from "${field.from}" does not reference an operation in uses`, workspaceId));
+      } else {
+        const fact = context.operationFacts[resolved.op];
+        if (!fact) {
+          issues.push(errorIssue('bff.fact.missing', `${label}: no operation def facts for ${resolved.op}`, workspaceId));
+        } else if (!fact.outputPaths.includes(resolved.rest)) {
+          issues.push(errorIssue('bff.output.from.unknown', `${label}: output field "${field.name}" from "${field.from}" does not resolve to an outputShape field of ${resolved.op}`, workspaceId));
+        }
+      }
+    }
+    if (field.item?.fields?.length) validateBffOutputFields(label, field.item.fields, usesOps, context, workspaceId, issues);
+  }
+}
+
+// A4.3 (organism references an existing bffCall) + the role-specific gates rewired through the
+// organism → bffCall.uses → operation indirection.
+function validateOrganism(
+  workspace: NsE6Workspace,
+  section: NsE6Section,
+  organism: NsE6Organism,
+  context: E6GateContext,
+  localBff: Map<string, NsE6BffCall>,
+  allBffIds: Set<string>,
+  issues: NsGateIssue[],
+): void {
+  const label = `workspace ${workspace.workspaceId} section ${section.sectionId}`;
+  const role = organism.role;
+
+  // Content organisms only belong on landing pages (D7); they carry no bffCall reference.
+  if (NS_CONTENT_ROLES.has(role)) {
+    if (workspace.kind !== 'landing') {
+      issues.push(errorIssue('content.role.notLanding', `${label}: content role "${role}" is only allowed on a landing page`, workspace.workspaceId));
+    }
+    if (organism.dataSource || organism.action) {
+      issues.push(errorIssue('content.role.hasReference', `${label}: content role "${role}" must not reference a bffCall`, workspace.workspaceId));
+    }
+    return;
+  }
+
+  if (role === 'filterControl') {
+    if (!organism.attachTo) {
+      issues.push(errorIssue('filterControl.attachTo.missing', `${label}: filterControl declares no attachTo`, workspace.workspaceId));
+    } else {
+      const target = localBff.get(organism.attachTo);
+      if (!target || target.kind !== 'query') {
+        issues.push(errorIssue('filterControl.attachTo.invalid', `${label}: filterControl attaches to "${organism.attachTo}", which is not a query bffCall in this workspace`, workspace.workspaceId));
+      }
+    }
+    return;
+  }
+
+  if (role === 'navigationEntry') {
+    // Cross-page link: the target bffId may live on ANOTHER workspace (validated against the global set).
+    if (!organism.dataSource) {
+      issues.push(errorIssue('navigationEntry.dataSource.missing', `${label}: navigationEntry declares no dataSource`, workspace.workspaceId));
+    } else if (!allBffIds.has(organism.dataSource)) {
+      issues.push(errorIssue('navigationEntry.target.unknown', `${label}: navigationEntry targets "${organism.dataSource}", which is not a bffCall anywhere in the map`, workspace.workspaceId));
+    }
+    return;
+  }
+
+  // command-backed vs query-backed roles reference `action` / `dataSource` — a LOCAL bffCall.
+  const isCommandRole = NS_COMMAND_BACKED_ROLES.has(role);
+  const ref = isCommandRole ? organism.action : organism.dataSource;
+  const refKey = isCommandRole ? 'action' : 'dataSource';
+  if (!ref) {
+    issues.push(errorIssue('organism.reference.missing', `${label}: role "${role}" requires a ${refKey}`, workspace.workspaceId));
+    return;
+  }
+  const call = localBff.get(ref);
+  if (!call) {
+    issues.push(errorIssue('organism.reference.unknown', `${label}: role "${role}" ${refKey} "${ref}" is not a bffCall in this workspace`, workspace.workspaceId));
+    return;
+  }
+  const expectedKind: NsE6BffKind = isCommandRole ? 'command' : 'query';
+  if (call.kind !== expectedKind) {
+    issues.push(errorIssue('organism.reference.kind', `${label}: role "${role}" ${refKey} "${ref}" must be a ${expectedKind} bffCall (is ${call.kind})`, workspace.workspaceId));
+  }
+
+  // A4.5b: a composed call (uses N>1) demands a valid `slice` from every consuming organism.
+  const composed = call.uses.length > 1;
+  if (composed) {
+    if (!organism.slice) {
+      issues.push(errorIssue('organism.slice.missing', `${label}: role "${role}" consumes composed call "${ref}" but declares no slice`, workspace.workspaceId));
+    } else if (!(call.output?.fields || []).some(field => field.name === organism.slice)) {
+      issues.push(errorIssue('organism.slice.invalid', `${label}: role "${role}" slice "${organism.slice}" is not a top-level output field of "${ref}"`, workspace.workspaceId));
+    }
+  }
+
+  // The operation this organism actually consumes (single-use call, or the sliced field's source op).
+  const consumedOp = resolveConsumedOperation(call, organism);
+  if (role === 'showcase' || role === 'detailPanel' || role === 'batchAction') {
+    const fact = consumedOp ? context.operationFacts[consumedOp] : undefined;
+    if (!fact) {
+      issues.push(errorIssue('organism.fact.missing', `${label}: no operation def facts for ${role} ${ref}`, workspace.workspaceId));
+      return;
+    }
+    if (role === 'showcase' && fact.opKind !== 'query' && fact.opKind !== 'view') {
+      issues.push(errorIssue('showcase.notQuery', `${label}: showcase "${ref}" must be a read-only query (kind=${fact.opKind})`, workspace.workspaceId));
+    }
+    if (role === 'detailPanel' && fact.accessPatternKind !== 'getById') {
+      issues.push(errorIssue('detailPanel.notGetById', `${label}: detailPanel "${ref}" is accessPattern "${fact.accessPatternKind}", must be "getById"`, workspace.workspaceId));
+    }
+    if (role === 'batchAction') {
+      const isCommand = fact.opKind === 'create' || fact.opKind === 'update' || fact.opKind === 'delete';
+      const eligible = isCommand && (fact.selection === 'multiple' || !fact.hasPublicInput);
+      if (!eligible) {
+        issues.push(errorIssue('batchAction.invalid', `${label}: batchAction "${ref}" must be a command over a multiple selection or with no public input (kind=${fact.opKind}, selection=${fact.selection}, publicInput=${fact.hasPublicInput})`, workspace.workspaceId));
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // markdown
 // ---------------------------------------------------------------------------
@@ -443,11 +691,16 @@ export function renderE6Markdown(
     for (const workspace of artifact.workspaces.filter(item => item.actors.includes(actor))) {
       const workflow = workspace.workflowId ? ` — workflow \`${workspace.workflowId}\`` : '';
       lines.push(`- \`${workspace.workspaceId}\` (${workspace.kind}, ${workspace.entity})${workflow}: ${workspace.title} — ${workspace.purpose}`);
+      for (const call of workspace.bffCalls) {
+        const route = call.route ? ` \`${call.route}\`` : '';
+        lines.push(`  - bffCall \`${call.bffId}\` [${call.kind}] uses ${call.uses.map(use => use.operationId).join(', ')}${route}`);
+      }
       for (const section of workspace.sections) {
         lines.push(`  - section \`${section.sectionId}\` — ${section.intent}`);
         for (const organism of section.organisms) {
-          const attach = organism.attachTo ? ` → \`${organism.attachTo}\`` : '';
-          lines.push(`    - \`${organism.operationId}\` [${organism.role}]${attach}`);
+          const ref = organism.dataSource || organism.action || organism.attachTo || '';
+          const slice = organism.slice ? ` slice \`${organism.slice}\`` : '';
+          lines.push(`    - [${organism.role}]${ref ? ` \`${ref}\`` : ''}${slice}`);
         }
       }
     }
@@ -475,48 +728,160 @@ export function renderE6Markdown(
 // small utils
 // ---------------------------------------------------------------------------
 
+// Split a `from` into its operation prefix and the remaining path ("op.$items.field" -> op, "$items.field").
+function resolveFrom(from: string): { op: string; rest: string } | null {
+  const index = from.indexOf('.');
+  if (index <= 0 || index >= from.length - 1) return null;
+  return { op: from.slice(0, index), rest: from.slice(index + 1) };
+}
+
+// The operation an organism consumes: the single use, or (for a composed call) the source operation
+// of the top-level output field named by `slice`.
+function resolveConsumedOperation(call: NsE6BffCall, organism: NsE6Organism): string | undefined {
+  if (call.uses.length === 1) return call.uses[0].operationId;
+  if (!organism.slice) return undefined;
+  const field = (call.output?.fields || []).find(item => item.name === organism.slice);
+  if (!field?.from) return undefined;
+  return resolveFrom(field.from)?.op;
+}
+
 function readSections(value: unknown): NsE6Section[] {
   if (!Array.isArray(value)) return [];
   return value.filter(isRecord).map(section => ({
     sectionId: readString(section.sectionId) || '',
     intent: readString(section.intent) || '',
     organisms: Array.isArray(section.organisms)
-      ? section.organisms.filter(isRecord).map(organism => {
-          const attachTo = readString(organism.attachTo);
-          const operationId = readString(organism.operationId);
-          return {
-            ...(operationId ? { operationId } : {}), // content organisms carry no operationId
-            role: readEnum(organism.role, NS_ORGANISM_ROLES, 'contextualAction'),
-            ...(attachTo ? { attachTo } : {}),
-          };
-        })
+      ? section.organisms.filter(isRecord).map(readOrganism)
       : [],
   }));
 }
 
-// Flatten organisms -> operationIds (first occurrence wins, order preserved). Duplicate coverage
-// across organisms is caught by the gate, not silently collapsed here.
-function deriveOperationIds(sections: NsE6Section[]): string[] {
-  const seen = new Set<string>();
-  const ids: string[] = [];
+// Normalize an organism: legacy `operationId` (simple LLM output) becomes dataSource/action by role,
+// so downstream sees a single representation (a bffId reference).
+function readOrganism(raw: Record<string, unknown>): NsE6Organism {
+  const role = readEnum(raw.role, NS_ORGANISM_ROLES, 'contextualAction');
+  const operationId = readString(raw.operationId);
+  let dataSource = readString(raw.dataSource);
+  let action = readString(raw.action);
+  const attachTo = readString(raw.attachTo);
+  const slice = readString(raw.slice);
+  if (operationId) {
+    if (NS_COMMAND_BACKED_ROLES.has(role) && !action) action = operationId;
+    else if (NS_QUERY_BACKED_ROLES.has(role) && !dataSource) dataSource = operationId;
+    // filterControl (attachTo carries the ref) and pure content roles drop the legacy operationId.
+  }
+  return {
+    role,
+    ...(dataSource ? { dataSource } : {}),
+    ...(action ? { action } : {}),
+    ...(attachTo ? { attachTo } : {}),
+    ...(slice ? { slice } : {}),
+  };
+}
+
+function readBffCalls(value: unknown): NsE6BffCall[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).map(raw => {
+    const call: NsE6BffCall = {
+      bffId: readString(raw.bffId) || '',
+      kind: readEnum(raw.kind, NS_BFF_KINDS, 'query'),
+      uses: Array.isArray(raw.uses)
+        ? raw.uses.filter(isRecord).map(use => ({
+            operationId: readString(use.operationId) || '',
+            ...(use.optional === true ? { optional: true } : {}),
+          }))
+        : [],
+    };
+    const route = readString(raw.route);
+    if (route) call.route = route;
+    if (Array.isArray(raw.input)) {
+      call.input = raw.input.filter(isRecord).map(entry => {
+        const from = readString(entry.from);
+        const type = readFieldType(entry.type);
+        return {
+          name: readString(entry.name) || '',
+          ...(from ? { from } : {}),
+          ...(type ? { type } : {}),
+          ...(entry.required === true ? { required: true } : {}),
+        };
+      });
+    }
+    if (isRecord(raw.output)) {
+      call.output = {
+        kind: readEnum(raw.output.kind, ['object', 'list', 'paginated'] as const, 'object'),
+        fields: readBffFields(raw.output.fields),
+      };
+    }
+    return call;
+  });
+}
+
+function readBffFields(value: unknown): NsE6BffField[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).map(raw => {
+    const type = readFieldType(raw.type);
+    const field: NsE6BffField = {
+      name: readString(raw.name) || '',
+      from: readString(raw.from) || '',
+      ...(type ? { type } : {}),
+      ...(raw.required === true ? { required: true } : {}),
+    };
+    if (isRecord(raw.item) && Array.isArray(raw.item.fields)) {
+      const fields = readBffFields(raw.item.fields);
+      if (fields.length) field.item = { fields };
+    }
+    return field;
+  });
+}
+
+// N2 default: ONLY when the workspace declares NO bffCalls ("quando não declarar"), synthesize an
+// identity bffCall (bffId == operationId) per organism dataSource/action. When the workspace DID
+// declare calls, we do NOT fill gaps — a stray/typo dataSource must surface as organism.reference.unknown
+// (a retry with context) instead of silently degrading the page to an unprojected identity view.
+// navigationEntry references (cross-page) never synthesize locally.
+function normalizeBffCalls(declared: NsE6BffCall[], sections: NsE6Section[]): NsE6BffCall[] {
+  if (declared.length > 0) return declared;
+  const byId = new Map(declared.map(call => [call.bffId, call]));
+  const calls = [...declared];
   for (const section of sections) {
     for (const organism of section.organisms) {
-      if (!organism.operationId || seen.has(organism.operationId)) continue;
-      seen.add(organism.operationId);
-      ids.push(organism.operationId);
+      if (organism.role === 'navigationEntry') continue;
+      const candidates: Array<{ ref: string; kind: NsE6BffKind }> = [];
+      if (organism.dataSource) candidates.push({ ref: organism.dataSource, kind: 'query' });
+      if (organism.action) candidates.push({ ref: organism.action, kind: 'command' });
+      for (const candidate of candidates) {
+        if (!candidate.ref || byId.has(candidate.ref)) continue;
+        const call: NsE6BffCall = { bffId: candidate.ref, kind: candidate.kind, uses: [{ operationId: candidate.ref }] };
+        byId.set(candidate.ref, call);
+        calls.push(call);
+      }
+    }
+  }
+  return calls;
+}
+
+// Flatten bffCalls -> operationIds (first occurrence wins, order preserved).
+function deriveOperationIds(bffCalls: NsE6BffCall[]): string[] {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const call of bffCalls) {
+    for (const use of call.uses) {
+      if (!use.operationId || seen.has(use.operationId)) continue;
+      seen.add(use.operationId);
+      ids.push(use.operationId);
     }
   }
   return ids;
 }
 
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+function readFieldType(value: unknown): NsE6FieldType | undefined {
+  return typeof value === 'string' && (['string', 'number', 'boolean', 'array', 'object'] as string[]).includes(value)
+    ? value as NsE6FieldType
+    : undefined;
 }
 
-function readStringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.map(item => readString(item)).filter((item): item is string => !!item)
-    : [];
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 function readEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {

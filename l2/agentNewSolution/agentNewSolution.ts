@@ -12,7 +12,7 @@ import {
   readJsonArtifact,
 } from '/_102020_/l2/agentNewSolution/helpers/nsFs.js';
 import { NsPipelineState, readNsPipeline } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
-import { isNsFastMode, parseNsFastMode } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
+import { parseNsFastMode } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
 
 export const NS_PLAN_IDS = [
   'e1-clarification', 'e1-clarification-answer', 'e1-draft', 'checkpoint-draft', 'e2-journeys', 'checkpoint-journeys',
@@ -81,7 +81,11 @@ export function createAgent(): IAgentAsync {
   };
 }
 
+// Bump on every deploy so the console confirms the running build is the latest one.
+export const NS_AGENT_BUILD = 'build-10 (2026-07-18) D1 split: workspaces/<id> + navigation.defs.ts';
+
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
+  console.log(`[ns-build] agentNewSolution ${NS_AGENT_BUILD}`);
   // /fast (D5): auto-accept the human clarifications. The flag rides longMemory; the token is
   // stripped so the LLM sees a clean prompt (same idea as agentChangeFrontend's cliCommand).
   const { fast, prompt: normalized } = parseNsFastMode((userPrompt || '').trim());
@@ -218,16 +222,6 @@ async function beforeClarificationStep(
   }
   const rootPlan = getRootPlan(context);
   const clarification = rootPlan.clarification;
-  // /fast (D5): auto-accept the opening clarification with its OWN proposed defaults — reuse the exact
-  // human "continue" path (applyInitialClarification → normalizeClarificationAnswer). The step stays
-  // visible in the tree, auto-answered, so the skipped screen is auditable.
-  if (isNsFastMode(context.task?.iaCompressed?.longMemory)) {
-    void applyInitialClarification(context, parentStep, step, hookSequential, clarification, 'continue');
-    const placeholder = document.createElement('div');
-    placeholder.setAttribute('data-ns-fast', 'clarification-auto-accepted');
-    placeholder.textContent = '[fast] clarification auto-aceita';
-    return placeholder;
-  }
   await import('/_102025_/l2/widgetQuestionsForClarification.js');
   const el = document.createElement('widget-questions-for-clarification-102025');
   (el as unknown as { value: unknown }).value = {

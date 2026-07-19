@@ -89,9 +89,20 @@ export async function writeStorTextAtomic(fileInfo: NsFileInfo, content: string,
   let storFile = mls.stor.files[key];
   if (!storFile) {
     storFile = await createStorFile({ ...fileInfo, source: content }, needCreateModel, needCreateModel, false);
-  } else if (needCreateModel) {
-    const model = await storFile.getOrCreateModel();
-    if (model?.model) model.model.setValue(content);
+  } else {
+    // Re-run resurrection: on a re-run over a module whose data was deleted (locally, not committed),
+    // the prior artifacts stay in the stor with status 'deleted'. readStorText ignores 'deleted' files
+    // and they never persist to disk — which is exactly why E2 could not find e1-draft.json and the
+    // pipeline/ folder never persisted. Un-delete BEFORE writing content: status 'changed' + a fresh
+    // updatedAt (validated live in the browser console — status alone is not enough without updatedAt).
+    if (storFile.status === 'deleted') {
+      storFile.status = 'changed';
+      storFile.updatedAt = new Date().toISOString();
+    }
+    if (needCreateModel) {
+      const model = await storFile.getOrCreateModel();
+      if (model?.model) model.model.setValue(content);
+    }
   }
   await mls.stor.localStor.setContent(storFile, { contentType: 'string', content });
 }

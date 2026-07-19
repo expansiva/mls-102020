@@ -35,9 +35,12 @@ workspaces. 1 retry with the gate error in context.
 The filterControl input-vs-target-operation check (D4) is structural for now (attachTo → surface);
 the field-level input match arrives with the D3 contracts step (T7).
 
-On a green gate: writes `l4/{module}/journeys/{module}Journeys.defs.ts` (export
-`{module}Journeys`, data `{moduleName, note, workspaces, landings, navigationEdges}`) +
-`pipeline/e6-journey-map.md`, approves the pipeline step (`auto`) and emits the completed
+On a green gate (D1 split layout): writes one file per workspace
+`l4/{module}/workspaces/{workspaceId}.defs.ts` (export `{workspaceId}Workspace`) + a single
+`l4/{module}/navigation.defs.ts` (export `{module}Navigation`, data
+`{moduleName, note, landings, navigationEdges, workspaceIds}` — the workspaceIds index lets readers
+reassemble without scanning the folder) + `pipeline/e6-journey-map.md`, approves the pipeline step
+(`auto`) and emits the completed
 `e6-done` anchor that unlocks E7.
 
 ## Workspace kind derivation (2026-07-11)

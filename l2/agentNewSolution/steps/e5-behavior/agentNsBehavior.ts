@@ -32,7 +32,7 @@ import {
   writeJsonArtifact,
   writeMarkdownArtifact,
 } from '/_102020_/l2/agentNewSolution/helpers/nsFs.js';
-import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution/helpers/nsIds.js';
+import { normalizeModuleFolderName, normalizeNsId } from '/_102020_/l2/agentNewSolution/helpers/nsIds.js';
 import { runNsGate } from '/_102020_/l2/agentNewSolution/helpers/nsGate.js';
 import {
   buildNsToolInstruction,
@@ -50,12 +50,12 @@ import {
 import {
   approveNsStep,
   createNsPipeline,
+  markNsDownstreamDirty,
   markNsStepRunning,
   readNsPipeline,
   writeNsPipeline,
 } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
 import { writeNsTrace } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
-import { emitNsContracts } from '/_102020_/l2/agentNewSolution/steps/e5-behavior/contractsEmit.js';
 import { NsE2JourneysArtifact } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/gate.js';
 import { NsE3EntityArtifact, NsE3ModelArtifact, toPascalCase } from '/_102020_/l2/agentNewSolution/steps/e3-ontology/gate.js';
 import {
@@ -671,7 +671,13 @@ async function runE5Finalize(
     ];
   }
   if (missing.length > 0) {
-    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `items missing after repair round: ${missing.map(item => item.itemId).join(', ')}`)];
+    // The reason each item is missing (its gate errors) lives in the per-item trace, NOT in this
+    // finalize step — point there so the failure is debuggable from the right place (user report:
+    // "o trace não está no step correto").
+    const where = missing
+      .map(item => `${item.itemId} → l4/${moduleName}/trace/${normalizeNsId(item.planId)}${toPascalCase(item.itemId)}-agentNsBehavior-*.json`)
+      .join('; ');
+    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `items missing after repair round (gate errors in each item's trace): ${where}`)];
   }
 
   // ── Deterministic reconciliation (102048 finding: workflow engulfment) ─────
@@ -738,11 +744,14 @@ async function runE5Finalize(
     nsPipelineArtifactFileInfo(moduleName, 'e5-behavior', '.md'),
     renderE5Markdown(classification, workflows, operations, { generatedAt: new Date().toISOString() }),
   );
-  // D3: mechanical contracts from the FINAL operation defs (after demotions settled the outputShapes).
-  const contractPaths = await emitNsContracts(moduleName, operations);
-  await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, 1, { contracts: contractPaths }, `emitted ${contractPaths.length} contract file(s)`);
+  // newSolution_10 N4: contracts are no longer emitted here. They are page-shaped bffCall contracts
+  // now (the wire view is declared in e6 workspaces), so emission moved to the LAST step (e7), after
+  // the workspaces and their projections settle — killing the run-9 staleness.
   let pipeline = await readNsPipeline(moduleName) || createNsPipeline(moduleName);
   pipeline = approveNsStep(pipeline, STEP_ID, 'auto');
+  // newSolution_11 fix: re-running e5 invalidates the already-approved e6/e7 (operations changed →
+  // workspaces + contracts stale). No-op on the first run (downstream not yet approved).
+  pipeline = markNsDownstreamDirty(pipeline, STEP_ID);
   await writeNsPipeline(pipeline);
 
   return [

@@ -240,7 +240,7 @@ void test('buildNsModuleDefs carries the module block, relationships and approve
     },
     e2: input.e2,
     e4ExternalRefs: externalRefs,
-    journeyDefPath: 'l4/cafeFlow/journeys/cafeFlowJourneys.defs.ts',
+    journeyDefPath: 'l4/cafeFlow/navigation.defs.ts',
   });
   assert.equal(moduleDefs.module.moduleName, 'cafeFlow');
   assert.equal(moduleDefs.module.title, 'CafeFlow');
@@ -252,7 +252,7 @@ void test('buildNsModuleDefs carries the module block, relationships and approve
   assert.equal(moduleDefs.designContext.decisions[0].accepted, true);
   assert.ok(moduleDefs.ontology.entities.Order);
   assert.deepEqual(moduleDefs.ontology.entities.Order.statusEnum, ['draft', 'closed']);
-  assert.equal(moduleDefs.journey.defPath, 'l4/cafeFlow/journeys/cafeFlowJourneys.defs.ts');
+  assert.equal(moduleDefs.journey.defPath, 'l4/cafeFlow/navigation.defs.ts');
   assert.equal(moduleDefs.relationships.length, 1);
   assert.equal(moduleDefs.relationships[0].relationshipId, 'orderReferencesMenuItem');
   assert.deepEqual(moduleDefs.approvedArtifacts, externalRefs);

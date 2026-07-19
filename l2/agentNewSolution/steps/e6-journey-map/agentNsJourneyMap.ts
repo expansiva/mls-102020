@@ -40,6 +40,7 @@ import {
 import {
   approveNsStep,
   createNsPipeline,
+  markNsDownstreamDirty,
   markNsStepRunning,
   readNsPipeline,
   writeNsPipeline,
@@ -51,6 +52,8 @@ import { NsE3ModelArtifact } from '/_102020_/l2/agentNewSolution/steps/e3-ontolo
 import {
   E6GateContext,
   NsE6OperationFact,
+  collectNsOutputPaths,
+  deriveE6BffRoutes,
   deriveE6WorkspaceKinds,
   prepareE6JourneyMap,
   renderE6Markdown,
@@ -117,6 +120,11 @@ interface NsE6BehaviorSummary {
   kind: string;
   pageId: string;
   storySteps: string[];
+  // Operations only: the EXACT vocabulary a bffCall projection may reference (so the LLM writes real
+  // `from` paths, not guessed field names). inputNames -> `from: <op>.<inputId>`; outputPaths ->
+  // `from: <op>.<path>` (e.g. $items.<col>, total). Same set the A4.2 gate validates against.
+  inputNames?: string[];
+  outputPaths?: string[];
 }
 
 interface E6Inputs {
@@ -163,6 +171,8 @@ async function buildMapPrompt(
     JSON.stringify(workflowSummaries, null, 2),
     '',
     '## Saved operation definitions (summaries)',
+    '## For each operation: `inputNames` and `outputPaths` are the ONLY valid names for bffCall `from`',
+    '## paths — copy them verbatim ("<op>.<inputName>" / "<op>.<outputPath>"); inventing a name fails the gate.',
     JSON.stringify(operationSummaries, null, 2),
     '',
     '## Actor roster (the only valid actor ids)',
@@ -231,10 +241,10 @@ async function handleMapResult(
   // Deterministic attaches: moduleName + note come from code, never from the LLM.
   // Workspace kind is derived from the classification facts FIRST (the LLM label is not
   // trusted — see deriveE6WorkspaceKinds), then workflowIds are inferred for workflow pages.
-  const artifact = repairE6WorkflowIds(
+  const artifact = deriveE6BffRoutes(repairE6WorkflowIds(
     deriveE6WorkspaceKinds(prepareE6JourneyMap(output.result, { moduleName }), inputs.classification),
     inputs.classification,
-  );
+  ));
   const gateContext: E6GateContext = {
     moduleName,
     classificationWorkflowIds: inputs.classification.workflows.map(workflow => workflow.workflowId),
@@ -285,16 +295,30 @@ async function handleMapResult(
   }
 
   pipeline = approveNsStep(pipeline, STEP_ID, 'auto');
+  // newSolution_11 fix: re-running e6 (workspaces changed) must invalidate the already-approved e7 so
+  // its contracts regenerate — otherwise a partial re-run leaves stale contracts and e7 reports "no
+  // module waiting". No-op on the first run (e7 not yet approved). Mirrors e2's markNsDownstreamDirty.
+  pipeline = markNsDownstreamDirty(pipeline, STEP_ID);
   await writeNsPipeline(pipeline);
+  // D1 layout: one file per workspace under l4/{module}/workspaces/ (surgical edit + per-workspace
+  // staleness) + a single l4/{module}/navigation.defs.ts for the cross-workspace landings/edges
+  // (with a workspaceIds index so readers can reassemble without scanning the folder).
+  for (const workspace of artifact.workspaces) {
+    await writeDefsArtifact(
+      { project: mls.actualProject || 0, level: 4, folder: `${moduleName}/workspaces`, shortName: workspace.workspaceId, extension: '.defs.ts' },
+      `${workspace.workspaceId}Workspace`,
+      workspace,
+    );
+  }
   await writeDefsArtifact(
-    { project: mls.actualProject || 0, level: 4, folder: `${moduleName}/journeys`, shortName: `${moduleName}Journeys`, extension: '.defs.ts' },
-    `${moduleName}Journeys`,
+    { project: mls.actualProject || 0, level: 4, folder: moduleName, shortName: 'navigation', extension: '.defs.ts' },
+    `${moduleName}Navigation`,
     {
       moduleName: artifact.moduleName,
       note: artifact.note,
-      workspaces: artifact.workspaces,
       landings: artifact.landings,
       navigationEdges: artifact.navigationEdges,
+      workspaceIds: artifact.workspaces.map(workspace => workspace.workspaceId),
     },
   );
   await writeMarkdownArtifact(
@@ -420,6 +444,9 @@ async function summarizeOperationDefs(moduleName: string, classification: NsE5Cl
   const summaries: NsE6BehaviorSummary[] = [];
   for (const operation of classification.operations) {
     const defs = await readJsonDefs<Record<string, unknown>>(nsOperationsFolder(moduleName), operation.operationId);
+    const inputNames = (Array.isArray(defs?.inputs) ? defs!.inputs : [])
+      .map(input => (isRecord(input) ? readString(input.inputId) : undefined))
+      .filter((name): name is string => !!name);
     summaries.push({
       id: operation.operationId,
       title: readString(defs?.title) || operation.title,
@@ -428,6 +455,9 @@ async function summarizeOperationDefs(moduleName: string, classification: NsE5Cl
       kind: readString(defs?.kind) || operation.kind,
       pageId: readString(defs?.pageId) || operation.workflowId || operation.operationId,
       storySteps: summarizeStory(defs?.story),
+      // The projectable vocabulary — the LLM must copy these names verbatim into bffCall `from` paths.
+      inputNames,
+      outputPaths: collectNsOutputPaths(isRecord(defs?.outputShape) ? defs!.outputShape : undefined),
     });
   }
   return summaries;
@@ -448,6 +478,7 @@ async function buildE6OperationFacts(
     if (!defs) continue;
     const accessPattern = isRecord(defs.accessPattern) ? defs.accessPattern : {};
     const inputs = Array.isArray(defs.inputs) ? defs.inputs : [];
+    const outputShape = isRecord(defs.outputShape) ? defs.outputShape : undefined;
     facts[operation.operationId] = {
       accessPatternKind: readEnumValue(accessPattern.kind, ['list', 'getById', 'lookup', 'commandInput'], 'commandInput'),
       selection: readEnumValue(accessPattern.selection, ['none', 'single', 'multiple'], 'none'),
@@ -456,6 +487,9 @@ async function buildE6OperationFacts(
       // D6 back-compat: new defs carry `actors`, legacy defs carry singular `actor`. Fall back to the
       // classification actorId when a def is missing the field entirely.
       actors: readActors(defs).length ? readActors(defs) : [operation.actorId].filter(Boolean),
+      // A4.2 traceability: the valid `from` suffixes a bffCall projection may point at.
+      inputNames: inputs.map(input => (isRecord(input) ? readString(input.inputId) : undefined)).filter((name): name is string => !!name),
+      outputPaths: collectNsOutputPaths(outputShape as { kind?: string; fields?: [] } | undefined),
     };
   }
   return facts;

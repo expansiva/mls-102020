@@ -177,7 +177,11 @@ export interface NsE5OutputShape {
 
 export interface NsE5OperationInput {
   inputId: string;
-  fieldRef: string;
+  // Every input declares a resolvable `fieldRef` (type derives from the entity field) OR an explicit
+  // `type` (free inputs: pagination, flags — nothing in the ontology to point at). Gap A5 of
+  // newSolution_10: without one of the two the bffCall contract (N1) is not 100% derivable.
+  fieldRef?: string;
+  type?: 'string' | 'number' | 'boolean';
   required: boolean;
   source: NsE5Source;
   description: string;
@@ -214,6 +218,12 @@ export interface NsE5OperationArtifact {
 export interface NsE5OperationDefs extends NsE5OperationArtifact {
   pageId: string;
   commandName: string;
+  /**
+   * @deprecated (newSolution_10 N3) The wire ROUTE is now derived from the workspace as
+   * `<module>.<workspaceId>.<bffId>` (helpers e6 deriveE6BffRoutes) — a page concern, not an
+   * operation one. `bffName` stays only as a back-compat READ for older l4 layouts; the contracts
+   * emitter (N4) keys on the bffCall route, never on this field.
+   */
   bffName: string;
   capability: NsE5Capability;
   statusFrontend: 'toCreate';
@@ -379,13 +389,18 @@ export function prepareE5Operation(input: unknown): NsE5OperationArtifact {
       output: readStringArray(access.output),
     },
     outputShape: readOutputShape(record.outputShape),
-    inputs: inputs.map(item => ({
-      inputId: readString(item.inputId) || '',
-      fieldRef: readString(item.fieldRef) || '',
-      required: item.required === true,
-      source: (readString(item.source) || '') as NsE5Source,
-      description: readString(item.description) || '',
-    })),
+    inputs: inputs.map(item => {
+      const fieldRef = readString(item.fieldRef);
+      const type = readString(item.type);
+      return {
+        inputId: readString(item.inputId) || '',
+        ...(fieldRef ? { fieldRef } : {}),
+        ...(type === 'string' || type === 'number' || type === 'boolean' ? { type } : {}),
+        required: item.required === true,
+        source: (readString(item.source) || '') as NsE5Source,
+        description: readString(item.description) || '',
+      };
+    }),
     contextResolution: contextResolution.map(item => ({
       ...(readString(item.inputId) ? { inputId: readString(item.inputId) } : {}),
       targetRef: readString(item.targetRef) || '',
@@ -431,6 +446,33 @@ export function attachWorkflowDeterministic(
   };
 }
 
+// Common pagination input ids — typed as number when the LLM leaves them bare.
+const NS_E5_PAGINATION_INPUT_IDS = new Set(['page', 'pageSize', 'offset', 'limit', 'pageNumber', 'size', 'perPage']);
+
+// Make every input typeable by CODE instead of hard-failing the run (gap A5 was designed as an LLM
+// gate, but the LLM systematically omits BOTH fieldRef and type on getById keys, filters and
+// pagination — petShop: searchProducts/browseProducts came back with searchTerm/petTypeId/categoryId/
+// priceRange/sortBy/page/pageSize all untyped, and the retry made it WORSE, so no run reached e6).
+// The contract emitter already defaults untyped inputs (pagination -> number, else -> string), so the
+// type IS derivable; attach it here so the operation persists (and the type is explicit on disk):
+//   1. key input (inputId == accessPattern.keyField's field): fieldRef = keyField (already gate-validated
+//      to exist, so never an invalid ref);
+//   2. a known pagination id: type = number;
+//   3. anything else still bare: type = string (matches the emitter default; the LLM keeps fieldRef when
+//      it knows the entity field, so this only catches genuinely free filters like priceRange/sortBy).
+// `operation.input.untyped` stays as a safety net (unreachable through this attach path).
+export function backfillE5OperationInputs(artifact: NsE5OperationArtifact): NsE5OperationArtifact {
+  const keyField = artifact.accessPattern?.keyField || '';
+  const parts = keyField.split('.');
+  const keyFieldName = parts.length === 2 && parts[0] && parts[1] ? parts[1] : '';
+  for (const input of artifact.inputs) {
+    if (input.fieldRef || input.type) continue;
+    if (keyFieldName && input.inputId === keyFieldName) { input.fieldRef = keyField; continue; }
+    input.type = NS_E5_PAGINATION_INPUT_IDS.has(input.inputId) ? 'number' : 'string';
+  }
+  return artifact;
+}
+
 export function attachOperationDeterministic(
   artifact: NsE5OperationArtifact,
   args: {
@@ -440,6 +482,7 @@ export function attachOperationDeterministic(
     features: NsE5FeatureRef[];
   },
 ): NsE5OperationDefs {
+  backfillE5OperationInputs(artifact);
   const pageId = args.classification.workflowId || args.classification.operationId;
   const commandName = args.classification.operationId;
   // The capability represents the owning workflow when there is one (title and
@@ -802,10 +845,15 @@ export function validateE5Operation(
     if (!(NS_E5_SOURCES as readonly string[]).includes(input.source)) {
       issues.push(errorIssue('operation.input.source.invalid', `operation ${defs.operationId}: input "${input.inputId}" source "${input.source}" is not a valid source`, input.inputId));
     }
-    if (input.required && (!input.inputId || !input.fieldRef || !input.source)) {
-      issues.push(errorIssue('operation.input.incomplete', `operation ${defs.operationId}: required input must declare inputId, fieldRef and source`, input.inputId));
+    // Gap A5: every input must be typeable — a resolvable fieldRef OR an explicit type. Without one the
+    // bffCall wire contract (N1) cannot derive the input type deterministically.
+    if (!input.fieldRef && !input.type) {
+      issues.push(errorIssue('operation.input.untyped', `operation ${defs.operationId}: input "${input.inputId}" must declare a fieldRef or an explicit type`, input.inputId));
     }
-    validateFieldRef(defs.operationId, `input "${input.inputId}"`, input.fieldRef, context, issues);
+    if (input.required && (!input.inputId || (!input.fieldRef && !input.type) || !input.source)) {
+      issues.push(errorIssue('operation.input.incomplete', `operation ${defs.operationId}: required input must declare inputId, a fieldRef or type, and source`, input.inputId));
+    }
+    if (input.fieldRef) validateFieldRef(defs.operationId, `input "${input.inputId}"`, input.fieldRef, context, issues);
   }
   for (const resolution of defs.contextResolution) {
     if (!(NS_E5_SOURCES as readonly string[]).includes(resolution.source)) {

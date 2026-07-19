@@ -1,37 +1,60 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/helpers/nsContracts.ts" enhancement="_blank"/>
 
-// Mechanical l4 contract emitter (D3) — a faithful TypeScript port of todo/generate/emitL4Contracts.py
-// (validated 17/jul, tsc --strict clean over the 16 petShop operations). ONE generator, JSON -> TS,
-// ZERO LLM re-derivation: a wrong shape becomes a tsc error at the usecase import site by construction
-// (kills the ".map is not a function" class — the same kind=list came out of the BE materializer in 3
-// different forms on 18/jul). kind semantics are FIXED:
+// Mechanical l4 contract emitter (D3 + newSolution_10 N4) — ONE generator, JSON -> TS, ZERO LLM
+// re-derivation. The contract of record is now the WORKSPACE bffCall (the wire view), not the raw
+// operation: each bffCall projects only the fields its page renders, so the emitted Input/Output are
+// page-shaped. A wrong shape becomes a tsc error at the usecase/page import site by construction.
+//
+// One file per bffCall: l4/<module>/contracts/<workspaceId>.<bffId>.ts (+ .d.ts twin). NO l1/l2
+// mirrors in this phase (the agent writes only l4/l5). kind semantics are FIXED:
 //   list      -> Output = Item[]
 //   object    -> Output = interface with the top-level fields
 //   paginated -> Output = interface with the top-level fields (array field typed by its Item)
-// Pure + dependency-free so the port can be diffed byte-for-byte against the prototype output.
+// Pure + dependency-free (loose records in, strings out) so it stays trivially unit-testable.
 
 const PUBLIC_SOURCES = new Set(['userInput', 'selectedEntity', 'routeParam']);
+type TsScalar = 'string' | 'number' | 'boolean';
 
-export interface NsContractEntry {
-  data: Record<string, unknown>; // the operation defs object (contents of `export const x = {...}`)
-  fileRef: string;               // mls fileReference of the emitted .ts (e.g. _102049_/l4/contracts/<op>.ts)
-  sourceRef: string;             // path of the source defs quoted in the note (e.g. _102049_/l4/operations/<op>.defs.ts)
+// The operation defs a bffCall composes — only the fields the emitter needs.
+export interface NsBffOperationView {
+  inputs?: unknown;
+  outputShape?: unknown;
+  accessPattern?: unknown;
 }
 
-export interface NsContractResult {
-  operationId: string;
-  kind: string;
-  bffName: string;
+export interface NsBffContractEntry {
+  workspaceId: string;
+  bffId: string;
+  route: string;                 // DERIVED <module>.<workspaceId>.<bffId>
+  kind: 'query' | 'command';
+  input?: unknown;               // bffCall.input[] (projection) — absent for passthrough
+  output?: unknown;              // bffCall.output (projection) — absent for passthrough
+  uses: Array<{ operationId: string }>;
+  operations: Record<string, NsBffOperationView>;
+  fileRef: string;               // mls fileReference of the emitted .ts
+  sourceRef: string;             // path of the source workspace defs quoted in the note
+}
+
+export interface NsBffContractResult {
+  bffId: string;
+  route: string;
   tsSource: string;
   dtsSource: string;
 }
 
-function tsType(raw: unknown): string {
+// A field normalized for rendering: a scalar (tsType) or an array of nested fields (item).
+interface EmitField {
+  name: string;
+  optional: boolean;
+  tsType?: TsScalar;
+  item?: EmitField[];
+}
+
+function tsScalar(raw: unknown): TsScalar {
   const t = (typeof raw === 'string' ? raw : '').toLowerCase();
-  if (['string', 'uuid', 'text', 'date', 'datetime'].includes(t)) return 'string';
   if (['number', 'money', 'decimal', 'int', 'integer', 'numeric'].includes(t)) return 'number';
   if (['boolean', 'bool'].includes(t)) return 'boolean';
-  return 'string';
+  return 'string'; // string | uuid | text | date | datetime | object | (array leaf) default
 }
 
 function pascal(s: string): string {
@@ -42,121 +65,218 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function asFields(value: unknown): Record<string, unknown>[] {
+function asRecords(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
-// Emit the field lines for one interface body; array fields with a nested `item` push an Item interface
-// onto nestedOut (name, fields) for the caller to render.
-function emitFields(
-  fields: Record<string, unknown>[],
-  opPascal: string,
-  nestedOut: { name: string; fields: Record<string, unknown>[] }[],
-  refTypes: Record<string, string>,
-): string[] {
-  const lines: string[] = [];
-  for (const f of fields) {
-    const name = String(f.name);
-    const opt = f.required === false ? '?' : '';
-    if (f.type === 'array' && isRecord(f.item)) {
-      const itemName = `${opPascal}${pascal(name)}Item`;
-      nestedOut.push({ name: itemName, fields: asFields(f.item.fields) });
-      lines.push(`  ${name}${opt}: ${itemName}[];`);
-    } else {
-      lines.push(`  ${name}${opt}: ${tsType(f.type)};`);
-    }
-  }
-  return lines;
+function shapeOf(op: NsBffOperationView | undefined): { kind: string; fields: Record<string, unknown>[] } {
+  const shape = op && isRecord(op.outputShape) ? op.outputShape : {};
+  return { kind: typeof shape.kind === 'string' ? shape.kind : 'object', fields: asRecords(shape.fields) };
 }
 
-export function buildNsContractSet(entries: NsContractEntry[]): NsContractResult[] {
-  // fieldRef -> ts type, collected across ALL outputShapes (used to type the public inputs).
-  const refTypes: Record<string, string> = {};
-  const collect = (fields: Record<string, unknown>[]): void => {
+// fieldRef -> ts scalar, collected across ALL operations' outputShapes (types the passthrough inputs).
+function collectRefTypes(operations: Record<string, NsBffOperationView>): Record<string, TsScalar> {
+  const refTypes: Record<string, TsScalar> = {};
+  const walk = (fields: Record<string, unknown>[]): void => {
     for (const f of fields) {
-      if (typeof f.fieldRef === 'string') refTypes[f.fieldRef] = tsType(f.type);
-      if (isRecord(f.item)) collect(asFields(f.item.fields));
+      if (typeof f.fieldRef === 'string') refTypes[f.fieldRef] = tsScalar(f.type);
+      if (isRecord(f.item)) walk(asRecords(f.item.fields));
     }
   };
-  for (const entry of entries) {
-    const data = isRecord(entry.data.data) ? entry.data.data : entry.data;
-    collect(asFields(isRecord(data.outputShape) ? data.outputShape.fields : undefined));
-  }
+  for (const op of Object.values(operations)) walk(shapeOf(op).fields);
+  return refTypes;
+}
 
-  const results: NsContractResult[] = [];
-  for (const entry of entries) {
-    const data = isRecord(entry.data.data) ? entry.data.data : entry.data;
-    const op = String(data.operationId);
-    const P = pascal(op);
-    const bff = String(data.bffName);
-    const shape = isRecord(data.outputShape) ? data.outputShape : {};
-    const kind = typeof shape.kind === 'string' ? shape.kind : 'object';
-    const fields = asFields(shape.fields);
-    const nested: { name: string; fields: Record<string, unknown>[] }[] = [];
-    const body: string[] = [];
-
-    // ── Output ──
-    if (kind === 'list') {
-      const itemLines = emitFields(fields, P, nested, refTypes);
-      body.push(`export interface ${P}Item {`);
-      body.push(...itemLines);
-      body.push('}');
-      body.push('');
-      body.push(`export type ${P}Output = ${P}Item[];`);
-      // A list Item may itself carry an array field (CP1 caps at 1 level) — its Item interface is
-      // prepended before the list Item interface (matches the prototype's insert-at-front order).
-      for (const { name: itemName, fields: itemFields } of nested) {
-        const inner: { name: string; fields: Record<string, unknown>[] }[] = [];
-        body.unshift(`export interface ${itemName} {`, ...emitFields(itemFields, P, inner, refTypes), '}', '');
-        if (inner.length) throw new Error(`${op}: nesting > 1 level not supported (CP1 caps at 1)`);
-      }
-    } else { // object | paginated
-      const topLines = emitFields(fields, P, nested, refTypes);
-      for (const { name: itemName, fields: itemFields } of nested) {
-        const inner: { name: string; fields: Record<string, unknown>[] }[] = [];
-        body.push(`export interface ${itemName} {`);
-        body.push(...emitFields(itemFields, P, inner, refTypes));
-        body.push('}');
-        body.push('');
-        if (inner.length) throw new Error(`${op}: nesting > 1 level not supported (CP1 caps at 1)`);
-      }
-      body.push(`export interface ${P}Output {`);
-      body.push(...topLines);
-      body.push('}');
+// The type of each output-shape path of one operation (mirrors the e6 collectNsOutputPaths grammar),
+// so a projected bffCall field with no explicit `type` can resolve it from its `from`.
+function collectOutputPathTypes(op: NsBffOperationView | undefined): Record<string, TsScalar> {
+  const { kind, fields } = shapeOf(op);
+  const types: Record<string, TsScalar> = {};
+  const itemFieldsOf = (f: Record<string, unknown>) => (isRecord(f.item) ? asRecords(f.item.fields) : []);
+  if (kind === 'list') {
+    for (const f of fields) {
+      const name = typeof f.name === 'string' ? f.name : '';
+      if (!name) continue;
+      types[`$items.${name}`] = tsScalar(f.type);
+      for (const sub of itemFieldsOf(f)) if (typeof sub.name === 'string') types[`$items.${name}.${sub.name}`] = tsScalar(sub.type);
     }
+    return types;
+  }
+  let primaryItems: Record<string, unknown>[] | null = null;
+  for (const f of fields) {
+    const name = typeof f.name === 'string' ? f.name : '';
+    if (!name) continue;
+    types[name] = tsScalar(f.type);
+    const itemFields = itemFieldsOf(f);
+    if (itemFields.length) {
+      for (const sub of itemFields) if (typeof sub.name === 'string') types[`${name}.$items.${sub.name}`] = tsScalar(sub.type);
+      if (!primaryItems) primaryItems = itemFields;
+    }
+  }
+  if (primaryItems) for (const sub of primaryItems) if (typeof sub.name === 'string') types[`$items.${sub.name}`] = tsScalar(sub.type);
+  return types;
+}
 
-    // ── Input (public surfaces only; pagination from accessPattern) ──
-    const inLines: string[] = [];
-    const seen = new Set<string>();
-    for (const i of asFields(data.inputs)) {
-      if (typeof i.source !== 'string' || !PUBLIC_SOURCES.has(i.source)) continue;
-      const name = String(i.inputId);
+// The ts type of a declared input whose `from` points at a source operation input ("op.inputId").
+function typeOfInputFrom(from: unknown, operations: Record<string, NsBffOperationView>, refTypes: Record<string, TsScalar>): TsScalar {
+  const resolved = resolveFrom(from);
+  if (!resolved) return 'string';
+  const input = asRecords(operations[resolved.op]?.inputs).find(i => i.inputId === resolved.rest);
+  if (!input) return 'string';
+  if (input.type) return tsScalar(input.type);
+  if (typeof input.fieldRef === 'string') return refTypes[input.fieldRef] || 'string';
+  return 'string';
+}
+
+function resolveFrom(from: unknown): { op: string; rest: string } | null {
+  if (typeof from !== 'string') return null;
+  const index = from.indexOf('.');
+  if (index <= 0 || index >= from.length - 1) return null;
+  return { op: from.slice(0, index), rest: from.slice(index + 1) };
+}
+
+// Normalize a bffCall projection field[] into EmitField[] (resolving types from the source op when the
+// field declares none). Used for query calls with an explicit output projection.
+function fromProjection(fields: Record<string, unknown>[], operations: Record<string, NsBffOperationView>): EmitField[] {
+  const pathTypesCache: Record<string, Record<string, TsScalar>> = {};
+  const typeOfFrom = (from: unknown): TsScalar => {
+    const resolved = resolveFrom(from);
+    if (!resolved) return 'string';
+    if (!pathTypesCache[resolved.op]) pathTypesCache[resolved.op] = collectOutputPathTypes(operations[resolved.op]);
+    return pathTypesCache[resolved.op][resolved.rest] || 'string';
+  };
+  const walk = (list: Record<string, unknown>[]): EmitField[] => list.map(f => {
+    const name = typeof f.name === 'string' ? f.name : '';
+    const optional = f.required === false;
+    if (isRecord(f.item)) return { name, optional, item: walk(asRecords(f.item.fields)) };
+    const tsType = f.type ? tsScalar(f.type) : typeOfFrom(f.from);
+    return { name, optional, tsType };
+  });
+  return walk(fields);
+}
+
+// Normalize an operation outputShape field[] into EmitField[] (passthrough / identity contract).
+function fromOutputShape(fields: Record<string, unknown>[]): EmitField[] {
+  return fields.map(f => {
+    const name = typeof f.name === 'string' ? f.name : '';
+    const optional = f.required === false;
+    if (isRecord(f.item)) return { name, optional, item: fromOutputShape(asRecords(f.item.fields)) };
+    return { name, optional, tsType: tsScalar(f.type) };
+  });
+}
+
+// Render the Output interface(s) for one bffCall. Throws (A4.7) if the projection is empty — never emit
+// a silent `{}` (the run-9 lesson). CP1 caps nesting at 1 level.
+function renderOutput(pascalId: string, kind: string, fields: EmitField[], label: string): string[] {
+  if (fields.length === 0) throw new Error(`${label}: projected Output is empty (A4.7 — never emit {})`);
+  const nested: { name: string; fields: EmitField[] }[] = [];
+  const emitLines = (list: EmitField[]): string[] => list.map(f => {
+    const opt = f.optional ? '?' : '';
+    if (f.item) {
+      const itemName = `${pascalId}${pascal(f.name)}Item`;
+      nested.push({ name: itemName, fields: f.item });
+      return `  ${f.name}${opt}: ${itemName}[];`;
+    }
+    return `  ${f.name}${opt}: ${f.tsType || 'string'};`;
+  });
+  const body: string[] = [];
+  if (kind === 'list') {
+    const itemLines = emitLines(fields);
+    body.push(`export interface ${pascalId}Item {`, ...itemLines, '}', '');
+    body.push(`export type ${pascalId}Output = ${pascalId}Item[];`);
+  } else {
+    const topLines = emitLines(fields);
+    body.push(`export interface ${pascalId}Output {`, ...topLines, '}');
+  }
+  // Nested Item interfaces are emitted BEFORE the interface that references them (declaration order).
+  for (const { name, fields: itemFields } of nested) {
+    if (itemFields.length === 0) throw new Error(`${label}: nested Item "${name}" is empty (A4.7)`);
+    const inner: { name: string; fields: EmitField[] }[] = [];
+    const lines = itemFields.map(f => {
+      const opt = f.optional ? '?' : '';
+      if (f.item) { inner.push({ name: f.name, fields: f.item }); return `  ${f.name}${opt}: never;`; }
+      return `  ${f.name}${opt}: ${f.tsType || 'string'};`;
+    });
+    if (inner.length) throw new Error(`${label}: nesting > 1 level not supported (CP1 caps at 1)`);
+    body.unshift(`export interface ${name} {`, ...lines, '}', '');
+  }
+  return body;
+}
+
+// Render the Input interface for one bffCall: the declared projection input, or (passthrough) the
+// operation's PUBLIC inputs + pagination.
+function renderInput(
+  pascalId: string,
+  entry: NsBffContractEntry,
+  refTypes: Record<string, TsScalar>,
+): string[] {
+  const lines: string[] = [];
+  const seen = new Set<string>();
+  const declared = asRecords(entry.input);
+  if (declared.length) {
+    for (const i of declared) {
+      const name = typeof i.name === 'string' ? i.name : '';
+      if (!name) continue;
       seen.add(name);
       const opt = i.required === true ? '' : '?';
-      inLines.push(`  ${name}${opt}: ${refTypes[String(i.fieldRef)] || 'string'};`);
+      const type = i.type ? tsScalar(i.type) : typeOfInputFrom(i.from, entry.operations, refTypes);
+      lines.push(`  ${name}${opt}: ${type};`);
     }
-    const accessPattern = isRecord(data.accessPattern) ? data.accessPattern : {};
-    const pagination = accessPattern.pagination;
+  } else {
+    // Passthrough / identity: derive from the single source operation.
+    const op = entry.operations[entry.uses[0]?.operationId];
+    for (const i of asRecords(op?.inputs)) {
+      if (typeof i.source !== 'string' || !PUBLIC_SOURCES.has(i.source)) continue;
+      const name = typeof i.inputId === 'string' ? i.inputId : '';
+      if (!name) continue;
+      seen.add(name);
+      const opt = i.required === true ? '' : '?';
+      const type = i.type ? tsScalar(i.type) : (typeof i.fieldRef === 'string' ? refTypes[i.fieldRef] || 'string' : 'string');
+      lines.push(`  ${name}${opt}: ${type};`);
+    }
+    const pagination = isRecord(op?.accessPattern) ? op!.accessPattern.pagination : undefined;
     if (pagination === 'required' || pagination === 'optional') {
-      for (const extra of ['page', 'pageSize']) {
-        if (!seen.has(extra)) inLines.push(`  ${extra}?: number;`);
-      }
+      for (const extra of ['page', 'pageSize']) if (!seen.has(extra)) lines.push(`  ${extra}?: number;`);
     }
-    const inputBlock = [`export interface ${P}Input {`];
-    inputBlock.push(...(inLines.length ? inLines : ['  // sem inputs públicos (resolvidos por contexto)']));
-    inputBlock.push('}');
+  }
+  const block = [`export interface ${pascalId}Input {`];
+  block.push(...(lines.length ? lines : ['  // sem inputs públicos (resolvidos por contexto)']));
+  block.push('}');
+  return block;
+}
 
-    const routeConst = `export const ${op}Route = '${bff}' as const;`;
-    const routeDecl = `declare const ${op}Route: '${bff}';\nexport { ${op}Route };`;
+export function buildNsBffContractSet(entries: NsBffContractEntry[]): NsBffContractResult[] {
+  const results: NsBffContractResult[] = [];
+  for (const entry of entries) {
+    const P = pascal(entry.bffId);
+    const label = `${entry.workspaceId}.${entry.bffId}`;
+    const refTypes = collectRefTypes(entry.operations);
 
+    // ── Output ── projection when declared, else the source operation's outputShape (passthrough).
+    let outputKind: string;
+    let outputFields: EmitField[];
+    if (isRecord(entry.output)) {
+      outputKind = typeof entry.output.kind === 'string' ? entry.output.kind : 'object';
+      outputFields = fromProjection(asRecords(entry.output.fields), entry.operations);
+    } else {
+      const shape = shapeOf(entry.operations[entry.uses[0]?.operationId]);
+      outputKind = shape.kind;
+      outputFields = fromOutputShape(shape.fields);
+    }
+    const outputBody = renderOutput(P, outputKind, outputFields, label);
+    const inputBlock = renderInput(P, entry, refTypes);
+
+    const routeConst = `export const ${entry.bffId}Route = '${entry.route}' as const;`;
+    const routeDecl = `declare const ${entry.bffId}Route: '${entry.route}';\nexport { ${entry.bffId}Route };`;
     const note = `// GENERATED MECHANICALLY from ${entry.sourceRef} — DO NOT EDIT.\n`
-      + `// Contract of record: outputShape kind=${kind}; route from bffName.`;
-    const tsSource = `/// <mls fileReference="${entry.fileRef}" enhancement="_blank"/>\n\n`
-      + `${note}\n\n` + inputBlock.join('\n') + '\n\n' + body.join('\n') + `\n\n${routeConst}\n`;
-    const dtsSource = `${note}\n// Declaration twin of ${op}.ts (same shapes, ambient form).\n\n`
-      + inputBlock.join('\n') + '\n\n' + body.join('\n') + `\n\n${routeDecl}\n`;
+      + `// Contract of record: bffCall ${entry.bffId} (${entry.kind}); Output kind=${outputKind}; route ${entry.route}.`;
 
-    results.push({ operationId: op, kind, bffName: bff, tsSource, dtsSource });
+    const tsSource = `/// <mls fileReference="${entry.fileRef}" enhancement="_blank"/>\n\n`
+      + `${note}\n\n` + inputBlock.join('\n') + '\n\n' + outputBody.join('\n') + `\n\n${routeConst}\n`;
+    const dtsSource = `${note}\n// Declaration twin of ${entry.bffId}.ts (same shapes, ambient form).\n\n`
+      + inputBlock.join('\n') + '\n\n' + outputBody.join('\n') + `\n\n${routeDecl}\n`;
+
+    results.push({ bffId: entry.bffId, route: entry.route, tsSource, dtsSource });
   }
   return results;
 }

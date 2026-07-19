@@ -17,6 +17,7 @@ import {
   writeMarkdownArtifact,
 } from '/_102020_/l2/agentNewSolution/helpers/nsFs.js';
 import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution/helpers/nsIds.js';
+import { isNsFastMode } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
 import { NsGateCheck, errorIssue, runNsGate } from '/_102020_/l2/agentNewSolution/helpers/nsGate.js';
 import {
   approveNsStep,
@@ -213,6 +214,10 @@ async function beforeClarificationStep(
     const clarification = normalizeClarificationForWidget(parsed, rootPlan.clarification);
     const div = document.createElement('div');
     const el = document.createElement('widget-questions-for-clarification-102025');
+    // /fast (D5): signal the widget to auto-accept the proposed defaults after a short countdown. The
+    // widget change (reading autoAcceptSeconds + auto-firing clarification-finish) is a SEPARATE task
+    // in widget 102025; here we only pass the property. Without /fast (0) the widget is unchanged.
+    const autoAcceptSeconds = isNsFastMode(context.task?.iaCompressed?.longMemory) ? 10 : 0;
     (el as unknown as { value: unknown }).value = {
       taskId: context.task?.PK || '',
       stepId: step.stepId,
@@ -220,6 +225,7 @@ async function beforeClarificationStep(
       legends: clarification.legends,
       userLanguage: clarification.userLanguage,
       questions: clarification.questions,
+      autoAcceptSeconds,
     };
     el.setAttribute('mode', 'new');
     el.addEventListener('clarification-finish', (event: Event) => {
@@ -289,7 +295,11 @@ async function applyInitialClarification(
   if (!context.task) throw new Error(`[${AGENT_NAME}] task invalid`);
   const status: mls.msg.AIStepStatus = action === 'continue' ? 'completed' : 'failed';
   const mutationParent = findMutableParentStep(context, parentStep);
-  const intents: mls.msg.AgentIntent[] = [updateStatus(context, mutationParent, step, hookSequential, status)];
+  // N5 (run 9 finding: the clarification step retained ~4.7KB of widget interaction): drop it on the
+  // completed path. The answer is persisted separately in the 'e1-clarification-answer' result step
+  // (getInitialClarificationAnswer reads THAT), so the interaction payload is dead weight (DynamoDB 400KB).
+  const cleaner = status === 'completed' ? 'input_output' : undefined;
+  const intents: mls.msg.AgentIntent[] = [updateStatus(context, mutationParent, step, hookSequential, status, undefined, cleaner)];
   if (action === 'continue') {
     const answer = normalizeClarificationAnswer(value);
     intents.unshift(resultStep(context, mutationParent, 'e1-clarification-answer', ['e1-clarification'], answer.title, answer));
