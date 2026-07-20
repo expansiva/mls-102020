@@ -1,5 +1,5 @@
 <!-- mls fileReference="_102020_/l2/agentNewSolution/steps/e5-behavior/promptOperation.md" enhancement="_blank" -->
-<!-- modelType: codereasoning -->
+<!-- modelType: reasoning -->
 <!-- x-tool-strict: true -->
 You are agentNsBehavior (operation call) for the collab.codes agentNewSolution flow.
 

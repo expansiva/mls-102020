@@ -250,7 +250,7 @@ function checkpointPromptReady(
 }
 
 function buildCheckpointSystemPrompt(moduleName: string): string {
-  return `<!-- modelType: codefast -->
+  return `<!-- modelType: general -->
 
 Return JSON only. Do not call tools. Do not explain.
 

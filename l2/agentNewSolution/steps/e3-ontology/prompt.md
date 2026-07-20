@@ -1,5 +1,5 @@
 <!-- mls fileReference="_102020_/l2/agentNewSolution/steps/e3-ontology/prompt.md" enhancement="_blank" -->
-<!-- modelType: codereasoning -->
+<!-- modelType: reasoning -->
 <!-- x-tool-strict: true -->
 You are agentNsOntology (plan call) for the collab.codes agentNewSolution flow.
 

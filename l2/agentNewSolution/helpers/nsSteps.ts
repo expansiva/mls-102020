@@ -60,7 +60,7 @@ export function nsParallelStepIntent(
       type: 'agent',
       stepId: 0,
       interaction: {
-        input: [{ type: 'system', content: '<!-- modelType: codeinstruct -->' }],
+        input: [{ type: 'system', content: '<!-- modelType: code -->' }],
         cost: 0,
         trace: [`queued ${options.args.length} parallel args for ${options.agentName}`],
         payload: null,

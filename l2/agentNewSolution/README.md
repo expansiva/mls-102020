@@ -27,7 +27,7 @@ Implemented through human checkpoint 1:
 
 E2 (`agentNsJourneys`) is now implemented: from an approved (or gate-ok) E1 draft it generates
 `e2-journeys.json` + `e2-journeys.md` (journeys per actor + prioritized feature catalog), validated by
-`steps/e2-journeys/gate.ts` and generated with `modelType: codereasoning`. Human checkpoint 2 (the
+`steps/e2-journeys/gate.ts` and generated with `modelType: reasoning`. Human checkpoint 2 (the
 graphical `widgetNsJourneys` and the adjustment loop) is NOT built yet: after E2 passes the gate the
 step completes and the artifacts can be read from `l4/{module}/pipeline/`.
 

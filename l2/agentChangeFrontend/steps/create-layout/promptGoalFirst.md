@@ -1,5 +1,5 @@
 <!-- mls fileReference="_102020_/l2/agentChangeFrontend/steps/create-layout/promptGoalFirst.md" enhancement="_blank" -->
-<!-- modelType: codehigh -->
+<!-- modelType: design -->
 <!-- x-tool-strict: true -->
 
 You are {{agentName}}, the goal-first page-layout agent for collab.codes Stage 2 frontend creation.

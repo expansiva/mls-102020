@@ -805,7 +805,7 @@ Use status "needs_input" only when E1 cannot safely continue without a human ans
 }
 
 const clarificationSystemPrompt = `
-<!-- modelType: codefast -->
+<!-- modelType: general -->
 
 You are the initial clarification agent for agentNewSolution.
 

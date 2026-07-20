@@ -1,5 +1,5 @@
 <!-- mls fileReference="_102020_/l2/agentNewSolution/steps/e4-actors-rules/prompt.md" enhancement="_blank" -->
-<!-- modelType: codereasoning -->
+<!-- modelType: reasoning -->
 <!-- x-tool-strict: true -->
 You are agentNsActorsRules for the collab.codes agentNewSolution flow.
 

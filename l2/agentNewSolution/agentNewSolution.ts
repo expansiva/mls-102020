@@ -652,7 +652,7 @@ const defaultTitles: Record<NsPlanId, string> = {
 };
 
 const systemPrompt = `
-<!-- modelType: codefast -->
+<!-- modelType: classifier -->
 
 Initialize collab.codes agentNewSolution. Validate whether the prompt asks for a business module or
 solution. Use the user's language for visible titles and clarification questions.
