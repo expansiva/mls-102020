@@ -25,12 +25,13 @@ import {
   parseWorkspaceBffCalls,
   parseWorkspaceSections,
   bffCallCommandShape,
-  buildBffContractSource,
+  buildWorkspaceContractSource,
   isContentOrganismRole,
   type CfeL4OperationInput,
   type CfeBffCall,
   type CfeBffCallField,
   type CfeContractField,
+  type CfeContractCall,
   type CfeWorkspaceSection,
   type CfeWorkspaceOrganism,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
@@ -647,38 +648,33 @@ export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateCo
   return { project: createContext.project, page, operations, commands, workspace, contractCopies, navigationRefs, baseDefinition, visualStyle, i18nMeta, entityFields, variantPlan, userJourney };
 }
 
-// F3: GENERATE one l2 contract .ts per bffCall from the workspace defs (l4 holds only .defs.ts; we never
-// read a .ts from l4). Input/Output field types are resolved from the referenced operations' inputs /
-// outputShape; the Output interface is the projected item shape for a list/paginated bffCall.
+// F3: GENERATE ONE l2 contract .ts per WORKSPACE from the workspace defs (l4 holds only .defs.ts; we never
+// read a .ts from l4). The single file holds every bffCall's Input/Output interfaces (Output is the
+// projected item shape for a list/paginated call) + its `<bffId>Route` const; types are resolved from the
+// referenced operations' inputs/outputShape. File name = `<workspaceId>.ts` (= the page id).
 function buildContractCopies(createContext: CfeCreateContext, page: CfePagePlan, workspace: CfeJourneyWorkspace): CfeContractCopy[] {
-  const copies: CfeContractCopy[] = [];
+  if (workspace.bffCalls.length === 0) return [];
   const operationsById = createContext.operations;
-  for (const call of workspace.bffCalls) {
-    const contractName = `${workspace.workspaceId}.${call.bffId}`;
-    const fileInfo: FileInfo = { project: createContext.project, level: 2, folder: `${page.moduleName}/web/contracts`, shortName: contractName, extension: '.ts' };
-    const tsRef = toDisplayRef(fileInfo);
-    const input: CfeContractField[] = call.input.map(field => ({
+  const fileInfo: FileInfo = { project: createContext.project, level: 2, folder: `${page.moduleName}/web/contracts`, shortName: page.pageId, extension: '.ts' };
+  const tsRef = toDisplayRef(fileInfo);
+  const calls: CfeContractCall[] = workspace.bffCalls.map(call => ({
+    interfaceName: toPascalCase(call.bffId),
+    bffId: call.bffId,
+    kind: call.kind,
+    outputKind: call.output?.kind || 'object',
+    route: call.route,
+    input: call.input.map(field => ({
       name: field.name,
       type: bffFieldTsType(field, 'input', operationsById, createContext.entities),
       optional: !bffInputRequired(field, operationsById),
-    }));
-    const output: CfeContractField[] = (call.output?.fields || []).map(field => ({
+    })),
+    output: (call.output?.fields || []).map(field => ({
       name: field.name,
       type: bffFieldTsType(field, 'output', operationsById, createContext.entities),
-    }));
-    const source = buildBffContractSource({
-      l2Ref: tsRef,
-      interfaceName: toPascalCase(call.bffId),
-      bffId: call.bffId,
-      kind: call.kind,
-      outputKind: call.output?.kind || 'object',
-      route: call.route,
-      input,
-      output,
-    });
-    copies.push({ contractName, fileInfo, tsRef, source });
-  }
-  return copies;
+    })),
+  }));
+  const source = buildWorkspaceContractSource({ l2Ref: tsRef, workspaceId: workspace.workspaceId, calls });
+  return [{ contractName: page.pageId, fileInfo, tsRef, source }];
 }
 
 // Resolve the TS type of a bffCall field. Nested array projections (a paginated envelope's `items`, or
@@ -2420,15 +2416,13 @@ function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefini
     ownerIds: prepared.page.ownerIds,
     operationIds: prepared.page.operationIds,
     origin: prepared.page.origin,
-    // F3 (v2): the shared imports/re-exports EACH per-bffCall contract copy (one .ts per bffCall) and
-    // calls execBff with the imported `<bffId>Route` const — never a typed route string. Legacy: a
-    // single per-page contract .ts built by the LLM skill.
+    // F3 (v2): ONE generated contract .ts per workspace holds every bffCall's Input/Output + `<bffId>Route`
+    // const. The shared imports/re-exports from that single file and calls execBff with the imported route
+    // const — never a typed route string. Legacy: a single per-page contract .ts built by the LLM skill.
     contractRef: prepared.contractCopies.length > 0
       ? {
-          contracts: prepared.contractCopies.map(copy => {
-            const bffId = copy.contractName.split('.').slice(1).join('.');
-            return { commandName: bffId, tsPath: copy.tsRef, routeConst: `${bffId}Route` };
-          }),
+          tsPath: prepared.contractCopies[0].tsRef,
+          contracts: prepared.commands.map(command => ({ commandName: readString(command.commandName), routeConst: `${readString(command.commandName)}Route` })).filter(entry => entry.commandName),
         }
       : {
           defPath: toDisplayRef(contractFileInfo(prepared.project, prepared.page)),

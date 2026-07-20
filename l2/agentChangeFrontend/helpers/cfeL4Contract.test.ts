@@ -13,7 +13,7 @@ import {
   parseWorkspaceSections,
   bffCallCommandShape,
   isContentOrganismRole,
-  buildBffContractSource,
+  buildWorkspaceContractSource,
   isCopiedL4Contract,
   type CfeL4OperationInput,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
@@ -161,29 +161,33 @@ test('bffCallCommandShape maps a query bffCall to a paginated command, resolving
   assert.equal(command.canonicalOutputShape?.kind, 'paginated');
 });
 
-test('buildBffContractSource generates l2 Input/Output interfaces + route const from a bffCall (no l4 .ts read)', () => {
-  const source = buildBffContractSource({
-    l2Ref: '_102049_/l2/petShop/web/contracts/catalog.catalogList.ts',
-    interfaceName: 'CatalogList',
-    bffId: 'catalogList',
-    kind: 'query',
-    outputKind: 'paginated',
-    route: 'petShop.catalog.catalogList',
-    input: [{ name: 'searchTerm', type: 'string', optional: true }, { name: 'page', type: 'number', optional: true }],
-    output: [{ name: 'productId', type: 'string' }, { name: 'name', type: 'string' }, { name: 'price', type: 'number' }],
+test('buildWorkspaceContractSource generates ONE file per workspace: all bffCall interfaces + route consts (no l4 .ts read)', () => {
+  const source = buildWorkspaceContractSource({
+    l2Ref: '_102049_/l2/petShop/web/contracts/catalog.ts',
+    workspaceId: 'catalog',
+    calls: [
+      { interfaceName: 'CatalogList', bffId: 'catalogList', kind: 'query', outputKind: 'paginated', route: 'petShop.catalog.catalogList',
+        input: [{ name: 'searchTerm', type: 'string', optional: true }], output: [{ name: 'productId', type: 'string' }, { name: 'name', type: 'string' }] },
+      { interfaceName: 'ProductDetail', bffId: 'productDetail', kind: 'query', outputKind: 'object', route: 'petShop.catalog.productDetail',
+        input: [{ name: 'productId', type: 'string' }], output: [{ name: 'productId', type: 'string' }, { name: 'description', type: 'string' }] },
+    ],
   });
-  assert.match(source, /<mls fileReference="_102049_\/l2\/petShop\/web\/contracts\/catalog\.catalogList\.ts"/);
+  assert.match(source, /<mls fileReference="_102049_\/l2\/petShop\/web\/contracts\/catalog\.ts"/);
   assert.doesNotMatch(source, /l4\/petShop\/contracts/); // NEVER references an l4 .ts
-  assert.match(source, /export interface CatalogListInput \{\n {2}searchTerm\?: string;\n {2}page\?: number;\n\}/);
-  assert.match(source, /export interface CatalogListOutput \{\n {2}productId: string;\n {2}name: string;\n {2}price: number;\n\}/);
+  // Both bffCalls' interfaces + route consts live in the single file.
+  assert.match(source, /export interface CatalogListInput \{\n {2}searchTerm\?: string;\n\}/);
+  assert.match(source, /export interface CatalogListOutput \{/);
   assert.match(source, /export const catalogListRoute = 'petShop\.catalog\.catalogList' as const;/);
+  assert.match(source, /export interface ProductDetailInput \{/);
+  assert.match(source, /export const productDetailRoute = 'petShop\.catalog\.productDetail' as const;/);
   assert.equal(isCopiedL4Contract(source), true);
   assert.equal(isCopiedL4Contract('export const x = 1;'), false);
 });
 
-test('buildBffContractSource emits empty interfaces for a command with no projected fields', () => {
-  const source = buildBffContractSource({
-    l2Ref: '_1_/l2/m/web/contracts/w.act.ts', interfaceName: 'Act', bffId: 'act', kind: 'command', outputKind: 'object', route: 'm.w.act', input: [], output: [],
+test('buildWorkspaceContractSource emits empty interfaces for a command with no projected fields', () => {
+  const source = buildWorkspaceContractSource({
+    l2Ref: '_1_/l2/m/web/contracts/w.ts', workspaceId: 'w',
+    calls: [{ interfaceName: 'Act', bffId: 'act', kind: 'command', outputKind: 'object', route: 'm.w.act', input: [], output: [] }],
   });
   assert.match(source, /export interface ActInput \{\}/);
   assert.match(source, /export interface ActOutput \{\}/);
