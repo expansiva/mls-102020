@@ -681,10 +681,20 @@ function buildContractCopies(createContext: CfeCreateContext, page: CfePagePlan,
   return copies;
 }
 
-// Resolve the TS type of a bffCall field by tracing its `from` = "<operationId>.<path>" back to the
-// operation's inputs (input) or outputShape (output; `$items.<field>` = the paginated/list item field).
-function bffFieldTsType(field: CfeBffCallField, direction: 'input' | 'output', operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): string {
-  if (field.type) return l4TypeToTs(field.type);
+// Resolve the TS type of a bffCall field. Nested array projections (a paginated envelope's `items`, or
+// any field carrying `item.fields`) become an inline object array `{ … }[]`; scalars use the field's own
+// `type` when present, else trace `from` = "<operationId>.<path>" back to the operation's inputs/outputShape.
+export function bffFieldTsType(field: CfeBffCallField, direction: 'input' | 'output', operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): string {
+  if (field.item && Array.isArray(field.item.fields) && field.item.fields.length > 0) {
+    const inner = field.item.fields.map(itemField => `${contractPropKey(itemField.name)}: ${bffFieldTsType(itemField, direction, operationsById, entities)}`).join('; ');
+    return `{ ${inner} }[]`;
+  }
+  if (field.type) {
+    const normalized = field.type.toLowerCase();
+    if (normalized === 'array') return 'unknown[]';
+    if (normalized === 'object' || normalized === 'json') return 'Record<string, unknown>';
+    return l4TypeToTs(field.type);
+  }
   const dot = field.from.indexOf('.');
   const operationId = dot < 0 ? '' : field.from.slice(0, dot);
   const path = dot < 0 ? field.from : field.from.slice(dot + 1);
@@ -722,6 +732,11 @@ function bffInputRequired(field: CfeBffCallField, operationsById: Map<string, Cf
 function l4TypeToTs(type: string): string {
   const frontend = toFrontendType(type);
   return frontend === 'number' ? 'number' : frontend === 'boolean' ? 'boolean' : 'string';
+}
+
+// Property key for an inline object type: bare when a valid identifier, quoted otherwise.
+function contractPropKey(name: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
 }
 
 // Resolve the l4 v2 workspace backing a page. buildPagePlans records the workspaceId in page.origin

@@ -9,7 +9,7 @@ const g = globalThis as unknown as Record<string, any>;
 // later test file in the same process doesn't inherit it.
 const priorMls = g.mls;
 after(() => { g.mls = priorMls; });
-async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any; cfePageLayoutToolSchema: any }> {
+async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any; cfePageLayoutToolSchema: any; bffFieldTsType: (field: any, dir: 'input' | 'output', ops: any, entities: any) => string }> {
   if (!g.window) g.window = { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
   if (!g.document) g.document = { documentElement: { lang: 'pt-BR' }, addEventListener() {}, removeEventListener() {}, createElement: () => ({ style: {} }) };
   // libModel.ts runs init() -> mls.events.addEventListener at import time; the setup-l2 stub omits
@@ -278,6 +278,20 @@ test('seed is bffCall-keyed and contracts are generated even with NO l4 .ts pres
   assert.ok(organisms.some((o: any) => o.userActions.includes('catalogList')));
   assert.equal(organisms.some((o: any) => o.userActions.includes('browseCatalog') || o.userActions.includes('viewProductDetail')), false);
   assert.doesNotThrow(() => validatePageLayout(prepared, layout));
+});
+
+test('bffFieldTsType types a paginated envelope items[] as a nested object array (not a scalar) — Lima regression', async () => {
+  // Repro of the build-all tsc error: the paginated output envelope field `items` (type 'array' with
+  // item.fields) was flattened to `string`, so the render's catalogRows.map failed. It must be `{…}[]`.
+  const { bffFieldTsType } = await loadModule();
+  const itemsField = {
+    name: 'items', from: 'browseCatalog.$items', type: 'array',
+    item: { fields: [{ name: 'productId', from: 'browseCatalog.$items.productId', type: 'string' }, { name: 'price', from: 'browseCatalog.$items.price', type: 'number' }] },
+  };
+  const ts = bffFieldTsType(itemsField, 'output', new Map(), new Map());
+  assert.equal(ts, '{ productId: string; price: number }[]');
+  // A plain scalar still maps normally.
+  assert.equal(bffFieldTsType({ name: 'total', from: 'browseCatalog.total', type: 'number' }, 'output', new Map(), new Map()), 'number');
 });
 
 test('relaxed layout tool schema tolerates LLM section drift (type not enum-pinned, mode optional)', async () => {

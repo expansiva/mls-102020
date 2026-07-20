@@ -220,8 +220,15 @@ function pageRoute(moduleName: string, pageId: string, routeParams: string[]): s
 
 function isMaterialized(clientRoot: string, moduleName: string, pageId: string): boolean {
   const web = path.join(clientRoot, 'l2', moduleName, 'web');
-  return ['contracts', 'shared', 'desktop/page11']
-    .every(part => fs.existsSync(path.join(web, part, `${pageId}.ts`)));
+  const sharedOk = fs.existsSync(path.join(web, 'shared', `${pageId}.ts`));
+  const pageOk = fs.existsSync(path.join(web, 'desktop/page11', `${pageId}.ts`));
+  // Contracts: legacy is one per-page `<pageId>.ts`; l4 v2 (F3) is one per bffCall `<pageId>.<bffId>.ts`.
+  // Accept either — a page is materialized when its shared+page11 exist and at least one contract does.
+  const contractsDir = path.join(web, 'contracts');
+  const contractOk = fs.existsSync(path.join(contractsDir, `${pageId}.ts`))
+    || (fs.existsSync(contractsDir) && fs.readdirSync(contractsDir).some(name =>
+      name.startsWith(`${pageId}.`) && name.endsWith('.ts') && !name.endsWith('.d.ts') && !name.endsWith('.defs.ts') && !name.endsWith('.test.ts')));
+  return sharedOk && pageOk && contractOk;
 }
 
 function discoverPageVariants(clientRoot: string, clientId: string, moduleName: string, page: DiscoveredPage): PageVariant[] {
