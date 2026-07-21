@@ -3611,8 +3611,8 @@ async function hasGeneratedDefs(project: number, page: CfePagePlan): Promise<boo
     const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
     return !!file && file.status !== 'deleted';
   });
-  // Contract exists either as the legacy per-page .defs.ts (v1) or as at least one per-bffCall byte-copy
-  // `<pageId>.<bffId>.ts` in the contracts folder (F3 v2).
+  // Contract exists either as the legacy per-page .defs.ts (v1), the generated per-workspace
+  // `<pageId>.ts` (F3 v2), or the earlier per-bffCall `<pageId>.<bffId>.ts` files (back-compat).
   if (!defsExist || !hasPageContractArtifact(project, page)) return false;
   const marker = await readJsonFile(pageCreateMarkerFileInfo(project, page));
   return isRecord(marker) && marker.status === 'done';
@@ -3622,10 +3622,12 @@ function hasPageContractArtifact(project: number, page: CfePagePlan): boolean {
   const legacy = mls.stor.files[mls.stor.getKeyToFile(contractFileInfo(project, page))];
   if (legacy && legacy.status !== 'deleted') return true;
   const contractsFolder = `${page.moduleName}/web/contracts`;
-  return (Object.values(mls.stor.files) as any[]).some(file =>
-    file && file.project === project && file.level === 2 && file.status !== 'deleted'
-    && String(file.folder || '') === contractsFolder && file.extension === '.ts'
-    && String(file.shortName || '').startsWith(`${page.pageId}.`));
+  return (Object.values(mls.stor.files) as any[]).some(file => {
+    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') return false;
+    if (String(file.folder || '') !== contractsFolder || file.extension !== '.ts') return false;
+    const shortName = String(file.shortName || '');
+    return shortName === page.pageId || shortName.startsWith(`${page.pageId}.`);
+  });
 }
 
 function hasMaterializedPageTs(project: number, page: CfePagePlan): boolean {

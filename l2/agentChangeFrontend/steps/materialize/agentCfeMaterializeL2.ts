@@ -57,11 +57,15 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const todo = planned.filter(item => item.stale);
     const phasePlan = createMaterializePhaseSteps(context, step, todo);
     const registerDeps = phasePlan.terminalPlanIds;
+    // register/finalize recompute the ready/skipped set FRESH (post-materialization) inside
+    // registerGeneratedFrontendPages/finalizeGeneratedPages — see their traces. Do NOT embed
+    // `generated.skippedPages` here: it is a pre-materialization snapshot (every page still looks
+    // "not generated" before its .ts exists), so it would read as "all pages skipped" and mislead.
     const register = createAgentStepPayload(
       'register-frontend',
       'agentCfeRegisterFrontend',
       'Registrar frontend e preview',
-      { planId: 'register-frontend', materialized: todo.length, skippedPages: generated.skippedPages },
+      { planId: 'register-frontend', materialized: todo.length },
       registerDeps,
       'sequential',
       registerDeps.length > 0 ? 'waiting_dependency' : 'waiting_human_input',
@@ -70,7 +74,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       'finalize-create',
       'agentCfeCreateFinalize',
       'Atualizar config e status',
-      { planId: 'finalize-create', materialized: todo.length, skippedPages: generated.skippedPages },
+      { planId: 'finalize-create', materialized: todo.length },
       ['register-frontend'],
       'sequential',
       'waiting_dependency',

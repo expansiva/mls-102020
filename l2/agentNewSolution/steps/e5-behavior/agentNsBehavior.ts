@@ -666,6 +666,9 @@ async function runE5Finalize(
       stepTitle: `Repair ${item.planId === 'e5-workflow' ? 'workflow' : 'operation'} ${item.itemId}`,
       planId: `e5-repair-${index + 1}-${item.itemId}`,
       prompt: { planId: item.planId, moduleName, itemId: item.itemId, retryAttempt: 2 },
+      // task06 6a: a second transient LLM-call failure on the repair must degrade to the explicit
+      // 'items missing after repair round' message (e5-finalize-2), never a raw task crash.
+      onFailure: 'wait_after_prompt',
     }));
     const repairPlanIds = repairs.map(intent => (intent.step.planning as { planId: string }).planId);
     return [

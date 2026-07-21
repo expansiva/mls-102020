@@ -43,6 +43,13 @@ export function nsUpdateStatusIntent(
 // arg, reuses slots as items finish and DELETES finished children (task size stays small). The
 // parent auto-completes when every child is terminal — but a 'failed' child fails the parent, so
 // fan-out children must complete-with-trace on gate failures and let a finalize step repair.
+//
+// task06 6a: a transient LLM-CALL failure on a single item (empty primary + fallback 502) used to
+// fail the child at the framework level BEFORE afterPromptStep could complete-with-trace — one bad
+// item failed the whole task (18/19 ok). onFailure='wait_after_prompt' is inherited by every child
+// (tasks.ts addParallelChildStep), so runLLMStepParallel enqueues afterPromptStep with status
+// 'waiting_after_prompt_with_error' instead of failing: the child completes-with-trace (no payload)
+// and the finalize repair round regenerates the missing item. Never fails the task on one bad item.
 export function nsParallelStepIntent(
   context: mls.msg.ExecutionContext,
   hostStep: mls.msg.AIAgentStep,
@@ -69,6 +76,9 @@ export function nsParallelStepIntent(
       status: 'in_progress',
       nextSteps: [],
       agentName: options.agentName,
+      // Inherited by each fan-out child (tasks.ts addParallelChildStep): a per-item LLM-call failure
+      // routes to afterPromptStep (complete-with-trace) instead of failing the parent/task — task06 6a.
+      onFailure: 'wait_after_prompt',
       prompt: JSON.stringify({ planId: options.planId }),
       rags: [],
       planning: { planId: options.planId, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' },

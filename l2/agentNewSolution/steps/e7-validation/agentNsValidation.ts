@@ -29,9 +29,13 @@ import { normalizeModuleFolderName } from '/_102020_/l2/agentNewSolution/helpers
 import { emitNsBffContracts } from '/_102020_/l2/agentNewSolution/helpers/nsContractsEmit.js';
 import {
   nsFindMutableParentStep,
+  nsHasStepWithPlanId,
   nsResultStepIntent,
   nsUpdateStatusIntent,
 } from '/_102020_/l2/agentNewSolution/helpers/nsSteps.js';
+// task06: `addMessage('@@agent …')` posts a message that spawns a NEW task via the target agent's own
+// beforePromptImplicit (its system prompt, no coupling); the current task is untouched.
+import { addMessage as sendThreadMessage } from '/_102025_/l2/collabMessagesHelper.js';
 import {
   approveNsStep,
   createNsPipeline,
@@ -273,6 +277,11 @@ async function runE7(
   await writeNsPipeline(pipeline);
   await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, 1, { report, todoOwners: owners.length });
 
+  // task06: the spec is complete with no error — chain straight into the backend + frontend rebuilds
+  // as TWO new tasks (this task is untouched). Idempotent: the 'e7-done' anchor from a prior successful
+  // run means the handoff already fired, so a dirty re-run does not double-post.
+  if (!nsHasStepWithPlanId(context, DONE_ANCHOR)) await dispatchNsHandoff(context, moduleName);
+
   return [
     nsResultStepIntent(context, mutationParent, {
       planId: DONE_ANCHOR,
@@ -285,6 +294,25 @@ async function runE7(
       `module ${moduleName} spec complete: ${report.counts.entities} entities, ${report.counts.workflows} workflows, ${report.counts.operations} operations`,
     ),
   ];
+}
+
+// task06: the two follow-up commands, in the user's order (backend then frontend). Each fires as an
+// independent new task; if the backend is meant to consume the frontend's l2 contracts, they do NOT
+// sequence — that ordering is the pipeline owner's call.
+const NS_HANDOFF_MESSAGES = ['@@changeBackend /rebuild all', '@@changeFrontend /rebuild all'] as const;
+
+// Post the handoff commands as new messages. Each is awaited in its own try/catch: a messaging failure
+// is traced but never fails the already-persisted spec (all l4/l5 artifacts are on disk by now).
+async function dispatchNsHandoff(context: mls.msg.ExecutionContext, moduleName: string): Promise<void> {
+  const threadId = context.message?.threadId;
+  if (!threadId) return;
+  for (const content of NS_HANDOFF_MESSAGES) {
+    try {
+      await sendThreadMessage(threadId, content);
+    } catch (error) {
+      await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, 1, { handoff: content }, `handoff dispatch failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 }
 
 async function resolveE7Module(requested?: string): Promise<string> {

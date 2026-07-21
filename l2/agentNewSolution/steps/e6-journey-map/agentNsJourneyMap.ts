@@ -491,6 +491,9 @@ async function runE6Finalize(
       agentName: AGENT_NAME, stepTitle: `Repair workspace ${workspaceId}`,
       planId: `e6-detail-repair-${index + 1}-${workspaceId}`,
       prompt: { planId: DETAIL_PLAN, moduleName, workspaceId, retryAttempt: 2 },
+      // task06 6a: a second transient LLM-call failure on the repair degrades to the explicit
+      // 'workspaces missing after repair round' message (e6-finalize-2), never a raw task crash.
+      onFailure: 'wait_after_prompt',
     }));
     const repairPlanIds = repairs.map(intent => (intent.step.planning as { planId: string }).planId);
     return [
