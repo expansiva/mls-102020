@@ -3,7 +3,23 @@
 // Generic LLM tool-call payload handling for ns steps. Policy: this helper is
 // step-agnostic — it knows tool NAMES only as parameters, never step semantics.
 
-import { isRecord, parseMaybeJson } from '/_102020_/l2/agentNewSolution/helpers/nsFs.js';
+// isRecord/parseMaybeJson are kept LOCAL (not imported from nsFs) so this module stays pure and
+// unit-testable — nsFs pulls the libStor/DOM import chain, which crashes under node:test.
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseMaybeJson(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
 
 export type NsToolStatus = 'ok' | 'failed';
 
@@ -18,22 +34,30 @@ export function createNsToolSchema(
   description: string,
   resultSchema: Record<string, unknown>,
 ): mls.msg.LLMTool {
+  // Grok/xAI (and other strict providers) validate the ENTIRE tool schema from the wrapper root, so a
+  // `$ref: "#/$defs/..."` that lives inside `result` is unresolvable — the root wrapper has no `$defs` —
+  // and the provider rejects the whole request with HTTP 400 (run06/run07, all 110 e5 items failed).
+  // Fix (provider-only, in the agent that owns the tool): hoist result's top-level `$defs` to the
+  // tool-parameters root, where `#/$defs/...` resolves, and drop the nested `$id` the provider does not
+  // need. The refs stay `#/$defs/...` (now correct). Schemas without `$defs` pass through unchanged.
+  const resultBody: Record<string, unknown> = { ...resultSchema };
+  const hoistedDefs = resultBody.$defs;
+  delete resultBody.$defs;
+  delete resultBody.$id;
+  const parameters: Record<string, unknown> = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['status', 'result', 'trace'],
+    properties: {
+      status: { enum: ['ok', 'failed'] },
+      result: resultBody,
+      trace: { type: 'array', items: { type: 'string' } },
+    },
+  };
+  if (hoistedDefs && typeof hoistedDefs === 'object') parameters.$defs = hoistedDefs;
   return {
     type: 'function',
-    function: {
-      name: toolName,
-      description,
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['status', 'result', 'trace'],
-        properties: {
-          status: { enum: ['ok', 'failed'] },
-          result: resultSchema,
-          trace: { type: 'array', items: { type: 'string' } },
-        },
-      },
-    },
+    function: { name: toolName, description, parameters },
   } as unknown as mls.msg.LLMTool;
 }
 
