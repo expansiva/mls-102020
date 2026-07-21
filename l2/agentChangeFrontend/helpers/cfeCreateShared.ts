@@ -373,7 +373,7 @@ const layoutSectionSchema = {
   required: ['id', 'type', 'sectionName', 'titleKey', 'mode', 'order', 'organisms'],
   properties: {
     id: strSchema,
-    type: { enum: ['section', 'sectionTab'] },
+    type: { type: 'string', enum: ['section', 'sectionTab'] },
     sectionName: strSchema,
     titleKey: strSchema,
     mode: strSchema,

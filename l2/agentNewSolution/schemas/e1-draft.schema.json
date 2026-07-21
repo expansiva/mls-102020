@@ -18,7 +18,7 @@
     "createdAt"
   ],
   "properties": {
-    "schemaVersion": { "const": "2026-07-05-ns-e1-v1" },
+    "schemaVersion": { "type": "string", "const": "2026-07-05-ns-e1-v1" },
     "moduleName": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[a-z][a-zA-Z0-9]*$" },
     "moduleTitle": { "type": "string", "minLength": 1, "maxLength": 120 },
     "userLanguage": { "type": "string", "minLength": 2, "maxLength": 20 },
@@ -56,7 +56,7 @@
         "properties": {
           "questionId": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-zA-Z0-9]*$" },
           "question": { "type": "string", "minLength": 1 },
-          "classification": { "enum": ["blocking", "assumed"] },
+          "classification": { "type": "string", "enum": ["blocking", "assumed"] },
           "defaultAnswer": { "type": "string" },
           "impact": { "type": "string", "minLength": 1 }
         }

@@ -68,10 +68,11 @@ Result rules:
     - currentWorkspace: `currentWorkspace.workspaceId`
     - systemDefault: `systemDefault.now` | `systemDefault.uuid` | `systemDefault.locale`
   - "The currently open/active X" (the open shift, the active session record, the current cash
-    register) is source `activeLifecycleInstance` with originRef `X.xId` ('Entity.field' of the
-    lifecycle entity, e.g. `Shift.shiftId`) — NEVER businessContext (its catalog has no such field).
+    register) is source `activeLifecycleInstance` with originRef `Entity.field` — a REAL field of the
+    lifecycle entity, taken from the entity field catalog below (usually its identity field). Do NOT
+    invent `<entity>Id`; use a field that actually exists. NEVER businessContext (no such field there).
   - selectedEntity / workflowState / previousStepOutput also use 'Entity.field' originRefs pointing
-    at a real field of a declared entity.
+    at a real field of a declared entity — again, from the field catalog, never invented.
   - routeParam uses originRef `routeParam.<name>`.
   - description states HOW the backend resolves the value (e.g. "the single Shift with status
     open"), not what the value means.

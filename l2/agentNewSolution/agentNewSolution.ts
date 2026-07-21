@@ -82,7 +82,7 @@ export function createAgent(): IAgentAsync {
 }
 
 // Bump on every deploy so the console confirms the running build is the latest one.
-export const NS_AGENT_BUILD = 'build-20 (2026-07-21) all $id are valid https:// URIs (Grok/xAI rejected the bare collab.codes/... uri-reference)';
+export const NS_AGENT_BUILD = 'build-23 (2026-07-21) e5-operation: entity field catalog in prompt + drop misleading Shift.shiftId example (fix contextResolution originRef inventing fields)';
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
   console.log(`[ns-build] agentNewSolution ${NS_AGENT_BUILD}`);

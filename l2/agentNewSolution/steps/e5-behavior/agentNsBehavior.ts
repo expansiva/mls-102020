@@ -306,6 +306,15 @@ async function buildOperationPrompt(
       .map(item => ({ journeyId: journey.journeyId, title: item.title, intent: item.intent, result: item.result })));
   const relatedRules = actorsRules.rules.filter(rule => rule.appliesTo.includes(target.entity));
 
+  // Every Entity.field ref (reads/writes/keyField/filters/sort AND contextResolution originRef) is
+  // gate-checked against the real entity fields. The target entity's defs are given in full above; the
+  // OTHER entities (e.g. the lifecycle entity an activeLifecycleInstance originRef points at) were only
+  // listed by id, so the model invented field names like `DailyShift.shiftId` (run09). Give a compact
+  // field catalog of every entity so any Entity.field ref uses a field that actually exists.
+  const entityFieldDefs = await readEntityDefsInfo(moduleName, model);
+  const fieldCatalog = model.entities
+    .map(entity => `- ${entity.entityId}: ${(entityFieldDefs[entity.entityId]?.fields || []).map(field => field.fieldId).join(', ') || '(no defs on disk)'}`)
+    .join('\n');
   const schema = await readE5Schema('e5-operation.schema');
   const prompt = await readNsText('steps/e5-behavior', 'promptOperation', '.md', true);
   const humanPrompt = [
@@ -315,8 +324,9 @@ async function buildOperationPrompt(
     '## Target entity defs (full fields and statusEnum)',
     targetDefs ? JSON.stringify(targetDefs, null, 2) : '(no defs on disk)',
     '',
-    '## All valid entity ids (usable in reads/writes and Entity.field refs)',
-    model.entities.map(entity => entity.entityId).join(', '),
+    '## Entity field catalog — the REAL fields of EVERY entity',
+    'Use ONLY these for any Entity.field ref (reads/writes/keyField/filters/sort and contextResolution originRef). Never invent a field.',
+    fieldCatalog,
     '',
     '## Related E2 journey steps (source for acceptanceAssertions)',
     JSON.stringify(relatedSteps, null, 2),
