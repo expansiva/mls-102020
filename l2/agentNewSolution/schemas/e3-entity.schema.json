@@ -1,5 +1,5 @@
 {
-  "$id": "collab.codes/agentNewSolution/e3-entity/2026-07-07-ns-e3-entity-v1",
+  "$id": "https://collab.codes/agentNewSolution/e3-entity/2026-07-07-ns-e3-entity-v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["entityId", "title", "description", "kind", "ownership", "fields"],

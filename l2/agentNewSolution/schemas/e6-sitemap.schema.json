@@ -1,5 +1,5 @@
 {
-  "$id": "collab.codes/agentNewSolution/e6-sitemap/2026-07-19-ns-e6-sitemap-v1",
+  "$id": "https://collab.codes/agentNewSolution/e6-sitemap/2026-07-19-ns-e6-sitemap-v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "moduleName", "workspaces", "landings", "navigationEdges"],

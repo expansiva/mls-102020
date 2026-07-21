@@ -1,5 +1,5 @@
 {
-  "$id": "collab.codes/agentNewSolution/e5-operation/2026-07-18-ns-e5-operation-v4",
+  "$id": "https://collab.codes/agentNewSolution/e5-operation/2026-07-18-ns-e5-operation-v4",
   "type": "object",
   "additionalProperties": false,
   "required": ["operationId", "title", "actors", "entity", "kind", "reads", "writes", "rulesApplied", "story", "accessPattern", "outputShape", "inputs", "contextResolution", "acceptanceAssertions"],

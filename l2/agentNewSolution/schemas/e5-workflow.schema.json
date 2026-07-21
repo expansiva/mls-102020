@@ -1,5 +1,5 @@
 {
-  "$id": "collab.codes/agentNewSolution/e5-workflow/2026-07-07-ns-e5-workflow-v1",
+  "$id": "https://collab.codes/agentNewSolution/e5-workflow/2026-07-07-ns-e5-workflow-v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["workflowId", "title", "executionMode", "trigger", "actors", "states", "transitions", "operationIds", "entities", "rulesApplied", "story"],

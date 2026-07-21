@@ -1,5 +1,5 @@
 {
-  "$id": "collab.codes/agentNewSolution/e3-model/2026-07-07-ns-e3-v1",
+  "$id": "https://collab.codes/agentNewSolution/e3-model/2026-07-07-ns-e3-v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "moduleName", "userLanguage", "module", "entities", "relationships"],

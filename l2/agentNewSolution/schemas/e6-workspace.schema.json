@@ -1,5 +1,5 @@
 {
-  "$id": "collab.codes/agentNewSolution/e6-workspace/2026-07-19-ns-e6-workspace-v1",
+  "$id": "https://collab.codes/agentNewSolution/e6-workspace/2026-07-19-ns-e6-workspace-v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["workspaceId", "title", "actors", "kind", "entity", "sections", "purpose"],

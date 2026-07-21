@@ -1,5 +1,5 @@
 {
-  "$id": "collab.codes/agentNewSolution/e6-journey-map/2026-07-18-ns-e6-v5",
+  "$id": "https://collab.codes/agentNewSolution/e6-journey-map/2026-07-18-ns-e6-v5",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "moduleName", "workspaces", "landings", "navigationEdges"],

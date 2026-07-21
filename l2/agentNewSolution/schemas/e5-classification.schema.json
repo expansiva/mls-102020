@@ -1,5 +1,5 @@
 {
-  "$id": "collab.codes/agentNewSolution/e5-classification/2026-07-11-ns-e5-v2",
+  "$id": "https://collab.codes/agentNewSolution/e5-classification/2026-07-11-ns-e5-v2",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "moduleName", "workflows", "operations", "managedEntities"],
