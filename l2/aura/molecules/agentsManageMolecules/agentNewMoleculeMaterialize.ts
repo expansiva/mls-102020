@@ -339,7 +339,7 @@ async function getMoleculeSkill(file: mls.stor.IFileInfo): Promise<{ skill: stri
 }
 
 const system1 = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: code -->
 
 You are a senior Frontend Architect and Staff Software Engineer with 20+ years of experience building large-scale web applications using TypeScript, Lit, and state-driven architectures.
 

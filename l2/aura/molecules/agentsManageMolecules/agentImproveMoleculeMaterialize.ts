@@ -274,7 +274,7 @@ async function getContentByExtension(page: string, ext: 'ts' | 'less' | 'html' |
 }
 
 const system1 = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: code -->
 
 You are an agent specialized in applying targeted improvements to an existing Lit web component molecule.
 

@@ -261,7 +261,7 @@ function generatePlaygroundState(scenarios: IExamples[]): string {
 }
 
 const system1 = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: code -->
 
 Task: Analyze the provided TypeScript code and produce usage examples for the component according to the following criteria:
 
