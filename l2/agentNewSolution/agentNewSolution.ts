@@ -82,7 +82,7 @@ export function createAgent(): IAgentAsync {
 }
 
 // Bump on every deploy so the console confirms the running build is the latest one.
-export const NS_AGENT_BUILD = 'build-16 (2026-07-20) task06 6a: fanout item failure never fails task + auto-handoff @@changeBackend/@@changeFrontend /rebuild all';
+export const NS_AGENT_BUILD = 'build-19 (2026-07-21) e5-behavior modelType -> code (grok-4.5); e5-operation schema kept STRICT (additionalProperties:false) — rely on strict model, not a loose schema';
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
   console.log(`[ns-build] agentNewSolution ${NS_AGENT_BUILD}`);
