@@ -296,23 +296,32 @@ async function runE7(
   ];
 }
 
-// task06: the two follow-up commands, in the user's order (backend then frontend). Each fires as an
-// independent new task; if the backend is meant to consume the frontend's l2 contracts, they do NOT
-// sequence — that ordering is the pipeline owner's call.
-const NS_HANDOFF_MESSAGES = ['@@changeBackend /rebuild all', '@@changeFrontend /rebuild all'] as const;
+// task06: the two follow-up commands. Each fires as an independent new task and they run in PARALLEL —
+// they do NOT sequence (the backend does not consume the frontend's l2 contracts here). The module name
+// is passed explicitly as the command target (future: horizontal modules + plugins reuse the same shape).
+function nsHandoffMessages(moduleName: string): string[] {
+  return [`@@changeBackend /rebuild all ${moduleName}`, `@@changeFrontend /rebuild all ${moduleName}`];
+}
+// sendThreadMessage runs the spawned task inline, so awaiting each in series made newSolution block on
+// the WHOLE backend task before the frontend one even started. We start both at once and prefer NOT to
+// wait for them; this hard cap only gives both a brief window to register before newSolution returns.
+const NS_HANDOFF_MAX_WAIT_MS = 1000;
 
-// Post the handoff commands as new messages. Each is awaited in its own try/catch: a messaging failure
-// is traced but never fails the already-persisted spec (all l4/l5 artifacts are on disk by now).
+// Fire BOTH handoffs concurrently and return promptly. Each dispatch catches its own error (traced,
+// never fatal — the spec is already on disk); the pair is raced against a short grace window so
+// newSolution does not block on the child tasks running to completion.
 async function dispatchNsHandoff(context: mls.msg.ExecutionContext, moduleName: string): Promise<void> {
   const threadId = context.message?.threadId;
   if (!threadId) return;
-  for (const content of NS_HANDOFF_MESSAGES) {
-    try {
-      await sendThreadMessage(threadId, content);
-    } catch (error) {
-      await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, 1, { handoff: content }, `handoff dispatch failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
+  const dispatches = nsHandoffMessages(moduleName).map(content =>
+    sendThreadMessage(threadId, content).catch(error =>
+      writeNsTrace(moduleName, STEP_ID, AGENT_NAME, 1, { handoff: content }, `handoff dispatch failed: ${error instanceof Error ? error.message : String(error)}`)
+        .catch(() => undefined)),
+  );
+  await Promise.race([
+    Promise.allSettled(dispatches),
+    new Promise<void>(resolve => setTimeout(resolve, NS_HANDOFF_MAX_WAIT_MS)),
+  ]);
 }
 
 async function resolveE7Module(requested?: string): Promise<string> {

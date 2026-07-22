@@ -287,9 +287,6 @@ const strSchema = { type: 'string' } as const;
 const boolSchema = { type: 'boolean' } as const;
 const intSchema = { type: 'integer' } as const;
 const strArraySchema = { type: 'array', items: strSchema } as const;
-const i18nStringMapSchema = { type: 'object', additionalProperties: strSchema } as const;
-const i18nNestedMapSchema = { type: 'object', additionalProperties: i18nStringMapSchema } as const;
-const i18nValueSchema = { anyOf: [strSchema, i18nStringMapSchema, i18nNestedMapSchema] } as const;
 
 const layoutActionSchema = {
   type: 'object',
@@ -385,12 +382,16 @@ const layoutSectionSchema = {
 const pageLayoutObjectSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['pageId', 'layoutId', 'sections', 'i18n', 'dataBindings'],
+  // i18n is intentionally NOT part of the tool contract: it is a dynamic key->label map, which cannot be
+  // expressed as a strict-clean (lint-clean) closed object. The model authors only the layout; every
+  // referenced titleKey/labelKey/emptyKey is backfilled deterministically by repairMissingLayoutI18n
+  // (savePageLayoutDefs) before validatePageLayout runs. Keeping i18n out also keeps the whole tool
+  // strict-ready, so strict-honoring providers structurally block unknown keys (organism drift too).
+  required: ['pageId', 'layoutId', 'sections', 'dataBindings'],
   properties: {
     pageId: strSchema,
     layoutId: strSchema,
     sections: { type: 'array', minItems: 1, items: layoutSectionSchema },
-    i18n: { type: 'object', additionalProperties: i18nValueSchema },
     dataBindings: {
       type: 'array',
       items: {
@@ -446,10 +447,6 @@ function relaxPageLayoutSchema(pageLayoutSchema: any): void {
 function createRelaxedCfePageLayoutToolSchema(): mls.msg.LLMTool {
   const resultSchema = JSON.parse(JSON.stringify(cfePageLayoutResultSchema)) as Record<string, any>;
   relaxPageLayoutSchema(resultSchema.properties?.pageLayout);
-  // Strict tool providers reject additionalProperties:true and schema-valued additionalProperties.
-  // The runtime normalizer can still default missing labels; the tool contract must stay closed.
-  const i18nSchema = resultSchema.properties?.pageLayout?.properties?.i18n;
-  if (i18nSchema && typeof i18nSchema === 'object') i18nSchema.additionalProperties = false;
   const tool = createPlannerToolSchema(CFE_LAYOUT_TOOL_NAME, 'Submit the semantic layout for one frontend page variant.', resultSchema) as mls.msg.LLMTool;
   const parameters = (tool as any).function?.parameters;
   if (parameters && Array.isArray(parameters.required)) parameters.required = ['status', 'result'];
@@ -1049,7 +1046,9 @@ function baseLayoutPromptContext(prepared: CfePreparedPage): Record<string, unkn
       },
       statePolicy: 'All filters, form fields, query results, action statuses and navigation requests are shared/global state. Page render must not own mutable state.',
     },
-    i18n: prepared.i18nMeta,
+    // Module locale metadata only — NOT an output field. The model does not author i18n (see tool
+    // schema note); renamed away from `i18n` so it is not mirrored back as a rejected i18n output key.
+    localeMeta: prepared.i18nMeta,
     // F4: the l4 v2 workspace declares the authoritative section/organism skeleton. The LLM lays out
     // AROUND these roles — it does NOT invent a section per query. Absent for legacy operationIds pages.
     ...(prepared.workspace && prepared.workspace.sections.length > 0 ? {

@@ -100,7 +100,9 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
   // Phase 1 is incomplete, so the user does not repeat the clarification they already answered.
   if (!normalized) {
     const resume = await findResumableNsModule();
-    if (resume) return [buildRootMessageAI(agent, context, resume.sourcePrompt, { ...fastMemory, resumeModule: resume.moduleName, resumeTarget: resume.target })];
+    // On resume the module name is already known, so the task is born as "plan <module>" (a fresh run
+    // stays "new Solution" until e1-draft resolves the module name and renames it).
+    if (resume) return [buildRootMessageAI(agent, context, resume.sourcePrompt, { ...fastMemory, resumeModule: resume.moduleName, resumeTarget: resume.target }, `plan ${resume.moduleName}`)];
   }
   return [buildRootMessageAI(agent, context, normalized || '(empty prompt)', fastMemory)];
 }
@@ -110,6 +112,7 @@ function buildRootMessageAI(
   context: mls.msg.ExecutionContext,
   content: string,
   extraMemory: Record<string, string>,
+  taskTitle = 'new Solution',
 ): mls.msg.AgentIntentAddMessageAI {
   return {
     type: 'add-message-ai',
@@ -120,7 +123,7 @@ function buildRootMessageAI(
         { type: 'system', content: systemPrompt.replace('{{planIds}}', NS_PLAN_IDS.join(', ')) },
         { type: 'human', content },
       ],
-      taskTitle: 'new Solution',
+      taskTitle,
       threadId: context.message.threadId,
       userMessage: context.message.content,
       longTermMemory: { taskName: 'newSolution', flowName: 'agentNewSolution', ...extraMemory },
