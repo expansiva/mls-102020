@@ -65,6 +65,7 @@ import {
   deriveE6BffRoutes,
   prepareE6JourneyMap,
   renderE6Markdown,
+  repairE6BffFroms,
   validateE6Invariants,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/gate.js';
 import {
@@ -328,7 +329,7 @@ async function handleSiteMapResult(
     return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', output.trace.join('\n') || 'E6 site map returned failed')];
   }
 
-  const siteMapContext = buildSiteMapContext(inputs);
+  const siteMapContext = buildSiteMapContext(inputs, await buildE6OperationFacts(moduleName, inputs.classification));
   // Deterministic: moduleName/note from code; kind + workflowId DERIVED (never trusted from the LLM).
   const siteMap = deriveE6SiteMapKinds(prepareE6SiteMap(output.result, { moduleName }), siteMapContext);
   const schema = await readNsSchema('e6-sitemap.schema');
@@ -441,6 +442,8 @@ async function handleDetailResult(
   // validateE6Invariants scoped to THIS workspace so coverage passes; navigationEntry cross-page links
   // are re-checked authoritatively at finalize).
   const scopedContext = await buildSingleWorkspaceContext(inputs, workspace);
+  // Deterministic `from` qualification (run12: relative "$items.<col>" paths) before the gate.
+  repairE6BffFroms(prepared, scopedContext.operationFacts);
   const localGate = validateE6Invariants(prepared, scopedContext);
   const equality = validateE6WorkspaceEquality(workspace, slice);
   const errors = [...equality, ...localGate.issues.filter(issue => issue.severity === 'error' && issue.code !== 'navigationEntry.target.unknown')];
@@ -517,6 +520,7 @@ async function runE6Finalize(
     workspaces, landings: siteMap.landings, navigationEdges: siteMap.navigationEdges,
   };
   const gateContext = await buildFullGateContext(inputs);
+  repairE6BffFroms(artifact, gateContext.operationFacts); // idempotent; also heals pre-repair saved details
   const check = validateE6Invariants(artifact, gateContext);
   const errors = check.issues.filter(issue => issue.severity === 'error');
   let pipeline = await readNsPipeline(moduleName) || createNsPipeline(moduleName);
@@ -792,7 +796,9 @@ async function summarizeOperationsLight(moduleName: string, classification: NsE5
     const accessPattern = isRecord(defs?.accessPattern) ? defs!.accessPattern : {};
     summaries.push({
       id: operation.operationId,
-      actor: operation.actorId,
+      // FULL actor list from the defs (D6): the site map must see secondary actors — its workspace
+      // actors must cover every actor of every hosted operation (siteMap.actors.notCovering otherwise).
+      actors: readActors(defs).length ? readActors(defs) : [operation.actorId],
       kind: readString(defs?.kind) || operation.kind,
       entity: operation.entity,
       accessPatternKind: readString(accessPattern.kind) || '',
@@ -803,7 +809,7 @@ async function summarizeOperationsLight(moduleName: string, classification: NsE5
   return summaries;
 }
 
-function buildSiteMapContext(inputs: E6Inputs): E6SiteMapGateContext {
+function buildSiteMapContext(inputs: E6Inputs, operationFacts: Record<string, NsE6OperationFact>): E6SiteMapGateContext {
   const operationOwnerWorkflow: Record<string, string | undefined> = {};
   const operationKind: Record<string, string> = {};
   const operationEntity: Record<string, string> = {};
@@ -823,6 +829,7 @@ function buildSiteMapContext(inputs: E6Inputs): E6SiteMapGateContext {
     entityIds: inputs.model.entities.map(entity => entity.entityId),
     nowCapabilityActorIds: computeNowCapabilityActorIds(inputs.classification, inputs.journeys),
     operationOwnerWorkflow, operationKind, operationEntity,
+    operationActors: Object.fromEntries(Object.entries(operationFacts).map(([operationId, fact]) => [operationId, fact.actors])),
   };
 }
 

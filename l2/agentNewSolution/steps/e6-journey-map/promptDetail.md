@@ -13,6 +13,22 @@ COPY FROM THE MAP VERBATIM (a gate error/retry otherwise): workspaceId, title, a
 purpose and the EXACT set of operationIds — repeat them unchanged. You add: bffCalls, sections,
 operationIds (same set). User-facing text (intent) stays in userLanguage.
 
+HARD REQUIREMENTS (a result violating these is rejected outright):
+- result.sections is REQUIRED: at least 1 section — a result with bffCalls but no sections is invalid.
+- NEVER emit an empty object {} anywhere: every input entry has a "name"; every output field has
+  "name" AND "from".
+- EVERY `from` path STARTS WITH the operationId, in full, even inside item.fields:
+  - input:                "<op>.<inputName>"                      e.g. "queryStockItems.status"
+  - output top field:     "<op>.<topField>"                       e.g. "viewDashboard.totalSales"
+  - array field (a list): "<op>.$items" (primary collection) or "<op>.<arrayField>" (named array) —
+    NEVER "<op>.<arrayField>.$items"; the ".$items.<col>" suffix belongs to its item.fields ONLY.
+  - column inside item.fields: "<op>.$items.<col>" (primary) or "<op>.<arrayField>.$items.<col>"
+    (named array) — NEVER a bare "$items.<col>" without the operationId.
+  WRONG: { "name": "menuItemId", "from": "$items.menuItemId" }
+  RIGHT: { "name": "menuItemId", "from": "viewDashboard.$items.menuItemId" }
+  WRONG: { "name": "lowStockAlerts", "from": "viewDashboard.lowStockAlerts.$items", "type": "array" }
+  RIGHT: { "name": "lowStockAlerts", "from": "viewDashboard.lowStockAlerts", "type": "array" }
+
 - bffCalls: the DATA CONTRACTS. Default granularity: 1 query bffCall per surface (its filters are the
   call's `input`) and 1 command bffCall per command. Each:
   - bffId (lower camelCase, unique in the workspace), kind ("query"|"command").

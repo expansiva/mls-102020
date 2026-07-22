@@ -29,6 +29,7 @@ const SITE_MAP_CONTEXT = {
   operationOwnerWorkflow: { createOrder: 'orderLifecycle' },
   operationKind: { createOrder: 'create', viewKitchenQueue: 'query' },
   operationEntity: { createOrder: 'Order', viewKitchenQueue: 'Order' },
+  operationActors: { createOrder: ['attendant'], viewKitchenQueue: ['cook'] },
 };
 
 void test('agentNsJourneyMap tool schemas are provider-clean', () => {

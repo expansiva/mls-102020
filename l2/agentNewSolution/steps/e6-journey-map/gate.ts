@@ -325,6 +325,81 @@ export function deriveE6BffRoutes(artifact: NsE6JourneyMapArtifact): NsE6Journey
   return artifact;
 }
 
+// Run12 (102051): every failed detail wrote RELATIVE projection paths — the models systematically drop
+// the "<op>." prefix inside item.fields ("$items.col", "lowStockAlerts.$items.col"), point an array
+// field's `from` at "<op>.<array>.$items" instead of "<op>.<array>", and use the "$items" primary
+// shorthand for a NON-primary array's columns. All of these are UNAMBIGUOUS when the call composes
+// exactly ONE operation (the default granularity) — so, per the "derivable values are attached by code"
+// convention, qualify them deterministically BEFORE the gate instead of burning repair rounds. A `from`
+// is rewritten ONLY when the rewrite lands on a valid path of the single used operation; anything still
+// ambiguous (composed calls, a prefix naming ANOTHER known operation, unknown names) is left untouched
+// for the gate to report.
+export function repairE6BffFroms(
+  artifact: NsE6JourneyMapArtifact,
+  operationFacts: Record<string, Pick<NsE6OperationFact, 'inputNames' | 'outputTopPaths' | 'outputItemPaths'>>,
+): NsE6JourneyMapArtifact {
+  for (const workspace of artifact.workspaces) {
+    for (const call of workspace.bffCalls) {
+      if (call.uses.length !== 1) continue;
+      const op = call.uses[0].operationId;
+      const fact = operationFacts[op];
+      if (!fact) continue;
+      // The path with the op prefix stripped — or null when the prefix names ANOTHER known operation
+      // (a real cross-op mistake the gate must report, never silently rewrite).
+      const strip = (from: string): string | null => {
+        const resolved = resolveFrom(from);
+        if (resolved?.op === op) return resolved.rest;
+        if (resolved && operationFacts[resolved.op]) return null;
+        return from;
+      };
+      for (const entry of call.input || []) {
+        if (!entry.from) continue;
+        const stripped = strip(entry.from);
+        if (stripped !== null && fact.inputNames.includes(stripped)) entry.from = `${op}.${stripped}`;
+      }
+      if (!call.output) continue;
+      const tops = new Set(fact.outputTopPaths);
+      const items = new Set(fact.outputItemPaths);
+      for (const field of call.output.fields || []) {
+        if (!field.from) continue;
+        const stripped = strip(field.from);
+        if (stripped === null) continue;
+        if (isArrayField(field)) {
+          // The array field references its COLLECTION: "<array>.$items" (and bare "$items") degrade to
+          // the collection name the top pool knows.
+          let ref = stripped;
+          if (!tops.has(ref) && ref.endsWith('.$items')) {
+            const collection = ref.slice(0, -'.$items'.length);
+            if (tops.has(collection)) ref = collection;
+          }
+          if (tops.has(ref)) field.from = `${op}.${ref}`;
+          // Columns inside item.fields: "$items.<col>" / "<array>.$items.<col>" / bare "<col>" — when
+          // the column resolves under THIS array's item prefix, qualify it there.
+          const itemPrefix = ref === '$items' ? '$items' : `${ref}.$items`;
+          for (const sub of field.item?.fields || []) {
+            if (!sub.from) continue;
+            const subStripped = strip(sub.from);
+            if (subStripped === null) continue;
+            let subRef = subStripped;
+            if (!items.has(subRef)) {
+              const col = subRef.split('.').pop() || '';
+              if (col && items.has(`${itemPrefix}.${col}`)) subRef = `${itemPrefix}.${col}`;
+            }
+            if (items.has(subRef)) sub.from = `${op}.${subRef}`;
+          }
+        } else {
+          // Scalar field: a list output's fields ARE item columns; object/paginated scalars are top paths.
+          const pool = call.output.kind === 'list' ? items : tops;
+          let ref = stripped;
+          if (call.output.kind === 'list' && !pool.has(ref) && items.has(`$items.${ref}`)) ref = `$items.${ref}`;
+          if (pool.has(ref)) field.from = `${op}.${ref}`;
+        }
+      }
+    }
+  }
+  return artifact;
+}
+
 export function prepareE6JourneyMap(input: unknown, context: Pick<E6GateContext, 'moduleName'>): NsE6JourneyMapArtifact {
   const record = isRecord(input) ? input : {};
   const workspaces = Array.isArray(record.workspaces) ? record.workspaces.filter(isRecord) : [];
