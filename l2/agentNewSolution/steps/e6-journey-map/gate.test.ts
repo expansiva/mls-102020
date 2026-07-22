@@ -16,6 +16,7 @@ import {
   NsE6JourneyMapArtifact,
   NsE6OperationFact,
   prepareE6JourneyMap,
+  repairE6BffFroms,
   validateE6Invariants,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/gate.js';
 
@@ -699,4 +700,80 @@ void test('collectNsOutputPathSets splits top (envelope + $items) from item (col
   assert.ok(sets.top.includes('products') && sets.top.includes('total') && sets.top.includes('$items'));
   assert.ok(!sets.top.includes('$items.productId'), '$items.<col> is NOT a top path (P1)');
   assert.ok(sets.item.includes('$items.productId') && sets.item.includes('products.$items.name'));
+});
+
+// ── repairE6BffFroms: the run12 replay (the EXACT relative paths grok/kimi emitted) ────────────────
+// The cheap error predictor: these payloads killed run12's detail phase across 2 repair rounds; the
+// repair must qualify every unambiguous single-op `from` so the gate passes without another LLM roll.
+
+const viewDashboardFact: NsE6OperationFact = {
+  accessPatternKind: 'getById', selection: 'none', opKind: 'view', hasPublicInput: false, actors: ['gerente'],
+  inputNames: ['shiftId', 'unitId'],
+  outputTopPaths: ['shiftId', 'unitId', 'status', 'openedAt', 'totalSales', 'totalOrders', 'topSellers', 'lowStockAlerts', '$items'],
+  outputItemPaths: [
+    'topSellers.$items.menuItemId', 'topSellers.$items.name', 'topSellers.$items.quantity',
+    'lowStockAlerts.$items.stockItemId', 'lowStockAlerts.$items.name', 'lowStockAlerts.$items.currentQuantity',
+    '$items.menuItemId', '$items.name', '$items.quantity',
+  ],
+};
+
+function dashboardMap(fields: unknown[]): NsE6JourneyMapArtifact {
+  return prepareE6JourneyMap({
+    workspaces: [{
+      workspaceId: 'shiftCommand', title: 'Turno e visão do dia', actors: ['gerente'], kind: 'operation',
+      entity: 'Shift', purpose: 'Acompanhar o dia.',
+      bffCalls: [{
+        bffId: 'dashboardQuery', kind: 'query', uses: [{ operationId: 'viewDashboard' }],
+        input: [{ name: 'shiftId', from: 'shiftId' }],
+        output: { kind: 'object', fields },
+      }],
+      sections: [{ sectionId: 'dashboard', intent: 'Acompanhar indicadores', organisms: [{ role: 'primarySurface', dataSource: 'dashboardQuery' }] }],
+    }],
+    landings: [], navigationEdges: [],
+  }, { moduleName: 'cafeFlow' });
+}
+
+void test('repairE6BffFroms qualifies the run12 relative paths (missing op prefix, <array>.$items, $items shorthand)', () => {
+  const map = dashboardMap([
+    { name: 'totalSales', from: 'totalSales' },                                       // bare top field
+    { name: 'topSellers', from: 'viewDashboard.$items', type: 'array', item: { fields: [
+      { name: 'menuItemId', from: '$items.menuItemId' },                              // run12: no op prefix
+      { name: 'name', from: '$items.name' },
+    ] } },
+    { name: 'lowStockAlerts', from: 'viewDashboard.lowStockAlerts.$items', type: 'array', item: { fields: [
+      { name: 'stockItemId', from: 'lowStockAlerts.$items.stockItemId' },             // run12: no op prefix
+      { name: 'currentQuantity', from: 'viewDashboard.$items.currentQuantity' },      // run12: wrong shorthand
+    ] } },
+  ]);
+  repairE6BffFroms(map, { viewDashboard: viewDashboardFact });
+  const call = map.workspaces[0].bffCalls[0];
+  assert.equal(call.input?.[0].from, 'viewDashboard.shiftId');
+  const [totalSales, topSellers, lowStockAlerts] = call.output!.fields;
+  assert.equal(totalSales.from, 'viewDashboard.totalSales');
+  assert.equal(topSellers.from, 'viewDashboard.$items');
+  assert.equal(topSellers.item!.fields[0].from, 'viewDashboard.$items.menuItemId');
+  assert.equal(topSellers.item!.fields[1].from, 'viewDashboard.$items.name');
+  assert.equal(lowStockAlerts.from, 'viewDashboard.lowStockAlerts', 'the array field points at the collection, not <array>.$items');
+  assert.equal(lowStockAlerts.item!.fields[0].from, 'viewDashboard.lowStockAlerts.$items.stockItemId');
+  assert.equal(lowStockAlerts.item!.fields[1].from, 'viewDashboard.lowStockAlerts.$items.currentQuantity', 'a wrong $items shorthand re-homes under the enclosing array');
+  // And the authoritative gate accepts the repaired map (scoped to this workspace's single operation).
+  const issues = validateE6Invariants(map, {
+    moduleName: 'cafeFlow', classificationWorkflowIds: [], classificationOperationIds: ['viewDashboard'],
+    rosterActorIds: ['gerente'], entityIds: ['Shift'], nowCapabilityActorIds: [],
+    operationFacts: { viewDashboard: viewDashboardFact },
+  }).issues.filter(issue => issue.severity === 'error');
+  assert.equal(issues.length, 0, issues.map(issue => `${issue.code}: ${issue.message}`).join('; '));
+});
+
+void test('repairE6BffFroms leaves ambiguous froms alone (composed call; prefix naming another known op)', () => {
+  const map = dashboardMap([
+    { name: 'shiftId', from: 'otherOp.shiftId' },   // cross-op reference: a REAL mistake, gate must see it
+  ]);
+  const facts = { viewDashboard: viewDashboardFact, otherOp: { ...viewDashboardFact, outputTopPaths: [] } };
+  repairE6BffFroms(map, facts);
+  assert.equal(map.workspaces[0].bffCalls[0].output!.fields[0].from, 'otherOp.shiftId');
+  const composed = dashboardMap([{ name: 'totalSales', from: 'totalSales' }]);
+  composed.workspaces[0].bffCalls[0].uses.push({ operationId: 'otherOp' });
+  repairE6BffFroms(composed, facts);
+  assert.equal(composed.workspaces[0].bffCalls[0].output!.fields[0].from, 'totalSales', 'a composed call is never auto-qualified');
 });

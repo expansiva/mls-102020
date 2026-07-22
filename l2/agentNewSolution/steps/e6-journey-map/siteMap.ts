@@ -64,6 +64,9 @@ export interface E6SiteMapGateContext {
   operationOwnerWorkflow: Record<string, string | undefined>;
   operationKind: Record<string, string>;
   operationEntity: Record<string, string>;
+  // D6 at the partition: the FULL actor list of each operation (from the saved defs — the classification
+  // carries a single actorId and misses secondary actors). Ops without an entry skip the coverage check.
+  operationActors: Record<string, string[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,7 +92,9 @@ export function prepareE6SiteMap(input: unknown, context: Pick<E6SiteMapGateCont
         entity: readString(workspace.entity) || '',
         ...(workflowId ? { workflowId } : {}),
         operationIds: readStringArray(workspace.operationIds),
-        purpose: readString(workspace.purpose) || '',
+        // purpose is no longer schema-required (strict models — Grok — intermittently drop it from the
+        // tool JSON even after reasoning it). Backfill from the title so downstream never sees empty.
+        purpose: readString(workspace.purpose) || readString(workspace.title) || readString(workspace.workspaceId) || 'workspace',
       };
     }),
     landings: landings.map(landing => {
@@ -177,8 +182,22 @@ export function validateE6SiteMap(artifact: NsE6SiteMapArtifact, context: E6Site
         issues.push(errorIssue('siteMap.actor.unknown', `workspace ${workspace.workspaceId}: actor ${actor} is not in the E4 roster`, workspace.workspaceId));
       }
     }
-    // NOTE: the actor-coverage ⊇ check (workspace.actors ⊇ ∪ operation.actors) is enforced
-    // authoritatively by validateE6Invariants at finalize, once the detail (bffCalls) is assembled.
+    // D6 at the PARTITION (run12: kitchenQueue hosted updateOrderStatus, which also serves "atendente" —
+    // the detail phase copies actors verbatim from this slice, so a coverage hole here can NEVER be
+    // fixed by a detail retry; it must fail HERE, where the retry can regroup ops or widen the actors).
+    // validateE6Invariants re-checks authoritatively at finalize over the assembled bffCalls.
+    const declaredActors = new Set(workspace.actors);
+    const operationActorUnion = new Set<string>();
+    for (const operationId of workspace.operationIds) {
+      for (const actor of context.operationActors[operationId] || []) {
+        if (actor !== NS_PUBLIC_ACTOR) operationActorUnion.add(actor);
+      }
+    }
+    for (const actor of operationActorUnion) {
+      if (!declaredActors.has(actor)) {
+        issues.push(errorIssue('siteMap.actors.notCovering', `workspace ${workspace.workspaceId}: hosts an operation for actor "${actor}" not in the workspace actors [${workspace.actors.join(', ')}]`, workspace.workspaceId));
+      }
+    }
     if (!knownEntities.has(workspace.entity)) {
       issues.push(errorIssue('siteMap.entity.unknown', `workspace ${workspace.workspaceId}: entity ${workspace.entity} is not a declared E3 entity`, workspace.workspaceId));
     }

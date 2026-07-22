@@ -29,6 +29,7 @@ const context: E6SiteMapGateContext = {
   operationOwnerWorkflow: { createReservation: 'reservationLifecycle' },
   operationKind: { browseCatalog: 'query', viewProductDetail: 'view', createReservation: 'create', browseHighlights: 'query' },
   operationEntity: { browseCatalog: 'Product', viewProductDetail: 'Product', createReservation: 'Reservation', browseHighlights: 'FeaturedProduct' },
+  operationActors: { browseCatalog: ['cliente'], viewProductDetail: ['cliente'], createReservation: ['cliente'], browseHighlights: ['cliente'] },
 };
 
 function validMap(): NsE6SiteMapArtifact {
@@ -69,6 +70,20 @@ void test('siteMap gate blocks an unknown operation and a duplicated workspaceId
   assert.equal(gate.ok, false);
   assert.ok(gate.errors.some(i => i.code === 'siteMap.operation.unknown'));
   assert.ok(gate.errors.some(i => i.code === 'siteMap.workspace.id.duplicate'));
+});
+
+// Run12 replay (kitchenQueue): the slice declared actors [cozinheiro] but hosted updateOrderStatus,
+// whose defs also serve "atendente". The detail phase copies actors verbatim, so this MUST fail at
+// phase 1 (retryable) — deferring it to finalize burns every repair round deterministically.
+void test('siteMap gate blocks a workspace whose actors do not cover a hosted operation (run12 kitchenQueue)', async () => {
+  const map = validMap();
+  const kitchenContext: E6SiteMapGateContext = {
+    ...context,
+    operationActors: { ...context.operationActors, createReservation: ['cliente', 'atendente'] },
+  };
+  const gate = await runNsGate({ stepId: 'e6-journey-map', schema, artifact: map, validate: item => validateE6SiteMap(item, kitchenContext) });
+  assert.equal(gate.ok, false);
+  assert.ok(gate.errors.some(i => i.code === 'siteMap.actors.notCovering' && i.message.includes('"atendente"')));
 });
 
 void test('siteMap gate blocks a landing pointing at an undeclared workspace', async () => {

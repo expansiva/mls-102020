@@ -1,5 +1,5 @@
 {
-  "$id": "collab.codes/agentNewSolution/e3-entity/2026-07-07-ns-e3-entity-v1",
+  "$id": "https://collab.codes/agentNewSolution/e3-entity/2026-07-07-ns-e3-entity-v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["entityId", "title", "description", "kind", "ownership", "fields"],
@@ -7,8 +7,8 @@
     "entityId": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$", "maxLength": 60 },
     "title": { "type": "string", "minLength": 1 },
     "description": { "type": "string", "minLength": 10 },
-    "kind": { "enum": ["core", "supporting", "event", "metric", "mdm"] },
-    "ownership": { "enum": ["moduleOwned", "mdmOwned", "horizontalOwned", "pluginOwned", "existingModuleOwned", "external"] },
+    "kind": { "type": "string", "enum": ["core", "supporting", "event", "metric", "mdm"] },
+    "ownership": { "type": "string", "enum": ["moduleOwned", "mdmOwned", "horizontalOwned", "pluginOwned", "existingModuleOwned", "external"] },
     "fields": {
       "type": "array",
       "minItems": 1,
@@ -32,7 +32,7 @@
       "additionalProperties": false,
       "required": ["purpose"],
       "properties": {
-        "purpose": { "enum": ["telemetry", "audit", "reaction"] },
+        "purpose": { "type": "string", "enum": ["telemetry", "audit", "reaction"] },
         "retentionDays": { "type": "integer" }
       }
     },

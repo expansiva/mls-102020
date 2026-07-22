@@ -329,6 +329,13 @@ function main(): void {
   config.projects = config.projects || {};
   config.projects[clientId] = { ...(config.projects[clientId] || {}), root: '.', type: 'client', runtime: projectRuntimeMetadata(l5, clientId) };
   config.projects[runtimeId] = { root: `../mls-${runtimeId}`, type: 'master frontend' };
+  // The frontend app routes BFF calls to the backend runtime, so config.projects must list it. Register
+  // it here when absent (the app doesn't work without it, and the backend composer may not have run yet);
+  // never clobber a richer entry the backend composer contributes.
+  const backendRuntimeId = l5.masters?.backend?.runtimeProject ? String(l5.masters.backend.runtimeProject) : '';
+  if (backendRuntimeId) {
+    config.projects[backendRuntimeId] = config.projects[backendRuntimeId] || { root: `../mls-${backendRuntimeId}`, type: 'master backend' };
+  }
   // Frontend shared libs used by the generated l2 code and by the master frontend.
   config.projects['102027'] = config.projects['102027'] || { root: '../mls-102027', type: 'lib' };
   config.projects['102029'] = config.projects['102029'] || { root: '../mls-102029', type: 'lib' };

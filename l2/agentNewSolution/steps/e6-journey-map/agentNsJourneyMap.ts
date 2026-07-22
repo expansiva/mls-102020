@@ -38,9 +38,10 @@ import {
   nsParseSelector,
   nsResultStepIntent,
   nsUpdateStatusIntent,
+  NS_MAX_REPAIR_ROUNDS,
+  rotateNsModelType,
 } from '/_102020_/l2/agentNewSolution/helpers/nsSteps.js';
 import { nsLlmInfraFailureIntents } from '/_102020_/l2/agentNewSolution/helpers/nsLlmRetry.js';
-import { NS_AGENT_BUILD } from '/_102020_/l2/agentNewSolution/agentNewSolution.js';
 import {
   approveNsStep,
   createNsPipeline,
@@ -64,6 +65,7 @@ import {
   deriveE6BffRoutes,
   prepareE6JourneyMap,
   renderE6Markdown,
+  repairE6BffFroms,
   validateE6Invariants,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/gate.js';
 import {
@@ -178,9 +180,6 @@ async function beforePromptStep(
   // Parallel detail children receive the compact selector 'workspace:<workspaceId>'.
   const selector = nsParseSelector(hookArgs);
   const parsedArgs = selector?.kind === 'workspace' ? { planId: DETAIL_PLAN, workspaceId: selector.id } : parseE6Args(hookArgs);
-  // Deploy check: confirms the CURRENT e6 build is live (the stale-compile issue — build-11 has the
-  // two-phase + command-form primarySurface). If the logs show an older build, compiled.zip is stale.
-  console.log(`[ns-build] ${AGENT_NAME} ${NS_AGENT_BUILD} | planId=${parsedArgs.planId || STEP_ID}${parsedArgs.workspaceId ? ` ws=${parsedArgs.workspaceId}` : ''}`);
   if (parsedArgs.planId === DETAIL_PLAN) return [await buildDetailPrompt(context, parentStep, hookSequential, parsedArgs, hookArgs)];
   if (parsedArgs.planId === DETAIL_PHASE_PLAN) return runE6DetailPhase(context, parentStep, step, hookSequential, parsedArgs);
   if (parsedArgs.planId === FINALIZE_PLAN) return runE6Finalize(context, parentStep, step, hookSequential, parsedArgs);
@@ -273,7 +272,7 @@ async function buildDetailPrompt(
     taskId: context.task?.PK || '',
     hookSequential,
     parentStepId: parentStep.stepId,
-    systemPrompt: `${prompt.split('{{toolName}}').join(DETAIL_TOOL)}\n\n${buildNsToolInstruction(DETAIL_TOOL, 'the site map slice is missing or unusable')}`,
+    systemPrompt: rotateNsModelType(`${prompt.split('{{toolName}}').join(DETAIL_TOOL)}\n\n${buildNsToolInstruction(DETAIL_TOOL, 'the site map slice is missing or unusable')}`, parsedArgs.retryAttempt),
     humanPrompt,
     tools: [createNsToolSchema(DETAIL_TOOL, 'Submit ONE workspace detail (sections/organisms/bffCalls).', schema)],
     toolChoice: { type: 'function', function: { name: DETAIL_TOOL } },
@@ -330,7 +329,7 @@ async function handleSiteMapResult(
     return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', output.trace.join('\n') || 'E6 site map returned failed')];
   }
 
-  const siteMapContext = buildSiteMapContext(inputs);
+  const siteMapContext = buildSiteMapContext(inputs, await buildE6OperationFacts(moduleName, inputs.classification));
   // Deterministic: moduleName/note from code; kind + workflowId DERIVED (never trusted from the LLM).
   const siteMap = deriveE6SiteMapKinds(prepareE6SiteMap(output.result, { moduleName }), siteMapContext);
   const schema = await readNsSchema('e6-sitemap.schema');
@@ -433,14 +432,18 @@ async function handleDetailResult(
   const prepared = deriveE6BffRoutes(prepareE6JourneyMap({ workspaces: [output.result], landings: [], navigationEdges: [] }, { moduleName }));
   const workspace = prepared.workspaces[0];
   if (!workspace) throw new Error(`[${AGENT_NAME}] detail produced no workspace for ${parsedArgs.workspaceId}`);
-  // Force the map-owned fields (kind/workflowId derived at phase 1; equality is still checked below).
+  // Force the map-owned fields (kind/workflowId/purpose come from phase 1; equality is still checked
+  // below). purpose is owned by the site map — carry it so a detail model that drops it never fails.
   workspace.kind = slice.kind;
+  workspace.purpose = slice.purpose;
   if (slice.workflowId) workspace.workflowId = slice.workflowId; else delete workspace.workflowId;
 
   // Detail gate (isolated fast-fail): equality-to-map + the per-workspace bffCall/organism checks (run
   // validateE6Invariants scoped to THIS workspace so coverage passes; navigationEntry cross-page links
   // are re-checked authoritatively at finalize).
   const scopedContext = await buildSingleWorkspaceContext(inputs, workspace);
+  // Deterministic `from` qualification (run12: relative "$items.<col>" paths) before the gate.
+  repairE6BffFroms(prepared, scopedContext.operationFacts);
   const localGate = validateE6Invariants(prepared, scopedContext);
   const equality = validateE6WorkspaceEquality(workspace, slice);
   const errors = [...equality, ...localGate.issues.filter(issue => issue.severity === 'error' && issue.code !== 'navigationEntry.target.unknown')];
@@ -485,21 +488,27 @@ async function runE6Finalize(
     else missing.push(slice.workspaceId);
   }
 
-  // Repair round (one attempt): re-run the detail for any missing workspace.
-  if (missing.length > 0 && !parsedArgs.repairAttempt) {
+  // Repair rounds (up to NS_MAX_REPAIR_ROUNDS): re-run the detail for any missing workspace. Intermittent
+  // content failures need more than one roll; the retry prompt rotates the modelType (code↔design).
+  const round = parsedArgs.repairAttempt || 1; // finalize #1 = round 1
+  if (missing.length > 0 && round < NS_MAX_REPAIR_ROUNDS) {
+    const nextRound = round + 1;
     const repairs = missing.map((workspaceId, index) => nsAgentStepIntent(context, mutationParent, {
-      agentName: AGENT_NAME, stepTitle: `Repair workspace ${workspaceId}`,
-      planId: `e6-detail-repair-${index + 1}-${workspaceId}`,
-      prompt: { planId: DETAIL_PLAN, moduleName, workspaceId, retryAttempt: 2 },
+      agentName: AGENT_NAME, stepTitle: `Repair workspace ${workspaceId} (round ${round})`,
+      planId: `e6-detail-repair-r${round}-${index + 1}-${workspaceId}`,
+      prompt: { planId: DETAIL_PLAN, moduleName, workspaceId, retryAttempt: nextRound },
+      // task06 6a: a transient LLM-call failure on the repair degrades to the explicit finalize message,
+      // never a raw task crash.
+      onFailure: 'wait_after_prompt',
     }));
     const repairPlanIds = repairs.map(intent => (intent.step.planning as { planId: string }).planId);
     return [
       ...repairs,
       nsAgentStepIntent(context, mutationParent, {
-        agentName: AGENT_NAME, stepTitle: 'Finalize journey map (after repair)', planId: 'e6-finalize-2',
-        dependsOn: repairPlanIds, status: 'waiting_dependency', prompt: { planId: FINALIZE_PLAN, moduleName, repairAttempt: 2 },
+        agentName: AGENT_NAME, stepTitle: 'Finalize journey map (after repair)', planId: `e6-finalize-r${nextRound}`,
+        dependsOn: repairPlanIds, status: 'waiting_dependency', prompt: { planId: FINALIZE_PLAN, moduleName, repairAttempt: nextRound },
       }),
-      nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${missing.length} workspaces missing (${missing.join(', ')}); repair round started`),
+      nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${missing.length} workspaces missing (${missing.join(', ')}); repair round ${round}/${NS_MAX_REPAIR_ROUNDS - 1} started`),
     ];
   }
   if (missing.length > 0) {
@@ -511,6 +520,7 @@ async function runE6Finalize(
     workspaces, landings: siteMap.landings, navigationEdges: siteMap.navigationEdges,
   };
   const gateContext = await buildFullGateContext(inputs);
+  repairE6BffFroms(artifact, gateContext.operationFacts); // idempotent; also heals pre-repair saved details
   const check = validateE6Invariants(artifact, gateContext);
   const errors = check.issues.filter(issue => issue.severity === 'error');
   let pipeline = await readNsPipeline(moduleName) || createNsPipeline(moduleName);
@@ -786,7 +796,9 @@ async function summarizeOperationsLight(moduleName: string, classification: NsE5
     const accessPattern = isRecord(defs?.accessPattern) ? defs!.accessPattern : {};
     summaries.push({
       id: operation.operationId,
-      actor: operation.actorId,
+      // FULL actor list from the defs (D6): the site map must see secondary actors — its workspace
+      // actors must cover every actor of every hosted operation (siteMap.actors.notCovering otherwise).
+      actors: readActors(defs).length ? readActors(defs) : [operation.actorId],
       kind: readString(defs?.kind) || operation.kind,
       entity: operation.entity,
       accessPatternKind: readString(accessPattern.kind) || '',
@@ -797,7 +809,7 @@ async function summarizeOperationsLight(moduleName: string, classification: NsE5
   return summaries;
 }
 
-function buildSiteMapContext(inputs: E6Inputs): E6SiteMapGateContext {
+function buildSiteMapContext(inputs: E6Inputs, operationFacts: Record<string, NsE6OperationFact>): E6SiteMapGateContext {
   const operationOwnerWorkflow: Record<string, string | undefined> = {};
   const operationKind: Record<string, string> = {};
   const operationEntity: Record<string, string> = {};
@@ -817,6 +829,7 @@ function buildSiteMapContext(inputs: E6Inputs): E6SiteMapGateContext {
     entityIds: inputs.model.entities.map(entity => entity.entityId),
     nowCapabilityActorIds: computeNowCapabilityActorIds(inputs.classification, inputs.journeys),
     operationOwnerWorkflow, operationKind, operationEntity,
+    operationActors: Object.fromEntries(Object.entries(operationFacts).map(([operationId, fact]) => [operationId, fact.actors])),
   };
 }
 

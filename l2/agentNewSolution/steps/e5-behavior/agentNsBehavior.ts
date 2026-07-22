@@ -46,6 +46,8 @@ import {
   nsParseSelector,
   nsResultStepIntent,
   nsUpdateStatusIntent,
+  NS_MAX_REPAIR_ROUNDS,
+  rotateNsModelType,
 } from '/_102020_/l2/agentNewSolution/helpers/nsSteps.js';
 import { nsLlmInfraFailureIntents } from '/_102020_/l2/agentNewSolution/helpers/nsLlmRetry.js';
 import {
@@ -275,7 +277,7 @@ async function buildWorkflowPrompt(
     taskId: context.task?.PK || '',
     hookSequential,
     parentStepId: parentStep.stepId,
-    systemPrompt: `${prompt.split('{{toolName}}').join(WORKFLOW_TOOL)}\n\n${buildNsToolInstruction(WORKFLOW_TOOL, 'the target workflow is missing from the classification')}`,
+    systemPrompt: rotateNsModelType(`${prompt.split('{{toolName}}').join(WORKFLOW_TOOL)}\n\n${buildNsToolInstruction(WORKFLOW_TOOL, 'the target workflow is missing from the classification')}`, parsedArgs.retryAttempt),
     humanPrompt,
     tools: [createNsToolSchema(WORKFLOW_TOOL, 'Submit one canonical workflow definition.', schema)],
     toolChoice: { type: 'function', function: { name: WORKFLOW_TOOL } },
@@ -306,6 +308,15 @@ async function buildOperationPrompt(
       .map(item => ({ journeyId: journey.journeyId, title: item.title, intent: item.intent, result: item.result })));
   const relatedRules = actorsRules.rules.filter(rule => rule.appliesTo.includes(target.entity));
 
+  // Every Entity.field ref (reads/writes/keyField/filters/sort AND contextResolution originRef) is
+  // gate-checked against the real entity fields. The target entity's defs are given in full above; the
+  // OTHER entities (e.g. the lifecycle entity an activeLifecycleInstance originRef points at) were only
+  // listed by id, so the model invented field names like `DailyShift.shiftId` (run09). Give a compact
+  // field catalog of every entity so any Entity.field ref uses a field that actually exists.
+  const entityFieldDefs = await readEntityDefsInfo(moduleName, model);
+  const fieldCatalog = model.entities
+    .map(entity => `- ${entity.entityId}: ${(entityFieldDefs[entity.entityId]?.fields || []).map(field => field.fieldId).join(', ') || '(no defs on disk)'}`)
+    .join('\n');
   const schema = await readE5Schema('e5-operation.schema');
   const prompt = await readNsText('steps/e5-behavior', 'promptOperation', '.md', true);
   const humanPrompt = [
@@ -315,8 +326,9 @@ async function buildOperationPrompt(
     '## Target entity defs (full fields and statusEnum)',
     targetDefs ? JSON.stringify(targetDefs, null, 2) : '(no defs on disk)',
     '',
-    '## All valid entity ids (usable in reads/writes and Entity.field refs)',
-    model.entities.map(entity => entity.entityId).join(', '),
+    '## Entity field catalog — the REAL fields of EVERY entity',
+    'Use ONLY these for any Entity.field ref (reads/writes/keyField/filters/sort and contextResolution originRef). Never invent a field.',
+    fieldCatalog,
     '',
     '## Related E2 journey steps (source for acceptanceAssertions)',
     JSON.stringify(relatedSteps, null, 2),
@@ -342,7 +354,7 @@ async function buildOperationPrompt(
     taskId: context.task?.PK || '',
     hookSequential,
     parentStepId: parentStep.stepId,
-    systemPrompt: `${prompt.split('{{toolName}}').join(OPERATION_TOOL)}\n\n${buildNsToolInstruction(OPERATION_TOOL, 'the target operation is missing from the classification')}`,
+    systemPrompt: rotateNsModelType(`${prompt.split('{{toolName}}').join(OPERATION_TOOL)}\n\n${buildNsToolInstruction(OPERATION_TOOL, 'the target operation is missing from the classification')}`, parsedArgs.retryAttempt),
     humanPrompt,
     tools: [createNsToolSchema(OPERATION_TOOL, 'Submit one canonical operation definition.', schema)],
     toolChoice: { type: 'function', function: { name: OPERATION_TOOL } },
@@ -660,12 +672,21 @@ async function runE5Finalize(
     else missing.push({ planId: 'e5-operation', itemId: operation.operationId });
   }
 
-  if (missing.length > 0 && !parsedArgs.repairAttempt) {
+  // Item content failures are INTERMITTENT (a bad model roll drops a field / a tool call). One repair
+  // round was not enough — a double-bad-roll killed hour-long runs. Give each missing item up to
+  // NS_MAX_REPAIR_ROUNDS fresh rolls; the retry prompt rotates the modelType (code↔design) so an item
+  // that a provider keeps failing gets the OTHER provider.
+  const round = parsedArgs.repairAttempt || 1; // finalize #1 = round 1
+  if (missing.length > 0 && round < NS_MAX_REPAIR_ROUNDS) {
+    const nextRound = round + 1;
     const repairs = missing.map((item, index) => nsAgentStepIntent(context, mutationParent, {
       agentName: AGENT_NAME,
-      stepTitle: `Repair ${item.planId === 'e5-workflow' ? 'workflow' : 'operation'} ${item.itemId}`,
-      planId: `e5-repair-${index + 1}-${item.itemId}`,
-      prompt: { planId: item.planId, moduleName, itemId: item.itemId, retryAttempt: 2 },
+      stepTitle: `Repair ${item.planId === 'e5-workflow' ? 'workflow' : 'operation'} ${item.itemId} (round ${round})`,
+      planId: `e5-repair-r${round}-${index + 1}-${item.itemId}`,
+      prompt: { planId: item.planId, moduleName, itemId: item.itemId, retryAttempt: nextRound },
+      // task06 6a: a transient LLM-call failure on the repair degrades to the explicit finalize message,
+      // never a raw task crash.
+      onFailure: 'wait_after_prompt',
     }));
     const repairPlanIds = repairs.map(intent => (intent.step.planning as { planId: string }).planId);
     return [
@@ -673,12 +694,12 @@ async function runE5Finalize(
       nsAgentStepIntent(context, mutationParent, {
         agentName: AGENT_NAME,
         stepTitle: 'Finalize behaviors (after repair)',
-        planId: 'e5-finalize-2',
+        planId: `e5-finalize-r${nextRound}`,
         dependsOn: repairPlanIds,
         status: 'waiting_dependency',
-        prompt: { planId: 'e5-finalize', moduleName, repairAttempt: 2 },
+        prompt: { planId: 'e5-finalize', moduleName, repairAttempt: nextRound },
       }),
-      nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${missing.length} items missing (${missing.map(item => item.itemId).join(', ')}); repair round started`),
+      nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${missing.length} items missing (${missing.map(item => item.itemId).join(', ')}); repair round ${round}/${NS_MAX_REPAIR_ROUNDS - 1} started`),
     ];
   }
   if (missing.length > 0) {

@@ -306,40 +306,44 @@ export function bffCallCommandShape(bffCall: CfeBffCall, operationInputs: Map<st
   };
 }
 
-// F3: the l2 contract .ts is GENERATED deterministically from the l4 workspace bffCall (l4 holds only
-// .defs.ts — never a compilable .ts; agentChangeFrontend never reads a .ts from l4). Emits the Input /
-// Output interfaces (Output is the projected item shape for a list/paginated bffCall) plus the
-// `<bffId>Route` const. A stable marker keeps the file recognizable so rebuild-defs cleanup preserves it.
+// F3: the l2 contract .ts is GENERATED deterministically from the l4 workspace (l4 holds only .defs.ts —
+// never a compilable .ts; agentChangeFrontend never reads a .ts from l4). ONE file per workspace holds
+// every bffCall's Input/Output interfaces (Output is the projected item shape for a list/paginated call)
+// plus its `<bffId>Route` const. A stable marker keeps the file recognizable so cleanup preserves it.
 export interface CfeContractField { name: string; type: string; optional?: boolean }
 
-const GENERATED_CONTRACT_MARKER = 'GENERATED from l4 bffCall — do not edit';
-
-export function buildBffContractSource(args: {
-  l2Ref: string;
-  interfaceName: string;   // PascalCase(bffId)
+export interface CfeContractCall {
+  interfaceName: string;   // PascalCase(bffId) — unique within the workspace
   bffId: string;
   kind: string;            // query | command
   outputKind: string;      // object | list | paginated
   route: string;
   input: CfeContractField[];
   output: CfeContractField[];
-}): string {
+}
+
+const GENERATED_CONTRACT_MARKER = 'GENERATED from l4 bffCalls — do not edit';
+
+/** One l2 contract file for a whole workspace: all bffCall Input/Output interfaces + route consts. */
+export function buildWorkspaceContractSource(args: { l2Ref: string; workspaceId: string; calls: CfeContractCall[] }): string {
   const iface = (name: string, fields: CfeContractField[]): string => {
     if (fields.length === 0) return `export interface ${name} {}`;
     const body = fields.map(field => `  ${safeIdent(field.name)}${field.optional ? '?' : ''}: ${field.type};`).join('\n');
     return `export interface ${name} {\n${body}\n}`;
   };
+  const blocks = args.calls.flatMap(call => [
+    `// bffCall ${call.bffId} (${call.kind}) — Output kind=${call.outputKind}; route ${call.route}.`,
+    iface(`${call.interfaceName}Input`, call.input),
+    iface(`${call.interfaceName}Output`, call.output),
+    `export const ${call.bffId}Route = '${call.route}' as const;`,
+    '',
+  ]);
   return [
     `/// <mls fileReference="${args.l2Ref}" enhancement="_blank"/>`,
     '',
-    `// ${GENERATED_CONTRACT_MARKER} (bffCall ${args.bffId}, ${args.kind}; Output kind=${args.outputKind}; route ${args.route}).`,
+    `// ${GENERATED_CONTRACT_MARKER} (workspace ${args.workspaceId}; one contract file per workspace, all bffCalls).`,
     '',
-    iface(`${args.interfaceName}Input`, args.input),
-    '',
-    iface(`${args.interfaceName}Output`, args.output),
-    '',
-    `export const ${args.bffId}Route = '${args.route}' as const;`,
-    '',
+    ...blocks,
   ].join('\n');
 }
 
@@ -347,9 +351,9 @@ function safeIdent(name: string): string {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
 }
 
-/** True when a contract .ts was generated from an l4 bffCall — preserved by rebuild-defs cleanup. */
+/** True when a contract .ts was generated from l4 bffCalls — preserved by rebuild-defs cleanup. */
 export function isCopiedL4Contract(source: string): boolean {
-  return /from l4 bffCall — do not edit/.test(source);
+  return /GENERATED from l4 bffCalls — do not edit/.test(source);
 }
 
 function readString(value: unknown): string {

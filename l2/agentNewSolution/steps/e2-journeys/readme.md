@@ -17,7 +17,7 @@ Outputs:
 - Trace files under `l4/{module}/trace/`
 
 Model:
-- `prompt.md` runs with `modelType: codereasoning` (rich journeys need reasoning).
+- `prompt.md` runs with `modelType: reasoning` (rich journeys need reasoning).
 
 Gate (`gate.ts`):
 - Valid `e2-journeys` schema.

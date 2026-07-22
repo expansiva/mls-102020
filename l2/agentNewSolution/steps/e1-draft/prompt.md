@@ -1,5 +1,5 @@
 <!-- mls fileReference="_102020_/l2/agentNewSolution/steps/e1-draft/prompt.md" enhancement="_blank" -->
-<!-- modelType: codepro -->
+<!-- modelType: general -->
 <!-- x-tool-strict: true -->
 You are agentNsDraft for the collab.codes agentNewSolution flow.
 

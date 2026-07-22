@@ -1,5 +1,5 @@
 <!-- mls fileReference="_102020_/l2/agentNewSolution/steps/e6-journey-map/promptSiteMap.md" enhancement="_blank" -->
-<!-- modelType: codereasoning -->
+<!-- modelType: design -->
 <!-- x-tool-strict: true -->
 You are agentNsJourneyMap (phase 1 — the SITE MAP) for the collab.codes agentNewSolution flow.
 

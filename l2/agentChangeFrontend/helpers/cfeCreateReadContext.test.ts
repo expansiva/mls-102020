@@ -168,17 +168,21 @@ test('preparePageCreate builds one command per bffCall and GENERATES the l2 cont
   assert.equal(String((byName.get('catalogList')! as any).routeKey), 'petShop.catalog.catalogList');
   assert.equal(String((byName.get('catalogList')! as any).outputShape), 'paginated');
   assert.equal(String((byName.get('productDetail')! as any).outputShape), 'object');
-  // F3: one generated l2 contract .ts per bffCall — Input/Output interfaces + route const, l2 header,
-  // generated marker; NEVER references an l4 .ts.
-  assert.deepEqual(prepared.contractCopies.map((c: { contractName: any; }) => c.contractName).sort(), ['catalog.catalogList', 'catalog.productDetail']);
-  const listCopy = prepared.contractCopies.find((c: { contractName: string; }) => c.contractName === 'catalog.catalogList')!;
-  assert.equal(listCopy.fileInfo.folder, 'petShop/web/contracts');
-  assert.match(listCopy.source, /<mls fileReference="_102049_\/l2\/petShop\/web\/contracts\/catalog\.catalogList\.ts"/);
-  assert.doesNotMatch(listCopy.source, /l4\/petShop\/contracts/); // never an l4 .ts reference
-  assert.match(listCopy.source, /GENERATED from l4 bffCall — do not edit/);
-  assert.match(listCopy.source, /export interface CatalogListInput \{/);
-  assert.match(listCopy.source, /export interface CatalogListOutput \{/);
-  assert.match(listCopy.source, /export const catalogListRoute = 'petShop\.catalog\.catalogList' as const;/);
+  // F3: ONE generated l2 contract .ts per WORKSPACE (contracts/<pageId>.ts) with every bffCall's
+  // Input/Output interfaces + route consts; l2 header, generated marker; NEVER references an l4 .ts.
+  assert.equal(prepared.contractCopies.length, 1);
+  const copy = prepared.contractCopies[0];
+  assert.equal(copy.contractName, 'catalog');
+  assert.equal(copy.fileInfo.folder, 'petShop/web/contracts');
+  assert.equal(copy.fileInfo.shortName, 'catalog');
+  assert.match(copy.source, /<mls fileReference="_102049_\/l2\/petShop\/web\/contracts\/catalog\.ts"/);
+  assert.doesNotMatch(copy.source, /l4\/petShop\/contracts/); // never an l4 .ts reference
+  assert.match(copy.source, /GENERATED from l4 bffCalls — do not edit/);
+  // Both bffCalls' interfaces + route consts in the single file.
+  assert.match(copy.source, /export interface CatalogListInput \{/);
+  assert.match(copy.source, /export const catalogListRoute = 'petShop\.catalog\.catalogList' as const;/);
+  assert.match(copy.source, /export interface ProductDetailOutput \{/);
+  assert.match(copy.source, /export const productDetailRoute = 'petShop\.catalog\.productDetail' as const;/);
 });
 
 test('deterministicLayoutFromBase (F4) builds one surface + embedded filters + detail panel, not sibling lists', async () => {
@@ -269,8 +273,8 @@ test('seed is bffCall-keyed and contracts are generated even with NO l4 .ts pres
   const ctx = await readCreateContext();
   const page = ctx.pages.find((p: any) => p.pageId === 'catalog')!;
   const prepared = await preparePageCreate(page, ctx);
-  // Contracts are generated from the bffCall regardless of any l4 .ts.
-  assert.equal(prepared.contractCopies.length, 2);
+  // One contract file per workspace is generated from the bffCalls regardless of any l4 .ts.
+  assert.equal(prepared.contractCopies.length, 1);
   assert.ok(prepared.contractCopies.every((c: any) => !/l4\/.*\/contracts/.test(c.source)));
   const layout = deterministicLayoutFromBase(prepared);
   const organisms = layout.sections.flatMap((s: any) => s.organisms);

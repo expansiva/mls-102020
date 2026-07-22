@@ -255,7 +255,7 @@ async function getContentByExtension(page: string, ext: 'ts' | 'less' | 'html' |
 }
 
 const system1 = `
-<!-- modelType: codepro -->
+<!-- modelType: classifier -->
 
 You are an analyst responsible for evaluating whether an improvement request to an existing web component requires updating its functional/visual requirements (defs) or only its implementation.
 

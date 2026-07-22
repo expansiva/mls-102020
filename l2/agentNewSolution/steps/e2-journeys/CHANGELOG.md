@@ -26,7 +26,7 @@
   journey actor must be declared, every E1 actor present unless an `actorRemoved` decision records it,
   unique ids (actors/journeys/steps/features/decisions), priorities in `now|soon|later|never`.
 - Added `gate.test.ts` (node:test) covering the happy path and each invariant.
-- Added `prompt.md` (modelType `codereasoning`) and rewrote `readme.md`.
+- Added `prompt.md` (modelType `reasoning`) and rewrote `readme.md`.
 - Added fixture `fixture/cafeFlow/e2-journeys.{json,md}` (rich, pt-BR, 3 actors).
 - Added `agentNsJourneys.ts`: reads only e1-draft.json (from disk, so it also works on a resumed
   task), builds the prompt, runs the tool call, gate + 1 retry, writes e2-journeys.{json,md} +

@@ -46,30 +46,29 @@ Generate:
   - execBff and type BffClientOptions from /_102029_/l2/bffClient.js
   - setState, getState, subscribe, unsubscribe or initState only from /_102029_/l2/collabState.js when used
   - runBlockingUiAction only from /_102029_/l2/interactionRuntime.js when BFF click handlers are generated
-  - Contract source of truth. If Definition.contractRef.contracts[] is present (l4 v2: ONE contract
-    file PER bffCall), there are MULTIPLE contract files — one per entry, at entry.tsPath, each
-    exporting its Input/Output (and Output row-item) DTOs AND a route const named entry.routeConst
-    (e.g. catalogListRoute). Otherwise (legacy) there is a SINGLE contract file at
-    Definition.contractRef.tsPath (= .../web/contracts/{pageName}.js).
-  - contract types this class USES to type @property fields and action IO: emit an
-    "import type { ...used types... } from '<contract .js path>';" FROM EACH contract file that owns a
-    used type (v2: one import per contracts[] entry that this class references; legacy: the single file).
+  - Contract source of truth. There is ONE contract file for the whole page at Definition.contractRef.tsPath
+    (= .../web/contracts/{pageName}.js). In l4 v2 it holds every bffCall's Input/Output interfaces AND a
+    route const per bffCall; Definition.contractRef.contracts[] lists them as { commandName, routeConst }
+    (e.g. { commandName: 'catalogList', routeConst: 'catalogListRoute' }). All imports come from that single file.
+  - contract types this class USES to type @property fields and action IO: emit ONE
+    "import type { ...used types... } from '<contractRef.tsPath .js>';".
     This import is MANDATORY and SEPARATE from the re-export below. A re-export ("export type { X } from
     '...'") does NOT create a local binding, so any contract type referenced inside this file (e.g.
-    "@property() data!: FooOutput") MUST also appear in an import — otherwise it is a "cannot find
+    "@property() data!: FooOutput") MUST also appear in this import — otherwise it is a "cannot find
     name" compile error. Use only interfaces/types that exist in the contract .ts context.
-  - route consts (v2 ONLY): also emit a VALUE import of each entry.routeConst from its contract file,
-    e.g. "import { catalogListRoute } from '/_{project}_/l2/{moduleName}/web/contracts/catalog.catalogList.js';".
-    Every execBff call MUST pass the imported route const as its first argument — NEVER a typed route
-    string. (Legacy single-file pages keep using the action's routeKey string.)
-- Immediately after the imports, ALSO add SEPARATE re-export statements listing EVERY interface/type
+  - route consts (v2, when contractRef.contracts[] is present): also emit ONE VALUE import of every
+    entry.routeConst from the same contract file, e.g.
+    "import { catalogListRoute, productDetailRoute } from '/_{project}_/l2/{moduleName}/web/contracts/{pageName}.js';".
+    Every execBff call MUST pass the imported route const for that action as its first argument — NEVER a
+    typed route string. (Legacy pages without contracts[] keep using the action's routeKey string.)
+- Immediately after the imports, ALSO add a SEPARATE re-export statement listing EVERY interface/type
   exported by the contract .ts (all Input, Output and Output row-item DTOs — not only the ones this
   class references directly), so page renders import every DTO type from the shared module and never
-  depend on the contract files. v2: one re-export per contract file; legacy: one for the single file:
-  export type { TypeA, TypeB } from '<contract .js path>';
-  BOTH kinds of statement must be present and are NOT interchangeable: the "import type" (local bindings,
-  only the used types) AND the "export type ... from" (re-export, all types). Never merge them into a
-  single re-export — that would drop the local bindings and break compilation.
+  depend on the contract file:
+  export type { TypeA, TypeB } from '<contractRef.tsPath .js>';
+  BOTH statements must be present and are NOT interchangeable: the "import type" (local bindings, only
+  the used types) AND the "export type ... from" (re-export, all types). Never merge them into a single
+  re-export — that would drop the local bindings and break compilation.
 - export class Definition.baseClassName extends CollabLitElement. This name is precomputed: copy it
   exactly. Never derive a name from pageName/title and never choose a class name yourself.
 

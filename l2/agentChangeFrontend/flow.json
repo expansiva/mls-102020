@@ -83,9 +83,13 @@
     "workspace config.json"
   ],
   "modelAliases": {
-    "codehigh": {
+    "design": {
       "recommendedFor": [
-        "semantic layout generation",
+        "semantic layout generation"
+      ]
+    },
+    "code": {
+      "recommendedFor": [
         "materialization code generation"
       ]
     },
@@ -197,7 +201,7 @@
           "runId": "string"
         }
       },
-      "modelAlias": "codehigh",
+      "modelAlias": "design",
       "strictTool": true,
       "prompt": "steps/create-layout/prompt.md",
       "promptGoalFirst": "steps/create-layout/promptGoalFirst.md",
@@ -291,7 +295,7 @@
         "materialize-phase-{phase}"
       ],
       "maxParallel": 10,
-      "modelAlias": "codehigh",
+      "modelAlias": "code",
       "goal": "Generate one materialized runtime file from one pipeline item.",
       "dynamicArgs": {
         "shape": {

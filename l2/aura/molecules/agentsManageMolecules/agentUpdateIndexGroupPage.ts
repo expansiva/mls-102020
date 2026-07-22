@@ -320,7 +320,7 @@ async function writeFiles(output: Result): Promise<{ fileReference: string; comp
 // =========================================================================== SYSTEM PROMPT
 
 const system1 = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: code -->
 
 You are a Senior Frontend Engineer generating a showcase index page for a molecule group using Lit.
 

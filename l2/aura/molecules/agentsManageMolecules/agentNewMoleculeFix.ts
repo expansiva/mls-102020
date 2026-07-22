@@ -256,7 +256,7 @@ async function processOutput(context: mls.msg.ExecutionContext, output: Result):
 }
 
 let system1 = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: code -->
 
 You are an agent specialized in fixing errors in web components developed with the Lit framework and tailwind.  
 You will receive a TypeScript along with a JSON definition (style metadata with general information)

@@ -1,10 +1,10 @@
 {
-  "$id": "collab.codes/agentNewSolution/e5-classification/2026-07-11-ns-e5-v2",
+  "$id": "https://collab.codes/agentNewSolution/e5-classification/2026-07-11-ns-e5-v2",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "moduleName", "workflows", "operations", "managedEntities"],
   "properties": {
-    "schemaVersion": { "const": "2026-07-11-ns-e5-v2" },
+    "schemaVersion": { "type": "string", "const": "2026-07-11-ns-e5-v2" },
     "moduleName": { "type": "string", "minLength": 1, "pattern": "^[a-z][A-Za-z0-9]*$" },
     "createdAt": { "type": "string" },
     "workflows": {
@@ -35,7 +35,7 @@
           "title": { "type": "string", "minLength": 1 },
           "actorId": { "type": "string", "minLength": 1 },
           "entity": { "type": "string", "minLength": 1 },
-          "kind": { "enum": ["create", "update", "delete", "query", "view"] },
+          "kind": { "type": "string", "enum": ["create", "update", "delete", "query", "view"] },
           "featureRefs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
           "workflowId": { "type": "string", "minLength": 1 }
         }
@@ -49,7 +49,7 @@
         "required": ["entity", "deletionPolicy"],
         "properties": {
           "entity": { "type": "string", "minLength": 1 },
-          "deletionPolicy": { "enum": ["delete", "inactivate", "immutable"] },
+          "deletionPolicy": { "type": "string", "enum": ["delete", "inactivate", "immutable"] },
           "inactivationState": { "type": "string", "minLength": 1 },
           "reason": { "type": "string", "minLength": 1 }
         }

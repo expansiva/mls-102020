@@ -160,7 +160,7 @@ export const skill = \`${skillNormalized}\`;
 }
 
 const system1 = `
-<!-- modelType: codepro -->
+<!-- modelType: reasoning -->
 
 You are a planner responsible for defining a \`skill.md\`.
 

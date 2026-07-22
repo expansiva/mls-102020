@@ -107,7 +107,7 @@ async function afterPromptStep(
 }
 
 const system1 = `
-<!-- modelType: codepro -->
+<!-- modelType: classifier -->
 
 Tasks: Understand the purpose of the widget by analyzing the original user prompt and identify the correct group 
 If the original prompt is not about creating a web component, return an error asking the user to redo the request.

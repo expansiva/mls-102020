@@ -1,7 +1,12 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/steps/e3-ontology/gate.ts" enhancement="_blank"/>
 
 import { errorIssue, NsGateIssue, warningIssue } from '/_102020_/l2/agentNewSolution/helpers/nsGate.js';
-import { isRecord } from '/_102020_/l2/agentNewSolution/helpers/nsFs.js';
+
+// isRecord is LOCAL (not imported from nsFs) so this gate stays node-safe / unit-testable — nsFs pulls the
+// libStor → libCommom (DOM) chain, which crashes under node:test. Same reason the e5 gate keeps it local.
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export const E3_MODEL_SCHEMA_VERSION = '2026-07-07-ns-e3-v1';
 
@@ -180,7 +185,10 @@ export function validateE3ModelInvariants(
     if (/^(uc|usecase)/i.test(entity.entityId)) {
       issues.push(errorIssue('entity.id.usecase', `entity ${entity.entityId} looks like a use case; ontology must contain data nouns only`, entity.entityId));
     }
-    if (/^(create|update|delete|manage|view|browse|generate|record|process|send|close|open)[A-Z]/.test(entity.entityId)) {
+    // Entity ids are PascalCase nouns; a verb-first id (ManageMenu, CreateOrder) is a use-case leak. The
+    // verbs must be Capitalized to match PascalCase, with an uppercase boundary so real nouns pass
+    // (Management/Viewer are NOT flagged; ManageMenu is). Case-sensitive on purpose — the boundary matters.
+    if (/^(Create|Update|Delete|Manage|View|Browse|Generate|Record|Process|Send|Close|Open)[A-Z]/.test(entity.entityId)) {
       issues.push(errorIssue('entity.id.verb', `entity ${entity.entityId} starts with a verb; ontology must contain data nouns only`, entity.entityId));
     }
     if (entity.statusEnum?.length && entity.lifecycleStates?.length && !sameStringSet(entity.statusEnum, entity.lifecycleStates)) {

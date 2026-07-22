@@ -311,7 +311,7 @@ function createFanoutStep(planId: string, title: string, total: number): mls.msg
     type: 'agent',
     stepId: 0,
     interaction: {
-      input: [{ type: 'system', content: '<!-- modelType: codehigh -->' }],
+      input: [{ type: 'system', content: '<!-- modelType: code -->' }],
       cost: 0,
       trace: [`queued ${total} materialization item(s)`],
       payload: null,

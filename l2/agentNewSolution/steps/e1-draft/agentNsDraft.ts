@@ -556,7 +556,7 @@ function createToolSchema(resultSchema: Record<string, unknown>): mls.msg.LLMToo
         additionalProperties: false,
         required: ['status', 'result', 'questions', 'trace'],
         properties: {
-          status: { enum: ['ok', 'needs_input', 'failed'] },
+          status: { type: 'string', enum: ['ok', 'needs_input', 'failed'] },
           result: resultSchema,
           questions: { type: 'array', items: { type: 'string' } },
           trace: { type: 'array', items: { type: 'string' } },
@@ -805,7 +805,7 @@ Use status "needs_input" only when E1 cannot safely continue without a human ans
 }
 
 const clarificationSystemPrompt = `
-<!-- modelType: codefast -->
+<!-- modelType: general -->
 
 You are the initial clarification agent for agentNewSolution.
 

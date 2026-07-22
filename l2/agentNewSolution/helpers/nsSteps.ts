@@ -10,6 +10,22 @@
 
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 
+// Per-item repair policy: how many total attempts a missing fan-out item gets before the task fails.
+// Item content failures are intermittent (a bad model roll) — one repair round was not enough and killed
+// hour-long runs; 3 gives two extra rolls. Used by e5 and e6 finalize.
+export const NS_MAX_REPAIR_ROUNDS = 3;
+
+// Rotate the `<!-- modelType: X -->` marker between the two strict-tool providers (code=Grok, design=Kimi)
+// on EVEN attempts, so a repair of an item a provider keeps failing lands on the OTHER provider. Odd
+// attempts (incl. the first, attempt 1) keep the step's native modelType. Pure string swap.
+export function rotateNsModelType(systemPrompt: string, attempt: number | undefined): string {
+  if (!attempt || attempt <= 1 || attempt % 2 !== 0) return systemPrompt;
+  return systemPrompt
+    .replace('<!-- modelType: code -->', '<!-- modelType: __nsrot__ -->')
+    .replace('<!-- modelType: design -->', '<!-- modelType: code -->')
+    .replace('<!-- modelType: __nsrot__ -->', '<!-- modelType: design -->');
+}
+
 // cleaner: pass 'input_output' when the step's artifact is already persisted to disk — the LLM
 // input/payload/trace on the task record are then dead weight (DynamoDB item limit is 400KB;
 // a full run without cleaning reached ~15k lines). Never clean steps whose interaction.payload
@@ -43,6 +59,13 @@ export function nsUpdateStatusIntent(
 // arg, reuses slots as items finish and DELETES finished children (task size stays small). The
 // parent auto-completes when every child is terminal — but a 'failed' child fails the parent, so
 // fan-out children must complete-with-trace on gate failures and let a finalize step repair.
+//
+// task06 6a: a transient LLM-CALL failure on a single item (empty primary + fallback 502) used to
+// fail the child at the framework level BEFORE afterPromptStep could complete-with-trace — one bad
+// item failed the whole task (18/19 ok). onFailure='wait_after_prompt' is inherited by every child
+// (tasks.ts addParallelChildStep), so runLLMStepParallel enqueues afterPromptStep with status
+// 'waiting_after_prompt_with_error' instead of failing: the child completes-with-trace (no payload)
+// and the finalize repair round regenerates the missing item. Never fails the task on one bad item.
 export function nsParallelStepIntent(
   context: mls.msg.ExecutionContext,
   hostStep: mls.msg.AIAgentStep,
@@ -60,7 +83,7 @@ export function nsParallelStepIntent(
       type: 'agent',
       stepId: 0,
       interaction: {
-        input: [{ type: 'system', content: '<!-- modelType: codeinstruct -->' }],
+        input: [{ type: 'system', content: '<!-- modelType: code -->' }],
         cost: 0,
         trace: [`queued ${options.args.length} parallel args for ${options.agentName}`],
         payload: null,
@@ -69,6 +92,9 @@ export function nsParallelStepIntent(
       status: 'in_progress',
       nextSteps: [],
       agentName: options.agentName,
+      // Inherited by each fan-out child (tasks.ts addParallelChildStep): a per-item LLM-call failure
+      // routes to afterPromptStep (complete-with-trace) instead of failing the parent/task — task06 6a.
+      onFailure: 'wait_after_prompt',
       prompt: JSON.stringify({ planId: options.planId }),
       rags: [],
       planning: { planId: options.planId, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' },

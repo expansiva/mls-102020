@@ -51,7 +51,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       'in_progress',
     );
     contractSharedFanout.interaction = {
-      input: [{ type: 'system', content: '<!-- modelType: codefast -->' }],
+      input: [{ type: 'system', content: '<!-- modelType: code -->' }],
       cost: 0,
       trace: [`cached one L4 create context; queued ${pageArgs.length} deterministic contract/shared item(s)`],
       payload: null,
