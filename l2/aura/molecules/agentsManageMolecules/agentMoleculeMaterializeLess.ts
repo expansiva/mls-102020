@@ -293,7 +293,7 @@ function normalizeFileReference(fileReference: string): string {
 }
 
 const system1 = `
-<!-- modelType: codepro -->
+<!-- modelType: design -->
 
 You are a senior Frontend Architect specialized in the collab.codes design system.
 Your only job is to produce the **.less** stylesheet for a Lit molecule, derived from its final .ts and the style contract.
