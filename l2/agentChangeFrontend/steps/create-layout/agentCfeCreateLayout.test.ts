@@ -19,6 +19,45 @@ void test('agentCfeCreateLayout tool schema is provider-clean', async () => {
   assert.equal(errs, null, errs?.join(' | '));
 });
 
+// Regression (102051 run16): the prompt (promptGoalFirst §32) tells the model to set `displayHint` on
+// organisms and the page21 render skill reads it, but the organism tool schema omitted it. On a model
+// without native strict (design->claude-sonnet), the strict tool-args gate then rejected the whole
+// layout: "sections/N/organisms/N must NOT have additional properties". displayHint must be an allowed,
+// carried-through organism property (mirroring intent.displayHint).
+void test('agentCfeCreateLayout organism schema allows displayHint', async () => {
+  const mod = await loadCreateShared();
+  const organismSchema = mod.cfePageLayoutToolSchema.function.parameters
+    .properties.result.properties.pageLayout.properties.sections.items.properties.organisms.items;
+  assert.ok(organismSchema.properties.displayHint, 'organism schema must expose displayHint');
+  assert.equal(organismSchema.additionalProperties, false, 'organism schema must stay closed (lint/strict)');
+});
+
+void test('agentCfeCreateLayout preserves organism displayHint through normalization', async () => {
+  const mod = await loadCreateShared() as unknown as { extractCfePageLayoutOutput: (p: unknown) => any };
+  const payload = {
+    status: 'ok',
+    result: {
+      pageLayout: {
+        pageId: 'dashboardWorkspace',
+        layoutId: 'dashboardWorkspace.page21.goal_first',
+        sections: [{
+          id: 'sec.kpiOverview', type: 'section', sectionName: 'kpiOverview', titleKey: 'x.title', mode: 'view', order: 1,
+          organisms: [{
+            id: 'org-kpi', type: 'summary', organismName: 'OperationalKpiSummary', titleKey: 'org.title',
+            displayHint: 'master-detail', purpose: 'p',
+            userActions: ['getDashboard'], requiredEntities: ['OperationalDashboard'],
+            readsFields: [], writesFields: [], rulesApplied: [], order: 1,
+            intentions: [{ id: 'int.kpi', intent: 'view', order: 1 }],
+          }],
+        }],
+      },
+    },
+  };
+  const out = mod.extractCfePageLayoutOutput(payload);
+  assert.equal(out.status, 'ok');
+  assert.equal(out.result.pageLayout.sections[0].organisms[0].displayHint, 'master-detail');
+});
+
 for (const modelType of MODEL_TYPES) {
   void test(`agentCfeCreateLayout live @ ${modelType}: schema accepted + result has pageLayout`, { skip: !liveTestsEnabled() }, async () => {
     const mod = await loadCreateShared();

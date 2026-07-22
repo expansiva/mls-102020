@@ -240,6 +240,7 @@ interface CfeLayoutOrganism {
   type: string;
   organismName: string;
   titleKey: string;
+  displayHint?: string;
   purpose: string;
   userActions: string[];
   requiredEntities: string[];
@@ -353,6 +354,10 @@ const layoutOrganismSchema = {
     type: strSchema,
     organismName: strSchema,
     titleKey: strSchema,
+    // Optional render hint (master-detail, card-board, …). The prompt (promptGoalFirst §32) tells the
+    // model to set displayHint on organisms and the page21 render skill reads it, so it must be an
+    // allowed property here — otherwise the strict tool-args gate rejects the whole layout.
+    displayHint: strSchema,
     purpose: strSchema,
     userActions: strArraySchema,
     requiredEntities: strArraySchema,
@@ -1390,6 +1395,7 @@ function normalizeLayoutOrganism(value: unknown, path: string): CfeLayoutOrganis
     type: optionalString(organism.type) || 'organism',
     organismName: assertString(organism.organismName, `${path}.organismName`),
     titleKey: optionalString(organism.titleKey) || fallbackLayoutTitleKey(id),
+    displayHint: optionalString(organism.displayHint),
     purpose: assertString(organism.purpose, `${path}.purpose`),
     userActions: normalizeStringList(organism.userActions, `${path}.userActions`),
     requiredEntities: normalizeStringList(organism.requiredEntities, `${path}.requiredEntities`),
