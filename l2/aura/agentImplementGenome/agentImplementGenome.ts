@@ -23,7 +23,9 @@ import { mkAgentStep, mkFail, makePlanId, type StepArgs } from '/_102020_/l2/aur
 // `materialize` (default true) is a contract flag for the CALLER: after this flow writes the
 // page defs, the caller runs agentMaterializeL2 to generate the .ts (false → skip). This
 // orchestrator only produces defs; agentMaterializeL2 is a top-level, project-wide flow.
-interface EntryArgs { module: string; layout: number | string; ds: number | string; device?: string; pages?: string[]; materialize?: boolean; forceReconcile?: boolean; }
+// `useMolecules` (default true): when false the molecule catalog is empty — Agent2 (variant) is
+// skipped and agentGenDefs applies only the configured layout rules (no web components).
+interface EntryArgs { module: string; layout: number | string; ds: number | string; device?: string; pages?: string[]; materialize?: boolean; forceReconcile?: boolean; useMolecules?: boolean; }
 
 export function createAgent(): IAgentAsync {
   return {
@@ -43,12 +45,13 @@ async function beforePromptImplicit(
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
 
-  const { module, layout, ds, device, pages, forceReconcile } = JSON.parse(userPrompt) as EntryArgs;
+  const { module, layout, ds, device, pages, forceReconcile, useMolecules } = JSON.parse(userPrompt) as EntryArgs;
   if (!module || layout == null || ds == null) throw new Error(`(${agent.agentName}) entry needs { module, layout, ds }`);
   const dev = device || DEFAULT_DEVICE;
+  const useMol = useMolecules !== false; // default true
   // Optional subset: keep only non-empty strings; empty → all pages.
   const targetPages = Array.isArray(pages) ? pages.filter(p => typeof p === 'string' && p) : [];
-  console.info('[agentImplementGenome] ▶ request received', { module, layout, ds, device: dev, pages: targetPages.length ? targetPages : 'ALL' });
+  console.info('[agentImplementGenome] ▶ request received', { module, layout, ds, device: dev, pages: targetPages.length ? targetPages : 'ALL', useMolecules: useMol });
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -65,7 +68,7 @@ async function beforePromptImplicit(
       threadId: context.message.threadId,
       userMessage: context.message.content,
       // longMemory is string-only → the subset is JSON-encoded and parsed back in afterPromptStep.
-      longTermMemory: { module, layout: String(layout), ds: String(ds), device: dev, pages: JSON.stringify(targetPages), forceReconcile: String(!!forceReconcile) },
+      longTermMemory: { module, layout: String(layout), ds: String(ds), device: dev, pages: JSON.stringify(targetPages), forceReconcile: String(!!forceReconcile), useMolecules: String(useMol) },
     },
   };
 
@@ -98,6 +101,7 @@ async function afterPromptStep(
     const ds = lm['ds'];
     const device = lm['device'] || DEFAULT_DEVICE;
     const forceReconcile = lm['forceReconcile'] === 'true';
+    const useMolecules = lm['useMolecules'] !== 'false'; // default true
     if (!module || layout == null || ds == null) throw new Error('missing run params in longMemory');
 
     const project = mls.actualProject || 0;
@@ -119,12 +123,14 @@ async function afterPromptStep(
         : `no pages found in ${module}/web/${device}/page11`);
     }
 
-    const baseArgs = (page?: string): StepArgs => ({ module, layout, ds, device, page });
+    const baseArgs = (page?: string): StepArgs => ({ module, layout, ds, device, page, useMolecules });
     const genIds = pages.map(p => makePlanId('gen', p));
 
     const intents: mls.msg.AgentIntentAddStep[] = [];
 
     // Group A — Agent1 (LLM): pick the molecule GROUP per layout element (writes groupSelections).
+    // Runs in BOTH modes: the group drives the layout rules (group-scoped axes), even when no
+    // molecule is placed.
     for (const page of pages) {
       intents.push(mkAgentStep(context, step, makePlanId('select', page), `Select groups: ${page}`,
         'agentSelectGroups', baseArgs(page), [], 'waiting_human_input', 'parallel_static'));
@@ -132,21 +138,26 @@ async function afterPromptStep(
 
     // Group B — Agent2 (LLM): pick the VARIANT per element by semantic fit among the
     // style-compatible candidates, or reject (writes variantSelections). Waits on its own select.
-    for (const page of pages) {
-      intents.push(mkAgentStep(context, step, makePlanId('variant', page), `Pick variant: ${page}`,
-        'agentSelectVariant', baseArgs(page), [makePlanId('select', page)], 'waiting_dependency', 'parallel_static'));
+    // SKIPPED when useMolecules=false (empty molecule catalog → nothing to pick); gen then waits
+    // on the `select` step instead.
+    if (useMolecules) {
+      for (const page of pages) {
+        intents.push(mkAgentStep(context, step, makePlanId('variant', page), `Pick variant: ${page}`,
+          'agentSelectVariant', baseArgs(page), [makePlanId('select', page)], 'waiting_dependency', 'parallel_static'));
+      }
     }
 
-    // Group C — assemble the final defs DETERMINISTICALLY: place the chosen molecule per element.
-    // Waits on its own variant.
+    // Group C — assemble the final defs DETERMINISTICALLY. With molecules: place the chosen molecule
+    // per element (waits on variant). Without: apply only layoutRules from Agent1's groups (waits on select).
+    const genDep = (page: string) => useMolecules ? makePlanId('variant', page) : makePlanId('select', page);
     for (const page of pages) {
       intents.push(mkAgentStep(context, step, makePlanId('gen', page), `Gen defs: ${page}`,
-        'agentGenDefs', baseArgs(page), [makePlanId('variant', page)], 'waiting_dependency', 'parallel_static'));
+        'agentGenDefs', baseArgs(page), [genDep(page)], 'waiting_dependency', 'parallel_static'));
     }
 
     // Reconcile molecule tokens (--ml-*) to the DS tokens (--ds-*) — ONCE per DS, barrier over
     // every gen (so all pages' molecule assignments are known). Feeds buildGlobalCss in register.
-    const reconcileArgs: StepArgs = { module, layout, ds, device, pages, forceReconcile };
+    const reconcileArgs: StepArgs = { module, layout, ds, device, pages, forceReconcile, useMolecules };
     intents.push(mkAgentStep(context, step, 'reconcile-tokens', 'Reconciliar tokens (molécula→DS)',
       'agentReconcileTokens', reconcileArgs, genIds, 'waiting_dependency', 'sequential'));
 
@@ -154,7 +165,7 @@ async function afterPromptStep(
     intents.push(mkAgentStep(context, step, 'register', 'Register module genome',
       'agentRegisterGenome', baseArgs(), ['reconcile-tokens'], 'waiting_dependency', 'sequential'));
 
-    console.info(`[agentImplementGenome] ✓ planned ${pages.length} select(Agent1) + ${pages.length} variant(Agent2) + ${pages.length} gen(deterministic) + 1 reconcile-tokens + 1 register steps`);
+    console.info(`[agentImplementGenome] ✓ planned ${pages.length} select(Agent1) + ${useMolecules ? pages.length : 0} variant(Agent2) + ${pages.length} gen(deterministic) + 1 reconcile-tokens + 1 register steps (useMolecules=${useMolecules})`);
     return intents;
   } catch (error) {
     const msg = `[${agent.agentName}] ${error instanceof Error ? error.message : String(error)}`;

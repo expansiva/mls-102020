@@ -23,6 +23,10 @@ export interface IAuraState {
     actualLayout: number | null;
     actualDesignSystem: number | null;
     actualPage: IAuraPage | null;
+    // Generation mode: when true (default) the genome flow resolves molecules (web components)
+    // per element; when false the molecule catalog is empty → pages get only the configured
+    // layout rules. Persisted per project like the knobs above.
+    useMolecules: boolean;
 }
 
 const STATE_KEY = 'aura';
@@ -59,6 +63,11 @@ function getActualPage(): IAuraPage | null {
     return loadAuraProject(getActualProject())?.actualPage ?? null;
 }
 
+function getUseMolecules(): boolean {
+    // Default true; entries saved before this field existed lack the key.
+    return loadAuraProject(getActualProject())?.useMolecules ?? true;
+}
+
 export function AuraInitState(): void {
     if (getAuraState()) return;
     initState(STATE_KEY, {
@@ -70,6 +79,7 @@ export function AuraInitState(): void {
         actualLayout: getActualLayout(),
         actualDesignSystem: getActualDesignSystem(),
         actualPage: getActualPage(),
+        useMolecules: getUseMolecules(),
     } satisfies IAuraState);
 }
 
@@ -143,6 +153,7 @@ export function setAuraStateFromPageSource(project: number, source: string): IAu
             actualLayout: parsed.layout,
             actualDesignSystem: parsed.designSystem,
             actualPage: parsed.actualPage,
+            useMolecules: getUseMolecules(),
         } satisfies IAuraState);
     }
 
@@ -222,6 +233,7 @@ export function saveAuraProject(): void {
         actualLayout: state.actualLayout,
         actualDesignSystem: state.actualDesignSystem,
         actualPage: state.actualPage,
+        useMolecules: state.useMolecules,
     };
     writeStore(store);
 }
@@ -246,6 +258,8 @@ export function restoreAuraProject(project: number): void {
     // Entries saved before actualLanguageByModule existed lack the key — reset it
     // explicitly so the previous project's per-module map never leaks across projects.
     if (!('actualLanguageByModule' in entry)) setAuraState('actualLanguageByModule', null);
+    // Entries saved before useMolecules existed default to true (molecules on).
+    if (!('useMolecules' in entry)) setAuraState('useMolecules', true);
     (Object.keys(entry) as (keyof IAuraProjectEntry)[]).forEach(key => {
         setAuraState(key, entry[key]);
     });

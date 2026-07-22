@@ -22,7 +22,7 @@ import { designSystemTsRef } from '/_102020_/l2/aura/helpers/dsMatch/buildDesign
 import { buildMoleculeCatalog } from '/_102020_/l2/aura/helpers/dsMatch/buildMoleculeCatalog.js';
 import type { AssignedMolecule } from '/_102020_/l2/aura/helpers/dsMatch/resolveMolecules.js';
 import { listLayoutElements, indexById } from '/_102020_/l2/aura/helpers/dsMatch/layoutElements.js';
-import { loadVariantSelections } from '/_102020_/l2/aura/helpers/dsMatch/agent1.js';
+import { loadVariantSelections, loadElementGroupSelections } from '/_102020_/l2/aura/helpers/dsMatch/agent1.js';
 import { resolveRulesForPage } from '/_102020_/l2/aura/helpers/dsMatch/resolveRulesForPage.js';
 import { rulesForPlainElement } from '/_102020_/l2/aura/helpers/dsMatch/plainControlRules.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
@@ -70,13 +70,18 @@ async function beforePromptStep(
     const pipeline = clone(origin.pipeline ?? []);
     console.info(`[agentGenDefs] ${a.page}: origem importada (${item.originFolder}, ref=${item.defsOrigem})`);
 
-    // 2. Agent2's per-element variant picks (tag). The semantic choice is already done; we only
-    //    PLACE the chosen molecule on the element (by id). Elements Agent2 rejected are absent.
-    const selections = await loadVariantSelections(item.defsDestino);
-    const catalog = await buildMoleculeCatalog();
+    // 2. Per-element picks. With molecules: Agent2's variant picks (tag) — the semantic choice is
+    //    already done; we only PLACE the chosen molecule (by id). Without molecules (useMolecules=
+    //    false): Agent1's group selections mapped to `tag: null`, so every element goes down the
+    //    "no molecule" path below and gets `layoutRules` only (empty molecule catalog).
+    const useMolecules = a.useMolecules !== false;
+    const selections = useMolecules
+      ? await loadVariantSelections(item.defsDestino)
+      : (await loadElementGroupSelections(item.defsDestino)).map(g => ({ id: g.id, group: g.group, tag: null as string | null }));
+    const catalog = useMolecules ? await buildMoleculeCatalog() : [];
     const byTag = new Map(catalog.map(m => [m.tag, m]));
     const byId = indexById(listLayoutElements(definition.layout));
-    console.info(`[agentGenDefs] ${a.page}: ${selections.length} variante(s) do Agent2 · ${byId.size} elemento(s) no layout · catálogo: ${catalog.length}`);
+    console.info(`[agentGenDefs] ${a.page}: useMolecules=${useMolecules} · ${selections.length} seleção(ões) · ${byId.size} elemento(s) no layout · catálogo: ${catalog.length}`);
 
     // 2b. Hygiene — the origin may be an already-generated variation (e.g. page31), whose
     //     elements can already carry molecule/layoutRules. Clear them so placement below is

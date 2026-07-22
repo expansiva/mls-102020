@@ -622,7 +622,8 @@ export class PluginSelectPage extends StateLitElement {
         const materialize = true; // the button regenerates the rendered .ts page too
         // The agent matches on page shortNames; page.name may be a pageId/path, so send the file shortName.
         const pageShort = page.file?.shortName ?? page.name;
-        const prompt = JSON.stringify({ module, layout, ds, device, pages: [pageShort], materialize });
+        const useMolecules = getAuraState().useMolecules ?? true;
+        const prompt = JSON.stringify({ module, layout, ds, device, pages: [pageShort], materialize, useMolecules });
         // Pause the preview while the agent rewrites the defs (avoids repaint thrash); restore after.
         const prevPause = getState('preview.pausePreview');
         setState('preview.pausePreview', true);

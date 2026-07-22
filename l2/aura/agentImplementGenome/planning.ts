@@ -22,6 +22,7 @@ export interface StepArgs {
     page?: string;
     pages?: string[];   // used by the whole-DS steps (e.g. reconcile-tokens) that span all run pages
     forceReconcile?: boolean;  // reconcile-tokens: bypass the version cache and re-run the LLM
+    useMolecules?: boolean;    // default true; false → gen applies only layoutRules (no molecules)
 }
 
 /** 'select:cardapioEstoque' / 'gen:cardapioEstoque' / 'register'. */
