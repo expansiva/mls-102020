@@ -445,22 +445,15 @@ function relaxPageLayoutSchema(pageLayoutSchema: any): void {
 
 function createRelaxedCfePageLayoutToolSchema(): mls.msg.LLMTool {
   const resultSchema = JSON.parse(JSON.stringify(cfePageLayoutResultSchema)) as Record<string, any>;
-  allowAdditionalProperties(resultSchema);
-
   relaxPageLayoutSchema(resultSchema.properties?.pageLayout);
+  // Strict tool providers reject additionalProperties:true and schema-valued additionalProperties.
+  // The runtime normalizer can still default missing labels; the tool contract must stay closed.
+  const i18nSchema = resultSchema.properties?.pageLayout?.properties?.i18n;
+  if (i18nSchema && typeof i18nSchema === 'object') i18nSchema.additionalProperties = false;
   const tool = createPlannerToolSchema(CFE_LAYOUT_TOOL_NAME, 'Submit the semantic layout for one frontend page variant.', resultSchema) as mls.msg.LLMTool;
   const parameters = (tool as any).function?.parameters;
   if (parameters && Array.isArray(parameters.required)) parameters.required = ['status', 'result'];
   return tool;
-}
-
-function allowAdditionalProperties(schema: any): void {
-  if (!schema || typeof schema !== 'object') return;
-  if (schema.type === 'object' || schema.properties) schema.additionalProperties = true;
-  if (schema.properties && typeof schema.properties === 'object') {
-    for (const propertySchema of Object.values(schema.properties)) allowAdditionalProperties(propertySchema);
-  }
-  if (schema.items) allowAdditionalProperties(schema.items);
 }
 
 export async function readCreateContext(): Promise<CfeCreateContext> {

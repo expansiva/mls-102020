@@ -185,7 +185,10 @@ export function validateE3ModelInvariants(
     if (/^(uc|usecase)/i.test(entity.entityId)) {
       issues.push(errorIssue('entity.id.usecase', `entity ${entity.entityId} looks like a use case; ontology must contain data nouns only`, entity.entityId));
     }
-    if (/^(create|update|delete|manage|view|browse|generate|record|process|send|close|open)[A-Z]/.test(entity.entityId)) {
+    // Entity ids are PascalCase nouns; a verb-first id (ManageMenu, CreateOrder) is a use-case leak. The
+    // verbs must be Capitalized to match PascalCase, with an uppercase boundary so real nouns pass
+    // (Management/Viewer are NOT flagged; ManageMenu is). Case-sensitive on purpose — the boundary matters.
+    if (/^(Create|Update|Delete|Manage|View|Browse|Generate|Record|Process|Send|Close|Open)[A-Z]/.test(entity.entityId)) {
       issues.push(errorIssue('entity.id.verb', `entity ${entity.entityId} starts with a verb; ontology must contain data nouns only`, entity.entityId));
     }
     if (entity.statusEnum?.length && entity.lifecycleStates?.length && !sameStringSet(entity.statusEnum, entity.lifecycleStates)) {
