@@ -164,7 +164,7 @@ async function afterPromptStep(
 }
 
 const system1 = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: classifier -->
 
 You validate a design-system derivation request. The human message is a JSON object
 { module, layout, ds, device, pages } (pages is an optional subset; empty = all pages).

@@ -254,9 +254,7 @@ async function updateStorFile(params: { project: number, shortName: string, leve
 }
 
 const system1 = `
-<!-- modelType: codeinstruct -->
-
-<!-- modelTypeList: geminiChat (2.5 pro), code (grok), deepseekchat, codeflash (gemini), deepseekreasoner, mini (4.1) ou nano (openai), codeinstruct (4.1), codereasoning(gpt5), code2 (kimi 2.5) -->
+<!-- modelType: general -->
 
 You are an agent responsible for removing an existing i18n new language, following the established standard.
 

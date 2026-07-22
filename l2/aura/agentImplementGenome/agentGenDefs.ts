@@ -62,12 +62,13 @@ async function beforePromptStep(
     const item = buildWorkItem(project, a.module, a.layout, a.ds, a.page!, a.device);
     console.info(`[agentGenDefs] ▶ ${a.page} — montagem determinística (sem LLM)`);
 
-    // 1. ORIGIN page11 defs as real objects (clone — we mutate and re-serialize).
+    // 1. ORIGIN defs as real objects (clone — we mutate and re-serialize). The origin is the
+    //    closest existing ancestor (page{L}{D} → page{L}1 → page11), not necessarily page11.
     const origin = await importDefs(item.defsOrigem);
     if (!origin?.definition) throw new Error(`origin defs not loadable: ${item.defsOrigem}`);
     const definition = clone(origin.definition);
     const pipeline = clone(origin.pipeline ?? []);
-    console.info(`[agentGenDefs] ${a.page}: page11 importado (origem=${item.defsOrigem})`);
+    console.info(`[agentGenDefs] ${a.page}: origem importada (${item.originFolder}, ref=${item.defsOrigem})`);
 
     // 2. Agent2's per-element variant picks (tag). The semantic choice is already done; we only
     //    PLACE the chosen molecule on the element (by id). Elements Agent2 rejected are absent.
@@ -76,6 +77,20 @@ async function beforePromptStep(
     const byTag = new Map(catalog.map(m => [m.tag, m]));
     const byId = indexById(listLayoutElements(definition.layout));
     console.info(`[agentGenDefs] ${a.page}: ${selections.length} variante(s) do Agent2 · ${byId.size} elemento(s) no layout · catálogo: ${catalog.length}`);
+
+    // 2b. Hygiene — the origin may be an already-generated variation (e.g. page31), whose
+    //     elements can already carry molecule/layoutRules. Clear them so placement below is
+    //     deterministic regardless of whether the origin is page11 (clean) or a produced
+    //     variation. The layout STRUCTURE of the ancestor is preserved; molecules re-derive.
+    let cleared = 0;
+    for (const el of byId.values()) {
+      if (el.ref.molecule || el.ref.layoutRules) {
+        delete el.ref.molecule;
+        delete el.ref.layoutRules;
+        cleared++;
+      }
+    }
+    if (cleared) console.info(`[agentGenDefs] ${a.page}: higienizou molecule/layoutRules de ${cleared} elemento(s) da origem já-gerada`);
 
     // 3. Place one `molecule` per selected element. `tag: null` = Agent2 rejected/omitted —
     //    no molecule, but the group survives so the plain control can receive `layoutRules`.
@@ -124,7 +139,7 @@ async function beforePromptStep(
     // 4. Repoint paths, override skills + dependsFiles, stamp, write.
     // Usage skills go in the pipeline `skills` array (the materializer feeds `skills` to the LLM
     // as skill sections; a `?key=skill` suffix on dependsFiles is understood by nobody).
-    repointPaths(pipeline, a.layout, a.ds);
+    repointPaths(pipeline, item.originFolder, a.layout, a.ds);
     const baseSkills = await resolvePageSkills(project, a.layout, a.ds);
     const cssRef = designSystemTsRef(project);
     const usageList = [...usagePaths].sort();
@@ -165,12 +180,15 @@ async function importDefs(ref: string): Promise<any> {
 /** Deep clone of a JSON-serializable defs object. */
 function clone<T>(o: T): T { return JSON.parse(JSON.stringify(o)); }
 
-/** Repoint each pipeline entry's outputPath/defPath from page11 → page{layout}{ds}. */
-function repointPaths(pipeline: any[], layout: number | string, ds: number | string): void {
+/** Repoint each pipeline entry's outputPath/defPath from the resolved origin folder → page{layout}{ds}.
+ *  When origin === destination the replace is a no-op (early return). */
+function repointPaths(pipeline: any[], fromFolder: string, layout: number | string, ds: number | string): void {
+  const from = `/${fromFolder}/`;
   const to = `/${variationFolder(layout, ds)}/`;
+  if (from === to) return;
   for (const p of pipeline ?? []) {
-    if (typeof p.outputPath === 'string') p.outputPath = p.outputPath.replace('/page11/', to);
-    if (typeof p.defPath === 'string') p.defPath = p.defPath.replace('/page11/', to);
+    if (typeof p.outputPath === 'string') p.outputPath = p.outputPath.split(from).join(to);
+    if (typeof p.defPath === 'string') p.defPath = p.defPath.split(from).join(to);
   }
 }
 

@@ -118,7 +118,7 @@ async function persistDraft(projectId: number, draft: unknown): Promise<void> {
 // ─── prompt ───────────────────────────────────────────────────────────────────
 
 const system1 = `
-<!-- modelType: codepro -->
+<!-- modelType: design -->
 
 You must return ONLY a valid JSON object. No preamble, no markdown fences. Start with { and end with }
 
