@@ -3,8 +3,11 @@
 // Path derivation for the DS-implementation flow.
 //
 // Page folder convention: page{layout}{ds}  (page11 = layout 1 + ds 1).
-// In this phase the ORIGIN is always page11 (layout fixed, only the DS varies);
-// the DESTINATION is page{layout}{ds}.
+// The DESTINATION is always page{layout}{ds}. The ORIGIN (structural source of the
+// defs) is resolved PER PAGE by fallback: page{L}{D} → page{L}1 → page11 — the first
+// whose `.defs.ts` actually exists in mls.stor. So a variation reuses the closest
+// same-layout ancestor already generated (e.g. page32 derives from page31) instead of
+// always cloning page11's structure. Falls back to page11 when nothing else exists.
 //
 // Full layout under a module: {module}/web/{device}/page{layout}{ds}/<page>.{ts|defs.ts}
 
@@ -35,11 +38,12 @@ export function pageRef(
 
 export interface PageWorkItem {
     page: string;          // shortName, e.g. 'cardapioEstoque'
-    defsOrigem: string;    // page11 .defs.ts file reference (structure — the only origin input)
+    defsOrigem: string;    // resolved-origin .defs.ts file reference (structure input)
     defsDestino: string;   // page{layout}{ds} .defs.ts file reference (output)
+    originFolder: string;  // resolved-origin folder, e.g. 'page31' (agentGenDefs repoints from this)
 }
 
-/** Build the work item for one page. Origin is always page11 (layout 1, ds 1). */
+/** Build the work item for one page. Origin resolved by fallback (see resolveOriginCoords). */
 export function buildWorkItem(
     project: number,
     module: string,
@@ -48,11 +52,86 @@ export function buildWorkItem(
     page: string,
     device = DEFAULT_DEVICE,
 ): PageWorkItem {
+    const [ol, od] = resolveOriginCoords(project, module, layout, ds, page, device);
     return {
         page,
-        defsOrigem: pageRef(project, module, 1, 1, page, '.defs.ts', device),
+        defsOrigem: pageRef(project, module, ol, od, page, '.defs.ts', device),
         defsDestino: pageRef(project, module, layout, ds, page, '.defs.ts', device),
+        originFolder: variationFolder(ol, od),
     };
+}
+
+// ─── origin resolution (fallback page{L}{D} → page{L}1 → page11) ──────────────
+
+/** Ordered, de-duplicated origin candidates for a variation: [[L,D],[L,1],[1,1]]. Pure. */
+export function originCandidates(
+    layout: number | string,
+    ds: number | string,
+): Array<[number | string, number | string]> {
+    const raw: Array<[number | string, number | string]> = [[layout, ds], [layout, 1], [1, 1]];
+    const seen = new Set<string>();
+    const out: Array<[number | string, number | string]> = [];
+    for (const [l, d] of raw) {
+        const key = `${l}|${d}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push([l, d]);
+    }
+    return out;
+}
+
+/** Does the `.defs.ts` for this exact page variation exist in mls.stor? Synchronous.
+ *  Returns false when stor is unavailable (test/no-stor context). */
+export function pageDefsExists(
+    project: number,
+    module: string,
+    layout: number | string,
+    ds: number | string,
+    page: string,
+    device = DEFAULT_DEVICE,
+): boolean {
+    const files = (typeof mls !== 'undefined') ? (mls as any)?.stor?.files : undefined;
+    if (!files) return false;
+    const folder = pageFolder(module, layout, ds, device);
+    return Object.values(files as Record<string, any>).some(sf =>
+        sf &&
+        sf.project === project &&
+        sf.level === 2 &&
+        sf.folder === folder &&
+        sf.extension === '.defs.ts' &&
+        sf.shortName === page,
+    );
+}
+
+/** Resolve the origin coordinates [layout, ds] for one page by fallback. Defensive:
+ *  with no stor (test context) returns [1, 1] to preserve the page11 baseline. */
+function resolveOriginCoords(
+    project: number,
+    module: string,
+    layout: number | string,
+    ds: number | string,
+    page: string,
+    device = DEFAULT_DEVICE,
+): [number | string, number | string] {
+    const files = (typeof mls !== 'undefined') ? (mls as any)?.stor?.files : undefined;
+    if (!files) return [1, 1];
+    for (const [l, d] of originCandidates(layout, ds)) {
+        if (pageDefsExists(project, module, l, d, page, device)) return [l, d];
+    }
+    return [1, 1];
+}
+
+/** The resolved-origin `.defs.ts` reference for one page (first existing candidate; page11 fallback). */
+export function resolveDefsOrigem(
+    project: number,
+    module: string,
+    layout: number | string,
+    ds: number | string,
+    page: string,
+    device = DEFAULT_DEVICE,
+): string {
+    const [l, d] = resolveOriginCoords(project, module, layout, ds, page, device);
+    return pageRef(project, module, l, d, page, '.defs.ts', device);
 }
 
 // ─── runtime (needs mls.stor) ────────────────────────────────────────────────

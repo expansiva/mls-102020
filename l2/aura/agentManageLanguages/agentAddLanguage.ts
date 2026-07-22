@@ -253,7 +253,7 @@ async function updateStorFile(params: { project: number, shortName: string, leve
 }
 
 const system1 = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: translate -->
 
 You are a translation specialist responsible for adding a new i18n language, following the established standard.
 

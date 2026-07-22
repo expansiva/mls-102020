@@ -230,7 +230,7 @@ function buildHumanPrompt(theme: IDesignSystemTokens, vocab: MlToken[]): string 
 }
 
 const system1 = `
-<!-- modelType: codeinstruct -->
+<!-- modelType: design -->
 
 You must return ONLY a valid JSON object. No preamble, no markdown fences. Start with { and end with }
 
