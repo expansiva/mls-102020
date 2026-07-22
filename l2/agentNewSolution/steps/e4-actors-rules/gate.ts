@@ -1,8 +1,12 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/steps/e4-actors-rules/gate.ts" enhancement="_blank"/>
 
 import { errorIssue, NsGateIssue, warningIssue } from '/_102020_/l2/agentNewSolution/helpers/nsGate.js';
-import { isRecord } from '/_102020_/l2/agentNewSolution/helpers/nsFs.js';
 import { lowerFirst, toPascalCase } from '/_102020_/l2/agentNewSolution/steps/e3-ontology/gate.js';
+
+// isRecord is LOCAL — see e3-ontology/gate.ts (avoid the nsFs → libStor/libCommom DOM chain in node:test).
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export const E4_SCHEMA_VERSION = '2026-07-07-ns-e4-v1';
 

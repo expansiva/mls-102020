@@ -556,7 +556,7 @@ function createToolSchema(resultSchema: Record<string, unknown>): mls.msg.LLMToo
         additionalProperties: false,
         required: ['status', 'result', 'questions', 'trace'],
         properties: {
-          status: { enum: ['ok', 'needs_input', 'failed'] },
+          status: { type: 'string', enum: ['ok', 'needs_input', 'failed'] },
           result: resultSchema,
           questions: { type: 'array', items: { type: 'string' } },
           trace: { type: 'array', items: { type: 'string' } },

@@ -49,7 +49,7 @@ export function createNsToolSchema(
     additionalProperties: false,
     required: ['status', 'result', 'trace'],
     properties: {
-      status: { enum: ['ok', 'failed'] },
+      status: { type: 'string', enum: ['ok', 'failed'] },
       result: resultBody,
       trace: { type: 'array', items: { type: 'string' } },
     },

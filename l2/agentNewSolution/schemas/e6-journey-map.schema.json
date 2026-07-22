@@ -34,7 +34,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["workspaceId", "title", "actors", "kind", "entity", "sections", "purpose"],
+        "required": ["workspaceId", "title", "actors", "kind", "entity", "sections"],
         "properties": {
           "workspaceId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
           "title": { "type": "string", "minLength": 1 },

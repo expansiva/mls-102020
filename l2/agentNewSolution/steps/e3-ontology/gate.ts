@@ -1,7 +1,12 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/steps/e3-ontology/gate.ts" enhancement="_blank"/>
 
 import { errorIssue, NsGateIssue, warningIssue } from '/_102020_/l2/agentNewSolution/helpers/nsGate.js';
-import { isRecord } from '/_102020_/l2/agentNewSolution/helpers/nsFs.js';
+
+// isRecord is LOCAL (not imported from nsFs) so this gate stays node-safe / unit-testable — nsFs pulls the
+// libStor → libCommom (DOM) chain, which crashes under node:test. Same reason the e5 gate keeps it local.
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export const E3_MODEL_SCHEMA_VERSION = '2026-07-07-ns-e3-v1';
 

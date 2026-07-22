@@ -353,7 +353,9 @@ export function prepareE6JourneyMap(input: unknown, context: Pick<E6GateContext,
         sections,
         // Derived from the bffCalls' uses (source of truth). First occurrence wins, order preserved.
         operationIds: deriveOperationIds(bffCalls),
-        purpose: readString(workspace.purpose) || '',
+        // purpose is no longer schema-required (models intermittently drop it); backfill from title. In
+        // the detail phase it is overwritten with the sitemap slice's purpose (the sitemap owns it).
+        purpose: readString(workspace.purpose) || readString(workspace.title) || readString(workspace.workspaceId) || 'workspace',
       };
     }),
     landings: landings.map(landing => {

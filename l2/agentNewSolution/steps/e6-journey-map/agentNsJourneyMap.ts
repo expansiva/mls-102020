@@ -38,9 +38,10 @@ import {
   nsParseSelector,
   nsResultStepIntent,
   nsUpdateStatusIntent,
+  NS_MAX_REPAIR_ROUNDS,
+  rotateNsModelType,
 } from '/_102020_/l2/agentNewSolution/helpers/nsSteps.js';
 import { nsLlmInfraFailureIntents } from '/_102020_/l2/agentNewSolution/helpers/nsLlmRetry.js';
-import { NS_AGENT_BUILD } from '/_102020_/l2/agentNewSolution/agentNewSolution.js';
 import {
   approveNsStep,
   createNsPipeline,
@@ -178,9 +179,6 @@ async function beforePromptStep(
   // Parallel detail children receive the compact selector 'workspace:<workspaceId>'.
   const selector = nsParseSelector(hookArgs);
   const parsedArgs = selector?.kind === 'workspace' ? { planId: DETAIL_PLAN, workspaceId: selector.id } : parseE6Args(hookArgs);
-  // Deploy check: confirms the CURRENT e6 build is live (the stale-compile issue — build-11 has the
-  // two-phase + command-form primarySurface). If the logs show an older build, compiled.zip is stale.
-  console.log(`[ns-build] ${AGENT_NAME} ${NS_AGENT_BUILD} | planId=${parsedArgs.planId || STEP_ID}${parsedArgs.workspaceId ? ` ws=${parsedArgs.workspaceId}` : ''}`);
   if (parsedArgs.planId === DETAIL_PLAN) return [await buildDetailPrompt(context, parentStep, hookSequential, parsedArgs, hookArgs)];
   if (parsedArgs.planId === DETAIL_PHASE_PLAN) return runE6DetailPhase(context, parentStep, step, hookSequential, parsedArgs);
   if (parsedArgs.planId === FINALIZE_PLAN) return runE6Finalize(context, parentStep, step, hookSequential, parsedArgs);
@@ -273,7 +271,7 @@ async function buildDetailPrompt(
     taskId: context.task?.PK || '',
     hookSequential,
     parentStepId: parentStep.stepId,
-    systemPrompt: `${prompt.split('{{toolName}}').join(DETAIL_TOOL)}\n\n${buildNsToolInstruction(DETAIL_TOOL, 'the site map slice is missing or unusable')}`,
+    systemPrompt: rotateNsModelType(`${prompt.split('{{toolName}}').join(DETAIL_TOOL)}\n\n${buildNsToolInstruction(DETAIL_TOOL, 'the site map slice is missing or unusable')}`, parsedArgs.retryAttempt),
     humanPrompt,
     tools: [createNsToolSchema(DETAIL_TOOL, 'Submit ONE workspace detail (sections/organisms/bffCalls).', schema)],
     toolChoice: { type: 'function', function: { name: DETAIL_TOOL } },
@@ -433,8 +431,10 @@ async function handleDetailResult(
   const prepared = deriveE6BffRoutes(prepareE6JourneyMap({ workspaces: [output.result], landings: [], navigationEdges: [] }, { moduleName }));
   const workspace = prepared.workspaces[0];
   if (!workspace) throw new Error(`[${AGENT_NAME}] detail produced no workspace for ${parsedArgs.workspaceId}`);
-  // Force the map-owned fields (kind/workflowId derived at phase 1; equality is still checked below).
+  // Force the map-owned fields (kind/workflowId/purpose come from phase 1; equality is still checked
+  // below). purpose is owned by the site map — carry it so a detail model that drops it never fails.
   workspace.kind = slice.kind;
+  workspace.purpose = slice.purpose;
   if (slice.workflowId) workspace.workflowId = slice.workflowId; else delete workspace.workflowId;
 
   // Detail gate (isolated fast-fail): equality-to-map + the per-workspace bffCall/organism checks (run
@@ -485,24 +485,27 @@ async function runE6Finalize(
     else missing.push(slice.workspaceId);
   }
 
-  // Repair round (one attempt): re-run the detail for any missing workspace.
-  if (missing.length > 0 && !parsedArgs.repairAttempt) {
+  // Repair rounds (up to NS_MAX_REPAIR_ROUNDS): re-run the detail for any missing workspace. Intermittent
+  // content failures need more than one roll; the retry prompt rotates the modelType (code↔design).
+  const round = parsedArgs.repairAttempt || 1; // finalize #1 = round 1
+  if (missing.length > 0 && round < NS_MAX_REPAIR_ROUNDS) {
+    const nextRound = round + 1;
     const repairs = missing.map((workspaceId, index) => nsAgentStepIntent(context, mutationParent, {
-      agentName: AGENT_NAME, stepTitle: `Repair workspace ${workspaceId}`,
-      planId: `e6-detail-repair-${index + 1}-${workspaceId}`,
-      prompt: { planId: DETAIL_PLAN, moduleName, workspaceId, retryAttempt: 2 },
-      // task06 6a: a second transient LLM-call failure on the repair degrades to the explicit
-      // 'workspaces missing after repair round' message (e6-finalize-2), never a raw task crash.
+      agentName: AGENT_NAME, stepTitle: `Repair workspace ${workspaceId} (round ${round})`,
+      planId: `e6-detail-repair-r${round}-${index + 1}-${workspaceId}`,
+      prompt: { planId: DETAIL_PLAN, moduleName, workspaceId, retryAttempt: nextRound },
+      // task06 6a: a transient LLM-call failure on the repair degrades to the explicit finalize message,
+      // never a raw task crash.
       onFailure: 'wait_after_prompt',
     }));
     const repairPlanIds = repairs.map(intent => (intent.step.planning as { planId: string }).planId);
     return [
       ...repairs,
       nsAgentStepIntent(context, mutationParent, {
-        agentName: AGENT_NAME, stepTitle: 'Finalize journey map (after repair)', planId: 'e6-finalize-2',
-        dependsOn: repairPlanIds, status: 'waiting_dependency', prompt: { planId: FINALIZE_PLAN, moduleName, repairAttempt: 2 },
+        agentName: AGENT_NAME, stepTitle: 'Finalize journey map (after repair)', planId: `e6-finalize-r${nextRound}`,
+        dependsOn: repairPlanIds, status: 'waiting_dependency', prompt: { planId: FINALIZE_PLAN, moduleName, repairAttempt: nextRound },
       }),
-      nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${missing.length} workspaces missing (${missing.join(', ')}); repair round started`),
+      nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${missing.length} workspaces missing (${missing.join(', ')}); repair round ${round}/${NS_MAX_REPAIR_ROUNDS - 1} started`),
     ];
   }
   if (missing.length > 0) {

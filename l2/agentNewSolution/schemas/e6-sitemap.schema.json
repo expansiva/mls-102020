@@ -13,7 +13,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["workspaceId", "title", "actors", "kind", "entity", "operationIds", "purpose"],
+        "required": ["workspaceId", "title", "actors", "kind", "entity", "operationIds"],
         "properties": {
           "workspaceId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
           "title": { "type": "string", "minLength": 1 },

@@ -89,7 +89,9 @@ export function prepareE6SiteMap(input: unknown, context: Pick<E6SiteMapGateCont
         entity: readString(workspace.entity) || '',
         ...(workflowId ? { workflowId } : {}),
         operationIds: readStringArray(workspace.operationIds),
-        purpose: readString(workspace.purpose) || '',
+        // purpose is no longer schema-required (strict models — Grok — intermittently drop it from the
+        // tool JSON even after reasoning it). Backfill from the title so downstream never sees empty.
+        purpose: readString(workspace.purpose) || readString(workspace.title) || readString(workspace.workspaceId) || 'workspace',
       };
     }),
     landings: landings.map(landing => {
