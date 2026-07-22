@@ -7,6 +7,7 @@ interface ScanArgs {
   command?: string;
   materialize?: boolean;
   forceMaterialize?: boolean;
+  module?: string;
 }
 
 export function createAgent(): IAgentAsync {
@@ -24,17 +25,28 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   try {
     const scanArgs = parseScanArgs(step.prompt);
     const createContext = await readCreateContext();
+
+    // One module per task: keeps a run small so it never blows the task payload size limit. If the CLI
+    // named a module (e.g. "@@changeFrontend /rebuild all cafeFlow"), process exactly that one;
+    // otherwise the first module (todo order) that still has pending pages. Other modules are handled by
+    // re-running the agent. 'all'/'defs' are CLI keywords and never reach here as a module (parseCliCommand).
+    const targetModule = scanArgs.module || createContext.moduleNames.find(name => createContext.pages.some(page => page.moduleName === name));
+    createContext.pages = targetModule ? createContext.pages.filter(page => page.moduleName === targetModule) : [];
+
     if (createContext.pages.length === 0) {
+      const reason = scanArgs.module ? `No todoFrontend=toCreate pages for module ${scanArgs.module}.` : 'No todoFrontend=toCreate owners.';
       if (scanArgs.materialize !== false) {
         const materialize = createMaterializeStep(scanArgs, []);
         return [
           createAddStepIntent(context, parentStep, materialize),
-          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'No todoFrontend=toCreate owners. Queued materialization freshness check.'),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${reason} Queued materialization freshness check.`),
         ];
       }
-      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'No todoFrontend=toCreate owners.')];
+      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', reason)];
     }
 
+    // Guaranteed defined once pages are non-empty (pages were filtered by this module).
+    const runModule = createContext.pages[0].moduleName;
     const runId = `cfe-${context.message.orderAt}`;
     startCreateRun(runId, createContext);
     const pageArgs = createContext.pages.map(page => JSON.stringify({ pageId: page.pageId, runId }));
@@ -86,7 +98,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         'rebuild-defs-cleanup',
         'agentCfeRebuildDefsCleanup',
         'Limpar .ts derivados (rebuild defs)',
-        { planId: 'rebuild-defs-cleanup', modules: createContext.moduleNames },
+        { planId: 'rebuild-defs-cleanup', modules: [runModule] },
         ['verify-create-layouts'],
         'sequential',
         'waiting_dependency',
@@ -94,14 +106,17 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       intents.push(createAddStepIntent(context, parentStep, cleanup));
     }
 
-    intents.push(createUpdateStatusIntent(
+    const doneIntent = createUpdateStatusIntent(
       context,
       parentStep,
       step,
       hookSequential,
       'completed',
-      `Scanned L4 once; queued ${pageArgs.length} page contract/shared item(s) and the guarded layout phase${scanArgs.materialize === false ? ' (defs-only).' : '.'}`,
-    ));
+      `Scanned L4 once; module ${runModule}: queued ${pageArgs.length} page contract/shared item(s) and the guarded layout phase${scanArgs.materialize === false ? ' (defs-only).' : '.'}`,
+    );
+    // Name the task after the single module it processes: "<module> - frontend".
+    doneIntent.newTaskTitle = `${runModule} - frontend`;
+    intents.push(doneIntent);
     return intents;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

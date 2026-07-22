@@ -50,17 +50,14 @@ An operationId (the usecase BEHIND a bffCall, e.g. `browseHighlights`) is not an
 that serves it (e.g. `browseHighlightsQuery`). The bffCall ids are exactly the `shared.actions` actionIds
 and the `dataSource`/`action` values in the `workspace` skeleton.
 
-Use only `shared.states` and `shared.functions` for state and behavior. Every visible text uses a
-titleKey, labelKey or emptyKey declared in the flat `pageLayout.i18n` object. Every intention includes
-`fields`, `columns`, `filters`, `toolbar`, `rowActions` and `actions`, using `[]` when empty.
+Use only `shared.states` and `shared.functions` for state and behavior. Every visible text is referenced
+by a `titleKey`, `labelKey` or `emptyKey` — a stable, descriptive dotted key (e.g. `catalog.title`,
+`field.productName`). Every intention includes `fields`, `columns`, `filters`, `toolbar`, `rowActions`
+and `actions`, using `[]` when empty.
 
-i18n values (REQUIRED). Every titleKey, labelKey and emptyKey you reference anywhere in the layout
-MUST have a matching entry in `pageLayout.i18n`, and its value MUST be a natural, human-readable label
-written in the module language `i18n.defaultLocale` (from the supplied context — e.g. fr, es, pt-BR).
-Never leave a referenced key out of `pageLayout.i18n`, never use the raw key as its value, and never
-emit an English or machine placeholder (e.g. "Sec discover", "Org product table") when the locale is
-not English. A key left without a real value is auto-filled by a language-neutral fallback that reads
-as a broken placeholder in the UI — supplying the value yourself is the only way to avoid that.
+Do NOT emit any `i18n` object or translation map. It is not part of this tool's schema, and a tool call
+that includes one is rejected. The human-readable labels for every key you reference are generated
+automatically downstream — your job is only to reference each label through a clear, descriptive key.
 
 Field names are a closed vocabulary. Every `field` value in `fields`, `columns` and `filters` MUST be
 an exact name from `shared.fieldCatalog`: an action's `inputFields`/`outputFields` in `byAction`, or an

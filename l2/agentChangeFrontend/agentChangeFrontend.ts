@@ -4,10 +4,13 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 
 type CliCommand =
-  | { kind: 'rebuild-all'; materialize: true; reset: true }
-  | { kind: 'rebuild-defs'; materialize: false; reset: true }
-  | { kind: 'run'; materialize: true; reset: false }
+  | { kind: 'rebuild-all'; materialize: true; reset: true; module?: string }
+  | { kind: 'rebuild-defs'; materialize: false; reset: true; module?: string }
+  | { kind: 'run'; materialize: true; reset: false; module?: string }
   | { kind: 'help'; reason: string };
+
+// CLI keywords are never module names — 'all'/'defs' etc. after a command are options, not modules.
+const CLI_KEYWORDS = new Set(['rebuild', 'all', 'defs', 'run', 'help']);
 
 export function createAgent(): IAgentAsync {
   return {
@@ -50,7 +53,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
     'scan-create-l4',
     'agentCfeCreateScanL4',
     'Ler L4 e criar paginas pendentes',
-    { command: command.kind, reset, materialize: command.materialize, forceMaterialize: command.kind === 'rebuild-all' },
+    { command: command.kind, reset, materialize: command.materialize, forceMaterialize: command.kind === 'rebuild-all', module: command.module },
     [],
     'sequential',
     'waiting_human_input',
@@ -64,23 +67,31 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
 }
 
 function parseCliCommand(prompt: string): CliCommand {
-  const normalized = normalizePrompt(prompt);
-  if (!normalized) return { kind: 'run', materialize: true, reset: false };
-  if (normalized === '/help' || normalized === 'help') return { kind: 'help', reason: '' };
-  if (/\brebuild\b/.test(normalized)) {
-    if (/\bdefs\b/.test(normalized)) return { kind: 'rebuild-defs', materialize: false, reset: true };
-    if (/\ball\b/.test(normalized) || normalized === '/rebuild') return { kind: 'rebuild-all', materialize: true, reset: true };
+  const tokens = stripAgentPrefix(prompt).split(' ').filter(Boolean);
+  const keywords = new Set(tokens.map(token => token.replace(/^\//, '').toLowerCase()).filter(token => CLI_KEYWORDS.has(token)));
+  // Optional module: the first non-command token (no leading slash, not a CLI keyword). Case is
+  // preserved because module names are canonical camelCase. "all"/"defs" are never modules.
+  const module = tokens.find(token => !token.startsWith('/') && !CLI_KEYWORDS.has(token.toLowerCase())) || undefined;
+
+  if (keywords.has('help')) return { kind: 'help', reason: '' };
+  if (keywords.has('rebuild')) {
+    if (keywords.has('defs')) return { kind: 'rebuild-defs', materialize: false, reset: true, module };
+    return { kind: 'rebuild-all', materialize: true, reset: true, module };
   }
-  if (normalized === '/run' || normalized === 'run') return { kind: 'run', materialize: true, reset: false };
-  return { kind: 'help', reason: `Comando desconhecido: ${normalized}` };
+  return { kind: 'run', materialize: true, reset: false, module };
 }
 
-function normalizePrompt(prompt: string): string {
+// Strip the @@changeFrontend / @@agentChangeFrontend prefix, preserving original case (module names).
+function stripAgentPrefix(prompt: string): string {
   return String(prompt || '')
     .trim()
     .replace(/^@@(?:agentChangeFrontend|changeFrontend)(?:\s+|$)/i, '')
     .replace(/\s+/g, ' ')
-    .toLowerCase();
+    .trim();
+}
+
+function normalizePrompt(prompt: string): string {
+  return stripAgentPrefix(prompt).toLowerCase();
 }
 
 // Reset generation status in l5/{module}/todoFrontend.defs.ts (done -> toCreate). The l4 owner
@@ -184,9 +195,9 @@ function createHelpStep(reason: string): mls.msg.AIPayload {
 const HELP_TEXT = `agentChangeFrontend
 
 Uso:
-@@changeFrontend /run
-@@changeFrontend /rebuild all
-@@changeFrontend /rebuild defs
+@@changeFrontend /run [module]
+@@changeFrontend /rebuild all [module]
+@@changeFrontend /rebuild defs [module]
 @@changeFrontend /help
 
 Comandos:
@@ -195,4 +206,6 @@ Comandos:
 - /rebuild defs : altera owners do todoFrontend com status = done para toCreate e regenera somente os .defs.ts. Nao materializa .ts/config.
 - /help         : mostra esta ajuda.
 
-Qualquer outro comando apenas mostra este help.`;
+Modulo (opcional): cada run processa um unico modulo. Informe o nome do modulo apos o comando
+(ex: @@changeFrontend /rebuild all cafeFlow) para escolher qual; sem ele, assume o primeiro modulo
+com pendencias. 'all'/'defs' sao palavras do comando, nunca nome de modulo.`;

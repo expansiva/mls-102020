@@ -216,8 +216,9 @@ async function afterPromptStep(
     // e1-draft). The e1-draft.md stays on disk as the understanding contract / E2 input.
     pipeline = approveNsStep(pipeline, 'e1-draft', 'auto');
     await writeNsPipeline(pipeline);
-    // Artifact is on disk; drop the LLM input/payload from the task record (DynamoDB 400KB).
-    return [updateStatus(context, parentStep, step, hookSequential, 'completed', undefined, 'input_output')];
+    // Artifact is on disk; drop the LLM input/payload from the task record (DynamoDB 400KB). The module
+    // name is now final, so rename the running task from "new Solution" to "<module> - plan".
+    return [updateStatus(context, parentStep, step, hookSequential, 'completed', undefined, 'input_output', `${artifact.moduleName} - plan`)];
   } catch (error) {
     const traceMsg = error instanceof Error ? error.message : String(error);
     if (moduleNameForTrace) await writeNsTrace(moduleNameForTrace, 'e1-draft', AGENT_NAME, 1, { stepId: step.stepId }, traceMsg);
@@ -527,6 +528,7 @@ function updateStatus(
   status: mls.msg.AIStepStatus,
   traceMsg?: string,
   cleaner?: 'input' | 'input_output',
+  newTaskTitle?: string,
 ): mls.msg.AgentIntentUpdateStatus {
   const intent: mls.msg.AgentIntentUpdateStatus = {
     type: 'update-status',
@@ -542,6 +544,8 @@ function updateStatus(
   // 'input_output' drops the step's LLM input/payload/trace from the task record once the
   // artifact is safely on disk (DynamoDB item limit is 400KB).
   if (cleaner) intent.cleaner = cleaner;
+  // Rename the running task once the module name is known (e1 owns the final module name).
+  if (newTaskTitle) intent.newTaskTitle = newTaskTitle;
   return intent;
 }
 
