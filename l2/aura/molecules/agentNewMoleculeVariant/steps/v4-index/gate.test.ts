@@ -3,7 +3,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runIndexGate } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/steps/v4-index/gate.js';
-import { insertIndexImport, renderNewGroupIndexTs } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vTemplates.js';
 import { VariantContext } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vContext.js';
 
 function buildCtx(): VariantContext {
@@ -48,46 +47,56 @@ function buildCtx(): VariantContext {
   };
 }
 
-const existingIndex = `/// <mls fileReference="_102054_/l2/molecules/grouptriggeraction/index.ts" enhancement="_102020_/l2/enhancementAura"/>
+const VALID_INDEX = `/// <mls fileReference="_102054_/l2/molecules/grouptriggeraction/index.ts" enhancement="_102020_/l2/enhancementAura"/>
 import { html, TemplateResult } from 'lit';
+import { customElement, state } from 'lit/decorators.js';
+import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
+import '/_102054_/l2/molecules/grouptriggeraction/ml-split-button-brutal';
 
-// Registra as moléculas do grupo (side-effect import)
-import '/_102054_/l2/molecules/grouptriggeraction/ml-button-standard-brutal';
-import '/_102054_/l2/molecules/grouptriggeraction/ml-icon-button-brutal';
-
-export class X {}
+@customElement('molecules--grouptriggeraction--index-102054')
+export class GroupTriggerActionIndex extends StateLitElement {
+  render(): TemplateResult {
+    return html\`<div class="font-sans min-h-screen">
+      <grouptriggeraction--ml-split-button-brutal .isEditing=\${true}></grouptriggeraction--ml-split-button-brutal>
+    </div>\`;
+  }
+}
 `;
 
-test('insert adds the import after the last molecule import, preserving all', () => {
-  const ctx = buildCtx();
-  const updated = insertIndexImport(existingIndex, ctx);
-  assert.ok(updated);
-  assert.deepEqual(runIndexGate(updated!, existingIndex, ctx), []);
-  const lines = updated!.split('\n');
-  const idx = lines.findIndex(line => line.includes('ml-split-button-brutal'));
-  assert.ok(lines[idx - 1].includes('ml-icon-button-brutal'));
+test('a well-formed showcase index passes the gate', () => {
+  assert.deepEqual(runIndexGate(VALID_INDEX, buildCtx()), []);
 });
 
-test('insert is idempotent (already registered => unchanged)', () => {
-  const ctx = buildCtx();
-  const once = insertIndexImport(existingIndex, ctx)!;
-  const twice = insertIndexImport(once, ctx)!;
-  assert.equal(once, twice);
+test('empty content fails', () => {
+  assert.ok(runIndexGate('   ', buildCtx()).some(i => i.code === 'no_content'));
 });
 
-test('unrecognizable index (no molecule import block) returns null — report, never guess', () => {
-  const ctx = buildCtx();
-  assert.equal(insertIndexImport('export class X {}\n', ctx), null);
+test('markdown fences are rejected', () => {
+  const fenced = '```ts\n' + VALID_INDEX + '\n```';
+  assert.ok(runIndexGate(fenced, buildCtx()).some(i => i.code === 'fenced'));
 });
 
-test('lost imports are detected by the gate', () => {
-  const ctx = buildCtx();
-  const updated = insertIndexImport(existingIndex, ctx)!.replace("import '/_102054_/l2/molecules/grouptriggeraction/ml-icon-button-brutal';\n", '');
-  assert.ok(runIndexGate(updated, existingIndex, ctx).some(issue => issue.code === 'import_lost'));
+test('wrong header project is rejected', () => {
+  const bad = VALID_INDEX.replace('_102054_/l2/molecules/grouptriggeraction/index.ts', '_102040_/l2/molecules/grouptriggeraction/index.ts');
+  assert.ok(runIndexGate(bad, buildCtx()).some(i => i.code === 'header'));
 });
 
-test('freshly created minimal index passes the gate', () => {
-  const ctx = buildCtx();
-  const created = renderNewGroupIndexTs(ctx);
-  assert.deepEqual(runIndexGate(created, '', ctx), []);
+test('missing custom element declaration is rejected', () => {
+  const bad = VALID_INDEX.replace("@customElement('molecules--grouptriggeraction--index-102054')", '@customElement()');
+  assert.ok(runIndexGate(bad, buildCtx()).some(i => i.code === 'custom_element'));
+});
+
+test('missing variant import is rejected', () => {
+  const bad = VALID_INDEX.replace("import '/_102054_/l2/molecules/grouptriggeraction/ml-split-button-brutal';\n", '');
+  const issues = runIndexGate(bad, buildCtx());
+  assert.ok(issues.some(i => i.code === 'variant_import'));
+});
+
+test('missing variant tag is rejected', () => {
+  // Rename only the element tags (`<group--variant>`); the import path
+  // (`/group/variant'`) has no `--` so it is untouched — ONLY variant_tag trips.
+  const bad = VALID_INDEX.split('grouptriggeraction--ml-split-button-brutal').join('grouptriggeraction--ml-other');
+  const issues = runIndexGate(bad, buildCtx());
+  assert.ok(issues.some(i => i.code === 'variant_tag'));
+  assert.ok(!issues.some(i => i.code === 'variant_import'));
 });
