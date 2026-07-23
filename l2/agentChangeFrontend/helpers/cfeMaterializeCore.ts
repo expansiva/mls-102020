@@ -420,7 +420,6 @@ function buildContractTypecheckTest(outputPath: string, data: unknown): string |
 
   const moduleName = moduleNameFromOutputPath(outputPath);
   if (!moduleName) return null;
-  const modulePrefix = toPascalCase(moduleName);
   const imports = new Set<string>();
   const declarations: string[] = [];
   const assertions: string[] = [];
@@ -428,7 +427,9 @@ function buildContractTypecheckTest(outputPath: string, data: unknown): string |
   for (const command of data) {
     if (!isRecord(command) || typeof command.commandName !== 'string') continue;
     const commandName = command.commandName;
-    const commandPrefix = `${modulePrefix}${toPascalCase(commandName)}`;
+    // Contract DTO types are NOT module-prefixed: the contract .ts (genCfeContractTs) exports
+    // `{CommandPascal}Input/Output/OutputItem`, and shared/render import those exact names.
+    const commandPrefix = toPascalCase(commandName);
     const inputName = `${commandPrefix}Input`;
     const outputName = `${commandPrefix}Output`;
     const outputItemName = `${commandPrefix}OutputItem`;
@@ -490,7 +491,7 @@ function buildContractTypecheckTest(outputPath: string, data: unknown): string |
   return [
     mlsHeaderForOutputPath(testPath),
     '',
-    `import type { ${[...imports].sort().join(', ')} } from './${fileBaseName(outputPath)}.js';`,
+    `import type { ${[...imports].sort().join(', ')} } from '${aliasJsImport(outputPath)}';`,
     '',
     'type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;',
     'type Assert<T extends true> = T;',
@@ -544,7 +545,7 @@ function buildSharedTypecheckTest(outputPath: string, data: unknown): string | n
   return [
     mlsHeaderForOutputPath(testPath),
     '',
-    `import type { ${className} } from './${fileBaseName(outputPath)}.js';`,
+    `import type { ${className} } from '${aliasJsImport(outputPath)}';`,
     ...contractImportLines(contractImports),
     '',
     'type IsAny<T> = 0 extends (1 & T) ? true : false;',
@@ -640,9 +641,9 @@ function sharedStateContractType(outputPath: string, data: Record<string, unknow
   const contractPath = sharedContractTsPath(outputPath, data);
   if (!commandName || !moduleName || !contractPath) return null;
 
-  const inputType = `${toPascalCase(moduleName)}${toPascalCase(commandName)}Input`;
-  const outputType = `${toPascalCase(moduleName)}${toPascalCase(commandName)}Output`;
-  const importPath = relativeJsImportPath(outputPath, contractPath);
+  const inputType = `${toPascalCase(commandName)}Input`;
+  const outputType = `${toPascalCase(commandName)}Output`;
+  const importPath = aliasJsImport(contractPath);
   const names = imports.get(importPath) ?? new Set<string>();
   if (ref.direction === 'output') {
     names.add(outputType);
@@ -686,15 +687,13 @@ function contractImportLines(imports: Map<string, Set<string>>): string[] {
     .map(([importPath, names]) => `import type { ${[...names].sort().join(', ')} } from '${importPath}';`);
 }
 
-function relativeJsImportPath(fromPath: string, toPath: string): string {
-  const fromParts = fromPath.split('/');
-  fromParts.pop();
-  const toParts = toPath.replace(/\.ts$/, '.js').split('/');
-  let i = 0;
-  while (i < fromParts.length && i < toParts.length && fromParts[i] === toParts[i]) i++;
-  const parts = [...Array(fromParts.length - i).fill('..'), ...toParts.slice(i)];
-  const rel = parts.join('/') || '.';
-  return rel.startsWith('.') ? rel : `./${rel}`;
+// Generated TS must import through the project alias (leading-slash `/_<project>_/...`), NEVER a relative
+// path: the mls runtime/tsc resolves only the alias form, so a `./x.js` or `../contracts/x.js` import in a
+// generated .ts/.test.ts fails to compile. Turns an mls fileReference (`_<project>_/l2/...ts`) into the
+// importable alias (`/_<project>_/l2/...js`).
+function aliasJsImport(mlsPath: string): string {
+  const withJs = mlsPath.replace(/\.ts$/, '.js');
+  return withJs.startsWith('/') ? withJs : `/${withJs}`;
 }
 
 function uniqueTypeUnion(types: string[]): string {

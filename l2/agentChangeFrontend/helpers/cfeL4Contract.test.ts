@@ -67,7 +67,26 @@ test('generated contract typecheck expects paginated query output when outputSha
     output: [{ name: 'orderId', type: 'string', required: true }],
   }]);
 
-  assert.match(source || '', /type ExpectedCafeFlowListOrdersOutput = \{ items: ExpectedCafeFlowListOrdersOutputItem\[\]; total: number; page\?: number; pageSize\?: number; \};/);
+  assert.match(source || '', /type ExpectedListOrdersOutput = \{ items: ExpectedListOrdersOutputItem\[\]; total: number; page\?: number; pageSize\?: number; \};/);
+});
+
+// Generated tests must import through the project alias (/_<project>_/...), never a relative path —
+// a relative import (`./x.js`, `../contracts/x.js`) does not resolve and fails compilation (102051 run18).
+test('generated typecheck tests import via the project alias, not relative paths', () => {
+  const contract = buildMaterializeTypecheckTest({
+    id: 'menuManagement__l2_contract', type: 'l2_contract', outputPath: '_102051_/l2/cafeFlow/web/contracts/menuManagement.ts',
+  }, [{ commandName: 'listMenuItems', kind: 'query', input: [{ name: 'status' }], output: [{ name: 'name' }] }]) || '';
+  const shared = buildMaterializeTypecheckTest({
+    id: 'menuManagement__l2_shared', type: 'l2_shared', outputPath: '_102051_/l2/cafeFlow/web/shared/menuManagement.ts',
+  }, { moduleName: 'cafeFlow', pageId: 'menuManagement', contractRef: { tsPath: '_102051_/l2/cafeFlow/web/contracts/menuManagement.ts' },
+    states: [{ name: 'listMenuItemsData', stateKey: 'ui.menuManagement.data.listMenuItems', kind: 'queryResult', contractRef: { commandName: 'listMenuItems', direction: 'output' } }], actions: [] }) || '';
+  for (const src of [contract, shared]) {
+    for (const line of src.split('\n').filter(l => l.startsWith('import'))) {
+      assert.doesNotMatch(line, /from '\.\.?\//, `relative import in generated test: ${line}`);
+      assert.match(line, /from '\/_\d+_\/l2\//, `import must use project alias: ${line}`);
+    }
+  }
+  assert.match(shared, /from '\/_102051_\/l2\/cafeFlow\/web\/shared\/menuManagement\.js'/);
 });
 
 // ---- L4 v2: workspace bffCalls -> page commands ----

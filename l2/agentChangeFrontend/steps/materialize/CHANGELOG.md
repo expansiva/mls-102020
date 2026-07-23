@@ -2,6 +2,24 @@
 
 # Changelog
 
+- 2026-07-22 (generated typecheck tests: alias imports + unprefixed contract types) — 102051 run18: the
+  deterministic typecheck tests (buildContractTypecheckTest/buildSharedTypecheckTest in cfeMaterializeCore)
+  emitted RELATIVE imports (`./x.js`, `../contracts/x.js`) which the mls runtime/tsc cannot resolve, and
+  referenced MODULE-PREFIXED contract DTO types (`CafeFlowListMenuItemsInput`) while the contract .ts
+  (genCfeContractTs) and every runtime consumer (shared re-exports, page renders) use UNPREFIXED names
+  (`ListMenuItemsInput`). Result: web/shared/*.test.ts failed to compile (relative-import resolution +
+  42 "no exported member" errors); the runtime .ts had 0 errors, confirming unprefixed is canonical.
+  Fixes (all in agentChangeFrontend): new `aliasJsImport` builds `/_<project>_/l2/...js` from the mls
+  path for the self-import and the contracts import (replaces relativeJsImportPath); contract DTO type
+  names dropped the module prefix (Base class name stays prefixed — it is exported prefixed and compiles);
+  genCfeContractTs skill doc updated to mandate unprefixed `{CommandPascal}Input/Output/OutputItem`. Guard
+  test added (cfeL4Contract.test.ts) asserting generated imports are alias-form + non-relative. The 6 stale
+  102051 shared tests were regenerated deterministically → whole 102051 now compiles (0 errors).
+- 2026-07-22 (materialize-verify trace is module-scoped) — saveMaterializeVerifyTrace wrote to the project
+  root `l2/trace/frontend-materialize-verify` (rationale: "a phase spans every module"), but a run now
+  processes ONE module, so the trace escaped the module folder (102051 run18: mls-102051/l2/trace/...).
+  It now derives the module from the broken items' paths and writes under `<module>/trace/...`.
+
 - 2026-07-16 (fix — contract typecheck drift + repair fan-out + prompt-as-data): (1) buildContractTypecheckTest now honors canonicalOutputShape when present (kind object/list/paginated; OutputItem asserted only for kind 'list') and fieldType builds nested object types from field.item.fields instead of unknown[] — the run16jul_b failure mode: the skill (genCfeContractTs, updated 16/jul) instructs typed named-interface arrays while the test expected unknown[] under exact Equal<>, so ALL contract repairs were unwinnable (12x TS2344 + 2x TS2724 left red in mls-102049 petShop; tests regenerated, mls-base tsc clean). (2) Repair rounds are now parallel fan-outs (repair1/repair2, planId `{verifyPlanId}-repair{round}`) whose args carry ONLY {planId, defPath, attempt}; agentCfeMaterializeGen recomputes the compiler errors from disk (computeRepairHint, attempt >= 2) and the hint travels in the LLM input (stripped by the interaction cleaner) — the old shape persisted repairHint in step prompts, which the cleaner keeps, risking the DynamoDB 400KB task cap; prompt_ready args are likewise stripped of any legacy repairHint. Fan-out slots are also deleted on completion, unlike the old per-item repair steps. (3) Context diet extended: _102029_ runtime deps of shared items are sent as compiled .d.ts (buildRuntimeDtsSection; raw sources were ~8k tokens per shared call), and trimDefinitionForPrompt now drops 'origin' for l2_shared too (~13% of the shared definition). Analysis: todo/generate/changeFrontend_run16jul_b.md.
 - 2026-07-16 (perf — parallel slots 5 -> 10): raised the fan-out `maxParallel` default from 5 to 10 across agentChangeFrontend (materialize dispatcher `agentCfeMaterializeL2.ts`, phase `agentCfeMaterializePhase.ts`, and the `createAddStepIntent` default in `helpers/cfeCreateShared.ts`), plus the four fan-out declarations and the note in `flow.json`. Matches agentChangeBackend (already 10 in cbShared). Studio-declared per-step overrides still win (agentCfeMaterializePhase parses an explicit maxParallel).
 - 2026-07-13: documented current dispatcher/phase/worker behavior, dynamic planId conventions, and moved the materialization agents into this step folder.

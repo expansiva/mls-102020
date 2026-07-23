@@ -19,6 +19,99 @@ void test('agentCfeCreateLayout tool schema is provider-clean', async () => {
   assert.equal(errs, null, errs?.join(' | '));
 });
 
+// Redesign (102051 run16/run17): the tool contract is now a minimal SEMANTIC COMPOSITION. Organisms
+// carry only { id, organismName, purpose, order } + optional { displayHint, uses, notes } — never the
+// rigid intention/field tree the model kept drifting on ("organisms/N must NOT have additional
+// properties"). The concrete intentions/fields are expanded deterministically from L4 afterwards.
+void test('agentCfeCreateLayout organism schema is the minimal composition', async () => {
+  const mod = await loadCreateShared();
+  const organismSchema = mod.cfePageLayoutToolSchema.function.parameters
+    .properties.result.properties.pageLayout.properties.sections.items.properties.organisms.items;
+  assert.equal(organismSchema.additionalProperties, false, 'organism schema must stay closed (lint/strict)');
+  assert.deepEqual([...Object.keys(organismSchema.properties)].sort(), ['displayHint', 'id', 'notes', 'order', 'organismName', 'purpose', 'uses']);
+  assert.deepEqual([...organismSchema.required].sort(), ['id', 'order', 'organismName', 'purpose']);
+  assert.ok(!('intentions' in organismSchema.properties), 'organism must NOT carry an intention tree');
+});
+
+void test('agentCfeCreateLayout normalizes to a minimal composition (uses + displayHint kept)', async () => {
+  const mod = await loadCreateShared() as unknown as { extractCfePageLayoutOutput: (p: unknown) => any };
+  const payload = {
+    status: 'ok',
+    result: {
+      pageLayout: {
+        pageId: 'dashboardWorkspace',
+        layoutId: 'dashboardWorkspace.page21.goal_first',
+        sections: [{
+          id: 'sec.kpiOverview', sectionName: 'KPI Overview', order: 1,
+          organisms: [{
+            id: 'org-kpi', organismName: 'OperationalKpiSummary', purpose: 'Show shift KPIs.',
+            order: 1, displayHint: 'summary-first', uses: ['getDashboardQuery'],
+          }],
+        }],
+      },
+    },
+  };
+  const out = mod.extractCfePageLayoutOutput(payload);
+  assert.equal(out.status, 'ok');
+  const organism = out.result.pageLayout.sections[0].organisms[0];
+  assert.equal(organism.displayHint, 'summary-first');
+  assert.deepEqual(organism.uses, ['getDashboardQuery']);
+  assert.ok(!('intentions' in organism), 'normalized composition organism has no intention tree');
+});
+
+// The concrete intention/field tree is expanded deterministically from L4 by the agent (not the model),
+// so downstream (reconcile/render/validate/materialize) still receives the full structure it expects.
+void test('agentCfeCreateLayout expands a composition into the full L4-derived layout', async () => {
+  const mod = await loadCreateShared() as unknown as { expandLayoutComposition: (p: unknown, c: unknown) => any };
+  const prepared = {
+    page: { pageId: 'catalog', pageName: 'Catalog', moduleName: 'shop' },
+    commands: [
+      { commandName: 'browseProductsQuery', kind: 'query', purpose: 'Browse products', output: [{ name: 'name' }, { name: 'price' }], input: [], rulesApplied: [] },
+      { commandName: 'createProductCmd', kind: 'command', purpose: 'Create product', input: [{ name: 'name', presentation: 'form' }], output: [], rulesApplied: [] },
+    ],
+  };
+  const composition = {
+    pageId: 'catalog', layoutId: 'catalog.page11.x',
+    sections: [{ id: 'sec.main', sectionName: 'Main', order: 1, organisms: [
+      { id: 'org.list', organismName: 'ProductList', purpose: 'List products', order: 1, displayHint: 'list', uses: ['browseProductsQuery'] },
+      { id: 'org.form', organismName: 'ProductForm', purpose: 'Create product', order: 2, displayHint: 'form', uses: ['createProductCmd'] },
+    ] }],
+  };
+  const full = mod.expandLayoutComposition(prepared, composition);
+  const organisms = full.sections[0].organisms;
+  assert.equal(organisms.length, 2);
+  // The model's composition identity/hint rides through.
+  assert.equal(organisms[0].id, 'org.list');
+  assert.equal(organisms[0].displayHint, 'list');
+  assert.deepEqual(organisms[0].userActions, ['browseProductsQuery']);
+  // Columns/fields are derived from L4 — the model did NOT author them.
+  assert.ok(organisms[0].intentions.length >= 1, 'query organism has an intention');
+  assert.ok(organisms[0].intentions[0].columns.some((c: { field: string }) => c.field === 'name'), 'list columns come from L4 output');
+  assert.ok(organisms[1].intentions[0].fields.some((f: { field: string }) => f.field === 'name'), 'form fields come from L4 input');
+  assert.deepEqual(organisms[1].userActions, ['createProductCmd']);
+});
+
+// Coverage guarantee: if the model's `uses` omit a command, expansion must still surface it (else
+// validatePageLayout rejects "does not represent operation"). Restores the deterministic seed's guarantee.
+void test('agentCfeCreateLayout backfills commands the composition leaves uncovered', async () => {
+  const mod = await loadCreateShared() as unknown as { expandLayoutComposition: (p: unknown, c: unknown) => any };
+  const prepared = {
+    page: { pageId: 'catalog', pageName: 'Catalog', moduleName: 'shop' },
+    commands: [
+      { commandName: 'browseProductsQuery', kind: 'query', purpose: 'Browse', output: [{ name: 'name' }], input: [], rulesApplied: [] },
+      { commandName: 'createProductCmd', kind: 'command', purpose: 'Create', input: [{ name: 'name', presentation: 'form' }], output: [], rulesApplied: [] },
+    ],
+  };
+  // Composition only mentions the query — the command is omitted from every `uses`.
+  const composition = { pageId: 'catalog', layoutId: 'catalog.page11.x', sections: [
+    { id: 'sec.main', sectionName: 'Main', order: 1, organisms: [{ id: 'org.list', organismName: 'ProductList', purpose: 'List', order: 1, uses: ['browseProductsQuery'] }] },
+  ] };
+  const full = mod.expandLayoutComposition(prepared, composition);
+  const covered = new Set(full.sections.flatMap((s: any) => s.organisms.flatMap((o: any) => o.userActions)));
+  assert.ok(covered.has('browseProductsQuery'), 'query stays covered');
+  assert.ok(covered.has('createProductCmd'), 'omitted command was backfilled deterministically');
+});
+
 for (const modelType of MODEL_TYPES) {
   void test(`agentCfeCreateLayout live @ ${modelType}: schema accepted + result has pageLayout`, { skip: !liveTestsEnabled() }, async () => {
     const mod = await loadCreateShared();

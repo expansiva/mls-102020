@@ -108,7 +108,7 @@ function e2JourneysFixture() {
   };
 }
 
-function modelFixture() {
+function modelFixture(): { schemaVersion: '2026-07-07-ns-e3-v1'; moduleName: string; userLanguage: string; version: number; createdAt: string; module: { title: string; purpose: string; businessDomain: string; languages: string[]; visualStyle: string }; entities: Array<{ entityId: string; title: string; description: string; kind: 'core' | 'supporting' | 'event' | 'metric' | 'mdm'; ownership: 'moduleOwned' | 'mdmOwned' | 'horizontalOwned' | 'pluginOwned' | 'existingModuleOwned' | 'external'; statusEnum?: string[]; lifecycleStates?: string[]; sourceRefs: { featureIds: string[] } }>; relationships: Array<{ relationshipId: string; fromEntity: string; toEntity: string; type: 'oneToOne' | 'oneToMany' | 'manyToOne' | 'manyToMany' | 'partOf'; description: string }> } {
   return {
     schemaVersion: '2026-07-07-ns-e3-v1',
     moduleName: 'cafeFlow',
