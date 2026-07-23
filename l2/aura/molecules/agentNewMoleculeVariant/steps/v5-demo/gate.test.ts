@@ -80,6 +80,11 @@ test('missing theme background is rejected', () => {
   assert.ok(runDemoGate(noBg, buildCtx()).some(i => i.code === 'background'));
 });
 
+test('an attribution <footer> is rejected (P2)', () => {
+  const withFooter = validFragment().replace('</div>\n</div>', '<footer style="text-align:center;"><p>Collab Aura · Glass Theme</p></footer>\n</div>\n</div>');
+  assert.ok(runDemoGate(withFooter, buildCtx()).some(i => i.code === 'footer'));
+});
+
 test('too few variant tag uses is rejected', () => {
   const ctx = buildCtx();
   const oneUse = `<div style="min-height:100vh; ${ctx.theme.info.background.css}">

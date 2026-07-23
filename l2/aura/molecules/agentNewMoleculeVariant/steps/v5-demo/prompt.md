@@ -10,6 +10,7 @@ Follow the Playground Definition below EXACTLY — it is the canonical contract 
 ## Hard rules (a deterministic gate rejects violations)
 
 - Output a FRAGMENT, never a full document: NO `<!DOCTYPE>`, `<html>`, `<head>`, `<body>`, `<style>` or `<link>` tags, and NO `<script>`. No external resources (fonts/CDNs) — the page must be self-contained via Tailwind + the theme.
+- Emit ONLY the structure the Playground Definition specifies (container → header → state widget → demo sections). Do NOT add extra chrome: no `<footer>`/rodapé, no attribution line, no decorative sections beyond the demo cards.
 - The state widget `aura--molecules--playground--widget-playground-state-102020` MUST appear once, before the demos, with `state='playgroundDinamicState'` verbatim — the literal token `playgroundDinamicState` is replaced with the real state after your call. Never hand-write the state JSON.
 - At least 6 demos, exercising props, slots, and the molecule's states.
 

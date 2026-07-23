@@ -20,6 +20,10 @@ export function runDemoGate(html: string, ctx: VariantContext): VGateIssue[] {
   }
   if (/<script[\s>]/i.test(content)) issues.push({ code: 'script', message: 'demo page must not contain <script> tags' });
 
+  // P2: no extra chrome beyond the playground structure (the LLM added an
+  // attribution <footer> inconsistently — not part of the contract).
+  if (/<footer[\s>]/i.test(content)) issues.push({ code: 'footer', message: 'demo must not add a <footer>/attribution — emit only the playground structure (container, header, state widget, demo cards)' });
+
   const tagUses = content.split(`<${ctx.variant.tag}`).length - 1;
   if (tagUses < 3) {
     issues.push({ code: 'tag_uses', message: `the variant tag <${ctx.variant.tag}> must be exercised at least 3 times (found ${tagUses})` });
