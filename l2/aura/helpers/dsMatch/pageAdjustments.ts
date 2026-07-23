@@ -69,6 +69,24 @@ export function replaceExportConst(content: string, name: string, replacement: s
     return content.slice(0, span.start) + replacement + content.slice(span.end);
 }
 
+/** Remove the whole `export const <name> = …;` block (plus the blank lines around it). Returns the
+ *  content unchanged when the export is absent. Used to drop the transient pageAdjustments log once
+ *  it has been folded into the definition (the genome emits a self-contained defs). */
+export function removeExportConst(content: string, name: string): string {
+    const span = findExportConst(content, name);
+    if (!span) return content;
+    // Swallow surrounding blank lines so we don't leave a double gap where the block was.
+    let start = span.start;
+    let end = span.end;
+    while (start > 0 && /[ \t]/.test(content[start - 1])) start--;         // trailing indent on the line
+    while (start > 0 && content[start - 1] === '\n') start--;              // blank line(s) before
+    while (end < content.length && content[end] === '\n') end++;           // newline(s) after
+    const before = content.slice(0, start);
+    const after = content.slice(end);
+    if (before && after) return `${before}\n\n${after}`;
+    return `${before}${after}`;
+}
+
 /** Parse an `export const <name> = <object|array>;` value as JSON. Null when absent/invalid.
  *  Works for the `definition` object and the `pageAdjustments` array (both JSON-serializable). */
 export function parseExportValue(content: string, name: string): any | null {

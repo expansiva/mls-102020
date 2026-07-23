@@ -189,7 +189,7 @@ async function afterPromptStep(
     const notes = typeof payload.result.notes === 'string' ? payload.result.notes : opsSummary(a.operations);
     const consolidated = normalizeConsolidatedAdjustments(payload.result.adjustments);
     const adjustments = consolidated.length
-      ? reconcileAdjustments(existing, consolidated, new Date().toISOString())
+      ? reconcileAdjustments(existing, consolidated, new Date().toISOString(), a.imageUrl || undefined)
       : fallbackAppend(a, existing, notes);
     if (!consolidated.length) console.warn(`[agentEditDefs] ${a.page}: LLM returned no consolidated adjustments → deterministic append fallback`);
 

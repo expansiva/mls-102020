@@ -110,6 +110,15 @@ export function buildDeltaSection(
                 return `- (${a.kind ?? 'edit'}) ${a.request}${tail ? ` ${tail}` : ''}`;
             }),
         );
+        // Explicit directive when an adjustment carries a reference image. NOTE: the prompt is
+        // text-only — the model receives the URL, not the pixels — so this is a best-effort nudge:
+        // follow the image if reachable, otherwise honor the adjustment text precisely.
+        if (adjustments.some(a => a.imageUrl)) {
+            parts.push(
+                '',
+                'One or more adjustments include a reference image (the URL after "reference image"). That URL is the visual target for its adjustment: reproduce its layout, spacing and formatting as faithfully as the existing states, actions and design-system tokens allow. If you cannot access the image, still honor the adjustment text exactly.',
+            );
+        }
     }
     if (hasCode) {
         parts.push('', '### Current code (preserve verbatim except for the adjustments above)', '```ts', currentCode!.trim(), '```');
@@ -156,11 +165,16 @@ export function normalizeConsolidatedAdjustments(raw: unknown): ConsolidatedAdju
  *     consolidated request/kind, and its notes/imageUrl (falling back to the prior values);
  *   - no id, or an id NOT in `existing` → mint the next id + `at=nowIso` (unknown ids never trusted);
  *   - superseded prior adjustments simply don't appear in `consolidated`, so they drop out.
+ *
+ * `newImageUrl` is the reference image of the CURRENT request: the LLM does not echo URLs
+ * reliably, so we attach it DETERMINISTICALLY to any freshly-minted adjustment that has none.
+ * Surviving adjustments keep their own recorded imageUrl.
  */
 export function reconcileAdjustments(
     existing: PageAdjustment[],
     consolidated: ConsolidatedAdjustmentIn[],
     nowIso: string,
+    newImageUrl?: string,
 ): PageAdjustment[] {
     const byId = new Map(existing.map(a => [a.id, a]));
     const out: PageAdjustment[] = [];
@@ -178,13 +192,14 @@ export function reconcileAdjustments(
             });
         } else {
             // Mint against existing + already-emitted so multiple new items get distinct ids.
+            // A new adjustment with no image of its own inherits the current request's reference image.
             out.push({
                 id: nextAdjustmentId([...existing, ...out]),
                 at: nowIso,
                 request: item.request,
                 kind,
                 notes: item.notes || undefined,
-                imageUrl: item.imageUrl || undefined,
+                imageUrl: item.imageUrl || newImageUrl || undefined,
             });
         }
     }

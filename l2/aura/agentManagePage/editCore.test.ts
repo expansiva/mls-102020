@@ -10,7 +10,7 @@ import {
   reconcileAdjustments, normalizeConsolidatedAdjustments,
 } from '/_102020_/l2/aura/agentManagePage/editCore.js';
 import {
-  scanBalanced, findExportConst, replaceExportConst, parseExportValue,
+  scanBalanced, findExportConst, replaceExportConst, removeExportConst, parseExportValue,
   parsePageAdjustments, upsertPageAdjustments, nextAdjustmentId, type PageAdjustment,
 } from '/_102020_/l2/aura/helpers/dsMatch/pageAdjustments.js';
 
@@ -73,6 +73,16 @@ test('editCore: buildDeltaSection', () => {
   assert.doesNotMatch(s2, /Current code/);
 });
 
+test('editCore: buildDeltaSection adds a reference-image directive only when an image is present', () => {
+  const withImg = buildDeltaSection('const x=1;', [{ request: 'format currency', kind: 'cosmetic', imageUrl: 'http://ref.png' }]);
+  assert.match(withImg, /reference image: http:\/\/ref\.png/);
+  assert.match(withImg, /visual target/i);
+  assert.match(withImg, /honor the adjustment text/i);
+  // no image → no directive block
+  const noImg = buildDeltaSection('const x=1;', [{ request: 'hide phone', kind: 'structural' }]);
+  assert.doesNotMatch(noImg, /visual target/i);
+});
+
 test('editCore: normalizeOperations filters malformed', () => {
   const ops = normalizeOperations([
     { kind: 'structural', target: 'f_phone', description: 'hide phone' },
@@ -125,6 +135,19 @@ test('editCore: reconcileAdjustments preserves unrelated + mints new', () => {
   assert.equal(out[1].at, 'T1');
 });
 
+test('editCore: reconcileAdjustments carries the current request image onto new items; keeps prior', () => {
+  const existing: PageAdjustment[] = [{ id: 'adj-001', at: 'T0', request: 'has own img', kind: 'cosmetic', imageUrl: 'http://old.png' }];
+  const out = reconcileAdjustments(existing, [
+    { id: 'adj-001', request: 'has own img', kind: 'cosmetic' }, // survives → keeps its own image
+    { request: 'format currency like the reference', kind: 'cosmetic' }, // new → inherits current image
+  ], 'T1', 'http://ref.png');
+  assert.equal(out[0].imageUrl, 'http://old.png');
+  assert.equal(out[1].imageUrl, 'http://ref.png');
+  // No current image → new item has none.
+  const out2 = reconcileAdjustments([], [{ request: 'x', kind: 'cosmetic' }], 'T1');
+  assert.equal(out2[0].imageUrl, undefined);
+});
+
 test('editCore: reconcileAdjustments mints for unknown ids and multiple new items', () => {
   const existing: PageAdjustment[] = [{ id: 'adj-005', at: 'T0', request: 'x', kind: 'cosmetic' }];
   // an unknown id must NOT be trusted (treated as new); two new items get distinct minted ids.
@@ -172,6 +195,20 @@ test('pageAdjustments: upsert appends then replaces, preserving other exports', 
   const out2 = upsertPageAdjustments(out, a2);
   assert.equal((out2.match(/export const pageAdjustments/g) ?? []).length, 1);
   assert.equal(parsePageAdjustments(out2).length, 2);
+});
+
+test('pageAdjustments: removeExportConst drops the log, keeps other exports', () => {
+  const a1: PageAdjustment[] = [{ id: 'adj-001', at: 't', request: 'align left', kind: 'cosmetic' }];
+  const withLog = upsertPageAdjustments(defs, a1);
+  assert.equal(parsePageAdjustments(withLog).length, 1);
+  const stripped = removeExportConst(withLog, 'pageAdjustments');
+  assert.equal(parsePageAdjustments(stripped).length, 0);
+  assert.ok(!stripped.includes('export const pageAdjustments'));
+  assert.ok(stripped.includes('export const definition'));
+  assert.ok(stripped.includes('export const pipeline'));
+  assert.ok(stripped.includes('export const moleculeAssignments'));
+  // Removing an absent export is a no-op.
+  assert.equal(removeExportConst(stripped, 'pageAdjustments'), stripped);
 });
 
 test('pageAdjustments: nextAdjustmentId + definition replace', () => {
