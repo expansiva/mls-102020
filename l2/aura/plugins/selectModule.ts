@@ -44,8 +44,6 @@ const message_en = {
     orphanLabel: 'orphan',
     pagesWord: 'pages',
     followTask: 'Follow task',
-    useMoleculesLabel: 'Use molecules',
-    useMoleculesHint: 'When off, pages get only the configured layout rules (no web components).',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -78,8 +76,6 @@ const messages: Record<string, MessageType> = {
         orphanLabel: 'órfã',
         pagesWord: 'páginas',
         followTask: 'Acompanhar task',
-        useMoleculesLabel: 'Usar moléculas',
-        useMoleculesHint: 'Quando desligado, as páginas recebem apenas as regras de layout configuradas (sem web components).',
     },
     es: {
         title: 'Módulo',
@@ -109,8 +105,6 @@ const messages: Record<string, MessageType> = {
         orphanLabel: 'huérfana',
         pagesWord: 'páginas',
         followTask: 'Seguir tarea',
-        useMoleculesLabel: 'Usar moléculas',
-        useMoleculesHint: 'Cuando está desactivado, las páginas reciben solo las reglas de layout configuradas (sin web components).',
     },
 };
 /// **collab_i18n_end**
@@ -300,19 +294,9 @@ export class PluginSelectModule extends StateLitElement {
     }
 
     private _renderVariationsPanel(module: IModule) {
-        const useMolecules = getAuraState().useMolecules ?? true;
         return html`
             <div class="flex flex-col gap-1.5">
                 <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.variationsTitle}</span>
-                <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer" title=${this.msg.useMoleculesHint}>
-                    <input
-                        type="checkbox"
-                        class="cursor-pointer"
-                        .checked=${useMolecules}
-                        @change=${(e: Event) => this._onToggleUseMolecules((e.target as HTMLInputElement).checked)}
-                    />
-                    <span>${this.msg.useMoleculesLabel}</span>
-                </label>
                 ${this._varsLoading
                     ? html`<span class="text-xs text-gray-400 dark:text-gray-500 italic">${this.msg.variationsLoading}</span>`
                     : nothing}
@@ -322,12 +306,6 @@ export class PluginSelectModule extends StateLitElement {
                 ${this._variations?.map(v => this._renderVariationRow(module, v)) ?? nothing}
             </div>
         `;
-    }
-
-    private _onToggleUseMolecules(checked: boolean): void {
-        setAuraState('useMolecules', checked);
-        saveAuraProject();
-        this.requestUpdate();
     }
 
     private _renderVariationRow(module: IModule, v: ModuleVariationStatus) {
@@ -430,7 +408,6 @@ export class PluginSelectModule extends StateLitElement {
                     device,
                     pages,
                     materialize: true,
-                    useMolecules: getAuraState().useMolecules ?? true,
                 });
                 setState('preview.pausePreview', true);
                 await this._executeAgent('agentImplementGenome', prompt, trackTask);

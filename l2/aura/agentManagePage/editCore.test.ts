@@ -7,6 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   hasGenomeLayout, layoutElementIdSet, idDelta, validateEditedDefinition, normalizeOperations, buildDeltaSection,
+  reconcileAdjustments, normalizeConsolidatedAdjustments,
 } from '/_102020_/l2/aura/agentManagePage/editCore.js';
 import {
   scanBalanced, findExportConst, replaceExportConst, parseExportValue,
@@ -82,6 +83,58 @@ test('editCore: normalizeOperations filters malformed', () => {
   assert.equal(ops.length, 2);
   assert.equal(ops[0].target, 'f_phone');
   assert.equal(ops[1].target, '');
+});
+
+// ── adjustments consolidation (Opção C) ──────────────────────────────────────
+
+test('editCore: normalizeConsolidatedAdjustments filters malformed', () => {
+  const out = normalizeConsolidatedAdjustments([
+    { id: 'adj-001', request: 'align left', kind: 'structural' },
+    { request: '  ', kind: 'cosmetic' },            // empty request → dropped
+    { request: 'bigger shadow', kind: 'bogus' },     // bad kind → dropped
+    { request: 'destaque salvar', kind: 'cosmetic', notes: '  ' }, // blank notes → undefined
+  ]);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].id, 'adj-001');
+  assert.equal(out[1].id, undefined);
+  assert.equal(out[1].notes, undefined);
+});
+
+test('editCore: reconcileAdjustments supersedes contradictory (left wins, one item, stable id)', () => {
+  // adj-001 = "align right"; consolidation returns only the surviving "align left" reusing adj-001.
+  const existing: PageAdjustment[] = [{ id: 'adj-001', at: 'T0', request: 'align buttons right', kind: 'structural' }];
+  const out = reconcileAdjustments(existing, [{ id: 'adj-001', request: 'align buttons left', kind: 'structural' }], 'T1');
+  assert.equal(out.length, 1);
+  assert.equal(out[0].id, 'adj-001');
+  assert.equal(out[0].at, 'T0');                 // audit continuity preserved
+  assert.equal(out[0].request, 'align buttons left');
+});
+
+test('editCore: reconcileAdjustments preserves unrelated + mints new', () => {
+  const existing: PageAdjustment[] = [
+    { id: 'adj-001', at: 'T0', request: 'hide phone', kind: 'structural' },
+  ];
+  // keep adj-001 as-is, add a new unrelated cosmetic (no id → minted).
+  const out = reconcileAdjustments(existing, [
+    { id: 'adj-001', request: 'hide phone', kind: 'structural' },
+    { request: 'emphasize save', kind: 'cosmetic' },
+  ], 'T1');
+  assert.equal(out.length, 2);
+  assert.equal(out[0].id, 'adj-001');
+  assert.equal(out[1].id, 'adj-002');            // minted next
+  assert.equal(out[1].at, 'T1');
+});
+
+test('editCore: reconcileAdjustments mints for unknown ids and multiple new items', () => {
+  const existing: PageAdjustment[] = [{ id: 'adj-005', at: 'T0', request: 'x', kind: 'cosmetic' }];
+  // an unknown id must NOT be trusted (treated as new); two new items get distinct minted ids.
+  const out = reconcileAdjustments(existing, [
+    { id: 'adj-999', request: 'forged', kind: 'cosmetic' },
+    { request: 'brand new', kind: 'structural' },
+  ], 'T1');
+  assert.equal(out.length, 2);
+  assert.equal(out[0].id, 'adj-006');
+  assert.equal(out[1].id, 'adj-007');
 });
 
 // ── pageAdjustments splicer ──────────────────────────────────────────────────

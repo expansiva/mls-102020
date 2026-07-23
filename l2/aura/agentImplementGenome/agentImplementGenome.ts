@@ -19,13 +19,16 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { listWorkItems, DEFAULT_DEVICE } from '/_102020_/l2/aura/helpers/dsMatch/derivePaths.js';
 import { mkAgentStep, mkFail, makePlanId, type StepArgs } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
+import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 
 // `materialize` (default true) is a contract flag for the CALLER: after this flow writes the
 // page defs, the caller runs agentMaterializeL2 to generate the .ts (false → skip). This
 // orchestrator only produces defs; agentMaterializeL2 is a top-level, project-wide flow.
-// `useMolecules` (default true): when false the molecule catalog is empty — Agent2 (variant) is
-// skipped and agentGenDefs applies only the configured layout rules (no web components).
-interface EntryArgs { module: string; layout: number | string; ds: number | string; device?: string; pages?: string[]; materialize?: boolean; forceReconcile?: boolean; useMolecules?: boolean; }
+// The `useMolecules` mode (default true) is NOT a UI input — it is a property of the layout,
+// read from config.layouts[layout].useMolecules in afterPromptStep. When false the molecule
+// catalog is empty — Agent2 (variant) is skipped and agentGenDefs applies only the configured
+// layout rules (no web components).
+interface EntryArgs { module: string; layout: number | string; ds: number | string; device?: string; pages?: string[]; materialize?: boolean; forceReconcile?: boolean; }
 
 export function createAgent(): IAgentAsync {
   return {
@@ -45,13 +48,12 @@ async function beforePromptImplicit(
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
 
-  const { module, layout, ds, device, pages, forceReconcile, useMolecules } = JSON.parse(userPrompt) as EntryArgs;
+  const { module, layout, ds, device, pages, forceReconcile } = JSON.parse(userPrompt) as EntryArgs;
   if (!module || layout == null || ds == null) throw new Error(`(${agent.agentName}) entry needs { module, layout, ds }`);
   const dev = device || DEFAULT_DEVICE;
-  const useMol = useMolecules !== false; // default true
   // Optional subset: keep only non-empty strings; empty → all pages.
   const targetPages = Array.isArray(pages) ? pages.filter(p => typeof p === 'string' && p) : [];
-  console.info('[agentImplementGenome] ▶ request received', { module, layout, ds, device: dev, pages: targetPages.length ? targetPages : 'ALL', useMolecules: useMol });
+  console.info('[agentImplementGenome] ▶ request received', { module, layout, ds, device: dev, pages: targetPages.length ? targetPages : 'ALL' });
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -68,7 +70,7 @@ async function beforePromptImplicit(
       threadId: context.message.threadId,
       userMessage: context.message.content,
       // longMemory is string-only → the subset is JSON-encoded and parsed back in afterPromptStep.
-      longTermMemory: { module, layout: String(layout), ds: String(ds), device: dev, pages: JSON.stringify(targetPages), forceReconcile: String(!!forceReconcile), useMolecules: String(useMol) },
+      longTermMemory: { module, layout: String(layout), ds: String(ds), device: dev, pages: JSON.stringify(targetPages), forceReconcile: String(!!forceReconcile) },
     },
   };
 
@@ -101,10 +103,14 @@ async function afterPromptStep(
     const ds = lm['ds'];
     const device = lm['device'] || DEFAULT_DEVICE;
     const forceReconcile = lm['forceReconcile'] === 'true';
-    const useMolecules = lm['useMolecules'] !== 'false'; // default true
     if (!module || layout == null || ds == null) throw new Error('missing run params in longMemory');
 
     const project = mls.actualProject || 0;
+    // useMolecules is a property of the LAYOUT (config.layouts[layout].useMolecules), not a UI
+    // input. Default true (absent key = molecules on); false → skip Agent2, gen applies only
+    // the layout rules.
+    const config: any = await getConfigProject(project);
+    const useMolecules = config?.layouts?.[String(layout)]?.useMolecules !== false;
     let requested: string[] = [];
     try { requested = JSON.parse(lm['pages'] || '[]'); } catch { requested = []; }
     // Callers may pass a full file ref / pageId (e.g. "_102050_/l2/.../page11/foo.ts");

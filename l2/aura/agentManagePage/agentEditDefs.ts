@@ -2,13 +2,17 @@
 
 // Child of agentManagePage. Applies the gated VISUAL edit operations to a page's .defs.ts.
 //
-// Cosmetic-only requests are DETERMINISTIC (no LLM): they are not representable in `definition`, so
-// we only append a pageAdjustment (the render honors it in delta mode). Any structural operation
-// needs the LLM to return the edited `definition`; we validate it (identity + schema preserved),
-// splice it into the source, append the pageAdjustment, restamp pageVersion (genome pages), and save.
+// BOTH paths call the LLM (Opção C — consolidação):
+//   - structural: the LLM returns the edited `definition` (validated: identity + schema preserved)
+//     AND the CONSOLIDATED pageAdjustments list;
+//   - cosmetic-only: not representable in `definition`, so the LLM returns ONLY the consolidated
+//     pageAdjustments list (no definition edit).
+// We then reconcile the consolidated list DETERMINISTICALLY (reconcileAdjustments — stable ids +
+// audit `at`), replace the whole pageAdjustments block, restamp pageVersion (genome pages), and save.
 //
-// The edit is always recorded as a pageAdjustment so a future regeneration (DS/layout change or a
-// genome "refazer página") can REPLAY it.
+// The consolidated list (existing + new request, contradictions superseded — newer wins) replaces
+// the old append-only log, so a future regeneration (DS/layout change or genome "refazer página")
+// can REPLAY a coherent, non-contradictory set instead of an ever-growing contradictory history.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { pageRef } from '/_102020_/l2/aura/helpers/dsMatch/derivePaths.js';
@@ -18,7 +22,10 @@ import {
   nextAdjustmentId, type PageAdjustment,
 } from '/_102020_/l2/aura/helpers/dsMatch/pageAdjustments.js';
 import { buildPageDsStamp, renderDsVersionExport } from '/_102020_/l2/aura/helpers/dsMatch/dsVersion.js';
-import { validateEditedDefinition, type EditStepArgs, type EditOperation } from '/_102020_/l2/aura/agentManagePage/editCore.js';
+import {
+  validateEditedDefinition, reconcileAdjustments, normalizeConsolidatedAdjustments,
+  type EditStepArgs, type EditOperation,
+} from '/_102020_/l2/aura/agentManagePage/editCore.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -50,11 +57,27 @@ function opsSummary(ops: EditOperation[]): string {
   return ops.map(o => `- (${o.kind}${o.target ? ` @${o.target}` : ''}) ${o.description}`).join('\n');
 }
 
+/** Deterministic fallback when the LLM returns no usable consolidated list: append a single new
+ *  adjustment for the current request onto the existing ones (old behavior) so the edit is never
+ *  lost. Rare — guards against a misbehaving model, not the happy path. */
+function fallbackAppend(a: EditStepArgs, existing: PageAdjustment[], notes: string): PageAdjustment[] {
+  const kind = a.operations.some(o => o.kind === 'structural') ? 'structural' : 'cosmetic';
+  return [...existing, {
+    id: nextAdjustmentId(existing),
+    at: new Date().toISOString(),
+    request: a.request,
+    kind,
+    notes: notes || undefined,
+    imageUrl: a.imageUrl || undefined,
+  }];
+}
+
 /**
- * Write the edit into the defs source: optionally splice a new `definition`, append the
- * pageAdjustment (one per user request), and restamp `pageVersion` when present. Skipped in test.
+ * Write the edit into the defs source: optionally splice a new `definition`, replace the whole
+ * `pageAdjustments` block with the CONSOLIDATED list, and restamp `pageVersion` when present.
+ * Skipped in test.
  */
-async function applyEdit(a: EditStepArgs, editedDefinition: Record<string, unknown> | null, notes: string, isTest: boolean): Promise<string> {
+async function applyEdit(a: EditStepArgs, editedDefinition: Record<string, unknown> | null, adjustments: PageAdjustment[], isTest: boolean): Promise<string> {
   const defsRef = defsRefOf(a);
   let src = await readRawSource(defsRef);
   if (!src) throw new Error(`defs not found: ${defsRef}`);
@@ -65,17 +88,7 @@ async function applyEdit(a: EditStepArgs, editedDefinition: Record<string, unkno
     src = replaced;
   }
 
-  const existing = parsePageAdjustments(src);
-  const kind = a.operations.some(o => o.kind === 'structural') ? 'structural' : 'cosmetic';
-  const adjustment: PageAdjustment = {
-    id: nextAdjustmentId(existing),
-    at: new Date().toISOString(),
-    request: a.request,
-    kind,
-    notes: notes || undefined,
-    imageUrl: a.imageUrl || undefined,
-  };
-  src = upsertPageAdjustments(src, [...existing, adjustment]);
+  src = upsertPageAdjustments(src, adjustments);
 
   // Restamp pageVersion honestly (genome pages only; mode pages have none → no-op).
   if (/export\s+const\s+pageVersion\s*=/.test(src)) {
@@ -87,7 +100,7 @@ async function applyEdit(a: EditStepArgs, editedDefinition: Record<string, unkno
 
   if (!isTest) {
     await saveFile(defsRef, src);
-    console.info(`[agentEditDefs] ✓ ${a.page}: defs atualizado (${adjustment.id}, ${kind}${editedDefinition ? ', definition editado' : ', só ajuste'}) em ${defsRef}`);
+    console.info(`[agentEditDefs] ✓ ${a.page}: defs atualizado (${adjustments.length} ajuste(s) consolidado(s)${editedDefinition ? ', definition editado' : ', só ajustes'}) em ${defsRef}`);
   }
   return src;
 }
@@ -106,22 +119,23 @@ async function beforePromptStep(
     const hasStructural = a.operations.some(o => o.kind === 'structural');
     console.info(`[agentEditDefs] ▶ ${a.page}: ${a.operations.length} op(s), structural=${hasStructural}`);
 
-    // Cosmetic-only → deterministic: no definition change, just record the adjustment.
-    if (!hasStructural) {
-      await applyEdit(a, null, opsSummary(a.operations), !!context.isTest);
-      return [mkCompleted(context, parentStep, step, hookSequential)];
-    }
-
-    // Structural → LLM edits the `definition`.
     const defsRef = defsRefOf(a);
     const src = await readRawSource(defsRef);
-    const definition = parseExportValue(src, 'definition');
-    if (!definition) throw new Error(`could not read definition from ${defsRef}`);
+    if (!src) throw new Error(`defs not found: ${defsRef}`);
+    // Both paths consolidate against the page's existing adjustments.
+    const existingAdjustments = parsePageAdjustments(src);
+
+    // Cosmetic-only → LLM consolidates the adjustments list (no definition edit).
+    // Structural → LLM edits the `definition` AND returns the consolidated list.
+    const definition = hasStructural ? parseExportValue(src, 'definition') : undefined;
+    if (hasStructural && !definition) throw new Error(`could not read definition from ${defsRef}`);
 
     const human = JSON.stringify({
       request: a.request,
+      imageUrl: a.imageUrl || undefined,
       operations: a.operations,
-      currentDefinition: definition,
+      existingAdjustments,
+      ...(hasStructural ? { currentDefinition: definition } : {}),
     });
 
     const continueParallel: mls.msg.AgentIntentPromptReady = {
@@ -133,7 +147,7 @@ async function beforePromptStep(
       hookSequential,
       parentStepId: parentStep.stepId,
       humanPrompt: human,
-      systemPrompt: editPrompt,
+      systemPrompt: hasStructural ? editPrompt : consolidatePrompt,
     };
     return [continueParallel];
   } catch (error) {
@@ -153,16 +167,33 @@ async function afterPromptStep(
 
   try {
     const a = parseArgs(step.prompt);
+    const hasStructural = a.operations.some(o => o.kind === 'structural');
     const payload = step.interaction?.payload?.[0] as any;
     if (payload?.type !== 'flexible' || !payload.result) throw new Error(`invalid payload: ${JSON.stringify(payload)}`);
 
     const defsRef = defsRefOf(a);
-    const original = parseExportValue(await readRawSource(defsRef), 'definition');
-    const guard = validateEditedDefinition(original, payload.result.definition);
-    if (!guard.ok) return [mkFail(context, parentStep, step, hookSequential, `edit rejected: ${guard.reason}`)];
+    const src = await readRawSource(defsRef);
+    const existing = parsePageAdjustments(src);
 
+    // Structural: validate the edited definition (identity + schema) before writing.
+    let editedDefinition: Record<string, unknown> | null = null;
+    if (hasStructural) {
+      const original = parseExportValue(src, 'definition');
+      const guard = validateEditedDefinition(original, payload.result.definition);
+      if (!guard.ok) return [mkFail(context, parentStep, step, hookSequential, `edit rejected: ${guard.reason}`)];
+      editedDefinition = guard.value;
+    }
+
+    // Reconcile the consolidated adjustments (stable ids + audit `at`). If the model returned
+    // nothing usable, fall back to a deterministic append so the current edit is never lost.
     const notes = typeof payload.result.notes === 'string' ? payload.result.notes : opsSummary(a.operations);
-    await applyEdit(a, guard.value, notes, !!context.isTest);
+    const consolidated = normalizeConsolidatedAdjustments(payload.result.adjustments);
+    const adjustments = consolidated.length
+      ? reconcileAdjustments(existing, consolidated, new Date().toISOString())
+      : fallbackAppend(a, existing, notes);
+    if (!consolidated.length) console.warn(`[agentEditDefs] ${a.page}: LLM returned no consolidated adjustments → deterministic append fallback`);
+
+    await applyEdit(a, editedDefinition, adjustments, !!context.isTest);
     return [mkCompleted(context, parentStep, step, hookSequential)];
   } catch (error) {
     const msg = `[agentEditDefs] ${error instanceof Error ? error.message : String(error)}`;
@@ -171,25 +202,63 @@ async function afterPromptStep(
   }
 }
 
+// Shared consolidation rules (both prompts). The LLM owns the semantic supersession; the code
+// reattaches ids/timestamps deterministically (surviving ids are kept, unknown ids are minted).
+const CONSOLIDATION_RULES = `
+The \`adjustments\` you return is the page's CONSOLIDATED list of visual adjustments — the single
+source of truth a future regeneration replays. Build it like this:
+- START from \`existingAdjustments\` and INCORPORATE the new \`request\`.
+- SUPERSEDE (drop) any prior adjustment that CONTRADICTS a newer one on the SAME element/aspect —
+  newer wins (e.g. "align buttons right" then "align buttons left" ⇒ keep only "left").
+- KEEP unrelated adjustments untouched, WITH their original \`id\`.
+- A surviving/edited prior adjustment MUST reuse its existing \`id\`. A brand-new adjustment MUST
+  OMIT \`id\` (the system mints it). NEVER rename or invent ids.
+- The result MUST represent the new request (as a new entry, or merged into a superseding one).
+- Each item: { "id"?: "<existing id, only when reused>", "request": "<verbatim/merged>", "kind":
+  "structural"|"cosmetic", "notes"?: "<what/where it applies>" }.`;
+
 const editPrompt = `
 <!-- modelType: design -->
 
 You apply pointed VISUAL edits to a page's structural definition. The human message is a JSON object
-{ request, operations, currentDefinition }.
+{ request, imageUrl?, operations, existingAdjustments, currentDefinition }.
 
 - \`currentDefinition\` is the page's current \`definition\` object (the structure the render uses).
 - \`operations\` are the approved structural changes to apply (hide/move/reorder/re-present an
   existing element).
+- \`existingAdjustments\` is the page's current consolidated adjustments list.
 
-Return ONLY the edited definition plus a short note:
-{"type":"flexible","result":{"definition":<the FULL edited definition object>,"notes":"<one line: what you changed>"}}
+Return ONLY the edited definition, a short note, and the consolidated adjustments list:
+{"type":"flexible","result":{"definition":<the FULL edited definition object>,"notes":"<one line: what you changed>","adjustments":[<the consolidated list>]}}
 
-Hard rules:
+Hard rules (definition):
 - Apply ONLY the requested operations. Keep EVERYTHING else byte-for-byte structurally identical.
 - NEVER change identity fields (pageId, moduleName, genome, baseClassName, routePattern).
 - NEVER rename or invent element ids; only remove/hide/move/re-present elements that already exist.
 - NEVER add data, states or actions that are not already in the definition.
 - Preserve the definition's schema exactly (same shape the render expects).
+${CONSOLIDATION_RULES}
+
+Return valid JSON only. No preamble, no markdown fences.
+
+## Output format
+[[OutputSection]]
+`;
+
+const consolidatePrompt = `
+<!-- modelType: reasoning -->
+
+You consolidate a page's VISUAL adjustments log. The change is COSMETIC (a visual nuance not
+representable in the page structure), so there is NO definition to edit. The human message is a JSON
+object { request, imageUrl?, operations, existingAdjustments }.
+
+- \`request\` is the new cosmetic change the user asked for.
+- \`operations\` are the approved cosmetic operations for it.
+- \`existingAdjustments\` is the page's current consolidated adjustments list.
+
+Return ONLY a short note and the consolidated adjustments list:
+{"type":"flexible","result":{"notes":"<one line: what you changed>","adjustments":[<the consolidated list>]}}
+${CONSOLIDATION_RULES}
 
 Return valid JSON only. No preamble, no markdown fences.
 
@@ -198,5 +267,8 @@ Return valid JSON only. No preamble, no markdown fences.
 `;
 
 //#region OutputSection
-export type Output = { type: 'flexible'; result: { definition: Record<string, unknown>; notes: string } };
+type ConsolidatedAdjustmentOut = { id?: string; request: string; kind: 'structural' | 'cosmetic'; notes?: string };
+export type Output =
+  | { type: 'flexible'; result: { definition: Record<string, unknown>; notes: string; adjustments: ConsolidatedAdjustmentOut[] } }
+  | { type: 'flexible'; result: { notes: string; adjustments: ConsolidatedAdjustmentOut[] } };
 //#endregion

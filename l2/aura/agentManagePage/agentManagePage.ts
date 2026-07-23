@@ -165,14 +165,26 @@ a JSON object { request, imageUrl?, page, module, defsSource, sharedSource }.
 
 Decide if the request is a purely VISUAL/layout change realizable with the EXISTING surface
 (the states/actions/fields/contracts already present). Examples in scope: hide/move/reorder a field
-or section, change a control's presentation, emphasize an action, tweak spacing/grouping, relabel
-using an EXISTING message key.
+or section, change a control's presentation, emphasize an action, align/justify/reposition elements,
+tweak spacing/grouping/sizing, relabel using an EXISTING message key.
 
-REJECT (out of scope) when the request would require ANY of:
+The scope test is ONLY about DATA/BEHAVIOR, never about the presentation itself. REJECT (out of
+scope) ONLY when the request would require ANY of:
 - a new data source, query or command (not present in the contracts / dataNeeds);
 - a new state or action, or a change to how data behaves;
 - a backend change or a business-rule change;
 - something that is not about THIS page (another screen, new navigation, a new module).
+
+CRITICAL — a pure presentation change is ALWAYS in scope, even if the \`definition\` has no dedicated
+attribute for it. The ABSENCE of a structural attribute is NOT a reason to reject — it is exactly
+what \`cosmetic\` is for (the render applies it via CSS). Alignment, justification, spacing, sizing,
+emphasis and ordering of EXISTING elements NEVER require a new state/action/contract, so they are
+never out of scope. Do NOT invent a hypothetical config field (e.g. "actionAlign") and then reject
+for its absence — just emit a cosmetic operation.
+
+The page's applied \`pageAdjustments\` are visible in \`defsSource\`. Reversing or changing a prior
+adjustment (e.g. previously "align right", now "align left") is a normal in-scope edit — emit the
+operation directly; NEVER ask the user to confirm.
 
 If out of scope, return ONLY:
 {"type":"result","result":"a short, specific reason in the user's language explaining what is not possible and why"}
@@ -181,7 +193,8 @@ If in scope, return ONLY a list of typed visual operations:
 {"type":"flexible","result":{"operations":[{"kind":"structural"|"cosmetic","target":"<element id or region, '' if n/a>","description":"<precise change>"}]}}
 
 - \`structural\` = representable in \`definition\` (hide/move/reorder/re-present an existing element).
-- \`cosmetic\` = a visual nuance NOT representable in the structure (shadow, emphasis, spacing feel).
+- \`cosmetic\` = a visual nuance NOT representable in the structure (alignment, shadow, emphasis,
+  spacing/sizing feel). When in doubt between the two, prefer \`cosmetic\` over rejecting.
 - Never invent data/states/actions. One request may yield multiple operations.
 
 Return valid JSON only. No preamble, no markdown fences.
