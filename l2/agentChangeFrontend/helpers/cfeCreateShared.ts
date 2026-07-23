@@ -1226,16 +1226,19 @@ export interface MaterializeVerifyBrokenTrace {
 
 // Full, unbounded verify detail (every compile/typecheck error + warning per broken item) written to
 // the file system so the msg-task step trace can stay a short summary (DynamoDB 400KB task cap). One
-// file per verify invocation, keyed by its planId, at l2/trace/frontend-materialize-verify — NOT
-// module-scoped because a materialize phase spans every frontend module; each entry carries its full
-// defPath/outputPath. Best-effort: a trace write must never fail the verify. Returns the mls ref of
-// the written file (for the summary to point at) or null when it could not be written.
+// file per verify invocation, keyed by its planId, under the MODULE's trace folder
+// (<module>/trace/frontend-materialize-verify) — a run processes a single module, so the trace lives with
+// that module's other artifacts rather than at the project-root l2/trace. The module is derived from the
+// broken items' paths. Best-effort: a trace write must never fail the verify. Returns the mls ref of the
+// written file (for the summary to point at) or null when it could not be written.
 export async function saveMaterializeVerifyTrace(planId: string, attempt: number, broken: MaterializeVerifyBrokenTrace[]): Promise<string | null> {
   try {
     const project = mls.actualProject || 0;
     if (!project) return null;
     const shortName = toSafeShortName(planId);
-    const fileInfo: FileInfo = { project, level: 2, folder: 'trace/frontend-materialize-verify', shortName, extension: '.json' };
+    const moduleName = deriveTraceModule(broken);
+    const folder = moduleName ? `${moduleName}/trace/frontend-materialize-verify` : 'trace/frontend-materialize-verify';
+    const fileInfo: FileInfo = { project, level: 2, folder, shortName, extension: '.json' };
     await saveStorContent(fileInfo, `${JSON.stringify({
       savedAt: new Date().toISOString(),
       planId,
@@ -1244,11 +1247,25 @@ export async function saveMaterializeVerifyTrace(planId: string, attempt: number
       broken,
       agent: 'agentCfeMaterializePhase',
     }, null, 2)}\n`);
-    return `_${project}_/l2/trace/frontend-materialize-verify/${shortName}.json`;
+    return `_${project}_/l2/${folder}/${shortName}.json`;
   } catch (error) {
     console.error(`[saveMaterializeVerifyTrace] ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
+}
+
+// The module name from a broken item's `_<project>_/l2/<module>/...` outputPath/defPath (all items in one
+// verify belong to the same module). Empty when none can be derived (keeps the project-root fallback).
+function deriveTraceModule(broken: MaterializeVerifyBrokenTrace[]): string {
+  for (const item of broken) {
+    for (const ref of [item.outputPath, item.defPath]) {
+      const parts = String(ref || '').split('/');
+      const l2Index = parts.indexOf('l2');
+      const moduleName = l2Index >= 0 ? parts[l2Index + 1] : '';
+      if (moduleName && moduleName !== 'trace') return moduleName;
+    }
+  }
+  return '';
 }
 
 export async function listCreateRunLayoutFailureTraces(runId: string): Promise<string[]> {

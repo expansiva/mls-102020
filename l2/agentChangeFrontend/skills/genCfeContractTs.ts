@@ -21,13 +21,14 @@ Do not import anything.
 
 ## Naming
 
-Derive moduleName and pageName from the target outputPath:
+Derive pageName from the target outputPath:
 - outputPath pattern: _{project}_/l2/{moduleName}/web/contracts/{pageName}.ts
-- Prefix is moduleName converted to PascalCase by uppercasing the first character.
 - CommandPascal is commandName converted to PascalCase by uppercasing the first character.
-- Input interface: {Prefix}{CommandPascal}Input
-- Output interface/type: {Prefix}{CommandPascal}Output
-- Query item interface: {Prefix}{CommandPascal}OutputItem
+- Input interface: {CommandPascal}Input
+- Output interface/type: {CommandPascal}Output
+- Query item interface: {CommandPascal}OutputItem
+- Do NOT prefix type names with the module. The shared module and the page renders import these EXACT
+  unprefixed names; a module-prefixed name (e.g. FooBarInput) does not exist and fails compilation.
 
 Use only commandName values from Definition.
 
@@ -55,12 +56,12 @@ type MUST match it EXACTLY (same field names, same required-ness, same array/obj
 frontend and backend contracts agree by construction. canonicalOutputShape is { kind, fields[] };
 each field is { name, type, required, fieldRef?, item? }:
 - kind "object" -> generate Output as an interface with exactly these fields.
-- kind "list" -> generate Output as {Prefix}{CommandPascal}OutputItem[] where OutputItem has the
+- kind "list" -> generate Output as {CommandPascal}OutputItem[] where OutputItem has the
   declared fields.
 - kind "paginated" -> generate Output as an interface with exactly the declared fields (the array field
   keeps its DECLARED name — e.g. stockItems: ...[], NOT "items" — do not rename it).
 - For any field with type "array", its element type is a named interface built from item.fields
-  (name it after the field, e.g. orders -> {Prefix}Order / DashboardOrder); for type "object",
+  (name it after the field in PascalCase, e.g. orders -> Order); for type "object",
   a named nested interface from item.fields. Scalar types map directly (string/number/boolean).
 - Fields with no fieldRef are computed/aggregate values — still emit them with their declared type.
 - Preserve field order; property required unless required === false; do NOT add, drop or rename fields.
