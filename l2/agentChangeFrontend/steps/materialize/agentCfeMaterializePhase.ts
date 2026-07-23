@@ -11,7 +11,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
-import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, saveMaterializeVerifyTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, saveMaterializeVerifySummary, saveMaterializeVerifyTrace, type MaterializeVerifyPassed } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import {
   parseDefs,
   testPathForOutputPath,
@@ -19,6 +19,7 @@ import {
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import {
   compileMlsPathAndGetErrors,
+  getCompiledDtsByMlsPath,
   getContentByMlsPath,
   type GenStepArgs,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
@@ -47,10 +48,13 @@ interface BrokenItem {
 }
 
 const AGENT_NAME = 'agentCfeMaterializePhase';
-// Bounded repair rounds after the initial fan-out (verify attempt 1). Set to 2 so the Studio's
-// effective budget (fan-out + 2 repairs = 3 tries) matches the CLI (nodejsMaterializeL2), which
-// converges on typical compile errors by feeding the tsc output back into the prompt.
-const MATERIALIZE_REPAIR_ROUNDS = 2;
+// Bounded repair rounds after the initial fan-out (verify attempt 1). Studio uses 3 (fan-out + 3 repairs
+// = 4 tries) — INTENTIONALLY one more than the CLI (nodejsMaterializeL2, fan-out + 2 = 3): the Studio
+// verify now resolves cross-file types reliably (verifyItem pre-loads dependency .d.ts), so it surfaces
+// real errors the earlier per-file check missed, and cross-file fixes (handler signatures, output shapes)
+// sometimes need one extra round to converge. The CLI feeds full tsc output into the prompt and converges
+// faster, so its budget stays at 2.
+const MATERIALIZE_REPAIR_ROUNDS = 3;
 
 export function createAgent(): IAgentAsync {
   return {
@@ -117,13 +121,20 @@ async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.
     checkedItems.push(checked);
   }
   const broken = checkedItems.filter(checked => checked.errors.length > 0);
+  const passed: MaterializeVerifyPassed[] = checkedItems.filter(checked => checked.errors.length === 0).map(checked => ({ planId: checked.item.planId, typecheck: checked.typecheck }));
+  const moduleName = deriveVerifyModule(args.items);
+  // ALWAYS write the stable verdict file (overwrites each round) so "was this phase resolved?" has one
+  // place to look — passed items + any still-broken — instead of inferring it from the presence of
+  // cryptic per-round trace files (102051 run19: no file meant "clean" AND "not run", indistinguishable).
+  const summaryRef = await saveMaterializeVerifySummary(moduleName, args.planId, args.attempt, passed, broken.map(toBrokenTrace));
 
   if (broken.length === 0) {
     const trace = checkedItems.map(checked => {
       const warnings = checked.warnings.length ? `; UX warnings: ${checked.warnings.join(' | ')}` : '';
       return `${checked.item.planId}: ${checked.typecheck}${warnings}`;
     }).join('; ');
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `all ${args.items.length} materialization item(s) verified; typechecks: ${trace}`)];
+    const summaryNote = summaryRef ? ` verdict: ${summaryRef}` : '';
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `all ${args.items.length} materialization item(s) verified; typechecks: ${trace}.${summaryNote}`)];
   }
 
   // Full detail (all errors + warnings per item) goes to the file system; the msg-task step trace
@@ -214,6 +225,15 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   const content = await getContentByMlsPath(outputPath);
   if (!content || !content.trim()) return { item, outputPath, errors: [`generated file missing or empty: ${outputPath}`], warnings: [], typecheck: 'not-applicable' };
 
+  // A page is verified only AFTER its shared/contract phases finished (contracts -> shared -> pages), so
+  // the deps on disk are final. Force-compile their .d.ts FIRST so the Studio per-file compile resolves
+  // cross-file types the same way `tsc -p` does. Without this an unloaded import resolves to `any` and the
+  // check silently misses TS2554/TS2352/TS2339 (102051 run19: shiftWorkspace passed here yet failed tsc,
+  // and — because the verify item set only shrinks — was never re-checked). Best-effort: never block.
+  const sharedDefsPath = pipelineItem.type === 'l2_page' ? sharedDefsPathForPageOutput(outputPath) : null;
+  const sharedDefs = sharedDefsPath ? await getContentByMlsPath(sharedDefsPath) : null;
+  if (pipelineItem.type === 'l2_page') await preloadPageTypecheckDeps(sharedDefsPath, sharedDefs);
+
   const errors = [...await compileMlsPathAndGetErrors(outputPath)];
   const warnings: string[] = [];
   const testPath = testPathForOutputPath(outputPath);
@@ -221,8 +241,6 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   const typecheckErrors = testContent && testContent.trim() ? await compileMlsPathAndGetErrors(testPath) : [];
   errors.push(...typecheckErrors);
   if (pipelineItem.type === 'l2_page' && defsContent) {
-    const sharedDefsPath = sharedDefsPathForPageOutput(outputPath);
-    const sharedDefs = sharedDefsPath ? await getContentByMlsPath(sharedDefsPath) : null;
     if (!sharedDefs) {
       warnings.push(`shared defs missing for UX validation: ${sharedDefsPath || outputPath}`);
     } else {
@@ -240,6 +258,36 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
 function sharedDefsPathForPageOutput(outputPath: string): string | null {
   const match = outputPath.match(/^(.*\/web)\/(?:desktop|mobile)\/page\d+\/([^/]+)\.ts$/);
   return match ? `${match[1]}/shared/${match[2]}.defs.ts` : null;
+}
+
+// Module name from the verify items' `_<project>_/l2/<module>/...` defPath (one run = one module).
+function deriveVerifyModule(items: GenStepArgs[]): string {
+  for (const item of items) {
+    const parts = String(item.defPath || '').split('/');
+    const l2Index = parts.indexOf('l2');
+    const moduleName = l2Index >= 0 ? parts[l2Index + 1] : '';
+    if (moduleName && moduleName !== 'trace') return moduleName;
+  }
+  return '';
+}
+
+// Compile the page's dependency .d.ts (its shared base class runtime .ts + the contract .ts it imports)
+// so they are loaded/typed BEFORE the page compiles — otherwise the Studio per-file compile resolves the
+// imports loosely and cross-file type errors vanish. Best-effort: a dep that fails to compile just leaves
+// its import unresolved (same as the old behaviour), never throws.
+async function preloadPageTypecheckDeps(sharedDefsPath: string | null, sharedDefs: string | null): Promise<void> {
+  const deps: string[] = [];
+  if (sharedDefsPath) deps.push(sharedDefsPath.replace(/\.defs\.ts$/, '.ts'));
+  if (sharedDefs) {
+    try {
+      const data = parseDefs(sharedDefs).data as Record<string, unknown>;
+      const ref = data && typeof data.contractRef === 'object' && data.contractRef ? data.contractRef as Record<string, unknown> : null;
+      if (ref && typeof ref.tsPath === 'string' && ref.tsPath) deps.push(ref.tsPath);
+    } catch { /* malformed shared defs: skip the contract dep */ }
+  }
+  for (const dep of deps) {
+    try { await getCompiledDtsByMlsPath(dep); } catch { /* best-effort */ }
+  }
 }
 
 // Local copy of the ns3 findMutableParentStep pattern (skills/collab_messages.md): if the
