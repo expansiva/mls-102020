@@ -2,6 +2,25 @@
 
 # Changelog
 
+- 2026-07-23 (verify: reliable cross-file typecheck + always-written verdict + 3 rounds) — 102051 run19:
+  shiftWorkspace passed the in-run verify yet failed `tsc -p` (TS2554/TS2352/TS2339). Root cause: the
+  Studio per-file `compile` resolves an import to `any` when the dep model is not loaded, so cross-file
+  errors vanish — and because the verify item set only SHRINKS (each round gets only the prior `broken`),
+  a false-negative in round 1 is dropped forever. Fixes (agentCfeMaterializePhase + cfeCreateShared):
+  (1) `verifyItem` now force-compiles a page's dependency .d.ts (shared base .ts + contract .ts, via
+  getCompiledDtsByMlsPath) BEFORE compiling the page, so the per-file compile resolves cross-file types
+  like `tsc` — reliable from attempt 1 (NOT weak-first/strong-last, which the shrinking set makes unsafe).
+  (2) `saveMaterializeVerifySummary` ALWAYS writes one stable-named `<phase>-verify-summary.json`
+  (module-scoped, overwritten each round) listing passed + still-broken — so "was it resolved?" has one
+  place to look instead of inferring from absent per-round trace files. (3) MATERIALIZE_REPAIR_ROUNDS 2->3
+  (Studio now diverges from the CLI's 2 on purpose — see the comment). CAVEAT: all new code runs only in
+  the Studio in-browser compiler; it compiles + passes the unit suite here but its EFFICACY (does priming
+  a dep's .d.ts actually make the page compile resolve it?) is confirmable only by re-running (run20).
+  Watch-list if it still leaks: getCompiledDtsByMlsPath skips recompile when prodDTS is cached (may be
+  stale/pre-repair); pages-phase dependsOn is the shared FANOUT, not shared verify/repairs (a page can be
+  verified before the shared base is final). Escape hatch: use compileAll(project) at exhaustion to
+  populate the summary's broken-list authoritatively.
+
 - 2026-07-22 (generated typecheck tests: alias imports + unprefixed contract types) — 102051 run18: the
   deterministic typecheck tests (buildContractTypecheckTest/buildSharedTypecheckTest in cfeMaterializeCore)
   emitted RELATIVE imports (`./x.js`, `../contracts/x.js`) which the mls runtime/tsc cannot resolve, and
