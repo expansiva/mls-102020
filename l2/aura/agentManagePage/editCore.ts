@@ -9,6 +9,7 @@
 // the identity guard and skip the layout guard.
 
 import { listLayoutElements } from '/_102020_/l2/aura/helpers/dsMatch/layoutElements.js';
+import { nextAdjustmentId, type PageAdjustment, type PageAdjustmentKind } from '/_102020_/l2/aura/helpers/dsMatch/pageAdjustments.js';
 
 export type EditKind = 'structural' | 'cosmetic';
 
@@ -114,6 +115,80 @@ export function buildDeltaSection(
         parts.push('', '### Current code (preserve verbatim except for the adjustments above)', '```ts', currentCode!.trim(), '```');
     }
     return parts.join('\n');
+}
+
+// ─── pageAdjustments consolidation (Opção C) ─────────────────────────────────
+// The edit LLM returns the CONSOLIDATED list of adjustments (existing + the new request, with
+// contradictory prior ones superseded — newer wins on the same element/aspect). We reattach the
+// audit fields DETERMINISTICALLY here: a surviving item keeps its original id + `at`; a new item
+// (no matching id) is minted a fresh id + `at=now`. The LLM can never rename/forge an id — an
+// unknown id is treated as new — so the id space stays honest (guard, à la validateEditedDefinition).
+
+/** One consolidated adjustment as returned by the LLM (before audit fields are reattached). */
+export interface ConsolidatedAdjustmentIn {
+    id?: string;                 // present + known → a surviving prior adjustment (keep its id/at)
+    request: string;
+    kind: EditKind;
+    notes?: string;
+    imageUrl?: string;
+}
+
+/** Keep only well-formed items (non-empty request, valid kind); coerce id/notes/imageUrl. */
+export function normalizeConsolidatedAdjustments(raw: unknown): ConsolidatedAdjustmentIn[] {
+    const arr = Array.isArray(raw) ? raw : [];
+    const out: ConsolidatedAdjustmentIn[] = [];
+    for (const o of arr) {
+        const request = typeof (o as any)?.request === 'string' ? (o as any).request.trim() : '';
+        const kind = (o as any)?.kind;
+        if (!request || (kind !== 'structural' && kind !== 'cosmetic')) continue;
+        const id = typeof (o as any)?.id === 'string' && (o as any).id.trim() ? (o as any).id.trim() : undefined;
+        const notes = typeof (o as any)?.notes === 'string' && (o as any).notes.trim() ? (o as any).notes.trim() : undefined;
+        const imageUrl = typeof (o as any)?.imageUrl === 'string' && (o as any).imageUrl.trim() ? (o as any).imageUrl.trim() : undefined;
+        out.push({ id, request, kind, notes, imageUrl });
+    }
+    return out;
+}
+
+/**
+ * Reconcile the LLM's consolidated list against the existing adjustments into the final
+ * PageAdjustment[] to persist. Pure (takes `nowIso` — no Date.now inside):
+ *   - id matches an existing adjustment → reuse its id + `at` (audit continuity), take the
+ *     consolidated request/kind, and its notes/imageUrl (falling back to the prior values);
+ *   - no id, or an id NOT in `existing` → mint the next id + `at=nowIso` (unknown ids never trusted);
+ *   - superseded prior adjustments simply don't appear in `consolidated`, so they drop out.
+ */
+export function reconcileAdjustments(
+    existing: PageAdjustment[],
+    consolidated: ConsolidatedAdjustmentIn[],
+    nowIso: string,
+): PageAdjustment[] {
+    const byId = new Map(existing.map(a => [a.id, a]));
+    const out: PageAdjustment[] = [];
+    for (const item of consolidated) {
+        const kind: PageAdjustmentKind = item.kind === 'structural' ? 'structural' : 'cosmetic';
+        const prior = item.id ? byId.get(item.id) : undefined;
+        if (prior) {
+            out.push({
+                id: prior.id,
+                at: prior.at,
+                request: item.request,
+                kind,
+                notes: item.notes ?? prior.notes,
+                imageUrl: item.imageUrl ?? prior.imageUrl,
+            });
+        } else {
+            // Mint against existing + already-emitted so multiple new items get distinct ids.
+            out.push({
+                id: nextAdjustmentId([...existing, ...out]),
+                at: nowIso,
+                request: item.request,
+                kind,
+                notes: item.notes || undefined,
+                imageUrl: item.imageUrl || undefined,
+            });
+        }
+    }
+    return out;
 }
 
 /** Normalize/validate the gate's operations array. Keeps only well-formed structural/cosmetic ops. */
