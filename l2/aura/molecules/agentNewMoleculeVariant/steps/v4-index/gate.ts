@@ -39,5 +39,13 @@ export function runIndexGate(indexTs: string, ctx: VariantContext): VGateIssue[]
     issues.push({ code: 'variant_tag', message: `index.ts must reference the variant tag ${ctx.variant.tag}` });
   }
 
+  // The showcase page container must carry the theme background — otherwise the
+  // themed molecules render on the skill's neutral surfaces (glass is invisible
+  // on white). Same normalization as the demo gate.
+  const bgCss = ctx.theme.info.background.css.replace(/\s+/g, ' ').replace(/;$/, '').trim();
+  if (bgCss && !indexTs.replace(/\s+/g, ' ').includes(bgCss)) {
+    issues.push({ code: 'background', message: `index.ts page container must carry the theme background: '${ctx.theme.info.background.css}'` });
+  }
+
   return issues;
 }

@@ -8,3 +8,10 @@
   prompt.md, best-effort compile + agentNewMoleculeFix chaining, and ok:false
   resilience so index failure never blocks the pipeline. Removed the obsolete
   `renderNewGroupIndexTs`/`insertIndexImport` renderers.
+- 2026-07-23: THEMED the index — the showcase was coming out on the skill's neutral
+  bg-white/slate chrome, making glass molecules invisible. Prompt now injects
+  themeInfo.background + the theme Visual Signature and instructs the same mandatory
+  deviation as v5-demo (theme background on the page container + theme-coherent
+  surfaces/text). Gate now requires the theme background on the container. The
+  Visual-Signature extraction was lifted to a shared helper (vTheme.extractVisualSignature
+  / loadThemeSignature), reused by v4 and v5.

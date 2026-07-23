@@ -56,7 +56,7 @@ import '/_102054_/l2/molecules/grouptriggeraction/ml-split-button-brutal';
 @customElement('molecules--grouptriggeraction--index-102054')
 export class GroupTriggerActionIndex extends StateLitElement {
   render(): TemplateResult {
-    return html\`<div class="font-sans min-h-screen">
+    return html\`<div class="font-sans" style="min-height:100vh; background: #f5f5f5;">
       <grouptriggeraction--ml-split-button-brutal .isEditing=\${true}></grouptriggeraction--ml-split-button-brutal>
     </div>\`;
   }
@@ -99,4 +99,10 @@ test('missing variant tag is rejected', () => {
   const issues = runIndexGate(bad, buildCtx());
   assert.ok(issues.some(i => i.code === 'variant_tag'));
   assert.ok(!issues.some(i => i.code === 'variant_import'));
+});
+
+test('missing theme background on the container is rejected', () => {
+  // Revert the container to the skill's neutral root — the theme background is gone.
+  const bad = VALID_INDEX.replace('class="font-sans" style="min-height:100vh; background: #f5f5f5;"', 'class="font-sans min-h-screen"');
+  assert.ok(runIndexGate(bad, buildCtx()).some(i => i.code === 'background'));
 });
