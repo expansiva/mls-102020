@@ -35,6 +35,8 @@ const message_en = {
     skillPlaceholder: '_102020_/l2/skills/layout/…',
     saveLayout: 'Save layout',
     saveError: 'Could not save the layout.',
+    useMoleculesLabel: 'Use molecules',
+    useMoleculesHint: 'When off, pages of this layout get only the configured layout rules (no web components).',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -64,6 +66,8 @@ const messages: Record<string, MessageType> = {
         skillPlaceholder: '_102020_/l2/skills/layout/…',
         saveLayout: 'Salvar layout',
         saveError: 'Não foi possível salvar o layout.',
+        useMoleculesLabel: 'Usar moléculas',
+        useMoleculesHint: 'Quando desligado, as páginas deste layout recebem apenas as regras de layout configuradas (sem web components).',
     },
     es: {
         title: 'UX · User Experience',
@@ -90,6 +94,8 @@ const messages: Record<string, MessageType> = {
         skillPlaceholder: '_102020_/l2/skills/layout/…',
         saveLayout: 'Guardar layout',
         saveError: 'No se pudo guardar el layout.',
+        useMoleculesLabel: 'Usar moléculas',
+        useMoleculesHint: 'Cuando está desactivado, las páginas de este layout reciben solo las reglas de layout configuradas (sin web components).',
     },
 };
 /// **collab_i18n_end**
@@ -100,6 +106,9 @@ interface ILayoutOption {
     value: number;
     name: string;
     skill: string;
+    // When false the genome flow skips molecule resolution for this layout's pages
+    // (only the configured layout rules apply). Default true; absent key = true.
+    useMolecules: boolean;
 }
 
 // Presets for the "Add layout" form: each sets the layout name + its render skill.
@@ -125,6 +134,7 @@ export class PluginSelectLayout extends StateLitElement {
     @state() private _addName: string = '';
     @state() private _addSkill: string = '';
     @state() private _addRules: Record<string, string> = {};
+    @state() private _addUseMolecules: boolean = true;
     @state() private _addSaving: boolean = false;
     @state() private _addError: string = '';
 
@@ -143,9 +153,9 @@ export class PluginSelectLayout extends StateLitElement {
         if (!project) return;
         try {
             const config: any = await getConfigProject(project);
-            const layoutsMap: Record<number, { name: string; skill: string }> = config?.layouts ?? {};
+            const layoutsMap: Record<number, { name: string; skill: string; useMolecules?: boolean }> = config?.layouts ?? {};
             this._layoutOptions = Object.entries(layoutsMap)
-                .map(([k, v]) => ({ value: Number(k), name: v.name, skill: v.skill }))
+                .map(([k, v]) => ({ value: Number(k), name: v.name, skill: v.skill, useMolecules: v.useMolecules !== false }))
                 .sort((a, b) => a.value - b.value);
         } catch { /* no project config */ }
         // @ts-ignore
@@ -225,8 +235,38 @@ export class PluginSelectLayout extends StateLitElement {
                 ></aura--plugins--nav-header-102020>
 
                 ${this._renderLayoutCard(selectedOption, true)}
+                ${this._renderUseMoleculesToggle(selectedOption)}
             </div>
         `;
+    }
+
+    // Per-layout "Use molecules" flag: persisted in config.layouts[value].useMolecules.
+    // The genome flow reads it there — this is the single source of truth (no global state).
+    private _renderUseMoleculesToggle(opt: ILayoutOption) {
+        return html`
+            <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer" title=${this.msg.useMoleculesHint}>
+                <input
+                    type="checkbox"
+                    class="cursor-pointer"
+                    .checked=${opt.useMolecules}
+                    @change=${(e: Event) => this._onToggleUseMolecules(opt.value, (e.target as HTMLInputElement).checked)}
+                />
+                <span>${this.msg.useMoleculesLabel}</span>
+            </label>
+        `;
+    }
+
+    private async _onToggleUseMolecules(value: number, checked: boolean): Promise<void> {
+        const projectId = getAuraState().actualProject;
+        if (projectId == null) return;
+        try {
+            const config: any = await getConfigProject(projectId);
+            const layout = config?.layouts?.[String(value)];
+            if (!layout) return;
+            layout.useMolecules = checked;
+            await updateConfigProject(projectId, config);
+            await this._loadProjectConfig();
+        } catch { /* leave the UI as-is on failure */ }
     }
 
     private _renderLayoutCard(opt: ILayoutOption, isSelected: boolean) {
@@ -395,6 +435,19 @@ export class PluginSelectLayout extends StateLitElement {
                     ></aura--plugins--select-layout-rules-102020>
                 ` : nothing}
 
+                <!-- Use molecules (per-layout flag) -->
+                ${hasChoice ? html`
+                    <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer" title=${this.msg.useMoleculesHint}>
+                        <input
+                            type="checkbox"
+                            class="cursor-pointer"
+                            .checked=${this._addUseMolecules}
+                            @change=${(e: Event) => { this._addUseMolecules = (e.target as HTMLInputElement).checked; }}
+                        />
+                        <span>${this.msg.useMoleculesLabel}</span>
+                    </label>
+                ` : nothing}
+
                 <!-- Save -->
                 ${hasChoice ? html`
                     <div class="flex flex-col gap-2">
@@ -470,7 +523,7 @@ export class PluginSelectLayout extends StateLitElement {
             const current = config.layouts;
             const layouts: Record<string, any> = (current && typeof current === 'object' && !Array.isArray(current)) ? current : {};
             const newIndex = this._addValue;
-            layouts[newIndex] = { name, skill, rules: { ...this._addRules } };
+            layouts[newIndex] = { name, skill, rules: { ...this._addRules }, useMolecules: this._addUseMolecules };
             config.layouts = layouts;
             await updateConfigProject(projectId, config);
 
@@ -495,6 +548,7 @@ export class PluginSelectLayout extends StateLitElement {
         this._addName = '';
         this._addSkill = '';
         this._addRules = {};
+        this._addUseMolecules = true;
         this._addError = '';
     }
 
