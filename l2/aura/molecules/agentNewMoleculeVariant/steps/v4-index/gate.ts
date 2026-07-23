@@ -1,26 +1,42 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/agentNewMoleculeVariant/steps/v4-index/gate.ts" enhancement="_blank"/>
 
-// Group-index invariants (pure). flow.json v4-index: NO retry — unexpected
-// format means report, never guess.
+// Group-index showcase invariants (pure). v4-index is now an LLM step that
+// regenerates the whole showcase page (reusing the indexGroupPage skill), so the
+// gate checks structural essentials — NOT byte shape. A 2nd failure does NOT
+// block the pipeline (flow.json v4-index.onFail): the anchor is emitted ok:false
+// and v6-summary reports it, exactly like v5-demo.
 
 import { VariantContext } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vContext.js';
+import { groupIndexTag } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vTemplates.js';
 import { VGateIssue } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/steps/v1-bootstrap/gate.js';
 
-export function runIndexGate(updatedIndex: string, previousIndex: string, ctx: VariantContext): VGateIssue[] {
+export function runIndexGate(indexTs: string, ctx: VariantContext): VGateIssue[] {
   const issues: VGateIssue[] = [];
-  const importLine = `import '/_${ctx.theme.project}_/l2/molecules/${ctx.variant.group}/${ctx.variant.shortName}';`;
 
-  const occurrences = updatedIndex.split(importLine).length - 1;
-  if (occurrences !== 1) {
-    issues.push({ code: 'import_count', message: `variant import must appear exactly once (found ${occurrences})` });
+  if (!indexTs.trim()) {
+    issues.push({ code: 'no_content', message: 'index.ts is empty' });
+    return issues;
+  }
+  if (indexTs.includes('```')) {
+    issues.push({ code: 'fenced', message: 'index.ts must be raw TypeScript, without markdown fences' });
   }
 
-  // Every previously registered molecule import must survive the update.
-  const previousImports = previousIndex.match(/^import '\/_\d+_\/l2\/molecules\/[a-z0-9]+\/[a-z0-9-]+';\s*$/gm) || [];
-  for (const line of previousImports) {
-    if (!updatedIndex.includes(line.trim())) {
-      issues.push({ code: 'import_lost', message: `previously registered import was lost: ${line.trim()}` });
-    }
+  const headerRef = `_${ctx.theme.project}_/l2/molecules/${ctx.variant.group}/index.ts`;
+  if (!indexTs.includes(headerRef)) {
+    issues.push({ code: 'header', message: `index.ts header must reference ${headerRef}` });
+  }
+
+  const indexTag = groupIndexTag(ctx);
+  if (!indexTs.includes(`@customElement('${indexTag}')`)) {
+    issues.push({ code: 'custom_element', message: `index.ts must declare @customElement('${indexTag}')` });
+  }
+
+  // The molecule this run created must be registered and shown in the showcase.
+  if (!indexTs.includes(`/l2/molecules/${ctx.variant.group}/${ctx.variant.shortName}'`)) {
+    issues.push({ code: 'variant_import', message: `index.ts must import the variant module '${ctx.variant.shortName}'` });
+  }
+  if (!indexTs.includes(ctx.variant.tag)) {
+    issues.push({ code: 'variant_tag', message: `index.ts must reference the variant tag ${ctx.variant.tag}` });
   }
 
   return issues;

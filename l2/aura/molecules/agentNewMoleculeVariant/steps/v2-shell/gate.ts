@@ -12,6 +12,10 @@ function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export function runShellGate(shellTs: string, shellDefs: string, ctx: VariantContext): VGateIssue[] {
   const issues: VGateIssue[] = [];
   const code = stripComments(shellTs);
@@ -36,11 +40,16 @@ export function runShellGate(shellTs: string, shellDefs: string, ctx: VariantCon
     issues.push({ code: 'shell_portal_class', message: 'portalClassName is dead — never declare it' });
   }
 
+  // defs is the origin contract replicated verbatim; only identity fields change.
   if (!shellDefs.includes(`export const group = '${ctx.origin.groupCanonical}'`)) {
     issues.push({ code: 'defs_group', message: `defs must export group = '${ctx.origin.groupCanonical}'` });
   }
-  if (!shellDefs.includes(ctx.variant.tag)) {
-    issues.push({ code: 'defs_tag', message: 'defs must mention the variant tag' });
+  const expectedHeaderRef = `_${ctx.theme.project}_/l2/molecules/${ctx.variant.group}/${ctx.variant.shortName}.defs.ts`;
+  if (!shellDefs.includes(expectedHeaderRef)) {
+    issues.push({ code: 'defs_header', message: `defs header must reference the variant file (${expectedHeaderRef})` });
+  }
+  if (!new RegExp(`^\\s*-\\s*TagName:\\s*${escapeRegExp(ctx.variant.tag)}\\s*$`, 'm').test(shellDefs)) {
+    issues.push({ code: 'defs_tag', message: `defs skill must declare TagName: ${ctx.variant.tag}` });
   }
 
   return issues;

@@ -6,6 +6,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   V_AGENT_FOLDER,
   readJsonArtifact,
+  readStorText,
   vContextFileInfo,
   vMoleculeFile,
   vTraceFileInfo,
@@ -44,8 +45,24 @@ async function beforePromptStep(
   const ctx = await readJsonArtifact<VariantContext>(vContextFileInfo(shortName), true);
   if (!ctx) throw new Error(`[${AGENT_NAME}] context.json missing for ${shortName}`);
 
+  // The .defs.ts is a contract other routines consume; the variant inherits the
+  // origin's behavior, so its contract is the origin's — replicated verbatim,
+  // only the identity fields swapped (see renderShellDefs).
+  const originDefs = await readStorText({
+    project: ctx.origin.project,
+    level: 2,
+    folder: `molecules/${ctx.origin.group}`,
+    shortName: ctx.origin.shortName,
+    extension: '.defs.ts',
+  }, false);
+  if (!originDefs.trim()) {
+    const message = `origin .defs.ts not found for ${ctx.origin.ref} — cannot replicate the component contract`;
+    await writeJsonArtifact(vTraceFileInfo(shortName, 'v2-shell', 1), { savedAt: new Date().toISOString(), planId: 'v2-shell', error: message });
+    return [vUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
+  }
+
   const shellTs = renderShellTs(ctx);
-  const shellDefs = renderShellDefs(ctx);
+  const shellDefs = renderShellDefs(ctx, originDefs);
   const issues = runShellGate(shellTs, shellDefs, ctx);
 
   if (issues.length) {

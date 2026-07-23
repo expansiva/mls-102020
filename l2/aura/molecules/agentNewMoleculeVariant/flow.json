@@ -2,9 +2,9 @@
   "flowId": "agentNewMoleculeVariant",
   "schemaVersion": "2026-07-23-variant-v1",
   "specFirst": "This file was written BEFORE the code (todo/todo-agents-molecules-modelos-novos.md Fase 2; design in todo/analise-agentes-molecules-modelos-novos.md §15). The code is validated against it. Maintenance changes the spec FIRST, then the code.",
-  "description": "Standalone agent that derives a themed variant (Strategy D) of an existing molecule into the CURRENT project. Invoked manually with the origin molecule reference (same input mechanism as agentImproveMolecule); in v1 it is NEVER routed from New Molecule / Improve Molecule. Deterministic-first: the shell .ts and .defs.ts are templates, names/paths/class-inventory are derived in code; the ONLY generation LLM call is the .less (plus the demo page and a cheap summary).",
+  "description": "Standalone agent that derives a themed variant (Strategy D) of an existing molecule into the CURRENT project. Invoked manually with the origin molecule reference (same input mechanism as agentImproveMolecule); in v1 it is NEVER routed from New Molecule / Improve Molecule. Deterministic-first: the shell .ts is a template, names/paths/class-inventory are derived in code, and the .defs.ts is the origin contract REPLICATED verbatim (only the identity fields swapped). Generation LLM calls: the .less theme sheet, the group showcase index page (reusing the indexGroupPage skill), the demo page, and a cheap summary.",
   "principles": [
-    "Deterministic first: everything derivable (tag, class name, file paths, portal detection, ml-* class inventory, group index update) is computed in code. LLM calls only for judgment: the .less theme sheet and the demo page examples.",
+    "Deterministic first: everything derivable (tag, class name, file paths, portal detection, ml-* class inventory, .defs.ts contract replication, index.html tag) is computed in code. LLM calls only for judgment: the .less theme sheet, the group showcase index.ts, and the demo page examples.",
     "Theme is data: all theme knowledge comes from the destination project's l2/skills/theme.ts (contract v1: themeInfo + skill payload + examples). Generic Strategy D knowledge lives in the step prompts (source: todo/fase1-template-strategy-d.md). Prompts NEVER instruct the model to 'go read' a file; every needed source is attached to the prompt by the step code.",
     "Fail early and readable: bootstrap validates theme presence/contract, origin readability (origin project must be a dependency of the destination) and name collisions BEFORE any generation. Gate failures retry once with the gate errors in context; a second failure completes-with-trace and blocks downstream (no done anchor).",
     "Step is the maintenance unit: 1 folder per step (agent hook, prompt.md when LLM, gate + test, readme, CHANGELOG). helpers/ is minimal and policy-frozen.",
@@ -36,11 +36,11 @@
     "spec.md": "human-readable rationale; links to the analysis/control docs",
     "README.md": "overview + how to run/test",
     "helpers/": "vFs.ts (file refs/paths, context.json + trace read/write), vTheme.ts (load + validate theme contract), vOrigin.ts (load origin sources, portal detection, ml-* inventory extraction), vTemplates.ts (shell .ts/.defs.ts renderers), vSteps.ts (step/intent builders, done anchors, retry policy)",
-    "schemas/": "v3-less.schema.json, v5-demo.schema.json (versioned $id, strict: additionalProperties false, enum with type, $defs at parameters root)",
+    "schemas/": "v3-less.schema.json, v4-index.schema.json, v5-demo.schema.json (versioned $id, strict: additionalProperties false, enum with type, $defs at parameters root)",
     "steps/v1-bootstrap/": "readme.md, agentVariantBootstrap.ts (no LLM), gate.ts, gate.test.ts, CHANGELOG.md",
     "steps/v2-shell/": "readme.md, agentVariantShell.ts (no LLM), gate.ts, gate.test.ts, CHANGELOG.md",
     "steps/v3-less/": "readme.md, agentVariantLess.ts, prompt.md, gate.ts, gate.test.ts, fixture/ (golden: real 102054 variant), CHANGELOG.md",
-    "steps/v4-index/": "readme.md, agentVariantIndex.ts (no LLM), gate.ts, gate.test.ts, CHANGELOG.md",
+    "steps/v4-index/": "readme.md, agentVariantIndex.ts (LLM: reuses indexGroupPage skill), prompt.md, gate.ts, gate.test.ts, CHANGELOG.md",
     "steps/v5-demo/": "readme.md, agentVariantDemo.ts, prompt.md, gate.ts, gate.test.ts, CHANGELOG.md",
     "steps/v6-summary/": "readme.md, agentVariantSummary.ts, prompt.md, CHANGELOG.md"
   },
@@ -77,16 +77,16 @@
       "type": "agent",
       "noLlm": true,
       "dependsOn": ["v1-done"],
-      "goal": "Render and write the deterministic files from templates: the shell .ts (standard comment header; enhancement _102020_/l2/enhancementAura; @customElement(variantTag); extends OriginClass; + portalWidgetName line iff portal) and the .defs.ts metadata (glass-style: group + skill text with TagName/Objective/Notes including the theme's background contract). No LLM.",
-      "input": ["context.json"],
+      "goal": "Render and write the deterministic files: the shell .ts (standard comment header; enhancement _102020_/l2/enhancementAura; @customElement(variantTag); extends OriginClass; + portalWidgetName line iff portal) and the .defs.ts. The .defs.ts is a CONTRACT other collab routines consume (e.g. the DS agent reads layoutConfig); since the variant inherits ALL behavior (Strategy D), its contract is the origin's — the origin .defs.ts is read via mls.stor and REPLICATED VERBATIM, swapping ONLY the two identity fields (the mls header fileReference and the skill's TagName line). No LLM.",
+      "input": ["context.json", "origin .defs.ts (read from mls.stor)"],
       "output": { "result": "written file refs", "savedArtifact": ["l2/molecules/<group>/<shortName>.ts", "l2/molecules/<group>/<shortName>.defs.ts"] },
       "gate": {
         "file": "steps/v2-shell/gate.ts",
         "checks": [
           "rendered .ts parses the invariants: has @customElement(variantTag), extends origin class, NO render() override, portalWidgetName present iff portal, never portalClassName",
-          ".defs.ts declares the group and mentions the variant tag"
+          ".defs.ts preserves the origin group export, its header references the variant file, and its skill TagName line is the variant tag"
         ],
-        "onFail": "NO retry (template bug): fail readable"
+        "onFail": "NO retry (template bug / missing origin defs): fail readable"
       },
       "doneAnchor": "v2-done"
     },
@@ -117,15 +117,15 @@
       "planId": "v4-index",
       "agentName": "agentVariantIndex",
       "type": "agent",
-      "noLlm": true,
+      "model": "generation",
       "dependsOn": ["v3-done"],
-      "goal": "Deterministic group index update in the destination project: ensure l2/molecules/<group>/index.ts lists/exports the new variant following the file's existing pattern (create from the minimal pattern when the folder has none); ensure index.html exists (mounts the group index page). Never rewrites unrelated entries.",
-      "input": ["context.json", "existing group index files"],
-      "output": { "result": "index update summary", "savedArtifact": ["l2/molecules/<group>/index.ts", "l2/molecules/<group>/index.html (when created)"] },
+      "goal": "Regenerate the group SHOWCASE index page (index.ts + index.html) in the destination project reusing the shared indexGroupPage skill — the same content agentUpdateIndexGroupPage produces (hero + showcase cards + reference table covering EVERY molecule of the group). It does NOT invoke agentUpdateIndexGroupPage: that agent's afterPromptStep chains 'next groups' off the task's original message, which inside our task would fan out over all groups / break our anchors — so the SKILL is reused and generation is driven as a normal pipeline step. index.html is deterministic (the group index custom element tag). Best-effort compile of index.ts; on a compile error, schedule agentNewMoleculeFix on the index fileReference. Index failure NEVER blocks the molecule delivery.",
+      "input": ["context.json", "indexGroupPage skill", "group description + usage skill", "molecule list of the destination group"],
+      "output": { "result": "index files", "savedArtifact": ["l2/molecules/<group>/index.ts", "l2/molecules/<group>/index.html"] },
       "gate": {
         "file": "steps/v4-index/gate.ts",
-        "checks": ["index.ts references the variant tag/file exactly once", "previously listed entries are preserved"],
-        "onFail": "NO retry: fail readable (index format unexpected => report, do not guess)"
+        "checks": ["index.ts non-empty and fence-free", "header references _<destProject>_/l2/molecules/<group>/index.ts", "declares @customElement('molecules--<group>--index-<destProject>')", "imports the variant module and references the variant tag"],
+        "onFail": "retry 1 with gate errors; 2nd failure completes-with-trace and emits the v4-done anchor ok:false (does NOT block v5/v6; v6-summary reports it)"
       },
       "doneAnchor": "v4-done"
     },
