@@ -526,13 +526,17 @@ export class PluginSelectPage extends StateLitElement {
     private _renderEditPanel(page: IPageEntry) {
         const task = getTask(`edit:${page.name}`);
         const running = task?.status === 'running';
-        const inputCls = 'w-full text-xs rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-gray-700 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-600 placeholder:text-xs';
+        // Explicit font-size via inline style: some global input/textarea rule was overriding the
+        // utility class and rendering the controls too large.
+        const inputCls = 'w-full px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600';
+        const inputStyle = 'font-size:0.75rem;line-height:1.1rem';
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-2">
                 <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.editPage}</span>
                 <textarea
                     rows="2"
                     class="${inputCls} resize-y"
+                    style=${inputStyle}
                     placeholder=${this.msg.editPlaceholder}
                     .value=${this._editDraft.get(page.name) ?? ''}
                     @input=${(e: Event) => this._editDraft.set(page.name, (e.target as HTMLTextAreaElement).value)}
@@ -540,6 +544,7 @@ export class PluginSelectPage extends StateLitElement {
                 <input
                     type="text"
                     class="${inputCls}"
+                    style=${inputStyle}
                     placeholder=${this.msg.editImagePlaceholder}
                     .value=${this._editImg.get(page.name) ?? ''}
                     @input=${(e: Event) => this._editImg.set(page.name, (e.target as HTMLInputElement).value)}
