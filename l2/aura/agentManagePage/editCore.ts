@@ -88,6 +88,34 @@ export function validateEditedDefinition(original: unknown, edited: unknown): Gu
     return { ok: true, value: edited };
 }
 
+/**
+ * Delta-mode prompt section for the render step: the page's CURRENT generated code + the recorded
+ * adjustments, with a minimal-change instruction. Pure. Returns '' when there is nothing to
+ * preserve (no current code AND no adjustments) — caller then omits the section.
+ */
+export function buildDeltaSection(
+    currentCode: string | null | undefined,
+    adjustments: Array<{ request: string; kind?: string; notes?: string; imageUrl?: string }>,
+): string {
+    const hasCode = !!currentCode && currentCode.trim().length > 0;
+    if (!hasCode && (!adjustments || adjustments.length === 0)) return '';
+    const parts: string[] = ['## Edit mode — minimal change'];
+    if (adjustments?.length) {
+        parts.push(
+            '',
+            'Apply ONLY these visual adjustments; keep everything else in the current code structurally identical:',
+            ...adjustments.map(a => {
+                const tail = [a.notes ? `— ${a.notes}` : '', a.imageUrl ? `(reference image: ${a.imageUrl})` : ''].filter(Boolean).join(' ');
+                return `- (${a.kind ?? 'edit'}) ${a.request}${tail ? ` ${tail}` : ''}`;
+            }),
+        );
+    }
+    if (hasCode) {
+        parts.push('', '### Current code (preserve verbatim except for the adjustments above)', '```ts', currentCode!.trim(), '```');
+    }
+    return parts.join('\n');
+}
+
 /** Normalize/validate the gate's operations array. Keeps only well-formed structural/cosmetic ops. */
 export function normalizeOperations(raw: unknown): EditOperation[] {
     const arr = Array.isArray(raw) ? raw : [];

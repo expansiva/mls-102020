@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  hasGenomeLayout, layoutElementIdSet, idDelta, validateEditedDefinition, normalizeOperations,
+  hasGenomeLayout, layoutElementIdSet, idDelta, validateEditedDefinition, normalizeOperations, buildDeltaSection,
 } from '/_102020_/l2/aura/agentManagePage/editCore.js';
 import {
   scanBalanced, findExportConst, replaceExportConst, parseExportValue,
@@ -57,6 +57,19 @@ test('editCore: validateEditedDefinition guards', () => {
   assert.equal(validateEditedDefinition(mode, editedMode).ok, true);
 
   assert.equal(validateEditedDefinition(genome, null).ok, false);
+});
+
+test('editCore: buildDeltaSection', () => {
+  assert.equal(buildDeltaSection('', []), '');
+  const s = buildDeltaSection('const x = 1;', [{ request: 'esconda telefone', kind: 'structural', notes: 'removi f_phone' }]);
+  assert.match(s, /minimal change/);
+  assert.match(s, /esconda telefone/);
+  assert.match(s, /removi f_phone/);
+  assert.match(s, /const x = 1;/);
+  // adjustments only, no code
+  const s2 = buildDeltaSection(null, [{ request: 'destaque salvar', kind: 'cosmetic' }]);
+  assert.match(s2, /destaque salvar/);
+  assert.doesNotMatch(s2, /Current code/);
 });
 
 test('editCore: normalizeOperations filters malformed', () => {

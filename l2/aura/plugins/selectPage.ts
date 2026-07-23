@@ -526,17 +526,13 @@ export class PluginSelectPage extends StateLitElement {
     private _renderEditPanel(page: IPageEntry) {
         const task = getTask(`edit:${page.name}`);
         const running = task?.status === 'running';
-        // Explicit font-size via inline style: some global input/textarea rule was overriding the
-        // utility class and rendering the controls too large.
-        const inputCls = 'w-full px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600';
-        const inputStyle = 'font-size:0.75rem;line-height:1.1rem';
+        const inputCls = 'w-full text-xs px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600';
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-2">
                 <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.editPage}</span>
                 <textarea
                     rows="2"
                     class="${inputCls} resize-y"
-                    style=${inputStyle}
                     placeholder=${this.msg.editPlaceholder}
                     .value=${this._editDraft.get(page.name) ?? ''}
                     @input=${(e: Event) => this._editDraft.set(page.name, (e.target as HTMLTextAreaElement).value)}
@@ -544,7 +540,6 @@ export class PluginSelectPage extends StateLitElement {
                 <input
                     type="text"
                     class="${inputCls}"
-                    style=${inputStyle}
                     placeholder=${this.msg.editImagePlaceholder}
                     .value=${this._editImg.get(page.name) ?? ''}
                     @input=${(e: Event) => this._editImg.set(page.name, (e.target as HTMLInputElement).value)}
@@ -600,9 +595,8 @@ export class PluginSelectPage extends StateLitElement {
                 setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: res.failure });
                 return;
             }
-            // Edit applied to the defs. Re-render (.defs.ts → .ts) will be done by the dedicated
-            // render agent (TASK-102020-agent-render-edit-DRAFT); agentMaterializeL2 is intentionally
-            // NOT used here. Until then the page is left stale (defs updated + pageVersion restamped).
+            // Edit applied AND the page .ts re-rendered by agentManagePage's own render step
+            // (agentRenderEdit, delta-aware). No agentMaterializeL2. Preview repaints on the .ts write.
             setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
             this._editDraft.delete(page.name);
             this._editImg.delete(page.name);
