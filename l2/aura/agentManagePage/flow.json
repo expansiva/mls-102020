@@ -1,0 +1,34 @@
+{
+  "flowId": "agentManagePage",
+  "schemaVersion": "2026-07-22",
+  "description": "Edição pontual VISUAL de uma página já gerada. O root agentManagePage é o GATE (LLM): recebe o request + o defs atual + a superfície do shared e decide se é uma mudança visual realizável com o que a página já tem; caso contrário RECUSA (nada é tocado). Aprovado, cria 1 step filho agentEditDefs que aplica as operações no .defs.ts. A re-materialização (.defs.ts -> .ts) é disparada pelo CHAMADOR depois (agentMaterializeL2), que já entra em MODO DELTA quando o defs tem pageAdjustments (usa o .ts atual + os ajustes como referência de mudança mínima). NOTA: flow.json é documentação — a descoberta de agentes é por convenção (arquivo agent*.ts com createAgent()).",
+  "entry": "{ module, page, layout, ds, device?, request, imageUrl? }  (JSON, do Studio)",
+  "escopo": "Somente alterações VISUAIS. Pedido que exija backend / novo dado / novo estado no shared / regra de negócio é RECUSADO pelo gate.",
+  "source": {
+    "orchestrator": "_102020_/l2/aura/agentManagePage/agentManagePage.ts (gate em beforePromptImplicit; afterPromptStep cria o edit-defs ou recusa)",
+    "editor": "_102020_/l2/aura/agentManagePage/agentEditDefs.ts (cosmetic = determinístico; structural = LLM edita o definition, valida e grava)",
+    "pureCore": "_102020_/l2/aura/agentManagePage/editCore.ts (tipos de operação + guardas do definition editado)",
+    "dataLayer": "_102020_/l2/aura/helpers/dsMatch/pageAdjustments.ts (splice string-aware + read/write do export pageAdjustments)"
+  },
+  "steps": [
+    {
+      "planId": "(root)",
+      "agentName": "agentManagePage",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": [],
+      "initialStatus": "waiting_human_input",
+      "goal": "GATE (LLM). Recebe request + defsSource + sharedSource. Recusa fora de escopo ({type:'result'}) ou aprova com operações tipadas ({type:'flexible',result:{operations}}). afterPromptStep: recusa -> mkFail (defs intocado); aprovação -> cria edit-defs com as operações nos args."
+    },
+    {
+      "planId": "edit-defs:<page>",
+      "agentName": "agentEditDefs",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": [],
+      "initialStatus": "waiting_human_input",
+      "goal": "Aplica as operações. Cosmetic-only = determinístico (só grava pageAdjustment). Com structural = LLM retorna o definition editado; valida (identidade + schema preservados via editCore), faz splice no source (replaceExportConst), grava pageAdjustment (1 por request), restampa pageVersion (páginas genome) e salva."
+    }
+  ],
+  "materialize": "Disparado pela UI após a task terminar, via agentMaterializeL2 (igual selectPage._onRegenerate). Entra em modo delta quando o defs tem pageAdjustments: injeta o .ts atual + os ajustes no prompt com instrução de mudança mínima (ver mls-102020/l1/agentMaterializeL2/core.ts buildHumanPrompt)."
+}
