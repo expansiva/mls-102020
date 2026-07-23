@@ -27,62 +27,46 @@ user flow), `shared.actions`, `shared.states`, `shared.fieldCatalog` and the `te
 - `antiPatterns`: what to avoid for THIS page (e.g. "separate transition form", "status <select>",
   "manually typed id").
 
-**Phase 2 — design the layout for that objective.** Order organisms by `primaryDecision` first
-(informed by `userJourney`), NOT by mechanically turning each journey step into its own form.
-Use `renderVocabulary.displayHints` on intents/organisms (`displayHint`) to express richer patterns:
-master-detail, contextual transition buttons, card board, inline row command, summary-first.
+**Phase 2 — design the COMPOSITION for that objective.** Decide which organisms the page shows, their
+order, and which bffCalls each surfaces. You do NOT author fields, columns, forms, labels or the intention
+tree — the agent derives all of that from the backend contract after you answer. Order organisms by
+`primaryDecision` first (informed by `userJourney`), NOT by mechanically turning each journey step into
+its own form. Set each organism's `displayHint` (from `renderVocabulary.displayHints`) to express the
+pattern you want — `master-detail`, `contextual-transition-actions`, `card-board`, `inline-row-command`,
+`summary-first`, … — and the render turns the hint into the actual UI (so a status transition becomes
+buttons, never a `<select>`; an id is never a typed input).
 
 When the context includes `workspace` (l4 v2), its `sections[].organisms[]` are the AUTHORITATIVE
-skeleton: `primarySurface` is the section surface, `filterControl` folds into that surface's filters
-(never its own section), `detailPanel` is a master-detail panel, `contextualAction`/`batchAction` are
-row/toolbar commands on the surface, and `hero`/`banner`/`richText`/`imageSet`/`ctaLink`/`showcase` are
-landing content. Design a richer layout around these roles — never one section per query.
-Every action reference (userActions and every intention action/submitAction/rowActions/toolbar/actions)
-MUST be a bffCall id from shared.actions — NEVER an l4 operationId. The operation is the usecase behind a
-bffCall (e.g. browseHighlights); reference the bffCall that serves it (e.g. browseHighlightsQuery).
+skeleton: `primarySurface` is the section surface, `filterControl` folds into that surface (never its own
+organism), `detailPanel` pairs as `master-detail`, `contextualAction`/`batchAction` group WITH the surface
+they act on, and `hero`/`banner`/`richText`/`imageSet`/`ctaLink`/`showcase` are landing content. Compose a
+richer layout around these roles — never one section per query.
 
 ## Tool arguments
 
 - `status` is `"ok"`.
-- `result` contains `{ objective, pageLayout }`. `objective` is the Phase-1 object above.
-  `pageLayout` is the Phase-2 layout. Never return a layout for another page.
+- `result` contains `{ objective, pageLayout }`. `objective` is the Phase-1 object above. `pageLayout` is
+  the Phase-2 composition. Never return a layout for another page.
 - `questions` and `trace` are empty arrays when there is nothing to report.
 
-## Hard constraints (identical to the baseline — a violation is rejected)
+## pageLayout shape (STRICT — the tool schema is closed and rejects any field not listed)
 
-The layout must preserve the section → organism → intention structure. Stable ids are required for
-sections, organisms, intentions, fields, columns and actions; section/organism/intention ids must be
-unique within the layout and distinct from `layoutId`.
+- `pageLayout` is `{ pageId, layoutId, sections }`.
+- `sections[]`: each is `{ id, order, organisms }` (plus optional `sectionName`).
+- `organisms[]`: each is `{ id, organismName, purpose, order }` plus OPTIONAL `displayHint`, `uses`,
+  `notes`. NOTHING else — no `type`, `titleKey`, `fields`, `columns`, `filters`, `intentions`.
+  - `id`: stable, unique within the layout and distinct from `layoutId`.
+  - `organismName`: short PascalCase name.
+  - `purpose`: one sentence — what this organism shows/does and why it matters.
+  - `uses`: the bffCall ids (exactly as in `shared.actions`) this organism surfaces. A content/landing
+    organism (hero/banner/richText) may omit it.
 
-Section shape (STRICT): every `sections` entry has `id`, `type` = "section" (or "sectionTab"), `mode`
-("view"/"edit"), `order` and a NON-EMPTY `organisms` array. Never invent a section `type` (no "content"/
-"hero"/"landing") and never emit a section without organisms. Content blocks (hero/banner/richText/
-imageSet/ctaLink/showcase) are ORGANISMS inside a normal section — an organism whose type is "content" or
-"showcase" — never a section type. A landing is ONE section whose organisms are those content blocks.
+COVERAGE (required): every actionId in `shared.actions` — every query AND command — must appear in some
+organism's `uses`. Use the bffCall id EXACTLY; NEVER an l4 operationId (use `browseHighlightsQuery`, not
+`browseHighlights`). A composition that leaves an action unused is rejected.
 
-Every operation (every query and command actionId in `shared.actions`) must appear in at least one
-`organism.userActions`. This includes browse/list queries. A layout that omits an operation from all
-`userActions` is rejected. Do not invent actions, commands, fields, payloads, HTML, CSS, DOM,
-web-component tags or local mutable page state.
-
-Field names are a CLOSED vocabulary. Every `field` value in `fields`, `columns` and `filters` MUST be
-an exact name from `shared.fieldCatalog` (an action's inputFields/outputFields in `byAction`, or an
-entity field in `byEntity`). Columns of a query intention come from that query's `outputFields`. A
-name that is not in the catalog does not exist — never guess. Use only `shared.states` and
-`shared.functions` for state and behavior. Every visible text is referenced by a `titleKey`, `labelKey`
-or `emptyKey` — a stable, descriptive dotted key. Every intention includes `fields`, `columns`,
-`filters`, `toolbar`, `rowActions` and `actions`, using `[]` when empty.
-
-Do NOT emit any `i18n` object or translation map. It is not part of this tool's schema, and a tool call
-that includes one is rejected. The human-readable labels for every key you reference are generated
-automatically downstream — your job is only to reference each label through a clear, descriptive key.
-
-Field triage (do this before placing any field, per the UX guidance below): context-derived and
-system-owned fields (ids, status, timestamps) are read-only context or derived actions, never manual
-inputs. A lifecycle/status transition is rendered as one button per allowed next state
-(`contextual-transition-actions`), never a free `<select>` over the whole enum and never a typed id.
-
-A mutation must include textual success/error feedback keys `action.{command}.success` and
-`action.{command}.error`.
+Do NOT emit `i18n`, `dataBindings`, `fields`, `columns`, `filters`, `intentions`, or any field not listed
+above. Labels, states, field wiring, translations and the concrete form/table structure are all derived
+from the backend contract downstream — your job is the objective + the composition.
 
 {{uxGuidance}}

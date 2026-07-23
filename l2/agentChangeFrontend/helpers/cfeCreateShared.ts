@@ -269,6 +269,31 @@ export interface CfePageLayoutDefinition {
   dataBindings: { id: string; source: string; entity?: string; command?: string; description?: string; stateKey?: string; inputStateKeys?: string[] }[];
 }
 
+// LLM-facing composition (the tool output shape). Expanded into a full CfePageLayoutDefinition by
+// expandLayoutComposition before any downstream repair/validate/reconcile/render runs.
+interface CfeCompositionOrganism {
+  id: string;
+  organismName: string;
+  purpose: string;
+  order: number;
+  displayHint?: string;
+  uses: string[];
+  notes?: string;
+}
+
+interface CfeCompositionSection {
+  id: string;
+  sectionName?: string;
+  order: number;
+  organisms: CfeCompositionOrganism[];
+}
+
+export interface CfeLayoutComposition {
+  pageId: string;
+  layoutId: string;
+  sections: CfeCompositionSection[];
+}
+
 interface CfeBusinessContextRef {
   operationId: string;
   inputId?: string;
@@ -279,139 +304,90 @@ interface CfeBusinessContextRef {
   description: string;
 }
 
-export interface CfePageLayoutResult { pageLayout: CfePageLayoutDefinition; objective?: unknown }
+export interface CfePageLayoutResult { pageLayout: CfeLayoutComposition; objective?: unknown }
 export type CfePageLayoutOutput = PlannerOutput<CfePageLayoutResult>;
 
 const CFE_LAYOUT_TOOL_NAME = 'submitCfePageLayout';
 
 const strSchema = { type: 'string' } as const;
-const boolSchema = { type: 'boolean' } as const;
 const intSchema = { type: 'integer' } as const;
 const strArraySchema = { type: 'array', items: strSchema } as const;
 
-const layoutActionSchema = {
+// LLM-facing tool contract: a SEMANTIC COMPOSITION, not the full render tree. The model decides which
+// organisms exist, their order, a composition displayHint, and which bffCall ids each surfaces (`uses`).
+// The concrete intentions/fields/columns/actions are NOT authored by the model — the agent expands each
+// organism deterministically from L4 (expandLayoutComposition), reusing the same builders as the
+// deterministic seed. This keeps the contract tiny (far less drift) and lets the model spend its budget
+// on composition + beautiful presentation instead of filling a rigid field tree.
+const compositionOrganismSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['id', 'action', 'labelKey', 'order'],
+  required: ['id', 'organismName', 'purpose', 'order'],
   properties: {
     id: strSchema,
-    action: strSchema,
-    labelKey: strSchema,
-    order: intSchema,
-    displayHint: strSchema,
-    actionKey: strSchema,
-  },
-} as const;
-
-const layoutFieldSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['id', 'field', 'labelKey', 'order'],
-  properties: {
-    id: strSchema,
-    field: strSchema,
-    labelKey: strSchema,
-    order: intSchema,
-    required: boolSchema,
-    inputType: strSchema,
-    format: strSchema,
-    source: strSchema,
-    stateKey: strSchema,
-  },
-} as const;
-
-const layoutIntentSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['id', 'intent', 'order'],
-  properties: {
-    id: strSchema,
-    intent: strSchema,
-    order: intSchema,
-    titleKey: strSchema,
-    source: strSchema,
-    binding: strSchema,
-    action: strSchema,
-    submitAction: strSchema,
-    emptyKey: strSchema,
-    displayHint: strSchema,
-    stateKey: strSchema,
-    fields: { type: 'array', items: layoutFieldSchema },
-    columns: { type: 'array', items: layoutFieldSchema },
-    filters: { type: 'array', items: layoutFieldSchema },
-    toolbar: { type: 'array', items: layoutActionSchema },
-    rowActions: { type: 'array', items: layoutActionSchema },
-    actions: { type: 'array', items: layoutActionSchema },
-  },
-} as const;
-
-const layoutOrganismSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['id', 'type', 'organismName', 'titleKey', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'intentions'],
-  properties: {
-    id: strSchema,
-    type: strSchema,
     organismName: strSchema,
-    titleKey: strSchema,
-    // Optional render hint (master-detail, card-board, …). The prompt (promptGoalFirst §32) tells the
-    // model to set displayHint on organisms and the page21 render skill reads it, so it must be an
-    // allowed property here — otherwise the strict tool-args gate rejects the whole layout.
-    displayHint: strSchema,
+    // What this organism shows/does and why — the semantic core the model is good at.
     purpose: strSchema,
-    userActions: strArraySchema,
-    requiredEntities: strArraySchema,
-    readsFields: strArraySchema,
-    writesFields: strArraySchema,
-    rulesApplied: strArraySchema,
     order: intSchema,
-    intentions: { type: 'array', minItems: 1, items: layoutIntentSchema },
+    // Composition hint the render skill honors (master-detail, card-board, summary-first, …).
+    displayHint: strSchema,
+    // bffCall/command ids (from shared.actions) this organism surfaces. The agent turns each id into the
+    // concrete fields/columns/actions from L4 — the model must NOT enumerate them.
+    uses: strArraySchema,
+    // Optional free-text guidance for the render (grouping, emphasis) — advisory only.
+    notes: strSchema,
   },
 } as const;
 
 const layoutSectionSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['id', 'type', 'sectionName', 'titleKey', 'mode', 'order', 'organisms'],
+  required: ['id', 'order', 'organisms'],
   properties: {
     id: strSchema,
-    type: { type: 'string', enum: ['section', 'sectionTab'] },
     sectionName: strSchema,
-    titleKey: strSchema,
-    mode: strSchema,
     order: intSchema,
-    organisms: { type: 'array', minItems: 1, items: layoutOrganismSchema },
+    organisms: { type: 'array', minItems: 1, items: compositionOrganismSchema },
   },
 } as const;
 
 const pageLayoutObjectSchema = {
   type: 'object',
   additionalProperties: false,
-  // i18n is intentionally NOT part of the tool contract: it is a dynamic key->label map, which cannot be
-  // expressed as a strict-clean (lint-clean) closed object. The model authors only the layout; every
-  // referenced titleKey/labelKey/emptyKey is backfilled deterministically by repairMissingLayoutI18n
-  // (savePageLayoutDefs) before validatePageLayout runs. Keeping i18n out also keeps the whole tool
-  // strict-ready, so strict-honoring providers structurally block unknown keys (organism drift too).
-  required: ['pageId', 'layoutId', 'sections', 'dataBindings'],
+  // i18n and dataBindings are NOT part of the tool contract: i18n is a dynamic key->label map (backfilled
+  // by repairMissingLayoutI18n) and dataBindings are derived from L4 commands during expansion. The model
+  // authors only the composition; keeping the tool tiny + closed minimizes the drift surface.
+  required: ['pageId', 'layoutId', 'sections'],
   properties: {
     pageId: strSchema,
     layoutId: strSchema,
     sections: { type: 'array', minItems: 1, items: layoutSectionSchema },
-    dataBindings: {
+  },
+} as const;
+
+// page21 goal-first objective. All fields are flat strings / string lists (the model's strength, minimal
+// drift) — never a deep tree. Optional as a whole (page11 omits it). The render skill lays the page out
+// around it when present. Kept lint-clean/closed so the tool stays strict-ready.
+const pageObjectiveSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [],
+  properties: {
+    actor: strSchema,
+    jobToBeDone: strSchema,
+    primaryDecision: strSchema,
+    decisiveInfo: strArraySchema,
+    usageFrequency: strSchema,
+    informationHierarchy: strArraySchema,
+    successCriteria: strSchema,
+    antiPatterns: strArraySchema,
+    criticalActions: {
       type: 'array',
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'source'],
-        properties: {
-          id: strSchema,
-          source: strSchema,
-          entity: strSchema,
-          command: strSchema,
-          description: strSchema,
-          stateKey: strSchema,
-          inputStateKeys: strArraySchema,
-        },
+        required: ['action'],
+        properties: { action: strSchema, presentation: strSchema },
       },
     },
   },
@@ -423,6 +399,8 @@ export const cfePageLayoutResultSchema = {
   required: ['pageLayout'],
   properties: {
     pageLayout: pageLayoutObjectSchema,
+    // Optional; only the goal-first genome (page21) emits it. Absent on the page11 baseline.
+    objective: pageObjectiveSchema,
   },
 } as const;
 
@@ -431,20 +409,15 @@ export const cfePageLayoutToolName = CFE_LAYOUT_TOOL_NAME;
 
 function relaxPageLayoutSchema(pageLayoutSchema: any): void {
   if (!pageLayoutSchema || typeof pageLayoutSchema !== 'object') return;
+  // The composition schema is already minimal; this only reasserts the intended required sets so a bump
+  // of the base schema never silently widens what the model MUST provide.
   pageLayoutSchema.required = ['pageId', 'layoutId', 'sections'];
   const sectionSchema = pageLayoutSchema.properties?.sections?.items;
   if (sectionSchema && typeof sectionSchema === 'object') {
-    // 'type' and 'mode' are not required and 'type' is NOT enum-constrained: both have deterministic
-    // defaults during normalization ('section' / 'view'). Requiring them or pinning the type enum only
-    // hard-fails the tool call (ajv, before our normalizer runs) on harmless LLM drift — e.g. a section
-    // typed 'content' or a section that omits 'mode'. organisms stays required (a section needs them).
     sectionSchema.required = ['id', 'order', 'organisms'];
-    if (sectionSchema.properties?.type && typeof sectionSchema.properties.type === 'object') {
-      sectionSchema.properties.type = { type: 'string' };
-    }
     const organismSchema = sectionSchema.properties?.organisms?.items;
     if (organismSchema && typeof organismSchema === 'object') {
-      organismSchema.required = ['id', 'organismName', 'purpose', 'userActions', 'requiredEntities', 'readsFields', 'writesFields', 'rulesApplied', 'order', 'intentions'];
+      organismSchema.required = ['id', 'organismName', 'purpose', 'order'];
     }
   }
 }
@@ -905,6 +878,103 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
   return enrichedLayout;
 }
 
+// Expand the LLM's minimal semantic composition into the full internal layout the rest of the pipeline
+// (repairs, validate, reconcile, render, materialize) expects. Each organism's `uses` bffCall ids are
+// turned into concrete intentions/fields/actions with the SAME deterministic builders as the seed, so the
+// model never authors — and never drifts on — the rigid field tree. Composition-only signal (organism
+// identity, order, purpose, displayHint) rides through; rich presentation is the render skill's job.
+export function expandLayoutComposition(prepared: CfePreparedPage, composition: CfeLayoutComposition): CfePageLayoutDefinition {
+  const pageId = prepared.page.pageId;
+  const commandByBff = new Map(prepared.commands.map(command => [readString(command.commandName), command]));
+  const i18n: Record<string, string> = {};
+  const sections: CfeLayoutSection[] = [];
+  composition.sections.forEach((section, sectionIndex) => {
+    const sectionId = section.id && section.id.startsWith('section.') ? section.id : `section.${pageId}.${toSafeShortName(section.id || section.sectionName || `s${sectionIndex + 1}`) || 'main'}`;
+    const sectionTitleKey = `${sectionId}.title`;
+    i18n[sectionTitleKey] = section.sectionName || prepared.page.pageName;
+    const organisms: CfeLayoutOrganism[] = [];
+    let order = 0;
+    let hasMutation = false;
+    for (const compositionOrganism of section.organisms) {
+      order += 10;
+      const built = expandCompositionOrganism(pageId, compositionOrganism, commandByBff, order, i18n);
+      if (!built) continue;
+      if (built.intentions.some(intent => intent.intent === 'commandForm')) hasMutation = true;
+      organisms.push(built);
+    }
+    if (organisms.length > 0) {
+      sections.push({ id: sectionId, type: 'section', sectionName: section.sectionName || prepared.page.pageName, titleKey: sectionTitleKey, mode: hasMutation ? 'edit' : 'view', order: (sectionIndex + 1) * 10, organisms });
+    }
+  });
+  // If the composition bound to no known bffCalls (all `uses` empty/unknown), fall back to the
+  // deterministic L4 layout so the page still covers every command instead of failing coverage.
+  if (sections.every(section => section.organisms.length === 0)) return deterministicLayoutFromBase(prepared);
+
+  // Coverage guarantee (was implicit in the deterministic seed): validatePageLayout rejects any command
+  // not surfaced by some organism ("does not represent operation"). The model's `uses` may omit one, so
+  // append a deterministic organism for every uncovered command — no LLM, no failure.
+  const covered = new Set(sections.flatMap(section => section.organisms.flatMap(organism => organism.userActions)));
+  const uncovered = prepared.commands.map(command => readString(command.commandName)).filter(name => name && !covered.has(name));
+  if (uncovered.length > 0) {
+    const target = sections[sections.length - 1];
+    let order = target.organisms.reduce((max, organism) => Math.max(max, organism.order), 0);
+    for (const bffId of uncovered) {
+      order += 10;
+      const command = commandByBff.get(bffId) || {};
+      const built = readString(command.kind) === 'query'
+        ? buildQueryOrganism(pageId, bffId, 'list', order, commandByBff, i18n)
+        : buildCommandOrganism(pageId, bffId, order, commandByBff, i18n);
+      if (built.intentions.some(intent => intent.intent === 'commandForm')) target.mode = 'edit';
+      target.organisms.push(built);
+    }
+    recordCreateWarning(`${pageId}: appended deterministic organism(s) for command(s) the composition left uncovered: ${uncovered.join(', ')}`);
+  }
+
+  return {
+    pageId,
+    layoutId: composition.layoutId || `page.${pageId}`,
+    sections,
+    i18n,
+    dataBindings: prepared.commands.map(command => ({
+      id: `binding.${pageId}.${readString(command.commandName)}`,
+      source: `bff.${readString(command.commandName)}`,
+      command: readString(command.commandName),
+      description: readString(command.purpose),
+    })),
+  };
+}
+
+function expandCompositionOrganism(pageId: string, composition: CfeCompositionOrganism, commandByBff: Map<string, Record<string, unknown>>, order: number, i18n: Record<string, string>): CfeLayoutOrganism | null {
+  const uses = composition.uses.filter(bffId => commandByBff.has(bffId));
+  if (uses.length === 0) {
+    // No data binding -> a content/landing organism; the displayHint is the content role (hero, showcase…).
+    const content = buildContentOrganism(pageId, composition.displayHint || 'content', order, i18n);
+    return { ...content, id: composition.id || content.id, organismName: composition.organismName || content.organismName, purpose: composition.purpose || content.purpose, displayHint: composition.displayHint, order };
+  }
+  const built = uses.map(bffId => {
+    const command = commandByBff.get(bffId) || {};
+    return readString(command.kind) === 'query'
+      ? buildQueryOrganism(pageId, bffId, 'list', order, commandByBff, i18n)
+      : buildCommandOrganism(pageId, bffId, order, commandByBff, i18n);
+  });
+  const base = built[0];
+  // Merge every used bffCall's intentions into one organism; carry the model's identity/hint through.
+  return {
+    ...base,
+    id: composition.id || base.id,
+    organismName: composition.organismName || base.organismName,
+    purpose: composition.purpose || base.purpose,
+    displayHint: composition.displayHint || base.displayHint,
+    order,
+    userActions: unique(built.flatMap(organism => organism.userActions)),
+    requiredEntities: unique(built.flatMap(organism => organism.requiredEntities)),
+    readsFields: unique(built.flatMap(organism => organism.readsFields)),
+    writesFields: unique(built.flatMap(organism => organism.writesFields)),
+    rulesApplied: unique(built.flatMap(organism => organism.rulesApplied)),
+    intentions: built.flatMap(organism => organism.intentions),
+  };
+}
+
 // Persist the goal-first page objective as a per-page trace (flow.json output
 // trace/frontend-page-objective/{page}.json). Best-effort: a trace write must never fail the run.
 export async function savePageObjectiveTrace(prepared: CfePreparedPage, genome: string, objective: unknown): Promise<void> {
@@ -1347,126 +1417,47 @@ const cfePageLayoutConfig: PlannerExtractConfig<CfePageLayoutResult> = {
   normalizeResult: normalizeCfePageLayoutResult,
 };
 
-function normalizePageLayout(value: unknown, path: string, fallback?: { i18n?: unknown; dataBindings?: unknown }): CfePageLayoutDefinition {
-  const pageLayout = assertRecord(value, path);
-  return {
-    pageId: assertString(pageLayout.pageId, `${path}.pageId`),
-    layoutId: assertString(pageLayout.layoutId, `${path}.layoutId`),
-    sections: assertArray(pageLayout.sections, `${path}.sections`).map((item, index) => normalizeLayoutSection(item, `${path}.sections[${index}]`)),
-    i18n: normalizeI18n(pageLayout.i18n ?? fallback?.i18n),
-    dataBindings: normalizeDataBindings(pageLayout.dataBindings ?? fallback?.dataBindings),
-  };
-}
-
 function normalizeCfePageLayoutResult(value: unknown): CfePageLayoutResult {
   const result = assertRecord(value, 'result');
   const pageLayoutRaw = isRecord(result.pageLayout) ? result.pageLayout : result;
   return {
-    pageLayout: normalizePageLayout(pageLayoutRaw, 'result.pageLayout', { i18n: result.i18n, dataBindings: result.dataBindings }),
+    pageLayout: normalizeComposition(pageLayoutRaw, 'result.pageLayout'),
     // Goal-first (page21) also emits the synthesized objective; passed through untyped and
     // persisted for audit (page21 defs.pageObjective + trace). Absent for page11.
     ...(result.objective !== undefined ? { objective: result.objective } : {}),
   };
 }
 
-function normalizeLayoutSection(value: unknown, path: string): CfeLayoutSection {
+function normalizeComposition(value: unknown, path: string): CfeLayoutComposition {
+  const pageLayout = assertRecord(value, path);
+  return {
+    pageId: assertString(pageLayout.pageId, `${path}.pageId`),
+    layoutId: assertString(pageLayout.layoutId, `${path}.layoutId`),
+    sections: assertArray(pageLayout.sections, `${path}.sections`).map((item, index) => normalizeCompositionSection(item, `${path}.sections[${index}]`)),
+  };
+}
+
+function normalizeCompositionSection(value: unknown, path: string): CfeCompositionSection {
   const section = assertRecord(value, path);
-  const id = assertString(section.id, `${path}.id`);
-  const sectionName = optionalString(section.sectionName) || id.split('.').pop() || id;
   return {
-    id,
-    // type is optional in the relaxed tool schema; default to 'section' when the LLM omits it.
-    type: optionalString(section.type) === 'sectionTab' ? 'sectionTab' : 'section',
-    sectionName,
-    titleKey: optionalString(section.titleKey) || fallbackLayoutTitleKey(id),
-    // mode is optional in the relaxed tool schema; default to 'view' (a read-only section) when omitted.
-    mode: optionalString(section.mode) || 'view',
+    id: assertString(section.id, `${path}.id`),
+    sectionName: optionalString(section.sectionName),
     order: normalizeOrder(section.order, `${path}.order`),
-    organisms: assertArray(section.organisms, `${path}.organisms`).map((item, index) => normalizeLayoutOrganism(item, `${path}.organisms[${index}]`)),
+    organisms: assertArray(section.organisms, `${path}.organisms`).map((item, index) => normalizeCompositionOrganism(item, `${path}.organisms[${index}]`)),
   };
 }
 
-function normalizeLayoutOrganism(value: unknown, path: string): CfeLayoutOrganism {
+function normalizeCompositionOrganism(value: unknown, path: string): CfeCompositionOrganism {
   const organism = assertRecord(value, path);
-  const id = assertString(organism.id, `${path}.id`);
   return {
-    id,
-    // type is optional in the relaxed tool schema; default to 'organism' when the LLM omits it.
-    type: optionalString(organism.type) || 'organism',
+    id: assertString(organism.id, `${path}.id`),
     organismName: assertString(organism.organismName, `${path}.organismName`),
-    titleKey: optionalString(organism.titleKey) || fallbackLayoutTitleKey(id),
-    displayHint: optionalString(organism.displayHint),
     purpose: assertString(organism.purpose, `${path}.purpose`),
-    userActions: normalizeStringList(organism.userActions, `${path}.userActions`),
-    requiredEntities: normalizeStringList(organism.requiredEntities, `${path}.requiredEntities`),
-    readsFields: normalizeStringList(organism.readsFields, `${path}.readsFields`),
-    writesFields: normalizeStringList(organism.writesFields, `${path}.writesFields`),
-    rulesApplied: normalizeStringList(organism.rulesApplied, `${path}.rulesApplied`),
     order: normalizeOrder(organism.order, `${path}.order`),
-    intentions: assertArray(organism.intentions, `${path}.intentions`).map((item, index) => normalizeLayoutIntent(item, `${path}.intentions[${index}]`)),
+    displayHint: optionalString(organism.displayHint),
+    uses: Array.isArray(organism.uses) ? normalizeStringList(organism.uses, `${path}.uses`) : [],
+    notes: optionalString(organism.notes),
   };
-}
-
-function normalizeLayoutIntent(value: unknown, path: string): CfeLayoutIntent {
-  const intent = assertRecord(value, path);
-  return {
-    id: assertString(intent.id, `${path}.id`),
-    intent: assertString(intent.intent, `${path}.intent`),
-    order: normalizeOrder(intent.order, `${path}.order`),
-    titleKey: optionalString(intent.titleKey),
-    source: optionalString(intent.source),
-    binding: optionalString(intent.binding),
-    action: optionalString(intent.action),
-    submitAction: optionalString(intent.submitAction),
-    emptyKey: optionalString(intent.emptyKey),
-    displayHint: optionalString(intent.displayHint),
-    stateKey: optionalString(intent.stateKey),
-    fields: normalizeOptionalLayoutFields(intent.fields, `${path}.fields`),
-    columns: normalizeOptionalLayoutFields(intent.columns, `${path}.columns`),
-    filters: normalizeOptionalLayoutFields(intent.filters, `${path}.filters`),
-    toolbar: normalizeOptionalLayoutActions(intent.toolbar, `${path}.toolbar`),
-    rowActions: normalizeOptionalLayoutActions(intent.rowActions, `${path}.rowActions`),
-    actions: normalizeOptionalLayoutActions(intent.actions, `${path}.actions`),
-  };
-}
-
-function normalizeOptionalLayoutFields(value: unknown, path: string): CfeLayoutField[] {
-  return value === undefined ? [] : normalizeLayoutFields(value, path);
-}
-
-function normalizeLayoutFields(value: unknown, path: string): CfeLayoutField[] {
-  return assertArray(value, path).map((item, index) => {
-    const field = assertRecord(item, `${path}[${index}]`);
-    return {
-      id: assertString(field.id, `${path}[${index}].id`),
-      field: assertString(field.field, `${path}[${index}].field`),
-    labelKey: assertString(field.labelKey, `${path}[${index}].labelKey`),
-    order: normalizeOrder(field.order, `${path}[${index}].order`),
-    required: field.required === true,
-    inputType: optionalString(field.inputType),
-    format: optionalString(field.format),
-    source: optionalString(field.source),
-    stateKey: optionalString(field.stateKey),
-  };
-  });
-}
-
-function normalizeOptionalLayoutActions(value: unknown, path: string): CfeLayoutAction[] {
-  return value === undefined ? [] : normalizeLayoutActions(value, path);
-}
-
-function normalizeLayoutActions(value: unknown, path: string): CfeLayoutAction[] {
-  return assertArray(value, path).map((item, index) => {
-    const action = assertRecord(item, `${path}[${index}]`);
-    return {
-      id: assertString(action.id, `${path}[${index}].id`),
-      action: assertString(action.action, `${path}[${index}].action`),
-    labelKey: assertString(action.labelKey, `${path}[${index}].labelKey`),
-    order: normalizeOrder(action.order, `${path}[${index}].order`),
-    displayHint: optionalString(action.displayHint),
-    actionKey: optionalString(action.actionKey),
-  };
-  });
 }
 
 function normalizeDataBindings(value: unknown): { id: string; source: string; entity?: string; command?: string; description?: string; stateKey?: string; inputStateKeys?: string[] }[] {

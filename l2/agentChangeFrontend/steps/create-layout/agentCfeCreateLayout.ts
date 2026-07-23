@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/create-layout/agentCfeCreateLayout.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { GOAL_FIRST_TEMPLATE_ID, cfePageLayoutToolName, cfePageLayoutToolSchema, createLayoutPromptContext, createPromptReadyIntent, createUpdateStatusIntent, extractCfePageLayoutOutput, prepareCreateRunPage, rememberCreateLayout, saveCreateLayoutFailureTrace, savePageLayoutDefs, savePageObjectiveTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { GOAL_FIRST_TEMPLATE_ID, cfePageLayoutToolName, cfePageLayoutToolSchema, createLayoutPromptContext, createPromptReadyIntent, createUpdateStatusIntent, expandLayoutComposition, extractCfePageLayoutOutput, prepareCreateRunPage, rememberCreateLayout, saveCreateLayoutFailureTrace, savePageLayoutDefs, savePageObjectiveTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import { readCfePrompt } from '/_102020_/l2/agentChangeFrontend/steps/create-layout/cfePromptFiles.js';
 import { skill as uxGuidanceSkill } from '/_102020_/l2/agentChangeFrontend/skills/uxGuidance.js';
 
@@ -52,7 +52,10 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     if (output.status !== 'ok') throw new Error(output.questions.join('; ') || `${AGENT_NAME} returned ${output.status}`);
     const prepared = await prepareCreateRunPage(layoutArgs.runId, layoutArgs.pageId);
     const objective = layoutArgs.templateId === GOAL_FIRST_TEMPLATE_ID ? output.result.objective : undefined;
-    const savedLayout = await savePageLayoutDefs(prepared, output.result.pageLayout, layoutArgs.genome, objective);
+    // The LLM returns a minimal semantic composition; expand it into the full render tree deterministically
+    // from L4 before the (unchanged) save/repair/validate/reconcile pipeline runs.
+    const fullLayout = expandLayoutComposition(prepared, output.result.pageLayout);
+    const savedLayout = await savePageLayoutDefs(prepared, fullLayout, layoutArgs.genome, objective);
     if (objective !== undefined) await savePageObjectiveTrace(prepared, layoutArgs.genome, objective);
     rememberCreateLayout(layoutArgs.runId, layoutArgs.pageId, layoutArgs.genome, savedLayout);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed')];
