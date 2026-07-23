@@ -6,6 +6,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skills as skillList } from '/_102020_/l2/aura/molecules/skills/index';
+import { skill as playgroundSkill } from '/_102020_/l2/aura/molecules/skills/playgroundGenerator.js';
 import {
   V_AGENT_FOLDER,
   isRecord,
@@ -76,6 +77,7 @@ async function beforePromptStep(
     .split('{{variantTag}}').join(ctx.variant.tag)
     .split('{{backgroundCss}}').join(ctx.theme.info.background.css)
     .split('{{backgroundNote}}').join(ctx.theme.info.background.note)
+    .split('{{playgroundSkill}}').join(playgroundSkill)
     .split('{{themeSignature}}').join(themeSignature)
     .split('{{usageSkill}}').join(usageSkill || '(no group usage notes available)')
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the provided context is insufficient to produce the page')}`;
@@ -118,7 +120,7 @@ async function afterPromptStep(
   let examples: VDemoExample[] = [];
   let extractError = '';
   try {
-    const output = extractVToolOutput(step.interaction?.payload?.[0], TOOL_NAME);
+    const output = extractVToolOutput(step.interaction?.payload?.[0], TOOL_NAME, ['html', 'examples']);
     if (output.status === 'failed') extractError = `model reported failure: ${output.trace.join('; ') || 'no reason'}`;
     else {
       html = String(output.result.html || '');

@@ -22,6 +22,15 @@ export function runLessGate(less: string, ctx: VariantContext): VGateIssue[] {
     issues.push({ code: 'fence', message: 'lessContent contains markdown fences — return raw LESS only' });
   }
 
+  // M2 safety net: exactly one mls header, referencing the DESTINATION project
+  // and this variant (the header is prepended by code — this guards regressions
+  // and a model that smuggled a second header into the body).
+  const headers = content.match(/^\s*\/\/\/\s*<mls\b[^\n]*/gm) || [];
+  const correctRef = `_${ctx.theme.project}_/l2/molecules/${ctx.variant.group}/${ctx.variant.shortName}.less`;
+  if (headers.length !== 1 || !headers[0].includes(correctRef)) {
+    issues.push({ code: 'header', message: `sheet must carry exactly one mls header referencing ${correctRef} (found ${headers.length})` });
+  }
+
   const open = (content.match(/\{/g) || []).length;
   const close = (content.match(/\}/g) || []).length;
   if (open !== close) {

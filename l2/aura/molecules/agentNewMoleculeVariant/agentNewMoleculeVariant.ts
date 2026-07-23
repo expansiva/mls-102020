@@ -8,6 +8,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { V_AGENT_FOLDER, isRecord, parseMaybeJson } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vFs.js';
+import { normalizeOriginPage } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vOrigin.js';
 import { V_PLAN_IDS, VPlanId, vDoneAnchor, vUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vSteps.js';
 
 const AGENT_NAME = 'agentNewMoleculeVariant';
@@ -29,8 +30,18 @@ export interface VRootPlan {
 }
 
 interface IDataPrompt {
-  page: string;
+  page?: string;
+  fullName?: string;   // preview sends this alongside page
   prompt?: string;
+  position?: string;   // preview editor pane; unused here
+}
+
+// The preview sends `prompt` = the agent mention (e.g. "@@NewMoleculeVariant"),
+// NOT user notes. Strip any leading mention so it never pollutes the LLM notes.
+function cleanNotes(prompt: string | undefined): string {
+  const raw = (prompt || '').trim();
+  if (!raw || raw.startsWith('@@')) return '';
+  return raw;
 }
 
 export function createAgent(): IAgentAsync {
@@ -53,19 +64,29 @@ async function beforePromptImplicit(
 ): Promise<mls.msg.AgentIntent[]> {
   if (!userPrompt || userPrompt.length < 5) throw new Error(`[${AGENT_NAME}] invalid prompt — expected { page, prompt }`);
 
-  let data: IDataPrompt;
+  let page: string;
+  let notes: string;
   if (context.isTest) {
     const testData = JSON.parse(userPrompt) as { fileReference: string; prompt?: string };
     if (!testData.fileReference) throw new Error(`[${AGENT_NAME}] invalid test prompt: missing fileReference`);
-    data = { page: testData.fileReference.replace(/\.ts$/, ''), prompt: testData.prompt || '' };
+    page = testData.fileReference.replace(/\.ts$/, '');
+    notes = cleanNotes(testData.prompt);
   } else {
     const pp = context.message.content
       .replace(`@@ ${agent.agentName}`, '')
       .replace(`@@${agent.agentName}`, '').trim();
     const parsed = mls.common.safeParseArgs(pp) as IDataPrompt;
-    if (!parsed || !('page' in parsed)) throw new Error(`[${AGENT_NAME}] invalid prompt structure: missing page (origin molecule reference)`);
-    data = { page: parsed.page, prompt: parsed.prompt || '' };
+    // Origin ref: `page` (both paths) or the preview `fullName` fallback.
+    // parseOriginRef (v1-bootstrap) normalizes both the /l2/-less preview page
+    // and the space-carrying fullName.
+    const ref = (parsed?.page || parsed?.fullName || '').trim();
+    if (!ref) throw new Error(`[${AGENT_NAME}] invalid prompt structure: missing page/fullName (origin molecule reference)`);
+    page = ref;
+    notes = cleanNotes(parsed?.prompt);
   }
+  // Normalize to the canonical ref once at entry, so the rootPlan classifier and
+  // task memory hold the clean form (preview sends /l2/-less page or spaced fullName).
+  page = normalizeOriginPage(page);
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -74,12 +95,12 @@ async function beforePromptImplicit(
       agentName: agent.agentName,
       inputAI: [
         { type: 'system', content: rootPlanSystemPrompt },
-        { type: 'human', content: JSON.stringify({ page: data.page, notes: data.prompt || '' }) },
+        { type: 'human', content: JSON.stringify({ page, notes }) },
       ],
-      taskTitle: `Molecule variant: ${data.page.split('/').pop()}`,
+      taskTitle: `Molecule variant: ${page.split('/').pop()}`,
       threadId: context.message.threadId,
       userMessage: context.message.content,
-      longTermMemory: { flowName: AGENT_NAME, page: data.page, notes: data.prompt || '' },
+      longTermMemory: { flowName: AGENT_NAME, page, notes },
     },
   };
   return [addMessageAI];

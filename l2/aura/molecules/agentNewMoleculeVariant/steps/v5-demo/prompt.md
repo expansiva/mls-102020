@@ -1,21 +1,31 @@
 <!-- modelType: design -->
 
-You are generating the DEMO PAGE (`.html`) for a themed variant of a web-component molecule. The molecule's sibling `.html` IS its demo page.
+You generate the DEMO PAGE (`.html`) for a themed variant molecule. The molecule's sibling `.html` IS its interactive playground page.
 
-## Rules
+Follow the Playground Definition below EXACTLY — it is the canonical contract (widgets, state, structure). Two deviations, mandatory for this themed variant:
 
-- The page exercises the tag `<{{variantTag}}>` with AT LEAST 6 realistic, distinct examples: variation in attributes (props), different uses of slots (when available), a mix of simple and advanced configurations, and the meaningful states (disabled, loading, error, ... — whatever the molecule supports).
-- The page container (outermost div) MUST carry the theme's background contract EXACTLY as given: `{{backgroundCss}}` ({{backgroundNote}})
-- Style the page chrome (headers, section cards, labels) inline, coherent with the theme's visual signature — the page frames the molecule, it never restyles it.
-- Group examples in sections with short headers (Variants / Sizes / States / ...).
-- No `<script>` tags. If the molecule needs page state, reference the literal placeholder `playgroundDinamicState` where the state object belongs — it is substituted deterministically after your call.
-- Raw HTML only in `result.html` — no markdown fences.
-- Fill `result.examples` with the ≥6 examples: each `{ name, state: [{ stateName: "playground.<key>.<prop>", value: "<JSON-encoded value>" }] }` (state may be an empty array for purely declarative examples).
+1. **Tag name**: use the variant tag `{{variantTag}}` verbatim in every `<demo>` and `<template>` (this is the tag copied from its `@customElement`).
+2. **Page background (theme override)**: the Playground Definition sets the page root to `bg-white dark:bg-slate-900`. REPLACE that with the theme's background on the outermost `<div>`, using an inline style: `style="min-height:100vh; {{backgroundCss}}"`. ({{backgroundNote}}) Keep the rest of the skill's structure (container, header, state widget, cards, editors) unchanged. Adjust chrome text/card colors so they read on this background, coherent with the theme's visual signature below.
 
-## Theme visual signature (for the page chrome)
+## Hard rules (a deterministic gate rejects violations)
+
+- Output a FRAGMENT, never a full document: NO `<!DOCTYPE>`, `<html>`, `<head>`, `<body>`, `<style>` or `<link>` tags, and NO `<script>`. No external resources (fonts/CDNs) — the page must be self-contained via Tailwind + the theme.
+- Emit ONLY the structure the Playground Definition specifies (container → header → state widget → demo sections). Do NOT add extra chrome: no `<footer>`/rodapé, no attribution line, no decorative sections beyond the demo cards.
+- The state widget `aura--molecules--playground--widget-playground-state-102020` MUST appear once, before the demos, with `state='playgroundDinamicState'` verbatim — the literal token `playgroundDinamicState` is replaced with the real state after your call. Never hand-write the state JSON.
+- At least 6 demos, exercising props, slots, and the molecule's states.
+
+## Output
+
+Call the tool: `result.html` = the raw fragment; `result.examples` = the ≥6 examples, each `{ name, state: [{ stateName: "playground.<key>.<prop>", value: "<JSON-encoded value>" }] }` (empty state array for purely declarative examples). The examples drive the state substitution — every `{{playground.KEY.PROP}}` binding in the html must have a matching `state` entry here.
+
+## Playground Definition (canonical contract)
+
+{{playgroundSkill}}
+
+## Theme visual signature (for the page chrome only — never restyle the molecule here)
 
 {{themeSignature}}
 
-## Group usage notes
+## Component group usage
 
 {{usageSkill}}

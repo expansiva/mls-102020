@@ -1268,6 +1268,40 @@ function deriveTraceModule(broken: MaterializeVerifyBrokenTrace[]): string {
   return '';
 }
 
+export interface MaterializeVerifyPassed { planId: string; typecheck: string; }
+
+// A stable, ALWAYS-written verdict for a materialization phase, so "was it resolved?" has one place to
+// look instead of inferring it from the presence/absence of cryptic per-round trace files. The name is
+// derived by stripping the round suffix (`-v2`, `-v2-v3`) from planId, so every round overwrites the
+// SAME file and the last write is the final verdict: allClear + the passed items + any still-broken.
+export async function saveMaterializeVerifySummary(moduleName: string, planId: string, attempt: number, passed: MaterializeVerifyPassed[], broken: MaterializeVerifyBrokenTrace[]): Promise<string | null> {
+  try {
+    const project = mls.actualProject || 0;
+    if (!project) return null;
+    const module = moduleName || deriveTraceModule(broken);
+    const folder = module ? `${module}/trace/frontend-materialize-verify` : 'trace/frontend-materialize-verify';
+    const basePlanId = planId.replace(/(?:-v\d+)+$/, '');
+    const shortName = `${toSafeShortName(basePlanId)}-summary`;
+    const fileInfo: FileInfo = { project, level: 2, folder, shortName, extension: '.json' };
+    await saveStorContent(fileInfo, `${JSON.stringify({
+      savedAt: new Date().toISOString(),
+      phase: basePlanId,
+      lastRoundPlanId: planId,
+      attempt,
+      allClear: broken.length === 0,
+      passedCount: passed.length,
+      passed: passed.map(item => ({ planId: item.planId, typecheck: item.typecheck })),
+      brokenCount: broken.length,
+      broken: broken.map(item => ({ planId: item.planId, outputPath: item.outputPath, errorCount: item.errors.length, warningCount: item.warnings.length, firstError: item.errors[0] ?? null })),
+      agent: 'agentCfeMaterializePhase',
+    }, null, 2)}\n`);
+    return `_${project}_/l2/${folder}/${shortName}.json`;
+  } catch (error) {
+    console.error(`[saveMaterializeVerifySummary] ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
 export async function listCreateRunLayoutFailureTraces(runId: string): Promise<string[]> {
   const run = getCreateRun(runId);
   const traces: string[] = [];

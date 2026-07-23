@@ -82,6 +82,33 @@ export function renderGroupIndexHtml(ctx: VariantContext): string {
   return `<${indexTag}></${indexTag}>`;
 }
 
+// M2: the mls header is a METADATA line owned by code, never by the LLM (the
+// model copies it from the reference sheet and gets the project wrong). The
+// canonical .less header (verified on real 102054/102055 variants):
+export function renderLessHeader(ctx: VariantContext): string {
+  return `/// <mls fileReference="_${ctx.theme.project}_/l2/molecules/${ctx.variant.group}/${ctx.variant.shortName}.less" enhancement="_102020_/l2/enhancementStyleAura" />`;
+}
+
+// Strip any leading `/// <mls ...>` line(s) the model emitted (and the blank
+// line right after), so the deterministic header can replace them.
+export function stripLeadingMlsHeader(content: string): string {
+  const lines = content.split('\n');
+  let i = 0;
+  while (i < lines.length && (/^\s*\/\/\/\s*<mls\b/.test(lines[i]) || lines[i].trim() === '')) {
+    // Stop consuming blank lines once a non-header, non-blank line is reached.
+    if (lines[i].trim() === '' && i > 0 && !/^\s*\/\/\/\s*<mls\b/.test(lines[i - 1])) break;
+    i++;
+  }
+  return lines.slice(i).join('\n');
+}
+
+// Normalize the generated sheet: enforce the correct header, dropping whatever
+// header the LLM produced. Used by v3-less before the gate + write.
+export function normalizeLessContent(lessRaw: string, ctx: VariantContext): string {
+  const body = stripLeadingMlsHeader(lessRaw).replace(/^\n+/, '');
+  return `${renderLessHeader(ctx)}\n${body}`;
+}
+
 // Insert the variant's side-effect import after the LAST molecule import of the
 // existing index.ts (the clearly-delimited registration block). Returns null when
 // the file has no recognizable molecule import to anchor on — caller reports,

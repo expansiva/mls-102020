@@ -12,10 +12,25 @@ export interface VOriginRef {
   importPath: string;   // e.g. '/_102040_/l2/molecules/grouptriggeraction/ml-button-standard.js'
 }
 
-// Accepts '_102040_/l2/molecules/<group>/<shortName>' with optional leading '/'
-// and optional '.ts' suffix.
+// Accepts the molecule reference in the shapes both invocation paths send:
+//  - collab-messages: '_102040_/l2/molecules/<group>/<shortName>'
+//  - preview `page`:  '_102040_molecules/<group>/<shortName>' (no /l2/ segment)
+//  - preview `fullName`: '_102040_/l2/molecules/<group>/ <shortName>' (stray spaces)
+// Normalization mirrors the platform-canonical one used by agentImproveMolecule
+// (insert /l2/ after the project token). Optional leading '/' and '.ts' suffix.
+// Canonical-form normalizer, shared by the agent entry (so the rootPlan and
+// task memory hold the clean ref) and parseOriginRef (idempotent). Mirrors the
+// platform normalization used by agentImproveMolecule.
+export function normalizeOriginPage(page: string): string {
+  return (page || '')
+    .replace(/\s+/g, '')                       // preview fullName carries stray spaces
+    .replace(/^\//, '')
+    .replace(/\.ts$/, '')
+    .replace(/^(_\d+_)(?!\/l2\/)/, '$1/l2/');  // insert /l2/ when missing (preview page)
+}
+
 export function parseOriginRef(page: string): { ref: VOriginRef | null; error?: string } {
-  const cleaned = (page || '').trim().replace(/^\//, '').replace(/\.ts$/, '');
+  const cleaned = normalizeOriginPage(page);
   const match = cleaned.match(/^_(\d+)_\/l2\/molecules\/([a-z0-9]+)\/([a-z0-9-]+)$/);
   if (!match) {
     return { ref: null, error: `invalid origin reference '${page}' — expected '_<project>_/l2/molecules/<group>/<molecule>' (a molecule of a dependency project)` };
