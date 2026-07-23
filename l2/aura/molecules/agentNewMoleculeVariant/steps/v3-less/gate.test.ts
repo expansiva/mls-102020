@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { runLessGate } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/steps/v3-less/gate.js';
 import { extractMlClassesFromLess } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vOrigin.js';
+import { normalizeLessContent, stripLeadingMlsHeader } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vTemplates.js';
 import { VariantContext } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vContext.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -94,4 +95,35 @@ test('missing motion stance is rejected', () => {
   const noTransition = goldenLess.replace(/transition[^;]*;/g, '');
   const issues = runLessGate(noTransition, buildCtx());
   assert.ok(issues.some(issue => issue.code === 'motion'));
+});
+
+// --- M2: header ownership ---
+
+test('a sheet whose mls header points at the WRONG project is rejected', () => {
+  // Simulates the real defect: the model copied the origin (102040) header.
+  const wrongHeader = goldenLess.replace('_102054_/l2/molecules/grouptriggeraction/ml-button-standard-brutal.less', '_102040_/l2/molecules/grouptriggeraction/ml-button-standard-brutal.less');
+  assert.ok(runLessGate(wrongHeader, buildCtx()).some(issue => issue.code === 'header'));
+});
+
+test('normalizeLessContent fixes a wrong header deterministically -> gate passes', () => {
+  const ctx = buildCtx();
+  const wrong = goldenLess.replace('_102054_/l2/molecules/grouptriggeraction/ml-button-standard-brutal.less', '_102040_/l2/molecules/grouptriggeraction/ml-button-standard-brutal.less');
+  const fixed = normalizeLessContent(wrong, ctx);
+  assert.deepEqual(runLessGate(fixed, ctx), []);
+});
+
+test('normalizeLessContent prepends a header when the model omitted one', () => {
+  const ctx = buildCtx();
+  const bodyOnly = stripLeadingMlsHeader(goldenLess);
+  assert.ok(!/^\s*\/\/\/\s*<mls/.test(bodyOnly));
+  const fixed = normalizeLessContent(bodyOnly, ctx);
+  assert.ok(fixed.startsWith('/// <mls fileReference="_102054_/l2/molecules/grouptriggeraction/ml-button-standard-brutal.less"'));
+  assert.deepEqual(runLessGate(fixed, ctx), []);
+});
+
+test('normalizeLessContent collapses two headers into one', () => {
+  const ctx = buildCtx();
+  const doubled = '/// <mls fileReference="_102040_/x.less" enhancement="_blank" />\n' + goldenLess;
+  const fixed = normalizeLessContent(doubled, ctx);
+  assert.equal((fixed.match(/\/\/\/\s*<mls/g) || []).length, 1);
 });

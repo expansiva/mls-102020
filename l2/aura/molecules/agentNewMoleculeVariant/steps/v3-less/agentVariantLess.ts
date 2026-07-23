@@ -20,6 +20,7 @@ import {
   writeStorTextAtomic,
 } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vFs.js';
 import { VariantContext } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vContext.js';
+import { normalizeLessContent } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vTemplates.js';
 import { parseOriginRef } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vOrigin.js';
 import {
   buildVToolInstruction,
@@ -128,7 +129,12 @@ async function afterPromptStep(
   try {
     const output = extractVToolOutput(step.interaction?.payload?.[0], TOOL_NAME);
     if (output.status === 'failed') extractError = `model reported failure: ${output.trace.join('; ') || 'no reason'}`;
-    else less = String(output.result.lessContent || '');
+    else {
+      // M2: the mls header is owned by code — strip whatever the model wrote
+      // (it copies the reference sheet's project) and prepend the correct one.
+      const raw = String(output.result.lessContent || '');
+      less = raw.trim() ? normalizeLessContent(raw, ctx) : raw;
+    }
   } catch (error) {
     extractError = error instanceof Error ? error.message : String(error);
   }
