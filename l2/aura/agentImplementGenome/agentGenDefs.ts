@@ -22,12 +22,13 @@ import { designSystemTsRef } from '/_102020_/l2/aura/helpers/dsMatch/buildDesign
 import { buildMoleculeCatalog } from '/_102020_/l2/aura/helpers/dsMatch/buildMoleculeCatalog.js';
 import type { AssignedMolecule } from '/_102020_/l2/aura/helpers/dsMatch/resolveMolecules.js';
 import { listLayoutElements, indexById } from '/_102020_/l2/aura/helpers/dsMatch/layoutElements.js';
-import { loadVariantSelections } from '/_102020_/l2/aura/helpers/dsMatch/agent1.js';
+import { loadVariantSelections, loadElementGroupSelections } from '/_102020_/l2/aura/helpers/dsMatch/agent1.js';
 import { resolveRulesForPage } from '/_102020_/l2/aura/helpers/dsMatch/resolveRulesForPage.js';
 import { rulesForPlainElement } from '/_102020_/l2/aura/helpers/dsMatch/plainControlRules.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { resolveTagToFile } from '/_102020_/l2/utils.js';
-import { parseStepArgs, mkCompleted, mkFail, saveFile } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
+import { parseStepArgs, mkCompleted, mkFail, saveFile, readRawSource } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
+import { parsePageAdjustments, renderPageAdjustmentsExport } from '/_102020_/l2/aura/helpers/dsMatch/pageAdjustments.js';
 
 // Fixed base render skill — ALWAYS first in the pipeline. Renders the structure
 // (definition.layout) + the molecule assigned to each element + applies the DS tokens.
@@ -70,13 +71,18 @@ async function beforePromptStep(
     const pipeline = clone(origin.pipeline ?? []);
     console.info(`[agentGenDefs] ${a.page}: origem importada (${item.originFolder}, ref=${item.defsOrigem})`);
 
-    // 2. Agent2's per-element variant picks (tag). The semantic choice is already done; we only
-    //    PLACE the chosen molecule on the element (by id). Elements Agent2 rejected are absent.
-    const selections = await loadVariantSelections(item.defsDestino);
-    const catalog = await buildMoleculeCatalog();
+    // 2. Per-element picks. With molecules: Agent2's variant picks (tag) — the semantic choice is
+    //    already done; we only PLACE the chosen molecule (by id). Without molecules (useMolecules=
+    //    false): Agent1's group selections mapped to `tag: null`, so every element goes down the
+    //    "no molecule" path below and gets `layoutRules` only (empty molecule catalog).
+    const useMolecules = a.useMolecules !== false;
+    const selections = useMolecules
+      ? await loadVariantSelections(item.defsDestino)
+      : (await loadElementGroupSelections(item.defsDestino)).map(g => ({ id: g.id, group: g.group, tag: null as string | null }));
+    const catalog = useMolecules ? await buildMoleculeCatalog() : [];
     const byTag = new Map(catalog.map(m => [m.tag, m]));
     const byId = indexById(listLayoutElements(definition.layout));
-    console.info(`[agentGenDefs] ${a.page}: ${selections.length} variante(s) do Agent2 · ${byId.size} elemento(s) no layout · catálogo: ${catalog.length}`);
+    console.info(`[agentGenDefs] ${a.page}: useMolecules=${useMolecules} · ${selections.length} seleção(ões) · ${byId.size} elemento(s) no layout · catálogo: ${catalog.length}`);
 
     // 2b. Hygiene — the origin may be an already-generated variation (e.g. page31), whose
     //     elements can already carry molecule/layoutRules. Clear them so placement below is
@@ -150,7 +156,12 @@ async function beforePromptStep(
     }
     console.info(`[agentGenDefs] ${a.page}: skills=[${baseSkills.join(', ')}] + ${usageList.length} usage skill(s) · +ds=${cssRef}`);
 
-    let finalSrc = renderDefs(item.defsDestino, definition, pipeline, dedupeAssigned(assigned));
+    // Preserve any user page-edit adjustments already recorded on the destination defs — a genome
+    // rewrite must not silently drop them (they replay on every regeneration). See agentManagePage.
+    const priorAdjustments = parsePageAdjustments(await readRawSource(item.defsDestino));
+    if (priorAdjustments.length) console.info(`[agentGenDefs] ${a.page}: preservando ${priorAdjustments.length} pageAdjustment(s) do defs anterior`);
+
+    let finalSrc = renderDefs(item.defsDestino, definition, pipeline, dedupeAssigned(assigned), priorAdjustments);
 
     if (!context.isTest) {
       const stamp = await buildPageDsStamp(project, a.module, a.layout, a.ds, a.page!, new Date().toISOString(), finalSrc);
@@ -225,10 +236,11 @@ function dedupeAssigned(molecules: AssignedMolecule[]): AssignedMolecule[] {
   return out;
 }
 
-/** Serialize the final defs: header + definition (with molecules) + pipeline + flat moleculeAssignments. */
-function renderDefs(defsRef: string, definition: any, pipeline: any, assigned: AssignedMolecule[]): string {
+/** Serialize the final defs: header + definition (with molecules) + pipeline + flat
+ *  moleculeAssignments (+ preserved pageAdjustments, when the previous defs had user edits). */
+function renderDefs(defsRef: string, definition: any, pipeline: any, assigned: AssignedMolecule[], priorAdjustments: import('/_102020_/l2/aura/helpers/dsMatch/pageAdjustments.js').PageAdjustment[] = []): string {
   const cleanRef = defsRef.startsWith('/') ? defsRef.slice(1) : defsRef;
-  return [
+  const lines = [
     `/// <mls fileReference="${cleanRef}" enhancement="_blank"/>`,
     '',
     `export const definition = ${JSON.stringify(definition, null, 2)};`,
@@ -238,5 +250,9 @@ function renderDefs(defsRef: string, definition: any, pipeline: any, assigned: A
     // Flat, unique used-molecule list. Source of truth for the dsVersion staleness stamp.
     `export const moleculeAssignments = ${JSON.stringify(assigned, null, 2)} as const;`,
     '',
-  ].join('\n');
+  ];
+  if (priorAdjustments.length) {
+    lines.push(renderPageAdjustmentsExport(priorAdjustments), '');
+  }
+  return lines.join('\n');
 }

@@ -50,6 +50,12 @@ const message_en = {
     missingVariation: 'This page has not been generated for the current layout / design system yet.',
     generatePage: 'Generate page',
     notGenerated: 'Not generated',
+    editPage: 'Edit page (visual)',
+    editPlaceholder: 'Describe a visual change (e.g. hide the phone field)…',
+    editImagePlaceholder: 'Reference image URL (optional)',
+    editApply: 'Apply edit',
+    editing: 'Editing…',
+    editDone: 'Edit applied',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -87,6 +93,12 @@ const messages: Record<string, MessageType> = {
         missingVariation: 'Esta página ainda não foi gerada para o layout / design system atual.',
         generatePage: 'Gerar página',
         notGenerated: 'Não gerada',
+        editPage: 'Editar página (visual)',
+        editPlaceholder: 'Descreva uma mudança visual (ex.: esconda o campo telefone)…',
+        editImagePlaceholder: 'URL de imagem de referência (opcional)',
+        editApply: 'Aplicar edição',
+        editing: 'Editando…',
+        editDone: 'Edição aplicada',
     },
     es: {
         title: 'Páginas',
@@ -121,6 +133,12 @@ const messages: Record<string, MessageType> = {
         missingVariation: 'Esta página aún no fue generada para el layout / design system actual.',
         generatePage: 'Generar página',
         notGenerated: 'No generada',
+        editPage: 'Editar página (visual)',
+        editPlaceholder: 'Describe un cambio visual (p. ej. oculta el campo teléfono)…',
+        editImagePlaceholder: 'URL de imagen de referencia (opcional)',
+        editApply: 'Aplicar edición',
+        editing: 'Editando…',
+        editDone: 'Edición aplicada',
     },
 };
 /// **collab_i18n_end**
@@ -176,6 +194,9 @@ export class PluginSelectPage extends StateLitElement {
 
     private _threadCache = new Map<string, Promise<any>>();
     private _taskInfoByName = new Map<string, { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }>();
+    // Edit-page drafts per page (non-reactive: typing must not trigger a re-render that wipes input).
+    private _editDraft = new Map<string, string>();
+    private _editImg = new Map<string, string>();
     private _unsubTasks: (() => void) | undefined;
 
     connectedCallback() {
@@ -495,8 +516,90 @@ export class PluginSelectPage extends StateLitElement {
                     `)}
                 </div>
             </div>
-            ${page.exists ? this._renderDsVersionPanel(page) : this._renderMissingPanel(page)}
+            ${page.exists ? html`${this._renderDsVersionPanel(page)}${this._renderEditPanel(page)}` : this._renderMissingPanel(page)}
         `;
+    }
+
+    // Pointed VISUAL edit of an existing page (agentManagePage). The gate rejects out-of-scope
+    // requests (backend/new data/new state); accepted edits update the defs + pageAdjustments and
+    // the page is re-materialized in delta mode.
+    private _renderEditPanel(page: IPageEntry) {
+        const task = getTask(`edit:${page.name}`);
+        const running = task?.status === 'running';
+        const inputCls = 'w-full text-xs rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-gray-700 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-600';
+        return html`
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.editPage}</span>
+                <textarea
+                    rows="2"
+                    class="${inputCls} resize-y"
+                    placeholder=${this.msg.editPlaceholder}
+                    .value=${this._editDraft.get(page.name) ?? ''}
+                    @input=${(e: Event) => this._editDraft.set(page.name, (e.target as HTMLTextAreaElement).value)}
+                ></textarea>
+                <input
+                    type="text"
+                    class="${inputCls}"
+                    placeholder=${this.msg.editImagePlaceholder}
+                    .value=${this._editImg.get(page.name) ?? ''}
+                    @input=${(e: Event) => this._editImg.set(page.name, (e.target as HTMLInputElement).value)}
+                />
+                <button
+                    class="self-start text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    ?disabled=${running}
+                    @click=${() => this._onEditPage(page)}
+                >${running ? this.msg.editing : this.msg.editApply}</button>
+                ${task ? html`
+                    <div class="flex items-center gap-2 text-xs">
+                        ${task.status === 'running' ? html`<span class="text-indigo-500 dark:text-indigo-400 italic">${this.msg.editing}</span>` : nothing}
+                        ${task.status === 'done' ? html`<span class="text-emerald-600 dark:text-emerald-400">✓ ${this.msg.editDone}</span>` : nothing}
+                        ${task.status === 'error' ? html`<span class="text-red-500 dark:text-red-400 truncate">${task.message ?? 'error'}</span>` : nothing}
+                        ${this._taskInfoByName.get(page.name)?.task ? html`
+                            <button class="ml-auto text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
+                                @click=${() => this._openTask(page.name)}>${this.msg.followTask}</button>
+                        ` : nothing}
+                    </div>
+                ` : nothing}
+            </div>
+        `;
+    }
+
+    private async _onEditPage(page: IPageEntry) {
+        const module = this._modulePath;
+        const layout = getAuraState().actualLayout;
+        const ds = getAuraState().actualDesignSystem;
+        if (!module || layout == null || ds == null) return;
+        const request = (this._editDraft.get(page.name) ?? '').trim();
+        if (!request) return;
+        const imageUrl = (this._editImg.get(page.name) ?? '').trim();
+        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
+        const pageShort = page.file?.shortName ?? page.name;
+
+        const taskKey = `edit:${page.name}`;
+        if (getTask(taskKey)?.status === 'running') return;
+
+        const prompt = JSON.stringify({ module, page: pageShort, layout, ds, device, request, imageUrl: imageUrl || undefined });
+        const prevPause = getState('preview.pausePreview');
+        setState('preview.pausePreview', true);
+        setTask(taskKey, { status: 'running', startedAt: Date.now() });
+        try {
+            // 1) Gate + edit the defs (agentManagePage). Rejection surfaces as a task error.
+            await this._executeAgent('agentManagePage', prompt, (data) => {
+                this._taskInfoByName.set(page.name, data);
+                this.requestUpdate();
+            });
+            // 2) Re-materialize the now-stale defs; delta mode uses the current .ts + pageAdjustments.
+            setState('preview.pausePreview', prevPause ?? false);
+            await this._executeAgent('agentMaterializeL2', '{}');
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
+            this._editDraft.delete(page.name);
+            this._editImg.delete(page.name);
+        } catch (e: any) {
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: e?.message });
+        } finally {
+            setState('preview.pausePreview', prevPause ?? false);
+            await this._loadPages();
+        }
     }
 
     // Page listed from the source (page11) but absent in the current layout/DS
@@ -622,7 +725,8 @@ export class PluginSelectPage extends StateLitElement {
         const materialize = true; // the button regenerates the rendered .ts page too
         // The agent matches on page shortNames; page.name may be a pageId/path, so send the file shortName.
         const pageShort = page.file?.shortName ?? page.name;
-        const prompt = JSON.stringify({ module, layout, ds, device, pages: [pageShort], materialize });
+        const useMolecules = getAuraState().useMolecules ?? true;
+        const prompt = JSON.stringify({ module, layout, ds, device, pages: [pageShort], materialize, useMolecules });
         // Pause the preview while the agent rewrites the defs (avoids repaint thrash); restore after.
         const prevPause = getState('preview.pausePreview');
         setState('preview.pausePreview', true);
