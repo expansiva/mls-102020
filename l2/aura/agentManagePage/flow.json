@@ -28,7 +28,16 @@
       "dependsOn": [],
       "initialStatus": "waiting_human_input",
       "goal": "Aplica as operações. Cosmetic-only = determinístico (só grava pageAdjustment). Com structural = LLM retorna o definition editado; valida (identidade + schema preservados via editCore), faz splice no source (replaceExportConst), grava pageAdjustment (1 por request), restampa pageVersion (páginas genome) e salva."
+    },
+    {
+      "planId": "render:<page>",
+      "agentName": "agentRenderEdit",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": ["edit-defs:<page>"],
+      "initialStatus": "waiting_dependency",
+      "goal": "Re-renderiza o .ts da página a partir do defs editado (DELTA-aware). Enxuto: reusa os primitivos de materialização (buildSystemPrompt/buildHumanPrompt/GEN_TOOL/applyHeader/normalizeGeneratedCode + get/save/compile do studio); contexto/skills vêm do item l2_page do PRÓPRIO pipeline (agnóstico genome/mode). Delta = .ts atual + pageAdjustments com instrução de mudança mínima. Compile-check pós-save; Opção B = 1 rodada de reparo (step attempt 2 com os erros); ainda falhando → mkFail com os erros."
     }
   ],
-  "materialize": "Disparado pela UI após a task terminar, via agentMaterializeL2 (igual selectPage._onRegenerate). Entra em modo delta quando o defs tem pageAdjustments: injeta o .ts atual + os ajustes no prompt com instrução de mudança mínima (ver mls-102020/l1/agentMaterializeL2/core.ts buildHumanPrompt)."
+  "materialize": "NÃO usa agentMaterializeL2. O render é o step interno agentRenderEdit (acima); a UI só dispara agentManagePage e o fluxo completo (gate → edit-defs → render) roda na mesma task."
 }

@@ -526,7 +526,7 @@ export class PluginSelectPage extends StateLitElement {
     private _renderEditPanel(page: IPageEntry) {
         const task = getTask(`edit:${page.name}`);
         const running = task?.status === 'running';
-        const inputCls = 'w-full text-xs rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-gray-700 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-600';
+        const inputCls = 'w-full text-xs px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600';
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-2">
                 <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.editPage}</span>
@@ -553,12 +553,14 @@ export class PluginSelectPage extends StateLitElement {
                     <div class="flex items-center gap-2 text-xs">
                         ${task.status === 'running' ? html`<span class="text-indigo-500 dark:text-indigo-400 italic">${this.msg.editing}</span>` : nothing}
                         ${task.status === 'done' ? html`<span class="text-emerald-600 dark:text-emerald-400">✓ ${this.msg.editDone}</span>` : nothing}
-                        ${task.status === 'error' ? html`<span class="text-red-500 dark:text-red-400 truncate">${task.message ?? 'error'}</span>` : nothing}
                         ${this._taskInfoByName.get(page.name)?.task ? html`
                             <button class="ml-auto text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
                                 @click=${() => this._openTask(page.name)}>${this.msg.followTask}</button>
                         ` : nothing}
                     </div>
+                ` : nothing}
+                ${task?.status === 'error' && task.message ? html`
+                    <div class="text-xs text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word rounded bg-red-50 dark:bg-red-900/20 px-2 py-1.5">${task.message}</div>
                 ` : nothing}
             </div>
         `;
@@ -583,14 +585,18 @@ export class PluginSelectPage extends StateLitElement {
         setState('preview.pausePreview', true);
         setTask(taskKey, { status: 'running', startedAt: Date.now() });
         try {
-            // 1) Gate + edit the defs (agentManagePage). Rejection surfaces as a task error.
-            await this._executeAgent('agentManagePage', prompt, (data) => {
+            // Gate + edit the defs (agentManagePage). A rejection (out-of-scope) or edit failure
+            // comes back as `failure` (the step's traceMsg) — surface it inline for the user.
+            const res = await this._executeAgent('agentManagePage', prompt, (data) => {
                 this._taskInfoByName.set(page.name, data);
                 this.requestUpdate();
             });
-            // 2) Re-materialize the now-stale defs; delta mode uses the current .ts + pageAdjustments.
-            setState('preview.pausePreview', prevPause ?? false);
-            await this._executeAgent('agentMaterializeL2', '{}');
+            if (res.failure) {
+                setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: res.failure });
+                return;
+            }
+            // Edit applied AND the page .ts re-rendered by agentManagePage's own render step
+            // (agentRenderEdit, delta-aware). No agentMaterializeL2. Preview repaints on the .ts write.
             setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
             this._editDraft.delete(page.name);
             this._editImg.delete(page.name);
@@ -756,7 +762,7 @@ export class PluginSelectPage extends StateLitElement {
         agentName: string,
         prompt: string,
         onTaskCreated?: (data: { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }) => void,
-    ): Promise<{ taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }> {
+    ): Promise<{ taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message; failure?: string }> {
         // Thread host: selectPage lives in serviceGenome since the knob move (D4).
         const fullName = '_102020_/l2/serviceGenome';
         let threadPromise = this._threadCache.get(fullName);
@@ -780,13 +786,24 @@ export class PluginSelectPage extends StateLitElement {
         let taskId = '';
         let task: mls.msg.TaskData | undefined;
         let message: mls.msg.Message | undefined;
+        // The stream drives the WHOLE flow (hooks + intents), not just task creation. Capture the
+        // last step failure (mkFail → update-status 'failed' + traceMsg, e.g. the gate's rejection
+        // reason) or a stream error, so callers can surface it instead of silently swallowing it.
+        let failure: string | undefined;
         for await (const event of executeBeforePromptStream(moduleAgent, context)) {
             if (event.type === 'task-created') {
                 taskId = event.taskId; task = event.task; message = event.message;
                 onTaskCreated?.({ taskId, task, message });
+            } else if (event.type === 'hook-done') {
+                for (const intent of event.intents ?? []) {
+                    const i = intent as any;
+                    if (i?.type === 'update-status' && i.status === 'failed' && i.traceMsg) failure = String(i.traceMsg);
+                }
+            } else if (event.type === 'error') {
+                failure = String(event.error);
             }
         }
-        return { taskId, task, message };
+        return { taskId, task, message, failure };
     }
 
     private async _openTask(pageName: string) {

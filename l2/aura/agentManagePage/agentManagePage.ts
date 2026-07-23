@@ -135,9 +135,16 @@ async function afterPromptStep(
     const editArgs: EditStepArgs = { module, page, layout, ds, device, request, imageUrl: imageUrl || undefined, operations };
     console.info(`[agentManagePage] ✓ gate approved — ${operations.length} operation(s): ${operations.map(o => o.kind).join(', ')}`);
 
-    // ONE child step: apply the operations to the defs (LLM). Materialize is the caller's job.
-    return [mkAgentStep(context, step, makePlanId('edit-defs', page), `Edit defs: ${page}`,
-      'agentEditDefs', editArgs as any, [], 'waiting_human_input', 'sequential')];
+    // Two steps: edit the defs (LLM/deterministic), then render the page .ts from the edited defs
+    // (delta-aware). Render waits on the edit — if the edit fails, render is blocked (onFailure:'fail').
+    const editPlan = makePlanId('edit-defs', page);
+    const renderArgs = { module, page, layout, ds, device };
+    return [
+      mkAgentStep(context, step, editPlan, `Edit defs: ${page}`,
+        'agentEditDefs', editArgs as any, [], 'waiting_human_input', 'sequential'),
+      mkAgentStep(context, step, makePlanId('render', page), `Render: ${page}`,
+        'agentRenderEdit', renderArgs as any, [editPlan], 'waiting_dependency', 'sequential'),
+    ];
   } catch (error) {
     const msg = `[${agent.agentName}] ${error instanceof Error ? error.message : String(error)}`;
     console.error('[agentManagePage] ✗', msg);
