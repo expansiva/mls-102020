@@ -1,0 +1,14 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewMoleculeVariant/v3-less.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["lessContent"],
+  "properties": {
+    "lessContent": {
+      "type": "string",
+      "minLength": 80,
+      "description": "The COMPLETE .less theme sheet for the variant, scoped under the variant tag. Raw LESS only — no markdown fences, no commentary outside CSS comments."
+    }
+  }
+}
