@@ -35,8 +35,11 @@ const message_en = {
     skillPlaceholder: '_102020_/l2/skills/layout/…',
     saveLayout: 'Save layout',
     saveError: 'Could not save the layout.',
+    moleculesHeader: 'Molecules',
     useMoleculesLabel: 'Use molecules',
-    useMoleculesHint: 'When off, pages of this layout get only the configured layout rules (no web components).',
+    useMoleculesDesc: 'Molecules are the ready-made web components pages are built from. When on, the generator picks a molecule per element; when off, pages of this layout get only the configured layout rules (no web components).',
+    moleculesOn: 'On',
+    moleculesOff: 'Off',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -66,8 +69,11 @@ const messages: Record<string, MessageType> = {
         skillPlaceholder: '_102020_/l2/skills/layout/…',
         saveLayout: 'Salvar layout',
         saveError: 'Não foi possível salvar o layout.',
+        moleculesHeader: 'Moléculas',
         useMoleculesLabel: 'Usar moléculas',
-        useMoleculesHint: 'Quando desligado, as páginas deste layout recebem apenas as regras de layout configuradas (sem web components).',
+        useMoleculesDesc: 'Moléculas são os web components prontos com que as páginas são montadas. Quando ligado, o gerador escolhe uma molécula por elemento; quando desligado, as páginas deste layout recebem apenas as regras de layout configuradas (sem web components).',
+        moleculesOn: 'Ligado',
+        moleculesOff: 'Desligado',
     },
     es: {
         title: 'UX · User Experience',
@@ -94,8 +100,11 @@ const messages: Record<string, MessageType> = {
         skillPlaceholder: '_102020_/l2/skills/layout/…',
         saveLayout: 'Guardar layout',
         saveError: 'No se pudo guardar el layout.',
+        moleculesHeader: 'Moléculas',
         useMoleculesLabel: 'Usar moléculas',
-        useMoleculesHint: 'Cuando está desactivado, las páginas de este layout reciben solo las reglas de layout configuradas (sin web components).',
+        useMoleculesDesc: 'Las moléculas son los web components listos con los que se construyen las páginas. Cuando está activado, el generador elige una molécula por elemento; cuando está desactivado, las páginas de este layout reciben solo las reglas de layout configuradas (sin web components).',
+        moleculesOn: 'Activado',
+        moleculesOff: 'Desactivado',
     },
 };
 /// **collab_i18n_end**
@@ -235,24 +244,46 @@ export class PluginSelectLayout extends StateLitElement {
                 ></aura--plugins--nav-header-102020>
 
                 ${this._renderLayoutCard(selectedOption, true)}
-                ${this._renderUseMoleculesToggle(selectedOption)}
+                ${this._renderMoleculesSection(selectedOption)}
             </div>
         `;
     }
 
-    // Per-layout "Use molecules" flag: persisted in config.layouts[value].useMolecules.
-    // The genome flow reads it there — this is the single source of truth (no global state).
-    private _renderUseMoleculesToggle(opt: ILayoutOption) {
+    // ─── Molecules section ─────────────────────────────────────────────
+    // Per-layout "Use molecules" flag, presented as its own section (à la "Rules for
+    // components"): header + short explanation + on/off toggle. Persisted in
+    // config.layouts[value].useMolecules — the single source of truth the genome flow reads.
+    private _renderMoleculesSection(opt: ILayoutOption) {
         return html`
-            <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer" title=${this.msg.useMoleculesHint}>
-                <input
-                    type="checkbox"
-                    class="cursor-pointer"
-                    .checked=${opt.useMolecules}
-                    @change=${(e: Event) => this._onToggleUseMolecules(opt.value, (e.target as HTMLInputElement).checked)}
-                />
-                <span>${this.msg.useMoleculesLabel}</span>
-            </label>
+            <div class="flex flex-col gap-2">
+                <span class="text-sm font-semibold text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-1.5">${this.msg.moleculesHeader}</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500 leading-snug">${this.msg.useMoleculesDesc}</span>
+                <div class="flex items-center gap-2.5 pt-0.5">
+                    ${this._renderToggle(opt.useMolecules, (checked) => this._onToggleUseMolecules(opt.value, checked))}
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">
+                        ${this.msg.useMoleculesLabel}
+                        <span class="ml-1 text-[10px] font-semibold ${opt.useMolecules ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'}">
+                            · ${opt.useMolecules ? this.msg.moleculesOn : this.msg.moleculesOff}
+                        </span>
+                    </span>
+                </div>
+            </div>
+        `;
+    }
+
+    // Reusable on/off switch (used by the selected layout and the "Add layout" form).
+    private _renderToggle(on: boolean, onChange: (checked: boolean) => void) {
+        return html`
+            <button
+                type="button"
+                role="switch"
+                aria-checked=${on}
+                class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer
+                    ${on ? 'bg-indigo-500 dark:bg-indigo-600' : 'bg-gray-300 dark:bg-gray-700'}"
+                @click=${() => onChange(!on)}
+            >
+                <span class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}"></span>
+            </button>
         `;
     }
 
@@ -435,17 +466,21 @@ export class PluginSelectLayout extends StateLitElement {
                     ></aura--plugins--select-layout-rules-102020>
                 ` : nothing}
 
-                <!-- Use molecules (per-layout flag) -->
+                <!-- Molecules (per-layout flag) -->
                 ${hasChoice ? html`
-                    <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer" title=${this.msg.useMoleculesHint}>
-                        <input
-                            type="checkbox"
-                            class="cursor-pointer"
-                            .checked=${this._addUseMolecules}
-                            @change=${(e: Event) => { this._addUseMolecules = (e.target as HTMLInputElement).checked; }}
-                        />
-                        <span>${this.msg.useMoleculesLabel}</span>
-                    </label>
+                    <div class="flex flex-col gap-2">
+                        <span class="text-sm font-semibold text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-1.5">${this.msg.moleculesHeader}</span>
+                        <span class="text-xs text-gray-400 dark:text-gray-500 leading-snug">${this.msg.useMoleculesDesc}</span>
+                        <div class="flex items-center gap-2.5 pt-0.5">
+                            ${this._renderToggle(this._addUseMolecules, (checked) => { this._addUseMolecules = checked; })}
+                            <span class="text-xs font-medium text-gray-600 dark:text-gray-300">
+                                ${this.msg.useMoleculesLabel}
+                                <span class="ml-1 text-[10px] font-semibold ${this._addUseMolecules ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'}">
+                                    · ${this._addUseMolecules ? this.msg.moleculesOn : this.msg.moleculesOff}
+                                </span>
+                            </span>
+                        </div>
+                    </div>
                 ` : nothing}
 
                 <!-- Save -->
