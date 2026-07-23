@@ -120,7 +120,7 @@ async function afterPromptStep(
   let examples: VDemoExample[] = [];
   let extractError = '';
   try {
-    const output = extractVToolOutput(step.interaction?.payload?.[0], TOOL_NAME);
+    const output = extractVToolOutput(step.interaction?.payload?.[0], TOOL_NAME, ['html', 'examples']);
     if (output.status === 'failed') extractError = `model reported failure: ${output.trace.join('; ') || 'no reason'}`;
     else {
       html = String(output.result.html || '');

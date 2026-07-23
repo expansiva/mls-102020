@@ -127,7 +127,7 @@ async function afterPromptStep(
   let less = '';
   let extractError = '';
   try {
-    const output = extractVToolOutput(step.interaction?.payload?.[0], TOOL_NAME);
+    const output = extractVToolOutput(step.interaction?.payload?.[0], TOOL_NAME, ['lessContent']);
     if (output.status === 'failed') extractError = `model reported failure: ${output.trace.join('; ') || 'no reason'}`;
     else {
       // M2: the mls header is owned by code — strip whatever the model wrote
