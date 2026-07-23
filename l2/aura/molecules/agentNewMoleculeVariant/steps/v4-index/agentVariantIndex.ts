@@ -25,6 +25,7 @@ import {
   writeStorTextAtomic,
 } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vFs.js';
 import { VariantContext } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vContext.js';
+import { loadThemeSignature } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vTheme.js';
 import { renderGroupIndexHtml } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vTemplates.js';
 import {
   buildVToolInstruction,
@@ -73,6 +74,7 @@ async function beforePromptStep(
   const groupEntry = skills.find(s => s.name === ctx.origin.groupCanonical);
   if (!groupEntry) throw new Error(`[${AGENT_NAME}] group '${ctx.origin.groupCanonical}' not found in skills index`);
   const usageSkill = await loadUsageSkill(groupEntry.skillUsageReference);
+  const themeSignature = await loadThemeSignature(ctx.theme.project);
   const moleculeShortNames = scanGroupMolecules(ctx);
   const fileReference = indexFileReference(ctx);
 
@@ -90,6 +92,9 @@ async function beforePromptStep(
     .split('{{groupDescription}}').join(groupEntry.description)
     .split('{{usageSkill}}').join(usageSkill)
     .split('{{moleculeFiles}}').join(moleculeShortNames.join('\n'))
+    .split('{{backgroundCss}}').join(ctx.theme.info.background.css)
+    .split('{{backgroundNote}}').join(ctx.theme.info.background.note)
+    .split('{{themeSignature}}').join(themeSignature)
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the group has no molecules to showcase')}`;
 
   const humanPrompt = [

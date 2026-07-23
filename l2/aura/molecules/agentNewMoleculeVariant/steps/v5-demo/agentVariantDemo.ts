@@ -21,6 +21,7 @@ import {
   writeStorTextAtomic,
 } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vFs.js';
 import { VariantContext } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vContext.js';
+import { loadThemeSignature } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vTheme.js';
 import { VDemoExample, substituteDemoState } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vTemplates.js';
 import {
   buildVToolInstruction,
@@ -191,11 +192,3 @@ async function loadUsageSkill(groupCanonical: string): Promise<string> {
   }
 }
 
-async function loadThemeSignature(project: number): Promise<string> {
-  const mod = await import(`/_${project}_/l2/skills/theme.js`) as { skill?: unknown };
-  const skill = typeof mod.skill === 'string' ? mod.skill : '';
-  const start = skill.indexOf('## 1. Visual Signature');
-  const end = skill.indexOf('## 2. Tokens');
-  if (start >= 0 && end > start) return skill.slice(start, end).trim();
-  return skill;
-}

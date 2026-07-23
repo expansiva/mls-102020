@@ -9,7 +9,29 @@ molecule list below — never invent tags or drop the suffix.
 
 Target file: {{fileReference}}
 
-## Generation skill (follow it strictly)
+## Mandatory theme deviations (this project has a visual theme)
+The generation skill below hard-codes a NEUTRAL light showcase (`bg-white` / `slate`).
+For this themed project you MUST adapt it so the molecules render in their intended
+visual context (e.g. glassmorphism is invisible on a white surface):
+
+1. **Page background** — put the theme background on the OUTERMOST container via an
+   inline style: `style="min-height:100vh; {{backgroundCss}}"`, replacing the
+   skill's neutral `min-h-screen` / `bg-white dark:bg-slate-900` root. ({{backgroundNote}})
+2. **Chrome surfaces & text** — restyle the section backgrounds, card surfaces and
+   text colors so they are coherent with the theme's Visual Signature below and the
+   live showcase instances sit on the theme's surfaces (for glass: translucent
+   surfaces that let the backdrop show through, light text). This overrides the
+   skill's neutral `bg-*` classes and its "Tailwind-only / no hex" rule FOR THE
+   BACKGROUND AND SURFACES only.
+
+KEEP the skill's STRUCTURE unchanged: the three sections (hero, showcase cards,
+reference table), one `@state` per card, the imports, the `@customElement`, the
+value bindings, and one reference-table column per component.
+
+## Theme Visual Signature (drives the chrome styling)
+{{themeSignature}}
+
+## Generation skill (structure + bindings — follow it, applying the theme deviations above)
 {{indexGroupPageSkill}}
 
 ## Group: {{groupName}}

@@ -104,3 +104,19 @@ export async function loadVTheme(project: number): Promise<{ theme: VTheme | nul
 export function pascalCaseThemeName(name: string): string {
   return name.replace(/(^|[-_ ])([a-z0-9])/g, (_m, _sep, ch: string) => ch.toUpperCase());
 }
+
+// The theme's Visual Signature section ('## 1 ..' up to '## 2. Tokens') — the
+// chrome-styling guidance shared by the demo (v5) and the group index (v4).
+// Falls back to the whole skill when the sections are absent.
+export function extractVisualSignature(skill: string): string {
+  const start = skill.indexOf('## 1. Visual Signature');
+  const end = skill.indexOf('## 2. Tokens');
+  if (start >= 0 && end > start) return skill.slice(start, end).trim();
+  return skill.trim();
+}
+
+// Loads the destination theme skill and returns its Visual Signature section.
+export async function loadThemeSignature(project: number): Promise<string> {
+  const mod = await import(`/_${project}_/l2/skills/theme.js`) as { skill?: unknown };
+  return extractVisualSignature(typeof mod.skill === 'string' ? mod.skill : '');
+}
