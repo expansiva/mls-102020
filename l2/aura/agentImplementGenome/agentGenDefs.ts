@@ -16,7 +16,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { collabImport } from '/_102027_/l2/collabImport.js';
-import { buildWorkItem, variationFolder } from '/_102020_/l2/aura/helpers/dsMatch/derivePaths.js';
+import { variationFolder, pageRef, originCandidates } from '/_102020_/l2/aura/helpers/dsMatch/derivePaths.js';
 import { buildPageDsStamp, renderDsVersionExport } from '/_102020_/l2/aura/helpers/dsMatch/dsVersion.js';
 import { designSystemTsRef } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 import { buildMoleculeCatalog } from '/_102020_/l2/aura/helpers/dsMatch/buildMoleculeCatalog.js';
@@ -60,16 +60,31 @@ async function beforePromptStep(
   try {
     const a = parseStepArgs(args ?? step.prompt);
     const project = mls.actualProject || 0;
-    const item = buildWorkItem(project, a.module, a.layout, a.ds, a.page!, a.device);
+    const defsDestino = pageRef(project, a.module, a.layout, a.ds, a.page!, '.defs.ts', a.device);
     console.info(`[agentGenDefs] ▶ ${a.page} — montagem determinística (sem LLM)`);
 
-    // 1. ORIGIN defs as real objects (clone — we mutate and re-serialize). The origin is the
-    //    closest existing ancestor (page{L}{D} → page{L}1 → page11), not necessarily page11.
-    const origin = await importDefs(item.defsOrigem);
-    if (!origin?.definition) throw new Error(`origin defs not loadable: ${item.defsOrigem}`);
+    // 1. ORIGIN defs as real objects (clone — we mutate and re-serialize). Resolve the origin by
+    //    IMPORTING the fallback candidates (page{L}{D} → page{L}1 → page11) and taking the FIRST
+    //    with a valid `definition`. A candidate's file merely EXISTING is not enough: when creating
+    //    a new variation (e.g. page41), a broken/empty destination stub would otherwise be read as
+    //    its OWN origin (page{L}{D} is the first candidate) → "origin defs not loadable". Importing
+    //    and requiring a definition skips such stubs (and missing/unparseable files) → page11.
+    let origin: any = null;
+    let originFolder = variationFolder(1, 1);
+    let defsOrigem = '';
+    for (const [ol, od] of originCandidates(a.layout, a.ds)) {
+      const ref = pageRef(project, a.module, ol, od, a.page!, '.defs.ts', a.device);
+      let imported: any = null;
+      try { imported = await importDefs(ref); } catch { imported = null; }
+      if (imported?.definition) { origin = imported; originFolder = variationFolder(ol, od); defsOrigem = ref; break; }
+    }
+    if (!origin?.definition) {
+      const tried = originCandidates(a.layout, a.ds).map(([l, d]) => variationFolder(l, d)).join(' → ');
+      throw new Error(`origin defs not loadable for ${a.page} (tried ${tried})`);
+    }
     const definition = clone(origin.definition);
     const pipeline = clone(origin.pipeline ?? []);
-    console.info(`[agentGenDefs] ${a.page}: origem importada (${item.originFolder}, ref=${item.defsOrigem})`);
+    console.info(`[agentGenDefs] ${a.page}: origem importada (${originFolder}, ref=${defsOrigem})`);
 
     // 2. Per-element picks. With molecules: Agent2's variant picks (tag) — the semantic choice is
     //    already done; we only PLACE the chosen molecule (by id). Without molecules (useMolecules=
@@ -77,8 +92,8 @@ async function beforePromptStep(
     //    "no molecule" path below and gets `layoutRules` only (empty molecule catalog).
     const useMolecules = a.useMolecules !== false;
     const selections = useMolecules
-      ? await loadVariantSelections(item.defsDestino)
-      : (await loadElementGroupSelections(item.defsDestino)).map(g => ({ id: g.id, group: g.group, tag: null as string | null }));
+      ? await loadVariantSelections(defsDestino)
+      : (await loadElementGroupSelections(defsDestino)).map(g => ({ id: g.id, group: g.group, tag: null as string | null }));
     const catalog = useMolecules ? await buildMoleculeCatalog() : [];
     const byTag = new Map(catalog.map(m => [m.tag, m]));
     const byId = indexById(listLayoutElements(definition.layout));
@@ -145,7 +160,7 @@ async function beforePromptStep(
     // 4. Repoint paths, override skills + dependsFiles, stamp, write.
     // Usage skills go in the pipeline `skills` array (the materializer feeds `skills` to the LLM
     // as skill sections; a `?key=skill` suffix on dependsFiles is understood by nobody).
-    repointPaths(pipeline, item.originFolder, a.layout, a.ds);
+    repointPaths(pipeline, originFolder, a.layout, a.ds);
     const baseSkills = await resolvePageSkills(project, a.layout, a.ds);
     const cssRef = designSystemTsRef(project);
     const usageList = [...usagePaths].sort();
@@ -158,16 +173,16 @@ async function beforePromptStep(
 
     // Preserve any user page-edit adjustments already recorded on the destination defs — a genome
     // rewrite must not silently drop them (they replay on every regeneration). See agentManagePage.
-    const priorAdjustments = parsePageAdjustments(await readRawSource(item.defsDestino));
+    const priorAdjustments = parsePageAdjustments(await readRawSource(defsDestino));
     if (priorAdjustments.length) console.info(`[agentGenDefs] ${a.page}: preservando ${priorAdjustments.length} pageAdjustment(s) do defs anterior`);
 
-    let finalSrc = renderDefs(item.defsDestino, definition, pipeline, dedupeAssigned(assigned), priorAdjustments);
+    let finalSrc = renderDefs(defsDestino, definition, pipeline, dedupeAssigned(assigned), priorAdjustments);
 
     if (!context.isTest) {
       const stamp = await buildPageDsStamp(project, a.module, a.layout, a.ds, a.page!, new Date().toISOString(), finalSrc);
       finalSrc = `${finalSrc.replace(/\s*$/, '')}\n\n${renderDsVersionExport(stamp)}\n`;
-      await saveFile(item.defsDestino, finalSrc);
-      console.info(`[agentGenDefs] ✓ ${a.page}: defs final gravado em ${item.defsDestino} (pageVersion rulesHash=${stamp.rulesHash})`);
+      await saveFile(defsDestino, finalSrc);
+      console.info(`[agentGenDefs] ✓ ${a.page}: defs final gravado em ${defsDestino} (pageVersion rulesHash=${stamp.rulesHash})`);
     }
 
     return [mkCompleted(context, parentStep, step, hookSequential)];
