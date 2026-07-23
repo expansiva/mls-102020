@@ -16,8 +16,8 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { pageRef } from '/_102020_/l2/aura/helpers/dsMatch/derivePaths.js';
 import { mkAgentStep, mkCompleted, mkFail, makePlanId } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
-import { parseExportValue, parsePageAdjustments } from '/_102020_/l2/aura/helpers/dsMatch/pageAdjustments.js';
-import { buildDeltaSection } from '/_102020_/l2/aura/agentManagePage/editCore.js';
+import { parseExportValue } from '/_102020_/l2/aura/helpers/dsMatch/pageAdjustments.js';
+import { buildDeltaSection, type EditOperation } from '/_102020_/l2/aura/agentManagePage/editCore.js';
 import {
   buildSystemPrompt, buildHumanPrompt, buildContextSection, buildCompileRepairHint,
   applyHeader, normalizeGeneratedCode, GEN_TOOL, GEN_TOOL_NAME, DEFAULT_MODEL_TYPE, type PipelineItem,
@@ -32,6 +32,11 @@ interface RenderArgs {
   layout: number | string;
   ds: number | string;
   device: string;
+  // The CURRENT edit (from agentManagePage) — drives the delta's minimal-change instruction. The
+  // edited `definition` already carries the change; this tells the render what changed vs the code.
+  request?: string;
+  operations?: EditOperation[];
+  imageUrl?: string;
   attempt?: number;   // 1 = first pass; 2 = single repair round (Option B)
 }
 
@@ -108,14 +113,15 @@ async function beforePromptStep(
     const attempt = a.attempt ?? 1;
     const ctx = await loadRenderContext(a);
     if (!ctx) throw new Error(`no l2_page pipeline item for ${a.page}`);
-    const { item, definition, defsContent } = ctx;
+    const { item, definition } = ctx;
 
     const skillSections = await readSections(item.skills, 'skill');
     const contextSections = await readSections(item.dependsFiles, 'context');
 
-    // Delta: current generated code + recorded adjustments (minimal-change instruction).
+    // Delta: current generated code + the CURRENT edit request (minimal-change instruction). The
+    // change is already folded into `definition`; this preserves the rest of the code verbatim.
     const currentCode = await getContentByMlsPath(item.outputPath);
-    const delta = buildDeltaSection(currentCode, parsePageAdjustments(defsContent));
+    const delta = buildDeltaSection(currentCode, a.request ? { request: a.request, operations: a.operations, imageUrl: a.imageUrl } : null);
     if (delta) contextSections.push(delta);
 
     // Option B — one repair round: on attempt 2, feed the current .ts's compiler errors back.

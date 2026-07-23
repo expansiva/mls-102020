@@ -87,6 +87,24 @@ metric block; actionList → a button row; workflowStatus → a status/progress 
 
 ---
 
+## User visual adjustments — honor \`visualStyle\` / \`styleReference\`
+
+ANY node in the definition (a section, an intention, or a field/filter/action) MAY carry:
+- **\`visualStyle\`** — a short imperative string (or string[]) describing a pointed VISUAL tweak the
+  user asked for (e.g. \`"align the action buttons to the left"\`, \`"format as BRL currency, badge on
+  the left of a single rounded container"\`). Apply it to THAT node's markup with your own HTML +
+  Tailwind + \`--ds-*\` variables. It refines presentation only — never add data/states/actions and
+  never change identity. When it targets an element that also has a \`molecule\`, style only what you
+  legitimately can around/inside the molecule's slots (see the molecule rules below); never re-theme
+  the molecule itself.
+- **\`styleReference\`** — a URL of a reference image for that node's \`visualStyle\`. Treat it as the
+  visual target and reproduce its layout/spacing/formatting as faithfully as the tokens allow. (You
+  receive the URL as text, not the pixels — if you cannot access it, honor the \`visualStyle\` text.)
+
+These fields are the SINGLE source of truth for user edits (there is no separate adjustments log).
+
+---
+
 ## Molecules — render the assigned \`molecule\` per element
 
 ANY element (a \`field\`/\`filter\`/\`column\`/\`action\`, or the intention itself for

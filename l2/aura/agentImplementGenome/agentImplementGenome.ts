@@ -154,32 +154,26 @@ async function afterPromptStep(
 
     // Group C — assemble the final defs DETERMINISTICALLY. With molecules: place the chosen molecule
     // per element (waits on variant). Without: apply only layoutRules from Agent1's groups (waits on select).
+    // The origin clone already carries any user edits (folded into the definition by the edit flow —
+    // there is no pageAdjustments log to replay anymore), so no fold step is needed here.
     const genDep = (page: string) => useMolecules ? makePlanId('variant', page) : makePlanId('select', page);
+    const genIds = pages.map(p => makePlanId('gen', p));
     for (const page of pages) {
       intents.push(mkAgentStep(context, step, makePlanId('gen', page), `Gen defs: ${page}`,
         'agentGenDefs', baseArgs(page), [genDep(page)], 'waiting_dependency', 'parallel_static'));
     }
 
-    // Group D — fold the page's recorded pageAdjustments INTO the definition (LLM) and drop the log,
-    // so the defs is self-contained (everything in `definition`, no pageAdjustments export). Future
-    // variations inherit the edits via the origin clone. No-op (no LLM) when a page has no adjustments.
-    const foldIds = pages.map(p => makePlanId('fold', p));
-    for (const page of pages) {
-      intents.push(mkAgentStep(context, step, makePlanId('fold', page), `Fold adjustments: ${page}`,
-        'agentFoldAdjustments', baseArgs(page), [makePlanId('gen', page)], 'waiting_dependency', 'parallel_static'));
-    }
-
     // Reconcile molecule tokens (--ml-*) to the DS tokens (--ds-*) — ONCE per DS, barrier over
-    // every fold (⇒ every gen, so all pages' molecule assignments are known). Feeds buildGlobalCss.
+    // every gen (so all pages' molecule assignments are known). Feeds buildGlobalCss in register.
     const reconcileArgs: StepArgs = { module, layout, ds, device, pages, forceReconcile, useMolecules };
     intents.push(mkAgentStep(context, step, 'reconcile-tokens', 'Reconciliar tokens (molécula→DS)',
-      'agentReconcileTokens', reconcileArgs, foldIds, 'waiting_dependency', 'sequential'));
+      'agentReconcileTokens', reconcileArgs, genIds, 'waiting_dependency', 'sequential'));
 
     // Terminal — register the variation ONCE, after reconciliation (so global.css carries --ml-*).
     intents.push(mkAgentStep(context, step, 'register', 'Register module genome',
       'agentRegisterGenome', baseArgs(), ['reconcile-tokens'], 'waiting_dependency', 'sequential'));
 
-    console.info(`[agentImplementGenome] ✓ planned ${pages.length} select(Agent1) + ${useMolecules ? pages.length : 0} variant(Agent2) + ${pages.length} gen(deterministic) + ${pages.length} fold(adjustments) + 1 reconcile-tokens + 1 register steps (useMolecules=${useMolecules})`);
+    console.info(`[agentImplementGenome] ✓ planned ${pages.length} select(Agent1) + ${useMolecules ? pages.length : 0} variant(Agent2) + ${pages.length} gen(deterministic) + 1 reconcile-tokens + 1 register steps (useMolecules=${useMolecules})`);
     return intents;
   } catch (error) {
     const msg = `[${agent.agentName}] ${error instanceof Error ? error.message : String(error)}`;

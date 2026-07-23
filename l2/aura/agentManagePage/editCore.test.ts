@@ -7,7 +7,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   hasGenomeLayout, layoutElementIdSet, idDelta, validateEditedDefinition, normalizeOperations, buildDeltaSection,
-  reconcileAdjustments, normalizeConsolidatedAdjustments,
 } from '/_102020_/l2/aura/agentManagePage/editCore.js';
 import {
   scanBalanced, findExportConst, replaceExportConst, removeExportConst, parseExportValue,
@@ -61,25 +60,26 @@ test('editCore: validateEditedDefinition guards', () => {
 });
 
 test('editCore: buildDeltaSection', () => {
-  assert.equal(buildDeltaSection('', []), '');
-  const s = buildDeltaSection('const x = 1;', [{ request: 'esconda telefone', kind: 'structural', notes: 'removi f_phone' }]);
+  assert.equal(buildDeltaSection('', null), '');
+  const s = buildDeltaSection('const x = 1;', { request: 'esconda telefone', operations: [{ kind: 'structural', target: 'f_phone', description: 'remove phone field' }] });
   assert.match(s, /minimal change/);
   assert.match(s, /esconda telefone/);
-  assert.match(s, /removi f_phone/);
+  assert.match(s, /remove phone field/);
+  assert.match(s, /@f_phone/);
   assert.match(s, /const x = 1;/);
-  // adjustments only, no code
-  const s2 = buildDeltaSection(null, [{ request: 'destaque salvar', kind: 'cosmetic' }]);
+  // request only, no code
+  const s2 = buildDeltaSection(null, { request: 'destaque salvar' });
   assert.match(s2, /destaque salvar/);
   assert.doesNotMatch(s2, /Current code/);
 });
 
 test('editCore: buildDeltaSection adds a reference-image directive only when an image is present', () => {
-  const withImg = buildDeltaSection('const x=1;', [{ request: 'format currency', kind: 'cosmetic', imageUrl: 'http://ref.png' }]);
-  assert.match(withImg, /reference image: http:\/\/ref\.png/);
+  const withImg = buildDeltaSection('const x=1;', { request: 'format currency', imageUrl: 'http://ref.png' });
+  assert.match(withImg, /Reference image: http:\/\/ref\.png/);
   assert.match(withImg, /visual target/i);
-  assert.match(withImg, /honor the adjustment text/i);
+  assert.match(withImg, /honor the change text/i);
   // no image → no directive block
-  const noImg = buildDeltaSection('const x=1;', [{ request: 'hide phone', kind: 'structural' }]);
+  const noImg = buildDeltaSection('const x=1;', { request: 'hide phone' });
   assert.doesNotMatch(noImg, /visual target/i);
 });
 
@@ -95,72 +95,7 @@ test('editCore: normalizeOperations filters malformed', () => {
   assert.equal(ops[1].target, '');
 });
 
-// ── adjustments consolidation (Opção C) ──────────────────────────────────────
-
-test('editCore: normalizeConsolidatedAdjustments filters malformed', () => {
-  const out = normalizeConsolidatedAdjustments([
-    { id: 'adj-001', request: 'align left', kind: 'structural' },
-    { request: '  ', kind: 'cosmetic' },            // empty request → dropped
-    { request: 'bigger shadow', kind: 'bogus' },     // bad kind → dropped
-    { request: 'destaque salvar', kind: 'cosmetic', notes: '  ' }, // blank notes → undefined
-  ]);
-  assert.equal(out.length, 2);
-  assert.equal(out[0].id, 'adj-001');
-  assert.equal(out[1].id, undefined);
-  assert.equal(out[1].notes, undefined);
-});
-
-test('editCore: reconcileAdjustments supersedes contradictory (left wins, one item, stable id)', () => {
-  // adj-001 = "align right"; consolidation returns only the surviving "align left" reusing adj-001.
-  const existing: PageAdjustment[] = [{ id: 'adj-001', at: 'T0', request: 'align buttons right', kind: 'structural' }];
-  const out = reconcileAdjustments(existing, [{ id: 'adj-001', request: 'align buttons left', kind: 'structural' }], 'T1');
-  assert.equal(out.length, 1);
-  assert.equal(out[0].id, 'adj-001');
-  assert.equal(out[0].at, 'T0');                 // audit continuity preserved
-  assert.equal(out[0].request, 'align buttons left');
-});
-
-test('editCore: reconcileAdjustments preserves unrelated + mints new', () => {
-  const existing: PageAdjustment[] = [
-    { id: 'adj-001', at: 'T0', request: 'hide phone', kind: 'structural' },
-  ];
-  // keep adj-001 as-is, add a new unrelated cosmetic (no id → minted).
-  const out = reconcileAdjustments(existing, [
-    { id: 'adj-001', request: 'hide phone', kind: 'structural' },
-    { request: 'emphasize save', kind: 'cosmetic' },
-  ], 'T1');
-  assert.equal(out.length, 2);
-  assert.equal(out[0].id, 'adj-001');
-  assert.equal(out[1].id, 'adj-002');            // minted next
-  assert.equal(out[1].at, 'T1');
-});
-
-test('editCore: reconcileAdjustments carries the current request image onto new items; keeps prior', () => {
-  const existing: PageAdjustment[] = [{ id: 'adj-001', at: 'T0', request: 'has own img', kind: 'cosmetic', imageUrl: 'http://old.png' }];
-  const out = reconcileAdjustments(existing, [
-    { id: 'adj-001', request: 'has own img', kind: 'cosmetic' }, // survives → keeps its own image
-    { request: 'format currency like the reference', kind: 'cosmetic' }, // new → inherits current image
-  ], 'T1', 'http://ref.png');
-  assert.equal(out[0].imageUrl, 'http://old.png');
-  assert.equal(out[1].imageUrl, 'http://ref.png');
-  // No current image → new item has none.
-  const out2 = reconcileAdjustments([], [{ request: 'x', kind: 'cosmetic' }], 'T1');
-  assert.equal(out2[0].imageUrl, undefined);
-});
-
-test('editCore: reconcileAdjustments mints for unknown ids and multiple new items', () => {
-  const existing: PageAdjustment[] = [{ id: 'adj-005', at: 'T0', request: 'x', kind: 'cosmetic' }];
-  // an unknown id must NOT be trusted (treated as new); two new items get distinct minted ids.
-  const out = reconcileAdjustments(existing, [
-    { id: 'adj-999', request: 'forged', kind: 'cosmetic' },
-    { request: 'brand new', kind: 'structural' },
-  ], 'T1');
-  assert.equal(out.length, 2);
-  assert.equal(out[0].id, 'adj-006');
-  assert.equal(out[1].id, 'adj-007');
-});
-
-// ── pageAdjustments splicer ──────────────────────────────────────────────────
+// ── pageAdjustments splicer (data layer — still used by the edit flow to migrate legacy logs) ──
 
 const defs = [
   '/// <mls fileReference="x"/>', '',
