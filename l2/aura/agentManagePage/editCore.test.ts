@@ -73,6 +73,16 @@ test('editCore: buildDeltaSection', () => {
   assert.doesNotMatch(s2, /Current code/);
 });
 
+test('editCore: buildDeltaSection adds a reference-image directive only when an image is present', () => {
+  const withImg = buildDeltaSection('const x=1;', [{ request: 'format currency', kind: 'cosmetic', imageUrl: 'http://ref.png' }]);
+  assert.match(withImg, /reference image: http:\/\/ref\.png/);
+  assert.match(withImg, /visual target/i);
+  assert.match(withImg, /honor the adjustment text/i);
+  // no image → no directive block
+  const noImg = buildDeltaSection('const x=1;', [{ request: 'hide phone', kind: 'structural' }]);
+  assert.doesNotMatch(noImg, /visual target/i);
+});
+
 test('editCore: normalizeOperations filters malformed', () => {
   const ops = normalizeOperations([
     { kind: 'structural', target: 'f_phone', description: 'hide phone' },

@@ -110,6 +110,15 @@ export function buildDeltaSection(
                 return `- (${a.kind ?? 'edit'}) ${a.request}${tail ? ` ${tail}` : ''}`;
             }),
         );
+        // Explicit directive when an adjustment carries a reference image. NOTE: the prompt is
+        // text-only — the model receives the URL, not the pixels — so this is a best-effort nudge:
+        // follow the image if reachable, otherwise honor the adjustment text precisely.
+        if (adjustments.some(a => a.imageUrl)) {
+            parts.push(
+                '',
+                'One or more adjustments include a reference image (the URL after "reference image"). That URL is the visual target for its adjustment: reproduce its layout, spacing and formatting as faithfully as the existing states, actions and design-system tokens allow. If you cannot access the image, still honor the adjustment text exactly.',
+            );
+        }
     }
     if (hasCode) {
         parts.push('', '### Current code (preserve verbatim except for the adjustments above)', '```ts', currentCode!.trim(), '```');
