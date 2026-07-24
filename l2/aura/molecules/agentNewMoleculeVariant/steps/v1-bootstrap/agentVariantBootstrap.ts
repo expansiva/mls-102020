@@ -19,6 +19,7 @@ import {
 import { loadVTheme, pascalCaseThemeName } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vTheme.js';
 import {
   detectPortal,
+  extractAbsoluteMlClasses,
   extractMlInventory,
   extractOriginClassName,
   parseOriginRef,
@@ -106,6 +107,7 @@ async function beforePromptStep(
         importPath: ref.importPath,
         portal,
         mlClassInventory: extractMlInventory(originTs, originLess),
+        absoluteMlClasses: extractAbsoluteMlClasses(originTs),
       },
       theme: {
         project: destProject,

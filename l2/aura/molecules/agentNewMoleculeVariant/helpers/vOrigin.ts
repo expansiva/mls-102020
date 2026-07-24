@@ -70,6 +70,29 @@ export function extractMlInventory(originTs: string, originLess: string): string
   return Array.from(found).sort();
 }
 
+// ml-* classes the origin render() positions with `absolute`/`fixed`. The theme
+// .less must NOT set position/overflow on these (doing so drops the element into
+// normal flow → full width / clipped decorations — the discrete-slider bug).
+// Heuristic over the render source: a "class-list context" (a single string
+// literal, or a flat `[ ... ]` array as in the get*Classes() builders) that
+// contains an `absolute`/`fixed` token contributes ALL its ml-* classes.
+export function extractAbsoluteMlClasses(originTs: string): string[] {
+  const found = new Set<string>();
+  const collect = (text: string): void => {
+    if (!/\b(absolute|fixed)\b/.test(text)) return;
+    for (const m of text.matchAll(/(?<![\w-])ml-[a-z][a-z0-9-]*/g)) found.add(m[0]);
+  };
+  // (1) single-line quoted strings ('...' / "...") — one per element class list
+  //     (inline class="..." attributes, cn(...) args). NOT backtick templates:
+  //     a whole html`...` template spans many elements and would wrongly merge a
+  //     positioned element's `absolute` with another element's ml-* class.
+  for (const m of originTs.matchAll(/(['"])(.*?)\1/g)) collect(m[2]);
+  // (2) flat array literals [ ... ] — the get*Classes() builders keep the
+  //     positioning class and the ml-* classes as SEPARATE elements.
+  for (const m of originTs.matchAll(/\[([^[\]]*)\]/g)) collect(m[1]);
+  return Array.from(found).sort();
+}
+
 // ml-* classes REFERENCED as selectors in a generated .less.
 export function extractMlClassesFromLess(less: string): string[] {
   const found = new Set<string>();
