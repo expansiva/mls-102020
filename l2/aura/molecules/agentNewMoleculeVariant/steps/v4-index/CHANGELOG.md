@@ -20,3 +20,5 @@
   raw black text (combobox does not consume it; light DOM). The rule tells the model to
   only pass slots a molecule supports per the usage table and to use the `placeholder`
   attribute for search/combobox inputs. Prompt-only nudge (no gate/code change).
+
+- 2026-07-24: prompt.md — added "Write ALL code comments in English, regardless of the user's language" (LLM was drifting to Portuguese comments in some files).

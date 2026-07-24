@@ -18,3 +18,5 @@
   blocks are scrubbed first (they may position themselves). A blanket layout-property
   ban was rejected — it would break the golden (display/position/transform legit).
   Prompt gained a matching hard rule. Tests: v3-less gate + vOrigin extractor.
+
+- 2026-07-24: prompt.md — added "Write ALL code comments in English, regardless of the user's language" (LLM was drifting to Portuguese comments in some files).

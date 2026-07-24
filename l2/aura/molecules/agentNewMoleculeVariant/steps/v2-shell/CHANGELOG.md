@@ -6,3 +6,6 @@
   instead of emitting a thin generic stub — the previous stub dropped `layoutConfig`
   and the full skill (Responsibilities/Constraints) that other routines consume.
   Gate updated (defs_header + TagName line); missing origin defs fails readable.
+- 2026-07-24: renderShellTs comments translated PT→EN (they were hardcoded in
+  Portuguese and leaked into every generated shell .ts). Test asserts English +
+  no PT leftovers.

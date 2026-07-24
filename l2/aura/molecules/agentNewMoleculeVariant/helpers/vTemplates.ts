@@ -11,18 +11,18 @@ export function renderShellTs(ctx: VariantContext): string {
   const title = toShellTitle(ctx.origin.shortName);
   const themeUpper = ctx.theme.info.displayName.toUpperCase();
   const portalBlock = ctx.origin.portal
-    ? `\n  // O container do portal (document.body) recebe este data-widget — o .less do\n  // tema escopa o painel por div[data-widget="..."].\n  protected portalWidgetName = '${ctx.variant.tag}';\n`
+    ? `\n  // The portal container (document.body) receives this data-widget — the theme\n  // .less scopes the panel via div[data-widget="..."].\n  protected portalWidgetName = '${ctx.variant.tag}';\n`
     : '';
-  const inherits = ctx.origin.portal ? 'inclusive render() e getPortalTemplate()' : 'inclusive render()';
+  const inherits = ctx.origin.portal ? 'including render() and getPortalTemplate()' : 'including render()';
   const body = ctx.origin.portal ? `{${portalBlock}}` : '{}';
   return `/// <mls fileReference="_${ctx.theme.project}_/l2/molecules/${ctx.variant.group}/${ctx.variant.shortName}.ts" enhancement="_102020_/l2/enhancementAura"/>
 // =============================================================================
 // ${title} — ${themeUpper} (mls-${ctx.theme.project})
 // =============================================================================
 // Skill Group: ${ctx.origin.groupCanonical}
-// Casca (estratégia D): herda tudo de ${ctx.origin.className} (mls-${ctx.origin.project}),
-// ${inherits} — o markup base emite classes semânticas ml-*; a aparência
-// vem do .less irmão, escopado sob esta tag.
+// Shell (Strategy D): inherits everything from ${ctx.origin.className} (mls-${ctx.origin.project}),
+// ${inherits} — the base markup emits semantic ml-* classes; the appearance
+// comes from the sibling .less, scoped under this tag.
 // This molecule does NOT contain business logic.
 import { customElement } from 'lit/decorators.js';
 import { ${ctx.origin.className} } from '${ctx.origin.importPath}';

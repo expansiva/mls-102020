@@ -122,3 +122,14 @@ test('empty origin defs is rejected (contract cannot be fabricated)', () => {
   const ctx = buildCtx(false);
   assert.throws(() => renderShellDefs(ctx, '   '));
 });
+
+test('shell .ts comments are English (no Portuguese leftovers)', () => {
+  const simple = renderShellTs(buildCtx(false));
+  const portal = renderShellTs(buildCtx(true));
+  for (const ts of [simple, portal]) {
+    assert.ok(ts.includes('Shell (Strategy D): inherits everything from'));
+    assert.ok(!/Casca|estratégia|herda|inclusive|irmão|conteúdo|container do portal/.test(ts));
+  }
+  assert.ok(portal.includes('including render() and getPortalTemplate()'));
+  assert.ok(portal.includes('The portal container (document.body)'));
+});

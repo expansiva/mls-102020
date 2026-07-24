@@ -30,6 +30,7 @@ The variant `.ts` shell already exists: it extends the origin molecule and inher
 - Style the state classes the base emits (disabled/open/selected/error...), excluding states from hover with `:not(...)`.
 - `:has()` is allowed for structural states the base doesn't class (e.g. readonly).
 - Old-class techniques (structural selectors anchored on stable attributes, never bare element order) apply when the inventory has gaps on decorated elements.
+- Write ALL code comments in English, regardless of the user's language.
 
 ## Theme skill (the ONLY source of visual values)
 

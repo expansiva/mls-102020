@@ -47,6 +47,7 @@ Description: {{groupDescription}}
 - Boolean properties: property binding — `.isEditing=${true}`, `.disabled=${false}`
 - Number properties: property binding — `.minSelection=${1}`
 - Never use attribute binding for booleans or numbers in TypeScript Lit templates.
+- Write ALL code comments in English, regardless of the user's language.
 
 ## Slot support (respect each molecule's contract)
 Only pass slot tags a molecule actually supports — some slots are variant-specific.
