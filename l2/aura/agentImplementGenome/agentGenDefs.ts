@@ -27,8 +27,7 @@ import { resolveRulesForPage } from '/_102020_/l2/aura/helpers/dsMatch/resolveRu
 import { rulesForPlainElement } from '/_102020_/l2/aura/helpers/dsMatch/plainControlRules.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { resolveTagToFile } from '/_102020_/l2/utils.js';
-import { parseStepArgs, mkCompleted, mkFail, saveFile, readRawSource } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
-import { parsePageAdjustments, renderPageAdjustmentsExport } from '/_102020_/l2/aura/helpers/dsMatch/pageAdjustments.js';
+import { parseStepArgs, mkCompleted, mkFail, saveFile } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
 
 // Fixed base render skill — ALWAYS first in the pipeline. Renders the structure
 // (definition.layout) + the molecule assigned to each element + applies the DS tokens.
@@ -171,12 +170,9 @@ async function beforePromptStep(
     }
     console.info(`[agentGenDefs] ${a.page}: skills=[${baseSkills.join(', ')}] + ${usageList.length} usage skill(s) · +ds=${cssRef}`);
 
-    // Preserve any user page-edit adjustments already recorded on the destination defs — a genome
-    // rewrite must not silently drop them (they replay on every regeneration). See agentManagePage.
-    const priorAdjustments = parsePageAdjustments(await readRawSource(defsDestino));
-    if (priorAdjustments.length) console.info(`[agentGenDefs] ${a.page}: preservando ${priorAdjustments.length} pageAdjustment(s) do defs anterior`);
-
-    let finalSrc = renderDefs(defsDestino, definition, pipeline, dedupeAssigned(assigned), priorAdjustments);
+    // User page-edits live INSIDE the definition (folded by the edit flow — no pageAdjustments log
+    // anymore), so the origin clone already carries them; nothing extra to preserve here.
+    let finalSrc = renderDefs(defsDestino, definition, pipeline, dedupeAssigned(assigned));
 
     if (!context.isTest) {
       const stamp = await buildPageDsStamp(project, a.module, a.layout, a.ds, a.page!, new Date().toISOString(), finalSrc);
@@ -251,9 +247,9 @@ function dedupeAssigned(molecules: AssignedMolecule[]): AssignedMolecule[] {
   return out;
 }
 
-/** Serialize the final defs: header + definition (with molecules) + pipeline + flat
- *  moleculeAssignments (+ preserved pageAdjustments, when the previous defs had user edits). */
-function renderDefs(defsRef: string, definition: any, pipeline: any, assigned: AssignedMolecule[], priorAdjustments: import('/_102020_/l2/aura/helpers/dsMatch/pageAdjustments.js').PageAdjustment[] = []): string {
+/** Serialize the final defs: header + definition (with molecules + any folded user edits) +
+ *  pipeline + flat moleculeAssignments. No pageAdjustments export — edits live in the definition. */
+function renderDefs(defsRef: string, definition: any, pipeline: any, assigned: AssignedMolecule[]): string {
   const cleanRef = defsRef.startsWith('/') ? defsRef.slice(1) : defsRef;
   const lines = [
     `/// <mls fileReference="${cleanRef}" enhancement="_blank"/>`,
@@ -266,8 +262,5 @@ function renderDefs(defsRef: string, definition: any, pipeline: any, assigned: A
     `export const moleculeAssignments = ${JSON.stringify(assigned, null, 2)} as const;`,
     '',
   ];
-  if (priorAdjustments.length) {
-    lines.push(renderPageAdjustmentsExport(priorAdjustments), '');
-  }
   return lines.join('\n');
 }

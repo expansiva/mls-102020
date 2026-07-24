@@ -9,7 +9,6 @@
 // the identity guard and skip the layout guard.
 
 import { listLayoutElements } from '/_102020_/l2/aura/helpers/dsMatch/layoutElements.js';
-import { nextAdjustmentId, type PageAdjustment, type PageAdjustmentKind } from '/_102020_/l2/aura/helpers/dsMatch/pageAdjustments.js';
 
 export type EditKind = 'structural' | 'cosmetic';
 
@@ -89,122 +88,73 @@ export function validateEditedDefinition(original: unknown, edited: unknown): Gu
     return { ok: true, value: edited };
 }
 
+/** The current edit request handed to the render's delta section. */
+export interface CurrentEdit {
+    request: string;
+    operations?: EditOperation[];
+    imageUrl?: string;
+}
+
 /**
- * Delta-mode prompt section for the render step: the page's CURRENT generated code + the recorded
- * adjustments, with a minimal-change instruction. Pure. Returns '' when there is nothing to
- * preserve (no current code AND no adjustments) — caller then omits the section.
+ * Delta-mode prompt section for the render step: the page's CURRENT generated code + the SINGLE
+ * change the user just asked for (not a historical log — the current code already embodies every
+ * earlier edit, and the edited `definition` already carries this one). Pure. Returns '' when there
+ * is nothing to preserve/apply.
  */
 export function buildDeltaSection(
     currentCode: string | null | undefined,
-    adjustments: Array<{ request: string; kind?: string; notes?: string; imageUrl?: string }>,
+    edit: CurrentEdit | null | undefined,
 ): string {
     const hasCode = !!currentCode && currentCode.trim().length > 0;
-    if (!hasCode && (!adjustments || adjustments.length === 0)) return '';
+    const request = edit?.request?.trim();
+    if (!hasCode && !request) return '';
     const parts: string[] = ['## Edit mode — minimal change'];
-    if (adjustments?.length) {
+    if (request) {
+        const ops = (edit?.operations ?? []).filter(o => o.description?.trim());
         parts.push(
             '',
-            'Apply ONLY these visual adjustments; keep everything else in the current code structurally identical:',
-            ...adjustments.map(a => {
-                const tail = [a.notes ? `— ${a.notes}` : '', a.imageUrl ? `(reference image: ${a.imageUrl})` : ''].filter(Boolean).join(' ');
-                return `- (${a.kind ?? 'edit'}) ${a.request}${tail ? ` ${tail}` : ''}`;
-            }),
+            'Apply ONLY this visual change; keep everything else in the current code structurally identical:',
+            `- ${request}`,
+            ...ops.map(o => `  · (${o.kind}${o.target ? ` @${o.target}` : ''}) ${o.description}`),
         );
-        // Explicit directive when an adjustment carries a reference image. NOTE: the prompt is
-        // text-only — the model receives the URL, not the pixels — so this is a best-effort nudge:
-        // follow the image if reachable, otherwise honor the adjustment text precisely.
-        if (adjustments.some(a => a.imageUrl)) {
+        if (edit?.imageUrl) {
+            // Text-only prompt: the model gets the URL, not the pixels — best-effort nudge.
             parts.push(
                 '',
-                'One or more adjustments include a reference image (the URL after "reference image"). That URL is the visual target for its adjustment: reproduce its layout, spacing and formatting as faithfully as the existing states, actions and design-system tokens allow. If you cannot access the image, still honor the adjustment text exactly.',
+                `Reference image: ${edit.imageUrl} — that URL is the visual target. Reproduce its layout, spacing and formatting as faithfully as the existing states, actions and design-system tokens allow. If you cannot access the image, still honor the change text exactly.`,
             );
         }
     }
     if (hasCode) {
-        parts.push('', '### Current code (preserve verbatim except for the adjustments above)', '```ts', currentCode!.trim(), '```');
+        parts.push('', '### Current code (preserve verbatim except for the change above)', '```ts', currentCode!.trim(), '```');
     }
     return parts.join('\n');
 }
 
-// ─── pageAdjustments consolidation (Opção C) ─────────────────────────────────
-// The edit LLM returns the CONSOLIDATED list of adjustments (existing + the new request, with
-// contradictory prior ones superseded — newer wins on the same element/aspect). We reattach the
-// audit fields DETERMINISTICALLY here: a surviving item keeps its original id + `at`; a new item
-// (no matching id) is minted a fresh id + `at=now`. The LLM can never rename/forge an id — an
-// unknown id is treated as new — so the id space stays honest (guard, à la validateEditedDefinition).
+// ─── how an edit is represented INSIDE the definition (single source of truth) ────────────────
+// Shared by the edit LLM (agentEditDefs — how to WRITE it) and documented for the render skills
+// (genCfePageGenome — how to HONOR it). Everything the user asks lives in the definition; there is
+// no separate pageAdjustments log anymore, so a variation inherits edits for free via the origin
+// clone in the genome flow.
+export const DEFINITION_EDIT_RULES = `
+Fold the requested change PERMANENTLY into the definition:
+- \`structural\` (hide/move/reorder/re-present an EXISTING element) → edit the \`definition.layout\`
+  tree directly (remove/reorder/relocate the node).
+- \`cosmetic\` (alignment, spacing, emphasis, sizing feel — no structural attribute exists) → attach
+  a concise \`visualStyle\` field to the MOST SPECIFIC node it applies to (a field/filter/action, an
+  intention, or a section). \`visualStyle\` is a short imperative string (or string[]) the render
+  reads from the definition, e.g. \`"visualStyle": "align the action buttons to the left"\`. Do NOT
+  use \`layoutRules\` for this — that bucket is regenerated from the design-system config.
+- Reference image: if the request carries an image URL, add a \`styleReference\` field (the URL) on
+  the SAME node that received the change, so the renderer can consult it.
+- Supersede contradictions: if the definition ALREADY carries a \`visualStyle\`/\`styleReference\`
+  that the new change contradicts, UPDATE/replace it — newer wins. Never stack contradictory hints.
 
-/** One consolidated adjustment as returned by the LLM (before audit fields are reattached). */
-export interface ConsolidatedAdjustmentIn {
-    id?: string;                 // present + known → a surviving prior adjustment (keep its id/at)
-    request: string;
-    kind: EditKind;
-    notes?: string;
-    imageUrl?: string;
-}
-
-/** Keep only well-formed items (non-empty request, valid kind); coerce id/notes/imageUrl. */
-export function normalizeConsolidatedAdjustments(raw: unknown): ConsolidatedAdjustmentIn[] {
-    const arr = Array.isArray(raw) ? raw : [];
-    const out: ConsolidatedAdjustmentIn[] = [];
-    for (const o of arr) {
-        const request = typeof (o as any)?.request === 'string' ? (o as any).request.trim() : '';
-        const kind = (o as any)?.kind;
-        if (!request || (kind !== 'structural' && kind !== 'cosmetic')) continue;
-        const id = typeof (o as any)?.id === 'string' && (o as any).id.trim() ? (o as any).id.trim() : undefined;
-        const notes = typeof (o as any)?.notes === 'string' && (o as any).notes.trim() ? (o as any).notes.trim() : undefined;
-        const imageUrl = typeof (o as any)?.imageUrl === 'string' && (o as any).imageUrl.trim() ? (o as any).imageUrl.trim() : undefined;
-        out.push({ id, request, kind, notes, imageUrl });
-    }
-    return out;
-}
-
-/**
- * Reconcile the LLM's consolidated list against the existing adjustments into the final
- * PageAdjustment[] to persist. Pure (takes `nowIso` — no Date.now inside):
- *   - id matches an existing adjustment → reuse its id + `at` (audit continuity), take the
- *     consolidated request/kind, and its notes/imageUrl (falling back to the prior values);
- *   - no id, or an id NOT in `existing` → mint the next id + `at=nowIso` (unknown ids never trusted);
- *   - superseded prior adjustments simply don't appear in `consolidated`, so they drop out.
- *
- * `newImageUrl` is the reference image of the CURRENT request: the LLM does not echo URLs
- * reliably, so we attach it DETERMINISTICALLY to any freshly-minted adjustment that has none.
- * Surviving adjustments keep their own recorded imageUrl.
- */
-export function reconcileAdjustments(
-    existing: PageAdjustment[],
-    consolidated: ConsolidatedAdjustmentIn[],
-    nowIso: string,
-    newImageUrl?: string,
-): PageAdjustment[] {
-    const byId = new Map(existing.map(a => [a.id, a]));
-    const out: PageAdjustment[] = [];
-    for (const item of consolidated) {
-        const kind: PageAdjustmentKind = item.kind === 'structural' ? 'structural' : 'cosmetic';
-        const prior = item.id ? byId.get(item.id) : undefined;
-        if (prior) {
-            out.push({
-                id: prior.id,
-                at: prior.at,
-                request: item.request,
-                kind,
-                notes: item.notes ?? prior.notes,
-                imageUrl: item.imageUrl ?? prior.imageUrl,
-            });
-        } else {
-            // Mint against existing + already-emitted so multiple new items get distinct ids.
-            // A new adjustment with no image of its own inherits the current request's reference image.
-            out.push({
-                id: nextAdjustmentId([...existing, ...out]),
-                at: nowIso,
-                request: item.request,
-                kind,
-                notes: item.notes || undefined,
-                imageUrl: item.imageUrl || newImageUrl || undefined,
-            });
-        }
-    }
-    return out;
-}
+Hard rules:
+- NEVER change identity fields (pageId, moduleName, genome, baseClassName, routePattern).
+- NEVER rename or invent element ids; only touch elements that already exist.
+- NEVER add data, states or actions that are not already in the definition.
+- Preserve the definition's schema exactly (same shape the render expects) apart from the folds above.`;
 
 /** Normalize/validate the gate's operations array. Keeps only well-formed structural/cosmetic ops. */
 export function normalizeOperations(raw: unknown): EditOperation[] {

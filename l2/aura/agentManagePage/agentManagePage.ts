@@ -138,7 +138,9 @@ async function afterPromptStep(
     // Two steps: edit the defs (LLM/deterministic), then render the page .ts from the edited defs
     // (delta-aware). Render waits on the edit — if the edit fails, render is blocked (onFailure:'fail').
     const editPlan = makePlanId('edit-defs', page);
-    const renderArgs = { module, page, layout, ds, device };
+    // The render receives the CURRENT edit too, so its delta preserves the rest of the code and
+    // applies only this change (the change is already folded into the definition by agentEditDefs).
+    const renderArgs = { module, page, layout, ds, device, request, operations, imageUrl: imageUrl || undefined };
     return [
       mkAgentStep(context, step, editPlan, `Edit defs: ${page}`,
         'agentEditDefs', editArgs as any, [], 'waiting_human_input', 'sequential'),
