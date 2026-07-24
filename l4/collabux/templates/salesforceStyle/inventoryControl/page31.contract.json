@@ -1,0 +1,58 @@
+{
+  "templateId": "salesforceStyle.inventoryControl",
+  "scope": "generic",
+  "uxClassification": {
+    "family": "enterpriseSaas",
+    "style": "salesforceStyle",
+    "template": "inventoryControl",
+    "layout": "listViewWithRecordPanel"
+  },
+  "requiredWorkspaceSignals": {
+    "kind": ["operation"],
+    "queryOutputKind": ["paginated"],
+    "recommendedEntityNames": ["StockItem", "InventoryItem", "Ingredient", "Supply", "Material"],
+    "recommendedOperations": ["browse", "create", "update", "delete", "adjust"]
+  },
+  "regions": [
+    {
+      "id": "objectHeader",
+      "purpose": "Identify the workspace and hold global primary actions.",
+      "contains": ["moduleEyebrow", "title", "purpose", "primaryCreateAction"]
+    },
+    {
+      "id": "summaryStrip",
+      "purpose": "Expose operational status at a glance.",
+      "contains": ["totalItemsMetric", "lowStockMetric", "optionalFreshnessMetric"]
+    },
+    {
+      "id": "listViewCard",
+      "purpose": "Primary working surface for browsing inventory records.",
+      "contains": ["toolbar", "dataGrid", "footerPagination"]
+    },
+    {
+      "id": "recordPanel",
+      "purpose": "Contextual details, edit, create, and adjustment forms for the selected record.",
+      "contains": ["recordSummary", "detailsForm", "adjustmentForm", "panelFooterActions"]
+    }
+  ],
+  "pagination": {
+    "placement": "gridFooter",
+    "forbiddenPlacement": "topToolbarRawInputs",
+    "labels": {
+      "pageSize": "por página",
+      "previous": "Anterior",
+      "next": "Próximo"
+    }
+  },
+  "actionPlacement": {
+    "create": "objectHeader.primaryAction",
+    "update": "recordPanel.footer.primaryAction",
+    "adjust": "recordPanel.sectionOrRowAction",
+    "delete": "recordPanel.dangerZoneOrRowMenu"
+  },
+  "validation": {
+    "fieldErrors": true,
+    "pageAlert": true,
+    "preserveUserInput": true
+  }
+}
