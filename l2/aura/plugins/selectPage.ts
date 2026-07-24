@@ -56,6 +56,14 @@ const message_en = {
     editApply: 'Apply edit',
     editing: 'Editing…',
     editDone: 'Edit applied',
+    editReview: 'Review change',
+    editPlanning: 'Analyzing…',
+    editPlanTitle: 'Confirm the change',
+    editPlanApply: 'Apply',
+    editPlanCancel: 'Cancel',
+    editImageRef: 'Reference image',
+    editWhatChanged: 'What changed',
+    editNoPlan: 'No actionable change was produced from the request.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -99,6 +107,14 @@ const messages: Record<string, MessageType> = {
         editApply: 'Aplicar edição',
         editing: 'Editando…',
         editDone: 'Edição aplicada',
+        editReview: 'Revisar mudança',
+        editPlanning: 'Analisando…',
+        editPlanTitle: 'Confirme a mudança',
+        editPlanApply: 'Aplicar',
+        editPlanCancel: 'Cancelar',
+        editImageRef: 'Imagem de referência',
+        editWhatChanged: 'O que mudou',
+        editNoPlan: 'Nenhuma mudança aplicável foi produzida a partir do pedido.',
     },
     es: {
         title: 'Páginas',
@@ -139,6 +155,14 @@ const messages: Record<string, MessageType> = {
         editApply: 'Aplicar edición',
         editing: 'Editando…',
         editDone: 'Edición aplicada',
+        editReview: 'Revisar cambio',
+        editPlanning: 'Analizando…',
+        editPlanTitle: 'Confirme el cambio',
+        editPlanApply: 'Aplicar',
+        editPlanCancel: 'Cancelar',
+        editImageRef: 'Imagen de referencia',
+        editWhatChanged: 'Qué cambió',
+        editNoPlan: 'No se produjo ningún cambio aplicable a partir de la solicitud.',
     },
 };
 /// **collab_i18n_end**
@@ -197,6 +221,11 @@ export class PluginSelectPage extends StateLitElement {
     // Edit-page drafts per page (non-reactive: typing must not trigger a re-render that wipes input).
     private _editDraft = new Map<string, string>();
     private _editImg = new Map<string, string>();
+    // Confirm-before-apply (TASK-102020-edit-2). Maps mutated with requestUpdate() (like the drafts):
+    private _editPlan = new Map<string, { operations: Array<{ kind: string; target: string; description: string }>; request: string; imageUrl?: string }>(); // gate plan awaiting confirmation
+    private _planning = new Set<string>();            // plan phase (gate) in flight
+    private _planError = new Map<string, string>();   // gate rejection / plan error
+    private _editNotes = new Map<string, string>();   // applied edit's one-line note (done state)
     private _unsubTasks: (() => void) | undefined;
 
     connectedCallback() {
@@ -524,8 +553,16 @@ export class PluginSelectPage extends StateLitElement {
     // requests (backend/new data/new state); accepted edits update the defs + pageAdjustments and
     // the page is re-materialized in delta mode.
     private _renderEditPanel(page: IPageEntry) {
+        const plan = this._editPlan.get(page.name);
+        // Confirmation panel — the gate's interpreted operations awaiting the user's approval.
+        if (plan) return this._renderEditConfirm(page, plan);
+
         const task = getTask(`edit:${page.name}`);
         const running = task?.status === 'running';
+        const planning = this._planning.has(page.name);
+        const busy = running || planning;
+        const note = this._editNotes.get(page.name);
+        const planErr = this._planError.get(page.name);
         const inputCls = 'w-full text-xs px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600';
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-2">
@@ -546,18 +583,26 @@ export class PluginSelectPage extends StateLitElement {
                 />
                 <button
                     class="self-start text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                    ?disabled=${running}
-                    @click=${() => this._onEditPage(page)}
-                >${running ? this.msg.editing : this.msg.editApply}</button>
-                ${task ? html`
+                    ?disabled=${busy}
+                    @click=${() => this._onPlanEdit(page)}
+                >${planning ? this.msg.editPlanning : running ? this.msg.editing : this.msg.editReview}</button>
+                ${running || task?.status === 'done' ? html`
                     <div class="flex items-center gap-2 text-xs">
-                        ${task.status === 'running' ? html`<span class="text-indigo-500 dark:text-indigo-400 italic">${this.msg.editing}</span>` : nothing}
-                        ${task.status === 'done' ? html`<span class="text-emerald-600 dark:text-emerald-400">✓ ${this.msg.editDone}</span>` : nothing}
+                        ${running ? html`<span class="text-indigo-500 dark:text-indigo-400 italic">${this.msg.editing}</span>` : nothing}
+                        ${task?.status === 'done' ? html`<span class="text-emerald-600 dark:text-emerald-400">✓ ${this.msg.editDone}</span>` : nothing}
                         ${this._taskInfoByName.get(page.name)?.task ? html`
                             <button class="ml-auto text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
                                 @click=${() => this._openTask(page.name)}>${this.msg.followTask}</button>
                         ` : nothing}
                     </div>
+                ` : nothing}
+                ${note ? html`
+                    <div class="text-xs text-emerald-700 dark:text-emerald-300 rounded bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1.5">
+                        <span class="font-semibold">${this.msg.editWhatChanged}:</span> ${note}
+                    </div>
+                ` : nothing}
+                ${planErr ? html`
+                    <div class="text-xs text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word rounded bg-red-50 dark:bg-red-900/20 px-2 py-1.5">${planErr}</div>
                 ` : nothing}
                 ${task?.status === 'error' && task.message ? html`
                     <div class="text-xs text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word rounded bg-red-50 dark:bg-red-900/20 px-2 py-1.5">${task.message}</div>
@@ -566,7 +611,40 @@ export class PluginSelectPage extends StateLitElement {
         `;
     }
 
-    private async _onEditPage(page: IPageEntry) {
+    // The gate's plan, shown for confirmation before anything is written (TASK-102020-edit-2).
+    private _renderEditConfirm(page: IPageEntry, plan: { operations: Array<{ kind: string; target: string; description: string }>; request: string; imageUrl?: string }) {
+        return html`
+            <div class="rounded-lg border border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-indigo-700 dark:text-indigo-300">${this.msg.editPlanTitle}</span>
+                <div class="flex flex-col gap-1">
+                    ${plan.operations.map(op => html`
+                        <div class="flex items-baseline gap-1.5 text-xs text-gray-700 dark:text-gray-200">
+                            <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${op.kind === 'structural'
+                                ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                                : 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400'}">${op.kind}</span>
+                            ${op.target ? html`<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 shrink-0">@${op.target}</span>` : nothing}
+                            <span class="leading-snug">${op.description}</span>
+                        </div>
+                    `)}
+                </div>
+                ${plan.imageUrl ? html`<span class="text-[10px] text-gray-400 dark:text-gray-500 truncate">${this.msg.editImageRef}: ${plan.imageUrl}</span>` : nothing}
+                <div class="flex items-center gap-2">
+                    <button
+                        class="text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 transition-colors cursor-pointer"
+                        @click=${() => this._onApplyPlan(page)}
+                    >${this.msg.editPlanApply}</button>
+                    <button
+                        class="text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600 transition-colors cursor-pointer"
+                        @click=${() => this._onCancelPlan(page)}
+                    >${this.msg.editPlanCancel}</button>
+                </div>
+            </div>
+        `;
+    }
+
+    // Phase A — PLAN: run only the gate (planOnly) and show the interpreted operations for the user
+    // to confirm before anything is written. A gate rejection surfaces inline (no defs touched).
+    private async _onPlanEdit(page: IPageEntry) {
         const module = this._modulePath;
         const layout = getAuraState().actualLayout;
         const ds = getAuraState().actualDesignSystem;
@@ -577,16 +655,52 @@ export class PluginSelectPage extends StateLitElement {
         const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
         const pageShort = page.file?.shortName ?? page.name;
 
+        if (this._planning.has(page.name) || getTask(`edit:${page.name}`)?.status === 'running') return;
+        this._planError.delete(page.name);
+        this._editNotes.delete(page.name);
+        this._planning.add(page.name);
+        this.requestUpdate();
+
+        const prompt = JSON.stringify({ module, page: pageShort, layout, ds, device, request, imageUrl: imageUrl || undefined, planOnly: true });
+        try {
+            const res = await this._executeAgent('agentManagePage', prompt, (data) => {
+                this._taskInfoByName.set(page.name, data);
+                this.requestUpdate();
+            });
+            if (res.failure) this._planError.set(page.name, res.failure);
+            else if (res.plan?.length) this._editPlan.set(page.name, { operations: res.plan as any, request, imageUrl: imageUrl || undefined });
+            else this._planError.set(page.name, this.msg.editNoPlan);
+        } catch (e: any) {
+            this._planError.set(page.name, e?.message ?? 'error');
+        } finally {
+            this._planning.delete(page.name);
+            this.requestUpdate();
+        }
+    }
+
+    // Phase B — APPLY: send the approved operations (skips the gate), edit the defs + re-render.
+    private async _onApplyPlan(page: IPageEntry) {
+        const plan = this._editPlan.get(page.name);
+        if (!plan) return;
+        const module = this._modulePath;
+        const layout = getAuraState().actualLayout;
+        const ds = getAuraState().actualDesignSystem;
+        if (!module || layout == null || ds == null) return;
+        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
+        const pageShort = page.file?.shortName ?? page.name;
+
         const taskKey = `edit:${page.name}`;
         if (getTask(taskKey)?.status === 'running') return;
 
-        const prompt = JSON.stringify({ module, page: pageShort, layout, ds, device, request, imageUrl: imageUrl || undefined });
+        const prompt = JSON.stringify({ module, page: pageShort, layout, ds, device, request: plan.request, imageUrl: plan.imageUrl, operations: plan.operations });
         const prevPause = getState('preview.pausePreview');
         setState('preview.pausePreview', true);
         setTask(taskKey, { status: 'running', startedAt: Date.now() });
+        this._editPlan.delete(page.name);   // leave the confirm panel; show progress on the input panel
+        this.requestUpdate();
         try {
-            // Gate + edit the defs (agentManagePage). A rejection (out-of-scope) or edit failure
-            // comes back as `failure` (the step's traceMsg) — surface it inline for the user.
+            // Edit applied AND the page .ts re-rendered by agentManagePage's own render step
+            // (agentRenderEdit, delta-aware). Preview repaints on the .ts write.
             const res = await this._executeAgent('agentManagePage', prompt, (data) => {
                 this._taskInfoByName.set(page.name, data);
                 this.requestUpdate();
@@ -595,9 +709,8 @@ export class PluginSelectPage extends StateLitElement {
                 setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: res.failure });
                 return;
             }
-            // Edit applied AND the page .ts re-rendered by agentManagePage's own render step
-            // (agentRenderEdit, delta-aware). No agentMaterializeL2. Preview repaints on the .ts write.
             setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
+            if (res.notes) this._editNotes.set(page.name, res.notes);
             this._editDraft.delete(page.name);
             this._editImg.delete(page.name);
         } catch (e: any) {
@@ -606,6 +719,13 @@ export class PluginSelectPage extends StateLitElement {
             setState('preview.pausePreview', prevPause ?? false);
             await this._loadPages();
         }
+    }
+
+    // Cancel the pending plan → back to the request input (draft preserved so it can be refined).
+    private _onCancelPlan(page: IPageEntry) {
+        this._editPlan.delete(page.name);
+        this._planError.delete(page.name);
+        this.requestUpdate();
     }
 
     // Page listed from the source (page11) but absent in the current layout/DS
@@ -761,7 +881,7 @@ export class PluginSelectPage extends StateLitElement {
         agentName: string,
         prompt: string,
         onTaskCreated?: (data: { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }) => void,
-    ): Promise<{ taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message; failure?: string }> {
+    ): Promise<{ taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message; failure?: string; plan?: any[]; notes?: string }> {
         // Thread host: selectPage lives in serviceGenome since the knob move (D4).
         const fullName = '_102020_/l2/serviceGenome';
         let threadPromise = this._threadCache.get(fullName);
@@ -789,6 +909,10 @@ export class PluginSelectPage extends StateLitElement {
         // last step failure (mkFail → update-status 'failed' + traceMsg, e.g. the gate's rejection
         // reason) or a stream error, so callers can surface it instead of silently swallowing it.
         let failure: string | undefined;
+        // PLAN phase surfaces the gate's operations via a completed step's `PLAN:<json>` traceMsg;
+        // the edit step surfaces its one-line note via `NOTES:<text>`. Both ride the same channel.
+        let plan: any[] | undefined;
+        let notes: string | undefined;
         for await (const event of executeBeforePromptStream(moduleAgent, context)) {
             if (event.type === 'task-created') {
                 taskId = event.taskId; task = event.task; message = event.message;
@@ -796,13 +920,18 @@ export class PluginSelectPage extends StateLitElement {
             } else if (event.type === 'hook-done') {
                 for (const intent of event.intents ?? []) {
                     const i = intent as any;
-                    if (i?.type === 'update-status' && i.status === 'failed' && i.traceMsg) failure = String(i.traceMsg);
+                    if (i?.type !== 'update-status') continue;
+                    if (i.status === 'failed' && i.traceMsg) failure = String(i.traceMsg);
+                    else if (i.status === 'completed' && typeof i.traceMsg === 'string') {
+                        if (i.traceMsg.startsWith('PLAN:')) { try { plan = JSON.parse(i.traceMsg.slice(5)); } catch { /* ignore */ } }
+                        else if (i.traceMsg.startsWith('NOTES:')) notes = i.traceMsg.slice(6);
+                    }
                 }
             } else if (event.type === 'error') {
                 failure = String(event.error);
             }
         }
-        return { taskId, task, message, failure };
+        return { taskId, task, message, failure, plan, notes };
     }
 
     private async _openTask(pageName: string) {

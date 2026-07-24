@@ -2,22 +2,21 @@
 
 // Orchestrator + GATE for pointed VISUAL page edits (TASK-102020-agent-manage-page).
 //
-// Entry: { module, page, layout, ds, device?, request, imageUrl? } (JSON, from the Studio UI).
+// Entry: { module, page, layout, ds, device?, request, imageUrl?, planOnly?, operations? } (JSON).
 //
-// beforePromptImplicit → the GATE (root LLM): receives the request + the page's current defs and
-//   its shared surface (states/actions/i18n/contracts) and decides whether the request is a purely
-//   VISUAL change realizable with the EXISTING surface. It returns either a rejection (out of scope
-//   → needs backend / new data / new state / another screen) or a typed list of edit operations.
-// afterPromptStep → rejection ⇒ mkFail (flow ends, defs untouched). Approval ⇒ create ONE child
-//   step (agentEditDefs) carrying the operations; that step applies them to the defs.
-//
-// The re-materialization (.defs.ts → .ts) is triggered by the CALLER afterwards (agentMaterializeL2,
-// exactly like selectPage._onRegenerate), which picks up the now-stale defs + the pageAdjustments.
+// TWO-PHASE (TASK-102020-edit-2 — confirm before applying):
+//   • PLAN  (planOnly:true, no operations) → runs ONLY the GATE (root LLM): rejection ⇒ mkFail
+//     (reason surfaced), approval ⇒ mkCompleted carrying `PLAN:<operations json>` back to the caller
+//     (the Studio shows them for confirmation). No defs edit / render.
+//   • APPLY (operations pre-approved) → SKIPS the expensive gate (a trivial classifier step vehicles
+//     it) and creates the child steps: agentEditDefs (folds the edit into the definition) → then
+//     agentRenderEdit (re-renders the .ts, delta-aware).
+// Legacy single-shot (neither planOnly nor operations) runs gate → edit → render in one go.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { pageRef, DEFAULT_DEVICE } from '/_102020_/l2/aura/helpers/dsMatch/derivePaths.js';
-import { mkAgentStep, mkFail, makePlanId, readRawSource } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
-import { normalizeOperations, type EditStepArgs } from '/_102020_/l2/aura/agentManagePage/editCore.js';
+import { mkAgentStep, mkFail, mkCompleted, makePlanId, readRawSource } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
+import { normalizeOperations, type EditOperation, type EditStepArgs } from '/_102020_/l2/aura/agentManagePage/editCore.js';
 
 interface EntryArgs {
   module: string;
@@ -27,6 +26,8 @@ interface EntryArgs {
   device?: string;
   request: string;
   imageUrl?: string;
+  planOnly?: boolean;              // PLAN phase: gate only, return operations (no edit/render)
+  operations?: EditOperation[];    // APPLY phase: pre-approved operations (skip the gate)
 }
 
 export function createAgent(): IAgentAsync {
@@ -59,13 +60,44 @@ async function beforePromptImplicit(
   }
   const device = entry.device || DEFAULT_DEVICE;
   const imageUrl = typeof entry.imageUrl === 'string' ? entry.imageUrl : '';
+  const planOnly = !!entry.planOnly;
+  const preApproved = Array.isArray(entry.operations) ? normalizeOperations(entry.operations) : [];
   const project = mls.actualProject || 0;
 
+  // Shared run params carried across the LLM step (longMemory is string-only).
+  const longTermMemory: Record<string, string> = {
+    module, page, layout: String(layout), ds: String(ds), device, request, imageUrl,
+    planOnly: String(planOnly),
+    ...(preApproved.length ? { operations: JSON.stringify(preApproved) } : {}),
+  };
+
+  // APPLY phase — operations already approved by the user: skip the expensive gate. A trivial
+  // classifier step is just the vehicle; afterPromptStep reads the operations from longMemory.
+  if (preApproved.length) {
+    console.info(`[agentManagePage] ▶ apply ${preApproved.length} pre-approved op(s) on ${module}/${page}`);
+    return [{
+      type: 'add-message-ai',
+      request: {
+        action: 'addMessageAI',
+        agentName: agent.agentName,
+        inputAI: [
+          { type: 'system', content: applyPrompt },
+          { type: 'human', content: JSON.stringify({ request, operations: preApproved.length }) },
+        ],
+        taskTitle: `Apply edit ${page}: ${request.slice(0, 60)}`,
+        threadId: context.message.threadId,
+        userMessage: context.message.content,
+        longTermMemory,
+      },
+    } as mls.msg.AgentIntentAddMessageAI];
+  }
+
+  // PLAN / legacy — run the GATE with the page's defs + shared surface.
   const defsRef = pageRef(project, module, layout, ds, page, '.defs.ts', device);
   const defsSource = await readRawSource(defsRef);
   const sharedSource = await readRawSource(sharedRef(project, module, page));
   if (!defsSource) throw new Error(`(${agent.agentName}) page defs not found: ${defsRef}`);
-  console.info(`[agentManagePage] ▶ gate request "${request}" on ${module}/${page} (${defsRef})${imageUrl ? ' [+image]' : ''}`);
+  console.info(`[agentManagePage] ▶ gate request "${request}" on ${module}/${page} (${defsRef})${imageUrl ? ' [+image]' : ''}${planOnly ? ' [planOnly]' : ''}`);
 
   const human = JSON.stringify({
     request,
@@ -88,10 +120,7 @@ async function beforePromptImplicit(
       taskTitle: `Edit ${page}: ${request.slice(0, 60)}`,
       threadId: context.message.threadId,
       userMessage: context.message.content,
-      longTermMemory: {
-        module, page, layout: String(layout), ds: String(ds), device, request,
-        imageUrl,
-      },
+      longTermMemory,
     },
   };
   return [addMessageAI];
@@ -106,22 +135,6 @@ async function afterPromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
 
   try {
-    const payload = step.interaction?.payload?.[0] as any;
-    if (!payload) throw new Error('missing gate payload');
-
-    // Rejection — out of scope. Surface the reason; the defs is never touched.
-    if (payload.type === 'result') {
-      return [mkFail(context, parentStep, step, hookSequential, String(payload.result || 'edit request rejected by the scope gate'))];
-    }
-    if (payload.type !== 'flexible' || !payload.result) {
-      return [mkFail(context, parentStep, step, hookSequential, 'gate returned an unexpected payload')];
-    }
-
-    const operations = normalizeOperations(payload.result.operations);
-    if (!operations.length) {
-      return [mkFail(context, parentStep, step, hookSequential, 'no actionable visual operations were produced from the request')];
-    }
-
     const lm = (context.task?.iaCompressed?.longMemory || {}) as Record<string, string>;
     const module = lm['module'];
     const page = lm['page'];
@@ -130,29 +143,78 @@ async function afterPromptStep(
     const device = lm['device'] || DEFAULT_DEVICE;
     const request = lm['request'] || '';
     const imageUrl = lm['imageUrl'] || '';
+    const planOnly = lm['planOnly'] === 'true';
     if (!module || !page || layout == null || ds == null) throw new Error('missing run params in longMemory');
 
-    const editArgs: EditStepArgs = { module, page, layout, ds, device, request, imageUrl: imageUrl || undefined, operations };
-    console.info(`[agentManagePage] ✓ gate approved — ${operations.length} operation(s): ${operations.map(o => o.kind).join(', ')}`);
+    // APPLY phase — operations were pre-approved (carried in longMemory); the trivial step's
+    // payload is irrelevant. Create the edit + render steps directly.
+    let preApproved: EditOperation[] = [];
+    try { preApproved = lm['operations'] ? normalizeOperations(JSON.parse(lm['operations'])) : []; } catch { preApproved = []; }
+    if (preApproved.length) {
+      console.info(`[agentManagePage] ✓ applying ${preApproved.length} pre-approved operation(s) on ${module}/${page}`);
+      return buildEditSteps(context, step, { module, page, layout, ds, device, request, imageUrl: imageUrl || undefined, operations: preApproved });
+    }
 
-    // Two steps: edit the defs (LLM/deterministic), then render the page .ts from the edited defs
-    // (delta-aware). Render waits on the edit — if the edit fails, render is blocked (onFailure:'fail').
-    const editPlan = makePlanId('edit-defs', page);
-    // The render receives the CURRENT edit too, so its delta preserves the rest of the code and
-    // applies only this change (the change is already folded into the definition by agentEditDefs).
-    const renderArgs = { module, page, layout, ds, device, request, operations, imageUrl: imageUrl || undefined };
-    return [
-      mkAgentStep(context, step, editPlan, `Edit defs: ${page}`,
-        'agentEditDefs', editArgs as any, [], 'waiting_human_input', 'sequential'),
-      mkAgentStep(context, step, makePlanId('render', page), `Render: ${page}`,
-        'agentRenderEdit', renderArgs as any, [editPlan], 'waiting_dependency', 'sequential'),
-    ];
+    // PLAN / legacy — read the gate's decision.
+    const payload = step.interaction?.payload?.[0] as any;
+    if (!payload) throw new Error('missing gate payload');
+    // Rejection — out of scope. Surface the reason; the defs is never touched.
+    if (payload.type === 'result') {
+      return [mkFail(context, parentStep, step, hookSequential, String(payload.result || 'edit request rejected by the scope gate'))];
+    }
+    if (payload.type !== 'flexible' || !payload.result) {
+      return [mkFail(context, parentStep, step, hookSequential, 'gate returned an unexpected payload')];
+    }
+    const operations = normalizeOperations(payload.result.operations);
+    if (!operations.length) {
+      return [mkFail(context, parentStep, step, hookSequential, 'no actionable visual operations were produced from the request')];
+    }
+
+    // PLAN phase — return the operations to the caller for confirmation; do NOT touch the defs.
+    if (planOnly) {
+      console.info(`[agentManagePage] ✓ plan ready — ${operations.length} operation(s): ${operations.map(o => o.kind).join(', ')}`);
+      return [mkCompleted(context, parentStep, step, hookSequential, `PLAN:${JSON.stringify(operations)}`)];
+    }
+
+    // Legacy single-shot — gate approved, apply immediately.
+    console.info(`[agentManagePage] ✓ gate approved — ${operations.length} operation(s): ${operations.map(o => o.kind).join(', ')}`);
+    return buildEditSteps(context, step, { module, page, layout, ds, device, request, imageUrl: imageUrl || undefined, operations });
   } catch (error) {
     const msg = `[${agent.agentName}] ${error instanceof Error ? error.message : String(error)}`;
     console.error('[agentManagePage] ✗', msg);
     return [mkFail(context, parentStep, step, hookSequential, msg)];
   }
 }
+
+/** Two steps: edit the defs (fold into definition), then render the page .ts (delta-aware). Render
+ *  waits on the edit — if the edit fails, render is blocked. */
+function buildEditSteps(
+  context: mls.msg.ExecutionContext,
+  step: mls.msg.AIAgentStep,
+  a: EditStepArgs,
+): mls.msg.AgentIntent[] {
+  const editPlan = makePlanId('edit-defs', a.page);
+  // The render receives the CURRENT edit too, so its delta preserves the rest of the code and
+  // applies only this change (already folded into the definition by agentEditDefs).
+  const renderArgs = { module: a.module, page: a.page, layout: a.layout, ds: a.ds, device: a.device, request: a.request, operations: a.operations, imageUrl: a.imageUrl };
+  return [
+    mkAgentStep(context, step, editPlan, `Edit defs: ${a.page}`,
+      'agentEditDefs', a as any, [], 'waiting_human_input', 'sequential'),
+    mkAgentStep(context, step, makePlanId('render', a.page), `Render: ${a.page}`,
+      'agentRenderEdit', renderArgs as any, [editPlan], 'waiting_dependency', 'sequential'),
+  ];
+}
+
+// APPLY phase — the operations were already approved by the user in the confirm panel, so there is
+// nothing to decide here. This trivial step just vehicles the flow; afterPromptStep reads the
+// operations from longMemory and creates the edit + render steps.
+const applyPrompt = `
+<!-- modelType: classifier -->
+
+The visual edit operations for this page were ALREADY approved by the user. Do not re-evaluate them.
+Return ONLY: {"type":"flexible","result":{"status":"ok"}}
+Return valid JSON only. No preamble, no markdown fences.
+`;
 
 const gatePrompt = `
 <!-- modelType: reasoning -->

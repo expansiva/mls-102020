@@ -139,7 +139,10 @@ async function afterPromptStep(
     if (!guard.ok) return [mkFail(context, parentStep, step, hookSequential, `edit rejected: ${guard.reason}`)];
 
     await applyEdit(a, guard.value, !!context.isTest);
-    return [mkCompleted(context, parentStep, step, hookSequential)];
+    // Surface the LLM's one-line note ("what I changed") back to the caller via the completed
+    // step's traceMsg — the Studio shows it in the done state (TASK-102020-edit-2).
+    const notes = typeof payload.result.notes === 'string' ? payload.result.notes.trim() : '';
+    return [mkCompleted(context, parentStep, step, hookSequential, notes ? `NOTES:${notes}` : undefined)];
   } catch (error) {
     const msg = `[agentEditDefs] ${error instanceof Error ? error.message : String(error)}`;
     console.error('✗', msg);
