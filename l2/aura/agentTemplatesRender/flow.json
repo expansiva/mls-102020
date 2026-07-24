@@ -1,0 +1,88 @@
+{
+  "flowId": "agentTemplatesRender",
+  "schemaVersion": "2026-07-24",
+  "description": "Geração de páginas guiada por TEMPLATES reutilizáveis (CollabUX v1). Recebe um styleModel (ex. salesforceStyle) + layout/ds (destino page{layout}{ds}). O root confirma e enumera l4/<module>/workspaces; o agentTplPlan classifica os workspaces e decide o conjunto de templates (dedup + reuso), gravando os guias .md em l4/templates/<style>/ do PROJETO CLIENTE; por página gera .defs (uiSpec ancorado nas regiões do template; template nas dependsFiles do pipeline) → critica (template + shared) → corrige → renderiza (.ts Tailwind+DS, SEM moléculas, compile-check + 1 reparo). O register é a barreira terminal que registra as variações no l5/config.json. NOTA: flow.json é documentação — a descoberta de agentes é por convenção (agent*.ts com createAgent()).",
+  "entry": "{ module, styleModel, layout, ds, device?, pages? }  (JSON, do Studio). genome = page{layout}{ds}.",
+  "escopo": "v1: render SEM moléculas (Tailwind + tokens do DS à mão). Templates são GUIAS .md reutilizáveis (sem hardcode de projeto). Cadeia inclui critique+fix.",
+  "source": {
+    "orchestrator": "_102020_/l2/aura/agentTemplatesRender/agentTemplatesRender.ts (confirma + enumera workspaces + cria o step plan)",
+    "planner": "_102020_/l2/aura/agentTemplatesRender/agentTplPlan.ts (classifica + fan-out da árvore)",
+    "core": "_102020_/l2/aura/agentTemplatesRender/tplCore.ts (args, paths, listagem stor, IO, prompt/tool primitives)",
+    "skills": "_102020_/l2/aura/agentTemplatesRender/skills/* (classify, writeTemplateGuide, genDefsFromTemplate, critiqueDefsVsTemplate, fixDefs, renderFromTemplate)"
+  },
+  "steps": [
+    {
+      "planId": "(root)",
+      "agentName": "agentTemplatesRender",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": [],
+      "initialStatus": "waiting_human_input",
+      "goal": "Root. beforePromptImplicit confirma o request (classifier mínimo) e deriva genome=page{layout}{ds}. afterPromptStep enumera l4/<module>/workspaces (filtro pages) e cria 1 step plan; sem workspaces → mkFail."
+    },
+    {
+      "planId": "plan",
+      "agentName": "agentTplPlan",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": [],
+      "initialStatus": "waiting_human_input",
+      "goal": "LLM 1x. Lê todos os workspaces + templates existentes; retorna {templates:[{templateId,status,layout,pages,rationale}]} (dedup + reuso). afterPromptStep grava trace/templatesRender/<genome>/plan.md e cria a árvore (tpl:* + cadeias por página + register) como IRMÃOS deste step (parentStep = root LLM step)."
+    },
+    {
+      "planId": "tpl:<templateId>",
+      "agentName": "agentTplWriteTemplate",
+      "type": "agent",
+      "executionMode": "parallel_static",
+      "dependsOn": [],
+      "goal": "LLM, 1x por template NOVO. Grava l4/templates/<styleModel>/<templateId>.md (guia reutilizável; sem hardcode de projeto). Templates 'existing' não geram este step.",
+      "perTemplate": true
+    },
+    {
+      "planId": "defs:<page>",
+      "agentName": "agentTplDefs",
+      "type": "agent",
+      "executionMode": "parallel_static",
+      "dependsOn": ["tpl:<templateId> (se o template é novo; senão [])"],
+      "goal": "LLM. workspace + TEMPLATE.md + shared + contracts → grava page{layout}{ds}/<page>.defs.ts (definition brief + uiSpec ancorado nas regiões do template + uxClassification + pipeline com o template nas dependsFiles).",
+      "perPage": true
+    },
+    {
+      "planId": "critique:<page>",
+      "agentName": "agentTplCritique",
+      "type": "agent",
+      "executionMode": "parallel_static",
+      "dependsOn": ["defs:<page>"],
+      "goal": "LLM. defs + TEMPLATE.md + shared → trace/templatesRender/<genome>/<page>.critique.md (aderência ao template + ancoragem no shared). Não altera o defs.",
+      "perPage": true
+    },
+    {
+      "planId": "fix:<page>",
+      "agentName": "agentTplFix",
+      "type": "agent",
+      "executionMode": "parallel_static",
+      "dependsOn": ["critique:<page>"],
+      "goal": "LLM. defs + critique.md → reescreve o mesmo <page>.defs.ts corrigido (in place).",
+      "perPage": true
+    },
+    {
+      "planId": "render:<page>",
+      "agentName": "agentTplRender",
+      "type": "agent",
+      "executionMode": "parallel_static",
+      "dependsOn": ["fix:<page>"],
+      "goal": "LLM. defs corrigido + TEMPLATE.md + shared + contracts + designSystem.ts → grava page{layout}{ds}/<page>.ts (Tailwind + tokens do DS, SEM moléculas; segue a page structure do template). Compile-check pós-save; 1 rodada de reparo (Opção B); ainda falhando → mkFail.",
+      "perPage": true
+    },
+    {
+      "planId": "register",
+      "agentName": "agentTplRegister",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": ["render:<page> (TODAS as páginas)"],
+      "goal": "Terminal, SEM LLM. Barrier em todos os render. Upsert das variações ({page}-{genome}) no l5/config.json (pageId/route/source/definition/componentTag/title). Best-effort: em falha de escrita, completa surfando as entradas para registro manual.",
+      "barrier": "dependsOn de TODOS os render"
+    }
+  ],
+  "notes": "NÃO depende de _102020_/l4 em runtime (conteúdo do collabux embutido nas skills). l4 do cliente: workspaces LIDOS de _<proj>_/l4/<module>/workspaces; templates ESCRITOS em _<proj>_/l4/templates/<style>. Execução no Studio (projeto 102051). Sem publish/smoke nesta task."
+}
