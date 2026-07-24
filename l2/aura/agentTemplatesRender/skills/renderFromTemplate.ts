@@ -42,14 +42,21 @@ come from the DESIGN SYSTEM tokens; layout/spacing from Tailwind. NO web compone
 - Dark mode is the DS variables' job (the shell swaps the theme) — do NOT add dark: on tokenized colors.
 
 ## Technical contract (non-negotiable)
-- MLS header of the outputPath (enhancement="_102020_/l2/enhancementAura"); import { html } from 'lit';
-  import { customElement } from 'lit/decorators.js'; base class + DTO types (import type) from the page's
-  shared (/_{project}_/l2/{module}/web/shared/{page}.js).
-- @customElement tag = the componentTag convention for {module}/web/{device}/{genome} + page shortName
-  (BREAK camelCase into kebab; e.g. reservationManagement → reservation-management). Class
-  {ModulePascal}{DevicePascal}{GenomePascal}{PagePascal}Page. ONLY a render() method.
-- Only the shared surface; selection via setter; read data by outputShape + contract fields. No new
-  @property/setState/molecules. Masks/validation/format live in render.
+Generate:
+- MLS header from target outputPath, with enhancement="_102020_/l2/enhancementAura".
+- import { html } from 'lit';
+- import { customElement } from 'lit/decorators.js';
+- import Definition.baseClassName exactly from /_{project}_/l2/{moduleName}/web/shared/{pageName}.js.
+  The extension is always .js, never .ts.
+- @customElement tag from outputPath using the same rule as /_102020_/l2/utils.ts convertFileToTag:
+  - Insert "-" before every uppercase letter that follows a lowercase letter or digit.
+  - Lowercase the result.
+  - Replace folder "/" with "--".
+  - Append "-{project}" to the page shortName.
+  - Example: folder cafeFlow/web/desktop/page11, page aiSalesSummary, project 102050 becomes cafe-flow--web--desktop--page11--ai-sales-summary-102050.
+  - Never collapse camelCase into lowercase-only names such as aisalessummary.
+- export class {ModulePascal}DesktopPage11{PagePascal}Page extends Definition.baseClassName
+- The only class method is render().
 
 ## Self-check (before finishing)
 - Every template region present, in order; flow rules honored; footer pagination.
