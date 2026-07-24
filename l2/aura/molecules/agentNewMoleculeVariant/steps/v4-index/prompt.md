@@ -48,6 +48,14 @@ Description: {{groupDescription}}
 - Number properties: property binding — `.minSelection=${1}`
 - Never use attribute binding for booleans or numbers in TypeScript Lit templates.
 
+## Slot support (respect each molecule's contract)
+Only pass slot tags a molecule actually supports — some slots are variant-specific.
+The usage skill's slot table is authoritative; when it marks a slot for one variant
+only (e.g. `Trigger` is `dropdown` only), do NOT add it to the other molecules of
+the group. An unsupported slot is not consumed by the molecule and renders as raw,
+unstyled text. For placeholder text on search/combobox inputs, use the `placeholder`
+attribute, never a `<Trigger>` slot.
+
 ## Molecules in this group (shortName without extension)
 Every one MUST appear as a showcase card AND as a reference-table column. The tag
 of each is `{{groupName_lower}}--<shortName>`.

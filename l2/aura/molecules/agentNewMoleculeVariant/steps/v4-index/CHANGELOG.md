@@ -15,3 +15,8 @@
   surfaces/text). Gate now requires the theme background on the container. The
   Visual-Signature extraction was lifted to a shared helper (vTheme.extractVisualSignature
   / loadThemeSignature), reused by v4 and v5.
+- 2026-07-24: prompt.md — added a "Slot support" rule after the model wrongly added a
+  `<Trigger>` slot (dropdown-only) to the ml-combobox showcase card, which rendered as
+  raw black text (combobox does not consume it; light DOM). The rule tells the model to
+  only pass slots a molecule supports per the usage table and to use the `placeholder`
+  attribute for search/combobox inputs. Prompt-only nudge (no gate/code change).
