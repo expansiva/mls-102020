@@ -21,6 +21,10 @@ export interface VariantContext {
     importPath: string;
     portal: boolean;
     mlClassInventory: string[];
+    // ml-* classes the origin render() positions with absolute/fixed. The theme
+    // .less must not set position/overflow on these (v3-less gate). Populated by
+    // v1-bootstrap; optional so older artifacts/tests default to none.
+    absoluteMlClasses?: string[];
   };
   theme: {
     project: number;         // == destination project

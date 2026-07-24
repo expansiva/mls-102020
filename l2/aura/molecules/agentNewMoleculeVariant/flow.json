@@ -16,7 +16,7 @@
     "destinationProject": "mls.actualProject (the studio's current project). The origin project must be reachable via mls.stor (declared dependency of the destination); bootstrap fails with orientation when it is not.",
     "theme": "Destination project's l2/skills/theme.ts, contract v1 (exports themeInfo{name,suffix,displayName,description,background{kind,css,note}}, skill with sections 'Visual Signature'/'Tokens'/'Canonical CSS Rules'/'Theme Nuances', examples[{pattern:'simple'|'portal',ref}]). Absent file => fail fast 'project has no theme'. Invalid contract => fail fast listing missing pieces.",
     "naming": "Derived in bootstrap, never by the LLM: variantTag = <originTag><themeInfo.suffix>; variantClass = <OriginClassName><PascalCase(themeInfo.name)>; files = l2/molecules/<group>/<origin-shortName><themeInfo.suffix>.{ts,defs.ts,less,html} in the destination project. Group folder name is copied from the origin path (lowercase).",
-    "contextArtifact": "l4/agentVariant/<variantShortName>/context.json in the destination project: originRef, originTag, originClassName, group, portal{has,portalTag}, mlClassInventory[], themeRef, variantTag, variantClassName, files{ts,defs,less,html}, examplesUsed, coldStart(boolean). Written by bootstrap; every later step reads it from disk (steps never re-derive).",
+    "contextArtifact": "l4/agentVariant/<variantShortName>/context.json in the destination project: originRef, originTag, originClassName, group, portal{has,portalTag}, mlClassInventory[], absoluteMlClasses[] (ml-* classes the origin render positions absolute/fixed — the v3-less position-override gate input), themeRef, variantTag, variantClassName, files{ts,defs,less,html}, examplesUsed, coldStart(boolean). Written by bootstrap; every later step reads it from disk (steps never re-derive).",
     "trace": "l4/agentVariant/<variantShortName>/trace-<planId>-<attempt>.json (LLM payloads, gate errors, timings).",
     "gates": "1 gate = 1 file = 1 .test.ts inside the step folder. Gate errors => 1 retry with errors in context (new dynamic planId '<planId>-retry1'); second failure => complete-with-trace, no done anchor, downstream stays locked, task shows a readable failure via the summary of the failing gate.",
     "doneAnchors": "Every step that passes its gate emits a completed result step with planId 'vN-done'. Downstream steps dependsOn ONLY done anchors (retries have dynamic planIds).",
@@ -55,7 +55,7 @@
       "type": "agent",
       "noLlm": true,
       "dependsOn": [],
-      "goal": "Deterministic admission + context assembly. Parse/validate input; load destination theme.ts and validate the contract; load origin .ts/.less (+ .defs when present) via mls.stor; detect portal (getPortalTemplate/portalWidgetName usage in the origin source); extract the ml-* class inventory from origin .ts+.less; derive variant names/paths; check destination collisions (variant files must not exist); resolve the theme example matching the pattern (portal|simple) and read it; write context.json.",
+      "goal": "Deterministic admission + context assembly. Parse/validate input; load destination theme.ts and validate the contract; load origin .ts/.less (+ .defs when present) via mls.stor; detect portal (getPortalTemplate/portalWidgetName usage in the origin source); extract the ml-* class inventory from origin .ts+.less and the ml-* classes the render positions absolute/fixed (absoluteMlClasses, for the v3-less position-override gate); derive variant names/paths; check destination collisions (variant files must not exist); resolve the theme example matching the pattern (portal|simple) and read it; write context.json.",
       "input": ["{ page, prompt } from the root plan"],
       "output": { "result": "context summary (one line)", "savedArtifact": ["l4/agentVariant/<shortName>/context.json"] },
       "gate": {
@@ -106,6 +106,7 @@
           "root scope selector(s) == variant tag (and div[data-widget=variantTag] present IFF portal; absent otherwise)",
           "every .ml-* class referenced exists in the origin inventory",
           "no layout redefinition of known Tailwind layout utilities (px-*, gap-*, inline-flex, animate-spin as selectors)",
+          "no position/overflow override on render-positioned elements (ctx.origin.absoluteMlClasses): the render places some ml-* elements absolute/fixed; setting position/overflow there drops them into normal flow (full width / clipped decorations — the discrete-slider tooltip bug). position/transform/display remain allowed on non-render-positioned elements (e.g. the brutal button's offset-shadow anchor). ::before/::after overlays are scrubbed before the check.",
           "at least one --ml-* token defined in the root scope",
           "an explicit motion stance present (transition property somewhere in the sheet)"
         ],

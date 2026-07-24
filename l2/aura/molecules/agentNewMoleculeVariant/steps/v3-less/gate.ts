@@ -61,6 +61,20 @@ export function runLessGate(less: string, ctx: VariantContext): VGateIssue[] {
     issues.push({ code: 'tailwind_layout', message: 'never redefine Tailwind LAYOUT utilities (px-*, py-*, gap-*, inline-flex) as selectors — layout is global and inherited' });
   }
 
+  // Render-owned positioning: the origin render() places some ml-* elements with
+  // absolute/fixed. A theme MAY use position/transform/display for its OWN effects
+  // (the brutal golden does), but it must NOT set position/overflow on an element
+  // the render already positioned — that drops it into normal flow (full width /
+  // clipped decorations: the discrete-slider tooltip bug). Pseudo-element overlays
+  // (::before/::after) may position themselves, so they are scrubbed first.
+  const repositioned = (ctx.origin.absoluteMlClasses ?? []).filter(cls => setsPositionOrOverflow(content, cls));
+  if (repositioned.length) {
+    issues.push({
+      code: 'position_override',
+      message: `these elements are positioned by the inherited render (absolute/fixed) — do NOT set position/overflow on them (it drops them into normal flow → full width / clipped arrows): ${repositioned.join(', ')}. Theme appearance only; ::before/::after overlays may position themselves; use 'box-shadow: inset ...' for specular edges.`,
+    });
+  }
+
   if (!/--ml-[\w-]+\s*:/.test(content)) {
     issues.push({ code: 'tokens', message: 'sheet must define the --ml-* tokens the molecule consumes (theme skill token table)' });
   }
@@ -69,4 +83,35 @@ export function runLessGate(less: string, ctx: VariantContext): VGateIssue[] {
   }
 
   return issues;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// True if the `.cls { ... }` block sets `position`/`overflow` at its own level
+// (nested ::before/::after overlays are scrubbed — they may position themselves).
+function setsPositionOrOverflow(less: string, cls: string): boolean {
+  const selector = new RegExp(`\\.${escapeRegExp(cls)}(?![\\w-])`, 'g');
+  let match: RegExpExecArray | null;
+  while ((match = selector.exec(less)) !== null) {
+    const braceIdx = less.indexOf('{', match.index + match[0].length);
+    if (braceIdx < 0) continue;
+    // `.cls` must be a SELECTOR (only selector chars before its `{`), not a value.
+    if (/[;}]/.test(less.slice(match.index + match[0].length, braceIdx))) continue;
+    const body = balancedBlockBody(less, braceIdx);
+    const scrubbed = body.replace(/&?:{1,2}(?:before|after)\b[^{]*\{[^{}]*\}/gi, '');
+    if (/(?:^|[;{])\s*(?:position|overflow|overflow-x|overflow-y)\s*:/i.test(scrubbed)) return true;
+  }
+  return false;
+}
+
+// Body between the brace at `open` and its matching close.
+function balancedBlockBody(source: string, open: number): string {
+  let depth = 0;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}' && --depth === 0) return source.slice(open + 1, i);
+  }
+  return source.slice(open + 1);
 }

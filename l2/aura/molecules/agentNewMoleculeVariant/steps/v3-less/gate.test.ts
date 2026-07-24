@@ -13,7 +13,7 @@ import { VariantContext } from '/_102020_/l2/aura/molecules/agentNewMoleculeVari
 const here = dirname(fileURLToPath(import.meta.url));
 const goldenLess = readFileSync(resolve(here, 'fixture/ml-button-standard-brutal.less'), 'utf8');
 
-function buildCtx(overrides?: { portal?: boolean; inventory?: string[] }): VariantContext {
+function buildCtx(overrides?: { portal?: boolean; inventory?: string[]; absoluteMlClasses?: string[] }): VariantContext {
   return {
     schemaVersion: 1,
     createdAt: '2026-07-23T00:00:00.000Z',
@@ -30,6 +30,9 @@ function buildCtx(overrides?: { portal?: boolean; inventory?: string[] }): Varia
       portal: overrides?.portal ?? false,
       // Golden inventory: by construction every class the golden sheet styles.
       mlClassInventory: overrides?.inventory ?? extractMlClassesFromLess(goldenLess),
+      // Golden default: NONE render-absolute (the brutal button root is inline-flex),
+      // so the golden's `.ml-button { position: relative }` is legitimately allowed.
+      absoluteMlClasses: overrides?.absoluteMlClasses ?? [],
     },
     theme: {
       project: 102054,
@@ -126,4 +129,35 @@ test('normalizeLessContent collapses two headers into one', () => {
   const doubled = '/// <mls fileReference="_102040_/x.less" enhancement="_blank" />\n' + goldenLess;
   const fixed = normalizeLessContent(doubled, ctx);
   assert.equal((fixed.match(/\/\/\/\s*<mls/g) || []).length, 1);
+});
+
+// --- render-owned positioning (discrete-slider bug) ---
+
+function scoped(ctx: VariantContext, inner: string): string {
+  return `/// <mls fileReference="_${ctx.theme.project}_/l2/molecules/${ctx.variant.group}/${ctx.variant.shortName}.less" enhancement="_102020_/l2/enhancementStyleAura" />\n${ctx.variant.tag} {\n  --ml-x: 1;\n${inner}\n}\n`;
+}
+
+test('position override on a render-absolute element is rejected', () => {
+  const ctx = buildCtx({ inventory: ['ml-slider-thumb'], absoluteMlClasses: ['ml-slider-thumb'] });
+  const less = scoped(ctx, '.ml-slider-thumb { position: relative; overflow: hidden; color: #fff; transition: none; }');
+  assert.ok(runLessGate(less, ctx).some(issue => issue.code === 'position_override'));
+});
+
+test('position/overflow INSIDE a ::before overlay is allowed (scrubbed)', () => {
+  const ctx = buildCtx({ inventory: ['ml-slider-thumb'], absoluteMlClasses: ['ml-slider-thumb'] });
+  const less = scoped(ctx, '.ml-slider-thumb { color: #fff; transition: none; &::before { content: ""; position: absolute; inset: 0; } }');
+  assert.ok(!runLessGate(less, ctx).some(issue => issue.code === 'position_override'));
+});
+
+test('position on an element the render does NOT position is allowed (golden-style)', () => {
+  const ctx = buildCtx({ inventory: ['ml-button'], absoluteMlClasses: [] });
+  const less = scoped(ctx, '.ml-button { position: relative; transform: translate(2px,2px); color: #fff; transition: none; }');
+  assert.ok(!runLessGate(less, ctx).some(issue => issue.code === 'position_override'));
+});
+
+test('`.ml-slider-thumb` in absolute set does not match the longer `.ml-slider-thumb-arrow`', () => {
+  const ctx = buildCtx({ inventory: ['ml-slider-thumb', 'ml-slider-thumb-arrow'], absoluteMlClasses: ['ml-slider-thumb', 'ml-slider-thumb-arrow'] });
+  // only the -arrow class carries position, on its own ::after (scrubbed) — nothing flagged
+  const less = scoped(ctx, '.ml-slider-thumb { color: #fff; transition: none; } .ml-slider-thumb-arrow { &::after { position: absolute; } }');
+  assert.ok(!runLessGate(less, ctx).some(issue => issue.code === 'position_override'));
 });
