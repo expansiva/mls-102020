@@ -68,12 +68,15 @@ export function mkAgentStep(
     };
 }
 
-/** Mark the current step completed (used by no-LLM steps and after-processing). */
+/** Mark the current step completed (used by no-LLM steps and after-processing). `traceMsg` is an
+ *  optional carrier the caller can read back from the stream's hook-done intents (e.g. the plan's
+ *  operations or the edit's notes surfaced to the Studio UI). */
 export function mkCompleted(
     context: mls.msg.ExecutionContext,
     parentStep: mls.msg.AIAgentStep,
     step: mls.msg.AIAgentStep,
     hookSequential: number,
+    traceMsg?: string,
 ): mls.msg.AgentIntentUpdateStatus {
     return {
         type: 'update-status',
@@ -84,6 +87,7 @@ export function mkCompleted(
         parentStepId: parentStep?.stepId ?? step.stepId,
         stepId: step.stepId,
         status: 'completed',
+        ...(traceMsg ? { traceMsg } : {}),
     };
 }
 
