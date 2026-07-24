@@ -15,7 +15,7 @@
 // register barrier's dependsOn resolves within one parent scope — the native "all pages finished" signal.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { mkAgentStep, mkFail, mkCompleted, makePlanId } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
+import { mkAgentStep, mkFail, makePlanId } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
 import {
   parseTplArgs, workspaceRef, listExistingTemplates, planTraceRef, readFile, saveTextArtifact, type TplArgs,
 } from '/_102020_/l2/aura/agentTemplatesRender/tplCore.js';
@@ -129,11 +129,16 @@ async function afterPromptStep(
       module: a.module, styleModel: a.styleModel, layout: a.layout, ds: a.ds, device: a.device, genome: a.genome, ...extra,
     });
 
+    // Steps are added as CHILDREN of THIS plan step (`step`), created DURING its own afterPromptStep —
+    // the only step whose children can be added right now. Parenting to an ancestor (parentStep/root)
+    // fails: "Parent step cannot be modified" (it already completed). Mirrors agentImplementGenome,
+    // which parents its planned tree to its own `step`. We do NOT self-complete: the framework closes
+    // this step once its children finish (it becomes the group parent, like the root confirm step).
     const intents: mls.msg.AgentIntentAddStep[] = [];
 
     // Write-template steps (NEW templates only).
     for (const t of templates.filter(t => t.status === 'new')) {
-      intents.push(mkAgentStep(context, parentStep, makePlanId('tpl', t.templateId), `Write template: ${t.templateId}`,
+      intents.push(mkAgentStep(context, step, makePlanId('tpl', t.templateId), `Write template: ${t.templateId}`,
         'agentTplWriteTemplate', baseArgs({ templateId: t.templateId, pages: t.pages }) as any,
         [], 'waiting_human_input', 'parallel_static'));
     }
@@ -146,28 +151,28 @@ async function afterPromptStep(
       const perPage = (group: string) => makePlanId(group, page);
       const pageArgs = (extra: Partial<TplArgs>) => baseArgs({ page, templateId: t.templateId, templateStatus: t.status, ...extra });
 
-      intents.push(mkAgentStep(context, parentStep, perPage('defs'), `Defs: ${page}`,
+      intents.push(mkAgentStep(context, step, perPage('defs'), `Defs: ${page}`,
         'agentTplDefs', pageArgs({}) as any, defsDeps,
         defsDeps.length ? 'waiting_dependency' : 'waiting_human_input', 'parallel_static'));
 
-      intents.push(mkAgentStep(context, parentStep, perPage('critique'), `Critique: ${page}`,
+      intents.push(mkAgentStep(context, step, perPage('critique'), `Critique: ${page}`,
         'agentTplCritique', pageArgs({}) as any, [perPage('defs')], 'waiting_dependency', 'parallel_static'));
 
-      intents.push(mkAgentStep(context, parentStep, perPage('fix'), `Fix defs: ${page}`,
+      intents.push(mkAgentStep(context, step, perPage('fix'), `Fix defs: ${page}`,
         'agentTplFix', pageArgs({}) as any, [perPage('critique')], 'waiting_dependency', 'parallel_static'));
 
-      intents.push(mkAgentStep(context, parentStep, perPage('render'), `Render: ${page}`,
+      intents.push(mkAgentStep(context, step, perPage('render'), `Render: ${page}`,
         'agentTplRender', pageArgs({}) as any, [perPage('fix')], 'waiting_dependency', 'parallel_static'));
       renderIds.push(perPage('render'));
     }
 
     // Terminal barrier — register once, after every render finished.
-    intents.push(mkAgentStep(context, parentStep, makePlanId('register'), 'Register variations',
+    intents.push(mkAgentStep(context, step, makePlanId('register'), 'Register variations',
       'agentTplRegister', baseArgs({ pages: runPages }) as any, renderIds, 'waiting_dependency', 'sequential'));
 
     const newCount = templates.filter(t => t.status === 'new').length;
     console.info(`[agentTplPlan] ✓ planned ${newCount} new template(s) + ${runPages.length} page chain(s) (defs→critique→fix→render) + 1 register`);
-    return [mkCompleted(context, parentStep, step, hookSequential, `templates=${templates.map(t => `${t.templateId}(${t.status})`).join(', ')}`), ...intents];
+    return intents;
   } catch (error) {
     return [mkFail(context, parentStep, step, hookSequential, `[agentTplPlan] ${error instanceof Error ? error.message : String(error)}`)];
   }

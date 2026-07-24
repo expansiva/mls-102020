@@ -135,9 +135,11 @@ async function afterPromptStep(
       if (attempt < 2) {
         console.info(`[agentTplRender] ${a.page}: ${errors.length} compile error(s) → repair round`);
         const repairArgs: TplArgs = { ...a, attempt: 2 };
+        // Repair is a CHILD of THIS render step (`step`), added during its own hook — parenting to an
+        // ancestor (parentStep) fails once it completed. No self-complete: the framework closes this
+        // step when the repair child finishes.
         return [
-          mkCompleted(context, parentStep, step, hookSequential),
-          mkAgentStep(context, parentStep, makePlanId('render-repair', a.page), `Render (repair): ${a.page}`,
+          mkAgentStep(context, step, makePlanId('render-repair', a.page), `Render (repair): ${a.page}`,
             'agentTplRender', repairArgs as any, [], 'waiting_human_input', 'sequential'),
         ];
       }
