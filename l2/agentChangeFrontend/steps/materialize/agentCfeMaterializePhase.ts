@@ -13,6 +13,8 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, saveMaterializeVerifySummary, saveMaterializeVerifyTrace, type MaterializeVerifyPassed } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import {
+  collectMissingImageRenderIssues,
+  collectPageTemplateHygieneIssues,
   parseDefs,
   testPathForOutputPath,
   validateGeneratedPageQuality,
@@ -240,6 +242,13 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   const testContent = await getContentByMlsPath(testPath);
   const typecheckErrors = testContent && testContent.trim() ? await compileMlsPathAndGetErrors(testPath) : [];
   errors.push(...typecheckErrors);
+  if (pipelineItem.type === 'l2_page') {
+    // bugpage21: an invented module-level helper rendered by NAME (`: nothing` + `function nothing()`)
+    // paints the function's own source code on screen. It COMPILES, so neither the typecheck above nor
+    // the defs-level UX rules below can see it. This is a pure .ts defect that rewriting the .ts fixes,
+    // so it belongs in `errors` (repairable, fed back to the page generator), not in `warnings`.
+    errors.push(...collectPageTemplateHygieneIssues(content));
+  }
   if (pipelineItem.type === 'l2_page' && defsContent) {
     if (!sharedDefs) {
       warnings.push(`shared defs missing for UX validation: ${sharedDefsPath || outputPath}`);
@@ -250,6 +259,12 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
       // own a future layout regeneration.
       warnings.push(...validateGeneratedPageQuality(parseDefs(defsContent).data, parseDefs(sharedDefs).data, content));
     }
+    // bugimage.md: a page binding an image-URL field must render an <img>. Deliberately a WARNING, not
+    // an error: unlike the template-hygiene defect above (unambiguously broken output), "should render an
+    // image" is a UX judgement where a false positive is plausible (an edit form with a logoUrl text
+    // input), and a false blocking error would burn the repair budget. The render skills now mandate the
+    // binding, so this reports non-compliance instead of policing it.
+    warnings.push(...collectMissingImageRenderIssues(defsContent, content));
   }
   return { item, outputPath, errors, warnings, typecheck: testContent && testContent.trim() ? (typecheckErrors.length ? 'failed' : 'passed') : 'not-applicable' };
 }

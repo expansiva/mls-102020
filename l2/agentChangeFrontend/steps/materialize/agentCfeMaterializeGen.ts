@@ -4,6 +4,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   applyHeader,
   buildCompileRepairHint,
+  collectPageTemplateHygieneIssues,
   buildContextSection,
   buildMaterializeTypecheckTest,
   buildHumanPrompt,
@@ -138,6 +139,9 @@ async function afterPromptStep(
     const compileErrors = [
       ...await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName),
       ...(typecheckPath ? await compileMlsPathAndGetErrors(typecheckPath) : []),
+      // bugpage21: catch the compiles-cleanly template defect in the TIGHTEST loop — right after this
+      // worker saved its own .ts — instead of waiting for the phase verify round.
+      ...(pipelineItem.type === 'l2_page' ? collectPageTemplateHygieneIssues(code) : []),
     ];
     const studioDiagnostics = consumeMaterializeStudioMessages();
     if (compileErrors.length > 0) {
@@ -202,6 +206,12 @@ async function computeRepairHint(pipelineItem: PipelineItem): Promise<string | u
   const testPath = testPathForOutputPath(outputPath);
   const testContent = await getContentByMlsPath(testPath);
   if (testContent && testContent.trim()) errors.push(...await compileMlsPathAndGetErrors(testPath));
+  // bugpage21: the phase verify also rejects TEMPLATE-HYGIENE defects (an invented module-level helper
+  // rendered by name, which paints the function source on screen). Those are NOT compiler errors, and a
+  // repair slot carries only {planId, defPath, attempt} — so recompute them from disk HERE too, or the
+  // model would be asked to regenerate without ever seeing the remedy and would burn the round blind.
+  // Safe to recompute: collectPageTemplateHygieneIssues is a pure function of the file text.
+  if (pipelineItem.type === 'l2_page') errors.push(...collectPageTemplateHygieneIssues(content));
   return errors.length ? buildCompileRepairHint(outputPath, errors.slice(0, 8)) : undefined;
 }
 

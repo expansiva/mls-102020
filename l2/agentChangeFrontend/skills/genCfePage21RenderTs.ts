@@ -43,7 +43,8 @@ need. Never import from the contracts module (it is not in context and the page 
 ## File shape (identical rules to page11)
 
 - MLS header from the target outputPath (web/desktop/page21/...), enhancement="_102020_/l2/enhancementAura".
-- import { html } from 'lit'; import { customElement } from 'lit/decorators.js';
+- import { html, nothing } from 'lit'; import { customElement } from 'lit/decorators.js';
+  (nothing is the Lit sentinel for an empty branch - see the EMPTY BRANCHES rule below.)
 - import Definition.baseClassName exactly from /_{project}_/l2/{moduleName}/web/shared/{pageName}.js (.js, never .ts).
 - @customElement tag from the outputPath using convertFileToTag (insert "-" before an uppercase that
   follows a lowercase/digit, lowercase, folder "/" -> "--", append "-{project}"). The folder is
@@ -54,6 +55,16 @@ need. Never import from the contracts module (it is not in context and the page 
 Do not add @property fields. Do not add helper methods that mutate state or call setState. Do not
 duplicate i18n objects. Local const helpers inside render() (pure formatting, grouping, filtering of
 already-loaded shared data) are allowed and expected for the richer patterns below.
+
+EMPTY BRANCHES (mandatory - a violation renders source code as text on the screen):
+In a template conditional, the FALSE branch must be the Lit sentinel "nothing", IMPORTED FROM 'lit'
+(plain null is also accepted). NEVER declare a function to stand in for the empty branch. A local
+"function nothing()" returning an empty html template, combined with a bare "nothing" in the template,
+passes the FUNCTION OBJECT to Lit, which paints the function's own source code into the DOM. This
+happened in production on a page21 workspace: the screen showed the literal text
+"function nothing() { return b of nothing }". The same applies to any invented name (nothingOrEmpty,
+nothingPlaceholder, emptyTpl, ...). A generated page therefore has NO module-level function declarations
+at all: the allowed const helpers live INSIDE render().
 
 ## Mapping layout to render (same binding rules as page11)
 
@@ -104,8 +115,19 @@ Prefer these patterns over the baseline stacked-cards-and-forms shape:
   imageSet/ctaLink/showcase): a marketing/landing composition — a hero (title/subtitle from msg keys) at
   the top, a showcase card grid fed by its query state (same reading rules as a list, rendered as cards),
   and a ctaLink bound to the shared navigation handler (or an <a href> to the layout-provided target
-  route, else a disabled button — never a fabricated route). imageSet/hero images are neutral placeholder
-  boxes (assets are out of scope this wave); never invent an image URL.
+  route, else a disabled button — never a fabricated route). An imageSet/hero image with NO data field
+  behind it is a neutral placeholder box; never INVENT an image URL.
+
+DATA-BOUND IMAGES (mandatory when the field exists): a DTO/row field that holds an image URL — its name
+ends in imageUrl / photoUrl / logoUrl / avatarUrl / pictureUrl / thumbnailUrl — MUST be rendered as a real
+image, never as the raw URL text and never as a placeholder box. This is NOT "inventing a URL": the value
+comes from the BFF. Bind it and keep an empty branch, e.g. for a row/card variable named item:
+    item.imageUrl ? html(img src=item.imageUrl alt=item.name loading lazy) : nothing
+Always set alt from the row's own name/title field (empty string when there is none) and loading="lazy"
+inside lists/grids. Give the img a bounded size with layout utilities (never a raw width attribute) so one
+asset cannot blow up the grid. Observed failure this rule fixes: listMenuItems and queryMenuItems both
+returned imageUrl for every row and NO generated page contained an img tag, so the seeded photos were
+invisible in the app (todo/runtime/bugimage.md).
 
 Respect pageObjective.antiPatterns: if it lists "separate transition form" or "status select", you
 must not emit them. Order organisms by pageObjective.informationHierarchy / primaryDecision.

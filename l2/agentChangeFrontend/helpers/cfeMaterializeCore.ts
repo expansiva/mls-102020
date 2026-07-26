@@ -98,6 +98,78 @@ export function validateGeneratedPageQuality(pageDefinition: unknown, sharedDefi
   return errors.map(error => pageId ? `${pageId}: ${error}` : error);
 }
 
+/**
+ * Deterministic TEMPLATE-HYGIENE gate for a generated page .ts (bugpage21).
+ *
+ * These defects compile cleanly and are invisible to BOTH the typecheck gate and
+ * validateGeneratedPageQuality, which is exactly why one reached the browser: page21/shiftWorkspace
+ * rendered the literal text `function nothing() { return b``; }` on screen.
+ *
+ * The failure mode: the render skills prescribe `import { html } from 'lit'` and never said what to put
+ * in an empty ternary branch, so the model invented a MODULE-LEVEL helper and then used it by NAME:
+ *
+ *   ${cond ? html`...` : nothing}          // <- passes the FUNCTION OBJECT to Lit
+ *   function nothing() { return html``; }  // <- invented at the bottom of the file
+ *
+ * Lit stringifies an unknown value, so the function's own source code is painted into the DOM. Observed
+ * twice in 102051 (`nothing`, and a `nothingOrEmpty(_s: string)` variant), so the check targets the
+ * general shape, not the name.
+ *
+ * The rule: a generated page has NO module-level function declaration. The skills allow exactly render()
+ * plus `const` helpers INSIDE render(); an empty branch uses the Lit sentinel `nothing` (imported from
+ * 'lit') or `null`. Verified against every page generated for 102051: only the two defective files
+ * declare a module-level function, so this never fires on healthy output.
+ *
+ * Pure (string in, findings out) so it is unit-tested without the Studio runtime.
+ */
+export function collectPageTemplateHygieneIssues(pageCode: string): string[] {
+  if (!pageCode) return [];
+  const issues: string[] = [];
+  const litImportsNothing = /import\s*\{[^}]*\bnothing\b[^}]*\}\s*from\s*['"]lit['"]/u.test(pageCode);
+
+  // A module-level `function` declaration (column 0) is never legitimate in a generated page.
+  for (const match of pageCode.matchAll(/^function\s+([A-Za-z_$][\w$]*)/gmu)) {
+    const name = match[1];
+    // Used by NAME (not called) inside a template expression -> Lit renders the function source itself.
+    const renderedAsValue = new RegExp(String.raw`[:?]\s*${name}\s*(?:\}|\))`, 'u').test(pageCode);
+    issues.push(renderedAsValue
+      ? `module-level helper '${name}' is passed to a template without being called, so Lit renders the function source as text: use the Lit sentinel \`nothing\` (add it to the 'lit' import) or \`null\` for the empty branch and delete the helper`
+      : `module-level function '${name}' is not allowed in a page: the only class method is render(), pure helpers go in a \`const\` INSIDE render(), and an empty branch uses the Lit sentinel \`nothing\` (imported from 'lit') or \`null\``);
+  }
+
+  // `nothing` used as a value while it is NOT the Lit sentinel and NOT a local helper (a plain
+  // Cannot-find-name would be a compile error; this catches the ambiguous middle where a helper was
+  // deleted but the import was never added).
+  if (!litImportsNothing && /[:?]\s*nothing\s*(?:\}|\))/u.test(pageCode) && !/^function\s+nothing\b/mu.test(pageCode)) {
+    issues.push("template uses `nothing` for an empty branch but it is not imported: add `nothing` to the import from 'lit'");
+  }
+  return issues;
+}
+
+/** Field names that carry an image URL from the BFF (bugimage.md). */
+// The prefix is OPTIONAL: match both a bare `imageUrl` and a qualified `menuItemPhotoUrl`.
+const IMAGE_FIELD = /\b[\w$]*(?:image|photo|logo|avatar|picture|thumbnail)Url\b/iu;
+
+/**
+ * A page whose defs bind an image-URL field must actually RENDER an image (bugimage.md).
+ *
+ * The seed generator produced real photos and listMenuItems/queryMenuItems returned `imageUrl` on every
+ * row, but not one generated page contained an `<img>` tag: the render skills said "assets are out of
+ * scope this wave, never invent an image URL", so the model treated a DATA field as a marketing asset and
+ * drew placeholder boxes. Nothing failed — the app just silently showed no pictures.
+ *
+ * Checked against the page DEFS (the layout/fieldCatalog naming the field), not the prose: only a page
+ * whose contract actually carries such a field is required to render one. `pageCode` mentioning the field
+ * without an `<img>` is the exact defect.
+ */
+export function collectMissingImageRenderIssues(defsSource: string, pageCode: string): string[] {
+  if (!defsSource || !pageCode) return [];
+  const match = IMAGE_FIELD.exec(defsSource);
+  if (!match) return [];                                   // no image field in this page's contract
+  if (/<img\b/u.test(pageCode)) return [];                 // renders an image -> fine
+  return [`page binds the image field '${match[0]}' but renders no <img> tag: bind it as an image (src=item.${match[0]} with an alt and a nothing/null empty branch) instead of a placeholder box or raw URL text`];
+}
+
 export const CONTRACTS_102029: readonly string[] = [
   '_102029_/l2/collabLitElement.ts',
   '_102029_/l2/bffClient.ts',
