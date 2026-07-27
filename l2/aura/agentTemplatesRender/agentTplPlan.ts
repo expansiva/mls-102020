@@ -4,7 +4,9 @@
 // and decides the reusable TEMPLATE set (dedup — many pages share one template; reuse an existing
 // l4/templates/<style>/<id>.md instead of rewriting it). Then fans out the whole tree:
 //
-//   tpl:<templateId>   agentTplWriteTemplate  (only for NEW templates)  parallel
+//   groups:<templateId> agentTplGroups        (useMolecules + NEW template)  parallel
+//   mols:<templateId>  agentTplSelectMolecules dependsOn [groups:<t>]
+//   tpl:<templateId>   agentTplWriteTemplate  (only for NEW templates)  dependsOn [mols:<t>] | []
 //   defs:<page>        agentTplDefs           dependsOn [tpl:<t>] (new) | [] (existing)
 //   critique:<page>    agentTplCritique       dependsOn [defs:<page>]
 //   fix:<page>         agentTplFix            dependsOn [critique:<page>]
@@ -126,7 +128,8 @@ async function afterPromptStep(
     }
 
     const baseArgs = (extra: Partial<TplArgs>): TplArgs => ({
-      module: a.module, styleModel: a.styleModel, layout: a.layout, ds: a.ds, device: a.device, genome: a.genome, ...extra,
+      module: a.module, styleModel: a.styleModel, layout: a.layout, ds: a.ds, device: a.device, genome: a.genome,
+      useMolecules: a.useMolecules, ...extra,
     });
 
     // Steps are added as CHILDREN of THIS plan step (`step`), created DURING its own afterPromptStep —
@@ -136,11 +139,25 @@ async function afterPromptStep(
     // this step once its children finish (it becomes the group parent, like the root confirm step).
     const intents: mls.msg.AgentIntentAddStep[] = [];
 
-    // Write-template steps (NEW templates only).
+    // Write-template steps (NEW templates only). With useMolecules, the guide is written only AFTER the
+    // molecule cascade (groups → molecules), so it can embed the chosen molecules as a section.
+    // Existing templates are used as they are — they never gain molecules retroactively.
     for (const t of templates.filter(t => t.status === 'new')) {
+      const tplArgs = baseArgs({ templateId: t.templateId, pages: t.pages });
+      let tplDeps: string[] = [];
+      if (a.useMolecules) {
+        intents.push(mkAgentStep(context, step, makePlanId('groups', t.templateId), `Molecule groups: ${t.templateId}`,
+          'agentTplGroups', tplArgs as any, [], 'waiting_human_input', 'parallel_static'));
+
+        intents.push(mkAgentStep(context, step, makePlanId('mols', t.templateId), `Select molecules: ${t.templateId}`,
+          'agentTplSelectMolecules', tplArgs as any, [makePlanId('groups', t.templateId)],
+          'waiting_dependency', 'parallel_static'));
+
+        tplDeps = [makePlanId('mols', t.templateId)];
+      }
       intents.push(mkAgentStep(context, step, makePlanId('tpl', t.templateId), `Write template: ${t.templateId}`,
-        'agentTplWriteTemplate', baseArgs({ templateId: t.templateId, pages: t.pages }) as any,
-        [], 'waiting_human_input', 'parallel_static'));
+        'agentTplWriteTemplate', tplArgs as any, tplDeps,
+        tplDeps.length ? 'waiting_dependency' : 'waiting_human_input', 'parallel_static'));
     }
 
     // Per-page chain: defs → critique → fix → render.
@@ -171,7 +188,8 @@ async function afterPromptStep(
       'agentTplRegister', baseArgs({ pages: runPages }) as any, renderIds, 'waiting_dependency', 'sequential'));
 
     const newCount = templates.filter(t => t.status === 'new').length;
-    console.info(`[agentTplPlan] ✓ planned ${newCount} new template(s) + ${runPages.length} page chain(s) (defs→critique→fix→render) + 1 register`);
+    const molecules = a.useMolecules ? ` (molecule cascade on ${newCount} new template(s))` : '';
+    console.info(`[agentTplPlan] ✓ planned ${newCount} new template(s) + ${runPages.length} page chain(s) (defs→critique→fix→render) + 1 register${molecules}`);
     return intents;
   } catch (error) {
     return [mkFail(context, parentStep, step, hookSequential, `[agentTplPlan] ${error instanceof Error ? error.message : String(error)}`)];

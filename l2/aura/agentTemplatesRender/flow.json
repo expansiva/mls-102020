@@ -1,14 +1,20 @@
 {
   "flowId": "agentTemplatesRender",
-  "schemaVersion": "2026-07-24",
-  "description": "Geração de páginas guiada por TEMPLATES reutilizáveis (CollabUX v1). Recebe um styleModel (ex. salesforceStyle) + layout/ds (destino page{layout}{ds}). O root confirma e enumera l4/<module>/workspaces; o agentTplPlan classifica os workspaces e decide o conjunto de templates (dedup + reuso), gravando os guias .md em l4/templates/<style>/ do PROJETO CLIENTE; por página gera .defs (uiSpec ancorado nas regiões do template; template nas dependsFiles do pipeline) → critica (template + shared) → corrige → renderiza (.ts Tailwind+DS, SEM moléculas, compile-check + 1 reparo). O register é a barreira terminal que registra as variações no l5/config.json. NOTA: flow.json é documentação — a descoberta de agentes é por convenção (agent*.ts com createAgent()).",
-  "entry": "{ module, styleModel, layout, ds, device?, pages? }  (JSON, do Studio). genome = page{layout}{ds}.",
-  "escopo": "v1: render SEM moléculas (Tailwind + tokens do DS à mão). Templates são GUIAS .md reutilizáveis (sem hardcode de projeto). Cadeia inclui critique+fix.",
+  "schemaVersion": "2026-07-27",
+  "description": "Geração de páginas guiada por TEMPLATES reutilizáveis (CollabUX v2). Recebe um styleModel (ex. salesforceStyle) + layout/ds (destino page{layout}{ds}) + useMolecules (opcional, default false). O root confirma e enumera l4/<module>/workspaces; o agentTplPlan classifica os workspaces e decide o conjunto de templates (dedup + reuso), gravando os guias .md em l4/templates/<style>/ do PROJETO CLIENTE; por página gera .defs (uiSpec ancorado nas regiões do template; template nas dependsFiles do pipeline) → critica (template + shared) → corrige → renderiza (.ts Tailwind+DS, compile-check + 1 reparo). Com useMolecules, cada template NOVO passa antes pela cascata groups → mols, e o guia ganha a seção '## Molecules' que liga o modo moléculas em defs/critique/render. O register é a barreira terminal que registra as variações no l5/config.json. NOTA: flow.json é documentação — a descoberta de agentes é por convenção (agent*.ts com createAgent()).",
+  "entry": "{ module, styleModel, layout, ds, device?, pages?, useMolecules? }  (JSON, do Studio). genome = page{layout}{ds}. useMolecules default false = comportamento v1.",
+  "escopo": "v2: moléculas do 102040 OPT-IN (useMolecules) e escolhidas no nível do TEMPLATE (reuso entre páginas). Sem a flag, render SEM moléculas (Tailwind + tokens do DS à mão), idêntico à v1. Templates são GUIAS .md reutilizáveis (sem hardcode de projeto). Cadeia inclui critique+fix.",
+  "moleculas": {
+    "ativacao": "useMolecules:true no entry E o template com a seção '## Molecules'. Template EXISTENTE sem a seção é usado como está (páginas à mão) — não há upgrade retroativo.",
+    "cascata": "groups (elementos→grupos de intenção, pelo índice _102020_/l2/aura/molecules/skills/index.ts) → mols (lê os ml-*.defs.ts SÓ dos grupos escolhidos em _102040_/l2/molecules/<grupolower>/ e escolhe a melhor ou NENHUMA) → writeTemplate embute o plano como seção do guia.",
+    "artefatos": "trace/templatesRender/<genome>/<templateId>.groups.md e <templateId>.molecules.md (steps são irmãos: comunicação por artefato determinístico).",
+    "consumo": "o render carrega os .defs das moléculas escolhidas + as skills usage dos grupos e gera import por efeito colateral + binding Lit (propriedade/CustomEvent) + tema via --ml-* mapeados do DS."
+  },
   "source": {
     "orchestrator": "_102020_/l2/aura/agentTemplatesRender/agentTemplatesRender.ts (confirma + enumera workspaces + cria o step plan)",
     "planner": "_102020_/l2/aura/agentTemplatesRender/agentTplPlan.ts (classifica + fan-out da árvore)",
-    "core": "_102020_/l2/aura/agentTemplatesRender/tplCore.ts (args, paths, listagem stor, IO, prompt/tool primitives)",
-    "skills": "_102020_/l2/aura/agentTemplatesRender/skills/* (classify, writeTemplateGuide, genDefsFromTemplate, critiqueDefsVsTemplate, fixDefs, renderFromTemplate)"
+    "core": "_102020_/l2/aura/agentTemplatesRender/tplCore.ts (args, paths, listagem stor, IO, prompt/tool primitives, helpers de moléculas)",
+    "skills": "_102020_/l2/aura/agentTemplatesRender/skills/* (classify, writeTemplateGuide, genDefsFromTemplate, critiqueDefsVsTemplate, fixDefs, renderFromTemplate, selectGroups, selectMoleculesForTemplate, moleculesAddenda)"
   },
   "steps": [
     {
@@ -27,15 +33,35 @@
       "executionMode": "sequential",
       "dependsOn": [],
       "initialStatus": "waiting_human_input",
-      "goal": "LLM 1x. Lê todos os workspaces + templates existentes; retorna {templates:[{templateId,status,layout,pages,rationale}]} (dedup + reuso). afterPromptStep grava trace/templatesRender/<genome>/plan.md e cria a árvore (tpl:* + cadeias por página + register) como IRMÃOS deste step (parentStep = root LLM step)."
+      "goal": "LLM 1x. Lê todos os workspaces + templates existentes; retorna {templates:[{templateId,status,layout,pages,rationale}]} (dedup + reuso). afterPromptStep grava trace/templatesRender/<genome>/plan.md e cria a árvore (groups/mols quando useMolecules + tpl:* + cadeias por página + register) como IRMÃOS deste step (parentStep = root LLM step)."
+    },
+    {
+      "planId": "groups:<templateId>",
+      "agentName": "agentTplGroups",
+      "type": "agent",
+      "executionMode": "parallel_static",
+      "dependsOn": [],
+      "condition": "useMolecules:true E template NOVO",
+      "goal": "LLM, 1x por template novo. Cascata 1/2: dos workspaces do template → elementos de UI por INTENÇÃO → grupos do índice de moléculas (só nomes+descrições no prompt). Grava trace/templatesRender/<genome>/<templateId>.groups.md.",
+      "perTemplate": true
+    },
+    {
+      "planId": "mols:<templateId>",
+      "agentName": "agentTplSelectMolecules",
+      "type": "agent",
+      "executionMode": "parallel_static",
+      "dependsOn": ["groups:<templateId>"],
+      "condition": "useMolecules:true E template NOVO",
+      "goal": "LLM, 1x por template novo. Cascata 2/2: lê os ml-*.defs.ts (TagName+layoutConfig+Objective) SÓ dos grupos escolhidos e elege a melhor molécula por elemento — ou NENHUMA. Grava o plano em trace/templatesRender/<genome>/<templateId>.molecules.md. Sem grupo escolhido → plano vazio sem LLM; nenhuma molécula legível no stor → mkFail (102040 ausente).",
+      "perTemplate": true
     },
     {
       "planId": "tpl:<templateId>",
       "agentName": "agentTplWriteTemplate",
       "type": "agent",
       "executionMode": "parallel_static",
-      "dependsOn": [],
-      "goal": "LLM, 1x por template NOVO. Grava l4/templates/<styleModel>/<templateId>.md (guia reutilizável; sem hardcode de projeto). Templates 'existing' não geram este step.",
+      "dependsOn": ["mols:<templateId> (se useMolecules; senão [])"],
+      "goal": "LLM, 1x por template NOVO. Grava l4/templates/<styleModel>/<templateId>.md (guia reutilizável; sem hardcode de projeto). Com um plano de moléculas não-vazio, embute a seção '## Molecules' (região → grupo → TagName → 'à mão'). Templates 'existing' não geram este step.",
       "perTemplate": true
     },
     {
@@ -44,7 +70,7 @@
       "type": "agent",
       "executionMode": "parallel_static",
       "dependsOn": ["tpl:<templateId> (se o template é novo; senão [])"],
-      "goal": "LLM. workspace + TEMPLATE.md + shared + contracts → grava page{layout}{ds}/<page>.defs.ts (definition brief + uiSpec ancorado nas regiões do template + uxClassification + pipeline com o template nas dependsFiles).",
+      "goal": "LLM. workspace + TEMPLATE.md + shared + contracts → grava page{layout}{ds}/<page>.defs.ts (definition brief + uiSpec ancorado nas regiões do template + uxClassification + pipeline com o template nas dependsFiles). Se o template tem '## Molecules': addendum — cada entrada do uiSpec ganha molecule{group,tag} + binding REAL do shared (sem binding real → à mão).",
       "perPage": true
     },
     {
@@ -53,7 +79,7 @@
       "type": "agent",
       "executionMode": "parallel_static",
       "dependsOn": ["defs:<page>"],
-      "goal": "LLM. defs + TEMPLATE.md + shared → trace/templatesRender/<genome>/<page>.critique.md (aderência ao template + ancoragem no shared). Não altera o defs.",
+      "goal": "LLM. defs + TEMPLATE.md + shared → trace/templatesRender/<genome>/<page>.critique.md (aderência ao template + ancoragem no shared; com '## Molecules', 3º critério de aderência às moléculas). Não altera o defs.",
       "perPage": true
     },
     {
@@ -71,7 +97,7 @@
       "type": "agent",
       "executionMode": "parallel_static",
       "dependsOn": ["fix:<page>"],
-      "goal": "LLM. defs corrigido + TEMPLATE.md + shared + contracts + designSystem.ts → grava page{layout}{ds}/<page>.ts (Tailwind + tokens do DS, SEM moléculas; segue a page structure do template). Compile-check pós-save; 1 rodada de reparo (Opção B); ainda falhando → mkFail.",
+      "goal": "LLM. defs corrigido + TEMPLATE.md + shared + contracts + designSystem.ts → grava page{layout}{ds}/<page>.ts (Tailwind + tokens do DS; segue a page structure do template). Com '## Molecules', carrega também os .defs das moléculas escolhidas + as skills usage dos grupos e gera import por efeito colateral + binding Lit + tema --ml-*; o que o plano marca 'à mão' continua Tailwind+DS. Compile-check pós-save; 1 rodada de reparo (Opção B); ainda falhando → mkFail.",
       "perPage": true
     },
     {
@@ -84,5 +110,5 @@
       "barrier": "dependsOn de TODOS os render"
     }
   ],
-  "notes": "NÃO depende de _102020_/l4 em runtime (conteúdo do collabux embutido nas skills). l4 do cliente: workspaces LIDOS de _<proj>_/l4/<module>/workspaces; templates ESCRITOS em _<proj>_/l4/templates/<style>. Execução no Studio (projeto 102051). Sem publish/smoke nesta task."
+  "notes": "NÃO depende de _102020_/l4 em runtime (conteúdo do collabux embutido nas skills). l4 do cliente: workspaces LIDOS de _<proj>_/l4/<module>/workspaces; templates ESCRITOS em _<proj>_/l4/templates/<style>. Com useMolecules o projeto 102040 (biblioteca de moléculas) precisa estar no stor — os .defs são LIDOS de lá e as páginas importam /_102040_/l2/molecules/...js em runtime (masters não vão no publish do cliente: sync manual na VM). Execução no Studio (projeto 102051). Sem publish/smoke nesta task."
 }
