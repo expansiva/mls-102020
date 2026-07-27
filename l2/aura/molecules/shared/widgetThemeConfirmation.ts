@@ -1,9 +1,12 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/shared/widgetThemeConfirmation.ts" enhancement="_102027_/l2/enhancementLit"/>
 
-// Theme Confirmation widget (Checkpoint 2): shows the generated theme's layout
-// signature + palette swatches over its background, and emits `clarification-finish`
-// with { value: { confirmed }, action: 'continue' | 'cancel' }. Confirm => the agent
-// writes theme.ts + theme.html; Exit => discard. No Shadow DOM (styles in the .less).
+// Theme Confirmation widget: shows a theme's layout signature + palette swatches over
+// its background. Two uses, decided by the caller:
+//   - as a CHECKPOINT: emits `clarification-finish` with
+//     { value: { confirmed }, action: 'continue' | 'cancel' } so an agent can gate a write;
+//   - as a READ-ONLY VIEW (`readonly`): both buttons disabled, nothing emitted — how
+//     agentNewTheme's t3-generate shows what it just created (openStepView).
+// No Shadow DOM (styles in the .less).
 
 import { html, TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';

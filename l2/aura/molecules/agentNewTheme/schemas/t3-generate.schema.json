@@ -17,7 +17,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["name", "displayName", "background", "palette", "signature"],
-      "description": "Structured summary that drives Checkpoint 2 (swatches) and the deterministic theme.html",
+      "description": "Structured summary that drives the deterministic theme.html and the read-only step view (swatches + signature)",
       "properties": {
         "name": { "type": "string" },
         "displayName": { "type": "string" },

@@ -101,7 +101,7 @@ export function runThemeGate(inputs: NtThemeGateInputs): NtGateIssue[] {
   return issues;
 }
 
-// The structured summary drives Checkpoint 2 and theme.html, so it must describe the
+// The structured summary drives theme.html and the step view, so it must describe the
 // theme that was actually generated — not a second, divergent story.
 function checkSummary(summary: NtThemeSummary | null, info: Record<string, unknown>, skill: string): NtGateIssue[] {
   const issues: NtGateIssue[] = [];

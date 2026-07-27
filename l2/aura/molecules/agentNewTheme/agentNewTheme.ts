@@ -6,7 +6,8 @@
 // spending any LLM call. The root's own message call IS the cheap t1-plan step
 // (steps/t1-plan/prompt.md): language + title + known fields + the missing-field
 // questions. afterPromptStep gates that plan, persists l4/agentNewTheme/plan.json and
-// plants the remaining steps — t2-clarify only when there are questions to ask.
+// plants the remaining steps — t2-clarify (the single human checkpoint) only when there
+// are questions to ask, then t3-generate, which generates AND writes the theme.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
@@ -30,9 +31,9 @@ const AGENT_NAME = 'agentNewTheme';
 
 // Step titles are UI text, so they follow the detected userLanguage. Only the two
 // languages the Studio actually runs in are tabled; anything else falls back to English.
-const STEP_TITLES: Record<string, { 't2-clarify': string; 't3-generate': string; 't4-confirm': string }> = {
-  pt: { 't2-clarify': 'Completar o estilo', 't3-generate': 'Gerar o tema', 't4-confirm': 'Confirmar e criar' },
-  en: { 't2-clarify': 'Complete the style', 't3-generate': 'Generate the theme', 't4-confirm': 'Confirm and create' },
+const STEP_TITLES: Record<string, { 't2-clarify': string; 't3-generate': string }> = {
+  pt: { 't2-clarify': 'Completar o estilo', 't3-generate': 'Gerar e criar o tema' },
+  en: { 't2-clarify': 'Complete the style', 't3-generate': 'Generate and create the theme' },
 };
 
 interface IDataPrompt {
@@ -44,7 +45,7 @@ export function createAgent(): IAgentAsync {
     agentName: AGENT_NAME,
     agentProject: 102020,
     agentFolder: NT_AGENT_FOLDER,
-    agentDescription: 'Creates this project\'s theme (l2/skills/theme.ts, contract v1) from a description, with 2 checkpoints',
+    agentDescription: 'Creates this project\'s theme (l2/skills/theme.ts, contract v1) from a description, with one clarification checkpoint',
     visibility: 'public',
     beforePromptImplicit,
     afterPromptStep,
@@ -71,7 +72,7 @@ async function beforePromptImplicit(
       .replace(`@@${agent.agentName}`, '').trim();
     const parsed = mls.common.safeParseArgs(pp) as IDataPrompt;
     // The mention itself is not a description — a bare '@@agentNewTheme' means
-    // "ask me everything" (all fields fall to Checkpoint 1).
+    // "ask me everything" (all fields fall to the checkpoint).
     const raw = (parsed?.prompt || pp || '').trim();
     prompt = raw.startsWith('@@') ? '' : raw;
   }
@@ -115,7 +116,7 @@ async function afterPromptStep(
     const hasQuestions = plan.questions.length > 0;
     const intents: mls.msg.AgentIntent[] = [];
 
-    // Fast path: with nothing missing, Checkpoint 1 is not planted at all and
+    // Fast path: with nothing missing, the checkpoint is not planted at all and
     // t3-generate becomes the first step to run.
     if (hasQuestions) {
       intents.push(ntAgentStepIntent(context, step, {
@@ -126,6 +127,8 @@ async function afterPromptStep(
         status: 'waiting_human_input',
       }));
     }
+    // t3 is the last step: it generates AND writes (adjust A1 dropped the confirmation
+    // checkpoint), so its 't3-done' anchor is terminal.
     intents.push(ntAgentStepIntent(context, step, {
       agentName: 'agentNtGenerate',
       stepTitle: titles['t3-generate'],
@@ -133,14 +136,6 @@ async function afterPromptStep(
       dependsOn: hasQuestions ? [ntDoneAnchor('t2-clarify')] : [],
       prompt: { planId: 't3-generate' },
       status: hasQuestions ? 'waiting_dependency' : 'waiting_human_input',
-    }));
-    intents.push(ntAgentStepIntent(context, step, {
-      agentName: 'agentNtConfirm',
-      stepTitle: titles['t4-confirm'],
-      planId: 't4-confirm',
-      dependsOn: [ntDoneAnchor('t3-generate')],
-      prompt: { planId: 't4-confirm' },
-      status: 'waiting_dependency',
     }));
     return intents;
   } catch (error) {

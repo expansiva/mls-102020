@@ -16,7 +16,7 @@ import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 export type { VToolOutput, VLlmTool } from '/_102020_/l2/aura/molecules/shared/llmTool.js';
 export { createVToolSchema, buildVToolInstruction, extractVToolOutput } from '/_102020_/l2/aura/molecules/shared/llmTool.js';
 
-export const NT_PLAN_IDS = ['t1-plan', 't2-clarify', 't3-generate', 't4-confirm'] as const;
+export const NT_PLAN_IDS = ['t1-plan', 't2-clarify', 't3-generate'] as const;
 export type NtPlanId = typeof NT_PLAN_IDS[number];
 
 export function ntDoneAnchor(planId: NtPlanId): string {

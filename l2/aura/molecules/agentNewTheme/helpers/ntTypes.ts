@@ -1,8 +1,8 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/agentNewTheme/helpers/ntTypes.ts" enhancement="_blank"/>
 
 // Types for agentNewTheme: the canonical theme-field model collected/derived at
-// Checkpoint 1, the t1-plan output, the t3 generation output, and the structured
-// summary that feeds Checkpoint 2 + theme.html. See flow.json / spec.md.
+// the checkpoint, the t1-plan output, the t3 generation output, and the structured
+// summary that feeds theme.html + the read-only step view. See flow.json / spec.md.
 
 export type NtBackgroundKind = 'light' | 'dark' | 'image';
 export type NtCorners = 'sharp' | 'rounded' | 'pill';
@@ -46,10 +46,10 @@ export interface NtPlan {
   userLanguage: string;
   title: string;
   known: NtThemeFields;       // what the initial prompt already determined
-  questions: NtQuestion[];    // only the MISSING fields; empty => skip Checkpoint 1
+  questions: NtQuestion[];    // only the MISSING fields; empty => skip the checkpoint
 }
 
-// Checkpoint 1 answers: field -> chosen value(s) + optional free-text notes.
+// Checkpoint answers: field -> chosen value(s) + optional free-text notes.
 export interface NtAnswer {
   field: string;
   value?: string;
@@ -57,7 +57,7 @@ export interface NtAnswer {
   notes?: string;
 }
 
-// Structured summary produced by t3 — drives Checkpoint 2 (swatches) AND theme.html.
+// Structured summary produced by t3 — drives theme.html AND the read-only step view.
 export interface NtPaletteSwatch {
   token: string;   // e.g. '--ml-primary'
   label: string;   // e.g. 'Primary'

@@ -12,7 +12,7 @@
     "known": { "$ref": "#/$defs/themeFields" },
     "questions": {
       "type": "array",
-      "description": "ONLY the canonical fields still missing; empty => skip Checkpoint 1",
+      "description": "ONLY the canonical fields still missing; empty => skip the checkpoint",
       "items": { "$ref": "#/$defs/question" }
     }
   },

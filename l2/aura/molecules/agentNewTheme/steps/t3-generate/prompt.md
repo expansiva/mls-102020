@@ -73,6 +73,6 @@ Also return `summary` — it drives the confirmation screen the human sees and t
 ## Inputs
 
 The human message carries the user's original description, the fields already decided
-(`known`), and the Checkpoint 1 answers when the user was asked. Honor all of them:
+(`known`), and the checkpoint answers when the user was asked. Honor all of them:
 `known` and the answers are DECISIONS, not suggestions. Fill any remaining gap with a
 coherent choice for the style described, and mention it in the `description`.

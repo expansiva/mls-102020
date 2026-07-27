@@ -17,7 +17,7 @@ export interface NtGateIssue {
   message: string;
 }
 
-// The canonical fields Checkpoint 1 may ask about. surface / on-surface text are DERIVED
+// The canonical fields the checkpoint may ask about. surface / on-surface text are DERIVED
 // from background.kind and are never asked (flow.json conventions.themeFields).
 export const NT_QUESTION_FIELDS = [
   'name',
@@ -112,7 +112,7 @@ export function runPlanGate(plan: NtPlan): NtGateIssue[] {
   }
 
   // A field the prompt already pinned down must not be asked again (the whole point of
-  // Checkpoint 1 is asking ONLY for the gaps).
+  // the checkpoint is asking ONLY for the gaps).
   for (const field of seen) {
     if (knownHasField(plan.known, field)) {
       issues.push({ code: 'question_known', message: `field '${field}' is already known from the prompt — do not ask it` });

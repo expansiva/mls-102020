@@ -1,7 +1,8 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/agentNewTheme/steps/t2-clarify/agentNtClarify.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// t2-clarify — CHECKPOINT 1: collect the theme fields the initial prompt did not pin
-// down. Supported checkpoint pattern (skills/collab_messages.md "Rendering a checkpoint"):
+// t2-clarify — THE checkpoint: collect the theme fields the initial prompt did not pin
+// down. Since adjust A1 it is the pipeline's only human stop, and it runs BEFORE
+// generation. Supported checkpoint pattern (skills/collab_messages.md "Rendering a checkpoint"):
 // beforePromptStep emits a clarification into THIS step's own payload (cheap call),
 // afterPromptStep returns [] so the payload (and therefore the widget) stays mounted,
 // beforeClarificationStep mounts the shared Decision Clarification widget, and the human
@@ -53,7 +54,7 @@ export function createAgent(): IAgentAsync {
     agentName: AGENT_NAME,
     agentProject: 102020,
     agentFolder: `${NT_AGENT_FOLDER}/steps/t2-clarify`,
-    agentDescription: 't2-clarify — Checkpoint 1: collects the missing theme fields',
+    agentDescription: 't2-clarify — the checkpoint: collects the missing theme fields',
     visibility: 'private',
     beforePromptStep,
     afterPromptStep,
@@ -75,7 +76,7 @@ async function beforePromptStep(
     planId: PLAN_ID,
     stepArgs: args || step.prompt || JSON.stringify({ planId: PLAN_ID }),
     systemPrompt: buildEnvelopePrompt(plan.title),
-    humanPrompt: `Render Checkpoint 1 with ${plan.questions.length} question(s). Return only the clarification payload requested in the system prompt.`,
+    humanPrompt: `Render the checkpoint with ${plan.questions.length} question(s). Return only the clarification payload requested in the system prompt.`,
   })];
 }
 

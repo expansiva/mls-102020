@@ -1,14 +1,17 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/agentNewTheme/steps/t3-generate/agentNtGenerate.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// t3-generate — THE generation call. See flow.json.
+// t3-generate — THE generation call, and the ONLY writer. See flow.json.
 // beforePromptStep assembles the themeAuthoring meta-skill + the user's description +
-// the known fields + the Checkpoint 1 answers; afterPromptStep gates the output
-// (shared contract validator + header + summary consistency) with retry <= 1 and saves
-// a DRAFT to l4. Nothing is written to l2/skills here — only Checkpoint 2 writes.
+// the known fields + the checkpoint answers; afterPromptStep gates the output (shared
+// contract validator + header + summary consistency) with retry <= 1 and, on a GREEN
+// gate, writes l2/skills/theme.ts + theme.html and compiles the .ts best-effort.
+// A gate that stays red writes nothing. openStepView shows the palette/signature
+// read-only after the fact (adjust A1 dropped the confirmation checkpoint).
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   NT_AGENT_FOLDER,
+  NtFileInfo,
   isRecord,
   ntAnswersFile,
   ntDestProject,
@@ -18,9 +21,11 @@ import {
   parseMaybeJson,
   readJsonArtifact,
   readNtAgentText,
+  toDisplayPath,
   toMlsFileReference,
   themeFile,
   writeJsonArtifact,
+  writeStorTextAtomic,
 } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntFs.js';
 import {
   NtAnswer,
@@ -28,6 +33,8 @@ import {
   NtPlan,
   NtThemeSummary,
 } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntTypes.js';
+import { renderThemeHtml } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntThemeHtml.js';
+import type { ThemeConfirmationValue } from '/_102020_/l2/aura/molecules/shared/widgetThemeConfirmationLogic.js';
 import {
   buildVToolInstruction,
   createVToolSchema,
@@ -38,7 +45,7 @@ import {
   ntResultStepIntent,
   ntUpdateStatusIntent,
 } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntSteps.js';
-import { runThemeGate } from '/_102020_/l2/aura/molecules/agentNewTheme/steps/t3-generate/gate.js';
+import { parseThemeSource, runThemeGate } from '/_102020_/l2/aura/molecules/agentNewTheme/steps/t3-generate/gate.js';
 import { getNtInput } from '/_102020_/l2/aura/molecules/agentNewTheme/agentNewTheme.js';
 
 const AGENT_NAME = 'agentNtGenerate';
@@ -50,10 +57,11 @@ export function createAgent(): IAgentAsync {
     agentName: AGENT_NAME,
     agentProject: 102020,
     agentFolder: `${NT_AGENT_FOLDER}/steps/t3-generate`,
-    agentDescription: 't3-generate — generates the complete theme.ts (contract v1) as a draft',
+    agentDescription: 't3-generate — generates and creates the project theme (theme.ts + theme.html)',
     visibility: 'private',
     beforePromptStep,
     afterPromptStep,
+    openStepView,
   };
 }
 
@@ -86,7 +94,7 @@ async function beforePromptStep(
   const humanPrompt = [
     `## User description\n${prompt || '(empty — everything was decided at the checkpoint)'}`,
     `## Fields already decided (known)\n${JSON.stringify(plan.known, null, 2)}`,
-    answers.length ? `## Checkpoint 1 answers\n${JSON.stringify(answers, null, 2)}` : '',
+    answers.length ? `## Checkpoint answers\n${JSON.stringify(answers, null, 2)}` : '',
     parsedArgs.retryContext ? `## Previous attempt failed the deterministic gate — fix ALL of these\n${parsedArgs.retryContext}` : '',
   ].filter(Boolean).join('\n\n');
 
@@ -146,16 +154,20 @@ async function afterPromptStep(
   });
 
   if (issues.length === 0 && summary) {
+    // The draft outlives the write: the structured summary is not deterministically
+    // recoverable from theme.ts, and it feeds theme.html, the read-only step view and a
+    // future Improve Theme.
     const draft: NtDraft = { themeTs, summary };
     await writeJsonArtifact(ntDraftFile(), draft);
+    const files = await writeTheme(draft);
     return [
       ntResultStepIntent(context, parentStep, {
         planId: ntDoneAnchor(PLAN_ID),
         dependsOn: [],
         stepTitle: summary.displayName,
-        result: { theme: summary.name, palette: summary.palette.length, attempt },
+        result: { theme: summary.name, files: files.paths, compiled: files.compiled, attempt },
       }),
-      ntUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `theme drafted (attempt ${attempt})`, 'input_output'),
+      ntUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `theme created (attempt ${attempt})`, 'input_output'),
     ];
   }
 
@@ -174,6 +186,56 @@ async function afterPromptStep(
     }),
     ntUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `gate failed, retrying:\n${errorText}`, 'input_output'),
   ];
+}
+
+// Writes the theme pair and compiles the .ts. The description/suffix shown in the
+// documentation page are read back from the generated source, so the page can never
+// disagree with the file it documents.
+async function writeTheme(draft: NtDraft): Promise<{ paths: string[]; compiled: boolean }> {
+  const tsInfo = themeFile('.ts');
+  const htmlInfo = themeFile('.html');
+  const info = (parseThemeSource(draft.themeTs).module?.themeInfo || {}) as Record<string, unknown>;
+  await writeStorTextAtomic(tsInfo, draft.themeTs, true);
+  await writeStorTextAtomic(htmlInfo, renderThemeHtml({
+    summary: draft.summary,
+    description: typeof info.description === 'string' ? info.description : '',
+    suffix: typeof info.suffix === 'string' ? info.suffix : '',
+  }), true);
+  // The molecule agents import('/_<dest>_/l2/skills/theme.js'), so the .ts must be
+  // compiled. Best-effort (same stance as the Variant's group index): a failure is
+  // reported in the result and the file stays for the user to fix.
+  const compiled = await compileTheme(tsInfo);
+  return { paths: [toDisplayPath(tsInfo), toDisplayPath(htmlInfo)], compiled };
+}
+
+async function compileTheme(fileInfo: NtFileInfo): Promise<boolean> {
+  try {
+    const storFile = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+    if (!storFile) return false;
+    const model = await storFile.getOrCreateModel();
+    if (!model?.model) return false;
+    return await mls.l2.typescript.compileAndPostProcess(model, true, false);
+  } catch {
+    return false;
+  }
+}
+
+// Read-only view of what was created (adjust A1: there is no confirmation checkpoint).
+// The shared Theme Confirmation widget in `readonly` mode disables both buttons.
+async function openStepView(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  step: mls.msg.AIAgentStep,
+): Promise<HTMLElement> {
+  const draft = await readJsonArtifact<NtDraft>(ntDraftFile(), false);
+  await import('/_102020_/l2/aura/molecules/shared/widgetThemeConfirmation.js');
+  const el = document.createElement('widget-theme-confirmation-102020');
+  if (draft?.summary) {
+    const value: ThemeConfirmationValue = { title: draft.summary.displayName, summary: draft.summary };
+    (el as unknown as { value: ThemeConfirmationValue }).value = value;
+  }
+  (el as unknown as { readonly: boolean }).readonly = true;
+  return el;
 }
 
 async function readAnswers(): Promise<NtAnswer[]> {

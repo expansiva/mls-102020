@@ -1,7 +1,9 @@
-# t2-clarify — CHECKPOINT 1
+# t2-clarify — THE checkpoint
 
 Collects the theme fields the initial prompt did not pin down. Planted ONLY when
-`plan.questions` is non-empty.
+`plan.questions` is non-empty. Since adjust A1 (2026-07-27) this is the pipeline's ONLY
+human stop, and it happens BEFORE generation: the user steers the theme here, and the
+deterministic contract gate is what guards the result.
 
 Mechanics (skills/collab_messages.md "Rendering a checkpoint"):
 1. `beforePromptStep` emits a clarification into THIS step's own payload — a cheap call

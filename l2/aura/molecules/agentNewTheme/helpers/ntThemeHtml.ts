@@ -1,8 +1,8 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/agentNewTheme/helpers/ntThemeHtml.ts" enhancement="_blank"/>
 
 // Deterministic renderer of l2/skills/theme.html — the theme's documentation/preview
-// page, built from the SAME structured summary that feeds Checkpoint 2 (no second LLM
-// call, so page and confirmation can never disagree). It is NOT part of the contract the
+// page, built from the SAME structured summary the step view shows (no second LLM call,
+// so page and step view can never disagree). It is NOT part of the contract the
 // molecule agents consume (they read only theme.ts). Pure — unit-testable.
 // Like the molecule demo pages, it is an HTML FRAGMENT (no doctype/head/body).
 

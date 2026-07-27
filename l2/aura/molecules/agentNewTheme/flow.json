@@ -1,56 +1,56 @@
 {
   "flowId": "agentNewTheme",
-  "schemaVersion": "2026-07-24-newtheme-v1",
+  "schemaVersion": "2026-07-27-newtheme-v1",
   "specFirst": "This file was written BEFORE the code (todo/todo-agent-new-theme.md; design in todo/analise-agent-new-theme.md). The code is validated against it. Maintenance changes the spec FIRST, then the code.",
-  "description": "Standalone agent that GENERATES FROM SCRATCH the current project's theme file (l2/skills/theme.ts, contract v1) via an LLM, guided by the shared themeAuthoring meta-skill, with 2 human checkpoints (clarification). It does NOT clone an existing theme and does NOT improve one (backlog). The theme.ts (plus a deterministic theme.html doc/preview) is written ONLY after the user confirms at the 2nd checkpoint. Consumed downstream by the molecule agents (New Molecule / Variant / Improve), which read the theme to style each molecule's .less.",
+  "description": "Standalone agent that GENERATES FROM SCRATCH the current project's theme file (l2/skills/theme.ts, contract v1) via an LLM, guided by the shared themeAuthoring meta-skill, with ONE human checkpoint (clarification). It does NOT clone an existing theme and does NOT improve one (backlog). The theme.ts (plus a deterministic theme.html doc/preview) is written as soon as the generation passes its contract gate. Consumed downstream by the molecule agents (New Molecule / Variant / Improve), which read the theme to style each molecule's .less.",
   "principles": [
     "Generate, don't clone: v1 authors a NEW theme from a natural-language description + clarification answers. Clone (mode A) and Improve Theme (mode C) are backlog.",
-    "Human-in-the-loop, lean: exactly 2 checkpoints. Checkpoint 1 collects ONLY the theme fields the initial prompt did not pin down (dynamic questions with options + recommended defaults); if nothing is missing it is skipped (fast path). Checkpoint 2 is a simple confirm (summary + palette; confirm or exit) — NO adjust/iterate loop.",
-    "Nothing on disk until confirmed: theme.ts and theme.html are written ONLY on confirm (t4). Everything before lives in l4 draft/artifacts. Exit => discard, nothing written.",
+    "Human-in-the-loop, lean: exactly ONE checkpoint (adjust A1, 2026-07-27). It collects ONLY the theme fields the initial prompt did not pin down (dynamic questions with options + recommended defaults); if nothing is missing it is skipped (fast path). There is NO final confirmation screen: the human decides BEFORE generation, and the deterministic contract gate decides after it. A confirm/preview checkpoint (and an adjust loop) is backlog — see todo Fase 8.",
+    "Nothing on disk until the gate is green: theme.ts and theme.html are written by t3-generate only after the contract gate passes. A generation that fails the gate twice writes NOTHING, and cancelling the checkpoint writes NOTHING.",
     "Quality is the meta-skill: generation injects l2/aura/molecules/skills/themeAuthoring (the authoring rules distilled from the Variant acceptance tests P3-P10). A generated theme must respect them (geometry is the render's; overlays opaque; primitives not glassified; comments in English; etc.).",
     "Contract-gated: the generated theme.ts must pass the shared validator l2/aura/molecules/shared/vThemeContract.validateVThemeModule before it can be written.",
     "Step is the maintenance unit: 1 folder per step (agent hook, prompt.md when LLM, gate + test, readme, CHANGELOG). helpers/ (nt*) are minimal and owned by this agent; only the theme contract validator is shared.",
-    "i18n split: questions/labels/summary are localized (userLanguage detected in t1-plan); the generated theme.ts comments/prose are ALWAYS English (rule P10)."
+    "i18n split: questions/labels/summary are localized (userLanguage detected in t1-plan); the generated theme.ts comments/prose are ALWAYS English (rule P10).",
+    "Recovery is deletion: admission stays strict (a project with a theme.ts is refused), so regenerating means deleting/renaming the file. No force/rebuild flag in v1 — it would make clobbering a real project's theme a one-liner."
   ],
   "conventions": {
-    "input": "@@agentNewTheme { prompt: '<free description of the desired style, e.g. \"a soft neumorphic light theme, brand color #6C5CE7\">' } — parsed with mls.common.safeParseArgs. An empty prompt is allowed (all fields fall to Checkpoint 1). Test mode receives JSON { prompt }.",
+    "input": "@@agentNewTheme { prompt: '<free description of the desired style, e.g. \"a soft neumorphic light theme, brand color #6C5CE7\">' } — parsed with mls.common.safeParseArgs. An empty prompt is allowed (all fields fall to the checkpoint). Test mode receives JSON { prompt }.",
     "destinationProject": "mls.actualProject (the studio's current project). The theme is written to _<dest>_/l2/skills/theme.ts (+ theme.html).",
     "admission": "The project must NOT already have l2/skills/theme.ts (New Theme creates from scratch). If it exists, fail readable with orientation ('this project already has a theme; Improve Theme is not available yet') — never clobber.",
     "themeContract": "contract v1, validated by l2/aura/molecules/shared/vThemeContract.validateVThemeModule: exports themeInfo{name,suffix(starts with '-'),displayName,description,background{kind:'light'|'dark'|'image',css,note}}, skill (4 sections: '## 1. Visual Signature'/'## 2. Tokens'/'## 3. Canonical CSS Rules'/'## 4. Theme Nuances'(opt)), examples[] (start EMPTY).",
     "themeFields": "Canonical fields collected/derived for the theme: name(->suffix), background.kind(light|dark|image)+css, primary/accent, corners(sharp|rounded|pill), border(none|thin|thick+color), shadow(none|soft|offset), motion(smooth|instant|none), typography(sans|mono|serif + uppercaseLabels?). surface/on-surface(text) are DERIVED from background.kind (light bg -> dark text; dark bg -> light text) and NOT asked. background.kind:'image' is accepted only via free-text CSS (no upload in v1).",
-    "clarification": "Human checkpoints use the supported pattern (collab_messages.md 'Rendering a checkpoint'): the step agent EMITS a clarification into its OWN interaction.payload (cheap codefast call returning {type:'clarification', json}); beforeClarificationStep mounts the shared widget; a completed result step '<step>-answer' (which the next step dependsOn) both completes the emitting agent and unlocks downstream. Never a flat clarification in nextSteps; never a wrapper+child. Widgets live in l2/aura/molecules/shared/.",
-    "structuredSummary": "t3-generate returns, besides the theme.ts string, a structured summary { name, displayName, background{kind,css}, palette:[{token,label,color}], signature:[{aspect,value}] } persisted to l4. It feeds BOTH the Checkpoint 2 confirmation widget AND the deterministic theme.html.",
-    "writeOnConfirm": "theme.ts and theme.html are written to _<dest>_/l2/skills/ ONLY when the user confirms at Checkpoint 2. Exit => discard.",
-    "draft": "l4/agentNewTheme/draft.json = { themeTs, summary } produced by t3; l4/agentNewTheme/plan.json = t1 output (known + questions); trace-<step>-<attempt>.json per step.",
-    "gates": "1 gate = 1 file = 1 .test.ts inside the step folder. t3 gate => 1 retry with errors in context; a 2nd failure completes-with-trace (no theme written) and the checkpoint reports it.",
-    "doneAnchors": "Every step that passes its gate emits a completed result step with planId 't<N>-done'. Downstream depends ONLY on done anchors. t1 has NO anchor (it is the root's own call — the root plants the tree directly), so on the fast path t3-generate is planted as the first runnable step (waiting_human_input, no dependsOn); with Checkpoint 1 it is planted waiting_dependency on 't2-done'. The Checkpoint 1 answer result IS the 't2-done' anchor (one completed result both completes the emitting step and unlocks t3) — there is no separate 't2-answer'.",
-    "i18n": "userLanguage detected in t1-plan drives step titles, questions, labels and the confirmation summary; the theme.ts content is English. The LLM localizes the plan title and the questions; the fixed UI strings (step titles, widget intro/labels) come from a small pt/en table in the code, falling back to English — the t1 schema deliberately has no titles map.",
-    "v2ExplicitlyOut": "No clone, no Improve Theme, no image upload, no multi-theme per project, no adjust loop at Checkpoint 2, no smoke-molecule preview. See todo Fase 8."
+    "clarification": "The checkpoint uses the supported pattern (collab_messages.md 'Rendering a checkpoint'): the step agent EMITS a clarification into its OWN interaction.payload (cheap codefast call returning {type:'clarification', json}); beforeClarificationStep mounts the shared widget; a completed result step (the 't2-done' anchor the next step dependsOn) both completes the emitting agent and unlocks downstream. Never a flat clarification in nextSteps; never a wrapper+child. Widgets live in l2/aura/molecules/shared/.",
+    "structuredSummary": "t3-generate returns, besides the theme.ts string, a structured summary { name, displayName, background{kind,css}, palette:[{token,label,color}], signature:[{aspect,value}] } persisted to l4. It feeds the deterministic theme.html AND the read-only step view (openStepView on t3 mounts the shared Theme Confirmation widget in readonly mode, so the palette/signature stay inspectable in the chat after the fact).",
+    "writeOnGreenGate": "theme.ts and theme.html are written to _<dest>_/l2/skills/ by t3-generate the moment its gate passes, and the .ts is compiled best-effort (the molecule agents import the compiled theme.js). Gate red twice => nothing written.",
+    "draft": "l4/agentNewTheme/draft.json = { themeTs, summary } produced by t3 — kept after the write because the structured summary is NOT deterministically recoverable from theme.ts (it feeds theme.html, the read-only step view and a future Improve Theme); l4/agentNewTheme/plan.json = t1 output (known + questions); answers.json = checkpoint answers; trace-<step>-<attempt>.json per step.",
+    "gates": "1 gate = 1 file = 1 .test.ts inside the step folder. t3 gate => 1 retry with errors in context; a 2nd failure FAILS the step and nothing is written.",
+    "doneAnchors": "Every step that passes its gate emits a completed result step with planId 't<N>-done'. Downstream depends ONLY on done anchors. t1 has NO anchor (it is the root's own call — the root plants the tree directly), so on the fast path t3-generate is planted as the first runnable step (waiting_human_input, no dependsOn); with the checkpoint it is planted waiting_dependency on 't2-done'. The checkpoint answer result IS the 't2-done' anchor (one completed result both completes the emitting step and unlocks t3). 't3-done' is the TERMINAL anchor: nothing depends on it, it carries the written files, and the task ends there.",
+    "i18n": "userLanguage detected in t1-plan drives step titles, questions and labels; the theme.ts content is English. The LLM localizes the plan title and the questions; the fixed UI strings (step titles, widget intro/labels) come from a small pt/en table in the code, falling back to English — the t1 schema deliberately has no titles map.",
+    "modelType": "EVERY prompt (prompt.md and inline system prompts) must carry '<!-- modelType: X -->' on its first line, chosen from skills/modelTypes.md. Without it the platform falls back to a cost-based selection and the call dies with '404 Model alias not found or inactive: cost' (1st Studio run, t3-generate).",
+    "v2ExplicitlyOut": "No clone, no Improve Theme, no image upload, no multi-theme per project, no final confirmation checkpoint, no adjust loop, no smoke-molecule preview, no force/rebuild overwrite. See todo Fase 8."
   },
   "modelAliases": {
-    "plan": "codefast",
-    "clarificationEmit": "codefast",
-    "generation": "design"
+    "plan": "codefast (modelType classifier)",
+    "clarificationEmit": "codefast (modelType general)",
+    "generation": "design (modelType design)"
   },
   "folderLayout": {
-    "agentNewTheme.ts": "root: parses { prompt }, admission (no existing theme.ts), creates the task (add-message-ai with the cheap t1-plan call), plants the step tree (t2 only when there are questions).",
+    "agentNewTheme.ts": "root: parses { prompt }, admission (no existing theme.ts), creates the task (add-message-ai with the cheap t1-plan call), plants the step tree (t2 only when there are questions; t3 always).",
     "flow.json": "this spec",
     "spec.md": "human-readable rationale; links to the analysis/control docs",
     "README.md": "overview + how to run/test",
-    "helpers/": "ntFs.ts (theme file refs/paths, l4 draft/plan/trace read-write, write theme.ts/.html on confirm), ntSteps.ts (step/intent builders, done anchors, retry policy, clarification plumbing: emit-into-payload + answer result + mutable-parent lookup + apply-intents-and-resume), ntTypes.ts (theme field model + structured summary), ntThemeHtml.ts (deterministic theme.html renderer from the summary)",
+    "helpers/": "ntFs.ts (theme file refs/paths, l4 draft/plan/trace read-write, write theme.ts/.html), ntSteps.ts (step/intent builders, done anchors, retry policy, clarification plumbing: emit-into-payload + answer result + mutable-parent lookup + apply-intents-and-resume), ntTypes.ts (theme field model + structured summary), ntThemeHtml.ts (deterministic theme.html renderer from the summary)",
     "schemas/": "t1-plan.schema.json (plan output: known + questions), t3-generate.schema.json (theme.ts string + structured summary)",
     "steps/t1-plan/": "readme.md, prompt.md, gate.ts, gate.test.ts, CHANGELOG.md — NO agent file: the plan call is the ROOT's own message call (see treeOverview), so agentNewTheme.ts owns beforePromptImplicit/afterPromptStep for it. A separate agentNtPlan would cost a second cheap LLM round-trip for the same classification.",
     "steps/t2-clarify/": "readme.md, agentNtClarify.ts (emits clarification; mounts Decision Clarification), CHANGELOG.md",
-    "steps/t3-generate/": "readme.md, agentNtGenerate.ts (LLM design), prompt.md (injects themeAuthoring), gate.ts, gate.test.ts, CHANGELOG.md",
-    "steps/t4-confirm/": "readme.md, agentNtConfirm.ts (emits confirmation; mounts Theme Confirmation; writes on confirm), CHANGELOG.md",
-    "shared (NOT in this folder) ": "l2/aura/molecules/shared/vThemeContract.ts (validator+types), widgetDecisionClarification.*, widgetThemeConfirmation.* — see todo Fase 0/4"
+    "steps/t3-generate/": "readme.md, agentNtGenerate.ts (LLM design; writes + compiles on a green gate; openStepView = read-only Theme Confirmation), prompt.md (injects themeAuthoring), gate.ts, gate.test.ts, CHANGELOG.md",
+    "shared (NOT in this folder) ": "l2/aura/molecules/shared/vThemeContract.ts (validator+types), widgetDecisionClarification.* (the checkpoint), widgetThemeConfirmation.* (read-only step view) — see todo Fase 0/4"
   },
   "treeOverview": [
     "root (t1-plan, cheap LLM: language + admission + known + questions)",
-    "  -> [if questions] t2-clarify (CHECKPOINT 1) -> t2-answer",
-    "  -> t3-generate (design LLM: theme.ts + summary, gated, draft only)",
-    "  -> t4-confirm (CHECKPOINT 2) -> on confirm writes theme.ts + theme.html",
-    "strictly sequential; t3 dependsOn t2-done when Checkpoint 1 ran, else t1-done"
+    "  -> [if questions] t2-clarify (THE checkpoint) -> t2-done",
+    "  -> t3-generate (design LLM: theme.ts + summary, gated) -> writes theme.ts + theme.html, compiles, t3-done (terminal)",
+    "strictly sequential; t3 dependsOn t2-done when the checkpoint ran, else it is the first runnable step"
   ],
   "steps": [
     {
@@ -59,12 +59,12 @@
       "type": "agent",
       "model": "plan",
       "dependsOn": [],
-      "goal": "Cheap classifier. Admission (project has NO l2/skills/theme.ts; else fail readable). Detect userLanguage + a short title. Parse the initial prompt into `known` (the theme fields it could determine) and build `questions` for the CANONICAL fields still missing (each with options + a recommended default). Persist plan.json. If `questions` is empty, plant t3 directly (fast path, no Checkpoint 1); otherwise plant t2 then t3.",
+      "goal": "Cheap classifier. Admission (project has NO l2/skills/theme.ts; else fail readable). Detect userLanguage + a short title. Parse the initial prompt into `known` (the theme fields it could determine) and build `questions` for the CANONICAL fields still missing — CLOSED fields (enums + typography.uppercaseLabels) carry 2-4 options with enum ids and one recommended; OPEN fields (name, primary, border.color, background.css) may carry no options but must set allowNotes. Persist plan.json. If `questions` is empty, plant t3 directly (fast path, no checkpoint); otherwise plant t2 then t3.",
       "input": ["{ prompt } from the mention"],
       "output": { "result": "plan summary", "savedArtifact": ["l4/agentNewTheme/plan.json"] },
       "gate": {
         "file": "steps/t1-plan/gate.ts",
-        "checks": ["output parses to {known, questions[]} with valid field ids/options", "questions never repeat a field or re-ask something already in known", "enum options carry enum ids and at most one recommended"],
+        "checks": ["output parses to {known, questions[]} with valid field ids/options", "questions never repeat a field or re-ask something already in known", "CLOSED fields: 2+ options, enum ids, at most one recommended", "OPEN fields: options may be empty, but then allowNotes must be true (else the widget could never mark it answered)"],
         "onFail": "NO retry: fail readable. Admission (no existing theme.ts) is checked EARLIER, in beforePromptImplicit, so it costs no LLM call"
       },
       "doneAnchor": "none (the root plants the tree directly)"
@@ -74,9 +74,9 @@
       "agentName": "agentNtClarify",
       "type": "agent",
       "model": "clarificationEmit",
-      "dependsOn": ["t1-done"],
+      "dependsOn": [],
       "onlyWhen": "plan.questions is non-empty (else this step is not planted — fast path)",
-      "goal": "CHECKPOINT 1 (collect missing fields). Emit a clarification into this step's own payload; beforeClarificationStep mounts the shared Decision Clarification widget with plan.questions (options + recommended defaults + free-text). On answer, write answers.json to l4 and emit the completed 't2-done' result (the anchor t3-generate dependsOn) carrying the collected values. Cancel => this step fails and the pipeline stops with nothing written.",
+      "goal": "THE checkpoint (collect missing fields). Emit a clarification into this step's own payload; beforeClarificationStep mounts the shared Decision Clarification widget with plan.questions (options + recommended defaults + free-text). On answer, write answers.json to l4 and emit the completed 't2-done' result (the anchor t3-generate dependsOn) carrying the collected values. Cancel => this step fails and the pipeline stops with nothing written.",
       "input": ["plan.json (questions)"],
       "output": { "result": "collected answers", "savedArtifact": ["l4/agentNewTheme/answers.json"] },
       "gate": { "file": "n/a (human checkpoint)", "checks": [], "onFail": "n/a" },
@@ -87,10 +87,10 @@
       "agentName": "agentNtGenerate",
       "type": "agent",
       "model": "generation",
-      "dependsOn": ["t2-done | t1-done"],
-      "goal": "THE generation call. prompt.md injects the themeAuthoring meta-skill + the initial prompt + `known` + Checkpoint 1 answers. Output via strict tool schema: the COMPLETE theme.ts (string, contract v1, English comments) + a structured summary (name, displayName, background, palette[], signature[]). Persist to l4/agentNewTheme/draft.json. Does NOT write to l2/skills yet.",
-      "input": ["themeAuthoring skill", "prompt", "known", "answers (when Checkpoint 1 ran)"],
-      "output": { "result": "draft summary", "savedArtifact": ["l4/agentNewTheme/draft.json"] },
+      "dependsOn": ["t2-done (when the checkpoint ran; otherwise none — it is the first runnable step)"],
+      "goal": "THE generation call, and the ONLY writer. prompt.md injects the themeAuthoring meta-skill + the initial prompt + `known` + the checkpoint answers. Output via strict tool schema: the COMPLETE theme.ts (string, contract v1, English comments) + a structured summary (name, displayName, background, palette[], signature[]). On a GREEN gate: persist draft.json, write _<dest>_/l2/skills/theme.ts + theme.html (deterministic renderer from the summary), compile the .ts best-effort, and emit the terminal t3-done anchor with { theme, files[], compiled }. openStepView mounts the shared Theme Confirmation widget in READONLY mode (palette + signature stay inspectable after the fact — it is a view, not a gate).",
+      "input": ["themeAuthoring skill", "prompt", "known", "answers (when the checkpoint ran)"],
+      "output": { "result": "created theme + files", "savedArtifact": ["l4/agentNewTheme/draft.json", "l2/skills/theme.ts", "l2/skills/theme.html"] },
       "gate": {
         "file": "steps/t3-generate/gate.ts",
         "checks": [
@@ -100,28 +100,16 @@
           "suffix === '-' + name; examples starts empty",
           "structured summary present and consistent (name/background identical to themeInfo; palette tokens are --ml-* and declared in the Tokens section)"
         ],
-        "onFail": "retry 1 with gate errors in context; a 2nd failure FAILS the step — nothing is written and t4-confirm never unlocks (a confirmation screen with no theme has nothing to offer; the trace carries the errors)"
+        "onFail": "retry 1 with gate errors in context; a 2nd failure FAILS the step — nothing is written (the trace carries the errors)"
       },
-      "doneAnchor": "t3-done"
-    },
-    {
-      "planId": "t4-confirm",
-      "agentName": "agentNtConfirm",
-      "type": "agent",
-      "model": "clarificationEmit",
-      "dependsOn": ["t3-done"],
-      "goal": "CHECKPOINT 2 (confirm). Emit a clarification into this step's own payload; beforeClarificationStep mounts the shared Theme Confirmation widget from draft.summary (layout signature + palette swatches). CONFIRM => write _<dest>_/l2/skills/theme.ts and theme.html (deterministic renderer from the summary), compile the .ts best-effort (the molecule agents import the compiled theme.js) and finish. EXIT => discard the draft, write nothing, complete with a 'discarded' trace. Simple confirm — no adjust/iterate loop.",
-      "input": ["draft.json (themeTs + summary)"],
-      "output": { "result": "written files or cancelled", "savedArtifact": ["l2/skills/theme.ts", "l2/skills/theme.html (on confirm)"] },
-      "gate": { "file": "n/a (human checkpoint)", "checks": [], "onFail": "n/a" },
-      "doneAnchor": "t4-done"
+      "doneAnchor": "t3-done (terminal)"
     }
   ],
   "acceptance": {
     "regression": "none on existing agents beyond the vTheme.ts re-export of the shared validator (agentNewMoleculeVariant suite must stay green)",
-    "test1": "project WITHOUT theme.ts, rich prompt (fast path: no questions) -> generates theme.ts + theme.html on confirm; contract valid",
-    "test2": "project WITHOUT theme.ts, vague prompt -> Checkpoint 1 asks the missing fields with options; answers drive generation",
-    "test3": "Checkpoint 2 EXIT writes nothing; CONFIRM writes both files",
+    "test1": "project WITHOUT theme.ts, rich prompt (fast path: no questions) -> writes theme.ts + theme.html, contract valid, compiled",
+    "test2": "project WITHOUT theme.ts, vague prompt -> the checkpoint asks the missing fields with options; answers drive generation",
+    "test3": "cancelling the checkpoint writes nothing; a gate that stays red after the retry writes nothing",
     "test4": "cycle: run agentNewMoleculeVariant on the freshly created theme (it consumes the new theme.ts) -> a molecule variant is generated"
   }
 }
