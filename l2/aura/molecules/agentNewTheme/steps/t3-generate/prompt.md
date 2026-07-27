@@ -1,3 +1,5 @@
+<!-- modelType: design -->
+
 You are authoring a project's theme file from scratch. Follow the authoring skill below
 to the letter, then return the COMPLETE file plus a structured summary of it.
 

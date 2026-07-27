@@ -13,10 +13,18 @@ Your job is CHEAP and mechanical:
 3. `title`: a short task title in `userLanguage` (e.g. "Novo tema: neumórfico claro").
 4. `known`: the canonical theme fields the prompt ALREADY pins down. Only include a field when the
    prompt really determines it — never guess to avoid a question.
-5. `questions`: one question for each canonical field that is still MISSING, in `userLanguage`,
-   each with 2–4 options and exactly ONE marked `recommended` (a sensible default for the style
-   described). NEVER ask about a field you put in `known`. At most 8 questions. If nothing is
-   missing, return an empty array (the pipeline then skips the checkpoint entirely).
+5. `questions`: one question for each canonical field that is still MISSING, in `userLanguage`.
+   NEVER ask about a field you put in `known`. At most 8 questions. If nothing is missing,
+   return an empty array (the pipeline then skips the checkpoint entirely).
+
+   Two kinds of question — get this right, a deterministic gate rejects the plan otherwise:
+   - **CLOSED fields** (`background.kind`, `corners`, `border.style`, `shadow`, `motion`,
+     `typography.family`, `typography.uppercaseLabels`): 2–4 options, `id` = the enum value
+     from the table below (the `label` is the localized text), exactly ONE `recommended`,
+     `allowNotes: false` unless a custom answer really makes sense.
+   - **OPEN fields** (`name`, `primary`, `border.color`, `background.css`): there is nothing
+     to enumerate — the human types the answer. Use `options: []` (or 1–2 concrete
+     suggestions, e.g. a color you propose) and ALWAYS `allowNotes: true`.
 
 ## Canonical fields (the only ones you may put in `known` or ask about)
 
@@ -39,7 +47,7 @@ For enum fields, the option `id` MUST be one of the values above (the `label` is
 text the human reads). `background.kind: 'image'` is accepted, but the image is described in
 `background.css` as free CSS — there is no upload.
 
-Set `allowNotes: true` on questions where a custom answer makes sense (colors, name, background).
+`name`, `background.css`, `primary` and `border.color` are the OPEN fields (rule 5).
 
 ## Output format
 
@@ -62,6 +70,12 @@ Return ONLY this JSON, with no prose and no markdown fences:
           { "id": "sharp", "label": "<localized>", "description": "<optional>", "recommended": true },
           { "id": "rounded", "label": "<localized>" }
         ]
+      },
+      {
+        "field": "primary",
+        "question": "<localized question about the brand color>",
+        "allowNotes": true,
+        "options": []
       }
     ]
   }

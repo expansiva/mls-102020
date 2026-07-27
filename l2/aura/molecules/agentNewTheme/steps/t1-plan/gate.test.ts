@@ -67,6 +67,49 @@ test('questions must target canonical fields', () => {
   assert.deepEqual(issues.map(issue => issue.code), ['question_field']);
 });
 
+test('OPEN fields may come with no options when the human can type (run 1 regression)', () => {
+  // First Studio run failed here: t1 correctly emitted free-text questions for name /
+  // primary / border.color and the gate demanded 2+ options from all of them.
+  const open = ['name', 'primary', 'border.color', 'background.css'].map(field => ({
+    field,
+    question: `Qual ${field}?`,
+    allowNotes: true,
+    options: [],
+  }));
+  const plan = normalizeNtPlan(planPayload({ known: {}, questions: open }));
+  assert.equal(plan.questions.length, 4);
+  assert.deepEqual(runPlanGate(plan), []);
+
+  // A single suggested option alongside the free-text field is fine too.
+  const suggested = normalizeNtPlan(planPayload({
+    known: {},
+    questions: [{ field: 'primary', question: 'Cor?', allowNotes: true, options: [{ id: '#6c5ce7', label: 'Roxo' }] }],
+  }));
+  assert.deepEqual(runPlanGate(suggested), []);
+});
+
+test('an open question with neither options nor free text is unanswerable', () => {
+  const plan = normalizeNtPlan(planPayload({
+    known: {},
+    questions: [{ field: 'primary', question: 'Cor?', allowNotes: false, options: [] }],
+  }));
+  assert.deepEqual(runPlanGate(plan).map(issue => issue.code), ['question_unanswerable']);
+});
+
+test('the boolean field is treated as a closed set', () => {
+  const bad = normalizeNtPlan(planPayload({
+    known: {},
+    questions: [{ field: 'typography.uppercaseLabels', question: 'Maiúsculas?', allowNotes: false, options: [{ id: 'sim', label: 'Sim' }, { id: 'nao', label: 'Não' }] }],
+  }));
+  assert.deepEqual(runPlanGate(bad).map(issue => issue.code), ['option_enum']);
+
+  const good = normalizeNtPlan(planPayload({
+    known: {},
+    questions: [{ field: 'typography.uppercaseLabels', question: 'Maiúsculas?', allowNotes: false, options: [{ id: 'true', label: 'Sim', recommended: true }, { id: 'false', label: 'Não' }] }],
+  }));
+  assert.deepEqual(runPlanGate(good), []);
+});
+
 test('enum questions must offer the enum ids, 2+ options and a single recommendation', () => {
   const plan = normalizeNtPlan(planPayload({
     questions: [{

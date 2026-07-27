@@ -35,6 +35,9 @@ export const NT_QUESTION_FIELDS = [
 
 export const NT_MAX_QUESTIONS = 8;
 
+// Fields with a closed set of answers: the question MUST offer them as options, using
+// these ids. Every other canonical field (name, primary, border.color, background.css)
+// is OPEN — answered by typing, so it may come with no options at all.
 const ENUMS: Record<string, readonly string[]> = {
   'background.kind': ['light', 'dark', 'image'],
   corners: ['sharp', 'rounded', 'pill'],
@@ -42,6 +45,7 @@ const ENUMS: Record<string, readonly string[]> = {
   shadow: ['none', 'soft', 'offset'],
   motion: ['smooth', 'instant', 'none'],
   'typography.family': ['sans', 'mono', 'serif'],
+  'typography.uppercaseLabels': ['true', 'false'],
 };
 
 // Tolerant extraction: the cheap call may come back raw, wrapped in the 'flexible'
@@ -84,19 +88,23 @@ export function runPlanGate(plan: NtPlan): NtGateIssue[] {
     }
     seen.add(question.field);
 
-    if (question.options.length < 2) {
-      issues.push({ code: 'question_options', message: `question '${question.field}' must offer at least 2 options (with one recommended default)` });
-    }
     const ids = new Set(question.options.map(option => option.id));
     if (ids.size !== question.options.length) {
       issues.push({ code: 'option_ids', message: `question '${question.field}' has duplicate option ids` });
     }
     const allowed = ENUMS[question.field];
     if (allowed) {
+      if (question.options.length < 2) {
+        issues.push({ code: 'question_options', message: `question '${question.field}' has a closed set of answers — offer at least 2 options (with one recommended default)` });
+      }
       const invalid = question.options.map(option => option.id).filter(id => !allowed.includes(id));
       if (invalid.length) {
         issues.push({ code: 'option_enum', message: `question '${question.field}' options must be ids from [${allowed.join(', ')}] (got ${invalid.join(', ')})` });
       }
+    } else if (question.options.length < 2 && !question.allowNotes) {
+      // Open fields are answered by typing; suggestions are welcome but optional. What
+      // is NOT acceptable is a question the widget can never mark as answered.
+      issues.push({ code: 'question_unanswerable', message: `question '${question.field}' is open (free text): either offer 2+ suggestions or set allowNotes: true` });
     }
     if (question.options.filter(option => option.recommended).length > 1) {
       issues.push({ code: 'option_recommended', message: `question '${question.field}' marks more than one option as recommended` });
