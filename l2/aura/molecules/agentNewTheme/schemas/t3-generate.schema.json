@@ -1,0 +1,63 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewTheme/t3-generate.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["themeTs", "summary"],
+  "properties": {
+    "themeTs": {
+      "type": "string",
+      "minLength": 200,
+      "description": "The COMPLETE l2/skills/theme.ts (contract v1: themeInfo + skill 4 sections + examples). English comments only. Raw TypeScript — no markdown fences."
+    },
+    "summary": { "$ref": "#/$defs/summary" }
+  },
+  "$defs": {
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "displayName", "background", "palette", "signature"],
+      "description": "Structured summary that drives the deterministic theme.html and the read-only step view (swatches + signature)",
+      "properties": {
+        "name": { "type": "string" },
+        "displayName": { "type": "string" },
+        "background": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "css"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["light", "dark", "image"] },
+            "css": { "type": "string" }
+          }
+        },
+        "palette": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["token", "label", "color"],
+            "properties": {
+              "token": { "type": "string" },
+              "label": { "type": "string" },
+              "color": { "type": "string" }
+            }
+          }
+        },
+        "signature": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["aspect", "value"],
+            "properties": {
+              "aspect": { "type": "string" },
+              "value": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
