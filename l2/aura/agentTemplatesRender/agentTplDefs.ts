@@ -9,9 +9,11 @@ import { mkFail, mkCompleted } from '/_102020_/l2/aura/agentImplementGenome/plan
 import {
   parseTplArgs, workspaceRef, templateRef, sharedRef, designSystemRef, defsDestRef, listContractRefs,
   readFile, readContextSections, saveEditorFile, buildFileSystemPrompt, buildLabelledHuman,
-  extractFileContent, TPL_FILE_TOOL, TPL_FILE_TOOL_NAME,
+  extractFileContent, hasMoleculesSection, extractTemplateMolecules, moleculeRefsFromTag, findMoleculeGroup,
+  TPL_FILE_TOOL, TPL_FILE_TOOL_NAME,
 } from '/_102020_/l2/aura/agentTemplatesRender/tplCore.js';
 import { skill as genDefsSkill } from '/_102020_/l2/aura/agentTemplatesRender/skills/genDefsFromTemplate.js';
+import { defsAddendum } from '/_102020_/l2/aura/agentTemplatesRender/skills/moleculesAddenda.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -42,12 +44,31 @@ async function beforePromptStep(
     console.info(`[agentTplDefs] ▶ ${a.page} (template ${a.templateId}) → ${outPath}`);
 
     const contractRefs = listContractRefs(project, a.module, a.page, a.device);
+    const tplRef = templateRef(project, a.styleModel, a.templateId);
     const contextSections = await readContextSections([
       { ref: workspaceRef(project, a.module, a.page), lang: 'ts' },
-      { ref: templateRef(project, a.styleModel, a.templateId) },
+      { ref: tplRef },
       { ref: sharedRef(project, a.module, a.page), lang: 'ts' },
       ...contractRefs.map(ref => ({ ref, lang: 'ts' })),
     ]);
+
+    // Molecule mode is driven by the template itself: only a guide carrying a "## Molecules" section
+    // prescribes molecules (an EXISTING template written without them stays hand-drawn).
+    const templateMd = await readFile(tplRef);
+    const withMolecules = a.useMolecules === true && hasMoleculesSection(templateMd);
+    const moleculeParams: string[] = [];
+    if (withMolecules) {
+      const { groups, tags } = extractTemplateMolecules(templateMd);
+      const defsRefs = tags.map(t => moleculeRefsFromTag(t)?.defs).filter((r): r is string => !!r);
+      const usageRefs = groups.map(g => findMoleculeGroup(g)?.skillUsageReference)
+        .filter((r): r is string => !!r).map(r => `${r.replace(/^\//, '')}.ts`);
+      moleculeParams.push(
+        `This template prescribes MOLECULES (see its "## Molecules" section).`,
+        `- molecule defs (add to the render item's dependsFiles): ${defsRefs.join(', ') || '(read them from the template table)'}`,
+        `- group usage skills (add to the render item's dependsFiles): ${usageRefs.join(', ') || '(none)'}`,
+      );
+      console.info(`[agentTplDefs] ${a.page}: molecule mode (${tags.length} tag(s), ${groups.length} group(s))`);
+    }
 
     const humanPrompt = buildLabelledHuman([
       { title: `Generation parameters`, body: [
@@ -56,13 +77,14 @@ async function beforePromptStep(
         `Pipeline paths to emit (use these EXACT refs):`,
         `- defs (this file): ${outPath}`,
         `- rendered page: ${outPath.replace(/\.defs\.ts$/, '.ts')}`,
-        `- template (put in every pipeline item's dependsFiles): ${templateRef(project, a.styleModel, a.templateId)}`,
+        `- template (put in every pipeline item's dependsFiles): ${tplRef}`,
         `- shared: ${sharedRef(project, a.module, a.page)}`,
         `- design system: ${designSystemRef(project)}`,
         `- contracts: ${contractRefs.join(', ') || '(none found)'}`,
         `- render skill: _102020_/l2/aura/agentTemplatesRender/skills/renderFromTemplate.ts`,
         `- critique skill: _102020_/l2/aura/agentTemplatesRender/skills/critiqueDefsVsTemplate.ts`,
         `- fix skill: _102020_/l2/aura/agentTemplatesRender/skills/fixDefs.ts`,
+        ...moleculeParams,
       ].join('\n') },
       ...contextSections,
     ], outPath);
@@ -75,7 +97,7 @@ async function beforePromptStep(
       taskId: context.task?.PK || '',
       hookSequential,
       parentStepId: parentStep.stepId,
-      systemPrompt: buildFileSystemPrompt(genDefsSkill, 'code', outPath),
+      systemPrompt: buildFileSystemPrompt(withMolecules ? `${genDefsSkill}\n${defsAddendum}` : genDefsSkill, 'code', outPath),
       humanPrompt,
       tools: [TPL_FILE_TOOL as unknown as mls.msg.LLMTool],
       toolChoice: { type: 'function', function: { name: TPL_FILE_TOOL_NAME } },

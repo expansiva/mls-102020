@@ -1,7 +1,8 @@
 /// <mls fileReference="_102020_/l2/aura/agentTemplatesRender/agentTplRender.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 // Render the page .ts from the (fixed) .defs, guided by the template. Tailwind (layout) + DS tokens
-// (colors) — NO molecules in v1. Self-contained context (template + shared + contracts + designSystem);
+// (colors); with useMolecules, the elements the template prescribes come from the 102040 molecule library
+// (defs + group usage skills loaded here). Self-contained context (template + shared + contracts + DS);
 // definition read from the defs file. Reuses the materialization primitives (system/human prompt,
 // GEN_TOOL, header/normalize, save + compile). Compile-check after save; ONE repair round (Option B).
 
@@ -17,9 +18,11 @@ import {
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
 import {
   parseTplArgs, workspaceRef, templateRef, sharedRef, designSystemRef, defsDestRef, tsDestRef,
-  listContractRefs, readFile, type TplArgs,
+  listContractRefs, readFile, hasMoleculesSection, extractTemplateMolecules, moleculeRefsFromTag,
+  readUsageSkill, type TplArgs,
 } from '/_102020_/l2/aura/agentTemplatesRender/tplCore.js';
 import { skill as renderSkill } from '/_102020_/l2/aura/agentTemplatesRender/skills/renderFromTemplate.js';
+import { renderAddendum } from '/_102020_/l2/aura/agentTemplatesRender/skills/moleculesAddenda.js';
 
 interface ToolOutput { code: string; }
 
@@ -35,8 +38,36 @@ export function createAgent(): IAgentAsync {
   };
 }
 
+/** Molecule context: the defs of the molecules the template prescribes + the usage skill of their groups. */
+async function buildMoleculeSections(templateMd: string, defsContent: string): Promise<string[]> {
+  const { groups, tags } = extractTemplateMolecules(templateMd);
+  // The defs may narrow the template's set (a page need not use every prescribed molecule) — never widen it.
+  const used = tags.filter(t => defsContent.includes(t));
+  const chosen = used.length ? used : tags;
+  if (used.length && used.length !== tags.length) {
+    console.info(`[agentTplRender] molecules narrowed by the defs: ${used.length}/${tags.length}`);
+  }
+
+  const sections: string[] = [];
+  for (const tag of chosen) {
+    const refs = moleculeRefsFromTag(tag);
+    if (!refs) { console.warn(`[agentTplRender] malformed molecule tag in template: ${tag}`); continue; }
+    const src = await readFile(refs.defs);
+    if (src) sections.push(buildContextSection(`${refs.defs} (MOLECULE — exact TagName, objective, constraints)`, src));
+    else console.warn(`[agentTplRender] molecule defs not found: ${refs.defs}`);
+  }
+  const usedGroups = groups.filter(g => chosen.some(t => t.startsWith(`${g.toLowerCase()}--`)));
+  for (const group of usedGroups) {
+    const usage = await readUsageSkill(group);
+    if (usage) sections.push(`### ${usage.ref} (MOLECULE USAGE — ${group}: props, events, slot tags, tokens)\n${usage.body}`);
+    else console.warn(`[agentTplRender] usage skill not found for group ${group}`);
+  }
+  console.info(`[agentTplRender] molecule context: ${chosen.length} molecule(s), ${usedGroups.length} usage skill(s)`);
+  return sections;
+}
+
 /** Build the context sections for the render prompt (template as plain md; the rest as ts/summary). */
-async function buildRenderContext(a: TplArgs, project: number): Promise<{ definition: unknown; sections: string[] }> {
+async function buildRenderContext(a: TplArgs, project: number): Promise<{ definition: unknown; sections: string[]; withMolecules: boolean }> {
   const defsRef = defsDestRef(a, project);
   const defsContent = await readFile(defsRef);
   if (!defsContent) throw new Error(`defs not found: ${defsRef}`);
@@ -55,7 +86,10 @@ async function buildRenderContext(a: TplArgs, project: number): Promise<{ defini
   }
   const ds = await readFile(designSystemRef(project));
   if (ds) sections.push(buildContextSection(designSystemRef(project), ds));
-  return { definition, sections };
+
+  const withMolecules = a.useMolecules === true && hasMoleculesSection(template);
+  if (withMolecules) sections.push(...await buildMoleculeSections(template, defsContent));
+  return { definition, sections, withMolecules };
 }
 
 async function beforePromptStep(
@@ -74,7 +108,7 @@ async function beforePromptStep(
     const outPath = tsDestRef(a, project);
     const attempt = a.attempt ?? 1;
 
-    const { definition, sections } = await buildRenderContext(a, project);
+    const { definition, sections, withMolecules } = await buildRenderContext(a, project);
 
     let repairHint: string | undefined;
     if (attempt >= 2) {
@@ -83,7 +117,9 @@ async function beforePromptStep(
     }
     console.info(`[agentTplRender] ▶ ${a.page} (attempt ${attempt}) → ${outPath}`);
 
-    const skillSection = `<!-- skill: renderFromTemplate -->\n${renderSkill}`;
+    const skillSection = withMolecules
+      ? `<!-- skill: renderFromTemplate + molecules -->\n${renderSkill}\n${renderAddendum}`
+      : `<!-- skill: renderFromTemplate -->\n${renderSkill}`;
     const continueParallel: mls.msg.AgentIntentPromptReady = {
       type: 'prompt_ready',
       args: args ?? step.prompt ?? '',

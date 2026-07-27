@@ -23,6 +23,7 @@ interface EntryArgs {
   ds: number | string;
   device?: string;
   pages?: string[];
+  useMolecules?: boolean;   // v2 opt-in (default false = v1 behaviour, no molecules anywhere)
 }
 
 export function createAgent(): IAgentAsync {
@@ -43,14 +44,15 @@ async function beforePromptImplicit(
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
 
-  const { module, styleModel, layout, ds, device, pages } = JSON.parse(userPrompt) as EntryArgs;
+  const { module, styleModel, layout, ds, device, pages, useMolecules } = JSON.parse(userPrompt) as EntryArgs;
   if (!module || !styleModel || layout == null || ds == null) {
     throw new Error(`(${agent.agentName}) entry needs { module, styleModel, layout, ds }`);
   }
   const dev = device || DEFAULT_DEVICE;
   const genome = deriveGenome(layout, ds);
   const targetPages = Array.isArray(pages) ? pages.filter(p => typeof p === 'string' && p) : [];
-  console.info('[agentTemplatesRender] ▶ request', { module, styleModel, layout, ds, device: dev, genome, pages: targetPages.length ? targetPages : 'ALL' });
+  const withMolecules = useMolecules === true;
+  console.info('[agentTemplatesRender] ▶ request', { module, styleModel, layout, ds, device: dev, genome, useMolecules: withMolecules, pages: targetPages.length ? targetPages : 'ALL' });
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -59,14 +61,15 @@ async function beforePromptImplicit(
       agentName: agent.agentName,
       inputAI: [
         { type: 'system', content: system1 },
-        { type: 'human', content: JSON.stringify({ module, styleModel, layout, ds, device: dev, pages: targetPages }) },
+        { type: 'human', content: JSON.stringify({ module, styleModel, layout, ds, device: dev, useMolecules: withMolecules, pages: targetPages }) },
       ],
-      taskTitle: `Templates (${styleModel}) → ${genome} on ${module}`,
+      taskTitle: `Templates (${styleModel}) → ${genome} on ${module}${withMolecules ? ' + molecules' : ''}`,
       threadId: context.message.threadId,
       userMessage: context.message.content,
       longTermMemory: {
         module, styleModel, layout: String(layout), ds: String(ds), device: dev, genome,
         pages: JSON.stringify(targetPages),
+        useMolecules: String(withMolecules),
       },
     },
   };
@@ -98,6 +101,7 @@ async function afterPromptStep(
     const ds = lm['ds'];
     const device = lm['device'] || DEFAULT_DEVICE;
     const genome = lm['genome'] || deriveGenome(layout, ds);
+    const useMolecules = lm['useMolecules'] === 'true';
     if (!module || !styleModel || layout == null || ds == null) throw new Error('missing run params in longMemory');
 
     const project = mls.actualProject || 0;
@@ -116,7 +120,7 @@ async function afterPromptStep(
         : `no workspaces found in l4/${module}/workspaces`);
     }
 
-    const planArgs: TplArgs = { module, styleModel, layout, ds, device, genome, pages };
+    const planArgs: TplArgs = { module, styleModel, layout, ds, device, genome, pages, useMolecules };
     const plan = mkAgentStep(context, step, makePlanId('plan'), `Plan templates: ${styleModel}`,
       'agentTplPlan', planArgs as any, [], 'waiting_human_input', 'sequential');
 
@@ -133,7 +137,8 @@ const system1 = `
 <!-- modelType: classifier -->
 
 You validate a template-guided page-generation request. The human message is a JSON object
-{ module, styleModel, layout, ds, device, pages } (pages is an optional subset; empty = all pages).
+{ module, styleModel, layout, ds, device, useMolecules, pages } (pages is an optional subset, empty = all
+pages; useMolecules is a boolean flag).
 If it is a well-formed request, return ONLY:
 {"type":"flexible","result":{"status":"ok"}}
 

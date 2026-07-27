@@ -7,10 +7,11 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { mkFail, mkCompleted } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
 import {
   parseTplArgs, templateRef, sharedRef, defsDestRef, critiqueRef, listContractRefs,
-  readContextSections, saveTextArtifact, buildFileSystemPrompt, buildLabelledHuman,
-  extractFileContent, TPL_FILE_TOOL, TPL_FILE_TOOL_NAME,
+  readFile, readContextSections, saveTextArtifact, buildFileSystemPrompt, buildLabelledHuman,
+  extractFileContent, hasMoleculesSection, TPL_FILE_TOOL, TPL_FILE_TOOL_NAME,
 } from '/_102020_/l2/aura/agentTemplatesRender/tplCore.js';
 import { skill as critiqueSkill } from '/_102020_/l2/aura/agentTemplatesRender/skills/critiqueDefsVsTemplate.js';
+import { critiqueAddendum } from '/_102020_/l2/aura/agentTemplatesRender/skills/moleculesAddenda.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -41,12 +42,17 @@ async function beforePromptStep(
     console.info(`[agentTplCritique] ▶ ${a.page} → ${outPath}`);
 
     const contractRefs = listContractRefs(project, a.module, a.page, a.device);
+    const tplRef = templateRef(project, a.styleModel, a.templateId);
     const contextSections = await readContextSections([
       { ref: defsDestRef(a, project), lang: 'ts' },
-      { ref: templateRef(project, a.styleModel, a.templateId) },
+      { ref: tplRef },
       { ref: sharedRef(project, a.module, a.page), lang: 'ts' },
       ...contractRefs.map(ref => ({ ref, lang: 'ts' })),
     ]);
+
+    // Third criterion only when the template actually prescribes molecules.
+    const withMolecules = a.useMolecules === true && hasMoleculesSection(await readFile(tplRef));
+    if (withMolecules) console.info(`[agentTplCritique] ${a.page}: molecule adherence criterion ON`);
 
     const humanPrompt = buildLabelledHuman([
       { title: `Review target`, body: `Critique the .defs of page **${a.page}** against template **${a.templateId}** (${a.styleModel}) and the shared surface. Produce findings only.` },
@@ -61,7 +67,7 @@ async function beforePromptStep(
       taskId: context.task?.PK || '',
       hookSequential,
       parentStepId: parentStep.stepId,
-      systemPrompt: buildFileSystemPrompt(critiqueSkill, 'code', outPath),
+      systemPrompt: buildFileSystemPrompt(withMolecules ? `${critiqueSkill}\n${critiqueAddendum}` : critiqueSkill, 'code', outPath),
       humanPrompt,
       tools: [TPL_FILE_TOOL as unknown as mls.msg.LLMTool],
       toolChoice: { type: 'function', function: { name: TPL_FILE_TOOL_NAME } },
