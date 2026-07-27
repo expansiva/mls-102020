@@ -2,6 +2,24 @@
 
 # Changelog
 
+- 2026-07-27 (systemic-failure guard: stop instead of repairing an environment fault) — 102051 run01: the
+  Studio compiler could not resolve the bare `lit` import (TS2792), so EVERY generated file was "broken"
+  on every round. Consequences: the broken set never shrank (pages 12->12->12->11, shared 6->6->6->5), the
+  whole repair budget was spent regenerating files that were ALREADY CORRECT, and the rounds REGRESSED
+  them — page21 kitchenWorkspace/dashboardWorkspace had ZERO real errors at attempt 1 and finished with 6
+  (invented `updatedAt`) and 1 (wrong `alert` shape); stockManagement gained `.id`; and two shared files
+  had their `lit` import rewritten by the repair LLM to Studio-only paths (`/_102029_/l2/lit/decorators.js`,
+  `/_102029_/node_modules/lit/decorators.js`) that break the real tsc. In other words the repair loop was
+  the CAUSE of the surviving tsc errors, not a failed cure. New guard `isSystemicPageFailure`
+  (cfeMaterializeCore): when the FIRST compile (attempt 1) finds EVERY page11 item broken and there are at
+  least SYSTEMIC_FAILURE_MIN_PAGES (3) of them, runVerify returns `failed` with MATERIALIZE-SYSTEMIC-FAILURE
+  and does NOT start repair rounds — 3+ primary pages failing at once is an environment/config fault, not N
+  independent code bugs. Deliberately narrow: only attempt 1 (a repair round never trips it), only page11
+  (page21 is the experimental genome), min 3 pages (a 1-2 page module never trips), non-page phases
+  ignored. The trace + verdict files are still written first, so the diagnosis survives the stop. Verified:
+  6 unit tests for the guard's boundaries + replay of run01's REAL attempt-1 data (12 items / 6 page11 ->
+  guard trips; same data as a repair round -> does not trip; run20's all-clear -> does not trip).
+
 - 2026-07-23 (verify: reliable cross-file typecheck + always-written verdict + 3 rounds) — 102051 run19:
   shiftWorkspace passed the in-run verify yet failed `tsc -p` (TS2554/TS2352/TS2339). Root cause: the
   Studio per-file `compile` resolves an import to `any` when the dep model is not loaded, so cross-file

@@ -38,6 +38,32 @@ export interface MaterializeEnv {
 
 export interface GenResult { code: string; }
 
+/** Minimum page11 items before an all-broken first compile counts as systemic (a 1-2 page module never trips). */
+export const SYSTEMIC_FAILURE_MIN_PAGES = 3;
+
+/**
+ * True when the FIRST compile found EVERY page11 item broken. With 3+ primary pages that is not N
+ * independent code bugs — it is an environment/configuration fault (a package or path the compiler
+ * cannot resolve), and no amount of code repair can fix it.
+ *
+ * Why this must STOP the phase instead of repairing (102051 run01): an unresolved `lit` import failed
+ * every file, so no item ever left the broken list (12 -> 12 -> 12 -> 11) and the whole repair budget
+ * was spent regenerating files that were ALREADY CORRECT. The rounds then regressed them — page21
+ * kitchenWorkspace/dashboardWorkspace had ZERO real errors on attempt 1 and finished with 6 and 1
+ * (invented `updatedAt`, wrong `alert` shape), and two files had their `lit` import rewritten to a
+ * Studio-only path that breaks the real tsc. Failing loudly is strictly safer than repairing.
+ */
+export function isSystemicPageFailure(attempt: number, items: { outputPath: string | null; errors: string[] }[]): boolean {
+  if (attempt !== 1) return false;
+  const page11 = items.filter(item => /\/page11\/[^/]+\.ts$/.test(item.outputPath || ''));
+  return page11.length >= SYSTEMIC_FAILURE_MIN_PAGES && page11.every(item => item.errors.length > 0);
+}
+
+/** The page11 items considered by isSystemicPageFailure — used to report how many failed. */
+export function countPage11Items(items: { outputPath: string | null }[]): number {
+  return items.filter(item => /\/page11\/[^/]+\.ts$/.test(item.outputPath || '')).length;
+}
+
 /**
  * Deterministic UX hygiene checks for a materialized page. They intentionally inspect only
  * contracts present in the page/shared defs and generated page code; missing L4 data is not
