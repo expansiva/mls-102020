@@ -22,6 +22,38 @@ canonical rules. Key consequence: the theme expresses APPEARANCE as tokens + CSS
 the GEOMETRY (position, size, flex/grid, spacing) is owned by the molecule's inherited
 render (global Tailwind utilities) and must never be redefined by the theme.
 
+## The class vocabulary is GIVEN — never invent class names
+
+The \`ml-*\` classes come from the molecule library's renders. A deterministic gate rejects
+any \`ml-*\` class the molecule does not actually emit, so a recipe written against an
+invented name is dead weight at best and a wasted generation attempt at worst.
+
+**Do NOT invent generic names** like \`.ml-surface\`, \`.ml-primary\`, \`.ml-overlay\`,
+\`.ml-scrim\`, \`.ml-track\`, \`.ml-thumb\`, \`.ml-flat\`, \`.ml-selected\`, \`.ml-open\`,
+\`.ml-btn-label\` — none of those exist.
+
+Two real families:
+
+1. **Transversal classes** (appear across the whole library; safe to name in a recipe).
+   They are role-based pairs, not element names:
+   - text: \`.ml-text\`, \`.ml-text-muted\`, \`.ml-text-faint\`, \`.ml-label\`, \`.ml-helper\`
+   - surfaces/borders: \`.ml-surface-bg\`, \`.ml-surface-dim-bg\`, \`.ml-border\`,
+     \`.ml-border-focus\`, \`.ml-border-error\`, \`.ml-focus-ring\`
+   - semantic color: \`.ml-primary-bg\`, \`.ml-primary-dim-bg\`, \`.ml-primary-text\`,
+     \`.ml-error-text\`, \`.ml-error-dim-bg\`, \`.ml-success-text\`, \`.ml-warning-text\`
+   - inputs: \`.ml-input\`, \`.ml-input-container\`, \`.ml-input-container-error\`, \`.ml-input-focus\`
+   - state/misc: \`.ml-disabled\`, \`.ml-skeleton\`, \`.ml-spinner\`
+2. **Per-molecule classes**, shaped \`ml-<thing>-<part>[-state]\`: \`.ml-select-trigger\`,
+   \`.ml-select-panel\`, \`.ml-select-trigger-open\`, \`.ml-select-item-selected\`,
+   \`.ml-slider-track\`, \`.ml-slider-thumb\`, \`.ml-slider-mark\`, \`.ml-calendar-nav\`,
+   \`.ml-dial-track\`. You cannot know every one of them, and you must not guess.
+
+So write each canonical rule by the **ROLE of the element**, naming real classes only as
+examples: "Interactive surface (\`.ml-select-trigger\`, \`.ml-input-container\`, button roots):
+then the declarations". The molecule agent maps the role onto whatever classes that molecule
+really emits. A recipe that reads like a role + declarations is portable; one that reads
+like a stylesheet for made-up selectors is not.
+
 ## Required exports (a deterministic validator rejects anything off — matches vTheme.validateVThemeModule)
 
 \`\`\`ts
@@ -83,9 +115,22 @@ where the fallback equals the canonical value — so name and value must be self
 2. **Overlay surfaces vs inline surfaces.** Any floating container shown OVER page content —
    modal/dialog, dropdown, popover, tooltip, panel — MUST stay readable regardless of what is
    behind it: give it an OPAQUE/high-contrast \`--ml-surface-dim\` (not a faint translucent
-   value) plus, for modals, a dimmed scrim. INLINE surfaces may be translucent if the style
+   value) plus, for modals, a dimmed veil. INLINE surfaces may be translucent if the style
    calls for it (e.g. glass over a dark backdrop). State this split explicitly in the Visual
    Signature "Background" row and in the "Overlay surfaces" canonical rule.
+
+   **The modal veil has ONE working anchor.** The modal render emits its veil as
+   \`<div class="absolute inset-0 ml-surface-bg/40" aria-hidden="true">\`. That
+   \`ml-surface-bg/40\` is a DEAD token: Tailwind is not configured with \`ml-*\` colors, and
+   the \`/40\` suffix means the element never matches a \`.ml-surface-bg\` selector — styling
+   \`.ml-surface-bg\` dims the panel, not the veil (this shipped as a real bug: an unreadable
+   modal). The stable anchor is the veil being the only \`aria-hidden\` element:
+
+   \`\`\`less
+   div[aria-hidden='true'] { background: rgba(0, 0, 0, 0.7); }   // veil
+   \`\`\`
+
+   Write the veil recipe with that selector and say why. Never invent \`.ml-scrim\`.
 
 3. **Control primitives vs surfaces.** Do NOT apply heavy surface effects (blur, an added
    border, offset/spread box-shadow, specular \`::before\`) to tiny geometric primitives —
