@@ -1,0 +1,170 @@
+{
+  "frequencyScale": {
+    "veryHigh": "Muito usado em ERP/SaaS administrativo",
+    "high": "Comum em muitos ERPs",
+    "medium": "Usado em domínios específicos",
+    "low": "Mais raro ou especializado"
+  },
+  "categories": [
+    {
+      "categoryId": "productCatalog",
+      "name": "Product Catalog",
+      "erpFrequency": "veryHigh",
+      "description": "Cadastro e manutenção de produtos, SKUs, serviços ou itens vendáveis.",
+      "typicalEntities": ["Product", "SKU", "Service", "MenuItem"],
+      "commonOperations": ["list", "search", "create", "edit", "delete", "activate", "deactivate"]
+    },
+    {
+      "categoryId": "inventoryControl",
+      "name": "Inventory Control",
+      "erpFrequency": "veryHigh",
+      "description": "Controle de estoque, saldos, níveis mínimos, alertas e ajustes manuais.",
+      "typicalEntities": ["StockItem", "InventoryItem", "Supply", "Ingredient", "Material"],
+      "commonOperations": ["list", "filterLowStock", "create", "edit", "adjustStock", "remove"]
+    },
+    {
+      "categoryId": "customerManagement",
+      "name": "Customer Management",
+      "erpFrequency": "veryHigh",
+      "description": "Cadastro e gestão de clientes, contatos, dados comerciais e relacionamento.",
+      "typicalEntities": ["Customer", "Contact", "Account"],
+      "commonOperations": ["list", "search", "create", "edit", "viewHistory", "deactivate"]
+    },
+    {
+      "categoryId": "supplierManagement",
+      "name": "Supplier Management",
+      "erpFrequency": "high",
+      "description": "Cadastro e controle de fornecedores, dados fiscais, contatos e condições comerciais.",
+      "typicalEntities": ["Supplier", "Vendor", "Provider"],
+      "commonOperations": ["list", "create", "edit", "approve", "block", "deactivate"]
+    },
+    {
+      "categoryId": "orderManagement",
+      "name": "Order Management",
+      "erpFrequency": "veryHigh",
+      "description": "Gestão de pedidos, status, itens, valores, clientes e ações operacionais.",
+      "typicalEntities": ["Order", "SalesOrder", "PurchaseOrder"],
+      "commonOperations": ["list", "create", "edit", "approve", "cancel", "fulfill"]
+    },
+    {
+      "categoryId": "posWorkbench",
+      "name": "POS Workbench",
+      "erpFrequency": "medium",
+      "description": "Tela operacional rápida para venda, lançamento de itens, carrinho e pagamento.",
+      "typicalEntities": ["Sale", "Cart", "Order", "Payment"],
+      "commonOperations": ["addItem", "removeItem", "applyDiscount", "checkout", "cancel"]
+    },
+    {
+      "categoryId": "operationsQueue",
+      "name": "Operations Queue",
+      "erpFrequency": "high",
+      "description": "Fila operacional para acompanhar itens por status, etapa ou prioridade.",
+      "typicalEntities": ["Task", "Ticket", "KitchenOrder", "WorkItem"],
+      "commonOperations": ["listByStatus", "assign", "start", "pause", "complete", "cancel"]
+    },
+    {
+      "categoryId": "approvalWorkflow",
+      "name": "Approval Workflow",
+      "erpFrequency": "high",
+      "description": "Fluxo de aprovação com revisão, decisão, comentários e trilha de auditoria.",
+      "typicalEntities": ["ApprovalRequest", "Expense", "PurchaseRequest", "Document"],
+      "commonOperations": ["review", "approve", "reject", "requestChanges", "comment"]
+    },
+    {
+      "categoryId": "processWizard",
+      "name": "Process Wizard",
+      "erpFrequency": "high",
+      "description": "Processos guiados em etapas, com validação forte e resumo final.",
+      "typicalEntities": ["Shift", "Onboarding", "Closing", "Setup"],
+      "commonOperations": ["start", "nextStep", "validate", "submit", "finish"]
+    },
+    {
+      "categoryId": "financialTransactions",
+      "name": "Financial Transactions",
+      "erpFrequency": "veryHigh",
+      "description": "Listagem e controle de lançamentos financeiros, contas, pagamentos e recebimentos.",
+      "typicalEntities": ["Invoice", "Payment", "Receivable", "Payable", "Transaction"],
+      "commonOperations": ["list", "filter", "reconcile", "pay", "cancel", "export"]
+    },
+    {
+      "categoryId": "documentManagement",
+      "name": "Document Management",
+      "erpFrequency": "high",
+      "description": "Gestão de documentos, anexos, versões, status e aprovação.",
+      "typicalEntities": ["Document", "Attachment", "Contract", "Policy"],
+      "commonOperations": ["upload", "view", "approve", "reject", "version", "archive"]
+    },
+    {
+      "categoryId": "userAccessManagement",
+      "name": "User Access Management",
+      "erpFrequency": "high",
+      "description": "Gestão de usuários, papéis, permissões, status de acesso e segurança.",
+      "typicalEntities": ["User", "Role", "Permission", "Team"],
+      "commonOperations": ["invite", "editRole", "disable", "resetAccess", "audit"]
+    },
+    {
+      "categoryId": "settingsConsole",
+      "name": "Settings Console",
+      "erpFrequency": "veryHigh",
+      "description": "Configurações administrativas do módulo ou organização.",
+      "typicalEntities": ["Setting", "Rule", "Preference", "Configuration"],
+      "commonOperations": ["view", "edit", "save", "reset", "test"]
+    },
+    {
+      "categoryId": "auditTrail",
+      "name": "Audit Trail",
+      "erpFrequency": "high",
+      "description": "Consulta de eventos, alterações, usuários responsáveis e histórico operacional.",
+      "typicalEntities": ["AuditEvent", "LogEntry", "ChangeHistory"],
+      "commonOperations": ["list", "filter", "inspect", "export"]
+    },
+    {
+      "categoryId": "dashboardCommandCenter",
+      "name": "Dashboard Command Center",
+      "erpFrequency": "veryHigh",
+      "description": "Dashboard com KPIs, alertas, tendências e ações recomendadas.",
+      "typicalEntities": ["Metric", "Insight", "Alert", "Recommendation"],
+      "commonOperations": ["view", "filter", "drillDown", "actOnInsight"]
+    },
+    {
+      "categoryId": "calendarScheduling",
+      "name": "Calendar Scheduling",
+      "erpFrequency": "medium",
+      "description": "Agenda, alocação de horários, reservas, turnos ou compromissos.",
+      "typicalEntities": ["Appointment", "Schedule", "Shift", "Booking"],
+      "commonOperations": ["create", "reschedule", "cancel", "assign", "confirm"]
+    },
+    {
+      "categoryId": "assetManagement",
+      "name": "Asset Management",
+      "erpFrequency": "medium",
+      "description": "Gestão de ativos, equipamentos, manutenção, localização e ciclo de vida.",
+      "typicalEntities": ["Asset", "Equipment", "Machine", "Vehicle"],
+      "commonOperations": ["list", "create", "edit", "assign", "inspect", "retire"]
+    },
+    {
+      "categoryId": "caseManagement",
+      "name": "Case Management",
+      "erpFrequency": "medium",
+      "description": "Gestão de casos, solicitações, incidentes ou atendimento ao cliente.",
+      "typicalEntities": ["Case", "Ticket", "Incident", "Request"],
+      "commonOperations": ["open", "assign", "comment", "changeStatus", "resolve", "close"]
+    },
+    {
+      "categoryId": "reportExplorer",
+      "name": "Report Explorer",
+      "erpFrequency": "high",
+      "description": "Consulta, filtros, visualização e exportação de relatórios operacionais.",
+      "typicalEntities": ["Report", "Dataset", "Export"],
+      "commonOperations": ["filter", "run", "export", "schedule", "drillDown"]
+    },
+    {
+      "categoryId": "masterDataManagement",
+      "name": "Master Data Management",
+      "erpFrequency": "veryHigh",
+      "description": "Cadastro base de dados mestres usados por vários módulos.",
+      "typicalEntities": ["Category", "Unit", "TaxCode", "Location", "CostCenter"],
+      "commonOperations": ["list", "create", "edit", "merge", "deactivate"]
+    }
+  ]
+}
