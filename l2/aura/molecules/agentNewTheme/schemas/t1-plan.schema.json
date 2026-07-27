@@ -1,0 +1,81 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewTheme/t1-plan.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["validInput", "userLanguage", "title", "known", "questions"],
+  "properties": {
+    "validInput": { "type": "boolean" },
+    "invalidReason": { "type": "string" },
+    "userLanguage": { "type": "string", "description": "detected from the prompt; default 'pt'" },
+    "title": { "type": "string", "description": "short task title in userLanguage" },
+    "known": { "$ref": "#/$defs/themeFields" },
+    "questions": {
+      "type": "array",
+      "description": "ONLY the canonical fields still missing; empty => skip Checkpoint 1",
+      "items": { "$ref": "#/$defs/question" }
+    }
+  },
+  "$defs": {
+    "themeFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "suffix": { "type": "string" },
+        "background": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "type": "string", "enum": ["light", "dark", "image"] },
+            "css": { "type": "string" }
+          }
+        },
+        "primary": { "type": "string" },
+        "corners": { "type": "string", "enum": ["sharp", "rounded", "pill"] },
+        "border": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "style": { "type": "string", "enum": ["none", "thin", "thick"] },
+            "color": { "type": "string" }
+          }
+        },
+        "shadow": { "type": "string", "enum": ["none", "soft", "offset"] },
+        "motion": { "type": "string", "enum": ["smooth", "instant", "none"] },
+        "typography": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "family": { "type": "string", "enum": ["sans", "mono", "serif"] },
+            "uppercaseLabels": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "question", "options", "allowNotes"],
+      "properties": {
+        "field": { "type": "string" },
+        "question": { "type": "string" },
+        "allowNotes": { "type": "boolean" },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "label"],
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "description": { "type": "string" },
+              "recommended": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
