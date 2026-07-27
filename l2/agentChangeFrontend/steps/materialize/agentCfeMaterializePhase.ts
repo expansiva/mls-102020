@@ -15,6 +15,8 @@ import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, 
 import {
   collectMissingImageRenderIssues,
   collectPageTemplateHygieneIssues,
+  countPage11Items,
+  isSystemicPageFailure,
   parseDefs,
   testPathForOutputPath,
   validateGeneratedPageQuality,
@@ -143,6 +145,22 @@ async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.
   // keeps only a short summary that points at that file (DynamoDB 400KB task cap).
   const traceRef = await saveMaterializeVerifyTrace(args.planId, args.attempt, broken.map(toBrokenTrace));
   const summary = summarizeBroken(broken, traceRef);
+
+  // Systemic failure: EVERY page11 item broken on the FIRST compile is an environment/config fault, not
+  // N code bugs. Repairing would burn the budget rewriting correct files and regress them (see
+  // isSystemicPageFailure). Stop here so the real cause is fixed instead of masked.
+  if (isSystemicPageFailure(args.attempt, checkedItems)) {
+    const total = countPage11Items(checkedItems);
+    return [createUpdateStatusIntent(
+      context,
+      parentStep,
+      step,
+      hookSequential,
+      'failed',
+      `MATERIALIZE-SYSTEMIC-FAILURE: all ${total} page11 item(s) failed the first compile. That points at an environment/configuration fault (typically a package or path the compiler cannot resolve — check the repeated error below), not at ${total} independent code bugs. Repair rounds were NOT started: they cannot fix a resolution fault and would rewrite already-correct files until they regress. Fix the root cause and re-run.\n${summary}`,
+    )];
+  }
+
   if (args.attempt > MATERIALIZE_REPAIR_ROUNDS) {
     // The generated artifacts can be repaired by the CLI after this task. Do not fail the whole
     // changeFrontend tree merely because Studio's bounded materialization repair was exhausted.
