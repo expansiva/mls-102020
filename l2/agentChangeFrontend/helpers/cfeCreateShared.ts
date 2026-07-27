@@ -3351,9 +3351,9 @@ async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: Cfe
   const projects = ensureRecordProperty(config, 'projects');
   const client = ensureProjectConfig(projects, String(project), { root: '.', type: 'client', runtime: projectRuntimeMetadata(l5, String(project)) });
   projects[runtimeId] = { root: `../mls-${runtimeId}`, type: 'master frontend' };
-  projects['102027'] = isRecord(projects['102027']) ? projects['102027'] : { root: '../mls-102027', type: 'lib' };
+  delete projects['102027'];
+  delete projects['102036'];
   projects['102029'] = isRecord(projects['102029']) ? projects['102029'] : { root: '../mls-102029', type: 'lib' };
-  projects['102036'] = isRecord(projects['102036']) ? projects['102036'] : { root: '../mls-102036', type: 'lib' };
   addWorkspaceDependencies(projects, l5, String(project));
 
   const labels = isRecord(customize.navigationLabels) ? customize.navigationLabels : {};

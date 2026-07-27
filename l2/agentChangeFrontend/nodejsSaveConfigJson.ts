@@ -337,11 +337,9 @@ function main(): void {
     config.projects[backendRuntimeId] = config.projects[backendRuntimeId] || { root: `../mls-${backendRuntimeId}`, type: 'master backend' };
   }
   // Frontend shared libs used by the generated l2 code and by the master frontend.
-  config.projects['102027'] = config.projects['102027'] || { root: '../mls-102027', type: 'lib' };
+  delete config.projects['102027'];
+  delete config.projects['102036'];
   config.projects['102029'] = config.projects['102029'] || { root: '../mls-102029', type: 'lib' };
-  // 102036 (collab-messages base) is imported by 102027 (aiAgentOrchestration/aiAgentHelper),
-  // so it must be part of the client's project set (build + runtime).
-  config.projects['102036'] = config.projects['102036'] || { root: '../mls-102036', type: 'lib' };
   addL5Dependencies(config, l5, clientId);
 
   const client = config.projects[clientId];

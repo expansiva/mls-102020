@@ -45,7 +45,7 @@ need. Never import from the contracts module (it is not in context and the page 
 
 Generate:
 - MLS header from target outputPath, with enhancement="_102020_/l2/enhancementAura".
-- import { html } from 'lit';
+- import { html, nothing } from 'lit';   // nothing is the Lit sentinel for an empty branch
 - import { customElement } from 'lit/decorators.js';
 - import Definition.baseClassName exactly from /_{project}_/l2/{moduleName}/web/shared/{pageName}.js.
   The extension is always .js, never .ts.
@@ -64,6 +64,16 @@ Do not add helper methods.
 Do not mutate state.
 Do not call setState.
 Do not duplicate i18n objects.
+
+EMPTY BRANCHES (mandatory - a violation renders source code as text on the screen):
+In a template conditional, the FALSE branch must be the Lit sentinel "nothing", IMPORTED FROM 'lit'
+(plain null is also accepted). NEVER declare a function to stand in for the empty branch. A local
+"function nothing()" returning an empty html template, combined with a bare "nothing" in the template,
+passes the FUNCTION OBJECT to Lit, which paints the function's own source code into the DOM. This
+happened in production: the screen showed the literal text "function nothing() { return b of nothing }".
+The same applies to any invented name (nothingOrEmpty, nothingPlaceholder, emptyTpl, ...). A generated
+page therefore has NO module-level function declarations at all: the only class method is render(), and
+pure formatting/grouping helpers are const arrow functions declared INSIDE render().
 
 ## Mapping layout to render
 
@@ -118,8 +128,19 @@ Render page11 as a simple operational page:
 - content organisms (landing pages, organism.type 'content' or 'showcase'; intent hero/banner/richText/imageSet/ctaLink/showcase):
   - hero/banner: a prominent title/subtitle block from the organism/intention msg keys; no data binding.
   - richText: a paragraph/prose block from its msg key.
-  - imageSet/hero image: render an empty placeholder box (aspect-ratio container with a neutral surface token) — assets are out of scope this wave, never invent an image URL.
+  - imageSet/hero image with NO data field behind it: render an empty placeholder box (aspect-ratio container with a neutral surface token) — never INVENT an image URL.
   - showcase: a card grid fed by its query state (same queryResult reading rules as a list, but rendered as cards); read rows from the shared property's declared collection field.
+
+DATA-BOUND IMAGES (mandatory when the field exists): a DTO/row field that holds an image URL — its name
+ends in imageUrl / photoUrl / logoUrl / avatarUrl / pictureUrl / thumbnailUrl — MUST be rendered as a real
+image, never as the raw URL text and never as a placeholder box. This is NOT "inventing a URL": the value
+comes from the BFF. Bind it and keep an empty branch, e.g. for a row/card variable named item:
+    item.imageUrl ? html(img src=item.imageUrl alt=item.name loading lazy) : nothing
+Always set alt from the row's own name/title field (empty string when there is none) and
+loading="lazy" inside lists/grids. Give the img a bounded size with layout utilities (never a raw width
+attribute) so one asset cannot blow up the grid. Observed failure this rule fixes: listMenuItems and
+queryMenuItems both returned imageUrl for every row and NO generated page contained an img tag, so the
+seeded photos were invisible in the app (todo/runtime/bugimage.md).
   - ctaLink: a navigation link/button. Bind it to the shared navigation action if one exists (JSDoc 'handler for action ...'); otherwise render an <a href> to the target route when the layout provides one, else a disabled button. Never fabricate a route.
 - for every command action, render a textual feedback region driven by its action status: success uses the success feedback key from the action's JSDoc ('feedback keys'); error uses the AppError text from the error state when present, otherwise the error feedback key. It must be dismissible and must never be only an icon or glyph.
 - represent loading consistently: query/list intentions show a placeholder or skeleton while their query state is loading; command buttons show a spinner/progress label and are disabled while their action is loading.

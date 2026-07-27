@@ -14,6 +14,7 @@ import {
   buildHumanPrompt,
   buildMaterializeTypecheckTest,
   buildMissingCodeRepairHint,
+  collectPageTemplateHygieneIssues,
   buildSharedDtsSection,
   buildSystemPrompt,
   DEFAULT_MODEL_TYPE,
@@ -530,6 +531,24 @@ async function materializeOne(
     }
 
     appendTrace(tracePath, p.item, modelType, r, code, skillReport, depReport, isRepair);
+
+    // bugpage21: reject a page that renders an invented module-level helper by NAME (`: nothing` plus
+    // `function nothing()`), which paints the function's own source on screen. It compiles, so the final
+    // `tsc` this CLI relies on cannot catch it — check BEFORE writing and retry with the findings as the
+    // repair hint (same mechanism as a missing-code retry). Studio has the equivalent gate in
+    // agentCfeMaterializePhase; both share collectPageTemplateHygieneIssues so they cannot drift.
+    const hygiene = r.ok && code && p.item.type === 'l2_page' ? collectPageTemplateHygieneIssues(code) : [];
+    if (hygiene.length) {
+      const detail = `template hygiene: ${hygiene.join('; ')}`;
+      appendTrace(tracePath, p.item, modelType, failedLlmResult(detail), '', skillReport, depReport, isRepair);
+      if (attempt >= MATERIALIZE_REPAIR_ATTEMPTS) {
+        console.log(`FAIL: ${detail}`);
+        return { ok: false, error: detail };
+      }
+      console.log(`retry: ${detail}`);
+      nextRepairHint = buildMissingCodeRepairHint(p.item.outputPath, detail);
+      continue;
+    }
 
     if (r.ok && code) {
       try {
