@@ -95,11 +95,20 @@ Color/surface: \`--ml-primary\`, \`--ml-on-primary\`, \`--ml-surface\` (inline f
 \`--ml-error\` (feedback).
 Depth/motion: \`--ml-shadow-1\` (resting), \`--ml-shadow-2\` (hover), \`--ml-transition\`,
 \`--ml-disabled-opacity\`.
-Theme extras (add only if the style needs them): \`--ml-outline-focus\`, \`--ml-outline-error\`,
-\`--ml-focus-ring-width\`, \`--ml-focus-ring-color\`, \`--ml-backdrop-blur\`, \`--ml-backdrop-blur-strong\`,
-\`--ml-text-transform\`, \`--ml-letter-spacing\`.
+Theme extras (add only if the style needs them): focus ring — EITHER the shorthand
+\`--ml-outline-focus\` OR the pair \`--ml-focus-ring-width\` + \`--ml-focus-ring-color\`, never
+both; \`--ml-outline-error\` (only if the error border differs from \`--ml-error\`);
+\`--ml-backdrop-blur\`, \`--ml-backdrop-blur-strong\`, \`--ml-text-transform\`,
+\`--ml-letter-spacing\`; \`--ml-surface-hover\` (a distinct hover background, if the style has one).
 Molecules define ONLY the tokens they consume and always read them as \`var(--ml-x, <fallback>)\`
 where the fallback equals the canonical value — so name and value must be self-consistent.
+
+**ONE mechanism per concern.** The Tokens table is the VOCABULARY the molecules consume, so a
+token that no recipe of yours mentions is perfectly fine — that is how the validated themes
+work. What is NOT fine is declaring two competing ways to express the same thing (a shorthand
+AND its parts) and then writing the recipe with only one of them: the other is ambiguity the
+molecule agent has to guess about. Choose one, and let the recipe that consumes it be the
+proof of the choice.
 
 ## Authoring RULES (hard — each comes from a real defect we fixed)
 
@@ -132,6 +141,18 @@ where the fallback equals the canonical value — so name and value must be self
 
    Write the veil recipe with that selector and say why. Never invent \`.ml-scrim\`.
 
+   **Overlay background must differ from the PAGE background.** A panel/dropdown/modal
+   painted the same color as \`themeInfo.background.css\` has no hierarchy — only its border
+   separates it from the page, and the user reads it as part of the page. Pick a visibly
+   distinct step (a lighter/darker shade, or plain white/near-black), and check your own
+   palette: if \`--ml-surface-dim\` equals the page color, the choice is wrong, however
+   elegant the rationale sounds. A gate compares the two.
+
+   Keep the token ROLES apart while you are at it: \`--ml-surface\` = inline surface,
+   \`--ml-surface-dim\` = OVERLAY surface. If the style also wants a distinct hover
+   background, that is a separate theme extra (e.g. \`--ml-surface-hover\`) — do not overload
+   \`--ml-surface-dim\` with it, or overlays and hover states drift into the same value.
+
 3. **Control primitives vs surfaces.** Do NOT apply heavy surface effects (blur, an added
    border, offset/spread box-shadow, specular \`::before\`) to tiny geometric primitives —
    thin tracks/rails, small marks/ticks/dots, drag thumbs, floating indicators (≈≤20px).
@@ -140,8 +161,18 @@ where the fallback equals the canonical value — so name and value must be self
 
 4. **Comments in English.** All comments/prose inside the generated \`theme.ts\` are in English.
 
-5. **Explicit motion stance.** State it (a \`--ml-transition\` value, or \`transition: none\`);
-   the molecule base defines transitions, so the theme must take a position.
+5. **Explicit motion stance, never a universal selector.** State it (a \`--ml-transition\`
+   value, or \`transition: none\`); the molecule base defines transitions, so the theme must
+   take a position. But apply that stance ON THE ELEMENTS YOUR RECIPES NAME — never write
+   \`* { transition: ... }\`. A universal selector wipes animation the molecule INHERITS from
+   its base and leaks outside the component scope; a molecule sheet is rejected for it.
+
+   If your style is anti-smooth, do not kill the inherited SVG spinner — make its rotation
+   match the style instead (validated technique):
+
+   \`\`\`less
+   .animate-spin { animation-timing-function: steps(8); }   // mechanical, not disabled
+   \`\`\`
 
 6. **States.** Provide recipes for the state classes molecules emit — disabled, open,
    selected, error — and exclude states from hover with \`:not(.ml-disabled)\` etc.

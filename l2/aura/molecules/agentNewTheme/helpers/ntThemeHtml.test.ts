@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderThemeHtml } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntThemeHtml.js';
+import { deriveThemeChrome, renderThemeHtml } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntThemeHtml.js';
 import { NtThemeSummary } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntTypes.js';
 
 const summary: NtThemeSummary = {
@@ -45,4 +45,54 @@ test('LLM text cannot break out of the markup', () => {
   assert.ok(html.includes('&lt;script&gt;'));
   assert.ok(!html.includes('onload="x'));
   assert.ok(!html.includes('onerror="y'));
+});
+
+test('T6: the doc chrome is derived from the signature (brutal → sharp, thick, mono)', () => {
+  const brutal = {
+    ...summary,
+    signature: [
+      { aspect: 'Corners', value: '0px — perfectly square, no rounding' },
+      { aspect: 'Border', value: '3px solid #000000 on all surfaces' },
+      { aspect: 'Typography', value: 'JetBrains Mono, weight 700; labels uppercase' },
+    ],
+  };
+  const chrome = deriveThemeChrome(brutal, 'rgba(0,0,0,0.12)');
+  assert.equal(chrome.radius, '0px');
+  assert.equal(chrome.border, '3px solid #000000');
+  assert.match(chrome.fontFamily, /monospace/);
+
+  const html = renderThemeHtml({ summary: brutal });
+  assert.ok(html.includes('border:3px solid #000000'));
+  assert.ok(html.includes('border-radius:0px'));
+  assert.ok(!html.includes('border-radius:0.5rem'), 'must not fall back to the neutral radius');
+});
+
+test('T6: soft themes keep a rounded chrome, and garbage falls back', () => {
+  const soft = {
+    ...summary,
+    signature: [
+      { aspect: 'Corners', value: 'rounded, radius 12px' },
+      { aspect: 'Border', value: 'thin 1px rgba(255,255,255,0.18) hairline' },
+      { aspect: 'Typography', value: 'Inter, sans-serif' },
+    ],
+  };
+  const chrome = deriveThemeChrome(soft, 'rgba(0,0,0,0.12)');
+  assert.equal(chrome.radius, '12px');
+  assert.equal(chrome.border, '1px solid rgba(255,255,255,0.18)');
+  assert.equal(chrome.fontFamily, 'system-ui,sans-serif');
+
+  const empty = deriveThemeChrome({ ...summary, signature: [] }, 'rgba(0,0,0,0.12)');
+  assert.deepEqual(empty, { radius: '0.5rem', border: '1px solid rgba(0,0,0,0.12)', fontFamily: 'system-ui,sans-serif' });
+});
+
+test('T6: absurd values from the LLM are clamped', () => {
+  const wild = deriveThemeChrome({
+    ...summary,
+    signature: [
+      { aspect: 'Corners', value: 'radius 999px pill' },
+      { aspect: 'Border', value: '40px solid #000' },
+    ],
+  }, 'rgba(0,0,0,0.12)');
+  assert.equal(wild.radius, '24px');
+  assert.equal(wild.border, '6px solid #000');
 });

@@ -75,6 +75,16 @@ export function runLessGate(less: string, ctx: VariantContext): VGateIssue[] {
     });
   }
 
+  // T3: a universal selector in a molecule sheet wipes animation the molecule INHERITS
+  // from its base (e.g. the SVG spinner) and leaks outside the tag scope. Themes must take
+  // their motion stance on the elements they name.
+  if (hasUniversalSelector(content)) {
+    issues.push({
+      code: 'universal_selector',
+      message: 'never use a universal selector (`*`) in a molecule sheet — it wipes inherited animation (the SVG spinner) and leaks outside the component scope; apply the motion stance to the classes you style (a mechanical spinner is `.animate-spin { animation-timing-function: steps(n); }`)',
+    });
+  }
+
   if (!/--ml-[\w-]+\s*:/.test(content)) {
     issues.push({ code: 'tokens', message: 'sheet must define the --ml-* tokens the molecule consumes (theme skill token table)' });
   }
@@ -83,6 +93,22 @@ export function runLessGate(less: string, ctx: VariantContext): VGateIssue[] {
   }
 
   return issues;
+}
+
+// True when a `*` appears in SELECTOR position (`* {`, `.a > * {`, `*, *::before {`).
+// Comments and attribute selectors ([class*="x"]) are scrubbed first, and only the text
+// that precedes a `{` is inspected — so `calc(a * b)` in a declaration never trips it.
+function hasUniversalSelector(less: string): boolean {
+  const scrubbed = less
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '')
+    .replace(/\[[^\]]*\]/g, '');
+  const selectors = /(?:^|[{};])([^{};]*)\{/g;
+  let match: RegExpExecArray | null;
+  while ((match = selectors.exec(scrubbed)) !== null) {
+    if (match[1].includes('*')) return true;
+  }
+  return false;
 }
 
 function escapeRegExp(value: string): string {

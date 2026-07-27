@@ -123,6 +123,18 @@ function checkSummary(summary: NtThemeSummary | null, info: Record<string, unkno
   if (!summary.signature?.length) {
     issues.push({ code: 'summary_signature', message: 'summary.signature must list the layout aspects (corners, border, shadow, motion, ...)' });
   }
+  // T4: an overlay painted the same color as the page has no hierarchy — only its border
+  // separates it, and the user reads it as part of the page. Compared only when the page
+  // background is a single flat color (a gradient/image backdrop has no single value).
+  const overlay = (summary.palette || []).find(swatch => swatch.token === '--ml-surface-dim');
+  const pageColor = singleColorLiteral(String(background.css ?? ''));
+  if (overlay && pageColor && normalizeColor(overlay.color) === pageColor) {
+    issues.push({
+      code: 'overlay_contrast',
+      message: `--ml-surface-dim (overlay surface) is the same color as the page background (${overlay.color}) — panels, dropdowns and modals would have no hierarchy against the page; pick a visibly distinct step`,
+    });
+  }
+
   const tokensSection = sliceSection(skill, '## 2. Tokens', '## 3. Canonical CSS Rules');
   for (const swatch of summary.palette || []) {
     if (!swatch.token.startsWith('--ml-')) {
@@ -213,4 +225,20 @@ function sliceSection(skill: string, from: string, to: string): string {
 
 function normalizeCss(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().replace(/;$/, '');
+}
+
+// The single flat color a page background resolves to, or '' when there is more than one
+// (gradient) / none (image, named color). Only a single value can be compared safely.
+function singleColorLiteral(css: string): string {
+  const colors = css.match(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g) || [];
+  if (colors.length !== 1) return '';
+  return normalizeColor(colors[0]);
+}
+
+// '#FFF' and '#ffffff' are the same color; rgb() spacing is irrelevant.
+function normalizeColor(value: string): string {
+  const color = (value || '').trim().toLowerCase();
+  const hex = color.match(/^#([0-9a-f]{3})$/);
+  if (hex) return `#${hex[1].split('').map(ch => ch + ch).join('')}`;
+  return color.replace(/\s+/g, '');
 }

@@ -161,3 +161,19 @@ test('`.ml-slider-thumb` in absolute set does not match the longer `.ml-slider-t
   const less = scoped(ctx, '.ml-slider-thumb { color: #fff; transition: none; } .ml-slider-thumb-arrow { &::after { position: absolute; } }');
   assert.ok(!runLessGate(less, ctx).some(issue => issue.code === 'position_override'));
 });
+
+test('T3: a universal selector is rejected (wipes inherited animation, leaks scope)', () => {
+  const ctx = buildCtx({ inventory: ['ml-button'] });
+  const less = scoped(ctx, '.ml-button { color: #fff; transition: none; } * { transition: none; }');
+  assert.ok(runLessGate(less, ctx).some(issue => issue.code === 'universal_selector'));
+
+  const nested = scoped(ctx, '.ml-button { color: #fff; transition: none; } .ml-button > * { transition: none; }');
+  assert.ok(runLessGate(nested, ctx).some(issue => issue.code === 'universal_selector'));
+});
+
+test('T3: `*` inside declarations/comments is not a universal selector', () => {
+  const ctx = buildCtx({ inventory: ['ml-button'] });
+  // calc multiplication, a /* */ comment and the mechanical spinner must all pass
+  const less = scoped(ctx, '/* offset * 2 */ .ml-button { width: calc(100% * 0.5); color: #fff; transition: none; } .animate-spin { animation-timing-function: steps(8); }');
+  assert.ok(!runLessGate(less, ctx).some(issue => issue.code === 'universal_selector'));
+});

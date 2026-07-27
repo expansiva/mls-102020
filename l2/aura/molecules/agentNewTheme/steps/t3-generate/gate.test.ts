@@ -134,6 +134,39 @@ test('the summary must describe the generated theme', () => {
   assert.ok(gate(validTheme, { ...validSummary, signature: [] }).includes('summary_signature'));
 });
 
+test('T4: the overlay surface must not be the page background color', () => {
+  const withOverlay = (color: string) => ({
+    ...validSummary,
+    palette: [...validSummary.palette, { token: '--ml-surface-dim', label: 'Overlay', color }],
+  });
+  const themeWithDimToken = validTheme.replace(
+    '| --ml-surface | #ffffff | inline surface |',
+    '| --ml-surface | #ffffff | inline surface |\n| --ml-surface-dim | #f4f4f5 | overlay surface |',
+  );
+  // page is 'background: #f4f4f5;' — an overlay of the same color has no hierarchy
+  assert.ok(runThemeGate({ themeTs: themeWithDimToken, summary: withOverlay('#f4f4f5'), destProject: DEST })
+    .map(i => i.code).includes('overlay_contrast'));
+  // shorthand hex of the same color is still the same color
+  assert.ok(runThemeGate({ themeTs: themeWithDimToken, summary: withOverlay('#F4F4F5'), destProject: DEST })
+    .map(i => i.code).includes('overlay_contrast'));
+  // a distinct step passes
+  assert.deepEqual(runThemeGate({ themeTs: themeWithDimToken, summary: withOverlay('#ffffff'), destProject: DEST }), []);
+});
+
+test('T4: a gradient/image page background is not compared', () => {
+  const gradient = 'background: linear-gradient(135deg, #0f172a 0%, #7e22ce 100%);';
+  const themeTs = validTheme
+    .split(BG_CSS).join(gradient)
+    .replace("kind: 'light',", "kind: 'dark',")
+    .replace('| --ml-surface | #ffffff | inline surface |', '| --ml-surface | #ffffff | inline surface |\n| --ml-surface-dim | #0f172a | overlay surface |');
+  const summary = {
+    ...validSummary,
+    background: { kind: 'dark' as const, css: gradient },
+    palette: [...validSummary.palette, { token: '--ml-surface-dim', label: 'Overlay', color: '#0f172a' }],
+  };
+  assert.deepEqual(runThemeGate({ themeTs, summary, destProject: DEST }), []);
+});
+
 test('palette tokens must be --ml-* and declared in the Tokens table', () => {
   assert.ok(gate(validTheme, { ...validSummary, palette: [{ token: 'primary', label: 'P', color: '#000' }] }).includes('palette_token'));
   assert.ok(gate(validTheme, { ...validSummary, palette: [{ token: '--ml-tertiary', label: 'T', color: '#000' }] }).includes('palette_unknown'));
