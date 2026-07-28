@@ -64,3 +64,31 @@ test('empty answers resolve to the known fields and no guidance', () => {
   assert.deepEqual(fields, { name: 'brutal', corners: 'sharp', suffix: '-brutal' });
   assert.equal(guidance, '');
 });
+
+test('T24: the page CSS typed on the KIND question lands in background.css', () => {
+  const gradient = 'background: linear-gradient(135deg, #0f172a 0%, #312e81 45%, #7e22ce 100%);';
+  const { fields, guidance } = ntResolveAnswers({}, [
+    { field: 'background.kind', value: 'dark', notes: gradient },
+  ]);
+  assert.deepEqual(fields.background, { kind: 'dark', css: gradient });
+  // it is a decision, not loose nuance — the old behaviour filed it as
+  // 'background.kind: background: linear-gradient(...)' and generation ignored it
+  assert.equal(guidance, '');
+});
+
+test('T24: a plain color counts as CSS, prose does not', () => {
+  const color = ntResolveAnswers({}, [{ field: 'background.kind', value: 'light', notes: '#f5f5f5' }]);
+  assert.deepEqual(color.fields.background, { kind: 'light', css: '#f5f5f5' });
+
+  const prose = ntResolveAnswers({}, [{ field: 'background.kind', value: 'dark', notes: 'bem escuro, quase preto' }]);
+  assert.deepEqual(prose.fields.background, { kind: 'dark' });
+  assert.equal(prose.guidance, 'background.kind: bem escuro, quase preto');
+});
+
+test('T24: an explicit background.css answer still wins on its own field', () => {
+  const { fields } = ntResolveAnswers({}, [
+    { field: 'background.kind', value: 'dark' },
+    { field: 'background.css', notes: 'background: #0f172a;' },
+  ]);
+  assert.deepEqual(fields.background, { kind: 'dark', css: 'background: #0f172a;' });
+});

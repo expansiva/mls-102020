@@ -25,6 +25,12 @@ Your job is CHEAP and mechanical:
    free-text slot. If the prompt states everything, return an empty array (the pipeline then
    skips the checkpoint entirely).
 
+   **`background.kind` and `background.css` travel together.** Whenever you ask the kind, ask
+   the CSS as its own OPEN question (propose a concrete declaration for the style, e.g.
+   `background: linear-gradient(135deg, #0f172a 0%, #312e81 45%, #7e22ce 100%);`). The CSS is
+   what the theme actually renders — do not expect the human to squeeze it into the notes of
+   the kind question.
+
    **Identity is always asked** when the checkpoint runs: `name` and `displayName`. Nothing
    downstream reviews them, so offer your proposal as a single option with `recommended: true`
    plus `allowNotes: true`. Keep `name` a SHORT kebab id — it becomes the suffix of every

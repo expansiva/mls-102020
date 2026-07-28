@@ -5,12 +5,15 @@
 // immediate (the plan is what the whole pipeline reads from l4/agentNewTheme/plan.json).
 
 import {
+  NT_EXTRA_FIELD,
   NtBackgroundKind,
   NtPlan,
   NtQuestion,
   NtQuestionOption,
   NtThemeFields,
 } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntTypes.js';
+
+export { NT_EXTRA_FIELD };
 
 export interface NtGateIssue {
   code: string;
@@ -19,11 +22,8 @@ export interface NtGateIssue {
 
 // The canonical fields the checkpoint may ask about. surface / on-surface text are DERIVED
 // from background.kind and are never asked (flow.json conventions.themeFields).
-// 'extra' is not a theme field: it is the free-text slot where the user pastes what the
-// coarse enums cannot express (exact values, signature interactions, things to avoid).
-// It never appears in `known` — only as the last question.
-export const NT_EXTRA_FIELD = 'extra';
-
+// The free-text slot (NT_EXTRA_FIELD, owned by ntTypes) is a question id, never a `known`
+// field: it is where the user pastes what the coarse enums cannot express.
 export const NT_QUESTION_FIELDS = [
   'name',
   'displayName',

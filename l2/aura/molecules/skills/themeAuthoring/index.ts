@@ -77,6 +77,49 @@ tag root). Only a container may receive the full surface treatment — backgroun
 radius + shadow together. A transversal utility never does: it contributes its one family to
 whatever element happens to carry it, and you cannot know what that element is.
 
+## How to WRITE a recipe (the format is not optional)
+
+Two shapes, and nothing else. Left to itself the same instruction has produced three different
+formats in three runs — one of them dead, one of them harmful — so this is spelled out:
+
+**A transversal utility** → a normal rule, because the class name is real and its family is known:
+
+\`\`\`less
+.ml-border { border-color: var(--ml-outline-variant, rgba(255,255,255,0.25)); }
+\`\`\`
+
+**A container role** (interactive surface, overlay, button root, flat variant) → a block of
+DECLARATIONS WITH NO SELECTOR, introduced by a prose line naming the role and real example
+classes. The molecule agent applies the block to whatever class that molecule actually uses.
+Write it exactly like this — a bold role, the examples in parentheses, then the declarations:
+
+Overlay surface (\`.ml-select-panel\`, a modal/dialog root, a popover container):
+
+\`\`\`less
+background: var(--ml-surface-dim, rgba(30,27,75,0.95));
+border: var(--ml-border-width, 1px) solid var(--ml-outline-variant, rgba(255,255,255,0.25));
+border-radius: var(--ml-radius-lg, 14px);
+box-shadow: var(--ml-shadow-2, 0 6px 24px rgba(0,0,0,0.26));
+&:not(.ml-disabled):hover { box-shadow: var(--ml-shadow-1); }
+&::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
+\`\`\`
+
+Nested \`&:hover\`, \`&:focus-visible\`, \`&::before\` and real state classes (\`&.ml-select-item-selected\`)
+belong INSIDE such a block — they attach to whatever the block is applied to.
+
+Four things never appear in a recipe:
+
+1. **A commented-out recipe.** \`// border: 3px solid ...\` is not guidance, it is dead text. If
+   you cannot name a selector, use the declaration-only form above — that is what it is for.
+2. **An invented selector.** Writing \`.ml-dialog, .ml-popover, .ml-tooltip, .ml-panel { ... }\`
+   because the role needs a selector produces rules that match nothing (none of those exist).
+3. **An element or attribute selector.** \`button\`, \`[role='button']\`, \`[aria-selected]\` are not
+   the theme's vocabulary: inside a molecule they hit every icon button, every calendar arrow
+   and every clear "x", and \`overflow: hidden\` on those clips focus rings. The theme's
+   vocabulary is \`ml-*\` classes and the tag root.
+4. **\`!important\`.** If a recipe seems to need it, the previous rule was too broad (see 3) —
+   narrow that one instead of escalating this one.
+
 So write each canonical rule by the **ROLE of the element**, naming real classes only as
 examples: "Interactive surface (\`.ml-select-trigger\`, \`.ml-input-container\`, button roots):
 then the declarations". The molecule agent maps the role onto whatever classes that molecule
@@ -166,8 +209,11 @@ proof of the choice.
    \`position: relative\` drops it into normal flow (full width) and \`overflow: hidden\` clips
    its arrows. \`position\`/\`transform\`/\`display\` ARE fine on elements the render does NOT
    position (e.g. a button root anchoring an offset shadow, or a hover micro-interaction).
-   Achieve specular/light edges with \`::before\` (\`border-radius: inherit\`) or \`inset\` box-shadow,
-   never by forcing the host's position/overflow.
+   Specular/light edges go on a \`::before\` (\`position: absolute; inset: 0;
+   border-radius: inherit; pointer-events: none\`) or on an \`inset\` box-shadow. That pseudo-element
+   needs a positioned host, and \`position: relative\` on a surface the render does NOT position is
+   legitimate — put it in the recipe. What is forbidden is touching \`position\`/\`overflow\` on an
+   element the render already positions.
 
 2. **Overlay surfaces vs inline surfaces.** Any floating container shown OVER page content —
    modal/dialog, dropdown, popover, tooltip, panel — MUST stay readable regardless of what is
@@ -188,6 +234,16 @@ proof of the choice.
    \`\`\`
 
    Write the veil recipe with that selector and say why. Never invent \`.ml-scrim\`.
+
+   **A token pair does NOT express the split — say it per molecule.** Two measured facts: the
+   modal's card carries \`.ml-surface-bg\` (the same class inline cards use), and the dropdown's
+   base sheet paints \`.ml-select-panel\` with \`var(--ml-surface, ...)\`. So defining
+   \`--ml-surface-dim\` and hoping overlays pick it up silently fails — the overlay ends up with
+   the INLINE value, which is exactly how a glass modal became unreadable. State the rule
+   explicitly in the theme: **in a molecule that IS an overlay** (modal/dialog, dropdown panel,
+   popover, tooltip), the container's background takes \`--ml-surface-dim\` **whatever class
+   carries it**, including \`.ml-surface-bg\` and \`.ml-select-panel\`. Elsewhere the same class
+   keeps the inline value. Without that sentence a translucent theme reintroduces the bug.
 
    **Overlay background must differ from the PAGE background.** A panel/dropdown/modal
    painted the same color as \`themeInfo.background.css\` has no hierarchy — only its border
@@ -228,6 +284,10 @@ proof of the choice.
    \`\`\`less
    .animate-spin { animation-timing-function: steps(8); }   // mechanical, not disabled
    \`\`\`
+
+   \`--ml-transition\` is a TRANSITION shorthand (\`250ms ease\`, or \`none\`) — never plug it into an
+   \`animation\`. \`animation: shimmer 1.6s var(--ml-transition) infinite\` expands to a 250ms DELAY
+   plus \`ease\`, which is not what you meant; animations declare their own duration and easing.
 
 6. **States.** Provide recipes for the state classes molecules emit — disabled, open,
    selected, error — and exclude states from hover with \`:not(.ml-disabled)\` etc.
