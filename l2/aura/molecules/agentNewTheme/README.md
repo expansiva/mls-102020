@@ -20,7 +20,11 @@ and parentheses included. The object form `@@agentNewTheme { prompt: '...' }` al
 - An empty/vague prompt is fine — the checkpoint will ask for the missing fields with
   suggested options. A rich prompt may skip it entirely (fast path).
 - Checkpoint: answer the questions (fundo, paleta, cantos, borda, sombra, movimento,
-  tipografia, nome). Cancelling stops the run with nothing written.
+  tipografia, nome/displayName). The last one is a **free-text slot** — use it for what the
+  options cannot say: valores exatos (`borda 3px`, `sombra 4px 4px 0 #000000`), a interação
+  de assinatura ("no hover o elemento translada 2px para dentro da sombra") e proibições
+  ("sem blur"). Esse texto vence a escolha grossa do campo. Cancelling stops the run with
+  nothing written.
 - Then the theme is generated, gated and written: `theme.ts` + `theme.html`, with the
   `.ts` compiled. Click the step to review the palette/signature read-only.
 
@@ -34,7 +38,7 @@ run in a project that already has a theme.
 agentNewTheme.ts          root: parse { prompt }, admission, plant the step tree
 flow.json                 authoritative spec (t1-plan → t2-clarify → t3-generate)
 spec.md / README.md       rationale / this file
-helpers/                  ntEntry, ntFs, ntSteps, ntTypes, ntThemeHtml  (nt* — owned by this agent)
+helpers/                  ntEntry, ntAnswers, ntFs, ntSteps, ntTypes, ntThemeHtml  (nt* — owned by this agent)
 schemas/                  t1-plan.schema.json, t3-generate.schema.json
 steps/t1-plan/            prompt + gate (the call itself is the ROOT's — no separate agent)
 steps/t2-clarify/         agentNtClarify (the checkpoint; mounts shared Decision Clarification)

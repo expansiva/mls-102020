@@ -22,7 +22,8 @@
       "additionalProperties": false,
       "properties": {
         "name": { "type": "string" },
-        "suffix": { "type": "string" },
+        "displayName": { "type": "string" },
+        "suffix": { "type": "string", "description": "never collected — derived as '-' + name" },
         "background": {
           "type": "object",
           "additionalProperties": false,

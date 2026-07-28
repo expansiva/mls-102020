@@ -15,7 +15,9 @@ export type NtTypographyFamily = 'sans' | 'mono' | 'serif';
 // background kind (not collected). 'image' background is accepted only via free-text css.
 export interface NtThemeFields {
   name?: string;
-  suffix?: string; // derived from name if absent ('-' + kebab)
+  displayName?: string; // human name; asked so it is not silently invented by the generation
+  suffix?: string; // ALWAYS derived from name ('-' + kebab) — never collected on its own,
+                   // because the t3 gate requires suffix === '-' + name
   background?: { kind?: NtBackgroundKind; css?: string };
   primary?: string; // brand/accent color
   corners?: NtCorners;

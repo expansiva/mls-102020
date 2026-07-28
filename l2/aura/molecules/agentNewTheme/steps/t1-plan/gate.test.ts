@@ -145,3 +145,32 @@ test('known enum values are validated', () => {
   const plan = normalizeNtPlan(planPayload({ known: { motion: 'bouncy' }, questions: [] }));
   assert.deepEqual(runPlanGate(plan).map(issue => issue.code), ['known_enum']);
 });
+
+test('the free-text slot and displayName are valid open questions', () => {
+  const plan = normalizeNtPlan(planPayload({
+    known: {},
+    questions: [
+      cornersQuestion,
+      { field: 'displayName', question: 'Nome de exibição?', allowNotes: true, options: [] },
+      { field: 'extra', question: 'Mais algum detalhe? (valores exatos, interações, o que evitar)', allowNotes: true, options: [] },
+    ],
+  }));
+  assert.equal(plan.questions.length, 3);
+  assert.deepEqual(runPlanGate(plan), []);
+});
+
+test('the free-text slot still needs a way to be answered', () => {
+  const plan = normalizeNtPlan(planPayload({
+    known: {},
+    questions: [{ field: 'extra', question: 'Mais algo?', allowNotes: false, options: [] }],
+  }));
+  assert.deepEqual(runPlanGate(plan).map(issue => issue.code), ['question_unanswerable']);
+});
+
+test('a known displayName must not be asked again', () => {
+  const plan = normalizeNtPlan(planPayload({
+    known: { displayName: 'Brutalism' },
+    questions: [{ field: 'displayName', question: 'Nome?', allowNotes: true, options: [] }],
+  }));
+  assert.deepEqual(runPlanGate(plan).map(issue => issue.code), ['question_known']);
+});

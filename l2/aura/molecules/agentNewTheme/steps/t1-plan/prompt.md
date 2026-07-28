@@ -17,6 +17,15 @@ Your job is CHEAP and mechanical:
    NEVER ask about a field you put in `known`. At most 8 questions. If nothing is missing,
    return an empty array (the pipeline then skips the checkpoint entirely).
 
+   **The free-text slot.** WHENEVER you ask at least one question, add ONE more as the LAST
+   question: `field: 'extra'`, `options: []`, `allowNotes: true`. Its text (in `userLanguage`)
+   invites everything the fixed fields cannot express — exact values (border `3px`, shadow
+   `4px 4px 0 #000000`, `letter-spacing 0.05em`, font names), signature interactions ("on
+   hover the element slides 2px into its own shadow"), and things to avoid ("no transparency,
+   no blur"). This slot is what lets a short request reach the precision of a long one.
+   If NOTHING is missing, return an empty `questions` array — do not add the slot just to
+   have one (the pipeline then skips the checkpoint entirely).
+
    Two kinds of question — get this right, a deterministic gate rejects the plan otherwise:
    - **CLOSED fields** (`background.kind`, `corners`, `border.style`, `shadow`, `motion`,
      `typography.family`, `typography.uppercaseLabels`): 2–4 options, `id` = the enum value
@@ -31,6 +40,8 @@ Your job is CHEAP and mechanical:
 | field | values |
 | --- | --- |
 | `name` | free kebab-case id of the theme (e.g. `neumorphic`); the file suffix is derived from it |
+| `displayName` | the human name (e.g. `Neumorphism`); ask it instead of letting generation invent one |
+| `extra` | not a field — the free-text slot described in rule 5 (always last, `options: []`) |
 | `background.kind` | `light` \| `dark` \| `image` |
 | `background.css` | the page background CSS declaration (e.g. `background: #f5f5f5;`) |
 | `primary` | the brand/accent color (CSS color) |
@@ -47,7 +58,8 @@ For enum fields, the option `id` MUST be one of the values above (the `label` is
 text the human reads). `background.kind: 'image'` is accepted, but the image is described in
 `background.css` as free CSS — there is no upload.
 
-`name`, `background.css`, `primary` and `border.color` are the OPEN fields (rule 5).
+`name`, `displayName`, `background.css`, `primary`, `border.color` and the `extra` slot are
+the OPEN fields (rule 5). `suffix` is NEVER asked — it is derived as `'-' + name`.
 
 ## Output format
 

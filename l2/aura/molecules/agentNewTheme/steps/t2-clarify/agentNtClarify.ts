@@ -36,16 +36,28 @@ import type {
 const AGENT_NAME = 'agentNtClarify';
 const PLAN_ID = 't2-clarify';
 
-const LABELS: Record<string, { intro: string; answered: string; cancelled: string }> = {
+interface NtClarifyLabels {
+  intro: string;
+  answered: string;
+  cancelled: string;
+  notes: string;        // placeholder when the free text refines a chosen option
+  extraNotes: string;   // placeholder of the free-text slot, where the text IS the answer
+}
+
+const LABELS: Record<string, NtClarifyLabels> = {
   pt: {
     intro: 'Responda para completar o estilo do tema. As opções recomendadas já vêm marcadas.',
     answered: 'Estilo completado',
     cancelled: 'Cancelado pelo usuário',
+    notes: 'Outro valor / observações',
+    extraNotes: 'Ex.: borda 3px, sombra 4px 4px 0 #000000, no hover o elemento translada 2px para dentro da sombra, sem blur',
   },
   en: {
     intro: 'Answer to complete the theme style. The recommended options come pre-selected.',
     answered: 'Style completed',
     cancelled: 'Cancelled by the user',
+    notes: 'Another value / notes',
+    extraNotes: 'e.g. border 3px, shadow 4px 4px 0 #000000, on hover the element slides 2px into its shadow, no blur',
   },
 };
 
@@ -113,7 +125,7 @@ async function beforeClarificationStep(
     title: plan.title,
     intro: labels.intro,
     userLanguage: plan.userLanguage,
-    questions: plan.questions.map(toDecisionQuestion),
+    questions: plan.questions.map(question => toDecisionQuestion(question, labels)),
   };
   (el as unknown as { value: DecisionClarificationValue }).value = value;
   el.addEventListener('clarification-finish', (event: Event) => {
@@ -165,12 +177,15 @@ async function applyAnswers(
   ], true);
 }
 
-function toDecisionQuestion(question: NtPlan['questions'][number]): DecisionQuestion {
+function toDecisionQuestion(question: NtPlan['questions'][number], labels: NtClarifyLabels): DecisionQuestion {
   return {
     id: question.field,
     question: question.question,
     options: question.options,
     allowNotes: question.allowNotes,
+    // The free-text slot has no options: its textarea is the answer, so it gets the
+    // example-rich hint instead of the generic "another value" one.
+    notesPlaceholder: question.options.length ? labels.notes : labels.extraNotes,
   };
 }
 
@@ -180,7 +195,7 @@ async function readPlan(): Promise<NtPlan> {
   return plan;
 }
 
-function labelsFor(userLanguage: string): { intro: string; answered: string; cancelled: string } {
+function labelsFor(userLanguage: string): NtClarifyLabels {
   return LABELS[(userLanguage || '').slice(0, 2).toLowerCase()] || LABELS.en;
 }
 
