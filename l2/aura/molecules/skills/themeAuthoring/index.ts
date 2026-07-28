@@ -38,19 +38,44 @@ invented name is dead weight at best and a wasted generation attempt at worst.
 
 Two real families:
 
-1. **Transversal classes** (appear across the whole library; safe to name in a recipe).
-   They are role-based pairs, not element names:
-   - text: \`.ml-text\`, \`.ml-text-muted\`, \`.ml-text-faint\`, \`.ml-label\`, \`.ml-helper\`
-   - surfaces/borders: \`.ml-surface-bg\`, \`.ml-surface-dim-bg\`, \`.ml-border\`,
-     \`.ml-border-focus\`, \`.ml-border-error\`, \`.ml-focus-ring\`
-   - semantic color: \`.ml-primary-bg\`, \`.ml-primary-dim-bg\`, \`.ml-primary-text\`,
-     \`.ml-error-text\`, \`.ml-error-dim-bg\`, \`.ml-success-text\`, \`.ml-warning-text\`
-   - inputs: \`.ml-input\`, \`.ml-input-container\`, \`.ml-input-container-error\`, \`.ml-input-focus\`
-   - state/misc: \`.ml-disabled\`, \`.ml-skeleton\`, \`.ml-spinner\`
+1. **Transversal classes** — they appear across the whole library, and each one is a
+   SINGLE-FAMILY UTILITY: it colors one thing. This is measured, not opinion (the base
+   stylesheets of 175 molecules declare exactly these property families). The right column is
+   the ONLY thing a theme may set on that class:
+
+   | Class | What it is | The theme sets |
+   |---|---|---|
+   | \`.ml-text\` | primary text, INCLUDING user content (values, item text, card content) | \`color\`, font family |
+   | \`.ml-text-muted\` / \`.ml-text-faint\` | secondary / tertiary text | \`color\`, font family |
+   | \`.ml-label\` | field and control LABELS (never user content) | \`color\`, font family/weight, casing (see rule 8) |
+   | \`.ml-helper\` | helper / hint text under a field | \`color\`, font family |
+   | \`.ml-error-text\` / \`.ml-success-text\` / \`.ml-warning-text\` | feedback text | \`color\`, font family |
+   | \`.ml-primary-text\` | text painted in the brand color | \`color\`, font family |
+   | \`.ml-border\` | the DEFAULT BORDER COLOR of whatever carries it — dividers, image frames, containers. NOT a surface. | \`border-color\` only |
+   | \`.ml-border-focus\` / \`.ml-border-error\` | border color in the focus / error state | \`border-color\` only |
+   | \`.ml-focus-ring\` | the focus ring itself | \`box-shadow\` (or \`outline\`) |
+   | \`.ml-surface-bg\` / \`.ml-surface-dim-bg\` | the BACKGROUND of a container | \`background\` only |
+   | \`.ml-primary-bg\` | filled brand background | \`background\` + \`color\` |
+   | \`.ml-primary-dim-bg\` / \`.ml-error-dim-bg\` | a TINTED background (avatar circles, progress fills, badges) | \`background\` only |
+   | \`.ml-input\` | the input element itself | background, \`color\`, \`border-color\`, font, transition |
+   | \`.ml-disabled\` | the disabled state | \`opacity\`, \`cursor\`, \`pointer-events\` (+ neutralizing shadow/transform) |
+   | \`.ml-skeleton\` | loading placeholder | \`background\`, \`animation\` (mind rule 3: it lands on thin elements too) |
+   | \`.ml-spinner\` | the loading ring | \`border-color\`, \`border-top-color\` |
+
+   Consequences, all three of which have already gone wrong once: \`.ml-border\` is NOT an
+   overlay (giving it a background + shadow repaints every divider and frame);
+   \`.ml-primary-dim-bg\` is NOT a ghost-button variant (it is a tint, and it lands on 8px
+   progress bars); \`.ml-text\` is NOT a label (see rule 8).
+
 2. **Per-molecule classes**, shaped \`ml-<thing>-<part>[-state]\`: \`.ml-select-trigger\`,
    \`.ml-select-panel\`, \`.ml-select-trigger-open\`, \`.ml-select-item-selected\`,
    \`.ml-slider-track\`, \`.ml-slider-thumb\`, \`.ml-slider-mark\`, \`.ml-calendar-nav\`,
    \`.ml-dial-track\`. You cannot know every one of them, and you must not guess.
+
+**SURFACES ARE CONTAINERS, and containers are family 2** (plus \`.ml-input-container\` and the
+tag root). Only a container may receive the full surface treatment — background + border +
+radius + shadow together. A transversal utility never does: it contributes its one family to
+whatever element happens to carry it, and you cannot know what that element is.
 
 So write each canonical rule by the **ROLE of the element**, naming real classes only as
 examples: "Interactive surface (\`.ml-select-trigger\`, \`.ml-input-container\`, button roots):
@@ -211,8 +236,12 @@ proof of the choice.
    no background, no specular edge.
 
 8. **Casing / \`text-transform\`.** If the style uppercases (or otherwise transforms) text,
-   apply it to labels/buttons ONLY — never to user content (input values, item text,
-   placeholders that echo user data).
+   it goes on \`.ml-label\` and on button labels — and NOWHERE else. Name those classes in the
+   recipe and stop there. In particular NEVER on \`.ml-text\`, \`.ml-text-muted\`,
+   \`.ml-text-faint\` or \`.ml-input\`: those carry user content (field values, item text, card
+   content, placeholders), and uppercasing a person's data is a defect, not a style. The same
+   goes for \`letter-spacing\` when it travels with the casing. A rule that lists
+   \`.ml-label, .ml-text\` together is the exact mistake to avoid.
 
 9. **Self-contained.** No "go read file X"; no migration/procedure mechanics (those live in
    the molecule agents). Just the visual system: signature, tokens, recipes, nuances.

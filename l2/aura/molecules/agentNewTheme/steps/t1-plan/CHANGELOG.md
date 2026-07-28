@@ -13,3 +13,14 @@
   may carry no options at all, as long as `allowNotes: true` — otherwise the widget could
   never mark them answered (new code `question_unanswerable`). prompt.md now states the
   two kinds explicitly and shows an open question in the output example.
+- 2026-07-28 (item 2 do plano do checkpoint, todo 12.7): CONFIRM THE INFERENCE. The user could
+  not fix a theme name they never saw: the plan inferred `brutalismo` from "tema brutalismo",
+  put it in `known`, and the gate FORBADE asking a known field (`question_known`) — so the
+  suffix shipped as `-brutalismo` on every molecule, and the only moment to edit it was after
+  the file existed. Three changes: (1) prompt.md — `known` is ONLY what the request STATES;
+  anything inferred becomes a question with the inference pre-selected; (2) identity (`name` +
+  `displayName`) is asked whenever the checkpoint runs, as a single recommended option plus
+  free text, with a note that `name` is the molecule suffix so it must stay short; (3) the gate
+  rule flipped: `question_known` (reject) became `question_not_preselected` (a decided value
+  may be asked, but must arrive pre-selected). NT_MAX_QUESTIONS 8 -> 14, because the worst case
+  is now 7 closed + 2 identity + 3 open + the slot = 13 and the cap silently drops the tail.
