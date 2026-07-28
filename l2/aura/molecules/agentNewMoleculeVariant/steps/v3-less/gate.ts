@@ -4,7 +4,7 @@
 // flow.json v3-less: retry 1 with these errors in context.
 
 import { VariantContext } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vContext.js';
-import { extractMlClassesFromLess } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vOrigin.js';
+import { extractGeometryByClass, extractMlClassesFromLess } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vOrigin.js';
 import { VGateIssue } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/steps/v1-bootstrap/gate.js';
 
 // Pure LAYOUT utilities only — .animate-spin/.w-full stay allowed: the theme
@@ -75,6 +75,35 @@ export function runLessGate(less: string, ctx: VariantContext): VGateIssue[] {
     });
   }
 
+  // T11 — geometry conservation. Strategy D scopes the base sheet to the BASE tag, so
+  // nothing in it cascades to the variant tag: every layout declaration the ORIGIN .less
+  // made must be reproduced here. Dropping them is what broke ml-number-range-slider-brutal
+  // (the rail lost `position:absolute; top:50%; height` and fell to the top of the track,
+  // leaving the render-positioned handles below the line).
+  const originGeometry = ctx.origin.geometryByClass ?? {};
+  const knownClasses = new Set(ctx.origin.mlClassInventory);
+  const variantGeometry = extractGeometryByClass(content);
+  for (const [cls, declarations] of Object.entries(originGeometry)) {
+    if (!knownClasses.has(cls)) continue;
+    const present = variantGeometry[cls] || {};
+    const missing = Object.entries(declarations).filter(([property]) => present[property] === undefined);
+    if (!missing.length) continue;
+    issues.push({
+      code: 'geometry_dropped',
+      message: `.${cls} loses layout the ORIGIN .less gave it: ${missing.map(([property, value]) => `${property}: ${value}`).join('; ')} — the base sheet is scoped to the base tag and does NOT reach '${ctx.variant.tag}', so reproduce these declarations verbatim and restyle only the appearance`,
+    });
+  }
+
+  // T13: these components render in LIGHT DOM (StateLitElement has no Shadow DOM), so
+  // Shadow-DOM-only selectors match nothing — a rule written with them is silently dead.
+  const shadowSelector = content.match(/:host(-context)?\b|::slotted\s*\(/);
+  if (shadowSelector) {
+    issues.push({
+      code: 'shadow_dom_selector',
+      message: `'${shadowSelector[0]}' matches nothing: these components render in light DOM (no Shadow DOM), so the scope root is the tag itself ('${ctx.variant.tag} { ... }') — move those declarations to the tag scope`,
+    });
+  }
+
   // T3: a universal selector in a molecule sheet wipes animation the molecule INHERITS
   // from its base (e.g. the SVG spinner) and leaks outside the tag scope. Themes must take
   // their motion stance on the elements they name.
@@ -103,7 +132,9 @@ function hasUniversalSelector(less: string): boolean {
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/[^\n]*/g, '')
     .replace(/\[[^\]]*\]/g, '');
-  const selectors = /(?:^|[{};])([^{};]*)\{/g;
+  // No explicit prefix: `[^{};]*` cannot cross a delimiter, so matches chain even when a
+  // block opens directly inside another (`.a { .b > * { ... } }`).
+  const selectors = /([^{};]*)\{/g;
   let match: RegExpExecArray | null;
   while ((match = selectors.exec(scrubbed)) !== null) {
     if (match[1].includes('*')) return true;

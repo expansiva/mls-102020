@@ -18,7 +18,11 @@ touches layout/geometry.
 The molecule agents (New Molecule / New Molecule Variant / Improve Molecule) read this
 file and, for EACH molecule, generate a \`.less\` scoped under the molecule's custom-element
 tag that styles the molecule's semantic \`ml-*\` classes using THIS theme's tokens and
-canonical rules. Key consequence: the theme expresses APPEARANCE as tokens + CSS recipes;
+canonical rules. There is **no Shadow DOM** here (the components render in light DOM), so
+the scope root is the TAG itself — \`my-molecule-tag { ... }\`. Never write \`:host\`,
+\`:host-context\` or \`::slotted()\` in a recipe: those selectors match nothing in light DOM,
+so a rule written with them is silently dead. Put root-level declarations (font, base color)
+directly at the tag scope. Key consequence: the theme expresses APPEARANCE as tokens + CSS recipes;
 the GEOMETRY (position, size, flex/grid, spacing) is owned by the molecule's inherited
 render (global Tailwind utilities) and must never be redefined by the theme.
 
@@ -112,6 +116,25 @@ proof of the choice.
 
 ## Authoring RULES (hard — each comes from a real defect we fixed)
 
+0. **Two kinds of geometry — override neither, but REPRODUCE one.** A molecule's layout has
+   two sources, and they must be treated in opposite ways:
+   - what the RENDER provides (global Tailwind utilities in the markup: \`absolute\`,
+     \`top-1/2\`, \`-translate-y-1/2\`, \`flex\`, \`gap-2\`) applies to the variant too → never
+     redefine it (rule 1);
+   - what the ORIGIN STYLESHEET provides (\`position\`, \`top/right/bottom/left\`,
+     \`width\`/\`height\`, \`transform\` written on an \`ml-*\` class in the base \`.less\`) does
+     NOT apply to the variant: the base sheet is scoped to the BASE tag and never reaches
+     the variant's tag → it MUST be reproduced verbatim, and only the appearance around it
+     changes.
+
+   Getting this backwards is not cosmetic: a slider whose rail was \`position: absolute;
+   top: 50%; height: 6px; transform: translateY(-50%)\` in the base sheet, restyled with
+   color and border ALONE, dropped into normal flow at the top of the track — while the
+   handles, positioned by the render, stayed centered. The rail and its handles ended up in
+   different places. A deterministic gate now rejects the variant sheet for it, so say this
+   in the theme too: appearance is yours, the origin's layout declarations are furniture you
+   carry over.
+
 1. **Geometry is the render's, not the theme's.** Style appearance only. NEVER set
    \`position\`/\`overflow\` (and avoid \`transform\`) on an element the render positions
    \`absolute\`/\`fixed\` (floating value indicators, stop marks/ticks, drag thumbs) — forcing
@@ -158,6 +181,13 @@ proof of the choice.
    thin tracks/rails, small marks/ticks/dots, drag thumbs, floating indicators (≈≤20px).
    Keep those to color / border-color / opacity. Reserve rich effects for real surfaces
    (cards, panels, inputs, trigger buttons).
+
+   **Border budget.** A border costs its width on BOTH sides. On a 6px rail the canonical
+   \`--ml-border-width: 3px\` leaves zero fill — the primitive becomes solid border. So when
+   the origin gives a thin primitive a border, the ORIGIN's width wins inside that
+   molecule's scope (keep its literal, or drop the border and use color alone); never let a
+   token swallow the element. State this as a nuance, and give the canonical border width a
+   thickness the theme's real SURFACES want, not one every primitive must inherit.
 
 4. **Comments in English.** All comments/prose inside the generated \`theme.ts\` are in English.
 

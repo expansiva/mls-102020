@@ -20,6 +20,7 @@ import { loadVTheme, pascalCaseThemeName } from '/_102020_/l2/aura/molecules/age
 import {
   detectPortal,
   extractAbsoluteMlClasses,
+  extractGeometryByClass,
   extractMlInventory,
   extractOriginClassName,
   parseOriginRef,
@@ -108,6 +109,7 @@ async function beforePromptStep(
         portal,
         mlClassInventory: extractMlInventory(originTs, originLess),
         absoluteMlClasses: extractAbsoluteMlClasses(originTs),
+        geometryByClass: extractGeometryByClass(originLess),
       },
       theme: {
         project: destProject,

@@ -5,6 +5,7 @@
 // re-derives. Pure types + summary helper.
 
 import { VThemeInfo } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vTheme.js';
+import { VGeometryByClass } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vOrigin.js';
 
 export interface VariantContext {
   schemaVersion: 1;
@@ -25,6 +26,11 @@ export interface VariantContext {
     // .less must not set position/overflow on these (v3-less gate). Populated by
     // v1-bootstrap; optional so older artifacts/tests default to none.
     absoluteMlClasses?: string[];
+    // Layout declarations the ORIGIN .less made per ml-* class. The base sheet is
+    // scoped to the base tag and does not cascade to the variant tag, so the variant
+    // sheet must reproduce them (v3-less gate: geometry_dropped). Populated by
+    // v1-bootstrap; optional so older artifacts/tests default to none.
+    geometryByClass?: VGeometryByClass;
   };
   theme: {
     project: number;         // == destination project

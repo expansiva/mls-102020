@@ -93,6 +93,87 @@ export function extractAbsoluteMlClasses(originTs: string): string[] {
   return Array.from(found).sort();
 }
 
+// ---- geometry conservation (Strategy D) --------------------------------------
+// The base .less is scoped to the BASE tag, so it does NOT cascade to the variant
+// tag: every layout declaration the origin sheet made must be REPRODUCED in the
+// variant sheet. Dropping it is how ml-number-range-slider-brutal lost its rail
+// (the 6px track fell out of `position:absolute; top:50%` into normal flow, and the
+// render-positioned handles then sat below the line).
+export type VGeometryByClass = Record<string, Record<string, string>>;
+
+export const V_GEOMETRY_PROPS = ['position', 'top', 'right', 'bottom', 'left', 'width', 'height', 'transform'] as const;
+
+// Layout declarations per ml-* class, keyed by the SUBJECT of each selector
+// (`.ml-error .ml-track-fill { ... }` belongs to ml-track-fill). Works on the origin
+// sheet and on a generated sheet, so the gate can diff the two maps.
+export function extractGeometryByClass(sheet: string): VGeometryByClass {
+  const out: VGeometryByClass = {};
+  const scrubbed = stripLessComments(sheet || '');
+  // `[^{};]*` cannot cross a delimiter, so each match starts right after the previous
+  // one — no explicit prefix, which would skip a block nested directly inside another.
+  const selectors = /([^{};]*)\{/g;
+  let match: RegExpExecArray | null;
+  while ((match = selectors.exec(scrubbed)) !== null) {
+    const classes = selectorSubjects(match[1]);
+    if (!classes.length) continue;
+    // the matched '{' is the last character the regex consumed
+    const body = ownDeclarations(scrubbed, selectors.lastIndex - 1);
+    const geometry = geometryDeclarations(body);
+    if (!Object.keys(geometry).length) continue;
+    for (const cls of classes) {
+      out[cls] = { ...geometry, ...(out[cls] || {}) };
+    }
+  }
+  return out;
+}
+
+// The ml-* class each comma-separated selector part APPLIES to (its last simple
+// selector). Pseudo-class arguments are dropped first, so `:not(.ml-disabled)`
+// never becomes a subject.
+function selectorSubjects(selectorText: string): string[] {
+  const subjects: string[] = [];
+  for (const part of selectorText.split(',')) {
+    const clean = part.replace(/:[a-z-]+\([^)]*\)/gi, '').replace(/\[[^\]]*\]/g, '').trim();
+    const matches = clean.match(/\.(ml-[a-z][a-z0-9-]*)/g);
+    if (!matches?.length) continue;
+    subjects.push(matches[matches.length - 1].slice(1));
+  }
+  return subjects;
+}
+
+// A block's OWN declarations: the body with nested blocks removed, so a child
+// rule's geometry is not attributed to its parent.
+function ownDeclarations(sheet: string, open: number): string {
+  if (open < 0) return '';
+  let depth = 0;
+  let end = sheet.length;
+  for (let i = open; i < sheet.length; i++) {
+    if (sheet[i] === '{') depth++;
+    else if (sheet[i] === '}' && --depth === 0) {
+      end = i;
+      break;
+    }
+  }
+  const body = sheet.slice(open + 1, end);
+  return body.replace(/[^{}]*\{[\s\S]*?\}/g, '');
+}
+
+function geometryDeclarations(body: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const declaration of body.split(';')) {
+    const parsed = declaration.match(/^\s*([a-z-]+)\s*:\s*([^;]+?)\s*$/i);
+    if (!parsed) continue;
+    const property = parsed[1].toLowerCase();
+    if (!V_GEOMETRY_PROPS.includes(property as typeof V_GEOMETRY_PROPS[number])) continue;
+    out[property] = parsed[2].trim();
+  }
+  return out;
+}
+
+function stripLessComments(sheet: string): string {
+  return sheet.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+}
+
 // ml-* classes REFERENCED as selectors in a generated .less.
 export function extractMlClassesFromLess(less: string): string[] {
   const found = new Set<string>();

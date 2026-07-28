@@ -177,3 +177,43 @@ test('T3: `*` inside declarations/comments is not a universal selector', () => {
   const less = scoped(ctx, '/* offset * 2 */ .ml-button { width: calc(100% * 0.5); color: #fff; transition: none; } .animate-spin { animation-timing-function: steps(8); }');
   assert.ok(!runLessGate(less, ctx).some(issue => issue.code === 'universal_selector'));
 });
+
+test('T11: dropping the origin sheet geometry is rejected (the range-slider bug)', () => {
+  const ctx = buildCtx({ inventory: ['ml-nrs-track-base', 'ml-nrs-handle'] });
+  ctx.origin.geometryByClass = {
+    'ml-nrs-track-base': { position: 'absolute', top: '50%', height: 'var(--ml-nrs-track-height, 6px)', transform: 'translateY(-50%)' },
+    'ml-nrs-handle': { width: 'var(--ml-nrs-handle-size, 20px)', height: 'var(--ml-nrs-handle-size, 20px)' },
+  };
+
+  // what the agent actually produced: appearance only, geometry gone
+  const dropped = scoped(ctx, '.ml-nrs-track-base { background: #fff; border: 3px solid #000; } .ml-nrs-handle { outline: none; transition: none; }');
+  const issues = runLessGate(dropped, ctx).filter(issue => issue.code === 'geometry_dropped');
+  assert.equal(issues.length, 2);
+  assert.match(issues[0].message, /position: absolute/);
+  assert.match(issues[0].message, /does NOT reach/);
+
+  // reproducing the layout and restyling only the appearance passes
+  const kept = scoped(ctx, `
+    .ml-nrs-track-base { position: absolute; top: 50%; height: var(--ml-nrs-track-height, 6px); transform: translateY(-50%); background: #fff; }
+    .ml-nrs-handle { width: var(--ml-nrs-handle-size, 20px); height: var(--ml-nrs-handle-size, 20px); outline: none; transition: none; }
+  `);
+  assert.deepEqual(runLessGate(kept, ctx).filter(issue => issue.code === 'geometry_dropped'), []);
+});
+
+test('T11: geometry is required only for classes in the inventory', () => {
+  const ctx = buildCtx({ inventory: ['ml-button'] });
+  ctx.origin.geometryByClass = { 'ml-dead-class': { position: 'absolute' } };
+  const less = scoped(ctx, '.ml-button { color: #fff; transition: none; }');
+  assert.deepEqual(runLessGate(less, ctx).filter(issue => issue.code === 'geometry_dropped'), []);
+});
+
+test('T13: Shadow-DOM-only selectors are rejected (light DOM components)', () => {
+  const ctx = buildCtx({ inventory: ['ml-button'] });
+  for (const selector of [':host { font-family: monospace; }', ':host-context(.dark) { color: #fff; }', '::slotted(span) { color: #fff; }']) {
+    const less = scoped(ctx, `${selector} .ml-button { color: #fff; transition: none; }`);
+    assert.ok(runLessGate(less, ctx).some(issue => issue.code === 'shadow_dom_selector'), selector);
+  }
+
+  const clean = scoped(ctx, '.ml-button { color: #fff; transition: none; }');
+  assert.ok(!runLessGate(clean, ctx).some(issue => issue.code === 'shadow_dom_selector'));
+});
