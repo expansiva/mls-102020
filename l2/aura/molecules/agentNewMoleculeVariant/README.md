@@ -7,8 +7,14 @@ Standalone: invocado manualmente, nunca roteado pelo New/Improve (v1).
 ## Uso
 
 ```
+@@agentNewMoleculeVariant _102040_/l2/molecules/grouptriggeraction/ml-button-standard
+@@agentNewMoleculeVariant _102040_/l2/molecules/grouptriggeraction/ml-button-standard observações opcionais
 @@agentNewMoleculeVariant { page: '_102040_/l2/molecules/grouptriggeraction/ml-button-standard', prompt: 'observações opcionais' }
 ```
+
+A referência pode ser digitada solta (o texto após ela vira as observações) ou no formato
+objeto; pelo preview vem o payload `{ fullName, page, prompt, position }`. As três formas
+passam por `helpers/vOrigin.parseVariantEntry`.
 
 ## Spec
 

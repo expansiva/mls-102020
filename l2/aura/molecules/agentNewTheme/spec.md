@@ -40,8 +40,9 @@ root (@@agentNewTheme { prompt })
 - **t2-clarify (the checkpoint)** emits a clarification into its own payload; the shared
   Decision Clarification widget renders the dynamic questions (options + recommended
   defaults + free text). Localized to `userLanguage`. Closed fields (the enums) come as
-  options; open ones (name, colors, background CSS) are typed. Cancelling stops the
-  pipeline with nothing written.
+  options; open ones (name, displayName, colors, background CSS) are typed; and the LAST
+  question is always a **free-text slot** for what the enums cannot express — exact values,
+  signature interactions, prohibitions. Cancelling stops the pipeline with nothing written.
 - **t3-generate** injects the `themeAuthoring` meta-skill + the prompt + answers and
   produces the `theme.ts` (contract v1, English comments) plus a structured summary
   (`{ name, displayName, background, palette[], signature[] }`). The gate reads the
@@ -72,6 +73,16 @@ root (@@agentNewTheme { prompt })
   to WRITE (this agent's gate) and to READ (agentNewMoleculeVariant's admission).
 - **i18n split.** Questions/labels follow `userLanguage`; the `theme.ts` content is
   always English.
+- **Coarse fields plus one open slot.** The canonical fields are deliberately coarse enums
+  (`border.style: thick`), which keeps the checkpoint short but cannot carry `3px`, a kinetic
+  hover or "no blur". Rather than modelling every detail, the checkpoint ends with a free-text
+  slot whose content reaches generation verbatim and OVERRIDES the coarse choice. That is the
+  lever that brings a short request close to a long, fully specified one.
+- **Prose in, not arguments.** The description is natural language, so the mention accepts
+  it raw (`@@agentNewTheme a soft neumorphic theme…`); `{ prompt: '…' }` still works. The
+  platform's `safeParseArgs` throws on prose, so it is called only on an object literal —
+  parsing is isolated in `helpers/ntEntry` (pure, tested) because entry-format bugs have
+  bitten this agent family three times.
 - **Every prompt declares its modelType.** `<!-- modelType: X -->` on the first line,
   chosen from `skills/modelTypes.md`; without it the platform falls back to a cost-based
   selection and the call 404s.

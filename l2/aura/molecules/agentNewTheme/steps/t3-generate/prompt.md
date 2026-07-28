@@ -72,7 +72,18 @@ Also return `summary` — it drives the confirmation screen the human sees and t
 
 ## Inputs
 
-The human message carries the user's original description, the fields already decided
-(`known`), and the checkpoint answers when the user was asked. Honor all of them:
-`known` and the answers are DECISIONS, not suggestions. Fill any remaining gap with a
-coherent choice for the style described, and mention it in the `description`.
+The human message carries three things:
+
+1. **User description** — the original request, in the user's words.
+2. **Decided fields** — what the request and the checkpoint settled. These are DECISIONS,
+   not suggestions. `name` and `displayName`, when present, are the theme's identity: use
+   them as given (and `suffix` is `'-' + name`).
+3. **Additional guidance** (when present) — free text the user wrote at the checkpoint.
+   Treat it as the most specific instruction you have: **exact values there override the
+   coarse field choices** (a field says `border.style: thick`, the guidance says `3px` → use
+   3px), and it is where signature interactions ("on hover the element slides 2px into its
+   own shadow") and prohibitions ("no blur, no transparency") come from. Encode each of them
+   somewhere concrete: a token value, a Canonical CSS Rule, or a Theme Nuance.
+
+Fill any remaining gap with a coherent choice for the style described, and mention it in the
+`description`.

@@ -19,8 +19,15 @@ export interface NtGateIssue {
 
 // The canonical fields the checkpoint may ask about. surface / on-surface text are DERIVED
 // from background.kind and are never asked (flow.json conventions.themeFields).
+// 'extra' is not a theme field: it is the free-text slot where the user pastes what the
+// coarse enums cannot express (exact values, signature interactions, things to avoid).
+// It never appears in `known` — only as the last question.
+export const NT_EXTRA_FIELD = 'extra';
+
 export const NT_QUESTION_FIELDS = [
   'name',
+  'displayName',
+  NT_EXTRA_FIELD,
   'background.kind',
   'background.css',
   'primary',
@@ -136,6 +143,8 @@ function normalizeKnown(value: unknown): NtThemeFields {
   const known: NtThemeFields = {};
   const name = readString(value.name);
   if (name) known.name = name;
+  const displayName = readString(value.displayName);
+  if (displayName) known.displayName = displayName;
   const suffix = readString(value.suffix);
   if (suffix) known.suffix = suffix.startsWith('-') ? suffix : `-${suffix}`;
   const primary = readString(value.primary);

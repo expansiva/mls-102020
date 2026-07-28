@@ -16,7 +16,9 @@ export interface DecisionQuestion {
   title?: string;           // short label
   question: string;         // the prompt (localized by the caller)
   options: DecisionOption[];
-  allowNotes?: boolean;     // show a free-text field for a custom answer
+  allowNotes?: boolean;         // show a free-text field for a custom answer
+  notesPlaceholder?: string;    // localized hint; matters most when there are NO options
+                                // and the free text IS the answer
 }
 
 export interface DecisionClarificationValue {

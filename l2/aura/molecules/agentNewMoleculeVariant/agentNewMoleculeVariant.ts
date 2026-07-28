@@ -8,7 +8,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { V_AGENT_FOLDER, isRecord, parseMaybeJson } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vFs.js';
-import { normalizeOriginPage } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vOrigin.js';
+import { normalizeOriginPage, parseVariantEntry } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vOrigin.js';
 import { V_PLAN_IDS, VPlanId, vDoneAnchor, vUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vSteps.js';
 
 const AGENT_NAME = 'agentNewMoleculeVariant';
@@ -29,15 +29,9 @@ export interface VRootPlan {
   titles: Record<VPlanId, string>;
 }
 
-interface IDataPrompt {
-  page?: string;
-  fullName?: string;   // preview sends this alongside page
-  prompt?: string;
-  position?: string;   // preview editor pane; unused here
-}
-
-// The preview sends `prompt` = the agent mention (e.g. "@@NewMoleculeVariant"),
-// NOT user notes. Strip any leading mention so it never pollutes the LLM notes.
+// The preview sends `prompt` = the agent mention (e.g. "@@NewMoleculeVariant"), NOT user
+// notes. Strip any leading mention so it never pollutes the LLM notes. (The mention paths
+// go through vOrigin.parseVariantEntry, which applies the same rule; this covers test mode.)
 function cleanNotes(prompt: string | undefined): string {
   const raw = (prompt || '').trim();
   if (!raw || raw.startsWith('@@')) return '';
@@ -72,17 +66,14 @@ async function beforePromptImplicit(
     page = testData.fileReference.replace(/\.ts$/, '');
     notes = cleanNotes(testData.prompt);
   } else {
-    const pp = context.message.content
-      .replace(`@@ ${agent.agentName}`, '')
-      .replace(`@@${agent.agentName}`, '').trim();
-    const parsed = mls.common.safeParseArgs(pp) as IDataPrompt;
-    // Origin ref: `page` (both paths) or the preview `fullName` fallback.
-    // parseOriginRef (v1-bootstrap) normalizes both the /l2/-less preview page
-    // and the space-carrying fullName.
-    const ref = (parsed?.page || parsed?.fullName || '').trim();
-    if (!ref) throw new Error(`[${AGENT_NAME}] invalid prompt structure: missing page/fullName (origin molecule reference)`);
-    page = ref;
-    notes = cleanNotes(parsed?.prompt);
+    // Three entry shapes, one parser (helpers/vOrigin.parseVariantEntry): the preview
+    // payload ({ fullName, page, prompt, position }), a typed object mention and a typed
+    // BARE reference — the last one used to die inside safeParseArgs, which throws on
+    // anything that is not an object literal.
+    const entry = parseVariantEntry(userPrompt, agent.agentName, raw => mls.common.safeParseArgs(raw));
+    if (!entry.page) throw new Error(`[${AGENT_NAME}] invalid prompt: no origin molecule reference found — mention it as '@@${agent.agentName} _102040_/l2/molecules/<group>/<molecule>' or as { page: '<ref>' }`);
+    page = entry.page;
+    notes = entry.notes;
   }
   // Normalize to the canonical ref once at entry, so the rootPlan classifier and
   // task memory hold the clean form (preview sends /l2/-less page or spaced fullName).

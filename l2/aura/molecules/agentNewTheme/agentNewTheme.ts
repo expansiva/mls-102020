@@ -19,6 +19,7 @@ import {
   toDisplayPath,
   writeJsonArtifact,
 } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntFs.js';
+import { ntParseEntryPrompt } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntEntry.js';
 import { NtPlan } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntTypes.js';
 import {
   ntAgentStepIntent,
@@ -67,14 +68,10 @@ async function beforePromptImplicit(
     const testData = JSON.parse(userPrompt || '{}') as IDataPrompt;
     prompt = (testData.prompt || '').trim();
   } else {
-    const pp = context.message.content
-      .replace(`@@ ${agent.agentName}`, '')
-      .replace(`@@${agent.agentName}`, '').trim();
-    const parsed = mls.common.safeParseArgs(pp) as IDataPrompt;
-    // The mention itself is not a description — a bare '@@agentNewTheme' means
-    // "ask me everything" (all fields fall to the checkpoint).
-    const raw = (parsed?.prompt || pp || '').trim();
-    prompt = raw.startsWith('@@') ? '' : raw;
+    // Prose is the natural form here, so the runtime-stripped userPrompt is the source
+    // (agentNewSolution does the same) and the arg parser is only tried on an object
+    // literal — calling it on prose throws. See helpers/ntEntry.
+    prompt = ntParseEntryPrompt(userPrompt, agent.agentName, raw => mls.common.safeParseArgs(raw));
   }
 
   const planPrompt = await readNtAgentText('steps/t1-plan', 'prompt', '.md', true);

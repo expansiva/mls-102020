@@ -1,8 +1,15 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vOrigin.ts" enhancement="_blank"/>
 
-// Origin-molecule analysis: ref parsing, portal detection, class-name and
-// ml-* inventory extraction. Pure string functions (unit-testable); the only
-// stor access is loadOriginSources via the injected reader.
+// Origin-molecule analysis: mention entry, ref parsing, portal detection, class-name and
+// ml-* inventory extraction, origin-sheet geometry. Pure string functions (unit-testable);
+// the only stor access is loadOriginSources via the injected reader.
+
+import {
+  isBareMention,
+  stripAgentMention,
+  tryParseArgs,
+  type MentionArgsParser,
+} from '/_102020_/l2/aura/molecules/shared/mentionEntry.js';
 
 export interface VOriginRef {
   project: number;
@@ -91,6 +98,59 @@ export function extractAbsoluteMlClasses(originTs: string): string[] {
   //     positioning class and the ml-* classes as SEPARATE elements.
   for (const m of originTs.matchAll(/\[([^[\]]*)\]/g)) collect(m[1]);
   return Array.from(found).sort();
+}
+
+// ---- mention entry ------------------------------------------------------------
+// The Variant is invoked with a molecule REFERENCE, from three places: the preview
+// ({ fullName, page, prompt, position }), a typed object mention ({ page, prompt }) and — as
+// of 2026-07-28 — a typed bare reference ('@@agentNewMoleculeVariant _102040_/l2/...'),
+// which used to die inside safeParseArgs before reaching any of our code.
+
+export interface VMentionEntry {
+  page: string;    // '' when the mention carries no reference (caller fails readable)
+  notes: string;   // user notes; never the mention itself
+}
+
+export function parseVariantEntry(userPrompt: string, agentName: string, parseArgs: MentionArgsParser): VMentionEntry {
+  const text = stripAgentMention(userPrompt, agentName);
+  if (!text || isBareMention(text)) return { page: '', notes: '' };
+
+  const parsed = tryParseArgs(text, parseArgs);
+  if (parsed) {
+    const page = readEntryString(parsed.page) || readEntryString(parsed.fullName);
+    return { page, notes: cleanEntryNotes(readEntryString(parsed.prompt)) };
+  }
+  // Not an object (or a malformed one): read the reference out of the plain text and treat
+  // whatever follows it as notes.
+  return parseBareReference(text);
+}
+
+// '_102040_/l2/molecules/group/ml-x rest of the sentence' -> ref + notes. The preview's
+// fullName can carry a space before the molecule name ('.../group/ ml-x'), so a following
+// 'ml-*' token is glued back onto a reference that ends with '/' instead of becoming notes.
+function parseBareReference(text: string): VMentionEntry {
+  const match = text.match(/_\d+_\S*/);
+  if (!match) return { page: '', notes: cleanEntryNotes(text) };
+  let page = match[0];
+  let rest = `${text.slice(0, match.index)} ${text.slice((match.index || 0) + page.length)}`.trim();
+  if (page.endsWith('/')) {
+    const glued = rest.match(/^(ml-[a-z0-9-]+)\s*/);
+    if (glued) {
+      page += glued[1];
+      rest = rest.slice(glued[0].length).trim();
+    }
+  }
+  return { page, notes: cleanEntryNotes(rest) };
+}
+
+// The preview sends the agent mention itself in `prompt` — that is not user notes.
+function cleanEntryNotes(value: string | undefined): string {
+  const notes = (value || '').trim();
+  return notes.startsWith('@@') ? '' : notes;
+}
+
+function readEntryString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 // ---- geometry conservation (Strategy D) --------------------------------------

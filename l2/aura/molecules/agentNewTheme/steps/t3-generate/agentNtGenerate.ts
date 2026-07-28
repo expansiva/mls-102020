@@ -33,6 +33,7 @@ import {
   NtPlan,
   NtThemeSummary,
 } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntTypes.js';
+import { ntResolveAnswers } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntAnswers.js';
 import { renderThemeHtml } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntThemeHtml.js';
 import type { ThemeConfirmationValue } from '/_102020_/l2/aura/molecules/shared/widgetThemeConfirmationLogic.js';
 import {
@@ -91,10 +92,14 @@ async function beforePromptStep(
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the description and answers are contradictory or impossible to turn into a theme')}`;
 
   const { prompt } = getNtInput(context);
+  // known + checkpoint answers collapse into ONE decided field set, and every piece of free
+  // text (the 'extra' slot + per-question notes) into ONE guidance block — the coarse enums
+  // cannot carry exact values or signature interactions, that text can.
+  const resolved = ntResolveAnswers(plan.known, answers);
   const humanPrompt = [
     `## User description\n${prompt || '(empty — everything was decided at the checkpoint)'}`,
-    `## Fields already decided (known)\n${JSON.stringify(plan.known, null, 2)}`,
-    answers.length ? `## Checkpoint answers\n${JSON.stringify(answers, null, 2)}` : '',
+    `## Decided fields (from the request and the checkpoint — these are DECISIONS)\n${JSON.stringify(resolved.fields, null, 2)}`,
+    resolved.guidance ? `## Additional guidance from the user (verbatim — exact values here WIN over the coarse field choices above)\n${resolved.guidance}` : '',
     parsedArgs.retryContext ? `## Previous attempt failed the deterministic gate — fix ALL of these\n${parsedArgs.retryContext}` : '',
   ].filter(Boolean).join('\n\n');
 

@@ -80,7 +80,7 @@ export class WidgetDecisionClarification102020 extends StateLitElement {
             ${q.allowNotes ? html`
               <textarea
                 class="dc-notes"
-                placeholder="Custom / notes"
+                placeholder=${q.notesPlaceholder || 'Custom / notes'}
                 ?disabled=${this.readonly}
                 .value=${this.localAnswers[q.id]?.notes ?? ''}
                 @input=${(e: Event) => this.onNotes(q.id, (e.target as HTMLTextAreaElement).value)}
