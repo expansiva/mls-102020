@@ -18,6 +18,24 @@ void test('agentCfeMaterializePhase declares the materialize phase/verify step a
   assert.match(flow, /"agentName": "agentCfeMaterializePhase"/);
 });
 
+// Verify traces/verdicts must ALWAYS be module-scoped (<module>/trace/...). A project-root fallback
+// (l2/trace/...) polluted the project root and the junk ended up committed in mls-102051.
+void test('verify trace and verdict are module-scoped with no project-root fallback', () => {
+  const src = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfeCreateShared.ts'), 'utf8');
+  // The caller's moduleName (derived from ALL items) is the first argument of both writers.
+  assert.match(src, /export async function saveMaterializeVerifyTrace\(moduleName: string, planId: string/);
+  assert.match(src, /export async function saveMaterializeVerifySummary\(moduleName: string, planId: string/);
+  // No root fallback: the folder is always `${module}/trace/...`, never a bare 'trace/...'.
+  assert.doesNotMatch(src, /folder\s*=\s*module\s*\?/, 'root-fallback ternary must be gone');
+  assert.doesNotMatch(src, /:\s*'trace\/frontend-materialize-verify'/, "bare 'trace/...' folder must never be used");
+  assert.equal((src.match(/const folder = `\$\{module\}\/trace\/frontend-materialize-verify`/g) || []).length, 2);
+  // Without a derivable module both writers skip the write instead of polluting the root.
+  assert.equal((src.match(/never write to the project-root l2\/trace/g) || []).length, 2);
+  // The phase passes its own moduleName to the trace (not only to the verdict).
+  const phase = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  assert.match(phase, /saveMaterializeVerifyTrace\(moduleName, args\.planId/);
+});
+
 // Systemic-failure guard (102051 run01): an unresolved `lit` import broke every file, no repair round
 // could fix it, and the budget was spent regressing already-correct pages.
 const pageItem = (genome: string, name: string, errors: string[]) => ({

@@ -326,3 +326,147 @@ test('landing workspace (F6) builds content organisms: hero + showcase(query) + 
   assert.ok(showcase, 'showcase organism present');
   assert.equal(showcase.intentions[0].source, 'bff.featuredProducts');
 });
+
+// ---- page tests: <seedRef> only for harvestable entity ids, literals for domain fields ----
+// Regression for the 102051 measurement: 100% of emitted params were "<seedRef>", so 20 of 24 cases were
+// inconclusive (the runner cannot resolve a domain field, omits it, and the command dies in
+// VALIDATION_ERROR) and 29 more "passed" for the wrong reason. buildPageTestCases only reads
+// prepared.commands + prepared.page, so these drive it directly with synthetic commands — no project
+// fixture, no hardcoded module/page name.
+function preparedFor(commands: any[]): any {
+  return { page: { moduleName: 'anyModule', pageId: 'anyPage' }, commands };
+}
+function queryCommand(extra: any = {}): any {
+  return { commandName: 'readThings', kind: 'query', routeKey: 'anyModule.anyPage.readThings', outputShape: 'paginated', input: [], output: [{ name: 'thingId' }, { name: 'total' }], producedFields: ['things', 'total', 'thingId', 'label'], collectionField: 'things', ...extra };
+}
+
+test('page tests: <seedRef> only for an entity id the page reads; domain fields get typed literals', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const write = {
+    commandName: 'saveThing', kind: 'command', routeKey: 'anyModule.anyPage.saveThing', outputShape: 'object',
+    input: [
+      { name: 'thingId', required: true, presentation: 'form', type: 'string', l4Type: 'string' },      // id the query returns -> seedRef
+      { name: 'quantity', required: true, presentation: 'form', type: 'number', l4Type: 'integer' },
+      { name: 'active', required: true, presentation: 'form', type: 'boolean', l4Type: 'boolean' },
+      { name: 'startedAt', required: true, presentation: 'form', type: 'string', l4Type: 'datetime' },
+      { name: 'dueDate', required: true, presentation: 'form', type: 'string', l4Type: 'date' },
+      { name: 'notes', required: true, presentation: 'form', type: 'string', l4Type: 'string' },
+      { name: 'optionalOne', required: false, presentation: 'form', type: 'string' },
+    ],
+    output: [],
+  };
+  const cases = buildPageTestCases(preparedFor([queryCommand(), write]));
+  const ok = cases.find((c: any) => c.id === 'saveThing.ok')!;
+  assert.equal(ok.params.thingId, '<seedRef>', 'id produced by a page read stays a seedRef');
+  assert.equal(ok.params.quantity, 1);
+  assert.equal(ok.params.active, true);
+  assert.equal(ok.params.startedAt, '2026-01-01T00:00:00.000Z');
+  assert.equal(ok.params.dueDate, '2026-01-01');
+  assert.equal(ok.params.notes, 'teste');
+  assert.ok(!('optionalOne' in ok.params), 'only required fields are sent');
+  // A negative case omits exactly ONE field and every other param still resolves — otherwise it would
+  // pass for the wrong reason (the backend rejecting a different, unresolved field).
+  const negative = cases.find((c: any) => c.id === 'saveThing.notes.required')!;
+  assert.ok(!('notes' in negative.params));
+  assert.equal(negative.params.quantity, 1);
+  assert.equal(negative.params.thingId, '<seedRef>');
+  assert.equal(Object.values(negative.params).includes('<seedRef>'), true);
+  assert.equal(Object.values(negative.params).filter(v => v === '<seedRef>').length, 1, 'only the id is a seedRef');
+});
+
+test('page tests: an enum/state field takes the NEXT declared value, never <seedRef>', async () => {
+  // 102051 D2: status: "<seedRef>" resolved to the row's CURRENT status and the state-machine rule
+  // rejected it ("kitchen status must progress"). The literal must be a forward transition.
+  const { buildPageTestCases } = await loadModule();
+  const write = {
+    commandName: 'advanceThing', kind: 'command', routeKey: 'r', outputShape: 'object',
+    input: [
+      { name: 'thingId', required: true, presentation: 'form', type: 'string' },
+      { name: 'status', required: true, presentation: 'form', type: 'string', enum: ['registered', 'confirmed', 'inPreparation', 'ready'] },
+    ],
+    output: [],
+  };
+  const ok = buildPageTestCases(preparedFor([queryCommand(), write])).find((c: any) => c.id === 'advanceThing.ok')!;
+  assert.equal(ok.params.status, 'confirmed', 'second declared state = next transition from a freshly seeded row');
+  assert.notEqual(ok.params.status, '<seedRef>');
+});
+
+test('page tests: paginated query declares the real collection key (itemsKey)', async () => {
+  // 102051 D3: the wire returns { menuItems, total } but the runner assumed { items } -> 3 permanent
+  // failures that were not backend defects. itemsKey is emitted ONLY for paginated.
+  const { buildPageTestCases } = await loadModule();
+  const paginated = buildPageTestCases(preparedFor([queryCommand()])).find((c: any) => c.id === 'readThings.ok')!;
+  assert.equal(paginated.expect.shape, 'paginated');
+  assert.equal(paginated.expect.itemsKey, 'things');
+  assert.equal(paginated.expect.minItems, 1);
+  // object/array shapes carry no itemsKey.
+  const objectCase = buildPageTestCases(preparedFor([queryCommand({ commandName: 'readOne', outputShape: 'object', collectionField: undefined })])).find((c: any) => c.id === 'readOne.ok')!;
+  assert.equal(objectCase.expect.shape, 'object');
+  assert.ok(!('itemsKey' in objectCase.expect));
+  // A paginated call whose collection cannot be derived stays back-compatible (runner assumes "items").
+  const noKey = buildPageTestCases(preparedFor([queryCommand({ commandName: 'readLegacy', collectionField: undefined })])).find((c: any) => c.id === 'readLegacy.ok')!;
+  assert.ok(!('itemsKey' in noKey.expect));
+});
+
+test('page tests: a required id no read of the page produces yields NO case (unsatisfiable)', async () => {
+  // 102051 D4: getShiftClosingReport required shiftClosingReportId, which no page routine returns — the
+  // case could never pass under any runner, so it is permanent panel noise.
+  const { buildPageTestCases } = await loadModule();
+  const orphan = { commandName: 'readOrphan', kind: 'query', routeKey: 'r', outputShape: 'object', input: [{ name: 'otherThingId', required: true, presentation: 'form', type: 'string' }], output: [] };
+  const cases = buildPageTestCases(preparedFor([queryCommand(), orphan]));
+  assert.equal(cases.some((c: any) => c.id.startsWith('readOrphan')), false, 'unsatisfiable case not emitted');
+  assert.equal(cases.some((c: any) => c.id === 'readThings.ok'), true, 'the satisfiable case is still emitted');
+});
+
+test('page tests are deterministic (same input -> byte-identical cases)', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const build = () => buildPageTestCases(preparedFor([queryCommand(), {
+    commandName: 'saveThing', kind: 'command', routeKey: 'r', outputShape: 'object',
+    input: [{ name: 'thingId', required: true, presentation: 'form', type: 'string' }, { name: 'startedAt', required: true, presentation: 'form', l4Type: 'datetime' }],
+    output: [],
+  }]));
+  assert.equal(JSON.stringify(build()), JSON.stringify(build()));
+});
+
+test('page tests: runtime-resolved inputs are omitted and get no negative case', async () => {
+  // 102051 D5: openedByUserId/closedByUserId (actorSession) and closedAt/updatedAt (systemDefault) are
+  // derived by the backend. Sending a fake literal id would only break a lookup, and a ".required" case
+  // that omits a field the ok case never sends is self-contradictory — the backend derives it, the call
+  // succeeds, and the case fails while claiming to expect VALIDATION_ERROR.
+  const { buildPageTestCases } = await loadModule();
+  const write = {
+    commandName: 'closeThing', kind: 'command', routeKey: 'r', outputShape: 'object',
+    input: [
+      { name: 'thingId', required: true, presentation: 'form', type: 'string', source: 'selectedEntity' },
+      { name: 'closedByUserId', required: true, presentation: 'form', type: 'string', source: 'actorSession' },
+      { name: 'closedAt', required: true, presentation: 'form', l4Type: 'datetime', source: 'systemDefault' },
+      { name: 'notes', required: true, presentation: 'form', type: 'string', source: 'userInput' },
+    ],
+    output: [],
+  };
+  const cases = buildPageTestCases(preparedFor([queryCommand(), write]));
+  const ok = cases.find((c: any) => c.id === 'closeThing.ok')!;
+  assert.deepEqual(Object.keys(ok.params).sort(), ['notes', 'thingId'], 'backend-derived inputs are not sent');
+  // Only CLIENT-supplied form fields get a negative case (omitting one must really reach the backend as
+  // missing). closedByUserId/closedAt are backend-derived, so no case is emitted for them.
+  const negatives = cases.filter((c: any) => c.id.startsWith('closeThing.') && c.id.endsWith('.required')).map((c: any) => c.id).sort();
+  assert.deepEqual(negatives, ['closeThing.notes.required', 'closeThing.thingId.required']);
+  assert.equal(negatives.some((id: string) => id.includes('closedByUserId') || id.includes('closedAt')), false, 'no negative case for a backend-derived field');
+});
+
+test('page tests: a read cannot satisfy its OWN required id (no self-harvest)', async () => {
+  // 102051 D4 (getShiftClosingReport): a getById query whose output repeats its own key looked
+  // satisfiable — but a routine cannot run before itself, so nothing resolves the seedRef.
+  const { buildPageTestCases } = await loadModule();
+  const selfFed = {
+    commandName: 'readReport', kind: 'query', routeKey: 'r', outputShape: 'object',
+    input: [{ name: 'reportId', required: true, presentation: 'form', type: 'string', source: 'routeParam' }],
+    output: [{ name: 'reportId' }], producedFields: ['reportId', 'label'],
+  };
+  // Alone on the page: only its own output could supply reportId -> unsatisfiable, no case.
+  assert.equal(buildPageTestCases(preparedFor([selfFed])).length, 0);
+  // With ANOTHER read that produces reportId, the seedRef resolves and the case is emitted.
+  const other = queryCommand({ commandName: 'readReports', producedFields: ['reportId', 'label'], collectionField: 'reports' });
+  const withPeer = buildPageTestCases(preparedFor([other, selfFed]));
+  assert.equal(withPeer.find((c: any) => c.id === 'readReport.ok')!.params.reportId, '<seedRef>');
+});

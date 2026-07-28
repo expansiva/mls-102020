@@ -18,6 +18,7 @@ import {
   hasL4OperationInputs,
   hasL4OperationOutputRefs,
   frontendInputPresentation,
+  isRuntimeResolvedInputSource,
   isUserFacingOperationInput,
   l4OperationInputs,
   l4OperationOutputRefs,
@@ -682,6 +683,42 @@ export function bffFieldTsType(field: CfeBffCallField, direction: 'input' | 'out
   return topField ? l4TypeToTs(topField.type) : 'string';
 }
 
+// The RAW l4 type of a bffCall input (date, datetime, money, integer…), before l4TypeToTs collapses it to
+// a TS type. The contract needs the TS type; the page-test generator needs the raw one to emit an ISO
+// literal for a date field that TS-wise is just `string`. Empty when it cannot be traced.
+function bffFieldL4Type(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): string {
+  if (field.type) return field.type;
+  const dot = field.from.indexOf('.');
+  const operation = dot < 0 ? undefined : operationsById.get(field.from.slice(0, dot));
+  if (!operation) return '';
+  const inputId = dot < 0 ? field.from : field.from.slice(dot + 1);
+  const raw = (Array.isArray(operation.data.inputs) ? operation.data.inputs : []).filter(isRecord).find(item => readString(item.inputId) === inputId);
+  if (!raw) return '';
+  const explicit = readString(raw.type);
+  if (explicit) return explicit;
+  return resolveFieldRef(readString(raw.fieldRef), operation.entity, entities).field?.type || '';
+}
+
+// The declared values of an enum'd bffCall input, traced `from` = "<operationId>.<inputId>" back to the
+// operation input's fieldRef and then to that entity field's `enum`. Falls back to the entity's
+// statusEnum for a status-like field (l4 declares the lifecycle values there, not on the field). Empty
+// when the field is not an enum. Used to emit a VALID literal for a domain/state field: a <seedRef>
+// there resolves to the row's CURRENT value, which a state-machine rule then rejects.
+function bffFieldEnumValues(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): string[] {
+  const dot = field.from.indexOf('.');
+  const operation = dot < 0 ? undefined : operationsById.get(field.from.slice(0, dot));
+  if (!operation) return [];
+  const inputId = dot < 0 ? field.from : field.from.slice(dot + 1);
+  const raw = (Array.isArray(operation.data.inputs) ? operation.data.inputs : []).filter(isRecord).find(item => readString(item.inputId) === inputId);
+  if (!raw) return [];
+  const resolved = resolveFieldRef(readString(raw.fieldRef), operation.entity, entities);
+  const declared = resolved.field?.enum;
+  if (Array.isArray(declared) && declared.length > 0) return declared.map(String).filter(Boolean);
+  const statusEnum = resolved.entity?.statusEnum;
+  if (/status$/i.test(field.name) && Array.isArray(statusEnum) && statusEnum.length > 0) return statusEnum.map(String).filter(Boolean);
+  return [];
+}
+
 function bffInputRequired(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>): boolean {
   if (field.required === true) return true;
   const dot = field.from.indexOf('.');
@@ -731,6 +768,20 @@ function commandFromBffCall(bffCall: CfeBffCall, workspace: CfeJourneyWorkspace,
   const purpose = primaryOperation?.title || humanizeId(bffCall.bffId);
   const rulesApplied = unique(bffCall.uses.flatMap(id => operations.find(op => op.operationId === id)?.rulesApplied || []));
   const contractKey = `${workspace.workspaceId}.${bffCall.bffId}`;
+  // The l4 shape of each input, keyed by name: the wire `type` (bffCallCommandShape only keeps
+  // name/required/presentation/source) and the declared enum when the field maps to an enum'd entity
+  // field. Consumed by the page-test generator to emit valid literals for domain fields.
+  const operationsById = new Map(operations.map(operation => [operation.operationId, operation]));
+  const inputByName = new Map(bffCall.input.map(field => [field.name, field]));
+  // The collection of a list/paginated output is the field that carries `item.fields` — the SAME
+  // traversal the contract uses (bffFieldTsType), so the name never diverges from the generated wire.
+  const collection = (bffCall.output?.fields || []).find(field => field.item && Array.isArray(field.item.fields) && field.item.fields.length > 0);
+  // Every field name this call can yield (top level + the collection's item fields) — exactly what the
+  // tests runner can harvest from a read, so the generator knows which ids the page actually produces.
+  const producedFields = unique([
+    ...(bffCall.output?.fields || []).map(field => field.name),
+    ...(collection?.item?.fields || []).map(field => field.name),
+  ].filter(Boolean));
   return {
     commandName: shape.commandName,
     bffName: shape.routeKey,
@@ -739,8 +790,23 @@ function commandFromBffCall(bffCall: CfeBffCall, workspace: CfeJourneyWorkspace,
     kind: shape.kind,
     outputShape: shape.outputShape,
     ...(shape.canonicalOutputShape ? { canonicalOutputShape: shape.canonicalOutputShape } : {}),
-    input: shape.input.map(field => ({ name: field.name, type: 'string', required: field.required, source: field.source, presentation: field.presentation })),
+    input: shape.input.map(field => {
+      const raw = inputByName.get(field.name);
+      const enumValues = raw ? bffFieldEnumValues(raw, operationsById, entities) : [];
+      const l4Type = raw ? bffFieldL4Type(raw, operationsById, entities) : '';
+      return {
+        name: field.name,
+        type: raw ? bffFieldTsType(raw, 'input', operationsById, entities) : 'string',
+        required: field.required,
+        source: field.source,
+        presentation: field.presentation,
+        ...(l4Type ? { l4Type } : {}),
+        ...(enumValues.length > 0 ? { enum: enumValues } : {}),
+      };
+    }),
     output: shape.output,
+    ...(collection ? { collectionField: collection.name } : {}),
+    producedFields,
     rulesApplied,
     origin: {
       source: 'l4/workspace-bffCall',
@@ -773,11 +839,20 @@ export async function saveBaseSharedDefs(prepared: CfePreparedPage): Promise<voi
 
 // ---- Item 2a: generated BFF page tests (page11) ----
 // Deterministic, declarative test cases (no LLM, no node:test) executed server-side by the monitor
-// Tests runner (devenv). Written next to the page11 render at web/desktop/page11/<page>.test.ts.
-// Params valued with the "<seedRef>" marker are resolved at run time from the harvested output of the
-// page's parameterless queries (real seeded ids/values), so a validation case's ONLY wrong input is
-// the omitted required field. Coverage: 1 "ok" case per BFF routine + 1 validation case per required
-// command field. Compiled outside the defs->materialize pipeline (no .defs.ts), like seeds.ts.
+// Tests runner (wherever TESTS_ENABLED is on). Written next to the page11 render at
+// web/desktop/page11/<page>.test.ts.
+//
+// Param policy (the thing that decides whether a case can assert anything at all):
+//  - "<seedRef>" ONLY for an entity id THIS page reads — the runner resolves it from the harvested output
+//    of the page's read queries (including the rows of any array in the envelope).
+//  - every other required field gets a deterministic literal valid for its declared l4 type, so a
+//    validation case's ONLY wrong input is the omitted field. A "<seedRef>" on a domain field is
+//    unsolvable: the runner omits the param and the command dies in VALIDATION_ERROR before exercising
+//    anything, which also makes negative cases pass for the wrong reason.
+//  - a required entity id that NO read of this page produces is unsatisfiable by construction: the case
+//    is not emitted (a case that can never pass is permanent noise on the panel).
+// Coverage: 1 "ok" case per BFF routine + 1 validation case per required command field.
+// Compiled outside the defs->materialize pipeline (no .defs.ts), like seeds.ts.
 const PAGE_TESTS_VARIANT = 'page11';
 const SEED_REF_MARKER = '<seedRef>';
 
@@ -785,9 +860,18 @@ interface PageTestCase {
   id: string;
   routine: string;
   params: Record<string, unknown>;
-  expect: { ok: boolean; errorCode?: string; minItems?: number; shape?: 'object' | 'array' | 'paginated' };
+  // itemsKey names the collection the wire actually returns (e.g. "menuItems"), so the runner checks the
+  // DECLARED key instead of assuming "items". Emitted only for shape 'paginated'.
+  expect: { ok: boolean; errorCode?: string; minItems?: number; shape?: 'object' | 'array' | 'paginated'; itemsKey?: string };
   mutating?: boolean;
 }
+
+// A fixed instant for date/datetime literals: the same .test.ts must produce the same result on two runs,
+// so never Date.now() here.
+const TEST_LITERAL_ISO = '2026-01-01T00:00:00.000Z';
+const TEST_LITERAL_DATE = '2026-01-01';
+const TEST_LITERAL_TEXT = 'teste';
+const TEST_LITERAL_NUMBER = 1;
 
 export async function savePageTestsFile(prepared: CfePreparedPage): Promise<void> {
   const cases = buildPageTestCases(prepared);
@@ -798,52 +882,150 @@ export async function savePageTestsFile(prepared: CfePreparedPage): Promise<void
 
 export function buildPageTestCases(prepared: CfePreparedPage): PageTestCase[] {
   const cases: PageTestCase[] = [];
+  // What each READ routine of the page yields — the runner harvests exactly these, so this is the set of
+  // ids a <seedRef> can resolve. From the l4 wire (producedFields), falling back to the declared output
+  // names for the legacy per-operation path. Commands are excluded: they mutate and the runner isolates
+  // them in a rolled-back transaction, so their output never feeds another case.
+  const producedByQuery = new Map<string, string[]>(
+    prepared.commands
+      .filter(command => readString(command.kind) === 'query')
+      .map(command => {
+        const produced = Array.isArray(command.producedFields) ? command.producedFields.map(String) : [];
+        return [readString(command.commandName), (produced.length > 0 ? produced : commandFields(command.output)).filter(Boolean)] as const;
+      }),
+  );
+  // A routine can never supply its OWN required input (it would have to run before itself), so the
+  // harvest available to a routine is every OTHER read's output. Without this, a getById query whose
+  // output repeats its own key looks satisfiable and emits a case that can never resolve.
+  const harvestableFor = (commandName: string): Set<string> => {
+    const names = new Set<string>();
+    for (const [queryName, fields] of producedByQuery) {
+      if (queryName === commandName) continue;
+      for (const field of fields) names.add(field);
+    }
+    return names;
+  };
+
   for (const command of prepared.commands) {
     const commandName = readString(command.commandName);
     if (!commandName) continue;
     const kind = readString(command.kind) === 'query' ? 'query' : 'command';
     const routine = readString(command.routeKey) || `${prepared.page.moduleName}.${prepared.page.pageId}.${commandName}`;
+    const harvestable = harvestableFor(commandName);
     const inputFields = commandFieldRecords(command.input);
-    const requiredFields = inputFields.filter(field => field.required).map(field => field.name);
+    const requiredFields = inputFields.filter(field => field.required);
     // Boundary cases omit a required FORM field only (route/selection ids stay present, resolved from
     // the seed pool) — matching the spec example: keep stockItemId, omit unit -> VALIDATION_ERROR.
-    const requiredFormFields = inputFields
-      .filter(field => field.required && (field.presentation ?? 'form') === 'form')
+    // Runtime-resolved fields are excluded: testParams never sends them, so "omitting" one would produce
+    // params identical to the ok case — the backend would derive the value and succeed, failing a case
+    // that claims to expect VALIDATION_ERROR.
+    const requiredFormFields = requiredFields
+      .filter(field => (field.presentation ?? 'form') === 'form' && !isRuntimeResolvedInputSource(field.source))
       .map(field => field.name);
+
+    // A CLIENT-supplied entity id the page never reads cannot be resolved by any runner (nothing harvests
+    // it) and no literal would match a real row: the case could never pass, so it is not emitted instead
+    // of sitting on the panel as permanent noise. Runtime-resolved ids (actorSession, businessContext,
+    // activeLifecycleInstance, systemDefault…) are NOT client-supplied — the backend derives them — so
+    // they never disqualify a case; testParams simply omits them.
+    const unresolvableIds = requiredFields
+      .filter(field => isEntityIdField(field.name) && !harvestable.has(field.name) && !isRuntimeResolvedInputSource(field.source))
+      .map(field => field.name);
+    if (unresolvableIds.length > 0) {
+      recordCreateWarning(`${prepared.page.pageId}: skipped test case(s) for ${commandName} — required id(s) ${unresolvableIds.join(', ')} are not produced by any read routine of this page`);
+      continue;
+    }
 
     if (kind === 'query') {
       // shape asserts the wire shape the FE contract expects — the runner compares it against the
       // ACTUAL backend response, catching object×array drift (Item 5) that minItems alone misses.
       const outputShape = normalizeOutputShape(command.outputShape);
-      const shape = outputShape === 'array' ? 'array' : outputShape === 'paginated' ? 'paginated' : 'object';
+      const shape: 'object' | 'array' | 'paginated' = outputShape === 'array' ? 'array' : outputShape === 'paginated' ? 'paginated' : 'object';
       const isList = shape === 'array' || shape === 'paginated';
-      cases.push({ id: `${commandName}.ok`, routine, params: seedRefParams(requiredFields), expect: isList ? { ok: true, shape, minItems: 1 } : { ok: true, shape } });
+      // The wire names its collection (e.g. { menuItems, total }); without itemsKey the runner assumes
+      // `items` and a correct backend looks broken.
+      const itemsKey = shape === 'paginated' ? readString(command.collectionField) : '';
+      const expect = isList
+        ? { ok: true, shape, minItems: 1, ...(itemsKey ? { itemsKey } : {}) }
+        : { ok: true, shape };
+      cases.push({ id: `${commandName}.ok`, routine, params: testParams(requiredFields, harvestable), expect });
     } else {
       // Command "ok" case writes -> mutating (runner isolates it in a rolled-back transaction).
       // A command returns its result object.
-      cases.push({ id: `${commandName}.ok`, routine, params: seedRefParams(requiredFields), expect: { ok: true, shape: 'object' }, mutating: true });
+      cases.push({ id: `${commandName}.ok`, routine, params: testParams(requiredFields, harvestable), expect: { ok: true, shape: 'object' }, mutating: true });
       for (const field of requiredFormFields) {
-        cases.push({ id: `${commandName}.${field}.required`, routine, params: seedRefParams(requiredFields.filter(other => other !== field)), expect: { ok: false, errorCode: 'VALIDATION_ERROR' } });
+        cases.push({ id: `${commandName}.${field}.required`, routine, params: testParams(requiredFields.filter(other => other.name !== field), harvestable), expect: { ok: false, errorCode: 'VALIDATION_ERROR' } });
       }
     }
   }
   return cases;
 }
 
-function seedRefParams(fields: string[]): Record<string, unknown> {
+type PageTestField = { name: string; type?: string; l4Type?: string; enum?: string[]; source?: string };
+
+/**
+ * Params for one generated case. `<seedRef>` is emitted ONLY for an entity id the page itself reads
+ * (the runner resolves it from harvested output); every other field gets a deterministic literal.
+ *
+ * Why: `<seedRef>` on a DOMAIN field is unsolvable — the runner omits the param and the command dies in
+ * VALIDATION_ERROR before exercising anything (102051: 20 of 24 inconclusive cases). Worse, a negative
+ * case then "passed" for the wrong reason: it meant to omit `name`, but the backend rejected the
+ * unresolved `menuCategoryId` first, so `name` was never tested (29 vacuous passes).
+ */
+function testParams(fields: PageTestField[], harvestable: Set<string>): Record<string, unknown> {
   const params: Record<string, unknown> = {};
-  for (const field of fields) params[field] = SEED_REF_MARKER;
+  for (const field of fields) {
+    // Runtime-resolved inputs (session actor, business context, active lifecycle instance, clock) are
+    // derived by the backend, never sent by a client — a fake literal id here would only break a lookup.
+    if (isRuntimeResolvedInputSource(field.source)) continue;
+    params[field.name] = isEntityIdField(field.name) && harvestable.has(field.name)
+      ? SEED_REF_MARKER
+      : testLiteralForField(field);
+  }
   return params;
+}
+
+/** An entity-identifier field name (`stockItemId`, `id`) — the only kind `<seedRef>` can stand in for. */
+function isEntityIdField(name: string): boolean {
+  return /(^|[a-z0-9])Id$/.test(name) || name === 'id';
+}
+
+/**
+ * A deterministic literal that is valid for the field's declared l4 type. Enum'd/state fields take the
+ * SECOND declared value when there is one: a seeded row starts at the first state, so the second is the
+ * next valid transition — the first would be the current value and a state-machine rule would reject it.
+ */
+function testLiteralForField(field: PageTestField): unknown {
+  if (Array.isArray(field.enum) && field.enum.length > 0) {
+    return field.enum.length > 1 ? field.enum[1] : field.enum[0];
+  }
+  // Prefer the RAW l4 type: the TS type collapses every date to `string`.
+  const type = (field.l4Type || field.type || '').toLowerCase();
+  if (['number', 'integer', 'int', 'int32', 'int64', 'float', 'double', 'decimal', 'money', 'currency'].includes(type)) return TEST_LITERAL_NUMBER;
+  if (type === 'boolean' || type === 'bool') return true;
+  if (type === 'date') return TEST_LITERAL_DATE;
+  if (['datetime', 'date-time', 'timestamp', 'timestamptz', 'time'].includes(type)) return TEST_LITERAL_ISO;
+  // Last resort when the type could not be traced: date-ish names still travel as ISO on the wire.
+  if (!type || type === 'string') {
+    if (/Date$/.test(field.name)) return TEST_LITERAL_DATE;
+    if (/(^|[a-z0-9])At$/.test(field.name)) return TEST_LITERAL_ISO;
+  }
+  return TEST_LITERAL_TEXT;
 }
 
 function renderPageTestsFile(prepared: CfePreparedPage, cases: PageTestCase[]): string {
   const header = `/// <mls fileReference="_${prepared.project}_/l2/${prepared.page.moduleName}/web/desktop/${PAGE_TESTS_VARIANT}/${prepared.page.pageId}.test.ts" enhancement="_blank"/>`;
   const body = { moduleName: prepared.page.moduleName, page: prepared.page.pageId, variant: PAGE_TESTS_VARIANT, cases };
   return `${header}\n\n`
-    + `// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner (devenv only).\n`
+    + `// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner (wherever\n`
+    + `// TESTS_ENABLED is on).\n`
     + `// Data, not a runnable test module: no node:test import, so scripts/run-tests.mjs never captures it.\n`
-    + `// Params valued "${SEED_REF_MARKER}" are resolved at run time from the harvested output of this\n`
-    + `// page's parameterless queries.\n`
+    + `// Params valued "${SEED_REF_MARKER}" are ENTITY IDS this page itself reads: the runner resolves them at\n`
+    + `// run time from the harvested output of this page's read queries (including the rows of any array in\n`
+    + `// the envelope). Every other param is a deterministic literal valid for its declared l4 type, because\n`
+    + `// a "${SEED_REF_MARKER}" on a domain field is unsolvable and the command would die in VALIDATION_ERROR\n`
+    + `// before testing anything. expect.itemsKey names the collection the wire returns for a paginated\n`
+    + `// query (the runner assumes "items" when it is absent).\n`
     + `export const pageTests = ${JSON.stringify(body, null, 2)} as const;\n`;
 }
 
@@ -1226,18 +1408,24 @@ export interface MaterializeVerifyBrokenTrace {
 
 // Full, unbounded verify detail (every compile/typecheck error + warning per broken item) written to
 // the file system so the msg-task step trace can stay a short summary (DynamoDB 400KB task cap). One
-// file per verify invocation, keyed by its planId, under the MODULE's trace folder
+// file per verify invocation, keyed by its planId, ALWAYS under the MODULE's trace folder
 // (<module>/trace/frontend-materialize-verify) — a run processes a single module, so the trace lives with
-// that module's other artifacts rather than at the project-root l2/trace. The module is derived from the
-// broken items' paths. Best-effort: a trace write must never fail the verify. Returns the mls ref of the
-// written file (for the summary to point at) or null when it could not be written.
-export async function saveMaterializeVerifyTrace(planId: string, attempt: number, broken: MaterializeVerifyBrokenTrace[]): Promise<string | null> {
+// that module's other artifacts. `moduleName` comes from the caller (derived from ALL verify items);
+// deriveTraceModule(broken) is only a fallback for callers that do not have it. There is deliberately NO
+// project-root fallback: writing to l2/trace polluted the project root and the junk got committed
+// (mls-102051). Without a derivable module the trace is SKIPPED with a warning. Best-effort: a trace
+// write must never fail the verify. Returns the mls ref of the written file, or null when not written.
+export async function saveMaterializeVerifyTrace(moduleName: string, planId: string, attempt: number, broken: MaterializeVerifyBrokenTrace[]): Promise<string | null> {
   try {
     const project = mls.actualProject || 0;
     if (!project) return null;
     const shortName = toSafeShortName(planId);
-    const moduleName = deriveTraceModule(broken);
-    const folder = moduleName ? `${moduleName}/trace/frontend-materialize-verify` : 'trace/frontend-materialize-verify';
+    const module = moduleName || deriveTraceModule(broken);
+    if (!module) {
+      console.warn(`[saveMaterializeVerifyTrace] no module could be derived for ${planId}; trace not written (never write to the project-root l2/trace)`);
+      return null;
+    }
+    const folder = `${module}/trace/frontend-materialize-verify`;
     const fileInfo: FileInfo = { project, level: 2, folder, shortName, extension: '.json' };
     await saveStorContent(fileInfo, `${JSON.stringify({
       savedAt: new Date().toISOString(),
@@ -1255,7 +1443,7 @@ export async function saveMaterializeVerifyTrace(planId: string, attempt: number
 }
 
 // The module name from a broken item's `_<project>_/l2/<module>/...` outputPath/defPath (all items in one
-// verify belong to the same module). Empty when none can be derived (keeps the project-root fallback).
+// verify belong to the same module). Empty when none can be derived — the caller then skips the write.
 function deriveTraceModule(broken: MaterializeVerifyBrokenTrace[]): string {
   for (const item of broken) {
     for (const ref of [item.outputPath, item.defPath]) {
@@ -1274,12 +1462,18 @@ export interface MaterializeVerifyPassed { planId: string; typecheck: string; }
 // look instead of inferring it from the presence/absence of cryptic per-round trace files. The name is
 // derived by stripping the round suffix (`-v2`, `-v2-v3`) from planId, so every round overwrites the
 // SAME file and the last write is the final verdict: allClear + the passed items + any still-broken.
+// Always module-scoped: like the trace, there is NO project-root fallback (that polluted l2/trace and the
+// junk got committed) — without a derivable module the verdict is skipped with a warning.
 export async function saveMaterializeVerifySummary(moduleName: string, planId: string, attempt: number, passed: MaterializeVerifyPassed[], broken: MaterializeVerifyBrokenTrace[]): Promise<string | null> {
   try {
     const project = mls.actualProject || 0;
     if (!project) return null;
     const module = moduleName || deriveTraceModule(broken);
-    const folder = module ? `${module}/trace/frontend-materialize-verify` : 'trace/frontend-materialize-verify';
+    if (!module) {
+      console.warn(`[saveMaterializeVerifySummary] no module could be derived for ${planId}; verdict not written (never write to the project-root l2/trace)`);
+      return null;
+    }
+    const folder = `${module}/trace/frontend-materialize-verify`;
     const basePlanId = planId.replace(/(?:-v\d+)+$/, '');
     const shortName = `${toSafeShortName(basePlanId)}-summary`;
     const fileInfo: FileInfo = { project, level: 2, folder, shortName, extension: '.json' };
@@ -2949,13 +3143,18 @@ function defaultBusinessContextOriginRef(inputId: string, fieldRef: string): str
   return text.includes('unit') || text.includes('unidade') ? 'businessContext.activeUnitId' : 'businessContext.activeCompanyId';
 }
 
-function commandFieldRecords(value: unknown): { name: string; required?: boolean; source?: string; presentation?: string }[] {
+function commandFieldRecords(value: unknown): { name: string; required?: boolean; source?: string; presentation?: string; type?: string; l4Type?: string; enum?: string[] }[] {
   if (!Array.isArray(value)) return [];
   return value.map(item => isRecord(item) ? {
     name: readString(item.name),
     required: item.required === true,
     source: readString(item.source),
     presentation: readString(item.presentation) || 'form',
+    // type (TS) / l4Type (raw declared) / enum carry the resolved shape of the field; the page-test
+    // generator needs them to emit a valid literal instead of an unresolvable <seedRef> for a domain field.
+    type: readString(item.type),
+    l4Type: readString(item.l4Type),
+    ...(Array.isArray(item.enum) ? { enum: item.enum.map(String).filter(Boolean) } : {}),
   } : { name: '' }).filter(item => item.name);
 }
 
