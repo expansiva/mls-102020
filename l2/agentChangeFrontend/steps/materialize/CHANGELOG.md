@@ -2,6 +2,21 @@
 
 # Changelog
 
+- 2026-07-28 (verify trace/verdict: no project-root fallback) — follow-up to the 22/jul module-scoping fix
+  (todo/geracao/bug_trace.md). Two residual defects let the project root be polluted again:
+  `saveMaterializeVerifyTrace` did not receive the caller's module (it re-derived one from the BROKEN items
+  only, while `runVerify` already computes `moduleName` from ALL items and passed it to the verdict), and
+  BOTH writers fell back to the bare `trace/frontend-materialize-verify` folder at the l2 root when no
+  module could be derived. Fixes: the trace signature now mirrors the verdict —
+  `saveMaterializeVerifyTrace(moduleName, planId, attempt, broken)` with `deriveTraceModule(broken)` kept
+  only as a fallback for callers without it; and the root fallback is REMOVED from both — with no derivable
+  module the write is skipped (`console.warn` + `return null`, already a tolerated best-effort outcome)
+  instead of polluting `l2/trace`. Guard test asserts both signatures, the absence of the bare-root folder
+  in either writer, and that the phase passes its moduleName to the trace. Also cleaned the committed junk
+  in mls-102051 (`git rm -r l2/trace`, staged): the 3 pre-fix JSONs (savedAt 2026-07-23T01:0xZ) all had an
+  identical module-scoped copy under `cafeFlow/trace/frontend-materialize-verify`, so nothing was lost —
+  `obj/source.zip` still carries them until `pnpm buildCI` is re-run in that project.
+
 - 2026-07-27 (systemic-failure guard: stop instead of repairing an environment fault) — 102051 run01: the
   Studio compiler could not resolve the bare `lit` import (TS2792), so EVERY generated file was "broken"
   on every round. Consequences: the broken set never shrank (pages 12->12->12->11, shared 6->6->6->5), the

@@ -1,5 +1,37 @@
 <!-- mls fileReference="_102020_/l2/agentChangeFrontend/steps/create-contract-shared/CHANGELOG.md" enhancement="_blank" -->
 
+- 2026-07-28 (page tests that can actually assert): the emitted `page11/<page>.test.ts` cases marked EVERY
+  required param as `<seedRef>`, so on 102051 the measured coverage was 8 of 55 cases (20 of 24
+  inconclusive; 29 more "passed" for the wrong reason — the backend rejected a different unresolved field
+  before the one under test). `<seedRef>` means "take this from a page read", which only works for an
+  entity id the page actually reads. Fixes, all derived from l4 (no LLM, no project-specific literal):
+  (1) each required input is classified — `<seedRef>` ONLY for an entity id produced by ANOTHER read of
+  the same page (a routine cannot feed itself: a getById query whose output repeats its own key used to
+  look satisfiable), every other field gets a deterministic literal for its declared type (number->1,
+  boolean->true, date->ISO date, datetime->ISO instant, free string->"teste"), and an enum/state field
+  takes the SECOND declared value — the next valid transition, where `<seedRef>` resolved to the row's
+  CURRENT state and a state-machine rule rejected it. To make this possible the wire now carries what it
+  always knew but dropped: `commandFromBffCall` resolves each input's TS type + raw `l4Type` + `enum`
+  (it hardcoded `type: 'string'`) and exposes `producedFields` / `collectionField`.
+  (2) `expect.itemsKey` names the collection a paginated wire really returns (menuItems, orders…) instead
+  of letting the runner assume `items`; absent itemsKey keeps the old assumption, so already-generated
+  .test.ts files stay valid until regenerated.
+  (3) a case whose required client-supplied id no read of the page produces is NOT emitted (it could never
+  pass under any runner — permanent panel noise).
+  (4) runtime-resolved inputs (actorSession, businessContext, activeLifecycleInstance, systemDefault) are
+  omitted from params AND get no `.required` case: the backend derives them, so "omitting" one would send
+  params identical to the ok case and the call would succeed while the case claims VALIDATION_ERROR.
+  (5) the emitted header documents the real contract (harvest is every read, not just parameterless ones;
+  TESTS_ENABLED, not "devenv only") and the `<seedRef>` rule, since humans read the file when a case fails.
+  Verified on BOTH generated apps (the generator serves every client project): 102051 cafeFlow 6 pages ->
+  48 cases, 31% seedRef / 69% literals (was 100% seedRef), 3/3 paginated with itemsKey, exactly one routine
+  skipped (getShiftClosingReport — the D4 case, self-fed id) and every domain field the analysis listed
+  (quantity, direction, reason, paymentMethod, shiftDate, totalAmount, unit, currentBalance, minimumLevel,
+  orderType) now a valid literal; 102049 petShop 2 pages -> 12 cases, 45%/55%, 1/1 itemsKey, none skipped.
+  7 unit tests cover the branches + determinism. NOT done (needs the contract x controller decision in
+  changeBackend): a contract that declares a session-derived field required still declares it required —
+  the generator now simply does not test it.
+
 # Changelog
 
 - 2026-07-16 (fix — multi-selection key input is a list): contractFieldFromOperationInput

@@ -143,7 +143,7 @@ async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.
 
   // Full detail (all errors + warnings per item) goes to the file system; the msg-task step trace
   // keeps only a short summary that points at that file (DynamoDB 400KB task cap).
-  const traceRef = await saveMaterializeVerifyTrace(args.planId, args.attempt, broken.map(toBrokenTrace));
+  const traceRef = await saveMaterializeVerifyTrace(moduleName, args.planId, args.attempt, broken.map(toBrokenTrace));
   const summary = summarizeBroken(broken, traceRef);
 
   // Systemic failure: EVERY page11 item broken on the FIRST compile is an environment/config fault, not
