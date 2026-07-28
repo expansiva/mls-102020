@@ -72,6 +72,11 @@ root (@@agentNewTheme { prompt })
   to WRITE (this agent's gate) and to READ (agentNewMoleculeVariant's admission).
 - **i18n split.** Questions/labels follow `userLanguage`; the `theme.ts` content is
   always English.
+- **Prose in, not arguments.** The description is natural language, so the mention accepts
+  it raw (`@@agentNewTheme a soft neumorphic theme…`); `{ prompt: '…' }` still works. The
+  platform's `safeParseArgs` throws on prose, so it is called only on an object literal —
+  parsing is isolated in `helpers/ntEntry` (pure, tested) because entry-format bugs have
+  bitten this agent family three times.
 - **Every prompt declares its modelType.** `<!-- modelType: X -->` on the first line,
   chosen from `skills/modelTypes.md`; without it the platform falls back to a cost-based
   selection and the call 404s.

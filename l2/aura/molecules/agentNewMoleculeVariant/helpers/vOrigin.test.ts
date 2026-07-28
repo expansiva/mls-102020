@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractAbsoluteMlClasses, extractGeometryByClass, normalizeOriginPage, parseOriginRef } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vOrigin.js';
+import { extractAbsoluteMlClasses, extractGeometryByClass, normalizeOriginPage, parseOriginRef, parseVariantEntry } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vOrigin.js';
 
 const CANON = '_102040_/l2/molecules/groupselectone/ml-combobox';
 
@@ -138,4 +138,54 @@ test('extractGeometryByClass ignores comments and keyframes', () => {
     }
   `);
   assert.deepEqual(Object.keys(map), ['ml-real']);
+});
+
+// A2: mention entry. Stand-in for mls.common.safeParseArgs — tolerates JS-object syntax,
+// THROWS on anything else (the real one raises 'Invalid args format, cannot parse.').
+const VARIANT_AGENT = 'agentNewMoleculeVariant';
+const fakeParseArgs = (raw: string): Record<string, unknown> => {
+  if (!/^\{[\s\S]*\}$/.test(raw.trim())) throw new Error('Invalid args format, cannot parse.');
+  const out: Record<string, unknown> = {};
+  for (const m of raw.matchAll(/([a-zA-Z]+)\s*:\s*'((?:[^'\\]|\\.)*)'/g)) out[m[1]] = m[2];
+  if (!Object.keys(out).length) throw new Error('Invalid args format, cannot parse.');
+  return out;
+};
+
+test('parseVariantEntry: object mention and preview payload', () => {
+  assert.deepEqual(
+    parseVariantEntry("{ page: '_102040_/l2/molecules/grouptriggeraction/ml-button-standard', prompt: 'bordas grossas' }", VARIANT_AGENT, fakeParseArgs),
+    { page: '_102040_/l2/molecules/grouptriggeraction/ml-button-standard', notes: 'bordas grossas' },
+  );
+  // the preview sends fullName + the mention itself as `prompt`
+  assert.deepEqual(
+    parseVariantEntry("{ fullName: '_102040_/l2/molecules/groupselectone/ ml-combobox', prompt: '@@NewMoleculeVariant' }", VARIANT_AGENT, fakeParseArgs),
+    { page: '_102040_/l2/molecules/groupselectone/ ml-combobox', notes: '' },
+  );
+});
+
+test('parseVariantEntry: a BARE reference no longer dies in the arg parser', () => {
+  assert.deepEqual(
+    parseVariantEntry('_102040_/l2/molecules/groupenternumber/ml-range-slider', VARIANT_AGENT, fakeParseArgs),
+    { page: '_102040_/l2/molecules/groupenternumber/ml-range-slider', notes: '' },
+  );
+  // reference followed by notes
+  assert.deepEqual(
+    parseVariantEntry('_102040_/l2/molecules/g/ml-x deixe as bordas mais grossas', VARIANT_AGENT, fakeParseArgs),
+    { page: '_102040_/l2/molecules/g/ml-x', notes: 'deixe as bordas mais grossas' },
+  );
+  // a pasted fullName keeps its space before the molecule name — glue it back
+  assert.deepEqual(
+    parseVariantEntry('_102040_/l2/molecules/groupselectone/ ml-combobox', VARIANT_AGENT, fakeParseArgs),
+    { page: '_102040_/l2/molecules/groupselectone/ml-combobox', notes: '' },
+  );
+  // '@@ agentNewMoleculeVariant <ref>' still carries the agent name (runtime strips only '@@')
+  assert.equal(parseVariantEntry(`${VARIANT_AGENT} _102040_/l2/molecules/g/ml-x`, VARIANT_AGENT, fakeParseArgs).page, '_102040_/l2/molecules/g/ml-x');
+});
+
+test('parseVariantEntry: no reference means no page (caller fails readable)', () => {
+  assert.deepEqual(parseVariantEntry('', VARIANT_AGENT, fakeParseArgs), { page: '', notes: '' });
+  assert.deepEqual(parseVariantEntry('@@someOtherAgent', VARIANT_AGENT, fakeParseArgs), { page: '', notes: '' });
+  assert.deepEqual(parseVariantEntry('crie uma variante bonita', VARIANT_AGENT, fakeParseArgs), { page: '', notes: 'crie uma variante bonita' });
+  // malformed object: no reference to find, so the caller reports the missing ref
+  assert.equal(parseVariantEntry("{ page: '_102040_", VARIANT_AGENT, fakeParseArgs).page, '_102040_');
 });

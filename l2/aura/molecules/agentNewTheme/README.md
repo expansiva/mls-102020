@@ -11,8 +11,11 @@ Mention the agent in the project where you want the theme (the project must NOT 
 have `l2/skills/theme.ts`):
 
 ```
-@@agentNewTheme { prompt: "a soft neumorphic light theme, brand color #6C5CE7, rounded corners, subtle shadows" }
+@@agentNewTheme a soft neumorphic light theme, brand color #6C5CE7, rounded corners, subtle shadows
 ```
+
+Prose is the natural form — write the description straight after the mention, colors, colons
+and parentheses included. The object form `@@agentNewTheme { prompt: '...' }` also works.
 
 - An empty/vague prompt is fine — the checkpoint will ask for the missing fields with
   suggested options. A rich prompt may skip it entirely (fast path).
@@ -31,7 +34,7 @@ run in a project that already has a theme.
 agentNewTheme.ts          root: parse { prompt }, admission, plant the step tree
 flow.json                 authoritative spec (t1-plan → t2-clarify → t3-generate)
 spec.md / README.md       rationale / this file
-helpers/                  ntFs, ntSteps, ntTypes, ntThemeHtml  (nt* — owned by this agent)
+helpers/                  ntEntry, ntFs, ntSteps, ntTypes, ntThemeHtml  (nt* — owned by this agent)
 schemas/                  t1-plan.schema.json, t3-generate.schema.json
 steps/t1-plan/            prompt + gate (the call itself is the ROOT's — no separate agent)
 steps/t2-clarify/         agentNtClarify (the checkpoint; mounts shared Decision Clarification)
