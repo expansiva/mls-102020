@@ -1,5 +1,26 @@
 <!-- mls fileReference="_102020_/l2/agentChangeFrontend/steps/create-contract-shared/CHANGELOG.md" enhancement="_blank" -->
 
+- 2026-07-29 (page tests: emit the page actor + module-wide seedRef reach) — MEASURED on 102045/buildFlowFsm
+  with the monitor runner (3 runs, same app/seeds): 4 pass / 1 fail / 9 inconclusive -> **12 pass / 0 fail /
+  2 inconclusive**, the 2 remaining being the documented chicken-and-egg case (submitChangeOrderDecision
+  needs changeOrderId and NO read of the module exposes it). Two generator changes, both required for that
+  result and both derived from l4 — no hardcode:
+  (1) `pageTests.actor` = the workspace's declared l4 actor. The runner executes the page's cases as the
+  seeded platform identity of that actor (MDM Person tagged ['<module>.Person','<module>','actor',
+  '<actorId>']), so a route that reads the actor id from the SESSION is runnable headless. This is what
+  turned listAssignedTasks from fail into pass and unblocked the 2 commands of its page. Emitted only when
+  the workspace declares an actor; the runner treats it as optional.
+  (2) the <seedRef> satisfiability check is now MODULE-wide (moduleProducedByQuery, read straight from the
+  run's l4 workspaces), not page-wide. The runner keeps ONE pool per RUN and runs every read before any
+  command, so an id produced by a sibling page resolves. Page-scoped reach was silently dropping
+  satisfiable cases: taskPlanningWorkspace has 4 bffCalls and only 1 got a case because projectId comes
+  from dashboardWorkspace. A routine is still excluded from its OWN harvest (it cannot run before itself).
+  Runner side (mls-102034, same session): the pool was hoisted to the run AND both phases made global
+  (hoisting alone leaves the result dependent on file order), plus the actor identity resolution. WARNING
+  learned the hard way: inject ONLY sessionContext.actorId, never actorScope — the generated controllers'
+  `enforceActors` treats an empty scope as permissive but 403s a non-empty scope that misses its ALLOWED
+  list, whose entries are `<module>:<actorId>` role scopes; sending the bare actorId as scope failed all 14
+  cases with FORBIDDEN_ACTOR.
 - 2026-07-28 (state-name dedup vs action members): the derived input-state name `<actionId><FieldPascal>`
   could equal ANOTHER command's methodName — real case (mls-102045 projectDetail): updateWorkTask.status ->
   `updateWorkTaskStatus`, the methodName of operation updateWorkTaskStatus. State properties, action methods

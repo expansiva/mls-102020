@@ -20,7 +20,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const prepared = await prepareCreateRunPage(runId, pageId);
     await saveContractDefs(prepared);
     await saveBaseSharedDefs(prepared);
-    await savePageTestsFile(prepared);
+    // runId lets the page tests see the whole module's reads (the runner's <seedRef> pool is per run).
+    await savePageTestsFile(prepared, runId);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed')];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
