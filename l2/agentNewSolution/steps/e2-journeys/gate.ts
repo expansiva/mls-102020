@@ -234,7 +234,9 @@ export function validateE2JourneysInvariants(
     if (!PRIORITIES.includes(feature.priority)) {
       issues.push(errorIssue('feature_priority', `feature ${feature.featureId} must have a priority (now|soon|later|never)`, `features[${index}].priority`));
     }
-    if (!referencedFeatures.has(feature.featureId)) {
+    // Features parked as "never" document explicit scope exclusions; no journey
+    // exercises them by definition, so they are exempt from the reference check.
+    if (feature.priority !== 'never' && !referencedFeatures.has(feature.featureId)) {
       issues.push(errorIssue('unreferenced_feature', `feature ${feature.featureId} is not referenced by any journey step`, `features[${index}]`));
     }
   });

@@ -2,6 +2,20 @@
 
 # CHANGELOG - steps/e2-journeys
 
+## 2026-07-28 - never-priority features exempt from unreferenced_feature
+
+- `gate.ts`: features with priority `never` no longer fail `unreferenced_feature` — they document
+  explicit scope exclusions, so no journey exercises them by definition. The prompt told models to
+  park E1 exclusions as `never` features while the gate demanded a journey reference for EVERY
+  feature; grok-4.5 followed the prompt and hit the gate (mls-102045/buildFlowFsm run01, features
+  advancedResourceLeveling/fullWarehouseInventory/deepClientSelfServicePortal), burning one retry
+  round on every project whose E1 mentions exclusions.
+- `prompt.md`: reference rule now scoped to now/soon/later and states the `never` exception.
+- `gate.test.ts`: new case "accepts an unreferenced feature parked as never".
+- Investigated but NOT changed: e3 prompt.md lacks the status/result/trace envelope block — the
+  runtime already appends it via `buildNsToolInstruction` (agentNsOntology.ts), so the minimax
+  missing-trace error (run01_bugllm2) was model drift, not a prompt gap.
+
 ## 2026-07-06 - T09 journey review widget
 
 - Added `widgetNsJourneys.ts` and scoped `widgetNsJourneys.less`.

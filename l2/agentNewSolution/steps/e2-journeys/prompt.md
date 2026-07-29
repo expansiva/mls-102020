@@ -47,8 +47,9 @@ The result must contain:
     rationale.
   - priority is one of now | soon | later | never. Use "now" for the core loop, "soon"/"later" for
     valuable extensions, "never" only to explicitly park something E1 mentioned but that is out.
-  - EVERY feature must be referenced by at least one journey step (featureRefs). Do not list a feature
-    that no journey uses.
+  - EVERY feature with priority now/soon/later must be referenced by at least one journey step
+    (featureRefs). Do not list a feature that no journey uses. Features with priority "never" are
+    the only exception: they document explicit exclusions, so no journey step references them.
   - EVERY journey step featureRef must point to a feature you declared.
 - decisions: usually empty. Add an entry only for an explicit removal or a notable scope/priority call.
 

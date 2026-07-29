@@ -99,6 +99,18 @@ test('E2 gate rejects an unreferenced feature', async () => {
   assert.equal(result.errors.some(issue => issue.code === 'unreferenced_feature'), true);
 });
 
+test('E2 gate accepts an unreferenced feature parked as never', async () => {
+  const artifact = validArtifact();
+  artifact.features.push({ featureId: 'fullWarehouseInventory', title: 'Full warehouse inventory', priority: 'never', actorIds: ['attendant'] });
+  const result = await runNsGate({
+    stepId: 'e2-journeys',
+    schema,
+    artifact,
+    validate: item => validateE2JourneysInvariants(item),
+  });
+  assert.equal(result.ok, true);
+});
+
 test('E2 gate rejects an actor without a journey', async () => {
   const artifact = validArtifact();
   artifact.actors.push({ actorId: 'manager', name: 'Manager' });
