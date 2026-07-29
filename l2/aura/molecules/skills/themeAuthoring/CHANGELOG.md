@@ -41,3 +41,20 @@
   does NOT position is legitimate and belongs in the recipe — the ban applies only to elements the
   render already positions. (T25) `--ml-transition` is a transition shorthand; plugging it into an
   `animation` turns it into a 250ms DELAY (the glass skeleton did exactly that).
+- 2026-07-28 (T27, todo Fase 10): the canonical token vocabulary is now MEASURED — a table of
+  what the 175 base stylesheets actually read, with each token's SHAPE and the property it is
+  read into. Trigger: both glass themes declared `--ml-outline-focus: 0 0 0 3px rgba(...)`, a
+  box-shadow shorthand, while molecules read it as `border-color: var(--ml-outline-focus, #3b82f6)`
+  in 102 places — invalid CSS, silently dropped, no focus border anywhere; meanwhile the tokens
+  the molecules DO read for the focus ring (`--ml-focus-ring-width` 165 reads,
+  `--ml-focus-ring-color` 156) were declared by neither theme, so every focus ring stayed the
+  light-theme blue. The old text caused it: T5 had framed the shorthand and the pair as
+  alternatives ("EITHER ... OR ... never both") when they are different things read differently.
+  Two more corrections fell out of the measurement: `--ml-surface-dim` is the RECESSED surface
+  (316 reads — slider rails, footers, empty states), NOT the overlay, so the overlay now names
+  `--ml-surface-overlay` (rule 2, the T22 paragraph and the v3-less prompt follow); and
+  `--ml-radius-lg`, `--ml-surface-hover`, `--ml-backdrop-blur*`, `--ml-text-transform`,
+  `--ml-letter-spacing` are theme-only (no molecule reads them). Added the fallback warning: an
+  undeclared token resolves to the molecule's literal, and those literals are LIGHT-theme values.
+  Also: if a recipe NAMES an animation it must ship the `@keyframes` (both glass themes referenced
+  `ml-shimmer` and defined it nowhere, so their skeletons never animated).

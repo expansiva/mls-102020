@@ -157,23 +157,56 @@ export const examples = [];               // start EMPTY (pilot); reference mole
   motion stance, and any signature technique. Recipes consume \`var(--ml-*, fallback)\`.
 - \`## 4. Theme Nuances\` (optional) — exceptions, per-molecule alphas, migration precedence.
 
-## Canonical \`--ml-*\` token vocabulary (name them; molecules consume these)
+## Canonical \`--ml-*\` token vocabulary — and the SHAPE of each value
 
-Typography: \`--ml-font-family\`, \`--ml-font-weight-medium\`.
-Shape: \`--ml-radius-sm\`, \`--ml-radius-md\`, \`--ml-radius-lg\`, \`--ml-border-width\`.
-Color/surface: \`--ml-primary\`, \`--ml-on-primary\`, \`--ml-surface\` (inline field/secondary bg),
-\`--ml-surface-dim\` (OVERLAY bg — modal/dropdown/popover/tooltip/panel), \`--ml-on-surface\`
-(primary text), \`--ml-on-surface-muted\` (secondary text), \`--ml-outline-variant\` (default border),
-\`--ml-error\` (feedback).
-Depth/motion: \`--ml-shadow-1\` (resting), \`--ml-shadow-2\` (hover), \`--ml-transition\`,
-\`--ml-disabled-opacity\`.
-Theme extras (add only if the style needs them): focus ring — EITHER the shorthand
-\`--ml-outline-focus\` OR the pair \`--ml-focus-ring-width\` + \`--ml-focus-ring-color\`, never
-both; \`--ml-outline-error\` (only if the error border differs from \`--ml-error\`);
-\`--ml-backdrop-blur\`, \`--ml-backdrop-blur-strong\`, \`--ml-text-transform\`,
-\`--ml-letter-spacing\`; \`--ml-surface-hover\` (a distinct hover background, if the style has one).
-Molecules define ONLY the tokens they consume and always read them as \`var(--ml-x, <fallback>)\`
-where the fallback equals the canonical value — so name and value must be self-consistent.
+This table is measured: it lists what the 175 base stylesheets actually read, with the property
+each token is read into and how often. **A token's value must have the shape its consumers
+expect.** Get that wrong and the declaration is silently dropped by the browser: a theme once
+set \`--ml-outline-focus: 0 0 0 3px rgba(...)\` (a box-shadow shorthand) and produced
+\`border-color: 0 0 0 3px rgba(...)\` in 102 places — invalid CSS, no focus border anywhere.
+
+| Token | Shape | Read as | Uses |
+|---|---|---|---|
+| \`--ml-font-family\` | font stack | \`font-family\` | 834 |
+| \`--ml-on-surface\` | color | \`color\` (primary text) | 435 |
+| \`--ml-on-surface-muted\` | color | \`color\` (secondary text) | 318 |
+| \`--ml-surface-dim\` | color | \`background\` of a RECESSED area — slider rails, footers, empty states. NOT the overlay. | 316 |
+| \`--ml-primary\` | color | \`color\`, \`background\`, \`border-color\` | 315 |
+| \`--ml-outline-variant\` | color | \`border-color\`, and the color slot of a \`border:\` shorthand | 279 |
+| \`--ml-surface\` | color | \`background\` of an INLINE surface (fields, cards) | 238 |
+| \`--ml-focus-ring-width\` | LENGTH | \`box-shadow: 0 0 0 <width> <color>\` | 165 |
+| \`--ml-focus-ring-color\` | color | the color slot of that same ring | 156 |
+| \`--ml-font-weight-medium\` | number | \`font-weight\` | 152 |
+| \`--ml-disabled-opacity\` | number | \`opacity\` | 150 |
+| \`--ml-error\` | color | \`color\` (error TEXT), sometimes \`border-color\` | 147 |
+| \`--ml-transition\` | transition value (\`250ms ease\` / \`none\`) | \`transition\` | 143 |
+| \`--ml-on-surface-faint\` | color | \`color\`, \`border-color\` (tertiary) | 105 |
+| \`--ml-outline-error\` | color | \`border-color\` | 103 |
+| \`--ml-outline-focus\` | color | \`border-color\` of a focused field — a COLOR, never a shorthand | 102 |
+| \`--ml-border-style\` | keyword (\`solid\`) | the style slot of a \`border:\` shorthand | 98 |
+| \`--ml-border-width\` | length | the width slot of a \`border:\` shorthand | 93 |
+| \`--ml-on-primary\` | color | \`color\` on a primary fill | 72 |
+| \`--ml-radius-sm\` / \`--ml-radius-md\` | length | \`border-radius\` | 55 / 19 |
+| \`--ml-shadow-1\` / \`--ml-shadow-2\` | box-shadow value | \`box-shadow\` (resting / hover) | 14 / 14 |
+| \`--ml-radius-full\` | length | \`border-radius\` of PILL primitives — a sharp theme sets it to 0 | 10 |
+| \`--ml-success\`, \`--ml-warning\` | color | feedback \`color\` | 14 / 6 |
+| \`--ml-success-dim\`, \`--ml-warning-dim\`, \`--ml-error-dim\` | color | tinted \`background\` | 7 / 4 / 1 |
+| \`--ml-success-border\`, \`--ml-warning-border\`, \`--ml-info-border\` | color | \`border-color\` | 7 / 4 / 4 |
+| \`--ml-surface-overlay\` | color | \`background\` of a FLOATING container — this is the overlay one | 1 |
+
+**An undeclared token does not disappear — it falls back to the molecule's literal, and those
+literals are LIGHT-theme values** (\`#f5f5f5\`, \`#e2e8f0\`, \`rgba(59,130,246,0.4)\`). On a dark
+theme every token you skip becomes a pale patch. Declare the whole table.
+
+The feedback families follow one pattern — \`--ml-<role>\` for text, \`--ml-<role>-dim\` for the
+tinted background, \`--ml-<role>-border\` for the border — for error, success, warning and info.
+
+THEME-ONLY extras (no molecule reads them; only your own recipes do, so name them freely):
+\`--ml-radius-lg\`, \`--ml-surface-hover\`, \`--ml-backdrop-blur\`, \`--ml-backdrop-blur-strong\`,
+\`--ml-text-transform\`, \`--ml-letter-spacing\`.
+
+Molecules read every token as \`var(--ml-x, <fallback>)\` where the fallback equals the canonical
+value — so name and value must be self-consistent.
 
 **ONE mechanism per concern.** The Tokens table is the VOCABULARY the molecules consume, so a
 token that no recipe of yours mentions is perfectly fine — that is how the validated themes
@@ -217,10 +250,13 @@ proof of the choice.
 
 2. **Overlay surfaces vs inline surfaces.** Any floating container shown OVER page content —
    modal/dialog, dropdown, popover, tooltip, panel — MUST stay readable regardless of what is
-   behind it: give it an OPAQUE/high-contrast \`--ml-surface-dim\` (not a faint translucent
-   value) plus, for modals, a dimmed veil. INLINE surfaces may be translucent if the style
-   calls for it (e.g. glass over a dark backdrop). State this split explicitly in the Visual
-   Signature "Background" row and in the "Overlay surfaces" canonical rule.
+   behind it: give it an OPAQUE/high-contrast \`--ml-surface-overlay\` (not a faint translucent
+   value) plus, for modals, a dimmed veil. INLINE surfaces (\`--ml-surface\`) may be translucent
+   if the style calls for it (e.g. glass over a dark backdrop), and \`--ml-surface-dim\` is a
+   THIRD thing — the recessed background of rails, footers and empty states, which molecules
+   read 316 times and which must NOT carry the overlay value or every slider rail turns into a
+   panel. State the split explicitly in the Visual Signature "Background" row and in the
+   "Overlay surfaces" canonical rule.
 
    **The modal veil has ONE working anchor.** The modal render emits its veil as
    \`<div class="absolute inset-0 ml-surface-bg/40" aria-hidden="true">\`. That
@@ -235,15 +271,15 @@ proof of the choice.
 
    Write the veil recipe with that selector and say why. Never invent \`.ml-scrim\`.
 
-   **A token pair does NOT express the split — say it per molecule.** Two measured facts: the
+   **A token alone does NOT express the split — say it per molecule.** Two measured facts: the
    modal's card carries \`.ml-surface-bg\` (the same class inline cards use), and the dropdown's
-   base sheet paints \`.ml-select-panel\` with \`var(--ml-surface, ...)\`. So defining
-   \`--ml-surface-dim\` and hoping overlays pick it up silently fails — the overlay ends up with
-   the INLINE value, which is exactly how a glass modal became unreadable. State the rule
-   explicitly in the theme: **in a molecule that IS an overlay** (modal/dialog, dropdown panel,
-   popover, tooltip), the container's background takes \`--ml-surface-dim\` **whatever class
-   carries it**, including \`.ml-surface-bg\` and \`.ml-select-panel\`. Elsewhere the same class
-   keeps the inline value. Without that sentence a translucent theme reintroduces the bug.
+   base sheet paints \`.ml-select-panel\` with \`var(--ml-surface, ...)\`. So declaring an overlay
+   token and hoping overlays pick it up silently fails — the overlay ends up with the INLINE
+   value, which is exactly how a glass modal became unreadable. State the rule explicitly in the
+   theme: **in a molecule that IS an overlay** (modal/dialog, dropdown panel, popover, tooltip),
+   the container's background takes \`--ml-surface-overlay\` **whatever class carries it**,
+   including \`.ml-surface-bg\` and \`.ml-select-panel\`. Elsewhere the same class keeps the inline
+   value. Without that sentence a translucent theme reintroduces the bug.
 
    **Overlay background must differ from the PAGE background.** A panel/dropdown/modal
    painted the same color as \`themeInfo.background.css\` has no hierarchy — only its border
@@ -288,6 +324,10 @@ proof of the choice.
    \`--ml-transition\` is a TRANSITION shorthand (\`250ms ease\`, or \`none\`) — never plug it into an
    \`animation\`. \`animation: shimmer 1.6s var(--ml-transition) infinite\` expands to a 250ms DELAY
    plus \`ease\`, which is not what you meant; animations declare their own duration and easing.
+
+   And if you NAME an animation, ship its \`@keyframes\` in the same recipe. \`animation: ml-shimmer
+   1.6s linear infinite\` with no \`@keyframes ml-shimmer\` anywhere is a no-op — a theme did exactly
+   that and its skeletons never moved.
 
 6. **States.** Provide recipes for the state classes molecules emit — disabled, open,
    selected, error — and exclude states from hover with \`:not(.ml-disabled)\` etc.
