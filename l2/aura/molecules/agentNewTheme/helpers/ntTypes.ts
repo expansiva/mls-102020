@@ -27,6 +27,12 @@ export interface NtThemeFields {
   typography?: { family?: NtTypographyFamily; uppercaseLabels?: boolean };
 }
 
+// The free-text slot is not a theme field: it is the last question of the checkpoint, where
+// the user types what the coarse enums cannot express (exact values, signature interactions,
+// prohibitions). Single source of truth for the id — the t1 gate and the answer resolver
+// both key off it.
+export const NT_EXTRA_FIELD = 'extra';
+
 // A dynamic question for a missing field — feeds the shared Decision Clarification widget.
 export interface NtQuestionOption {
   id: string;

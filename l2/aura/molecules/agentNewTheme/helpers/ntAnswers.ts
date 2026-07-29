@@ -10,6 +10,7 @@
 // slot and as per-question notes, and both feed the generation verbatim.
 
 import {
+  NT_EXTRA_FIELD,
   NtAnswer,
   NtBackgroundKind,
   NtCorners,
@@ -18,8 +19,6 @@ import {
   NtThemeFields,
   NtTypographyFamily,
 } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntTypes.js';
-
-export const NT_EXTRA_ANSWER_FIELD = 'extra';
 
 export interface NtResolvedInput {
   fields: NtThemeFields;   // known + answers, with suffix derived from name
@@ -36,9 +35,20 @@ export function ntResolveAnswers(known: NtThemeFields, answers: NtAnswer[]): NtR
     const notes = (answer.notes || '').trim();
     const value = (answer.value || '').trim();
 
-    if (field === NT_EXTRA_ANSWER_FIELD) {
+    if (field === NT_EXTRA_FIELD) {
       if (notes) guidance.push(notes);
       else if (value) guidance.push(value);
+      continue;
+    }
+
+    // T24: the page background arrives as a PAIR — the kind is a closed choice, the CSS is
+    // typed. When the CSS lands in the notes of the kind question (there is no other field to
+    // type it in), route it to background.css instead of filing it as loose nuance: a
+    // dictated gradient once ended up as the guidance line 'background.kind: background:
+    // linear-gradient(...)' and the generation invented a different gradient.
+    if (field === 'background.kind' && looksLikeCss(notes)) {
+      if (value) applyField(fields, field, value);
+      applyField(fields, 'background.css', notes);
       continue;
     }
 
@@ -83,6 +93,11 @@ function applyField(fields: NtThemeFields, field: string, value: string): void {
     default:
       return; // unknown field ids were already rejected by the t1 gate
   }
+}
+
+// Text the user typed as a page background: a declaration, a gradient or a plain color.
+function looksLikeCss(text: string): boolean {
+  return /background\s*:|gradient\(|#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(text);
 }
 
 // A theme id is a kebab token: 'Neo Brutal' -> 'neo-brutal'. Keeps name and the derived

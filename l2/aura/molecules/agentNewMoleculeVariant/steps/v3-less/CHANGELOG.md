@@ -48,3 +48,10 @@
   and attribute selectors, so `calc(100% * 0.5)` and `/* a * b */` do not trip it. Verified
   first that no validated sheet in 102054/102055 uses a universal selector; the real brutal
   golden still passes. The matching authoring rule lives in skills/themeAuthoring (rule 5).
+- 2026-07-28 (T22, todo-agent-new-theme.md Fase 10): prompt.md — the OVERLAY decision is per
+  molecule. If the molecule being derived IS an overlay (modal/dialog, dropdown panel, popover,
+  tooltip), its container background takes the theme's overlay value even when the class carrying
+  it is `.ml-surface-bg`, which means the INLINE surface in a card molecule. Evidence in the
+  prompt: the modal card carries `ml-surface-bg` and `.ml-select-panel` reads
+  `var(--ml-surface, ...)` in the base sheet — so a translucent theme that trusts the token pair
+  alone reproduces the unreadable glass modal.

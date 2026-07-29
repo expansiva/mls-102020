@@ -11,11 +11,31 @@ Your job is CHEAP and mechanical:
    a question. Do not over-reject.
 2. `userLanguage`: detect from the prompt (`pt`, `en`, ...). Default `pt` when empty or ambiguous.
 3. `title`: a short task title in `userLanguage` (e.g. "Novo tema: neumórfico claro").
-4. `known`: the canonical theme fields the prompt ALREADY pins down. Only include a field when the
-   prompt really determines it — never guess to avoid a question.
-5. `questions`: one question for each canonical field that is still MISSING, in `userLanguage`.
-   NEVER ask about a field you put in `known`. At most 8 questions. If nothing is missing,
-   return an empty array (the pipeline then skips the checkpoint entirely).
+4. `known`: ONLY the canonical fields the prompt itself STATES. "Bordas grossas de 3px" states
+   `border.style: thick`; "tema brutalismo" does NOT state the name, the shadow or the corners —
+   it merely lets you GUESS them. Anything you concluded yourself is not known: put your
+   conclusion in a QUESTION with that value pre-selected (rule 5), so the human sees it and can
+   change it. This matters: a theme shipped as `brutalismo` (and molecules suffixed
+   `-brutalismo`) because the plan inferred the name and never showed it.
+5. `questions`: in `userLanguage`, one question for every canonical field that is missing OR
+   that you merely INFERRED. The inferred ones carry your conclusion **pre-selected**
+   (`recommended: true` on the option that holds it), so accepting costs one click and changing
+   it is possible — a deterministic gate rejects a question about a decided value that is not
+   pre-selected. A field the prompt STATED needs no question. At most 12 questions plus the
+   free-text slot. If the prompt states everything, return an empty array (the pipeline then
+   skips the checkpoint entirely).
+
+   **`background.kind` and `background.css` travel together.** Whenever you ask the kind, ask
+   the CSS as its own OPEN question (propose a concrete declaration for the style, e.g.
+   `background: linear-gradient(135deg, #0f172a 0%, #312e81 45%, #7e22ce 100%);`). The CSS is
+   what the theme actually renders — do not expect the human to squeeze it into the notes of
+   the kind question.
+
+   **Identity is always asked** when the checkpoint runs: `name` and `displayName`. Nothing
+   downstream reviews them, so offer your proposal as a single option with `recommended: true`
+   plus `allowNotes: true`. Keep `name` a SHORT kebab id — it becomes the suffix of every
+   molecule file and tag (`ml-button-standard-<name>`), so prefer `brutal` over `brutalismo`;
+   the long human form belongs in `displayName`.
 
    **The free-text slot.** WHENEVER you ask at least one question, add ONE more as the LAST
    question: `field: 'extra'`, `options: []`, `allowNotes: true`. Its text (in `userLanguage`)
@@ -31,9 +51,10 @@ Your job is CHEAP and mechanical:
      `typography.family`, `typography.uppercaseLabels`): 2–4 options, `id` = the enum value
      from the table below (the `label` is the localized text), exactly ONE `recommended`,
      `allowNotes: false` unless a custom answer really makes sense.
-   - **OPEN fields** (`name`, `primary`, `border.color`, `background.css`): there is nothing
-     to enumerate — the human types the answer. Use `options: []` (or 1–2 concrete
-     suggestions, e.g. a color you propose) and ALWAYS `allowNotes: true`.
+   - **OPEN fields** (`name`, `displayName`, `primary`, `border.color`, `background.css`):
+     there is nothing to enumerate — the human types the answer. Use `options: []` when you have
+     no proposal, or exactly your proposed value as ONE option marked `recommended` (that is how
+     an inferred name is confirmed with a click), and ALWAYS `allowNotes: true`.
 
 ## Canonical fields (the only ones you may put in `known` or ask about)
 

@@ -128,12 +128,55 @@ test('enum questions must offer the enum ids, 2+ options and a single recommenda
   assert.deepEqual(runPlanGate(single).map(issue => issue.code), ['question_options']);
 });
 
-test('a field already known must not be asked again', () => {
-  const plan = normalizeNtPlan(planPayload({
+test('a decided field MAY be asked, but only pre-selected (item 2: confirm the inference)', () => {
+  // cornersQuestion already marks 'sharp' as recommended -> confirming it is one click
+  const preselected = normalizeNtPlan(planPayload({
     known: { corners: 'sharp' },
     questions: [cornersQuestion],
   }));
-  assert.deepEqual(runPlanGate(plan).map(issue => issue.code), ['question_known']);
+  assert.deepEqual(runPlanGate(preselected), []);
+
+  // asking without pre-selecting would make the human retype a decision already made
+  const unselected = normalizeNtPlan(planPayload({
+    known: { corners: 'sharp' },
+    questions: [{
+      ...cornersQuestion,
+      options: [
+        { id: 'sharp', label: 'Retos' },
+        { id: 'rounded', label: 'Arredondados', recommended: true },
+      ],
+    }],
+  }));
+  assert.deepEqual(runPlanGate(unselected).map(issue => issue.code), ['question_not_preselected']);
+});
+
+test('an inferred NAME comes back as a one-option question so it can be corrected', () => {
+  // the real regression: the plan inferred 'brutalismo' from "tema brutalismo" and the
+  // checkpoint was forbidden from showing it, so the suffix shipped as '-brutalismo'
+  const plan = normalizeNtPlan(planPayload({
+    known: { name: 'brutal' },
+    questions: [{
+      field: 'name',
+      question: 'Nome curto do tema (vira o sufixo das moléculas)',
+      allowNotes: true,
+      options: [{ id: 'brutal', label: 'brutal', recommended: true }],
+    }],
+  }));
+  assert.deepEqual(runPlanGate(plan), []);
+});
+
+test('a decided boolean is compared as its option id', () => {
+  const question = {
+    field: 'typography.uppercaseLabels',
+    question: 'Maiúsculas?',
+    allowNotes: false,
+    options: [{ id: 'true', label: 'Sim', recommended: true }, { id: 'false', label: 'Não' }],
+  };
+  const ok = normalizeNtPlan(planPayload({ known: { typography: { uppercaseLabels: true } }, questions: [question] }));
+  assert.deepEqual(runPlanGate(ok), []);
+
+  const wrong = normalizeNtPlan(planPayload({ known: { typography: { uppercaseLabels: false } }, questions: [question] }));
+  assert.deepEqual(runPlanGate(wrong).map(issue => issue.code), ['question_not_preselected']);
 });
 
 test('the same field cannot be asked twice', () => {
@@ -167,10 +210,22 @@ test('the free-text slot still needs a way to be answered', () => {
   assert.deepEqual(runPlanGate(plan).map(issue => issue.code), ['question_unanswerable']);
 });
 
-test('a known displayName must not be asked again', () => {
+test('a decided displayName asked with an EMPTY option list is rejected', () => {
+  // identity is always asked, so the proposal has to come pre-selected
   const plan = normalizeNtPlan(planPayload({
-    known: { displayName: 'Brutalism' },
-    questions: [{ field: 'displayName', question: 'Nome?', allowNotes: true, options: [] }],
+    known: { displayName: 'Brutalismo' },
+    questions: [{ field: 'displayName', question: 'Nome de exibição?', allowNotes: true, options: [] }],
   }));
-  assert.deepEqual(runPlanGate(plan).map(issue => issue.code), ['question_known']);
+  assert.deepEqual(runPlanGate(plan).map(issue => issue.code), ['question_not_preselected']);
+
+  const preselected = normalizeNtPlan(planPayload({
+    known: { displayName: 'Brutalismo' },
+    questions: [{
+      field: 'displayName',
+      question: 'Nome de exibição?',
+      allowNotes: true,
+      options: [{ id: 'Brutalismo', label: 'Brutalismo', recommended: true }],
+    }],
+  }));
+  assert.deepEqual(runPlanGate(preselected), []);
 });
