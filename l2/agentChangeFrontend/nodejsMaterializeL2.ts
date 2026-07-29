@@ -32,6 +32,7 @@ import {
   type PlannedItem,
 } from './helpers/cfeMaterializeCore.js';
 import { callCollabLlm, parseGenResult, type LlmConfig, type LlmResult } from './helpers/nodejsMaterializeLlmClient.js';
+import { generateSharedScaffold } from './helpers/cfeSharedScaffold.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 let ROOT = process.env.MATERIALIZE_L2_ROOT ? path.resolve(process.env.MATERIALIZE_L2_ROOT) : path.resolve(HERE, '../../../');
@@ -513,6 +514,14 @@ async function materializeOne(
   depReport: string[],
   repairHint?: string,
 ): Promise<{ ok: boolean; error?: string }> {
+  // l2_shared is a mechanical projection of defs + contract: render it deterministically (no LLM,
+  // no output-token ceiling — run03: projectDetail's ~55k-token output exceeded every provider).
+  // A bail (defs shape the scaffold does not model) falls through to the regular LLM path.
+  if (p.item.type === 'l2_shared') {
+    const det = materializeSharedDeterministic(p.item, data, tracePath, label, skillReport, depReport);
+    if (det) return det;
+  }
+
   const { system, human } = assemble(p.item, data, modelType);
   let nextRepairHint = repairHint;
 
@@ -581,6 +590,53 @@ async function materializeOne(
   }
 
   return { ok: false, error: 'retry loop exhausted' };
+}
+
+/**
+ * Deterministic path for l2_shared: returns the step result, or null to fall back to the LLM
+ * (contract missing or scaffold bail). Failures WRITING an already-rendered scaffold do not fall
+ * back — the LLM would hit the same filesystem problem.
+ */
+function materializeSharedDeterministic(
+  item: PipelineItem,
+  data: unknown,
+  tracePath: string | null,
+  label: string,
+  skillReport: string[],
+  depReport: string[],
+): { ok: boolean; error?: string } | null {
+  const contractTsPath = isRecord(data) && isRecord(data.contractRef) && typeof data.contractRef.tsPath === 'string'
+    ? data.contractRef.tsPath
+    : null;
+  const contractSource = contractTsPath ? readIfExists(mlsToFs(contractTsPath)) : null;
+  if (!contractSource) {
+    console.log(`${label} ${item.outputPath} scaffold skipped (contract not readable: ${contractTsPath ?? 'missing contractRef.tsPath'}) -> LLM`);
+    return null;
+  }
+
+  const result = generateSharedScaffold(item.outputPath, data, contractSource);
+  if (!result.code) {
+    console.log(`${label} ${item.outputPath} scaffold bail (${result.reason}) -> LLM`);
+    appendTrace(tracePath, item, 'deterministic', { ok: false, raw: '', usage: undefined, httpStatus: 0, error: `scaffold bail: ${result.reason}` }, '', skillReport, depReport, false);
+    return null;
+  }
+
+  process.stdout.write(`${label} ${item.outputPath} (deterministic) ... `);
+  try {
+    const artifacts = writeGeneratedArtifacts(item, data, result.code);
+    appendTrace(tracePath, item, 'deterministic', { ok: true, raw: '', usage: undefined, httpStatus: 0 }, result.code, skillReport, depReport, false);
+    console.log(`ok ${result.code.length}b${artifacts.typecheckRef ? ' + test' : ''}`);
+    return { ok: true };
+  } catch (error) {
+    const detail = `save generated artifacts failed: ${formatMaterializeError(error)}`;
+    appendTrace(tracePath, item, 'deterministic', failedLlmResult(detail), '', skillReport, depReport, false);
+    console.log(`FAIL: ${detail}`);
+    return { ok: false, error: detail };
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function appendTrace(

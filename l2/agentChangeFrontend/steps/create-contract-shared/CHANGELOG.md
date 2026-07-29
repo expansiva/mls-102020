@@ -1,5 +1,18 @@
 <!-- mls fileReference="_102020_/l2/agentChangeFrontend/steps/create-contract-shared/CHANGELOG.md" enhancement="_blank" -->
 
+- 2026-07-28 (state-name dedup vs action members): the derived input-state name `<actionId><FieldPascal>`
+  could equal ANOTHER command's methodName — real case (mls-102045 projectDetail): updateWorkTask.status ->
+  `updateWorkTaskStatus`, the methodName of operation updateWorkTaskStatus. State properties, action methods
+  and handlers share one class namespace, so NO generation (LLM or deterministic scaffold) compiles past it —
+  the typecheck test asserts both names. New pure helper `helpers/cfeMemberNames.ts`
+  (commandMemberNames + dedupeSharedStateNames, 5 tests): `sharedDefinition` now dedupes state names against
+  the reserved action members BEFORE sharedActions derives the setter pair from them; collisions get a
+  deterministic `Value`/`Value2`... suffix (the mls-102045 defs was hand-patched to the same
+  `updateWorkTaskStatusValue` this rule produces). Input states also reserve their derived
+  `set<Name>`/`handle<Name>Change` pair (a command named `setPrice` would collide with the setter of a state
+  named `price`). Backstop: cfeSharedScaffold.validateModel bails with "defs naming collision" on any
+  residual case at materialize time.
+
 - 2026-07-28 (page tests that can actually assert): the emitted `page11/<page>.test.ts` cases marked EVERY
   required param as `<seedRef>`, so on 102051 the measured coverage was 8 of 55 cases (20 of 24
   inconclusive; 29 more "passed" for the wrong reason — the backend rejected a different unresolved field

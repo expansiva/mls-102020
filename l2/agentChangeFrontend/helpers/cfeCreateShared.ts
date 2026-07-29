@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
+import { commandMemberNames, dedupeSharedStateNames } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMemberNames.js';
 import {
   assertArray,
   assertRecord,
@@ -2630,6 +2631,10 @@ function buildContentOrganism(pageId: string, role: string, order: number, i18n:
 function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Record<string, unknown> {
   const businessContextRefs = collectBusinessContextRefs(prepared.operations);
   const states = sharedStates(prepared, layout);
+  // State names share the class namespace with action method/handler names; dedupe BEFORE
+  // sharedActions so the derived setter names follow the renamed state (see cfeMemberNames.ts —
+  // real case: projectDetail updateWorkTask.status vs operation updateWorkTaskStatus).
+  dedupeSharedStateNames(states, commandMemberNames(prepared.commands));
   const actions = sharedActions(prepared, states);
   const initialLoads = prepared.commands
     .filter(command => readString(command.kind) === 'query')
