@@ -132,8 +132,12 @@ async function afterPromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   const rootPlan = getRootPlan(context);
   let moduleNameForTrace: string | null = null;
+  // Visible to the catch: a crash during a RETRY run must land the failure on the parked
+  // original step (recovery contract), which the catch cannot re-derive from step.prompt safely.
+  let recoveryArgs: { originStepId?: number; originParentStepId?: number } = {};
   try {
     const parsedArgs = parseArgs(step.prompt);
+    recoveryArgs = parsedArgs;
     if (parsedArgs.planId === 'e1-clarification') return handleInitialClarificationPayload(context, parentStep, step, hookSequential);
     // P2: the e1-draft single call — retry once on an LLM-CALL failure (no payload) before failing.
     const infraIntents = nsLlmInfraFailureIntents({
@@ -144,7 +148,7 @@ async function afterPromptStep(
     if (infraIntents) return infraIntents;
     const output = extractE1Output(step.interaction?.payload?.[0]);
     if (output.status === 'failed') {
-      return [updateStatus(context, parentStep, step, hookSequential, 'failed', output.trace.join('\n') || 'E1 draft returned failed')];
+      return terminalFailureIntents(context, parentStep, step, hookSequential, parsedArgs, output.trace.join('\n') || 'E1 draft returned failed');
     }
     const rawArtifact = output.result;
     const rebuild = isNsRebuildMode(context.task?.iaCompressed?.longMemory);
@@ -200,13 +204,21 @@ async function afterPromptStep(
     if (!gate.ok) {
       const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
       await writeNsTrace(moduleNameForTrace, 'e1-draft', AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
-      const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, 'failed', traceMsg)];
       if (output.status === 'needs_input' && gate.needsHumanInput) {
-        intents.unshift(addBlockingClarification(context, parentStep, artifact, questionsForHuman(output, gate.errors.map(issue => issue.message))));
-      } else if (attempt < 2) {
-        intents.unshift(addGateRetryStep(context, parentStep, artifact, gate.retryContext || traceMsg));
+        return [
+          addBlockingClarification(context, parentStep, artifact, questionsForHuman(output, gate.errors.map(issue => issue.message))),
+          updateStatus(context, parentStep, step, hookSequential, 'failed', traceMsg),
+        ];
       }
-      return intents;
+      if (attempt < 2) {
+        // Recovery contract (todo/collabMessages/bugStatus.md): park the original step while the
+        // bounded retry runs — no task-level failure/flap, and dependsOn ['e1-draft'] stays locked.
+        return [
+          addGateRetryStep(context, parentStep, artifact, gate.retryContext || traceMsg, step.stepId),
+          updateStatus(context, parentStep, step, hookSequential, 'waiting_human_input', `gate failed (attempt ${attempt}); retry queued\n${traceMsg}`),
+        ];
+      }
+      return terminalFailureIntents(context, parentStep, step, hookSequential, parsedArgs, traceMsg);
     }
 
     await writeNsTrace(artifact.moduleName, 'e1-draft', AGENT_NAME, attempt, { artifact, gate }, undefined, nsPromptChars(step));
@@ -218,11 +230,16 @@ async function afterPromptStep(
     await writeNsPipeline(pipeline);
     // Artifact is on disk; drop the LLM input/payload from the task record (DynamoDB 400KB). The module
     // name is now final, so rename the running task from "new Solution" to "<module> - plan".
-    return [updateStatus(context, parentStep, step, hookSequential, 'completed', undefined, 'input_output', `${artifact.moduleName} - plan`)];
+    const intents: mls.msg.AgentIntent[] = [updateStatus(context, parentStep, step, hookSequential, 'completed', undefined, 'input_output', `${artifact.moduleName} - plan`)];
+    // Retry run: un-park the original step FIRST so dependsOn ['e1-draft'] unlocks (its planId
+    // anchors e2-journeys; this retry step's planId is e1-draft-retry-*).
+    const recovered = recoverOriginIntent(context, parentStep, hookSequential, parsedArgs);
+    if (recovered) intents.unshift(recovered);
+    return intents;
   } catch (error) {
     const traceMsg = error instanceof Error ? error.message : String(error);
     if (moduleNameForTrace) await writeNsTrace(moduleNameForTrace, 'e1-draft', AGENT_NAME, 1, { stepId: step.stepId }, traceMsg);
-    return [updateStatus(context, parentStep, step, hookSequential, 'failed', traceMsg)];
+    return terminalFailureIntents(context, parentStep, step, hookSequential, recoveryArgs, traceMsg);
   }
 }
 
@@ -375,6 +392,7 @@ function addGateRetryStep(
   parentStep: mls.msg.AIAgentStep,
   artifact: NsE1DraftArtifact,
   retryContext: string,
+  originStepId: number,
 ): mls.msg.AgentIntentAddStep {
   return addE1RerunStep(context, parentStep, {
     planId: `e1-draft-retry-${Date.now()}`,
@@ -384,9 +402,48 @@ function addGateRetryStep(
       previousModuleName: artifact.moduleName,
       retryAttempt: 2,
       retryContext,
+      // Recovery contract (todo/collabMessages/bugStatus.md): the original step parks as
+      // waiting_human_input; this retry completes it on success or fails it on exhaustion.
+      originStepId,
+      originParentStepId: parentStep.stepId,
     },
     dependsOn: ['e1-draft'],
   });
+}
+
+/**
+ * Terminal gate/LLM failure. When this run IS the recovery retry (originStepId present), the
+ * FAILURE lands on the ORIGINAL e1 step — the task then fails ONCE with the reason — and the
+ * retry step itself completes-with-trace so the task record carries a single failed step.
+ */
+function terminalFailureIntents(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIPayload,
+  step: mls.msg.AIPayload,
+  hookSequential: number,
+  parsedArgs: { originStepId?: number; originParentStepId?: number },
+  traceMsg: string,
+): mls.msg.AgentIntent[] {
+  if (!parsedArgs.originStepId) return [updateStatus(context, parentStep, step, hookSequential, 'failed', traceMsg)];
+  const originParent = { stepId: parsedArgs.originParentStepId ?? parentStep.stepId } as mls.msg.AIPayload;
+  const origin = { stepId: parsedArgs.originStepId } as mls.msg.AIPayload;
+  return [
+    updateStatus(context, originParent, origin, hookSequential, 'failed', traceMsg),
+    updateStatus(context, parentStep, step, hookSequential, 'completed', `gate retry exhausted; failure recorded on step ${parsedArgs.originStepId}`, 'input_output'),
+  ];
+}
+
+/** On retry success, complete the parked original step so dependsOn ['e1-draft'] unlocks. */
+function recoverOriginIntent(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIPayload,
+  hookSequential: number,
+  parsedArgs: { originStepId?: number; originParentStepId?: number },
+): mls.msg.AgentIntentUpdateStatus | null {
+  if (!parsedArgs.originStepId) return null;
+  const originParent = { stepId: parsedArgs.originParentStepId ?? parentStep.stepId } as mls.msg.AIPayload;
+  const origin = { stepId: parsedArgs.originStepId } as mls.msg.AIPayload;
+  return updateStatus(context, originParent, origin, hookSequential, 'completed', 'recovered by gate retry', 'input_output');
 }
 
 async function applyBlockingClarification(
@@ -701,6 +758,8 @@ function parseArgs(value: unknown): {
   retryAttempt?: number;
   retryContext?: string;
   llmRetry?: boolean;
+  originStepId?: number;
+  originParentStepId?: number;
 } {
   const parsed = parseMaybeJson(value);
   return isRecord(parsed) ? {
@@ -711,6 +770,8 @@ function parseArgs(value: unknown): {
     retryAttempt: typeof parsed.retryAttempt === 'number' ? parsed.retryAttempt : undefined,
     retryContext: readString(parsed.retryContext),
     llmRetry: parsed.llmRetry === true,
+    originStepId: typeof parsed.originStepId === 'number' ? parsed.originStepId : undefined,
+    originParentStepId: typeof parsed.originParentStepId === 'number' ? parsed.originParentStepId : undefined,
   } : {};
 }
 
