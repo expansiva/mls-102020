@@ -33,6 +33,9 @@ import {
   vUpdateStatusIntent,
 } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vSteps.js';
 import { runLessGate } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/steps/v3-less/gate.js';
+// SHARED .less authoring rules (decision D3): the same skill feeds agentNewMolecule2/n5-less,
+// so a fix lands in one place. Variant-only rules stay in this step's prompt.md.
+import { skill as lessAuthoringSkill } from '/_102020_/l2/aura/molecules/skills/lessAuthoring/index.js';
 import { getVariantShortName } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/agentNewMoleculeVariant.js';
 
 const AGENT_NAME = 'agentVariantLess';
@@ -83,6 +86,7 @@ async function beforePromptStep(
     .split('{{variantTag}}').join(ctx.variant.tag)
     .split('{{portalSelectorHint}}').join(portalSelectorHint)
     .split('{{portalRule}}').join(portalRule)
+    .split('{{lessAuthoringSkill}}').join(lessAuthoringSkill)
     .split('{{themeSkill}}').join(theme.skill)
     .split('{{exampleSection}}').join(exampleSection)
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the provided context is insufficient to produce the sheet')}`;

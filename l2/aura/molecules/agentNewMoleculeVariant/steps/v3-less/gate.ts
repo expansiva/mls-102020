@@ -6,6 +6,9 @@
 import { VariantContext } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vContext.js';
 import { extractGeometryByClass, extractMlClassesFromLess } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vOrigin.js';
 import { VGateIssue } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/steps/v1-bootstrap/gate.js';
+// Shared with agentNewMolecule2's n5-less gate (shared/moleculeInspect): the universal-selector
+// detector and the position/overflow probe each carry a subtlety that must not diverge.
+import { hasUniversalSelector, setsPositionOrOverflow } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
 
 // Pure LAYOUT utilities only — .animate-spin/.w-full stay allowed: the theme
 // skills legitimately anchor on them (spinner steps(), collapsed levels).
@@ -122,53 +125,4 @@ export function runLessGate(less: string, ctx: VariantContext): VGateIssue[] {
   }
 
   return issues;
-}
-
-// True when a `*` appears in SELECTOR position (`* {`, `.a > * {`, `*, *::before {`).
-// Comments and attribute selectors ([class*="x"]) are scrubbed first, and only the text
-// that precedes a `{` is inspected — so `calc(a * b)` in a declaration never trips it.
-function hasUniversalSelector(less: string): boolean {
-  const scrubbed = less
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\n]*/g, '')
-    .replace(/\[[^\]]*\]/g, '');
-  // No explicit prefix: `[^{};]*` cannot cross a delimiter, so matches chain even when a
-  // block opens directly inside another (`.a { .b > * { ... } }`).
-  const selectors = /([^{};]*)\{/g;
-  let match: RegExpExecArray | null;
-  while ((match = selectors.exec(scrubbed)) !== null) {
-    if (match[1].includes('*')) return true;
-  }
-  return false;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// True if the `.cls { ... }` block sets `position`/`overflow` at its own level
-// (nested ::before/::after overlays are scrubbed — they may position themselves).
-function setsPositionOrOverflow(less: string, cls: string): boolean {
-  const selector = new RegExp(`\\.${escapeRegExp(cls)}(?![\\w-])`, 'g');
-  let match: RegExpExecArray | null;
-  while ((match = selector.exec(less)) !== null) {
-    const braceIdx = less.indexOf('{', match.index + match[0].length);
-    if (braceIdx < 0) continue;
-    // `.cls` must be a SELECTOR (only selector chars before its `{`), not a value.
-    if (/[;}]/.test(less.slice(match.index + match[0].length, braceIdx))) continue;
-    const body = balancedBlockBody(less, braceIdx);
-    const scrubbed = body.replace(/&?:{1,2}(?:before|after)\b[^{]*\{[^{}]*\}/gi, '');
-    if (/(?:^|[;{])\s*(?:position|overflow|overflow-x|overflow-y)\s*:/i.test(scrubbed)) return true;
-  }
-  return false;
-}
-
-// Body between the brace at `open` and its matching close.
-function balancedBlockBody(source: string, open: number): string {
-  let depth = 0;
-  for (let i = open; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    else if (source[i] === '}' && --depth === 0) return source.slice(open + 1, i);
-  }
-  return source.slice(open + 1);
 }

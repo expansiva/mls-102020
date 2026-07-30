@@ -6,6 +6,17 @@
 
 import { VariantContext } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vContext.js';
 import { toShellTitle } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vOrigin.js';
+import {
+  stripLeadingMlsHeader as sharedStripLeadingMlsHeader,
+  substituteDemoState as sharedSubstituteDemoState,
+  type MoleculeDemoExample,
+} from '/_102020_/l2/aura/molecules/shared/moleculeTemplates.js';
+
+// Header stripping and the playground-state substitution are the SAME problem in every molecule
+// artifact, so they live in shared/moleculeTemplates (agentNewMolecule2 consumes them too).
+// Re-exported here under their original names so this module's importers are unaffected.
+export { sharedStripLeadingMlsHeader as stripLeadingMlsHeader, sharedSubstituteDemoState as substituteDemoState };
+export type VDemoExample = MoleculeDemoExample;
 
 export function renderShellTs(ctx: VariantContext): string {
   const title = toShellTitle(ctx.origin.shortName);
@@ -80,51 +91,13 @@ export function renderLessHeader(ctx: VariantContext): string {
   return `/// <mls fileReference="_${ctx.theme.project}_/l2/molecules/${ctx.variant.group}/${ctx.variant.shortName}.less" enhancement="_102020_/l2/enhancementStyleAura" />`;
 }
 
-// Strip any leading `/// <mls ...>` line(s) the model emitted (and the blank
-// line right after), so the deterministic header can replace them.
-export function stripLeadingMlsHeader(content: string): string {
-  const lines = content.split('\n');
-  let i = 0;
-  while (i < lines.length && (/^\s*\/\/\/\s*<mls\b/.test(lines[i]) || lines[i].trim() === '')) {
-    // Stop consuming blank lines once a non-header, non-blank line is reached.
-    if (lines[i].trim() === '' && i > 0 && !/^\s*\/\/\/\s*<mls\b/.test(lines[i - 1])) break;
-    i++;
-  }
-  return lines.slice(i).join('\n');
-}
-
 // Normalize the generated sheet: enforce the correct header, dropping whatever
 // header the LLM produced. Used by v3-less before the gate + write.
 export function normalizeLessContent(lessRaw: string, ctx: VariantContext): string {
-  const body = stripLeadingMlsHeader(lessRaw).replace(/^\n+/, '');
+  const body = sharedStripLeadingMlsHeader(lessRaw).replace(/^\n+/, '');
   return `${renderLessHeader(ctx)}\n${body}`;
 }
 
-// Port of agentNewMoleculePlayground.generatePlaygroundState (fase 0.3): the demo
-// html carries a 'playgroundDinamicState' placeholder that is replaced
-// DETERMINISTICALLY by the state assembled from the LLM examples.
-export interface VDemoExample {
-  name: string;
-  state: { stateName: string; value: string }[];
-}
-
-export function substituteDemoState(html: string, examples: VDemoExample[]): string {
-  const playground: Record<string, Record<string, unknown>> = {};
-  for (const scenario of examples) {
-    for (const entry of scenario.state || []) {
-      const parts = entry.stateName.split('.');
-      if (parts.length !== 3 || parts[0] !== 'playground') continue;
-      const key = parts[1];
-      const prop = parts[2];
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(entry.value);
-      } catch {
-        parsed = entry.value;
-      }
-      if (!playground[key]) playground[key] = {};
-      playground[key][prop] = parsed;
-    }
-  }
-  return html.replace('playgroundDinamicState', JSON.stringify({ playground }));
-}
+// The demo-state substitution (formerly a port of
+// agentNewMoleculePlayground.generatePlaygroundState) now lives in shared/moleculeTemplates
+// and is re-exported at the top of this file, together with the VDemoExample type.

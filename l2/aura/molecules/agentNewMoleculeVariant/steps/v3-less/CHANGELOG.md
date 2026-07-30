@@ -55,3 +55,13 @@
   prompt: the modal card carries `ml-surface-bg` and `.ml-select-panel` reads
   `var(--ml-surface, ...)` in the base sheet — so a translucent theme that trusts the token pair
   alone reproduces the unreadable glass modal.
+- 2026-07-29 (D3/Q6, todo-agents-molecules-modelos-novos.md Fase 3): the universal authoring
+  rules moved OUT of prompt.md into the shared skill `skills/lessAuthoring`, injected via the
+  new `{{lessAuthoringSkill}}` placeholder. `agentNewMolecule2/n5-less` consumes the same skill,
+  so the next fix lands in one copy instead of two — and the migration happened in the SAME
+  batch as the extraction (Q6: a shared skill with one consumer is a future divergence).
+  What STAYED here, because it only exists when there IS an origin sheet: the Strategy D
+  framing ("a complete sheet, not a delta"), the origin per-class property scope, the origin
+  layout reproduction rule (gate `geometry_dropped`) and the class-inventory source. No gate
+  changed and no rule was dropped — the CHANGELOG of the new skill maps each section back to
+  the run that paid for it.

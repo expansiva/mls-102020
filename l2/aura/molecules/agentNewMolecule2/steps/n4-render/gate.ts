@@ -1,0 +1,141 @@
+/// <mls fileReference="_102020_/l2/aura/molecules/agentNewMolecule2/steps/n4-render/gate.ts" enhancement="_blank"/>
+
+// n4-render gate (pure — unit-testable). Compilation is NOT pure, so its errors arrive as an input.
+//
+// The appearance rules here are MEASURED over the 147 real `ml-*.ts` molecules of mls-102040, not
+// asserted (2026-07-29). Running these detectors over the library gives 0 / 5 / 0 failures:
+// - inline `style=` appears in 28 of them and is almost always GEOMETRY (width/height/left/top/
+//   transform/padding/flex). Banning `style=` would ban a normal pattern; the ban is therefore
+//   PROPERTY-level, and only for LITERAL values — the single measured colour case is
+//   `background-color:${item.color}`, driven by data, which stays legal. 0 molecules fail.
+// - hex literals appear in 5, all charts, all inside a `palette` DATA array (chart series
+//   defaults). So hex is rejected only where it styles markup, not where it is data.
+// - Tailwind colour utilities appear in 5 (`text-white` ×2, `border-white`, `bg-black`,
+//   `bg-black/70`). They ARE rejected: a hardcoded colour is exactly what makes a molecule
+//   impossible to theme later — `bg-black/70` on a media overlay stays black in a light theme.
+
+import { MoleculePlan } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
+import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
+import { NmGateIssue } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n1-bootstrap/gate.js';
+import { extractMlClassesFromTs } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
+
+// Tailwind's named palette. `-white`/`-black` included: they are colours too.
+const TW_PALETTE = 'slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose';
+const TW_COLOR_UTILITY = new RegExp(
+  `(?:^|[\\s'"\`:])(?:(?:hover|focus|active|disabled|dark|group-hover|peer-focus|sm|md|lg|xl|2xl)+:)*` +
+  `(?:bg|text|border|ring|divide|outline|decoration|placeholder|caret|accent|fill|stroke|shadow|from|via|to)-` +
+  `(?:(?:${TW_PALETTE})-(?:50|100|200|300|400|500|600|700|800|900|950)|white|black)(?:\\/\\d+)?(?![\\w-])`,
+  'g',
+);
+
+// Appearance properties inside an inline style attribute.
+const STYLE_APPEARANCE = /(^|[;\s])(color|background|background-color|background-image|border-color|box-shadow|text-shadow|outline-color)\s*:/i;
+
+export interface NmRenderGateOptions {
+  compileErrors: string[];   // from modelTs.compilerResults.errors ([] when it compiles)
+}
+
+export function runNm2RenderGate(
+  source: string,
+  plan: MoleculePlan,
+  ctx: MoleculeContext,
+  options: NmRenderGateOptions,
+): NmGateIssue[] {
+  const issues: NmGateIssue[] = [];
+  const text = (source || '').replace(/^﻿/, '');
+
+  if (!text.trim()) return [{ code: 'empty', message: 'the molecule .ts came out empty' }];
+
+  if (/```/.test(text)) {
+    issues.push({ code: 'fence', message: 'the file carries a markdown code fence — submit raw TypeScript' });
+  }
+
+  const headers = text.match(/^\s*\/\/\/\s*<mls\b.*$/gm) || [];
+  if (headers.length !== 1) {
+    issues.push({ code: 'header', message: `expected exactly one mls header, found ${headers.length}` });
+  } else if (!headers[0].includes(`_${ctx.destination.project}_/l2/molecules/${plan.group}/${plan.shortName}.ts`)) {
+    issues.push({ code: 'header', message: `the mls header must reference this file's destination — got ${headers[0].trim()}` });
+  }
+
+  const customElement = /@customElement\(\s*['"`]([^'"`]+)['"`]\s*\)/.exec(text);
+  if (!customElement) {
+    issues.push({ code: 'tag_missing', message: 'no @customElement(...) registration found' });
+  } else if (customElement[1] !== plan.tag) {
+    issues.push({ code: 'tag_mismatch', message: `the tag must be the one derived from the path: expected '${plan.tag}', got '${customElement[1]}'` });
+  }
+
+  if (!new RegExp(`extends\\s+${ctx.base.className}\\b`).test(text)) {
+    issues.push({ code: 'base_extends', message: `the molecule class must extend ${ctx.base.className}` });
+  }
+  if (!text.includes(ctx.base.importPath)) {
+    issues.push({ code: 'base_import', message: `${ctx.base.className} must be imported from '${ctx.base.importPath}'` });
+  }
+
+  // THE discipline check, and the reason it exists: a molecule that paints itself cannot be pulled
+  // into another theme by agentNewMoleculeVariant later. Nothing checks this in the old flow.
+  const mlClasses = extractMlClassesFromTs(text);
+  if (!mlClasses.length) {
+    issues.push({
+      code: 'discipline',
+      message: 'the render emits no ml-* semantic class — the molecule would not be themeable, and agentNewMoleculeVariant could never derive it',
+    });
+  }
+
+  for (const utility of findTailwindColorUtilities(text)) {
+    issues.push({
+      code: 'appearance_class',
+      message: `'${utility}' hardcodes a colour — appearance belongs to the .less through an ml-* semantic class`,
+    });
+  }
+
+  for (const declaration of findLiteralStyleAppearance(text)) {
+    issues.push({
+      code: 'appearance_style',
+      message: `inline style sets appearance with a literal value ('${declaration}') — inline style is for geometry only`,
+    });
+  }
+
+  for (const error of options.compileErrors) {
+    issues.push({ code: 'compile', message: error });
+  }
+
+  return issues;
+}
+
+// The inventory the .less may style. SHARED with n5-less (shared/moleculeInspect), which needs the
+// exact same reading of "which classes does this render emit" — two copies would let the subset check
+// disagree with the discipline check.
+export { extractMlClassesFromTs as collectMlClasses };
+
+export function findTailwindColorUtilities(source: string): string[] {
+  const found = new Set<string>();
+  for (const match of source.match(TW_COLOR_UTILITY) || []) {
+    found.add(match.replace(/^[\s'"`:]+/, ''));
+  }
+  return [...found].sort();
+}
+
+// Appearance declarations inside an inline style attribute, but ONLY with a literal value: a
+// data-driven `background-color:${item.color}` is legitimate (measured in the library).
+export function findLiteralStyleAppearance(source: string): string[] {
+  const found = new Set<string>();
+  // style="..." / style='...' / style=${`...`} — each declaration is inspected on its own, so a
+  // geometry declaration sitting next to an interpolated colour does not hide it.
+  for (const attr of source.match(/style\s*=\s*(?:"[^"]*"|'[^']*'|\$\{`[^`]*`\}|`[^`]*`)/g) || []) {
+    for (const declaration of extractStyleValue(attr).split(';')) {
+      const trimmed = declaration.trim();
+      if (!trimmed || !STYLE_APPEARANCE.test(trimmed)) continue;
+      if (trimmed.includes('${')) continue; // data-driven value
+      found.add(trimmed);
+    }
+  }
+  return [...found];
+}
+
+function extractStyleValue(attr: string): string {
+  let value = attr.slice(attr.indexOf('=') + 1).trim();
+  if (value.startsWith('${') && value.endsWith('}')) value = value.slice(2, -1).trim();
+  const quote = value.charAt(0);
+  if ((quote === '"' || quote === "'" || quote === '`') && value.endsWith(quote)) value = value.slice(1, -1);
+  return value;
+}
