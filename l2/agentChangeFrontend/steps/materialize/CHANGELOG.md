@@ -2,6 +2,26 @@
 
 # Changelog
 
+- 2026-07-28 (deterministic l2_shared scaffold — kills the output-size wall) — run03 postmortem
+  (todo/geracao/run03_analise.md): projectDetail (157KB defs, 19 operations) needs a ~55k-token .ts in ONE
+  tool call; grok-4.5 aborted at the proxy 300s timeout and the minimax fallback capped at 32k output, so
+  the whole task died. Root insight: the shared base class is a mechanical projection of defs + contract
+  (the audit of the 8 mls-102045 goldens found ZERO functions needing judgment — business calc lives in l4).
+  New `helpers/cfeSharedScaffold.ts` (pure, import-free so plain-tsx CLI can load it) renders the full class
+  deterministically; on an unmodeled defs shape it returns `{code:null, reason}` and the caller falls back to
+  the LLM path. Wired into the Node CLI (`nodejsMaterializeL2.ts materializeSharedDeterministic`); Studio's
+  `agentCfeMaterializeGen` still uses the LLM for l2_shared — wire it with the pages session. Validation:
+  the 9 buildFlowFsm shared files regenerate deterministically (~29-260KB) and pass strict tsc + their
+  generated typecheck tests; full mls-base tsc clean; CLI run `102045 buildFlowFsm --only l2_shared --force
+  --check` = 9/9, zero LLM cost. Found in passing: the defs generator can name an input state equal to
+  another action's methodName (updateWorkTask.status -> `updateWorkTaskStatus` vs operation
+  updateWorkTaskStatus) — a collision no generation can compile past (the typecheck test asserts both
+  names); the scaffold now bails on it with a precise reason and projectDetail.defs.ts was patched locally
+  (`updateWorkTaskStatusValue`). Upstream naming-dedup fix landed the same day in cfeCreateShared via
+  helpers/cfeMemberNames.ts (see steps/create-contract-shared/CHANGELOG.md). `_calc` companion
+  (LLM-filled pure functions) deliberately NOT built: no current defs marks derived computations — add the
+  `l2_calc` pipeline item type only when a real case appears.
+
 - 2026-07-28 (verify trace/verdict: no project-root fallback) — follow-up to the 22/jul module-scoping fix
   (todo/geracao/bug_trace.md). Two residual defects let the project root be polluted again:
   `saveMaterializeVerifyTrace` did not receive the caller's module (it re-derived one from the BROKEN items

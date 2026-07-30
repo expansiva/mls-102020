@@ -135,13 +135,14 @@ test('the summary must describe the generated theme', () => {
 });
 
 test('T4: the overlay surface must not be the page background color', () => {
+  // T27: the overlay token is --ml-surface-overlay (--ml-surface-dim is the recessed surface)
   const withOverlay = (color: string) => ({
     ...validSummary,
-    palette: [...validSummary.palette, { token: '--ml-surface-dim', label: 'Overlay', color }],
+    palette: [...validSummary.palette, { token: '--ml-surface-overlay', label: 'Overlay', color }],
   });
   const themeWithDimToken = validTheme.replace(
     '| --ml-surface | #ffffff | inline surface |',
-    '| --ml-surface | #ffffff | inline surface |\n| --ml-surface-dim | #f4f4f5 | overlay surface |',
+    '| --ml-surface | #ffffff | inline surface |\n| --ml-surface-overlay | #f4f4f5 | overlay surface |',
   );
   // page is 'background: #f4f4f5;' — an overlay of the same color has no hierarchy
   assert.ok(runThemeGate({ themeTs: themeWithDimToken, summary: withOverlay('#f4f4f5'), destProject: DEST })
@@ -158,13 +159,26 @@ test('T4: a gradient/image page background is not compared', () => {
   const themeTs = validTheme
     .split(BG_CSS).join(gradient)
     .replace("kind: 'light',", "kind: 'dark',")
-    .replace('| --ml-surface | #ffffff | inline surface |', '| --ml-surface | #ffffff | inline surface |\n| --ml-surface-dim | #0f172a | overlay surface |');
+    .replace('| --ml-surface | #ffffff | inline surface |', '| --ml-surface | #ffffff | inline surface |\n| --ml-surface-overlay | #0f172a | overlay surface |');
   const summary = {
     ...validSummary,
     background: { kind: 'dark' as const, css: gradient },
-    palette: [...validSummary.palette, { token: '--ml-surface-dim', label: 'Overlay', color: '#0f172a' }],
+    palette: [...validSummary.palette, { token: '--ml-surface-overlay', label: 'Overlay', color: '#0f172a' }],
   };
   assert.deepEqual(runThemeGate({ themeTs, summary, destProject: DEST }), []);
+});
+
+test('T27: a theme still using --ml-surface-dim as the overlay is checked too (fallback)', () => {
+  const themeTs = validTheme.replace(
+    '| --ml-surface | #ffffff | inline surface |',
+    '| --ml-surface | #ffffff | inline surface |\n| --ml-surface-dim | #f4f4f5 | overlay surface |',
+  );
+  const summary = {
+    ...validSummary,
+    palette: [...validSummary.palette, { token: '--ml-surface-dim', label: 'Overlay', color: '#f4f4f5' }],
+  };
+  const codes = runThemeGate({ themeTs, summary, destProject: DEST }).map(issue => issue.code);
+  assert.ok(codes.includes('overlay_contrast'));
 });
 
 test('palette tokens must be --ml-* and declared in the Tokens table', () => {

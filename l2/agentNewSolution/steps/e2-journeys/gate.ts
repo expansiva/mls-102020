@@ -230,14 +230,41 @@ export function validateE2JourneysInvariants(
     }
   });
 
+  const downgraded: NsE2Feature[] = [];
   artifact.features.forEach((feature, index) => {
     if (!PRIORITIES.includes(feature.priority)) {
       issues.push(errorIssue('feature_priority', `feature ${feature.featureId} must have a priority (now|soon|later|never)`, `features[${index}].priority`));
     }
-    if (!referencedFeatures.has(feature.featureId)) {
+    if (feature.priority === 'never' || referencedFeatures.has(feature.featureId)) return;
+    // Features parked as "never" document explicit scope exclusions; no journey exercises them by
+    // definition, so they are exempt from the reference check (checked above).
+    if (feature.priority === 'now') {
+      // A core-loop feature no journey exercises is a real modeling hole — still an error.
       issues.push(errorIssue('unreferenced_feature', `feature ${feature.featureId} is not referenced by any journey step`, `features[${index}]`));
+      return;
     }
+    // soon/later roadmap items that no current journey exercises are LEGITIMATE (run04:
+    // richGanttScheduling "later" burned an LLM retry round for this). Self-heal
+    // deterministically: park the feature as a featurePriority decision and warn — the retry
+    // would have produced exactly this shape, at LLM cost.
+    downgraded.push(feature);
+    issues.push(warningIssue('unreferenced_feature_downgraded', `feature ${feature.featureId} (${feature.priority}) is not referenced by any journey step; parked as a featurePriority decision`, `features[${index}]`));
   });
+  if (downgraded.length > 0) {
+    const usedDecisionIds = new Set(artifact.decisions.map(decision => decision.decisionId));
+    const parked = new Set(downgraded.map(feature => feature.featureId));
+    // The artifact object mutated here IS what the caller persists — the gate's output is the
+    // normalized artifact, mirroring how prepareE2JourneysArtifact coerces before validation.
+    artifact.features = artifact.features.filter(feature => !parked.has(feature.featureId));
+    for (const feature of downgraded) {
+      artifact.decisions.push({
+        decisionId: uniqueNsId(`parked ${feature.featureId}`, usedDecisionIds, `parked${feature.featureId}`),
+        kind: 'featurePriority',
+        summary: `${feature.title} stays on the roadmap (${feature.priority}) but no current journey exercises it; parked by the gate as a decision instead of a feature.`,
+        target: feature.featureId,
+      });
+    }
+  }
 
   const removedActors = new Set(
     artifact.decisions.filter(decision => decision.kind === 'actorRemoved').map(decision => normalizeNsId(decision.target, 'actor')),

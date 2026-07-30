@@ -2,6 +2,14 @@
 
 # E1 Draft Changelog
 
+- 2026-07-29 — gate-retry recovery contract (park + originStepId), mirroring steps/e2-journeys
+  (see its CHANGELOG for the full rationale and todo/collabMessages/bugStatus.md for the evidence):
+  attempt-1 gate failure parks the original step as waiting_human_input instead of failing it (no
+  task failed->in-progress flap; dependsOn ['e1-draft'] stays locked); the retry carries
+  originStepId/originParentStepId and completes the parked step on success or fails it on
+  exhaustion (single, consistent task-level failure). The needs_input blocking-clarification
+  branch keeps its previous behavior.
+
 - 2026-07-05: Created E1 with schema, gate, separated prompt, fixture and checkpoint widget.
 - 2026-07-05: C01 saved partial E1 artifacts before blocking clarification and added `e1-clarification-extra` handling with E1 rerun.
 - 2026-07-05: C02 connected gate retry as a controlled second E1 attempt with retry context and attempt 2 trace.

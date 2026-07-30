@@ -60,12 +60,12 @@
       "type": "agent",
       "model": "plan",
       "dependsOn": [],
-      "goal": "Cheap classifier. Admission (project has NO l2/skills/theme.ts; else fail readable). Detect userLanguage + a short title. Parse the initial prompt into `known` (the theme fields it could determine) and build `questions` for the CANONICAL fields still missing — CLOSED fields (enums + typography.uppercaseLabels) carry 2-4 options with enum ids and one recommended; OPEN fields (name, primary, border.color, background.css) may carry no options but must set allowNotes. Persist plan.json. If `questions` is empty, plant t3 directly (fast path, no checkpoint); otherwise plant t2 then t3.",
+      "goal": "Cheap classifier. Admission (project has NO l2/skills/theme.ts; else fail readable). Detect userLanguage + a short title. Split the request into `known` — ONLY what the prompt STATES — and `questions` for everything else: the missing fields AND the ones it merely INFERRED, the latter with the inference pre-selected (recommended) so a click confirms it. 'tema brutalismo' states nothing about name/shadow/corners; it only lets the model guess, and a guess must be shown. Identity (name + displayName) is asked whenever the checkpoint runs, since nothing downstream reviews it. CLOSED fields (enums + typography.uppercaseLabels) carry 2-4 options with enum ids and one recommended; OPEN fields (name, displayName, primary, border.color, background.css) carry no options or exactly the proposed value as one recommended option, and always allowNotes. Persist plan.json. If the prompt states everything, `questions` is empty and t3 is planted directly (fast path, no checkpoint); otherwise plant t2 then t3.",
       "input": ["{ prompt } from the mention"],
       "output": { "result": "plan summary", "savedArtifact": ["l4/agentNewTheme/plan.json"] },
       "gate": {
         "file": "steps/t1-plan/gate.ts",
-        "checks": ["output parses to {known, questions[]} with valid field ids/options", "questions never repeat a field or re-ask something already in known", "CLOSED fields: 2+ options, enum ids, at most one recommended", "OPEN fields: options may be empty, but then allowNotes must be true (else the widget could never mark it answered)"],
+        "checks": ["output parses to {known, questions[]} with valid field ids/options", "a field is never asked twice", "a question about a value already decided in `known` must carry it as a recommended (pre-selected) option — asking without pre-selecting would make the human retype a decision (code question_not_preselected; it REPLACED the old question_known rule, which forbade the question altogether and is why an inferred theme name could never be corrected)", "CLOSED fields: 2+ options, enum ids, at most one recommended", "OPEN fields: options may be empty, but then allowNotes must be true (else the widget could never mark it answered)"],
         "onFail": "NO retry: fail readable. Admission (no existing theme.ts) is checked EARLIER, in beforePromptImplicit, so it costs no LLM call"
       },
       "doneAnchor": "none (the root plants the tree directly)"
@@ -109,7 +109,7 @@
   "acceptance": {
     "regression": "none on existing agents beyond the vTheme.ts re-export of the shared validator (agentNewMoleculeVariant suite must stay green)",
     "test1": "project WITHOUT theme.ts, rich prompt (fast path: no questions) -> writes theme.ts + theme.html, contract valid, compiled",
-    "test2": "project WITHOUT theme.ts, vague prompt -> the checkpoint asks the missing fields with options; answers drive generation",
+    "test2": "project WITHOUT theme.ts, vague prompt -> the checkpoint asks the missing fields AND the inferred ones pre-selected (identity included), plus the free-text slot; answers drive generation. Changing the proposed `name` there must change the theme's name and suffix.",
     "test3": "cancelling the checkpoint writes nothing; a gate that stays red after the retry writes nothing",
     "test4": "cycle: run agentNewMoleculeVariant on the freshly created theme (it consumes the new theme.ts) -> a molecule variant is generated"
   }

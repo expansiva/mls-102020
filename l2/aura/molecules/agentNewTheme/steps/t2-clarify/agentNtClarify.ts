@@ -17,7 +17,7 @@ import {
   readJsonArtifact,
   writeJsonArtifact,
 } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntFs.js';
-import { NtAnswer, NtPlan } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntTypes.js';
+import { NT_EXTRA_FIELD, NtAnswer, NtPlan } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntTypes.js';
 import {
   ntAnswerResultIntent,
   ntApplyIntentsAndRefresh,
@@ -40,8 +40,9 @@ interface NtClarifyLabels {
   intro: string;
   answered: string;
   cancelled: string;
-  notes: string;        // placeholder when the free text refines a chosen option
-  extraNotes: string;   // placeholder of the free-text slot, where the text IS the answer
+  notes: string;        // the free text REFINES a chosen option
+  openValue: string;    // open field with no options: the text IS the value
+  extraNotes: string;   // the free-text slot at the end
 }
 
 const LABELS: Record<string, NtClarifyLabels> = {
@@ -50,6 +51,7 @@ const LABELS: Record<string, NtClarifyLabels> = {
     answered: 'Estilo completado',
     cancelled: 'Cancelado pelo usuário',
     notes: 'Outro valor / observações',
+    openValue: 'Digite o valor',
     extraNotes: 'Ex.: borda 3px, sombra 4px 4px 0 #000000, no hover o elemento translada 2px para dentro da sombra, sem blur',
   },
   en: {
@@ -57,6 +59,7 @@ const LABELS: Record<string, NtClarifyLabels> = {
     answered: 'Style completed',
     cancelled: 'Cancelled by the user',
     notes: 'Another value / notes',
+    openValue: 'Type the value',
     extraNotes: 'e.g. border 3px, shadow 4px 4px 0 #000000, on hover the element slides 2px into its shadow, no blur',
   },
 };
@@ -183,10 +186,16 @@ function toDecisionQuestion(question: NtPlan['questions'][number], labels: NtCla
     question: question.question,
     options: question.options,
     allowNotes: question.allowNotes,
-    // The free-text slot has no options: its textarea is the answer, so it gets the
-    // example-rich hint instead of the generic "another value" one.
-    notesPlaceholder: question.options.length ? labels.notes : labels.extraNotes,
+    notesPlaceholder: placeholderFor(question, labels),
   };
+}
+
+// Three different textareas wear three different hints. Keying this off "has options?" put
+// the slot's example ("border 3px, shadow 4px 4px 0 ...") under the brand-color question,
+// which made no sense — the slot is identified by its FIELD, not by its option count.
+function placeholderFor(question: NtPlan['questions'][number], labels: NtClarifyLabels): string {
+  if (question.field === NT_EXTRA_FIELD) return labels.extraNotes;
+  return question.options.length ? labels.notes : labels.openValue;
 }
 
 async function readPlan(): Promise<NtPlan> {

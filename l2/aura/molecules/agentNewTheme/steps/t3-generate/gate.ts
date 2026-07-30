@@ -126,12 +126,17 @@ function checkSummary(summary: NtThemeSummary | null, info: Record<string, unkno
   // T4: an overlay painted the same color as the page has no hierarchy — only its border
   // separates it, and the user reads it as part of the page. Compared only when the page
   // background is a single flat color (a gradient/image backdrop has no single value).
-  const overlay = (summary.palette || []).find(swatch => swatch.token === '--ml-surface-dim');
+  // T27: the overlay token is `--ml-surface-overlay`; `--ml-surface-dim` is the RECESSED
+  // surface (rails, footers, empty states — 316 reads in the base sheets), so it is only the
+  // fallback here, for themes that still carry the older meaning.
+  const palette = summary.palette || [];
+  const overlay = palette.find(swatch => swatch.token === '--ml-surface-overlay')
+    || palette.find(swatch => swatch.token === '--ml-surface-dim');
   const pageColor = singleColorLiteral(String(background.css ?? ''));
   if (overlay && pageColor && normalizeColor(overlay.color) === pageColor) {
     issues.push({
       code: 'overlay_contrast',
-      message: `--ml-surface-dim (overlay surface) is the same color as the page background (${overlay.color}) — panels, dropdowns and modals would have no hierarchy against the page; pick a visibly distinct step`,
+      message: `${overlay.token} (the overlay surface) is the same color as the page background (${overlay.color}) — panels, dropdowns and modals would have no hierarchy against the page; pick a visibly distinct step`,
     });
   }
 

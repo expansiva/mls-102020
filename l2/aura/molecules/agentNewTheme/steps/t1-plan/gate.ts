@@ -5,12 +5,15 @@
 // immediate (the plan is what the whole pipeline reads from l4/agentNewTheme/plan.json).
 
 import {
+  NT_EXTRA_FIELD,
   NtBackgroundKind,
   NtPlan,
   NtQuestion,
   NtQuestionOption,
   NtThemeFields,
 } from '/_102020_/l2/aura/molecules/agentNewTheme/helpers/ntTypes.js';
+
+export { NT_EXTRA_FIELD };
 
 export interface NtGateIssue {
   code: string;
@@ -19,11 +22,8 @@ export interface NtGateIssue {
 
 // The canonical fields the checkpoint may ask about. surface / on-surface text are DERIVED
 // from background.kind and are never asked (flow.json conventions.themeFields).
-// 'extra' is not a theme field: it is the free-text slot where the user pastes what the
-// coarse enums cannot express (exact values, signature interactions, things to avoid).
-// It never appears in `known` — only as the last question.
-export const NT_EXTRA_FIELD = 'extra';
-
+// The free-text slot (NT_EXTRA_FIELD, owned by ntTypes) is a question id, never a `known`
+// field: it is where the user pastes what the coarse enums cannot express.
 export const NT_QUESTION_FIELDS = [
   'name',
   'displayName',
@@ -40,7 +40,11 @@ export const NT_QUESTION_FIELDS = [
   'typography.uppercaseLabels',
 ] as const;
 
-export const NT_MAX_QUESTIONS = 8;
+// Worst case is every canonical field asked (7 closed + 2 identity + 3 open) plus the
+// free-text slot = 13; the cap is only a runaway guard. It used to be 8, from when the
+// checkpoint asked ONLY the missing fields — with confirmation of inferred values that
+// would silently drop questions (the slice keeps the first N).
+export const NT_MAX_QUESTIONS = 14;
 
 // Fields with a closed set of answers: the question MUST offer them as options, using
 // these ids. Every other canonical field (name, primary, border.color, background.css)
@@ -118,11 +122,20 @@ export function runPlanGate(plan: NtPlan): NtGateIssue[] {
     }
   }
 
-  // A field the prompt already pinned down must not be asked again (the whole point of
-  // the checkpoint is asking ONLY for the gaps).
-  for (const field of seen) {
-    if (knownHasField(plan.known, field)) {
-      issues.push({ code: 'question_known', message: `field '${field}' is already known from the prompt — do not ask it` });
+  // A field may be asked even when `known` carries a value — that is how the human gets to
+  // SEE and correct it (the theme that came out named 'brutalismo' did so because the plan
+  // inferred the name and the checkpoint was forbidden from showing it). What is not
+  // acceptable is asking without pre-selecting: the human would have to retype a decision
+  // that is already made.
+  for (const question of plan.questions) {
+    const knownValue = readKnownField(plan.known, question.field);
+    if (knownValue === undefined) continue;
+    const preselected = question.options.some(option => option.id === knownValue && option.recommended);
+    if (!preselected) {
+      issues.push({
+        code: 'question_not_preselected',
+        message: `question '${question.field}' asks about a value that is already decided ('${knownValue}') — offer it as an option with recommended: true so the human only has to confirm it`,
+      });
     }
   }
 
@@ -205,23 +218,14 @@ function normalizeOption(value: unknown): NtQuestionOption | null {
   return option;
 }
 
-// 'background.kind' -> known.background?.kind
+// 'background.kind' -> known.background?.kind, as the string an option id would carry
+// (booleans included: uppercaseLabels true -> 'true').
 function readKnownField(known: NtThemeFields, field: string): string | undefined {
   const [head, tail] = field.split('.');
   const container = (known as unknown as Record<string, unknown>)[head];
-  if (!tail) return typeof container === 'string' ? container : undefined;
-  if (!isRecord(container)) return undefined;
-  const value = container[tail];
-  return typeof value === 'string' ? value : undefined;
-}
-
-function knownHasField(known: NtThemeFields, field: string): boolean {
-  const [head, tail] = field.split('.');
-  const container = (known as unknown as Record<string, unknown>)[head];
-  if (!tail) return container !== undefined && container !== '';
-  if (!isRecord(container)) return false;
-  const value = container[tail];
-  return value !== undefined && value !== '';
+  const value = tail ? (isRecord(container) ? container[tail] : undefined) : container;
+  if (typeof value === 'boolean') return String(value);
+  return typeof value === 'string' && value.trim() ? value : undefined;
 }
 
 function readString(value: unknown): string | undefined {
