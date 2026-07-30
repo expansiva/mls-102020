@@ -22,11 +22,24 @@ export const skill = `
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
+| \`data-variant\` | \`string\` | \`'primary'\` | Visual tone: \`'primary'\`, \`'secondary'\`, \`'danger'\`, \`'ghost'\`, \`'link'\`. **This is the only way to change how the button looks** — see below |
 | \`size\` | \`string\` | \`'md'\` | Button size: \`'xs'\`, \`'sm'\`, \`'md'\`, \`'lg'\` |
 | \`type\` | \`string\` | \`'button'\` | HTML button type: \`'button'\`, \`'submit'\`, \`'reset'\` |
 | \`icon-position\` | \`string\` | \`'start'\` | Icon placement: \`'start'\` or \`'end'\` |
 | \`disabled\` | \`boolean\` | \`false\` | Disables the button |
 | \`loading\` | \`boolean\` | \`false\` | Shows loading indicator, blocks interaction |
+
+### Tone comes from \`data-variant\`, never from \`data-class\`
+
+Each variant maps to a class the molecule's own stylesheet defines (\`primary\` → \`.ml-button-primary\`,
+\`danger\` → \`.ml-button-danger\`, and so on), coloured from the \`--ml-*\` tokens. So the theme decides the
+palette and the page only declares intent.
+
+**Do not try to restyle the button with \`data-class\` background/text utilities.** \`data-class\` is
+appended to the same element that already carries the variant class, both are single-class selectors, so
+neither wins by specificity — the one emitted later in the CSS does. In practice the variant's background
+survives and the override silently does nothing: a button meant to read as destructive stays the primary
+colour. Reach for \`data-class\` only for what the variant does not set (margin, width, alignment).
 
 ---
 

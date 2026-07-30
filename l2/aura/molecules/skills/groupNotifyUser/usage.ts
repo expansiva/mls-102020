@@ -30,6 +30,20 @@ export const skill = `
 | \`duration\` | \`number\` | \`0\` | Auto-dismiss after N ms (0 = manual dismiss only) |
 | \`position\` | \`string\` | \`''\` | Position hint: \`'top'\`, \`'bottom'\`, \`'top-right'\`, etc. Empty = inline |
 
+### Choosing inline or floating
+
+\`position\` is not cosmetic — it changes the box model:
+
+- **Omit it** (the default) and the banner is \`relative\`: it takes space in the document, right where
+  you placed it. This is what a **persistent** message wants — a system error that stays until
+  dismissed, reported at the top of the page content.
+- **Set it** and the banner becomes \`fixed\` against the **viewport**, floating over everything at
+  \`z-50\`. This suits a **transient** message. Beware: it overlaps whatever chrome sits at that edge
+  (app header, toolbar), and it leaves empty the space you reserved for it in the layout.
+
+A page-design document asking for a "top banner" usually means *top of the page content*, in flow —
+not \`position="top"\`, which means *floating at the top of the screen*. Read which one is intended.
+
 ---
 
 ## Events
