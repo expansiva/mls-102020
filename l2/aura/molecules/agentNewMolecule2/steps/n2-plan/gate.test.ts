@@ -137,6 +137,20 @@ test('a camelCase folder is rejected by reference_shape', () => {
   assert.ok(codes.includes('reference_shape'));
 });
 
+// Regression, first Studio run 2026-07-30: 'ml-data-grid-33' produced a tag the platform reads as
+// project 33, so the custom element was never registered and the page showed raw text.
+test("a name ending in '-<number>' is rejected — the platform reads it as the project id", () => {
+  const { plan } = normalizeNm2Plan({ ...CANDIDATE, shortName: 'ml-data-grid-33' }, ctx());
+  assert.equal(plan.shortName, 'ml-data-grid-33');
+  const codes = runNm2PlanGate(plan, ctx(), { known: KNOWN, collisions: [] }).map(issue => issue.code);
+  assert.ok(codes.includes('name_project_suffix'));
+});
+
+test('a digit INSIDE the name is fine — only a trailing -<number> collides', () => {
+  const { plan } = normalizeNm2Plan({ ...CANDIDATE, shortName: 'ml-grid-2fa' }, ctx());
+  assert.deepEqual(runNm2PlanGate(plan, ctx(), { known: KNOWN, collisions: [] }), []);
+});
+
 test('a hand-edited tag that stops matching the path is rejected', () => {
   const { plan } = normalizeNm2Plan(CANDIDATE, ctx());
   const tampered = { ...plan, tag: 'whatever--ml-kpi-card' };

@@ -130,6 +130,23 @@ export function runNm2PlanGate(plan: MoleculePlan, ctx: MoleculeContext, options
     });
   }
 
+  // A trailing '-<digits>' is how the platform encodes the PROJECT inside a tag
+  // (utils.convertFileNameToTag emits `<kebab>-<project>`, which is why the group index is
+  // `molecules--<group>--index-102040`). Its inverse, convertTagToFileName, matches /(.+)-(\d+)$/
+  // and would read `groupviewtable--ml-data-grid-33` as project 33 / shortName `mlDataGrid`, so the
+  // loaders inject `<script src="/_33_mlDataGrid">`, it 404s and the custom element is NEVER
+  // registered — the page renders the raw light DOM as text. Measured in the first Studio run
+  // (2026-07-30): `customElements.get(...)` was undefined, and `-teste` in place of `-33` fixed it.
+  // A digit inside the name is fine ('ml-grid-2fa'); only a trailing '-<number>' collides.
+  // NOTE: this also fires when a THEME suffix ends in digits — that is correct, because every
+  // molecule of such a project would be unreachable; the theme is what has to change.
+  if (plan.shortName && /-\d+$/.test(plan.shortName)) {
+    issues.push({
+      code: 'name_project_suffix',
+      message: `molecule name '${plan.shortName}' cannot end with '-<number>': the platform reads a trailing '-<digits>' in a tag as the project id, so the custom element would never be registered`,
+    });
+  }
+
   const parsed = parseMlsFileReference(plan.fileReference);
   if (!parsed) {
     issues.push({ code: 'reference_shape', message: `invalid fileReference '${plan.fileReference}' — expected _<project>_/l2/molecules/<group>/<name>.ts` });

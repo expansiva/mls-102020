@@ -52,3 +52,22 @@ Two subtleties worth keeping:
   which SELECTS the molecule, is a different consumer.
 - **declaring only a page-wide axis does not satisfy `axis_required`** — the molecule would stay a
   wildcard on the very axis that distinguishes it from its siblings.
+
+## 2026-07-30 — nome não pode terminar em `-<número>` (primeiro run no Studio)
+
+Novo código de reprovação `name_project_suffix`. `ml-data-grid-33` gerou a tag
+`groupviewtable--ml-data-grid-33`, e o custom element **nunca foi registrado**: a página mostrou o
+light DOM como texto corrido e `customElements.get(...)` devolveu `undefined`. Trocar para `-teste`
+resolveu.
+
+Um `-<dígitos>` no fim do último segmento da tag é como o platform codifica o PROJETO
+(`utils.convertFileNameToTag` emite `<kebab>-<project>`, daí `molecules--<group>--index-102040`). A
+inversa, `convertTagToFileName` (`utils.ts:18`), casa `/(.+)-(\d+)$/` e leu o nome como
+`{ shortName: 'mlDataGrid', project: 33 }`; os carregadores (`libCommom.ts:288`,
+`serviceProject.ts:431`, `serviceUnit.ts:260`) então injetam `<script src="/_33_mlDataGrid">`, que
+404. Moléculas com nome normal não casam o regex e são carregadas por outro caminho — por isso só
+esta quebrou.
+
+Dígito no meio continua válido (`ml-grid-2fa`); só o sufixo colide. A regra também dispara quando o
+sufixo de TEMA termina em dígitos, e isso é proposital: nesse caso toda molécula do projeto seria
+inalcançável e o tema é que precisa mudar. Dois testes novos.

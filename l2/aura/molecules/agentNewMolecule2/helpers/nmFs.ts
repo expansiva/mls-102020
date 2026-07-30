@@ -126,11 +126,20 @@ export async function writeJsonArtifact(fileInfo: NmFileInfo, data: unknown): Pr
 
 // needCreateModel=true for source artifacts (the editor model is kept in sync and the compiler
 // needs it); false for l4 work files.
+//
+// The 4th argument (awaitCompile) MUST stay tied to needCreateModel. With it false, createModel
+// fires `compileAndPostProcess` and does NOT await it, so the caller's own compile runs
+// CONCURRENTLY on the same model — and `compile()` short-circuits on
+// `modelVersion === model.getVersionId() && !modelNeedCompile`, a state `initCompilerResults` sets
+// at the START of the in-flight compile, before the diagnostics land. The loser then returns true
+// with `compilerResults.errors` still empty, which blinded the n4-render gate: the first Studio run
+// (2026-07-30) shipped a molecule with a syntax error (`const text A = ...`) and never even fired
+// the retry. The old flow got this right — agentNewMoleculeMaterialize passes (true, true, true).
 export async function writeStorTextAtomic(fileInfo: NmFileInfo, content: string, needCreateModel = false): Promise<void> {
   const key = mls.stor.getKeyToFile(fileInfo);
   let storFile = mls.stor.files[key];
   if (!storFile) {
-    storFile = await createStorFile({ ...fileInfo, source: content }, needCreateModel, needCreateModel, false);
+    storFile = await createStorFile({ ...fileInfo, source: content }, needCreateModel, needCreateModel, needCreateModel);
   } else {
     // Re-run resurrection (lesson from nsFs): a locally deleted file stays in the stor with
     // status 'deleted' and would silently never persist — un-delete before writing.
