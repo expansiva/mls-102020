@@ -32,3 +32,32 @@ emitted object with `plan.json` and **re-runs the vocabulary gate on the file it
 depth, because a hand-edited plan.json would otherwise ship an axis that `buildMoleculeCatalog` drops
 with a `console.warn`, silently turning the molecule into a wildcard. Analysis:
 todo/analise-layoutconfig-new-molecule-2.md.
+
+## 2026-07-30 — the .defs.ts is written with the canonical stor spelling (first-run bug)
+
+Caught on the first real Studio run: the generated `.defs.ts` was unreachable from the editor's defs
+tab. `nmDefsFile` was building `shortName + '.defs'` with extension `'.ts'` instead of the plain
+shortName with extension `'.defs.ts'`.
+
+The stor key is plain concatenation (`getKeyToFile`: `<project>_<level>_<folder>/<shortName><extension>`),
+so both spellings produce the SAME key — which is why the gate passed, n4-render read the file back and
+n8-summary reported the right path. What differs is the stored `IFileInfo`:
+
+- `libModel.createModel` files the model by `mapExt[extension]` under `getKeyModel(..., shortName, ...)`,
+  so the model landed in a phantom `<name>.defs` group in the **`ts`** slot. `serviceSource`'s defs tab
+  looks up `getModels(project, '<name>', folder).defs`, finds `undefined` and returns silently — dead
+  tab, no console error, and it never recreates the file because the key already exists.
+- everything filtering `extension === '.defs.ts'` skipped it: `serviceSource.tabConfig`, `libMindMap`,
+  and the `deleteAllFiles`/`renameAllFiles`/`cloneAllFiles` loops (an orphan defs on rename/delete).
+- extension `'.ts'` also bypassed the `.defs.ts` guard in `libCommom.getInstanceByFile` and sent the
+  contract through the TypeScript compile path as if it were a component.
+
+Fixed in `helpers/nmFs.ts` — same spelling every other agent uses (Variant `v2-shell`, New Solution,
+Implement Genome). No test asserted the old spelling; `toDisplayPath` is byte-identical either way.
+The now-dead `!shortName.endsWith('.defs')` guard in `n7-index`'s `scanGroupMolecules` was left in
+place (harmless: correctly-keyed defs no longer pass its `extension === '.ts'` filter).
+
+Trap for anyone repairing an already-generated molecule: `deleteFile` only hard-deletes while the file
+is `status: 'new'`. After a save/publish it soft-deletes, leaving the entry in `mls.stor.files` with the
+WRONG `shortName`/`extension` — and `writeStorTextAtomic`'s resurrection branch would revive it with
+those fields intact, reproducing the bug under the same molecule name.

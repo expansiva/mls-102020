@@ -40,10 +40,15 @@ export function nmMoleculeFile(groupFolder: string, shortName: string, extension
   return { project: nmDestProject(), level: 2, folder: `molecules/${groupFolder}`, shortName, extension };
 }
 
-// The five artifacts of the contract. `.defs.ts` is a shortName+'.defs' with a '.ts' extension,
-// matching how the stor keys it.
+// The five artifacts of the contract. `.defs.ts` is a first-class EXTENSION, never part of the
+// shortName: the stor key is plain concatenation (`<project>_<level>_<folder>/<shortName><extension>`),
+// so both spellings collide on the same key — but `shortName`/`extension` are what the Studio reads.
+// With shortName+'.defs' the editor files the model under a phantom `<name>.defs` group in the `ts`
+// slot (libModel `mapExt`), so the defs tab of the real molecule stays empty and every consumer that
+// filters `extension === '.defs.ts'` (serviceSource tabConfig, libMindMap, delete/rename/clone loops)
+// skips the file. Same spelling as the Variant, New Solution and Implement Genome agents.
 export function nmDefsFile(groupFolder: string, shortName: string): NmFileInfo {
-  return nmMoleculeFile(groupFolder, `${shortName}.defs`, '.ts');
+  return nmMoleculeFile(groupFolder, shortName, '.defs.ts');
 }
 export function nmTsFile(groupFolder: string, shortName: string): NmFileInfo {
   return nmMoleculeFile(groupFolder, shortName, '.ts');
