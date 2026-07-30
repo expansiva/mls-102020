@@ -86,9 +86,9 @@ test('E2 gate rejects a dangling feature reference', async () => {
   assert.equal(result.errors.some(issue => issue.code === 'dangling_feature_ref'), true);
 });
 
-test('E2 gate rejects an unreferenced feature', async () => {
+test('E2 gate rejects an unreferenced now feature', async () => {
   const artifact = validArtifact();
-  artifact.features.push({ featureId: 'orphan', title: 'Orphan feature', priority: 'soon', actorIds: ['attendant'] });
+  artifact.features.push({ featureId: 'orphan', title: 'Orphan feature', priority: 'now', actorIds: ['attendant'] });
   const result = await runNsGate({
     stepId: 'e2-journeys',
     schema,
@@ -97,6 +97,37 @@ test('E2 gate rejects an unreferenced feature', async () => {
   });
   assert.equal(result.ok, false);
   assert.equal(result.errors.some(issue => issue.code === 'unreferenced_feature'), true);
+});
+
+test('E2 gate parks an unreferenced soon/later feature as a decision (warning, not error)', async () => {
+  // run04: richGanttScheduling ("later", unreferenced) failed the gate and burned an LLM retry
+  // round that merely moved it to decisions[] — the gate now does that deterministically.
+  const artifact = validArtifact();
+  artifact.features.push({ featureId: 'richGanttScheduling', title: 'Full rich Gantt', priority: 'later', actorIds: ['attendant'] });
+  const result = await runNsGate({
+    stepId: 'e2-journeys',
+    schema,
+    artifact,
+    validate: item => validateE2JourneysInvariants(item),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.warnings.some(issue => issue.code === 'unreferenced_feature_downgraded'), true);
+  assert.equal(result.artifact.features.some(feature => feature.featureId === 'richGanttScheduling'), false);
+  const decision = result.artifact.decisions.find(item => item.target === 'richGanttScheduling');
+  assert.equal(decision?.kind, 'featurePriority');
+  assert.match(decision?.summary || '', /roadmap \(later\)/);
+});
+
+test('E2 gate accepts an unreferenced feature parked as never', async () => {
+  const artifact = validArtifact();
+  artifact.features.push({ featureId: 'fullWarehouseInventory', title: 'Full warehouse inventory', priority: 'never', actorIds: ['attendant'] });
+  const result = await runNsGate({
+    stepId: 'e2-journeys',
+    schema,
+    artifact,
+    validate: item => validateE2JourneysInvariants(item),
+  });
+  assert.equal(result.ok, true);
 });
 
 test('E2 gate rejects an actor without a journey', async () => {

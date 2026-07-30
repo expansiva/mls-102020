@@ -297,6 +297,14 @@
       "maxParallel": 10,
       "modelAlias": "code",
       "goal": "Generate one materialized runtime file from one pipeline item.",
+      "deterministicShared": {
+        "helper": "l2/agentChangeFrontend/helpers/cfeSharedScaffold.ts",
+        "policy": "l2_shared items are rendered deterministically from defs + contract (no LLM, no output-token ceiling — run03: projectDetail 157KB defs exceeded every provider). A scaffold bail (unmodeled defs shape, precise reason in trace) falls back to the LLM path.",
+        "runtimes": {
+          "nodeCli": "active (nodejsMaterializeL2.ts materializeSharedDeterministic)",
+          "studio": "pending — agentCfeMaterializeGen still prompts the LLM for l2_shared; wire the same branch when the pages session lands"
+        }
+      },
       "dynamicArgs": {
         "shape": {
           "phase": "contracts|shared|pages",

@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
+import { commandMemberNames, dedupeSharedStateNames } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMemberNames.js';
 import {
   assertArray,
   assertRecord,
@@ -873,14 +874,48 @@ const TEST_LITERAL_DATE = '2026-01-01';
 const TEST_LITERAL_TEXT = 'teste';
 const TEST_LITERAL_NUMBER = 1;
 
-export async function savePageTestsFile(prepared: CfePreparedPage): Promise<void> {
-  const cases = buildPageTestCases(prepared);
+export async function savePageTestsFile(prepared: CfePreparedPage, runId?: string): Promise<void> {
+  // The tests runner keeps ONE <seedRef> pool per RUN and runs every page's reads before any command, so
+  // an id produced by ANOTHER page of the module resolves here too. Without this the emitted set was
+  // page-scoped and silently dropped satisfiable cases (102045: taskPlanningWorkspace has 4 bffCalls and
+  // only 1 got a case, because projectId is produced by dashboardWorkspace).
+  const cases = buildPageTestCases(prepared, runId ? moduleProducedByQuery(runId, prepared.page.moduleName) : undefined);
   if (cases.length === 0) return;
   const fileInfo: FileInfo = { project: prepared.project, level: 2, folder: `${prepared.page.moduleName}/web/desktop/${PAGE_TESTS_VARIANT}`, shortName: prepared.page.pageId, extension: '.test.ts' };
   await saveStorContent(fileInfo, renderPageTestsFile(prepared, cases));
 }
 
-export function buildPageTestCases(prepared: CfePreparedPage): PageTestCase[] {
+/**
+ * The field names every QUERY bffCall of a MODULE yields, keyed by bffId — read straight from the l4
+ * workspaces of the run (no page preparation needed). Mirrors the tests runner's per-RUN pool: it runs
+ * all reads of the module before any command, so a page's <seedRef> can resolve from a sibling page.
+ * Keyed (not flattened) so a routine can still be excluded from its OWN harvest.
+ */
+function moduleProducedByQuery(runId: string, moduleName: string): Map<string, string[]> {
+  const produced = new Map<string, string[]>();
+  let context: CfeCreateContext;
+  try {
+    context = getCreateRun(runId).context;
+  } catch {
+    return produced; // no run cache (direct/unit call): fall back to page scope
+  }
+  for (const journey of context.journeys) {
+    if (moduleName && journey.moduleName !== moduleName) continue;
+    for (const workspace of journey.workspaces) {
+      for (const call of workspace.bffCalls) {
+        if (call.kind !== 'query') continue;
+        const collection = (call.output?.fields || []).find(field => field.item && Array.isArray(field.item.fields) && field.item.fields.length > 0);
+        produced.set(call.bffId, unique([
+          ...(call.output?.fields || []).map(field => field.name),
+          ...(collection?.item?.fields || []).map(field => field.name),
+        ].filter(Boolean)));
+      }
+    }
+  }
+  return produced;
+}
+
+export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: Map<string, string[]>): PageTestCase[] {
   const cases: PageTestCase[] = [];
   // What each READ routine of the page yields — the runner harvests exactly these, so this is the set of
   // ids a <seedRef> can resolve. From the l4 wire (producedFields), falling back to the declared output
@@ -894,12 +929,15 @@ export function buildPageTestCases(prepared: CfePreparedPage): PageTestCase[] {
         return [readString(command.commandName), (produced.length > 0 ? produced : commandFields(command.output)).filter(Boolean)] as const;
       }),
   );
+  // Reads of OTHER pages of the same module count too: the runner's pool is per RUN and every read
+  // executes before any command. The page's own map wins on a key collision (same bffId).
+  const reachable = new Map<string, string[]>([...(moduleProduced ?? new Map<string, string[]>()), ...producedByQuery]);
   // A routine can never supply its OWN required input (it would have to run before itself), so the
   // harvest available to a routine is every OTHER read's output. Without this, a getById query whose
   // output repeats its own key looks satisfiable and emits a case that can never resolve.
   const harvestableFor = (commandName: string): Set<string> => {
     const names = new Set<string>();
-    for (const [queryName, fields] of producedByQuery) {
+    for (const [queryName, fields] of reachable) {
       if (queryName === commandName) continue;
       for (const field of fields) names.add(field);
     }
@@ -1015,7 +1053,13 @@ function testLiteralForField(field: PageTestField): unknown {
 
 function renderPageTestsFile(prepared: CfePreparedPage, cases: PageTestCase[]): string {
   const header = `/// <mls fileReference="_${prepared.project}_/l2/${prepared.page.moduleName}/web/desktop/${PAGE_TESTS_VARIANT}/${prepared.page.pageId}.test.ts" enhancement="_blank"/>`;
-  const body = { moduleName: prepared.page.moduleName, page: prepared.page.pageId, variant: PAGE_TESTS_VARIANT, cases };
+  // The workspace's actor rides in the envelope so the tests runner can execute the page's cases AS a
+  // seeded identity for that actor. Without it every actor-scoped route is unrunnable headless: the
+  // usecase reads the id from the session (a field worker sees the tasks assigned to THEM) and fails
+  // 400 with no session (102045 run06: listAssignedTasks). Measured: it is what turns that case from
+  // fail into pass, and unblocks the 2 commands of its page.
+  const actor = readString(prepared.workspace?.actor);
+  const body = { moduleName: prepared.page.moduleName, page: prepared.page.pageId, variant: PAGE_TESTS_VARIANT, ...(actor ? { actor } : {}), cases };
   return `${header}\n\n`
     + `// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner (wherever\n`
     + `// TESTS_ENABLED is on).\n`
@@ -1025,7 +1069,9 @@ function renderPageTestsFile(prepared: CfePreparedPage, cases: PageTestCase[]): 
     + `// the envelope). Every other param is a deterministic literal valid for its declared l4 type, because\n`
     + `// a "${SEED_REF_MARKER}" on a domain field is unsolvable and the command would die in VALIDATION_ERROR\n`
     + `// before testing anything. expect.itemsKey names the collection the wire returns for a paginated\n`
-    + `// query (the runner assumes "items" when it is absent).\n`
+    + `// query (the runner assumes "items" when it is absent). "actor" is this page's l4 actor: the run\n`
+    + `// executes these cases as the seeded platform identity of that actor, so a route that reads the\n`
+    + `// actor id from the session is runnable headless.\n`
     + `export const pageTests = ${JSON.stringify(body, null, 2)} as const;\n`;
 }
 
@@ -2630,6 +2676,10 @@ function buildContentOrganism(pageId: string, role: string, order: number, i18n:
 function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Record<string, unknown> {
   const businessContextRefs = collectBusinessContextRefs(prepared.operations);
   const states = sharedStates(prepared, layout);
+  // State names share the class namespace with action method/handler names; dedupe BEFORE
+  // sharedActions so the derived setter names follow the renamed state (see cfeMemberNames.ts —
+  // real case: projectDetail updateWorkTask.status vs operation updateWorkTaskStatus).
+  dedupeSharedStateNames(states, commandMemberNames(prepared.commands));
   const actions = sharedActions(prepared, states);
   const initialLoads = prepared.commands
     .filter(command => readString(command.kind) === 'query')

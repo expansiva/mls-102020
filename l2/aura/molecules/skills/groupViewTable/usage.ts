@@ -29,15 +29,16 @@ export const skill = `
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| \`value\` | \`string\` | \`''\` | Comma-separated selected row indices (e.g. \`"0,2,5"\`) when selectable |
+| \`value\` | \`string\` | \`''\` | Comma-separated selected row indices (e.g. \`"0,2,5"\`). Drives the selected-row highlight **independently of \`selectable\`** — set it to mark a row without any checkbox column |
 | \`error\` | \`string\` | \`''\` | Error message. Empty string means no error |
-| \`selectable\` | \`boolean\` | \`false\` | Enable row selection with checkboxes |
+| \`selectable\` | \`boolean\` | \`false\` | Renders the per-row checkbox column. It does NOT gate the highlight — see \`value\` |
 | \`is-editing\` | \`boolean\` | \`false\` | Propagates \`is-editing\` attribute to web components inside cells |
 | \`page\` | \`number\` | \`1\` | Current page number (1-based) |
 | \`page-size\` | \`number\` | \`0\` | Rows per page (0 = no pagination) |
 | \`total-items\` | \`number\` | \`0\` | Total number of items for pagination |
 | \`disabled\` | \`boolean\` | \`false\` | Disables all interaction |
 | \`loading\` | \`boolean\` | \`false\` | Shows loading state |
+| \`fit-height\` | \`boolean\` | \`false\` | Take the container's height instead of growing with the rows: **only the body scrolls**, the column header stays stuck to the top, and pagination stays visible at the bottom without scrolling. Use it whenever the table lives inside a bounded viewport (split view, side panel) — without it the rows push pagination out of sight. Requires the parent to have a defined height |
 
 ---
 
@@ -48,7 +49,7 @@ export const skill = `
 | \`change\` | \`{ value: string }\` | Selection changed (comma-separated row indices) |
 | \`sort\` | \`{ key: string, direction: string }\` | Column sort triggered |
 | \`pageChange\` | \`{ page: number }\` | Page navigation triggered |
-| \`rowClick\` | \`{ index: number }\` | Row clicked |
+| \`rowClick\` | \`{ index: number }\` | Row clicked. Does NOT select by itself: selection is a controlled prop, so echo the choice back through \`value\` or the row stays unmarked |
 
 ---
 
