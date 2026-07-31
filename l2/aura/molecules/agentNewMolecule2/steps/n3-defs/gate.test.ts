@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractSkillLiteral, runNm2DefsGate } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n3-defs/gate.js';
+import { extractSkillLiteral, findNonEnglishMarkers, runNm2DefsGate } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n3-defs/gate.js';
 import { nmDefsHeader, nmIdentityFromPlan, renderDefsTs } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTemplates.js';
 import { MoleculePlan } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 
@@ -196,4 +196,31 @@ test('extractSkillLiteral returns the markdown between the backticks', () => {
   assert.ok(literal && literal.startsWith('# Metadata'));
   assert.ok(literal && literal.includes('# Notes'));
   assert.equal(extractSkillLiteral('export const group = \'x\';'), null);
+});
+
+// ---- language, 2026-07-31. Medido nos 174 .defs.ts reais: 7 acusados, 167 limpos, e os 7 acusados
+// são exatamente os que estão em português. Zero falso positivo, inclusive nas moléculas BR. ----
+
+test('a contract written in Portuguese is rejected — the .defs.ts is the machine-facing spec', () => {
+  const pt = GOOD_SKILL
+    .replace('Present a metric card with a label, a primary value and a trend indicator.',
+      'Apresenta um cartão de métrica. O usuário não pode editar o valor.')
+    .replace('- Display a label as the metric title.', '- Quando o valor muda, permite que o rótulo seja atualizado.');
+  const issues = runNm2DefsGate(render(pt), PLAN, HEADER);
+  assert.ok(issues.some(issue => issue.code === 'language'));
+  assert.ok(issues.find(issue => issue.code === 'language')?.message.includes('ENGLISH'));
+});
+
+test('the English fixture is not flagged', () => {
+  assert.ok(!runNm2DefsGate(render(GOOD_SKILL), PLAN, HEADER).some(issue => issue.code === 'language'));
+});
+
+test('function words are the signal, not nouns — a BR molecule may name CPF or Real in English', () => {
+  assert.deepEqual(findNonEnglishMarkers('Accepts a CPF or CNPJ and formats it as Real currency.'), []);
+  assert.deepEqual(findNonEnglishMarkers('O usuário não pode editar.').sort(), ['não', 'usuário']);
+});
+
+test('the marker list is capped so one bad contract cannot flood the retry prompt', () => {
+  const many = 'não quando o quando a deve exibir deve permitir usuário é exibido ao clicar permite que';
+  assert.ok(findNonEnglishMarkers(many).length <= 4);
 });

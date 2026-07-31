@@ -88,7 +88,14 @@ async function beforePromptStep(
   const previousAttempt = await readPreviousAttemptSource(runKey, PLAN_ID, parsedArgs.retryAttempt || 1);
 
   const humanPrompt = [
-    `Write the contract for ${plan.tag} in '${ctx.userLanguage}'.`,
+    // The contract is written in ENGLISH regardless of ctx.userLanguage: it is machine-facing (n4-render,
+    // the Design System process and tplCore.summarizeMoleculeDefs all read it), and 167 of the 174
+    // contracts in the library are English. The requirements arrive in the user's language, so the
+    // instruction has to say TRANSLATE — otherwise the model mirrors the input.
+    `Write the contract for ${plan.tag} in ENGLISH.`
+    + (ctx.userLanguage && !ctx.userLanguage.startsWith('en')
+      ? ` The confirmed requirements are in '${ctx.userLanguage}' — translate them into English, do not copy them.`
+      : ''),
     previousAttempt.trim() ? `## The .defs.ts your last markdown produced — FIX IT, do not start over\n\`\`\`typescript\n${previousAttempt}\n\`\`\`` : '',
     parsedArgs.retryContext ? `## What the gate rejected — fix ALL of these\n${parsedArgs.retryContext}` : '',
   ].filter(Boolean).join('\n\n');

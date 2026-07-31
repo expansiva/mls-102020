@@ -31,7 +31,9 @@ The requirements below were confirmed by a human. Your job is to turn them into 
 - **Constraints are hard limits**: what it must NOT do, what is mandatory, which content areas exist. The group contract's boundaries belong here.
 - **Notes** carry the rest: assumptions, accessibility behaviour, relationships to other components.
 - Cover every confirmed functional requirement. Fold the visual requirements into Responsibilities or Constraints as *hierarchy* statements ("the value carries the strongest visual weight"), never as values.
-- Write in the user's language, except the TagName.
+- **Write the whole contract in ENGLISH.** This file is not user-facing: it is the spec that later
+  steps and the Design System process read, and 167 of the 174 contracts in the library are in English.
+  The confirmed requirements below may arrive in another language — translate them, do not copy them.
 - Do not write the `# Metadata` TagName from memory — copy `{{tag}}` exactly. Code replaces this line anyway; a wrong value only signals you were guessing.
 
 ## Confirmed requirements

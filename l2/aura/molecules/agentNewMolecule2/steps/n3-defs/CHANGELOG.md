@@ -68,3 +68,31 @@ Era escrito às cegas. É arquivo TypeScript, e seu modo de falha conhecido — 
 escape dentro do literal do skill — era checado só textualmente. Agora escreve primeiro, chama
 `compileStorTs` e os erros do compilador entram no gate como código `compile`. Uma tentativa
 reprovada deixa o conteúdo em disco para o retry ler, a mesma troca que o n4-render já fazia.
+
+## 2026-07-31 — o contrato passa a ser escrito em INGLÊS (A12)
+
+O `.defs.ts` estava saindo em português. Duas origens, ambas pedindo a língua do usuário:
+
+- `prompt.md:34` — "Write in the user's language, except the TagName."
+- `agentNm2Defs.ts` humanPrompt — `` `Write the contract for ${plan.tag} in '${ctx.userLanguage}'.` ``
+
+**Medição que decidiu:** dos 174 `.defs.ts` reais do 102040, **167 estão em inglês** e 7 em português —
+e os 7 estão espalhados por grupos diferentes, resquícios do fluxo antigo (que não dizia nada sobre
+língua, então o modelo seguia o inglês do prompt). Inglês é a convenção; o NM2 era a regressão.
+
+Faz sentido: este arquivo **não é voltado ao usuário**. É a spec que o n4-render, o processo de Design
+System e o `tplCore.summarizeMoleculeDefs` leem.
+
+**Aplicado.** As duas instruções agora pedem inglês, e — detalhe que importa — dizem para **TRADUZIR**:
+os requisitos chegam na língua do usuário (vêm do checkpoint do n2-plan), então sem isso o modelo
+espelha a entrada. O `ctx.userLanguage` continua valendo para o n6-demo e o n7-index, que são páginas
+de verdade voltadas ao usuário.
+
+**Gate novo `language`.** Instrução não é mecanismo (lição do A10), então o gate confere. Detectar
+língua em geral é inviável, mas o modo de falha aqui é específico: espelhar o português da entrada.
+Por isso a regra procura **palavras funcionais** do português, não substantivos —
+`não`, `quando o`, `usuário`, `permite que`, `deve exibir`, … Medido com a função real sobre os 174
+contratos: **7 acusados, e são exatamente os 7 em português. Zero falso positivo**, inclusive nas
+moléculas brasileiras: `ml-enter-money-br` fica limpa, porque um contrato em inglês pode perfeitamente
+citar "CPF" ou "Real" — o que ele não faz é usar "quando o" ou "permite que". A lista devolvida é
+limitada a 4 marcadores para não inundar o prompt do retry.

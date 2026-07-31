@@ -105,6 +105,13 @@ export function runNm2DefsGate(source: string, plan: MoleculePlan, expectedHeade
 
   // Only the body is scanned for code: the Metadata tag itself contains '--ml-'.
   const body = sliceFromSection(skill, '# Objective');
+
+  for (const marker of findNonEnglishMarkers(body)) {
+    issues.push({
+      code: 'language',
+      message: `the contract must be written in ENGLISH — found '${marker}'. This file is the machine-facing spec that n4-render and the Design System process read; translate the requirements instead of mirroring them`,
+    });
+  }
   for (const token of CODE_TOKENS) {
     if (token.pattern.test(body)) {
       issues.push({ code: 'implementation_detail', message: `the contract states observable behaviour only — found ${token.label}` });
@@ -141,6 +148,23 @@ export function parseEmittedLayoutConfig(source: string): Record<string, string>
 }
 
 // The content between "export const skill = `" and the closing "`;" — null when absent.
+// The contract must be in English. Detecting a language in general is unreliable, so this looks for
+// PORTUGUESE FUNCTION WORDS — the specific failure seen, since the requirements reach the model in the
+// user's language and it mirrors them.
+//
+// MEASURED over the 174 real .defs.ts of mls-102040: 7 accused, 167 clean, and the 7 accused are
+// exactly the Portuguese ones. Zero false positives — including the Brazil-specific molecules, where a
+// Portuguese noun could plausibly appear in legitimate English prose (`ml-enter-money-br` is clean).
+// Function words, not nouns, is what makes that possible: a contract may well mention "CPF" or "Real"
+// in English, but not "quando o" or "permite que".
+const PT_MARKERS = /\b(não|quando o|quando a|deve exibir|deve permitir|usuário|é exibido|são exibidos|ao clicar|permite que)\b/gi;
+
+export function findNonEnglishMarkers(body: string): string[] {
+  const found = new Set<string>();
+  for (const match of body.match(PT_MARKERS) || []) found.add(match.toLowerCase());
+  return [...found].slice(0, 4);
+}
+
 export function extractSkillLiteral(source: string): string | null {
   const opener = 'export const skill = `';
   const start = source.indexOf(opener);
