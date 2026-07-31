@@ -222,7 +222,10 @@
       },
       "gate": {
         "file": "steps/e6-journey-map/gate.ts",
-        "checks": ["valid e6 schema", "every operation appears in >=1 workspace", "workspace workflowId/operationIds/actor/entity resolve", "unique workspaceIds", "every actor with now-priority behaviors has a landing (warning)", "edges reference existing pageIds (warning)", "workspace kind derived deterministically from the classification (workflow-owned ops -> workflow; standalone create+update on the entity -> entityManagement; else operation)", "entityManagement workspaces never declare workflowId"]
+        "checks": ["valid e6 schema", "every operation appears in >=1 workspace", "workspace workflowId/operationIds/actor/entity resolve", "unique workspaceIds", "every actor with now-priority behaviors has a landing (warning)", "edges reference existing pageIds (warning)", "workspace kind derived deterministically from the classification (workflow-owned ops -> workflow; standalone create+update on the entity -> entityManagement; else operation)", "entityManagement workspaces never declare workflowId",
+        "presentation.categoryRef (and each alternate) exists in the categoryList.json catalog handed in through the gate context (ERROR); catalog integrity = duplicate ids / dangling parentCategory (ERROR)",
+        "presentation styleRef resolves to a _102040_ template folder, confidence < 6, missing presentation and the coarse category-vs-shape findings are WARNINGS (a retry cannot fix run configuration; a low score is signal for a new category)",
+        "every presentation check naming a category id no-ops when that id leaves the catalog (categoryList.json is the single source of truth; an unreachable catalog warns once and skips)"]
       },
       "doneAnchor": "e6-done"
     },

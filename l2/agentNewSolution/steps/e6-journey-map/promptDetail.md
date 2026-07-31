@@ -64,3 +64,30 @@ HARD REQUIREMENTS (a result violating these is rejected outright):
   Content roles (LANDING pages only): "hero"|"banner"|"richText"|"imageSet"|"ctaLink" (no bffCall ref);
   "showcase" (dataSource = a read-only query bffCall). A landing needs no primarySurface.
 Every operation in the map's operationIds must be consumed by ≥1 bffCall of THIS workspace.
+
+- presentation: CLASSIFY this workspace into ONE page category, so the renderer can pick its template.
+  Emit `presentation: { categoryRef, confidence, alternates?, classificationNote? }`. Do NOT emit
+  styleRef (it is run configuration, stamped by the system).
+  - categoryRef MUST be one of the ids in the "Page categories" list of the human message. That list
+    is the only source; never invent an id, never reuse one from another project or from memory.
+  - CLASSIFY BY THE INTERACTION PATTERN, NOT BY THE ENTITY'S DOMAIN. This is the most common mistake:
+    a billing page that is a 2-step wizard is wizard-shaped, not a "financial" page; a page about
+    products that is really a work queue is queue-shaped.
+  - SPECIFICITY: when a parent and its child category both fit (the list marks "child of X"), choose
+    the CHILD. The parent is the fallback when the child's specific requirement is absent.
+  - Objective signals to weigh (the valid ids always come from the list, not from these examples):
+    - only commands, no query at all → record capture/maintenance;
+    - no write operation at all → pure reading (detail portal, dashboard, report explorer);
+    - a binary transition carrying a reason → a decision/approval page;
+    - a paginated query + a transition command over the listed item → a work queue;
+    - several aggregated queries and no dominant form → monitoring.
+  - confidence: 0–10 for how well the category fits (≥8 = strong fit). If nothing fits well, still
+    pick the closest, give it a LOW confidence and explain in `classificationNote` what is missing —
+    a low score is useful signal (a candidate for a new category), never a reason to force a bad fit.
+  - alternates: up to 2 runners-up `{ categoryRef, confidence, reason }`.
+- input `source` (command bffCalls): for every input, declare WHERE its value comes from —
+  "userDecision" (the actor types/decides it), "selection" (picked from a query on THIS workspace;
+  `sourceRef` = that query's bffId), "pageInput" (arrives with the page, e.g. from a navigation),
+  "actorSession" (the logged-in actor/context) or "derived" (`sourceRef` = "<bffId>.<outputField>"
+  of an earlier command). A REQUIRED id must never be "userDecision": ids are selected or arrive
+  with the page — a typed-in id is a defect.
