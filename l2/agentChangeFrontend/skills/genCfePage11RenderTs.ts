@@ -11,9 +11,12 @@ This file extends the shared base class and only renders. It must not own state,
 Definition is the page11 .defs.ts object:
 - page metadata
 - baseClassName: the deterministic shared base class that this page must import and extend
-- navigationRefs
-- layout.sections[] as the source of truth for render structure
-- dataBindings
+- purpose: what this page is FOR, in the l4 author's words — the intent to design around
+- presentation.categoryRef: the UX category this workspace was classified as
+- dataBindings[]: THE source of truth for structure. One entry per bffCall of the page, each with
+  "command", "kind" (query|command), "stateKey" (its result/output state) and "inputs[]"
+  ({ name, stateKey, source, required }). There is NO layout/sections block: YOU choreograph the page
+  from these bindings plus the shared base class surface.
 
 The page11 definition must not contain i18n values. All visible text values come from the shared context.
 
@@ -75,10 +78,12 @@ The same applies to any invented name (nothingOrEmpty, nothingPlaceholder, empty
 page therefore has NO module-level function declarations at all: the only class method is render(), and
 pure formatting/grouping helpers are const arrow functions declared INSIDE render().
 
-## Mapping layout to render
+## Mapping the contract to render
 
-Use Definition.layout.sections[].
-Use section.titleKey, organism.titleKey, intention.titleKey, intention.emptyKey, field.labelKey and action.labelKey only as keys into this.msg.
+Choreograph from Definition.dataBindings[]: a "query" binding is a surface (table/list/cards/panel per
+its output shape), a "command" binding is an action on the surface it belongs to. Group a command WITH
+the data it acts on — never a stray form at the bottom of the page. Order by what "purpose" says matters.
+Use only msg keys declared by the shared base class MessageType.
 Access messages ONLY as typed member access on this.msg using the exact key string, e.g. this.msg['menuManagement.field.name.label']. The msg keys are declared in the shared .ts and are type-checked: a wrong or missing key must surface as a compile error — that is the desired behavior.
 NEVER cast this.msg (no "as Record<string, string>", no "as any") and NEVER wrap it in a helper such as getMsg/t/translate. Those erase key typing and let broken keys ship silently as empty strings.
 Use each key EXACTLY as it appears in the layout *Key field (which matches the shared i18n); do not shorten or re-derive it — e.g. never write 'section.board' when the declared key is 'menuManagement.section.main.title'.
@@ -152,6 +157,28 @@ Do not render custom molecule/web-component tags.
 Do not use group names such as groupViewTable or tags such as groupviewtable--ml-data-table.
 
 Keep cards at rounded-lg or less. Use Tailwind utility classes for LAYOUT (spacing, flex/grid, sizing, radius).
+
+## Regras invioláveis de experiência (as 4 reincidentes — cada uma tem check no gate)
+
+1. VOCABULÁRIO INTERNO NUNCA VIRA TEXTO DE TELA. displayHint, intent id, state key, nome de bffCall e
+   ids de binding são fiação, não copy. Um tile intitulado "Summary first" (o displayHint humanizado)
+   foi defeito real. Escreva o texto que o USUÁRIO leria; se não há msg key declarada para ele, use
+   literal com TODO — nunca o token técnico.
+2. page / pageSize / sortBy / offset / limit NUNCA SÃO CAMPOS DE FORMULÁRIO. São controle da coleção:
+   paginação é o pager da própria superfície, ordenação é o cabeçalho da coluna. Ninguém digita um
+   "page size" num form.
+3. RESPEITE "source" DE CADA INPUT (dataBindings[].inputs[].source) — é o que decide se o input pode ser
+   um campo:
+   - "userInput"/"userDecision" → campo de formulário normal;
+   - "selectedEntity"/"selection" → vem de SELECIONAR uma linha da superfície, e a seleção ALIMENTA o
+     form/painel do comando. Nunca um painel "Update" órfão com campos vazios, nunca um input de id;
+   - "routeParam"/"pageInput" → vem do contexto/rota, não renderiza como campo;
+   - "actorSession"/"businessContext" → do usuário logado, NUNCA editável;
+   - "derived" → encadeado do output anterior, somente leitura.
+4. DISCIPLINA DE TÍTULOS E AÇÕES DESTRUTIVAS: o título da página aparece 1× (o shell já mostra o nome —
+   não repita); um heading nunca repete o label do botão/link vizinho (se o botão diz "Aprovar", o
+   heading acima dele diz outra coisa ou não existe); no máximo UMA ação destrutiva por superfície,
+   nunca como botão default de linha, e sempre com confirmação que NOMEIA o registro.
 
 ## Design system colors
 

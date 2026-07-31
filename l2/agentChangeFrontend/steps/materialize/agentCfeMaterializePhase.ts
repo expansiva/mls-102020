@@ -14,7 +14,11 @@ import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, saveMaterializeVerifySummary, saveMaterializeVerifyTrace, type MaterializeVerifyPassed } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import {
   collectDesignTokenRoleIssues,
+  collectHeadingDisciplineIssues,
   collectMissingImageRenderIssues,
+  collectMutationFeedbackIssues,
+  collectPageExperienceIssues,
+  collectTechnicalVocabularyIssues,
   collectPageTemplateHygieneIssues,
   countPage11Items,
   isSystemicPageFailure,
@@ -281,7 +285,16 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
       // .ts, never its .defs.ts; treating a defs-only issue as a repairable error loops until the
       // budget is exhausted. Keep the result auditable in the trace and let the create-page stage
       // own a future layout regeneration.
-      warnings.push(...validateGeneratedPageQuality(parseDefs(defsContent).data, parseDefs(sharedDefs).data, content));
+      const pageData = parseDefs(defsContent).data;
+      const sharedData = parseDefs(sharedDefs).data;
+      warnings.push(...validateGeneratedPageQuality(pageData, sharedData, content));
+      // The reduced page defs carries no layout, so these judge the GENERATED CODE anchored on
+      // dataBindings (supervisor decision B.1, 31/jul). Errors, not warnings: each is deterministic and
+      // fixed by rewriting the .ts — exactly what the repair round does.
+      errors.push(...collectPageExperienceIssues(pageData, sharedData, content));
+      errors.push(...collectMutationFeedbackIssues(pageData, sharedData, content));
+      errors.push(...collectTechnicalVocabularyIssues(pageData, content));
+      errors.push(...collectHeadingDisciplineIssues(content));
     }
     // bugimage.md: a page binding an image-URL field must render an <img>. Deliberately a WARNING, not
     // an error: unlike the template-hygiene defect above (unambiguously broken output), "should render an

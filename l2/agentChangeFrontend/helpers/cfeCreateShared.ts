@@ -278,7 +278,14 @@ export interface CfePageLayoutDefinition {
   layoutId: string;
   sections: CfeLayoutSection[];
   i18n: Record<string, string>;
-  dataBindings: { id: string; source: string; entity?: string; command?: string; description?: string; stateKey?: string; inputStateKeys?: string[] }[];
+  dataBindings: {
+    id: string; source: string; entity?: string; command?: string; description?: string;
+    stateKey?: string; inputStateKeys?: string[];
+    kind?: 'query' | 'command';
+    /** Every input with its l4 `source` — what the render (and the gate) needs to decide if it may be a
+     *  form control. Added by enrichLayoutWithStateRefs; the reduced page defs carries it. */
+    inputs?: { name: string; stateKey: string; source: string; required: boolean; presentation?: string }[];
+  }[];
 }
 
 // LLM-facing composition (the tool output shape). Expanded into a full CfePageLayoutDefinition by
@@ -1615,7 +1622,7 @@ function mergeLayoutsForShared(layouts: CfePageLayoutDefinition[]): CfePageLayou
   return { pageId: primary.pageId, layoutId: primary.layoutId, sections, i18n, dataBindings };
 }
 
-export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[]; configMsg: string; addLanguageMessage: string | null }> {
+export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[]; configMsg: string; addLanguageMessage: string | null; moduleName: string }> {
   const context = await readCreateContext();
   const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) && await hasRegisteredFrontend(context.project, page) })));
   const validPages = checkedPages.filter(item => item.ok).map(item => item.page);
@@ -1623,7 +1630,7 @@ export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; o
   const ownersDone = await updateOwnerStatuses(context, validPages.flatMap(page => page.ownerIds), 'done');
   await saveCreateReport(context.project, validPages, ownersDone, skippedPages);
   const configMsg = await saveFrontendWorkspaceConfig(context, validPages);
-  return { pagesDone: validPages.map(page => page.pageId), ownersDone, skippedPages, configMsg, addLanguageMessage: buildAddLanguageMessage(context, validPages) };
+  return { pagesDone: validPages.map(page => page.pageId), ownersDone, skippedPages, configMsg, addLanguageMessage: buildAddLanguageMessage(context, validPages), moduleName: validPages.length > 0 ? readString(validPages[0].moduleName) : '' };
 }
 
 /**
@@ -2296,7 +2303,39 @@ function repairMissingLayoutI18n(prepared: CfePreparedPage, layout: CfePageLayou
     }
   }
 
+  // Mutation feedback keys. buildActions declares `action.<cmd>.success/error` for EVERY command, but
+  // nothing ever put them in the catalog — the backfill above only walks layout vocabulary. So every
+  // module with a command was born with a dangling reference, and a render that indexed the catalog with
+  // one of them failed TS7053 (102045 projectLifecycleWorkspace: 3 errors that survived because the file
+  // was not stale and never got recompiled). Closing it at the producer kills the whole class.
+  added.push(...addMutationFeedbackI18n(prepared.commands, i18n));
+
   return added.length > 0 ? { ...layout, i18n } : layout;
+}
+
+/**
+ * Add the `action.<cmd>.success/error` entries every command's `feedback` block references.
+ *
+ * buildActions declares those keys for EVERY command, but nothing ever wrote them into the catalog: the
+ * layout backfill only walks section/organism/intent/field vocabulary. So every module with a command was
+ * born with a dangling reference, and a render that indexed the catalog with one of them failed TS7053
+ * (102045 projectLifecycleWorkspace: 3 errors that survived because the file was not stale and therefore
+ * was never recompiled). Closing it at the producer removes the whole class.
+ * Returns the keys it added (empty when the catalog already had them).
+ */
+export function addMutationFeedbackI18n(commands: Record<string, unknown>[], i18n: Record<string, string>): string[] {
+  const added: string[] = [];
+  for (const command of commands) {
+    const commandName = readString(command.commandName);
+    if (!commandName || readString(command.kind) === 'query') continue;
+    const title = readString(command.purpose) || humanizeId(commandName);
+    for (const [key, text] of [[`action.${commandName}.success`, `${title}: OK`], [`action.${commandName}.error`, `${title}: falhou`]] as const) {
+      if (i18n[key]) continue;
+      i18n[key] = text;
+      added.push(key);
+    }
+  }
+  return added;
 }
 
 function fallbackI18nText(key: string, fallback: string, kind: 'title' | 'label' | 'empty'): string {
@@ -3116,8 +3155,20 @@ function enrichLayoutWithStateRefs(prepared: CfePreparedPage, layout: CfePageLay
     const command = commandByName(prepared, commandName);
     return commandName && command ? {
       ...binding,
+      kind: readString(command.kind) === 'query' ? 'query' : 'command',
       stateKey: readString(command.kind) === 'query' ? queryDataStateKey(prepared.page.pageId, commandName) : commandOutputStateKey(prepared.page.pageId, commandName),
       inputStateKeys: commandInputStateKeys(prepared, commandName),
+      // B3: the l4 `source` of every input travels to the render. It decides whether an input may be a
+      // form control at all — `selection` is fed by picking a row, `pageInput`/`actorSession` come from
+      // context, `derived` is chained read-only — and it is the anchor of the source-aware id check
+      // (an id whose source is not a user decision must never be bound to an editable control).
+      inputs: commandFieldRecords(command.input).map(field => ({
+        name: field.name,
+        stateKey: inputStateKey(prepared.page.pageId, commandName, field.name),
+        source: field.source || 'userInput',
+        required: field.required === true,
+        ...(field.presentation ? { presentation: field.presentation } : {}),
+      })),
     } : binding;
   });
 
