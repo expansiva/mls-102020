@@ -2,6 +2,22 @@
 
 # Changelog
 
+- 2026-07-31 (l2_shared determinístico TAMBÉM no Studio — fecha o MAX_TOKENS) — a task
+  `buildFlowFsm - frontend` morreu com `ERROR(MAX_TOKENS_REACHED)` em 50000 tokens, 11m39s e $0.30, no
+  step `materialize-projectdetailworkspace-l2-shared`. É o MESMO muro do run03 que o scaffold
+  determinístico (28/jul) foi criado para derrubar — mas ele só havia sido ligado no CLI
+  (`nodejsMaterializeL2 materializeSharedDeterministic`), e o Studio (`agentCfeMaterializeGen`) seguia
+  chamando o LLM para l2_shared (pendência declarada no próprio CHANGELOG: "wire it with the pages
+  session"). Agora o `beforePromptStep` tenta o scaffold ANTES de montar o prompt: se ele renderiza, o
+  step conclui sem NENHUMA chamada de modelo; se devolve `{code:null, reason}` (defs fora do que ele
+  modela), cai no LLM exatamente como antes. Persiste o mesmo que o caminho LLM — mesmo `saveGeneratedTs`,
+  mesmo typecheck test, mesmo gate de compile, mesmo `persistSharedDtsArtifact` — então nada a jusante
+  distingue os dois. Fallback conservador em TRÊS pontos: sem contrato legível, scaffold bail, ou saída
+  que não compila -> LLM (o arquivo em disco é sobrescrito pela saída dele). Verificado com defs real
+  (102051 posWorkspace, o maior disponível): 38KB de defs -> 56KB de .ts (~16k tokens) gerados sem LLM,
+  e o catálogo saiu `{ 'pt': message_pt }` (a correção de locale do dia anterior). O defs do
+  projectDetailWorkspace não pôde ser testado porque o `rebuild-all` que falhou limpou o l2 do 102045.
+
 - 2026-07-30 (token de fundo usado como cor de texto) — mls-102045 gerou
   `bg-[var(--bg-secondary-color,#334155)] text-[var(--bg-primary-color,#ffffff)]`: um token de FUNDO como
   cor do rótulo. Só parece certo enquanto vale o fallback hardcoded do `var()`; com o tema aplicado (os

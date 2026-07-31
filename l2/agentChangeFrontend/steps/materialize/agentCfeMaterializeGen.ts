@@ -39,6 +39,9 @@ import {
   saveGeneratedTsByMlsPath,
   type GenStepArgs,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
+// Deterministic l2_shared renderer (pure, import-free). Wired here so the Studio path stops paying the
+// LLM — and stops hitting its output cap — for a file that is a mechanical projection of the defs.
+import { generateSharedScaffold } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
 
 interface ToolOutput {
   code: string;
@@ -71,6 +74,17 @@ async function beforePromptStep(
 
     const genArgs = parseGenStepArgs(args);
     const genContext = await buildGenContext(genArgs.defPath);
+
+    // l2_shared is a MECHANICAL projection of defs + contract — no judgement is needed (see
+    // steps/materialize/CHANGELOG 28/jul). Try the deterministic scaffold FIRST and skip the model
+    // entirely when it succeeds. This is what kills the output-size wall: projectDetailWorkspace needs a
+    // ~55k-token file in ONE tool call and the LLM path died with MAX_TOKENS_REACHED at 50000 after
+    // 11m39s ($0.30), failing the whole task. The scaffold returns {code:null, reason} on any defs shape
+    // it does not model, and then we fall through to the LLM exactly as before.
+    if (genContext.pipelineItem.type === 'l2_shared') {
+      const deterministic = await materializeSharedDeterministic(context, parentStep, step, hookSequential, genContext.pipelineItem, genContext.definitionData);
+      if (deterministic) return deterministic;
+    }
     // Repair rounds (attempt >= 2) arrive as fan-out slots carrying only compact refs — the
     // compiler errors are recomputed from disk HERE and injected into the LLM input (cleaned
     // later by the interaction cleaner), never persisted in a step prompt/args (DynamoDB 400KB
@@ -83,6 +97,66 @@ async function beforePromptStep(
     const message = formatError('beforePromptStep', error);
     console.error(`[${agent.agentName}] ${message}`);
     return [mkFailureStatus(context, parentStep, step, hookSequential, isRepairRun(args || step.prompt), message)];
+  }
+}
+
+/**
+ * Deterministic l2_shared materialization (no LLM). Returns the intents that COMPLETE the step when the
+ * scaffold produced the file, or null to fall through to the LLM (no contract in reach, scaffold bailed,
+ * or the generated file did not compile — the model still gets its chance).
+ *
+ * Persists exactly what the LLM path persists (same .ts save, same typecheck test, same compile gate,
+ * same shared .d.ts artifact), so nothing downstream can tell the two apart.
+ */
+async function materializeSharedDeterministic(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  pipelineItem: PipelineItem,
+  definitionData: unknown,
+): Promise<mls.msg.AgentIntent[] | null> {
+  try {
+    const contractTsPath = isRecord(definitionData) && isRecord(definitionData.contractRef) && typeof definitionData.contractRef.tsPath === 'string'
+      ? definitionData.contractRef.tsPath
+      : '';
+    const contractSource = contractTsPath ? await getContentByMlsPath(contractTsPath) : null;
+    if (!contractSource) return null;
+
+    const scaffold = generateSharedScaffold(pipelineItem.outputPath, definitionData, contractSource);
+    if (!scaffold.code) {
+      console.info(`[agentCfeMaterializeGen] scaffold bail for ${pipelineItem.outputPath} (${scaffold.reason}) -> LLM`);
+      return null;
+    }
+
+    const parsed = parseMlsPath(pipelineItem.outputPath);
+    if (!parsed) return null;
+    consumeMaterializeStudioMessages();
+    const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, scaffold.code);
+    if (!saved) return null;
+
+    const typecheckTest = buildMaterializeTypecheckTest(pipelineItem, definitionData);
+    const typecheckPath = typecheckTest ? testPathForOutputPath(pipelineItem.outputPath) : null;
+    if (typecheckPath && typecheckTest && !await saveGeneratedTsByMlsPath(typecheckPath, typecheckTest)) return null;
+
+    const compileErrors = [
+      ...await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName),
+      ...(typecheckPath ? await compileMlsPathAndGetErrors(typecheckPath) : []),
+    ];
+    if (compileErrors.length > 0) {
+      // The scaffold is deterministic, so a compile error here is a defs/contract mismatch it could not
+      // see. Hand the item to the LLM instead of failing: the file on disk is overwritten by its output.
+      console.info(`[agentCfeMaterializeGen] scaffold output did not compile for ${pipelineItem.outputPath} -> LLM (${compileErrors[0]})`);
+      return null;
+    }
+
+    await persistSharedDtsArtifact(pipelineItem.outputPath);
+    const studioDiagnostics = consumeMaterializeStudioMessages();
+    const trace = `deterministic scaffold: ${scaffold.code.length}b, no LLM call${typecheckPath ? ' + typecheck test' : ''}`;
+    return [mkStatus(context, parentStep, step, hookSequential, 'completed', studioDiagnostics.length ? `${trace}. ${formatStudioDiagnostics(studioDiagnostics)}` : trace, 'input_output')];
+  } catch (error) {
+    console.error(`[agentCfeMaterializeGen] deterministic shared failed (${formatError('materializeSharedDeterministic', error)}) -> LLM`);
+    return null;
   }
 }
 
