@@ -155,6 +155,38 @@ export async function writeStorTextAtomic(fileInfo: NmFileInfo, content: string,
   await mls.stor.localStor.setContent(storFile, { contentType: 'string', content });
 }
 
+// ---- compilation (A5b, 2026-07-30) ----
+//
+// One implementation for every step that writes a source artifact. Before this, only n4-render
+// compiled: the .defs.ts, the group index.ts and the .less were written blind, and the index is the
+// worst of the three — it is a SHARED file of the group, rewritten with new imports and a Lit
+// component, so a break takes the whole group page down.
+//
+// Reads `compilerResults.errors`, the same source of truth the old flow's Fix agent used. The
+// `!ok && !errors.length` guard matters: `compile()` can return false without filling `errors`.
+export async function compileStorTs(fileInfo: NmFileInfo): Promise<{ errors: string[]; imports: string[] }> {
+  const storFile = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+  if (!storFile) return { errors: [`could not open ${toDisplayPath(fileInfo)} to compile it`], imports: [] };
+  const modelTs = await storFile.getOrCreateModel() as mls.editor.IModelTS;
+  const ok = await mls.l2.typescript.compileAndPostProcess(modelTs, true, false);
+  const errors = (modelTs.compilerResults?.errors || []).map(error => (typeof error === 'string' ? error : JSON.stringify(error)));
+  if (!ok && !errors.length) errors.push('compilation failed without a reported error');
+  return { errors, imports: modelTs.compilerResults?.imports || [] };
+}
+
+// A .less has no model created by createStorFile (its extension is not in the allowed list there),
+// so the model is created here on demand. Errors land in `styleResults.errors`.
+export async function compileStorLess(fileInfo: NmFileInfo): Promise<string[]> {
+  const storFile = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+  if (!storFile) return [`could not open ${toDisplayPath(fileInfo)} to compile it`];
+  const modelStyle = await storFile.getOrCreateModel() as mls.editor.IModelStyle;
+  if (!modelStyle) return [`could not open a style model for ${toDisplayPath(fileInfo)}`];
+  const ok = await mls.l2.less.compileStyle(modelStyle);
+  const errors = (modelStyle.styleResults?.errors || []).map(error => (typeof error === 'string' ? error : JSON.stringify(error)));
+  if (!ok && !errors.length) errors.push('the stylesheet failed to compile without a reported error');
+  return errors;
+}
+
 export function toDisplayPath(fileInfo: NmFileInfo): string {
   const folder = fileInfo.folder ? `${fileInfo.folder}/` : '';
   return `l${fileInfo.level}/${folder}${fileInfo.shortName}${fileInfo.extension}`;

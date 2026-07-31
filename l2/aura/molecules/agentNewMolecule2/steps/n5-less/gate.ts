@@ -86,6 +86,20 @@ export function runNm2LessGate(
     issues.push({ code: 'portal_extra', message: 'this molecule has no portal — do not use a data-widget selector' });
   }
 
+  // A4 (first Studio run, 2026-07-30): `&.<class>` at the FIRST level of the tag block anchors the
+  // class on the HOST element — and Lit renders INTO the host, so a class the render emits lands on
+  // an inner element and the rule never matches. The generated sheet wrote
+  // `groupviewtable--ml-data-grid-33 { &.ml-disabled { opacity: … } }`, which made the disabled state
+  // have no visual effect at all. MEASURED over the 231 real sheets: 0 occurrences at level 1, and 49
+  // at level 2+ — where `&` means the enclosing inner selector (`.ml-input-container { &.ml-disabled
+  // { … } }`) and is perfectly legitimate. So this rule is level-1 only.
+  for (const found of findHostAnchoredClasses(content, options.renderTs)) {
+    issues.push({
+      code: 'host_anchored_class',
+      message: `'&${found}' at the first level anchors the class on the molecule tag itself, but the render emits it on an inner element — the rule can never match. Style it as a descendant ('${found.replace(/^\./, '.')} { … }'), which is what 139 of the base sheets do`,
+    });
+  }
+
   const inventory = new Set(extractMlClassesFromTs(options.renderTs));
   const unknown = extractMlClassesFromLess(content).filter(cls => !inventory.has(cls));
   if (unknown.length) {
@@ -161,4 +175,34 @@ export function runNm2LessGate(
   }
 
   return issues;
+}
+
+// `&.<class>` sitting at the first nesting level: `&` there is the molecule tag (the host). Returns
+// the offending `.class` chains. Depth is counted BEFORE the selector's own block opens, so a
+// selector written at level 1 is reported at level 1. Nested deeper, `&` is the parent inner selector
+// and the construct is legitimate (49 real occurrences), so those are ignored.
+//
+// Escape hatch: if the render puts the class on the host itself via `classList.add/toggle`, the rule
+// DOES match and the sheet is right. No molecule does that today (0 of 231), but the invariant is
+// "does the host actually get this class", not "never use &".
+export function findHostAnchoredClasses(less: string, renderTs: string): string[] {
+  const onHost = new Set<string>();
+  for (const match of (renderTs || '').matchAll(/classList\.(?:add|toggle)\(\s*['"`]([\w-]+)['"`]/g)) {
+    onHost.add(match[1]);
+  }
+
+  const found = new Set<string>();
+  let depth = 0;
+  for (const raw of less.split('\n')) {
+    const line = raw.replace(/\/\/.*$/, '');
+    if (depth === 1) {
+      const match = line.match(/&((?:\.[A-Za-z_][\w-]*)+)/);
+      if (match && !match[1].slice(1).split('.').every(cls => onHost.has(cls))) found.add(match[1]);
+    }
+    for (const character of line) {
+      if (character === '{') depth++;
+      else if (character === '}') depth--;
+    }
+  }
+  return [...found];
 }

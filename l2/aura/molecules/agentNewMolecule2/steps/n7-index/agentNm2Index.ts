@@ -13,6 +13,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as indexGroupPageSkill } from '/_102020_/l2/aura/molecules/skills/indexGroupPage.js';
 import {
   NM_AGENT_FOLDER,
+  compileStorTs,
   isRecord,
   nmContextFileInfo,
   nmGroupIndexFile,
@@ -142,9 +143,22 @@ async function afterPromptStep(
     extractError = error instanceof Error ? error.message : String(error);
   }
 
+  // A5b (2026-07-30): of the three artifacts that were written blind, this is the dangerous one — the
+  // group index is SHARED, rewritten with a new import line and a whole Lit component, so a break
+  // takes down the page of every molecule in the group, not just the new one.
+  const tsInfo = nmGroupIndexFile(plan.group, '.ts');
+  let compileErrors: string[] = [];
+  if (!extractError && indexTs.trim()) {
+    await writeStorTextAtomic(tsInfo, indexTs, true);
+    compileErrors = (await compileStorTs(tsInfo)).errors;
+  }
+
   const issues = extractError
     ? [{ code: 'extract', message: extractError }]
-    : runNm2IndexGate(indexTs, plan, ctx, { indexTag: nmGroupIndexTag(identity), groupMolecules });
+    : [
+      ...runNm2IndexGate(indexTs, plan, ctx, { indexTag: nmGroupIndexTag(identity), groupMolecules }),
+      ...compileErrors.map(message => ({ code: 'compile', message })),
+    ];
   const errorText = issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
 
   await writeJsonArtifact(nmTraceFileInfo(runKey, PLAN_ID, attempt), {
@@ -156,11 +170,9 @@ async function afterPromptStep(
     ...(issues.length ? { error: errorText } : {}),
   });
 
-  const tsInfo = nmGroupIndexFile(plan.group, '.ts');
   const display = toDisplayPath(tsInfo);
 
   if (issues.length === 0) {
-    await writeStorTextAtomic(tsInfo, indexTs, true);
     // index.html is deterministic: just the group index element.
     await writeStorTextAtomic(nmGroupIndexFile(plan.group, '.html'), `${renderGroupIndexHtml(identity)}\n`, true);
     return [

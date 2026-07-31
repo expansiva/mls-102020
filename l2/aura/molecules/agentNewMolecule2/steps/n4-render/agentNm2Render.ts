@@ -18,6 +18,7 @@ import { skill as moleculeGenerationSkill } from '/_102020_/l2/aura/molecules/sk
 import { skill as auraOverviewSkill } from '/_102020_/l2/skills/aura/overview.js';
 import {
   NM_AGENT_FOLDER,
+  compileStorTs,
   isRecord,
   nmBaseFile,
   nmContextFileInfo,
@@ -226,16 +227,9 @@ async function loadGroupSkill(ctx: MoleculeContext): Promise<string> {
   return mod.skill;
 }
 
-// The SAME source of truth the old flow used: modelTs.compilerResults.
-async function compileMolecule(fileInfo: NmFileInfo): Promise<{ errors: string[]; imports: string[] }> {
-  const storFile = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
-  if (!storFile) return { errors: [`could not open ${toDisplayPath(fileInfo)} to compile it`], imports: [] };
-  const modelTs = await storFile.getOrCreateModel() as mls.editor.IModelTS;
-  const ok = await mls.l2.typescript.compileAndPostProcess(modelTs, true, false);
-  const errors = (modelTs.compilerResults?.errors || []).map(error => (typeof error === 'string' ? error : JSON.stringify(error)));
-  if (!ok && !errors.length) errors.push('compilation failed without a reported error');
-  return { errors, imports: modelTs.compilerResults?.imports || [] };
-}
+// Moved to helpers/nmFs (compileStorTs) when A5b gave the same treatment to the .defs.ts, the group
+// index.ts and the .less — one implementation, so the four steps cannot drift apart.
+const compileMolecule = compileStorTs;
 
 // Type definitions of the molecule's own dependencies (port of agentNewMoleculeFix's
 // getDefinitonsByImports): the model cannot fix a type error it cannot see the signature for.

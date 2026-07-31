@@ -63,3 +63,43 @@ o version id do monaco muda e o curto-circuito não dispara. Casa com o observad
 
 Sem cobertura por unit test (depende do `mls.l2.typescript`). O aceite é injetar um erro de sintaxe
 deliberado no retorno do modelo e verificar que o passo reprova em vez de escrever `.less` e demo.
+
+## 2026-07-30 — três checagens novas, e três regras que a medição matou (A3)
+
+Medi as 231 moléculas reais de mls-102040/102053/102054/102055 antes de escrever qualquer regra. O
+resultado matou metade do que eu ia fazer:
+
+| regra que eu ia escrever | moléculas reais que ela reprovaria |
+|---|---|
+| exigir `super.firstUpdated()` | **46 de 46** |
+| exigir `super.updated()` | 48 de 54 |
+| exigir `super.handleIcaStateChange()` | **51 de 51** |
+
+Não chamar `super` é a convenção UNIFORME da biblioteca, não um defeito da molécula gerada — que
+nesse ponto está idêntica às 231. A pergunta de verdade (o loop de `notify` e o `reportDone` do
+monitor em `StateLitElement.firstUpdated` nunca rodam para NENHUMA molécula) é da biblioteca, não do
+agente, e foi para o controle. A skill `moleculeGeneration` §7 até ensina o padrão sem super.
+
+O sentinela de atributo errado (`nothingAttr()` devolvendo `null` em vez do `nothing` do Lit) já está
+coberto pela skill §9 e a 2ª geração acertou sozinha — não vale gate, não há como detectar de forma
+robusta.
+
+CHECAGENS ADICIONADAS, cada uma com **0 ocorrências** nas 231 (rejeitam invenção do modelo, nada que
+a biblioteca faça):
+
+- **`render_side_effect`** — timer (`requestAnimationFrame`/`setTimeout`/`setInterval`) ou acesso a
+  DOM (`this.setAttribute`/`querySelector`/…) dentro do corpo de `render()`. A 2ª geração chamava
+  `propagateEditingInRenderedCells()` — um rAF fazendo `setAttribute` em descendentes — do `render()`,
+  a cada atualização. Propagação pertence ao `updated()`, que é o que a biblioteca faz.
+- **`selector_duplicate`** — `'tablecell, TableCell'` e
+  `querySelector('x') || this.querySelector('X')`. Em documento HTML o seletor de tipo é
+  ASCII-case-insensitive, então a segunda grafia é morta. O modelo emitiu as duas formas em todo o
+  arquivo, o que lê como desconfiança do parser.
+- **`base_internals`** — `_mutationLock` / `_onSlotTagsChanged`. São a válvula do observer da classe
+  base; molécula que os aciona está reordenando o light DOM escondido — irreversível (a ordem
+  autoral se perde) e acoplado às entranhas da base. A biblioteca ordena em memória sobre o snapshot.
+
+## 2026-07-30 — compilação virou helper compartilhado (A5b)
+
+`compileMolecule` foi para `helpers/nmFs.ts` como `compileStorTs`, porque o n3-defs, o n5-less e o
+n7-index passaram a compilar também. Uma implementação só, para os quatro passos não divergirem.

@@ -10,6 +10,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   NM_AGENT_FOLDER,
+  compileStorTs,
   isRecord,
   nmContextFileInfo,
   nmDefsFile,
@@ -127,9 +128,23 @@ async function afterPromptStep(
     extractError = error instanceof Error ? error.message : String(error);
   }
 
+  // A5b (2026-07-30): the .defs.ts is TypeScript and used to be written blind. Its known failure mode
+  // is an unescaped backtick or `${` inside the skill literal, which the gate checks textually — the
+  // compiler is the definitive check, so the file is written first and compiled. A failed attempt
+  // leaves the content on disk for the retry to read, the same trade n4-render already makes.
+  const fileInfo = nmDefsFile(plan.group, plan.shortName);
+  let compileErrors: string[] = [];
+  if (!extractError && source.trim()) {
+    await writeStorTextAtomic(fileInfo, source, true);
+    compileErrors = (await compileStorTs(fileInfo)).errors;
+  }
+
   const issues = extractError
     ? [{ code: 'extract', message: extractError }]
-    : runNm2DefsGate(source, plan, nmDefsHeader(identity));
+    : [
+      ...runNm2DefsGate(source, plan, nmDefsHeader(identity)),
+      ...compileErrors.map(message => ({ code: 'compile', message })),
+    ];
   const errorText = issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
 
   await writeJsonArtifact(nmTraceFileInfo(runKey, PLAN_ID, attempt), {
@@ -142,8 +157,6 @@ async function afterPromptStep(
   });
 
   if (issues.length === 0) {
-    const fileInfo = nmDefsFile(plan.group, plan.shortName);
-    await writeStorTextAtomic(fileInfo, source, true);
     const display = toDisplayPath(fileInfo);
     return [
       nmResultStepIntent(context, parentStep, {

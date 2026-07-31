@@ -17,6 +17,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as lessAuthoringSkill } from '/_102020_/l2/aura/molecules/skills/lessAuthoring/index.js';
 import {
   NM_AGENT_FOLDER,
+  compileStorLess,
   isRecord,
   nmContextFileInfo,
   nmLessFile,
@@ -150,9 +151,22 @@ async function afterPromptStep(
     extractError = error instanceof Error ? error.message : String(error);
   }
 
+  // A5b (2026-07-30): the sheet used to be written blind. A LESS syntax error compiles to nothing and
+  // the molecule silently renders unstyled, which is exactly the kind of failure that survives a
+  // visual review. Written first so it can be compiled, like n4-render does with the .ts.
+  const fileInfo = nmLessFile(plan.group, plan.shortName);
+  let compileErrors: string[] = [];
+  if (!extractError && less.trim()) {
+    await writeStorTextAtomic(fileInfo, less, true);
+    compileErrors = await compileStorLess(fileInfo);
+  }
+
   const issues = extractError
     ? [{ code: 'extract', message: extractError }]
-    : runNm2LessGate(less, plan, ctx, { renderTs });
+    : [
+      ...runNm2LessGate(less, plan, ctx, { renderTs }),
+      ...compileErrors.map(message => ({ code: 'compile', message })),
+    ];
   const errorText = issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
 
   await writeJsonArtifact(nmTraceFileInfo(runKey, PLAN_ID, attempt), {
@@ -166,8 +180,6 @@ async function afterPromptStep(
   });
 
   if (issues.length === 0) {
-    const fileInfo = nmLessFile(plan.group, plan.shortName);
-    await writeStorTextAtomic(fileInfo, less, true);
     const display = toDisplayPath(fileInfo);
     return [
       nmResultStepIntent(context, parentStep, {

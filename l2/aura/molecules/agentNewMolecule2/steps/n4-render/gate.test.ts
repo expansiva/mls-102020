@@ -4,7 +4,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   collectMlClasses,
+  findBaseInternals,
   findLiteralStyleAppearance,
+  findRedundantCaseSelectors,
   findTailwindColorUtilities,
   runNm2RenderGate,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n4-render/gate.js';
@@ -156,4 +158,49 @@ test('the detectors are individually inspectable', () => {
   assert.deepEqual(findTailwindColorUtilities("class='w-full p-4 rounded-xl'"), []);
   assert.deepEqual(findLiteralStyleAppearance('style="background:#fff"'), ['background:#fff']);
   assert.deepEqual(findLiteralStyleAppearance('style="width:10px"'), []);
+});
+
+// ---- first-run review, 2026-07-30. Each rule fires 0 times over the 231 real molecules. ----
+
+const RENDER_HEAD = '    return html`<div';
+
+test('a timer scheduled inside render() is rejected — render runs on every update', () => {
+  const source = GOOD.replace(RENDER_HEAD, `    requestAnimationFrame(() => this.propagate());\n${RENDER_HEAD}`);
+  assert.notEqual(source, GOOD);
+  assert.ok(gate(source).some(issue => issue.code === 'render_side_effect'));
+});
+
+test('DOM access inside render() is rejected', () => {
+  const source = GOOD.replace(RENDER_HEAD, `    this.querySelectorAll(".ml-cell");\n${RENDER_HEAD}`);
+  assert.ok(gate(source).some(issue => issue.code === 'render_side_effect'));
+});
+
+test('the same call OUTSIDE render() is fine — updated() is where propagation belongs', () => {
+  const source = GOOD.replace(
+    '  render(): TemplateResult {',
+    '  updated() {\n    requestAnimationFrame(() => this.querySelectorAll(".ml-cell"));\n  }\n\n  render(): TemplateResult {',
+  );
+  assert.deepEqual(gate(source), []);
+});
+
+test('a selector spelling the same tag in two cases is rejected', () => {
+  assert.deepEqual(findRedundantCaseSelectors("querySelectorAll('tablecell, TableCell')"), ['tablecell, TableCell']);
+  assert.deepEqual(findRedundantCaseSelectors("this.querySelector('tablebody') || this.querySelector('TableBody')"), ['tablebody || TableBody']);
+  const source = GOOD.replace(
+    '  private baseClasses(): string {',
+    "  private rows() { return this.getSlots('tablerow, TableRow'); }\n\n  private baseClasses(): string {",
+  );
+  assert.ok(gate(source).some(issue => issue.code === 'selector_duplicate'));
+});
+
+test('a genuine two-tag selector list is NOT flagged', () => {
+  assert.deepEqual(findRedundantCaseSelectors("querySelectorAll('input, button')"), []);
+  assert.deepEqual(findRedundantCaseSelectors("querySelectorAll('TableRow, TableCell')"), []);
+});
+
+test('driving the base plumbing is rejected — sorting must not mutate the light DOM', () => {
+  assert.deepEqual(findBaseInternals('this._mutationLock = true; this._onSlotTagsChanged();').sort(), ['_mutationLock', '_onSlotTagsChanged']);
+  assert.deepEqual(findBaseInternals(GOOD), []);
+  const source = GOOD.replace('  render(): TemplateResult {', '  private sort() {\n    this._mutationLock = true;\n  }\n\n  render(): TemplateResult {');
+  assert.ok(gate(source).some(issue => issue.code === 'base_internals'));
 });
