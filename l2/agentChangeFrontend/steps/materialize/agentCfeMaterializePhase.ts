@@ -13,6 +13,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, saveMaterializeVerifySummary, saveMaterializeVerifyTrace, type MaterializeVerifyPassed } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import {
+  collectDesignTokenRoleIssues,
   collectMissingImageRenderIssues,
   collectPageTemplateHygieneIssues,
   countPage11Items,
@@ -266,6 +267,11 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     // the defs-level UX rules below can see it. This is a pure .ts defect that rewriting the .ts fixes,
     // so it belongs in `errors` (repairable, fed back to the page generator), not in `warnings`.
     errors.push(...collectPageTemplateHygieneIssues(content));
+    // A background token used as a text color renders invisible text once the theme applies (the
+    // hardcoded var() fallback hides it in one theme only) — mls-102045 shipped exactly that. It is a
+    // pure .ts defect a rewrite fixes, and the check is deterministic (role suffix, no judgement), so it
+    // is a repairable ERROR rather than a warning.
+    errors.push(...collectDesignTokenRoleIssues(content));
   }
   if (pipelineItem.type === 'l2_page' && defsContent) {
     if (!sharedDefs) {

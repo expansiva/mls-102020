@@ -188,6 +188,45 @@ const IMAGE_FIELD = /\b[\w$]*(?:image|photo|logo|avatar|picture|thumbnail)Url\b/
  * whose contract actually carries such a field is required to render one. `pageCode` mentioning the field
  * without an `<img>` is the exact defect.
  */
+/**
+ * A design token used against its declared role: a `-bg` token inside a text utility, or a `-text` token
+ * inside a background utility.
+ *
+ * Real defect (mls-102045 changeOrderWorkspace):
+ * `bg-[var(--bg-secondary-color,#334155)] text-[var(--bg-primary-color,#ffffff)]` — a BACKGROUND token as
+ * the label color. It reads fine in light mode only because the hardcoded fallback contrasts; with the
+ * theme applied both tokens are dark and the label vanishes. No existing check caught it: the token name
+ * is real, so "do not invent token names" was satisfied.
+ *
+ * Deterministic and role-vocabulary-only: it fires on the `<role>-bg` / `<role>-text` suffix convention,
+ * so a project on the older flat vocabulary (bg-primary-color / text-primary-color) is NOT flagged — its
+ * names carry no role suffix to check. Matches the utility prefix immediately before the `[var(--…)]`,
+ * which is how the render applies colors (Tailwind arbitrary values).
+ */
+export function collectDesignTokenRoleIssues(pageCode: string): string[] {
+  if (!pageCode) return [];
+  const issues = new Set<string>();
+  // `text-[var(--x-bg…)]`, `border-[var(--x-text…)]`, `bg-[var(--x-text…)]`, incl. state prefixes
+  // (hover:, dark:, disabled:) and the -hover/-focus/-disabled token variants.
+  const usage = /\b(?:[a-z-]+:)*(bg|text|border|fill|stroke|ring|from|via|to|placeholder|decoration|outline|accent|caret|shadow|divide)-\[var\(\s*--([a-z][a-z0-9-]*)/gu;
+  for (const match of pageCode.matchAll(usage)) {
+    const utility = match[1];
+    const token = match[2];
+    const role = token.replace(/-(?:hover|focus|disabled)$/u, '');
+    const isBgToken = role.endsWith('-bg');
+    const isTextToken = role.endsWith('-text');
+    if (!isBgToken && !isTextToken) continue;              // flat vocabulary: no role to enforce
+    const isTextUtility = utility === 'text' || utility === 'placeholder' || utility === 'caret' || utility === 'decoration';
+    if (isBgToken && isTextUtility) {
+      issues.add(`design token used against its role: '${utility}-[var(--${token})]' puts a BACKGROUND token in a text utility — use the '${role.slice(0, -'-bg'.length)}-text' token of the same role (a -bg token is never a text color)`);
+    }
+    if (isTextToken && utility === 'bg') {
+      issues.add(`design token used against its role: 'bg-[var(--${token})]' puts a TEXT token in a background utility — use the '${role.slice(0, -'-text'.length)}-bg' token of the same role`);
+    }
+  }
+  return [...issues];
+}
+
 export function collectMissingImageRenderIssues(defsSource: string, pageCode: string): string[] {
   if (!defsSource || !pageCode) return [];
   const match = IMAGE_FIELD.exec(defsSource);
@@ -265,8 +304,37 @@ function summarizeDesignSystemTokens(content: string): string {
   return [
     'Apply colors as var(--<token>, <neutral fallback>). Do not invent token names.',
     ...(folded ? ['Each base token below also has -hover, -focus and -disabled variants.'] : []),
+    ...designTokenRoleRules([...bases]),
     `tokens: ${[...bases].sort().join(', ')}`,
   ].join('\n');
+}
+
+/**
+ * The bg/text pairing rule, DERIVED from the token names themselves.
+ *
+ * Only the names reach the model (values are irrelevant to render), so the role-based vocabulary
+ * documented in the project's designSystem.ts header never gets here. Without the rule the model can put
+ * a BACKGROUND token in a text utility — real defect in mls-102045:
+ * `bg-[var(--bg-secondary-color)] text-[var(--bg-primary-color)]`, which is invisible text in dark mode
+ * (both tokens are dark) and only readable in light mode because the hardcoded fallback happened to
+ * contrast. It violates no rule the prompt stated: the token name existed.
+ * Emitted only when the vocabulary actually has `-bg`/`-text` pairs (the role-based DS), so an older
+ * flat vocabulary is left untouched.
+ */
+function designTokenRoleRules(bases: string[]): string[] {
+  const names = new Set(bases);
+  const pairs = bases
+    .filter(name => name.endsWith('-bg'))
+    .map(name => ({ bg: name, text: `${name.slice(0, -'-bg'.length)}-text` }))
+    .filter(pair => names.has(pair.text));
+  if (pairs.length === 0) return [];
+  const sample = pairs.slice(0, 3).map(pair => `${pair.bg} + ${pair.text}`).join('; ');
+  return [
+    'ROLE PAIRING (hard rule): a `-bg` token is a BACKGROUND and NEVER a text color; a `-text` token is a',
+    'text color and never a background. When a surface uses <role>-bg, its label MUST use the <role>-text',
+    'of the SAME role — mixing roles (or using a -bg as text) produces unreadable text in one of the themes.',
+    `Pairs available: ${sample}${pairs.length > 3 ? `; …(${pairs.length} pairs total)` : ''}.`,
+  ];
 }
 
 /**

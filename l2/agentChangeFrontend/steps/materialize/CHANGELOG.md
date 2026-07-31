@@ -2,6 +2,44 @@
 
 # Changelog
 
+- 2026-07-30 (token de fundo usado como cor de texto) — mls-102045 gerou
+  `bg-[var(--bg-secondary-color,#334155)] text-[var(--bg-primary-color,#ffffff)]`: um token de FUNDO como
+  cor do rótulo. Só parece certo enquanto vale o fallback hardcoded do `var()`; com o tema aplicado (os
+  dois tokens escuros) o texto some. Nenhuma checagem via: o nome do token existe, então a única regra do
+  prompt ("do not invent token names") foi respeitada. Três frentes:
+  (1) `summarizeDesignSystemTokens` passou a emitir a REGRA DOS PARES derivada dos próprios nomes
+  (`designTokenRoleRules`): o designSystem.ts chega ao modelo resumido a NOMES, então o cabeçalho do
+  arquivo — que documenta "quem usa button-primary-bg escreve o rótulo com button-primary-text" — nunca
+  chegava. A regra só é emitida quando o vocabulário TEM pares `-bg`/`-text` (DS role-based); um projeto
+  no vocabulário antigo e plano segue sem ruído.
+  (2) guard determinístico `collectDesignTokenRoleIssues` no verify, como ERRO reparável (é defeito puro
+  de .ts que a reescrita conserta, e a checagem não tem julgamento): `-bg` em utilitário de texto
+  (text/placeholder/caret/decoration) ou `-text` em `bg-`. Cobre prefixos de estado (hover:, dark:) e as
+  variantes -hover/-focus/-disabled, e a mensagem já nomeia o token correto do MESMO papel. Deduplica.
+  (3) o exemplo das skills de render (page11/page21) citava `--ds-color-surface`/`--ds-color-text` — uma
+  terceira convenção que não existe em NENHUM dos dois design systems; trocado por nomes reais do DS novo
+  e marcado como ilustrativo, mais a regra de papel explicitada nas duas skills.
+  Verificado com o caso real: no vocabulário NOVO o guard pega (`text-[var(--button-primary-bg)]` ->
+  aponta `button-secondary-text`), na forma correta não acusa, e no vocabulário ANTIGO não acusa nada
+  (sem sufixo de papel não há o que impor). LIMITE conhecido: o vocabulário antigo (bg-primary-color /
+  text-primary-color) NÃO é coberto por nenhuma das três frentes — o ganho vem de migrar o projeto para o
+  DS role-based, que é o plano (102051).
+
+- 2026-07-30 (i18n: fim do `en` hardcoded + região preservada) — o catálogo do shared saía SEMPRE como
+  `message_en`/`messages.en`, mesmo num módulo cujo `defaultLocale` é outro: um módulo pt-BR emitia
+  `message_en` com texto português, e o runtime (que procura `messages[document.lang.toLowerCase()]`, com
+  `document.lang` vindo de `listRuntimeLanguages(config.languages)` em mls-102033) não achava `pt-br` nem
+  o prefixo `pt`, caindo em `keys[0]` silenciosamente. Corrigido nos DOIS caminhos de geração do
+  l2_shared: `cfeSharedScaffold.renderI18n` (CLI/determinístico) passou a nomear o catálogo pelo
+  `i18nMeta.defaultLocale` do defs, e o template da skill `genCfeSharedTs` (Studio/LLM) idem. A chave é o
+  locale em MINÚSCULAS com `_`->`-` e **região preservada** — a mesma normalização do runtime, então
+  config.json, `document.lang` e a chave do catálogo são sempre a mesma string. Nome do const = a chave
+  com não-alfanuméricos como `_`. Verificado com o defs real do 102045: `en` -> `messages['en']`,
+  `pt-BR` -> `message_pt_br`/`messages['pt-br']`, `en-AU` -> `messages['en-au']`, defs sem i18nMeta ->
+  `en` (fallback). Por que região importa: `languageKeys` colapsa para 2 letras, e um módulo pode
+  declarar `en` E `en-AU` juntos — colapsados eles viram um só e a variante regional desaparece; daí o
+  novo `runtimeLocaleKey`/`runtimeLocales` no cfeCreateShared.
+
 - 2026-07-28 (deterministic l2_shared scaffold — kills the output-size wall) — run03 postmortem
   (todo/geracao/run03_analise.md): projectDetail (157KB defs, 19 operations) needs a ~55k-token .ts in ONE
   tool call; grok-4.5 aborted at the proxy 300s timeout and the minimax fallback capped at 32k output, so

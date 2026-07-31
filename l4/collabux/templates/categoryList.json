@@ -165,6 +165,103 @@
       "description": "Cadastro base de dados mestres usados por vários módulos.",
       "typicalEntities": ["Category", "Unit", "TaxCode", "Location", "CostCenter"],
       "commonOperations": ["list", "create", "edit", "merge", "deactivate"]
+    },
+    {
+      "categoryId": "entityRecordManagement",
+      "name": "Entity Record Management",
+      "erpFrequency": "veryHigh",
+      "description": "Criação e edição de um registro de negócio (sem listagem), com transições de ciclo de vida por ações contextuais.",
+      "typicalEntities": ["Project", "Contract", "Campaign", "Property"],
+      "commonOperations": ["create", "edit", "transitionStatus", "validate", "save"]
+    },
+    {
+      "categoryId": "fieldDataCapture",
+      "name": "Field Data Capture",
+      "erpFrequency": "medium",
+      "description": "Captura rápida de apontamentos em campo ou operação, geralmente mobile: horas, consumo, leituras, ocorrências. Formulários curtos, reset após envio.",
+      "typicalEntities": ["TimeLog", "MaterialUsage", "MeterReading", "Inspection"],
+      "commonOperations": ["selectTarget", "enterValues", "submit", "confirmAndReset"]
+    },
+    {
+      "categoryId": "readOnlyDetailPortal",
+      "name": "Read-Only Detail Portal",
+      "erpFrequency": "medium",
+      "description": "Visão somente-leitura de um registro único para stakeholder externo ou consulta interna, summary-first, sem nenhuma ação de escrita.",
+      "typicalEntities": ["BillingSummary", "StatusReport", "OrderConfirmation", "Statement"],
+      "commonOperations": ["view", "print", "acknowledge"]
+    },
+    {
+      "categoryId": "workPlanningBoard",
+      "name": "Work Planning Board",
+      "erpFrequency": "high",
+      "description": "Planejamento e acompanhamento de trabalho: criar tarefas, atribuir responsáveis inline, timeline por prazo e edição em master-detail.",
+      "typicalEntities": ["WorkTask", "Milestone", "Sprint", "JobOrder"],
+      "commonOperations": ["create", "assign", "reschedule", "updateStatus", "trackProgress"]
+    },
+    {
+      "categoryId": "aiAssistedAuthoring",
+      "name": "AI-Assisted Authoring",
+      "erpFrequency": "medium",
+      "description": "Geração de artefato assistida por IA seguida de revisão humana e publicação/compartilhamento: gerar → revisar → publicar.",
+      "typicalEntities": ["StatusReport", "Summary", "Draft", "Proposal"],
+      "commonOperations": ["configure", "generate", "review", "regenerate", "publish", "share"]
+    },
+    {
+      "categoryId": "globalSearchResults",
+      "name": "Global Search Results",
+      "erpFrequency": "high",
+      "description": "Tela de resultados de busca transversal por entidades, com agrupamento por tipo, filtros e ações rápidas sobre o resultado.",
+      "typicalEntities": ["SearchResult", "RecordHit", "EntityMatch"],
+      "commonOperations": ["search", "filterByType", "openRecord", "refineQuery", "clear"]
+    },
+    {
+      "categoryId": "activityNotificationHub",
+      "name": "Activity / Notification Hub",
+      "erpFrequency": "high",
+      "description": "Central de notificações, menções, atividades recentes e alertas operacionais, com marcação de lido e ações contextuais.",
+      "typicalEntities": ["Notification", "Activity", "Mention", "Alert"],
+      "commonOperations": ["list", "markAsRead", "markAllRead", "actOnNotification", "filter"]
+    },
+    {
+      "categoryId": "hierarchyTreeView",
+      "name": "Hierarchy / Tree View",
+      "erpFrequency": "medium",
+      "description": "Visualização e edição de estruturas hierárquicas: BOM, organograma, categorias aninhadas ou localizações.",
+      "typicalEntities": ["BOM", "OrgUnit", "Category", "Location", "AccountHierarchy"],
+      "commonOperations": ["expand", "collapse", "addChild", "move", "edit", "delete"]
+    },
+    {
+      "categoryId": "comparisonView",
+      "name": "Comparison View",
+      "erpFrequency": "low",
+      "description": "Comparação lado a lado de dois ou mais registros para análise de diferenças e decisão.",
+      "typicalEntities": ["Product", "Quote", "Version", "Contract", "Candidate"],
+      "commonOperations": ["selectItems", "compare", "highlightDiff", "choose", "merge"]
+    },
+    {
+      "categoryId": "importMappingWizard",
+      "name": "Import / Mapping Wizard",
+      "erpFrequency": "high",
+      "parentCategory": "processWizard",
+      "description": "Processo guiado de importação com upload de arquivo, mapeamento de colunas, validação e confirmação final.",
+      "typicalEntities": ["ImportJob", "ColumnMapping", "ValidationError"],
+      "commonOperations": ["upload", "mapColumns", "validate", "preview", "confirmImport", "rollback"]
+    },
+    {
+      "categoryId": "kanbanBoardView",
+      "name": "Kanban / Board View",
+      "erpFrequency": "high",
+      "description": "Quadro visual por colunas de status com arrastar-e-soltar, filtros e ações rápidas nos cards. Distinto de workPlanningBoard (timeline/master-detail) e operationsQueue (lista por status): a superfície é o board de colunas.",
+      "typicalEntities": ["Card", "Column", "WorkItem", "Deal", "Ticket"],
+      "commonOperations": ["dragDrop", "moveColumn", "filter", "createCard", "updateStatus"]
+    },
+    {
+      "categoryId": "analyticalList",
+      "name": "Analytical List",
+      "erpFrequency": "high",
+      "description": "Lista analítica combinando tabela, filtros avançados, KPIs e gráficos no mesmo contexto para análise e ação. Distinto de dashboardCommandCenter (monitorar exceções) e reportExplorer (consulta ad-hoc): aqui KPI, gráfico e tabela acionável operam sobre o mesmo conjunto filtrado.",
+      "typicalEntities": ["AnalyticalRow", "KPI", "ChartSeries", "FilterSet"],
+      "commonOperations": ["filter", "group", "drillDown", "export", "actOnSelection"]
     }
   ]
 }

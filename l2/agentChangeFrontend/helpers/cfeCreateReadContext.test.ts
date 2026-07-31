@@ -470,3 +470,53 @@ test('page tests: a read cannot satisfy its OWN required id (no self-harvest)', 
   const withPeer = buildPageTestCases(preparedFor([other, selfFed]));
   assert.equal(withPeer.find((c: any) => c.id === 'readReport.ok')!.params.reportId, '<seedRef>');
 });
+
+// ---- addLanguage handoff: the extra-locale task at the end of changeFrontend ----
+// The generated shared .ts carries ONE catalog (the module default); agentAddLanguage adds the others,
+// sending only the i18n block to a cheap translate model. A single-language module needs no extra task.
+test('addLanguage handoff: payload matches the plugin contract; null for a single-language module', async () => {
+  const mod = await loadModule() as unknown as {
+    buildAddLanguageMessage: (ctx: any, pages: any[]) => string | null;
+  };
+  const ctx = (defaultLocale: string, activeLocales: string[]) => ({
+    project: 102045,
+    moduleI18n: { buildFlowFsm: { defaultLocale, activeLocales } },
+  });
+  const pages = [{ moduleName: 'buildFlowFsm', pageId: 'billingWorkspace' }];
+
+  // Real 102045 case (l4 declares en + pt-BR; activeLocales are normalized 2-letter keys).
+  assert.equal(
+    mod.buildAddLanguageMessage(ctx('en', ['en', 'pt']), pages),
+    '@@addLanguage [{"languages":[{"code":"pt","name":"Portuguese"}],"projectId":102045,"moduleName":"buildFlowFsm"}]',
+  );
+  // Single language -> no extra task at all.
+  assert.equal(mod.buildAddLanguageMessage(ctx('en', ['en']), pages), null);
+  // The DEFAULT locale is never re-translated, whichever it is.
+  const fromPt = mod.buildAddLanguageMessage(ctx('pt', ['pt', 'en', 'es']), pages) || '';
+  assert.match(fromPt, /"code":"en"/);
+  assert.match(fromPt, /"code":"es"/);
+  assert.doesNotMatch(fromPt, /"code":"pt"/);
+  // Unknown code: the name falls back to the code itself (never emitted empty).
+  assert.match(mod.buildAddLanguageMessage(ctx('en', ['en', 'zz']), pages) || '', /\{"code":"zz","name":"zz"\}/);
+  // No finalized page -> nothing to translate (module cannot be derived).
+  assert.equal(mod.buildAddLanguageMessage(ctx('en', ['en', 'pt']), []), null);
+});
+
+test('addLanguage handoff preserves the region so en + en-AU can coexist', async () => {
+  // languageKeys collapses 'en-AU' to 'en' (same as 'en'), which would make a regional variant vanish.
+  // runtimeLocales keeps it, and the DEFAULT is always first (the runtime falls back to languages[0]).
+  const mod = await loadModule() as unknown as { buildAddLanguageMessage: (ctx: any, pages: any[]) => string | null };
+  const pages = [{ moduleName: 'm', pageId: 'p' }];
+  const ctx = (runtimeLocales: string[]) => ({ project: 1, moduleI18n: { m: { defaultLocale: runtimeLocales[0], activeLocales: [], runtimeLocales } } });
+
+  const regional = mod.buildAddLanguageMessage(ctx(['en', 'en-au']), pages) || '';
+  assert.match(regional, /"code":"en-au"/, 'the regional variant is requested');
+  assert.doesNotMatch(regional, /"code":"en"[,}]/, 'the default (first) is never re-translated');
+
+  // The catalog knows regional entries by their full code, so the NAME is the regional one too.
+  const ptBr = mod.buildAddLanguageMessage(ctx(['en', 'pt-br']), pages) || '';
+  assert.match(ptBr, /\{"code":"pt-br","name":"Portuguese \(Brazil\)"\}/, 'region kept in both code and name');
+
+  // Single language (even regional) -> no task.
+  assert.equal(mod.buildAddLanguageMessage(ctx(['pt-br']), pages), null);
+});

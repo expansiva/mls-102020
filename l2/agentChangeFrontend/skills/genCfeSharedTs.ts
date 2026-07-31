@@ -150,13 +150,19 @@ const message_en = {
   // copy Definition.i18n exactly for Definition.i18nMeta.defaultLocale
 };
 type MessageType = typeof message_en;
-const messages: { [key: string]: MessageType } = { en: message_en };
+const messages: { [key: string]: MessageType } = { 'en': message_en };
 /// **collab_i18n_end**
 \`\`\`
 
-The example uses "en". In the actual output, derive the language key from Definition.i18nMeta.defaultLocale:
-- "en" -> message_en and messages.en
-- "pt-BR" or "pt_BR" -> message_pt and messages.pt
+The example uses "en". NEVER hardcode "en": derive the key from Definition.i18nMeta.defaultLocale by
+lowercasing it and turning "_" into "-" — that is EXACTLY what the runtime does to the configured language
+list (mls-102033 listRuntimeLanguages), and document.documentElement.lang always holds that normalized
+form, so the map key must match it or the catalog is never found. The REGION IS PRESERVED (a module may
+declare both "en" and "en-AU"; the runtime falls back to the 2-letter prefix on its own). The const name
+is the same key with non-alphanumerics as "_":
+- "en" -> message_en and messages['en']
+- "pt-BR" or "pt_BR" -> message_pt_br and messages['pt-br']
+- "en-AU" -> message_en_au and messages['en-au']
 
 Generate the default locale message object from Definition.i18n exactly.
 For the current flat Definition.i18n catalog, generate only that default locale catalog.
@@ -173,7 +179,8 @@ protected get msg(): MessageType {
 }
 \`\`\`
 
-Replace message_en in the getter with the actual generated default message object name.
+Replace message_en in the getter with the actual generated default message object name (the same
+locale-derived name as above — never the literal message_en unless the default locale really is "en").
 
 Every render-facing label must come from this shared class through this.msg.
 

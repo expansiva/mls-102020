@@ -37,6 +37,7 @@ import {
   type CfeWorkspaceSection,
   type CfeWorkspaceOrganism,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
+import { findLanguageByCode } from '/_102027_/l2/collabLanguages.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { parseDefsSource } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentChangeFrontend/uxTemplates/selectUxTemplates.js';
@@ -147,13 +148,16 @@ interface CfeModuleInfo {
   entityIds: Set<string>;
   i18nLocales: string[];
   i18nDefaultLocale: string;
+  // Region-preserving twins of the two above (see readCreateContext): 'pt-BR' stays 'pt-br'.
+  i18nLocalesRaw: string[];
+  i18nDefaultLocaleRaw: string;
 }
 
 export interface CfeCreateContext {
   project: number;
   moduleNames: string[];
   moduleVisualStyle: Record<string, unknown>;
-  moduleI18n: Record<string, { defaultLocale: string; activeLocales: string[] }>;
+  moduleI18n: Record<string, { defaultLocale: string; activeLocales: string[]; runtimeLocales: string[] }>;
   entities: Map<string, CfeEntityDef>;
   operations: Map<string, CfeOperationDef>;
   workflows: Map<string, CfeWorkflowDef>;
@@ -494,7 +498,13 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
       const module = ensureModule(modules, moduleName);
       module.visualStyle = moduleData.visualStyle;
       module.i18nLocales = languageKeys(readStringArray(moduleData.languages));
+      // REGION-PRESERVING list (lowercase, '_' -> '-'), the same normalization the runtime applies to the
+      // configured language list (mls-102033 languageRuntime). i18nLocales collapses 'pt-BR' to 'pt',
+      // which makes 'en' + 'en-AU' indistinguishable — a module CAN declare both (a regional variant next
+      // to the plain language), so the runtime config and the translation handoff must use THIS list.
+      module.i18nLocalesRaw = runtimeLocaleKeys(readStringArray(moduleData.languages));
       module.i18nDefaultLocale = languageKey(readString(designContext.userLanguage)) || module.i18nLocales[0] || '';
+      module.i18nDefaultLocaleRaw = runtimeLocaleKey(readString(designContext.userLanguage)) || module.i18nLocalesRaw[0] || '';
     } else if (folder.endsWith('/ontology')) {
       const moduleName = folder.split('/')[0];
       const entity = entityFromData(parsed.data, shortName);
@@ -526,11 +536,19 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   const moduleNames = Array.from(modules.keys()).sort();
   const moduleFallback = moduleNames.length === 1 ? moduleNames[0] : 'unknown';
   const moduleVisualStyle: Record<string, unknown> = {};
-  const moduleI18n: Record<string, { defaultLocale: string; activeLocales: string[] }> = {};
+  const moduleI18n: Record<string, { defaultLocale: string; activeLocales: string[]; runtimeLocales: string[] }> = {};
   for (const module of modules.values()) {
     moduleVisualStyle[module.moduleName] = module.visualStyle || {};
     const defaultLocale = module.i18nDefaultLocale || module.i18nLocales[0] || 'en';
-    moduleI18n[module.moduleName] = { defaultLocale, activeLocales: unique([defaultLocale, ...module.i18nLocales]) };
+    // runtimeLocales keeps the region ('pt-br', 'en-au') and puts the DEFAULT FIRST — the runtime falls
+    // back to languages[0] when document.lang matches nothing (mls-102033 getRuntimeLanguage), so the
+    // order is load-bearing, not cosmetic. This is the list that reaches l5/config.json.
+    const defaultRuntimeLocale = module.i18nDefaultLocaleRaw || module.i18nLocalesRaw[0] || defaultLocale;
+    moduleI18n[module.moduleName] = {
+      defaultLocale,
+      activeLocales: unique([defaultLocale, ...module.i18nLocales]),
+      runtimeLocales: unique([defaultRuntimeLocale, ...module.i18nLocalesRaw]),
+    };
   }
 
   // L4 v2 modules the folder path directly; the legacy flat layout infers from the owner's entities.
@@ -1584,7 +1602,7 @@ function mergeLayoutsForShared(layouts: CfePageLayoutDefinition[]): CfePageLayou
   return { pageId: primary.pageId, layoutId: primary.layoutId, sections, i18n, dataBindings };
 }
 
-export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[]; configMsg: string }> {
+export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[]; configMsg: string; addLanguageMessage: string | null }> {
   const context = await readCreateContext();
   const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) && await hasRegisteredFrontend(context.project, page) })));
   const validPages = checkedPages.filter(item => item.ok).map(item => item.page);
@@ -1592,7 +1610,37 @@ export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; o
   const ownersDone = await updateOwnerStatuses(context, validPages.flatMap(page => page.ownerIds), 'done');
   await saveCreateReport(context.project, validPages, ownersDone, skippedPages);
   const configMsg = await saveFrontendWorkspaceConfig(context, validPages);
-  return { pagesDone: validPages.map(page => page.pageId), ownersDone, skippedPages, configMsg };
+  return { pagesDone: validPages.map(page => page.pageId), ownersDone, skippedPages, configMsg, addLanguageMessage: buildAddLanguageMessage(context, validPages) };
+}
+
+/**
+ * The `@@addLanguage` handoff for the module just generated, or null when there is nothing to translate.
+ *
+ * The generated shared .ts carries ONE message catalog (the module's default locale) — the scaffold's
+ * renderI18n emits a single `message_<default>` and `messages` map. The extra locales the module declares
+ * are added afterwards by agentAddLanguage, which sends ONLY the i18n block to a cheap translate model
+ * (one call per shared file), so the cost is a fraction of regenerating anything.
+ *
+ * Returns null when the module declares a single language — then no extra task is needed at all.
+ * The payload mirrors what the selectLanguage plugin sends (aura/plugins/selectLanguage.ts):
+ * `[{ languages: [{code, name}], projectId, moduleName }]`, with the language NAME falling back to the
+ * code when the catalog does not know it.
+ */
+export function buildAddLanguageMessage(context: CfeCreateContext, validPages: CfePagePlan[]): string | null {
+  // A run generates a single module; take it from the pages actually finalized (not context.moduleNames,
+  // which lists every module in the project).
+  const moduleName = validPages.length > 0 ? readString(validPages[0].moduleName) : '';
+  if (!moduleName) return null;
+  const meta = context.moduleI18n[moduleName];
+  if (!meta) return null;
+  // runtimeLocales (region preserved, default first) is the SAME list written to l5/config.json, so the
+  // catalog agentAddLanguage creates is keyed exactly like the language the shell will set on
+  // document.lang. Using the 2-letter list here would make 'en' + 'en-AU' collapse into one.
+  const locales = (meta.runtimeLocales ?? []).length > 0 ? meta.runtimeLocales : (meta.activeLocales ?? []);
+  const extras = locales.filter(locale => locale && locale !== locales[0]);
+  if (extras.length === 0) return null;
+  const languages = extras.map(code => ({ code, name: findLanguageByCode(code)?.name || code }));
+  return `@@addLanguage ${JSON.stringify([{ languages, projectId: context.project, moduleName }])}`;
 }
 
 export async function listGeneratedCreatePages(): Promise<{ project: number; pages: CfePagePlan[]; skippedPages: string[] }> {
@@ -1830,6 +1878,18 @@ function normalizeI18nLocale(value: string): string {
 
 function languageKeys(values: string[]): string[] {
   return unique(values.map(languageKey).filter(Boolean));
+}
+
+// Runtime locale key: lowercase, '_' -> '-', REGION PRESERVED — byte-identical to what mls-102033
+// languageRuntime.normalizeLanguage does to the configured list, so l5/config.json, document.lang and the
+// generated i18n catalog key are always the same string. Unlike languageKey it does NOT drop the region.
+function runtimeLocaleKey(value: string): string {
+  const trimmed = readString(value).replace(/_/g, '-').toLowerCase();
+  return /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/.test(trimmed) ? trimmed : '';
+}
+
+function runtimeLocaleKeys(values: string[]): string[] {
+  return unique(values.map(runtimeLocaleKey).filter(Boolean));
 }
 
 function languageKey(value: string): string {
@@ -3619,6 +3679,12 @@ async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: Cfe
     if (!mod) { mod = { moduleId: moduleName, basePath: `/${moduleName}`, shellMode: 'spa' }; clientModules.push(mod); }
     mod.basePath = readString(mod.basePath) || `/${moduleName}`;
     mod.shellMode = readString(mod.shellMode) || 'spa';
+    // The runtime shell (102033/102034) reads the module's languages from HERE: it is the source of the
+    // Ctrl+Alt+L rotation, of mls.sites.setLanguage's valid set, and of the languages[0] fallback — so the
+    // DEFAULT locale must stay first. Region is preserved ('pt-br', 'en-au'); the shell normalizes and
+    // falls back to the 2-letter prefix on its own. Rewritten on every rebuild so l4 stays authoritative.
+    const runtimeLocales = context.moduleI18n[moduleName]?.runtimeLocales ?? [];
+    if (runtimeLocales.length > 0) mod.languages = runtimeLocales;
     mod.navigation = mergeByKey(asRecords(mod.navigation), modulePages.map(page => ({
       id: page.pageId,
       label: readString(labels[page.pageId]) || page.pageName,
@@ -4227,7 +4293,7 @@ async function saveConstDefault(fileInfo: FileInfo, exportName: string, data: un
   await saveStorContent(fileInfo, `${header}export const ${exportName} = ${JSON.stringify(data, null, 2)} as const;\n\nexport default ${exportName};\n`);
 }
 
-function ensureModule(modules: Map<string, CfeModuleInfo>, moduleName: string): CfeModuleInfo { const existing = modules.get(moduleName); if (existing) return existing; const created = { moduleName, entityIds: new Set<string>(), i18nLocales: [], i18nDefaultLocale: '' }; modules.set(moduleName, created); return created; }
+function ensureModule(modules: Map<string, CfeModuleInfo>, moduleName: string): CfeModuleInfo { const existing = modules.get(moduleName); if (existing) return existing; const created = { moduleName, entityIds: new Set<string>(), i18nLocales: [], i18nDefaultLocale: '', i18nLocalesRaw: [], i18nDefaultLocaleRaw: '' }; modules.set(moduleName, created); return created; }
 function toDisplayRef(fileInfo: FileInfo): string { const folder = fileInfo.folder ? `${fileInfo.folder}/` : ''; return `_${fileInfo.project}_/l${fileInfo.level}/${folder}${fileInfo.shortName}${fileInfo.extension}`; }
 function toFrontendType(type: string): string { const normalized = type.toLowerCase(); if (['number', 'integer', 'decimal', 'money', 'float'].includes(normalized)) return 'number'; if (['boolean', 'bool'].includes(normalized)) return 'boolean'; if (['date', 'datetime', 'time'].includes(normalized)) return 'date'; return 'string'; }
 function isSystemField(fieldId: string): boolean { return ['createdat', 'updatedat'].includes(fieldId.toLowerCase()); }

@@ -81,6 +81,10 @@ interface ScaffoldModel {
   actions: DefsAction[];
   initialLoads: { actionId: string }[];
   i18n: Record<string, string>;
+  // The module's default locale (defs i18nMeta.defaultLocale). The catalog is keyed by its LOWERCASE
+  // form because the runtime always sets document.documentElement.lang from the normalized config list
+  // (102033 listRuntimeLanguages -> lowercase) and the base class looks up messages[lang.toLowerCase()].
+  defaultLocale: string;
   contractTsPath: string;
   contracts: { commandName: string; routeConst: string }[];
   interfaces: Map<string, ContractInterface>;
@@ -218,9 +222,14 @@ function buildModel(outputPath: string, data: unknown, contractSource: string): 
   const stateByKey = new Map(states.map(state => [state.stateKey, state]));
   const actionById = new Map(actions.map(action => [action.actionId, action]));
 
+  // defs i18nMeta.defaultLocale names the language the i18n catalog is written in. Falls back to 'en'
+  // ONLY when the defs carries no meta at all (older defs) — never assume the catalog is English.
+  const i18nMeta = isRecord(data.i18nMeta) ? data.i18nMeta : {};
+  const defaultLocale = normalizeLocaleKey(stringOf(i18nMeta.defaultLocale)) || 'en';
+
   const model: ScaffoldModel = {
     outputPath, baseClassName, routePattern, states, actions, initialLoads,
-    i18n, contractTsPath, contracts, interfaces, stateByKey, actionById,
+    i18n, defaultLocale, contractTsPath, contracts, interfaces, stateByKey, actionById,
   };
   validateModel(model);
   return model;
@@ -480,16 +489,30 @@ function usedCommands(model: ScaffoldModel): string[] {
   return commands;
 }
 
+// The catalog is named after the module's DEFAULT LOCALE, never a hardcoded 'en': a pt-BR module used to
+// emit `message_en`/`messages.en` holding Portuguese text, so a pt-br runtime found no `messages['pt-br']`
+// (nor the 'pt' prefix fallback) and silently rendered whatever keys[0] happened to be.
+// The map key is the lowercase locale ('pt-br') because the runtime sets document.documentElement.lang
+// from the normalized config list (102033 listRuntimeLanguages) and the base class getter looks up
+// messages[lang.toLowerCase()]. The const name uses a TS-safe form of it ('pt-br' -> message_pt_br).
 function renderI18n(model: ScaffoldModel): string[] {
-  const lines = ['/// **collab_i18n_start**', 'const message_en = {'];
+  const localeKey = model.defaultLocale;
+  const constName = `message_${localeKey.replace(/[^a-zA-Z0-9]+/gu, '_')}`;
+  const lines = ['/// **collab_i18n_start**', `const ${constName} = {`];
   for (const [key, value] of Object.entries(model.i18n)) {
     lines.push(`  '${escapeSingle(key)}': '${escapeSingle(value)}',`);
   }
   lines.push('};');
-  lines.push('type MessageType = typeof message_en;');
-  lines.push('const messages: { [key: string]: MessageType } = { en: message_en };');
+  lines.push(`type MessageType = typeof ${constName};`);
+  lines.push(`const messages: { [key: string]: MessageType } = { '${escapeSingle(localeKey)}': ${constName} };`);
   lines.push('/// **collab_i18n_end**');
   return lines;
+}
+
+// Lowercase, '_' -> '-' — the SAME normalization the runtime applies to the config language list
+// (102033 languageRuntime.normalizeLanguage), so the catalog key always matches documentElement.lang.
+function normalizeLocaleKey(value: string): string {
+  return value.trim().replace(/_/gu, '-').toLowerCase();
 }
 
 function renderDefaultConsts(model: ScaffoldModel): string[] {
