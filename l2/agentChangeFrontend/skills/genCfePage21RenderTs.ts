@@ -148,10 +148,16 @@ must not emit them. Order organisms by pageObjective.informationHierarchy / prim
 
 Color comes from design-system tokens, never hardcoded palettes. The context provides the token
 NAMES as a compact list (base tokens may also have -hover/-focus/-disabled variants); use ONLY names
-from that list. Apply via Tailwind arbitrary-value utilities referencing the variable
-WITH a neutral fallback inside var(), e.g. bg-[var(--ds-color-surface,#ffffff)],
-text-[var(--ds-color-text,#0f172a)], border-[var(--ds-color-border,#e2e8f0)]. Do not hardcode a
+from that list — the names below are ILLUSTRATIVE. Apply via Tailwind arbitrary-value utilities
+referencing the variable WITH a neutral fallback inside var(), e.g. bg-[var(--surface-bg,#ffffff)],
+text-[var(--text-default,#0f172a)], border-[var(--border-default,#e2e8f0)]. Do not hardcode a
 palette color for themable surfaces/text/borders. Dark mode is handled by the design system variables.
+
+RESPECT THE TOKEN'S ROLE. A token ending in -bg is a BACKGROUND and NEVER a text color; one ending in
+-text is a text color and never a background. A surface painted with <role>-bg MUST label itself with
+the <role>-text of the SAME role — bg-[var(--button-primary-bg)] pairs with
+text-[var(--button-primary-text)]. A -bg token in a text utility looks fine only while the hardcoded
+fallback applies; with the theme on, the label becomes invisible.
 
 ## Guardrails
 

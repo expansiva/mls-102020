@@ -1,5 +1,5 @@
 {
-  "$id": "https://collab.codes/agentNewSolution/e6-journey-map/2026-07-18-ns-e6-v5",
+  "$id": "https://collab.codes/agentNewSolution/e6-journey-map/2026-07-31-ns-e6-v7",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "moduleName", "workspaces", "landings", "navigationEdges"],
@@ -25,7 +25,7 @@
     }
   },
   "properties": {
-    "schemaVersion": { "type": "string", "const": "2026-07-18-ns-e6-v5" },
+    "schemaVersion": { "type": "string", "const": "2026-07-31-ns-e6-v7" },
     "moduleName": { "type": "string", "minLength": 1, "pattern": "^[a-z][A-Za-z0-9]*$" },
     "note": { "type": "string" },
     "workspaces": {
@@ -76,7 +76,9 @@
                       "name": { "type": "string", "minLength": 1, "maxLength": 60 },
                       "from": { "type": "string", "minLength": 3 },
                       "type": { "type": "string", "enum": ["string", "number", "boolean", "array", "object"] },
-                      "required": { "type": "boolean" }
+                      "required": { "type": "boolean" },
+                      "source": { "type": "string", "enum": ["userDecision", "selection", "pageInput", "actorSession", "derived"] },
+                      "sourceRef": { "type": "string" }
                     }
                   }
                 },
@@ -122,7 +124,34 @@
               }
             }
           },
-          "operationIds": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          "operationIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "presentation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["categoryRef", "confidence"],
+            "properties": {
+              "categoryRef": { "type": "string", "minLength": 1 },
+              "styleRef": { "type": "string", "minLength": 1 },
+              "confidence": { "type": "number", "minimum": 0, "maximum": 10 },
+              "alternates": {
+                "type": "array",
+                "maxItems": 2,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["categoryRef", "confidence"],
+                  "properties": {
+                    "categoryRef": { "type": "string" },
+                    "confidence": { "type": "number", "minimum": 0, "maximum": 10 },
+                    "reason": { "type": "string" }
+                  }
+                }
+              },
+              "experienceRef": { "type": "string", "minLength": 1 },
+              "templateReady": { "type": "boolean" },
+              "classificationNote": { "type": "string" }
+            }
+          }
         }
       }
     },

@@ -62,7 +62,39 @@ step: the step fails with the top error lines in the trace message, the full rep
 (dirty propagation in pipeline.json refuses to skip stale artifacts). Loosening a check to make a
 module pass = upstream bug, per flow.json `conventions.schemas`.
 
+## Template-readiness lint (2026-07-31, improveNewSolution T4/T6)
+
+`templateLint.ts` (pure) answers one question per classified workspace: does this contract satisfy
+the `minimumRequired` declared by its page category in `categoryList.json`, so the l2 renderer can
+resolve the category template instead of the generic fallback?
+
+- **It only touches the FORM of the contract.** The one mutation it may make is lifting a `list`
+  output into a paginated envelope (the item columns are unchanged, and no `total` is invented —
+  `<op>.total` may not exist in the operation, and the e6 gate would reject the unresolvable `from`).
+  It never adds, removes or edits an entity, a rule or an operation. When the gap is business
+  semantics, the answer is to DOWNGRADE the classification, never to invent the missing business.
+- Outcomes: `ok` | `repaired` | `downgraded` (to the best alternate the contract actually satisfies)
+  | `unready` (`presentation.templateReady = false`) | `skipped` (no `minimumRequired` for that
+  category yet, or no catalog — warn, never judge). A downgrade never lands on a category without a
+  `minimumRequired`: claiming a readiness nobody can verify is worse than admitting not-ready.
+- **Universal rule**, independent of category: a REQUIRED id input on a command with no `source` (or
+  `source: userDecision`) is a finding — an id is selected, derived or carried by the page, never
+  typed. Reported, not auto-repaired: the fix (a picker query over another workspace's browse
+  operation, or a navigation contract) is a site-map decision and injecting it here would break the
+  e6 detail/map equality and coverage gates.
+- **It runs BEFORE the closing artifacts** because `emitNsBffContracts` derives the wire contracts
+  from these same workspaces — repairing after the emit would ship stale contracts. Repaired
+  workspaces are rewritten whole, so `sliceHash` and every untouched field survive.
+- Readiness gaps are always WARNINGS: a page that falls back to the generic template is not a broken
+  module, and e7 fails the run on errors.
+- **T6 coverage**: `l4/{module}/trace/template-readiness.json` per run + the workspace × category ×
+  confidence × templateReady table appended to `pipeline/e7-validation.md`. Aggregated across
+  projects: an orphan page (confidence < 6) in 2+ projects is a candidate for a NEW category; a
+  category that keeps being downgraded is a candidate for a split.
+
 ## Tests
 
-`gate.test.ts` runs under `node:test` — `gate.ts` is pure (all data arrives as parameters, no stor
-access), so no browser runtime is needed.
+`gate.test.ts` and `templateLint.test.ts` run under `node:test` — both modules are pure (all data
+arrives as parameters, no stor access), so no browser runtime is needed. `templateLint.test.ts`
+loads the REAL `categoryList.json`, so it is also the contract between the lint and the
+`minimumRequired` blocks.

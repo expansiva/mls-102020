@@ -37,6 +37,7 @@ import {
   type CfeWorkspaceSection,
   type CfeWorkspaceOrganism,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
+import { findLanguageByCode } from '/_102027_/l2/collabLanguages.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { parseDefsSource } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentChangeFrontend/uxTemplates/selectUxTemplates.js';
@@ -110,6 +111,8 @@ interface CfeJourneyWorkspace {
   workflowId?: string;
   operationIds: string[];
   purpose: string;
+  categoryRef: string;       // l4 presentation.categoryRef — picks the experience skill of page21/page31
+  experienceRef: string;     // l4 presentation.experienceRef — set once the user picks a favourite
   bffCalls: CfeBffCall[];    // v2; [] for legacy
   sections: CfeWorkspaceSection[]; // v2; [] for legacy
 }
@@ -147,13 +150,16 @@ interface CfeModuleInfo {
   entityIds: Set<string>;
   i18nLocales: string[];
   i18nDefaultLocale: string;
+  // Region-preserving twins of the two above (see readCreateContext): 'pt-BR' stays 'pt-br'.
+  i18nLocalesRaw: string[];
+  i18nDefaultLocaleRaw: string;
 }
 
 export interface CfeCreateContext {
   project: number;
   moduleNames: string[];
   moduleVisualStyle: Record<string, unknown>;
-  moduleI18n: Record<string, { defaultLocale: string; activeLocales: string[] }>;
+  moduleI18n: Record<string, { defaultLocale: string; activeLocales: string[]; runtimeLocales: string[] }>;
   entities: Map<string, CfeEntityDef>;
   operations: Map<string, CfeOperationDef>;
   workflows: Map<string, CfeWorkflowDef>;
@@ -175,6 +181,8 @@ export interface CfePreparedPage {
   navigationRefs: unknown[];
   baseDefinition: Record<string, unknown>;
   visualStyle: unknown;
+  /** l4 presentation (categoryRef/experienceRef); null when the workspace was never classified. */
+  presentation: { categoryRef: string; experienceRef?: string } | null;
   i18nMeta: { defaultLocale: string; activeLocales: string[] };
   entityFields: Record<string, string[]>;
   variantPlan: CfeLayoutVariantPlan[];
@@ -185,6 +193,8 @@ export interface CfeLayoutVariantPlan {
   genome: string;
   templateId: string;
   template: Record<string, unknown>;
+  /** Experience skill (.md) appended to this slot's pipeline; absent = bespoke slot. */
+  experienceSkill?: string;
 }
 
 // F3: an l4->l2 contract copy. `tsRef` is the l2 contract path shared/pages import; `source` is the
@@ -494,7 +504,13 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
       const module = ensureModule(modules, moduleName);
       module.visualStyle = moduleData.visualStyle;
       module.i18nLocales = languageKeys(readStringArray(moduleData.languages));
+      // REGION-PRESERVING list (lowercase, '_' -> '-'), the same normalization the runtime applies to the
+      // configured language list (mls-102033 languageRuntime). i18nLocales collapses 'pt-BR' to 'pt',
+      // which makes 'en' + 'en-AU' indistinguishable — a module CAN declare both (a regional variant next
+      // to the plain language), so the runtime config and the translation handoff must use THIS list.
+      module.i18nLocalesRaw = runtimeLocaleKeys(readStringArray(moduleData.languages));
       module.i18nDefaultLocale = languageKey(readString(designContext.userLanguage)) || module.i18nLocales[0] || '';
+      module.i18nDefaultLocaleRaw = runtimeLocaleKey(readString(designContext.userLanguage)) || module.i18nLocalesRaw[0] || '';
     } else if (folder.endsWith('/ontology')) {
       const moduleName = folder.split('/')[0];
       const entity = entityFromData(parsed.data, shortName);
@@ -526,11 +542,19 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   const moduleNames = Array.from(modules.keys()).sort();
   const moduleFallback = moduleNames.length === 1 ? moduleNames[0] : 'unknown';
   const moduleVisualStyle: Record<string, unknown> = {};
-  const moduleI18n: Record<string, { defaultLocale: string; activeLocales: string[] }> = {};
+  const moduleI18n: Record<string, { defaultLocale: string; activeLocales: string[]; runtimeLocales: string[] }> = {};
   for (const module of modules.values()) {
     moduleVisualStyle[module.moduleName] = module.visualStyle || {};
     const defaultLocale = module.i18nDefaultLocale || module.i18nLocales[0] || 'en';
-    moduleI18n[module.moduleName] = { defaultLocale, activeLocales: unique([defaultLocale, ...module.i18nLocales]) };
+    // runtimeLocales keeps the region ('pt-br', 'en-au') and puts the DEFAULT FIRST — the runtime falls
+    // back to languages[0] when document.lang matches nothing (mls-102033 getRuntimeLanguage), so the
+    // order is load-bearing, not cosmetic. This is the list that reaches l5/config.json.
+    const defaultRuntimeLocale = module.i18nDefaultLocaleRaw || module.i18nLocalesRaw[0] || defaultLocale;
+    moduleI18n[module.moduleName] = {
+      defaultLocale,
+      activeLocales: unique([defaultLocale, ...module.i18nLocales]),
+      runtimeLocales: unique([defaultRuntimeLocale, ...module.i18nLocalesRaw]),
+    };
   }
 
   // L4 v2 modules the folder path directly; the legacy flat layout infers from the owner's entities.
@@ -603,7 +627,7 @@ export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateCo
     : operations.map(operation => commandFromOperation(operation, createContext.entities));
   recordTechnicalIdLookupGaps(page, commands);
   const navigationRefs: unknown[] = [];
-  const baseDefinition = pageDefinition(page, operations);
+  const baseDefinition = pageDefinition(page, operations, workspace?.purpose);
   const visualStyle = createContext.moduleVisualStyle[page.moduleName];
   const i18nMeta = createContext.moduleI18n[page.moduleName] || { defaultLocale: 'en', activeLocales: ['en'] };
   const entityFields = Object.fromEntries(
@@ -615,7 +639,12 @@ export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateCo
   const contractCopies = workspace && workspace.bffCalls.length > 0 ? buildContractCopies(createContext, page, workspace) : [];
   const variantPlan = buildLayoutVariantPlan(createContext, page, operations, commands);
   const userJourney = buildPageUserJourney(createContext, page, operations, commands);
-  return { project: createContext.project, page, operations, commands, workspace, contractCopies, navigationRefs, baseDefinition, visualStyle, i18nMeta, entityFields, variantPlan, userJourney };
+    // Machine-readable UX classification from l4 (T5). Travels into the page defs in place of the
+  // free-text visualStyle so a gallery/telemetry can label a slot without opening the skill .md.
+  const presentation = workspace && workspace.categoryRef
+    ? { categoryRef: workspace.categoryRef, ...(workspace.experienceRef ? { experienceRef: workspace.experienceRef } : {}) }
+    : null;
+  return { project: createContext.project, page, operations, commands, workspace, contractCopies, navigationRefs, baseDefinition, visualStyle, presentation, i18nMeta, entityFields, variantPlan, userJourney };
 }
 
 // F3: GENERATE ONE l2 contract .ts per WORKSPACE from the workspace defs (l4 holds only .defs.ts; we never
@@ -1083,26 +1112,28 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
   const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutFields(prepared, repairMissingOperationUserActions(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, bffMapped)))));
   validatePageLayout(prepared, repairedLayout);
   const enrichedLayout = enrichLayoutWithStateRefs(prepared, repairedLayout);
+  // REDUCED defs (31/jul slot study): identity + wiring only. `sections`/`layout` are deliberately NOT
+  // written — a complete defs drowns the experience skill out, and the reduced form is what made page31
+  // win. The layout is still built above because everything else derives from it (validation, the shared
+  // reconciliation, the state refs); it just does not travel to the render.
+  // The closed msg-key vocabulary is not duplicated here either: the shared base class MessageType is the
+  // authoritative, type-checked key set, read by the render from the shared .d.ts.
+  const variant = prepared.variantPlan.find(item => item.genome === genome);
   const definition = {
-    ...prepared.baseDefinition,
-    templateId: selectedTemplateId(prepared, genome),
-    visualStyle: prepared.visualStyle,
-    // The goal-first genome (page21) carries the synthesized objective so the render skill can
-    // lay the page out around the actor's primary decision. Absent on the page11 baseline.
+    pageId: prepared.page.pageId,
+    pageName: prepared.page.pageName,
+    baseClassName: readString(prepared.baseDefinition.baseClassName),
+    actor: readString(prepared.baseDefinition.actor),
+    purpose: readString(prepared.baseDefinition.purpose),
+    // presentation replaces the free-text visualStyle: it is the machine-readable T5 contract that says
+    // WHICH UX category this workspace is, so galleries/telemetry can label a slot without opening the .md.
+    ...(prepared.presentation ? { presentation: prepared.presentation } : {}),
+    // Goal-first slots carry the synthesized objective so the render can lay the page out around the
+    // actor's primary decision. Absent on the bespoke page11.
     ...(isRecord(objective) ? { pageObjective: objective } : {}),
-    // The closed msg-key vocabulary is NOT duplicated here: the shared base class MessageType is the
-    // authoritative, type-checked key set, and the render skill reads it from the shared .d.ts. An
-    // invented or shortened key (102051: 'lane.registered', 'organism.dashboard.empty') still fails
-    // the strict tsc against that type — the page defs no longer needs its own msgKeys list.
-    sections: layoutSectionSummary(enrichedLayout.sections),
-    layout: {
-      id: enrichedLayout.layoutId,
-      type: 'page',
-      sections: enrichedLayout.sections,
-    },
     dataBindings: enrichedLayout.dataBindings,
   };
-  await saveFrontendDefs(pageFileInfo(prepared.project, prepared.page, genome), 'definition', definition, pagePipeline(prepared.project, prepared.page, prepared.visualStyle, genome));
+  await saveFrontendDefs(pageFileInfo(prepared.project, prepared.page, genome), 'definition', definition, pagePipeline(prepared.project, prepared.page, prepared.visualStyle, genome, variant?.experienceSkill));
   return enrichedLayout;
 }
 
@@ -1584,7 +1615,7 @@ function mergeLayoutsForShared(layouts: CfePageLayoutDefinition[]): CfePageLayou
   return { pageId: primary.pageId, layoutId: primary.layoutId, sections, i18n, dataBindings };
 }
 
-export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[]; configMsg: string }> {
+export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[]; configMsg: string; addLanguageMessage: string | null }> {
   const context = await readCreateContext();
   const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) && await hasRegisteredFrontend(context.project, page) })));
   const validPages = checkedPages.filter(item => item.ok).map(item => item.page);
@@ -1592,7 +1623,37 @@ export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; o
   const ownersDone = await updateOwnerStatuses(context, validPages.flatMap(page => page.ownerIds), 'done');
   await saveCreateReport(context.project, validPages, ownersDone, skippedPages);
   const configMsg = await saveFrontendWorkspaceConfig(context, validPages);
-  return { pagesDone: validPages.map(page => page.pageId), ownersDone, skippedPages, configMsg };
+  return { pagesDone: validPages.map(page => page.pageId), ownersDone, skippedPages, configMsg, addLanguageMessage: buildAddLanguageMessage(context, validPages) };
+}
+
+/**
+ * The `@@addLanguage` handoff for the module just generated, or null when there is nothing to translate.
+ *
+ * The generated shared .ts carries ONE message catalog (the module's default locale) — the scaffold's
+ * renderI18n emits a single `message_<default>` and `messages` map. The extra locales the module declares
+ * are added afterwards by agentAddLanguage, which sends ONLY the i18n block to a cheap translate model
+ * (one call per shared file), so the cost is a fraction of regenerating anything.
+ *
+ * Returns null when the module declares a single language — then no extra task is needed at all.
+ * The payload mirrors what the selectLanguage plugin sends (aura/plugins/selectLanguage.ts):
+ * `[{ languages: [{code, name}], projectId, moduleName }]`, with the language NAME falling back to the
+ * code when the catalog does not know it.
+ */
+export function buildAddLanguageMessage(context: CfeCreateContext, validPages: CfePagePlan[]): string | null {
+  // A run generates a single module; take it from the pages actually finalized (not context.moduleNames,
+  // which lists every module in the project).
+  const moduleName = validPages.length > 0 ? readString(validPages[0].moduleName) : '';
+  if (!moduleName) return null;
+  const meta = context.moduleI18n[moduleName];
+  if (!meta) return null;
+  // runtimeLocales (region preserved, default first) is the SAME list written to l5/config.json, so the
+  // catalog agentAddLanguage creates is keyed exactly like the language the shell will set on
+  // document.lang. Using the 2-letter list here would make 'en' + 'en-AU' collapse into one.
+  const locales = (meta.runtimeLocales ?? []).length > 0 ? meta.runtimeLocales : (meta.activeLocales ?? []);
+  const extras = locales.filter(locale => locale && locale !== locales[0]);
+  if (extras.length === 0) return null;
+  const languages = extras.map(code => ({ code, name: findLanguageByCode(code)?.name || code }));
+  return `@@addLanguage ${JSON.stringify([{ languages, projectId: context.project, moduleName }])}`;
 }
 
 export async function listGeneratedCreatePages(): Promise<{ project: number; pages: CfePagePlan[]; skippedPages: string[] }> {
@@ -1832,6 +1893,18 @@ function languageKeys(values: string[]): string[] {
   return unique(values.map(languageKey).filter(Boolean));
 }
 
+// Runtime locale key: lowercase, '_' -> '-', REGION PRESERVED — byte-identical to what mls-102033
+// languageRuntime.normalizeLanguage does to the configured list, so l5/config.json, document.lang and the
+// generated i18n catalog key are always the same string. Unlike languageKey it does NOT drop the region.
+function runtimeLocaleKey(value: string): string {
+  const trimmed = readString(value).replace(/_/g, '-').toLowerCase();
+  return /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/.test(trimmed) ? trimmed : '';
+}
+
+function runtimeLocaleKeys(values: string[]): string[] {
+  return unique(values.map(runtimeLocaleKey).filter(Boolean));
+}
+
 function languageKey(value: string): string {
   const locale = readI18nLocale(value);
   const primary = normalizeI18nLocale(locale || value).split('-')[0] || '';
@@ -1854,13 +1927,53 @@ function normalizeOrder(value: unknown, path: string): number {
 // intentionally ignored (always page11 + page21).
 export const GOAL_FIRST_TEMPLATE_ID = 'goal_first';
 
-function buildLayoutVariantPlan(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[]): CfeLayoutVariantPlan[] {
+/** Experience skills live one folder per UX category, one .md per slot. */
+function experienceSkillPath(categoryRef: string, genome: string): string {
+  return `_102020_/l4/collabux/templates/${categoryRef}/${genome}.md`;
+}
+
+/** True when the experience skill exists in the stor — a category without one degrades to bespoke. */
+function experienceSkillExists(categoryRef: string, genome: string): boolean {
+  if (!categoryRef) return false;
+  const key = mls.stor.getKeyToFile({ project: 102020, level: 4, folder: `collabux/templates/${categoryRef}`, shortName: genome, extension: '.md' });
+  const file = (mls.stor.files as Record<string, unknown>)[key] as { status?: string } | undefined;
+  return Boolean(file && file.status !== 'deleted');
+}
+
+/**
+ * Three slots per workspace, all on the REDUCED defs (identity + wiring; no sections/layout):
+ *  - page11: bespoke — no experience skill, the model choreographs from the contract;
+ *  - page21/page31: the two contrasting experiences of the workspace's UX category.
+ *
+ * Measured on 102045/clientManagement (31/jul): coherence ranked page31 > page21 > page11, and a REDUCED
+ * defs + skill beat a complete defs + skill — the organisms of a complete defs drown the skill out.
+ *
+ * A category with no skill file degrades that slot to bespoke with a warning instead of putting a broken
+ * path in the pipeline. Generating three slots is the learning phase: the user's pick is the metric, and
+ * once telemetry matures a category the winner becomes the single default (hence `slots`, which lets a
+ * caller ask for a subset instead of hardcoding three).
+ */
+function buildLayoutVariantPlan(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[], slots = MAX_UX_SLOTS): CfeLayoutVariantPlan[] {
   const candidates = selectUxTemplateCandidates(deriveUxSignals(context, page, operations, commands));
   const primary = candidates[0];
-  return [
+  const categoryRef = readString(workspaceForPage(context, page)?.categoryRef);
+  const plan: CfeLayoutVariantPlan[] = [
     { genome: pageGenome(0), templateId: primary.id, template: primary as unknown as Record<string, unknown> },
-    { genome: pageGenome(1), templateId: GOAL_FIRST_TEMPLATE_ID, template: { mode: 'goal-first', candidates: candidates as unknown as Record<string, unknown>[] } },
   ];
+  for (let index = 1; index < Math.max(1, slots); index += 1) {
+    const genome = pageGenome(index);
+    const hasSkill = experienceSkillExists(categoryRef, genome);
+    if (categoryRef && !hasSkill) {
+      recordCreateWarning(`${page.pageId}/${genome}: no experience skill for category '${categoryRef}' (${experienceSkillPath(categoryRef, genome)}) — slot degraded to bespoke`);
+    }
+    plan.push({
+      genome,
+      templateId: GOAL_FIRST_TEMPLATE_ID,
+      template: { mode: 'goal-first', candidates: candidates as unknown as Record<string, unknown>[] },
+      ...(hasSkill ? { experienceSkill: experienceSkillPath(categoryRef, genome) } : {}),
+    });
+  }
+  return plan;
 }
 
 // Machine-derivable UX signals for template scoring. Prose signals stay for the LLM.
@@ -3457,13 +3570,15 @@ function commandFromOperation(operation: CfeOperationDef, entities: Map<string, 
   };
 }
 
-function pageDefinition(page: CfePagePlan, operations: CfeOperationDef[]): Record<string, unknown> {
+function pageDefinition(page: CfePagePlan, operations: CfeOperationDef[], workspacePurpose = ''): Record<string, unknown> {
   return {
     pageId: page.pageId,
     pageName: page.pageName,
     baseClassName: `${toPascalCase(page.moduleName)}${toPascalCase(page.pageId)}Base`,
     actor: page.actorIds[0] || 'user',
-    purpose: `Executar ${page.pageName}.`,
+    // The l4 workspace purpose says what the page is FOR — it is the only prose the render gets about
+    // intent now that the defs carries no layout. Falls back to the old placeholder only when l4 has none.
+    purpose: readString(workspacePurpose) || `Executar ${page.pageName}.`,
     capabilities: page.capabilities,
     flowRefs: {
       experienceFlows: page.sourceKind === 'workflow' ? page.ownerIds.filter(id => id.startsWith('workflow:')).map(id => id.slice('workflow:'.length)) : [],
@@ -3515,7 +3630,7 @@ function sharedPipeline(prepared: CfePreparedPage): unknown[] {
   }];
 }
 
-function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, genome = 'page11'): unknown[] {
+function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, genome = 'page11', experienceSkill?: string): unknown[] {
   const idSuffix = genome === 'page11' ? '' : `__${genome}`;
   return [{
     id: `${page.pageId}${idSuffix}__l2_page`,
@@ -3535,7 +3650,9 @@ function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, 
       `_${project}_/l2/designSystem.ts`,
     ],
     dependsOn: [`${page.pageId}__l2_shared`],
-    skills: [pageRenderSkillPath(genome)],
+    // Render skill first (HOW to write the Lit file), then the experience skill (WHICH experience to
+    // build). page11 has no experience skill — it is the bespoke slot.
+    skills: experienceSkill ? [pageRenderSkillPath(genome), experienceSkill] : [pageRenderSkillPath(genome)],
     visualStyle: typeof visualStyle === 'string' ? { description: visualStyle } : (isRecord(visualStyle) ? visualStyle : {}),
     agent: 'agentCfeMaterializeGen',
   }];
@@ -3619,6 +3736,12 @@ async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: Cfe
     if (!mod) { mod = { moduleId: moduleName, basePath: `/${moduleName}`, shellMode: 'spa' }; clientModules.push(mod); }
     mod.basePath = readString(mod.basePath) || `/${moduleName}`;
     mod.shellMode = readString(mod.shellMode) || 'spa';
+    // The runtime shell (102033/102034) reads the module's languages from HERE: it is the source of the
+    // Ctrl+Alt+L rotation, of mls.sites.setLanguage's valid set, and of the languages[0] fallback — so the
+    // DEFAULT locale must stay first. Region is preserved ('pt-br', 'en-au'); the shell normalizes and
+    // falls back to the 2-letter prefix on its own. Rewritten on every rebuild so l4 stays authoritative.
+    const runtimeLocales = context.moduleI18n[moduleName]?.runtimeLocales ?? [];
+    if (runtimeLocales.length > 0) mod.languages = runtimeLocales;
     mod.navigation = mergeByKey(asRecords(mod.navigation), modulePages.map(page => ({
       id: page.pageId,
       label: readString(labels[page.pageId]) || page.pageName,
@@ -3947,7 +4070,10 @@ function frontendComponentTag(project: number, page: CfePagePlan, genome = 'page
 
 // page[ux][ui] genome. UX variants vary the UX digit and keep UI=1. Fixed at two genomes
 // (flow.json genomePolicy): page11 (baseline) and page21 (goal-first). page31+ is deprecated.
-const MAX_UX_VARIANTS = 2;
+// Three slots per workspace: page11 (bespoke) + page21/page31 (the two contrasting experiences of the
+// workspace's UX category). Was 2 before the 31/jul slot study.
+const MAX_UX_VARIANTS = 3;
+const MAX_UX_SLOTS = MAX_UX_VARIANTS;
 function pageGenome(variantIndex: number): string { return `page${variantIndex + 1}1`; }
 
 function selectedTemplateId(prepared: CfePreparedPage, genome: string): string | undefined {
@@ -4028,6 +4154,11 @@ function workspaceFromData(raw: Record<string, unknown>): CfeJourneyWorkspace | 
     // v2 derives coverage from bffCalls[].uses; legacy carries operationIds directly.
     operationIds: unique([...readStringArray(raw.operationIds), ...bffCalls.flatMap(call => call.uses)]),
     purpose: readString(raw.purpose),
+    // T5 contract (improveNewSolution): the UX CATEGORY the l4 classifier assigned to this workspace.
+    // It resolves the experience skill of the page21/page31 slots and travels into the page defs in
+    // place of the free-text visualStyle.
+    categoryRef: readString(isRecord(raw.presentation) ? raw.presentation.categoryRef : ''),
+    experienceRef: readString(isRecord(raw.presentation) ? raw.presentation.experienceRef : ''),
     bffCalls,
     sections: parseWorkspaceSections(raw),
   };
@@ -4227,7 +4358,7 @@ async function saveConstDefault(fileInfo: FileInfo, exportName: string, data: un
   await saveStorContent(fileInfo, `${header}export const ${exportName} = ${JSON.stringify(data, null, 2)} as const;\n\nexport default ${exportName};\n`);
 }
 
-function ensureModule(modules: Map<string, CfeModuleInfo>, moduleName: string): CfeModuleInfo { const existing = modules.get(moduleName); if (existing) return existing; const created = { moduleName, entityIds: new Set<string>(), i18nLocales: [], i18nDefaultLocale: '' }; modules.set(moduleName, created); return created; }
+function ensureModule(modules: Map<string, CfeModuleInfo>, moduleName: string): CfeModuleInfo { const existing = modules.get(moduleName); if (existing) return existing; const created = { moduleName, entityIds: new Set<string>(), i18nLocales: [], i18nDefaultLocale: '', i18nLocalesRaw: [], i18nDefaultLocaleRaw: '' }; modules.set(moduleName, created); return created; }
 function toDisplayRef(fileInfo: FileInfo): string { const folder = fileInfo.folder ? `${fileInfo.folder}/` : ''; return `_${fileInfo.project}_/l${fileInfo.level}/${folder}${fileInfo.shortName}${fileInfo.extension}`; }
 function toFrontendType(type: string): string { const normalized = type.toLowerCase(); if (['number', 'integer', 'decimal', 'money', 'float'].includes(normalized)) return 'number'; if (['boolean', 'bool'].includes(normalized)) return 'boolean'; if (['date', 'datetime', 'time'].includes(normalized)) return 'date'; return 'string'; }
 function isSystemField(fieldId: string): boolean { return ['createdat', 'updatedat'].includes(fieldId.toLowerCase()); }

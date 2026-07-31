@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { runNsGate } from '/_102020_/l2/agentNewSolution/helpers/nsGate.js';
+import { parseNsCategoryCatalog } from '/_102020_/l2/agentNewSolution/helpers/nsCategoryCatalog.js';
 import {
   collectNsOutputPaths,
   collectNsOutputPathSets,
@@ -776,4 +777,203 @@ void test('repairE6BffFroms leaves ambiguous froms alone (composed call; prefix 
   composed.workspaces[0].bffCalls[0].uses.push({ operationId: 'otherOp' });
   repairE6BffFroms(composed, facts);
   assert.equal(composed.workspaces[0].bffCalls[0].output!.fields[0].from, 'totalSales', 'a composed call is never auto-qualified');
+});
+
+// ---------------------------------------------------------------------------
+// presentation (improveNewSolution T1/T3): category/style classification
+// ---------------------------------------------------------------------------
+
+// A TEST catalog, not the real one: these tests must not break when categoryList.json evolves (the
+// real file is covered by helpers/nsCategoryCatalog.test.ts).
+const testCatalog = parseNsCategoryCatalog({
+  categories: [
+    { categoryId: 'productCatalog', name: 'Product Catalog', description: 'Catalog maintenance.' },
+    { categoryId: 'operationsQueue', name: 'Operations Queue', description: 'Work queue.' },
+    { categoryId: 'readOnlyDetailPortal', name: 'Read-only Detail Portal', description: 'Read-only.' },
+    { categoryId: 'dashboardCommandCenter', name: 'Dashboard', description: 'Monitoring.' },
+    { categoryId: 'processWizard', name: 'Process Wizard', description: 'Multi-step.' },
+    { categoryId: 'importMappingWizard', name: 'Import Mapping Wizard', description: 'Upload/map.', parentCategory: 'processWizard' },
+  ],
+})!;
+
+function presentationContext(overrides: Partial<E6GateContext> = {}): E6GateContext {
+  return { ...bffContext, categoryCatalog: testCatalog, templateStyleRefs: ['salesforceStyle'], ...overrides };
+}
+
+// bffMap()'s catalog workspace: paginated query + detail + command, query-backed primarySurface.
+function presentedMap(presentation: unknown): NsE6JourneyMapArtifact {
+  const map = bffMap();
+  (map.workspaces[0] as unknown as Record<string, unknown>).presentation = presentation;
+  return prepareE6JourneyMap(map, { moduleName: 'petShop' });
+}
+
+function issuesOf(map: NsE6JourneyMapArtifact, context: E6GateContext = presentationContext()) {
+  return validateE6Invariants(map, context).issues;
+}
+
+void test('e6 presentation: a valid classification passes and survives prepare (schema accepts it)', async () => {
+  const map = presentedMap({
+    categoryRef: 'productCatalog', styleRef: 'salesforceStyle', confidence: 9,
+    alternates: [{ categoryRef: 'operationsQueue', confidence: 4, reason: 'has a list' }],
+    classificationNote: 'browse + reserve',
+  });
+  assert.deepEqual(map.workspaces[0].presentation, {
+    categoryRef: 'productCatalog', styleRef: 'salesforceStyle', confidence: 9,
+    classificationNote: 'browse + reserve',
+    alternates: [{ categoryRef: 'operationsQueue', confidence: 4, reason: 'has a list' }],
+  });
+  const gate = await runNsGate({ stepId: 'e6-journey-map', schema: mapSchema, artifact: map, validate: item => validateE6Invariants(item, presentationContext()) });
+  assert.equal(gate.ok, true, gate.errors.map(issue => issue.message).join('; '));
+  assert.equal(gate.warnings.some(issue => issue.code.startsWith('presentation.')), false, gate.warnings.map(issue => issue.code).join(', '));
+});
+
+void test('e6 presentation: an unknown categoryRef (or alternate) is an ERROR — the catalog is the source of truth', () => {
+  const codes = issuesOf(presentedMap({ categoryRef: 'ghostCategory', confidence: 9 })).map(issue => issue.code);
+  assert.ok(codes.includes('presentation.category.unknown'), codes.join(', '));
+
+  const alternateCodes = issuesOf(presentedMap({
+    categoryRef: 'productCatalog', confidence: 9, alternates: [{ categoryRef: 'ghostAlternate', confidence: 3 }],
+  })).map(issue => issue.code);
+  assert.ok(alternateCodes.includes('presentation.alternate.unknown'), alternateCodes.join(', '));
+});
+
+void test('e6 presentation: a category added to the catalog is accepted with NO code change', () => {
+  const grown = parseNsCategoryCatalog({
+    categories: [{ categoryId: 'brandNewShape', name: 'Brand New Shape', description: 'Added today.' }],
+  })!;
+  const issues = issuesOf(presentedMap({ categoryRef: 'brandNewShape', confidence: 8 }), presentationContext({ categoryCatalog: grown }));
+  assert.equal(issues.some(issue => issue.code.startsWith('presentation.')), false, issues.map(issue => issue.code).join(', '));
+});
+
+void test('e6 presentation: missing classification warns, never blocks (optional in this phase)', () => {
+  const issues = issuesOf(bffMap());
+  const missing = issues.find(issue => issue.code === 'presentation.missing');
+  assert.equal(missing?.severity, 'warning');
+  assert.equal(issues.some(issue => issue.severity === 'error'), false);
+});
+
+void test('e6 presentation: an unreachable catalog warns ONCE and skips the checks; undefined is silent', () => {
+  const unreachable = issuesOf(presentedMap({ categoryRef: 'ghostCategory', confidence: 9 }), presentationContext({ categoryCatalog: null }));
+  assert.deepEqual(unreachable.filter(issue => issue.code.startsWith('presentation.')).map(issue => `${issue.severity}:${issue.code}`), ['warning:presentation.catalog.unavailable']);
+
+  const notWired = issuesOf(presentedMap({ categoryRef: 'ghostCategory', confidence: 9 }), bffContext);
+  assert.equal(notWired.some(issue => issue.code.startsWith('presentation.')), false);
+});
+
+void test('e6 presentation: a broken catalog is a configuration ERROR', () => {
+  const broken = parseNsCategoryCatalog({
+    categories: [
+      { categoryId: 'dup', name: 'D', description: 'x' },
+      { categoryId: 'dup', name: 'D2', description: 'x' },
+      { categoryId: 'orphan', name: 'O', description: 'x', parentCategory: 'ghost' },
+    ],
+  })!;
+  const codes = issuesOf(presentedMap({ categoryRef: 'dup', confidence: 9 }), presentationContext({ categoryCatalog: broken }))
+    .filter(issue => issue.severity === 'error').map(issue => issue.code);
+  assert.ok(codes.includes('catalog.category.duplicate'), codes.join(', '));
+  assert.ok(codes.includes('catalog.parent.unknown'), codes.join(', '));
+});
+
+void test('e6 presentation: styleRef mismatch and low confidence are WARNINGS (a retry cannot fix run config)', () => {
+  const styleIssue = issuesOf(presentedMap({ categoryRef: 'productCatalog', styleRef: 'ghostStyle', confidence: 9 }))
+    .find(issue => issue.code === 'presentation.style.unknown');
+  assert.equal(styleIssue?.severity, 'warning');
+  // Unknown style set (no template folder discovered) => the check no-ops instead of crying wolf.
+  assert.equal(issuesOf(presentedMap({ categoryRef: 'productCatalog', styleRef: 'ghostStyle', confidence: 9 }), presentationContext({ templateStyleRefs: [] }))
+    .some(issue => issue.code === 'presentation.style.unknown'), false);
+
+  const lowConfidence = issuesOf(presentedMap({ categoryRef: 'productCatalog', confidence: 4 }));
+  assert.equal(lowConfidence.find(issue => issue.code === 'presentation.confidence.low')?.severity, 'warning');
+  assert.equal(lowConfidence.some(issue => issue.severity === 'error'), false, 'confidence < 6 must never block the run');
+});
+
+void test('e6 presentation: coarse shape findings (read-only with command; queue without paginated)', () => {
+  // bffMap()'s workspace HAS a command (reservar) → a read-only portal classification is suspicious.
+  const readOnly = issuesOf(presentedMap({ categoryRef: 'readOnlyDetailPortal', confidence: 8 }))
+    .find(issue => issue.code === 'presentation.shape.readOnlyHasCommand');
+  assert.equal(readOnly?.severity, 'warning');
+
+  // It HAS a paginated query, so operationsQueue is coherent...
+  assert.equal(issuesOf(presentedMap({ categoryRef: 'operationsQueue', confidence: 8 }))
+    .some(issue => issue.code === 'presentation.shape.queueNotPaginated'), false);
+  // ...but drop the paginated output and the finding appears.
+  const noPagination = presentedMap({ categoryRef: 'operationsQueue', confidence: 8 });
+  noPagination.workspaces[0].bffCalls[0].output!.kind = 'list';
+  assert.equal(issuesOf(noPagination).find(issue => issue.code === 'presentation.shape.queueNotPaginated')?.severity, 'warning');
+});
+
+void test('e6 presentation: a shape check NO-OPS when its category id left the catalog (single source of truth)', () => {
+  // Same suspicious workspace, but a catalog where 'readOnlyDetailPortal' no longer exists: the id
+  // check reports it as unknown, and the shape rule that names the id must NOT fire on its own.
+  const renamed = parseNsCategoryCatalog({ categories: [{ categoryId: 'somethingElse', name: 'S', description: 'x' }] })!;
+  const codes = issuesOf(presentedMap({ categoryRef: 'readOnlyDetailPortal', confidence: 8 }), presentationContext({ categoryCatalog: renamed }))
+    .map(issue => issue.code);
+  assert.ok(codes.includes('presentation.category.unknown'));
+  assert.equal(codes.includes('presentation.shape.readOnlyHasCommand'), false, 'a rule naming a dead id must degrade to a no-op');
+});
+
+void test('e6 presentation: a dashboard whose primary surface is a write command is a finding', () => {
+  const map = presentedMap({ categoryRef: 'dashboardCommandCenter', confidence: 7 });
+  map.workspaces[0].sections[0].organisms[0] = { role: 'primarySurface', action: 'reservar' };
+  assert.equal(issuesOf(map).find(issue => issue.code === 'presentation.shape.dashboardWriteSurface')?.severity, 'warning');
+});
+
+void test('e6 bffCall input carries source/sourceRef through prepare (T4 lint input)', () => {
+  const map = bffMap();
+  (map.workspaces[0].bffCalls[2] as unknown as Record<string, unknown>).input = [
+    { name: 'productId', required: true, source: 'selection', sourceRef: 'productList' },
+    { name: 'note', source: 'userDecision' },
+    { name: 'bogus', source: 'notASource' },
+  ];
+  const prepared = prepareE6JourneyMap(map, { moduleName: 'petShop' });
+  assert.deepEqual(prepared.workspaces[0].bffCalls[2].input, [
+    { name: 'productId', required: true, source: 'selection', sourceRef: 'productList' },
+    { name: 'note', source: 'userDecision' },
+    { name: 'bogus' }, // an unknown source is DROPPED, never defaulted
+  ]);
+});
+
+// ---------------------------------------------------------------------------
+// required-id source (ajustesTemplates §2): decided at e6, where the fix is still cheap
+// ---------------------------------------------------------------------------
+
+function idSourceMap(input: unknown[]): NsE6JourneyMapArtifact {
+  const map = bffMap();
+  (map.workspaces[0].bffCalls[2] as unknown as Record<string, unknown>).input = input;
+  return prepareE6JourneyMap(map, { moduleName: 'petShop' });
+}
+
+function idSourceCodes(input: unknown[]): string[] {
+  return validateE6Invariants(idSourceMap(input), bffContext).issues
+    .filter(issue => issue.code.startsWith('bff.input.idSource')).map(issue => issue.code);
+}
+
+void test('e6 gate: a required id with no source (or userDecision) is an ERROR the retry can fix', () => {
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string' }]), ['bff.input.idSourceMissing']);
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'userDecision' }]), ['bff.input.idSourceMissing']);
+  const message = validateE6Invariants(idSourceMap([{ name: 'productId', required: true, type: 'string' }]), bffContext)
+    .issues.find(issue => issue.code === 'bff.input.idSourceMissing')!.message;
+  // The message must name BOTH legitimate ways out, or the retry cannot know what to do.
+  assert.match(message, /source "selection" with sourceRef/);
+  assert.match(message, /"pageInput" when the id arrives with the page/);
+});
+
+void test('e6 gate: selection must point at a query bffCall of THIS workspace', () => {
+  // productList IS a query on this workspace — accepted.
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'selection', sourceRef: 'productList' }]), []);
+  // reservar is a COMMAND, and ghostPicker does not exist — both unresolved.
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'selection', sourceRef: 'reservar' }]), ['bff.input.idSourceUnresolved']);
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'selection' }]), ['bff.input.idSourceUnresolved']);
+});
+
+void test('e6 gate: pageInput/actorSession need no ref; derived must start at a local bffCall', () => {
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'pageInput' }]), []);
+  assert.deepEqual(idSourceCodes([{ name: 'ownerId', required: true, type: 'string', source: 'actorSession' }]), []);
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'derived', sourceRef: 'productList.productId' }]), []);
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'derived', sourceRef: 'ghostCall.productId' }]), ['bff.input.idSourceUnresolved']);
+});
+
+void test('e6 gate: the rule targets required IDS only — optional ids and typed non-ids pass', () => {
+  assert.deepEqual(idSourceCodes([{ name: 'productId', type: 'string' }]), [], 'optional id');
+  assert.deepEqual(idSourceCodes([{ name: 'quantity', required: true, type: 'number' }]), [], 'a required non-id is typed by the user');
 });

@@ -72,6 +72,43 @@ function readStringArray(value: unknown): string[] { return Array.isArray(value)
 function toSafeShortName(value: string): string { return value.trim().replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'page'; }
 function humanizeId(id: string): string { const spaced = id.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim(); return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : id; }
 function toKebab(str: string): string { return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase(); }
+function languageKeys(values: string[]): string[] {
+  return [...new Set(values
+    .map(value => value.trim().replace(/_/g, '-').toLowerCase().split('-')[0])
+    .filter(value => /^[a-z]{2,3}$/.test(value)))];
+}
+
+function discoverModuleLanguages(clientRoot: string, moduleName: string, l5: L5ProjectJson): string[] {
+  const defs = readDefsData(path.join(clientRoot, 'l4', moduleName, 'module.defs.ts'));
+  const moduleData = defs?.module && typeof defs.module === 'object' && !Array.isArray(defs.module)
+    ? defs.module as Record<string, unknown>
+    : defs;
+  const moduleLanguages = readStringArray(moduleData?.languages);
+  const projectLanguages = (l5.languages || []).map(item => readString(item?.language));
+  return languageKeys(moduleLanguages.length > 0 ? moduleLanguages : projectLanguages);
+}
+
+function discoverDesignSystemNames(clientRoot: string): string[] {
+  let source: string;
+  try {
+    source = fs.readFileSync(path.join(clientRoot, 'l2', 'designSystem.ts'), 'utf8');
+  } catch {
+    return [];
+  }
+
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const themeNamePattern = /\bthemeName\s*:\s*(["'`])([^"'`]+)\1/g;
+  for (const match of source.matchAll(themeNamePattern)) {
+    const name = match[2].trim();
+    const key = name.toLowerCase();
+    if (name && !seen.has(key)) {
+      seen.add(key);
+      names.push(name);
+    }
+  }
+  return names;
+}
 
 /** Tag for a generated page component. Page .ts files register the custom element in the LEGACY full
  *  format `<folder-kebab>--<shortName>-<project>` (e.g. cafe-flow--web--desktop--page11--ws-cook-kitchen-102049),
@@ -287,6 +324,8 @@ function main(): void {
   const moduleNames = (l5.modules || []).map(m => m.moduleName).filter(Boolean);
   if (moduleNames.length !== 1) fail(`expected exactly 1 module in l5/project.json, found ${moduleNames.length}`);
   const moduleName = moduleNames[0];
+  const moduleLanguages = discoverModuleLanguages(clientRoot, moduleName, l5);
+  const moduleDesignSystems = discoverDesignSystemNames(clientRoot);
 
   const discovered = discoverPages(clientRoot, moduleName);
   if (discovered.length === 0) fail('no pages discovered from l4 workflows/operations');
@@ -348,6 +387,8 @@ function main(): void {
   if (!mod) { mod = { moduleId: moduleName, basePath: `/${moduleName}`, shellMode: 'spa' } as ProjectModuleConfig; client.modules.push(mod); }
   mod.basePath = mod.basePath || `/${moduleName}`;
   mod.shellMode = mod.shellMode || 'spa';
+  mod.languages = moduleLanguages;
+  mod.designSystems = moduleDesignSystems;
 
   const labels = customize.navigationLabels || {};
   // F5: menu derived from workspaces + siteMap/actors. `actors` lets the shell filter the menu by the

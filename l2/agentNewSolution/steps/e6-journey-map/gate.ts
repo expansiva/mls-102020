@@ -2,6 +2,7 @@
 
 import { errorIssue, NsGateIssue, warningIssue } from '/_102020_/l2/agentNewSolution/helpers/nsGate.js';
 import { readActors } from '/_102020_/l2/agentNewSolution/helpers/nsActors.js';
+import { NsCategoryCatalog, validateNsCatalogIntegrity } from '/_102020_/l2/agentNewSolution/helpers/nsCategoryCatalog.js';
 
 // isRecord is a leaf type-guard defined locally (not imported from nsFs) so this gate — and its
 // unit test — stay free of the libStor/libModel import chain, which touches DOM globals at init.
@@ -9,7 +10,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export const E6_JOURNEY_MAP_SCHEMA_VERSION = '2026-07-18-ns-e6-v5';
+export const E6_JOURNEY_MAP_SCHEMA_VERSION = '2026-07-31-ns-e6-v7';
 
 // Deterministic note attached after the LLM call (never produced by the model).
 export const E6_JOURNEY_MAP_NOTE = 'Consolidated navigation map derived from workflows/operations stories (view, not source).';
@@ -58,11 +59,22 @@ export interface NsE6BffUse {
   optional?: boolean; // only allowed on a composed (uses N>1) query call: usecase failed → slice null
 }
 
+// Where a command input's VALUE comes from on the page. Declared so the T4 template-readiness lint
+// can refuse a required id with no resolvable source (the 102045 billingWorkspace case: `projectId
+// required` with no picker query became a typed-in text field). Optional in this phase: re-runs
+// predating the field stay valid.
+export const NS_BFF_INPUT_SOURCES = ['userDecision', 'selection', 'pageInput', 'actorSession', 'derived'] as const;
+export type NsE6BffInputSource = typeof NS_BFF_INPUT_SOURCES[number];
+
 export interface NsE6BffInput {
   name: string;
   from?: string; // <operationId>.<inputId> — absent only for free inputs (pagination/flags) that carry `type`
   type?: NsE6FieldType;
   required?: boolean;
+  source?: NsE6BffInputSource;
+  // Qualifies the source when needed: `selection` → the query bffId in the SAME workspace;
+  // `derived` → `<bffId>.<outputField>` of an earlier command.
+  sourceRef?: string;
 }
 
 export interface NsE6BffField {
@@ -102,6 +114,32 @@ export interface NsE6Section {
   organisms: NsE6Organism[];
 }
 
+// PRESENTATION (improveNewSolution T1/T2): the page CATEGORY (interaction shape) + STYLE the l2
+// renderer resolves its template with (`_102040_/l4/templates/<styleRef>/<categoryRef>/template.md`).
+// It classifies the FORM of the contract; it never changes the use case, the rules or the entities.
+// `categoryRef` is deliberately NOT an enum anywhere — the catalog (categoryList.json) is the single
+// source of truth and grows without a schema bump; existence is checked by the gate against the
+// catalog handed in through the context.
+export interface NsE6PresentationAlternate {
+  categoryRef: string;
+  confidence: number;
+  reason?: string;
+}
+
+export interface NsE6Presentation {
+  categoryRef: string;
+  styleRef?: string;
+  confidence: number; // 0–10 (analise1 scale; >= 8 = strong fit, < 6 = orphan candidate)
+  alternates?: NsE6PresentationAlternate[];
+  // RESERVED for the experience axis (UX variants per category) — accepted and carried, never
+  // produced or validated in this phase.
+  experienceRef?: string;
+  // Written by the e7 template-readiness lint (T4), never by the model: false means the contract
+  // does not meet the category's minimum, so the l2 renderer must use the generic fallback.
+  templateReady?: boolean;
+  classificationNote?: string;
+}
+
 // Consumer contract (agentChangeFrontend/helpers/.ts): workspaces are the page-grouping unit —
 // one page per workspace. `bffCalls` are the wire contracts (the view); `operationIds` is DERIVED by
 // code (flattened from bffCalls[].uses) so existing consumers and the e7 coverage/capability checks
@@ -117,6 +155,7 @@ export interface NsE6Workspace {
   sections: NsE6Section[];
   operationIds: string[];
   purpose: string;
+  presentation?: NsE6Presentation;
 }
 
 export interface NsE6Landing {
@@ -164,6 +203,16 @@ export interface E6GateContext {
   entityIds: string[];
   nowCapabilityActorIds: string[];
   operationFacts: Record<string, NsE6OperationFact>;
+  // Page-category catalog, READ FROM DISK BY THE AGENT and handed in (the gate never reads disk —
+  // same contract as operationFacts). Three states on purpose:
+  //   catalog   — classification is checked;
+  //   null      — the agent TRIED and the file was unreachable: one run-level warning, checks skipped
+  //               (a run cannot be blamed for a classification it could not make);
+  //   undefined — the caller does not wire presentation at all (older callers/tests): fully silent.
+  categoryCatalog?: NsCategoryCatalog | null;
+  // Style ids that actually have a template folder in `_102040_/l4/templates/<styleRef>/`. Empty =
+  // unknown (not "none") — the styleRef check then no-ops.
+  templateStyleRefs?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -411,6 +460,7 @@ export function prepareE6JourneyMap(input: unknown, context: Pick<E6GateContext,
     note: E6_JOURNEY_MAP_NOTE,
     workspaces: workspaces.map(workspace => {
       const workflowId = readString(workspace.workflowId);
+      const presentation = readPresentation(workspace.presentation);
       const sections = readSections(workspace.sections);
       // N2 default: when the LLM declares no explicit bffCalls, synthesize an identity call per
       // organism reference (bffId == operationId) — 1 identity query per query organism, 1 passthrough
@@ -431,6 +481,7 @@ export function prepareE6JourneyMap(input: unknown, context: Pick<E6GateContext,
         // purpose is no longer schema-required (models intermittently drop it); backfill from title. In
         // the detail phase it is overwritten with the sitemap slice's purpose (the sitemap owns it).
         purpose: readString(workspace.purpose) || readString(workspace.title) || readString(workspace.workspaceId) || 'workspace',
+        ...(presentation ? { presentation } : {}),
       };
     }),
     landings: landings.map(landing => {
@@ -541,6 +592,14 @@ export function validateE6Invariants(
     if (!knownEntities.has(workspace.entity)) {
       issues.push(errorIssue('workspace.entity.unknown', `workspace ${workspace.workspaceId}: entity ${workspace.entity} is not a declared E3 entity`, workspace.workspaceId));
     }
+    validateWorkspacePresentation(workspace, context, issues);
+  }
+
+  // Catalog integrity is a CONFIGURATION error (not a classification one) — reported once per run.
+  // An ABSENT catalog is a warning, also once: classification is simply not enforceable this run.
+  if (context.categoryCatalog) issues.push(...validateNsCatalogIntegrity(context.categoryCatalog));
+  else if (context.categoryCatalog === null) {
+    issues.push(warningIssue('presentation.catalog.unavailable', 'categoryList.json is not reachable from this runtime — workspaces are not classified and the presentation checks are skipped', 'presentation'));
   }
 
   // A4.4: every classified operation is used by ≥1 bffCall (no orphan operation on any page).
@@ -575,6 +634,129 @@ export function validateE6Invariants(
   return { artifact, issues };
 }
 
+// ── presentation (improveNewSolution T3): is the classification VALID and coherent with the form? ──
+//
+// Severity policy, deliberately asymmetric:
+//   error   — what the model owns and a retry CAN fix (an unknown categoryRef/alternate).
+//   warning — what a retry canNOT fix (styleRef comes from run configuration, not from the LLM) and
+//             the "finding" checks, which flag a suspicious shape for a human without blocking a run.
+// Every check that names a category id degrades to a NO-OP when that id is no longer in the catalog
+// (renamed/removed): the catalog is the single source of truth, so the gate must never outlive it.
+function validateWorkspacePresentation(
+  workspace: NsE6Workspace,
+  context: E6GateContext,
+  issues: NsGateIssue[],
+): void {
+  // Unavailable catalog: skip silently here — the run-level warning is emitted once by the caller.
+  const catalog = context.categoryCatalog;
+  if (!catalog) return;
+  const presentation = workspace.presentation;
+  if (!presentation) {
+    issues.push(warningIssue('presentation.missing', `workspace ${workspace.workspaceId} has no presentation (category/style) — the l2 renderer falls back to the generic template`, workspace.workspaceId));
+    return;
+  }
+
+  if (!catalog.byId.has(presentation.categoryRef)) {
+    issues.push(errorIssue('presentation.category.unknown', `workspace ${workspace.workspaceId}: categoryRef "${presentation.categoryRef}" is not in categoryList.json`, workspace.workspaceId));
+  }
+  for (const alternate of presentation.alternates || []) {
+    if (!catalog.byId.has(alternate.categoryRef)) {
+      issues.push(errorIssue('presentation.alternate.unknown', `workspace ${workspace.workspaceId}: alternate categoryRef "${alternate.categoryRef}" is not in categoryList.json`, workspace.workspaceId));
+    }
+  }
+  // styleRef is run configuration, never an LLM decision — a mismatch is reported as a warning
+  // because no detail retry could fix it (same lesson as run12 siteMap.actors.notCovering).
+  const styleRefs = context.templateStyleRefs || [];
+  if (presentation.styleRef && styleRefs.length > 0 && !styleRefs.includes(presentation.styleRef)) {
+    issues.push(warningIssue('presentation.style.unknown', `workspace ${workspace.workspaceId}: styleRef "${presentation.styleRef}" has no template folder (known: ${styleRefs.join(', ')})`, workspace.workspaceId));
+  }
+  if (presentation.confidence < 6) {
+    issues.push(warningIssue('presentation.confidence.low', `workspace ${workspace.workspaceId}: classified as ${presentation.categoryRef} with confidence ${presentation.confidence} — candidate for a new catalog category`, workspace.workspaceId));
+  }
+
+  validatePresentationShape(workspace, presentation, catalog, issues);
+}
+
+// Coarse category × form coherence (deterministic, no LLM). Start with these three; the list grows
+// with experience. Each one is skipped when its category id is absent from the catalog.
+function validatePresentationShape(
+  workspace: NsE6Workspace,
+  presentation: NsE6Presentation,
+  catalog: NsCategoryCatalog,
+  issues: NsGateIssue[],
+): void {
+  const category = presentation.categoryRef;
+  const known = (id: string): boolean => catalog.byId.has(id);
+  const finding = (code: string, message: string): void => {
+    issues.push(warningIssue(code, `workspace ${workspace.workspaceId} (${category}): ${message}`, workspace.workspaceId));
+  };
+
+  if (category === 'readOnlyDetailPortal' && known(category)) {
+    if (workspace.bffCalls.some(call => call.kind === 'command')) {
+      finding('presentation.shape.readOnlyHasCommand', 'a read-only portal declares a command bffCall');
+    }
+  }
+
+  if ((category === 'operationsQueue' || category === 'inventoryControl') && known(category)) {
+    const hasPaginated = workspace.bffCalls.some(call => call.kind === 'query' && call.output?.kind === 'paginated');
+    if (!hasPaginated) {
+      finding('presentation.shape.queueNotPaginated', 'a queue/inventory page has no paginated query (the template expects a paginated envelope)');
+    }
+  }
+
+  if (category === 'dashboardCommandCenter' && known(category)) {
+    const commandBffIds = new Set(workspace.bffCalls.filter(call => call.kind === 'command').map(call => call.bffId));
+    const writeSurface = workspace.sections.some(section => section.organisms.some(organism =>
+      organism.role === 'primarySurface' && !!organism.action && commandBffIds.has(organism.action)));
+    if (writeSurface) {
+      finding('presentation.shape.dashboardWriteSurface', 'a monitoring dashboard uses a write command as its primary surface');
+    }
+  }
+}
+
+/**
+ * A REQUIRED id input on a command must say where its value comes from, and the reference must
+ * resolve INSIDE this workspace. Two legitimate outs, both fixable by the detail retry:
+ *   - `selection` + sourceRef = a query bffId of THIS workspace (a picker over an operation the
+ *     workspace already hosts);
+ *   - `pageInput` (the id arrives with the page — a navigation from another workspace),
+ *     `actorSession` (it is the logged-in actor) or `derived` + sourceRef = "<bffId>.<field>".
+ * `userDecision` on an id is always wrong: an id is never typed by hand (102045 billingWorkspace).
+ */
+function validateCommandIdSources(workspace: NsE6Workspace, call: NsE6BffCall, issues: NsGateIssue[]): void {
+  const label = `workspace ${workspace.workspaceId} bffCall ${call.bffId}`;
+  const queryIds = new Set(workspace.bffCalls.filter(item => item.kind === 'query').map(item => item.bffId));
+  const localIds = new Set(workspace.bffCalls.map(item => item.bffId));
+  for (const entry of call.input || []) {
+    if (entry.required !== true || !isNsIdInputName(entry.name)) continue;
+    if (!entry.source || entry.source === 'userDecision') {
+      issues.push(errorIssue(
+        'bff.input.idSourceMissing',
+        `${label}: required id "${entry.name}" ${entry.source ? 'declares source "userDecision"' : 'declares no source'} — an id is never typed. Declare source "selection" with sourceRef = a query bffId of this workspace (add the picker query over an operation this workspace already hosts), or "pageInput" when the id arrives with the page, or "derived"/"actorSession"`,
+        workspace.workspaceId,
+      ));
+      continue;
+    }
+    if (entry.source === 'selection') {
+      if (!entry.sourceRef || !queryIds.has(entry.sourceRef)) {
+        issues.push(errorIssue('bff.input.idSourceUnresolved', `${label}: required id "${entry.name}" has source "selection" but sourceRef "${entry.sourceRef || '(none)'}" is not a query bffCall of this workspace (${[...queryIds].join(', ') || 'none declared'})`, workspace.workspaceId));
+      }
+      continue;
+    }
+    if (entry.source === 'derived') {
+      const head = (entry.sourceRef || '').split('.')[0];
+      if (!head || !localIds.has(head)) {
+        issues.push(errorIssue('bff.input.idSourceUnresolved', `${label}: required id "${entry.name}" has source "derived" but sourceRef "${entry.sourceRef || '(none)'}" does not start with a bffCall of this workspace`, workspace.workspaceId));
+      }
+    }
+  }
+}
+
+/** `id` / `<entity>Id` — the system-identifier convention shared with the e7 readiness lint. */
+export function isNsIdInputName(name: string): boolean {
+  return /^id$/i.test(name) || /Id$/.test(name);
+}
+
 // A4.2 (traceability) + A4.5/A4.5b (composition) for one bffCall.
 function validateBffCall(
   workspace: NsE6Workspace,
@@ -604,6 +786,13 @@ function validateBffCall(
       if (actor !== NS_PUBLIC_ACTOR) workspaceActorUnion.add(actor);
     }
   }
+
+  // The id-source rule, decided WHERE IT IS CHEAP (ajustesTemplates §2): a required id on a command
+  // needs a resolvable origin. At e6 the workspace is still being DESIGNED, so the model can add a
+  // picker query over an operation it already hosts, or declare that the id arrives with the page.
+  // At e7 the same defect can only be reported (a cross-workspace query there would break the
+  // detail/map equality and coverage gates) — hence the repair belongs here.
+  if (call.kind === 'command') validateCommandIdSources(workspace, call, issues);
 
   // A4.2: every `from` resolves to a real input / outputShape field of an operation in `uses`.
   for (const entry of call.input || []) {
@@ -953,11 +1142,15 @@ function readBffCalls(value: unknown): NsE6BffCall[] {
       call.input = raw.input.filter(isRecord).map(entry => {
         const from = readString(entry.from);
         const type = readFieldType(entry.type);
+        const source = readOptionalEnum(entry.source, NS_BFF_INPUT_SOURCES);
+        const sourceRef = readString(entry.sourceRef);
         return {
           name: readString(entry.name) || '',
           ...(from ? { from } : {}),
           ...(type ? { type } : {}),
           ...(entry.required === true ? { required: true } : {}),
+          ...(source ? { source } : {}),
+          ...(sourceRef ? { sourceRef } : {}),
         };
       });
     }
@@ -1041,4 +1234,42 @@ function readString(value: unknown): string | undefined {
 
 function readEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? value as T : fallback;
+}
+
+// Optional enum: an unknown value is DROPPED (not defaulted) — a wrong `source` must not silently
+// look like a declared one; the T4 lint then treats the input as unsourced.
+function readOptionalEnum<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? value as T : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+// `presentation` is optional in this phase: absent (or unusable) means "not classified", which the
+// gate reports as a warning — never a synthesized/guessed category.
+function readPresentation(value: unknown): NsE6Presentation | undefined {
+  if (!isRecord(value)) return undefined;
+  const categoryRef = readString(value.categoryRef);
+  const confidence = readNumber(value.confidence);
+  if (!categoryRef || confidence === undefined) return undefined;
+  const presentation: NsE6Presentation = { categoryRef, confidence };
+  const styleRef = readString(value.styleRef);
+  if (styleRef) presentation.styleRef = styleRef;
+  const experienceRef = readString(value.experienceRef);
+  if (experienceRef) presentation.experienceRef = experienceRef;
+  if (typeof value.templateReady === 'boolean') presentation.templateReady = value.templateReady;
+  const classificationNote = readString(value.classificationNote);
+  if (classificationNote) presentation.classificationNote = classificationNote;
+  if (Array.isArray(value.alternates)) {
+    const alternates = value.alternates.filter(isRecord).map(raw => {
+      const alternateRef = readString(raw.categoryRef);
+      const alternateConfidence = readNumber(raw.confidence);
+      if (!alternateRef || alternateConfidence === undefined) return null;
+      const reason = readString(raw.reason);
+      return { categoryRef: alternateRef, confidence: alternateConfidence, ...(reason ? { reason } : {}) };
+    }).filter((item): item is NsE6PresentationAlternate => item !== null);
+    if (alternates.length) presentation.alternates = alternates;
+  }
+  return presentation;
 }

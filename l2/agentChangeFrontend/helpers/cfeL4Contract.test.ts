@@ -17,7 +17,7 @@ import {
   isCopiedL4Contract,
   type CfeL4OperationInput,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
-import { buildMaterializeTypecheckTest, normalizeGeneratedCode } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { buildMaterializeTypecheckTest, collectDesignTokenRoleIssues, normalizeGeneratedCode } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
 test('frontendOutputShapeForOperation follows L4 accessPattern pagination', () => {
   assert.equal(frontendOutputShapeForOperation({ kind: 'query', accessPattern: { kind: 'list', pagination: 'required' } }), 'paginated');
@@ -218,4 +218,39 @@ test('materialization fixes deterministic page seams without changing generated 
 
   const shared = normalizeGeneratedCode({ id: 'report__l2_shared', type: 'l2_shared', outputPath: '_102048_/l2/buildFlowFsm/web/shared/report.ts' }, { baseClassName: 'BuildFlowFsmReportBase' }, 'export class WrongBase extends CollabLitElement {}');
   assert.match(shared, /export class BuildFlowFsmReportBase extends CollabLitElement/);
+});
+
+// ---- design tokens used against their role ----
+// mls-102045 shipped `bg-[var(--bg-secondary-color,#334155)] text-[var(--bg-primary-color,#ffffff)]`:
+// a BACKGROUND token as the label color. Readable only while the hardcoded fallback applies; with the
+// theme on (both tokens dark) the label disappears. No prior check saw it — the token name was real.
+test('design token role guard flags a -bg token used as text (and a -text token as background)', () => {
+  const bgAsText = collectDesignTokenRoleIssues('html`<button class="bg-[var(--button-secondary-bg,#334155)] text-[var(--button-primary-bg,#ffffff)]">x</button>`');
+  assert.equal(bgAsText.length, 1);
+  assert.match(bgAsText[0], /BACKGROUND token in a text utility/);
+  assert.match(bgAsText[0], /button-primary-text/, 'names the correct token of the same role');
+
+  const textAsBg = collectDesignTokenRoleIssues('html`<div class="bg-[var(--status-error-text,#fff)]">x</div>`');
+  assert.equal(textAsBg.length, 1);
+  assert.match(textAsBg[0], /TEXT token in a background utility/);
+  assert.match(textAsBg[0], /status-error-bg/);
+});
+
+test('design token role guard accepts correct pairing and ignores the legacy flat vocabulary', () => {
+  // Correct: same role, bg on background, text on label — including state prefixes and variants.
+  assert.deepEqual(collectDesignTokenRoleIssues(
+    'html`<button class="bg-[var(--button-primary-bg,#1d4ed8)] hover:bg-[var(--button-primary-bg-hover,#1e40af)] text-[var(--button-primary-text,#ffffff)] border-[var(--surface-bg,#eee)]">x</button>`',
+  ), []);
+  // Legacy flat names (bg-primary-color / text-primary-color) carry no role suffix — nothing to enforce,
+  // so a project still on the old design system is never flagged.
+  assert.deepEqual(collectDesignTokenRoleIssues('html`<button class="bg-[var(--bg-secondary-color,#334155)] text-[var(--bg-primary-color,#ffffff)]">x</button>`'), []);
+  // No colors at all / no tokens.
+  assert.deepEqual(collectDesignTokenRoleIssues('html`<div class="px-3 py-1.5 rounded-md">x</div>`'), []);
+  assert.deepEqual(collectDesignTokenRoleIssues(''), []);
+});
+
+test('design token role guard reports each distinct misuse once', () => {
+  const code = 'html`<i class="text-[var(--nav-bg)]"></i><i class="text-[var(--nav-bg)]"></i><i class="placeholder-[var(--surface-bg)]"></i>`';
+  const issues = collectDesignTokenRoleIssues(code);
+  assert.equal(issues.length, 2, 'the repeated one is deduped, the second kind is kept');
 });

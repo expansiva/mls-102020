@@ -52,6 +52,11 @@ import {
 } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
 import { writeNsTrace, nsPromptChars } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
 import { readActors } from '/_102020_/l2/agentNewSolution/helpers/nsActors.js';
+import {
+  NsCategoryCatalog,
+  parseNsCategoryCatalog,
+  summarizeNsCatalogForPrompt,
+} from '/_102020_/l2/agentNewSolution/helpers/nsCategoryCatalog.js';
 import { NsE2JourneysArtifact } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/gate.js';
 import { NsE3ModelArtifact } from '/_102020_/l2/agentNewSolution/steps/e3-ontology/gate.js';
 import {
@@ -92,6 +97,18 @@ const DONE_ANCHOR = 'e6-done';
 const SITEMAP_TOOL = 'submitNsSiteMap';
 const DETAIL_TOOL = 'submitNsWorkspaceDetail';
 const STEP_FOLDER = `${NS_AGENT_FOLDER}/steps/e6-journey-map`;
+
+// ── presentation (improveNewSolution T2) ────────────────────────────────────
+// The page-category catalog is the SINGLE SOURCE OF TRUTH and is read from disk at RUN TIME: adding
+// a category to this file makes it classifiable on the next run with no code/prompt/schema change.
+const NS_CATEGORY_CATALOG_FILE = { project: 102020, level: 4, folder: 'collabux/templates', shortName: 'categoryList', extension: '.json' } as const;
+// Template styles live at _102040_/l4/templates/<styleRef>/<categoryRef>/template.md.
+const NS_TEMPLATE_PROJECT = 102040;
+const NS_TEMPLATE_FOLDER_PREFIX = 'templates/';
+// Run CONFIGURATION, not an LLM decision (T1): the style stamped on every workspace of this run. It
+// is only applied when a template folder for it actually exists, so a wrong constant degrades to
+// "no styleRef" (l2 falls back) instead of a dangling reference.
+const NS_DEFAULT_STYLE_REF = 'salesforceStyle';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -251,6 +268,10 @@ async function buildDetailPrompt(
   const operationSummaries = allSummaries.filter(summary => slice.operationIds.includes(summary.id));
   const schema = await readNsSchema('e6-workspace.schema');
   const prompt = await readNsText('steps/e6-journey-map', 'promptDetail', '.md', true);
+  // T2: the category list is BUILT HERE from categoryList.json on every run — never pasted into
+  // promptDetail.md — so a new category is classifiable without touching the NS. When the catalog is
+  // unreachable the block is simply omitted and the model returns no `presentation` (gate warns).
+  const catalog = await readNsCategoryCatalog();
   const humanPrompt = [
     '## Your workspace (from the approved site map — copy workspaceId/title/actors/kind verbatim)',
     JSON.stringify(slice, null, 2),
@@ -260,6 +281,7 @@ async function buildDetailPrompt(
     '## copy verbatim, respect position (outputItemPaths only inside item.fields).',
     JSON.stringify(operationSummaries, null, 2),
     '',
+    catalog ? `## Page categories (the ONLY valid categoryRef values — pick from this list)\n${summarizeNsCatalogForPrompt(catalog)}\n` : '',
     `## userLanguage: ${inputs.journeys.userLanguage}`,
     parsedArgs.retryContext ? `\n## Gate retry context (fix exactly these problems)\n${parsedArgs.retryContext}\n` : '',
   ].filter(Boolean).join('\n');
@@ -437,6 +459,8 @@ async function handleDetailResult(
   workspace.kind = slice.kind;
   workspace.purpose = slice.purpose;
   if (slice.workflowId) workspace.workflowId = slice.workflowId; else delete workspace.workflowId;
+  // styleRef is run configuration, never the model's choice (T1) — stamp it like route/kind.
+  stampNsStyleRef(workspace);
 
   // Detail gate (isolated fast-fail): equality-to-map + the per-workspace bffCall/organism checks (run
   // validateE6Invariants scoped to THIS workspace so coverage passes; navigationEntry cross-page links
@@ -770,6 +794,45 @@ function truncateLine(value: string): string {
 // misc
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// presentation inputs (catalog + styles) — read here (disk) and handed to the gate via the context
+// ---------------------------------------------------------------------------
+
+// Returns the parsed catalog, or null when the file is not reachable from this runtime. NEVER
+// throws: an unreachable catalog degrades to "not classified" (a warning at the gate), it does not
+// fail a run. NOTE: level 4 of the agent project is not part of what the build ships
+// (scripts/buildCI SHIP_LEVELS = ['l2']), so if the classification silently stops happening in
+// Studio, the `presentation.catalog.unavailable` warning in the e6 trace is the symptom to look for.
+async function readNsCategoryCatalog(): Promise<NsCategoryCatalog | null> {
+  try {
+    return parseNsCategoryCatalog(await readStorText(NS_CATEGORY_CATALOG_FILE, false));
+  } catch {
+    return null;
+  }
+}
+
+// Overwrites whatever styleRef the model may have emitted with the run's configured style, and only
+// when that style really has a template folder. No presentation = nothing to stamp (the model did
+// not classify; the gate reports it).
+function stampNsStyleRef(workspace: NsE6Workspace): void {
+  if (!workspace.presentation) return;
+  if (listNsTemplateStyleRefs().includes(NS_DEFAULT_STYLE_REF)) workspace.presentation.styleRef = NS_DEFAULT_STYLE_REF;
+  else delete workspace.presentation.styleRef;
+}
+
+// Style ids discovered from the template tree (_102040_/l4/templates/<styleRef>/...). An empty list
+// means "unknown", and every consumer treats it as "do not check" rather than "none exist".
+function listNsTemplateStyleRefs(): string[] {
+  const styles = new Set<string>();
+  for (const file of Object.values(mls.stor.files)) {
+    if (file.project !== NS_TEMPLATE_PROJECT || file.level !== 4 || file.status === 'deleted') continue;
+    if (!file.folder || !file.folder.startsWith(NS_TEMPLATE_FOLDER_PREFIX)) continue;
+    const styleRef = file.folder.slice(NS_TEMPLATE_FOLDER_PREFIX.length).split('/')[0];
+    if (styleRef) styles.add(styleRef);
+  }
+  return [...styles].sort();
+}
+
 async function readNsSchema(shortName: string): Promise<Record<string, unknown>> {
   const raw = await readNsText('schemas', shortName, '.json', true);
   const parsed = parseMaybeJson(raw);
@@ -842,6 +905,8 @@ async function buildFullGateContext(inputs: E6Inputs): Promise<E6GateContext> {
     entityIds: inputs.model.entities.map(entity => entity.entityId),
     nowCapabilityActorIds: computeNowCapabilityActorIds(inputs.classification, inputs.journeys),
     operationFacts: await buildE6OperationFacts(inputs.moduleName, inputs.classification),
+    categoryCatalog: await readNsCategoryCatalog(),
+    templateStyleRefs: listNsTemplateStyleRefs(),
   };
 }
 

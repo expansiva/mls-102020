@@ -162,11 +162,17 @@ molecules) but themed by the project's design system.
   -disabled variants, those variants are valid too. If no token list is present, use neutral
   fallbacks only.
 - Apply colors via Tailwind arbitrary-value utilities that reference the variable, e.g.
-  bg-[var(--ds-color-surface)], text-[var(--ds-color-text)], border-[var(--ds-color-border)],
-  and the primary/accent token for main buttons.
+  bg-[var(--surface-bg)], text-[var(--text-default)], border-[var(--border-default)],
+  and the primary button pair for main actions. The names above are ILLUSTRATIVE — always use the exact
+  names from the context list.
+- RESPECT THE TOKEN'S ROLE. A token whose name ends in -bg is a BACKGROUND and NEVER a text color; a
+  token ending in -text is a text color and never a background. A surface painted with <role>-bg MUST
+  label itself with the <role>-text of the SAME role: bg-[var(--button-primary-bg)] goes with
+  text-[var(--button-primary-text)]. Putting a -bg token in a text utility yields text that is invisible
+  once the theme applies (it only looks right while the hardcoded fallback is in effect).
 - ALWAYS include a neutral fallback INSIDE the var() so the page still renders when the design system
-  or a token is absent, e.g. bg-[var(--ds-color-surface,#ffffff)], text-[var(--ds-color-text,#0f172a)],
-  border-[var(--ds-color-border,#e2e8f0)]. Never emit a token reference without a fallback.
+  or a token is absent, e.g. bg-[var(--surface-bg,#ffffff)], text-[var(--text-default,#0f172a)],
+  border-[var(--border-default,#e2e8f0)]. Never emit a token reference without a fallback.
 - Do NOT hardcode a palette color (no bg-slate-50, no #hex on its own) for themable surfaces/text/borders.
   Neutral structural utilities without a color (shadows, ring width) are fine.
 - Dark mode is handled by the design system variables themselves (the shell toggles the theme); do not
