@@ -35,3 +35,31 @@ Other decisions:
   imports — the same assembly the old `agentNewMoleculeFix` did.
 - A second failure fails the step, so `n5-less` and `n6-demo` never run against a molecule that does
   not compile.
+
+## 2026-07-30 — o gate estava cego por corrida de compilação (primeiro run no Studio)
+
+O primeiro run entregou uma molécula que **não compilava** — o modelo escreveu `const text A = ...`,
+com espaço no identificador — e o `.less` e o demo foram gerados em cima dela. O retry nunca foi
+acionado, porque o gate leu zero erros.
+
+Não era compilador permissivo: `getDiagnostics` (`static/libs/mls.js:6803`) chama
+`getSyntacticDiagnostics` **primeiro** e retorna já nesses erros. Era corrida.
+
+`compile()` (`static/libs/mls.js:6527`) curto-circuita em
+`modelVersion === model.getVersionId() && !modelNeedCompile`, e `initCompilerResults` (linha 6730)
+grava exatamente esse estado — com `errors: []` — no **início** da compilação, antes de os
+diagnósticos chegarem. Enquanto isso, `writeStorTextAtomic` passava `awaitCompile=false` ao
+`createStorFile`, e `createModel` dispara `compileAndPostProcess` **sem await**. Resultado: duas
+compilações concorrentes do mesmo model; a que o `compileMolecule` esperava caía no curto-circuito e
+devolvia `true` com `errors` vazio.
+
+Corrigido em `helpers/nmFs.ts`: `awaitCompile` passa a acompanhar `needCreateModel`, serializando a
+primeira compilação — a mesma sequência que o fluxo antigo já usava
+(`agentNewMoleculeMaterialize.ts:271` passa `(true, true, true)`), e que era o motivo de o
+`hasErrors` dele ser confiável.
+
+Só a PRIMEIRA tentativa corria risco: no retry, `writeStorTextAtomic` usa `model.setValue(content)`,
+o version id do monaco muda e o curto-circuito não dispara. Casa com o observado.
+
+Sem cobertura por unit test (depende do `mls.l2.typescript`). O aceite é injetar um erro de sintaxe
+deliberado no retorno do modelo e verificar que o passo reprova em vez de escrever `.less` e demo.
