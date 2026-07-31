@@ -225,7 +225,8 @@
         "checks": ["valid e6 schema", "every operation appears in >=1 workspace", "workspace workflowId/operationIds/actor/entity resolve", "unique workspaceIds", "every actor with now-priority behaviors has a landing (warning)", "edges reference existing pageIds (warning)", "workspace kind derived deterministically from the classification (workflow-owned ops -> workflow; standalone create+update on the entity -> entityManagement; else operation)", "entityManagement workspaces never declare workflowId",
         "presentation.categoryRef (and each alternate) exists in the categoryList.json catalog handed in through the gate context (ERROR); catalog integrity = duplicate ids / dangling parentCategory (ERROR)",
         "presentation styleRef resolves to a _102040_ template folder, confidence < 6, missing presentation and the coarse category-vs-shape findings are WARNINGS (a retry cannot fix run configuration; a low score is signal for a new category)",
-        "every presentation check naming a category id no-ops when that id leaves the catalog (categoryList.json is the single source of truth; an unreachable catalog warns once and skips)"]
+        "every presentation check naming a category id no-ops when that id leaves the catalog (categoryList.json is the single source of truth; an unreachable catalog warns once and skips)",
+        "a required id input on a command must resolve INSIDE the workspace: source selection -> sourceRef is a query bffId of this workspace, derived -> sourceRef starts at a local bffCall, pageInput/actorSession need no ref; missing source or userDecision on an id is an ERROR (bff.input.idSourceMissing) whose message names both ways out"]
       },
       "doneAnchor": "e6-done"
     },
@@ -244,7 +245,7 @@
       },
       "gate": {
         "file": "steps/e7-validation/gate.ts",
-        "checks": ["health report has zero errors (warnings do not block)", "module.defs.ts index matches the ontology files on disk", "todo owners exactly match generated workflows+operations"]
+        "checks": ["health report has zero errors (warnings do not block)", "module.defs.ts index matches the ontology files on disk", "todo owners exactly match generated workflows+operations", "template-readiness lint (steps/e7-validation/templateLint.ts): every classified workspace is checked against its category minimumRequired in categoryList.json — ok / repaired (FORM only: a list output lifted into a paginated envelope) / downgraded to an alternate the contract satisfies / templateReady:false / skipped when the category has no minimumRequired. ALL WARNINGS: a page on the generic fallback is not a broken module", "universal (any category): a REQUIRED id input on a command with no source (or source userDecision) is a finding here — the ERROR that forces the fix lives at e6 (bff.input.idSourceMissing), where the model can still add the picker query or declare pageInput; e7 is the net", "ordering: the lint runs BEFORE emitNsBffContracts (the wire contracts derive from the same workspaces) and rewrites repaired workspaces whole, preserving sliceHash", "T6: l4/{module}/trace/template-readiness.json per run + the coverage table appended to pipeline/e7-validation.md"]
       },
       "doneAnchor": "e7-done"
     }

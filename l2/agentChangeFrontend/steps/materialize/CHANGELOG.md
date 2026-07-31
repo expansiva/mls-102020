@@ -2,6 +2,24 @@
 
 # Changelog
 
+- 2026-07-31 (monaco models liberados na materializacao) — `cfeMaterializeStudio` criava um model do
+  Monaco por arquivo materializado e nunca liberava; numa geracao de modulo (dezenas de arquivos) o
+  Monaco cruza o limite e cospe "potential listener LEAK detected, having 200 listeners already",
+  deixando o console inutil para diagnostico. Mesmo tratamento ja aplicado no agentChangeBackend
+  (cbMaterializeIo). Dois pontos: (1) `saveGeneratedTs` decide a POSSE antes de gravar
+  (`!mls.editor.models[getKeyModel(...)]` — depois de gravar daria sempre false, porque
+  createStorFile(needCreateModel) e getOrCreateModel ja criaram) e libera no `finally`, inclusive em erro;
+  o release e DIFERIDO ate `activeCompiles === 0` porque a fase materializa em `parallel_dynamic` e
+  descartar o model de A enquanto B (que importa A) compila produz erro de compile FALSO que queima
+  orcamento de repair. (2) `saveArtifactTextByMlsPath` passava `needCreateModel=true` contrariando o
+  proprio contrato ("no editor model, no compile") — agora `false`, o model nunca chega a existir.
+  Nunca libera model que nao e nosso: um arquivo aberto numa aba do Studio ja esta no registry e e
+  preservado. `deleteModels` nao toca `mls.stor` — o arquivo gerado fica intacto.
+  NAO COBERTO (decisao pendente): `compileAndGetErrors` e `getCompiledDtsByMlsPath` tambem criam models
+  via `getGeneratedModel` e seguem sem release — sao o caminho do VERIFY, e o preload de .d.ts das
+  dependencias (fix do run19, que faz o compile por-arquivo resolver tipos cross-file) depende justamente
+  de esses models continuarem carregados. Liberar ali exige coordenar com aquele fix.
+
 - 2026-07-31 (l2_shared determinístico TAMBÉM no Studio — fecha o MAX_TOKENS) — a task
   `buildFlowFsm - frontend` morreu com `ERROR(MAX_TOKENS_REACHED)` em 50000 tokens, 11m39s e $0.30, no
   step `materialize-projectdetailworkspace-l2-shared`. É o MESMO muro do run03 que o scaffold

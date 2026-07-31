@@ -1,5 +1,5 @@
 {
-  "$id": "https://collab.codes/agentNewSolution/e6-workspace/2026-07-31-ns-e6-workspace-v2",
+  "$id": "https://collab.codes/agentNewSolution/e6-workspace/2026-07-31-ns-e6-workspace-v3",
   "type": "object",
   "additionalProperties": false,
   "required": ["workspaceId", "title", "actors", "kind", "entity"],
@@ -137,6 +137,7 @@
           }
         },
         "experienceRef": { "type": "string", "minLength": 1 },
+        "templateReady": { "type": "boolean" },
         "classificationNote": { "type": "string" }
       }
     },

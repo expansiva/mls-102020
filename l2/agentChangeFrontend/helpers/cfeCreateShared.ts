@@ -111,6 +111,8 @@ interface CfeJourneyWorkspace {
   workflowId?: string;
   operationIds: string[];
   purpose: string;
+  categoryRef: string;       // l4 presentation.categoryRef — picks the experience skill of page21/page31
+  experienceRef: string;     // l4 presentation.experienceRef — set once the user picks a favourite
   bffCalls: CfeBffCall[];    // v2; [] for legacy
   sections: CfeWorkspaceSection[]; // v2; [] for legacy
 }
@@ -179,6 +181,8 @@ export interface CfePreparedPage {
   navigationRefs: unknown[];
   baseDefinition: Record<string, unknown>;
   visualStyle: unknown;
+  /** l4 presentation (categoryRef/experienceRef); null when the workspace was never classified. */
+  presentation: { categoryRef: string; experienceRef?: string } | null;
   i18nMeta: { defaultLocale: string; activeLocales: string[] };
   entityFields: Record<string, string[]>;
   variantPlan: CfeLayoutVariantPlan[];
@@ -189,6 +193,8 @@ export interface CfeLayoutVariantPlan {
   genome: string;
   templateId: string;
   template: Record<string, unknown>;
+  /** Experience skill (.md) appended to this slot's pipeline; absent = bespoke slot. */
+  experienceSkill?: string;
 }
 
 // F3: an l4->l2 contract copy. `tsRef` is the l2 contract path shared/pages import; `source` is the
@@ -621,7 +627,7 @@ export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateCo
     : operations.map(operation => commandFromOperation(operation, createContext.entities));
   recordTechnicalIdLookupGaps(page, commands);
   const navigationRefs: unknown[] = [];
-  const baseDefinition = pageDefinition(page, operations);
+  const baseDefinition = pageDefinition(page, operations, workspace?.purpose);
   const visualStyle = createContext.moduleVisualStyle[page.moduleName];
   const i18nMeta = createContext.moduleI18n[page.moduleName] || { defaultLocale: 'en', activeLocales: ['en'] };
   const entityFields = Object.fromEntries(
@@ -633,7 +639,12 @@ export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateCo
   const contractCopies = workspace && workspace.bffCalls.length > 0 ? buildContractCopies(createContext, page, workspace) : [];
   const variantPlan = buildLayoutVariantPlan(createContext, page, operations, commands);
   const userJourney = buildPageUserJourney(createContext, page, operations, commands);
-  return { project: createContext.project, page, operations, commands, workspace, contractCopies, navigationRefs, baseDefinition, visualStyle, i18nMeta, entityFields, variantPlan, userJourney };
+    // Machine-readable UX classification from l4 (T5). Travels into the page defs in place of the
+  // free-text visualStyle so a gallery/telemetry can label a slot without opening the skill .md.
+  const presentation = workspace && workspace.categoryRef
+    ? { categoryRef: workspace.categoryRef, ...(workspace.experienceRef ? { experienceRef: workspace.experienceRef } : {}) }
+    : null;
+  return { project: createContext.project, page, operations, commands, workspace, contractCopies, navigationRefs, baseDefinition, visualStyle, presentation, i18nMeta, entityFields, variantPlan, userJourney };
 }
 
 // F3: GENERATE ONE l2 contract .ts per WORKSPACE from the workspace defs (l4 holds only .defs.ts; we never
@@ -1101,26 +1112,28 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
   const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutFields(prepared, repairMissingOperationUserActions(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, bffMapped)))));
   validatePageLayout(prepared, repairedLayout);
   const enrichedLayout = enrichLayoutWithStateRefs(prepared, repairedLayout);
+  // REDUCED defs (31/jul slot study): identity + wiring only. `sections`/`layout` are deliberately NOT
+  // written — a complete defs drowns the experience skill out, and the reduced form is what made page31
+  // win. The layout is still built above because everything else derives from it (validation, the shared
+  // reconciliation, the state refs); it just does not travel to the render.
+  // The closed msg-key vocabulary is not duplicated here either: the shared base class MessageType is the
+  // authoritative, type-checked key set, read by the render from the shared .d.ts.
+  const variant = prepared.variantPlan.find(item => item.genome === genome);
   const definition = {
-    ...prepared.baseDefinition,
-    templateId: selectedTemplateId(prepared, genome),
-    visualStyle: prepared.visualStyle,
-    // The goal-first genome (page21) carries the synthesized objective so the render skill can
-    // lay the page out around the actor's primary decision. Absent on the page11 baseline.
+    pageId: prepared.page.pageId,
+    pageName: prepared.page.pageName,
+    baseClassName: readString(prepared.baseDefinition.baseClassName),
+    actor: readString(prepared.baseDefinition.actor),
+    purpose: readString(prepared.baseDefinition.purpose),
+    // presentation replaces the free-text visualStyle: it is the machine-readable T5 contract that says
+    // WHICH UX category this workspace is, so galleries/telemetry can label a slot without opening the .md.
+    ...(prepared.presentation ? { presentation: prepared.presentation } : {}),
+    // Goal-first slots carry the synthesized objective so the render can lay the page out around the
+    // actor's primary decision. Absent on the bespoke page11.
     ...(isRecord(objective) ? { pageObjective: objective } : {}),
-    // The closed msg-key vocabulary is NOT duplicated here: the shared base class MessageType is the
-    // authoritative, type-checked key set, and the render skill reads it from the shared .d.ts. An
-    // invented or shortened key (102051: 'lane.registered', 'organism.dashboard.empty') still fails
-    // the strict tsc against that type — the page defs no longer needs its own msgKeys list.
-    sections: layoutSectionSummary(enrichedLayout.sections),
-    layout: {
-      id: enrichedLayout.layoutId,
-      type: 'page',
-      sections: enrichedLayout.sections,
-    },
     dataBindings: enrichedLayout.dataBindings,
   };
-  await saveFrontendDefs(pageFileInfo(prepared.project, prepared.page, genome), 'definition', definition, pagePipeline(prepared.project, prepared.page, prepared.visualStyle, genome));
+  await saveFrontendDefs(pageFileInfo(prepared.project, prepared.page, genome), 'definition', definition, pagePipeline(prepared.project, prepared.page, prepared.visualStyle, genome, variant?.experienceSkill));
   return enrichedLayout;
 }
 
@@ -1914,13 +1927,53 @@ function normalizeOrder(value: unknown, path: string): number {
 // intentionally ignored (always page11 + page21).
 export const GOAL_FIRST_TEMPLATE_ID = 'goal_first';
 
-function buildLayoutVariantPlan(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[]): CfeLayoutVariantPlan[] {
+/** Experience skills live one folder per UX category, one .md per slot. */
+function experienceSkillPath(categoryRef: string, genome: string): string {
+  return `_102020_/l4/collabux/templates/${categoryRef}/${genome}.md`;
+}
+
+/** True when the experience skill exists in the stor — a category without one degrades to bespoke. */
+function experienceSkillExists(categoryRef: string, genome: string): boolean {
+  if (!categoryRef) return false;
+  const key = mls.stor.getKeyToFile({ project: 102020, level: 4, folder: `collabux/templates/${categoryRef}`, shortName: genome, extension: '.md' });
+  const file = (mls.stor.files as Record<string, unknown>)[key] as { status?: string } | undefined;
+  return Boolean(file && file.status !== 'deleted');
+}
+
+/**
+ * Three slots per workspace, all on the REDUCED defs (identity + wiring; no sections/layout):
+ *  - page11: bespoke — no experience skill, the model choreographs from the contract;
+ *  - page21/page31: the two contrasting experiences of the workspace's UX category.
+ *
+ * Measured on 102045/clientManagement (31/jul): coherence ranked page31 > page21 > page11, and a REDUCED
+ * defs + skill beat a complete defs + skill — the organisms of a complete defs drown the skill out.
+ *
+ * A category with no skill file degrades that slot to bespoke with a warning instead of putting a broken
+ * path in the pipeline. Generating three slots is the learning phase: the user's pick is the metric, and
+ * once telemetry matures a category the winner becomes the single default (hence `slots`, which lets a
+ * caller ask for a subset instead of hardcoding three).
+ */
+function buildLayoutVariantPlan(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[], slots = MAX_UX_SLOTS): CfeLayoutVariantPlan[] {
   const candidates = selectUxTemplateCandidates(deriveUxSignals(context, page, operations, commands));
   const primary = candidates[0];
-  return [
+  const categoryRef = readString(workspaceForPage(context, page)?.categoryRef);
+  const plan: CfeLayoutVariantPlan[] = [
     { genome: pageGenome(0), templateId: primary.id, template: primary as unknown as Record<string, unknown> },
-    { genome: pageGenome(1), templateId: GOAL_FIRST_TEMPLATE_ID, template: { mode: 'goal-first', candidates: candidates as unknown as Record<string, unknown>[] } },
   ];
+  for (let index = 1; index < Math.max(1, slots); index += 1) {
+    const genome = pageGenome(index);
+    const hasSkill = experienceSkillExists(categoryRef, genome);
+    if (categoryRef && !hasSkill) {
+      recordCreateWarning(`${page.pageId}/${genome}: no experience skill for category '${categoryRef}' (${experienceSkillPath(categoryRef, genome)}) — slot degraded to bespoke`);
+    }
+    plan.push({
+      genome,
+      templateId: GOAL_FIRST_TEMPLATE_ID,
+      template: { mode: 'goal-first', candidates: candidates as unknown as Record<string, unknown>[] },
+      ...(hasSkill ? { experienceSkill: experienceSkillPath(categoryRef, genome) } : {}),
+    });
+  }
+  return plan;
 }
 
 // Machine-derivable UX signals for template scoring. Prose signals stay for the LLM.
@@ -3517,13 +3570,15 @@ function commandFromOperation(operation: CfeOperationDef, entities: Map<string, 
   };
 }
 
-function pageDefinition(page: CfePagePlan, operations: CfeOperationDef[]): Record<string, unknown> {
+function pageDefinition(page: CfePagePlan, operations: CfeOperationDef[], workspacePurpose = ''): Record<string, unknown> {
   return {
     pageId: page.pageId,
     pageName: page.pageName,
     baseClassName: `${toPascalCase(page.moduleName)}${toPascalCase(page.pageId)}Base`,
     actor: page.actorIds[0] || 'user',
-    purpose: `Executar ${page.pageName}.`,
+    // The l4 workspace purpose says what the page is FOR — it is the only prose the render gets about
+    // intent now that the defs carries no layout. Falls back to the old placeholder only when l4 has none.
+    purpose: readString(workspacePurpose) || `Executar ${page.pageName}.`,
     capabilities: page.capabilities,
     flowRefs: {
       experienceFlows: page.sourceKind === 'workflow' ? page.ownerIds.filter(id => id.startsWith('workflow:')).map(id => id.slice('workflow:'.length)) : [],
@@ -3575,7 +3630,7 @@ function sharedPipeline(prepared: CfePreparedPage): unknown[] {
   }];
 }
 
-function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, genome = 'page11'): unknown[] {
+function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, genome = 'page11', experienceSkill?: string): unknown[] {
   const idSuffix = genome === 'page11' ? '' : `__${genome}`;
   return [{
     id: `${page.pageId}${idSuffix}__l2_page`,
@@ -3595,7 +3650,9 @@ function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, 
       `_${project}_/l2/designSystem.ts`,
     ],
     dependsOn: [`${page.pageId}__l2_shared`],
-    skills: [pageRenderSkillPath(genome)],
+    // Render skill first (HOW to write the Lit file), then the experience skill (WHICH experience to
+    // build). page11 has no experience skill — it is the bespoke slot.
+    skills: experienceSkill ? [pageRenderSkillPath(genome), experienceSkill] : [pageRenderSkillPath(genome)],
     visualStyle: typeof visualStyle === 'string' ? { description: visualStyle } : (isRecord(visualStyle) ? visualStyle : {}),
     agent: 'agentCfeMaterializeGen',
   }];
@@ -4013,7 +4070,10 @@ function frontendComponentTag(project: number, page: CfePagePlan, genome = 'page
 
 // page[ux][ui] genome. UX variants vary the UX digit and keep UI=1. Fixed at two genomes
 // (flow.json genomePolicy): page11 (baseline) and page21 (goal-first). page31+ is deprecated.
-const MAX_UX_VARIANTS = 2;
+// Three slots per workspace: page11 (bespoke) + page21/page31 (the two contrasting experiences of the
+// workspace's UX category). Was 2 before the 31/jul slot study.
+const MAX_UX_VARIANTS = 3;
+const MAX_UX_SLOTS = MAX_UX_VARIANTS;
 function pageGenome(variantIndex: number): string { return `page${variantIndex + 1}1`; }
 
 function selectedTemplateId(prepared: CfePreparedPage, genome: string): string | undefined {
@@ -4094,6 +4154,11 @@ function workspaceFromData(raw: Record<string, unknown>): CfeJourneyWorkspace | 
     // v2 derives coverage from bffCalls[].uses; legacy carries operationIds directly.
     operationIds: unique([...readStringArray(raw.operationIds), ...bffCalls.flatMap(call => call.uses)]),
     purpose: readString(raw.purpose),
+    // T5 contract (improveNewSolution): the UX CATEGORY the l4 classifier assigned to this workspace.
+    // It resolves the experience skill of the page21/page31 slots and travels into the page defs in
+    // place of the free-text visualStyle.
+    categoryRef: readString(isRecord(raw.presentation) ? raw.presentation.categoryRef : ''),
+    experienceRef: readString(isRecord(raw.presentation) ? raw.presentation.experienceRef : ''),
     bffCalls,
     sections: parseWorkspaceSections(raw),
   };

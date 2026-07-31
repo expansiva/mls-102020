@@ -1,5 +1,5 @@
 {
-  "$id": "https://collab.codes/agentNewSolution/e6-journey-map/2026-07-31-ns-e6-v6",
+  "$id": "https://collab.codes/agentNewSolution/e6-journey-map/2026-07-31-ns-e6-v7",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "moduleName", "workspaces", "landings", "navigationEdges"],
@@ -25,7 +25,7 @@
     }
   },
   "properties": {
-    "schemaVersion": { "type": "string", "const": "2026-07-31-ns-e6-v6" },
+    "schemaVersion": { "type": "string", "const": "2026-07-31-ns-e6-v7" },
     "moduleName": { "type": "string", "minLength": 1, "pattern": "^[a-z][A-Za-z0-9]*$" },
     "note": { "type": "string" },
     "workspaces": {
@@ -148,6 +148,7 @@
                 }
               },
               "experienceRef": { "type": "string", "minLength": 1 },
+              "templateReady": { "type": "boolean" },
               "classificationNote": { "type": "string" }
             }
           }

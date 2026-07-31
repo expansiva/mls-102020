@@ -10,7 +10,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export const E6_JOURNEY_MAP_SCHEMA_VERSION = '2026-07-31-ns-e6-v6';
+export const E6_JOURNEY_MAP_SCHEMA_VERSION = '2026-07-31-ns-e6-v7';
 
 // Deterministic note attached after the LLM call (never produced by the model).
 export const E6_JOURNEY_MAP_NOTE = 'Consolidated navigation map derived from workflows/operations stories (view, not source).';
@@ -134,6 +134,9 @@ export interface NsE6Presentation {
   // RESERVED for the experience axis (UX variants per category) — accepted and carried, never
   // produced or validated in this phase.
   experienceRef?: string;
+  // Written by the e7 template-readiness lint (T4), never by the model: false means the contract
+  // does not meet the category's minimum, so the l2 renderer must use the generic fallback.
+  templateReady?: boolean;
   classificationNote?: string;
 }
 
@@ -711,6 +714,49 @@ function validatePresentationShape(
   }
 }
 
+/**
+ * A REQUIRED id input on a command must say where its value comes from, and the reference must
+ * resolve INSIDE this workspace. Two legitimate outs, both fixable by the detail retry:
+ *   - `selection` + sourceRef = a query bffId of THIS workspace (a picker over an operation the
+ *     workspace already hosts);
+ *   - `pageInput` (the id arrives with the page — a navigation from another workspace),
+ *     `actorSession` (it is the logged-in actor) or `derived` + sourceRef = "<bffId>.<field>".
+ * `userDecision` on an id is always wrong: an id is never typed by hand (102045 billingWorkspace).
+ */
+function validateCommandIdSources(workspace: NsE6Workspace, call: NsE6BffCall, issues: NsGateIssue[]): void {
+  const label = `workspace ${workspace.workspaceId} bffCall ${call.bffId}`;
+  const queryIds = new Set(workspace.bffCalls.filter(item => item.kind === 'query').map(item => item.bffId));
+  const localIds = new Set(workspace.bffCalls.map(item => item.bffId));
+  for (const entry of call.input || []) {
+    if (entry.required !== true || !isNsIdInputName(entry.name)) continue;
+    if (!entry.source || entry.source === 'userDecision') {
+      issues.push(errorIssue(
+        'bff.input.idSourceMissing',
+        `${label}: required id "${entry.name}" ${entry.source ? 'declares source "userDecision"' : 'declares no source'} — an id is never typed. Declare source "selection" with sourceRef = a query bffId of this workspace (add the picker query over an operation this workspace already hosts), or "pageInput" when the id arrives with the page, or "derived"/"actorSession"`,
+        workspace.workspaceId,
+      ));
+      continue;
+    }
+    if (entry.source === 'selection') {
+      if (!entry.sourceRef || !queryIds.has(entry.sourceRef)) {
+        issues.push(errorIssue('bff.input.idSourceUnresolved', `${label}: required id "${entry.name}" has source "selection" but sourceRef "${entry.sourceRef || '(none)'}" is not a query bffCall of this workspace (${[...queryIds].join(', ') || 'none declared'})`, workspace.workspaceId));
+      }
+      continue;
+    }
+    if (entry.source === 'derived') {
+      const head = (entry.sourceRef || '').split('.')[0];
+      if (!head || !localIds.has(head)) {
+        issues.push(errorIssue('bff.input.idSourceUnresolved', `${label}: required id "${entry.name}" has source "derived" but sourceRef "${entry.sourceRef || '(none)'}" does not start with a bffCall of this workspace`, workspace.workspaceId));
+      }
+    }
+  }
+}
+
+/** `id` / `<entity>Id` — the system-identifier convention shared with the e7 readiness lint. */
+export function isNsIdInputName(name: string): boolean {
+  return /^id$/i.test(name) || /Id$/.test(name);
+}
+
 // A4.2 (traceability) + A4.5/A4.5b (composition) for one bffCall.
 function validateBffCall(
   workspace: NsE6Workspace,
@@ -740,6 +786,13 @@ function validateBffCall(
       if (actor !== NS_PUBLIC_ACTOR) workspaceActorUnion.add(actor);
     }
   }
+
+  // The id-source rule, decided WHERE IT IS CHEAP (ajustesTemplates §2): a required id on a command
+  // needs a resolvable origin. At e6 the workspace is still being DESIGNED, so the model can add a
+  // picker query over an operation it already hosts, or declare that the id arrives with the page.
+  // At e7 the same defect can only be reported (a cross-workspace query there would break the
+  // detail/map equality and coverage gates) — hence the repair belongs here.
+  if (call.kind === 'command') validateCommandIdSources(workspace, call, issues);
 
   // A4.2: every `from` resolves to a real input / outputShape field of an operation in `uses`.
   for (const entry of call.input || []) {
@@ -1205,6 +1258,7 @@ function readPresentation(value: unknown): NsE6Presentation | undefined {
   if (styleRef) presentation.styleRef = styleRef;
   const experienceRef = readString(value.experienceRef);
   if (experienceRef) presentation.experienceRef = experienceRef;
+  if (typeof value.templateReady === 'boolean') presentation.templateReady = value.templateReady;
   const classificationNote = readString(value.classificationNote);
   if (classificationNote) presentation.classificationNote = classificationNote;
   if (Array.isArray(value.alternates)) {

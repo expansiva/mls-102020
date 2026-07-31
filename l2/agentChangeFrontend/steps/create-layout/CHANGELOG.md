@@ -2,6 +2,33 @@
 
 # Changelog
 
+- 2026-07-31 (3 slots por workspace + defs reduzido + skill de experiencia) — item A de
+  `todo/changeFrontend/ajustesTemplates.md`. Evidencia: teste real dos slots em 102045/clientManagement
+  (31/jul) rankeou page31 > page21 > page11 e mostrou que **defs reduzido + skill vence defs completo +
+  skill** (os organisms do defs completo afogam o skill). Mudancas:
+  (1) `buildLayoutVariantPlan` passa a planejar TRES slots (MAX_UX_VARIANTS 2 -> 3): page11 bespoke (so a
+  skill de render, o modelo coreografa do contrato) e page21/page31 com as duas experiencias contrastantes
+  da categoria UX do workspace. Aceita `slots` como parametro para gerar subconjunto quando a telemetria
+  colapsar uma categoria no vencedor.
+  (2) A skill sai de `presentation.categoryRef` do workspace l4 ->
+  `_102020_/l4/collabux/templates/<categoryRef>/<genome>.md`. A EXISTENCIA do arquivo e verificada no
+  stor: categoria sem skill degrada o slot para bespoke com aviso no trace, nunca caminho quebrado.
+  (3) defs REDUZIDO: pageId, pageName, baseClassName, actor, purpose, presentation, dataBindings (+
+  pageObjective nos slots goal-first). `sections`/`layout`/`origin`/`templateId`/`visualStyle` saem do
+  ARQUIVO (antes so eram filtrados do prompt por trimDefinitionForPrompt). O layout continua sendo
+  construido — validacao, reconciliacao do shared e state refs derivam dele — apenas nao viaja ao render.
+  (4) `purpose` REAL do workspace l4 no lugar do placeholder "Executar <nome>." (fallback so quando o l4
+  nao tem purpose).
+  (5) `presentation` (categoryRef + experienceRef) no defs no lugar do visualStyle texto-livre — contrato
+  T5 do improveNewSolution, agora com dono, para galeria/telemetria rotularem sem abrir o .md.
+  Verificado com dados reais do 102045: purpose real, presentation={categoryRef:'financialTransactions'},
+  page11 bespoke e page21/page31 resolvendo `financialTransactions/page21.md` e `page31.md`. Em projeto
+  sem `presentation` (102051) os tres slots saem bespoke, sem aviso (nao ha categoria a resolver).
+  REGRESSAO CONHECIDA: `validateGeneratedPageQuality` lia `pageDefinition.layout.sections` e vira no-op
+  com o defs reduzido — perde os checks de feedback i18n de mutacao e id editavel. Os checks do item B
+  (vocabulario tecnico, paginacao como campo, heading==label) NAO cobrem esses dois; se forem necessarios,
+  precisam ser reescritos sobre o .ts gerado.
+
 - 2026-07-22 (composition-only tool contract): the layout tool no longer asks the model for the full
   section→organism→intention→field tree. It now returns a minimal SEMANTIC COMPOSITION: `pageLayout =
   { pageId, layoutId, sections[] }`, each section `{ id, order, organisms[] }`, each organism `{ id,

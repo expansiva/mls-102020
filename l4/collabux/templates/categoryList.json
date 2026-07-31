@@ -12,7 +12,25 @@
       "erpFrequency": "veryHigh",
       "description": "Cadastro e manutenção de produtos, SKUs, serviços ou itens vendáveis.",
       "typicalEntities": ["Product", "SKU", "Service", "MenuItem"],
-      "commonOperations": ["list", "search", "create", "edit", "delete", "activate", "deactivate"]
+      "commonOperations": ["list", "search", "create", "edit", "delete", "activate", "deactivate"],
+      "minimumRequired": {
+        "evidence": "polarisStyle/productCatalog/template.md §Minimum required (célula ativa)",
+        "note": "O template exige um PREÇO — um número que o contrato declare ser cobrado de quem compra, com moeda. Só a parte numérica é verificável aqui; 'quem paga' e a moeda são julgamento e ficam fora do bloco (o template recusa por conta própria: ausência de evidência não é evidência).",
+        "query": {
+          "outputKind": "paginated"
+        },
+        "itemFields": {
+          "id": true,
+          "measure": "number"
+        }
+      },
+      "experiences": {
+        "page21": "masterDetailCatalog",
+        "page31": "visualCardGrid"
+      },
+      "i18n": {
+        "en": "Registration and maintenance of products, SKUs, services or sellable items."
+      }
     },
     {
       "categoryId": "inventoryControl",
@@ -20,7 +38,25 @@
       "erpFrequency": "veryHigh",
       "description": "Controle de estoque, saldos, níveis mínimos, alertas e ajustes manuais.",
       "typicalEntities": ["StockItem", "InventoryItem", "Supply", "Ingredient", "Material"],
-      "commonOperations": ["list", "filterLowStock", "create", "edit", "adjustStock", "remove"]
+      "commonOperations": ["list", "filterLowStock", "create", "edit", "adjustStock", "remove"],
+      "minimumRequired": {
+        "evidence": "salesforceStyle/inventoryControl/template.md §Minimum required (validado no 102045) + polarisStyle/inventoryControl",
+        "note": "O template exige uma medida numérica DO ITEM (total/page/pageSize são números da consulta sobre si mesma, não medida). 'Rótulo legível' está no template mas não é verificável por máquina — fica fora deste bloco de propósito.",
+        "query": {
+          "outputKind": "paginated"
+        },
+        "itemFields": {
+          "id": true,
+          "measure": "number"
+        }
+      },
+      "experiences": {
+        "page21": "splitViewOperations",
+        "page31": "alertFirstReplenishment"
+      },
+      "i18n": {
+        "en": "Stock control: balances, minimum levels, alerts and manual adjustments."
+      }
     },
     {
       "categoryId": "customerManagement",
@@ -28,7 +64,27 @@
       "erpFrequency": "veryHigh",
       "description": "Cadastro e gestão de clientes, contatos, dados comerciais e relacionamento.",
       "typicalEntities": ["Customer", "Contact", "Account"],
-      "commonOperations": ["list", "search", "create", "edit", "viewHistory", "deactivate"]
+      "commonOperations": ["list", "search", "create", "edit", "viewHistory", "deactivate"],
+      "minimumRequired": {
+        "evidence": "run 102045: clientManagementWorkspace (nota 9) — diretório paginado + criar/editar/excluir; skill page21 `directoryProfile`",
+        "note": "Sem medida numérica de propósito: um diretório de contatos não tem métrica por linha (o caso real tem itemNum vazio).",
+        "query": {
+          "outputKind": "paginated"
+        },
+        "itemFields": {
+          "id": true
+        },
+        "commands": {
+          "minCount": 1
+        }
+      },
+      "experiences": {
+        "page21": "directoryProfile",
+        "page31": "relationshipHub"
+      },
+      "i18n": {
+        "en": "Directory and management of customers, contacts and commercial data."
+      }
     },
     {
       "categoryId": "supplierManagement",
@@ -36,7 +92,11 @@
       "erpFrequency": "high",
       "description": "Cadastro e controle de fornecedores, dados fiscais, contatos e condições comerciais.",
       "typicalEntities": ["Supplier", "Vendor", "Provider"],
-      "commonOperations": ["list", "create", "edit", "approve", "block", "deactivate"]
+      "commonOperations": ["list", "create", "edit", "approve", "block", "deactivate"],
+      "experiences": {
+        "page21": "directoryCompliance",
+        "page31": "onboardingPipeline"
+      }
     },
     {
       "categoryId": "orderManagement",
@@ -44,7 +104,11 @@
       "erpFrequency": "veryHigh",
       "description": "Gestão de pedidos, status, itens, valores, clientes e ações operacionais.",
       "typicalEntities": ["Order", "SalesOrder", "PurchaseOrder"],
-      "commonOperations": ["list", "create", "edit", "approve", "cancel", "fulfill"]
+      "commonOperations": ["list", "create", "edit", "approve", "cancel", "fulfill"],
+      "experiences": {
+        "page21": "orderDeskSplit",
+        "page31": "lifecycleLanes"
+      }
     },
     {
       "categoryId": "posWorkbench",
@@ -52,7 +116,11 @@
       "erpFrequency": "medium",
       "description": "Tela operacional rápida para venda, lançamento de itens, carrinho e pagamento.",
       "typicalEntities": ["Sale", "Cart", "Order", "Payment"],
-      "commonOperations": ["addItem", "removeItem", "applyDiscount", "checkout", "cancel"]
+      "commonOperations": ["addItem", "removeItem", "applyDiscount", "checkout", "cancel"],
+      "experiences": {
+        "page21": "counterSplit",
+        "page31": "scanFirstFlow"
+      }
     },
     {
       "categoryId": "operationsQueue",
@@ -60,7 +128,24 @@
       "erpFrequency": "high",
       "description": "Fila operacional para acompanhar itens por status, etapa ou prioridade.",
       "typicalEntities": ["Task", "Ticket", "KitchenOrder", "WorkItem"],
-      "commonOperations": ["listByStatus", "assign", "start", "pause", "complete", "cancel"]
+      "commonOperations": ["listByStatus", "assign", "start", "pause", "complete", "cancel"],
+      "minimumRequired": {
+        "evidence": "analise1/analise2 (fieldTaskWorkspace nota 9; myTasksWorkspace nota 9 no run de 31/jul) — 'fila de execução: itens com status + ações de transição'",
+        "note": "Sem template escrito ainda: o bloco cobre só o que a evidência sustenta (fila paginada). A transição é a marca da categoria, mas uma fila de leitura pura existe na prática (myTasksWorkspace), então commands NÃO entra como mínimo.",
+        "query": {
+          "outputKind": "paginated"
+        },
+        "itemFields": {
+          "id": true
+        }
+      },
+      "experiences": {
+        "page21": "workQueueSplit",
+        "page31": "cardTriageMobile"
+      },
+      "i18n": {
+        "en": "Execution queue of items with status and transition actions."
+      }
     },
     {
       "categoryId": "approvalWorkflow",
@@ -68,7 +153,24 @@
       "erpFrequency": "high",
       "description": "Fluxo de aprovação com revisão, decisão, comentários e trilha de auditoria.",
       "typicalEntities": ["ApprovalRequest", "Expense", "PurchaseRequest", "Document"],
-      "commonOperations": ["review", "approve", "reject", "requestChanges", "comment"]
+      "commonOperations": ["review", "approve", "reject", "requestChanges", "comment"],
+      "minimumRequired": {
+        "evidence": "salesforceStyle/approvalWorkflow/template.md §Minimum required (célula ativa)",
+        "note": "O template exige um registro ÚNICO resolvido pelo contexto (não uma lista para o usuário escolher) + comando de decisão. O campo de estado 'em decisão/decidido' e o 'fato decisor' são semânticos — ficam fora do bloco.",
+        "query": {
+          "outputKind": "object"
+        },
+        "commands": {
+          "minCount": 1
+        }
+      },
+      "experiences": {
+        "page21": "readAndDecide",
+        "page31": "decisionQueue"
+      },
+      "i18n": {
+        "en": "Review a request and decide it, with the reason recorded."
+      }
     },
     {
       "categoryId": "processWizard",
@@ -76,7 +178,11 @@
       "erpFrequency": "high",
       "description": "Processos guiados em etapas, com validação forte e resumo final.",
       "typicalEntities": ["Shift", "Onboarding", "Closing", "Setup"],
-      "commonOperations": ["start", "nextStep", "validate", "submit", "finish"]
+      "commonOperations": ["start", "nextStep", "validate", "submit", "finish"],
+      "experiences": {
+        "page21": "linearStepper",
+        "page31": "growingDocument"
+      }
     },
     {
       "categoryId": "financialTransactions",
@@ -84,7 +190,25 @@
       "erpFrequency": "veryHigh",
       "description": "Listagem e controle de lançamentos financeiros, contas, pagamentos e recebimentos.",
       "typicalEntities": ["Invoice", "Payment", "Receivable", "Payable", "Transaction"],
-      "commonOperations": ["list", "filter", "reconcile", "pay", "cancel", "export"]
+      "commonOperations": ["list", "filter", "reconcile", "pay", "cancel", "export"],
+      "minimumRequired": {
+        "evidence": "run 102045 31/jul: billingSummaryWorkspace e invoiceWorkspace (nota 8) — query paginada de lançamentos com valor por linha + comandos de ciclo (criar/enviar); skill page21 `ledgerTable`",
+        "note": "O valor da linha é a marca do razão. Se a projeção não declarar tipos, o lint reporta em vez de julgar (o modelo às vezes omite `type`).",
+        "query": {
+          "outputKind": "paginated"
+        },
+        "itemFields": {
+          "id": true,
+          "measure": "number"
+        }
+      },
+      "experiences": {
+        "page21": "ledgerTable",
+        "page31": "cashflowReview"
+      },
+      "i18n": {
+        "en": "Listing and control of financial entries, invoices, payments and billing documents."
+      }
     },
     {
       "categoryId": "documentManagement",
@@ -92,7 +216,11 @@
       "erpFrequency": "high",
       "description": "Gestão de documentos, anexos, versões, status e aprovação.",
       "typicalEntities": ["Document", "Attachment", "Contract", "Policy"],
-      "commonOperations": ["upload", "view", "approve", "reject", "version", "archive"]
+      "commonOperations": ["upload", "view", "approve", "reject", "version", "archive"],
+      "experiences": {
+        "page21": "libraryList",
+        "page31": "folderExplorer"
+      }
     },
     {
       "categoryId": "userAccessManagement",
@@ -100,7 +228,11 @@
       "erpFrequency": "high",
       "description": "Gestão de usuários, papéis, permissões, status de acesso e segurança.",
       "typicalEntities": ["User", "Role", "Permission", "Team"],
-      "commonOperations": ["invite", "editRole", "disable", "resetAccess", "audit"]
+      "commonOperations": ["invite", "editRole", "disable", "resetAccess", "audit"],
+      "experiences": {
+        "page21": "memberDirectory",
+        "page31": "roleMatrix"
+      }
     },
     {
       "categoryId": "settingsConsole",
@@ -108,7 +240,11 @@
       "erpFrequency": "veryHigh",
       "description": "Configurações administrativas do módulo ou organização.",
       "typicalEntities": ["Setting", "Rule", "Preference", "Configuration"],
-      "commonOperations": ["view", "edit", "save", "reset", "test"]
+      "commonOperations": ["view", "edit", "save", "reset", "test"],
+      "experiences": {
+        "page21": "sectionedForm",
+        "page31": "searchableSettings"
+      }
     },
     {
       "categoryId": "auditTrail",
@@ -116,7 +252,11 @@
       "erpFrequency": "high",
       "description": "Consulta de eventos, alterações, usuários responsáveis e histórico operacional.",
       "typicalEntities": ["AuditEvent", "LogEntry", "ChangeHistory"],
-      "commonOperations": ["list", "filter", "inspect", "export"]
+      "commonOperations": ["list", "filter", "inspect", "export"],
+      "experiences": {
+        "page21": "chronologicalLog",
+        "page31": "entityHistoryLens"
+      }
     },
     {
       "categoryId": "dashboardCommandCenter",
@@ -124,7 +264,21 @@
       "erpFrequency": "veryHigh",
       "description": "Dashboard com KPIs, alertas, tendências e ações recomendadas.",
       "typicalEntities": ["Metric", "Insight", "Alert", "Recommendation"],
-      "commonOperations": ["view", "filter", "drillDown", "actOnInsight"]
+      "commonOperations": ["view", "filter", "drillDown", "actOnInsight"],
+      "minimumRequired": {
+        "evidence": "analise1/analise2 (dashboardWorkspace nota 10) — 'monitoramento fixo de exceções', leitura agregada",
+        "note": "Sem template escrito ainda. O mínimo real é ter o que monitorar; a regra de forma que importa (superfície principal de ESCRITA num painel de monitoramento) já é finding determinístico no gate do e6, e não se repete aqui.",
+        "query": {
+          "minCount": 1
+        }
+      },
+      "experiences": {
+        "page21": "exceptionTriage",
+        "page31": "overviewBoard"
+      },
+      "i18n": {
+        "en": "Fixed monitoring of exceptions, indicators and recommended actions."
+      }
     },
     {
       "categoryId": "calendarScheduling",
@@ -132,7 +286,11 @@
       "erpFrequency": "medium",
       "description": "Agenda, alocação de horários, reservas, turnos ou compromissos.",
       "typicalEntities": ["Appointment", "Schedule", "Shift", "Booking"],
-      "commonOperations": ["create", "reschedule", "cancel", "assign", "confirm"]
+      "commonOperations": ["create", "reschedule", "cancel", "assign", "confirm"],
+      "experiences": {
+        "page21": "calendarGrid",
+        "page31": "agendaTimeline"
+      }
     },
     {
       "categoryId": "assetManagement",
@@ -140,7 +298,11 @@
       "erpFrequency": "medium",
       "description": "Gestão de ativos, equipamentos, manutenção, localização e ciclo de vida.",
       "typicalEntities": ["Asset", "Equipment", "Machine", "Vehicle"],
-      "commonOperations": ["list", "create", "edit", "assign", "inspect", "retire"]
+      "commonOperations": ["list", "create", "edit", "assign", "inspect", "retire"],
+      "experiences": {
+        "page21": "assetRegistry",
+        "page31": "maintenanceBoard"
+      }
     },
     {
       "categoryId": "caseManagement",
@@ -148,7 +310,11 @@
       "erpFrequency": "medium",
       "description": "Gestão de casos, solicitações, incidentes ou atendimento ao cliente.",
       "typicalEntities": ["Case", "Ticket", "Incident", "Request"],
-      "commonOperations": ["open", "assign", "comment", "changeStatus", "resolve", "close"]
+      "commonOperations": ["open", "assign", "comment", "changeStatus", "resolve", "close"],
+      "experiences": {
+        "page21": "caseWorkbench",
+        "page31": "conversationFirst"
+      }
     },
     {
       "categoryId": "reportExplorer",
@@ -156,7 +322,11 @@
       "erpFrequency": "high",
       "description": "Consulta, filtros, visualização e exportação de relatórios operacionais.",
       "typicalEntities": ["Report", "Dataset", "Export"],
-      "commonOperations": ["filter", "run", "export", "schedule", "drillDown"]
+      "commonOperations": ["filter", "run", "export", "schedule", "drillDown"],
+      "experiences": {
+        "page21": "parameterPanel",
+        "page31": "catalogOfReports"
+      }
     },
     {
       "categoryId": "masterDataManagement",
@@ -164,7 +334,11 @@
       "erpFrequency": "veryHigh",
       "description": "Cadastro base de dados mestres usados por vários módulos.",
       "typicalEntities": ["Category", "Unit", "TaxCode", "Location", "CostCenter"],
-      "commonOperations": ["list", "create", "edit", "merge", "deactivate"]
+      "commonOperations": ["list", "create", "edit", "merge", "deactivate"],
+      "experiences": {
+        "page21": "compactCrudTable",
+        "page31": "inlineGridEdit"
+      }
     },
     {
       "categoryId": "entityRecordManagement",
@@ -172,7 +346,21 @@
       "erpFrequency": "veryHigh",
       "description": "Criação e edição de um registro de negócio (sem listagem), com transições de ciclo de vida por ações contextuais.",
       "typicalEntities": ["Project", "Contract", "Campaign", "Property"],
-      "commonOperations": ["create", "edit", "transitionStatus", "validate", "save"]
+      "commonOperations": ["create", "edit", "transitionStatus", "validate", "save"],
+      "minimumRequired": {
+        "evidence": "run 102045: changeOrderWorkspace, projectLifecycleWorkspace (q=0, 3 comandos) e projectDetailWorkspace — 'create, edit, transitionStatus sobre um registro'; skill page21 `focusedRecordForm`",
+        "note": "Query NÃO entra no mínimo: 2 dos 3 casos reais não têm nenhuma (é uma página de formulário sobre um registro, não uma lista).",
+        "commands": {
+          "minCount": 1
+        }
+      },
+      "experiences": {
+        "page21": "focusedRecordForm",
+        "page31": "recordPageTabs"
+      },
+      "i18n": {
+        "en": "Create, edit and move a single business record through its lifecycle."
+      }
     },
     {
       "categoryId": "fieldDataCapture",
@@ -180,7 +368,21 @@
       "erpFrequency": "medium",
       "description": "Captura rápida de apontamentos em campo ou operação, geralmente mobile: horas, consumo, leituras, ocorrências. Formulários curtos, reset após envio.",
       "typicalEntities": ["TimeLog", "MaterialUsage", "MeterReading", "Inspection"],
-      "commonOperations": ["selectTarget", "enterValues", "submit", "confirmAndReset"]
+      "commonOperations": ["selectTarget", "enterValues", "submit", "confirmAndReset"],
+      "minimumRequired": {
+        "evidence": "run 102045: fieldLoggingWorkspace (nota 10) — 4 comandos de captura, nenhuma query; skill page21 `rapidEntryWorkbench` ('um cartão de captura por comando')",
+        "note": "Query não entra: a captura de campo é só formulário. A regra de que ids não são digitados é universal no lint, não específica desta categoria.",
+        "commands": {
+          "minCount": 1
+        }
+      },
+      "experiences": {
+        "page21": "rapidEntryWorkbench",
+        "page31": "guidedCaptureFlow"
+      },
+      "i18n": {
+        "en": "Fast field capture of measurements, hours or material usage through short forms."
+      }
     },
     {
       "categoryId": "readOnlyDetailPortal",
@@ -188,7 +390,21 @@
       "erpFrequency": "medium",
       "description": "Visão somente-leitura de um registro único para stakeholder externo ou consulta interna, summary-first, sem nenhuma ação de escrita.",
       "typicalEntities": ["BillingSummary", "StatusReport", "OrderConfirmation", "Statement"],
-      "commonOperations": ["view", "print", "acknowledge"]
+      "commonOperations": ["view", "print", "acknowledge"],
+      "minimumRequired": {
+        "evidence": "run 102045: clientBillingWorkspace, clientStatusWorkspace, jobCostWorkspace (notas 9-10) — todos com query de registro `object` e ZERO comandos; skill page21 `summaryFirstStatement`",
+        "note": "A ausência de comandos é a marca da categoria, mas já é finding determinístico no gate do e6 e não se repete aqui.",
+        "query": {
+          "outputKind": "object"
+        }
+      },
+      "experiences": {
+        "page21": "summaryFirstStatement",
+        "page31": "printableDocument"
+      },
+      "i18n": {
+        "en": "Read-only view of one record for a stakeholder — summary first, no writes."
+      }
     },
     {
       "categoryId": "workPlanningBoard",
@@ -196,7 +412,24 @@
       "erpFrequency": "high",
       "description": "Planejamento e acompanhamento de trabalho: criar tarefas, atribuir responsáveis inline, timeline por prazo e edição em master-detail.",
       "typicalEntities": ["WorkTask", "Milestone", "Sprint", "JobOrder"],
-      "commonOperations": ["create", "assign", "reschedule", "updateStatus", "trackProgress"]
+      "commonOperations": ["create", "assign", "reschedule", "updateStatus", "trackProgress"],
+      "minimumRequired": {
+        "evidence": "skill page21 `classicBoard` (itens posicionados em colunas) + run 102045 taskBoardWorkspace (nota 8, alternate entityRecordManagement 7)",
+        "note": "Exige query: um quadro sem nada para exibir não é um quadro. O taskBoardWorkspace do 102045 (q=0) rebaixa para entityRecordManagement de propósito — é o resultado correto e a demonstração do funil de downgrade.",
+        "query": {
+          "minCount": 1
+        },
+        "commands": {
+          "minCount": 1
+        }
+      },
+      "experiences": {
+        "page21": "timelineList",
+        "page31": "ganttLite"
+      },
+      "i18n": {
+        "en": "Plan and distribute work items across columns, owners or a time window."
+      }
     },
     {
       "categoryId": "aiAssistedAuthoring",
@@ -204,7 +437,21 @@
       "erpFrequency": "medium",
       "description": "Geração de artefato assistida por IA seguida de revisão humana e publicação/compartilhamento: gerar → revisar → publicar.",
       "typicalEntities": ["StatusReport", "Summary", "Draft", "Proposal"],
-      "commonOperations": ["configure", "generate", "review", "regenerate", "publish", "share"]
+      "commonOperations": ["configure", "generate", "review", "regenerate", "publish", "share"],
+      "minimumRequired": {
+        "evidence": "run 102045: statusReportWorkspace (nota 10) — gerar (IA) → revisar → publicar, 3 comandos; skill page21 `generateReviewShare`",
+        "note": "Que um dos comandos seja de geração por IA não é detectável no contrato — fica fora do bloco.",
+        "commands": {
+          "minCount": 1
+        }
+      },
+      "experiences": {
+        "page21": "generateReviewShare",
+        "page31": "draftCanvas"
+      },
+      "i18n": {
+        "en": "Generate a draft with AI, review it and publish or share the result."
+      }
     },
     {
       "categoryId": "globalSearchResults",
@@ -212,7 +459,11 @@
       "erpFrequency": "high",
       "description": "Tela de resultados de busca transversal por entidades, com agrupamento por tipo, filtros e ações rápidas sobre o resultado.",
       "typicalEntities": ["SearchResult", "RecordHit", "EntityMatch"],
-      "commonOperations": ["search", "filterByType", "openRecord", "refineQuery", "clear"]
+      "commonOperations": ["search", "filterByType", "openRecord", "refineQuery", "clear"],
+      "experiences": {
+        "page21": "groupedResults",
+        "page31": "unifiedListFacets"
+      }
     },
     {
       "categoryId": "activityNotificationHub",
@@ -220,7 +471,11 @@
       "erpFrequency": "high",
       "description": "Central de notificações, menções, atividades recentes e alertas operacionais, com marcação de lido e ações contextuais.",
       "typicalEntities": ["Notification", "Activity", "Mention", "Alert"],
-      "commonOperations": ["list", "markAsRead", "markAllRead", "actOnNotification", "filter"]
+      "commonOperations": ["list", "markAsRead", "markAllRead", "actOnNotification", "filter"],
+      "experiences": {
+        "page21": "inboxSplit",
+        "page31": "feedTimeline"
+      }
     },
     {
       "categoryId": "hierarchyTreeView",
@@ -228,7 +483,11 @@
       "erpFrequency": "medium",
       "description": "Visualização e edição de estruturas hierárquicas: BOM, organograma, categorias aninhadas ou localizações.",
       "typicalEntities": ["BOM", "OrgUnit", "Category", "Location", "AccountHierarchy"],
-      "commonOperations": ["expand", "collapse", "addChild", "move", "edit", "delete"]
+      "commonOperations": ["expand", "collapse", "addChild", "move", "edit", "delete"],
+      "experiences": {
+        "page21": "treeAndDetail",
+        "page31": "columnsDrilldown"
+      }
     },
     {
       "categoryId": "comparisonView",
@@ -236,7 +495,11 @@
       "erpFrequency": "low",
       "description": "Comparação lado a lado de dois ou mais registros para análise de diferenças e decisão.",
       "typicalEntities": ["Product", "Quote", "Version", "Contract", "Candidate"],
-      "commonOperations": ["selectItems", "compare", "highlightDiff", "choose", "merge"]
+      "commonOperations": ["selectItems", "compare", "highlightDiff", "choose", "merge"],
+      "experiences": {
+        "page21": "sideBySideColumns",
+        "page31": "championChallenger"
+      }
     },
     {
       "categoryId": "importMappingWizard",
@@ -245,7 +508,11 @@
       "parentCategory": "processWizard",
       "description": "Processo guiado de importação com upload de arquivo, mapeamento de colunas, validação e confirmação final.",
       "typicalEntities": ["ImportJob", "ColumnMapping", "ValidationError"],
-      "commonOperations": ["upload", "mapColumns", "validate", "preview", "confirmImport", "rollback"]
+      "commonOperations": ["upload", "mapColumns", "validate", "preview", "confirmImport", "rollback"],
+      "experiences": {
+        "page21": "stagedImport",
+        "page31": "mappingWorkbench"
+      }
     },
     {
       "categoryId": "kanbanBoardView",
@@ -253,7 +520,11 @@
       "erpFrequency": "high",
       "description": "Quadro visual por colunas de status com arrastar-e-soltar, filtros e ações rápidas nos cards. Distinto de workPlanningBoard (timeline/master-detail) e operationsQueue (lista por status): a superfície é o board de colunas.",
       "typicalEntities": ["Card", "Column", "WorkItem", "Deal", "Ticket"],
-      "commonOperations": ["dragDrop", "moveColumn", "filter", "createCard", "updateStatus"]
+      "commonOperations": ["dragDrop", "moveColumn", "filter", "createCard", "updateStatus"],
+      "experiences": {
+        "page21": "classicBoard",
+        "page31": "swimlaneBoard"
+      }
     },
     {
       "categoryId": "analyticalList",
@@ -261,7 +532,24 @@
       "erpFrequency": "high",
       "description": "Lista analítica combinando tabela, filtros avançados, KPIs e gráficos no mesmo contexto para análise e ação. Distinto de dashboardCommandCenter (monitorar exceções) e reportExplorer (consulta ad-hoc): aqui KPI, gráfico e tabela acionável operam sobre o mesmo conjunto filtrado.",
       "typicalEntities": ["AnalyticalRow", "KPI", "ChartSeries", "FilterSet"],
-      "commonOperations": ["filter", "group", "drillDown", "export", "actOnSelection"]
+      "commonOperations": ["filter", "group", "drillDown", "export", "actOnSelection"],
+      "minimumRequired": {
+        "evidence": "run 102045: dashboardWorkspace (nota 8) — 2 queries paginadas com colunas analíticas por linha; skill page21 `kpiFilterTable`",
+        "note": "Os agregados/KPIs são a marca da categoria, mas o caso real declara os campos numéricos SEM `type` — exigir medida numérica puniria tipagem, não semântica. Fica só o que é confiável (lista paginada identificável).",
+        "query": {
+          "outputKind": "paginated"
+        },
+        "itemFields": {
+          "id": true
+        }
+      },
+      "experiences": {
+        "page21": "kpiFilterTable",
+        "page31": "chartLedTable"
+      },
+      "i18n": {
+        "en": "Filterable list paired with aggregates over the same filtered set."
+      }
     }
   ]
 }

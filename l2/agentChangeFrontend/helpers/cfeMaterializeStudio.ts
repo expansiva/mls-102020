@@ -124,6 +124,37 @@ export async function loadModuleByBuild(path: string): Promise<any> {
   }
 }
 
+interface BorrowedModel { project: number; shortName: string; folder: string; level: number; }
+
+let activeCompiles = 0;
+const pendingRelease: BorrowedModel[] = [];
+
+/**
+ * Release the Monaco models THIS step created, once no compile is in flight.
+ *
+ * Without any release the registry only grows — every materialized file leaves a model behind and Monaco
+ * hits "potential listener LEAK detected, having 200 listeners already", after which the console is
+ * useless for diagnosis. A module generates dozens of files (a page11 per workspace + contracts + tests).
+ *
+ * Safe because nothing in this agent needs a model to outlive its compile: `mls.editor.models` is read in
+ * exactly two places, both inside getGeneratedModel and both "return it if it already exists" guards. The
+ * materialization step is an independent process (it also runs from the CLI, `pnpm materializeL2`), so it
+ * can never assume a warm registry — whoever needs a model loads it. `deleteModels` only disposes the
+ * model and drops the registry entry; it never touches `mls.stor`, so the generated file stays intact.
+ *
+ * Deferred until `activeCompiles === 0` because the phase fans out in `parallel_dynamic`: file A can be
+ * an import of B, and disposing A mid-compile of B yields a FALSE compile error that burns repair budget.
+ */
+function releaseBorrowedModels(borrowed: BorrowedModel[]): void {
+  pendingRelease.push(...borrowed);
+  if (activeCompiles > 0) return;
+  for (const model of pendingRelease.splice(0, pendingRelease.length)) {
+    // Signature is (project, shortName, folder, releaseMonacoModel, level) — the boolean comes BEFORE
+    // the level. `true` disposes the underlying monaco model, which is what holds the listeners.
+    try { mls.editor.deleteModels(model.project, model.shortName, model.folder, true, model.level); } catch { /* best effort */ }
+  }
+}
+
 export async function saveGeneratedTs(
   project: number,
   level: number,
@@ -132,6 +163,12 @@ export async function saveGeneratedTs(
   content: string,
   extension = '.ts',
 ): Promise<boolean> {
+  // OWNERSHIP, decided BEFORE anything below can create a model: createStorFile(needCreateModel=true) and
+  // getGeneratedModel's getOrCreateModel both create one, so checking afterwards would always say "not
+  // ours" and nothing would ever be released. A model already in the registry belongs to the Studio (the
+  // file is open in a tab) and must never be disposed.
+  const ownsModel = !mls.editor.models[mls.editor.getKeyModel(project, shortName, folder, level)];
+  activeCompiles++;
   try {
     const fileInfo = { project, level, folder, shortName, extension };
     const key = mls.stor.getKeyToFile(fileInfo);
@@ -149,6 +186,11 @@ export async function saveGeneratedTs(
   } catch (error) {
     recordStudioMessage('error', 'saveGeneratedTs failed', error);
     return false;
+  } finally {
+    // The content is durable in stor; the model was only a working copy for the compile. Queue it even on
+    // failure — a thrown compile leaks exactly the same listeners.
+    activeCompiles--;
+    if (ownsModel) releaseBorrowedModels([{ project, shortName, folder, level }]);
   }
 }
 
@@ -168,7 +210,9 @@ export async function saveArtifactTextByMlsPath(mlsPath: string, content: string
     const key = mls.stor.getKeyToFile(fileInfo);
     let file = (mls.stor.files as Record<string, any>)[key];
     if (!file) {
-      file = await createStorFile({ ...fileInfo, source: content }, true, false, false);
+      // needCreateModel=FALSE: this writer never compiles and nothing reads a model for a trace artifact,
+      // so creating one only leaked listeners (it contradicted this function's own contract above).
+      file = await createStorFile({ ...fileInfo, source: content }, false, false, false);
     }
     if (file.status !== 'renamed' && file.status !== 'new') file.status = 'changed';
     file.updatedAt = new Date().toISOString();

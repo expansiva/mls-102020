@@ -89,5 +89,14 @@ Every operation in the map's operationIds must be consumed by ≥1 bffCall of TH
   "userDecision" (the actor types/decides it), "selection" (picked from a query on THIS workspace;
   `sourceRef` = that query's bffId), "pageInput" (arrives with the page, e.g. from a navigation),
   "actorSession" (the logged-in actor/context) or "derived" (`sourceRef` = "<bffId>.<outputField>"
-  of an earlier command). A REQUIRED id must never be "userDecision": ids are selected or arrive
-  with the page — a typed-in id is a defect.
+  of an earlier command).
+  **A REQUIRED id is never "userDecision" — an id is not typed by hand.** It is a gate error, and
+  there are exactly two ways out; pick the one the workspace supports:
+  1. **A picker on this page** — add a query bffCall over an operation THIS workspace already hosts
+     (its operationIds), and point the input at it: `source: "selection"`, `sourceRef: "<that
+     query's bffId>"`. This is the right answer whenever the actor chooses the record here.
+  2. **The id arrives with the page** — `source: "pageInput"`, when the user reached this workspace
+     from another one that already knows the record (a detail opened from a list). No sourceRef.
+  (`actorSession` for "who is logged in", `derived` for an id produced by an earlier command of this
+  same workspace.) Decide it HERE: at validation time the page is frozen and the only remedy left is
+  a report.

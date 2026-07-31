@@ -932,3 +932,48 @@ void test('e6 bffCall input carries source/sourceRef through prepare (T4 lint in
     { name: 'bogus' }, // an unknown source is DROPPED, never defaulted
   ]);
 });
+
+// ---------------------------------------------------------------------------
+// required-id source (ajustesTemplates §2): decided at e6, where the fix is still cheap
+// ---------------------------------------------------------------------------
+
+function idSourceMap(input: unknown[]): NsE6JourneyMapArtifact {
+  const map = bffMap();
+  (map.workspaces[0].bffCalls[2] as unknown as Record<string, unknown>).input = input;
+  return prepareE6JourneyMap(map, { moduleName: 'petShop' });
+}
+
+function idSourceCodes(input: unknown[]): string[] {
+  return validateE6Invariants(idSourceMap(input), bffContext).issues
+    .filter(issue => issue.code.startsWith('bff.input.idSource')).map(issue => issue.code);
+}
+
+void test('e6 gate: a required id with no source (or userDecision) is an ERROR the retry can fix', () => {
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string' }]), ['bff.input.idSourceMissing']);
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'userDecision' }]), ['bff.input.idSourceMissing']);
+  const message = validateE6Invariants(idSourceMap([{ name: 'productId', required: true, type: 'string' }]), bffContext)
+    .issues.find(issue => issue.code === 'bff.input.idSourceMissing')!.message;
+  // The message must name BOTH legitimate ways out, or the retry cannot know what to do.
+  assert.match(message, /source "selection" with sourceRef/);
+  assert.match(message, /"pageInput" when the id arrives with the page/);
+});
+
+void test('e6 gate: selection must point at a query bffCall of THIS workspace', () => {
+  // productList IS a query on this workspace — accepted.
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'selection', sourceRef: 'productList' }]), []);
+  // reservar is a COMMAND, and ghostPicker does not exist — both unresolved.
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'selection', sourceRef: 'reservar' }]), ['bff.input.idSourceUnresolved']);
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'selection' }]), ['bff.input.idSourceUnresolved']);
+});
+
+void test('e6 gate: pageInput/actorSession need no ref; derived must start at a local bffCall', () => {
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'pageInput' }]), []);
+  assert.deepEqual(idSourceCodes([{ name: 'ownerId', required: true, type: 'string', source: 'actorSession' }]), []);
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'derived', sourceRef: 'productList.productId' }]), []);
+  assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'derived', sourceRef: 'ghostCall.productId' }]), ['bff.input.idSourceUnresolved']);
+});
+
+void test('e6 gate: the rule targets required IDS only — optional ids and typed non-ids pass', () => {
+  assert.deepEqual(idSourceCodes([{ name: 'productId', type: 'string' }]), [], 'optional id');
+  assert.deepEqual(idSourceCodes([{ name: 'quantity', required: true, type: 'number' }]), [], 'a required non-id is typed by the user');
+});

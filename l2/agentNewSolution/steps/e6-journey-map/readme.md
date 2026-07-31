@@ -71,8 +71,24 @@ of the contract; it never changes the use case, the rules or the entities.
   of what the build ships (`scripts/buildCI` `SHIP_LEVELS = ['l2']`), so that warning in the e6 trace
   is the symptom to look for if classification silently stops happening in Studio.
 - `bffCall.input[].source` (`userDecision | selection | pageInput | actorSession | derived`) +
-  `sourceRef` are carried for the T4 template-readiness lint (a required id whose source is
-  `userDecision` is the 102045 billingWorkspace defect). Declared here, enforced at e7 in session B.
+  `sourceRef` say where a command input's value comes from.
+
+### Required ids resolve HERE (2026-07-31)
+
+A `required` id input on a command (`id` / `<entity>Id`) is an ERROR unless it declares a source that
+resolves **inside this workspace** — `bff.input.idSourceMissing` / `.idSourceUnresolved`. The fix is
+cheap while the workspace is being designed and impossible later: at e7 the page is frozen, and a
+picker query over another workspace's operation would break the detail/map equality and coverage
+gates, so the readiness lint there can only report it.
+
+Two ways out, both always available to the detail retry (the error message names both):
+1. **A picker on this page** — add a query bffCall over an operation this workspace ALREADY hosts and
+   set `source: "selection"`, `sourceRef: "<that query's bffId>"`.
+2. **The id arrives with the page** — `source: "pageInput"` (a detail opened from another workspace).
+
+`actorSession` (the logged-in actor) and `derived` (`sourceRef` = `<bffId>.<field>` of a local call)
+are the remaining legitimate origins. `isNsIdInputName` is exported and shared with the e7 lint so
+the two definitions of "an id" cannot drift.
 
 ## Workspace kind derivation (2026-07-11)
 

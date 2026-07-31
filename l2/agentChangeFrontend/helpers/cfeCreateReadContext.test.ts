@@ -520,3 +520,44 @@ test('addLanguage handoff preserves the region so en + en-AU can coexist', async
   // Single language (even regional) -> no task.
   assert.equal(mod.buildAddLanguageMessage(ctx(['pt-br']), pages), null);
 });
+
+// ---- three slots per workspace (31/jul slot study) ----
+// page11 bespoke + page21/page31 driven by the UX category's contrasting experience skills, all on the
+// REDUCED defs. A category with no skill file degrades that slot to bespoke instead of shipping a broken
+// pipeline path.
+test('slot plan: page11 bespoke, page21/page31 resolve the category experience skill', async () => {
+  const mod = await loadModule() as unknown as { buildLayoutVariantPlanForTest?: unknown };
+  void mod;
+  // Skill resolution reads the stor; install a fixture with only page21.md present for the category.
+  const key = (folder: string, shortName: string) => `102020/4/${folder}/${shortName}.md`;
+  const priorFiles = g.mls.stor.files;
+  g.mls.stor.files = {
+    ...priorFiles,
+    [key('collabux/templates/financialTransactions', 'page21')]: { status: 'active' },
+  };
+  try {
+    const { readCreateContext, preparePageCreate } = await loadModule();
+    installPetShopStor();
+    // installPetShopStor replaces the stor; re-add the skill fixture on top of it.
+    g.mls.stor.files[key('collabux/templates/financialTransactions', 'page21')] = { status: 'active' };
+    const ctx = await readCreateContext();
+    const page = ctx.pages.find((p: any) => p.pageId === 'catalog')!;
+    const prepared = await preparePageCreate(page, ctx);
+    const genomes = prepared.variantPlan.map((v: any) => v.genome);
+    assert.deepEqual(genomes, ['page11', 'page21', 'page31'], 'three slots are planned');
+    assert.equal(prepared.variantPlan[0].experienceSkill, undefined, 'page11 is bespoke');
+  } finally {
+    g.mls.stor.files = priorFiles;
+  }
+});
+
+test('reduced page defs: real purpose from l4, no layout/sections', async () => {
+  const { readCreateContext, preparePageCreate } = await loadModule();
+  installPetShopStor();
+  const ctx = await readCreateContext();
+  const page = ctx.pages.find((p: any) => p.pageId === 'catalog')!;
+  const prepared = await preparePageCreate(page, ctx);
+  // A1: the l4 workspace purpose replaces the old "Executar <nome>." placeholder.
+  assert.equal(prepared.baseDefinition.purpose, 'Navegar');
+  assert.doesNotMatch(String(prepared.baseDefinition.purpose), /^Executar /);
+});

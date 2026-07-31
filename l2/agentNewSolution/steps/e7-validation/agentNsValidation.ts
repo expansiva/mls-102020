@@ -50,6 +50,16 @@ import {
   NsE3EntityArtifact,
   NsE3ModelArtifact,
 } from '/_102020_/l2/agentNewSolution/steps/e3-ontology/gate.js';
+import { NsE6Workspace } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/gate.js';
+import {
+  NsCategoryCatalog,
+  parseNsCategoryCatalog,
+} from '/_102020_/l2/agentNewSolution/helpers/nsCategoryCatalog.js';
+import {
+  buildNsTemplateCoverage,
+  lintNsTemplateReadiness,
+  renderNsTemplateCoverage,
+} from '/_102020_/l2/agentNewSolution/steps/e7-validation/templateLint.js';
 import {
   buildNsModuleDefs,
   buildNsTodoOwners,
@@ -195,6 +205,36 @@ async function runE7(
     return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 
+  // 3b. T4 — template-readiness lint. Runs BEFORE the closing artifacts because a form repair
+  // rewrites a bffCall output, and the bffCall CONTRACTS are emitted from these same workspaces at
+  // the end of this step (repairing after the emit would ship stale contracts). NsE7Workspace is a
+  // narrow VIEW of the object on disk — the full e6 shape is there (emitNsBffContracts relies on the
+  // same thing). Readiness gaps are advisory: they never fail the run.
+  const lintWorkspaces = (journeyMap?.workspaces || []) as unknown as NsE6Workspace[];
+  const lint = lintNsTemplateReadiness(lintWorkspaces, await readNsCategoryCatalog());
+  for (const workspaceId of lint.changed) {
+    const repaired = lintWorkspaces.find(workspace => workspace.workspaceId === workspaceId);
+    // Rewrites the WHOLE object read from disk, so sliceHash and every untouched field survive.
+    if (repaired) await writeDefsArtifact({ project, level: 4, folder: `${moduleName}/workspaces`, shortName: workspaceId, extension: '.defs.ts' }, `${workspaceId}Workspace`, repaired);
+  }
+  const coverage = buildNsTemplateCoverage(moduleName, lint.results);
+  // T6: per-run coverage, persisted so it can be aggregated ACROSS projects — an orphan page
+  // (confidence < 6) in 2+ projects is a candidate for a new category; a category that keeps being
+  // downgraded is a candidate for a split.
+  await writeJsonArtifact(nsTraceFileInfo(moduleName, 'template-readiness'), { moduleName, savedAt: new Date().toISOString(), coverage });
+  const lintWarnings = lint.issues.map(issue => `${issue.code}: ${issue.message}`);
+  warningLines.push(...lintWarnings);
+  // Readable trace for the supervisor: the outcome per workspace + the category roll-up, so
+  // "what downgraded / what is not template-ready" is answerable without grepping the artifacts
+  // (mirrors what the e6 detail trace already does for the alternates).
+  await writeNsTrace(moduleName, `${STEP_ID}-template-readiness`, AGENT_NAME, 1, { coverage }, [
+    `template-ready ${coverage.totals.templateReady}/${coverage.totals.workspaces}`,
+    `repaired ${coverage.totals.repaired}`,
+    `downgraded ${coverage.totals.downgraded}`,
+    `not judged ${coverage.totals.skipped}`,
+    ...lint.results.filter(row => row.action !== 'ok').map(row => `${row.workspaceId}: ${row.action}${row.action === 'downgraded' ? ` ${row.originalCategoryRef} -> ${row.categoryRef}` : ''}${row.notes.length ? ` (${row.notes[0]})` : ''}`),
+  ].join('\n'));
+
   // 4. Closing artifacts (same paths/formats Stage 2/3 already consume).
   const now = new Date().toISOString();
   const journeyDefPath = `l4/${moduleName}/siteMap.defs.ts`;
@@ -255,7 +295,7 @@ async function runE7(
   );
   await writeMarkdownArtifact(
     nsPipelineArtifactFileInfo(moduleName, 'e7-validation', '.md'),
-    renderE7Markdown(report, { moduleName, nextSteps }),
+    `${renderE7Markdown(report, { moduleName, nextSteps })}\n${renderNsTemplateCoverage(coverage)}`,
   );
 
   // newSolution_10 N4: the mechanical bffCall contracts are the LAST artifact of the flow (emitted
@@ -334,6 +374,18 @@ async function resolveE7Module(requested?: string): Promise<string> {
     if (e6?.status === 'approved' && (!e7 || e7.status !== 'approved' || e7.dirty)) return moduleName;
   }
   throw new Error(`[${AGENT_NAME}] no module with an approved journey map waiting for E7`);
+}
+
+// The page-category catalog (single source of truth, read at run time). Mirrors the e6 reader:
+// returns null when the file is not reachable from this runtime, and the lint then degrades to
+// "not judged" instead of failing the run. See steps/e6-journey-map/readme.md for the l4-shipping
+// caveat behind that degradation.
+async function readNsCategoryCatalog(): Promise<NsCategoryCatalog | null> {
+  try {
+    return parseNsCategoryCatalog(await readStorText({ project: 102020, level: 4, folder: 'collabux/templates', shortName: 'categoryList', extension: '.json' }, false));
+  } catch {
+    return null;
+  }
 }
 
 // Defs files are `export const x = {...} as const;` — extract the JSON block.
