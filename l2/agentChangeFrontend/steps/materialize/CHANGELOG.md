@@ -2,6 +2,35 @@
 
 # Changelog
 
+- 2026-07-31 (item B + B.1 do supervisor: 4 defeitos transversais como REGRA e como CHECK) —
+  `todo/changeFrontend/ajustesTemplates.md`. Cada defeito virou regra nas DUAS skills de render e check
+  deterministico no verify; regra sozinha nao segura (a disciplina de titulos ja reincidiu 3x).
+  Checks novos em cfeMaterializeCore, todos sobre o .TS GERADO e ancorados nos dataBindings do defs
+  reduzido — com defs sem layout a verdade mora no OUTPUT (mesmo movimento do harness 102040):
+  * collectTechnicalVocabularyIssues (B1) — displayHint/intent/bffCall humanizado como texto visivel
+    ("Summary first" era um displayHint). Compara texto entre tags e title/aria/placeholder.
+  * collectPageExperienceIssues (B2+B3) — page/pageSize/sortBy/offset/limit amarrados a controle de
+    formulario, e id cujo `source` l4 nao e decisao do usuario amarrado a input/select/textarea.
+  * collectHeadingDisciplineIssues (B4) — heading que repete o label do controle adjacente.
+  * collectMutationFeedbackIssues — cada comando renderiza caminho de sucesso E de erro, LOCAL.
+  Entram como ERRO (nao warning): sao deterministicos e a reescrita do .ts conserta — que e o que a
+  rodada de repair faz.
+  DECISAO B.1 DO SUPERVISOR aplicada: os 2 checks que `validateGeneratedPageQuality` perdeu com o defs
+  reduzido foram REESCRITOS sobre o .ts, e ficaram melhores que os originais: (1) o id-editavel agora e
+  SOURCE-AWARE (o antigo era heuristica de nome) usando `isIdInputName`, espelho exato do
+  `isNsIdInputName` do agentNewSolution — as duas definicoes de "id" nao podem divergir; (2) o feedback
+  de mutacao julga "os dois caminhos existem e sao locais", com `action.{cmd}.success/error` como
+  evidencia preferida mas NAO obrigatoria — exigir a chave literal imporia uma convencao de i18n que o
+  defs reduzido nao carrega mais.
+  Pre-requisito entregue junto: as duas skills de render deixaram de mandar usar `layout.sections`
+  (que nao existe mais) e passaram a coreografar de dataBindings + purpose + contrato; a page21 delega a
+  ESTRUTURA a skill de experiencia anexada depois dela. Para isso o `source` de cada input passou a
+  viajar no defs (`dataBindings[].inputs[]` = name/stateKey/source/required, em enrichLayoutWithStateRefs)
+  — e o item B3 e o ancoradouro dos checks.
+  ARMADILHA (ja custou um ciclo): as skills sao TEMPLATE LITERAL — nenhum backtick pode entrar no corpo.
+  Verificado: 6 checks com teste unitario (caso ruim e caso correto), as duas skills carregam com as 4
+  regras presentes, typecheck limpo, suite 85/85.
+
 - 2026-07-31 (monaco models liberados na materializacao) — `cfeMaterializeStudio` criava um model do
   Monaco por arquivo materializado e nunca liberava; numa geracao de modulo (dezenas de arquivos) o
   Monaco cruza o limite e cospe "potential listener LEAK detected, having 200 listeners already",

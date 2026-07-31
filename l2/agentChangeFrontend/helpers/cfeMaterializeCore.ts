@@ -65,6 +65,174 @@ export function countPage11Items(items: { outputPath: string | null }[]): number
 }
 
 /**
+ * B1 — internal vocabulary must never reach the screen.
+ *
+ * `displayHint` "summary-first" became a tile literally titled "Summary first" in the 31/jul test. The
+ * same applies to bffCall ids, intent ids and state keys: they are wiring, not copy. Detects the
+ * humanized form of a technical token used as visible text between tags or in a title/aria attribute.
+ */
+const TECHNICAL_TOKEN_HINTS = [
+  'summary-first', 'master-detail', 'card-board', 'inline-row-command', 'contextual-transition-actions',
+  'primary-surface', 'primarysurface', 'filter-control', 'filtercontrol', 'detail-panel', 'detailpanel',
+  'contextual-action', 'batch-action', 'query-list', 'querylist', 'command-form', 'commandform',
+];
+
+export function collectTechnicalVocabularyIssues(pageDefinition: unknown, pageCode: string): string[] {
+  if (!pageCode) return [];
+  const issues = new Set<string>();
+  const candidates = new Set<string>(TECHNICAL_TOKEN_HINTS);
+  // Anything the defs itself names as wiring: the bffCall ids of the bindings.
+  for (const binding of readPageBindings(pageDefinition)) candidates.add(binding.command);
+
+  // Visible text = between tags, or a title/aria-label/placeholder literal.
+  const visible = [
+    ...pageCode.matchAll(/>([^<>{}]{2,80})</gu),
+    ...pageCode.matchAll(/(?:title|aria-label|placeholder)="([^"]{2,80})"/gu),
+  ].map(match => match[1].trim()).filter(Boolean);
+
+  for (const text of visible) {
+    const normalized = text.toLowerCase().replace(/[^a-z0-9]+/gu, '');
+    if (normalized.length < 4) continue;
+    for (const token of candidates) {
+      if (!token) continue;
+      const normalizedToken = token.toLowerCase().replace(/[^a-z0-9]+/gu, '');
+      if (normalizedToken.length < 4) continue;
+      if (normalized === normalizedToken) {
+        issues.add(`technical vocabulary rendered as screen text: "${text}" is the internal token '${token}' — write copy for the user, never a displayHint/intent/bffCall id`);
+      }
+    }
+  }
+  return [...issues];
+}
+
+/**
+ * B4 — a heading that merely repeats the label of the button/link next to it is noise. Compares each
+ * heading's text with the visible text of the next control in source order.
+ */
+export function collectHeadingDisciplineIssues(pageCode: string): string[] {
+  if (!pageCode) return [];
+  const issues = new Set<string>();
+  const headings = [...pageCode.matchAll(/<(h[1-6])\b[^>]*>([^<>{}]{2,80})</gu)];
+  for (const heading of headings) {
+    const text = heading[2].trim();
+    if (!text) continue;
+    const after = pageCode.slice((heading.index ?? 0) + heading[0].length, (heading.index ?? 0) + heading[0].length + 400);
+    const control = /<(?:button|a)\b[^>]*>\s*([^<>{}]{2,80})</u.exec(after);
+    const label = control?.[1]?.trim();
+    if (label && label.toLowerCase() === text.toLowerCase()) {
+      issues.add(`heading "${text}" repeats the label of the adjacent control: drop the heading or say something the label does not`);
+    }
+  }
+  return [...issues];
+}
+
+/** Mirrors agentNewSolution's isNsIdInputName (e6-journey-map/gate.ts) — the two definitions of "an id
+ *  input" must not diverge, or the NS lint and this gate disagree about the same field. */
+function isIdInputName(name: string): boolean {
+  return /^id$/i.test(name) || /Id$/.test(name);
+}
+
+/** Pagination/sorting wiring: surface controls, never something a user types into a form. */
+const COLLECTION_WIRING_INPUTS = new Set(['page', 'pagesize', 'sortby', 'sortorder', 'sortdirection', 'offset', 'limit', 'cursor']);
+
+/** An l4 input source the USER decides by typing/choosing in a form. Everything else is context. */
+const USER_DECIDED_SOURCES = new Set(['userinput', 'userdecision']);
+
+interface PageBinding {
+  command: string;
+  kind: string;
+  inputs: { name: string; stateKey: string; source: string }[];
+}
+
+/** The command bindings of the reduced page defs — the deterministic anchor every check below uses. */
+function readPageBindings(pageDefinition: unknown): PageBinding[] {
+  if (!isRecord(pageDefinition) || !Array.isArray(pageDefinition.dataBindings)) return [];
+  return pageDefinition.dataBindings.filter(isRecord).map(binding => ({
+    command: stringValue(binding.command),
+    kind: stringValue(binding.kind),
+    inputs: (Array.isArray(binding.inputs) ? binding.inputs.filter(isRecord) : []).map(input => ({
+      name: stringValue(input.name),
+      stateKey: stringValue(input.stateKey),
+      source: stringValue(input.source).toLowerCase(),
+    })),
+  })).filter(binding => binding.command);
+}
+
+/** The shared property a state key maps to, so a check can look for it in the generated code. */
+function propertyForStateKey(sharedDefinition: unknown, stateKey: string): string {
+  if (!isRecord(sharedDefinition) || !Array.isArray(sharedDefinition.states)) return '';
+  const state = sharedDefinition.states.filter(isRecord).find(item => stringValue(item.stateKey) === stateKey);
+  return state ? stringValue(state.name) : '';
+}
+
+/** True when `property` is bound to an editable control (`.value=${this.x}` on input/select/textarea). */
+function isBoundToEditableControl(pageCode: string, property: string): boolean {
+  if (!property) return false;
+  // Tag ... .value=${this.<prop>} / ?checked=${this.<prop>} within the same element.
+  const control = new RegExp(`<(?:input|select|textarea)\\b[^>]*\\b(?:\\.value|\\.checked|value|checked)=\\$\\{[^}]*\\bthis\\.${property}\\b`, 'u');
+  return control.test(pageCode);
+}
+
+/**
+ * UX hygiene over the GENERATED PAGE CODE, anchored on the reduced defs' dataBindings.
+ *
+ * These moved from "read layout.sections" to "read the .ts" when the page defs lost its layout (31/jul
+ * slot study): with a reduced defs the truth lives in the OUTPUT — validation judges what was generated,
+ * not what was asked (the same move the 102040 harness made with checks.mjs over page.ts).
+ */
+export function collectPageExperienceIssues(pageDefinition: unknown, sharedDefinition: unknown, pageCode: string): string[] {
+  if (!pageCode) return [];
+  const issues: string[] = [];
+  const bindings = readPageBindings(pageDefinition);
+
+  for (const binding of bindings) {
+    for (const input of binding.inputs) {
+      const property = propertyForStateKey(sharedDefinition, input.stateKey);
+      const editable = isBoundToEditableControl(pageCode, property);
+
+      // B2: pagination/sorting is surface wiring — nobody types a page size into a form.
+      if (COLLECTION_WIRING_INPUTS.has(input.name.toLowerCase()) && editable) {
+        issues.push(`${binding.command}.${input.name} is collection wiring (pagination/sorting) but is bound to a form control: drive it from the surface's own pager/sorter, never an input`);
+        continue;
+      }
+
+      // B3 + supervisor refinement 1: an id the user does not DECIDE must never be editable. Its l4
+      // source says where it comes from: selection -> a picker fed by a query; pageInput/actorSession/
+      // derived -> context, not a field. The old check guessed from the name only; this one has the
+      // contract behind it.
+      if (isIdInputName(input.name) && !USER_DECIDED_SOURCES.has(input.source) && editable) {
+        issues.push(`${binding.command}.${input.name} is a technical id with source '${input.source}' but is bound to an editable control: ${input.source === 'selectedentity' || input.source === 'selection' ? 'feed it by selecting a row' : 'take it from context'} instead of rendering a field`);
+      }
+    }
+  }
+  return issues;
+}
+
+/**
+ * Every command must render BOTH a success and an error path, in its own region.
+ *
+ * Supervisor refinement 2: the criterion is "both paths exist and are local", not the literal
+ * `action.{cmd}.success/error` key — the reduced defs no longer carries an i18n contract, so demanding
+ * the key would enforce a convention that is not there. The key is accepted as the preferred evidence.
+ */
+export function collectMutationFeedbackIssues(pageDefinition: unknown, sharedDefinition: unknown, pageCode: string): string[] {
+  if (!pageCode) return [];
+  const issues: string[] = [];
+  for (const binding of readPageBindings(pageDefinition)) {
+    if (binding.kind === 'query') continue;
+    const statusProperty = propertyForStateKey(sharedDefinition, `ui.${stringValue((pageDefinition as Record<string, unknown>)?.pageId)}.action.${binding.command}.state`);
+    const mentionsCommand = new RegExp(`\\b(?:${binding.command}|${statusProperty || binding.command})\\b`, 'u').test(pageCode);
+    if (!mentionsCommand) continue;                                   // command not rendered at all
+    const hasSuccess = new RegExp(`action\\.${binding.command}\\.success|'success'|"success"`, 'u').test(pageCode);
+    const hasError = new RegExp(`action\\.${binding.command}\\.error|${binding.command}Error|'error'|"error"`, 'u').test(pageCode);
+    if (!hasSuccess || !hasError) {
+      issues.push(`${binding.command} renders no ${!hasSuccess && !hasError ? 'success/error' : (!hasSuccess ? 'success' : 'error')} feedback: both paths must be rendered next to the command itself, never as a page-level banner`);
+    }
+  }
+  return issues;
+}
+
+/**
  * Deterministic UX hygiene checks for a materialized page. They intentionally inspect only
  * contracts present in the page/shared defs and generated page code; missing L4 data is not
  * guessed here. The materialization phase feeds a failure back to the page generator.

@@ -17,7 +17,15 @@ import {
   isCopiedL4Contract,
   type CfeL4OperationInput,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
-import { buildMaterializeTypecheckTest, collectDesignTokenRoleIssues, normalizeGeneratedCode } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import {
+  buildMaterializeTypecheckTest,
+  collectDesignTokenRoleIssues,
+  collectHeadingDisciplineIssues,
+  collectMutationFeedbackIssues,
+  collectPageExperienceIssues,
+  collectTechnicalVocabularyIssues,
+  normalizeGeneratedCode,
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
 test('frontendOutputShapeForOperation follows L4 accessPattern pagination', () => {
   assert.equal(frontendOutputShapeForOperation({ kind: 'query', accessPattern: { kind: 'list', pagination: 'required' } }), 'paginated');
@@ -253,4 +261,72 @@ test('design token role guard reports each distinct misuse once', () => {
   const code = 'html`<i class="text-[var(--nav-bg)]"></i><i class="text-[var(--nav-bg)]"></i><i class="placeholder-[var(--surface-bg)]"></i>`';
   const issues = collectDesignTokenRoleIssues(code);
   assert.equal(issues.length, 2, 'the repeated one is deduped, the second kind is kept');
+});
+
+// ---- item B: os 4 defeitos transversais, checados sobre o .ts gerado ----
+// Com o defs reduzido a verdade mora no OUTPUT: os checks leem o codigo, ancorados em dataBindings.
+const PAGE_DEFS = {
+  pageId: 'orders',
+  dataBindings: [
+    { id: 'b1', command: 'listOrders', kind: 'query', inputs: [
+      { name: 'page', stateKey: 'ui.orders.input.listOrders.page', source: 'userInput', required: false },
+      { name: 'status', stateKey: 'ui.orders.input.listOrders.status', source: 'userInput', required: false },
+    ] },
+    { id: 'b2', command: 'updateOrderCmd', kind: 'command', inputs: [
+      { name: 'orderId', stateKey: 'ui.orders.input.updateOrderCmd.orderId', source: 'selectedEntity', required: true },
+      { name: 'notes', stateKey: 'ui.orders.input.updateOrderCmd.notes', source: 'userInput', required: true },
+    ] },
+  ],
+};
+const SHARED_DEFS = { states: [
+  { stateKey: 'ui.orders.input.listOrders.page', name: 'listOrdersPage' },
+  { stateKey: 'ui.orders.input.listOrders.status', name: 'listOrdersStatus' },
+  { stateKey: 'ui.orders.input.updateOrderCmd.orderId', name: 'updateOrderCmdOrderId' },
+  { stateKey: 'ui.orders.input.updateOrderCmd.notes', name: 'updateOrderCmdNotes' },
+] };
+
+test('B2/B3: pagination and non-user-decided ids must not be editable controls', () => {
+  const bad = collectPageExperienceIssues(PAGE_DEFS, SHARED_DEFS, `html\`
+    <input .value=\${this.listOrdersPage}>
+    <input .value=\${this.updateOrderCmdOrderId}>
+  \``);
+  assert.equal(bad.length, 2);
+  assert.match(bad[0], /collection wiring/);
+  assert.match(bad[1], /technical id with source 'selectedentity'/);
+  assert.match(bad[1], /feed it by selecting a row/);
+
+  // Correct: the user-decided fields ARE editable; the id comes from selection; no pager input.
+  assert.deepEqual(collectPageExperienceIssues(PAGE_DEFS, SHARED_DEFS, `html\`
+    <select .value=\${this.listOrdersStatus}></select>
+    <textarea .value=\${this.updateOrderCmdNotes}></textarea>
+    <button @click=\${() => this.handleSelectOrder(row)}>\${row.code}</button>
+  \``), []);
+});
+
+test('mutation feedback: both paths, judged on presence not on the i18n key', () => {
+  const missing = collectMutationFeedbackIssues(PAGE_DEFS, SHARED_DEFS, 'html`<button @click=${this.updateOrderCmd}>Save</button>`');
+  assert.equal(missing.length, 1);
+  assert.match(missing[0], /renders no success\/error feedback/);
+  // The literal action.<cmd>.success/error key is accepted as evidence...
+  assert.deepEqual(collectMutationFeedbackIssues(PAGE_DEFS, SHARED_DEFS,
+    "html`<div>${this.msg['action.updateOrderCmd.success']}</div><div>${this.msg['action.updateOrderCmd.error']}</div>`"), []);
+  // ...and so is any local success/error rendering (the reduced defs carries no i18n contract).
+  assert.deepEqual(collectMutationFeedbackIssues(PAGE_DEFS, SHARED_DEFS,
+    "html`<span>${this.updateOrderCmdState === 'success' ? 'Salvo' : ''}</span><span>${this.updateOrderCmdState === 'error' ? 'Falhou' : ''}</span>`"), []);
+  // Queries are not mutations.
+  assert.deepEqual(collectMutationFeedbackIssues({ pageId: 'orders', dataBindings: [PAGE_DEFS.dataBindings[0]] }, SHARED_DEFS, 'html`<table></table>`'), []);
+});
+
+test('B1: internal vocabulary never becomes screen text', () => {
+  const bad = collectTechnicalVocabularyIssues(PAGE_DEFS, 'html`<h2>Summary first</h2><span>List orders</span>`');
+  assert.equal(bad.length, 2, 'the displayHint AND the bffCall id humanized as copy');
+  assert.match(bad[0], /Summary first/);
+  assert.deepEqual(collectTechnicalVocabularyIssues(PAGE_DEFS, 'html`<h2>Pedidos do turno</h2><span>Ver detalhes</span>`'), []);
+});
+
+test('B4: a heading that repeats the adjacent control label fails', () => {
+  const bad = collectHeadingDisciplineIssues('html`<h3>Aprovar</h3><button>Aprovar</button>`');
+  assert.equal(bad.length, 1);
+  assert.match(bad[0], /repeats the label of the adjacent control/);
+  assert.deepEqual(collectHeadingDisciplineIssues('html`<h3>Ordens pendentes</h3><button>Aprovar</button>`'), []);
 });

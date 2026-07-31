@@ -561,3 +561,28 @@ test('reduced page defs: real purpose from l4, no layout/sections', async () => 
   assert.equal(prepared.baseDefinition.purpose, 'Navegar');
   assert.doesNotMatch(String(prepared.baseDefinition.purpose), /^Executar /);
 });
+
+// ---- bug_typescript (102045): feedback i18n keys must exist in the catalog ----
+// buildActions declara action.<cmd>.success/error para todo command, mas nada as escrevia no catálogo:
+// o .ts que indexou uma delas quebrou com TS7053 e sobreviveu porque o arquivo não estava stale.
+test('mutation feedback keys are backfilled for every command, never for a query', async () => {
+  const mod = await loadModule() as unknown as { addMutationFeedbackI18n: (c: any[], i: Record<string, string>) => string[] };
+  const commands = [
+    { commandName: 'createProjectCmd', kind: 'command', purpose: 'Create project' },
+    { commandName: 'updateProjectStatusCmd', kind: 'command' },
+    { commandName: 'listProjects', kind: 'query', purpose: 'Browse' },
+  ];
+  const i18n: Record<string, string> = {};
+  const added = mod.addMutationFeedbackI18n(commands, i18n);
+  assert.deepEqual(added.sort(), [
+    'action.createProjectCmd.error', 'action.createProjectCmd.success',
+    'action.updateProjectStatusCmd.error', 'action.updateProjectStatusCmd.success',
+  ]);
+  assert.equal(i18n['action.createProjectCmd.success'], 'Create project: OK');
+  assert.equal(i18n['action.updateProjectStatusCmd.error'], 'Update Project Status Cmd: falhou', 'humanizes the id when the command has no purpose');
+  assert.ok(!('action.listProjects.success' in i18n), 'a query has no mutation feedback');
+  // Idempotent and never overwrites text already in the catalog.
+  i18n['action.createProjectCmd.success'] = 'Projeto criado';
+  assert.deepEqual(mod.addMutationFeedbackI18n(commands, i18n), []);
+  assert.equal(i18n['action.createProjectCmd.success'], 'Projeto criado');
+});

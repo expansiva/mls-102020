@@ -19,9 +19,12 @@ Definition is the page21 .defs.ts object:
 - pageObjective: the synthesized goal for this page (actor, jobToBeDone, primaryDecision,
   decisiveInfo, usageFrequency, criticalActions[{action,presentation}], informationHierarchy,
   successCriteria, antiPatterns). Use it to drive ordering, density and how each action is presented.
-- navigationRefs
-- layout.sections[] as the source of truth for render structure (organisms, intentions, displayHint)
-- dataBindings
+- purpose: what this page is FOR, in the l4 author's words
+- presentation.categoryRef: the UX category this workspace was classified as
+- dataBindings[]: THE source of truth for structure — one entry per bffCall, each with "command",
+  "kind" (query|command), "stateKey" and "inputs[]" ({ name, stateKey, source, required }). There is NO
+  layout/sections block: the EXPERIENCE SKILL appended after this one says WHICH experience to build,
+  and you wire it to these bindings.
 
 The page21 definition, like page11, must not contain i18n values. All visible text comes from the
 shared context (compiled .d.ts or raw .ts).
@@ -66,10 +69,11 @@ happened in production on a page21 workspace: the screen showed the literal text
 nothingPlaceholder, emptyTpl, ...). A generated page therefore has NO module-level function declarations
 at all: the allowed const helpers live INSIDE render().
 
-## Mapping layout to render (same binding rules as page11)
+## Mapping the contract to render (same binding rules as page11)
 
-Use Definition.layout.sections[]. Use section.titleKey, organism.titleKey, intention.titleKey,
-intention.emptyKey, field.labelKey and action.labelKey only as keys into this.msg. Access messages
+Choreograph from Definition.dataBindings[] under the experience skill's direction: a "query" binding is
+a surface, a "command" binding is an action on the surface it belongs to. Use ONLY msg keys declared by
+the shared MessageType. Access messages
 ONLY as typed member access on this.msg using the exact key string (e.g. this.msg['field.status.label']).
 NEVER cast this.msg and NEVER wrap it in a getMsg/t helper. Use each key EXACTLY as declared.
 The shared base class MessageType (extracted in the mandatory first step) is the complete closed
@@ -143,6 +147,28 @@ must not emit them. Order organisms by pageObjective.informationHierarchy / prim
   show a progress label and are disabled while their action is loading.
 - Collapse repeated hierarchy: page title once as h1; a title that resolves to the same message as its
   parent is not repeated.
+
+## Regras invioláveis de experiência (as 4 reincidentes — cada uma tem check no gate)
+
+1. VOCABULÁRIO INTERNO NUNCA VIRA TEXTO DE TELA. displayHint, intent id, state key, nome de bffCall e
+   ids de binding são fiação, não copy. Um tile intitulado "Summary first" (o displayHint humanizado)
+   foi defeito real. Escreva o texto que o USUÁRIO leria; se não há msg key declarada para ele, use
+   literal com TODO — nunca o token técnico.
+2. page / pageSize / sortBy / offset / limit NUNCA SÃO CAMPOS DE FORMULÁRIO. São controle da coleção:
+   paginação é o pager da própria superfície, ordenação é o cabeçalho da coluna. Ninguém digita um
+   "page size" num form.
+3. RESPEITE "source" DE CADA INPUT (dataBindings[].inputs[].source) — é o que decide se o input pode ser
+   um campo:
+   - "userInput"/"userDecision" → campo de formulário normal;
+   - "selectedEntity"/"selection" → vem de SELECIONAR uma linha da superfície, e a seleção ALIMENTA o
+     form/painel do comando. Nunca um painel "Update" órfão com campos vazios, nunca um input de id;
+   - "routeParam"/"pageInput" → vem do contexto/rota, não renderiza como campo;
+   - "actorSession"/"businessContext" → do usuário logado, NUNCA editável;
+   - "derived" → encadeado do output anterior, somente leitura.
+4. DISCIPLINA DE TÍTULOS E AÇÕES DESTRUTIVAS: o título da página aparece 1× (o shell já mostra o nome —
+   não repita); um heading nunca repete o label do botão/link vizinho (se o botão diz "Aprovar", o
+   heading acima dele diz outra coisa ou não existe); no máximo UMA ação destrutiva por superfície,
+   nunca como botão default de linha, e sempre com confirmação que NOMEIA o registro.
 
 ## Design system colors (identical to page11)
 
