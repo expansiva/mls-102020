@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runNm2LessGate } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n5-less/gate.js';
+import { findHostAnchoredClasses, runNm2LessGate } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n5-less/gate.js';
 import { MoleculePlan } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 
@@ -246,4 +246,33 @@ test('portal rules are required when the render declares a portal, and banned ot
   );
   assert.deepEqual(runNm2LessGate(withPortal, PLAN, ctx(), { renderTs: portalRender }), []);
   assert.ok(gate(withPortal).some(issue => issue.code === 'portal_extra'));
+});
+
+// ---- A4, first Studio run 2026-07-30: `&.classe` no nivel 1 ancora no HOST. ----
+// Medido: 0 ocorrencias no nivel 1 nas 231 folhas reais, 49 no nivel 2+ (legitimas).
+
+test('&.class at the first level is rejected — the host never gets a class the render emits', () => {
+  const less = NEUTRAL.replace('  .ml-surface-bg {', '  &.ml-disabled {\n    opacity: 0.5;\n  }\n\n  .ml-surface-bg {');
+  const codes = gate(less).map(issue => issue.code);
+  assert.ok(codes.includes('host_anchored_class'));
+});
+
+test('&.class NESTED is legitimate — & is the enclosing inner selector (49 real cases)', () => {
+  const less = NEUTRAL.replace(
+    '  .ml-surface-bg {\n    background: var(--ml-surface, #ffffff);\n  }',
+    '  .ml-surface-bg {\n    background: var(--ml-surface, #ffffff);\n\n    &.ml-label {\n      opacity: 0.5;\n    }\n  }',
+  );
+  assert.deepEqual(gate(less).map(issue => issue.code), []);
+});
+
+test('the escape hatch: if the render puts the class on the host via classList, &.class is right', () => {
+  const less = NEUTRAL.replace('  .ml-surface-bg {', '  &.ml-disabled {\n    opacity: 0.5;\n  }\n\n  .ml-surface-bg {');
+  const renderTs = RENDER.replace('  render()', "  private sync() { this.classList.toggle('ml-disabled', true); }\n  render()");
+  assert.ok(!gate(less, false, renderTs).some(issue => issue.code === 'host_anchored_class'));
+});
+
+test('findHostAnchoredClasses is individually inspectable', () => {
+  assert.deepEqual(findHostAnchoredClasses('tag {\n  &.ml-x { }\n}', ''), ['.ml-x']);
+  assert.deepEqual(findHostAnchoredClasses('tag {\n  .a {\n    &.ml-x { }\n  }\n}', ''), []);
+  assert.deepEqual(findHostAnchoredClasses('tag {\n  &:hover { }\n}', ''), []);
 });

@@ -40,3 +40,58 @@ Also in this batch (shared, decision D3/Q6 discipline):
   `hasUniversalSelector`/`setsPositionOrOverflow`. Its 32 tests stayed green.
 - `n4-render`'s `collectMlClasses` is now the shared `extractMlClassesFromTs`, so the subset check here
   and the discipline check there cannot disagree about what the render emits.
+
+## 2026-07-30 — `&.classe` no nível 1 é CSS morto (A4), e o `.less` passou a compilar (A5b)
+
+**`host_anchored_class`.** A folha gerada escreveu
+`groupviewtable--ml-data-grid-33 { &.ml-disabled { opacity: … } }`. `&` no primeiro nível é o
+próprio host — e o Lit renderiza DENTRO do host, então uma classe que o render emite cai num
+elemento interno e a regra nunca casa: o estado `disabled` ficou sem nenhum efeito visual.
+
+A medição me corrigiu no caminho. Eu havia afirmado que 12 moléculas temáticas tinham o mesmo CSS
+morto; ao contar profundidade, são **0 no nível 1** e **49 no nível 2+**, onde `&` é o seletor
+interno que envolve (`.ml-input-container { &.ml-disabled { … } }`) e é perfeitamente legítimo. Por
+isso a regra é só de nível 1. Escape hatch: se o render põe a classe no host via
+`classList.add/toggle`, a folha está certa e a regra não dispara — nenhuma molécula faz isso hoje
+(0 de 231), mas o invariante é "o host recebe essa classe?", não "nunca use `&`".
+
+**Compilação.** O `.less` era escrito às cegas. Erro de sintaxe em LESS compila para nada e a
+molécula renderiza sem estilo — falha que sobrevive a uma revisão visual. Agora escreve, chama
+`compileStorLess` (novo em `helpers/nmFs.ts`, via `mls.l2.less.compileStyle` → `styleResults.errors`)
+e os erros entram no gate como código `compile`.
+
+## 2026-07-31 — o modo NEUTRO ganhou o vocabulário de tokens (A7)
+
+**O que parou o pipeline.** `n5-less failed after retry: color_literal: rgba(59,130,246,0.06),
+rgba(59,130,246,0.08), rgba(59,130,246,0.13)`. O gate estava CERTO — testei `bareColorLiterals` contra
+8 formas (dentro de `var`, `var` dentro de `var`, `linear-gradient`, `box-shadow` multi-valor, `var`
+com segundo argumento composto) e nenhuma acusa; só literal genuinamente fora de token acusa. O modelo
+escreveu os `rgba()` crus.
+
+**Causa: assimetria entre os dois modos do `buildModeSection`.** O ramo TEMÁTICO recebe a tabela de
+tokens do tema via `loadThemeSkill`. O ramo NEUTRO exigia "todo valor de aparência passa por um token"
+e mostrava DOIS exemplos, sem nunca dar o vocabulário. Conformidade por sorte, e os dois runs de 31/07
+mostram as duas faces: um inventou `var(--ml-primary-dim-bg, rgba(...))` e PASSOU (envolver é tudo o
+que o gate checa), o seguinte escreveu cru e reprovou duas vezes.
+
+O token que faltava já existe: `--ml-primary-container`, que é o que
+`groupselectmany/ml-table-multi-select.less:19` usa para linha selecionada. Não existe nenhum
+`--ml-primary-dim*` — a convenção da biblioteca é `<papel>-container` / `<papel>-dim`.
+
+**Aplicado:** `NM_NEUTRAL_TOKEN_VOCABULARY` em `agentNm2Less.ts`, injetado no ramo neutro. Tabela
+agrupada por papel, com o número de ARQUIVOS que usam cada token, e `--ml-primary-container` marcado
+explicitamente como "o fundo tingido de linha/item SELECIONADO". Todos os 39 nomes citados foram
+verificados: existem de fato nas folhas base.
+
+**Uma questão que estava aberta no controle ficou resolvida pela medição: o vocabulário NÃO pode ser
+fechado.** Contando por arquivo, a cauda são tokens usados em UM arquivo só, e são específicos por
+molécula de propósito — `--ml-nrs-*` do number-range-slider, `--ml-gradient-1..7` dos gráficos,
+`--ml-spinner-duration`. Um gate rejeitando token fora de lista reprovaria molécula boa. Então o gate
+segue aceitando token inventado, agora com justificativa medida em vez de dúvida, e o prompt ensina a
+convenção: use o token do papel quando existir; se precisar de algo novo, prefixe com a molécula
+(`var(--ml-nrs-knob-size, 20px)`).
+
+**Ressalva.** É a quinta instrução adicionada a este prompt, e o A10 acabou de mostrar que instrução
+não é mecanismo (o modelo inventou o `nothingAttr` DEPOIS de a skill proibir explicitamente). Aqui a
+expectativa é melhor fundamentada, porque o problema é falta de INFORMAÇÃO — ele não sabia que
+`--ml-primary-container` existe — e não desobediência. A rede continua sendo o `color_literal`.

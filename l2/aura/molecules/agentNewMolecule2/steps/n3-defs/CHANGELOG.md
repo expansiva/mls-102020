@@ -61,3 +61,10 @@ Trap for anyone repairing an already-generated molecule: `deleteFile` only hard-
 is `status: 'new'`. After a save/publish it soft-deletes, leaving the entry in `mls.stor.files` with the
 WRONG `shortName`/`extension` — and `writeStorTextAtomic`'s resurrection branch would revive it with
 those fields intact, reproducing the bug under the same molecule name.
+
+## 2026-07-30 — o `.defs.ts` passou a compilar (A5b)
+
+Era escrito às cegas. É arquivo TypeScript, e seu modo de falha conhecido — backtick ou `${` sem
+escape dentro do literal do skill — era checado só textualmente. Agora escreve primeiro, chama
+`compileStorTs` e os erros do compilador entram no gate como código `compile`. Uma tentativa
+reprovada deixa o conteúdo em disco para o retry ler, a mesma troca que o n4-render já fazia.

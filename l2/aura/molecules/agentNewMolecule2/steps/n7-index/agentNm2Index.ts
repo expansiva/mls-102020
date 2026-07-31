@@ -13,6 +13,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as indexGroupPageSkill } from '/_102020_/l2/aura/molecules/skills/indexGroupPage.js';
 import {
   NM_AGENT_FOLDER,
+  compileStorTs,
   isRecord,
   nmContextFileInfo,
   nmGroupIndexFile,
@@ -21,11 +22,12 @@ import {
   parseMaybeJson,
   readJsonArtifact,
   readNmAgentText,
+  readPreviousAttemptSource,
   toDisplayPath,
   writeJsonArtifact,
   writeStorTextAtomic,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
-import { MoleculePlan } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
+import { MoleculePlan, NM_MAX_ATTEMPTS } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import {
   nmGroupIndexTag,
@@ -96,10 +98,14 @@ async function beforePromptStep(
     .split('{{groupUsageSkill}}').join(groupUsageSkill)
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the group cannot be showcased with the given context')}`;
 
+  // F1: on a retry, hand back the index the model itself wrote (see readPreviousAttemptSource).
+  const previousAttempt = await readPreviousAttemptSource(runKey, PLAN_ID, parsedArgs.retryAttempt || 1);
+
   const humanPrompt = [
     `## The molecule just added\n${plan.shortName} — ${plan.description}`,
     `## Language\nTitles and captions in '${ctx.userLanguage}'; code comments in English.`,
-    parsedArgs.retryContext ? `## The previous attempt failed the deterministic gate — fix ALL of these\n${parsedArgs.retryContext}` : '',
+    previousAttempt.trim() ? `## The index you wrote last time — FIX IT, do not start over\n\`\`\`typescript\n${previousAttempt}\n\`\`\`` : '',
+    parsedArgs.retryContext ? `## What the gate rejected — fix ALL of these\n${parsedArgs.retryContext}` : '',
   ].filter(Boolean).join('\n\n');
 
   return [{
@@ -142,9 +148,22 @@ async function afterPromptStep(
     extractError = error instanceof Error ? error.message : String(error);
   }
 
+  // A5b (2026-07-30): of the three artifacts that were written blind, this is the dangerous one — the
+  // group index is SHARED, rewritten with a new import line and a whole Lit component, so a break
+  // takes down the page of every molecule in the group, not just the new one.
+  const tsInfo = nmGroupIndexFile(plan.group, '.ts');
+  let compileErrors: string[] = [];
+  if (!extractError && indexTs.trim()) {
+    await writeStorTextAtomic(tsInfo, indexTs, true);
+    compileErrors = (await compileStorTs(tsInfo, indexTs)).errors;
+  }
+
   const issues = extractError
     ? [{ code: 'extract', message: extractError }]
-    : runNm2IndexGate(indexTs, plan, ctx, { indexTag: nmGroupIndexTag(identity), groupMolecules });
+    : [
+      ...runNm2IndexGate(indexTs, plan, ctx, { indexTag: nmGroupIndexTag(identity), groupMolecules }),
+      ...compileErrors.map(message => ({ code: 'compile', message })),
+    ];
   const errorText = issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
 
   await writeJsonArtifact(nmTraceFileInfo(runKey, PLAN_ID, attempt), {
@@ -153,14 +172,12 @@ async function afterPromptStep(
     attempt,
     ok: issues.length === 0,
     groupMolecules,
-    ...(issues.length ? { error: errorText } : {}),
+    ...(issues.length ? { error: errorText, source: indexTs } : {}),
   });
 
-  const tsInfo = nmGroupIndexFile(plan.group, '.ts');
   const display = toDisplayPath(tsInfo);
 
   if (issues.length === 0) {
-    await writeStorTextAtomic(tsInfo, indexTs, true);
     // index.html is deterministic: just the group index element.
     await writeStorTextAtomic(nmGroupIndexFile(plan.group, '.html'), `${renderGroupIndexHtml(identity)}\n`, true);
     return [
@@ -174,7 +191,7 @@ async function afterPromptStep(
     ];
   }
 
-  if (attempt >= 2) {
+  if (attempt >= NM_MAX_ATTEMPTS) {
     // The index NEVER blocks the pipeline (decision in flow.json): n8-summary reports the gap.
     return [
       nmResultStepIntent(context, parentStep, {
@@ -191,8 +208,8 @@ async function afterPromptStep(
     nmAgentStepIntent(context, parentStep, {
       agentName: AGENT_NAME,
       stepTitle: `${step.stepTitle || PLAN_ID} (retry)`,
-      planId: `${PLAN_ID}-retry1`,
-      prompt: { planId: PLAN_ID, runKey, retryAttempt: 2, retryContext: errorText },
+      planId: `${PLAN_ID}-retry${attempt}`,
+      prompt: { planId: PLAN_ID, runKey, retryAttempt: attempt + 1, retryContext: errorText },
     }),
     nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `gate failed, retrying:\n${errorText}`, 'input_output'),
   ];

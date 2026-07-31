@@ -18,6 +18,7 @@ import { skill as moleculeGenerationSkill } from '/_102020_/l2/aura/molecules/sk
 import { skill as auraOverviewSkill } from '/_102020_/l2/skills/aura/overview.js';
 import {
   NM_AGENT_FOLDER,
+  compileStorTs,
   isRecord,
   nmBaseFile,
   nmContextFileInfo,
@@ -28,13 +29,14 @@ import {
   parseMaybeJson,
   readJsonArtifact,
   readNmAgentText,
+  readPreviousAttemptSource,
   readStorText,
   toDisplayPath,
   writeJsonArtifact,
   writeStorTextAtomic,
   type NmFileInfo,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
-import { MoleculePlan } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
+import { MoleculePlan, NM_MAX_ATTEMPTS } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import { nmIdentityFromPlan, normalizeMoleculeTs } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTemplates.js';
 import { extractSkillLiteral } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n3-defs/gate.js';
@@ -102,10 +104,17 @@ async function beforePromptStep(
     .split('{{groupSkill}}').join(groupSkill)
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the contract cannot be implemented as specified')}`;
 
+  // F1 (2026-07-31): on a retry, hand back the file the model itself wrote. See
+  // readPreviousAttemptSource for why it comes from the trace and what it fixes.
+  const previousAttempt = await readPreviousAttemptSource(runKey, PLAN_ID, parsedArgs.retryAttempt || 1);
+
   const humanPrompt = [
     `## Confirmed instruction\n${plan.prompt}`,
     plan.visualRequirements.length ? `## Visual requirements\n${plan.visualRequirements.map(item => `- ${item}`).join('\n')}` : '',
-    parsedArgs.retryContext ? `## The previous attempt failed — fix ALL of these\n${parsedArgs.retryContext}` : '',
+    previousAttempt.trim()
+      ? `## The file you wrote last time — FIX IT, do not start over\n\`\`\`typescript\n${previousAttempt}\n\`\`\``
+      : '',
+    parsedArgs.retryContext ? `## What the gate rejected — fix ALL of these\n${parsedArgs.retryContext}` : '',
   ].filter(Boolean).join('\n\n');
 
   return [{
@@ -157,7 +166,7 @@ async function afterPromptStep(
   let dependencyDefs = '';
   if (!extractError && source.trim()) {
     await writeStorTextAtomic(fileInfo, source, true);
-    const compiled = await compileMolecule(fileInfo);
+    const compiled = await compileMolecule(fileInfo, source);
     compileErrors = compiled.errors;
     if (compileErrors.length) dependencyDefs = await collectDependencyDefs(compiled.imports);
   }
@@ -174,7 +183,7 @@ async function afterPromptStep(
     ok: issues.length === 0,
     chars: source.length,
     mlClasses: collectMlClasses(source),
-    ...(issues.length ? { error: errorText } : {}),
+    ...(issues.length ? { error: errorText, source } : {}),
   });
 
   if (issues.length === 0) {
@@ -190,8 +199,8 @@ async function afterPromptStep(
     ];
   }
 
-  if (attempt >= 2) {
-    return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `${PLAN_ID} failed after retry:\n${errorText}`)];
+  if (attempt >= NM_MAX_ATTEMPTS) {
+    return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `${PLAN_ID} failed after ${attempt} attempts:\n${errorText}`)];
   }
 
   // The retry carries the compiler's own errors AND the type definitions of the imports — what the
@@ -201,8 +210,8 @@ async function afterPromptStep(
     nmAgentStepIntent(context, parentStep, {
       agentName: AGENT_NAME,
       stepTitle: `${step.stepTitle || PLAN_ID} (retry)`,
-      planId: `${PLAN_ID}-retry1`,
-      prompt: { planId: PLAN_ID, runKey, retryAttempt: 2, retryContext },
+      planId: `${PLAN_ID}-retry${attempt}`,
+      prompt: { planId: PLAN_ID, runKey, retryAttempt: attempt + 1, retryContext },
     }),
     nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `gate failed, retrying:\n${errorText}`, 'input_output'),
   ];
@@ -226,16 +235,9 @@ async function loadGroupSkill(ctx: MoleculeContext): Promise<string> {
   return mod.skill;
 }
 
-// The SAME source of truth the old flow used: modelTs.compilerResults.
-async function compileMolecule(fileInfo: NmFileInfo): Promise<{ errors: string[]; imports: string[] }> {
-  const storFile = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
-  if (!storFile) return { errors: [`could not open ${toDisplayPath(fileInfo)} to compile it`], imports: [] };
-  const modelTs = await storFile.getOrCreateModel() as mls.editor.IModelTS;
-  const ok = await mls.l2.typescript.compileAndPostProcess(modelTs, true, false);
-  const errors = (modelTs.compilerResults?.errors || []).map(error => (typeof error === 'string' ? error : JSON.stringify(error)));
-  if (!ok && !errors.length) errors.push('compilation failed without a reported error');
-  return { errors, imports: modelTs.compilerResults?.imports || [] };
-}
+// Moved to helpers/nmFs (compileStorTs) when A5b gave the same treatment to the .defs.ts, the group
+// index.ts and the .less — one implementation, so the four steps cannot drift apart.
+const compileMolecule = compileStorTs;
 
 // Type definitions of the molecule's own dependencies (port of agentNewMoleculeFix's
 // getDefinitonsByImports): the model cannot fix a type error it cannot see the signature for.

@@ -95,11 +95,140 @@ export function runNm2RenderGate(
     });
   }
 
+  // The three checks below were added after the first Studio run (2026-07-30), and each one is
+  // MEASURED over the 231 real molecules of mls-102040/102053/102054/102055: all three detectors
+  // fire 0 times there, so they reject inventions of the model and nothing the library does.
+  // (The same measurement KILLED three other rules I had planned — requiring `super.firstUpdated`,
+  // `super.updated` and `super.handleIcaStateChange` would reject 46/46, 48/54 and 51/51 real
+  // molecules. Not calling super is the library's uniform convention; see the control file.)
+
+  const sideEffect = findRenderSideEffects(text);
+  for (const found of sideEffect) {
+    issues.push({
+      code: 'render_side_effect',
+      message: `render() must be pure — it ${found}. Move it to updated() (which is what the library does for is-editing propagation)`,
+    });
+  }
+
+  for (const selector of findRedundantCaseSelectors(text)) {
+    issues.push({
+      code: 'selector_duplicate',
+      message: `'${selector}' spells the same tag twice — type selectors are case-insensitive in HTML documents, so the second form is dead`,
+    });
+  }
+
+  for (const member of findBaseInternals(text)) {
+    issues.push({
+      code: 'base_internals',
+      message: `'${member}' is internal plumbing of the base class — do not drive it from the molecule; derive what you need in render() from the snapshot readers (getSlot/getSlots/getSlotContent)`,
+    });
+  }
+
+  for (const helper of findTopLevelFunctions(text)) {
+    issues.push({
+      code: 'helper_outside_class',
+      message: `'${helper}' is declared outside the class — a molecule is the class and nothing else. If you need to omit an attribute, import 'nothing' from 'lit' and write attr=\${value || nothing}; a local sentinel returning null, undefined or '' renders attr="" instead of removing it`,
+    });
+  }
+
   for (const error of options.compileErrors) {
     issues.push({ code: 'compile', message: error });
   }
 
   return issues;
+}
+
+// ---- checks added by the first-run review (see the block above) ----
+
+// The body of `render()`, by brace counting. Returns '' when there is no render().
+export function extractRenderBody(source: string): string {
+  const match = /(?:^|\n)\s*(?:private |public |async )*render\s*\([^)]*\)\s*(?::[^{]+)?\{/.exec(source);
+  if (!match) return '';
+  let index = match.index + match[0].length;
+  let depth = 1;
+  while (index < source.length && depth > 0) {
+    if (source[index] === '{') depth++;
+    else if (source[index] === '}') depth--;
+    index++;
+  }
+  return source.slice(match.index + match[0].length, index - 1);
+}
+
+// A render that schedules a timer or touches the DOM is not a pure function of the state: it runs on
+// EVERY update. The first generated molecule called `propagateEditingInRenderedCells()` — a
+// requestAnimationFrame doing setAttribute on descendants — from inside render().
+export function findRenderSideEffects(source: string): string[] {
+  const body = extractRenderBody(source);
+  if (!body) return [];
+  const found: string[] = [];
+  const timer = /\b(requestAnimationFrame|setTimeout|setInterval)\s*\(/.exec(body);
+  if (timer) found.push(`schedules ${timer[1]}(...)`);
+  const dom = /this\.(setAttribute|removeAttribute|querySelector|querySelectorAll|appendChild)\s*\(/.exec(body);
+  if (dom) found.push(`calls this.${dom[1]}(...)`);
+  return found;
+}
+
+// `'tablecell, TableCell'` and `querySelector('x') || this.querySelector('X')`: in an HTML document a
+// type selector is ASCII case-insensitive, so the second spelling can never match anything the first
+// missed. The model emitted both forms throughout, which reads as distrust of the parser.
+export function findRedundantCaseSelectors(source: string): string[] {
+  const found = new Set<string>();
+  for (const literal of source.match(/['"][A-Za-z]+\s*,\s*[A-Za-z]+['"]/g) || []) {
+    const [left, right] = literal.slice(1, -1).split(',').map(part => part.trim());
+    if (left && right && left !== right && left.toLowerCase() === right.toLowerCase()) found.add(literal.slice(1, -1));
+  }
+  const chain = /querySelector(?:All)?\(\s*['"]([A-Za-z]+)['"]\s*\)\s*\|\|\s*(?:this\.)?querySelector(?:All)?\(\s*['"]([A-Za-z]+)['"]\s*\)/g;
+  for (const match of source.matchAll(chain)) {
+    if (match[1] !== match[2] && match[1].toLowerCase() === match[2].toLowerCase()) found.add(`${match[1]} || ${match[2]}`);
+  }
+  return [...found];
+}
+
+// Base-class plumbing the molecule must not drive. `_mutationLock` and `_onSlotTagsChanged` exist so
+// the observer can suppress itself; a molecule that flips them is reordering the hidden light DOM —
+// irreversible (the authored order is lost) and coupled to the base's internals. 0/231 real
+// molecules touch them; the library sorts in memory over the snapshot instead.
+export function findBaseInternals(source: string): string[] {
+  const found = new Set<string>();
+  for (const match of source.match(/\b_(?:mutationLock|onSlotTagsChanged)\b/g) || []) found.add(match);
+  return [...found];
+}
+
+// A molecule is the class and nothing else. Anything declared at column 0 that is CALLABLE is a
+// helper the model invented instead of using the platform.
+//
+// The rule exists because of one specific, RECURRING invention: a local `nothing` sentinel for
+// omitting attributes. Four generations produced it across BOTH flows, and it is not a prompt
+// problem — the shipped library carries two of them (measured 2026-07-31):
+//
+//   ml-number-range-slider.ts:917     function nothingAttr(): string { return ''; }        (old flow)
+//   ml-number-interval-inputs.ts:664  function nothingAttr(): any { return undefined; }    (old flow)
+//   ml-data-grid-33                   function nothingAttr(): null { return null; }        (nm2)
+//   ml-general-text-input-teste       function nothingAttr(): undefined { … }              (nm2, after
+//                                     the skill was rewritten to forbid it explicitly)
+//
+// All four COMPILE and all four are wrong: Lit only removes an attribute for the `nothing` sentinel;
+// null/undefined/'' render `attr=""`, which for `aria-*` and `maxlength` changes behaviour. A fifth
+// generation reached for `require('lit')` and did not compile at all.
+//
+// MEASURED over the 231 real molecules with THIS function: 2 hits, and both are the defect above.
+//
+// Only `function` DECLARATIONS are detected, on purpose. An earlier version also flagged a top-level
+// `const … =>`, and running it over the corpus rejected 32 of 231 — because the stored molecules have
+// COLLAPSED INDENTATION (method bodies sit at column 0 or one space), so `^` cannot tell "top level"
+// from "inside a method" and `const items = …map(el => …)` matched. A column anchor is not a reliable
+// scope signal in these files, so the loose branch was removed rather than kept with 30 false
+// positives. `function` at column 0 does not suffer from this: the corpus has exactly two, both wrong.
+//
+// Known blind spot: `const nothingAttr = () => undefined;` at top level would pass. Accepted — all
+// five observed inventions used a `function` declaration. The i18n `const message_en = {…}` and
+// `type MessageType` are data, not callables, and were never matched by either branch.
+export function findTopLevelFunctions(source: string): string[] {
+  const found = new Set<string>();
+  for (const match of source.matchAll(/^(?:export\s+)?function\s+([A-Za-z_$][\w$]*)/gm)) {
+    found.add(`${match[1]}()`);
+  }
+  return [...found];
 }
 
 // The inventory the .less may style. SHARED with n5-less (shared/moleculeInspect), which needs the

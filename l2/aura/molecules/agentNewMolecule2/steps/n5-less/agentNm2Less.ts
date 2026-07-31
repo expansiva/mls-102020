@@ -17,6 +17,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as lessAuthoringSkill } from '/_102020_/l2/aura/molecules/skills/lessAuthoring/index.js';
 import {
   NM_AGENT_FOLDER,
+  compileStorLess,
   isRecord,
   nmContextFileInfo,
   nmLessFile,
@@ -26,12 +27,13 @@ import {
   parseMaybeJson,
   readJsonArtifact,
   readNmAgentText,
+  readPreviousAttemptSource,
   readStorText,
   toDisplayPath,
   writeJsonArtifact,
   writeStorTextAtomic,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
-import { MoleculePlan } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
+import { MoleculePlan, NM_MAX_ATTEMPTS } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import { nmIdentityFromPlan, normalizeLessContent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTemplates.js';
 import { declaresPortal, extractMlClassesFromTs } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
@@ -101,10 +103,14 @@ async function beforePromptStep(
     .split('{{groupSkill}}').join(groupSkill)
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the molecule source is insufficient to produce the sheet')}`;
 
+  // F1: on a retry, hand back the sheet the model itself wrote (see readPreviousAttemptSource).
+  const previousAttempt = await readPreviousAttemptSource(runKey, PLAN_ID, parsedArgs.retryAttempt || 1);
+
   const humanPrompt = [
     plan.visualRequirements.length ? `## Confirmed visual requirements\n${plan.visualRequirements.map(item => `- ${item}`).join('\n')}` : '',
     `## The molecule\n${plan.description}`,
-    parsedArgs.retryContext ? `## The previous attempt failed the deterministic gate — fix ALL of these\n${parsedArgs.retryContext}` : '',
+    previousAttempt.trim() ? `## The sheet you wrote last time — FIX IT, do not start over\n\`\`\`less\n${previousAttempt}\n\`\`\`` : '',
+    parsedArgs.retryContext ? `## What the gate rejected — fix ALL of these\n${parsedArgs.retryContext}` : '',
   ].filter(Boolean).join('\n\n');
 
   return [{
@@ -150,9 +156,22 @@ async function afterPromptStep(
     extractError = error instanceof Error ? error.message : String(error);
   }
 
+  // A5b (2026-07-30): the sheet used to be written blind. A LESS syntax error compiles to nothing and
+  // the molecule silently renders unstyled, which is exactly the kind of failure that survives a
+  // visual review. Written first so it can be compiled, like n4-render does with the .ts.
+  const fileInfo = nmLessFile(plan.group, plan.shortName);
+  let compileErrors: string[] = [];
+  if (!extractError && less.trim()) {
+    await writeStorTextAtomic(fileInfo, less, true);
+    compileErrors = await compileStorLess(fileInfo, less);
+  }
+
   const issues = extractError
     ? [{ code: 'extract', message: extractError }]
-    : runNm2LessGate(less, plan, ctx, { renderTs });
+    : [
+      ...runNm2LessGate(less, plan, ctx, { renderTs }),
+      ...compileErrors.map(message => ({ code: 'compile', message })),
+    ];
   const errorText = issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
 
   await writeJsonArtifact(nmTraceFileInfo(runKey, PLAN_ID, attempt), {
@@ -162,12 +181,10 @@ async function afterPromptStep(
     ok: issues.length === 0,
     chars: less.length,
     themed: ctx.theme.present,
-    ...(issues.length ? { error: errorText } : {}),
+    ...(issues.length ? { error: errorText, source: less } : {}),
   });
 
   if (issues.length === 0) {
-    const fileInfo = nmLessFile(plan.group, plan.shortName);
-    await writeStorTextAtomic(fileInfo, less, true);
     const display = toDisplayPath(fileInfo);
     return [
       nmResultStepIntent(context, parentStep, {
@@ -180,16 +197,16 @@ async function afterPromptStep(
     ];
   }
 
-  if (attempt >= 2) {
-    return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `${PLAN_ID} failed after retry:\n${errorText}`)];
+  if (attempt >= NM_MAX_ATTEMPTS) {
+    return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `${PLAN_ID} failed after ${attempt} attempts:\n${errorText}`)];
   }
 
   return [
     nmAgentStepIntent(context, parentStep, {
       agentName: AGENT_NAME,
       stepTitle: `${step.stepTitle || PLAN_ID} (retry)`,
-      planId: `${PLAN_ID}-retry1`,
-      prompt: { planId: PLAN_ID, runKey, retryAttempt: 2, retryContext: errorText },
+      planId: `${PLAN_ID}-retry${attempt}`,
+      prompt: { planId: PLAN_ID, runKey, retryAttempt: attempt + 1, retryContext: errorText },
     }),
     nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `gate failed, retrying:\n${errorText}`, 'input_output'),
   ];
@@ -215,6 +232,46 @@ async function loadGroupSkill(ctx: MoleculeContext): Promise<string> {
 
 // The two modes the gate enforces, stated as instructions. With no theme NOTHING theme-related may
 // appear in the artifact — that is acceptance 3.11.
+// A7 (2026-07-31): the NEUTRAL branch demanded "every appearance value goes through a token" and then
+// showed TWO examples, never the vocabulary — while the THEMED branch gets the theme's whole token
+// table from loadThemeSkill. That asymmetry made compliance luck, and the two runs of 2026-07-31 show
+// both outcomes: one invented `var(--ml-primary-dim-bg, rgba(...))` and PASSED (wrapping is all the
+// gate checks), the next wrote `rgba(59,130,246,0.08)` bare and failed twice, stopping the pipeline.
+// The token it needed already exists — `--ml-primary-container`, which is what
+// groupselectmany/ml-table-multi-select.less:19 uses for a selected row.
+//
+// Table MEASURED over the base sheets of mls-102040, by how many FILES use each token. The tail of
+// that measurement also settled an open question: the vocabulary CANNOT be closed. Tokens used in
+// exactly one file are molecule-specific ON PURPOSE (`--ml-nrs-knob-size` belongs to the number range
+// slider, `--ml-gradient-1..7` to the charts), so a gate rejecting unknown tokens would reject good
+// molecules. Hence: the prompt teaches the shared names, and inventing a prefixed one stays legal.
+const NM_NEUTRAL_TOKEN_VOCABULARY = [
+  '### The token vocabulary of the base sheets',
+  '',
+  'These are the `--ml-*` names the library already shares (the number is how many of the ~147 base',
+  'sheets use each one). **Use the token of the role when one exists** — do not coin a new name for a',
+  'role that is already covered.',
+  '',
+  '| role | tokens |',
+  '|---|---|',
+  '| surface | `--ml-surface` (145), `--ml-surface-dim` (113) — the recessed surface of rails, footers and empty states, `--ml-surface-variant`, `--ml-surface-overlay` |',
+  '| text on surface | `--ml-on-surface` (146), `--ml-on-surface-muted` (143), `--ml-on-surface-faint` (82) |',
+  '| outline | `--ml-outline-variant` (144), `--ml-outline-focus` (86), `--ml-outline-error` (99) |',
+  '| focus ring | `--ml-focus-ring-color` (122), `--ml-focus-ring-width` (121) |',
+  '| primary | `--ml-primary` (116), `--ml-on-primary` (68), `--ml-primary-container` (8) — **the tinted background of a SELECTED row/item**, `--ml-on-primary-container` |',
+  '| semantic | `--ml-error` (126), `--ml-success` (12), `--ml-warning` (6), each with `-dim` (tinted background) and `-border` variants |',
+  '| shape | `--ml-radius-sm` (31), `--ml-radius-md` (15), `--ml-radius-full` (4), `--ml-border-width` (59), `--ml-border-style` (59) |',
+  '| elevation | `--ml-shadow-0` (2), `--ml-shadow-1` (11), `--ml-shadow-2` (13) |',
+  '| motion | `--ml-transition` (51) |',
+  '| typography | `--ml-font-family` (144), `--ml-font-weight-medium` (140) |',
+  '| state | `--ml-disabled-opacity` (138) |',
+  '',
+  'If the molecule genuinely needs a value no role above covers — a knob size, a track height, a chart',
+  'gradient — coin a token PREFIXED with the molecule, as the library does: `--ml-nrs-knob-size`,',
+  '`--ml-spinner-duration`, `--ml-gradient-1`. Still consumed with a fallback:',
+  '`var(--ml-nrs-knob-size, 20px)`.',
+].join('\n');
+
 async function buildModeSection(ctx: MoleculeContext): Promise<string> {
   if (!ctx.theme.present || !ctx.theme.info) {
     return [
@@ -232,6 +289,8 @@ async function buildModeSection(ctx: MoleculeContext): Promise<string> {
       'could ever override it. Do NOT define the tokens (`--ml-x: value`) and do NOT invent a visual',
       'style: pick neutral, conventional values as fallbacks. Mentioning themes, palettes or a named',
       'style anywhere in this file is wrong.',
+      '',
+      NM_NEUTRAL_TOKEN_VOCABULARY,
     ].join('\n');
   }
   const info = ctx.theme.info;

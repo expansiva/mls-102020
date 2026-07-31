@@ -4,7 +4,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   collectMlClasses,
+  findTopLevelFunctions,
+  findBaseInternals,
   findLiteralStyleAppearance,
+  findRedundantCaseSelectors,
   findTailwindColorUtilities,
   runNm2RenderGate,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n4-render/gate.js';
@@ -156,4 +159,83 @@ test('the detectors are individually inspectable', () => {
   assert.deepEqual(findTailwindColorUtilities("class='w-full p-4 rounded-xl'"), []);
   assert.deepEqual(findLiteralStyleAppearance('style="background:#fff"'), ['background:#fff']);
   assert.deepEqual(findLiteralStyleAppearance('style="width:10px"'), []);
+});
+
+// ---- first-run review, 2026-07-30. Each rule fires 0 times over the 231 real molecules. ----
+
+const RENDER_HEAD = '    return html`<div';
+
+test('a timer scheduled inside render() is rejected — render runs on every update', () => {
+  const source = GOOD.replace(RENDER_HEAD, `    requestAnimationFrame(() => this.propagate());\n${RENDER_HEAD}`);
+  assert.notEqual(source, GOOD);
+  assert.ok(gate(source).some(issue => issue.code === 'render_side_effect'));
+});
+
+test('DOM access inside render() is rejected', () => {
+  const source = GOOD.replace(RENDER_HEAD, `    this.querySelectorAll(".ml-cell");\n${RENDER_HEAD}`);
+  assert.ok(gate(source).some(issue => issue.code === 'render_side_effect'));
+});
+
+test('the same call OUTSIDE render() is fine — updated() is where propagation belongs', () => {
+  const source = GOOD.replace(
+    '  render(): TemplateResult {',
+    '  updated() {\n    requestAnimationFrame(() => this.querySelectorAll(".ml-cell"));\n  }\n\n  render(): TemplateResult {',
+  );
+  assert.deepEqual(gate(source), []);
+});
+
+test('a selector spelling the same tag in two cases is rejected', () => {
+  assert.deepEqual(findRedundantCaseSelectors("querySelectorAll('tablecell, TableCell')"), ['tablecell, TableCell']);
+  assert.deepEqual(findRedundantCaseSelectors("this.querySelector('tablebody') || this.querySelector('TableBody')"), ['tablebody || TableBody']);
+  const source = GOOD.replace(
+    '  private baseClasses(): string {',
+    "  private rows() { return this.getSlots('tablerow, TableRow'); }\n\n  private baseClasses(): string {",
+  );
+  assert.ok(gate(source).some(issue => issue.code === 'selector_duplicate'));
+});
+
+test('a genuine two-tag selector list is NOT flagged', () => {
+  assert.deepEqual(findRedundantCaseSelectors("querySelectorAll('input, button')"), []);
+  assert.deepEqual(findRedundantCaseSelectors("querySelectorAll('TableRow, TableCell')"), []);
+});
+
+test('driving the base plumbing is rejected — sorting must not mutate the light DOM', () => {
+  assert.deepEqual(findBaseInternals('this._mutationLock = true; this._onSlotTagsChanged();').sort(), ['_mutationLock', '_onSlotTagsChanged']);
+  assert.deepEqual(findBaseInternals(GOOD), []);
+  const source = GOOD.replace('  render(): TemplateResult {', '  private sort() {\n    this._mutationLock = true;\n  }\n\n  render(): TemplateResult {');
+  assert.ok(gate(source).some(issue => issue.code === 'base_internals'));
+});
+
+// ---- helper_outside_class, 2026-07-31. Medido: 2 function top-level nas 231 (as duas defeituosas),
+// 0 arrow-function const top-level. Nenhum padrão legítimo a proteger. ----
+
+test('a top-level function is rejected — the molecule is the class and nothing else', () => {
+  const source = `${GOOD}\nfunction nothingAttr(): undefined {\n  return undefined;\n}\n`;
+  const issues = gate(source);
+  assert.ok(issues.some(issue => issue.code === 'helper_outside_class'));
+  assert.ok(issues.some(issue => issue.message.includes("import 'nothing' from 'lit'")));
+});
+
+test('every shape of the recurring sentinel is caught, including the ones that COMPILE', () => {
+  for (const body of ['(): null { return null; }', '(): undefined { return undefined; }', '(): string { return \'\'; }', '(): any { return undefined; }']) {
+    assert.deepEqual(findTopLevelFunctions(`function nothingAttr${body}`), ['nothingAttr()']);
+  }
+});
+
+// Blind spot documented on purpose: only `function` declarations are detected. A loose arrow-const
+// branch rejected 32 of 231 real molecules, because the stored files have collapsed indentation and
+// `^` stops being a scope signal — `const items = …map(el => …)` inside a method matched at column 0.
+test('a local const inside a method is NOT flagged, even with indentation collapsed', () => {
+  assert.deepEqual(findTopLevelFunctions("const items = this.getSlots('Item').map(el => el.textContent);"), []);
+  assert.deepEqual(findTopLevelFunctions('const parts = value.split(\':\').map(p => Number(p));'), []);
+});
+
+test('the i18n block and type aliases are data, not callables — never flagged', () => {
+  const i18n = "const message_en = {\n  loading: 'Loading...',\n};\ntype MessageType = typeof message_en;\nconst messages: Record<string, MessageType> = { en: message_en };\n";
+  assert.deepEqual(findTopLevelFunctions(i18n), []);
+  assert.deepEqual(findTopLevelFunctions(GOOD), []);
+});
+
+test('methods INSIDE the class are not top-level', () => {
+  assert.deepEqual(findTopLevelFunctions('class X {\n  private helper() { return 1; }\n  private arrow = () => 2;\n}'), []);
 });
