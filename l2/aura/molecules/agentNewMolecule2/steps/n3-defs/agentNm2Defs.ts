@@ -19,11 +19,12 @@ import {
   parseMaybeJson,
   readJsonArtifact,
   readNmAgentText,
+  readPreviousAttemptSource,
   toDisplayPath,
   writeJsonArtifact,
   writeStorTextAtomic,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
-import { MoleculePlan } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
+import { MoleculePlan, NM_MAX_ATTEMPTS } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import { nmDefsHeader, nmIdentityFromPlan, renderDefsTs } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTemplates.js';
 import {
@@ -81,9 +82,15 @@ async function beforePromptStep(
     .split('{{requirements}}').join(buildRequirements(plan))
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the confirmed requirements are not enough to write a contract')}`;
 
+  // F1: on a retry, hand back the RENDERED contract of the previous attempt. The model only writes
+  // the markdown, but the file is what the gate judged — an unescaped backtick, a missing section or a
+  // wrong TagName is only visible there.
+  const previousAttempt = await readPreviousAttemptSource(runKey, PLAN_ID, parsedArgs.retryAttempt || 1);
+
   const humanPrompt = [
     `Write the contract for ${plan.tag} in '${ctx.userLanguage}'.`,
-    parsedArgs.retryContext ? `## The previous attempt failed the deterministic gate — fix ALL of these\n${parsedArgs.retryContext}` : '',
+    previousAttempt.trim() ? `## The .defs.ts your last markdown produced — FIX IT, do not start over\n\`\`\`typescript\n${previousAttempt}\n\`\`\`` : '',
+    parsedArgs.retryContext ? `## What the gate rejected — fix ALL of these\n${parsedArgs.retryContext}` : '',
   ].filter(Boolean).join('\n\n');
 
   return [{
@@ -136,7 +143,7 @@ async function afterPromptStep(
   let compileErrors: string[] = [];
   if (!extractError && source.trim()) {
     await writeStorTextAtomic(fileInfo, source, true);
-    compileErrors = (await compileStorTs(fileInfo)).errors;
+    compileErrors = (await compileStorTs(fileInfo, source)).errors;
   }
 
   const issues = extractError
@@ -153,7 +160,7 @@ async function afterPromptStep(
     attempt,
     ok: issues.length === 0,
     chars: source.length,
-    ...(issues.length ? { error: errorText } : {}),
+    ...(issues.length ? { error: errorText, source } : {}),
   });
 
   if (issues.length === 0) {
@@ -169,8 +176,8 @@ async function afterPromptStep(
     ];
   }
 
-  if (attempt >= 2) {
-    return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `${PLAN_ID} failed after retry:\n${errorText}`)];
+  if (attempt >= NM_MAX_ATTEMPTS) {
+    return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `${PLAN_ID} failed after ${attempt} attempts:\n${errorText}`)];
   }
 
   // Bounded retry: the OPEN retry step comes first, then complete-with-trace (never 'failed' with a
@@ -179,8 +186,8 @@ async function afterPromptStep(
     nmAgentStepIntent(context, parentStep, {
       agentName: AGENT_NAME,
       stepTitle: `${step.stepTitle || PLAN_ID} (retry)`,
-      planId: `${PLAN_ID}-retry1`,
-      prompt: { planId: PLAN_ID, runKey, retryAttempt: 2, retryContext: errorText },
+      planId: `${PLAN_ID}-retry${attempt}`,
+      prompt: { planId: PLAN_ID, runKey, retryAttempt: attempt + 1, retryContext: errorText },
     }),
     nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `gate failed, retrying:\n${errorText}`, 'input_output'),
   ];

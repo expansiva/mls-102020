@@ -25,12 +25,13 @@ import {
   parseMaybeJson,
   readJsonArtifact,
   readNmAgentText,
+  readPreviousAttemptSource,
   readStorText,
   toDisplayPath,
   writeJsonArtifact,
   writeStorTextAtomic,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
-import { MoleculePlan } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
+import { MoleculePlan, NM_MAX_ATTEMPTS } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import { substituteDemoState, type MoleculeDemoExample } from '/_102020_/l2/aura/molecules/shared/moleculeTemplates.js';
 import {
@@ -91,10 +92,17 @@ async function beforePromptStep(
     .split('{{groupUsageSkill}}').join(groupUsageSkill)
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the molecule source is insufficient to build a playground')}`;
 
+  // F1: on a retry, hand back the page the model itself wrote. This step is the reason the previous
+  // attempt is read from the TRACE and not from disk — it writes the .html only on success, so a
+  // rejected attempt exists nowhere else. Note it is the PRE-substitution html, which is what the gate
+  // judged, so the `playgroundDinamicState` placeholder is still in it.
+  const previousAttempt = await readPreviousAttemptSource(runKey, PLAN_ID, parsedArgs.retryAttempt || 1);
+
   const humanPrompt = [
     `## The molecule\n${plan.description}`,
     `## Language\nCaptions and titles in '${ctx.userLanguage}'; code comments in English.`,
-    parsedArgs.retryContext ? `## The previous attempt failed the deterministic gate — fix ALL of these\n${parsedArgs.retryContext}` : '',
+    previousAttempt.trim() ? `## The page you wrote last time — FIX IT, do not start over\n\`\`\`html\n${previousAttempt}\n\`\`\`` : '',
+    parsedArgs.retryContext ? `## What the gate rejected — fix ALL of these\n${parsedArgs.retryContext}` : '',
   ].filter(Boolean).join('\n\n');
 
   return [{
@@ -152,7 +160,7 @@ async function afterPromptStep(
     attempt,
     ok: issues.length === 0,
     examples: examples.length,
-    ...(issues.length ? { error: errorText } : {}),
+    ...(issues.length ? { error: errorText, source: html } : {}),
   });
 
   const fileInfo = nmHtmlFile(plan.group, plan.shortName);
@@ -171,7 +179,7 @@ async function afterPromptStep(
     ];
   }
 
-  if (attempt >= 2) {
+  if (attempt >= NM_MAX_ATTEMPTS) {
     // The demo does NOT block the pipeline: the anchor is emitted with ok:false so n7-index and
     // n8-summary still run, and the summary reports what is missing.
     return [
@@ -189,8 +197,8 @@ async function afterPromptStep(
     nmAgentStepIntent(context, parentStep, {
       agentName: AGENT_NAME,
       stepTitle: `${step.stepTitle || PLAN_ID} (retry)`,
-      planId: `${PLAN_ID}-retry1`,
-      prompt: { planId: PLAN_ID, runKey, retryAttempt: 2, retryContext: errorText },
+      planId: `${PLAN_ID}-retry${attempt}`,
+      prompt: { planId: PLAN_ID, runKey, retryAttempt: attempt + 1, retryContext: errorText },
     }),
     nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `gate failed, retrying:\n${errorText}`, 'input_output'),
   ];

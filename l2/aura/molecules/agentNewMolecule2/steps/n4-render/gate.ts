@@ -124,6 +124,13 @@ export function runNm2RenderGate(
     });
   }
 
+  for (const helper of findTopLevelFunctions(text)) {
+    issues.push({
+      code: 'helper_outside_class',
+      message: `'${helper}' is declared outside the class — a molecule is the class and nothing else. If you need to omit an attribute, import 'nothing' from 'lit' and write attr=\${value || nothing}; a local sentinel returning null, undefined or '' renders attr="" instead of removing it`,
+    });
+  }
+
   for (const error of options.compileErrors) {
     issues.push({ code: 'compile', message: error });
   }
@@ -184,6 +191,43 @@ export function findRedundantCaseSelectors(source: string): string[] {
 export function findBaseInternals(source: string): string[] {
   const found = new Set<string>();
   for (const match of source.match(/\b_(?:mutationLock|onSlotTagsChanged)\b/g) || []) found.add(match);
+  return [...found];
+}
+
+// A molecule is the class and nothing else. Anything declared at column 0 that is CALLABLE is a
+// helper the model invented instead of using the platform.
+//
+// The rule exists because of one specific, RECURRING invention: a local `nothing` sentinel for
+// omitting attributes. Four generations produced it across BOTH flows, and it is not a prompt
+// problem — the shipped library carries two of them (measured 2026-07-31):
+//
+//   ml-number-range-slider.ts:917     function nothingAttr(): string { return ''; }        (old flow)
+//   ml-number-interval-inputs.ts:664  function nothingAttr(): any { return undefined; }    (old flow)
+//   ml-data-grid-33                   function nothingAttr(): null { return null; }        (nm2)
+//   ml-general-text-input-teste       function nothingAttr(): undefined { … }              (nm2, after
+//                                     the skill was rewritten to forbid it explicitly)
+//
+// All four COMPILE and all four are wrong: Lit only removes an attribute for the `nothing` sentinel;
+// null/undefined/'' render `attr=""`, which for `aria-*` and `maxlength` changes behaviour. A fifth
+// generation reached for `require('lit')` and did not compile at all.
+//
+// MEASURED over the 231 real molecules with THIS function: 2 hits, and both are the defect above.
+//
+// Only `function` DECLARATIONS are detected, on purpose. An earlier version also flagged a top-level
+// `const … =>`, and running it over the corpus rejected 32 of 231 — because the stored molecules have
+// COLLAPSED INDENTATION (method bodies sit at column 0 or one space), so `^` cannot tell "top level"
+// from "inside a method" and `const items = …map(el => …)` matched. A column anchor is not a reliable
+// scope signal in these files, so the loose branch was removed rather than kept with 30 false
+// positives. `function` at column 0 does not suffer from this: the corpus has exactly two, both wrong.
+//
+// Known blind spot: `const nothingAttr = () => undefined;` at top level would pass. Accepted — all
+// five observed inventions used a `function` declaration. The i18n `const message_en = {…}` and
+// `type MessageType` are data, not callables, and were never matched by either branch.
+export function findTopLevelFunctions(source: string): string[] {
+  const found = new Set<string>();
+  for (const match of source.matchAll(/^(?:export\s+)?function\s+([A-Za-z_$][\w$]*)/gm)) {
+    found.add(`${match[1]}()`);
+  }
   return [...found];
 }
 

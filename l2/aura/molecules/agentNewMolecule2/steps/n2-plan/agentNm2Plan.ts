@@ -30,7 +30,7 @@ import {
   toDisplayPath,
   writeJsonArtifact,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
-import { MoleculePlan } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
+import { MoleculePlan, NM_MAX_ATTEMPTS } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 import { MoleculeContext, themeLabel } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import { nmCandidateAxes, nmLayoutConfigSummary } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmLayoutAxes.js';
 import {
@@ -161,8 +161,8 @@ async function afterPromptStep(
   });
 
   if (issues.length) {
-    if (attempt >= 2) {
-      return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `${PLAN_ID} failed after retry:\n${errorText}`)];
+    if (attempt >= NM_MAX_ATTEMPTS) {
+      return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `${PLAN_ID} failed after ${attempt} attempts:\n${errorText}`)];
     }
     // Bounded retry: the OPEN retry step comes first, then complete-with-trace (never 'failed'
     // with a retry in flight — collab_messages.md).
@@ -170,8 +170,8 @@ async function afterPromptStep(
       nmAgentStepIntent(context, parentStep, {
         agentName: AGENT_NAME,
         stepTitle: `${step.stepTitle || PLAN_ID} (retry)`,
-        planId: `${PLAN_ID}-retry1`,
-        prompt: { planId: PLAN_ID, runKey, retryAttempt: 2, retryContext: errorText },
+        planId: `${PLAN_ID}-retry${attempt}`,
+        prompt: { planId: PLAN_ID, runKey, retryAttempt: attempt + 1, retryContext: errorText },
       }),
       nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `gate failed, retrying:\n${errorText}`, 'input_output'),
     ];

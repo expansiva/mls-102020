@@ -8,6 +8,7 @@
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import { NM_BASE_PROJECT } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
+import { formatCompileDiagnostics, type NmDiagnosticLike } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmDiagnostics.js';
 
 export type NmFileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
 
@@ -92,6 +93,23 @@ export function nmTraceFileInfo(runKey: string, planId: string, attempt: number)
   return nmWorkFile(runKey, `trace-${planId}-${String(attempt).padStart(2, '0')}`, '.json');
 }
 
+// The artifact the model produced on the attempt before this one (F1 + F5, 2026-07-31).
+//
+// Read from the TRACE, not from disk: n6-demo writes its .html only on success, so on a failed
+// attempt there is nothing on disk to read — and n6 is exactly a step where the retry needs to see
+// what it wrote. Since the trace now keeps `source` whenever the gate rejected, one mechanism covers
+// every step regardless of when it writes.
+//
+// Why it matters: without it the "retry" was a blind regeneration from the same system prompt. On
+// 2026-07-31 attempt 1 of n4-render failed with a syntax cascade reaching offset 19443 and attempt 2
+// came back a DIFFERENT, shorter file failing on something else — it never saw its own output. The old
+// flow's Fix agent received it as `{{typescriptSource}}` (agentNewMoleculeFix.ts:101).
+export async function readPreviousAttemptSource(runKey: string, planId: string, attempt: number): Promise<string> {
+  if (!attempt || attempt < 2) return '';
+  const trace = await readJsonArtifact<{ source?: unknown }>(nmTraceFileInfo(runKey, planId, attempt - 1), false);
+  return typeof trace?.source === 'string' ? trace.source : '';
+}
+
 // ---- stor mechanics (self-contained, mirrors vFs/ntFs) ----
 export function nmFileExists(fileInfo: NmFileInfo): boolean {
   const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
@@ -164,25 +182,31 @@ export async function writeStorTextAtomic(fileInfo: NmFileInfo, content: string,
 //
 // Reads `compilerResults.errors`, the same source of truth the old flow's Fix agent used. The
 // `!ok && !errors.length` guard matters: `compile()` can return false without filling `errors`.
-export async function compileStorTs(fileInfo: NmFileInfo): Promise<{ errors: string[]; imports: string[] }> {
+//
+// `source` is what the caller just wrote. Passing it turns the compiler's byte OFFSETS into
+// line/column plus the offending line and a caret (F2) — a raw `{"start":13424}` is unusable both for
+// whoever debugs the run and for the model that has to fix it.
+export async function compileStorTs(fileInfo: NmFileInfo, source = ''): Promise<{ errors: string[]; imports: string[] }> {
   const storFile = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
   if (!storFile) return { errors: [`could not open ${toDisplayPath(fileInfo)} to compile it`], imports: [] };
   const modelTs = await storFile.getOrCreateModel() as mls.editor.IModelTS;
   const ok = await mls.l2.typescript.compileAndPostProcess(modelTs, true, false);
-  const errors = (modelTs.compilerResults?.errors || []).map(error => (typeof error === 'string' ? error : JSON.stringify(error)));
+  const raw = modelTs.compilerResults?.errors || [];
+  const errors = formatCompileDiagnostics(raw as NmDiagnosticLike[], source || modelTs.model?.getValue?.() || '');
   if (!ok && !errors.length) errors.push('compilation failed without a reported error');
   return { errors, imports: modelTs.compilerResults?.imports || [] };
 }
 
 // A .less has no model created by createStorFile (its extension is not in the allowed list there),
 // so the model is created here on demand. Errors land in `styleResults.errors`.
-export async function compileStorLess(fileInfo: NmFileInfo): Promise<string[]> {
+export async function compileStorLess(fileInfo: NmFileInfo, source = ''): Promise<string[]> {
   const storFile = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
   if (!storFile) return [`could not open ${toDisplayPath(fileInfo)} to compile it`];
   const modelStyle = await storFile.getOrCreateModel() as mls.editor.IModelStyle;
   if (!modelStyle) return [`could not open a style model for ${toDisplayPath(fileInfo)}`];
   const ok = await mls.l2.less.compileStyle(modelStyle);
-  const errors = (modelStyle.styleResults?.errors || []).map(error => (typeof error === 'string' ? error : JSON.stringify(error)));
+  const raw = modelStyle.styleResults?.errors || [];
+  const errors = formatCompileDiagnostics(raw as NmDiagnosticLike[], source || modelStyle.model?.getValue?.() || '');
   if (!ok && !errors.length) errors.push('the stylesheet failed to compile without a reported error');
   return errors;
 }

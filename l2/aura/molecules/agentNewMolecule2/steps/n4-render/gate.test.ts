@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   collectMlClasses,
+  findTopLevelFunctions,
   findBaseInternals,
   findLiteralStyleAppearance,
   findRedundantCaseSelectors,
@@ -203,4 +204,38 @@ test('driving the base plumbing is rejected — sorting must not mutate the ligh
   assert.deepEqual(findBaseInternals(GOOD), []);
   const source = GOOD.replace('  render(): TemplateResult {', '  private sort() {\n    this._mutationLock = true;\n  }\n\n  render(): TemplateResult {');
   assert.ok(gate(source).some(issue => issue.code === 'base_internals'));
+});
+
+// ---- helper_outside_class, 2026-07-31. Medido: 2 function top-level nas 231 (as duas defeituosas),
+// 0 arrow-function const top-level. Nenhum padrão legítimo a proteger. ----
+
+test('a top-level function is rejected — the molecule is the class and nothing else', () => {
+  const source = `${GOOD}\nfunction nothingAttr(): undefined {\n  return undefined;\n}\n`;
+  const issues = gate(source);
+  assert.ok(issues.some(issue => issue.code === 'helper_outside_class'));
+  assert.ok(issues.some(issue => issue.message.includes("import 'nothing' from 'lit'")));
+});
+
+test('every shape of the recurring sentinel is caught, including the ones that COMPILE', () => {
+  for (const body of ['(): null { return null; }', '(): undefined { return undefined; }', '(): string { return \'\'; }', '(): any { return undefined; }']) {
+    assert.deepEqual(findTopLevelFunctions(`function nothingAttr${body}`), ['nothingAttr()']);
+  }
+});
+
+// Blind spot documented on purpose: only `function` declarations are detected. A loose arrow-const
+// branch rejected 32 of 231 real molecules, because the stored files have collapsed indentation and
+// `^` stops being a scope signal — `const items = …map(el => …)` inside a method matched at column 0.
+test('a local const inside a method is NOT flagged, even with indentation collapsed', () => {
+  assert.deepEqual(findTopLevelFunctions("const items = this.getSlots('Item').map(el => el.textContent);"), []);
+  assert.deepEqual(findTopLevelFunctions('const parts = value.split(\':\').map(p => Number(p));'), []);
+});
+
+test('the i18n block and type aliases are data, not callables — never flagged', () => {
+  const i18n = "const message_en = {\n  loading: 'Loading...',\n};\ntype MessageType = typeof message_en;\nconst messages: Record<string, MessageType> = { en: message_en };\n";
+  assert.deepEqual(findTopLevelFunctions(i18n), []);
+  assert.deepEqual(findTopLevelFunctions(GOOD), []);
+});
+
+test('methods INSIDE the class are not top-level', () => {
+  assert.deepEqual(findTopLevelFunctions('class X {\n  private helper() { return 1; }\n  private arrow = () => 2;\n}'), []);
 });

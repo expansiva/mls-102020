@@ -10,6 +10,14 @@ export const NM_LESS_ENHANCEMENT = '_102020_/l2/enhancementStyleAura';
 
 // The molecule base class lives in mls-102033 (analise-fluxo-new-molecule-atual.md §2) — reading
 // it from 102040 would inject the wrong contract.
+// How many times a gated step may run, retries included. Raised from 2 to 3 on 2026-07-31 (F3):
+// with 1 retry, the two runs of that day each spent the single attempt on a DIFFERENT rule and then
+// died on a third — n4 on `selector_duplicate`, n5 on `host_anchored_class` and then `color_literal`.
+// Every rule added to a gate raises the chance that the one retry is consumed by something other than
+// the problem that will actually fail the step. The old flow allowed the same: MaxFixEffort = 2 fix
+// rounds AFTER the initial generation (agentNewMoleculeFix.ts:173).
+export const NM_MAX_ATTEMPTS = 3;
+
 export const NM_BASE_PROJECT = 102033;
 export const NM_BASE_CLASS = 'MoleculeAuraElement';
 export const NM_BASE_IMPORT = '/_102033_/l2/moleculeBase.js';
