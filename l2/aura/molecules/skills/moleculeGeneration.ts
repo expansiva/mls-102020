@@ -349,19 +349,47 @@ private getItemClasses(item: ParsedItem, isSelected: boolean): string {
 \`\`\`
 
 ---
-## 9. Using \`nothing\` Correctly
+## 9. \`nothing\` — omitting an attribute or a whole block
 
-### Understanding Lit's \`nothing\`
+\`nothing\` is Lit's sentinel for "render nothing". Import it from \`'lit'\`:
 
-The \`nothing\` sentinel from Lit is **NOT** a \`TemplateResult\`. It has its own type: \`typeof nothing\`.
+\`\`\`typescript
+import { html, nothing, TemplateResult } from 'lit';
+\`\`\`
 
-**Type definitions:**
-- \`TemplateResult\` — returned by \`html\` tagged template
-- \`typeof nothing\` — the type of the \`nothing\` constant
+**NEVER build your own sentinel.** A local helper returning \`null\`, or reaching for \`nothing\` through
+\`require('lit')\`, is wrong twice over: \`require\` does not exist in the browser and does not compile,
+and \`null\` does NOT omit an attribute — it sets it to an empty string.
 
-### Do NOT return \`nothing\` directly from methods typed as \`TemplateResult\`
+### In an ATTRIBUTE position — this is what omits the attribute
 
-Solution 1: Wrap\`nothing\` in \`html\` template
+\`\`\`typescript
+aria-describedby=\${hasError ? errorId : this.hasSlot('Helper') ? helperId : nothing}
+maxlength=\${this.maxLength ?? nothing}
+min=\${this.minTime || nothing}
+\`\`\`
+
+With \`nothing\` the attribute is REMOVED. With \`null\` or \`undefined\` Lit renders \`attr=""\`, and for
+\`aria-*\` and \`maxlength\` that changes behaviour: an empty \`aria-describedby\` points at nothing, and
+an empty \`maxlength\` is invalid.
+
+### In a RETURN position
+
+A method declared \`: TemplateResult\` cannot return \`nothing\` — the types differ. Two accepted forms:
+
+\`\`\`typescript
+// 1. empty template — what 116 molecules of this library do
+private renderLabel(): TemplateResult {
+  if (!this.hasSlot('Label')) return html\`\`;
+  ...
+}
+
+// 2. widen the return type — 14 molecules do this
+private renderLabel(): TemplateResult | typeof nothing {
+  if (!this.hasSlot('Label')) return nothing;
+  ...
+}
+\`\`\`
 
 
 ---
