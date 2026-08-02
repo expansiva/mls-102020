@@ -14,12 +14,16 @@ import {
   buildHumanPrompt,
   buildMaterializeTypecheckTest,
   buildMissingCodeRepairHint,
+  collectChartEventIssues,
   collectPageTemplateHygieneIssues,
   buildSharedDtsSection,
   buildSystemPrompt,
   DEFAULT_MODEL_TYPE,
   expandContextRef,
   isSharedRuntimeTsRef,
+  isMaxTokensFailure,
+  isSplitWorthyFailure,
+  isTimeoutFailure,
   isStale,
   layerRank,
   MATERIALIZE_REPAIR_ATTEMPTS,
@@ -28,11 +32,14 @@ import {
   sharedDtsArtifactRef,
   testPathForOutputPath,
   trimDefinitionForPrompt,
+  trimSharedI18nForPageContext,
   type PipelineItem,
   type PlannedItem,
 } from './helpers/cfeMaterializeCore.js';
 import { callCollabLlm, parseGenResult, type LlmConfig, type LlmResult } from './helpers/nodejsMaterializeLlmClient.js';
 import { generateSharedScaffold } from './helpers/cfeSharedScaffold.js';
+import { buildPageSkeleton, organismShortName, type PageOrganism } from './helpers/cfePageSkeleton.js';
+import { buildSplitPlan, type SplitPlanSection } from './helpers/cfePageSplitPlan.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 let ROOT = process.env.MATERIALIZE_L2_ROOT ? path.resolve(process.env.MATERIALIZE_L2_ROOT) : path.resolve(HERE, '../../../');
@@ -66,6 +73,7 @@ function toKebab(str: string): string {
   return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
 }
 
+/** Preview html for a PAGE. An organism is not a page and never gets one (paginaDividida.md decision 7). */
 function writePagePreviewHtml(item: PipelineItem): string | null {
   if (item.type !== 'l2_page') return null;
   const parsed = parseMlsTsPath(item.outputPath);
@@ -76,6 +84,124 @@ function writePagePreviewHtml(item: PipelineItem): string | null {
   fs.mkdirSync(path.dirname(htmlAbs), { recursive: true });
   fs.writeFileSync(htmlAbs, `<${tag}></${tag}>`);
   return htmlRef;
+}
+
+/**
+ * Split plan of a page, read from trace/frontend-page-split/<genome>/<page>.json
+ * (todo/changeFrontend/paginaDividida.md §5).
+ *
+ * It lives OUTSIDE the defs on purpose: `savePageLayoutDefs` rebuilds the pipeline from scratch on every
+ * create run, so a split recorded in the defs would be wiped by the next @@changeFrontend — exactly the
+ * opposite of "reprocessar a página já encontra a definição".
+ */
+interface PageSplit { organisms: PageOrganism[] }
+
+const SPLIT_BY_OUTPUT = new Map<string, { organisms: PageOrganism[]; current?: number }>();
+
+function readPageSplit(pageOutputPath: string): PageSplit | null {
+  const parsed = parseMlsTsPath(pageOutputPath);
+  if (!parsed) return null;
+  const moduleName = parsed.folder.split('/')[0];
+  const genome = parsed.folder.split('/').pop() || '';
+  const ref = `_${parsed.project}_/l2/${moduleName}/trace/frontend-page-split/${genome}/${parsed.shortName}.json`;
+  const raw = readIfExists(mlsToFs(ref));
+  if (raw == null) return null;
+  try {
+    const plan = JSON.parse(raw) as PageSplit;
+    return Array.isArray(plan.organisms) && plan.organisms.length ? plan : null;
+  } catch {
+    console.warn(`  split plan is not valid JSON, ignored: ${ref}`);
+    return null;
+  }
+}
+
+/**
+ * One pipeline item per organism plus the page that composes them. The organisms depend only on the shared
+ * — they are independent of each other, so they generate in parallel; the page depends on all of them
+ * because it imports their functions. `l2_page_organism` keeps them out of everything that treats a file
+ * as a page (the .html preview, the page gates).
+ */
+function expandSplitPage(base: ScannedDefs, plan: PageSplit): ScannedDefs[] {
+  const parsed = parseMlsTsPath(base.item.outputPath);
+  if (!parsed) return [base];
+  const out: ScannedDefs[] = [];
+  const organismIds: string[] = [];
+  for (const organism of plan.organisms) {
+    const id = `${base.item.id}__O${organism.n}`;
+    const outputPath = `_${parsed.project}_/l2/${parsed.folder}/${organismShortName(parsed.shortName, organism.n)}.ts`;
+    SPLIT_BY_OUTPUT.set(outputPath, { organisms: plan.organisms, current: organism.n });
+    organismIds.push(id);
+    out.push({
+      ...base,
+      item: {
+        ...base.item,
+        id,
+        type: 'l2_page_organism',
+        outputPath,
+        organism: organism.organism,
+        bindings: organism.bindings,
+      } as PipelineItem,
+    });
+  }
+  SPLIT_BY_OUTPUT.set(base.item.outputPath, { organisms: plan.organisms });
+  out.push({ ...base, item: { ...base.item, dependsOn: [...(base.item.dependsOn ?? []), ...organismIds] } });
+  return out;
+}
+
+/**
+ * Write the split plan for a page that blew the output cap, from the l4 workspace sections.
+ *
+ * Deterministic: the l4 already declares the page's sections and the bffCall each organism binds to, so
+ * this projects that, it does not decide anything (cfePageSplitPlan). Returns the plan when written.
+ */
+function writeSplitPlanFromL4(item: PipelineItem, data: unknown, reason: string): PageSplit | null {
+  const parsed = parseMlsTsPath(item.outputPath);
+  if (!parsed) return null;
+  const moduleName = parsed.folder.split('/')[0];
+  const genome = parsed.folder.split('/').pop() || '';
+
+  const wsAbs = mlsToFs(`_${parsed.project}_/l4/${moduleName}/workspaces/${parsed.shortName}.defs.ts`);
+  const wsSource = readIfExists(wsAbs);
+  if (wsSource == null) { console.log(`  no l4 workspace at ${wsAbs} — cannot plan a split`); return null; }
+  const workspace = extractFirstExportedObject(wsSource);
+  const sections = (isPlainRecord(workspace) && Array.isArray(workspace.sections) ? workspace.sections : [])
+    .filter(isPlainRecord)
+    .map(section => ({
+      sectionId: String(section.sectionId ?? ''),
+      organisms: (Array.isArray(section.organisms) ? section.organisms : []).filter(isPlainRecord) as SplitPlanSection['organisms'],
+    }))
+    .filter(section => section.sectionId);
+
+  const bindings = (isPlainRecord(data) && Array.isArray(data.dataBindings) ? data.dataBindings : [])
+    .filter(isPlainRecord).map(binding => String(binding.command ?? '')).filter(Boolean);
+
+  const plan = buildSplitPlan(parsed.shortName, genome, sections, bindings, reason);
+  if (!plan) { console.log(`  l4 gives ${sections.length} usable section(s) — not enough to split`); return null; }
+
+  const planAbs = mlsToFs(`_${parsed.project}_/l2/${moduleName}/trace/frontend-page-split/${genome}/${parsed.shortName}.json`);
+  fs.mkdirSync(path.dirname(planAbs), { recursive: true });
+  fs.writeFileSync(planAbs, `${JSON.stringify(plan, null, 2)}\n`);
+  console.log(`  split plan written: ${plan.organisms.length} organism(s) -> ${planAbs}`);
+  return { organisms: plan.organisms };
+}
+
+/** First `export const X = { … }` of a defs, balanced-brace then JSON (the file is JSON.stringify output). */
+function extractFirstExportedObject(source: string): unknown {
+  const at = source.search(/export const [A-Za-z0-9_]+ = \{/u);
+  if (at < 0) return null;
+  const start = source.indexOf('{', at);
+  let depth = 0;
+  for (let i = start; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}' && --depth === 0) {
+      try { return JSON.parse(source.slice(start, i + 1)); } catch { return null; }
+    }
+  }
+  return null;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function readIfExists(abs: string): string | null {
@@ -124,7 +250,10 @@ function scanModule(project: number, moduleName: string): ScannedDefs[] {
     if (!parsed.item) continue;
     if (!parsed.item.type.startsWith('l2_')) continue;
     const defRef = `_${project}_/l2/${moduleName}/${rel.split(path.sep).join('/')}`;
-    out.push({ defRef, defAbs, item: parsed.item, data: parsed.data });
+    const scanned: ScannedDefs = { defRef, defAbs, item: parsed.item, data: parsed.data };
+    const split = parsed.item.type === 'l2_page' ? readPageSplit(parsed.item.outputPath) : null;
+    if (split) out.push(...expandSplitPage(scanned, split));
+    else out.push(scanned);
   }
   return out;
 }
@@ -206,16 +335,45 @@ function assemble(item: PipelineItem, data: unknown, modelType: string): { syste
       }
       const r = readContext(ref);
       depReport.push(`${r.found ? 'OK ' : 'MISS'} ${ref === d ? d : `${d} -> ${ref}`}`);
-      if (r.found) contextSections.push(buildContextSection(r.ref, r.content));
+      // A page gets the shared with only the default locale catalog: it needs the key NAMES, not three
+      // translations of every string (see trimSharedI18nForPageContext).
+      const content = item.type === 'l2_page' && isSharedRuntimeTsRef(r.ref) ? trimSharedI18nForPageContext(r.content) : r.content;
+      if (r.found) contextSections.push(buildContextSection(r.ref, content));
     }
   }
 
   return {
     system: buildSystemPrompt(skillSections, item.outputPath, modelType),
-    human: buildHumanPrompt(trimDefinitionForPrompt(item.type, data), contextSections, item.outputPath),
+    human: buildHumanPrompt(trimDefinitionForPrompt(item.type, data), contextSections, item.outputPath, undefined, pageSkeletonFor(item, data)),
     skillReport,
     depReport,
   };
+}
+
+/**
+ * The deterministic skeleton for a page item (i18n.md §4), or undefined when it cannot be built — then the
+ * model writes the file from scratch exactly as before, so a shared this scaffold does not model never
+ * blocks the run.
+ *
+ * Always reads the RAW shared .ts, never the compiled .d.ts the context may carry: the locale list lives in
+ * the `message_<locale>` consts, which the .d.ts does not have.
+ */
+function pageSkeletonFor(item: PipelineItem, data: unknown): string | undefined {
+  if (item.type !== 'l2_page' && item.type !== 'l2_page_organism') return undefined;
+  const sharedRef = (item.dependsFiles ?? []).find(ref => isSharedRuntimeTsRef(ref));
+  if (!sharedRef) return undefined;
+  const shared = readIfExists(mlsToFs(sharedRef));
+  if (shared == null) return undefined;
+  // A split page passes its organisms: the page then imports and composes their exported render
+  // functions, and an organism builds only its own file (paginaDividida.md §3).
+  const split = SPLIT_BY_OUTPUT.get(item.outputPath);
+  const pagePath = split?.current ? item.outputPath.replace(/_O\d+\.ts$/u, '.ts') : item.outputPath;
+  const built = buildPageSkeleton({
+    outputPath: pagePath, data, sharedTsRef: sharedRef, sharedSource: shared,
+    organisms: split?.organisms, current: split?.current,
+  });
+  if (!built.code) console.warn(`  skeleton skipped for ${item.outputPath}: ${built.reason}`);
+  return built.code ?? undefined;
 }
 
 function readFreshSharedDts(sharedTsRef: string): string | null {
@@ -330,7 +488,7 @@ interface Args {
 }
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { dryRun: false, force: false, check: false, selfTest: false };
+  const a: Args = { dryRun: false, force: false, check: true, selfTest: false };
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
@@ -339,6 +497,10 @@ function parseArgs(argv: string[]): Args {
     else if (t === '--force') a.force = true;
     else if (t === '--self-test') a.selfTest = true;
     else if (t === '--check') a.check = true;
+    // Compile + repair are the point of the gate, so they are ON by default. They used to require an
+    // explicit --check that package.json never passed, so `pnpm materializeL2` saved uncompiled code and
+    // printed 'ok' — which is how 102045 shipped 346 type errors on a green run.
+    else if (t === '--no-check') a.check = false;
     else if (t === '--only') a.only = argv[++i];
     else if (t === '--config') a.config = argv[++i];
     else if (t === '--out') a.out = argv[++i];
@@ -377,7 +539,7 @@ async function main(): Promise<void> {
   if (args.selfTest) { selfTest(); return; }
   if (args.root) ROOT = path.resolve(args.root);
   if (!args.project || !args.moduleName) {
-    console.error('usage: nodejsMaterializeL2 <project> <module> [--dry-run] [--force] [--only <substr>] [--config <path>] [--out <dir>] [--check]');
+    console.error('usage: nodejsMaterializeL2 <project> <module> [--dry-run] [--force] [--only <substr>] [--config <path>] [--out <dir>] [--no-check]');
     process.exit(1);
   }
 
@@ -387,6 +549,11 @@ async function main(): Promise<void> {
   let planned = plan(scanned, args.force);
   if (args.only) planned = planned.filter((p) => p.item.id.includes(args.only!) || p.item.type.includes(args.only!) || p.item.outputPath.includes(args.only!));
   const dataByOut = new Map(scanned.map((s) => [s.item.outputPath, s.data]));
+  // The failed item's ScannedDefs, so a split can be expanded from it without re-scanning the module.
+  const byDefPath = new Map(scanned.map((s) => [s.defRef, s]));
+  // A page is split AT MOST ONCE per run. Without this, a page whose organisms also blow the cap would
+  // plan, re-queue, blow the cap again and plan again — an unbounded loop spending an LLM call each time.
+  const alreadySplit = new Set<string>();
 
   const todo = planned.filter((p) => p.stale);
   console.log(`module ${args.project}/${args.moduleName} | ${planned.length} items | mode ${args.dryRun ? 'dry-run' : 'call'}${args.force ? ' (force)' : ''}`);
@@ -401,7 +568,7 @@ async function main(): Promise<void> {
   const cfg = args.dryRun ? null : loadConfig(args.config);
   const outDir = args.out || path.join(os.tmpdir(), 'materializeL2-prompts');
   const modelType = parseModelTypeFromConfig(cfg) || DEFAULT_MODEL_TYPE;
-  const tracePath = !args.dryRun && cfg ? nextTracePath(args.project) : null;
+  const tracePath = !args.dryRun && cfg ? nextTracePath(args.project, args.moduleName) : null;
 
   if (tracePath) {
     fs.writeFileSync(tracePath, [
@@ -437,6 +604,28 @@ async function main(): Promise<void> {
     }
 
     const result = await materializeOne(p, modelType, cfg, data, tracePath, `[${n}]`, skillReport, depReport);
+    if (!result.ok && isSplitWorthyFailure(result.error ?? '')) {
+      // Retried already if it was a timeout, so the page really does not fit in one call. Not repairable,
+      // but plannable: project the l4 sections into a split plan
+      // and APPEND the resulting items to this same work list — `todo.length` is re-read every iteration,
+      // so they run right after, in order, without a second invocation. The page comes last (it imports
+      // the organisms' render functions), which is exactly the order expandSplitPage emits.
+      const plan = alreadySplit.has(p.item.outputPath) ? null : writeSplitPlanFromL4(p.item, data, result.error ?? '');
+      const scanned = plan ? byDefPath.get(p.item.defPath ?? '') : undefined;
+      if (plan && scanned) {
+        alreadySplit.add(p.item.outputPath);
+        const expanded = expandSplitPage(scanned, plan);
+        for (const entry of expanded) {
+          dataByOut.set(entry.item.outputPath, entry.data);
+          todo.push({ item: entry.item, rank: layerRank(entry.item.type), stale: true, reason: 'split after output cap' });
+        }
+        console.log(`  queued ${expanded.length} item(s) from the split plan`);
+        continue;
+      }
+      console.log(alreadySplit.has(p.item.outputPath)
+        ? '  already split in this run and STILL over the cap — the organisms are too big; split the l4 sections further.'
+        : splitHint(p.item, result.error ?? ''));
+    }
     if (!result.ok) {
       failures.push(p.item.id);
       continue;
@@ -500,7 +689,27 @@ function failedLlmResult(error: unknown): LlmResult {
 
 function canRetryMaterializeFailure(result: LlmResult, attempt: number): boolean {
   if (attempt >= MATERIALIZE_REPAIR_ATTEMPTS) return false;
+  // The output cap is TERMINAL: the retry sends the same prompt and hits the same ceiling. What this needs
+  // is a split plan (paginaDividida.md), which is a change to the plan, not another attempt.
+  if (isMaxTokensFailure(result.error ?? '')) return false;
+  // A timeout is ambiguous — network, provider queue, or a page that really is too big. It gets exactly
+  // one retry (the loop budget caps it), and only then is believed. Without this it never retried at all:
+  // a timeout carries httpStatus 0, which the line below treats as fatal.
+  if (isTimeoutFailure(result.error ?? '')) return true;
   return result.httpStatus !== 0;
+}
+
+/** Tells the operator what to DO, since a retry cannot help (paginaDividida.md §4.1). */
+function splitHint(item: PipelineItem, detail: string): string {
+  if (!isSplitWorthyFailure(detail)) return '';
+  const parsed = parseMlsTsPath(item.outputPath);
+  if (!parsed) return '';
+  const genome = parsed.folder.split('/').pop() || '';
+  const moduleName = parsed.folder.split('/')[0];
+  return `\n  -> ${isMaxTokensFailure(detail) ? 'output cap hit' : 'timed out twice'}; the page does not fit in one call. SPLIT it: write`
+    + ` mls-${parsed.project}/l2/${moduleName}/trace/frontend-page-split/${genome}/${parsed.shortName}.json`
+    + ` with { "organisms": [ { "n": 1, "organism": "<name>", "bindings": [...] }, … ] }`
+    + ` — group by cohesion (a command with the list it acts on), not by count.`;
 }
 
 async function materializeOne(
@@ -546,7 +755,7 @@ async function materializeOne(
     // `tsc` this CLI relies on cannot catch it — check BEFORE writing and retry with the findings as the
     // repair hint (same mechanism as a missing-code retry). Studio has the equivalent gate in
     // agentCfeMaterializePhase; both share collectPageTemplateHygieneIssues so they cannot drift.
-    const hygiene = r.ok && code && p.item.type === 'l2_page' ? collectPageTemplateHygieneIssues(code) : [];
+    const hygiene = r.ok && code && (p.item.type === 'l2_page' || p.item.type === 'l2_page_organism') ? [...collectPageTemplateHygieneIssues(code), ...collectChartEventIssues(code)] : [];
     if (hygiene.length) {
       const detail = `template hygiene: ${hygiene.join('; ')}`;
       appendTrace(tracePath, p.item, modelType, failedLlmResult(detail), '', skillReport, depReport, isRepair);
@@ -614,7 +823,9 @@ function materializeSharedDeterministic(
     return null;
   }
 
-  const result = generateSharedScaffold(item.outputPath, data, contractSource);
+  // The .ts being overwritten is passed so the scaffold carries existing translations forward: it emits
+  // every declared locale, and regenerating used to reset them all to the default language (i18n.md item 4).
+  const result = generateSharedScaffold(item.outputPath, data, contractSource, readIfExists(mlsToFs(item.outputPath)) ?? undefined);
   if (!result.code) {
     console.log(`${label} ${item.outputPath} scaffold bail (${result.reason}) -> LLM`);
     appendTrace(tracePath, item, 'deterministic', { ok: false, raw: '', usage: undefined, httpStatus: 0, error: `scaffold bail: ${result.reason}` }, '', skillReport, depReport, false);
@@ -680,8 +891,11 @@ function writeGeneratedArtifacts(item: PipelineItem, data: unknown, code: string
   return { typecheckRef, htmlRef: writePagePreviewHtml(item) };
 }
 
-function nextTracePath(project: number): string {
-  const dir = path.join(ROOT, `mls-${project}`, 'l2', 'trace');
+// Inside the MODULE folder, next to every other trace the pipeline writes (trace/frontend-*). It used to
+// land in mls-<project>/l2/trace/, outside the module — the same defect reported for the Studio path in
+// run18, fixed there and not here.
+function nextTracePath(project: number, moduleName: string): string {
+  const dir = path.join(ROOT, `mls-${project}`, 'l2', moduleName, 'trace', 'materialize-cli');
   fs.mkdirSync(dir, { recursive: true });
   let n = 1;
   try {

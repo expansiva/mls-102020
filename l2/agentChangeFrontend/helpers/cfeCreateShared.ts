@@ -3681,9 +3681,62 @@ function sharedPipeline(prepared: CfePreparedPage): unknown[] {
   }];
 }
 
+/**
+ * Split plan of a page, from trace/frontend-page-split/<genome>/<page>.json (paginaDividida.md §5).
+ *
+ * The MARKER is the source and this defs is its mirror: `pagePipeline` runs from scratch on every create
+ * run, so a split written only into the defs would be wiped by the next @@changeFrontend. Reading it here
+ * is what makes "reprocessar a página já encontra a definição" true.
+ */
+function readPageSplitOrganisms(project: number, page: CfePagePlan, genome: string): { n: number; organism: string; bindings: string[] }[] {
+  const fileInfo: FileInfo = {
+    project,
+    level: 2,
+    folder: `${page.moduleName}/trace/frontend-page-split/${genome}`,
+    shortName: page.pageId,
+    extension: '.json',
+  };
+  const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)] as { status?: string; content?: string } | undefined;
+  if (!file || file.status === 'deleted' || !file.content) return [];
+  try {
+    const plan = JSON.parse(file.content) as unknown;
+    if (!isRecord(plan) || !Array.isArray(plan.organisms)) return [];
+    return plan.organisms.filter(isRecord)
+      .map(item => ({
+        n: Number(item.n),
+        organism: readString(item.organism),
+        bindings: Array.isArray(item.bindings) ? item.bindings.map(String) : [],
+      }))
+      .filter(item => Number.isInteger(item.n) && item.organism);
+  } catch {
+    recordCreateWarning(`${page.pageId}/${genome}: split plan is not valid JSON, ignored`);
+    return [];
+  }
+}
+
 function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, genome = 'page11', experienceSkill?: string): unknown[] {
   const idSuffix = genome === 'page11' ? '' : `__${genome}`;
-  return [{
+  const base = `_${project}_/l2/${page.moduleName}/web/desktop/${genome}`;
+  // A split page materializes as N organisms + the page that imports their render functions. The organisms
+  // depend only on the shared, so they run in parallel; the page depends on all of them.
+  const organisms = readPageSplitOrganisms(project, page, genome).map(item => ({
+    id: `${page.pageId}${idSuffix}__O${item.n}`,
+    type: 'l2_page_organism',
+    organism: item.organism,
+    bindings: item.bindings,
+    outputPath: `${base}/${page.pageId}_O${item.n}.ts`,
+    defPath: `${base}/${page.pageId}.defs.ts`,
+    dependsFiles: [
+      `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`,
+      `_${project}_/l2/designSystem.ts`,
+    ],
+    dependsOn: [`${page.pageId}__l2_shared`],
+    skills: experienceSkill ? [pageRenderSkillPath(genome), experienceSkill] : [pageRenderSkillPath(genome)],
+    visualStyle: typeof visualStyle === 'string' ? { description: visualStyle } : (isRecord(visualStyle) ? visualStyle : {}),
+    agent: 'agentCfeMaterializeGen',
+  }));
+
+  return [...organisms, {
     id: `${page.pageId}${idSuffix}__l2_page`,
     type: 'l2_page',
     outputPath: `_${project}_/l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.ts`,
@@ -3700,7 +3753,7 @@ function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, 
       `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`,
       `_${project}_/l2/designSystem.ts`,
     ],
-    dependsOn: [`${page.pageId}__l2_shared`],
+    dependsOn: [`${page.pageId}__l2_shared`, ...organisms.map(item => item.id)],
     // Render skill first (HOW to write the Lit file), then the experience skill (WHICH experience to
     // build). page11 has no experience skill — it is the bespoke slot.
     skills: experienceSkill ? [pageRenderSkillPath(genome), experienceSkill] : [pageRenderSkillPath(genome)],

@@ -11,6 +11,22 @@ patterns instead of the plain "list on top, form below" baseline.
 This file extends the shared base class and only renders. It must not own state, define handlers or
 duplicate i18n. All the page11 guardrails apply unchanged — this skill only WIDENS presentation.
 
+## THE SKELETON COMES FIRST
+
+The human message ends with a "## Skeleton — complete this file" section holding the FULL file, already
+written for you. You are NOT writing a file from scratch: you take that exact text, replace every
+\`/* to implement */\` marker with your code, and return the whole thing.
+
+Keep verbatim: the mls header, the imports, the \`collab_i18n_*\` block STRUCTURE (its consts, its type,
+its map), the tag name, the class name, and the \`msg\` getter. Do not re-derive them, do not reorder
+them, never add a second i18n block, never write your own \`get msg\`.
+
+Anything below that contradicts the skeleton loses to the skeleton.
+
+Never annotate the return type of a render method. A helper that returns the Lit sentinel \`nothing\` for
+an empty branch is NOT a TemplateResult, so \`: TemplateResult\` (or \`: ReturnType<typeof html>\`) is a
+TS2322 error. Let TypeScript infer it — inference is always correct here.
+
 ## Input contract
 
 Definition is the page21 .defs.ts object:
@@ -36,10 +52,13 @@ Read the shared base-class context (compiled .d.ts, or raw .ts as fallback) befo
 2. Every @property() field name (its JSDoc 'state <stateKey>' links it to layout stateKeys).
 3. Every method whose name starts with handle (its JSDoc names the action it belongs to).
 4. Every action method and its JSDoc (inputs, output states, status state, feedback keys).
-5. Every msg/message key available (MessageType).
+5. Every msg/message key it offers — the MENU of already-translated text you may REFERENCE from the page
+   i18n block (through s_<locale>), not the vocabulary of this.msg. this.msg keys are the SHORT ones you
+   declare in the skeleton's block.
 6. Re-exported contract type names (export type { ... }).
 
-Use only those names in render(). Never invent property names, handler names or msg keys.
+Use only those names in render(). Never invent property names or handler names. msg keys are the
+opposite: you DO invent them — short, in the skeleton's i18n block, in every locale.
 Import DTO types EXCLUSIVELY from the shared module — it re-exports every contract type this page can
 need. Never import from the contracts module (it is not in context and the page must not depend on it).
 
@@ -67,24 +86,26 @@ passes the FUNCTION OBJECT to Lit, which paints the function's own source code i
 happened in production on a page21 workspace: the screen showed the literal text
 "function nothing() { return b of nothing }". The same applies to any invented name (nothingOrEmpty,
 nothingPlaceholder, emptyTpl, ...). A generated page therefore has NO module-level function declarations
-at all: the allowed const helpers live INSIDE render().
+when a helper is used by name. Declaring one at module level is fine — just always CALL it.
+Class methods are RENDER FUNCTIONS only: render() plus any number of render<Name>() returning
+TemplateResult. Split the page - render() composes, each organism gets its own render<Name>() - and
+ALWAYS call them, this.renderBoard(), never pass one by name: a bare \${this.renderBoard} in a template
+makes Lit paint the method source onto the screen. The allowed const helpers live INSIDE a render
+function.
 
 ## Mapping the contract to render (same binding rules as page11)
 
 Choreograph from Definition.dataBindings[] under the experience skill's direction: a "query" binding is
-a surface, a "command" binding is an action on the surface it belongs to. Use ONLY msg keys declared by
-the shared MessageType. Access messages
-ONLY as typed member access on this.msg using the exact key string (e.g. this.msg['field.status.label']).
-NEVER cast this.msg and NEVER wrap it in a getMsg/t helper. Use each key EXACTLY as declared.
-The shared base class MessageType (extracted in the mandatory first step) is the complete closed
-vocabulary of this.msg keys this page may use — the page defs carries no separate key list. NEVER use
-a this.msg key that is not declared in that MessageType — do not invent presentation keys and do not
-abbreviate ('organism.dashboard.empty' when the shared type declares 'organism.dashboardSummary.empty'
-is a compile error). Status/lane labels with no key in the shared MessageType are rendered from the
-data value itself (e.g. item.status) or a literal with a TODO comment. A shared compiled .d.ts context
-section, when present, is the authoritative public surface (typed msg keys, properties, handlers) — it
-wins over your reading of the source.
-If a required key is genuinely absent, render a literal string with a short TODO comment.
+a surface, a "command" binding is an action on the surface it belongs to. The text catalog lives in THIS file - the i18n
+block of the skeleton - and YOU decide which keys exist. Reference shared text through s_<locale> with a
+SHORT key (never copy the string: the reference is what keeps this page translated), and invent the copy
+this experience needs with short keys too. Repeat EVERY key in each locale const, translated; a missing
+or misspelled key does not compile.
+Access messages ONLY as typed member access on this.msg using the exact key string. Read it once per
+render function - const msg = this.msg; - then use msg['key'].
+NEVER cast this.msg and NEVER wrap it in a getMsg/t helper.
+NEVER write a visible literal into the template: it is untranslatable and it compiles clean, which is how
+a whole page once shipped in English. If you need a word, add a key.
 
 For every field/column/filter: resolve field.stateKey to the shared property whose JSDoc says
 'state <that stateKey>', then use that property name exactly. If no shared state/property exists,
@@ -152,8 +173,8 @@ must not emit them. Order organisms by pageObjective.informationHierarchy / prim
 
 1. VOCABULÁRIO INTERNO NUNCA VIRA TEXTO DE TELA. displayHint, intent id, state key, nome de bffCall e
    ids de binding são fiação, não copy. Um tile intitulado "Summary first" (o displayHint humanizado)
-   foi defeito real. Escreva o texto que o USUÁRIO leria; se não há msg key declarada para ele, use
-   literal com TODO — nunca o token técnico.
+   foi defeito real. Escreva o texto que o USUÁRIO leria — e como as chaves são suas, declare a chave
+   que faltar no bloco i18n do esqueleto. Nunca um literal solto, nunca o token técnico.
 2. page / pageSize / sortBy / offset / limit NUNCA SÃO CAMPOS DE FORMULÁRIO. São controle da coleção:
    paginação é o pager da própria superfície, ordenação é o cabeçalho da coluna. Ninguém digita um
    "page size" num form.
@@ -169,6 +190,38 @@ must not emit them. Order organisms by pageObjective.informationHierarchy / prim
    não repita); um heading nunca repete o label do botão/link vizinho (se o botão diz "Aprovar", o
    heading acima dele diz outra coisa ou não existe); no máximo UMA ação destrutiva por superfície,
    nunca como botão default de linha, e sempre com confirmação que NOMEIA o registro.
+
+## Charts
+
+Apache ECharts is in the runtime and registered for you. To draw one, import the directive and put it on
+an element — nothing else, no lifecycle, no init:
+
+\`\`\`typescript
+import { chart } from '/_102033_/l2/shared/chartRuntime.js';
+// inside a render:
+html\`<div class="h-80" \${chart(option)}></div>\`
+\`\`\`
+
+- The element MUST have a height (\`h-80\`, \`h-64\`…): ECharts measures its container, and a container of
+  height 0 draws nothing.
+- \`option\` is a normal ECharts option object. Registered and ready: line, bar, pie, scatter, gauge,
+  funnel, heatmap, treemap, sunburst, sankey, graph, candlestick, boxplot — plus tooltip, legend, dataset,
+  dataZoom, grid, toolbox, markLine/markPoint/markArea, visualMap and aria.
+- NEVER import from 'echarts' or 'echarts/core' directly. Those need \`echarts.use([...])\` for every piece
+  you touch, and a missing one renders a BLANK chart with no error at all.
+- Resize and disposal are handled by the directive. Do not add a lifecycle method for a chart.
+- To react to a click, a legend toggle or a zoom, pass HANDLERS to the directive — never a \`@chartclick\`
+  binding. ECharts emits on the instance, not on the DOM, so \`@chartclick\` compiles and never fires:
+
+  \`\`\`typescript
+  html\`<div class="h-80" \${chart(option, { click: (p) => host.setFilter(p.name) })}></div>\`
+  \`\`\`
+
+  Event names are the ECharts ones: \`click\`, \`legendselectchanged\`, \`datazoom\`, \`brushselected\`.
+- Every label inside the option is screen text: it comes from \`msg[...]\` like any other, never a literal.
+
+Use a chart when the data is a comparison or a trend a table cannot show at a glance — a KPI over time, a
+breakdown by category, a distribution. A list of records is still a list; do not chart it for decoration.
 
 ## Design system colors (identical to page11)
 

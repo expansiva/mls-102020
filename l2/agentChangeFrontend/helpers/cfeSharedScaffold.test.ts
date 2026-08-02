@@ -130,3 +130,39 @@ test('generateSharedScaffold bails when the contract misses a referenced command
   assert.equal(result.code, null);
   assert.match(result.reason!, /CreateThingInput not found/);
 });
+
+// ---------------------------------------------------------------------------
+// i18n.md: the catalog must carry EVERY declared locale, and regenerating must not lose translations.
+
+function multiLocaleDefinition(): Record<string, unknown> {
+  return { ...definition(), i18nMeta: { defaultLocale: 'en', runtimeLocales: ['en', 'pt-br', 'es'] } };
+}
+
+test('generateSharedScaffold emits one catalog per declared locale, default first', () => {
+  const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', multiLocaleDefinition(), CONTRACT).code!;
+  assert.match(code, /const message_en = \{/);
+  // Non-default locales are annotated so a forgotten key is TS2741 rather than a silent hole.
+  assert.match(code, /const message_pt_br: MessageType = \{/);
+  assert.match(code, /const message_es: MessageType = \{/);
+  assert.match(code, /export type MessageType = typeof message_en;/);
+  assert.match(code, /export const messages: \{ \[key: string\]: MessageType \} = \{ 'en': message_en, 'pt-br': message_pt_br, 'es': message_es \};/);
+});
+
+test('regenerating carries translations forward instead of resetting every language', () => {
+  const previous = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', multiLocaleDefinition(), CONTRACT).code!
+    .replace("'intent.things.title': 'All \\'things\\'',\n};\nexport type", "'intent.things.title': 'TRADUZIDO',\n};\nexport type")
+    // only the pt-br copy is translated by hand
+    .replace(/(const message_pt_br: MessageType = \{\n  'intent.things.title': )'All \\'things\\''/, "$1'TRADUZIDO'");
+  const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', multiLocaleDefinition(), CONTRACT, previous).code!;
+  assert.match(code, /const message_pt_br: MessageType = \{\n  'intent.things.title': 'TRADUZIDO',/);
+  // the default locale is always rebuilt from the defs — it is the source of truth
+  assert.match(code, /const message_en = \{\n  'intent.things.title': 'All \\'things\\'',/);
+  // a locale with no prior text starts from the default text for agentAddLanguage to translate
+  assert.match(code, /const message_es: MessageType = \{\n  'intent.things.title': 'All \\'things\\'',/);
+});
+
+test('a single-locale module still emits exactly one catalog', () => {
+  const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', definition(), CONTRACT).code!;
+  assert.equal(code.match(/^const message_/gmu)?.length, 1);
+  assert.match(code, /export const messages: \{ \[key: string\]: MessageType \} = \{ 'en': message_en \};/);
+});

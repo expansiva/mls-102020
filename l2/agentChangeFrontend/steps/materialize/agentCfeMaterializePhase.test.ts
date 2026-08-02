@@ -81,3 +81,27 @@ void test('systemic guard ignores non-page items (shared/contract phases)', () =
   assert.equal(isSystemicPageFailure(1, items), false);
   assert.equal(countPage11Items(items), 0);
 });
+
+// ---------------------------------------------------------------------------
+// itemId atravessa o verify (paginaDividida.md). Sem ele, o repair de um organismo reescreveria o
+// arquivo do PRIMEIRO item do defs, e a divisao teria de reconstruir o id a partir do planId — que
+// passa por safe() e é lossy.
+
+void test('the verify carries itemId end to end', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  // sobrevive ao parse dos items do step
+  assert.match(src, /const itemId = readString\(value\.itemId\);/);
+  assert.match(src, /return itemId \? \{ planId, defPath, itemId \} : \{ planId, defPath \};/);
+  // vai junto em cada rodada de repair
+  assert.match(src, /repairArgs = broken\.map\(entry => JSON\.stringify\(\{[^)]*itemId: entry\.item\.itemId/);
+  // e a divisao deriva os ids dos organismos do itemId da pagina, sem reconstruir do planId
+  assert.match(src, /const basePipeline = pageItemId\.slice\(0, -'__l2_page'\.length\);/);
+  assert.ok(!src.includes('basePipelineId'), 'a reconstrucao lossy a partir do planId foi removida');
+});
+
+void test('the split fan-out of the page waits for the organisms', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  // a pagina importa o que os organismos exportam: nao pode comecar antes deles.
+  assert.match(src, /createFanoutStep\(pagePlanId,[^)]*\[organismsPlanId\]\)/s);
+  assert.match(src, /status: dependsOn\.length \? 'waiting_dependency' : 'in_progress'/);
+});

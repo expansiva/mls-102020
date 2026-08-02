@@ -85,6 +85,14 @@ interface ScaffoldModel {
   // form because the runtime always sets document.documentElement.lang from the normalized config list
   // (102033 listRuntimeLanguages -> lowercase) and the base class looks up messages[lang.toLowerCase()].
   defaultLocale: string;
+  // Every locale the module declares (defs i18nMeta.runtimeLocales, region preserved and lowercased).
+  // The catalog emits ALL of them, not just the default: a page references sharedMessages['pt-br'], so a
+  // shared regenerated with one locale would silently resolve every page label back to English.
+  runtimeLocales: string[];
+  // Text already translated in the .ts being overwritten, per locale. Regenerating the shared used to
+  // drop every added language and depend on @@addLanguage retranslating the whole module (i18n.md item 4:
+  // "churn"), which also lost any translation fixed by hand. Carried over by key.
+  previousText: Map<string, Record<string, string>>;
   contractTsPath: string;
   contracts: { commandName: string; routeConst: string }[];
   interfaces: Map<string, ContractInterface>;
@@ -98,14 +106,49 @@ function bail(reason: string): never {
   throw new ScaffoldBail(reason);
 }
 
-export function generateSharedScaffold(outputPath: string, data: unknown, contractSource: string): SharedScaffoldResult {
+/**
+ * @param previousSource content of the .ts being overwritten, when it exists. Only its i18n block is
+ *        read, to carry translations forward (see ScaffoldModel.previousText).
+ */
+export function generateSharedScaffold(outputPath: string, data: unknown, contractSource: string, previousSource?: string): SharedScaffoldResult {
   try {
-    const model = buildModel(outputPath, data, contractSource);
+    const model = buildModel(outputPath, data, contractSource, previousSource);
     return { code: render(model) };
   } catch (error) {
     if (error instanceof ScaffoldBail) return { code: null, reason: error.message };
     throw error;
   }
+}
+
+/**
+ * Read `const message_<locale> = { 'key': 'text', … }` entries out of a previously generated i18n block.
+ * Text-level parse on purpose: the block is machine-written with one single-quoted pair per line, and this
+ * must never throw on a hand-edited file — an unparsable block just yields no carry-over.
+ */
+export function parsePreviousI18n(source: string | undefined): Map<string, Record<string, string>> {
+  const out = new Map<string, Record<string, string>>();
+  if (!source) return out;
+  const start = source.indexOf('/// **collab_i18n_start**');
+  const end = source.indexOf('/// **collab_i18n_end**');
+  if (start < 0 || end < 0 || end < start) return out;
+  const block = source.slice(start, end);
+  // The optional `: MessageType` matters: every non-default locale carries that annotation (it is what
+  // makes a forgotten translation a compile error), so a parser that only accepted `= {` would read the
+  // default locale and silently drop every translated one.
+  const constRe = /const\s+message_([A-Za-z0-9_]+)\s*(?::\s*[A-Za-z0-9_]+\s*)?=\s*\{([\s\S]*?)\n\};/gu;
+  for (const constMatch of block.matchAll(constRe)) {
+    const locale = constMatch[1].replace(/_/gu, '-').toLowerCase();
+    const entries: Record<string, string> = {};
+    for (const pair of constMatch[2].matchAll(/^\s*'((?:[^'\\]|\\.)*)'\s*:\s*'((?:[^'\\]|\\.)*)'\s*,?\s*$/gmu)) {
+      entries[unescapeSingle(pair[1])] = unescapeSingle(pair[2]);
+    }
+    if (Object.keys(entries).length > 0) out.set(locale, entries);
+  }
+  return out;
+}
+
+function unescapeSingle(value: string): string {
+  return value.replace(/\\(['\\])/gu, '$1');
 }
 
 // ---------------------------------------------------------------------------
@@ -187,7 +230,7 @@ function parseStringUnion(rawType: string): string[] | null {
 // ---------------------------------------------------------------------------
 // Model building + validation (bail on any shape this generator does not model)
 
-function buildModel(outputPath: string, data: unknown, contractSource: string): ScaffoldModel {
+function buildModel(outputPath: string, data: unknown, contractSource: string, previousSource?: string): ScaffoldModel {
   if (!isRecord(data)) bail('definition is not an object');
   const baseClassName = stringOf(data.baseClassName) || bail('missing baseClassName');
   const routePattern = stringOf(data.routePattern) || bail('missing routePattern');
@@ -226,10 +269,16 @@ function buildModel(outputPath: string, data: unknown, contractSource: string): 
   // ONLY when the defs carries no meta at all (older defs) — never assume the catalog is English.
   const i18nMeta = isRecord(data.i18nMeta) ? data.i18nMeta : {};
   const defaultLocale = normalizeLocaleKey(stringOf(i18nMeta.defaultLocale)) || 'en';
+  // runtimeLocales keeps the region ('pt-br', not 'pt') — it is what the runtime config lists and what
+  // document.documentElement.lang carries. The default always comes first: getMessageKey falls back to
+  // keys[0] when the language is unknown.
+  const declared = Array.isArray(i18nMeta.runtimeLocales) ? i18nMeta.runtimeLocales.map(item => normalizeLocaleKey(stringOf(item))) : [];
+  const runtimeLocales = [defaultLocale, ...declared.filter(locale => locale && locale !== defaultLocale)];
 
   const model: ScaffoldModel = {
     outputPath, baseClassName, routePattern, states, actions, initialLoads,
-    i18n, defaultLocale, contractTsPath, contracts, interfaces, stateByKey, actionById,
+    i18n, defaultLocale, runtimeLocales, previousText: parsePreviousI18n(previousSource),
+    contractTsPath, contracts, interfaces, stateByKey, actionById,
   };
   validateModel(model);
   return model;
@@ -495,16 +544,31 @@ function usedCommands(model: ScaffoldModel): string[] {
 // The map key is the lowercase locale ('pt-br') because the runtime sets document.documentElement.lang
 // from the normalized config list (102033 listRuntimeLanguages) and the base class getter looks up
 // messages[lang.toLowerCase()]. The const name uses a TS-safe form of it ('pt-br' -> message_pt_br).
+// EVERY declared locale is emitted, not only the default. The pages reference sharedMessages['pt-br'], so
+// a shared regenerated with a single locale makes every page label fall back to the default language
+// without any error (i18n.md item 4). Text already translated in the previous file is carried over per
+// key; a key with no prior translation starts as the default-locale text, which agentAddLanguage then
+// translates. Non-default locales are annotated `: MessageType` so the compiler enforces locale parity —
+// a missing key is TS2741 and a typo'd key is TS2353, instead of a silent hole at runtime.
 function renderI18n(model: ScaffoldModel): string[] {
-  const localeKey = model.defaultLocale;
-  const constName = `message_${localeKey.replace(/[^a-zA-Z0-9]+/gu, '_')}`;
-  const lines = ['/// **collab_i18n_start**', `const ${constName} = {`];
-  for (const [key, value] of Object.entries(model.i18n)) {
-    lines.push(`  '${escapeSingle(key)}': '${escapeSingle(value)}',`);
+  const constNameOf = (locale: string): string => `message_${locale.replace(/[^a-zA-Z0-9]+/gu, '_')}`;
+  const defaultConst = constNameOf(model.defaultLocale);
+  const lines = ['/// **collab_i18n_start**'];
+
+  for (const locale of model.runtimeLocales) {
+    const isDefault = locale === model.defaultLocale;
+    const previous = model.previousText.get(locale) || {};
+    lines.push(`const ${constNameOf(locale)}${isDefault ? '' : ': MessageType'} = {`);
+    for (const [key, value] of Object.entries(model.i18n)) {
+      const text = isDefault ? value : (previous[key] ?? value);
+      lines.push(`  '${escapeSingle(key)}': '${escapeSingle(text)}',`);
+    }
+    lines.push('};');
+    if (isDefault) lines.push(`export type MessageType = typeof ${defaultConst};`);
   }
-  lines.push('};');
-  lines.push(`type MessageType = typeof ${constName};`);
-  lines.push(`const messages: { [key: string]: MessageType } = { '${escapeSingle(localeKey)}': ${constName} };`);
+
+  const entries = model.runtimeLocales.map(locale => `'${escapeSingle(locale)}': ${constNameOf(locale)}`).join(', ');
+  lines.push(`export const messages: { [key: string]: MessageType } = { ${entries} };`);
   lines.push('/// **collab_i18n_end**');
   return lines;
 }
@@ -840,6 +904,8 @@ function renderParams(model: ScaffoldModel, action: DefsAction, input: ContractI
     } else if (field.type === 'number') {
       lines.push(`${indent}const ${field.name}Num = Number(this.${state.name});`);
       requiredLines.push(`${indent}  ${field.name}: Number.isNaN(${field.name}Num) ? 0 : ${field.name}Num,`);
+    } else if (field.type === 'boolean') {
+      requiredLines.push(`${indent}  ${field.name}: this.${state.name} === 'true',`);
     } else {
       bail(`action ${action.actionId} required field ${field.name} has unsupported input type ${field.type}`);
     }
@@ -865,6 +931,12 @@ function renderParams(model: ScaffoldModel, action: DefsAction, input: ContractI
       lines.push(`${indent}  if (!Number.isNaN(${field.name}Num)) {`);
       lines.push(`${indent}    params.${field.name} = ${field.name}Num;`);
       lines.push(`${indent}  }`);
+      lines.push(`${indent}}`);
+    } else if (field.type === 'boolean') {
+      // Input states are always `string` (propertyType), so a checkbox arrives as 'true'/'false'/''.
+      // Empty means "not set" and the optional field stays out of the payload.
+      lines.push(`${indent}if (this.${state.name} !== '') {`);
+      lines.push(`${indent}  params.${field.name} = this.${state.name} === 'true';`);
       lines.push(`${indent}}`);
     } else {
       bail(`action ${action.actionId} optional field ${field.name} has unsupported input type ${field.type}`);

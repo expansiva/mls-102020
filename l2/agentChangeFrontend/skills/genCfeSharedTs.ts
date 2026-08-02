@@ -164,25 +164,27 @@ is the same key with non-alphanumerics as "_":
 - "pt-BR" or "pt_BR" -> message_pt_br and messages['pt-br']
 - "en-AU" -> message_en_au and messages['en-au']
 
-Generate the default locale message object from Definition.i18n exactly.
-For the current flat Definition.i18n catalog, generate only that default locale catalog.
-Do not invent extra locale catalogs for Definition.i18nMeta.activeLocales unless Definition.i18n already contains per-locale catalogs.
-Never declare the message object or messages inside the class.
+Generate ONE message object per locale in Definition.i18nMeta.runtimeLocales, all with the SAME keys,
+taken from Definition.i18n. The default locale comes first; the others repeat the same keys (leave the
+default text where you have no translation). Annotate every non-default one with \`: MessageType\` so a
+missing key fails to compile.
+Never declare the message objects or \`messages\` inside the class.
 Never write \`as const\` on message objects.
 
-Inside the class expose this exact getter shape:
+EXPORT the type and the map — the pages import them:
 
 \`\`\`typescript
-protected get msg(): MessageType {
-  const lang: string = this.getMessageKey(messages);
-  return messages[lang] || message_en;
-}
+export type MessageType = typeof message_en;
+export const messages: { [key: string]: MessageType } = { 'en': message_en, 'pt-br': message_pt_br };
 \`\`\`
 
-Replace message_en in the getter with the actual generated default message object name (the same
-locale-derived name as above — never the literal message_en unless the default locale really is "en").
+Use the real locale-derived names (never the literal message_en unless the default locale really is "en").
 
-Every render-facing label must come from this shared class through this.msg.
+NEVER declare a \`msg\` getter in this class. The catalog belongs to the PAGE: each page builds its own
+short-key catalog referencing this one, and declares its own \`msg\`. A getter here is dead code in this
+file (nothing in the shared class renders) AND it breaks every page that extends it — the page's \`msg\`
+must then be assignable to this one, which forbids the short keys (TS2416, seen in
+clientStatusWorkspace).
 
 ## Action generation
 

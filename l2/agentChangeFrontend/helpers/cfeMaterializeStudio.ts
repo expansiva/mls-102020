@@ -13,6 +13,15 @@ export interface MaterializeStudioMessage {
 export interface GenStepArgs {
   planId: string;
   defPath: string;
+  /**
+   * WHICH pipeline item of that defs this slot generates.
+   *
+   * One defs used to mean one artifact, so the slot could assume `pipeline[0]`. A SPLIT page breaks that:
+   * the same defs carries N organisms plus the page (paginaDividida.md §5), and without this the slot
+   * would always build the first one. Optional so a task queued before this change still resolves to
+   * `pipeline[0]`, which is what it meant.
+   */
+  itemId?: string;
   attempt?: number;
   repairHint?: string;
 }

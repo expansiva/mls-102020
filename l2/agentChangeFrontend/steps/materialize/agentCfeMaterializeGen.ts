@@ -4,6 +4,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   applyHeader,
   buildCompileRepairHint,
+  collectChartEventIssues,
   collectPageTemplateHygieneIssues,
   buildContextSection,
   buildMaterializeTypecheckTest,
@@ -17,12 +18,15 @@ import {
   expandContextRef,
   GEN_TOOL,
   GEN_TOOL_NAME,
+  isMaxTokensFailure,
+  isSplitWorthyFailure,
   isSharedRuntimeTsRef,
   parseDefs,
   normalizeGeneratedCode,
   sharedDtsArtifactRef,
   testPathForOutputPath,
   trimDefinitionForPrompt,
+  trimSharedI18nForPageContext,
   type PipelineItem,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import {
@@ -42,6 +46,8 @@ import {
 // Deterministic l2_shared renderer (pure, import-free). Wired here so the Studio path stops paying the
 // LLM — and stops hitting its output cap — for a file that is a mechanical projection of the defs.
 import { generateSharedScaffold } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
+import { buildPageSkeleton } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSkeleton.js';
+import { buildSplitPlan, type SplitPlanSection } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSplitPlan.js';
 
 interface ToolOutput {
   code: string;
@@ -73,7 +79,7 @@ async function beforePromptStep(
     if (!args) throw new Error('missing args');
 
     const genArgs = parseGenStepArgs(args);
-    const genContext = await buildGenContext(genArgs.defPath);
+    const genContext = await buildGenContext(genArgs.defPath, genArgs.itemId);
 
     // l2_shared is a MECHANICAL projection of defs + contract — no judgement is needed (see
     // steps/materialize/CHANGELOG 28/jul). Try the deterministic scaffold FIRST and skip the model
@@ -92,7 +98,10 @@ async function beforePromptStep(
     const repairHint = (genArgs.attempt ?? 1) >= 2
       ? genArgs.repairHint ?? await computeRepairHint(genContext.pipelineItem)
       : undefined;
-    return [createPromptReadyIntent(context, parentStep, hookSequential, genArgs, genContext, repairHint)];
+    // Deterministic page skeleton (i18n.md §4) — same helper the CLI uses, so both surfaces emit the
+    // identical file shape. Only on the first attempt (see createPromptReadyIntent).
+    const skeleton = repairHint ? undefined : await pageSkeletonFor(genContext.pipelineItem, genContext.siblings, genContext.definitionData);
+    return [createPromptReadyIntent(context, parentStep, hookSequential, genArgs, genContext, repairHint, skeleton)];
   } catch (error) {
     const message = formatError('beforePromptStep', error);
     console.error(`[${agent.agentName}] ${message}`);
@@ -123,7 +132,10 @@ async function materializeSharedDeterministic(
     const contractSource = contractTsPath ? await getContentByMlsPath(contractTsPath) : null;
     if (!contractSource) return null;
 
-    const scaffold = generateSharedScaffold(pipelineItem.outputPath, definitionData, contractSource);
+    // The .ts being overwritten is passed so existing translations survive: the scaffold emits every
+    // declared locale, and regenerating used to reset them all to the default language (i18n.md item 4).
+    const previousSource = await getContentByMlsPath(pipelineItem.outputPath);
+    const scaffold = generateSharedScaffold(pipelineItem.outputPath, definitionData, contractSource, previousSource ?? undefined);
     if (!scaffold.code) {
       console.info(`[agentCfeMaterializeGen] scaffold bail for ${pipelineItem.outputPath} (${scaffold.reason}) -> LLM`);
       return null;
@@ -177,16 +189,24 @@ async function afterPromptStep(
     const { defPath } = genArgs;
     const defsContent = defPath ? await getContentByMlsPath(defPath) : null;
     const parsedDefs = defsContent ? parseDefs(defsContent) : null;
-    const pipelineItem = parsedDefs?.item;
+    // Resolve by itemId, exactly as beforePromptStep does. A defs can hold N items (a split page), and
+    // taking item[0] here would save every slot's output over the FIRST organism's file.
+    const pipelineItem = (genArgs.itemId ? parsedDefs?.items.find(candidate => candidate.id === genArgs.itemId) : null) ?? parsedDefs?.item;
 
     if (!pipelineItem) {
-      return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, `pipeline not found in defs: ${defPath || '(missing defPath)'}`)];
+      return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, `pipeline item not found in defs: ${genArgs.itemId ?? '(first)'} @ ${defPath || '(missing defPath)'}`)];
     }
 
     const raw = step.interaction?.payload?.[0] as unknown;
     const output = extractToolCallArgs<ToolOutput>(raw, GEN_TOOL_NAME);
     if (!output?.code) {
       const detail = `missing generated code; payload=${describePayload(raw)}`;
+      // The output cap is not repairable but it IS plannable: persist the split plan now, so the phase
+      // verify can turn it into organism steps instead of burning repair rounds (paginaDividida.md §4.1).
+      // Cap or timeout: both mean the page does not fit in one call, and both are fixed by a split.
+      if (isSplitWorthyFailure(describePayload(raw))) {
+        await writeSplitPlanFromL4(pipelineItem, parsedDefs?.data, detail);
+      }
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, detail, true)];
     }
 
@@ -195,7 +215,7 @@ async function afterPromptStep(
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, `invalid outputPath: ${pipelineItem.outputPath}`)];
     }
 
-    const code = applyHeader(pipelineItem.outputPath, normalizeGeneratedCode(pipelineItem, parsedDefs.data, output.code));
+    const code = applyHeader(pipelineItem.outputPath, normalizeGeneratedCode(pipelineItem, parsedDefs?.data, output.code));
     const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, code);
     if (!saved) {
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, withStudioDiagnostics(`saveGeneratedTs failed for ${pipelineItem.outputPath}`))];
@@ -215,7 +235,7 @@ async function afterPromptStep(
       ...(typecheckPath ? await compileMlsPathAndGetErrors(typecheckPath) : []),
       // bugpage21: catch the compiles-cleanly template defect in the TIGHTEST loop — right after this
       // worker saved its own .ts — instead of waiting for the phase verify round.
-      ...(pipelineItem.type === 'l2_page' ? collectPageTemplateHygieneIssues(code) : []),
+      ...(pipelineItem.type === 'l2_page' || pipelineItem.type === 'l2_page_organism' ? [...collectPageTemplateHygieneIssues(code), ...collectChartEventIssues(code)] : []),
     ];
     const studioDiagnostics = consumeMaterializeStudioMessages();
     if (compileErrors.length > 0) {
@@ -248,6 +268,7 @@ function createPromptReadyIntent(
     contextSections: string[];
   },
   repairHint?: string,
+  skeleton?: string,
 ): mls.msg.AgentIntentPromptReady {
   // args become the slot's persisted prompt — keep them compact (never carry the repair hint).
   const { repairHint: omitted, ...compactArgs } = genArgs;
@@ -262,7 +283,9 @@ function createPromptReadyIntent(
     hookSequential,
     parentStepId: parentStep.stepId,
     systemPrompt: buildSystemPrompt(genContext.skillSections, genContext.pipelineItem.outputPath, DEFAULT_MODEL_TYPE),
-    humanPrompt: buildHumanPrompt(trimDefinitionForPrompt(genContext.pipelineItem.type, genContext.definitionData), genContext.contextSections, genContext.pipelineItem.outputPath, repairHint),
+    // The skeleton travels only on the FIRST attempt: on a repair the file on disk already is the
+    // skeleton filled in, and re-sending the empty one would invite a rewrite from scratch.
+    humanPrompt: buildHumanPrompt(trimDefinitionForPrompt(genContext.pipelineItem.type, genContext.definitionData), genContext.contextSections, genContext.pipelineItem.outputPath, repairHint, repairHint ? undefined : skeleton),
     tools: [GEN_TOOL as unknown as mls.msg.LLMTool],
     toolChoice: { type: 'function', function: { name: GEN_TOOL_NAME } },
   };
@@ -270,6 +293,95 @@ function createPromptReadyIntent(
 
 // Rebuild the repair hint from disk for a fan-out repair slot: missing/empty artifact -> missing
 // code hint; otherwise compile the generated .ts (+ its typecheck test) and feed the errors back.
+/**
+ * Deterministic skeleton for a page item, or undefined when it cannot be built — then the model writes the
+ * file from scratch exactly as before, so an unmodelled shared never blocks a run.
+ *
+ * Reads the RAW shared .ts, never the compiled .d.ts the context carries: the locale list lives in the
+ * `message_<locale>` consts, which the .d.ts does not have.
+ */
+async function pageSkeletonFor(pipelineItem: PipelineItem, siblings: PipelineItem[], data: unknown): Promise<string | undefined> {
+  if (pipelineItem.type !== 'l2_page' && pipelineItem.type !== 'l2_page_organism') return undefined;
+  const sharedRef = (pipelineItem.dependsFiles ?? []).find(ref => isSharedRuntimeTsRef(ref));
+  if (!sharedRef) return undefined;
+  const sharedSource = await getContentByMlsPath(sharedRef);
+  if (!sharedSource) return undefined;
+
+  // The organisms of a split page are the sibling items of the same defs — the page composes them and an
+  // organism builds only its own file (paginaDividida.md §3).
+  const organisms = siblings
+    .filter(item => item.type === 'l2_page_organism' && item.organism)
+    .map(item => ({
+      n: Number(/_O(\d+)\.ts$/u.exec(item.outputPath)?.[1] ?? 0),
+      organism: item.organism!,
+      bindings: item.bindings ?? [],
+    }))
+    .filter(item => item.n > 0)
+    .sort((a, b) => a.n - b.n);
+  const current = pipelineItem.type === 'l2_page_organism'
+    ? organisms.find(item => item.organism === pipelineItem.organism)?.n
+    : undefined;
+  const pagePath = pipelineItem.type === 'l2_page_organism'
+    ? pipelineItem.outputPath.replace(/_O\d+\.ts$/u, '.ts')
+    : pipelineItem.outputPath;
+
+  const built = buildPageSkeleton({ outputPath: pagePath, data, sharedTsRef: sharedRef, sharedSource, organisms, current });
+  if (!built.code) console.info(`[agentCfeMaterializeGen] skeleton skipped for ${pipelineItem.outputPath}: ${built.reason}`);
+  return built.code ?? undefined;
+}
+
+/**
+ * On an output-cap failure, project the l4 workspace sections into a split plan and persist it.
+ *
+ * The plan is DERIVED, not decided: the l4 already declares the page's sections and the bffCall each
+ * organism binds to (cfePageSplitPlan). Written here, in the slot that failed, because this is where the
+ * page defs and the reason are both in hand; the phase verify is what turns it into steps.
+ *
+ * Best-effort: a page with no usable l4 simply keeps the plain failure, which the trace already explains.
+ */
+export async function writeSplitPlanFromL4(pipelineItem: PipelineItem, data: unknown, reason: string): Promise<boolean> {
+  const parsed = parseMlsPath(pipelineItem.outputPath);
+  if (!parsed) return false;
+  const moduleName = parsed.folder.split('/')[0];
+  const genome = parsed.folder.split('/').pop() || '';
+
+  const wsSource = await getContentByMlsPath(`_${parsed.project}_/l4/${moduleName}/workspaces/${parsed.shortName}.defs.ts`);
+  if (!wsSource) return false;
+  const workspace = extractFirstExportedObject(wsSource);
+  const sections = (isRecord(workspace) && Array.isArray(workspace.sections) ? workspace.sections : [])
+    .filter(isRecord)
+    .map(section => ({
+      sectionId: String(section.sectionId ?? ''),
+      organisms: (Array.isArray(section.organisms) ? section.organisms : []).filter(isRecord) as SplitPlanSection['organisms'],
+    }))
+    .filter(section => section.sectionId);
+
+  const bindings = (isRecord(data) && Array.isArray(data.dataBindings) ? data.dataBindings : [])
+    .filter(isRecord).map(binding => String(binding.command ?? '')).filter(Boolean);
+
+  const plan = buildSplitPlan(parsed.shortName, genome, sections, bindings, reason);
+  if (!plan) return false;
+  return saveArtifactTextByMlsPath(
+    `_${parsed.project}_/l2/${moduleName}/trace/frontend-page-split/${genome}/${parsed.shortName}.json`,
+    `${JSON.stringify(plan, null, 2)}\n`,
+  );
+}
+
+/** First `export const X = { … }` of a defs — balanced braces, then JSON (the file is JSON.stringify output). */
+function extractFirstExportedObject(source: string): unknown {
+  const at = source.search(/export const [A-Za-z0-9_]+ = \{/u);
+  if (at < 0) return null;
+  const start = source.indexOf('{', at);
+  let depth = 0;
+  for (let i = start; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}' && --depth === 0) {
+      try { return JSON.parse(source.slice(start, i + 1)); } catch { return null; }
+    }
+  }
+  return null;
+}
+
 async function computeRepairHint(pipelineItem: PipelineItem): Promise<string | undefined> {
   const outputPath = pipelineItem.outputPath;
   const content = await getContentByMlsPath(outputPath);
@@ -289,8 +401,9 @@ async function computeRepairHint(pipelineItem: PipelineItem): Promise<string | u
   return errors.length ? buildCompileRepairHint(outputPath, errors.slice(0, 8)) : undefined;
 }
 
-async function buildGenContext(defPath: string): Promise<{
+async function buildGenContext(defPath: string, itemId?: string): Promise<{
   pipelineItem: PipelineItem;
+  siblings: PipelineItem[];
   definitionData: unknown;
   skillSections: string[];
   contextSections: string[];
@@ -299,12 +412,14 @@ async function buildGenContext(defPath: string): Promise<{
   if (!defsContent) throw new Error(`[agentCfeMaterializeGen] defs not found: ${defPath}`);
 
   const parsed = parseDefs(defsContent);
-  const pipelineItem = parsed.item;
-  if (!pipelineItem) throw new Error(`[agentCfeMaterializeGen] pipeline not found: ${defPath}`);
+  // A defs can carry N items (a split page: organisms + the page), so the slot says WHICH one it is.
+  // Falling back to the first keeps a task queued before itemId existed meaning exactly what it meant.
+  const pipelineItem = (itemId ? parsed.items.find(candidate => candidate.id === itemId) : null) ?? parsed.item;
+  if (!pipelineItem) throw new Error(`[agentCfeMaterializeGen] pipeline item not found: ${itemId ?? '(first)'} in ${defPath}`);
 
   const skillSections = await readSections(pipelineItem.skills ?? [], 'skill');
   const contextSections = await readContextSections(pipelineItem);
-  return { pipelineItem, definitionData: parsed.data, skillSections, contextSections };
+  return { pipelineItem, siblings: parsed.items, definitionData: parsed.data, skillSections, contextSections };
 }
 
 // Context diet (flow.json materializationContextPolicy): for page items the shared base class is
@@ -336,7 +451,13 @@ async function readContextSections(pipelineItem: PipelineItem): Promise<string[]
       }
       const content = await getContentByMlsPath(path);
       if (!content) continue;
-      sections.push(buildContextSection(path, content));
+      // Raw-source fallback for the shared: strip every non-default locale. The page needs the key NAMES
+      // to reference them, not three translations of each string — 18KB of a 95KB shared on
+      // projectDetailWorkspace. Same trim the CLI applies (i18n.md §12.1).
+      const trimmed = pipelineItem.type === 'l2_page' && isSharedRuntimeTsRef(path)
+        ? trimSharedI18nForPageContext(content)
+        : content;
+      sections.push(buildContextSection(path, trimmed));
     }
   }
   return sections;
@@ -418,7 +539,12 @@ function mkFailureStatus(
   detail: string,
   manualRerunHint = false,
 ): mls.msg.AgentIntentUpdateStatus {
-  return mkStatus(context, parentStep, step, hookSequential, 'completed', `MATERIALIZE-FAILED: ${detail}`, 'input_output');
+  // The output cap is not a code defect and a repair cannot fix it — the same prompt hits the same
+  // ceiling. Say so in the trace, with the file to write, so the run is not read as a flaky failure.
+  // KNOWN LIMIT: the verify still spends its repair rounds on this item, because it reads the artifact
+  // from disk and never sees this reason (paginaDividida.md §4.1).
+  const hint = isSplitWorthyFailure(detail) ? ' -> does not fit in one call: SPLIT this page (todo/changeFrontend/paginaDividida.md); a repair cannot help.' : '';
+  return mkStatus(context, parentStep, step, hookSequential, 'completed', `MATERIALIZE-FAILED: ${detail}${hint}`, 'input_output');
 }
 
 // Lenient attempt read for catch paths (raw may be missing or invalid JSON).
@@ -452,7 +578,10 @@ function parseGenStepArgs(raw: string | undefined): GenStepArgs {
   if (!planId || !defPath) throw new Error('args missing planId or defPath');
   const attempt = typeof parsed.attempt === 'number' && Number.isInteger(parsed.attempt) ? parsed.attempt : undefined;
   const repairHint = readString(parsed.repairHint) || undefined;
-  return { planId, defPath, attempt, repairHint };
+  // WHICH item of the defs this slot builds. Absent on a task queued before split support: the slot then
+  // resolves pipeline[0], which is what one-artifact-per-defs always meant.
+  const itemId = readString(parsed.itemId) || undefined;
+  return { planId, defPath, attempt, repairHint, itemId };
 }
 
 function readString(value: unknown): string {

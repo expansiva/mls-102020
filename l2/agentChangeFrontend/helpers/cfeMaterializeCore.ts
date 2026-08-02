@@ -11,6 +11,9 @@ export interface PipelineItem {
   defPath?: string;             // _NNNNN_/l2/.../x.defs.ts
   dependsFiles?: string[];
   dependsOn?: string[];
+  /** Split pages only: the organism this item renders, and the bindings it owns (paginaDividida.md §5). */
+  organism?: string;
+  bindings?: string[];
   skills?: string[];
   rulesApplied?: string[];
   visualStyle?: unknown;
@@ -21,7 +24,10 @@ export interface ParsedDefs {
   dataExportName: string | null;
   artifact: Record<string, unknown> | unknown[] | null;
   data: unknown;
+  /** First pipeline item — what a defs with a single artifact always meant. */
   item: PipelineItem | null;
+  /** EVERY pipeline item. A split page has N organisms plus the page in one defs. */
+  items: PipelineItem[];
 }
 
 export interface PlannedItem {
@@ -309,10 +315,13 @@ export function validateGeneratedPageQuality(pageDefinition: unknown, sharedDefi
  * twice in 102051 (`nothing`, and a `nothingOrEmpty(_s: string)` variant), so the check targets the
  * general shape, not the name.
  *
- * The rule: a generated page has NO module-level function declaration. The skills allow exactly render()
- * plus `const` helpers INSIDE render(); an empty branch uses the Lit sentinel `nothing` (imported from
- * 'lit') or `null`. Verified against every page generated for 102051: only the two defective files
- * declare a module-level function, so this never fires on healthy output.
+ * THE DEFECT IS THE UNCALLED REFERENCE, NOT THE DECLARATION. An earlier version of this gate banned every
+ * module-level `function` outright, which was over-broad: a helper that IS called is harmless, and the ban
+ * fired on three of three generations (5-6 helpers each) — always repaired, always costing an extra call —
+ * while missing the identical risk in a `const fn = () => …`. So the declaration is allowed and the
+ * reference is what is checked, for module-level helpers (function OR const arrow) and for render methods
+ * alike: splitting a page into render<Name>() reopened the same hole one level up, where a bare
+ * `${this.renderHeader}` paints the METHOD source on screen and compiles.
  *
  * Pure (string in, findings out) so it is unit-tested without the Studio runtime.
  */
@@ -321,14 +330,23 @@ export function collectPageTemplateHygieneIssues(pageCode: string): string[] {
   const issues: string[] = [];
   const litImportsNothing = /import\s*\{[^}]*\bnothing\b[^}]*\}\s*from\s*['"]lit['"]/u.test(pageCode);
 
-  // A module-level `function` declaration (column 0) is never legitimate in a generated page.
-  for (const match of pageCode.matchAll(/^function\s+([A-Za-z_$][\w$]*)/gmu)) {
-    const name = match[1];
-    // Used by NAME (not called) inside a template expression -> Lit renders the function source itself.
-    const renderedAsValue = new RegExp(String.raw`[:?]\s*${name}\s*(?:\}|\))`, 'u').test(pageCode);
-    issues.push(renderedAsValue
-      ? `module-level helper '${name}' is passed to a template without being called, so Lit renders the function source as text: use the Lit sentinel \`nothing\` (add it to the 'lit' import) or \`null\` for the empty branch and delete the helper`
-      : `module-level function '${name}' is not allowed in a page: the only class method is render(), pure helpers go in a \`const\` INSIDE render(), and an empty branch uses the Lit sentinel \`nothing\` (imported from 'lit') or \`null\``);
+  // Every module-level helper, however it is declared. `const x = () => …` carries exactly the same risk
+  // as `function x() {}` and used to be invisible here.
+  const helpers = new Set<string>();
+  for (const match of pageCode.matchAll(/^(?:export\s+)?function\s+([A-Za-z_$][\w$]*)/gmu)) helpers.add(match[1]);
+  for (const match of pageCode.matchAll(/^(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/gmu)) helpers.add(match[1]);
+
+  for (const name of helpers) {
+    // Used by NAME inside a template interpolation -> Lit stringifies the function and paints its source.
+    if (!new RegExp(String.raw`\$\{[^}]*?[:?]\s*${name}\s*(?:\}|\))`, 'u').test(pageCode)) continue;
+    issues.push(`helper '${name}' is passed to a template without being called, so Lit renders the function source as text: call it — \`${name}()\` — or use the Lit sentinel \`nothing\` (add it to the 'lit' import) for an empty branch`);
+  }
+
+  // A render method referenced but NOT called inside a template interpolation — same defect, one level up.
+  // \b after the name is load-bearing: without it the greedy name backtracks to a prefix, the lookahead
+  // then sees a plain letter and every correctly-called method gets flagged.
+  for (const match of pageCode.matchAll(/\$\{[^}]*?\bthis\.(render[A-Za-z0-9_$]*)\b(?!\s*[(.[])/gmu)) {
+    issues.push(`render method 'this.${match[1]}' is interpolated without being called, so Lit paints the method source as text: call it — \${this.${match[1]}()}`);
   }
 
   // `nothing` used as a value while it is NOT the Lit sentinel and NOT a local helper (a plain
@@ -530,20 +548,48 @@ export function trimDefinitionForPrompt(itemType: string, data: unknown): unknow
 const LAYER_RANK: Record<string, number> = {
   l2_contract: 0,
   l2_shared: 1,
-  l2_page: 2,
+  // An organism of a split page comes BEFORE the page that imports its render function
+  // (paginaDividida.md §3). Organisms do not depend on each other, so they are free to run in parallel.
+  l2_page_organism: 2,
+  l2_page: 3,
 };
 
 export function layerRank(type: string): number {
   return type in LAYER_RANK ? LAYER_RANK[type] : 99;
 }
 
+/**
+ * Layer order first, then a topological pass over `dependsOn`.
+ *
+ * The sort alone is not enough for a SPLIT page (paginaDividida.md): the chain links and the page they
+ * close are all `l2_page`, so they tie on rank and fall back to the file name — which puts
+ * `projectDetailWorkspace` BEFORE `projectDetailWorkspace_O1_…` and would materialize the page against a
+ * superclass that does not exist yet. `dependsOn` is the only thing that knows the real order.
+ *
+ * Kahn seeded by the sorted order, so anything without dependencies keeps exactly the previous behaviour.
+ * A cycle (or a dangling id) never drops an item: whatever is left is appended in sorted order.
+ */
 export function orderItems(items: PipelineItem[]): PipelineItem[] {
-  return [...items].sort((a, b) => (
+  const sorted = [...items].sort((a, b) => (
     layerRank(a.type) - layerRank(b.type)
     || pageKey(a).localeCompare(pageKey(b))
     || a.id.localeCompare(b.id)
     || a.outputPath.localeCompare(b.outputPath)
   ));
+
+  const present = new Set(sorted.map(item => item.id));
+  const emitted = new Set<string>();
+  const out: PipelineItem[] = [];
+  let pending = sorted;
+  while (pending.length) {
+    // Only dependencies that are actually in this run gate an item — a dependsOn pointing outside the
+    // scanned set (another module, an already-built artifact) must not block it.
+    const ready = pending.filter(item => (item.dependsOn ?? []).every(id => !present.has(id) || emitted.has(id)));
+    if (!ready.length) { out.push(...pending); break; }
+    for (const item of ready) { out.push(item); emitted.add(item.id); }
+    pending = pending.filter(item => !emitted.has(item.id));
+  }
+  return out;
 }
 
 function pageKey(item: PipelineItem): string {
@@ -608,11 +654,87 @@ export function parseDefs(src: string): ParsedDefs {
   const dataExportName = firstExportName(src);
   const artifact = dataExportName ? extractConstObject(src, dataExportName) as Record<string, unknown> | unknown[] | null : null;
   const pipelineArr = extractConstObject(src, 'pipeline');
-  const item = Array.isArray(pipelineArr) && pipelineArr.length ? pipelineArr[0] as PipelineItem : null;
+  const items = Array.isArray(pipelineArr) ? pipelineArr as PipelineItem[] : [];
+  const item = items.length ? items[0] : null;
   const data = artifact && typeof artifact === 'object' && !Array.isArray(artifact) && 'data' in artifact
     ? (artifact as { data: unknown }).data
     : artifact;
-  return { dataExportName, artifact, data, item };
+  return { dataExportName, artifact, data, item, items };
+}
+
+/**
+ * Drop every non-default locale from a shared .ts before it travels as PAGE context.
+ *
+ * The shared now carries one catalog per declared locale, which is right on disk and pure weight in the
+ * prompt: the page only needs the KEY NAMES (to reference them as s_<locale>['<key>']) plus one reading of
+ * the text to know what each key means. On projectDetailWorkspace the block is 28KB of a 95KB file, and
+ * that growth alone pushed two pages that used to generate fine past the 200s LLM timeout.
+ *
+ * Pure and conservative: no i18n block, or a single locale, returns the source untouched.
+ */
+export function trimSharedI18nForPageContext(source: string): string {
+  const start = source.indexOf('/// **collab_i18n_start**');
+  const end = source.indexOf('/// **collab_i18n_end**');
+  if (start < 0 || end < 0 || end < start) return source;
+  const block = source.slice(start, end);
+  const consts = [...block.matchAll(/^const\s+message_[A-Za-z0-9_]+\s*(?::\s*[A-Za-z0-9_]+\s*)?=\s*\{[\s\S]*?\n\};$/gmu)];
+  if (consts.length < 2) return source;
+  const dropped = consts.slice(1);
+  let trimmed = block;
+  for (const extra of dropped) trimmed = trimmed.replace(extra[0], `// (${extra[0].slice(6, extra[0].indexOf(' ', 6))} omitted from this context: same keys, translated)`);
+  return source.slice(0, start) + trimmed + source.slice(end);
+}
+
+/**
+ * The output cap was hit — the model was cut mid-file, so the artifact is truncated or missing.
+ *
+ * collab-llm reports it as the literal marker in the error/trace text (`MAX_TOKENS_REACHED) llmTime: …`,
+ * ref. todo/changeFrontend/bugMaxTokens_01.json), not as a `finish_reason` field.
+ *
+ * This must be TERMINAL, never repaired: the repair sends the same prompt and hits the same ceiling, so a
+ * retry burns time and budget to fail identically. The answer is to SPLIT the page
+ * (todo/changeFrontend/paginaDividida.md), which is a change to the plan, not to the attempt.
+ */
+export function isMaxTokensFailure(detail: string): boolean {
+  return /MAX_TOKENS_REACHED|max_tokens_reached/u.test(detail || '');
+}
+
+/**
+ * The call ran out of time. Unlike the output cap this is AMBIGUOUS — it can be the network, the provider
+ * queueing, or a genuinely oversized page — so it earns exactly one retry before being believed.
+ */
+export function isTimeoutFailure(detail: string): boolean {
+  return /timed out|ETIMEDOUT|ECONNRESET/iu.test(detail || '');
+}
+
+/**
+ * Failures that a SPLIT fixes and a retry does not: the page asks for more than one call can produce.
+ *
+ * The cap says so outright; a timeout says so only after retrying, which is why the caller must have
+ * spent its retry before consulting this. Both end in the same place — project the l4 sections into a
+ * split plan (paginaDividida.md §4.1) — because both mean "this page does not fit in one call".
+ */
+export function isSplitWorthyFailure(detail: string): boolean {
+  return isMaxTokensFailure(detail) || isTimeoutFailure(detail);
+}
+
+/**
+ * `@chartclick=${…}` and friends: a listener that never fires.
+ *
+ * ECharts events are emitted on the INSTANCE (`chart.on('click', …)`), never on the DOM node, so a Lit
+ * `@chartclick` binding attaches to an event nothing dispatches. It compiles — any `@name` is a valid Lit
+ * binding — and it silently breaks the whole point of a chart-led page, where selecting on the chart IS
+ * the filter. Observed on the first generated page that used the directive.
+ *
+ * The handlers belong in the directive: `chart(option, { click: … })`.
+ */
+export function collectChartEventIssues(pageCode: string): string[] {
+  if (!pageCode.includes('chartRuntime')) return [];
+  const issues = new Set<string>();
+  for (const match of pageCode.matchAll(/@(chart[a-z]*|legendselectchanged|datazoom|brushselected)\s*=/gu)) {
+    issues.add(`'@${match[1]}=' is not a DOM event: ECharts emits on the instance, so this listener never fires. Pass it to the directive instead — chart(option, { ${match[1].replace(/^chart/u, '') || 'click'}: handler })`);
+  }
+  return [...issues];
 }
 
 export const GEN_TOOL_NAME = 'submitGeneratedTs';
@@ -665,11 +787,29 @@ Return ONLY the file through the ${GEN_TOOL_NAME} tool.
 ${skills}`;
 }
 
-export function buildHumanPrompt(data: unknown, contextSections: string[], outputPath: string, repairHint?: string): string {
+/**
+ * @param skeleton when present (page items), the mechanically-built file the model completes instead of
+ *        writing from scratch — see cfePageSkeleton. The imports, the i18n block for every locale and the
+ *        language-cached `msg` getter come pre-written, so the model stops re-deriving them (and stops
+ *        getting them wrong: relative imports, prefixed DTO names, `nothing` without its import).
+ *        Omitted on a repair round: there the file on disk already IS the skeleton, filled in.
+ */
+export function buildHumanPrompt(data: unknown, contextSections: string[], outputPath: string, repairHint?: string, skeleton?: string): string {
   const lines = ['## Definition', '', '```json', JSON.stringify(data, null, 2), '```', ''];
   if (contextSections.length) {
     lines.push('## Context files (dependsFiles)', '');
     for (const c of contextSections) lines.push(c, '');
+  }
+  if (skeleton) {
+    lines.push(
+      '## Skeleton — complete this file', '',
+      'Return THIS file with every `/* to implement */` replaced by your code, and everything else',
+      'unchanged: the header, the imports, the i18n block structure, the class and tag names, and the',
+      '`msg` getter. Do not rewrite them and do not add a second i18n block.', '',
+      'The i18n markers are yours too: YOU decide which keys exist. Reference the shared text you need',
+      '(never inline it) and add the copy you invent, with short keys — in EVERY locale below.', '',
+      '```typescript', skeleton, '```', '',
+    );
   }
   lines.push('## Output', '', `Generate ONLY the TypeScript for: ${outputPath}`, `Call ${GEN_TOOL_NAME} with the complete code.`);
   if (repairHint) lines.push('', repairHint);

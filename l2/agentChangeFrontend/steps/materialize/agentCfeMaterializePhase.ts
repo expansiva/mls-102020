@@ -16,6 +16,7 @@ import {
   collectDesignTokenRoleIssues,
   collectHeadingDisciplineIssues,
   collectMissingImageRenderIssues,
+  collectChartEventIssues,
   collectMutationFeedbackIssues,
   collectPageExperienceIssues,
   collectTechnicalVocabularyIssues,
@@ -179,6 +180,16 @@ async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.
     )];
   }
 
+  // A page that blew the output cap left a split plan on disk (agentCfeMaterializeGen.writeSplitPlanFromL4).
+  // It is not repairable — the same prompt hits the same ceiling — but it IS now materializable as N
+  // organisms plus the page, so turn the plan into steps instead of spending repair rounds on it.
+  const anchorForSplit = findMutableParentStep(context, parentStep);
+  const splitIntents = await planSplitSteps(context, anchorForSplit, args, broken);
+  if (splitIntents) {
+    return [...splitIntents, createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
+      `SPLIT: page over the output cap re-queued as organisms.\n${summary}`)];
+  }
+
   // Anchor new steps on a non-terminal agent step (the phase step stays in_progress while its
   // children are open thanks to deferred completion; fall back if it was auto-completed).
   const nextAttempt = args.attempt + 1;
@@ -192,7 +203,9 @@ async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.
   // one-step-per-broken-item shape that stayed on the task record forever.
   const repairPlanId = `${args.planId}-repair${nextAttempt - 1}`;
   const repairFanout = createFanoutStep(repairPlanId, `Repair ${roundLabel}: {{completed}}/{{total}}, falhas {{failed}}`, broken.length);
-  const repairArgs = broken.map(entry => JSON.stringify({ planId: entry.item.planId, defPath: entry.item.defPath, attempt: nextAttempt }));
+  // itemId rides along: without it a repair slot would fall back to pipeline[0] and rewrite the FIRST
+  // organism's file instead of the one that is actually broken.
+  const repairArgs = broken.map(entry => JSON.stringify({ planId: entry.item.planId, defPath: entry.item.defPath, itemId: entry.item.itemId, attempt: nextAttempt }));
   const nextVerifyPlanId = `${args.planId}-v${nextAttempt}`;
   const nextVerify = createAddStepIntent(context, anchor, createAgentStepPayload(
     nextVerifyPlanId,
@@ -210,6 +223,94 @@ async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.
     createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${broken.length} broken item(s), repair round ${roundLabel} started:\n${summary}`),
   ];
 }
+
+/**
+ * Turn a persisted split plan into steps: a fan-out of organism slots, then the page that imports their
+ * render functions, then a verify over all of them.
+ *
+ * Two sequential fan-outs, not one: the page must come after every organism — it imports them. This is
+ * the same shape the repair round uses, which is why dynamic step creation is safe here.
+ *
+ * Returns null when no broken item has a plan, and the caller falls through to the normal repair.
+ */
+async function planSplitSteps(
+  context: mls.msg.ExecutionContext,
+  anchor: mls.msg.AIAgentStep,
+  args: MaterializeVerifyArgs,
+  broken: BrokenItem[],
+): Promise<mls.msg.AgentIntent[] | null> {
+  const intents: mls.msg.AgentIntent[] = [];
+  const verifyItems: GenStepArgs[] = [];
+
+  for (const entry of broken) {
+    const organisms = await readSplitOrganisms(entry.item.defPath, entry.outputPath);
+    if (!organisms.length) continue;
+    const parsed = parseSplitOutput(entry.outputPath!);
+    if (!parsed) continue;
+
+    // The page's own itemId gives the base exactly (`<page>[__<genome>]__l2_page`), so the organism ids
+    // are derived, never reconstructed from the planId — `safe()` lowercases and strips, and is lossy.
+    const pageItemId = entry.item.itemId;
+    if (!pageItemId?.endsWith('__l2_page')) continue;
+    const basePipeline = pageItemId.slice(0, -'__l2_page'.length);
+
+    const organismArgs = organisms.map(organism => ({
+      planId: `${entry.item.planId}-o${organism.n}`,
+      defPath: entry.item.defPath,
+      itemId: `${basePipeline}__O${organism.n}`,
+    } satisfies GenStepArgs));
+    const pageArgs: GenStepArgs = { planId: `${entry.item.planId}-page`, defPath: entry.item.defPath, itemId: pageItemId };
+
+    const organismsPlanId = `${entry.item.planId}-split-organisms`;
+    const pagePlanId = `${entry.item.planId}-split-page`;
+    intents.push(createAddStepIntent(
+      context, anchor,
+      createFanoutStep(organismsPlanId, `Dividir ${parsed.shortName}: {{completed}}/{{total}}, falhas {{failed}}`, organismArgs.length),
+      organismArgs.map(item => JSON.stringify(item)), 10,
+    ));
+    intents.push(createAddStepIntent(
+      context, anchor,
+      // depends on the organisms fan-out: the page imports what they export.
+      createFanoutStep(pagePlanId, `Compor ${parsed.shortName}: {{completed}}/{{total}}, falhas {{failed}}`, 1, [organismsPlanId]),
+      [JSON.stringify(pageArgs)], 1,
+    ));
+    verifyItems.push(...organismArgs, pageArgs);
+  }
+
+  if (!verifyItems.length) return null;
+
+  const verifyPlanId = `${args.planId}-split-verify`;
+  intents.push(createAddStepIntent(context, anchor, createAgentStepPayload(
+    verifyPlanId,
+    AGENT_NAME,
+    'Verify materialization (after split)',
+    { mode: 'verify', planId: verifyPlanId, items: verifyItems, attempt: 1 },
+    verifyItems.filter(item => item.planId.endsWith('-page')).map(item => `${item.planId.replace(/-page$/u, '')}-split-page`),
+    'sequential',
+    'waiting_dependency',
+  )));
+  return intents;
+}
+
+/** The organisms of a page's split plan, or [] when there is none. */
+async function readSplitOrganisms(defPath: string | undefined, outputPath: string | null): Promise<{ n: number }[]> {
+  const parsed = outputPath ? parseSplitOutput(outputPath) : null;
+  if (!parsed || !defPath) return [];
+  const raw = await getContentByMlsPath(`_${parsed.project}_/l2/${parsed.moduleName}/trace/frontend-page-split/${parsed.genome}/${parsed.shortName}.json`);
+  if (!raw) return [];
+  try {
+    const plan = JSON.parse(raw) as { organisms?: { n: number }[] };
+    return Array.isArray(plan.organisms) ? plan.organisms.filter(item => Number.isInteger(item?.n)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseSplitOutput(outputPath: string): { project: number; moduleName: string; genome: string; shortName: string } | null {
+  const match = /^_(\d+)_\/l2\/([^/]+)\/web\/desktop\/(page\d+)\/([A-Za-z0-9_]+)\.ts$/u.exec(outputPath);
+  return match ? { project: Number(match[1]), moduleName: match[2], genome: match[3], shortName: match[4] } : null;
+}
+
 
 // The msg-task step trace must stay a SUMMARY (kept by the interaction cleaner, subject to the
 // DynamoDB 400KB task cap): one line per broken item with its error/warning counts and a single
@@ -270,7 +371,7 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     // paints the function's own source code on screen. It COMPILES, so neither the typecheck above nor
     // the defs-level UX rules below can see it. This is a pure .ts defect that rewriting the .ts fixes,
     // so it belongs in `errors` (repairable, fed back to the page generator), not in `warnings`.
-    errors.push(...collectPageTemplateHygieneIssues(content));
+    errors.push(...collectPageTemplateHygieneIssues(content), ...collectChartEventIssues(content));
     // A background token used as a text color renders invisible text once the theme applies (the
     // hardcoded var() fallback hides it in one theme only) — mls-102045 shipped exactly that. It is a
     // pure .ts defect a rewrite fixes, and the check is deterministic (role suffix, no judgement), so it
@@ -403,10 +504,17 @@ function readGenStepArgs(value: unknown): GenStepArgs {
   const planId = readString(value.planId);
   const defPath = readString(value.defPath);
   if (!planId || !defPath) throw new Error('phase item missing planId or defPath');
-  return { planId, defPath };
+  // itemId must survive the round-trip: it is WHICH pipeline item of that defs the slot builds, and the
+  // split derives the organism ids from it. Dropping it here forced a lossy reconstruction from planId.
+  const itemId = readString(value.itemId);
+  return itemId ? { planId, defPath, itemId } : { planId, defPath };
 }
 
-function createFanoutStep(planId: string, title: string, total: number): mls.msg.AIAgentStep {
+/**
+ * @param dependsOn plan ids this fan-out waits for. Used by the split: the page fan-out must not start
+ *        before the organisms one finishes, because the page imports what those files export.
+ */
+function createFanoutStep(planId: string, title: string, total: number, dependsOn: string[] = []): mls.msg.AIAgentStep {
   return {
     type: 'agent',
     stepId: 0,
@@ -417,12 +525,12 @@ function createFanoutStep(planId: string, title: string, total: number): mls.msg
       payload: null,
     },
     stepTitle: title,
-    status: 'in_progress',
     nextSteps: [],
     agentName: 'agentCfeMaterializeGen',
     prompt: JSON.stringify({ planId }),
     rags: [],
-    planning: { planId, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' },
+    status: dependsOn.length ? 'waiting_dependency' : 'in_progress',
+    planning: { planId, dependsOn, executionMode: 'parallel_dynamic', executionHost: 'client' },
   } as any;
 }
 

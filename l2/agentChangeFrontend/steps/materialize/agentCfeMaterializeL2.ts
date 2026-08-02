@@ -109,10 +109,14 @@ async function readMaterializeCandidates(project: number): Promise<MaterializeCa
   for (const defPath of listFrontendDefs(project)) {
     const source = await getContentByMlsPath(defPath);
     const pipeline = source ? parsePipelineFromContent(source) : null;
-    const item = pipeline?.[0] as PipelineItem | undefined;
-    if (!item || !item.type.startsWith('l2_') || seenOutputs.has(item.outputPath)) continue;
-    seenOutputs.add(item.outputPath);
-    candidates.push({ defPath, item });
+    // EVERY item, not just the first: a split page carries N organisms plus the page in one defs
+    // (paginaDividida.md §5). Reading only pipeline[0] would have materialized the first organism and
+    // silently skipped the page.
+    for (const item of (pipeline ?? []) as PipelineItem[]) {
+      if (!item || !item.type?.startsWith('l2_') || seenOutputs.has(item.outputPath)) continue;
+      seenOutputs.add(item.outputPath);
+      candidates.push({ defPath, item });
+    }
   }
   return candidates;
 }
@@ -206,6 +210,8 @@ function createMaterializePhaseSteps(context: mls.msg.ExecutionContext, parentSt
     const items = group.items.map(item => ({
       planId: materializePlanId(item.candidate.item),
       defPath: item.candidate.defPath,
+      // Tells the slot WHICH item of that defs it builds — see GenStepArgs.itemId.
+      itemId: item.candidate.item.id,
     } satisfies GenStepArgs));
     const phase = createAgentStepPayload(
       phasePlanId,
@@ -229,6 +235,10 @@ function groupByMaterializePhase(planned: PlannedMaterializeItem[]): Array<{ pha
   return [
     { phase: 'contracts', parentTitle: 'Materializar contratos', progressTitle: 'Materializar contratos {{completed}}/{{total}}, falhas {{failed}}', items: ordered.filter(item => item.candidate.item.type === 'l2_contract') },
     { phase: 'shared', parentTitle: 'Materializar shared', progressTitle: 'Materializar shared {{completed}}/{{total}}, falhas {{failed}}', items: ordered.filter(item => item.candidate.item.type === 'l2_shared') },
+    // Organisms of a split page come BEFORE the pages: the page imports their render functions, so the
+    // phase barrier is what guarantees they exist. Without this phase they would be dropped by the type
+    // filter and never generated at all.
+    { phase: 'organisms', parentTitle: 'Materializar organismos', progressTitle: 'Materializar organismos {{completed}}/{{total}}, falhas {{failed}}', items: ordered.filter(item => item.candidate.item.type === 'l2_page_organism') },
     { phase: 'pages', parentTitle: 'Materializar paginas', progressTitle: 'Materializar paginas {{completed}}/{{total}}, falhas {{failed}}', items: ordered.filter(item => item.candidate.item.type === 'l2_page') },
   ];
 }

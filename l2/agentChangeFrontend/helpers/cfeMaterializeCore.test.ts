@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues } from './cfeMaterializeCore.js';
 
 // bugpage21: the EXACT shape generated into
 // mls-102051/l2/cafeFlow/web/desktop/page21/shiftWorkspace.ts — `: nothing` in the template with a
@@ -42,18 +42,31 @@ function nothingOrEmpty(_s: string): unknown {
 }
 `;
 
-test('bugpage21: a module-level helper rendered by NAME is reported with the concrete remedy', () => {
+test('bugpage21: a helper rendered by NAME is reported with the concrete remedy', () => {
   const issues = collectPageTemplateHygieneIssues(BROKEN_NOTHING);
   assert.equal(issues.length, 1, issues.join(' | '));
-  assert.match(issues[0], /module-level helper 'nothing' is passed to a template without being called/u);
+  assert.match(issues[0], /helper 'nothing' is passed to a template without being called/u);
   assert.match(issues[0], /Lit renders the function source as text/u);
   assert.match(issues[0], /use the Lit sentinel/u);
 });
 
-test('bugpage21: any invented module-level helper is reported, whatever its name', () => {
-  const issues = collectPageTemplateHygieneIssues(BROKEN_NAMED_HELPER);
+// The blanket ban on module-level functions was dropped: it fired on 5-6 harmless helpers in every
+// generation (always repaired, always an extra call) while missing the same risk in a `const` arrow.
+// What is checked now is the CALL, which is what actually paints source on the screen.
+test('a module-level helper that IS called is legitimate', () => {
+  // This fixture calls `nothingOrEmpty('x')` — it returns a string, Lit renders it, nothing breaks.
+  assert.deepEqual(collectPageTemplateHygieneIssues(BROKEN_NAMED_HELPER), []);
+});
+
+test('a const arrow helper passed by name is caught too — it used to be invisible', () => {
+  const code = [
+    "import { html, nothing } from 'lit';",
+    'const emptyRow = () => html`<td></td>`;',
+    'export class P extends Base { render() { return html`${ok ? html`<td>x</td>` : emptyRow}`; } }',
+  ].join('\n');
+  const issues = collectPageTemplateHygieneIssues(code);
   assert.equal(issues.length, 1, issues.join(' | '));
-  assert.match(issues[0], /module-level function 'nothingOrEmpty' is not allowed in a page/u);
+  assert.match(issues[0], /helper 'emptyRow' is passed to a template without being called/u);
 });
 
 test('bugpage21: the CORRECT page (nothing imported from lit) is accepted', () => {
@@ -133,4 +146,159 @@ test('bugimage: a page whose contract has NO image field is never asked for an <
 test('bugimage: empty inputs never throw or report', () => {
   assert.deepEqual(collectMissingImageRenderIssues('', 'code'), []);
   assert.deepEqual(collectMissingImageRenderIssues(DEFS_WITH_IMAGE, ''), []);
+});
+
+// ---------------------------------------------------------------------------
+// trimSharedI18nForPageContext — used by BOTH materialize paths (Studio + CLI), i18n.md §12.1
+
+const SHARED_3_LOCALES = [
+  "import { CollabLitElement } from '/_102029_/l2/collabLitElement.js';",
+  '/// **collab_i18n_start**',
+  'const message_en = {',
+  "  'intent.x.list.empty': 'No projects yet',",
+  '};',
+  'export type MessageType = typeof message_en;',
+  'const message_pt_br: MessageType = {',
+  "  'intent.x.list.empty': 'Nenhum projeto',",
+  '};',
+  'const message_es: MessageType = {',
+  "  'intent.x.list.empty': 'Ningun proyecto',",
+  '};',
+  "export const messages: { [key: string]: MessageType } = { 'en': message_en, 'pt-br': message_pt_br, 'es': message_es };",
+  '/// **collab_i18n_end**',
+  'export class XBase extends CollabLitElement {}',
+].join('\n');
+
+test('trimSharedI18nForPageContext keeps the default locale and drops the rest', () => {
+  const out = trimSharedI18nForPageContext(SHARED_3_LOCALES);
+  // The page needs the KEY NAMES, which the default locale carries; the translations are pure weight.
+  assert.match(out, /const message_en = \{\n {2}'intent\.x\.list\.empty': 'No projects yet',\n\};/u);
+  assert.ok(!out.includes("'Nenhum projeto'"), 'pt-br text is gone');
+  assert.ok(!out.includes("'Ningun proyecto'"), 'es text is gone');
+  assert.ok(out.length < SHARED_3_LOCALES.length, 'the context got smaller');
+});
+
+test('trimSharedI18nForPageContext leaves the rest of the file untouched', () => {
+  const out = trimSharedI18nForPageContext(SHARED_3_LOCALES);
+  // Everything outside the block — imports, the exported type/map and the class — must survive verbatim,
+  // or the model loses the surface it generates against.
+  assert.match(out, /^import \{ CollabLitElement \}/u);
+  assert.match(out, /export type MessageType = typeof message_en;/u);
+  assert.match(out, /export const messages: \{ \[key: string\]: MessageType \} = \{ 'en': message_en, 'pt-br': message_pt_br, 'es': message_es \};/u);
+  assert.match(out, /export class XBase extends CollabLitElement \{\}$/u);
+  assert.match(out, /\/\/\/ \*\*collab_i18n_start\*\*/u);
+  assert.match(out, /\/\/\/ \*\*collab_i18n_end\*\*/u);
+});
+
+test('trimSharedI18nForPageContext is a no-op when there is nothing to gain', () => {
+  const single = SHARED_3_LOCALES
+    .replace(/const message_pt_br[\s\S]*?\n\};\n/u, '')
+    .replace(/const message_es[\s\S]*?\n\};\n/u, '');
+  assert.equal(trimSharedI18nForPageContext(single), single, 'single locale is untouched');
+  assert.equal(trimSharedI18nForPageContext('const x = 1;'), 'const x = 1;', 'no i18n block is untouched');
+  assert.equal(trimSharedI18nForPageContext(''), '', 'empty source is untouched');
+});
+
+// ---------------------------------------------------------------------------
+// orderItems: dependsOn decides the order of a split page (paginaDividida.md)
+
+const pageItem = (id: string, outputPath: string, dependsOn?: string[]) =>
+  ({ id, type: 'l2_page', outputPath, dependsOn, agent: 'x' }) as Parameters<typeof orderItems>[0][number];
+
+test('orderItems puts a chain link before the page that extends it', () => {
+  // Alphabetically the page comes FIRST (`pd` < `pd_O1_…`), so only dependsOn gets this right.
+  const ordered = orderItems([
+    pageItem('pd__l2_page', '_1_/l2/m/web/desktop/page11/pd.ts', ['pd__O2']),
+    pageItem('pd__O2', '_1_/l2/m/web/desktop/page11/pd_O2_risk.ts', ['pd__O1']),
+    pageItem('pd__O1', '_1_/l2/m/web/desktop/page11/pd_O1_overview.ts'),
+  ]);
+  assert.deepEqual(ordered.map(item => item.id), ['pd__O1', 'pd__O2', 'pd__l2_page']);
+});
+
+test('orderItems ignores a dependsOn that is not in this run', () => {
+  const ordered = orderItems([pageItem('a', '_1_/l2/m/web/desktop/page11/a.ts', ['not-scanned'])]);
+  assert.deepEqual(ordered.map(item => item.id), ['a']);
+});
+
+test('orderItems never drops an item on a cycle', () => {
+  const ordered = orderItems([
+    pageItem('x', '_1_/l2/m/web/desktop/page11/x.ts', ['y']),
+    pageItem('y', '_1_/l2/m/web/desktop/page11/y.ts', ['x']),
+  ]);
+  assert.deepEqual(ordered.map(item => item.id).sort(), ['x', 'y']);
+});
+
+// ---------------------------------------------------------------------------
+// parseDefs: um defs pode carregar N itens (página dividida)
+
+test('parseDefs returns EVERY pipeline item, not just the first', () => {
+  // Reading only pipeline[0] made the Studio materialize the first organism and skip the page entirely.
+  // Same shape saveFrontendDefs writes: JSON.stringify, so the keys are quoted.
+  const src = `export const definition = ${JSON.stringify({ pageId: 'pd' }, null, 2)};\n\nexport const pipeline = ${JSON.stringify([
+    { id: 'pd__O1', type: 'l2_page_organism', organism: 'overview', outputPath: '_1_/l2/m/web/desktop/page11/pd_O1.ts' },
+    { id: 'pd__l2_page', type: 'l2_page', outputPath: '_1_/l2/m/web/desktop/page11/pd.ts' },
+  ], null, 2)} as const;\n`;
+  const parsed = parseDefs(src);
+  assert.equal(parsed.items.length, 2);
+  assert.deepEqual(parsed.items.map(item => item.id), ['pd__O1', 'pd__l2_page']);
+  // `item` stays the first, which is what a single-artifact defs always meant.
+  assert.equal(parsed.item?.id, 'pd__O1');
+});
+
+test('parseDefs on a single-item defs is unchanged', () => {
+  const src = `export const definition = ${JSON.stringify({ pageId: 'pd' }, null, 2)};\n\nexport const pipeline = ${JSON.stringify([
+    { id: 'pd__l2_page', type: 'l2_page', outputPath: '_1_/l2/m/web/desktop/page11/pd.ts' },
+  ], null, 2)} as const;\n`;
+  const parsed = parseDefs(src);
+  assert.equal(parsed.items.length, 1);
+  assert.equal(parsed.item?.id, 'pd__l2_page');
+});
+
+test('isMaxTokensFailure recognises the collab-llm marker, and nothing else', () => {
+  // The reason arrives as text in the trace, not as a finish_reason field (bugMaxTokens_01.json).
+  assert.ok(isMaxTokensFailure('llm error (MAX_TOKENS_REACHED) llmTime: 00:11:39.280'));
+  assert.ok(!isMaxTokensFailure('collab-llm request timed out after 200000ms'));
+  assert.ok(!isMaxTokensFailure(''));
+});
+
+test('isTimeoutFailure recognises the shapes a stalled call arrives in', () => {
+  assert.ok(isTimeoutFailure('collab-llm request timed out after 200000ms'));
+  assert.ok(isTimeoutFailure('connect ETIMEDOUT 10.0.0.1:443'));
+  assert.ok(!isTimeoutFailure('llm error (MAX_TOKENS_REACHED)'));
+  assert.ok(!isTimeoutFailure(''));
+});
+
+test('both over-capacity failures lead to a split, and nothing else does', () => {
+  // The cap says it outright; the timeout says it only after its retry — but both end in the same place.
+  assert.ok(isSplitWorthyFailure('llm error (MAX_TOKENS_REACHED) llmTime: 00:11:39.280'));
+  assert.ok(isSplitWorthyFailure('collab-llm request timed out after 200000ms'));
+  assert.ok(!isSplitWorthyFailure('HTTP 422: contract validation failed'));
+  assert.ok(!isSplitWorthyFailure('missing generated code; payload=(empty)'));
+});
+
+// ---------------------------------------------------------------------------
+// collectChartEventIssues: `@chartclick` compila e nunca dispara — o defeito da primeira página
+// gerada com a diretiva.
+
+const CHART_PAGE = (body: string) => `import { chart } from '/_102033_/l2/shared/chartRuntime.js';\n${body}`;
+
+test('a @chart* binding is flagged: ECharts emits on the instance, not on the DOM', () => {
+  const issues = collectChartEventIssues(CHART_PAGE('html`<div class="h-80" ${chart(o)} @chartclick=${fn}></div>`'));
+  assert.equal(issues.length, 1);
+  assert.match(issues[0], /never fires/u);
+  assert.match(issues[0], /chart\(option, \{ click: handler \}\)/u);
+});
+
+test('the other ECharts event names are flagged too', () => {
+  assert.equal(collectChartEventIssues(CHART_PAGE('html`<div ${chart(o)} @legendselectchanged=${f}></div>`')).length, 1);
+  assert.equal(collectChartEventIssues(CHART_PAGE('html`<div ${chart(o)} @datazoom=${f}></div>`')).length, 1);
+});
+
+test('handlers passed to the directive are correct and not flagged', () => {
+  assert.deepEqual(collectChartEventIssues(CHART_PAGE('html`<div ${chart(o, { click: fn })}></div>`')), []);
+});
+
+test('a page with no chart is never inspected', () => {
+  // @chartclick on a page that imports no chart is someone else is custom event — not our business.
+  assert.deepEqual(collectChartEventIssues('html`<div @chartclick=${fn}></div>`'), []);
 });
