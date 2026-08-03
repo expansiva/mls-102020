@@ -515,3 +515,19 @@ void test('e5 deterministic attach produces {module}.{pageId}.{commandName}', as
   assert.equal(workflowDefs.capabilities[0].priority, 'now');
   assert.equal(workflowDefs.statusFrontend, 'toCreate');
 });
+
+// Run 102046 (03/08): `outputField.item.fields.items.$ref -> outputField` was a SELF-REFERENCE with no
+// bound. One provider recursed item.fields → item.fields → … until max_output_tokens — 150k output
+// tokens, 6 minutes and TOOL_ARGS_SCHEMA on a single operation, so the fan-out child never got a
+// payload. `collectNsOutputPathSets` only ever reads two levels (fields[].name and
+// fields[].item.fields[].name), so the third was already ignored downstream: it must be INEXPRESSIBLE.
+// Same fix, same day, as e6-workspace's bffField — those were the only two self-referential $defs.
+void test('E5 schema: the output shape cannot nest a third level', () => {
+  const schema = JSON.parse(readFileSync(resolve(here, '../../schemas/e5-operation.schema.json'), 'utf8')) as {
+    $defs: Record<string, { properties: Record<string, unknown> }>;
+  };
+  const item = schema.$defs.outputField.properties.item as { properties: { fields: { items: { $ref: string } } } };
+  assert.equal(item.properties.fields.items.$ref, '#/$defs/outputItemField', 'item columns must be leaves');
+  assert.equal(schema.$defs.outputItemField.properties.item, undefined, 'a leaf column has no item of its own');
+  assert.doesNotMatch(JSON.stringify(schema.$defs.outputItemField), /\$ref/, 'a leaf points nowhere');
+});

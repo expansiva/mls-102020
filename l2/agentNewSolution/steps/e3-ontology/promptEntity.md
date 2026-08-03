@@ -25,9 +25,12 @@ Field rules:
   "createdAt" (datetime, required) and, except for event entities, "updatedAt" (datetime, required).
 - Stateful entities (statusEnum in the plan) MUST have a "status" field: type string, required, with
   "enum" exactly equal to the plan statusEnum.
-- enum: only on string fields. Enum values are CODE IDENTIFIERS: always English lower camelCase,
-  units and categories included ("kg", "liter", "portion", "unit") — never localized into the user's
-  language or any other language, whatever userLanguage is. Only "description" is localized.
+- enum: the CLOSED LIST OF VALUES a field of type "string" may hold — nothing else. It is NOT a tag
+  for what the field is: a uuid, a datetime, a date, a number, money, a boolean or a text field NEVER
+  carries an enum, whatever the field means. If the field is not a string with a fixed set of allowed
+  values, omit "enum" entirely. When it is, the values are CODE IDENTIFIERS: always English lower
+  camelCase, units and measures included ("kg", "liter", "portion", "unit") — never localized into the
+  user's language or any other language, whatever userLanguage is. Only "description" is localized.
 - description: one line in the user's language explaining the business meaning (not the type).
 
 Completeness checklist — derive fields from the business rules and journey steps:

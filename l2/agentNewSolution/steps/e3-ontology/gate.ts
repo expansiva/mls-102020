@@ -142,13 +142,23 @@ export function prepareE3EntityArtifact(input: unknown): NsE3EntityArtifact {
     description: readString(record.description) || '',
     kind: readEnum(record.kind, NS_ENTITY_KINDS, 'core'),
     ownership: readEnum(record.ownership, NS_OWNERSHIPS, 'moduleOwned'),
-    fields: fields.map(field => ({
-      fieldId: readString(field.fieldId) || '',
-      type: readString(field.type) || '',
-      required: field.required === true,
-      description: readString(field.description) || '',
-      ...(readStringArray(field.enum).length ? { enum: readStringArray(field.enum) } : {}),
-    })),
+    fields: fields.map(field => {
+      const type = readString(field.type) || '';
+      // `enum` is the list of values a STRING field may hold. Models systematically reuse it as a
+      // semantic TAG on typed fields instead (run 102046: every one of the 11 entities came back with
+      // clientId/uuid → enum ["identifier"], createdAt/datetime → ["timestamp"], address/text →
+      // ["location"], twice in a row, so nothing was ever written). A decoration on a field whose type
+      // cannot enumerate is dropped here rather than reported: field.enum.type stays for a
+      // hand-written artifact, but it must not burn the run's repair rounds over an unusable value.
+      const values = type === 'string' ? readStringArray(field.enum) : [];
+      return {
+        fieldId: readString(field.fieldId) || '',
+        type,
+        required: field.required === true,
+        description: readString(field.description) || '',
+        ...(values.length ? { enum: values } : {}),
+      };
+    }),
     ...(readStringArray(record.statusEnum).length ? { statusEnum: readStringArray(record.statusEnum) } : {}),
     ...(readStringArray(record.lifecycleStates).length ? { lifecycleStates: readStringArray(record.lifecycleStates) } : {}),
     ...(isRecord(record.eventPolicy) && readString(record.eventPolicy.purpose) ? {

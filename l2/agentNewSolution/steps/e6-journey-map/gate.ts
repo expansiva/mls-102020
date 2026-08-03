@@ -392,6 +392,43 @@ export function deriveE6BffRoutes(artifact: NsE6JourneyMapArtifact): NsE6Journey
 // is rewritten ONLY when the rewrite lands on a valid path of the single used operation; anything still
 // ambiguous (composed calls, a prefix naming ANOTHER known operation, unknown names) is left untouched
 // for the gate to report.
+/**
+ * Run 102046 (03/08): 24 of the 43 detail-gate errors — and 2 of the 4 workspaces that never got
+ * written after two repair rounds — were ONE confusion, repeated identically on every attempt. The
+ * model reads `action` as the button's LABEL and `dataSource` as "the call behind it":
+ *
+ *   contextualAction  action: "Create a project baseline"   dataSource: "createProject"
+ *   primarySurface    action: "Browse and select projects"  dataSource: "queryProjects"
+ *
+ * The contract is the opposite: `action` is the bffId of a COMMAND, `dataSource` the bffId of a QUERY.
+ * Both halves are wrong in a way that resolves the other, with no guessing left over:
+ *   - `dataSource` naming a COMMAND is invalid by contract, and `action` naming no call is invalid too
+ *     → the two were swapped: the command belongs in `action`.
+ *   - `dataSource` naming a real query is valid, so an `action` that names no call is a LABEL, not a
+ *     reference → drop it. The contract has no field for a label, and nothing downstream reads one.
+ * Anything else (an `action` naming an unknown call while `dataSource` is also unusable) is left for
+ * the gate to report: a repair may only fix what it can prove.
+ */
+export function repairE6OrganismReferences(artifact: NsE6JourneyMapArtifact): NsE6JourneyMapArtifact {
+  for (const workspace of artifact.workspaces) {
+    const commandIds = new Set(workspace.bffCalls.filter(call => call.kind === 'command').map(call => call.bffId));
+    const queryIds = new Set(workspace.bffCalls.filter(call => call.kind === 'query').map(call => call.bffId));
+    const localIds = new Set(workspace.bffCalls.map(call => call.bffId));
+    for (const section of workspace.sections) {
+      for (const organism of section.organisms) {
+        if (!organism.action || localIds.has(organism.action)) continue; // nothing to prove
+        if (organism.dataSource && commandIds.has(organism.dataSource)) {
+          organism.action = organism.dataSource;
+          delete organism.dataSource;
+          continue;
+        }
+        if (organism.dataSource && queryIds.has(organism.dataSource)) delete organism.action;
+      }
+    }
+  }
+  return artifact;
+}
+
 export function repairE6BffFroms(
   artifact: NsE6JourneyMapArtifact,
   operationFacts: Record<string, Pick<NsE6OperationFact, 'inputNames' | 'outputTopPaths' | 'outputItemPaths'>>,

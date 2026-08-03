@@ -85,7 +85,7 @@ export function createAgent(): IAgentAsync {
 export const NS_AGENT_BUILD = 'build-25 (2026-07-21) resilience: e6 purpose optional+backfilled + repair rounds 1->3 with modelType rotation (e5/e6) — runs self-heal instead of dying at the end';
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
-  console.log(`[ns-build] agentNewSolution ${NS_AGENT_BUILD}`);
+  // console.log(`[ns-build] agentNewSolution ${NS_AGENT_BUILD}`);
   // /fast (D5): auto-accept the human clarifications. /rebuild (newSolution_18): clean the module's
   // l4+l5 before regenerating. Both flags ride longMemory; the tokens are stripped so the LLM sees a
   // clean prompt (same idea as agentChangeFrontend's cliCommand).

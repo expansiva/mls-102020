@@ -11,6 +11,7 @@ import {
   NsE6JourneyOperation,
   NsE6JourneyWorkspace,
   readE6JourneySources,
+  resolveNsCarryToEntity,
   validateE6Journeys,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/journeys.js';
 import { measureNsJourneyMetrics } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/metrics.js';
@@ -274,4 +275,28 @@ void test('narrowing surfaces the operations no journey is about as warnings, no
   // The 102045 e2 has no journey about clients, yet the run built a clientManagementWorkspace. The old
   // union hid that (every operation was swept into some journey); the narrowed set says it out loud.
   assert.ok(unreferenced.some(issue => issue.path === 'createClient'));
+});
+
+// The phrases below are VERBATIM from the 102046 run — the first time real carries existed.
+void test('a carry is a business phrase: it resolves when some run of its words names an entity', () => {
+  const entities = ['Project', 'WorkTask', 'TimeLog', 'MaterialUsage', 'StatusReport', 'BillingSummary', 'ChangeOrder'];
+  const resolve = (carry: string) => resolveNsCarryToEntity(carry, entities);
+  assert.equal(resolve('the project'), 'Project');
+  assert.equal(resolve('assigned work tasks'), 'WorkTask');
+  assert.equal(resolve('updated work tasks'), 'WorkTask');
+  assert.equal(resolve('time logs'), 'TimeLog');
+  assert.equal(resolve('materials usage'), 'MaterialUsage');
+  assert.equal(resolve('professional status report'), 'StatusReport');
+  assert.equal(resolve('billing summary'), 'BillingSummary');
+  assert.equal(resolve('approved change orders'), 'ChangeOrder');
+  // Not everything a journey carries is a record — and a guess would be worse than "unresolved".
+  assert.equal(resolve('current job-cost position'), '');
+  assert.equal(resolve('tasks needing schedule attention'), '');
+  // Another language than the entity ids does not resolve: the gate degrades to a warning, honestly.
+  assert.equal(resolve('o projeto'), '');
+});
+
+void test('the longest run of words wins, so a compound entity beats its own suffix', () => {
+  assert.equal(resolveNsCarryToEntity('assigned work tasks', ['Task', 'WorkTask']), 'WorkTask');
+  assert.equal(resolveNsCarryToEntity('the task', ['Task', 'WorkTask']), 'Task');
 });

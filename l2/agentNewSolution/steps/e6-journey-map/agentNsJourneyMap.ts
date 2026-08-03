@@ -71,6 +71,7 @@ import {
   prepareE6JourneyMap,
   renderE6Markdown,
   repairE6BffFroms,
+  repairE6OrganismReferences,
   validateE6Invariants,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/gate.js';
 import {
@@ -478,6 +479,7 @@ async function handleDetailResult(
   const scopedContext = await buildSingleWorkspaceContext(inputs, workspace);
   // Deterministic `from` qualification (run12: relative "$items.<col>" paths) before the gate.
   repairE6BffFroms(prepared, scopedContext.operationFacts);
+  repairE6OrganismReferences(prepared); // the label-in-`action` swap (run 102046)
   const localGate = validateE6Invariants(prepared, scopedContext);
   const equality = validateE6WorkspaceEquality(workspace, slice);
   const errors = [...equality, ...localGate.issues.filter(issue => issue.severity === 'error' && issue.code !== 'navigationEntry.target.unknown')];
@@ -571,6 +573,7 @@ async function runE6Finalize(
   // some journey declared the actor arriving here with that record (or a navigation carries it).
   gateContext.pageContext = deriveNsE6PageContext(journeys, siteMap.workspaces, gateContext.entityIds);
   repairE6BffFroms(artifact, gateContext.operationFacts); // idempotent; also heals pre-repair saved details
+  repairE6OrganismReferences(artifact); // idempotent; heals details saved before the repair existed
   const check = validateE6Invariants(artifact, gateContext);
   const errors = check.issues.filter(issue => issue.severity === 'error');
   let pipeline = await readNsPipeline(moduleName) || createNsPipeline(moduleName);

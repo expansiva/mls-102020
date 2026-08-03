@@ -182,3 +182,20 @@ void test('e3 entity gate rejects an entity outside the model and kind drift', a
   assert.equal(driftGate.ok, false);
   assert.ok(driftGate.errors.some(issue => issue.code === 'entity.kind.mismatch'));
 });
+
+void test('E3: an enum on a field that cannot enumerate is dropped, not reported', () => {
+  // Run 102046: all 11 entities came back using `enum` as a semantic TAG on typed fields, twice in a
+  // row, so no entity was ever written and the module died at "entities missing after repair round".
+  const artifact = prepareE3EntityArtifact({
+    entityId: 'Client', title: 'Client', description: 'A customer.', kind: 'mdm', ownership: 'mdmOwned',
+    fields: [
+      { fieldId: 'clientId', type: 'uuid', required: true, description: 'id', enum: ['identifier'] },
+      { fieldId: 'createdAt', type: 'datetime', required: true, description: 'created', enum: ['timestamp'] },
+      { fieldId: 'address', type: 'text', required: false, description: 'address', enum: ['location'] },
+      { fieldId: 'status', type: 'string', required: true, description: 'state', enum: ['active', 'inactive'] },
+    ],
+  });
+  assert.deepEqual(artifact.fields.map(field => field.enum), [undefined, undefined, undefined, ['active', 'inactive']]);
+  // The types themselves are untouched — only the decoration goes.
+  assert.deepEqual(artifact.fields.map(field => field.type), ['uuid', 'datetime', 'text', 'string']);
+});

@@ -18,6 +18,7 @@ import {
   NsE6OperationFact,
   prepareE6JourneyMap,
   repairE6BffFroms,
+  repairE6OrganismReferences,
   validateE6Invariants,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/gate.js';
 
@@ -1221,4 +1222,78 @@ void test('e6 gate T5: replaying the 102045 baseline names exactly the unfed pag
   const passing = validateE6Invariants(artifact, context).issues.filter(issue =>
     /cmdCreateChangeOrder|cmdUpdateWorkTask|generateReport/.test(issue.message) && issue.code.startsWith('bff.input.pageInput'));
   assert.deepEqual(passing, []);
+});
+
+// Run 102046 (03/08): the detail tool schema had `bffField.item.fields.items.$ref -> bffField`, a
+// SELF-REFERENCE with no bound. One provider recursed item.fields → item.fields → … until it hit
+// max_output_tokens (48k output tokens, 84s, TOOL_ARGS_SCHEMA), so 5 of 10 workspaces never returned
+// and the run hung. The projection is two levels — the third must be INEXPRESSIBLE, not discouraged.
+void test('e6 schema: the output projection cannot nest a third level', () => {
+  const schema = JSON.parse(readFileSync(resolve(here, '../../schemas/e6-workspace.schema.json'), 'utf8')) as {
+    $defs: Record<string, { properties: Record<string, unknown> }>;
+  };
+  const field = schema.$defs.bffField.properties.item as { properties: { fields: { items: { $ref: string } } } };
+  assert.equal(field.properties.fields.items.$ref, '#/$defs/bffItemField', 'item columns must be leaves');
+  assert.equal(schema.$defs.bffItemField.properties.item, undefined, 'a leaf column has no item of its own');
+  // And no definition may point back at a container: that is the shape that recursed forever.
+  assert.doesNotMatch(JSON.stringify(schema.$defs.bffItemField), /\$ref/);
+});
+
+// --- run 102046 (03/08): the label-in-`action` swap ------------------------------------------------
+
+// VERBATIM from the projectOverview detail, third attempt — the same shape on all three, and 24 of the
+// run's 43 detail-gate errors. The model reads `action` as the button's text and `dataSource` as "the
+// call behind it"; the contract is action=command bffId, dataSource=query bffId.
+function swappedOrganismMap(): NsE6JourneyMapArtifact {
+  return prepareE6JourneyMap({
+    workspaces: [{
+      workspaceId: 'projectOverview', title: 'Project overview', actors: ['cliente'], kind: 'operation',
+      entity: 'Product', purpose: 'Browse projects and act on the selected one.',
+      bffCalls: [
+        { bffId: 'productList', kind: 'query', uses: [{ operationId: 'browseProducts' }] },
+        { bffId: 'reservar', kind: 'command', uses: [{ operationId: 'reserveProduct' }] },
+      ],
+      sections: [{
+        sectionId: 'projectsAndOperations', intent: 'Browse and act',
+        organisms: [
+          { role: 'primarySurface', action: 'Browse and select projects', dataSource: 'productList' },
+          { role: 'contextualAction', action: 'Create a project baseline', dataSource: 'reservar' },
+        ],
+      }],
+    }],
+    landings: [], navigationEdges: [],
+  }, { moduleName: 'petShop' });
+}
+
+void test('e6 repair: a command in dataSource with a label in action is the pair swapped', () => {
+  const organisms = repairE6OrganismReferences(swappedOrganismMap()).workspaces[0].sections[0].organisms;
+  // The label on a valid query surface is text, not a reference: dropped, dataSource untouched.
+  assert.deepEqual(organisms[0], { role: 'primarySurface', dataSource: 'productList' });
+  // The command moves to where the contract puts it.
+  assert.deepEqual(organisms[1], { role: 'contextualAction', action: 'reservar' });
+});
+
+void test('e6 repair: it only fixes what it can prove, and never touches a valid organism', () => {
+  const map = swappedOrganismMap();
+  const organisms = map.workspaces[0].sections[0].organisms;
+  organisms[0] = { role: 'primarySurface', dataSource: 'productList' };          // already correct
+  organisms[1] = { role: 'contextualAction', action: 'ghostCall' };              // unprovable: no dataSource to swap
+  const repaired = repairE6OrganismReferences(map).workspaces[0].sections[0].organisms;
+  assert.deepEqual(repaired[0], { role: 'primarySurface', dataSource: 'productList' });
+  assert.deepEqual(repaired[1], { role: 'contextualAction', action: 'ghostCall' }, 'left for the gate to report');
+});
+
+void test('e6 repair: running it twice changes nothing more', () => {
+  const once = repairE6OrganismReferences(swappedOrganismMap());
+  const twice = repairE6OrganismReferences(repairE6OrganismReferences(swappedOrganismMap()));
+  assert.deepEqual(twice.workspaces[0].sections, once.workspaces[0].sections);
+});
+
+void test('e6 repair: the repaired organisms pass the gate that was rejecting them', () => {
+  const before = validateE6Invariants(swappedOrganismMap(), bffContext).issues
+    .filter(issue => issue.code.startsWith('organism.reference'));
+  assert.ok(before.length > 0, 'the raw shape must be rejected');
+  const after = validateE6Invariants(repairE6OrganismReferences(swappedOrganismMap()), bffContext).issues
+    .filter(issue => issue.code.startsWith('organism.reference'));
+  assert.deepEqual(after, []);
 });

@@ -49,6 +49,11 @@ HARD REQUIREMENTS (a result violating these is rejected outright):
     COPY names verbatim — inventing a name, or a `$items.<col>` at the top level, fails the gate.
 - sections: at least 1 ({ sectionId, intent, organisms }). intent = one line, what the actor does here.
 - organisms: how each bffCall shows up ({ role, dataSource?, action?, attachTo?, slice? }).
+  `dataSource` and `action` hold a **bffId you declared above** — never a label, a title or a sentence.
+  `dataSource` is the id of a QUERY call, `action` the id of a COMMAND call, and an organism uses ONE of
+  them, not both. There is no field for the button's text: the UI derives it. Writing
+  `action: "Create a project baseline", dataSource: "createProject"` is the pair swapped — it is
+  `action: "createProject"` and no dataSource.
   - "primarySurface" — the section's main surface. EXACTLY 1 per section. Usually a LIST: dataSource =
     its query bffId. But when the workspace's operations are ALL commands (a "create X" form page with
     no query), the primarySurface is the FORM: set `action` = the command bffId (NOT dataSource) — this

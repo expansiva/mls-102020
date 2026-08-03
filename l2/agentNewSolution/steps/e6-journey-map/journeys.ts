@@ -233,16 +233,35 @@ export function deriveNsE6PageContext(
   return { entitiesByWorkspace, unresolvedByWorkspace };
 }
 
-/** A business name matches a declared entity when their letters do, ignoring case, spacing and plural. */
+/**
+ * A carry is a business PHRASE, not an identifier: the 102046 run wrote "the project", "assigned work
+ * tasks", "professional status report". It names an entity when some run of consecutive words IS that
+ * entity's name, ignoring case, separators and plural — so "the project" resolves to Project and
+ * "assigned work tasks" to WorkTask, while "current job-cost position" resolves to nothing and is
+ * reported as unresolved rather than guessed at. A phrase written in another language than the entity
+ * ids will not resolve, which is the honest answer: the gate degrades to a warning there.
+ */
 export function resolveNsCarryToEntity(carry: string, entityIds: readonly string[]): string {
-  const normalized = normalizeNsEntityWord(carry);
-  if (!normalized) return '';
-  return entityIds.find(entityId => normalizeNsEntityWord(entityId) === normalized) || '';
+  const words = carry.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map(singularizeNsWord);
+  if (words.length === 0) return '';
+  const byNormalized = new Map(entityIds.map(entityId => [normalizeNsEntityWord(entityId), entityId]));
+  // Longest run first: "work task" must win over "task" when both are declared entities.
+  for (let size = words.length; size >= 1; size -= 1) {
+    for (let start = 0; start + size <= words.length; start += 1) {
+      const match = byNormalized.get(words.slice(start, start + size).join(''));
+      if (match) return match;
+    }
+  }
+  return '';
 }
 
 function normalizeNsEntityWord(value: string): string {
-  const letters = value.toLowerCase().replace(/[^a-z0-9]/g, '');
-  return letters.endsWith('s') ? letters.slice(0, -1) : letters;
+  return value.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map(singularizeNsWord).join('');
+}
+
+function singularizeNsWord(word: string): string {
+  // "tasks"/"logs" are plurals; "status"/"analysis"/"address" are not — never strip the s of -ss/-us/-is.
+  return word.length > 3 && /s$/.test(word) && !/(ss|us|is)$/.test(word) ? word.slice(0, -1) : word;
 }
 
 export interface E6JourneysGateContext {
