@@ -108,8 +108,12 @@ Every operation in the map's operationIds must be consumed by ≥1 bffCall of TH
      workspace is "create X here", then X's own id is not a `pageInput`: the page needs a query of its
      own (option 1). Declare `pageInput` for the CONTEXT you came from, never for the record you are
      about to act on when nothing brings it.
-  (`actorSession` for "who is logged in", `derived` for an id produced by an earlier command of this
-  same workspace.) Decide it HERE: at validation time the page is frozen and the only remedy left is
+  3. **The id names a PERSON, not a record of this module** — no entity exists for people, so no query
+     can ever list them. Use `source: "actorDirectory"`, `sourceRef: "<actorId>"`: the platform offers
+     the directory of everyone holding that role in this module. Use it ONLY when the id does not name
+     a declared entity (an id that does is picked with `selection` over a query, as in 1).
+  (`actorSession` for "who is logged in" — `actorDirectory` is its sibling for "someone else"; `derived`
+  for an id produced by an earlier command of this same workspace.) Decide it HERE: at validation time the page is frozen and the only remedy left is
   a report. A required input with NO declared source is a gate error on any call, query or command.
 - **If this workspace is an actor's LANDING** (a line above says so), it is opened cold: nothing navigates
   into it, so `pageInput` is not available and every required input must resolve on the page itself. A

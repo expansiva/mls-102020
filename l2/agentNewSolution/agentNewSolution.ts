@@ -12,7 +12,7 @@ import {
   readJsonArtifact,
 } from '/_102020_/l2/agentNewSolution/helpers/nsFs.js';
 import { NsPipelineState, readNsPipeline } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
-import { parseNsFastMode, parseNsRebuildMode } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
+import { parseNsFastMode, parseNsL4OnlyMode, parseNsRebuildMode } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
 
 export const NS_PLAN_IDS = [
   'e1-clarification', 'e1-clarification-answer', 'e1-draft', 'checkpoint-draft', 'e2-journeys', 'checkpoint-journeys',
@@ -91,10 +91,12 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
   // clean prompt (same idea as agentChangeFrontend's cliCommand).
   const fastParsed = parseNsFastMode((userPrompt || '').trim());
   const rebuildParsed = parseNsRebuildMode(fastParsed.prompt);
-  const normalized = rebuildParsed.prompt;
+  const l4OnlyParsed = parseNsL4OnlyMode(rebuildParsed.prompt);
+  const normalized = l4OnlyParsed.prompt;
   const fastMemory: Record<string, string> = {
     ...(fastParsed.fast ? { fastMode: 'true' } : {}),
     ...(rebuildParsed.rebuild ? { rebuild: 'true' } : {}),
+    ...(l4OnlyParsed.l4Only ? { l4Only: 'true' } : {}),
   };
   // Empty "@@newSolution" (the runtime strips the mention) means resume the first module whose
   // Phase 1 is incomplete, so the user does not repeat the clarification they already answered.

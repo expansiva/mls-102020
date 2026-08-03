@@ -64,7 +64,10 @@ export interface NsE6BffUse {
 // can refuse a required id with no resolvable source (the 102045 billingWorkspace case: `projectId
 // required` with no picker query became a typed-in text field). Optional in this phase: re-runs
 // predating the field stay valid.
-export const NS_BFF_INPUT_SOURCES = ['userDecision', 'selection', 'pageInput', 'actorSession', 'derived'] as const;
+// `actorDirectory` (2026-08-03): the value is a PERSON holding an actor role, chosen from the platform
+// roster — the sibling `actorSession` never had. sourceRef names the role. See readme "A person is not
+// a record"; the frontend handoff is todo/changeFrontend/ajuste_actors.md.
+export const NS_BFF_INPUT_SOURCES = ['userDecision', 'selection', 'pageInput', 'actorSession', 'derived', 'actorDirectory'] as const;
 export type NsE6BffInputSource = typeof NS_BFF_INPUT_SOURCES[number];
 
 export interface NsE6BffInput {
@@ -416,6 +419,14 @@ export function repairE6OrganismReferences(artifact: NsE6JourneyMapArtifact): Ns
     const localIds = new Set(workspace.bffCalls.map(call => call.bffId));
     for (const section of workspace.sections) {
       for (const organism of section.organisms) {
+        // A reference field holding a "no value" WORD is not a reference — the model reached for a
+        // placeholder because the field is optional and it filled everything in (run 102046/run04:
+        // a command-only page wrote `dataSource: "none"` beside a perfectly correct `action`, and the
+        // gate rejected the page for a field that should simply have been absent).
+        for (const key of ['dataSource', 'action', 'attachTo'] as const) {
+          const value = organism[key];
+          if (value && !localIds.has(value) && NS_NO_VALUE_WORDS.has(value.trim().toLowerCase())) delete organism[key];
+        }
         if (!organism.action || localIds.has(organism.action)) continue; // nothing to prove
         if (organism.dataSource && commandIds.has(organism.dataSource)) {
           organism.action = organism.dataSource;
@@ -428,6 +439,8 @@ export function repairE6OrganismReferences(artifact: NsE6JourneyMapArtifact): Ns
   }
   return artifact;
 }
+
+const NS_NO_VALUE_WORDS = new Set(['none', 'null', 'undefined', 'n/a', 'na', '-', '--', 'nenhum', 'nenhuma']);
 
 export function repairE6BffFroms(
   artifact: NsE6JourneyMapArtifact,
@@ -778,18 +791,38 @@ function validatePresentationShape(
  *     `actorSession` (it is the logged-in actor) or `derived` + sourceRef = "<bffId>.<field>".
  * `userDecision` on an id is always wrong: an id is never typed by hand (102045 billingWorkspace).
  */
-function validateCommandIdSources(workspace: NsE6Workspace, call: NsE6BffCall, issues: NsGateIssue[]): void {
+function validateCommandIdSources(workspace: NsE6Workspace, call: NsE6BffCall, issues: NsGateIssue[], context?: E6GateContext): void {
   const label = `workspace ${workspace.workspaceId} bffCall ${call.bffId}`;
   const queryIds = new Set(workspace.bffCalls.filter(item => item.kind === 'query').map(item => item.bffId));
   const localIds = new Set(workspace.bffCalls.map(item => item.bffId));
+  const knownActors = new Set(context?.rosterActorIds || []);
   for (const entry of call.input || []) {
     if (entry.required !== true || !isNsIdInputName(entry.name)) continue;
     if (!entry.source || entry.source === 'userDecision') {
       issues.push(errorIssue(
         'bff.input.idSourceMissing',
-        `${label}: required id "${entry.name}" ${entry.source ? 'declares source "userDecision"' : 'declares no source'} — an id is never typed. Declare source "selection" with sourceRef = a query bffId of this workspace (add the picker query over an operation this workspace already hosts), or "pageInput" when the id arrives with the page, or "derived"/"actorSession"`,
+        `${label}: required id "${entry.name}" ${entry.source ? 'declares source "userDecision"' : 'declares no source'} — an id is never typed. Declare source "selection" with sourceRef = a query bffId of this workspace (add the picker query over an operation this workspace already hosts), or "pageInput" when the id arrives with the page, or "derived"/"actorSession". When the id names a PERSON rather than a record of this module (there is no entity for it, so no query can list it), use source "actorDirectory" with sourceRef = the actorId whose directory the platform offers`,
         workspace.workspaceId,
       ));
+      continue;
+    }
+    // A PERSON is not a module record: the platform owns the roster, so the picker is the directory of
+    // an actor ROLE, named by sourceRef. Verifiable like any other source — it says WHICH role.
+    if (entry.source === 'actorDirectory') {
+      const entityId = context ? nsEntityOfIdInput(entry.name, context.entityIds) : '';
+      if (entityId) {
+        issues.push(errorIssue(
+          'bff.input.actorDirectoryOnRecord',
+          `${label}: required id "${entry.name}" uses source "actorDirectory" but it names the declared entity ${entityId} — a record of this module is picked with source "selection" over a query, not from the actor directory`,
+          workspace.workspaceId,
+        ));
+      } else if (!entry.sourceRef || (knownActors.size > 0 && !knownActors.has(entry.sourceRef))) {
+        issues.push(errorIssue(
+          'bff.input.idSourceUnresolved',
+          `${label}: required id "${entry.name}" has source "actorDirectory" but sourceRef "${entry.sourceRef || '(none)'}" is not an actor of this module (${[...knownActors].join(', ') || 'roster unavailable'}) — name the role whose people can be chosen here`,
+          workspace.workspaceId,
+        ));
+      }
       continue;
     }
     if (entry.source === 'selection') {
@@ -1009,7 +1042,7 @@ function validateBffCall(
   // picker query over an operation it already hosts, or declare that the id arrives with the page.
   // At e7 the same defect can only be reported (a cross-workspace query there would break the
   // detail/map equality and coverage gates) — hence the repair belongs here.
-  if (call.kind === 'command') validateCommandIdSources(workspace, call, issues);
+  if (call.kind === 'command') validateCommandIdSources(workspace, call, issues, context);
   validateRequiredInputSources(workspace, call, isLanding, issues);
 
   // A4.2: every `from` resolves to a real input / outputShape field of an operation in `uses`.

@@ -44,6 +44,7 @@ import {
   recordNsGateResult,
   writeNsPipeline,
 } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
+import { isNsL4OnlyMode, NS_L4_ONLY_TRACE_NOTE } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
 import { writeNsTrace } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
 import { NsE2JourneysArtifact } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/gate.js';
 import {
@@ -320,7 +321,12 @@ async function runE7(
   // task06: the spec is complete with no error — chain straight into the backend + frontend rebuilds
   // as TWO new tasks (this task is untouched). Idempotent: the 'e7-done' anchor from a prior successful
   // run means the handoff already fired, so a dirty re-run does not double-post.
-  if (!nsHasStepWithPlanId(context, DONE_ANCHOR)) await dispatchNsHandoff(context, moduleName);
+  // /l4only: while the SPEC itself is what is being iterated on, the two follow-up tasks cost a lot
+  // and are discarded on the next run. The l4/l5 artifacts above are written either way — only the
+  // dispatch is suppressed, and the trace says so, so a missing frontend/backend is never a mystery.
+  const l4Only = isNsL4OnlyMode(context.task?.iaCompressed?.longMemory);
+  if (l4Only) await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, 1, { handoff: 'suppressed' }, NS_L4_ONLY_TRACE_NOTE);
+  else if (!nsHasStepWithPlanId(context, DONE_ANCHOR)) await dispatchNsHandoff(context, moduleName);
 
   return [
     nsResultStepIntent(context, mutationParent, {
@@ -331,7 +337,7 @@ async function runE7(
     }),
     nsUpdateStatusIntent(
       context, mutationParent, step, hookSequential, 'completed',
-      `module ${moduleName} spec complete: ${report.counts.entities} entities, ${report.counts.workflows} workflows, ${report.counts.operations} operations`,
+      `module ${moduleName} spec complete: ${report.counts.entities} entities, ${report.counts.workflows} workflows, ${report.counts.operations} operations${l4Only ? ' — /l4only: changeFrontend/changeBackend NOT started' : ''}`,
     ),
   ];
 }

@@ -101,3 +101,15 @@ npm run test:102020 -- l2
 - Widget uses `StateLitElement`, no Shadow DOM, and CSS in a separate `.less` file.
 - No imports from `agentNewSolution` or `agentNewSolution2`.
 - No `console` in v3 files.
+
+## Prompt flags
+
+`@@newSolution <prompt>` accepts flags anywhere in the prompt; they are stripped before the LLM sees it
+and ride `longMemory`:
+
+- `/fast` — auto-accept both human clarifications (opening questions + journeys checkpoint).
+- `/rebuild` — clean the module's l4+l5 before regenerating (a leftover from a prior run never collides).
+- `/l4only` — stop after the SPEC: e7 writes every l4/l5 artifact as always, but does NOT start the
+  `@@changeFrontend` / `@@changeBackend` follow-up tasks. For when the l4 itself is what you are
+  iterating on and the two generations would be thrown away on the next run. The suppression is
+  recorded in the e7 trace and in the step's completion message, so a missing frontend is never a mystery.

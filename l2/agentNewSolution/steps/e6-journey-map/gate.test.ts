@@ -944,8 +944,8 @@ function idSourceMap(input: unknown[]): NsE6JourneyMapArtifact {
   return prepareE6JourneyMap(map, { moduleName: 'petShop' });
 }
 
-function idSourceCodes(input: unknown[]): string[] {
-  return validateE6Invariants(idSourceMap(input), bffContext).issues
+function idSourceCodes(input: unknown[], context: E6GateContext = bffContext): string[] {
+  return validateE6Invariants(idSourceMap(input), context).issues
     .filter(issue => issue.code.startsWith('bff.input.idSource')).map(issue => issue.code);
 }
 
@@ -1296,4 +1296,73 @@ void test('e6 repair: the repaired organisms pass the gate that was rejecting th
   const after = validateE6Invariants(repairE6OrganismReferences(swappedOrganismMap()), bffContext).issues
     .filter(issue => issue.code.startsWith('organism.reference'));
   assert.deepEqual(after, []);
+});
+
+// VERBATIM from delayRiskReview (run 102046/run04, third attempt): a command-only page whose `action`
+// was already correct, rejected because the optional `dataSource` carried the word "none".
+void test('e6 repair: a "no value" word in a reference field is not a reference', () => {
+  const map = prepareE6JourneyMap({
+    workspaces: [{
+      workspaceId: 'delayRiskReview', title: 'Delay risk', actors: ['cliente'], kind: 'operation',
+      entity: 'Product', purpose: 'Generate and review suggestions.',
+      bffCalls: [
+        { bffId: 'generateCall', kind: 'command', uses: [{ operationId: 'reserveProduct' }] },
+        { bffId: 'reviewCall', kind: 'command', uses: [{ operationId: 'reserveProduct' }] },
+      ],
+      sections: [{
+        sectionId: 'suggestions', intent: 'Generate and review',
+        organisms: [
+          { role: 'primarySurface', dataSource: 'none', action: 'generateCall' },
+          { role: 'contextualAction', dataSource: 'NONE', action: 'reviewCall' },
+        ],
+      }],
+    }],
+    landings: [], navigationEdges: [],
+  }, { moduleName: 'petShop' });
+  const organisms = repairE6OrganismReferences(map).workspaces[0].sections[0].organisms;
+  // The placeholder goes; the command-form surface the gate already supports stays intact.
+  assert.deepEqual(organisms[0], { role: 'primarySurface', action: 'generateCall' });
+  assert.deepEqual(organisms[1], { role: 'contextualAction', action: 'reviewCall' });
+});
+
+void test('e6 repair: a real bffCall is never mistaken for a placeholder', () => {
+  const map = prepareE6JourneyMap({
+    workspaces: [{
+      workspaceId: 'edge', title: 'Edge', actors: ['cliente'], kind: 'operation', entity: 'Product', purpose: 'p',
+      bffCalls: [{ bffId: 'none', kind: 'query', uses: [{ operationId: 'browseProducts' }] }],
+      sections: [{ sectionId: 's', intent: 'i', organisms: [{ role: 'primarySurface', dataSource: 'none' }] }],
+    }],
+    landings: [], navigationEdges: [],
+  }, { moduleName: 'petShop' });
+  const organisms = repairE6OrganismReferences(map).workspaces[0].sections[0].organisms;
+  assert.deepEqual(organisms[0], { role: 'primarySurface', dataSource: 'none' }, 'it resolves, so it stays');
+});
+
+// --- actorDirectory: a person is not a record -----------------------------------------------------
+
+// Run 102046/run04: `assignWorkTask.responsibleFieldWorkerId` had no legal source. The module declares
+// 11 entities and none is a person, so no query can list field workers — `selection` was impossible,
+// nothing carried the id (`pageInput`), it is the ASSIGNEE not the logged-in user (`actorSession`), and
+// no local call produced it (`derived`). The model burned three attempts on a corner with no way out.
+const actorCtx: E6GateContext = { ...bffContext, rosterActorIds: ['cliente', 'fieldWorker'], entityIds: ['Product', 'Highlight'] };
+
+void test('e6 gate: a required id naming a person resolves through the actor directory', () => {
+  assert.deepEqual(idSourceCodes([{ name: 'responsibleFieldWorkerId', required: true, type: 'string', source: 'actorDirectory', sourceRef: 'fieldWorker' }], actorCtx), []);
+});
+
+void test('e6 gate: the directory must name WHICH role — it is a reference, not a free pass', () => {
+  assert.deepEqual(idSourceCodes([{ name: 'responsibleFieldWorkerId', required: true, type: 'string', source: 'actorDirectory' }], actorCtx), ['bff.input.idSourceUnresolved']);
+  assert.deepEqual(idSourceCodes([{ name: 'responsibleFieldWorkerId', required: true, type: 'string', source: 'actorDirectory', sourceRef: 'ghostRole' }], actorCtx), ['bff.input.idSourceUnresolved']);
+});
+
+void test('e6 gate: an id that DOES name a declared entity is picked from a query, never the directory', () => {
+  const issues = validateE6Invariants(idSourceMap([{ name: 'productId', required: true, type: 'string', source: 'actorDirectory', sourceRef: 'cliente' }]), actorCtx).issues;
+  assert.deepEqual(issues.filter(i => i.code.startsWith('bff.input.')).map(i => i.code), ['bff.input.actorDirectoryOnRecord']);
+});
+
+void test('e6 gate: the message on a sourceless id names the person way out, or the retry cannot find it', () => {
+  const message = validateE6Invariants(idSourceMap([{ name: 'productId', required: true, type: 'string' }]), actorCtx)
+    .issues.find(issue => issue.code === 'bff.input.idSourceMissing')!.message;
+  assert.match(message, /actorDirectory/);
+  assert.match(message, /names a PERSON/);
 });

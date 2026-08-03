@@ -44,3 +44,22 @@ export function isNsRebuildMode(longMemory: unknown): boolean {
   return typeof longMemory === 'object' && longMemory !== null
     && (longMemory as Record<string, unknown>)[NS_REBUILD_MEMORY_FLAG] === 'true';
 }
+
+// `/l4only` (2026-08-03): stop after the SPEC. E7 normally fires `@@changeBackend` and
+// `@@changeFrontend` as follow-up tasks; while the l4 itself is what is being iterated on, those two
+// cost a lot and are thrown away on the next run. Same longMemory channel as /fast and /rebuild —
+// the flag only suppresses the handoff dispatch, the l4/l5 artifacts are written exactly as always.
+export const NS_L4_ONLY_MEMORY_FLAG = 'l4Only';
+export const NS_L4_ONLY_TRACE_NOTE = '[l4only] handoff para changeFrontend/changeBackend suprimido';
+
+export function parseNsL4OnlyMode(prompt: string): { l4Only: boolean; prompt: string } {
+  const raw = String(prompt || '');
+  const l4Only = /(^|\s)\/l4only(\s|$)/i.test(raw);
+  const cleaned = raw.replace(/(^|\s)\/l4only(?=\s|$)/gi, '$1').replace(/\s+/g, ' ').trim();
+  return { l4Only, prompt: cleaned };
+}
+
+export function isNsL4OnlyMode(longMemory: unknown): boolean {
+  return typeof longMemory === 'object' && longMemory !== null
+    && (longMemory as Record<string, unknown>)[NS_L4_ONLY_MEMORY_FLAG] === 'true';
+}

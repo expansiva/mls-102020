@@ -1,5 +1,5 @@
 {
-  "$id": "https://collab.codes/agentNewSolution/e6-workspace/2026-08-03-ns-e6-workspace-v4",
+  "$id": "https://collab.codes/agentNewSolution/e6-workspace/2026-08-03-ns-e6-workspace-v5",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -217,8 +217,10 @@
                     "selection",
                     "pageInput",
                     "actorSession",
-                    "derived"
-                  ]
+                    "derived",
+                    "actorDirectory"
+                  ],
+                  "description": "Where the value comes from. actorDirectory = a PERSON chosen from the platform directory of an actor role; sourceRef is that actorId."
                 },
                 "sourceRef": {
                   "type": "string"
