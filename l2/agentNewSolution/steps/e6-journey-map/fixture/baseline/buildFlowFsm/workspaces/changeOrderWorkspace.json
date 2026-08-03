@@ -1,0 +1,344 @@
+{
+  "workspaceId": "changeOrderWorkspace",
+  "title": "Change Orders",
+  "actors": [
+    "projectManager"
+  ],
+  "kind": "workflow",
+  "entity": "ChangeOrder",
+  "workflowId": "changeOrderLifecycle",
+  "bffCalls": [
+    {
+      "bffId": "cmdCreateChangeOrder",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "createChangeOrder"
+        }
+      ],
+      "input": [
+        {
+          "name": "projectId",
+          "from": "createChangeOrder.projectId",
+          "required": true,
+          "source": "pageInput"
+        },
+        {
+          "name": "title",
+          "from": "createChangeOrder.title",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "description",
+          "from": "createChangeOrder.description",
+          "source": "userDecision"
+        },
+        {
+          "name": "impactType",
+          "from": "createChangeOrder.impactType",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "costAdjustment",
+          "from": "createChangeOrder.costAdjustment",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "scheduleAdjustmentDays",
+          "from": "createChangeOrder.scheduleAdjustmentDays",
+          "source": "userDecision"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "changeOrderId",
+            "from": "createChangeOrder.changeOrderId",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "projectId",
+            "from": "createChangeOrder.projectId",
+            "type": "string"
+          },
+          {
+            "name": "title",
+            "from": "createChangeOrder.title",
+            "type": "string"
+          },
+          {
+            "name": "description",
+            "from": "createChangeOrder.description",
+            "type": "string"
+          },
+          {
+            "name": "impactType",
+            "from": "createChangeOrder.impactType",
+            "type": "string"
+          },
+          {
+            "name": "costAdjustment",
+            "from": "createChangeOrder.costAdjustment",
+            "type": "number"
+          },
+          {
+            "name": "scheduleAdjustmentDays",
+            "from": "createChangeOrder.scheduleAdjustmentDays",
+            "type": "number"
+          },
+          {
+            "name": "status",
+            "from": "createChangeOrder.status",
+            "type": "string"
+          },
+          {
+            "name": "createdAt",
+            "from": "createChangeOrder.createdAt",
+            "type": "string"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.changeOrderWorkspace.cmdCreateChangeOrder"
+    },
+    {
+      "bffId": "cmdUpdateChangeOrder",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "updateChangeOrder"
+        }
+      ],
+      "input": [
+        {
+          "name": "changeOrderId",
+          "from": "updateChangeOrder.changeOrderId",
+          "required": true,
+          "source": "pageInput"
+        },
+        {
+          "name": "title",
+          "from": "updateChangeOrder.title",
+          "source": "userDecision"
+        },
+        {
+          "name": "description",
+          "from": "updateChangeOrder.description",
+          "source": "userDecision"
+        },
+        {
+          "name": "impactType",
+          "from": "updateChangeOrder.impactType",
+          "source": "userDecision"
+        },
+        {
+          "name": "costAdjustment",
+          "from": "updateChangeOrder.costAdjustment",
+          "source": "userDecision"
+        },
+        {
+          "name": "scheduleAdjustmentDays",
+          "from": "updateChangeOrder.scheduleAdjustmentDays",
+          "source": "userDecision"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "changeOrderId",
+            "from": "updateChangeOrder.changeOrderId",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "projectId",
+            "from": "updateChangeOrder.projectId",
+            "type": "string"
+          },
+          {
+            "name": "title",
+            "from": "updateChangeOrder.title",
+            "type": "string"
+          },
+          {
+            "name": "description",
+            "from": "updateChangeOrder.description",
+            "type": "string"
+          },
+          {
+            "name": "impactType",
+            "from": "updateChangeOrder.impactType",
+            "type": "string"
+          },
+          {
+            "name": "costAdjustment",
+            "from": "updateChangeOrder.costAdjustment",
+            "type": "number"
+          },
+          {
+            "name": "scheduleAdjustmentDays",
+            "from": "updateChangeOrder.scheduleAdjustmentDays",
+            "type": "number"
+          },
+          {
+            "name": "status",
+            "from": "updateChangeOrder.status",
+            "type": "string"
+          },
+          {
+            "name": "updatedAt",
+            "from": "updateChangeOrder.updatedAt",
+            "type": "string"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.changeOrderWorkspace.cmdUpdateChangeOrder"
+    },
+    {
+      "bffId": "cmdUpdateChangeOrderStatus",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "updateChangeOrderStatus"
+        }
+      ],
+      "input": [
+        {
+          "name": "changeOrderId",
+          "from": "updateChangeOrderStatus.changeOrderId",
+          "required": true,
+          "source": "pageInput"
+        },
+        {
+          "name": "status",
+          "from": "updateChangeOrderStatus.status",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "rejectionReason",
+          "from": "updateChangeOrderStatus.rejectionReason",
+          "source": "userDecision"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "changeOrderId",
+            "from": "updateChangeOrderStatus.changeOrderId",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "projectId",
+            "from": "updateChangeOrderStatus.projectId",
+            "type": "string"
+          },
+          {
+            "name": "title",
+            "from": "updateChangeOrderStatus.title",
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "from": "updateChangeOrderStatus.status",
+            "type": "string"
+          },
+          {
+            "name": "costAdjustment",
+            "from": "updateChangeOrderStatus.costAdjustment",
+            "type": "number"
+          },
+          {
+            "name": "scheduleAdjustmentDays",
+            "from": "updateChangeOrderStatus.scheduleAdjustmentDays",
+            "type": "number"
+          },
+          {
+            "name": "rejectionReason",
+            "from": "updateChangeOrderStatus.rejectionReason",
+            "type": "string"
+          },
+          {
+            "name": "approvedAt",
+            "from": "updateChangeOrderStatus.approvedAt",
+            "type": "string"
+          },
+          {
+            "name": "rejectedAt",
+            "from": "updateChangeOrderStatus.rejectedAt",
+            "type": "string"
+          },
+          {
+            "name": "updatedAt",
+            "from": "updateChangeOrderStatus.updatedAt",
+            "type": "string"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.changeOrderWorkspace.cmdUpdateChangeOrderStatus"
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "createChangeOrderSection",
+      "intent": "Project manager fills in the change order details and submits it for recording in draft status.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "action": "cmdCreateChangeOrder"
+        }
+      ]
+    },
+    {
+      "sectionId": "editChangeOrderSection",
+      "intent": "Project manager corrects or refines the details of an existing editable change order.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "action": "cmdUpdateChangeOrder"
+        }
+      ]
+    },
+    {
+      "sectionId": "reviewChangeOrderSection",
+      "intent": "Project manager reviews the change order scope, cost, and schedule impact, then approves or rejects it with an optional rejection reason.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "action": "cmdUpdateChangeOrderStatus"
+        }
+      ]
+    }
+  ],
+  "operationIds": [
+    "createChangeOrder",
+    "updateChangeOrder",
+    "updateChangeOrderStatus"
+  ],
+  "purpose": "Project manager documents, edits, and approves change orders, applying cost impact to the job.",
+  "presentation": {
+    "categoryRef": "entityRecordManagement",
+    "confidence": 8,
+    "classificationNote": "All three operations are write-only (create, update, update-status) with no list query — the workspace is purely about creating and transitioning a single ChangeOrder record through its lifecycle. entityRecordManagement is the closest fit: create, edit, and transitionStatus over a business record.",
+    "alternates": [
+      {
+        "categoryRef": "approvalWorkflow",
+        "confidence": 6,
+        "reason": "The status-transition step (approve/reject with rejection reason) has approval-workflow characteristics, but the workspace also covers creation and editing, making it broader than a pure approval flow."
+      },
+      {
+        "categoryRef": "processWizard",
+        "confidence": 5,
+        "reason": "The three sequential steps (create → edit → approve/reject) could be modelled as a guided wizard, but there is no explicit step-validation or summary-final pattern required here."
+      }
+    ]
+  },
+  "sliceHash": "djb2:1d6ee8c9"
+}

@@ -1,0 +1,28 @@
+{
+  "journeyId": "logDailyProgress",
+  "actorId": "fieldWorker",
+  "title": "Log daily time, materials, and task progress",
+  "goal": "Record hours worked, materials used, and task completion status so job costing and project tracking stay accurate.",
+  "steps": [
+    "Select the task being worked on",
+    "Log hours worked",
+    "Log materials used",
+    "Update task status"
+  ],
+  "outcome": "Time logs, material usage, and task status are recorded against the project, keeping job costing and project tracking up to date.",
+  "operationIds": [
+    "createWorkTask",
+    "updateWorkTask",
+    "updateWorkTaskStatus",
+    "queryWorkTasks",
+    "queryMyWorkTasks",
+    "viewWorkTask",
+    "createTimeLog",
+    "voidTimeLog",
+    "queryTimeLogs",
+    "createMaterialUsage",
+    "voidMaterialUsage",
+    "queryMaterialUsages"
+  ],
+  "workspaceId": "projectDetailWorkspace"
+}

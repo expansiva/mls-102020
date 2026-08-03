@@ -1,0 +1,394 @@
+{
+  "workspaceId": "dashboardWorkspace",
+  "title": "Dashboard operacional e IA",
+  "actors": [
+    "gerente"
+  ],
+  "kind": "operation",
+  "entity": "OperationalDashboard",
+  "bffCalls": [
+    {
+      "bffId": "getDashboard",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "viewOperationalDashboard"
+        }
+      ],
+      "input": [
+        {
+          "name": "dailyShiftId",
+          "from": "viewOperationalDashboard.dailyShiftId",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "operationalDashboardId",
+            "from": "viewOperationalDashboard.operationalDashboardId",
+            "type": "string"
+          },
+          {
+            "name": "dailyShiftId",
+            "from": "viewOperationalDashboard.dailyShiftId",
+            "type": "string"
+          },
+          {
+            "name": "referenceDate",
+            "from": "viewOperationalDashboard.referenceDate",
+            "type": "string"
+          },
+          {
+            "name": "todaySalesTotal",
+            "from": "viewOperationalDashboard.todaySalesTotal",
+            "type": "number"
+          },
+          {
+            "name": "todayOrdersCount",
+            "from": "viewOperationalDashboard.todayOrdersCount",
+            "type": "number"
+          },
+          {
+            "name": "todayItemsSold",
+            "from": "viewOperationalDashboard.todayItemsSold",
+            "type": "number"
+          },
+          {
+            "name": "topMenuItemId",
+            "from": "viewOperationalDashboard.topMenuItemId",
+            "type": "string"
+          },
+          {
+            "name": "topMenuItemQuantity",
+            "from": "viewOperationalDashboard.topMenuItemQuantity",
+            "type": "number"
+          },
+          {
+            "name": "topSellingItemsCount",
+            "from": "viewOperationalDashboard.topSellingItemsCount",
+            "type": "number"
+          },
+          {
+            "name": "lowStockItemsCount",
+            "from": "viewOperationalDashboard.lowStockItemsCount",
+            "type": "number"
+          },
+          {
+            "name": "outOfStockItemsCount",
+            "from": "viewOperationalDashboard.outOfStockItemsCount",
+            "type": "number"
+          },
+          {
+            "name": "hasLowStockAlert",
+            "from": "viewOperationalDashboard.hasLowStockAlert",
+            "type": "boolean"
+          },
+          {
+            "name": "lastComputedAt",
+            "from": "viewOperationalDashboard.lastComputedAt",
+            "type": "string"
+          },
+          {
+            "name": "topSellingItems",
+            "from": "viewOperationalDashboard.topSellingItems",
+            "type": "array",
+            "item": {
+              "fields": [
+                {
+                  "name": "menuItemId",
+                  "from": "viewOperationalDashboard.topSellingItems.$items.menuItemId",
+                  "type": "string"
+                },
+                {
+                  "name": "name",
+                  "from": "viewOperationalDashboard.topSellingItems.$items.name",
+                  "type": "string"
+                },
+                {
+                  "name": "quantitySold",
+                  "from": "viewOperationalDashboard.topSellingItems.$items.quantitySold",
+                  "type": "number"
+                },
+                {
+                  "name": "unitPrice",
+                  "from": "viewOperationalDashboard.topSellingItems.$items.unitPrice",
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          {
+            "name": "lowStockAlerts",
+            "from": "viewOperationalDashboard.lowStockAlerts",
+            "type": "array",
+            "item": {
+              "fields": [
+                {
+                  "name": "stockItemId",
+                  "from": "viewOperationalDashboard.lowStockAlerts.$items.stockItemId",
+                  "type": "string"
+                },
+                {
+                  "name": "name",
+                  "from": "viewOperationalDashboard.lowStockAlerts.$items.name",
+                  "type": "string"
+                },
+                {
+                  "name": "currentBalance",
+                  "from": "viewOperationalDashboard.lowStockAlerts.$items.currentBalance",
+                  "type": "number"
+                },
+                {
+                  "name": "minimumLevel",
+                  "from": "viewOperationalDashboard.lowStockAlerts.$items.minimumLevel",
+                  "type": "number"
+                },
+                {
+                  "name": "unit",
+                  "from": "viewOperationalDashboard.lowStockAlerts.$items.unit",
+                  "type": "string"
+                },
+                {
+                  "name": "isOutOfStock",
+                  "from": "viewOperationalDashboard.lowStockAlerts.$items.isOutOfStock",
+                  "type": "boolean"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "route": "cafeFlow.dashboardWorkspace.getDashboard"
+    },
+    {
+      "bffId": "getAiSalesSummary",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "generateAiSalesSummary"
+        }
+      ],
+      "input": [
+        {
+          "name": "operationalDashboardId",
+          "from": "generateAiSalesSummary.operationalDashboardId",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "aiSalesSummaryId",
+            "from": "generateAiSalesSummary.aiSalesSummaryId",
+            "type": "string"
+          },
+          {
+            "name": "operationalDashboardId",
+            "from": "generateAiSalesSummary.operationalDashboardId",
+            "type": "string"
+          },
+          {
+            "name": "summaryDate",
+            "from": "generateAiSalesSummary.summaryDate",
+            "type": "string"
+          },
+          {
+            "name": "periodStart",
+            "from": "generateAiSalesSummary.periodStart",
+            "type": "string"
+          },
+          {
+            "name": "periodEnd",
+            "from": "generateAiSalesSummary.periodEnd",
+            "type": "string"
+          },
+          {
+            "name": "summaryText",
+            "from": "generateAiSalesSummary.summaryText",
+            "type": "string"
+          },
+          {
+            "name": "modelId",
+            "from": "generateAiSalesSummary.modelId",
+            "type": "string"
+          },
+          {
+            "name": "promptTokens",
+            "from": "generateAiSalesSummary.promptTokens",
+            "type": "number"
+          },
+          {
+            "name": "completionTokens",
+            "from": "generateAiSalesSummary.completionTokens",
+            "type": "number"
+          },
+          {
+            "name": "generatedAt",
+            "from": "generateAiSalesSummary.generatedAt",
+            "type": "string"
+          }
+        ]
+      },
+      "route": "cafeFlow.dashboardWorkspace.getAiSalesSummary"
+    },
+    {
+      "bffId": "getAiPromotionSuggestions",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "generateAiPromotionSuggestions"
+        }
+      ],
+      "input": [
+        {
+          "name": "operationalDashboardId",
+          "from": "generateAiPromotionSuggestions.operationalDashboardId",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "output": {
+        "kind": "list",
+        "fields": [
+          {
+            "name": "aiPromotionSuggestionId",
+            "from": "generateAiPromotionSuggestions.$items.aiPromotionSuggestionId",
+            "type": "string"
+          },
+          {
+            "name": "operationalDashboardId",
+            "from": "generateAiPromotionSuggestions.$items.operationalDashboardId",
+            "type": "string"
+          },
+          {
+            "name": "menuItemId",
+            "from": "generateAiPromotionSuggestions.$items.menuItemId",
+            "type": "string"
+          },
+          {
+            "name": "menuItemName",
+            "from": "generateAiPromotionSuggestions.$items.menuItemName",
+            "type": "string"
+          },
+          {
+            "name": "menuCategoryId",
+            "from": "generateAiPromotionSuggestions.$items.menuCategoryId",
+            "type": "string"
+          },
+          {
+            "name": "reason",
+            "from": "generateAiPromotionSuggestions.$items.reason",
+            "type": "string"
+          },
+          {
+            "name": "salesLast7Days",
+            "from": "generateAiPromotionSuggestions.$items.salesLast7Days",
+            "type": "number"
+          },
+          {
+            "name": "salesToday",
+            "from": "generateAiPromotionSuggestions.$items.salesToday",
+            "type": "number"
+          },
+          {
+            "name": "currentStockLevel",
+            "from": "generateAiPromotionSuggestions.$items.currentStockLevel",
+            "type": "number"
+          },
+          {
+            "name": "confidenceScore",
+            "from": "generateAiPromotionSuggestions.$items.confidenceScore",
+            "type": "number"
+          },
+          {
+            "name": "suggestedDiscountPercent",
+            "from": "generateAiPromotionSuggestions.$items.suggestedDiscountPercent",
+            "type": "number"
+          },
+          {
+            "name": "status",
+            "from": "generateAiPromotionSuggestions.$items.status",
+            "type": "string"
+          },
+          {
+            "name": "generatedAt",
+            "from": "generateAiPromotionSuggestions.$items.generatedAt",
+            "type": "string"
+          },
+          {
+            "name": "expiresAt",
+            "from": "generateAiPromotionSuggestions.$items.expiresAt",
+            "type": "string"
+          }
+        ]
+      },
+      "route": "cafeFlow.dashboardWorkspace.getAiPromotionSuggestions"
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "kpiOverview",
+      "intent": "Gerente visualiza os indicadores-chave do turno corrente: total de vendas, pedidos, itens vendidos e alertas de estoque.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "dataSource": "getDashboard"
+        }
+      ]
+    },
+    {
+      "sectionId": "topSellingItems",
+      "intent": "Gerente confere os itens mais vendidos do turno em ordem de quantidade.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "dataSource": "getDashboard",
+          "slice": "topSellingItems"
+        }
+      ]
+    },
+    {
+      "sectionId": "stockAlerts",
+      "intent": "Gerente identifica itens com estoque baixo ou em ruptura para tomar ação imediata.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "dataSource": "getDashboard",
+          "slice": "lowStockAlerts"
+        }
+      ]
+    },
+    {
+      "sectionId": "aiSalesSummary",
+      "intent": "Gerente solicita e lê o resumo narrativo de vendas do dia gerado pela IA.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "dataSource": "getAiSalesSummary"
+        }
+      ]
+    },
+    {
+      "sectionId": "aiPromotionSuggestions",
+      "intent": "Gerente consulta as sugestões de itens a promover geradas pela IA, com justificativa, confiança e desconto sugerido.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "dataSource": "getAiPromotionSuggestions"
+        }
+      ]
+    }
+  ],
+  "operationIds": [
+    "viewOperationalDashboard",
+    "generateAiSalesSummary",
+    "generateAiPromotionSuggestions"
+  ],
+  "purpose": "Gerente acompanha indicadores do turno corrente, consulta o resumo de vendas gerado por IA e obtém sugestões de itens a promover.",
+  "sliceHash": "djb2:d50f4feb"
+}

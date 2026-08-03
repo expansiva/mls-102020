@@ -3,6 +3,7 @@
 import { errorIssue, NsGateIssue, warningIssue } from '/_102020_/l2/agentNewSolution/helpers/nsGate.js';
 import { readActors } from '/_102020_/l2/agentNewSolution/helpers/nsActors.js';
 import { NsCategoryCatalog, validateNsCatalogIntegrity } from '/_102020_/l2/agentNewSolution/helpers/nsCategoryCatalog.js';
+import type { NsE6PageContext } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/journeys.js';
 
 // isRecord is a leaf type-guard defined locally (not imported from nsFs) so this gate — and its
 // unit test — stay free of the libStor/libModel import chain, which touches DOM globals at init.
@@ -193,6 +194,8 @@ export interface NsE6OperationFact {
   // A4.2 + P1: valid `from` suffixes for a bffCall.output field, SPLIT BY POSITION (top vs item).
   outputTopPaths: string[];
   outputItemPaths: string[];
+  /** T5: the entity this operation acts on — an incoming edge that CREATES it cannot carry its id. */
+  entity?: string;
 }
 
 export interface E6GateContext {
@@ -213,6 +216,12 @@ export interface E6GateContext {
   // Style ids that actually have a template folder in `_102040_/l4/templates/<styleRef>/`. Empty =
   // unknown (not "none") — the styleRef check then no-ops.
   templateStyleRefs?: string[];
+  // T5: the records each page is known to be handed, derived from the human-approved journey
+  // prerequisites (deriveNsE6PageContext). Absent = no journey declares any context.
+  pageContext?: NsE6PageContext;
+  // T5: false while a SINGLE workspace is being validated (the detail fan-out), where the other pages
+  // may not exist on disk yet — the pageInput provider check needs the whole map and runs at finalize.
+  wholeMap?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -529,6 +538,10 @@ export function validateE6Invariants(
       for (const use of call.uses) usedOperationIds.add(use.operationId);
     }
   }
+  // A landing is opened COLD: no navigation hands it anything (improveJourneys T2).
+  const landingWorkspaceIds = new Set(artifact.landings.map(landing => landing.workspaceId));
+  // T5: what each page is actually handed — declared context (journeys) + what a navigation can carry.
+  const carriedIntoWorkspace = context.wholeMap === false ? null : buildCarriedContext(artifact, context);
 
   for (const workspace of artifact.workspaces) {
     if (workspaceIds.has(workspace.workspaceId)) {
@@ -544,7 +557,12 @@ export function validateE6Invariants(
         issues.push(errorIssue('bff.id.duplicate', `workspace ${workspace.workspaceId}: duplicated bffId ${call.bffId}`, workspace.workspaceId));
       }
       localBff.set(call.bffId, call);
-      validateBffCall(workspace, call, context, knownOperations, workspaceActorUnion, issues);
+      const isLanding = landingWorkspaceIds.has(workspace.workspaceId);
+      validateBffCall(workspace, call, context, knownOperations, workspaceActorUnion, isLanding, issues);
+      // A landing has no sender at all — T2 owns that message, so one input never gets two errors.
+      if (carriedIntoWorkspace && !isLanding) {
+        validatePageInputProviders(workspace, call, carriedIntoWorkspace[workspace.workspaceId], context, issues);
+      }
     }
 
     if (workspace.sections.length === 0) {
@@ -752,9 +770,170 @@ function validateCommandIdSources(workspace: NsE6Workspace, call: NsE6BffCall, i
   }
 }
 
+/**
+ * improveJourneys T2. Two holes the id-source rule above leaves open, both real in the 102045 run:
+ *
+ * 1. It only looks at COMMANDS and at id-shaped names, so a required input with NO `source` at all on a
+ *    QUERY passed untouched — `viewJobCostSummary.projectId` sailed through e6 AND e7 with zero findings.
+ *    Any required input must say where its value comes from (`bff.input.sourceMissing`).
+ * 2. Nothing knew what a LANDING is. A landing is opened cold — no navigation hands it anything — so a
+ *    required `pageInput` there has no sender by construction (`landing.requiresPageInput`), and a
+ *    `selection`/`derived` that does not resolve inside the page is unreachable too
+ *    (`landing.input.unresolved`). The way out named in the message is the one the model can act on
+ *    while the page is being designed: host a query that resolves the record from the actor's own
+ *    context (the open/current one) and feed the input from it, or take it from the session.
+ *
+ * Cases the command-id rule already reports with a richer message are skipped here — one input never
+ * produces two errors.
+ */
+function validateRequiredInputSources(workspace: NsE6Workspace, call: NsE6BffCall, isLanding: boolean, issues: NsGateIssue[]): void {
+  const label = `workspace ${workspace.workspaceId} bffCall ${call.bffId}`;
+  const queryIds = new Set(workspace.bffCalls.filter(item => item.kind === 'query').map(item => item.bffId));
+  const localIds = new Set(workspace.bffCalls.map(item => item.bffId));
+  const landingWayOut = 'a landing receives nothing: host a query that resolves the record from the actor\'s own context and feed this input from it (source "selection"/"derived" over a local bffCall), or take the value from the session (source "actorSession")';
+  for (const entry of call.input || []) {
+    if (entry.required !== true) continue;
+    const ownedByIdRule = call.kind === 'command' && isNsIdInputName(entry.name);
+    if (!entry.source) {
+      if (!ownedByIdRule) {
+        issues.push(errorIssue(
+          'bff.input.sourceMissing',
+          `${label}: required input "${entry.name}" declares no source — every required value must say where it comes from (userDecision | selection | pageInput | actorSession | derived)${isLanding ? `. ${landingWayOut}` : ''}`,
+          workspace.workspaceId,
+        ));
+      }
+      continue;
+    }
+    if (!isLanding) continue;
+    if (entry.source === 'pageInput') {
+      issues.push(errorIssue('landing.requiresPageInput', `${label}: required input "${entry.name}" has source "pageInput" but ${workspace.workspaceId} is a LANDING — ${landingWayOut}`, workspace.workspaceId));
+      continue;
+    }
+    if (ownedByIdRule) continue; // an unresolved selection/derived on a command id is idSourceUnresolved
+    const unresolved = (entry.source === 'selection' && !queryIds.has(entry.sourceRef || ''))
+      || (entry.source === 'derived' && !localIds.has((entry.sourceRef || '').split('.')[0]));
+    if (unresolved) {
+      issues.push(errorIssue('landing.input.unresolved', `${label}: required input "${entry.name}" has source "${entry.source}" with sourceRef "${entry.sourceRef || '(none)'}", which is not a call of this workspace — ${landingWayOut}`, workspace.workspaceId));
+    }
+  }
+}
+
 /** `id` / `<entity>Id` — the system-identifier convention shared with the e7 readiness lint. */
 export function isNsIdInputName(name: string): boolean {
   return /^id$/i.test(name) || /Id$/.test(name);
+}
+
+// ---------------------------------------------------------------------------
+// T5 — `pageInput` needs a creditor (the hole gate.test.ts used to assert was empty)
+// ---------------------------------------------------------------------------
+
+/** What a page is handed on arrival, and how sure we are about it. */
+interface NsCarriedContext {
+  /** Field names a navigation into this page can actually carry. */
+  fields: Set<string>;
+  /** EntityIds some journey declares the actor arriving with (prerequisite.carries, resolved). */
+  entities: Set<string>;
+  /** Declared carries that matched no entity: context is stated but unreadable — do not claim certainty. */
+  unresolved: string[];
+}
+
+/**
+ * `source: "pageInput"` is the model saying "this id arrives with the page". Until T3 nothing could
+ * check that claim, and 20 of them shipped in one run with no provider. Two things can feed a page:
+ *
+ *  1. A NAVIGATION into it. An edge carries a field when the page it comes FROM displays that field
+ *     (a query output) and both pages serve a common actor — an edge between disjoint actors is a
+ *     HANDOFF: the other person's screen never had the value. And an edge whose operation CREATES a
+ *     record cannot carry that record's id: it does not exist yet when the navigation is decided.
+ *     That single rule is what separates the legitimate `projectId` (you were in the project) from the
+ *     orphan `changeOrderId` (you arrive to create one, not carrying one) on the SAME edge.
+ *  2. The DECLARED CONTEXT of a journey: `prerequisite.carries` approved by the human at the e2
+ *     checkpoint, resolved to entities and matched against the id by the `<entity>Id` convention.
+ *
+ * Neither → `bff.input.pageInputUnfed` (ERROR). If the page HAS declared context that could not be
+ * resolved to an entity, the answer is honestly unknown: `bff.input.pageInputUnverified` (WARNING).
+ * Inventing an error over a naming convention would burn a repair round on a run that may be correct.
+ */
+function validatePageInputProviders(
+  workspace: NsE6Workspace,
+  call: NsE6BffCall,
+  carried: NsCarriedContext | undefined,
+  context: E6GateContext,
+  issues: NsGateIssue[],
+): void {
+  const label = `workspace ${workspace.workspaceId} bffCall ${call.bffId}`;
+  for (const entry of call.input || []) {
+    if (entry.required !== true || entry.source !== 'pageInput' || !isNsIdInputName(entry.name)) continue;
+    if (carried?.fields.has(entry.name)) continue;
+    const entityId = nsEntityOfIdInput(entry.name, context.entityIds);
+    if (entityId && carried?.entities.has(entityId)) continue;
+    const unresolved = carried?.unresolved || [];
+    if (!entityId || unresolved.length > 0) {
+      issues.push(warningIssue(
+        'bff.input.pageInputUnverified',
+        `${label}: required id "${entry.name}" has source "pageInput" and no provider could be verified${entityId ? '' : ` (the name does not resolve to a declared entity)`}${unresolved.length ? ` (declared context ${unresolved.join(', ')} matches no entity)` : ''}`,
+        workspace.workspaceId,
+      ));
+      continue;
+    }
+    issues.push(errorIssue(
+      'bff.input.pageInputUnfed',
+      `${label}: required id "${entry.name}" has source "pageInput" but nothing hands it to this page — no navigation into ${workspace.workspaceId} comes from a page of the same actor that displays "${entry.name}", and no journey declares arriving here with ${entityId}. Either add a query over an operation this workspace already hosts and use source "selection", or make the journey that leads here declare it (prerequisite carries)`,
+      workspace.workspaceId,
+    ));
+  }
+}
+
+function buildCarriedContext(artifact: NsE6JourneyMapArtifact, context: E6GateContext): Record<string, NsCarriedContext> {
+  const byId = new Map(artifact.workspaces.map(workspace => [workspace.workspaceId, workspace]));
+  const carried: Record<string, NsCarriedContext> = {};
+  for (const workspace of artifact.workspaces) {
+    carried[workspace.workspaceId] = {
+      fields: new Set<string>(),
+      entities: new Set(context.pageContext?.entitiesByWorkspace[workspace.workspaceId] || []),
+      unresolved: context.pageContext?.unresolvedByWorkspace[workspace.workspaceId] || [],
+    };
+  }
+  for (const edge of artifact.navigationEdges) {
+    const from = byId.get(edge.from);
+    const to = byId.get(edge.to);
+    if (!from || !to || !carried[edge.to]) continue;
+    // A handoff is not navigation: the other actor's screen is not this actor's page context.
+    if (!from.actors.some(actor => to.actors.includes(actor))) continue;
+    const fact = edge.operationId ? context.operationFacts[edge.operationId] : undefined;
+    const createdIdField = fact?.opKind === 'create' && fact.entity ? nsIdFieldOfEntity(fact.entity) : '';
+    for (const call of from.bffCalls) {
+      if (call.kind !== 'query') continue;
+      for (const name of outputFieldNamesOf(call)) {
+        if (name !== createdIdField) carried[edge.to].fields.add(name);
+      }
+    }
+  }
+  return carried;
+}
+
+function outputFieldNamesOf(call: NsE6BffCall): string[] {
+  const names: string[] = [];
+  const walk = (fields: NsE6BffField[]): void => {
+    for (const field of fields) {
+      names.push(field.name);
+      if (field.item?.fields) walk(field.item.fields);
+    }
+  };
+  walk(call.output?.fields || []);
+  return names;
+}
+
+/** `<entity>Id` → the declared EntityId, or '' when the convention does not resolve. */
+export function nsEntityOfIdInput(name: string, entityIds: readonly string[]): string {
+  const head = name.replace(/Id$/, '');
+  if (!head) return '';
+  const target = head.toLowerCase();
+  return entityIds.find(entityId => entityId.toLowerCase() === target) || '';
+}
+
+function nsIdFieldOfEntity(entityId: string): string {
+  return `${entityId.slice(0, 1).toLowerCase()}${entityId.slice(1)}Id`;
 }
 
 // A4.2 (traceability) + A4.5/A4.5b (composition) for one bffCall.
@@ -764,6 +943,7 @@ function validateBffCall(
   context: E6GateContext,
   knownOperations: Set<string>,
   workspaceActorUnion: Set<string>,
+  isLanding: boolean,
   issues: NsGateIssue[],
 ): void {
   const label = `workspace ${workspace.workspaceId} bffCall ${call.bffId}`;
@@ -793,6 +973,7 @@ function validateBffCall(
   // At e7 the same defect can only be reported (a cross-workspace query there would break the
   // detail/map equality and coverage gates) — hence the repair belongs here.
   if (call.kind === 'command') validateCommandIdSources(workspace, call, issues);
+  validateRequiredInputSources(workspace, call, isLanding, issues);
 
   // A4.2: every `from` resolves to a real input / outputShape field of an operation in `uses`.
   for (const entry of call.input || []) {

@@ -18,7 +18,7 @@ import {
 
 function validE2(): NsE2JourneysArtifact {
   return {
-    schemaVersion: '2026-07-06-ns-e2-v1',
+    schemaVersion: '2026-08-02-ns-e2-v2',
     moduleName: 'cafeFlow',
     moduleTitle: 'CafeFlow',
     userLanguage: 'en',

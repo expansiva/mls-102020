@@ -1,0 +1,259 @@
+{
+  "workspaceId": "myTasksWorkspace",
+  "title": "My Tasks",
+  "actors": [
+    "fieldWorker",
+    "projectManager"
+  ],
+  "kind": "operation",
+  "entity": "WorkTask",
+  "bffCalls": [
+    {
+      "bffId": "listMyWorkTasks",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "queryMyWorkTasks"
+        }
+      ],
+      "input": [
+        {
+          "name": "assignedWorkerId",
+          "from": "queryMyWorkTasks.assignedWorkerId",
+          "required": true,
+          "source": "actorSession"
+        },
+        {
+          "name": "status",
+          "from": "queryMyWorkTasks.status",
+          "source": "userDecision"
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "source": "userDecision"
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "source": "userDecision"
+        }
+      ],
+      "output": {
+        "kind": "paginated",
+        "fields": [
+          {
+            "name": "workTasks",
+            "from": "queryMyWorkTasks.workTasks",
+            "type": "array",
+            "item": {
+              "fields": [
+                {
+                  "name": "workTaskId",
+                  "from": "queryMyWorkTasks.workTasks.$items.workTaskId",
+                  "type": "string",
+                  "required": true
+                },
+                {
+                  "name": "projectId",
+                  "from": "queryMyWorkTasks.workTasks.$items.projectId",
+                  "type": "string"
+                },
+                {
+                  "name": "projectName",
+                  "from": "queryMyWorkTasks.workTasks.$items.projectName",
+                  "type": "string"
+                },
+                {
+                  "name": "title",
+                  "from": "queryMyWorkTasks.workTasks.$items.title",
+                  "type": "string",
+                  "required": true
+                },
+                {
+                  "name": "description",
+                  "from": "queryMyWorkTasks.workTasks.$items.description",
+                  "type": "string"
+                },
+                {
+                  "name": "status",
+                  "from": "queryMyWorkTasks.workTasks.$items.status",
+                  "type": "string",
+                  "required": true
+                },
+                {
+                  "name": "dueDate",
+                  "from": "queryMyWorkTasks.workTasks.$items.dueDate",
+                  "type": "string"
+                },
+                {
+                  "name": "isOverdue",
+                  "from": "queryMyWorkTasks.workTasks.$items.isOverdue",
+                  "type": "boolean"
+                },
+                {
+                  "name": "completedAt",
+                  "from": "queryMyWorkTasks.workTasks.$items.completedAt",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "total",
+            "from": "queryMyWorkTasks.total",
+            "type": "number",
+            "required": true
+          }
+        ]
+      },
+      "route": "buildFlowFsm.myTasksWorkspace.listMyWorkTasks"
+    },
+    {
+      "bffId": "getWorkTaskDetail",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "viewWorkTask"
+        }
+      ],
+      "input": [
+        {
+          "name": "workTaskId",
+          "from": "viewWorkTask.workTaskId",
+          "required": true,
+          "source": "selection",
+          "sourceRef": "listMyWorkTasks"
+        },
+        {
+          "name": "actorId",
+          "from": "viewWorkTask.actorId",
+          "required": true,
+          "source": "actorSession"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "workTaskId",
+            "from": "viewWorkTask.workTaskId",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "projectId",
+            "from": "viewWorkTask.projectId",
+            "type": "string"
+          },
+          {
+            "name": "projectName",
+            "from": "viewWorkTask.projectName",
+            "type": "string"
+          },
+          {
+            "name": "title",
+            "from": "viewWorkTask.title",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "description",
+            "from": "viewWorkTask.description",
+            "type": "string"
+          },
+          {
+            "name": "assignedWorkerId",
+            "from": "viewWorkTask.assignedWorkerId",
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "from": "viewWorkTask.status",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "dueDate",
+            "from": "viewWorkTask.dueDate",
+            "type": "string"
+          },
+          {
+            "name": "isOverdue",
+            "from": "viewWorkTask.isOverdue",
+            "type": "boolean"
+          },
+          {
+            "name": "completedAt",
+            "from": "viewWorkTask.completedAt",
+            "type": "string"
+          },
+          {
+            "name": "cancelledAt",
+            "from": "viewWorkTask.cancelledAt",
+            "type": "string"
+          },
+          {
+            "name": "cancellationReason",
+            "from": "viewWorkTask.cancellationReason",
+            "type": "string"
+          },
+          {
+            "name": "createdAt",
+            "from": "viewWorkTask.createdAt",
+            "type": "string"
+          },
+          {
+            "name": "updatedAt",
+            "from": "viewWorkTask.updatedAt",
+            "type": "string"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.myTasksWorkspace.getWorkTaskDetail"
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "taskListSection",
+      "intent": "Browse all tasks assigned to the signed-in field worker, filtered by status, sorted by due date with overdue items highlighted.",
+      "organisms": [
+        {
+          "role": "filterControl",
+          "attachTo": "listMyWorkTasks"
+        },
+        {
+          "role": "primarySurface",
+          "dataSource": "listMyWorkTasks"
+        },
+        {
+          "role": "detailPanel",
+          "dataSource": "getWorkTaskDetail"
+        }
+      ]
+    }
+  ],
+  "operationIds": [
+    "queryMyWorkTasks",
+    "viewWorkTask"
+  ],
+  "purpose": "Field worker browses and reviews their assigned tasks for the day.",
+  "presentation": {
+    "categoryRef": "operationsQueue",
+    "confidence": 9,
+    "classificationNote": "The workspace presents a paginated list of WorkTasks filtered by status and sorted by due date — a classic operations queue pattern. The field worker reviews items by status/priority and selects one to inspect in a detail panel. No write operations are present.",
+    "alternates": [
+      {
+        "categoryRef": "workPlanningBoard",
+        "confidence": 4,
+        "reason": "WorkTask is the entity, but there is no timeline, assignment or scheduling interaction — purely a read/browse queue."
+      },
+      {
+        "categoryRef": "readOnlyDetailPortal",
+        "confidence": 3,
+        "reason": "The detail panel is read-only, but the primary surface is a filterable list, not a single-record portal."
+      }
+    ]
+  },
+  "sliceHash": "djb2:5d0f729e"
+}

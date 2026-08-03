@@ -1,0 +1,30 @@
+{
+  "journeyId": "manageChangeOrder",
+  "actorId": "projectManager",
+  "title": "Create and approve a change order",
+  "goal": "Document a scope, cost, or schedule change on an active project and apply its cost impact to the job.",
+  "steps": [
+    "Document the change",
+    "Review cost impact",
+    "Approve and apply the change"
+  ],
+  "outcome": "An approved change order adjusts the project's scope, cost, or schedule and flows into job costing and billing summaries.",
+  "operationIds": [
+    "createChangeOrder",
+    "updateChangeOrder",
+    "updateChangeOrderStatus",
+    "queryChangeOrders",
+    "viewChangeOrder",
+    "createInvoice",
+    "createProject",
+    "updateProject",
+    "viewDashboard",
+    "viewJobCostSummary",
+    "createTimeLog",
+    "queryTimeLogs",
+    "createMaterialUsage",
+    "queryMaterialUsages",
+    "createBillingSummary"
+  ],
+  "workspaceId": "dashboardWorkspace"
+}

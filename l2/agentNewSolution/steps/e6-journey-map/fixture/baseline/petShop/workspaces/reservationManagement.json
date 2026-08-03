@@ -1,0 +1,297 @@
+{
+  "workspaceId": "reservationManagement",
+  "title": "Gestão de reservas",
+  "actors": [
+    "atendente"
+  ],
+  "kind": "workflow",
+  "entity": "Reservation",
+  "workflowId": "reservationLifecycle",
+  "bffCalls": [
+    {
+      "bffId": "browseReservationsQuery",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "browseReservations"
+        }
+      ],
+      "input": [
+        {
+          "name": "searchTerm",
+          "from": "browseReservations.searchTerm",
+          "type": "string"
+        },
+        {
+          "name": "statusFilter",
+          "from": "browseReservations.statusFilter",
+          "type": "string"
+        },
+        {
+          "name": "page",
+          "type": "number"
+        },
+        {
+          "name": "pageSize",
+          "type": "number"
+        }
+      ],
+      "output": {
+        "kind": "list",
+        "fields": [
+          {
+            "name": "reservationId",
+            "from": "browseReservations.$items.reservationId",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "customerName",
+            "from": "browseReservations.$items.customerName",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "customerPhone",
+            "from": "browseReservations.$items.customerPhone",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "status",
+            "from": "browseReservations.$items.status",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "expiresAt",
+            "from": "browseReservations.$items.expiresAt",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "createdAt",
+            "from": "browseReservations.$items.createdAt",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "updatedAt",
+            "from": "browseReservations.$items.updatedAt",
+            "type": "string",
+            "required": true
+          }
+        ]
+      },
+      "route": "petShop.reservationManagement.browseReservationsQuery"
+    },
+    {
+      "bffId": "updateReservationStatusCommand",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "updateReservationStatus"
+        }
+      ],
+      "input": [
+        {
+          "name": "reservationId",
+          "from": "updateReservationStatus.reservationId",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "newStatus",
+          "from": "updateReservationStatus.newStatus",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "cancellationReason",
+          "from": "updateReservationStatus.cancellationReason",
+          "type": "string"
+        },
+        {
+          "name": "paymentId",
+          "from": "updateReservationStatus.paymentId",
+          "type": "string"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "reservationId",
+            "from": "updateReservationStatus.reservationId",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "customerName",
+            "from": "updateReservationStatus.customerName",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "customerPhone",
+            "from": "updateReservationStatus.customerPhone",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "status",
+            "from": "updateReservationStatus.status",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "expiresAt",
+            "from": "updateReservationStatus.expiresAt",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "confirmedAt",
+            "from": "updateReservationStatus.confirmedAt",
+            "type": "string"
+          },
+          {
+            "name": "fulfilledAt",
+            "from": "updateReservationStatus.fulfilledAt",
+            "type": "string"
+          },
+          {
+            "name": "cancelledAt",
+            "from": "updateReservationStatus.cancelledAt",
+            "type": "string"
+          },
+          {
+            "name": "cancellationReason",
+            "from": "updateReservationStatus.cancellationReason",
+            "type": "string"
+          },
+          {
+            "name": "paymentId",
+            "from": "updateReservationStatus.paymentId",
+            "type": "string"
+          },
+          {
+            "name": "updatedAt",
+            "from": "updateReservationStatus.updatedAt",
+            "type": "string",
+            "required": true
+          }
+        ]
+      },
+      "route": "petShop.reservationManagement.updateReservationStatusCommand"
+    },
+    {
+      "bffId": "processPaymentCommand",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "processPayment"
+        }
+      ],
+      "input": [
+        {
+          "name": "reservationId",
+          "from": "processPayment.reservationId",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "method",
+          "from": "processPayment.method",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "paymentId",
+            "from": "processPayment.paymentId",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "reservationId",
+            "from": "processPayment.reservationId",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "amount",
+            "from": "processPayment.amount",
+            "type": "number",
+            "required": true
+          },
+          {
+            "name": "method",
+            "from": "processPayment.method",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "status",
+            "from": "processPayment.status",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "receivedBy",
+            "from": "processPayment.receivedBy",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "createdAt",
+            "from": "processPayment.createdAt",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "reservationStatus",
+            "from": "processPayment.reservationStatus",
+            "type": "string",
+            "required": true
+          }
+        ]
+      },
+      "route": "petShop.reservationManagement.processPaymentCommand"
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "reservationList",
+      "intent": "O atendente visualiza, filtra e atua sobre as reservas pendentes dos clientes",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "dataSource": "browseReservationsQuery"
+        },
+        {
+          "role": "filterControl",
+          "attachTo": "browseReservationsQuery"
+        },
+        {
+          "role": "contextualAction",
+          "action": "updateReservationStatusCommand"
+        },
+        {
+          "role": "contextualAction",
+          "action": "processPaymentCommand"
+        }
+      ]
+    }
+  ],
+  "operationIds": [
+    "browseReservations",
+    "updateReservationStatus",
+    "processPayment"
+  ],
+  "purpose": "O atendente visualiza reservas pendentes, confirma ou cancela e recebe o pagamento presencial na retirada",
+  "sliceHash": "djb2:758a66f8"
+}

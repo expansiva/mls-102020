@@ -1,0 +1,354 @@
+{
+  "workspaceId": "statusReportWorkspace",
+  "title": "Status Reports",
+  "actors": [
+    "projectManager"
+  ],
+  "kind": "workflow",
+  "entity": "StatusReport",
+  "workflowId": "statusReportLifecycle",
+  "bffCalls": [
+    {
+      "bffId": "generateReport",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "generateStatusReport"
+        }
+      ],
+      "input": [
+        {
+          "name": "projectId",
+          "from": "generateStatusReport.projectId",
+          "type": "string",
+          "required": true,
+          "source": "pageInput"
+        },
+        {
+          "name": "reportPeriodStart",
+          "from": "generateStatusReport.reportPeriodStart",
+          "type": "string",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "reportPeriodEnd",
+          "from": "generateStatusReport.reportPeriodEnd",
+          "type": "string",
+          "required": true,
+          "source": "userDecision"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "statusReportId",
+            "from": "generateStatusReport.statusReportId",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "projectId",
+            "from": "generateStatusReport.projectId",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "status",
+            "from": "generateStatusReport.status",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "reportPeriodStart",
+            "from": "generateStatusReport.reportPeriodStart",
+            "type": "string"
+          },
+          {
+            "name": "reportPeriodEnd",
+            "from": "generateStatusReport.reportPeriodEnd",
+            "type": "string"
+          },
+          {
+            "name": "summary",
+            "from": "generateStatusReport.summary",
+            "type": "string"
+          },
+          {
+            "name": "tasksOverview",
+            "from": "generateStatusReport.tasksOverview",
+            "type": "string"
+          },
+          {
+            "name": "timeLogsOverview",
+            "from": "generateStatusReport.timeLogsOverview",
+            "type": "string"
+          },
+          {
+            "name": "materialsOverview",
+            "from": "generateStatusReport.materialsOverview",
+            "type": "string"
+          },
+          {
+            "name": "delayRiskAssessment",
+            "from": "generateStatusReport.delayRiskAssessment",
+            "type": "string"
+          },
+          {
+            "name": "generatedAt",
+            "from": "generateStatusReport.generatedAt",
+            "type": "string"
+          },
+          {
+            "name": "createdAt",
+            "from": "generateStatusReport.createdAt",
+            "type": "string"
+          },
+          {
+            "name": "updatedAt",
+            "from": "generateStatusReport.updatedAt",
+            "type": "string"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.statusReportWorkspace.generateReport"
+    },
+    {
+      "bffId": "updateReportContent",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "updateStatusReport"
+        }
+      ],
+      "input": [
+        {
+          "name": "statusReportId",
+          "from": "updateStatusReport.statusReportId",
+          "type": "string",
+          "required": true,
+          "source": "selection",
+          "sourceRef": "generateReport"
+        },
+        {
+          "name": "summary",
+          "from": "updateStatusReport.summary",
+          "type": "string",
+          "source": "derived",
+          "sourceRef": "generateReport.summary"
+        },
+        {
+          "name": "tasksOverview",
+          "from": "updateStatusReport.tasksOverview",
+          "type": "string",
+          "source": "derived",
+          "sourceRef": "generateReport.tasksOverview"
+        },
+        {
+          "name": "timeLogsOverview",
+          "from": "updateStatusReport.timeLogsOverview",
+          "type": "string",
+          "source": "derived",
+          "sourceRef": "generateReport.timeLogsOverview"
+        },
+        {
+          "name": "materialsOverview",
+          "from": "updateStatusReport.materialsOverview",
+          "type": "string",
+          "source": "derived",
+          "sourceRef": "generateReport.materialsOverview"
+        },
+        {
+          "name": "delayRiskAssessment",
+          "from": "updateStatusReport.delayRiskAssessment",
+          "type": "string",
+          "source": "derived",
+          "sourceRef": "generateReport.delayRiskAssessment"
+        },
+        {
+          "name": "pmNotes",
+          "from": "updateStatusReport.pmNotes",
+          "type": "string",
+          "source": "userDecision"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "statusReportId",
+            "from": "updateStatusReport.statusReportId",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "projectId",
+            "from": "updateStatusReport.projectId",
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "from": "updateStatusReport.status",
+            "type": "string"
+          },
+          {
+            "name": "reportPeriodStart",
+            "from": "updateStatusReport.reportPeriodStart",
+            "type": "string"
+          },
+          {
+            "name": "reportPeriodEnd",
+            "from": "updateStatusReport.reportPeriodEnd",
+            "type": "string"
+          },
+          {
+            "name": "summary",
+            "from": "updateStatusReport.summary",
+            "type": "string"
+          },
+          {
+            "name": "tasksOverview",
+            "from": "updateStatusReport.tasksOverview",
+            "type": "string"
+          },
+          {
+            "name": "timeLogsOverview",
+            "from": "updateStatusReport.timeLogsOverview",
+            "type": "string"
+          },
+          {
+            "name": "materialsOverview",
+            "from": "updateStatusReport.materialsOverview",
+            "type": "string"
+          },
+          {
+            "name": "delayRiskAssessment",
+            "from": "updateStatusReport.delayRiskAssessment",
+            "type": "string"
+          },
+          {
+            "name": "pmNotes",
+            "from": "updateStatusReport.pmNotes",
+            "type": "string"
+          },
+          {
+            "name": "updatedAt",
+            "from": "updateStatusReport.updatedAt",
+            "type": "string"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.statusReportWorkspace.updateReportContent"
+    },
+    {
+      "bffId": "updateReportStatus",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "updateStatusReportStatus"
+        }
+      ],
+      "input": [
+        {
+          "name": "statusReportId",
+          "from": "updateStatusReportStatus.statusReportId",
+          "type": "string",
+          "required": true,
+          "source": "selection",
+          "sourceRef": "generateReport"
+        },
+        {
+          "name": "status",
+          "from": "updateStatusReportStatus.status",
+          "type": "string",
+          "required": true,
+          "source": "userDecision"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "statusReportId",
+            "from": "updateStatusReportStatus.statusReportId",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "projectId",
+            "from": "updateStatusReportStatus.projectId",
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "from": "updateStatusReportStatus.status",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "reviewedAt",
+            "from": "updateStatusReportStatus.reviewedAt",
+            "type": "string"
+          },
+          {
+            "name": "sharedAt",
+            "from": "updateStatusReportStatus.sharedAt",
+            "type": "string"
+          },
+          {
+            "name": "updatedAt",
+            "from": "updateStatusReportStatus.updatedAt",
+            "type": "string"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.statusReportWorkspace.updateReportStatus"
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "generateSection",
+      "intent": "Project manager selects a project and reporting period to generate an AI-assisted status report",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "action": "generateReport"
+        }
+      ]
+    },
+    {
+      "sectionId": "reviewAndShareSection",
+      "intent": "Project manager reviews AI-generated content, edits summary and overviews, adds notes, and transitions the report to reviewed or shared with clients",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "action": "updateReportContent"
+        },
+        {
+          "role": "contextualAction",
+          "action": "updateReportStatus"
+        }
+      ]
+    }
+  ],
+  "operationIds": [
+    "generateStatusReport",
+    "updateStatusReport",
+    "updateStatusReportStatus"
+  ],
+  "purpose": "Project manager generates AI-assisted status reports, reviews delay-risk suggestions, and shares reports with clients.",
+  "presentation": {
+    "categoryRef": "aiAssistedAuthoring",
+    "confidence": 10,
+    "classificationNote": "Textbook fit: the workflow is generate (AI-assisted) → review/edit → publish/share, with StatusReport as the entity. All three operations map directly to the aiAssistedAuthoring pattern.",
+    "alternates": [
+      {
+        "categoryRef": "entityRecordManagement",
+        "confidence": 6,
+        "reason": "Create + edit + status transition on a single record without listing, but lacks the AI-generation and review-then-publish pattern that defines aiAssistedAuthoring"
+      }
+    ]
+  },
+  "sliceHash": "djb2:fdb99dc8"
+}

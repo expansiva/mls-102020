@@ -1,0 +1,308 @@
+{
+  "workspaceId": "invoiceWorkspace",
+  "title": "Invoices",
+  "actors": [
+    "billingStaff"
+  ],
+  "kind": "workflow",
+  "entity": "Invoice",
+  "workflowId": "invoiceLifecycle",
+  "bffCalls": [
+    {
+      "bffId": "listInvoices",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "queryInvoices"
+        }
+      ],
+      "input": [
+        {
+          "name": "status",
+          "from": "queryInvoices.status",
+          "type": "string"
+        },
+        {
+          "name": "projectId",
+          "from": "queryInvoices.projectId",
+          "type": "string"
+        },
+        {
+          "name": "clientId",
+          "from": "queryInvoices.clientId",
+          "type": "string"
+        },
+        {
+          "name": "page",
+          "type": "number"
+        },
+        {
+          "name": "pageSize",
+          "type": "number"
+        }
+      ],
+      "output": {
+        "kind": "paginated",
+        "fields": [
+          {
+            "name": "invoices",
+            "from": "queryInvoices.invoices",
+            "type": "array",
+            "item": {
+              "fields": [
+                {
+                  "name": "invoiceId",
+                  "from": "queryInvoices.invoices.$items.invoiceId",
+                  "type": "string"
+                },
+                {
+                  "name": "invoiceNumber",
+                  "from": "queryInvoices.invoices.$items.invoiceNumber",
+                  "type": "string"
+                },
+                {
+                  "name": "projectId",
+                  "from": "queryInvoices.invoices.$items.projectId",
+                  "type": "string"
+                },
+                {
+                  "name": "clientId",
+                  "from": "queryInvoices.invoices.$items.clientId",
+                  "type": "string"
+                },
+                {
+                  "name": "status",
+                  "from": "queryInvoices.invoices.$items.status",
+                  "type": "string"
+                },
+                {
+                  "name": "totalAmount",
+                  "from": "queryInvoices.invoices.$items.totalAmount",
+                  "type": "number"
+                },
+                {
+                  "name": "sentAt",
+                  "from": "queryInvoices.invoices.$items.sentAt",
+                  "type": "string"
+                },
+                {
+                  "name": "createdAt",
+                  "from": "queryInvoices.invoices.$items.createdAt",
+                  "type": "string"
+                },
+                {
+                  "name": "updatedAt",
+                  "from": "queryInvoices.invoices.$items.updatedAt",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "total",
+            "from": "queryInvoices.total",
+            "type": "number"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.invoiceWorkspace.listInvoices"
+    },
+    {
+      "bffId": "createInvoiceCmd",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "createInvoice"
+        }
+      ],
+      "input": [
+        {
+          "name": "projectId",
+          "from": "createInvoice.projectId",
+          "type": "string",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "invoiceNumber",
+          "from": "createInvoice.invoiceNumber",
+          "type": "string",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "clientId",
+          "from": "createInvoice.clientId",
+          "type": "string",
+          "required": true,
+          "source": "userDecision"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "invoiceId",
+            "from": "createInvoice.invoiceId",
+            "type": "string"
+          },
+          {
+            "name": "projectId",
+            "from": "createInvoice.projectId",
+            "type": "string"
+          },
+          {
+            "name": "clientId",
+            "from": "createInvoice.clientId",
+            "type": "string"
+          },
+          {
+            "name": "invoiceNumber",
+            "from": "createInvoice.invoiceNumber",
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "from": "createInvoice.status",
+            "type": "string"
+          },
+          {
+            "name": "totalAmount",
+            "from": "createInvoice.totalAmount",
+            "type": "number"
+          },
+          {
+            "name": "createdAt",
+            "from": "createInvoice.createdAt",
+            "type": "string"
+          },
+          {
+            "name": "updatedAt",
+            "from": "createInvoice.updatedAt",
+            "type": "string"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.invoiceWorkspace.createInvoiceCmd"
+    },
+    {
+      "bffId": "sendInvoiceCmd",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "sendInvoice"
+        }
+      ],
+      "input": [
+        {
+          "name": "invoiceId",
+          "from": "sendInvoice.invoiceId",
+          "type": "string",
+          "required": true,
+          "source": "selection",
+          "sourceRef": "listInvoices"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "invoiceId",
+            "from": "sendInvoice.invoiceId",
+            "type": "string"
+          },
+          {
+            "name": "projectId",
+            "from": "sendInvoice.projectId",
+            "type": "string"
+          },
+          {
+            "name": "clientId",
+            "from": "sendInvoice.clientId",
+            "type": "string"
+          },
+          {
+            "name": "invoiceNumber",
+            "from": "sendInvoice.invoiceNumber",
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "from": "sendInvoice.status",
+            "type": "string"
+          },
+          {
+            "name": "totalAmount",
+            "from": "sendInvoice.totalAmount",
+            "type": "number"
+          },
+          {
+            "name": "sentAt",
+            "from": "sendInvoice.sentAt",
+            "type": "string"
+          },
+          {
+            "name": "updatedAt",
+            "from": "sendInvoice.updatedAt",
+            "type": "string"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.invoiceWorkspace.sendInvoiceCmd"
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "invoiceListSection",
+      "intent": "Browse all invoices, filter by status, project, or client, and take action on individual records.",
+      "organisms": [
+        {
+          "role": "filterControl",
+          "attachTo": "listInvoices"
+        },
+        {
+          "role": "primarySurface",
+          "dataSource": "listInvoices"
+        },
+        {
+          "role": "contextualAction",
+          "action": "sendInvoiceCmd"
+        }
+      ]
+    },
+    {
+      "sectionId": "createInvoiceSection",
+      "intent": "Create a new draft invoice by selecting a project, entering an invoice number, and confirming.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "action": "createInvoiceCmd"
+        }
+      ]
+    }
+  ],
+  "operationIds": [
+    "queryInvoices",
+    "createInvoice",
+    "sendInvoice"
+  ],
+  "purpose": "Billing staff generates invoices from approved costs and sends them to clients.",
+  "presentation": {
+    "categoryRef": "financialTransactions",
+    "confidence": 8,
+    "classificationNote": "The workspace combines a paginated invoice list with a create command and a send (status transition) command — a classic financial transactions pattern: list, filter, create, and transition billing documents.",
+    "alternates": [
+      {
+        "categoryRef": "orderManagement",
+        "confidence": 5,
+        "reason": "Invoices share lifecycle traits with orders (create, send, status transitions), but the entity and domain are financial rather than fulfillment-oriented."
+      },
+      {
+        "categoryRef": "entityRecordManagement",
+        "confidence": 4,
+        "reason": "The create + send lifecycle could fit entity record management, but the dominant surface is a paginated list, not a single-record form."
+      }
+    ]
+  },
+  "sliceHash": "djb2:498446f4"
+}

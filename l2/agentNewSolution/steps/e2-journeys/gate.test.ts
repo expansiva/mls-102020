@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { runNsGate } from '/_102020_/l2/agentNewSolution/helpers/nsGate.js';
 import {
+  describeNsE2Prerequisites,
   NsE2JourneysArtifact,
   prepareE2JourneysArtifact,
   renderE2JourneysMarkdown,
@@ -188,4 +189,127 @@ test('E2 markdown records deltas against the previous version', () => {
   });
   assert.match(markdown, /Adjustment request: Move POS order entry to soon\./);
   assert.match(markdown, /Feature priority changed: POS order entry \(now -> soon\)\./);
+});
+
+// --- T3 (improveJourneys): prerequisite — where the actor comes from ---------------------------
+
+function withPrerequisites(prepare: Record<string, unknown>, cook: Record<string, unknown> | null = null): NsE2JourneysArtifact {
+  const artifact = validArtifact();
+  artifact.journeys[0].prerequisite = prepare as never;
+  if (cook) artifact.journeys[1].prerequisite = cook as never;
+  return artifact;
+}
+
+const prerequisiteCodes = (artifact: NsE2JourneysArtifact): string[] =>
+  validateE2JourneysInvariants(artifact).issues.filter(issue => issue.code.startsWith('prerequisite_')).map(issue => issue.code);
+
+void test('E2 T3: a journey with no prerequisite is an ENTRY journey, not a defect', () => {
+  assert.deepEqual(prerequisiteCodes(validArtifact()), []);
+  assert.deepEqual(describeNsE2Prerequisites(validArtifact().journeys).map(edge => edge.kind), ['entry', 'entry']);
+});
+
+void test('E2 T3: kind "journey" must name a journey that exists and say what it carries', () => {
+  assert.deepEqual(prerequisiteCodes(withPrerequisites({ kind: 'journey', carries: ['order'] })), ['prerequisite_journey_missing']);
+  assert.deepEqual(prerequisiteCodes(withPrerequisites({ kind: 'journey', journeyId: 'ghostJourney', carries: ['order'] })), ['prerequisite_unknown_journey']);
+  assert.deepEqual(prerequisiteCodes(withPrerequisites({ kind: 'journey', journeyId: 'takeoutOrder', carries: ['order'] })), ['prerequisite_self_reference']);
+  // The carry is the whole point: without it the journey claims context it cannot name.
+  assert.deepEqual(prerequisiteCodes(withPrerequisites({ kind: 'journey', journeyId: 'prepareOrder' })), ['prerequisite_carries_empty']);
+  assert.deepEqual(prerequisiteCodes(withPrerequisites({ kind: 'journey', journeyId: 'prepareOrder', carries: ['order'] })), []);
+});
+
+void test('E2 T3: external/schedule need no journey and must not reference one', () => {
+  assert.deepEqual(prerequisiteCodes(withPrerequisites({ kind: 'external', description: 'a customer walks in' })), []);
+  assert.deepEqual(prerequisiteCodes(withPrerequisites({ kind: 'schedule', description: 'end of shift' })), []);
+  assert.deepEqual(prerequisiteCodes(withPrerequisites({ kind: 'external', journeyId: 'prepareOrder' })), ['prerequisite_journey_ref_unexpected']);
+});
+
+void test('E2 T3: the "comes from" chain must terminate', () => {
+  const artifact = withPrerequisites(
+    { kind: 'journey', journeyId: 'prepareOrder', carries: ['order'] },
+    { kind: 'journey', journeyId: 'takeoutOrder', carries: ['order'] },
+  );
+  const codes = prerequisiteCodes(artifact);
+  assert.deepEqual(codes, ['prerequisite_cycle', 'prerequisite_cycle']); // both journeys sit on it
+});
+
+void test('E2 T3: a prerequisite from ANOTHER actor is a handoff — reported as a fact, never a warning', () => {
+  const artifact = withPrerequisites({ kind: 'journey', journeyId: 'prepareOrder', carries: ['order'] });
+  const edge = describeNsE2Prerequisites(artifact.journeys).find(item => item.journeyId === 'takeoutOrder')!;
+  assert.equal(edge.handoff, true); // takeoutOrder is the attendant's, prepareOrder the cook's
+  assert.equal(edge.fromTitle, 'Prepare order');
+  assert.deepEqual(edge.carries, ['order']);
+  // A handoff is legitimate: it must not add a single gate issue the human would dismiss every run.
+  assert.deepEqual(validateE2JourneysInvariants(artifact).issues.filter(issue => issue.code.includes('handoff')), []);
+});
+
+void test('E2 T3: prepare keeps the v1 trigger readable but the artifact is written at v2', () => {
+  const artifact = prepareE2JourneysArtifact({
+    ...JSON.parse(JSON.stringify(validArtifact())),
+    schemaVersion: '2026-07-06-ns-e2-v1',
+    journeys: [{ ...JSON.parse(JSON.stringify(validArtifact().journeys[0])), trigger: 'a customer orders at the counter' }],
+  });
+  assert.equal(artifact.schemaVersion, '2026-08-02-ns-e2-v2');
+  assert.equal(artifact.journeys[0].trigger, 'a customer orders at the counter');
+  assert.equal(artifact.journeys[0].prerequisite, undefined);
+});
+
+void test('E2 T3: the checkpoint markdown states every entry point, including the handoffs', () => {
+  const artifact = withPrerequisites({ kind: 'journey', journeyId: 'prepareOrder', carries: ['order'] });
+  const markdown = renderE2JourneysMarkdown(artifact);
+  assert.match(markdown, /## Journey Entry Points/);
+  assert.match(markdown, /`takeoutOrder`: after `prepareOrder` \(Prepare order\) carrying order — HANDOFF/);
+  assert.match(markdown, /`prepareOrder`: starts from the actor's landing/);
+});
+
+void test('E2 T3: the cafeFlow fixture is valid under the bumped schema and exercises the new field', async () => {
+  const fixture = JSON.parse(readFileSync(resolve(here, 'fixture/cafeFlow/e2-journeys.json'), 'utf8')) as Record<string, unknown>;
+  const gate = await runNsGate({
+    stepId: 'e2-journeys',
+    schema,
+    artifact: prepareE2JourneysArtifact(fixture),
+    validate: artifact => validateE2JourneysInvariants(artifact),
+  });
+  assert.equal(gate.ok, true, gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('; '));
+  const edges = describeNsE2Prerequisites(prepareE2JourneysArtifact(fixture).journeys);
+  assert.equal(edges.filter(edge => edge.kind === 'journey').length, 2);
+  assert.equal(edges.filter(edge => edge.handoff).length, 1); // atendente -> cozinha
+});
+
+void test('E2 T3: an invented kind is normalized by SHAPE so the error names the real mistake', () => {
+  // The model writing kind "navigation" with a journeyId meant "journey". Coercing to "external"
+  // would produce prerequisite_journey_ref_unexpected — a retry pointed at the wrong fix.
+  const artifact = prepareE2JourneysArtifact({
+    ...JSON.parse(JSON.stringify(validArtifact())),
+    journeys: JSON.parse(JSON.stringify(validArtifact().journeys)).map((journey: Record<string, unknown>, index: number) =>
+      index === 0 ? { ...journey, prerequisite: { kind: 'navigation', journeyId: 'prepareOrder', carries: ['order'] } } : journey),
+  });
+  assert.deepEqual(artifact.journeys[0].prerequisite, { kind: 'journey', journeyId: 'prepareOrder', carries: ['order'] });
+  assert.deepEqual(prerequisiteCodes(artifact), []);
+  // With no journey named, "outside the system" is the honest reading of an unknown kind.
+  const loose = prepareE2JourneysArtifact({
+    ...JSON.parse(JSON.stringify(validArtifact())),
+    journeys: JSON.parse(JSON.stringify(validArtifact().journeys)).map((journey: Record<string, unknown>, index: number) =>
+      index === 0 ? { ...journey, prerequisite: { kind: 'whenever', description: 'a customer walks in' } } : journey),
+  });
+  assert.equal(loose.journeys[0].prerequisite?.kind, 'external');
+  assert.deepEqual(prerequisiteCodes(loose), []);
+});
+
+void test('E2 T3: a prerequisite reference is normalized by shape once every journey id is known', () => {
+  // Observed live: kind "external" carrying a journeyId that names the external event, not a journey.
+  const withLabel = prepareE2JourneysArtifact({
+    ...JSON.parse(JSON.stringify(validArtifact())),
+    journeys: JSON.parse(JSON.stringify(validArtifact().journeys)).map((journey: Record<string, unknown>, index: number) =>
+      index === 0 ? { ...journey, prerequisite: { kind: 'external', journeyId: 'aCustomerWalksIn', description: 'a customer walks in' } } : journey),
+  });
+  assert.deepEqual(withLabel.journeys[0].prerequisite, { kind: 'external', description: 'a customer walks in' });
+  assert.deepEqual(prerequisiteCodes(withLabel), []);
+  // But a reference to a journey that DOES exist is a real reference: the kind was the mistake.
+  const withReference = prepareE2JourneysArtifact({
+    ...JSON.parse(JSON.stringify(validArtifact())),
+    journeys: JSON.parse(JSON.stringify(validArtifact().journeys)).map((journey: Record<string, unknown>, index: number) =>
+      index === 0 ? { ...journey, prerequisite: { kind: 'external', journeyId: 'prepareOrder', carries: ['order'] } } : journey),
+  });
+  assert.equal(withReference.journeys[0].prerequisite?.kind, 'journey');
+  assert.deepEqual(prerequisiteCodes(withReference), []);
 });

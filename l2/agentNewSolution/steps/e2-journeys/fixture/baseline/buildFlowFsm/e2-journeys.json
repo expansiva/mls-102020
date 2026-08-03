@@ -1,0 +1,609 @@
+{
+  "schemaVersion": "2026-07-06-ns-e2-v1",
+  "moduleName": "buildFlowFsm",
+  "moduleTitle": "BuildFlow FSM",
+  "userLanguage": "en",
+  "version": 1,
+  "actors": [
+    {
+      "actorId": "projectManager",
+      "name": "Project Manager",
+      "description": "Owns project setup, budget oversight, task planning, change orders, and status reporting for one or more jobs."
+    },
+    {
+      "actorId": "fieldWorker",
+      "name": "Field Worker",
+      "description": "Receives assigned work tasks and records daily time and progress from the field (mobile-friendly)."
+    },
+    {
+      "actorId": "billingStaff",
+      "name": "Billing Staff",
+      "description": "Prepares and reviews client billing summaries and invoices from approved job cost and change-order data."
+    },
+    {
+      "actorId": "client",
+      "name": "Client",
+      "description": "External customer who receives project status communication and billing summaries; limited self-serve visibility."
+    }
+  ],
+  "journeys": [
+    {
+      "journeyId": "createProject",
+      "actorId": "projectManager",
+      "title": "Create a new construction project",
+      "goal": "Set up a new project with client information, site address, budget, and schedule so the team can start planning work.",
+      "steps": [
+        {
+          "stepId": "enterProjectDetails",
+          "title": "Enter project basics",
+          "intent": "The project manager enters the project name, selects or creates the client record, and fills in the site address so the project is properly identified and located.",
+          "featureRefs": [
+            "projectManagement"
+          ]
+        },
+        {
+          "stepId": "setBudgetAndSchedule",
+          "title": "Set budget and schedule",
+          "intent": "The project manager defines the project budget and target start and end dates so cost tracking and scheduling have a baseline.",
+          "featureRefs": [
+            "projectManagement",
+            "jobCosting"
+          ]
+        },
+        {
+          "stepId": "confirmProjectStatus",
+          "title": "Activate the project",
+          "intent": "The project manager confirms the project status is active so tasks, time logs, and materials can begin being recorded against it.",
+          "featureRefs": [
+            "projectManagement"
+          ]
+        }
+      ],
+      "outcome": "A new project exists with client, address, budget, schedule, and active status, ready for task planning and field work.",
+      "businessRules": [
+        "A project must have a name, client, and site address before it can be activated.",
+        "Budget and schedule dates are required to begin job costing tracking.",
+        "Project status controls whether field entries can be recorded against the project."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "planProjectTasks",
+      "actorId": "projectManager",
+      "title": "Plan and assign work tasks for a project",
+      "goal": "Break the project into actionable work tasks, assign them to field workers, and review the timeline so the crew knows what to do and when.",
+      "steps": [
+        {
+          "stepId": "createWorkTasks",
+          "title": "Create work tasks",
+          "intent": "The project manager creates work tasks with descriptions tied to the project so the scope of work is broken into manageable units.",
+          "featureRefs": [
+            "taskAssignment"
+          ]
+        },
+        {
+          "stepId": "assignTasksToWorkers",
+          "title": "Assign tasks with due dates",
+          "intent": "The project manager assigns each task to a field worker and sets a due date so the worker knows their responsibilities and deadlines.",
+          "featureRefs": [
+            "taskAssignment"
+          ]
+        },
+        {
+          "stepId": "reviewTaskTimeline",
+          "title": "Review task timeline",
+          "intent": "The project manager reviews the task list and simple Gantt-ish timeline to confirm sequencing and dates make sense for the project schedule.",
+          "featureRefs": [
+            "projectTimeline"
+          ]
+        }
+      ],
+      "outcome": "Work tasks are created, assigned to field workers with due dates, and visible in a timeline view for schedule coordination.",
+      "businessRules": [
+        "Tasks must belong to an active project.",
+        "A task can only be assigned to one field worker at a time.",
+        "Due dates should fall within the project schedule window."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "reviewDashboard",
+      "actorId": "projectManager",
+      "title": "Review operational dashboard",
+      "goal": "Get a quick overview of all active projects, spot budget drift, and identify upcoming or overdue tasks.",
+      "steps": [
+        {
+          "stepId": "viewActiveProjects",
+          "title": "View active projects",
+          "intent": "The project manager opens the dashboard to see all active projects at a glance so they know where attention is needed.",
+          "featureRefs": [
+            "dashboardOverview"
+          ]
+        },
+        {
+          "stepId": "checkBudgetVsActual",
+          "title": "Check budget vs actual",
+          "intent": "The project manager reviews budget versus actual cost signals for each project to spot jobs that are drifting over budget.",
+          "featureRefs": [
+            "dashboardOverview",
+            "jobCosting"
+          ]
+        },
+        {
+          "stepId": "identifyUpcomingTasks",
+          "title": "Identify upcoming and overdue tasks",
+          "intent": "The project manager scans upcoming and overdue tasks across projects so they can reassign or reprioritize work before problems escalate.",
+          "featureRefs": [
+            "dashboardOverview"
+          ]
+        }
+      ],
+      "outcome": "The project manager has a clear picture of project health, budget status, and task urgency across all active jobs.",
+      "businessRules": [
+        "Dashboard shows only active projects by default.",
+        "Budget vs actual is derived from labor time logs, material usage, and approved change orders.",
+        "Overdue tasks are highlighted based on due date comparison."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "manageChangeOrder",
+      "actorId": "projectManager",
+      "title": "Create and approve a change order",
+      "goal": "Document a scope, cost, or schedule change on an active project and apply its cost impact to the job.",
+      "steps": [
+        {
+          "stepId": "initiateChangeOrder",
+          "title": "Document the change",
+          "intent": "The project manager creates a change order describing the scope, cost, or schedule adjustment so the change is formally captured rather than lost.",
+          "featureRefs": [
+            "changeOrderManagement"
+          ]
+        },
+        {
+          "stepId": "reviewCostImpact",
+          "title": "Review cost impact",
+          "intent": "The project manager reviews how the change order affects the project budget so they understand the financial consequence before approving.",
+          "featureRefs": [
+            "changeOrderManagement",
+            "jobCosting"
+          ]
+        },
+        {
+          "stepId": "approveChangeOrder",
+          "title": "Approve and apply the change",
+          "intent": "The project manager approves the change order so the adjusted cost and schedule are reflected in the project's job costing and billing data.",
+          "featureRefs": [
+            "changeOrderManagement"
+          ]
+        }
+      ],
+      "outcome": "An approved change order adjusts the project's scope, cost, or schedule and flows into job costing and billing summaries.",
+      "businessRules": [
+        "Change orders can only be created on active projects.",
+        "Only approved change orders affect job costing and billing.",
+        "A change order must describe the scope, cost, or schedule impact."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "generateStatusReport",
+      "actorId": "projectManager",
+      "title": "Generate an AI-assisted status report",
+      "goal": "Produce a professional project status summary from live task, time, and material data, and identify tasks at risk of delay.",
+      "steps": [
+        {
+          "stepId": "openProjectDetail",
+          "title": "Open project detail",
+          "intent": "The project manager navigates to the project detail page to review current task, time log, and material activity before generating a report.",
+          "featureRefs": [
+            "projectTimeline"
+          ]
+        },
+        {
+          "stepId": "triggerReportGeneration",
+          "title": "Generate status report",
+          "intent": "The project manager clicks the generate status report button so the system uses LLM to create a professional summary from tasks, time logs, and materials.",
+          "featureRefs": [
+            "llmStatusReport"
+          ]
+        },
+        {
+          "stepId": "reviewDelayRiskSuggestions",
+          "title": "Review delay-risk suggestions",
+          "intent": "The project manager reviews the AI-suggested tasks at risk of delay so they can take corrective action before deadlines slip.",
+          "featureRefs": [
+            "llmDelayRisk"
+          ]
+        },
+        {
+          "stepId": "shareReportWithClient",
+          "title": "Share report with client",
+          "intent": "The project manager shares the generated status report with the client so the client stays informed about project progress.",
+          "featureRefs": [
+            "clientStatusView"
+          ]
+        }
+      ],
+      "outcome": "A professional status report is generated, delay-risk tasks are flagged, and the report is shared with the client for communication.",
+      "businessRules": [
+        "Status report content is generated from live project tasks, time logs, and material usage via the platform LLM proxy.",
+        "Delay-risk suggestions are advisory and do not automatically change task status.",
+        "The project manager can review and edit the report before sharing with the client."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "viewAssignedTasks",
+      "actorId": "fieldWorker",
+      "title": "View assigned tasks for the day",
+      "goal": "See which tasks are assigned and due so the field worker knows what to work on today.",
+      "steps": [
+        {
+          "stepId": "checkTodayTasks",
+          "title": "Check today's tasks",
+          "intent": "The field worker opens the app on their mobile device to see tasks assigned to them so they know what work is expected today.",
+          "featureRefs": [
+            "taskAssignment"
+          ]
+        },
+        {
+          "stepId": "reviewTaskDetails",
+          "title": "Review task details",
+          "intent": "The field worker reads the task description and due date so they understand the scope and urgency of each assigned task.",
+          "featureRefs": [
+            "taskAssignment"
+          ]
+        }
+      ],
+      "outcome": "The field worker has a clear list of assigned tasks with descriptions and due dates, ready to begin work.",
+      "businessRules": [
+        "Field workers see only tasks assigned to them.",
+        "Tasks are sorted by due date to surface the most urgent work first.",
+        "The mobile experience must be usable in the field without desktop access."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "logDailyProgress",
+      "actorId": "fieldWorker",
+      "title": "Log daily time, materials, and task progress",
+      "goal": "Record hours worked, materials used, and task completion status so job costing and project tracking stay accurate.",
+      "steps": [
+        {
+          "stepId": "selectActiveTask",
+          "title": "Select the task being worked on",
+          "intent": "The field worker selects the task they are currently working on so their time and material entries are attributed to the correct work item.",
+          "featureRefs": [
+            "taskAssignment"
+          ]
+        },
+        {
+          "stepId": "recordTimeHours",
+          "title": "Log hours worked",
+          "intent": "The field worker enters the hours spent on the task so labor costs are captured for job costing and progress tracking.",
+          "featureRefs": [
+            "timeLogging"
+          ]
+        },
+        {
+          "stepId": "recordMaterialsUsed",
+          "title": "Log materials used",
+          "intent": "The field worker records materials consumed on the task so material costs are attributed to the project for accurate job costing.",
+          "featureRefs": [
+            "materialUsageTracking"
+          ]
+        },
+        {
+          "stepId": "updateTaskStatus",
+          "title": "Update task status",
+          "intent": "The field worker updates the task status to reflect progress or completion so the project manager and dashboard reflect current field reality.",
+          "featureRefs": [
+            "taskAssignment"
+          ]
+        }
+      ],
+      "outcome": "Time logs, material usage, and task status are recorded against the project, keeping job costing and project tracking up to date.",
+      "businessRules": [
+        "Time logs must be linked to a specific task and worker.",
+        "Material usage is recorded per project for job costing, not as warehouse stock management.",
+        "Task status can only be updated by the assigned worker or the project manager."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "prepareBillingSummary",
+      "actorId": "billingStaff",
+      "title": "Prepare a client billing summary",
+      "goal": "Compile accumulated job costs into a clear client-facing billing summary so the client understands what they are being charged for.",
+      "steps": [
+        {
+          "stepId": "reviewProjectCosts",
+          "title": "Review accumulated job costs",
+          "intent": "The billing staff reviews labor, material, and approved change order costs for the project so they have an accurate cost basis for billing.",
+          "featureRefs": [
+            "jobCosting"
+          ]
+        },
+        {
+          "stepId": "compileBillingSummary",
+          "title": "Compile billing summary",
+          "intent": "The billing staff assembles a client-facing billing summary that breaks down labor, materials, and change orders so the client can see a clear cost narrative.",
+          "featureRefs": [
+            "clientBillingSummary"
+          ]
+        },
+        {
+          "stepId": "shareWithClient",
+          "title": "Share billing summary with client",
+          "intent": "The billing staff sends the billing summary to the client so the client can review charges before an invoice is generated.",
+          "featureRefs": [
+            "clientBillingView"
+          ]
+        }
+      ],
+      "outcome": "A clear billing summary with labor, material, and change order breakdowns is prepared and shared with the client.",
+      "businessRules": [
+        "Billing summaries include only approved change orders.",
+        "Job costs are derived from time logs, material usage, and approved change orders.",
+        "Billing summaries are client-facing and exclude internal cost-code detail."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "generateInvoice",
+      "actorId": "billingStaff",
+      "title": "Generate an invoice from approved costs",
+      "goal": "Create an invoice from approved job costs and change orders so the client receives a formal billing document.",
+      "steps": [
+        {
+          "stepId": "selectApprovedCosts",
+          "title": "Select approved costs",
+          "intent": "The billing staff selects the approved job costs and change orders to include so the invoice reflects only verified and approved charges.",
+          "featureRefs": [
+            "jobCosting",
+            "changeOrderManagement"
+          ]
+        },
+        {
+          "stepId": "createInvoice",
+          "title": "Create the invoice",
+          "intent": "The billing staff generates an invoice document from the selected costs so the client has a formal billing record.",
+          "featureRefs": [
+            "invoiceGeneration"
+          ]
+        },
+        {
+          "stepId": "reviewAndSend",
+          "title": "Review and send to client",
+          "intent": "The billing staff reviews the invoice for accuracy and sends it to the client so billing is communicated and ready for external accounting.",
+          "featureRefs": [
+            "invoiceGeneration",
+            "clientBillingView"
+          ]
+        }
+      ],
+      "outcome": "An invoice is generated from approved costs and change orders and sent to the client for payment processing outside the system.",
+      "businessRules": [
+        "Invoices are billing documents for construction job costing; payment capture and full accounting remain external.",
+        "Only approved change orders can be included in an invoice.",
+        "An invoice must reference the project and client."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "viewProjectStatus",
+      "actorId": "client",
+      "title": "Receive and review a project status report",
+      "goal": "Stay informed about project progress, budget status, and task completion without needing access to internal operations.",
+      "steps": [
+        {
+          "stepId": "receiveStatusReport",
+          "title": "Receive status report",
+          "intent": "The client receives a project status report shared by the project manager so they are kept up to date on how their project is progressing.",
+          "featureRefs": [
+            "clientStatusView"
+          ]
+        },
+        {
+          "stepId": "reviewProgressSummary",
+          "title": "Review progress summary",
+          "intent": "The client reads the progress summary covering tasks completed, budget status, and upcoming milestones so they have confidence in the project trajectory.",
+          "featureRefs": [
+            "clientStatusView"
+          ]
+        }
+      ],
+      "outcome": "The client has a clear, professional view of project progress and budget status without needing internal system access.",
+      "businessRules": [
+        "Clients receive shared status reports; they do not have full internal project editing access.",
+        "Status reports are generated and shared by the project manager.",
+        "Client visibility is limited to status and billing communication surfaces."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "reviewBillingSummary",
+      "actorId": "client",
+      "title": "Review a billing summary and invoice",
+      "goal": "Review charges for labor, materials, and change orders so the client understands and can approve payment.",
+      "steps": [
+        {
+          "stepId": "receiveBillingSummary",
+          "title": "Receive billing summary",
+          "intent": "The client receives a billing summary from the billing staff so they can review the cost breakdown before receiving a formal invoice.",
+          "featureRefs": [
+            "clientBillingView"
+          ]
+        },
+        {
+          "stepId": "reviewCharges",
+          "title": "Review charges",
+          "intent": "The client reviews the labor, material, and change order charges so they understand what they are paying for and can raise any questions.",
+          "featureRefs": [
+            "clientBillingView",
+            "clientBillingSummary"
+          ]
+        }
+      ],
+      "outcome": "The client has reviewed the billing summary and invoice, understands the charges, and is ready to process payment externally.",
+      "businessRules": [
+        "Clients see billing summaries and invoices shared by billing staff.",
+        "Payment processing and full accounting are handled outside the system.",
+        "Clients cannot edit or create billing documents."
+      ],
+      "notes": ""
+    }
+  ],
+  "features": [
+    {
+      "featureId": "projectManagement",
+      "title": "Project lifecycle management",
+      "priority": "now",
+      "actorIds": [
+        "projectManager"
+      ],
+      "description": "Create and manage construction projects with client, site address, status, budget, and schedule dates.",
+      "rationale": "Foundation for all other capabilities — without projects, no tasks, costs, or billing can exist."
+    },
+    {
+      "featureId": "taskAssignment",
+      "title": "Work task assignment and tracking",
+      "priority": "now",
+      "actorIds": [
+        "projectManager",
+        "fieldWorker"
+      ],
+      "description": "Create work tasks tied to projects, assign them to field workers with due dates, and track status through completion.",
+      "rationale": "Core coordination loop between PMs and field crews; drives daily field activity and progress visibility."
+    },
+    {
+      "featureId": "dashboardOverview",
+      "title": "Operational dashboard",
+      "priority": "now",
+      "actorIds": [
+        "projectManager"
+      ],
+      "description": "Dashboard showing active projects, budget vs actual signals, and upcoming or overdue tasks across all jobs.",
+      "rationale": "Gives the PM a single pane of glass to spot budget drift and task urgency across multiple projects."
+    },
+    {
+      "featureId": "projectTimeline",
+      "title": "Project detail with Gantt-ish timeline",
+      "priority": "now",
+      "actorIds": [
+        "projectManager"
+      ],
+      "description": "Project detail page with task list and simple timeline-style progress visualization for schedule coordination.",
+      "rationale": "Provides visual schedule context without the complexity of full CPM or critical-path scheduling."
+    },
+    {
+      "featureId": "timeLogging",
+      "title": "Labor time logging",
+      "priority": "now",
+      "actorIds": [
+        "fieldWorker"
+      ],
+      "description": "Field workers log hours worked against specific tasks for labor cost tracking and progress visibility.",
+      "rationale": "Labor cost is a primary job costing component; accurate time logs drive budget vs actual accuracy."
+    },
+    {
+      "featureId": "materialUsageTracking",
+      "title": "Material usage tracking",
+      "priority": "now",
+      "actorIds": [
+        "fieldWorker"
+      ],
+      "description": "Record materials consumed against projects for job costing, not full warehouse management.",
+      "rationale": "Material costs are a major job costing component; per-project usage tracking keeps cost visibility accurate."
+    },
+    {
+      "featureId": "changeOrderManagement",
+      "title": "Change order management",
+      "priority": "now",
+      "actorIds": [
+        "projectManager",
+        "billingStaff"
+      ],
+      "description": "Create, review cost impact, and approve change orders that adjust scope, cost, or schedule on active projects.",
+      "rationale": "Change orders are inevitable in construction; capturing them formally prevents budget drift and billing disputes."
+    },
+    {
+      "featureId": "jobCosting",
+      "title": "Job costing aggregation",
+      "priority": "now",
+      "actorIds": [
+        "projectManager",
+        "billingStaff"
+      ],
+      "description": "Derive budget vs actual from labor time, material usage, and approved change orders for cost visibility.",
+      "rationale": "Central to the module's value proposition — unifying cost signals that are typically tracked in disconnected ways."
+    },
+    {
+      "featureId": "llmStatusReport",
+      "title": "AI-assisted status report generation",
+      "priority": "now",
+      "actorIds": [
+        "projectManager"
+      ],
+      "description": "Generate a professional project status summary from tasks, time logs, and materials using the platform LLM proxy.",
+      "rationale": "Saves PM time and improves client communication quality by auto-summarizing live project data."
+    },
+    {
+      "featureId": "llmDelayRisk",
+      "title": "AI delay-risk suggestions",
+      "priority": "now",
+      "actorIds": [
+        "projectManager"
+      ],
+      "description": "Suggest tasks at risk of delay based on project activity, due dates, and progress signals via the platform LLM proxy.",
+      "rationale": "Proactive risk identification helps PMs intervene before deadlines slip, improving on-time delivery."
+    },
+    {
+      "featureId": "clientBillingSummary",
+      "title": "Client billing summary",
+      "priority": "now",
+      "actorIds": [
+        "billingStaff",
+        "client"
+      ],
+      "description": "Compile client-facing billing summaries with labor, material, and change order breakdowns from approved job costs.",
+      "rationale": "Bridges job costing and client communication; gives clients a clear cost narrative before invoicing."
+    },
+    {
+      "featureId": "invoiceGeneration",
+      "title": "Invoice generation",
+      "priority": "now",
+      "actorIds": [
+        "billingStaff",
+        "client"
+      ],
+      "description": "Generate formal invoices from approved job costs and change orders for client billing; payment rails remain external.",
+      "rationale": "Formal billing document for construction job costing; bounds invoice complexity to billing summaries, not full accounting."
+    },
+    {
+      "featureId": "clientStatusView",
+      "title": "Client status report view",
+      "priority": "now",
+      "actorIds": [
+        "projectManager",
+        "client"
+      ],
+      "description": "Shared status report surface where clients receive and review project progress, budget, and milestone summaries.",
+      "rationale": "Keeps clients informed without giving them internal editing access; supports the client communication focus."
+    },
+    {
+      "featureId": "clientBillingView",
+      "title": "Client billing view",
+      "priority": "now",
+      "actorIds": [
+        "billingStaff",
+        "client"
+      ],
+      "description": "Shared billing surface where clients receive and review billing summaries and invoices.",
+      "rationale": "Gives clients visibility into charges so they can review and approve payment; complements the billing summary and invoice features."
+    }
+  ],
+  "decisions": [],
+  "createdAt": "2026-07-31T00:00:00Z"
+}

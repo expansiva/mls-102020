@@ -35,12 +35,30 @@ import {
   renderE2JourneysMarkdown,
   validateE2JourneysInvariants,
 } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/gate.js';
+import {
+  buildNsToolInstruction,
+  createNsToolSchema,
+  extractNsToolOutput,
+} from '/_102020_/l2/agentNewSolution/helpers/nsLlm.js';
+import {
+  buildNsE2JudgeRepairStepPlan,
+  buildNsE2JudgeStepPlan,
+  decideNsE2JudgeOutcome,
+  decideNsE2NextStep,
+  NsE2StepPlan,
+  normalizeNsE2JudgeFindings,
+  renderNsE2JudgeMarkdown,
+  renderNsE2JudgeRetryContext,
+  summarizeNsE2ForJudge,
+} from '/_102020_/l2/agentNewSolution/steps/e2-journeys/judge.js';
 import type { NsJourneysReviewPayload } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/widgetNsJourneysLogic.js';
 import { isNsFastMode } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
 import { emptyNsJourneysWidgetEdits } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/widgetNsJourneysLogic.js';
 
 const AGENT_NAME = 'agentNsJourneys';
 const TOOL_NAME = 'submitNsJourneys';
+const JUDGE_PLAN = 'e2-judge';
+const JUDGE_TOOL = 'submitNsJourneyJudgment';
 type PlannerStatus = 'ok' | 'failed';
 
 interface NsE2PlannerOutput {
@@ -86,6 +104,9 @@ async function beforePromptStep(
       return await fastApproveCheckpoint(context, parentStep, step, hookSequential, moduleName, artifact);
     }
     return [checkpointPromptReady(context, parentStep, hookSequential, moduleName, artifact, hookArgs)];
+  }
+  if (parsedArgs.planId === JUDGE_PLAN) {
+    return [await judgePromptReady(context, parentStep, hookSequential, parsedArgs, hookArgs)];
   }
 
   const moduleName = await resolveE2Module(parsedArgs.moduleName);
@@ -138,6 +159,9 @@ async function afterPromptStep(
     recoveryArgs = parsedArgs;
     if (parsedArgs.planId === 'checkpoint-journeys') {
       return handleCheckpointPromptResult(context, parentStep, step, hookSequential);
+    }
+    if (parsedArgs.planId === JUDGE_PLAN) {
+      return await handleJudgeResult(context, parentStep, step, hookSequential, parsedArgs);
     }
     // P2: the e2-journeys single call — retry once on an LLM-CALL failure (no payload) before failing.
     const infraIntents = nsLlmInfraFailureIntents({
@@ -229,7 +253,21 @@ async function afterPromptStep(
     // anchors the checkpoint; this retry step's planId is e2-journeys-retry-*).
     const recovered = recoverOriginIntent(context, parentStep, hookSequential, parsedArgs);
     if (recovered) intents.unshift(recovered);
-    if (parsedArgs.afterAdjustment || !hasStepWithPlanId(context, 'checkpoint-journeys')) {
+    // T4: on a green gate the JUDGE runs before the human sees anything — one call over a small
+    // artifact, where a rerun is still cheap. It is the judge that opens the checkpoint afterwards.
+    const next = decideNsE2NextStep({
+      judgeAttempt: parsedArgs.judgeAttempt || 1,
+      afterAdjustment: !!parsedArgs.afterAdjustment,
+      fastMode: isNsFastMode(context.task?.iaCompressed?.longMemory),
+      hasCheckpoint: hasStepWithPlanId(context, 'checkpoint-journeys'),
+    });
+    if (next === 'judge') {
+      intents.unshift(addJudgeStep(context, parentStep, artifact.moduleName, {
+        judgeAttempt: parsedArgs.judgeAttempt || 1,
+        // The human asked for this version: the judge may annotate it, never regenerate over the request.
+        annotateOnly: !!(parsedArgs.afterAdjustment || parsedArgs.reviewPayload),
+      }));
+    } else if (next === 'checkpoint') {
       intents.unshift(addCheckpointReviewStep(context, parentStep, artifact.moduleName));
     }
     return intents;
@@ -238,6 +276,148 @@ async function afterPromptStep(
     if (moduleNameForTrace) await writeNsTrace(moduleNameForTrace, 'e2-journeys', AGENT_NAME, 1, { stepId: step.stepId }, traceMsg);
     return terminalFailureIntents(context, parentStep, step, hookSequential, recoveryArgs, traceMsg);
   }
+}
+
+// ---------------------------------------------------------------------------
+// T4 — the journey judge (after a green gate, before the human checkpoint)
+// ---------------------------------------------------------------------------
+
+async function judgePromptReady(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  hookSequential: number,
+  parsedArgs: ReturnType<typeof parseArgs>,
+  hookArgs: string,
+): Promise<mls.msg.AgentIntentPromptReady> {
+  const moduleName = await resolveE2ReviewModule(parsedArgs.moduleName);
+  const artifact = await readJsonArtifact<NsE2JourneysArtifact>(nsPipelineArtifactFileInfo(moduleName, 'e2-journeys', '.json'), true);
+  if (!artifact) throw new Error(`[${AGENT_NAME}] e2-journeys.json not found for ${moduleName}`);
+  const prompt = await readNsText('steps/e2-journeys', 'promptJudge', '.md', true);
+  const schema = await readJudgeSchema();
+  return {
+    type: 'prompt_ready',
+    args: hookArgs,
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    hookSequential,
+    parentStepId: parentStep.stepId,
+    systemPrompt: `${prompt.split('{{toolName}}').join(JUDGE_TOOL)}\n\n${buildNsToolInstruction(JUDGE_TOOL, 'the journey document is missing or unreadable')}`,
+    humanPrompt: [
+      '## Journeys under review',
+      JSON.stringify(summarizeNsE2ForJudge(artifact), null, 2),
+    ].join('\n'),
+    tools: [createNsToolSchema(JUDGE_TOOL, 'Report the journey review findings (an empty list is a valid answer).', schema)],
+    toolChoice: { type: 'function', function: { name: JUDGE_TOOL } },
+  } as mls.msg.AgentIntentPromptReady;
+}
+
+/**
+ * The judge is an ADDITIVE quality layer: it may delay the checkpoint by one rerun, never block the run.
+ * Any failure on this path (no payload, unreadable output) proceeds to the checkpoint with a trace —
+ * a review that cannot run must not cost the user their module.
+ */
+async function handleJudgeResult(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  parsedArgs: ReturnType<typeof parseArgs>,
+): Promise<mls.msg.AgentIntent[]> {
+  const moduleName = await resolveE2ReviewModule(parsedArgs.moduleName);
+  const judgeAttempt = parsedArgs.judgeAttempt || 1;
+  const artifact = await readJsonArtifact<NsE2JourneysArtifact>(nsPipelineArtifactFileInfo(moduleName, 'e2-journeys', '.json'), true);
+  const proceed = (reason: string): mls.msg.AgentIntent[] => [
+    addCheckpointReviewStep(context, parentStep, moduleName),
+    updateStatus(context, parentStep, step, hookSequential, 'completed', reason, 'input_output'),
+  ];
+  if (!artifact) return proceed('journey review skipped: e2-journeys.json not found');
+
+  let report;
+  try {
+    const output = extractNsToolOutput(step.interaction?.payload?.[0], JUDGE_TOOL);
+    if (output.status === 'failed') {
+      await writeNsTrace(moduleName, JUDGE_PLAN, AGENT_NAME, judgeAttempt, { trace: output.trace }, output.trace.join('\n'));
+      return proceed('journey review returned failed; continuing to the checkpoint');
+    }
+    report = normalizeNsE2JudgeFindings((output.result as Record<string, unknown>).findings, artifact, judgeAttempt);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await writeNsTrace(moduleName, JUDGE_PLAN, AGENT_NAME, judgeAttempt, { stepId: step.stepId }, message);
+    return proceed(`journey review unavailable (${message}); continuing to the checkpoint`);
+  }
+
+  await writeJsonArtifact(nsPipelineArtifactFileInfo(moduleName, 'e2-judge', '.json'), report);
+  await writeNsTrace(moduleName, JUDGE_PLAN, AGENT_NAME, judgeAttempt, { report }, undefined, nsPromptChars(step));
+  const outcome = decideNsE2JudgeOutcome({ findings: report.findings, judgeAttempt, annotateOnly: !!parsedArgs.annotateOnly });
+  const summary = `${report.findings.filter(finding => finding.severity === 'error').length} error / ${report.findings.filter(finding => finding.severity === 'warning').length} warning finding(s)`;
+
+  if (outcome === 'repair') {
+    return [
+      addJudgeRepairStep(context, parentStep, moduleName, renderNsE2JudgeRetryContext(report), judgeAttempt + 1),
+      updateStatus(context, parentStep, step, hookSequential, 'completed', `journey review: ${summary}; one regeneration queued`, 'input_output'),
+    ];
+  }
+  // The findings the human must see live in the checkpoint document, not only in a trace.
+  const annotation = renderNsE2JudgeMarkdown(report);
+  if (annotation) {
+    const markdown = await readStorText(nsPipelineArtifactFileInfo(moduleName, 'e2-journeys', '.md'));
+    if (markdown) await writeMarkdownArtifact(nsPipelineArtifactFileInfo(moduleName, 'e2-journeys', '.md'), `${markdown.trimEnd()}\n${annotation}\n`);
+  }
+  return proceed(`journey review: ${summary}`);
+}
+
+async function readJudgeSchema(): Promise<Record<string, unknown>> {
+  const raw = await readNsText('schemas', 'e2-judge.schema', '.json', true);
+  const parsed = parseMaybeJson(raw);
+  if (!isRecord(parsed)) throw new Error('[readJudgeSchema] invalid schema');
+  return parsed;
+}
+
+function addJudgeStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  moduleName: string,
+  options: { judgeAttempt: number; annotateOnly: boolean },
+): mls.msg.AgentIntentAddStep {
+  return addPlannedStep(context, parentStep, buildNsE2JudgeStepPlan({ ...options, moduleName, now: Date.now() }));
+}
+
+function addJudgeRepairStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  moduleName: string,
+  retryContext: string,
+  judgeAttempt: number,
+): mls.msg.AgentIntentAddStep {
+  return addPlannedStep(context, parentStep, buildNsE2JudgeRepairStepPlan({ moduleName, retryContext, judgeAttempt, now: Date.now() }));
+}
+
+/** Wrap a pure step plan (judge.ts) into the add-step intent. */
+function addPlannedStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  plan: NsE2StepPlan,
+): mls.msg.AgentIntentAddStep {
+  return {
+    type: 'add-step',
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    parentStepId: parentStep.stepId,
+    step: {
+      type: 'agent',
+      stepId: 0,
+      interaction: null,
+      stepTitle: plan.stepTitle,
+      status: plan.status,
+      nextSteps: [],
+      agentName: AGENT_NAME,
+      prompt: plan.prompt,
+      rags: [],
+      planning: plan.planning,
+    } as mls.msg.AIAgentStep,
+  };
 }
 
 function checkpointPromptReady(
@@ -948,6 +1128,8 @@ function parseArgs(value: unknown): {
   llmRetry?: boolean;
   originStepId?: number;
   originParentStepId?: number;
+  judgeAttempt?: number;
+  annotateOnly?: boolean;
 } {
   const parsed = parseMaybeJson(value);
   return isRecord(parsed) ? {
@@ -961,6 +1143,8 @@ function parseArgs(value: unknown): {
     llmRetry: parsed.llmRetry === true,
     originStepId: typeof parsed.originStepId === 'number' ? parsed.originStepId : undefined,
     originParentStepId: typeof parsed.originParentStepId === 'number' ? parsed.originParentStepId : undefined,
+    judgeAttempt: typeof parsed.judgeAttempt === 'number' ? parsed.judgeAttempt : undefined,
+    annotateOnly: parsed.annotateOnly === true,
   } : {};
 }
 

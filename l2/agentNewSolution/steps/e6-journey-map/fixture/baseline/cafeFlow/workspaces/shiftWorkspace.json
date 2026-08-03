@@ -1,0 +1,270 @@
+{
+  "workspaceId": "shiftWorkspace",
+  "title": "Turno diário",
+  "actors": [
+    "gerente"
+  ],
+  "kind": "workflow",
+  "entity": "DailyShift",
+  "workflowId": "dailyShiftLifecycle",
+  "bffCalls": [
+    {
+      "bffId": "openDailyShiftCmd",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "openDailyShift"
+        }
+      ],
+      "input": [
+        {
+          "name": "shiftDate",
+          "from": "openDailyShift.shiftDate",
+          "required": true
+        },
+        {
+          "name": "openedByUserId",
+          "from": "openDailyShift.openedByUserId",
+          "required": true
+        },
+        {
+          "name": "notes",
+          "from": "openDailyShift.notes"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "dailyShiftId",
+            "from": "openDailyShift.dailyShiftId"
+          },
+          {
+            "name": "shiftDate",
+            "from": "openDailyShift.shiftDate"
+          },
+          {
+            "name": "status",
+            "from": "openDailyShift.status"
+          },
+          {
+            "name": "openedByUserId",
+            "from": "openDailyShift.openedByUserId"
+          },
+          {
+            "name": "openedAt",
+            "from": "openDailyShift.openedAt"
+          },
+          {
+            "name": "notes",
+            "from": "openDailyShift.notes"
+          },
+          {
+            "name": "createdAt",
+            "from": "openDailyShift.createdAt"
+          }
+        ]
+      },
+      "route": "cafeFlow.shiftWorkspace.openDailyShiftCmd"
+    },
+    {
+      "bffId": "closeDailyShiftCmd",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "closeDailyShift"
+        }
+      ],
+      "input": [
+        {
+          "name": "dailyShiftId",
+          "from": "closeDailyShift.dailyShiftId",
+          "required": true
+        },
+        {
+          "name": "cashTotal",
+          "from": "closeDailyShift.cashTotal"
+        },
+        {
+          "name": "otherPaymentsTotal",
+          "from": "closeDailyShift.otherPaymentsTotal"
+        },
+        {
+          "name": "notes",
+          "from": "closeDailyShift.notes"
+        },
+        {
+          "name": "closedByUserId",
+          "from": "closeDailyShift.closedByUserId",
+          "required": true
+        },
+        {
+          "name": "closedAt",
+          "from": "closeDailyShift.closedAt",
+          "required": true
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "dailyShiftId",
+            "from": "closeDailyShift.dailyShiftId"
+          },
+          {
+            "name": "shiftDate",
+            "from": "closeDailyShift.shiftDate"
+          },
+          {
+            "name": "status",
+            "from": "closeDailyShift.status"
+          },
+          {
+            "name": "closedByUserId",
+            "from": "closeDailyShift.closedByUserId"
+          },
+          {
+            "name": "closedAt",
+            "from": "closeDailyShift.closedAt"
+          },
+          {
+            "name": "totalOrders",
+            "from": "closeDailyShift.totalOrders"
+          },
+          {
+            "name": "totalSalesAmount",
+            "from": "closeDailyShift.totalSalesAmount"
+          },
+          {
+            "name": "totalItemsSold",
+            "from": "closeDailyShift.totalItemsSold"
+          },
+          {
+            "name": "cashTotal",
+            "from": "closeDailyShift.cashTotal"
+          },
+          {
+            "name": "otherPaymentsTotal",
+            "from": "closeDailyShift.otherPaymentsTotal"
+          },
+          {
+            "name": "shiftClosingReportId",
+            "from": "closeDailyShift.shiftClosingReportId"
+          },
+          {
+            "name": "generatedAt",
+            "from": "closeDailyShift.generatedAt"
+          }
+        ]
+      },
+      "route": "cafeFlow.shiftWorkspace.closeDailyShiftCmd"
+    },
+    {
+      "bffId": "getShiftClosingReport",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "viewShiftClosingReport"
+        }
+      ],
+      "input": [
+        {
+          "name": "shiftClosingReportId",
+          "from": "viewShiftClosingReport.shiftClosingReportId",
+          "required": true
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "shiftClosingReportId",
+            "from": "viewShiftClosingReport.shiftClosingReportId"
+          },
+          {
+            "name": "dailyShiftId",
+            "from": "viewShiftClosingReport.dailyShiftId"
+          },
+          {
+            "name": "shiftDate",
+            "from": "viewShiftClosingReport.shiftDate"
+          },
+          {
+            "name": "totalSalesAmount",
+            "from": "viewShiftClosingReport.totalSalesAmount"
+          },
+          {
+            "name": "totalOrdersCount",
+            "from": "viewShiftClosingReport.totalOrdersCount"
+          },
+          {
+            "name": "totalItemsSold",
+            "from": "viewShiftClosingReport.totalItemsSold"
+          },
+          {
+            "name": "cashPaymentsAmount",
+            "from": "viewShiftClosingReport.cashPaymentsAmount"
+          },
+          {
+            "name": "otherPaymentsAmount",
+            "from": "viewShiftClosingReport.otherPaymentsAmount"
+          },
+          {
+            "name": "topSellingItemsSummary",
+            "from": "viewShiftClosingReport.topSellingItemsSummary"
+          },
+          {
+            "name": "lowStockSignalsCount",
+            "from": "viewShiftClosingReport.lowStockSignalsCount"
+          },
+          {
+            "name": "stockoutSignalsCount",
+            "from": "viewShiftClosingReport.stockoutSignalsCount"
+          },
+          {
+            "name": "closingNotes",
+            "from": "viewShiftClosingReport.closingNotes"
+          },
+          {
+            "name": "generatedAt",
+            "from": "viewShiftClosingReport.generatedAt"
+          }
+        ]
+      },
+      "route": "cafeFlow.shiftWorkspace.getShiftClosingReport"
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "openShiftSection",
+      "intent": "Gerente preenche os dados e abre o turno do dia",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "action": "openDailyShiftCmd"
+        }
+      ]
+    },
+    {
+      "sectionId": "closeShiftSection",
+      "intent": "Gerente informa os totais de fechamento e confirma o encerramento do turno",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "action": "closeDailyShiftCmd"
+        },
+        {
+          "role": "detailPanel",
+          "dataSource": "getShiftClosingReport"
+        }
+      ]
+    }
+  ],
+  "operationIds": [
+    "openDailyShift",
+    "closeDailyShift",
+    "viewShiftClosingReport"
+  ],
+  "purpose": "Gerente abre o turno do dia, acompanha a operação e fecha o turno gerando o relatório de fechamento.",
+  "sliceHash": "djb2:09289fb0"
+}

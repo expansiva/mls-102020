@@ -1,0 +1,35 @@
+{
+  "journeyId": "generateInvoice",
+  "actorId": "billingStaff",
+  "title": "Generate an invoice from approved costs",
+  "goal": "Create an invoice from approved job costs and change orders so the client receives a formal billing document.",
+  "steps": [
+    "Select approved costs",
+    "Create the invoice",
+    "Review and send to client"
+  ],
+  "outcome": "An invoice is generated from approved costs and change orders and sent to the client for payment processing outside the system.",
+  "operationIds": [
+    "createProject",
+    "updateProject",
+    "viewDashboard",
+    "viewJobCostSummary",
+    "updateChangeOrderStatus",
+    "queryChangeOrders",
+    "viewChangeOrder",
+    "createTimeLog",
+    "queryTimeLogs",
+    "createMaterialUsage",
+    "queryMaterialUsages",
+    "createBillingSummary",
+    "createInvoice",
+    "createChangeOrder",
+    "updateChangeOrder",
+    "sendInvoice",
+    "queryInvoices",
+    "shareBillingSummary",
+    "viewBillingSummary",
+    "viewInvoice"
+  ],
+  "workspaceId": "dashboardWorkspace"
+}

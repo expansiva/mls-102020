@@ -1,0 +1,599 @@
+{
+  "schemaVersion": "2026-07-11-ns-e5-v2",
+  "moduleName": "buildFlowFsm",
+  "createdAt": "2026-07-31T04:55:17.626Z",
+  "workflows": [
+    {
+      "workflowId": "projectLifecycle",
+      "title": "Project lifecycle",
+      "actorId": "projectManager",
+      "primaryEntity": "Project",
+      "featureRefs": [
+        "projectManagement",
+        "jobCosting"
+      ],
+      "operationIds": [
+        "createProject",
+        "updateProjectStatus"
+      ]
+    },
+    {
+      "workflowId": "workTaskLifecycle",
+      "title": "Work task lifecycle",
+      "actorId": "projectManager",
+      "primaryEntity": "WorkTask",
+      "featureRefs": [
+        "taskAssignment"
+      ],
+      "operationIds": [
+        "createWorkTask",
+        "updateWorkTaskStatus"
+      ]
+    },
+    {
+      "workflowId": "changeOrderLifecycle",
+      "title": "Change order lifecycle",
+      "actorId": "projectManager",
+      "primaryEntity": "ChangeOrder",
+      "featureRefs": [
+        "changeOrderManagement",
+        "jobCosting"
+      ],
+      "operationIds": [
+        "createChangeOrder",
+        "updateChangeOrderStatus"
+      ]
+    },
+    {
+      "workflowId": "statusReportLifecycle",
+      "title": "Status report lifecycle",
+      "actorId": "projectManager",
+      "primaryEntity": "StatusReport",
+      "featureRefs": [
+        "llmStatusReport",
+        "clientStatusView"
+      ],
+      "operationIds": [
+        "generateStatusReport",
+        "updateStatusReportStatus"
+      ]
+    },
+    {
+      "workflowId": "billingSummaryLifecycle",
+      "title": "Billing summary lifecycle",
+      "actorId": "billingStaff",
+      "primaryEntity": "BillingSummary",
+      "featureRefs": [
+        "clientBillingSummary",
+        "clientBillingView",
+        "jobCosting"
+      ],
+      "operationIds": [
+        "createBillingSummary",
+        "shareBillingSummary"
+      ]
+    },
+    {
+      "workflowId": "invoiceLifecycle",
+      "title": "Invoice lifecycle",
+      "actorId": "billingStaff",
+      "primaryEntity": "Invoice",
+      "featureRefs": [
+        "invoiceGeneration",
+        "clientBillingView",
+        "jobCosting",
+        "changeOrderManagement"
+      ],
+      "operationIds": [
+        "createInvoice",
+        "sendInvoice"
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "operationId": "createProject",
+      "title": "Create project",
+      "actorId": "projectManager",
+      "entity": "Project",
+      "kind": "create",
+      "featureRefs": [
+        "projectManagement",
+        "jobCosting"
+      ],
+      "workflowId": "projectLifecycle"
+    },
+    {
+      "operationId": "updateProjectStatus",
+      "title": "Update project status",
+      "actorId": "projectManager",
+      "entity": "Project",
+      "kind": "update",
+      "featureRefs": [
+        "projectManagement"
+      ],
+      "workflowId": "projectLifecycle"
+    },
+    {
+      "operationId": "updateProject",
+      "title": "Update project details",
+      "actorId": "projectManager",
+      "entity": "Project",
+      "kind": "update",
+      "featureRefs": [
+        "projectManagement",
+        "jobCosting"
+      ]
+    },
+    {
+      "operationId": "queryProjects",
+      "title": "Browse projects",
+      "actorId": "projectManager",
+      "entity": "Project",
+      "kind": "query",
+      "featureRefs": [
+        "projectManagement",
+        "dashboardOverview"
+      ]
+    },
+    {
+      "operationId": "viewProject",
+      "title": "View project detail and timeline",
+      "actorId": "projectManager",
+      "entity": "Project",
+      "kind": "view",
+      "featureRefs": [
+        "projectTimeline",
+        "projectManagement"
+      ]
+    },
+    {
+      "operationId": "viewDashboard",
+      "title": "View operational dashboard",
+      "actorId": "projectManager",
+      "entity": "Project",
+      "kind": "view",
+      "featureRefs": [
+        "dashboardOverview",
+        "jobCosting"
+      ]
+    },
+    {
+      "operationId": "viewJobCostSummary",
+      "title": "View job cost summary",
+      "actorId": "billingStaff",
+      "entity": "Project",
+      "kind": "query",
+      "featureRefs": [
+        "jobCosting"
+      ]
+    },
+    {
+      "operationId": "createWorkTask",
+      "title": "Create work task",
+      "actorId": "projectManager",
+      "entity": "WorkTask",
+      "kind": "create",
+      "featureRefs": [
+        "taskAssignment"
+      ],
+      "workflowId": "workTaskLifecycle"
+    },
+    {
+      "operationId": "updateWorkTask",
+      "title": "Update work task assignment and details",
+      "actorId": "projectManager",
+      "entity": "WorkTask",
+      "kind": "update",
+      "featureRefs": [
+        "taskAssignment"
+      ]
+    },
+    {
+      "operationId": "updateWorkTaskStatus",
+      "title": "Update work task status",
+      "actorId": "fieldWorker",
+      "entity": "WorkTask",
+      "kind": "update",
+      "featureRefs": [
+        "taskAssignment"
+      ],
+      "workflowId": "workTaskLifecycle"
+    },
+    {
+      "operationId": "queryWorkTasks",
+      "title": "Browse work tasks",
+      "actorId": "projectManager",
+      "entity": "WorkTask",
+      "kind": "query",
+      "featureRefs": [
+        "taskAssignment",
+        "projectTimeline",
+        "dashboardOverview"
+      ]
+    },
+    {
+      "operationId": "queryMyWorkTasks",
+      "title": "Browse my assigned tasks",
+      "actorId": "fieldWorker",
+      "entity": "WorkTask",
+      "kind": "query",
+      "featureRefs": [
+        "taskAssignment"
+      ]
+    },
+    {
+      "operationId": "viewWorkTask",
+      "title": "View work task details",
+      "actorId": "fieldWorker",
+      "entity": "WorkTask",
+      "kind": "view",
+      "featureRefs": [
+        "taskAssignment"
+      ]
+    },
+    {
+      "operationId": "createChangeOrder",
+      "title": "Create change order",
+      "actorId": "projectManager",
+      "entity": "ChangeOrder",
+      "kind": "create",
+      "featureRefs": [
+        "changeOrderManagement"
+      ],
+      "workflowId": "changeOrderLifecycle"
+    },
+    {
+      "operationId": "updateChangeOrder",
+      "title": "Update change order details",
+      "actorId": "projectManager",
+      "entity": "ChangeOrder",
+      "kind": "update",
+      "featureRefs": [
+        "changeOrderManagement"
+      ]
+    },
+    {
+      "operationId": "updateChangeOrderStatus",
+      "title": "Update change order status",
+      "actorId": "projectManager",
+      "entity": "ChangeOrder",
+      "kind": "update",
+      "featureRefs": [
+        "changeOrderManagement",
+        "jobCosting"
+      ],
+      "workflowId": "changeOrderLifecycle"
+    },
+    {
+      "operationId": "queryChangeOrders",
+      "title": "Browse change orders",
+      "actorId": "projectManager",
+      "entity": "ChangeOrder",
+      "kind": "query",
+      "featureRefs": [
+        "changeOrderManagement",
+        "jobCosting"
+      ]
+    },
+    {
+      "operationId": "viewChangeOrder",
+      "title": "View change order and cost impact",
+      "actorId": "projectManager",
+      "entity": "ChangeOrder",
+      "kind": "view",
+      "featureRefs": [
+        "changeOrderManagement",
+        "jobCosting"
+      ]
+    },
+    {
+      "operationId": "generateStatusReport",
+      "title": "Generate status report",
+      "actorId": "projectManager",
+      "entity": "StatusReport",
+      "kind": "create",
+      "featureRefs": [
+        "llmStatusReport"
+      ],
+      "workflowId": "statusReportLifecycle"
+    },
+    {
+      "operationId": "updateStatusReport",
+      "title": "Edit status report content",
+      "actorId": "projectManager",
+      "entity": "StatusReport",
+      "kind": "update",
+      "featureRefs": [
+        "llmStatusReport"
+      ]
+    },
+    {
+      "operationId": "updateStatusReportStatus",
+      "title": "Update status report status",
+      "actorId": "projectManager",
+      "entity": "StatusReport",
+      "kind": "update",
+      "featureRefs": [
+        "llmStatusReport",
+        "clientStatusView"
+      ],
+      "workflowId": "statusReportLifecycle"
+    },
+    {
+      "operationId": "viewStatusReport",
+      "title": "View status report",
+      "actorId": "client",
+      "entity": "StatusReport",
+      "kind": "view",
+      "featureRefs": [
+        "clientStatusView"
+      ]
+    },
+    {
+      "operationId": "generateDelayRiskSuggestions",
+      "title": "Generate delay-risk suggestions",
+      "actorId": "projectManager",
+      "entity": "DelayRiskSuggestion",
+      "kind": "create",
+      "featureRefs": [
+        "llmDelayRisk"
+      ]
+    },
+    {
+      "operationId": "queryDelayRiskSuggestions",
+      "title": "Review delay-risk suggestions",
+      "actorId": "projectManager",
+      "entity": "DelayRiskSuggestion",
+      "kind": "query",
+      "featureRefs": [
+        "llmDelayRisk"
+      ]
+    },
+    {
+      "operationId": "createTimeLog",
+      "title": "Log hours worked",
+      "actorId": "fieldWorker",
+      "entity": "TimeLog",
+      "kind": "create",
+      "featureRefs": [
+        "timeLogging",
+        "jobCosting"
+      ]
+    },
+    {
+      "operationId": "voidTimeLog",
+      "title": "Void time log",
+      "actorId": "fieldWorker",
+      "entity": "TimeLog",
+      "kind": "update",
+      "featureRefs": [
+        "timeLogging"
+      ]
+    },
+    {
+      "operationId": "queryTimeLogs",
+      "title": "Browse time logs",
+      "actorId": "projectManager",
+      "entity": "TimeLog",
+      "kind": "query",
+      "featureRefs": [
+        "timeLogging",
+        "jobCosting"
+      ]
+    },
+    {
+      "operationId": "createMaterialUsage",
+      "title": "Log materials used",
+      "actorId": "fieldWorker",
+      "entity": "MaterialUsage",
+      "kind": "create",
+      "featureRefs": [
+        "materialUsageTracking",
+        "jobCosting"
+      ]
+    },
+    {
+      "operationId": "voidMaterialUsage",
+      "title": "Void material usage",
+      "actorId": "fieldWorker",
+      "entity": "MaterialUsage",
+      "kind": "update",
+      "featureRefs": [
+        "materialUsageTracking"
+      ]
+    },
+    {
+      "operationId": "queryMaterialUsages",
+      "title": "Browse material usage",
+      "actorId": "projectManager",
+      "entity": "MaterialUsage",
+      "kind": "query",
+      "featureRefs": [
+        "materialUsageTracking",
+        "jobCosting"
+      ]
+    },
+    {
+      "operationId": "createBillingSummary",
+      "title": "Create billing summary",
+      "actorId": "billingStaff",
+      "entity": "BillingSummary",
+      "kind": "create",
+      "featureRefs": [
+        "clientBillingSummary",
+        "jobCosting"
+      ],
+      "workflowId": "billingSummaryLifecycle"
+    },
+    {
+      "operationId": "shareBillingSummary",
+      "title": "Share billing summary with client",
+      "actorId": "billingStaff",
+      "entity": "BillingSummary",
+      "kind": "update",
+      "featureRefs": [
+        "clientBillingSummary",
+        "clientBillingView"
+      ],
+      "workflowId": "billingSummaryLifecycle"
+    },
+    {
+      "operationId": "queryBillingSummaries",
+      "title": "Browse billing summaries",
+      "actorId": "billingStaff",
+      "entity": "BillingSummary",
+      "kind": "query",
+      "featureRefs": [
+        "clientBillingSummary"
+      ]
+    },
+    {
+      "operationId": "viewBillingSummary",
+      "title": "View billing summary",
+      "actorId": "client",
+      "entity": "BillingSummary",
+      "kind": "view",
+      "featureRefs": [
+        "clientBillingView",
+        "clientBillingSummary"
+      ]
+    },
+    {
+      "operationId": "createInvoice",
+      "title": "Create invoice",
+      "actorId": "billingStaff",
+      "entity": "Invoice",
+      "kind": "create",
+      "featureRefs": [
+        "invoiceGeneration",
+        "jobCosting",
+        "changeOrderManagement"
+      ],
+      "workflowId": "invoiceLifecycle"
+    },
+    {
+      "operationId": "sendInvoice",
+      "title": "Send invoice to client",
+      "actorId": "billingStaff",
+      "entity": "Invoice",
+      "kind": "update",
+      "featureRefs": [
+        "invoiceGeneration",
+        "clientBillingView"
+      ],
+      "workflowId": "invoiceLifecycle"
+    },
+    {
+      "operationId": "queryInvoices",
+      "title": "Browse invoices",
+      "actorId": "billingStaff",
+      "entity": "Invoice",
+      "kind": "query",
+      "featureRefs": [
+        "invoiceGeneration"
+      ]
+    },
+    {
+      "operationId": "viewInvoice",
+      "title": "View invoice",
+      "actorId": "client",
+      "entity": "Invoice",
+      "kind": "view",
+      "featureRefs": [
+        "clientBillingView"
+      ]
+    },
+    {
+      "operationId": "queryClients",
+      "title": "Browse clients",
+      "actorId": "projectManager",
+      "entity": "Client",
+      "kind": "query",
+      "featureRefs": [
+        "projectManagement"
+      ]
+    },
+    {
+      "operationId": "createClient",
+      "title": "Create client",
+      "actorId": "projectManager",
+      "entity": "Client",
+      "kind": "create",
+      "featureRefs": [
+        "projectManagement"
+      ]
+    },
+    {
+      "operationId": "updateClient",
+      "title": "Update client",
+      "actorId": "projectManager",
+      "entity": "Client",
+      "kind": "update",
+      "featureRefs": [
+        "projectManagement"
+      ]
+    },
+    {
+      "operationId": "deleteClient",
+      "title": "Delete client",
+      "actorId": "projectManager",
+      "entity": "Client",
+      "kind": "delete",
+      "featureRefs": [
+        "projectManagement"
+      ]
+    }
+  ],
+  "managedEntities": [
+    {
+      "entity": "Project",
+      "deletionPolicy": "inactivate",
+      "inactivationState": "closed"
+    },
+    {
+      "entity": "Client",
+      "deletionPolicy": "delete"
+    },
+    {
+      "entity": "WorkTask",
+      "deletionPolicy": "inactivate",
+      "inactivationState": "cancelled"
+    },
+    {
+      "entity": "TimeLog",
+      "deletionPolicy": "inactivate",
+      "inactivationState": "voided"
+    },
+    {
+      "entity": "MaterialUsage",
+      "deletionPolicy": "inactivate",
+      "inactivationState": "voided"
+    },
+    {
+      "entity": "ChangeOrder",
+      "deletionPolicy": "immutable",
+      "reason": "Change orders are retained as commercial and job-costing audit records"
+    },
+    {
+      "entity": "StatusReport",
+      "deletionPolicy": "immutable",
+      "reason": "Status reports are retained as project communication history"
+    },
+    {
+      "entity": "DelayRiskSuggestion",
+      "deletionPolicy": "immutable",
+      "reason": "Advisory AI suggestions are retained for traceability"
+    },
+    {
+      "entity": "BillingSummary",
+      "deletionPolicy": "immutable",
+      "reason": "Billing summaries are retained as client billing communication records"
+    },
+    {
+      "entity": "Invoice",
+      "deletionPolicy": "immutable",
+      "reason": "Invoices are retained as formal billing documents for audit"
+    }
+  ]
+}

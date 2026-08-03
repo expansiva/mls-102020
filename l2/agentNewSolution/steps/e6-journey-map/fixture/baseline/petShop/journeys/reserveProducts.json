@@ -1,0 +1,19 @@
+{
+  "journeyId": "reserveProducts",
+  "actorId": "cliente",
+  "title": "Reservar produtos para retirada na loja",
+  "goal": "Garantir que os produtos desejados fiquem separados para retirada presencial na loja",
+  "steps": [
+    "Escolher um produto para reservar a partir dos detalhes",
+    "Definir a quantidade desejada do produto",
+    "Informar dados de contato para a reserva",
+    "Confirmar a reserva",
+    "Receber a confirmação da reserva"
+  ],
+  "outcome": "A reserva é registrada no sistema com os dados do cliente e os itens solicitados, pronta para o atendente confirmar e preparar.",
+  "operationIds": [
+    "viewProductDetails",
+    "createReservation"
+  ],
+  "workspaceId": "catalog"
+}

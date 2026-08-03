@@ -1,0 +1,442 @@
+{
+  "workspaceId": "posWorkspace",
+  "title": "Lançar e acompanhar pedidos",
+  "actors": [
+    "atendente",
+    "cozinheiro"
+  ],
+  "kind": "workflow",
+  "entity": "Order",
+  "bffCalls": [
+    {
+      "bffId": "queryOpenOrders",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "trackOrders"
+        }
+      ],
+      "input": [
+        {
+          "name": "dailyShiftId",
+          "from": "trackOrders.dailyShiftId",
+          "required": true
+        },
+        {
+          "name": "status",
+          "from": "trackOrders.status"
+        },
+        {
+          "name": "orderType",
+          "from": "trackOrders.orderType"
+        },
+        {
+          "name": "tableNumber",
+          "from": "trackOrders.tableNumber"
+        },
+        {
+          "name": "page",
+          "type": "number"
+        },
+        {
+          "name": "pageSize",
+          "type": "number"
+        }
+      ],
+      "output": {
+        "kind": "paginated",
+        "fields": [
+          {
+            "name": "orders",
+            "from": "trackOrders.orders",
+            "type": "array",
+            "item": {
+              "fields": [
+                {
+                  "name": "orderId",
+                  "from": "trackOrders.orders.$items.orderId"
+                },
+                {
+                  "name": "dailyShiftId",
+                  "from": "trackOrders.orders.$items.dailyShiftId"
+                },
+                {
+                  "name": "orderType",
+                  "from": "trackOrders.orders.$items.orderType"
+                },
+                {
+                  "name": "tableNumber",
+                  "from": "trackOrders.orders.$items.tableNumber"
+                },
+                {
+                  "name": "customerName",
+                  "from": "trackOrders.orders.$items.customerName"
+                },
+                {
+                  "name": "totalAmount",
+                  "from": "trackOrders.orders.$items.totalAmount"
+                },
+                {
+                  "name": "status",
+                  "from": "trackOrders.orders.$items.status"
+                },
+                {
+                  "name": "notes",
+                  "from": "trackOrders.orders.$items.notes"
+                },
+                {
+                  "name": "registeredAt",
+                  "from": "trackOrders.orders.$items.registeredAt"
+                },
+                {
+                  "name": "confirmedAt",
+                  "from": "trackOrders.orders.$items.confirmedAt"
+                },
+                {
+                  "name": "inPreparationAt",
+                  "from": "trackOrders.orders.$items.inPreparationAt"
+                },
+                {
+                  "name": "readyAt",
+                  "from": "trackOrders.orders.$items.readyAt"
+                }
+              ]
+            }
+          },
+          {
+            "name": "total",
+            "from": "trackOrders.total"
+          }
+        ]
+      },
+      "route": "cafeFlow.posWorkspace.queryOpenOrders"
+    },
+    {
+      "bffId": "queryMenuItems",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "browseMenuForPos"
+        }
+      ],
+      "input": [
+        {
+          "name": "menuCategoryId",
+          "from": "browseMenuForPos.menuCategoryId"
+        }
+      ],
+      "output": {
+        "kind": "list",
+        "fields": [
+          {
+            "name": "menuItemId",
+            "from": "browseMenuForPos.$items.menuItemId"
+          },
+          {
+            "name": "menuCategoryId",
+            "from": "browseMenuForPos.$items.menuCategoryId"
+          },
+          {
+            "name": "name",
+            "from": "browseMenuForPos.$items.name"
+          },
+          {
+            "name": "description",
+            "from": "browseMenuForPos.$items.description"
+          },
+          {
+            "name": "price",
+            "from": "browseMenuForPos.$items.price"
+          },
+          {
+            "name": "status",
+            "from": "browseMenuForPos.$items.status"
+          },
+          {
+            "name": "imageUrl",
+            "from": "browseMenuForPos.$items.imageUrl"
+          },
+          {
+            "name": "displayOrder",
+            "from": "browseMenuForPos.$items.displayOrder"
+          }
+        ]
+      },
+      "route": "cafeFlow.posWorkspace.queryMenuItems"
+    },
+    {
+      "bffId": "cmdCreateOrder",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "createOrder"
+        }
+      ],
+      "input": [
+        {
+          "name": "orderType",
+          "from": "createOrder.orderType",
+          "required": true
+        },
+        {
+          "name": "tableNumber",
+          "from": "createOrder.tableNumber"
+        },
+        {
+          "name": "customerName",
+          "from": "createOrder.customerName"
+        },
+        {
+          "name": "notes",
+          "from": "createOrder.notes"
+        },
+        {
+          "name": "menuItemId",
+          "from": "createOrder.menuItemId",
+          "required": true
+        },
+        {
+          "name": "quantity",
+          "from": "createOrder.quantity",
+          "required": true
+        },
+        {
+          "name": "observations",
+          "from": "createOrder.observations"
+        },
+        {
+          "name": "dailyShiftId",
+          "from": "createOrder.dailyShiftId",
+          "required": true
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "orderId",
+            "from": "createOrder.orderId"
+          },
+          {
+            "name": "dailyShiftId",
+            "from": "createOrder.dailyShiftId"
+          },
+          {
+            "name": "orderType",
+            "from": "createOrder.orderType"
+          },
+          {
+            "name": "tableNumber",
+            "from": "createOrder.tableNumber"
+          },
+          {
+            "name": "customerName",
+            "from": "createOrder.customerName"
+          },
+          {
+            "name": "totalAmount",
+            "from": "createOrder.totalAmount"
+          },
+          {
+            "name": "status",
+            "from": "createOrder.status"
+          },
+          {
+            "name": "registeredAt",
+            "from": "createOrder.registeredAt"
+          },
+          {
+            "name": "confirmedAt",
+            "from": "createOrder.confirmedAt"
+          },
+          {
+            "name": "items",
+            "from": "createOrder.items",
+            "type": "array",
+            "item": {
+              "fields": [
+                {
+                  "name": "orderItemId",
+                  "from": "createOrder.items.$items.orderItemId"
+                },
+                {
+                  "name": "menuItemId",
+                  "from": "createOrder.items.$items.menuItemId"
+                },
+                {
+                  "name": "menuItemName",
+                  "from": "createOrder.items.$items.menuItemName"
+                },
+                {
+                  "name": "quantity",
+                  "from": "createOrder.items.$items.quantity"
+                },
+                {
+                  "name": "unitPrice",
+                  "from": "createOrder.items.$items.unitPrice"
+                },
+                {
+                  "name": "subtotal",
+                  "from": "createOrder.items.$items.subtotal"
+                },
+                {
+                  "name": "observations",
+                  "from": "createOrder.items.$items.observations"
+                },
+                {
+                  "name": "status",
+                  "from": "createOrder.items.$items.status"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "route": "cafeFlow.posWorkspace.cmdCreateOrder"
+    },
+    {
+      "bffId": "cmdUpdateOrderStatus",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "updateOrderStatus"
+        }
+      ],
+      "input": [
+        {
+          "name": "orderId",
+          "from": "updateOrderStatus.orderId",
+          "required": true
+        },
+        {
+          "name": "status",
+          "from": "updateOrderStatus.status",
+          "required": true
+        },
+        {
+          "name": "cancellationReason",
+          "from": "updateOrderStatus.cancellationReason"
+        }
+      ],
+      "route": "cafeFlow.posWorkspace.cmdUpdateOrderStatus"
+    },
+    {
+      "bffId": "cmdRecordBasicPayment",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "recordBasicPayment"
+        }
+      ],
+      "input": [
+        {
+          "name": "orderId",
+          "from": "recordBasicPayment.orderId",
+          "required": true
+        },
+        {
+          "name": "totalAmount",
+          "from": "recordBasicPayment.totalAmount",
+          "required": true
+        },
+        {
+          "name": "paymentMethod",
+          "from": "recordBasicPayment.paymentMethod",
+          "required": true
+        },
+        {
+          "name": "notes",
+          "from": "recordBasicPayment.notes"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "orderPaymentId",
+            "from": "recordBasicPayment.orderPaymentId"
+          },
+          {
+            "name": "orderId",
+            "from": "recordBasicPayment.orderId"
+          },
+          {
+            "name": "totalAmount",
+            "from": "recordBasicPayment.totalAmount"
+          },
+          {
+            "name": "paymentMethod",
+            "from": "recordBasicPayment.paymentMethod"
+          },
+          {
+            "name": "status",
+            "from": "recordBasicPayment.status"
+          },
+          {
+            "name": "paidAt",
+            "from": "recordBasicPayment.paidAt"
+          }
+        ]
+      },
+      "route": "cafeFlow.posWorkspace.cmdRecordBasicPayment"
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "openOrdersSection",
+      "intent": "Atendente e cozinheiro visualizam todos os pedidos abertos do turno, filtram por status ou tipo e acompanham o andamento em tempo real.",
+      "organisms": [
+        {
+          "role": "filterControl",
+          "attachTo": "queryOpenOrders"
+        },
+        {
+          "role": "primarySurface",
+          "dataSource": "queryOpenOrders"
+        },
+        {
+          "role": "contextualAction",
+          "action": "cmdUpdateOrderStatus"
+        }
+      ]
+    },
+    {
+      "sectionId": "createOrderSection",
+      "intent": "Atendente lança um novo pedido de mesa ou takeout, consulta o cardápio no POS para selecionar itens e confirma o envio à cozinha.",
+      "organisms": [
+        {
+          "role": "filterControl",
+          "attachTo": "queryMenuItems"
+        },
+        {
+          "role": "primarySurface",
+          "action": "cmdCreateOrder"
+        },
+        {
+          "role": "showcase",
+          "dataSource": "queryMenuItems"
+        }
+      ]
+    },
+    {
+      "sectionId": "paymentSection",
+      "intent": "Atendente seleciona o pedido totalizado, escolhe a forma de pagamento e registra o fechamento básico.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "action": "cmdRecordBasicPayment"
+        }
+      ]
+    }
+  ],
+  "operationIds": [
+    "trackOrders",
+    "browseMenuForPos",
+    "createOrder",
+    "updateOrderStatus",
+    "recordBasicPayment"
+  ],
+  "purpose": "Atendente lança pedidos de mesa ou takeout, consulta o cardápio no POS, acompanha pedidos abertos e registra o pagamento básico.",
+  "workflowId": "orderLifecycle",
+  "sliceHash": "djb2:4c56c34c"
+}

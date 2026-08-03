@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "2026-07-11-ns-e5-v2",
+  "moduleName": "petShop",
+  "createdAt": "2026-07-19T20:03:24.750Z",
+  "workflows": [
+    {
+      "workflowId": "reservationLifecycle",
+      "title": "Ciclo de vida da reserva",
+      "actorId": "atendente",
+      "primaryEntity": "Reservation",
+      "featureRefs": [
+        "productReservation",
+        "reservationManagement",
+        "inStorePayment"
+      ],
+      "operationIds": [
+        "createReservation",
+        "updateReservationStatus",
+        "processPayment"
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "operationId": "browseFeaturedProducts",
+      "title": "Visualizar produtos em destaque na vitrine",
+      "actorId": "cliente",
+      "entity": "Product",
+      "kind": "query",
+      "featureRefs": [
+        "featuredProductsDisplay"
+      ]
+    },
+    {
+      "operationId": "browseProducts",
+      "title": "Pesquisar e filtrar produtos no catálogo",
+      "actorId": "cliente",
+      "entity": "Product",
+      "kind": "query",
+      "featureRefs": [
+        "productCatalogListing",
+        "productSearch",
+        "priceRangeFilter"
+      ]
+    },
+    {
+      "operationId": "viewProductDetails",
+      "title": "Visualizar detalhes do produto",
+      "actorId": "cliente",
+      "entity": "Product",
+      "kind": "view",
+      "featureRefs": [
+        "productDetailsView"
+      ]
+    },
+    {
+      "operationId": "browseReservations",
+      "title": "Visualizar reservas pendentes e localizar cliente",
+      "actorId": "atendente",
+      "entity": "Reservation",
+      "kind": "query",
+      "featureRefs": [
+        "reservationManagement"
+      ]
+    },
+    {
+      "operationId": "createReservation",
+      "title": "Reservar produtos para retirada na loja",
+      "actorId": "cliente",
+      "entity": "Reservation",
+      "kind": "create",
+      "featureRefs": [
+        "productReservation"
+      ],
+      "workflowId": "reservationLifecycle"
+    },
+    {
+      "operationId": "updateReservationStatus",
+      "title": "Confirmar ou cancelar reserva",
+      "actorId": "atendente",
+      "entity": "Reservation",
+      "kind": "update",
+      "featureRefs": [
+        "reservationManagement"
+      ],
+      "workflowId": "reservationLifecycle"
+    },
+    {
+      "operationId": "processPayment",
+      "title": "Receber pagamento presencial e encerrar reserva",
+      "actorId": "atendente",
+      "entity": "Payment",
+      "kind": "create",
+      "featureRefs": [
+        "inStorePayment",
+        "reservationManagement"
+      ],
+      "workflowId": "reservationLifecycle"
+    }
+  ],
+  "managedEntities": [
+    {
+      "entity": "ReservationItem",
+      "deletionPolicy": "immutable",
+      "reason": "Itens de reserva são criados junto com a reserva e mantidos permanentemente como registro histórico, mesmo quando a reserva é cancelada."
+    },
+    {
+      "entity": "Payment",
+      "deletionPolicy": "immutable",
+      "reason": "Pagamentos presenciais são registrados como posted e não são removidos ou estornados neste módulo."
+    }
+  ]
+}

@@ -84,6 +84,7 @@ import {
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/siteMap.js';
 import {
   deriveE6Journeys,
+  deriveNsE6PageContext,
   readE6JourneySources,
   validateE6Journeys,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/journeys.js';
@@ -272,9 +273,15 @@ async function buildDetailPrompt(
   // promptDetail.md — so a new category is classifiable without touching the NS. When the catalog is
   // unreachable the block is simply omitted and the model returns no `presentation` (gate warns).
   const catalog = await readNsCategoryCatalog();
+  // T2: the slice does not carry the landings (they are a sibling array of the site map), so the model
+  // could not know the page is an entry point — and a landing may not require anything on arrival.
+  const landedActors = (siteMap?.landings || []).filter(landing => landing.workspaceId === slice.workspaceId).map(landing => landing.actorId);
   const humanPrompt = [
     '## Your workspace (from the approved site map — copy workspaceId/title/actors/kind verbatim)',
     JSON.stringify(slice, null, 2),
+    landedActors.length > 0
+      ? `\n## This workspace is the LANDING (entry page) of: ${landedActors.join(', ')} — it is opened cold, nothing navigates into it, so no required input may come from "pageInput".`
+      : '',
     '',
     '## Operation summaries for THIS workspace only',
     '## `inputNames`/`outputTopPaths`/`outputItemPaths` are the ONLY valid names for bffCall `from` —',
@@ -451,7 +458,10 @@ async function handleDetailResult(
   }
 
   // Normalize the single workspace (bffCall synthesis + route derivation) via the full-map prepare.
-  const prepared = deriveE6BffRoutes(prepareE6JourneyMap({ workspaces: [output.result], landings: [], navigationEdges: [] }, { moduleName }));
+  // T2: carry THIS workspace's landings so the landing self-sufficiency rule runs where the model can
+  // still fix it (at finalize the page is written and only a rerun of the detail could repair it).
+  const ownLandings = (siteMap?.landings || []).filter(landing => landing.workspaceId === parsedArgs.workspaceId);
+  const prepared = deriveE6BffRoutes(prepareE6JourneyMap({ workspaces: [output.result], landings: ownLandings, navigationEdges: [] }, { moduleName }));
   const workspace = prepared.workspaces[0];
   if (!workspace) throw new Error(`[${AGENT_NAME}] detail produced no workspace for ${parsedArgs.workspaceId}`);
   // Force the map-owned fields (kind/workflowId/purpose come from phase 1; equality is still checked
@@ -544,6 +554,22 @@ async function runE6Finalize(
     workspaces, landings: siteMap.landings, navigationEdges: siteMap.navigationEdges,
   };
   const gateContext = await buildFullGateContext(inputs);
+  // P8: the PERMANENT journeys artifact (narrative + operation/workspace links) — derived from the e2
+  // narrative + the classification (feature→op) + the site map. Never the LLM's.
+  const journeys = deriveE6Journeys(
+    readE6JourneySources(inputs.journeys),
+    inputs.classification.operations.map(operation => ({
+      operationId: operation.operationId, featureRefs: operation.featureRefs,
+      actorId: operation.actorId, entity: operation.entity, kind: operation.kind,
+    })),
+    siteMap.workspaces.map(workspace => ({
+      workspaceId: workspace.workspaceId, actors: workspace.actors, operationIds: workspace.operationIds,
+    })),
+    siteMap.landings,
+  );
+  // T5: derived BEFORE the invariants because the gate needs it — a `pageInput` is only legitimate if
+  // some journey declared the actor arriving here with that record (or a navigation carries it).
+  gateContext.pageContext = deriveNsE6PageContext(journeys, siteMap.workspaces, gateContext.entityIds);
   repairE6BffFroms(artifact, gateContext.operationFacts); // idempotent; also heals pre-repair saved details
   const check = validateE6Invariants(artifact, gateContext);
   const errors = check.issues.filter(issue => issue.severity === 'error');
@@ -554,14 +580,13 @@ async function runE6Finalize(
     return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `journey map invalid after assembly:\n${traceMsg}`)];
   }
 
-  // P8: the PERMANENT journeys artifact (narrative + operation/workspace links) — derived from the e2
-  // narrative + the classification (feature→op) + the site map (op→workspace). Never the LLM's.
-  const journeys = deriveE6Journeys(
-    readE6JourneySources(inputs.journeys),
-    inputs.classification.operations.map(operation => ({ operationId: operation.operationId, featureRefs: operation.featureRefs })),
-    siteMap.workspaces.map(workspace => ({ workspaceId: workspace.workspaceId, actors: workspace.actors, operationIds: workspace.operationIds })),
-  );
-  const journeysCheck = validateE6Journeys(journeys, { operationIds: gateContext.classificationOperationIds, workspaceIds: siteMap.workspaces.map(workspace => workspace.workspaceId) });
+  // (the journeys were derived above: the pageInput check needs their declared context)
+  const journeysCheck = validateE6Journeys(journeys, {
+    operationIds: gateContext.classificationOperationIds,
+    workspaceIds: siteMap.workspaces.map(workspace => workspace.workspaceId),
+    workspaceActors: Object.fromEntries(siteMap.workspaces.map(workspace => [workspace.workspaceId, workspace.actors])),
+    operationActor: Object.fromEntries(inputs.classification.operations.map(operation => [operation.operationId, operation.actorId])),
+  });
   const journeyErrors = journeysCheck.issues.filter(issue => issue.severity === 'error');
   if (journeyErrors.length > 0) {
     const traceMsg = journeyErrors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
@@ -747,6 +772,7 @@ async function buildE6OperationFacts(
       inputNames: inputs.map(input => (isRecord(input) ? readString(input.inputId) : undefined)).filter((name): name is string => !!name),
       outputTopPaths: collectNsOutputPathSets(outputShape).top,
       outputItemPaths: collectNsOutputPathSets(outputShape).item,
+      entity: operation.entity,
     };
   }
   return facts;
@@ -913,7 +939,9 @@ async function buildFullGateContext(inputs: E6Inputs): Promise<E6GateContext> {
 // Detail-gate context: scope the classification ops to THIS workspace so coverage passes in isolation.
 async function buildSingleWorkspaceContext(inputs: E6Inputs, workspace: NsE6Workspace): Promise<E6GateContext> {
   const full = await buildFullGateContext(inputs);
-  return { ...full, classificationOperationIds: workspace.operationIds };
+  // T5: one workspace in isolation cannot answer "who navigates here carrying what" — the other pages
+  // may not be written yet. The pageInput provider check runs at finalize, over the whole map.
+  return { ...full, classificationOperationIds: workspace.operationIds, wholeMap: false };
 }
 
 function parseE6Args(value: unknown): E6Args {

@@ -1,0 +1,166 @@
+{
+  "workspaceId": "kitchenWorkspace",
+  "title": "Fila da cozinha",
+  "actors": [
+    "cozinheiro",
+    "atendente"
+  ],
+  "kind": "workflow",
+  "entity": "Order",
+  "bffCalls": [
+    {
+      "bffId": "fetchKitchenQueue",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "viewKitchenQueue"
+        }
+      ],
+      "input": [
+        {
+          "name": "dailyShiftId",
+          "from": "viewKitchenQueue.dailyShiftId",
+          "required": true
+        }
+      ],
+      "output": {
+        "kind": "list",
+        "fields": [
+          {
+            "name": "orderId",
+            "from": "viewKitchenQueue.$items.orderId"
+          },
+          {
+            "name": "orderType",
+            "from": "viewKitchenQueue.$items.orderType"
+          },
+          {
+            "name": "tableNumber",
+            "from": "viewKitchenQueue.$items.tableNumber"
+          },
+          {
+            "name": "customerName",
+            "from": "viewKitchenQueue.$items.customerName"
+          },
+          {
+            "name": "notes",
+            "from": "viewKitchenQueue.$items.notes"
+          },
+          {
+            "name": "status",
+            "from": "viewKitchenQueue.$items.status"
+          },
+          {
+            "name": "confirmedAt",
+            "from": "viewKitchenQueue.$items.confirmedAt"
+          },
+          {
+            "name": "inPreparationAt",
+            "from": "viewKitchenQueue.$items.inPreparationAt"
+          },
+          {
+            "name": "items",
+            "from": "viewKitchenQueue.$items.items"
+          }
+        ]
+      },
+      "route": "cafeFlow.kitchenWorkspace.fetchKitchenQueue"
+    },
+    {
+      "bffId": "changeOrderStatus",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "updateOrderStatus"
+        }
+      ],
+      "input": [
+        {
+          "name": "orderId",
+          "from": "updateOrderStatus.orderId",
+          "required": true
+        },
+        {
+          "name": "status",
+          "from": "updateOrderStatus.status",
+          "required": true
+        },
+        {
+          "name": "cancellationReason",
+          "from": "updateOrderStatus.cancellationReason"
+        },
+        {
+          "name": "updatedAt",
+          "from": "updateOrderStatus.updatedAt",
+          "required": true
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "orderId",
+            "from": "updateOrderStatus.orderId"
+          },
+          {
+            "name": "status",
+            "from": "updateOrderStatus.status"
+          },
+          {
+            "name": "confirmedAt",
+            "from": "updateOrderStatus.confirmedAt"
+          },
+          {
+            "name": "inPreparationAt",
+            "from": "updateOrderStatus.inPreparationAt"
+          },
+          {
+            "name": "readyAt",
+            "from": "updateOrderStatus.readyAt"
+          },
+          {
+            "name": "servedAt",
+            "from": "updateOrderStatus.servedAt"
+          },
+          {
+            "name": "cancelledAt",
+            "from": "updateOrderStatus.cancelledAt"
+          },
+          {
+            "name": "cancellationReason",
+            "from": "updateOrderStatus.cancellationReason"
+          },
+          {
+            "name": "updatedAt",
+            "from": "updateOrderStatus.updatedAt"
+          }
+        ]
+      },
+      "route": "cafeFlow.kitchenWorkspace.changeOrderStatus"
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "kitchenQueueSection",
+      "intent": "Cozinheiro visualiza todos os pedidos confirmados e em preparo do turno atual e atualiza o status de cada um conforme o andamento do preparo.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "dataSource": "fetchKitchenQueue"
+        },
+        {
+          "role": "contextualAction",
+          "action": "changeOrderStatus",
+          "attachTo": "fetchKitchenQueue"
+        }
+      ]
+    }
+  ],
+  "operationIds": [
+    "viewKitchenQueue",
+    "updateOrderStatus"
+  ],
+  "purpose": "Cozinheiro visualiza a fila de pedidos do turno e atualiza o status de preparo de cada item.",
+  "workflowId": "orderLifecycle",
+  "sliceHash": "djb2:df5be964"
+}

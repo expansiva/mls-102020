@@ -1,0 +1,224 @@
+{
+  "workspaceId": "dashboardWorkspace",
+  "title": "Operational Dashboard",
+  "actors": [
+    "projectManager"
+  ],
+  "kind": "operation",
+  "entity": "Project",
+  "bffCalls": [
+    {
+      "bffId": "getDashboardSummary",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "viewDashboard"
+        }
+      ],
+      "input": [
+        {
+          "name": "status",
+          "from": "viewDashboard.status"
+        },
+        {
+          "name": "page",
+          "type": "number"
+        },
+        {
+          "name": "pageSize",
+          "type": "number"
+        }
+      ],
+      "output": {
+        "kind": "paginated",
+        "fields": [
+          {
+            "name": "projects",
+            "from": "viewDashboard.projects",
+            "type": "array",
+            "item": {
+              "fields": [
+                {
+                  "name": "projectId",
+                  "from": "viewDashboard.projects.$items.projectId"
+                },
+                {
+                  "name": "name",
+                  "from": "viewDashboard.projects.$items.name"
+                },
+                {
+                  "name": "clientName",
+                  "from": "viewDashboard.projects.$items.clientName"
+                },
+                {
+                  "name": "budget",
+                  "from": "viewDashboard.projects.$items.budget"
+                },
+                {
+                  "name": "actualCost",
+                  "from": "viewDashboard.projects.$items.actualCost"
+                },
+                {
+                  "name": "budgetVariance",
+                  "from": "viewDashboard.projects.$items.budgetVariance"
+                },
+                {
+                  "name": "startDate",
+                  "from": "viewDashboard.projects.$items.startDate"
+                },
+                {
+                  "name": "endDate",
+                  "from": "viewDashboard.projects.$items.endDate"
+                },
+                {
+                  "name": "status",
+                  "from": "viewDashboard.projects.$items.status"
+                },
+                {
+                  "name": "upcomingTaskCount",
+                  "from": "viewDashboard.projects.$items.upcomingTaskCount"
+                },
+                {
+                  "name": "overdueTaskCount",
+                  "from": "viewDashboard.projects.$items.overdueTaskCount"
+                }
+              ]
+            }
+          },
+          {
+            "name": "total",
+            "from": "viewDashboard.total"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.dashboardWorkspace.getDashboardSummary"
+    },
+    {
+      "bffId": "getProjectList",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "queryProjects"
+        }
+      ],
+      "input": [
+        {
+          "name": "status",
+          "from": "queryProjects.status"
+        },
+        {
+          "name": "page",
+          "type": "number"
+        },
+        {
+          "name": "pageSize",
+          "type": "number"
+        }
+      ],
+      "output": {
+        "kind": "paginated",
+        "fields": [
+          {
+            "name": "projects",
+            "from": "queryProjects.projects",
+            "type": "array",
+            "item": {
+              "fields": [
+                {
+                  "name": "projectId",
+                  "from": "queryProjects.projects.$items.projectId"
+                },
+                {
+                  "name": "name",
+                  "from": "queryProjects.projects.$items.name"
+                },
+                {
+                  "name": "clientName",
+                  "from": "queryProjects.projects.$items.clientName"
+                },
+                {
+                  "name": "siteAddress",
+                  "from": "queryProjects.projects.$items.siteAddress"
+                },
+                {
+                  "name": "budget",
+                  "from": "queryProjects.projects.$items.budget"
+                },
+                {
+                  "name": "startDate",
+                  "from": "queryProjects.projects.$items.startDate"
+                },
+                {
+                  "name": "endDate",
+                  "from": "queryProjects.projects.$items.endDate"
+                },
+                {
+                  "name": "status",
+                  "from": "queryProjects.projects.$items.status"
+                }
+              ]
+            }
+          },
+          {
+            "name": "total",
+            "from": "queryProjects.total"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.dashboardWorkspace.getProjectList"
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "kpiAndBudgetSection",
+      "intent": "Review active project KPIs — budget drift, actual cost, and task urgency — across all projects at a glance.",
+      "organisms": [
+        {
+          "role": "filterControl",
+          "attachTo": "getDashboardSummary"
+        },
+        {
+          "role": "primarySurface",
+          "dataSource": "getDashboardSummary"
+        }
+      ]
+    },
+    {
+      "sectionId": "projectListSection",
+      "intent": "Browse and filter all projects by status, reviewing schedule, site, and budget details.",
+      "organisms": [
+        {
+          "role": "filterControl",
+          "attachTo": "getProjectList"
+        },
+        {
+          "role": "primarySurface",
+          "dataSource": "getProjectList"
+        }
+      ]
+    }
+  ],
+  "operationIds": [
+    "viewDashboard",
+    "queryProjects"
+  ],
+  "purpose": "Project manager gets a quick overview of all active projects, budget drift, and task urgency.",
+  "presentation": {
+    "categoryRef": "analyticalList",
+    "confidence": 8,
+    "classificationNote": "The workspace combines a paginated, filterable project list with per-row analytical fields (budget, actualCost, budgetVariance, upcomingTaskCount, overdueTaskCount) and a summary KPI strip — the defining pattern of an Analytical List where KPIs, chart-ready data, and an actionable table operate on the same filtered dataset.",
+    "alternates": [
+      {
+        "categoryRef": "dashboardCommandCenter",
+        "confidence": 6,
+        "reason": "The workspace surfaces KPIs and budget variance metrics, which fits a monitoring dashboard pattern, but the primary surface is a filterable, paginated project list rather than a pure KPI/alert board."
+      },
+      {
+        "categoryRef": "reportExplorer",
+        "confidence": 5,
+        "reason": "The workspace allows filtering and reviewing aggregated project data, but there is no export or ad-hoc report generation — the table is actionable and paired with inline metrics."
+      }
+    ]
+  },
+  "sliceHash": "djb2:02a4b422"
+}

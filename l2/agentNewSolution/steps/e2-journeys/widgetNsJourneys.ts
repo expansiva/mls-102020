@@ -7,6 +7,7 @@ import {
   nsPipelineArtifactFileInfo,
   readJsonArtifact,
 } from '/_102020_/l2/agentNewSolution/helpers/nsFs.js';
+import { describeNsE2Prerequisites } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/gate.js';
 import type {
   NsE2Actor,
   NsE2Feature,
@@ -83,6 +84,10 @@ const messages_en = {
   goal: 'Goal',
   soThat: 'So that',
   trigger: 'Trigger',
+  comesFrom: 'Comes from',
+  startsAtLanding: 'Starts at the actor landing',
+  carrying: 'carrying',
+  handoff: 'handoff',
   outcome: 'Expected result',
   overview: 'Overview',
   businessRules: 'Business rules',
@@ -127,6 +132,10 @@ const messages_ptBR: NsJourneysLabels = {
   goal: 'Objetivo',
   soThat: 'Para que',
   trigger: 'Gatilho',
+  comesFrom: 'Vem de',
+  startsAtLanding: 'Começa na landing do ator',
+  carrying: 'trazendo',
+  handoff: 'passagem entre atores',
   outcome: 'Resultado esperado',
   overview: 'Visão geral',
   businessRules: 'Regras de negócio',
@@ -416,6 +425,7 @@ export class WidgetNsJourneys102020 extends StateLitElement {
         <dl class="ns-summary">
           ${this._renderDefinition(m.goal, journey.goal)}
           ${journey.soThat ? this._renderDefinition(m.soThat, journey.soThat) : nothing}
+          ${this._renderPrerequisite(artifact, journey)}
           ${journey.trigger ? this._renderDefinition(m.trigger, journey.trigger) : nothing}
           ${this._renderDefinition(m.outcome, journey.outcome)}
         </dl>
@@ -435,6 +445,25 @@ export class WidgetNsJourneys102020 extends StateLitElement {
 
   private _renderDefinition(label: string, value: string): TemplateResult {
     return html`<div><dt>${label}</dt><dd>${value}</dd></div>`;
+  }
+
+  // T3: where the actor comes from — the edge of the prerequisite graph, in the human's words. This is
+  // the business fact the checkpoint must show: everything downstream that assumes an id arrives with
+  // the page is only verifiable because some journey declared it here.
+  private _renderPrerequisite(artifact: NsE2JourneysArtifact, journey: NsE2Journey): TemplateResult {
+    const m = this._msg;
+    const edge = describeNsE2Prerequisites(artifact.journeys).find(item => item.journeyId === journey.journeyId);
+    if (!edge) return html``;
+    if (edge.kind === 'entry') return this._renderDefinition(m.comesFrom, m.startsAtLanding);
+    if (edge.kind !== 'journey') return this._renderDefinition(m.comesFrom, `${edge.kind}${edge.description ? ` — ${edge.description}` : ''}`);
+    const source = edge.fromTitle || edge.fromJourneyId || '';
+    const carries = edge.carries.length ? ` ${m.carrying} ${edge.carries.join(', ')}` : '';
+    return html`
+      <div>
+        <dt>${m.comesFrom}</dt>
+        <dd>${source}${carries}${edge.handoff ? html` <span class="ns-pill">${m.handoff}</span>` : nothing}</dd>
+      </div>
+    `;
   }
 
   private _renderTab(tab: NsJourneysTab, label: string): TemplateResult {

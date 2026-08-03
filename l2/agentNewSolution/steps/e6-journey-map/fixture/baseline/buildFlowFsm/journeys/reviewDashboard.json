@@ -1,0 +1,30 @@
+{
+  "journeyId": "reviewDashboard",
+  "actorId": "projectManager",
+  "title": "Review operational dashboard",
+  "goal": "Get a quick overview of all active projects, spot budget drift, and identify upcoming or overdue tasks.",
+  "steps": [
+    "View active projects",
+    "Check budget vs actual",
+    "Identify upcoming and overdue tasks"
+  ],
+  "outcome": "The project manager has a clear picture of project health, budget status, and task urgency across all active jobs.",
+  "operationIds": [
+    "queryProjects",
+    "viewDashboard",
+    "queryWorkTasks",
+    "createProject",
+    "updateProject",
+    "viewJobCostSummary",
+    "updateChangeOrderStatus",
+    "queryChangeOrders",
+    "viewChangeOrder",
+    "createTimeLog",
+    "queryTimeLogs",
+    "createMaterialUsage",
+    "queryMaterialUsages",
+    "createBillingSummary",
+    "createInvoice"
+  ],
+  "workspaceId": "dashboardWorkspace"
+}

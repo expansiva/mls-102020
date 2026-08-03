@@ -1,0 +1,355 @@
+{
+  "workspaceId": "billingSummaryWorkspace",
+  "title": "Billing Summaries",
+  "actors": [
+    "billingStaff"
+  ],
+  "kind": "workflow",
+  "entity": "BillingSummary",
+  "workflowId": "billingSummaryLifecycle",
+  "bffCalls": [
+    {
+      "bffId": "listBillingSummaries",
+      "kind": "query",
+      "uses": [
+        {
+          "operationId": "queryBillingSummaries"
+        }
+      ],
+      "input": [
+        {
+          "name": "projectId",
+          "from": "queryBillingSummaries.projectId",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "from": "queryBillingSummaries.status",
+          "type": "string"
+        },
+        {
+          "name": "page",
+          "type": "number"
+        },
+        {
+          "name": "pageSize",
+          "type": "number"
+        }
+      ],
+      "output": {
+        "kind": "paginated",
+        "fields": [
+          {
+            "name": "billingSummaries",
+            "from": "queryBillingSummaries.billingSummaries",
+            "type": "array",
+            "item": {
+              "fields": [
+                {
+                  "name": "billingSummaryId",
+                  "from": "queryBillingSummaries.billingSummaries.$items.billingSummaryId",
+                  "type": "string"
+                },
+                {
+                  "name": "projectId",
+                  "from": "queryBillingSummaries.billingSummaries.$items.projectId",
+                  "type": "string"
+                },
+                {
+                  "name": "projectName",
+                  "from": "queryBillingSummaries.billingSummaries.$items.projectName",
+                  "type": "string"
+                },
+                {
+                  "name": "status",
+                  "from": "queryBillingSummaries.billingSummaries.$items.status",
+                  "type": "string"
+                },
+                {
+                  "name": "periodStart",
+                  "from": "queryBillingSummaries.billingSummaries.$items.periodStart",
+                  "type": "string"
+                },
+                {
+                  "name": "periodEnd",
+                  "from": "queryBillingSummaries.billingSummaries.$items.periodEnd",
+                  "type": "string"
+                },
+                {
+                  "name": "laborCost",
+                  "from": "queryBillingSummaries.billingSummaries.$items.laborCost",
+                  "type": "number"
+                },
+                {
+                  "name": "materialCost",
+                  "from": "queryBillingSummaries.billingSummaries.$items.materialCost",
+                  "type": "number"
+                },
+                {
+                  "name": "changeOrderCost",
+                  "from": "queryBillingSummaries.billingSummaries.$items.changeOrderCost",
+                  "type": "number"
+                },
+                {
+                  "name": "totalCost",
+                  "from": "queryBillingSummaries.billingSummaries.$items.totalCost",
+                  "type": "number"
+                },
+                {
+                  "name": "sharedAt",
+                  "from": "queryBillingSummaries.billingSummaries.$items.sharedAt",
+                  "type": "string"
+                },
+                {
+                  "name": "createdAt",
+                  "from": "queryBillingSummaries.billingSummaries.$items.createdAt",
+                  "type": "string"
+                },
+                {
+                  "name": "updatedAt",
+                  "from": "queryBillingSummaries.billingSummaries.$items.updatedAt",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "total",
+            "from": "queryBillingSummaries.total",
+            "type": "number"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.billingSummaryWorkspace.listBillingSummaries"
+    },
+    {
+      "bffId": "createBillingSummaryCmd",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "createBillingSummary"
+        }
+      ],
+      "input": [
+        {
+          "name": "projectId",
+          "from": "createBillingSummary.projectId",
+          "type": "string",
+          "required": true,
+          "source": "selection",
+          "sourceRef": "listBillingSummaries"
+        },
+        {
+          "name": "periodStart",
+          "from": "createBillingSummary.periodStart",
+          "type": "string",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "periodEnd",
+          "from": "createBillingSummary.periodEnd",
+          "type": "string",
+          "required": true,
+          "source": "userDecision"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "billingSummaryId",
+            "from": "createBillingSummary.billingSummaryId",
+            "type": "string"
+          },
+          {
+            "name": "projectId",
+            "from": "createBillingSummary.projectId",
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "from": "createBillingSummary.status",
+            "type": "string"
+          },
+          {
+            "name": "periodStart",
+            "from": "createBillingSummary.periodStart",
+            "type": "string"
+          },
+          {
+            "name": "periodEnd",
+            "from": "createBillingSummary.periodEnd",
+            "type": "string"
+          },
+          {
+            "name": "laborCost",
+            "from": "createBillingSummary.laborCost",
+            "type": "number"
+          },
+          {
+            "name": "materialCost",
+            "from": "createBillingSummary.materialCost",
+            "type": "number"
+          },
+          {
+            "name": "changeOrderCost",
+            "from": "createBillingSummary.changeOrderCost",
+            "type": "number"
+          },
+          {
+            "name": "totalCost",
+            "from": "createBillingSummary.totalCost",
+            "type": "number"
+          },
+          {
+            "name": "createdAt",
+            "from": "createBillingSummary.createdAt",
+            "type": "string"
+          },
+          {
+            "name": "updatedAt",
+            "from": "createBillingSummary.updatedAt",
+            "type": "string"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.billingSummaryWorkspace.createBillingSummaryCmd"
+    },
+    {
+      "bffId": "shareBillingSummaryCmd",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "shareBillingSummary"
+        }
+      ],
+      "input": [
+        {
+          "name": "billingSummaryId",
+          "from": "shareBillingSummary.billingSummaryId",
+          "type": "string",
+          "required": true,
+          "source": "selection",
+          "sourceRef": "listBillingSummaries"
+        },
+        {
+          "name": "status",
+          "from": "shareBillingSummary.status",
+          "type": "string",
+          "source": "derived",
+          "sourceRef": "createBillingSummaryCmd.status"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "billingSummaryId",
+            "from": "shareBillingSummary.billingSummaryId",
+            "type": "string"
+          },
+          {
+            "name": "projectId",
+            "from": "shareBillingSummary.projectId",
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "from": "shareBillingSummary.status",
+            "type": "string"
+          },
+          {
+            "name": "periodStart",
+            "from": "shareBillingSummary.periodStart",
+            "type": "string"
+          },
+          {
+            "name": "periodEnd",
+            "from": "shareBillingSummary.periodEnd",
+            "type": "string"
+          },
+          {
+            "name": "laborCost",
+            "from": "shareBillingSummary.laborCost",
+            "type": "number"
+          },
+          {
+            "name": "materialCost",
+            "from": "shareBillingSummary.materialCost",
+            "type": "number"
+          },
+          {
+            "name": "changeOrderCost",
+            "from": "shareBillingSummary.changeOrderCost",
+            "type": "number"
+          },
+          {
+            "name": "totalCost",
+            "from": "shareBillingSummary.totalCost",
+            "type": "number"
+          },
+          {
+            "name": "sharedAt",
+            "from": "shareBillingSummary.sharedAt",
+            "type": "string"
+          },
+          {
+            "name": "updatedAt",
+            "from": "shareBillingSummary.updatedAt",
+            "type": "string"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.billingSummaryWorkspace.shareBillingSummaryCmd"
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "billingSummaryList",
+      "intent": "Browse and filter all billing summaries by project and status, then select one to act on.",
+      "organisms": [
+        {
+          "role": "filterControl",
+          "attachTo": "listBillingSummaries"
+        },
+        {
+          "role": "primarySurface",
+          "dataSource": "listBillingSummaries"
+        },
+        {
+          "role": "contextualAction",
+          "action": "createBillingSummaryCmd"
+        },
+        {
+          "role": "contextualAction",
+          "action": "shareBillingSummaryCmd"
+        }
+      ]
+    }
+  ],
+  "operationIds": [
+    "queryBillingSummaries",
+    "createBillingSummary",
+    "shareBillingSummary"
+  ],
+  "purpose": "Billing staff compiles and shares client-facing billing summaries from approved job cost data.",
+  "presentation": {
+    "categoryRef": "financialTransactions",
+    "confidence": 7,
+    "classificationNote": "The workspace lists billing summaries with filters and supports two lifecycle commands (create draft, share with client). financialTransactions fits best as it covers listing and controlling financial records with status transitions. analyticalList was considered but the page lacks KPIs/charts; approvalWorkflow was considered but the transition is a share action, not a binary approve/reject decision.",
+    "alternates": [
+      {
+        "categoryRef": "analyticalList",
+        "confidence": 5,
+        "reason": "Has a filterable list of cost-breakdown records, but no KPIs or charts are present."
+      },
+      {
+        "categoryRef": "entityRecordManagement",
+        "confidence": 4,
+        "reason": "Includes lifecycle transitions (create, share), but the dominant surface is a list, not a single record form."
+      }
+    ]
+  },
+  "sliceHash": "djb2:7589cfea"
+}

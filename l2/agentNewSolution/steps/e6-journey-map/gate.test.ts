@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { runNsGate } from '/_102020_/l2/agentNewSolution/helpers/nsGate.js';
@@ -967,6 +967,8 @@ void test('e6 gate: selection must point at a query bffCall of THIS workspace', 
 });
 
 void test('e6 gate: pageInput/actorSession need no ref; derived must start at a local bffCall', () => {
+  // pageInput needs no sourceRef — but since T5 it does need a PROVIDER, checked over the whole map
+  // (bff.input.pageInputUnfed below). This assertion is about the ref only.
   assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'pageInput' }]), []);
   assert.deepEqual(idSourceCodes([{ name: 'ownerId', required: true, type: 'string', source: 'actorSession' }]), []);
   assert.deepEqual(idSourceCodes([{ name: 'productId', required: true, type: 'string', source: 'derived', sourceRef: 'productList.productId' }]), []);
@@ -976,4 +978,247 @@ void test('e6 gate: pageInput/actorSession need no ref; derived must start at a 
 void test('e6 gate: the rule targets required IDS only — optional ids and typed non-ids pass', () => {
   assert.deepEqual(idSourceCodes([{ name: 'productId', type: 'string' }]), [], 'optional id');
   assert.deepEqual(idSourceCodes([{ name: 'quantity', required: true, type: 'number' }]), [], 'a required non-id is typed by the user');
+});
+
+// --- T2 (improveJourneys): landing self-sufficiency + any required input declares a source ---------
+
+// The catalog workspace of bffMap() turned into the actor's LANDING. bffCalls[1] is a query
+// (productDetail), bffCalls[2] a command (reservar) — the two shapes the rules treat differently.
+function actorEntryMap(input: unknown[], callIndex: number): NsE6JourneyMapArtifact {
+  const map = bffMap();
+  (map.workspaces[0].bffCalls[callIndex] as unknown as Record<string, unknown>).input = input;
+  map.landings = [{ actorId: 'cliente', workspaceId: 'catalog' }];
+  return prepareE6JourneyMap(map, { moduleName: 'petShop' });
+}
+
+const T2_CODES = ['bff.input.sourceMissing', 'landing.requiresPageInput', 'landing.input.unresolved'];
+
+function landingCodes(input: unknown[], callIndex = 1): string[] {
+  return validateE6Invariants(actorEntryMap(input, callIndex), bffContext).issues
+    .filter(issue => T2_CODES.includes(issue.code)).map(issue => issue.code);
+}
+
+/** The same page reached by navigation instead of being an actor's entry point (bffMap lands on it). */
+function pageCodes(input: unknown[], callIndex = 1): string[] {
+  const map = bffMap();
+  (map.workspaces[0].bffCalls[callIndex] as unknown as Record<string, unknown>).input = input;
+  map.landings = [];
+  return validateE6Invariants(prepareE6JourneyMap(map, { moduleName: 'petShop' }), bffContext).issues
+    .filter(issue => T2_CODES.includes(issue.code)).map(issue => issue.code);
+}
+
+void test('e6 gate T2: a required input with NO source is an error on any call, landing or not', () => {
+  // The 102045 hole: a required id on a QUERY was outside the command-only id rule and passed e6 + e7.
+  assert.deepEqual(pageCodes([{ name: 'projectId', required: true, type: 'string' }]), ['bff.input.sourceMissing']);
+  // Non-id names too: "required" means someone has to provide it.
+  assert.deepEqual(pageCodes([{ name: 'referenceDate', required: true, type: 'date' }]), ['bff.input.sourceMissing']);
+  // Optional inputs are nobody's obligation.
+  assert.deepEqual(pageCodes([{ name: 'projectId', type: 'string' }]), []);
+});
+
+void test('e6 gate T2: a required id on a command keeps ONE error, not two', () => {
+  const issues = validateE6Invariants(actorEntryMap([{ name: 'productId', required: true, type: 'string' }], 2), bffContext).issues;
+  const codes = issues.filter(issue => issue.code.startsWith('bff.input.') || issue.code.startsWith('landing.')).map(issue => issue.code);
+  assert.deepEqual(codes, ['bff.input.idSourceMissing']); // the richer, older message owns this case
+});
+
+void test('e6 gate T2: a landing cannot require a pageInput — nothing navigates INTO a landing', () => {
+  assert.deepEqual(landingCodes([{ name: 'productId', required: true, type: 'string', source: 'pageInput' }]), ['landing.requiresPageInput']);
+  // Same input on a page that is NOT a landing stays legitimate (it arrives with the navigation).
+  assert.deepEqual(pageCodes([{ name: 'productId', required: true, type: 'string', source: 'pageInput' }]), []);
+});
+
+void test('e6 gate T2: the landing message names the way out the model can act on', () => {
+  const message = validateE6Invariants(actorEntryMap([{ name: 'productId', required: true, type: 'string', source: 'pageInput' }], 1), bffContext)
+    .issues.find(issue => issue.code === 'landing.requiresPageInput')!.message;
+  assert.match(message, /resolves the record from the actor's own context/); // the current/open record query
+  assert.match(message, /actorSession/);
+});
+
+void test('e6 gate T2: a landing passes when the value resolves inside the page or from the session', () => {
+  assert.deepEqual(landingCodes([{ name: 'productId', required: true, type: 'string', source: 'selection', sourceRef: 'productList' }]), []);
+  assert.deepEqual(landingCodes([{ name: 'ownerId', required: true, type: 'string', source: 'actorSession' }]), []);
+  assert.deepEqual(landingCodes([{ name: 'productId', required: true, type: 'string', source: 'derived', sourceRef: 'productList.productId' }]), []);
+  assert.deepEqual(landingCodes([{ name: 'searchTerm', required: true, type: 'string', source: 'userDecision' }]), []);
+});
+
+void test('e6 gate T2: a landing reference that resolves nowhere local is an error even on a query', () => {
+  assert.deepEqual(landingCodes([{ name: 'productId', required: true, type: 'string', source: 'selection', sourceRef: 'ghostPicker' }]), ['landing.input.unresolved']);
+  assert.deepEqual(landingCodes([{ name: 'productId', required: true, type: 'string', source: 'derived', sourceRef: 'ghostCall.productId' }]), ['landing.input.unresolved']);
+});
+
+// The frozen 102045 run (the only baseline captured under the `source` contract) replayed through the
+// REAL invariants: the two broken landings must be named and the two healthy ones must stay silent.
+// cafeFlow/petShop predate `input.source` entirely — a source-based gate cannot judge them; their
+// landings are covered by the structural M5 of the T0 ruler (cafeFlow 3/3 broken, petShop 0/2).
+void test('e6 gate T2: replaying the 102045 baseline names exactly the landings that are broken', () => {
+  const fixture = resolve(here, 'fixture/baseline/buildFlowFsm');
+  const siteMap = JSON.parse(readFileSync(resolve(fixture, 'siteMap.json'), 'utf8')) as Record<string, never[]>;
+  const classification = JSON.parse(readFileSync(resolve(fixture, 'e5-classification.json'), 'utf8')) as {
+    workflows: { workflowId: string }[]; operations: { operationId: string; actorId: string; entity: string }[];
+  };
+  const workspaces = readdirSync(resolve(fixture, 'workspaces')).sort()
+    .map(file => JSON.parse(readFileSync(resolve(fixture, 'workspaces', file), 'utf8')) as never);
+  const artifact = { schemaVersion: '', moduleName: 'buildFlowFsm', note: '', workspaces, landings: siteMap.landings, navigationEdges: [] } as unknown as NsE6JourneyMapArtifact;
+  const context: E6GateContext = {
+    moduleName: 'buildFlowFsm',
+    classificationWorkflowIds: classification.workflows.map(workflow => workflow.workflowId),
+    classificationOperationIds: classification.operations.map(operation => operation.operationId),
+    rosterActorIds: [...new Set(classification.operations.map(operation => operation.actorId))],
+    entityIds: [...new Set(classification.operations.map(operation => operation.entity))],
+    nowCapabilityActorIds: [],
+    operationFacts: {},
+  };
+  const found = validateE6Invariants(artifact, context).issues
+    .filter(issue => T2_CODES.includes(issue.code))
+    .map(issue => `${issue.code}@${issue.path}`)
+    .sort();
+  assert.deepEqual(found, [
+    'bff.input.sourceMissing@jobCostWorkspace',      // the billingStaff landing: projectId with no source at all
+    'landing.requiresPageInput@clientStatusWorkspace', // the client landing: statusReportId waiting for a sender
+  ]);
+});
+
+// --- T5 (improveJourneys): `pageInput` needs a creditor ------------------------------------------
+
+// Two pages of the same actor, one navigating into the other. `list` displays productId and orderId;
+// the edge is the shape that decides everything: which operation it navigates THROUGH.
+function pageInputMap(input: {
+  edgeOperationId?: string;
+  toInputs: unknown[];
+  fromActors?: string[];
+  toActors?: string[];
+}): NsE6JourneyMapArtifact {
+  return prepareE6JourneyMap({
+    workspaces: [
+      {
+        workspaceId: 'list', title: 'List', actors: input.fromActors || ['cliente'], kind: 'operation', entity: 'Product',
+        purpose: 'Browse.',
+        bffCalls: [{
+          bffId: 'productList', kind: 'query', uses: [{ operationId: 'browseProducts' }],
+          output: { kind: 'list', fields: [
+            { name: 'productId', from: 'browseProducts.productId' },
+            { name: 'orderId', from: 'browseProducts.orderId' },
+          ] },
+        }],
+        sections: [{ sectionId: 's', intent: 'i', organisms: [{ role: 'primarySurface', dataSource: 'productList' }] }],
+      },
+      {
+        workspaceId: 'detail', title: 'Detail', actors: input.toActors || ['cliente'], kind: 'operation', entity: 'Product',
+        purpose: 'Act on one record.',
+        bffCalls: [{ bffId: 'reservar', kind: 'command', uses: [{ operationId: 'reserveProduct' }], input: input.toInputs }],
+        sections: [{ sectionId: 's', intent: 'i', organisms: [{ role: 'primarySurface', action: 'reservar' }] }],
+      },
+    ],
+    landings: [],
+    navigationEdges: [{ from: 'list', to: 'detail', operationId: input.edgeOperationId }],
+  }, { moduleName: 'petShop' });
+}
+
+const pageInputContext = (facts: Record<string, Partial<NsE6OperationFact>>, pageContext?: E6GateContext['pageContext']): E6GateContext => ({
+  ...bffContext,
+  entityIds: ['Product', 'Order'],
+  pageContext,
+  operationFacts: Object.fromEntries(Object.entries(facts).map(([id, fact]) => [id, { ...bffFacts.browseProducts, ...fact } as NsE6OperationFact])),
+});
+
+const pageInputCodes = (map: NsE6JourneyMapArtifact, context: E6GateContext): string[] =>
+  validateE6Invariants(map, context).issues.filter(issue => issue.code.startsWith('bff.input.pageInput')).map(issue => issue.code);
+
+void test('e6 gate T5: a navigation carries what the page it comes from displays', () => {
+  const map = pageInputMap({ edgeOperationId: 'viewProduct', toInputs: [{ name: 'productId', required: true, type: 'string', source: 'pageInput' }] });
+  assert.deepEqual(pageInputCodes(map, pageInputContext({ viewProduct: { opKind: 'view', entity: 'Product' } })), []);
+});
+
+void test('e6 gate T5: an edge that CREATES a record cannot carry that record id, but still carries the context', () => {
+  const facts = pageInputContext({ createOrder: { opKind: 'create', entity: 'Order' } });
+  // The id of the record being created does not exist when the navigation is decided.
+  const created = pageInputMap({ edgeOperationId: 'createOrder', toInputs: [{ name: 'orderId', required: true, type: 'string', source: 'pageInput' }] });
+  assert.deepEqual(pageInputCodes(created, facts), ['bff.input.pageInputUnfed']);
+  // The context the actor was already in travels with them on the SAME edge.
+  const context = pageInputMap({ edgeOperationId: 'createOrder', toInputs: [{ name: 'productId', required: true, type: 'string', source: 'pageInput' }] });
+  assert.deepEqual(pageInputCodes(context, facts), []);
+});
+
+void test('e6 gate T5: a handoff between actors is not a navigation — the other screen was never yours', () => {
+  const map = pageInputMap({
+    edgeOperationId: 'viewProduct',
+    toInputs: [{ name: 'productId', required: true, type: 'string', source: 'pageInput' }],
+    fromActors: ['cliente'], toActors: ['atendente'],
+  });
+  const context = { ...pageInputContext({ viewProduct: { opKind: 'view', entity: 'Product' } }), rosterActorIds: ['cliente', 'atendente'] };
+  assert.deepEqual(pageInputCodes(map, context), ['bff.input.pageInputUnfed']);
+});
+
+void test('e6 gate T5: a journey declaring the record arriving is the other legitimate provider', () => {
+  const map = pageInputMap({ edgeOperationId: 'createOrder', toInputs: [{ name: 'orderId', required: true, type: 'string', source: 'pageInput' }] });
+  const facts = { createOrder: { opKind: 'create' as const, entity: 'Order' } };
+  // Declared by the human at the e2 checkpoint: the actor arrives at this page with an Order chosen.
+  assert.deepEqual(pageInputCodes(map, pageInputContext(facts, { entitiesByWorkspace: { detail: ['Order'] }, unresolvedByWorkspace: {} })), []);
+  // Declared context that names something else does NOT cover it.
+  assert.deepEqual(pageInputCodes(map, pageInputContext(facts, { entitiesByWorkspace: { detail: ['Product'] }, unresolvedByWorkspace: {} })), ['bff.input.pageInputUnfed']);
+  // Declared context nobody could resolve to an entity: honestly unknown, never an invented error.
+  assert.deepEqual(pageInputCodes(map, pageInputContext(facts, { entitiesByWorkspace: {}, unresolvedByWorkspace: { detail: ['o pedido'] } })), ['bff.input.pageInputUnverified']);
+});
+
+void test('e6 gate T5: an id whose name resolves to no declared entity is a warning, never an error', () => {
+  const map = pageInputMap({ edgeOperationId: 'createOrder', toInputs: [{ name: 'assignedWorkerId', required: true, type: 'string', source: 'pageInput' }] });
+  assert.deepEqual(pageInputCodes(map, pageInputContext({ createOrder: { opKind: 'create', entity: 'Order' } })), ['bff.input.pageInputUnverified']);
+});
+
+void test('e6 gate T5: the check is skipped while a single workspace is validated in isolation', () => {
+  const map = pageInputMap({ edgeOperationId: 'createOrder', toInputs: [{ name: 'orderId', required: true, type: 'string', source: 'pageInput' }] });
+  const scoped = { ...pageInputContext({ createOrder: { opKind: 'create', entity: 'Order' } }), wholeMap: false };
+  assert.deepEqual(pageInputCodes(map, scoped), []);
+});
+
+// The frozen 102045 run replayed through the REAL invariants: the acceptance list of improveJourneys
+// T5, verbatim. What must PASS matters as much as what must fail — `cmdCreateChangeOrder.projectId`
+// arrives on the very same edge that cannot carry `changeOrderId`.
+void test('e6 gate T5: replaying the 102045 baseline names exactly the unfed pageInputs', () => {
+  const fixture = resolve(here, 'fixture/baseline/buildFlowFsm');
+  const siteMap = JSON.parse(readFileSync(resolve(fixture, 'siteMap.json'), 'utf8')) as Record<string, never[]>;
+  const classification = JSON.parse(readFileSync(resolve(fixture, 'e5-classification.json'), 'utf8')) as {
+    workflows: { workflowId: string }[]; operations: { operationId: string; actorId: string; entity: string; kind: string }[];
+  };
+  const workspaces = readdirSync(resolve(fixture, 'workspaces')).sort()
+    .map(file => JSON.parse(readFileSync(resolve(fixture, 'workspaces', file), 'utf8')) as never);
+  const operationFacts: Record<string, NsE6OperationFact> = {};
+  for (const operation of classification.operations) {
+    operationFacts[operation.operationId] = {
+      accessPatternKind: 'commandInput', selection: 'none',
+      opKind: operation.kind as NsE6OperationFact['opKind'], hasPublicInput: false,
+      actors: [operation.actorId], inputNames: [], outputTopPaths: [], outputItemPaths: [], entity: operation.entity,
+    };
+  }
+  const artifact = { schemaVersion: '', moduleName: 'buildFlowFsm', note: '', workspaces, landings: siteMap.landings, navigationEdges: siteMap.navigationEdges } as unknown as NsE6JourneyMapArtifact;
+  const context: E6GateContext = {
+    moduleName: 'buildFlowFsm',
+    classificationWorkflowIds: classification.workflows.map(workflow => workflow.workflowId),
+    classificationOperationIds: classification.operations.map(operation => operation.operationId),
+    rosterActorIds: [...new Set(classification.operations.map(operation => operation.actorId))],
+    entityIds: [...new Set(classification.operations.map(operation => operation.entity))],
+    nowCapabilityActorIds: [], operationFacts,
+  };
+  const found = validateE6Invariants(artifact, context).issues
+    .filter(issue => issue.code.startsWith('bff.input.pageInput'))
+    .map(issue => `${issue.code}@${issue.message.match(/bffCall (\w+): required id "(\w+)"/)?.slice(1).join('.')}`)
+    .sort();
+  assert.deepEqual(found, [
+    'bff.input.pageInputUnfed@cmdUpdateChangeOrder.changeOrderId',        // the symptom that opened the investigation
+    'bff.input.pageInputUnfed@cmdUpdateChangeOrderStatus.changeOrderId',
+    'bff.input.pageInputUnfed@getBillingSummary.billingSummaryId',        // reachable only across a handoff
+    'bff.input.pageInputUnfed@getInvoice.invoiceId',
+    'bff.input.pageInputUnfed@listDelayRiskSuggestions.statusReportId',   // a page whose own context is projectId
+    'bff.input.pageInputUnfed@submitVoidMaterialUsage.materialUsageId',   // voids with no list anywhere
+    'bff.input.pageInputUnfed@submitVoidTimeLog.timeLogId',
+    'bff.input.pageInputUnfed@triggerDelayRiskSuggestions.statusReportId',
+    'bff.input.pageInputUnfed@updateProjectCmd.projectId',                // twin of the changeOrder defect
+    'bff.input.pageInputUnfed@updateProjectStatusCmd.projectId',
+  ]);
+  // MUST PASS: the same edge that cannot carry changeOrderId does carry the project you came from,
+  // and the field worker's workTaskId arrives from the task list they selected it in.
+  const passing = validateE6Invariants(artifact, context).issues.filter(issue =>
+    /cmdCreateChangeOrder|cmdUpdateWorkTask|generateReport/.test(issue.message) && issue.code.startsWith('bff.input.pageInput'));
+  assert.deepEqual(passing, []);
 });

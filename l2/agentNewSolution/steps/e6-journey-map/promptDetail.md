@@ -85,7 +85,7 @@ Every operation in the map's operationIds must be consumed by ≥1 bffCall of TH
     pick the closest, give it a LOW confidence and explain in `classificationNote` what is missing —
     a low score is useful signal (a candidate for a new category), never a reason to force a bad fit.
   - alternates: up to 2 runners-up `{ categoryRef, confidence, reason }`.
-- input `source` (command bffCalls): for every input, declare WHERE its value comes from —
+- input `source` (EVERY bffCall, query included): for every input, declare WHERE its value comes from —
   "userDecision" (the actor types/decides it), "selection" (picked from a query on THIS workspace;
   `sourceRef` = that query's bffId), "pageInput" (arrives with the page, e.g. from a navigation),
   "actorSession" (the logged-in actor/context) or "derived" (`sourceRef` = "<bffId>.<outputField>"
@@ -97,6 +97,18 @@ Every operation in the map's operationIds must be consumed by ≥1 bffCall of TH
      query's bffId>"`. This is the right answer whenever the actor chooses the record here.
   2. **The id arrives with the page** — `source: "pageInput"`, when the user reached this workspace
      from another one that already knows the record (a detail opened from a list). No sourceRef.
+     This one is CHECKED, not taken on trust: a navigation only carries what the page it comes from
+     actually displays, between pages of the same actor, and a navigation that goes somewhere to CREATE
+     a record cannot be carrying that record's id — it does not exist yet. If the only way into this
+     workspace is "create X here", then X's own id is not a `pageInput`: the page needs a query of its
+     own (option 1). Declare `pageInput` for the CONTEXT you came from, never for the record you are
+     about to act on when nothing brings it.
   (`actorSession` for "who is logged in", `derived` for an id produced by an earlier command of this
   same workspace.) Decide it HERE: at validation time the page is frozen and the only remedy left is
-  a report.
+  a report. A required input with NO declared source is a gate error on any call, query or command.
+- **If this workspace is an actor's LANDING** (a line above says so), it is opened cold: nothing navigates
+  into it, so `pageInput` is not available and every required input must resolve on the page itself. A
+  page that operates on the CURRENT record of an ongoing process (the open period, the record in
+  progress) must host a query that resolves that record from the actor's own context and feed the input
+  from it (`selection`/`derived` over that local call) — the current record is a query result, never a
+  value the page assumes it was given.

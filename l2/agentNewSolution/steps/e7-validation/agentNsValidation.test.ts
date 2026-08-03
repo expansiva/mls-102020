@@ -33,7 +33,7 @@ function validInput(): NsE7HealthInput {
   return {
     moduleName: 'cafeFlow',
     e2: {
-      schemaVersion: '2026-07-06-ns-e2-v1',
+      schemaVersion: '2026-08-02-ns-e2-v2',
       moduleName: 'cafeFlow',
       moduleTitle: 'Cafe Flow',
       userLanguage: 'en',

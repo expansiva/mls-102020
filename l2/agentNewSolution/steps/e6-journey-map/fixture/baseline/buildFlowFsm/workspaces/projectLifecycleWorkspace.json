@@ -1,0 +1,326 @@
+{
+  "workspaceId": "projectLifecycleWorkspace",
+  "title": "Manage Projects",
+  "actors": [
+    "projectManager"
+  ],
+  "kind": "workflow",
+  "entity": "Project",
+  "bffCalls": [
+    {
+      "bffId": "createProjectCmd",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "createProject"
+        }
+      ],
+      "input": [
+        {
+          "name": "name",
+          "from": "createProject.name",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "clientId",
+          "from": "createProject.clientId",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "siteAddress",
+          "from": "createProject.siteAddress",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "budget",
+          "from": "createProject.budget",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "startDate",
+          "from": "createProject.startDate",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "endDate",
+          "from": "createProject.endDate",
+          "required": true,
+          "source": "userDecision"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "projectId",
+            "from": "createProject.projectId",
+            "required": true
+          },
+          {
+            "name": "name",
+            "from": "createProject.name",
+            "required": true
+          },
+          {
+            "name": "clientId",
+            "from": "createProject.clientId"
+          },
+          {
+            "name": "siteAddress",
+            "from": "createProject.siteAddress"
+          },
+          {
+            "name": "budget",
+            "from": "createProject.budget"
+          },
+          {
+            "name": "startDate",
+            "from": "createProject.startDate"
+          },
+          {
+            "name": "endDate",
+            "from": "createProject.endDate"
+          },
+          {
+            "name": "status",
+            "from": "createProject.status"
+          },
+          {
+            "name": "createdAt",
+            "from": "createProject.createdAt"
+          },
+          {
+            "name": "updatedAt",
+            "from": "createProject.updatedAt"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.projectLifecycleWorkspace.createProjectCmd"
+    },
+    {
+      "bffId": "updateProjectCmd",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "updateProject"
+        }
+      ],
+      "input": [
+        {
+          "name": "projectId",
+          "from": "updateProject.projectId",
+          "required": true,
+          "source": "pageInput"
+        },
+        {
+          "name": "name",
+          "from": "updateProject.name",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "clientId",
+          "from": "updateProject.clientId",
+          "source": "userDecision"
+        },
+        {
+          "name": "siteAddress",
+          "from": "updateProject.siteAddress",
+          "source": "userDecision"
+        },
+        {
+          "name": "budget",
+          "from": "updateProject.budget",
+          "source": "userDecision"
+        },
+        {
+          "name": "startDate",
+          "from": "updateProject.startDate",
+          "source": "userDecision"
+        },
+        {
+          "name": "endDate",
+          "from": "updateProject.endDate",
+          "source": "userDecision"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "projectId",
+            "from": "updateProject.projectId",
+            "required": true
+          },
+          {
+            "name": "name",
+            "from": "updateProject.name"
+          },
+          {
+            "name": "clientId",
+            "from": "updateProject.clientId"
+          },
+          {
+            "name": "siteAddress",
+            "from": "updateProject.siteAddress"
+          },
+          {
+            "name": "budget",
+            "from": "updateProject.budget"
+          },
+          {
+            "name": "startDate",
+            "from": "updateProject.startDate"
+          },
+          {
+            "name": "endDate",
+            "from": "updateProject.endDate"
+          },
+          {
+            "name": "status",
+            "from": "updateProject.status"
+          },
+          {
+            "name": "updatedAt",
+            "from": "updateProject.updatedAt"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.projectLifecycleWorkspace.updateProjectCmd"
+    },
+    {
+      "bffId": "updateProjectStatusCmd",
+      "kind": "command",
+      "uses": [
+        {
+          "operationId": "updateProjectStatus"
+        }
+      ],
+      "input": [
+        {
+          "name": "projectId",
+          "from": "updateProjectStatus.projectId",
+          "required": true,
+          "source": "pageInput"
+        },
+        {
+          "name": "status",
+          "from": "updateProjectStatus.status",
+          "required": true,
+          "source": "userDecision"
+        },
+        {
+          "name": "holdReason",
+          "from": "updateProjectStatus.holdReason",
+          "source": "userDecision"
+        },
+        {
+          "name": "cancellationReason",
+          "from": "updateProjectStatus.cancellationReason",
+          "source": "userDecision"
+        }
+      ],
+      "output": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "projectId",
+            "from": "updateProjectStatus.projectId",
+            "required": true
+          },
+          {
+            "name": "name",
+            "from": "updateProjectStatus.name"
+          },
+          {
+            "name": "status",
+            "from": "updateProjectStatus.status"
+          },
+          {
+            "name": "holdReason",
+            "from": "updateProjectStatus.holdReason"
+          },
+          {
+            "name": "closedAt",
+            "from": "updateProjectStatus.closedAt"
+          },
+          {
+            "name": "cancelledAt",
+            "from": "updateProjectStatus.cancelledAt"
+          },
+          {
+            "name": "cancellationReason",
+            "from": "updateProjectStatus.cancellationReason"
+          },
+          {
+            "name": "updatedAt",
+            "from": "updateProjectStatus.updatedAt"
+          }
+        ]
+      },
+      "route": "buildFlowFsm.projectLifecycleWorkspace.updateProjectStatusCmd"
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "createProjectSection",
+      "intent": "Project manager fills in all required project details and confirms creation to register a new project in the system.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "action": "createProjectCmd"
+        }
+      ]
+    },
+    {
+      "sectionId": "editProjectSection",
+      "intent": "Project manager revises the project's name, client, site address, budget, and schedule dates and saves the updated record.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "action": "updateProjectCmd"
+        }
+      ]
+    },
+    {
+      "sectionId": "projectStatusSection",
+      "intent": "Project manager transitions the project to a new lifecycle status, providing a hold or cancellation reason when required.",
+      "organisms": [
+        {
+          "role": "primarySurface",
+          "action": "updateProjectStatusCmd"
+        }
+      ]
+    }
+  ],
+  "operationIds": [
+    "createProject",
+    "updateProject",
+    "updateProjectStatus"
+  ],
+  "purpose": "Project manager creates and maintains projects through their full lifecycle.",
+  "presentation": {
+    "categoryRef": "entityRecordManagement",
+    "confidence": 9,
+    "classificationNote": "All three operations are write-only (create, edit, transition status) on a single Project record with no listing query. This matches entityRecordManagement exactly: create, edit, and transitionStatus on a business record.",
+    "alternates": [
+      {
+        "categoryRef": "processWizard",
+        "confidence": 5,
+        "reason": "createProject has a multi-step story, but the workspace is not exclusively a guided wizard — it also covers edit and status transitions on an existing record."
+      },
+      {
+        "categoryRef": "approvalWorkflow",
+        "confidence": 3,
+        "reason": "updateProjectStatus involves lifecycle transitions, but there is no approval/rejection decision pattern with audit trail."
+      }
+    ]
+  },
+  "workflowId": "projectLifecycle",
+  "sliceHash": "djb2:0f58dce4"
+}

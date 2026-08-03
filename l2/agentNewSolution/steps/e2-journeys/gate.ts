@@ -13,10 +13,26 @@ import {
   uniqueNsId,
 } from '/_102020_/l2/agentNewSolution/helpers/nsIds.js';
 
-export const E2_JOURNEYS_SCHEMA_VERSION = '2026-07-06-ns-e2-v1';
+export const E2_JOURNEYS_SCHEMA_VERSION = '2026-08-02-ns-e2-v2';
 
 export type NsE2Priority = 'now' | 'soon' | 'later' | 'never';
 export type NsE2DecisionKind = 'actorRemoved' | 'featurePriority' | 'scopeChange' | 'other';
+export type NsE2PrerequisiteKind = 'journey' | 'external' | 'schedule';
+
+/**
+ * v2 (improveJourneys T3): where the actor comes from, as BUSINESS data the human approves — replacing
+ * `trigger`, a free-text field nobody could verify and that the 102045 run left null in all 11 journeys.
+ * A journey that acts on records another journey produced says so, and says WHAT arrives already chosen
+ * (`carries`, in this document's own vocabulary — the e3 gate resolves those names to EntityIds).
+ * Downstream this is the missing creditor for `pageInput`: a page may assume an id only if some journey
+ * that uses it declares that id arriving.
+ */
+export interface NsE2Prerequisite {
+  kind: NsE2PrerequisiteKind;
+  journeyId?: string;
+  carries?: string[];
+  description?: string;
+}
 
 export interface NsE2Actor {
   actorId: string;
@@ -38,7 +54,9 @@ export interface NsE2Journey {
   title: string;
   goal: string;
   soThat?: string;
+  /** DEPRECATED (v2): read for compatibility with v1 artifacts, never produced. See prerequisite. */
   trigger?: string;
+  prerequisite?: NsE2Prerequisite;
   steps: NsE2JourneyStep[];
   outcome: string;
   businessRules: string[];
@@ -153,9 +171,24 @@ export function prepareE2JourneysArtifact(input: unknown, options: E2GateOptions
     const soThat = readString(journey.soThat);
     if (soThat) normalized.soThat = soThat;
     const trigger = readString(journey.trigger);
-    if (trigger) normalized.trigger = trigger;
+    if (trigger) normalized.trigger = trigger; // v1 alias: carried, never asked for
+    const prerequisite = readPrerequisite(journey.prerequisite);
+    if (prerequisite) normalized.prerequisite = prerequisite;
     return normalized;
   });
+
+  // A prerequisite reference can only be judged once every journey id is known, so it is normalized
+  // HERE rather than per journey. Observed live: a model wrote `kind: "external"` with a journeyId
+  // naming the external event itself ("counterCustomerRequest"), which is a label, not a reference —
+  // erroring on it would burn a retry on a purely formal slip. Same rule as the unknown kind: SHAPE
+  // decides. A reference to a real journey means kind "journey"; a reference to nothing is dropped.
+  const knownJourneyIds = new Set(journeys.map(journey => journey.journeyId));
+  for (const journey of journeys) {
+    const prerequisite = journey.prerequisite;
+    if (!prerequisite || prerequisite.kind === 'journey' || !prerequisite.journeyId) continue;
+    if (knownJourneyIds.has(prerequisite.journeyId)) prerequisite.kind = 'journey';
+    else delete prerequisite.journeyId;
+  }
 
   const decisions = readArray(record.decisions).map((item, index) => {
     const decision = asRecord(item, `decisions[${index}]`);
@@ -223,6 +256,8 @@ export function validateE2JourneysInvariants(
     });
   });
 
+  issues.push(...validateNsE2Prerequisites(artifact.journeys));
+
   const journeyActorIds = new Set(artifact.journeys.map(journey => journey.actorId));
   artifact.actors.forEach((actor, index) => {
     if (!journeyActorIds.has(actor.actorId)) {
@@ -280,6 +315,97 @@ export function validateE2JourneysInvariants(
   return { artifact, issues, needsHumanInput: false };
 }
 
+/** One journey's entry point, resolved against the others — the graph the human sees at the checkpoint. */
+export interface NsE2PrerequisiteEdge {
+  journeyId: string;
+  kind: NsE2PrerequisiteKind | 'entry';
+  fromJourneyId?: string;
+  fromTitle?: string;
+  carries: string[];
+  description?: string;
+  /** The predecessor belongs to ANOTHER actor: this is a handoff, not navigation (input for the e6 edges). */
+  handoff: boolean;
+}
+
+/**
+ * Pure resolution of the prerequisite graph. A handoff is a FACT, not a defect, so it is reported here
+ * (widget badge, checkpoint markdown, later the e6 edges) instead of as a gate warning that a human
+ * would have to dismiss on every run.
+ */
+export function describeNsE2Prerequisites(journeys: readonly NsE2Journey[]): NsE2PrerequisiteEdge[] {
+  const byId = new Map(journeys.map(journey => [journey.journeyId, journey]));
+  return journeys.map(journey => {
+    const prerequisite = journey.prerequisite;
+    if (!prerequisite) return { journeyId: journey.journeyId, kind: 'entry' as const, carries: [], handoff: false };
+    const source = prerequisite.journeyId ? byId.get(prerequisite.journeyId) : undefined;
+    return {
+      journeyId: journey.journeyId,
+      kind: prerequisite.kind,
+      fromJourneyId: prerequisite.journeyId,
+      fromTitle: source?.title,
+      carries: prerequisite.carries || [],
+      description: prerequisite.description,
+      handoff: !!source && source.actorId !== journey.actorId,
+    };
+  });
+}
+
+/**
+ * The prerequisite is only useful downstream if it is WELL FORMED: it names a journey that exists, says
+ * what arrives, and the chain of "comes from" terminates (a cycle means no journey is ever an entry
+ * point, and the id it promises to carry can never be produced).
+ */
+export function validateNsE2Prerequisites(journeys: readonly NsE2Journey[]): NsGateIssue[] {
+  const issues: NsGateIssue[] = [];
+  const byId = new Map(journeys.map(journey => [journey.journeyId, journey]));
+  journeys.forEach((journey, index) => {
+    const prerequisite = journey.prerequisite;
+    if (!prerequisite) return; // an entry journey starts from zero on the actor's landing — valid
+    const path = `journeys[${index}].prerequisite`;
+    if (prerequisite.kind !== 'journey') {
+      if (prerequisite.journeyId) {
+        issues.push(errorIssue('prerequisite_journey_ref_unexpected', `journey ${journey.journeyId} declares prerequisite kind "${prerequisite.kind}" with journeyId ${prerequisite.journeyId}; use kind "journey" or drop the reference`, path));
+      }
+      return;
+    }
+    if (!prerequisite.journeyId) {
+      issues.push(errorIssue('prerequisite_journey_missing', `journey ${journey.journeyId} declares prerequisite kind "journey" without journeyId — name the journey the actor comes from`, path));
+    } else if (prerequisite.journeyId === journey.journeyId) {
+      issues.push(errorIssue('prerequisite_self_reference', `journey ${journey.journeyId} declares itself as its own prerequisite`, path));
+    } else if (!byId.has(prerequisite.journeyId)) {
+      issues.push(errorIssue('prerequisite_unknown_journey', `journey ${journey.journeyId} comes from unknown journey ${prerequisite.journeyId}`, path));
+    }
+    if (!prerequisite.carries || prerequisite.carries.length === 0) {
+      issues.push(errorIssue('prerequisite_carries_empty', `journey ${journey.journeyId} comes from ${prerequisite.journeyId || 'another journey'} but declares nothing in carries — say WHICH records arrive already chosen, or use kind "external"`, path));
+    }
+  });
+  for (const journeyId of findNsE2PrerequisiteCycle(journeys)) {
+    issues.push(errorIssue('prerequisite_cycle', `journey ${journeyId} is part of a prerequisite cycle — no journey in it can ever start`, journeyId));
+  }
+  return issues;
+}
+
+/** Journeys sitting on a cycle of `prerequisite.kind === 'journey'` edges (empty when the graph is a DAG). */
+function findNsE2PrerequisiteCycle(journeys: readonly NsE2Journey[]): string[] {
+  const parent = new Map<string, string>();
+  const known = new Set(journeys.map(journey => journey.journeyId));
+  for (const journey of journeys) {
+    const from = journey.prerequisite?.kind === 'journey' ? journey.prerequisite.journeyId : undefined;
+    if (from && from !== journey.journeyId && known.has(from)) parent.set(journey.journeyId, from);
+  }
+  const onCycle = new Set<string>();
+  for (const start of parent.keys()) {
+    const seen = new Set<string>([start]);
+    let current = parent.get(start);
+    while (current && !seen.has(current)) {
+      seen.add(current);
+      current = parent.get(current);
+    }
+    if (current && current === start) onCycle.add(start);
+  }
+  return [...onCycle].sort();
+}
+
 export function renderE2JourneysMarkdown(artifact: NsE2JourneysArtifact, options: E2MarkdownAuditOptions = {}): string {
   const previous = options.previous || null;
   const changes = previous ? describeE2Changes(previous, artifact) : [
@@ -312,6 +438,22 @@ export function renderE2JourneysMarkdown(artifact: NsE2JourneysArtifact, options
 
   lines.push('', '## Changes');
   changes.forEach(change => lines.push(`- ${change}`));
+
+  // The prerequisite graph in text: which journeys start cold and which inherit a chosen record. The
+  // human approves this at the checkpoint — downstream it is what makes a `pageInput` verifiable.
+  const edges = describeNsE2Prerequisites(artifact.journeys);
+  if (edges.length > 0) {
+    lines.push('', '## Journey Entry Points');
+    for (const edge of edges) {
+      if (edge.kind === 'entry') { lines.push(`- \`${edge.journeyId}\`: starts from the actor's landing (no prerequisite)`); continue; }
+      if (edge.kind === 'journey') {
+        const carries = edge.carries.length ? ` carrying ${edge.carries.join(', ')}` : '';
+        lines.push(`- \`${edge.journeyId}\`: after \`${edge.fromJourneyId}\`${edge.fromTitle ? ` (${edge.fromTitle})` : ''}${carries}${edge.handoff ? ' — HANDOFF between actors' : ''}`);
+        continue;
+      }
+      lines.push(`- \`${edge.journeyId}\`: starts from ${edge.kind}${edge.description ? ` (${edge.description})` : ''}`);
+    }
+  }
 
   if (artifact.decisions.length) {
     lines.push('', '## Recorded Decisions');
@@ -384,6 +526,32 @@ function sameStringArray(left: readonly string[], right: readonly string[]): boo
 
 function singleLine(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+const PREREQUISITE_KINDS: readonly NsE2PrerequisiteKind[] = ['journey', 'external', 'schedule'];
+
+/** Absent/unusable → undefined (a journey with no prerequisite is an ENTRY journey, a valid shape). */
+function readPrerequisite(value: unknown): NsE2Prerequisite | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const kindText = readString(record.kind);
+  if (!kindText) return undefined;
+  const journeyId = readString(record.journeyId);
+  // An invented kind is normalized BY SHAPE, not to a fixed default: a prerequisite naming another
+  // journey means kind "journey", whatever word the model used. Coercing it to "external" instead
+  // would fire prerequisite_journey_ref_unexpected — an error telling the retry to fix a reference
+  // that is in fact correct, while the real mistake (the kind) goes unmentioned.
+  const normalized: NsE2Prerequisite = {
+    kind: PREREQUISITE_KINDS.includes(kindText as NsE2PrerequisiteKind)
+      ? kindText as NsE2PrerequisiteKind
+      : (journeyId ? 'journey' : 'external'),
+  };
+  if (journeyId) normalized.journeyId = normalizeNsId(journeyId, 'journey');
+  const carries = readArray(record.carries).map(item => readString(item)).filter((item): item is string => !!item);
+  if (carries.length > 0) normalized.carries = carries;
+  const description = readString(record.description);
+  if (description) normalized.description = description;
+  return normalized;
 }
 
 function normalizePriority(value: unknown): NsE2Priority {

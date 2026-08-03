@@ -1,0 +1,342 @@
+{
+  "moduleName": "buildFlowFsm",
+  "note": "Site map (permanent page index) — workspaces, landings and advisory edges. Detail (sections/organisms/bffCalls) lives per-workspace under workspaces/.",
+  "workspaces": [
+    {
+      "workspaceId": "dashboardWorkspace",
+      "title": "Operational Dashboard",
+      "actors": [
+        "projectManager"
+      ],
+      "kind": "operation",
+      "entity": "Project",
+      "operationIds": [
+        "viewDashboard",
+        "queryProjects"
+      ],
+      "purpose": "Project manager gets a quick overview of all active projects, budget drift, and task urgency."
+    },
+    {
+      "workspaceId": "projectLifecycleWorkspace",
+      "title": "Manage Projects",
+      "actors": [
+        "projectManager"
+      ],
+      "kind": "workflow",
+      "entity": "Project",
+      "workflowId": "projectLifecycle",
+      "operationIds": [
+        "createProject",
+        "updateProject",
+        "updateProjectStatus"
+      ],
+      "purpose": "Project manager creates and maintains projects through their full lifecycle."
+    },
+    {
+      "workspaceId": "projectDetailWorkspace",
+      "title": "Project Detail & Timeline",
+      "actors": [
+        "projectManager"
+      ],
+      "kind": "operation",
+      "entity": "Project",
+      "operationIds": [
+        "viewProject",
+        "queryWorkTasks",
+        "queryChangeOrders",
+        "viewChangeOrder",
+        "queryTimeLogs",
+        "queryMaterialUsages",
+        "generateDelayRiskSuggestions",
+        "queryDelayRiskSuggestions"
+      ],
+      "purpose": "Project manager reviews the full project detail, timeline, tasks, change orders, costs, and delay-risk insights."
+    },
+    {
+      "workspaceId": "changeOrderWorkspace",
+      "title": "Change Orders",
+      "actors": [
+        "projectManager"
+      ],
+      "kind": "workflow",
+      "entity": "ChangeOrder",
+      "workflowId": "changeOrderLifecycle",
+      "operationIds": [
+        "createChangeOrder",
+        "updateChangeOrder",
+        "updateChangeOrderStatus"
+      ],
+      "purpose": "Project manager documents, edits, and approves change orders, applying cost impact to the job."
+    },
+    {
+      "workspaceId": "statusReportWorkspace",
+      "title": "Status Reports",
+      "actors": [
+        "projectManager"
+      ],
+      "kind": "workflow",
+      "entity": "StatusReport",
+      "workflowId": "statusReportLifecycle",
+      "operationIds": [
+        "generateStatusReport",
+        "updateStatusReport",
+        "updateStatusReportStatus"
+      ],
+      "purpose": "Project manager generates AI-assisted status reports, reviews delay-risk suggestions, and shares reports with clients."
+    },
+    {
+      "workspaceId": "clientManagementWorkspace",
+      "title": "Client Directory",
+      "actors": [
+        "projectManager"
+      ],
+      "kind": "entityManagement",
+      "entity": "Client",
+      "operationIds": [
+        "queryClients",
+        "createClient",
+        "updateClient",
+        "deleteClient"
+      ],
+      "purpose": "Project manager maintains the client directory used across projects."
+    },
+    {
+      "workspaceId": "taskBoardWorkspace",
+      "title": "Task Board",
+      "actors": [
+        "projectManager",
+        "fieldWorker"
+      ],
+      "kind": "workflow",
+      "entity": "WorkTask",
+      "workflowId": "workTaskLifecycle",
+      "operationIds": [
+        "createWorkTask",
+        "updateWorkTask",
+        "updateWorkTaskStatus"
+      ],
+      "purpose": "Project manager creates and assigns work tasks; field workers update task status from the field."
+    },
+    {
+      "workspaceId": "myTasksWorkspace",
+      "title": "My Tasks",
+      "actors": [
+        "fieldWorker",
+        "projectManager"
+      ],
+      "kind": "operation",
+      "entity": "WorkTask",
+      "operationIds": [
+        "queryMyWorkTasks",
+        "viewWorkTask"
+      ],
+      "purpose": "Field worker browses and reviews their assigned tasks for the day."
+    },
+    {
+      "workspaceId": "fieldLoggingWorkspace",
+      "title": "Log Time & Materials",
+      "actors": [
+        "fieldWorker"
+      ],
+      "kind": "operation",
+      "entity": "TimeLog",
+      "operationIds": [
+        "createTimeLog",
+        "voidTimeLog",
+        "createMaterialUsage",
+        "voidMaterialUsage"
+      ],
+      "purpose": "Field worker logs hours worked and materials used against active tasks, keeping job costing accurate."
+    },
+    {
+      "workspaceId": "jobCostWorkspace",
+      "title": "Job Cost Summary",
+      "actors": [
+        "billingStaff"
+      ],
+      "kind": "operation",
+      "entity": "Project",
+      "operationIds": [
+        "viewJobCostSummary"
+      ],
+      "purpose": "Billing staff reviews accumulated job costs per project before preparing billing documents."
+    },
+    {
+      "workspaceId": "billingSummaryWorkspace",
+      "title": "Billing Summaries",
+      "actors": [
+        "billingStaff"
+      ],
+      "kind": "workflow",
+      "entity": "BillingSummary",
+      "workflowId": "billingSummaryLifecycle",
+      "operationIds": [
+        "queryBillingSummaries",
+        "createBillingSummary",
+        "shareBillingSummary"
+      ],
+      "purpose": "Billing staff compiles and shares client-facing billing summaries from approved job cost data."
+    },
+    {
+      "workspaceId": "invoiceWorkspace",
+      "title": "Invoices",
+      "actors": [
+        "billingStaff"
+      ],
+      "kind": "workflow",
+      "entity": "Invoice",
+      "workflowId": "invoiceLifecycle",
+      "operationIds": [
+        "queryInvoices",
+        "createInvoice",
+        "sendInvoice"
+      ],
+      "purpose": "Billing staff generates invoices from approved costs and sends them to clients."
+    },
+    {
+      "workspaceId": "clientStatusWorkspace",
+      "title": "Project Status",
+      "actors": [
+        "client"
+      ],
+      "kind": "operation",
+      "entity": "StatusReport",
+      "operationIds": [
+        "viewStatusReport"
+      ],
+      "purpose": "Client reviews the shared project status report to stay informed on progress and budget."
+    },
+    {
+      "workspaceId": "clientBillingWorkspace",
+      "title": "My Billing",
+      "actors": [
+        "client"
+      ],
+      "kind": "operation",
+      "entity": "BillingSummary",
+      "operationIds": [
+        "viewBillingSummary",
+        "viewInvoice"
+      ],
+      "purpose": "Client reviews billing summaries and invoices shared by billing staff."
+    }
+  ],
+  "landings": [
+    {
+      "actorId": "projectManager",
+      "workspaceId": "dashboardWorkspace",
+      "reason": "Project manager starts their day with the operational dashboard for a full overview of active projects and priorities."
+    },
+    {
+      "actorId": "fieldWorker",
+      "workspaceId": "myTasksWorkspace",
+      "reason": "Field worker opens the app to their assigned task list to know what to work on today."
+    },
+    {
+      "actorId": "billingStaff",
+      "workspaceId": "jobCostWorkspace",
+      "reason": "Billing staff starts by reviewing accumulated job costs before preparing billing summaries or invoices."
+    },
+    {
+      "actorId": "client",
+      "workspaceId": "clientStatusWorkspace",
+      "reason": "Client lands on the project status area to review the latest shared status report."
+    }
+  ],
+  "navigationEdges": [
+    {
+      "from": "dashboardWorkspace",
+      "to": "projectDetailWorkspace",
+      "operationId": "viewProject",
+      "description": "Project manager drills into a specific project from the dashboard."
+    },
+    {
+      "from": "dashboardWorkspace",
+      "to": "projectLifecycleWorkspace",
+      "operationId": "createProject",
+      "description": "Project manager initiates a new project from the dashboard."
+    },
+    {
+      "from": "projectLifecycleWorkspace",
+      "to": "clientManagementWorkspace",
+      "operationId": "createClient",
+      "description": "Project manager creates a new client while setting up a project."
+    },
+    {
+      "from": "projectDetailWorkspace",
+      "to": "changeOrderWorkspace",
+      "operationId": "createChangeOrder",
+      "description": "Project manager initiates a change order from within the project detail."
+    },
+    {
+      "from": "projectDetailWorkspace",
+      "to": "statusReportWorkspace",
+      "operationId": "generateStatusReport",
+      "description": "Project manager triggers status report generation from the project detail."
+    },
+    {
+      "from": "projectDetailWorkspace",
+      "to": "taskBoardWorkspace",
+      "operationId": "createWorkTask",
+      "description": "Project manager creates and assigns tasks from the project detail view."
+    },
+    {
+      "from": "statusReportWorkspace",
+      "to": "clientStatusWorkspace",
+      "operationId": "updateStatusReportStatus",
+      "description": "Project manager shares the status report, making it visible to the client."
+    },
+    {
+      "from": "myTasksWorkspace",
+      "to": "taskBoardWorkspace",
+      "operationId": "updateWorkTaskStatus",
+      "description": "Field worker updates task status from their task detail view."
+    },
+    {
+      "from": "myTasksWorkspace",
+      "to": "fieldLoggingWorkspace",
+      "operationId": "createTimeLog",
+      "description": "Field worker navigates to log time or materials after selecting an active task."
+    },
+    {
+      "from": "jobCostWorkspace",
+      "to": "billingSummaryWorkspace",
+      "operationId": "createBillingSummary",
+      "description": "Billing staff compiles a billing summary after reviewing job costs."
+    },
+    {
+      "from": "jobCostWorkspace",
+      "to": "invoiceWorkspace",
+      "operationId": "createInvoice",
+      "description": "Billing staff creates an invoice from approved job costs."
+    },
+    {
+      "from": "billingSummaryWorkspace",
+      "to": "clientBillingWorkspace",
+      "operationId": "shareBillingSummary",
+      "description": "Billing staff shares the billing summary, making it visible to the client."
+    },
+    {
+      "from": "invoiceWorkspace",
+      "to": "clientBillingWorkspace",
+      "operationId": "sendInvoice",
+      "description": "Billing staff sends the invoice to the client."
+    }
+  ],
+  "workspaceIds": [
+    "dashboardWorkspace",
+    "projectLifecycleWorkspace",
+    "projectDetailWorkspace",
+    "changeOrderWorkspace",
+    "statusReportWorkspace",
+    "clientManagementWorkspace",
+    "taskBoardWorkspace",
+    "myTasksWorkspace",
+    "fieldLoggingWorkspace",
+    "jobCostWorkspace",
+    "billingSummaryWorkspace",
+    "invoiceWorkspace",
+    "clientStatusWorkspace",
+    "clientBillingWorkspace"
+  ]
+}

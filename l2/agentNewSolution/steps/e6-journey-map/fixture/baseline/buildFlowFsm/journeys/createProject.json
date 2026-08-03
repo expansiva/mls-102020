@@ -1,0 +1,35 @@
+{
+  "journeyId": "createProject",
+  "actorId": "projectManager",
+  "title": "Create a new construction project",
+  "goal": "Set up a new project with client information, site address, budget, and schedule so the team can start planning work.",
+  "steps": [
+    "Enter project basics",
+    "Set budget and schedule",
+    "Activate the project"
+  ],
+  "outcome": "A new project exists with client, address, budget, schedule, and active status, ready for task planning and field work.",
+  "operationIds": [
+    "createProject",
+    "updateProjectStatus",
+    "updateProject",
+    "queryProjects",
+    "viewProject",
+    "queryClients",
+    "createClient",
+    "updateClient",
+    "deleteClient",
+    "viewDashboard",
+    "viewJobCostSummary",
+    "updateChangeOrderStatus",
+    "queryChangeOrders",
+    "viewChangeOrder",
+    "createTimeLog",
+    "queryTimeLogs",
+    "createMaterialUsage",
+    "queryMaterialUsages",
+    "createBillingSummary",
+    "createInvoice"
+  ],
+  "workspaceId": "dashboardWorkspace"
+}

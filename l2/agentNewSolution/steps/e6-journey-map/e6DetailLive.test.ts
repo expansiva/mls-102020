@@ -198,6 +198,9 @@ function scopedContext(workspace: NsE6Workspace): E6GateContext {
     entityIds: ['StockItem', 'StockAdjustment', 'Shift', 'ShiftReport', 'Order', 'MenuItem'],
     nowCapabilityActorIds: ['gerente'],
     operationFacts: Object.fromEntries(Object.entries(OPERATIONS).map(([operationId, entry]) => [operationId, entry.fact])),
+    // Mirrors buildSingleWorkspaceContext: one workspace in isolation cannot answer "who navigates
+    // here carrying what", so the T5 pageInput provider check stays off during the fan-out.
+    wholeMap: false,
   };
 }
 

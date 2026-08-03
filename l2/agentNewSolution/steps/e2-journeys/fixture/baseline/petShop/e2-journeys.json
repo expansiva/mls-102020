@@ -1,0 +1,361 @@
+{
+  "schemaVersion": "2026-07-06-ns-e2-v1",
+  "moduleName": "petShop",
+  "moduleTitle": "Pet Shop — Catálogo e Reserva de Produtos",
+  "userLanguage": "pt-BR",
+  "version": 1,
+  "actors": [
+    {
+      "actorId": "cliente",
+      "name": "Cliente",
+      "description": "Navega no site, pesquisa produtos, faz reservas e retira os itens na loja pagando presencialmente."
+    },
+    {
+      "actorId": "atendente",
+      "name": "Atendente/Loja",
+      "description": "Confirma reservas recebidas, prepara os produtos e recebe o pagamento na loja no momento da retirada."
+    }
+  ],
+  "journeys": [
+    {
+      "journeyId": "browseFeaturedProducts",
+      "actorId": "cliente",
+      "title": "Visualizar produtos em destaque na vitrine",
+      "goal": "Descobrir rapidamente quais produtos o pet shop está destacando como promoções ou novidades",
+      "steps": [
+        {
+          "stepId": "openStorefront",
+          "title": "Acessar a página inicial do pet shop",
+          "intent": "O cliente entra no site do pet shop para ver o que a loja oferece antes de procurar algo específico.",
+          "featureRefs": [
+            "featuredProductsDisplay"
+          ]
+        },
+        {
+          "stepId": "viewHighlights",
+          "title": "Visualizar a vitrine de produtos em destaque",
+          "intent": "O cliente observa os produtos em destaque para identificar promoções, novidades ou itens recomendados.",
+          "featureRefs": [
+            "featuredProductsDisplay"
+          ]
+        },
+        {
+          "stepId": "selectFeaturedProduct",
+          "title": "Selecionar um produto em destaque para ver detalhes",
+          "intent": "Ao ver um produto interessante na vitrine, o cliente clica para conhecer mais informações antes de decidir reservar.",
+          "featureRefs": [
+            "featuredProductsDisplay",
+            "productDetailsView"
+          ]
+        }
+      ],
+      "outcome": "O cliente conhece os produtos em destaque e pode aprofundar nos detalhes ou partir para o catálogo completo.",
+      "businessRules": [
+        "A vitrine exibe apenas produtos marcados como destaque pelo processo administrativo externo.",
+        "A ordem dos produtos em destaque pode variar conforme critérios definidos pela loja."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "searchAndFilterCatalog",
+      "actorId": "cliente",
+      "title": "Pesquisar e filtrar produtos no catálogo",
+      "goal": "Encontrar produtos específicos no catálogo completo usando critérios relevantes para o seu pet",
+      "steps": [
+        {
+          "stepId": "openCatalog",
+          "title": "Abrir o catálogo completo de produtos",
+          "intent": "O cliente acessa a listagem completa de produtos para explorar tudo o que a loja oferece.",
+          "featureRefs": [
+            "productCatalogListing"
+          ]
+        },
+        {
+          "stepId": "searchByKeyword",
+          "title": "Pesquisar produtos por nome",
+          "intent": "O cliente digita o nome ou parte do nome de um produto que tem em mente para encontrá-lo rapidamente.",
+          "featureRefs": [
+            "productSearch"
+          ]
+        },
+        {
+          "stepId": "filterByPetType",
+          "title": "Filtrar produtos por tipo de pet",
+          "intent": "O cliente seleciona o tipo de pet (cão, gato, pássaro, etc.) para ver apenas produtos adequados ao seu animal.",
+          "featureRefs": [
+            "productSearch"
+          ]
+        },
+        {
+          "stepId": "filterByCategory",
+          "title": "Filtrar produtos por categoria",
+          "intent": "O cliente refina a busca escolhendo uma categoria como ração, acessórios, higiene ou brinquedos.",
+          "featureRefs": [
+            "productSearch"
+          ]
+        },
+        {
+          "stepId": "filterByPriceRange",
+          "title": "Filtrar produtos por faixa de valor",
+          "intent": "O cliente define um intervalo de preço para ver apenas produtos dentro do seu orçamento.",
+          "featureRefs": [
+            "priceRangeFilter"
+          ]
+        },
+        {
+          "stepId": "selectProductFromResults",
+          "title": "Selecionar um produto da lista filtrada",
+          "intent": "Após refinar os resultados, o cliente clica em um produto para ver seus detalhes e decidir se reserva.",
+          "featureRefs": [
+            "productCatalogListing",
+            "productDetailsView"
+          ]
+        }
+      ],
+      "outcome": "O cliente encontra produtos relevantes para o seu pet dentro do seu orçamento e pode ver os detalhes ou iniciar uma reserva.",
+      "businessRules": [
+        "Os filtros podem ser combinados: tipo de pet, categoria, nome e faixa de valor funcionam simultaneamente.",
+        "A listagem do catálogo mostra todos os produtos cadastrados, independentemente de estarem em destaque.",
+        "A pesquisa por nome é insensível a maiúsculas e minúsculas."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "reserveProducts",
+      "actorId": "cliente",
+      "title": "Reservar produtos para retirada na loja",
+      "goal": "Garantir que os produtos desejados fiquem separados para retirada presencial na loja",
+      "steps": [
+        {
+          "stepId": "chooseProductToReserve",
+          "title": "Escolher um produto para reservar a partir dos detalhes",
+          "intent": "Após ver os detalhes de um produto que deseja, o cliente decide reservá-lo para retirar na loja.",
+          "featureRefs": [
+            "productDetailsView",
+            "productReservation"
+          ]
+        },
+        {
+          "stepId": "setReservationQuantity",
+          "title": "Definir a quantidade desejada do produto",
+          "intent": "O cliente informa quantas unidades do produto deseja reservar.",
+          "featureRefs": [
+            "productReservation"
+          ]
+        },
+        {
+          "stepId": "provideContactInfo",
+          "title": "Informar dados de contato para a reserva",
+          "intent": "O cliente fornece seu nome e telefone para que a loja possa identificá-lo e entrar em contato sobre a reserva.",
+          "featureRefs": [
+            "productReservation"
+          ]
+        },
+        {
+          "stepId": "confirmReservation",
+          "title": "Confirmar a reserva",
+          "intent": "O cliente revisa os itens e seus dados e confirma a reserva para que a loja comece a prepará-la.",
+          "featureRefs": [
+            "productReservation"
+          ]
+        },
+        {
+          "stepId": "receiveReservationConfirmation",
+          "title": "Receber a confirmação da reserva",
+          "intent": "O cliente recebe um comprovante ou número de reserva para apresentar na loja no momento da retirada.",
+          "featureRefs": [
+            "productReservation"
+          ]
+        }
+      ],
+      "outcome": "A reserva é registrada no sistema com os dados do cliente e os itens solicitados, pronta para o atendente confirmar e preparar.",
+      "businessRules": [
+        "A reserva exige no mínimo nome e telefone do cliente.",
+        "Cada reserva tem validade de 24 horas a partir do registro; após esse prazo pode ser cancelada pelo atendente.",
+        "Não há bloqueio automático de estoque no momento da reserva; a disponibilidade é verificada pelo atendente na retirada.",
+        "O cliente pode reservar mais de um produto na mesma reserva."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "manageReservations",
+      "actorId": "atendente",
+      "title": "Confirmar e atender reservas de clientes",
+      "goal": "Garantir que cada reserva recebida seja confirmada, preparada e entregue ao cliente na retirada",
+      "steps": [
+        {
+          "stepId": "viewPendingReservations",
+          "title": "Visualizar reservas pendentes",
+          "intent": "O atendente acessa a lista de reservas recebidas para saber quais precisam ser confirmadas e preparadas.",
+          "featureRefs": [
+            "reservationManagement"
+          ]
+        },
+        {
+          "stepId": "confirmReservation",
+          "title": "Confirmar uma reserva",
+          "intent": "O atendente revisa os itens e dados do cliente e confirma a reserva, sinalizando que a loja aceitou e vai preparar os produtos.",
+          "featureRefs": [
+            "reservationManagement"
+          ]
+        },
+        {
+          "stepId": "prepareProducts",
+          "title": "Preparar os produtos da reserva",
+          "intent": "O atendente separa fisicamente os produtos reservados e verifica a disponibilidade no estoque real.",
+          "featureRefs": [
+            "reservationManagement"
+          ]
+        },
+        {
+          "stepId": "identifyCustomerOnArrival",
+          "title": "Identificar o cliente na chegada à loja",
+          "intent": "Quando o cliente chega para retirar, o atendente localiza a reserva pelo número ou pelo nome/telefone do cliente.",
+          "featureRefs": [
+            "reservationManagement"
+          ]
+        },
+        {
+          "stepId": "cancelExpiredReservation",
+          "title": "Cancelar reservas não retiradas dentro do prazo",
+          "intent": "Se uma reserva não foi retirada em 24 horas, o atendente cancela a reserva para liberar os produtos.",
+          "featureRefs": [
+            "reservationManagement"
+          ]
+        }
+      ],
+      "outcome": "As reservas confirmadas são preparadas e entregues aos clientes na retirada; reservas expiradas são canceladas.",
+      "businessRules": [
+        "A reserva tem validade de 24 horas; após esse prazo o atendente pode cancelá-la.",
+        "O atendente verifica a disponibilidade real do produto no momento da preparação, pois não há bloqueio automático de estoque.",
+        "Uma reserva pode ter os status: pendente, confirmada, atendida (retirada e paga) ou cancelada."
+      ],
+      "notes": ""
+    },
+    {
+      "journeyId": "processInStorePayment",
+      "actorId": "atendente",
+      "title": "Receber pagamento presencial na retirada",
+      "goal": "Registrar que o cliente pagou os produtos reservados no momento da retirada na loja",
+      "steps": [
+        {
+          "stepId": "reviewReservationItems",
+          "title": "Revisar os itens da reserva com o cliente",
+          "intent": "O atendente apresenta os produtos reservados ao cliente para confirmar que está tudo correto antes do pagamento.",
+          "featureRefs": [
+            "reservationManagement",
+            "inStorePayment"
+          ]
+        },
+        {
+          "stepId": "calculateTotal",
+          "title": "Calcular o valor total da reserva",
+          "intent": "O atendente verifica o valor total dos produtos reservados para informar ao cliente.",
+          "featureRefs": [
+            "inStorePayment"
+          ]
+        },
+        {
+          "stepId": "receivePayment",
+          "title": "Receber o pagamento do cliente",
+          "intent": "O cliente paga presencialmente na loja (dinheiro, cartão, pix, etc.) e o atendente processa o recebimento.",
+          "featureRefs": [
+            "inStorePayment"
+          ]
+        },
+        {
+          "stepId": "markReservationPaid",
+          "title": "Marcar a reserva como paga e entregue",
+          "intent": "O atendente registra no sistema que o pagamento foi recebido e os produtos foram entregues ao cliente, encerrando a reserva.",
+          "featureRefs": [
+            "inStorePayment",
+            "reservationManagement"
+          ]
+        }
+      ],
+      "outcome": "A reserva é marcada como paga e entregue, encerrando o ciclo de reserva com o cliente saindo da loja com os produtos.",
+      "businessRules": [
+        "O pagamento é sempre presencial na loja; não há pagamento online.",
+        "O valor total é calculado a partir dos preços dos produtos e quantidades reservadas.",
+        "A reserva só pode ser marcada como paga após o recebimento efetivo do pagamento pelo atendente."
+      ],
+      "notes": ""
+    }
+  ],
+  "features": [
+    {
+      "featureId": "featuredProductsDisplay",
+      "title": "Vitrine de produtos em destaque",
+      "priority": "now",
+      "actorIds": [
+        "cliente"
+      ],
+      "description": "Exibe produtos marcados como destaque na página inicial do pet shop, permitindo acesso rápido aos detalhes de cada produto."
+    },
+    {
+      "featureId": "productCatalogListing",
+      "title": "Listagem do catálogo completo de produtos",
+      "priority": "now",
+      "actorIds": [
+        "cliente"
+      ],
+      "description": "Apresenta todos os produtos cadastrados em uma lista navegável, com informações essenciais como nome, preço, tipo de pet e categoria."
+    },
+    {
+      "featureId": "productSearch",
+      "title": "Pesquisa de produtos por tipo de pet, categoria e nome",
+      "priority": "now",
+      "actorIds": [
+        "cliente"
+      ],
+      "description": "Permite ao cliente buscar produtos no catálogo filtrando por tipo de pet, categoria e digitando o nome ou parte do nome do produto."
+    },
+    {
+      "featureId": "priceRangeFilter",
+      "title": "Filtro por faixa de valor",
+      "priority": "now",
+      "actorIds": [
+        "cliente"
+      ],
+      "description": "Permite ao cliente definir um intervalo de preço mínimo e máximo para refinar os resultados do catálogo."
+    },
+    {
+      "featureId": "productDetailsView",
+      "title": "Visualização de detalhes do produto",
+      "priority": "now",
+      "actorIds": [
+        "cliente"
+      ],
+      "description": "Exibe a página de detalhes de um produto com todas as informações disponíveis, permitindo ao cliente decidir pela reserva."
+    },
+    {
+      "featureId": "productReservation",
+      "title": "Reserva de produtos com dados do cliente",
+      "priority": "now",
+      "actorIds": [
+        "cliente"
+      ],
+      "description": "Permite ao cliente reservar um ou mais produtos informando nome e telefone, gerando um número de reserva para retirada na loja."
+    },
+    {
+      "featureId": "reservationManagement",
+      "title": "Gestão de reservas pelo atendente",
+      "priority": "now",
+      "actorIds": [
+        "atendente"
+      ],
+      "description": "Permite ao atendente visualizar, confirmar, preparar e cancelar reservas, além de localizar o cliente na chegada à loja."
+    },
+    {
+      "featureId": "inStorePayment",
+      "title": "Registro de pagamento presencial",
+      "priority": "now",
+      "actorIds": [
+        "atendente"
+      ],
+      "description": "Permite ao atendente revisar o valor total da reserva, registrar o recebimento do pagamento presencial e marcar a reserva como paga e entregue."
+    }
+  ],
+  "decisions": [],
+  "createdAt": "2026-07-19"
+}

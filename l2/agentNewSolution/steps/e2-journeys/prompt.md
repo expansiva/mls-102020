@@ -17,7 +17,8 @@ Language rule (important):
   actorId values from E1 as-is). Example: registerMenuItem, sendToKitchen, orderPos. Never Portuguese
   ids like "cadastrarItemCardapio".
 - ALL user-facing text stays in the user's language (userLanguage from E1): title, goal, soThat,
-  trigger, step title/intent/result, outcome, businessRules, notes, feature title/description.
+  step title/intent/result, outcome, businessRules, notes, feature title/description, and the
+  prerequisite `carries`/`description` (business names, not identifiers).
 
 Tool arguments must use only these top-level fields:
 - status: "ok" | "failed"
@@ -37,7 +38,19 @@ The result must contain:
   - Cover every meaningful item of E1 scope.in with at least one journey.
   - Every actor must own at least one journey.
   - Each journey: journeyId (lower camelCase, unique), actorId, title, goal (what the actor wants),
-    optional soThat (the value), optional trigger (what starts it), an ordered steps[] and an outcome.
+    optional soThat (the value), an ordered steps[] and an outcome.
+  - WHERE THE ACTOR COMES FROM. Every journey either starts from zero on the actor's own landing (then
+    declare NO prerequisite), or it begins with something already chosen — and then it must say so:
+    - `prerequisite: { kind: "journey", journeyId, carries: [...] }` when the actor arrives from another
+      journey. `carries` lists the records that arrive ALREADY CHOSEN, named as you name them in this
+      document (the project, the order). A journey that acts on a record another journey created MUST
+      reference that journey and carry the record — otherwise the actor has no way to reach it.
+    - `prerequisite: { kind: "external" | "schedule", description }` when what starts it is outside the
+      system (a phone call, a delivery arriving) or a moment in time (end of shift, monthly closing).
+      These carry NO journeyId — `journeyId` names another journey of this document and nothing else;
+      what starts an external journey goes in `description`, in words.
+    The chain must terminate: two journeys cannot come from each other.
+    Do not use the legacy free-text `trigger` field.
   - Each step: stepId (lower camelCase, unique within the journey), a short title, an "intent"
     sentence describing what the actor does and why (this is where richness lives), an optional
     "result", and featureRefs listing the feature ids the step exercises.
@@ -69,5 +82,6 @@ Rules:
   messaging/task runtime, monitoring). Reference them as platform assumptions if needed.
 - Do not embed examples from unrelated domains.
 - If an adjustment request is present, change only what the request targets and preserve everything
-  else (ids, unrelated journeys, rules and notes).
+  else (ids, unrelated journeys, rules, notes and the prerequisite of every journey the request does
+  not touch — the human approved that graph).
 - Use status "failed" only when E1 is missing or unusable; otherwise "ok".
