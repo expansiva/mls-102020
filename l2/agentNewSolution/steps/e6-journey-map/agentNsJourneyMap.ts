@@ -74,6 +74,7 @@ import {
   renderE6Markdown,
   repairE6BffFroms,
   repairE6OrganismReferences,
+  repairE6OutputNesting,
   stampE6PickerUsage,
   validateE6Invariants,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/gate.js';
@@ -492,6 +493,7 @@ async function handleDetailResult(
   // Deterministic `from` qualification (run12: relative "$items.<col>" paths) before the gate.
   repairE6BffFroms(prepared, scopedContext.operationFacts);
   repairE6OrganismReferences(prepared); // the label-in-`action` swap (run 102046)
+  repairE6OutputNesting(prepared);      // a third projection level the emitter cannot render (run07)
   stampE6PickerUsage(prepared, scopedContext); // P2: so the detail gate judges the picker as a picker
   const localGate = validateE6Invariants(prepared, scopedContext);
   const equality = validateE6WorkspaceEquality(workspace, slice);
@@ -592,6 +594,7 @@ async function runE6Finalize(
   gateContext.pageContext = deriveNsE6PageContext(journeys, siteMap.workspaces, gateContext.entityIds);
   repairE6BffFroms(artifact, gateContext.operationFacts); // idempotent; also heals pre-repair saved details
   repairE6OrganismReferences(artifact); // idempotent; heals details saved before the repair existed
+  repairE6OutputNesting(artifact);      // idempotent; heals a 3-level projection already on disk
   stampE6PickerUsage(artifact, gateContext); // P2: mark the co-located pickers (code, never the LLM)
   const check = validateE6Invariants(artifact, gateContext);
   const errors = check.issues.filter(issue => issue.severity === 'error');

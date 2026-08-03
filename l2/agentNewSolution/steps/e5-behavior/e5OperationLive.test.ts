@@ -21,7 +21,7 @@ import { prepareE5Operation, attachOperationDeterministic, validateE5Operation }
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MLS_BASE = path.resolve(HERE, '../../../../..'); // .../mls-base
 const OPERATION_TOOL = 'submitNsOperation';
-const MODEL_TYPES = ['code', 'design'] as const; // code=Grok, design=Kimi — the two strict-tool providers
+const MODEL_TYPES = ['reasoning', 'code'] as const; // the step's native alias + the one rotateNsModelType retries on
 const config = () => parseEnvFile(readFileSync(path.join(MLS_BASE, '.env'), 'utf8'));
 
 // ── MOCK data (a small, representative module slice) ────────────────────────────

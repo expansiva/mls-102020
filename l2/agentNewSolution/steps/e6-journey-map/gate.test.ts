@@ -19,6 +19,7 @@ import {
   prepareE6JourneyMap,
   repairE6BffFroms,
   repairE6OrganismReferences,
+  repairE6OutputNesting,
   stampE6PickerUsage,
   validateE6Invariants,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/gate.js';
@@ -1466,4 +1467,83 @@ void test('e6 P2 gate: a picker nobody selects from is a warning, not an error',
   stale.workspaces[0].bffCalls.find(call => call.bffId === 'materialList')!.usage = 'picker';
   const issues = validateE6Invariants(stale, pickerContext).issues.filter(issue => issue.code.startsWith('bff.picker'));
   assert.deepEqual(issues.map(issue => [issue.code, issue.severity]), [['bff.picker.unreferenced', 'warning']]);
+});
+
+// VERBATIM from fieldExecutionWorkspace.viewMyAssignmentsQuery (run07): the row's columns were nested
+// one level too deep, under the first column — a `workTaskId` STRING carrying an `item.fields` with the
+// whole row. The contract emitter throws on it ("nesting > 1 level not supported"), and an exception is
+// the one thing no gate can soften, so the run died at e7 after a complete e6.
+void test('e6 repair: a third projection level is lifted into the row it belongs to', () => {
+  const map = prepareE6JourneyMap({
+    workspaces: [{
+      workspaceId: 'fieldExecution', title: 'Field', actors: ['cliente'], kind: 'operation', entity: 'Product',
+      purpose: 'p',
+      bffCalls: [{
+        bffId: 'viewMyAssignmentsQuery', kind: 'query', uses: [{ operationId: 'browseProducts' }],
+        output: { kind: 'paginated', fields: [
+          { name: 'myAssignments', type: 'array', from: 'browseProducts.$items', item: { fields: [
+            { name: 'workTaskId', from: 'browseProducts.$items.workTaskId', type: 'string', required: true, item: { fields: [
+              { name: 'workTaskId', from: 'browseProducts.$items.workTaskId', type: 'string', required: true },
+              { name: 'projectName', from: 'browseProducts.$items.projectName', type: 'string', required: true },
+            ] } },
+          ] } },
+          { name: 'total', from: 'browseProducts.total' },
+        ] },
+      }],
+      sections: [{ sectionId: 's', intent: 'i', organisms: [{ role: 'primarySurface', dataSource: 'viewMyAssignmentsQuery' }] }],
+    }],
+    landings: [], navigationEdges: [],
+  }, { moduleName: 'petShop' });
+  const output = repairE6OutputNesting(map).workspaces[0].bffCalls[0].output!;
+  const columns = output.fields[0].item!.fields;
+  // The columns are lifted, deduped, and no column carries rows of its own any more.
+  assert.deepEqual(columns.map(field => field.name), ['workTaskId', 'projectName']);
+  assert.ok(columns.every(field => field.item === undefined));
+  assert.equal(output.fields[1].name, 'total', 'the envelope is untouched');
+});
+
+void test('e6 repair: a legitimate two-level projection is left exactly as it is', () => {
+  const map = prepareE6JourneyMap({
+    workspaces: [{
+      workspaceId: 'ok', title: 'Ok', actors: ['cliente'], kind: 'operation', entity: 'Product', purpose: 'p',
+      bffCalls: [{
+        bffId: 'list', kind: 'query', uses: [{ operationId: 'browseProducts' }],
+        output: { kind: 'paginated', fields: [
+          { name: 'rows', type: 'array', from: 'browseProducts.$items', item: { fields: [
+            { name: 'productId', from: 'browseProducts.$items.productId' },
+            { name: 'name', from: 'browseProducts.$items.name' },
+          ] } },
+          { name: 'total', from: 'browseProducts.total' },
+        ] },
+      }],
+      sections: [{ sectionId: 's', intent: 'i', organisms: [{ role: 'primarySurface', dataSource: 'list' }] }],
+    }],
+    landings: [], navigationEdges: [],
+  }, { moduleName: 'petShop' });
+  const before = JSON.stringify(map.workspaces[0].bffCalls[0].output);
+  assert.equal(JSON.stringify(repairE6OutputNesting(map).workspaces[0].bffCalls[0].output), before);
+});
+
+// run07: three contextualActions came back with `dataSource` = a query and `action` = a label. The
+// repair deleted the label, leaving a command role with NO command — an error strictly worse than the
+// one it replaced, because `organism.reference.unknown` at least names the bffCalls to choose from.
+void test('e6 repair: a role that REQUIRES an action keeps its unusable one for the gate to name', () => {
+  const map = prepareE6JourneyMap({
+    workspaces: [{
+      workspaceId: 'projects', title: 'Projects', actors: ['cliente'], kind: 'operation', entity: 'Product',
+      purpose: 'p',
+      bffCalls: [
+        { bffId: 'productList', kind: 'query', uses: [{ operationId: 'browseProducts' }] },
+        { bffId: 'reservar', kind: 'command', uses: [{ operationId: 'reserveProduct' }] },
+      ],
+      sections: [{ sectionId: 's', intent: 'i', organisms: [
+        { role: 'primarySurface', action: 'Browse the projects', dataSource: 'productList' },
+        { role: 'contextualAction', action: 'Pick a client', dataSource: 'productList' },
+      ] }],
+    }],
+    landings: [], navigationEdges: [],
+  }, { moduleName: 'petShop' });
+  const organisms = repairE6OrganismReferences(map).workspaces[0].sections[0].organisms;
+  assert.deepEqual(organisms[0], { role: 'primarySurface', dataSource: 'productList' }, 'a surface label is text: dropped');
+  assert.equal(organisms[1].action, 'Pick a client', 'a command role keeps it — the gate names the candidates');
 });

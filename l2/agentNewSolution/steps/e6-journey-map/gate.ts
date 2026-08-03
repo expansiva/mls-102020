@@ -443,14 +443,62 @@ export function repairE6OrganismReferences(artifact: NsE6JourneyMapArtifact): Ns
           continue;
         }
         // An `action` naming no call, over a real query surface, is a LABEL — and the contract has no
-        // field for a label.
-        if (!hasUsableAction && organism.action && organism.dataSource && queryIds.has(organism.dataSource)) {
+        // field for a label. EXCEPT on a role that REQUIRES an action: dropping it there turns an
+        // actionable error ("action X is not a bffCall of this workspace", which names the candidates)
+        // into a vaguer one ("this role requires an action") and throws away the only clue to which
+        // command was meant. Run07 hit exactly that: three contextualActions lost their label and the
+        // finalize reported organism.reference.missing instead.
+        if (!hasUsableAction && organism.action && organism.dataSource && queryIds.has(organism.dataSource)
+          && !NS_COMMAND_BACKED_ROLES.has(organism.role)) {
           delete organism.action;
         }
       }
     }
   }
   return artifact;
+}
+
+/**
+ * A projection is TWO levels: the row, and the columns of an array inside it. Run07 produced three —
+ * `myAssignments[].workTaskId` (a string!) carrying an `item.fields` that repeated the whole row — and
+ * the contract emitter throws on it ("nesting > 1 level not supported"), which no gate can soften
+ * because it is an exception, not a finding. The e6 DETAIL is the one step whose artifact the host does
+ * not re-validate against its schema (only the provider does, via x-tool-strict), so the shape reached
+ * disk.
+ *
+ * The repair reads the mistake for what it is: the model put the row's columns one level too deep,
+ * under the first column. So the nested columns are LIFTED into the row they belong to (deduped by
+ * name, keeping the first occurrence) instead of being dropped — dropping would silently lose every
+ * column but the wrapper. Applied at any depth below the item level, so the result is always emittable.
+ */
+export function repairE6OutputNesting(artifact: NsE6JourneyMapArtifact): NsE6JourneyMapArtifact {
+  for (const workspace of artifact.workspaces) {
+    for (const call of workspace.bffCalls) {
+      for (const field of call.output?.fields || []) {
+        if (field.item?.fields) field.item.fields = flattenNsItemFields(field.item.fields);
+      }
+    }
+  }
+  return artifact;
+}
+
+/** Columns of a row: scalars only. A column carrying its own rows is spliced into the row it describes. */
+function flattenNsItemFields(fields: NsE6BffField[]): NsE6BffField[] {
+  const flat: NsE6BffField[] = [];
+  const seen = new Set<string>();
+  const push = (field: NsE6BffField): void => {
+    if (seen.has(field.name)) return;
+    seen.add(field.name);
+    flat.push(field);
+  };
+  for (const field of fields) {
+    const nested = field.item?.fields;
+    if (!nested) { push(field); continue; }
+    const { item, ...scalar } = field;
+    push(scalar as NsE6BffField);
+    for (const inner of flattenNsItemFields(nested)) push(inner);
+  }
+  return flat;
 }
 
 /**
