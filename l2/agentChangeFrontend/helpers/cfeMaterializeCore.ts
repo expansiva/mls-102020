@@ -141,13 +141,27 @@ function isIdInputName(name: string): boolean {
 /** Pagination/sorting wiring: surface controls, never something a user types into a form. */
 const COLLECTION_WIRING_INPUTS = new Set(['page', 'pagesize', 'sortby', 'sortorder', 'sortdirection', 'offset', 'limit', 'cursor']);
 
-/** An l4 input source the USER decides by typing/choosing in a form. Everything else is context. */
+/**
+ * An l4 input source the USER decides by typing into a form. Everything else has an origin the contract
+ * names, and must be rendered from it (todo/changeFrontend/ajuste_actors.md).
+ *
+ * TWO VOCABULARIES are in play and both are honoured here: e5/older (`userInput`, `selectedEntity`,
+ * `routeParam`, …) and e6/current (`userDecision`, `selection`, `pageInput`, `derived`, `actorSession`,
+ * `actorDirectory`). 102045 was generated with the first, 102046 emits the second.
+ */
 const USER_DECIDED_SOURCES = new Set(['userinput', 'userdecision']);
+
+/**
+ * Sources that mean "pick an existing thing", so the control is a PICKER, never a text field:
+ * `selection`/`selectedEntity` pick from the query named in sourceRef, `actorDirectory` picks a person
+ * holding the role named in sourceRef.
+ */
+const PICKER_SOURCES = new Set(['selection', 'selectedentity', 'actordirectory']);
 
 interface PageBinding {
   command: string;
   kind: string;
-  inputs: { name: string; stateKey: string; source: string }[];
+  inputs: { name: string; stateKey: string; source: string; sourceRef: string }[];
 }
 
 /** The command bindings of the reduced page defs — the deterministic anchor every check below uses. */
@@ -160,6 +174,8 @@ function readPageBindings(pageDefinition: unknown): PageBinding[] {
       name: stringValue(input.name),
       stateKey: stringValue(input.stateKey),
       source: stringValue(input.source).toLowerCase(),
+      // Kept in original case: it names a bffCall, a field path or an actorId, all case-sensitive.
+      sourceRef: stringValue(input.sourceRef),
     })),
   })).filter(binding => binding.command);
 }
@@ -207,7 +223,14 @@ export function collectPageExperienceIssues(pageDefinition: unknown, sharedDefin
       // derived -> context, not a field. The old check guessed from the name only; this one has the
       // contract behind it.
       if (isIdInputName(input.name) && !USER_DECIDED_SOURCES.has(input.source) && editable) {
-        issues.push(`${binding.command}.${input.name} is a technical id with source '${input.source}' but is bound to an editable control: ${input.source === 'selectedentity' || input.source === 'selection' ? 'feed it by selecting a row' : 'take it from context'} instead of rendering a field`);
+        // The remedy names the CONTRACT's own origin, so the message tells the model what to render
+        // instead of only what to stop doing.
+        const remedy = PICKER_SOURCES.has(input.source)
+          ? (input.source === 'actordirectory'
+            ? `render a person picker over the '${input.sourceRef || '?'}' role directory`
+            : `render a picker over the '${input.sourceRef || '?'}' query already on this page`)
+          : `take it from context (${input.sourceRef || input.source})`;
+        issues.push(`${binding.command}.${input.name} is a technical id with source '${input.source}' but is bound to an editable control: ${remedy} instead of rendering a field`);
       }
     }
   }

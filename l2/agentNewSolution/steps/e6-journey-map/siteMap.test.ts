@@ -12,6 +12,7 @@ import {
   computeE6WorkspaceSliceHash,
   deriveE6SiteMapKinds,
   prepareE6SiteMap,
+  repairE6SiteMapColocation,
   validateE6SiteMap,
   validateE6WorkspaceEquality,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/siteMap.js';
@@ -112,4 +113,95 @@ void test('computeE6WorkspaceSliceHash is stable and slice-sensitive', () => {
   assert.equal(h1, h2); // order-insensitive
   const h3 = computeE6WorkspaceSliceHash({ ...slice, purpose: 'changed' });
   assert.notEqual(h1, h3); // a real slice change moves the hash
+});
+
+// --- P2: co-location -------------------------------------------------------------------------------
+
+// The 102046/run05 shape: `fieldWorkLog` hosts createMaterialUsage (needs materialId) but the material
+// listing lives in `materialCatalog`. The gate demands a picker over an operation THIS page hosts, so
+// the model was cornered — three attempts, no way out.
+function colocationContext(overrides: Partial<E6SiteMapGateContext> = {}): E6SiteMapGateContext {
+  return {
+    moduleName: 'buildFlowFsm',
+    classificationWorkflowIds: [],
+    classificationOperationIds: ['createMaterialUsage', 'browseMaterials', 'queryAssignedWorkTasks', 'createMaterial'],
+    rosterActorIds: ['fieldWorker', 'projectManager'],
+    entityIds: ['Material', 'WorkTask', 'MaterialUsage'],
+    nowCapabilityActorIds: [],
+    operationOwnerWorkflow: {},
+    operationKind: { createMaterialUsage: 'create', browseMaterials: 'query', queryAssignedWorkTasks: 'query', createMaterial: 'create' },
+    operationEntity: { createMaterialUsage: 'MaterialUsage', browseMaterials: 'Material', queryAssignedWorkTasks: 'WorkTask', createMaterial: 'Material' },
+    operationActors: {},
+    operationRequiredIdInputs: { createMaterialUsage: ['materialId'] },
+    operationAccessPattern: { browseMaterials: 'list', queryAssignedWorkTasks: 'list' },
+    ...overrides,
+  };
+}
+
+function colocationMap(edges: Record<string, unknown>[] = []): NsE6SiteMapArtifact {
+  return prepareE6SiteMap({
+    workspaces: [
+      { workspaceId: 'fieldWorkLog', title: 'Field work', actors: ['fieldWorker'], kind: 'operation', entity: 'MaterialUsage',
+        operationIds: ['createMaterialUsage', 'queryAssignedWorkTasks'], purpose: 'Log the work done.' },
+      { workspaceId: 'materialCatalog', title: 'Materials', actors: ['projectManager'], kind: 'entityManagement', entity: 'Material',
+        operationIds: ['browseMaterials', 'createMaterial'], purpose: 'Maintain the catalog.' },
+    ],
+    landings: [],
+    navigationEdges: edges,
+  }, { moduleName: 'buildFlowFsm' });
+}
+
+void test('P2: the listing of the record a command needs is co-located on the page that needs it', () => {
+  const { artifact, added } = repairE6SiteMapColocation(colocationMap(), colocationContext(), { carriedEntities: {} });
+  assert.deepEqual(added, [{ workspaceId: 'fieldWorkLog', operationId: 'browseMaterials', forInput: 'materialId', entity: 'Material' }]);
+  assert.ok(artifact.workspaces[0].operationIds.includes('browseMaterials'));
+  // The catalog keeps it too: one usecase serving two BFF calls is what the BFF layer is for.
+  assert.ok(artifact.workspaces[1].operationIds.includes('browseMaterials'));
+});
+
+void test('P2: nothing is co-located when the id already resolves', () => {
+  const already = colocationMap();
+  already.workspaces[0].operationIds.push('browseMaterials'); // the page already reads Material
+  assert.deepEqual(repairE6SiteMapColocation(already, colocationContext(), { carriedEntities: {} }).added, []);
+
+  // A journey declares the actor arriving with the material chosen.
+  assert.deepEqual(repairE6SiteMapColocation(colocationMap(), colocationContext(),
+    { carriedEntities: { fieldWorkLog: ['Material'] } }).added, []);
+
+  // A navigation from a page of the same actor that displays materials carries it.
+  const shared = colocationMap([{ from: 'materialCatalog', to: 'fieldWorkLog', operationId: 'browseMaterials' }]);
+  shared.workspaces[1].actors = ['fieldWorker'];
+  assert.deepEqual(repairE6SiteMapColocation(shared, colocationContext(), { carriedEntities: {} }).added, []);
+});
+
+void test('P2: an edge that goes there to CREATE the record does not carry its id', () => {
+  const creating = colocationMap([{ from: 'materialCatalog', to: 'fieldWorkLog', operationId: 'createMaterial' }]);
+  creating.workspaces[1].actors = ['fieldWorker'];
+  assert.deepEqual(repairE6SiteMapColocation(creating, colocationContext(), { carriedEntities: {} }).added.length, 1);
+});
+
+void test('P2: an id that names no declared entity is left alone (it is a person, not a record)', () => {
+  const context = colocationContext({ operationRequiredIdInputs: { createMaterialUsage: ['responsibleFieldWorkerId'] } });
+  assert.deepEqual(repairE6SiteMapColocation(colocationMap(), context, { carriedEntities: {} }).added, []);
+});
+
+void test('P2: co-locating a READ never changes the page kind', () => {
+  // The receiver keeps the kind it had — nothing about a foreign READ creates own-entity create+update.
+  const plain = repairE6SiteMapColocation(colocationMap(), colocationContext(), { carriedEntities: {} }).artifact;
+  assert.equal(deriveE6SiteMapKinds(plain, colocationContext()).workspaces[0].kind, 'operation');
+
+  // And an entityManagement page STAYS entityManagement: that is the `foreignReadOnly` tolerance of
+  // 07/11 doing exactly the job co-location needs — a foreign query is read-only, so it cannot demote.
+  const managed = colocationMap();
+  managed.workspaces[0].operationIds.push('updateMaterialUsage');
+  const context = colocationContext({
+    classificationOperationIds: [...colocationContext().classificationOperationIds, 'updateMaterialUsage'],
+    operationKind: { ...colocationContext().operationKind, updateMaterialUsage: 'update' },
+    operationEntity: { ...colocationContext().operationEntity, updateMaterialUsage: 'MaterialUsage' },
+  });
+  assert.equal(deriveE6SiteMapKinds(colocationMap(), context).workspaces[0].kind, 'operation', 'without update it is not management');
+  const before = deriveE6SiteMapKinds(managed, context).workspaces[0].kind;
+  assert.equal(before, 'entityManagement');
+  const after = deriveE6SiteMapKinds(repairE6SiteMapColocation(managed, context, { carriedEntities: {} }).artifact, context).workspaces[0].kind;
+  assert.equal(after, 'entityManagement');
 });

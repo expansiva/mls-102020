@@ -11,7 +11,7 @@
 import { errorIssue, NsGateIssue, warningIssue } from '/_102020_/l2/agentNewSolution/helpers/nsGate.js';
 import { readActors } from '/_102020_/l2/agentNewSolution/helpers/nsActors.js';
 import { computeInputsHash } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
-import { NS_WORKSPACE_KINDS, NsE6WorkspaceKind, NS_PUBLIC_ACTOR } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/gate.js';
+import { NS_WORKSPACE_KINDS, NsE6WorkspaceKind, NS_PUBLIC_ACTOR, nsEntityOfIdInput } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/gate.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -67,6 +67,10 @@ export interface E6SiteMapGateContext {
   // D6 at the partition: the FULL actor list of each operation (from the saved defs — the classification
   // carries a single actorId and misses secondary actors). Ops without an entry skip the coverage check.
   operationActors: Record<string, string[]>;
+  // P2 (co-location): what each operation cannot run without, and how it reads (list vs getById).
+  // Optional like operationActors: a caller that does not wire it simply gets no co-location.
+  operationRequiredIdInputs?: Record<string, string[]>;
+  operationAccessPattern?: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +150,104 @@ export function deriveE6SiteMapKinds(artifact: NsE6SiteMapArtifact, context: E6S
     if (candidates.size === 1) workspace.workflowId = [...candidates][0];
   }
   return artifact;
+}
+
+// ---------------------------------------------------------------------------
+// P2 — co-location: the page that ACTS on records must be able to show them
+// ---------------------------------------------------------------------------
+
+export interface NsE6ColocationParams {
+  /** EntityIds that arrive at a workspace through a journey prerequisite (deriveNsE6PageContext). */
+  carriedEntities: Record<string, string[]>;
+}
+
+export interface NsE6ColocationAdded {
+  workspaceId: string;
+  operationId: string;
+  forInput: string;
+  entity: string;
+}
+
+/**
+ * The defect this closes is the one that opened the whole investigation: a page with 3 commands and 0
+ * queries, asking for an id of a record it never shows (5 of the 6 workflow pages of the 102045 run).
+ * The model partitions "the catalog of X" away from "using X" because the site-map prompt rewards
+ * fewer, denser pages — so the page that needs a picker cannot host one.
+ *
+ * Reusing an operation in a second workspace is NOT a compromise: one usecase serving several BFF
+ * calls is what the BFF layer is for, and the pipeline was verified (03/08) to allow it end to end —
+ * one usecase per operation, controllers per workspace with prefixed handlers, coverage checked as
+ * "used by >= 1". The 1:1 of the audited run was emergent, never a rule.
+ *
+ * Co-locate ONLY what is still unresolved, or the pages fill up with redundant lists: an id is left
+ * alone when this page already reads that entity, when a navigation into the page can carry it, or
+ * when a journey declares the actor arriving with it. What remains is a record the actor must choose
+ * right here — and for that the page needs the listing.
+ */
+export function repairE6SiteMapColocation(
+  artifact: NsE6SiteMapArtifact,
+  context: E6SiteMapGateContext,
+  params: NsE6ColocationParams,
+): { artifact: NsE6SiteMapArtifact; added: NsE6ColocationAdded[] } {
+  const added: NsE6ColocationAdded[] = [];
+  const byId = new Map(artifact.workspaces.map(workspace => [workspace.workspaceId, workspace]));
+  const readsEntity = (workspace: NsE6SiteMapWorkspace | undefined, entityId: string): boolean =>
+    !!workspace && workspace.operationIds.some(id => context.operationEntity[id] === entityId && isReadKind(context.operationKind[id]));
+
+  for (const workspace of artifact.workspaces) {
+    for (const operationId of [...workspace.operationIds]) {
+      for (const inputName of context.operationRequiredIdInputs?.[operationId] || []) {
+        const entityId = nsEntityOfIdInput(inputName, context.entityIds);
+        // No declared entity = not a record of this module (a person, an external key): nothing to list.
+        if (!entityId) continue;
+        if (readsEntity(workspace, entityId)) continue;                                   // picker already possible
+        if ((params.carriedEntities[workspace.workspaceId] || []).includes(entityId)) continue; // declared context
+        if (edgeCanCarry(artifact, byId, context, workspace.workspaceId, entityId)) continue;   // a navigation brings it
+        const listing = pickNsListingOperation(context, entityId);
+        if (!listing) continue;                                                            // nothing to co-locate
+        workspace.operationIds.push(listing);
+        added.push({ workspaceId: workspace.workspaceId, operationId: listing, forInput: inputName, entity: entityId });
+      }
+    }
+  }
+  return { artifact, added };
+}
+
+/** A navigation carries the record when it comes from a page of the same actor that READS it — and is
+ *  not the very navigation that goes there to CREATE it (the id does not exist yet). Mirrors the T5
+ *  rule at the operation level, which is all phase 1 knows (bffCalls do not exist yet). */
+function edgeCanCarry(
+  artifact: NsE6SiteMapArtifact,
+  byId: Map<string, NsE6SiteMapWorkspace>,
+  context: E6SiteMapGateContext,
+  workspaceId: string,
+  entityId: string,
+): boolean {
+  return (artifact.navigationEdges || []).some(edge => {
+    if (edge.to !== workspaceId) return false;
+    const from = byId.get(edge.from);
+    const to = byId.get(edge.to);
+    if (!from || !to || !from.actors.some(actor => to.actors.includes(actor))) return false;
+    const creates = edge.operationId && context.operationKind[edge.operationId] === 'create'
+      && context.operationEntity[edge.operationId] === entityId;
+    if (creates) return false;
+    return from.operationIds.some(id => context.operationEntity[id] === entityId && isReadKind(context.operationKind[id]));
+  });
+}
+
+/** The listing of an entity: a browse over many rows, never a getById (which needs the id we lack). */
+export function pickNsListingOperation(context: E6SiteMapGateContext, entityId: string): string {
+  const candidates = context.classificationOperationIds.filter(id =>
+    context.operationEntity[id] === entityId && isReadKind(context.operationKind[id]));
+  const listing = candidates.find(id => {
+    const pattern = context.operationAccessPattern?.[id];
+    return pattern === 'list' || pattern === 'lookup';
+  });
+  return listing || candidates.find(id => context.operationKind[id] === 'query') || '';
+}
+
+function isReadKind(kind: string | undefined): boolean {
+  return kind === 'query' || kind === 'view';
 }
 
 // ---------------------------------------------------------------------------

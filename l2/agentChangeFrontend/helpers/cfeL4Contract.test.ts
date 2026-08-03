@@ -293,7 +293,9 @@ test('B2/B3: pagination and non-user-decided ids must not be editable controls',
   assert.equal(bad.length, 2);
   assert.match(bad[0], /collection wiring/);
   assert.match(bad[1], /technical id with source 'selectedentity'/);
-  assert.match(bad[1], /feed it by selecting a row/);
+  // The remedy now NAMES the contract's own origin (ajuste_actors.md): telling the model what to render
+  // beats telling it only what to stop doing. Without a sourceRef in this fixture it says '?'.
+  assert.match(bad[1], /render a picker over the '.*' query already on this page/);
 
   // Correct: the user-decided fields ARE editable; the id comes from selection; no pager input.
   assert.deepEqual(collectPageExperienceIssues(PAGE_DEFS, SHARED_DEFS, `html\`

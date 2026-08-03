@@ -19,6 +19,7 @@ import {
   prepareE6JourneyMap,
   repairE6BffFroms,
   repairE6OrganismReferences,
+  stampE6PickerUsage,
   validateE6Invariants,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/gate.js';
 
@@ -1365,4 +1366,104 @@ void test('e6 gate: the message on a sourceless id names the person way out, or 
     .issues.find(issue => issue.code === 'bff.input.idSourceMissing')!.message;
   assert.match(message, /actorDirectory/);
   assert.match(message, /names a PERSON/);
+});
+
+// VERBATIM from statusUpdates (run 102046/run05): a command-only page where the model filled BOTH
+// fields with the SAME command. The first version of this repair skipped it — `action` was a valid
+// bffId, so it returned early and left the bogus `dataSource` behind, and the page died on
+// `organism.reference.kind` after three attempts.
+void test('e6 repair: the same command in both fields leaves only the action', () => {
+  const map = prepareE6JourneyMap({
+    workspaces: [{
+      workspaceId: 'statusUpdates', title: 'Status', actors: ['cliente'], kind: 'operation',
+      entity: 'Product', purpose: 'Generate and share reports.',
+      bffCalls: [
+        { bffId: 'generateReport', kind: 'command', uses: [{ operationId: 'reserveProduct' }] },
+        { bffId: 'shareReport', kind: 'command', uses: [{ operationId: 'reserveProduct' }] },
+      ],
+      sections: [{
+        sectionId: 's', intent: 'i',
+        organisms: [
+          { role: 'primarySurface', dataSource: 'generateReport', action: 'generateReport' },
+          { role: 'contextualAction', dataSource: 'shareReport', action: 'shareReport' },
+        ],
+      }],
+    }],
+    landings: [], navigationEdges: [],
+  }, { moduleName: 'petShop' });
+  const organisms = repairE6OrganismReferences(map).workspaces[0].sections[0].organisms;
+  assert.deepEqual(organisms[0], { role: 'primarySurface', action: 'generateReport' });
+  assert.deepEqual(organisms[1], { role: 'contextualAction', action: 'shareReport' });
+});
+
+// --- P2: picker vs surface -------------------------------------------------------------------------
+
+// The distinction the supervisor's answer turns on: a query over the page's OWN entity is the
+// master-detail surface every healthy page in the baseline has; a query over ANOTHER entity, pointed at
+// by a `selection` input, exists to fill a field. Both facts are already in the l4, so code decides.
+function pickerMap(input: { ownQuery?: boolean; selects?: boolean; surface?: boolean } = {}): NsE6JourneyMapArtifact {
+  const calls: Record<string, unknown>[] = [
+    { bffId: 'materialList', kind: 'query', uses: [{ operationId: 'browseProducts' }] },
+    { bffId: 'logUsage', kind: 'command', uses: [{ operationId: 'reserveProduct' }],
+      input: input.selects === false ? [] : [{ name: 'productId', required: true, type: 'string', source: 'selection', sourceRef: 'materialList' }] },
+  ];
+  if (input.ownQuery) calls.unshift({ bffId: 'usageList', kind: 'query', uses: [{ operationId: 'viewProduct' }] });
+  return prepareE6JourneyMap({
+    workspaces: [{
+      workspaceId: 'fieldWorkLog', title: 'Field work', actors: ['cliente'], kind: 'operation', entity: 'Highlight',
+      purpose: 'Log usage.', bffCalls: calls,
+      sections: [{ sectionId: 's', intent: 'i', organisms: [
+        { role: 'primarySurface', dataSource: input.surface ? 'materialList' : 'usageList' },
+        { role: 'contextualAction', action: 'logUsage' },
+      ] }],
+    }],
+    landings: [], navigationEdges: [],
+  }, { moduleName: 'petShop' });
+}
+
+// browseProducts is over Product; the workspace entity is Highlight -> foreign. viewProduct is stubbed
+// as the page's own entity below via the facts.
+const pickerContext: E6GateContext = {
+  ...bffContext,
+  entityIds: ['Product', 'Highlight'],
+  operationFacts: {
+    ...bffFacts,
+    browseProducts: { ...bffFacts.browseProducts, entity: 'Product' },
+    viewProduct: { ...bffFacts.viewProduct, entity: 'Highlight' },
+    reserveProduct: { ...bffFacts.reserveProduct, entity: 'Highlight' },
+  },
+};
+
+void test('e6 P2: a foreign query feeding a selection is stamped a picker; the own-entity query is not', () => {
+  const stamped = stampE6PickerUsage(pickerMap({ ownQuery: true }), pickerContext).workspaces[0];
+  assert.equal(stamped.bffCalls.find(call => call.bffId === 'materialList')?.usage, 'picker');
+  assert.equal(stamped.bffCalls.find(call => call.bffId === 'usageList')?.usage, undefined, 'the page own list stays a surface');
+});
+
+void test('e6 P2: a foreign query nobody selects from is not a picker', () => {
+  const stamped = stampE6PickerUsage(pickerMap({ ownQuery: true, selects: false }), pickerContext).workspaces[0];
+  assert.equal(stamped.bffCalls.find(call => call.bffId === 'materialList')?.usage, undefined);
+});
+
+void test('e6 P2: the stamp is idempotent and self-correcting', () => {
+  const once = stampE6PickerUsage(pickerMap({ ownQuery: true }), pickerContext);
+  const twice = stampE6PickerUsage(stampE6PickerUsage(pickerMap({ ownQuery: true }), pickerContext), pickerContext);
+  assert.deepEqual(twice.workspaces[0].bffCalls, once.workspaces[0].bffCalls);
+  // A stale stamp from a previous shape is removed when nothing selects from it any more.
+  const stale = pickerMap({ ownQuery: true, selects: false });
+  stale.workspaces[0].bffCalls.find(call => call.bffId === 'materialList')!.usage = 'picker';
+  assert.equal(stampE6PickerUsage(stale, pickerContext).workspaces[0].bffCalls.find(call => call.bffId === 'materialList')?.usage, undefined);
+});
+
+void test('e6 P2 gate: a picker cannot be the section primarySurface', () => {
+  const codes = validateE6Invariants(stampE6PickerUsage(pickerMap({ surface: true }), pickerContext), pickerContext)
+    .issues.filter(issue => issue.code.startsWith('bff.picker')).map(issue => issue.code);
+  assert.deepEqual(codes, ['bff.picker.asPrimarySurface']);
+});
+
+void test('e6 P2 gate: a picker nobody selects from is a warning, not an error', () => {
+  const stale = pickerMap({ ownQuery: true, selects: false });
+  stale.workspaces[0].bffCalls.find(call => call.bffId === 'materialList')!.usage = 'picker';
+  const issues = validateE6Invariants(stale, pickerContext).issues.filter(issue => issue.code.startsWith('bff.picker'));
+  assert.deepEqual(issues.map(issue => [issue.code, issue.severity]), [['bff.picker.unreferenced', 'warning']]);
 });

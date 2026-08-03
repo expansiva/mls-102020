@@ -96,6 +96,8 @@ export interface NsE6BffOutput {
 
 export interface NsE6BffCall {
   bffId: string;
+  /** STAMPED BY CODE at finalize (never the LLM): this query exists to feed an input, not to be browsed. */
+  usage?: 'picker';
   kind: NsE6BffKind;
   uses: NsE6BffUse[];
   input?: NsE6BffInput[];
@@ -199,6 +201,8 @@ export interface NsE6OperationFact {
   outputItemPaths: string[];
   /** T5: the entity this operation acts on — an incoming edge that CREATES it cannot carry its id. */
   entity?: string;
+  /** P2: the REQUIRED id inputs (`id`/`<entity>Id`) this operation cannot run without. */
+  requiredIdInputs?: string[];
 }
 
 export interface E6GateContext {
@@ -427,14 +431,57 @@ export function repairE6OrganismReferences(artifact: NsE6JourneyMapArtifact): Ns
           const value = organism[key];
           if (value && !localIds.has(value) && NS_NO_VALUE_WORDS.has(value.trim().toLowerCase())) delete organism[key];
         }
-        if (!organism.action || localIds.has(organism.action)) continue; // nothing to prove
+        // `dataSource` naming a COMMAND is wrong whatever else is true — the contract reserves it for
+        // queries. Where the command belongs depends on what `action` already holds:
+        //   no usable action  → the pair was swapped (run03: action carried the button's label);
+        //   usable action     → the model filled BOTH fields with the same call (run05: `dataSource`
+        //                       and `action` both "generateStatusReport"), so dataSource is noise.
+        const hasUsableAction = !!organism.action && localIds.has(organism.action);
         if (organism.dataSource && commandIds.has(organism.dataSource)) {
-          organism.action = organism.dataSource;
+          if (!hasUsableAction) organism.action = organism.dataSource;
           delete organism.dataSource;
           continue;
         }
-        if (organism.dataSource && queryIds.has(organism.dataSource)) delete organism.action;
+        // An `action` naming no call, over a real query surface, is a LABEL — and the contract has no
+        // field for a label.
+        if (!hasUsableAction && organism.action && organism.dataSource && queryIds.has(organism.dataSource)) {
+          delete organism.action;
+        }
       }
+    }
+  }
+  return artifact;
+}
+
+/**
+ * P2 — mark the co-located pickers, deterministically, so "listing" and "picker" stop being the same
+ * thing to whoever renders the page.
+ *
+ * The distinction that matters is NOT "co-located vs navigable": it is the ENTITY. A query over the
+ * page's OWN entity is the master-detail surface every healthy page in the audited runs has (list +
+ * commands acting on the selected row) — it must stay a surface. A query over ANOTHER entity, pointed
+ * at by a `selection` input, is there to fill a field: a picker. Rendering that as the page's main
+ * table is the defect; rendering the first as a field would be the opposite defect.
+ *
+ * Both facts are already in the l4 (the workspace's entity, the operations' entities, the inputs'
+ * sourceRefs), so the model is never asked: code derives it, in one place, and the artifact carries the
+ * answer for every consumer. Idempotent — a workspace saved before this existed is stamped on the next
+ * finalize.
+ */
+export function stampE6PickerUsage(artifact: NsE6JourneyMapArtifact, context: E6GateContext): NsE6JourneyMapArtifact {
+  for (const workspace of artifact.workspaces) {
+    const selectionRefs = new Set<string>();
+    for (const call of workspace.bffCalls) {
+      for (const entry of call.input || []) {
+        if (entry.source === 'selection' && entry.sourceRef) selectionRefs.add(entry.sourceRef);
+      }
+    }
+    for (const call of workspace.bffCalls) {
+      if (call.kind !== 'query') continue;
+      const entities = call.uses.map(use => context.operationFacts[use.operationId]?.entity).filter(Boolean);
+      const foreign = entities.length > 0 && entities.every(entity => entity !== workspace.entity);
+      if (foreign && selectionRefs.has(call.bffId)) call.usage = 'picker';
+      else if (call.usage === 'picker') delete call.usage; // no longer feeds anything: not a picker
     }
   }
   return artifact;
@@ -612,6 +659,25 @@ export function validateE6Invariants(
       // A landing has no sender at all — T2 owns that message, so one input never gets two errors.
       if (carriedIntoWorkspace && !isLanding) {
         validatePageInputProviders(workspace, call, carriedIntoWorkspace[workspace.workspaceId], context, issues);
+      }
+    }
+
+    // P2: a picker is a field inside a form — never the page's main table.
+    const pickerIds = new Set(workspace.bffCalls.filter(call => call.usage === 'picker').map(call => call.bffId));
+    if (pickerIds.size > 0) {
+      const pointedAt = new Set(workspace.bffCalls.flatMap(call => (call.input || [])
+        .filter(entry => entry.source === 'selection' && entry.sourceRef).map(entry => entry.sourceRef as string)));
+      for (const bffId of pickerIds) {
+        if (!pointedAt.has(bffId)) {
+          issues.push(warningIssue('bff.picker.unreferenced', `workspace ${workspace.workspaceId}: bffCall ${bffId} is marked as a picker but no input selects from it`, workspace.workspaceId));
+        }
+      }
+      for (const section of workspace.sections) {
+        for (const organism of section.organisms) {
+          if (organism.role === 'primarySurface' && organism.dataSource && pickerIds.has(organism.dataSource)) {
+            issues.push(errorIssue('bff.picker.asPrimarySurface', `workspace ${workspace.workspaceId} section ${section.sectionId}: bffCall ${organism.dataSource} feeds an input of another entity (a picker) and cannot be the section's primarySurface — the surface is the page's own record`, workspace.workspaceId));
+          }
+        }
       }
     }
 

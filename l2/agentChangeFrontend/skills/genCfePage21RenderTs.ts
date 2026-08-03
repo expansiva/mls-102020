@@ -191,6 +191,51 @@ must not emit them. Order organisms by pageObjective.informationHierarchy / prim
    heading acima dele diz outra coisa ou não existe); no máximo UMA ação destrutiva por superfície,
    nunca como botão default de linha, e sempre com confirmação que NOMEIA o registro.
 
+## \`source\` is a RENDERING INSTRUCTION, not metadata
+
+Every entry of \`inputs[]\` carries \`source\` and (when it has an origin) \`sourceRef\`. The contract is
+telling you WHERE the value comes from, and therefore WHAT control to render. Ignoring it is a real defect
+that shipped: a page rendered a text field with the placeholder "Selecione o projeto..." for an id the
+contract said came from the page context — a field the user could type nonsense into, for a value they were
+never supposed to provide.
+
+Two vocabularies exist and BOTH must be honoured (older projects emit the first column):
+
+| source | also written as | render THIS |
+|---|---|---|
+| \`userDecision\` | \`userInput\` | a normal editable control for the field's type |
+| \`selection\` | \`selectedEntity\` | a PICKER over the query named in \`sourceRef\` — never a text field |
+| \`pageInput\` | \`routeParam\`, \`currentWorkspace\` | read-only context: show it as text if it helps, never as an input |
+| \`actorSession\` | — | resolved from the logged-in user; never rendered as a field |
+| \`derived\` | \`previousStepOutput\` | comes from \`<bffId>.<field>\` of another call on this page; never typed |
+| \`actorDirectory\` | — | a person picker over the role named in \`sourceRef\` (see below) |
+| \`businessContext\`, \`systemDefault\` | — | context, never a field |
+
+### The picker for \`selection\`
+
+\`sourceRef\` names a bffCall of THIS page, so its rows are already in a shared state — the same state the
+list/table for that query reads. Build the picker from it and write the chosen id into the input's
+\`stateKey\`:
+
+\`\`\`typescript
+// input { name: 'projectId', source: 'selection', sourceRef: 'browseProjects', stateKey: 'ui...projectId' }
+html\`<select .value=\${host.projectId} @change=\${host.setProjectId}>
+  <option value="">\${msg['project.choose']}</option>
+  \${(host.browseProjectsData?.projects ?? []).map(p => html\`<option value=\${p.projectId}>\${p.name}</option>\`)}
+</select>\`
+\`\`\`
+
+Selecting a row of that query's own table is equally valid, and better when the row is already on screen.
+
+### \`actorDirectory\` — no directory service exists yet
+
+\`sourceRef\` is an actor role (\`fieldWorker\`), and the value must be a PERSON holding it. The runtime has
+no people-directory endpoint today, so there is nothing to populate a picker from.
+
+Until it exists: render the field READ-ONLY or omit it, with a short TODO comment saying the directory is
+missing. Do NOT invent an endpoint, do NOT fall back to a free-text id field — a typed-in person id is
+worse than an absent control, because it looks like it works.
+
 ## Charts
 
 Apache ECharts is in the runtime and registered for you. To draw one, import the directive and put it on

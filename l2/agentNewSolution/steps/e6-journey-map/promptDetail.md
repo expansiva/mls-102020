@@ -70,6 +70,11 @@ HARD REQUIREMENTS (a result violating these is rejected outright):
   "showcase" (dataSource = a read-only query bffCall). A landing needs no primarySurface.
 Every operation in the map's operationIds must be consumed by ≥1 bffCall of THIS workspace.
 
+- A query over the workspace's OWN entity is the page's SURFACE: the list the actor browses, with the
+  commands acting on the selected row (`primarySurface` + `contextualAction`). A query over ANOTHER
+  entity is there to FILL A FIELD — the id an input needs. Keep its projection lean (the id, a human
+  label, at most one field to disambiguate) and never make it the section's `primarySurface`: it is a
+  selector inside the form, not the page's table.
 - presentation: CLASSIFY this workspace into ONE page category, so the renderer can pick its template.
   Emit `presentation: { categoryRef, confidence, alternates?, classificationNote? }`. Do NOT emit
   styleRef (it is run configuration, stamped by the system).

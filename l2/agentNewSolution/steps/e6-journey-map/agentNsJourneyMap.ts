@@ -68,10 +68,12 @@ import {
   NsE6Workspace,
   collectNsOutputPathSets,
   deriveE6BffRoutes,
+  isNsIdInputName,
   prepareE6JourneyMap,
   renderE6Markdown,
   repairE6BffFroms,
   repairE6OrganismReferences,
+  stampE6PickerUsage,
   validateE6Invariants,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/gate.js';
 import {
@@ -80,6 +82,7 @@ import {
   computeE6WorkspaceSliceHash,
   deriveE6SiteMapKinds,
   prepareE6SiteMap,
+  repairE6SiteMapColocation,
   validateE6SiteMap,
   validateE6WorkspaceEquality,
 } from '/_102020_/l2/agentNewSolution/steps/e6-journey-map/siteMap.js';
@@ -361,7 +364,15 @@ async function handleSiteMapResult(
 
   const siteMapContext = buildSiteMapContext(inputs, await buildE6OperationFacts(moduleName, inputs.classification));
   // Deterministic: moduleName/note from code; kind + workflowId DERIVED (never trusted from the LLM).
-  const siteMap = deriveE6SiteMapKinds(prepareE6SiteMap(output.result, { moduleName }), siteMapContext);
+  const prepared = prepareE6SiteMap(output.result, { moduleName });
+  // P2: give a page the listing of the records its commands need, when nothing else can feed them.
+  // Runs BEFORE the kind derivation on purpose — a co-located READ never changes a kind (workflow
+  // short-circuits on hasWorkflowOp, entityManagement is preserved by the foreignReadOnly tolerance),
+  // and deriving after keeps that guarantee visible in one place.
+  const colocation = repairE6SiteMapColocation(prepared, siteMapContext, {
+    carriedEntities: nsCarriedEntitiesForSiteMap(inputs, prepared),
+  });
+  const siteMap = deriveE6SiteMapKinds(colocation.artifact, siteMapContext);
   const schema = await readNsSchema('e6-sitemap.schema');
   let pipeline = await readNsPipeline(moduleName) || createNsPipeline(moduleName);
   pipeline = markNsStepRunning(pipeline, STEP_ID, { e2CreatedAt: inputs.journeys.createdAt, retryContext: parsedArgs.retryContext || '' });
@@ -480,6 +491,7 @@ async function handleDetailResult(
   // Deterministic `from` qualification (run12: relative "$items.<col>" paths) before the gate.
   repairE6BffFroms(prepared, scopedContext.operationFacts);
   repairE6OrganismReferences(prepared); // the label-in-`action` swap (run 102046)
+  stampE6PickerUsage(prepared, scopedContext); // P2: so the detail gate judges the picker as a picker
   const localGate = validateE6Invariants(prepared, scopedContext);
   const equality = validateE6WorkspaceEquality(workspace, slice);
   const errors = [...equality, ...localGate.issues.filter(issue => issue.severity === 'error' && issue.code !== 'navigationEntry.target.unknown')];
@@ -574,6 +586,7 @@ async function runE6Finalize(
   gateContext.pageContext = deriveNsE6PageContext(journeys, siteMap.workspaces, gateContext.entityIds);
   repairE6BffFroms(artifact, gateContext.operationFacts); // idempotent; also heals pre-repair saved details
   repairE6OrganismReferences(artifact); // idempotent; heals details saved before the repair existed
+  stampE6PickerUsage(artifact, gateContext); // P2: mark the co-located pickers (code, never the LLM)
   const check = validateE6Invariants(artifact, gateContext);
   const errors = check.issues.filter(issue => issue.severity === 'error');
   let pipeline = await readNsPipeline(moduleName) || createNsPipeline(moduleName);
@@ -776,6 +789,11 @@ async function buildE6OperationFacts(
       outputTopPaths: collectNsOutputPathSets(outputShape).top,
       outputItemPaths: collectNsOutputPathSets(outputShape).item,
       entity: operation.entity,
+      // P2: what this operation cannot run without — the co-location repair reads exactly these.
+      requiredIdInputs: inputs
+        .filter(input => isRecord(input) && input.required === true && isNsIdInputName(readString(input.inputId) || ''))
+        .map(input => (isRecord(input) ? readString(input.inputId) || '' : ''))
+        .filter(Boolean),
     };
   }
   return facts;
@@ -901,6 +919,21 @@ async function summarizeOperationsLight(moduleName: string, classification: NsE5
   return summaries;
 }
 
+// P2: the records a journey declares the actor arriving with, per workspace — the same derivation the
+// finalize uses, run early so co-location does not add a list for context that is already promised.
+function nsCarriedEntitiesForSiteMap(inputs: E6Inputs, siteMap: NsE6SiteMapArtifact): Record<string, string[]> {
+  const journeys = deriveE6Journeys(
+    readE6JourneySources(inputs.journeys),
+    inputs.classification.operations.map(operation => ({
+      operationId: operation.operationId, featureRefs: operation.featureRefs,
+      actorId: operation.actorId, entity: operation.entity, kind: operation.kind,
+    })),
+    siteMap.workspaces.map(workspace => ({ workspaceId: workspace.workspaceId, actors: workspace.actors, operationIds: workspace.operationIds })),
+    siteMap.landings,
+  );
+  return deriveNsE6PageContext(journeys, siteMap.workspaces, inputs.model.entities.map(entity => entity.entityId)).entitiesByWorkspace;
+}
+
 function buildSiteMapContext(inputs: E6Inputs, operationFacts: Record<string, NsE6OperationFact>): E6SiteMapGateContext {
   const operationOwnerWorkflow: Record<string, string | undefined> = {};
   const operationKind: Record<string, string> = {};
@@ -922,6 +955,8 @@ function buildSiteMapContext(inputs: E6Inputs, operationFacts: Record<string, Ns
     nowCapabilityActorIds: computeNowCapabilityActorIds(inputs.classification, inputs.journeys),
     operationOwnerWorkflow, operationKind, operationEntity,
     operationActors: Object.fromEntries(Object.entries(operationFacts).map(([operationId, fact]) => [operationId, fact.actors])),
+    operationRequiredIdInputs: Object.fromEntries(Object.entries(operationFacts).map(([operationId, fact]) => [operationId, fact.requiredIdInputs || []])),
+    operationAccessPattern: Object.fromEntries(Object.entries(operationFacts).map(([operationId, fact]) => [operationId, fact.accessPatternKind])),
   };
 }
 

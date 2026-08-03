@@ -1,5 +1,5 @@
 {
-  "$id": "https://collab.codes/agentNewSolution/e6-workspace/2026-08-03-ns-e6-workspace-v5",
+  "$id": "https://collab.codes/agentNewSolution/e6-workspace/2026-08-03-ns-e6-workspace-v6",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -252,6 +252,13 @@
                 }
               }
             }
+          },
+          "usage": {
+            "type": "string",
+            "description": "STAMPED BY CODE at finalize, never declared: a query that exists to feed an input of another entity (a picker), not to be browsed.",
+            "enum": [
+              "picker"
+            ]
           }
         }
       }

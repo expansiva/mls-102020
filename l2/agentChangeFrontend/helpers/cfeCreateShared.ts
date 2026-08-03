@@ -3166,6 +3166,7 @@ function enrichLayoutWithStateRefs(prepared: CfePreparedPage, layout: CfePageLay
         name: field.name,
         stateKey: inputStateKey(prepared.page.pageId, commandName, field.name),
         source: field.source || 'userInput',
+        ...(field.sourceRef ? { sourceRef: field.sourceRef } : {}),
         required: field.required === true,
         ...(field.presentation ? { presentation: field.presentation } : {}),
       })),
@@ -3357,12 +3358,16 @@ function defaultBusinessContextOriginRef(inputId: string, fieldRef: string): str
   return text.includes('unit') || text.includes('unidade') ? 'businessContext.activeUnitId' : 'businessContext.activeCompanyId';
 }
 
-function commandFieldRecords(value: unknown): { name: string; required?: boolean; source?: string; presentation?: string; type?: string; l4Type?: string; enum?: string[] }[] {
+function commandFieldRecords(value: unknown): { name: string; required?: boolean; source?: string; sourceRef?: string; presentation?: string; type?: string; l4Type?: string; enum?: string[] }[] {
   if (!Array.isArray(value)) return [];
   return value.map(item => isRecord(item) ? {
     name: readString(item.name),
     required: item.required === true,
     source: readString(item.source),
+    // sourceRef is WHERE the value comes from, and without it `source` is an unusable label: `selection`
+    // names the query the picker reads, `derived` names `<bffId>.<field>`, `actorDirectory` names the role
+    // (todo/changeFrontend/ajuste_actors.md). It was dropped here, so the page could not render any of them.
+    sourceRef: readString(item.sourceRef),
     presentation: readString(item.presentation) || 'form',
     // type (TS) / l4Type (raw declared) / enum carry the resolved shape of the field; the page-test
     // generator needs them to emit a valid literal instead of an unresolvable <seedRef> for a domain field.

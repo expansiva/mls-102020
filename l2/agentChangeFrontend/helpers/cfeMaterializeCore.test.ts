@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues } from './cfeMaterializeCore.js';
 
 // bugpage21: the EXACT shape generated into
 // mls-102051/l2/cafeFlow/web/desktop/page21/shiftWorkspace.ts — `: nothing` in the template with a
@@ -301,4 +301,47 @@ test('handlers passed to the directive are correct and not flagged', () => {
 test('a page with no chart is never inspected', () => {
   // @chartclick on a page that imports no chart is someone else is custom event — not our business.
   assert.deepEqual(collectChartEventIssues('html`<div @chartclick=${fn}></div>`'), []);
+});
+
+// ---------------------------------------------------------------------------
+// `source` como instrucao de renderizacao (todo/changeFrontend/ajuste_actors.md).
+// O gate ja proibia id nao-decidido em campo editavel; agora a mensagem NOMEIA a origem do contrato,
+// que e o que diz ao modelo o que renderizar no lugar.
+
+const sourceDefs = (source: string, sourceRef?: string) => ({
+  dataBindings: [{
+    command: 'cmdAssign', kind: 'command',
+    inputs: [{ name: 'responsibleFieldWorkerId', stateKey: 'ui.p.input.cmdAssign.responsibleFieldWorkerId', source, ...(sourceRef ? { sourceRef } : {}) }],
+  }],
+});
+const SHARED_WITH_INPUT = {
+  states: [{ stateKey: 'ui.p.input.cmdAssign.responsibleFieldWorkerId', name: 'cmdAssignResponsibleFieldWorkerId', kind: 'input' }],
+};
+const EDITABLE = 'html`<input .value=${this.cmdAssignResponsibleFieldWorkerId} @input=${this.setX}>`';
+
+test('actorDirectory bound to a text field is flagged, and the remedy names the ROLE', () => {
+  const issues = collectPageExperienceIssues(sourceDefs('actorDirectory', 'fieldWorker'), SHARED_WITH_INPUT, EDITABLE);
+  assert.equal(issues.length, 1, issues.join(' | '));
+  assert.match(issues[0], /person picker over the 'fieldWorker' role directory/u);
+});
+
+test('selection bound to a text field is flagged, and the remedy names the QUERY', () => {
+  const issues = collectPageExperienceIssues(sourceDefs('selection', 'browseProjects'), SHARED_WITH_INPUT, EDITABLE);
+  assert.equal(issues.length, 1, issues.join(' | '));
+  assert.match(issues[0], /picker over the 'browseProjects' query already on this page/u);
+});
+
+test('the older e5 vocabulary is honoured too — 102045 was generated with it', () => {
+  // selectedEntity is the e5 name for selection; userInput the e5 name for userDecision.
+  assert.equal(collectPageExperienceIssues(sourceDefs('selectedEntity', 'browseProjects'), SHARED_WITH_INPUT, EDITABLE).length, 1);
+  assert.deepEqual(collectPageExperienceIssues(sourceDefs('userInput'), SHARED_WITH_INPUT, EDITABLE), []);
+});
+
+test('a context source says take it from context, naming the ref when there is one', () => {
+  const issues = collectPageExperienceIssues(sourceDefs('derived', 'createInvoice.invoiceId'), SHARED_WITH_INPUT, EDITABLE);
+  assert.match(issues[0], /take it from context \(createInvoice\.invoiceId\)/u);
+});
+
+test('a user-decided field in an editable control is correct', () => {
+  assert.deepEqual(collectPageExperienceIssues(sourceDefs('userDecision'), SHARED_WITH_INPUT, EDITABLE), []);
 });
