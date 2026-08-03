@@ -203,7 +203,7 @@ export function repairE6SiteMapColocation(
         if (readsEntity(workspace, entityId)) continue;                                   // picker already possible
         if ((params.carriedEntities[workspace.workspaceId] || []).includes(entityId)) continue; // declared context
         if (edgeCanCarry(artifact, byId, context, workspace.workspaceId, entityId)) continue;   // a navigation brings it
-        const listing = pickNsListingOperation(context, entityId);
+        const listing = pickNsListingOperation(context, entityId, workspace.actors);
         if (!listing) continue;                                                            // nothing to co-locate
         workspace.operationIds.push(listing);
         added.push({ workspaceId: workspace.workspaceId, operationId: listing, forInput: inputName, entity: entityId });
@@ -235,10 +235,21 @@ function edgeCanCarry(
   });
 }
 
-/** The listing of an entity: a browse over many rows, never a getById (which needs the id we lack). */
-export function pickNsListingOperation(context: E6SiteMapGateContext, entityId: string): string {
+/**
+ * The listing of an entity: a browse over many rows, never a getById (which needs the id we lack) — and
+ * one THIS PAGE'S ACTORS MAY RUN. Co-location does not grant permission: run06 added a projectManager
+ * listing to a fieldWorker page and the D6 coverage rule rejected the whole site map, correctly — a
+ * login that can open the page must be able to run every call on it. When no listing is permitted for
+ * these actors, nothing is co-located and the id stays unresolved: that is an authorization fact the
+ * e5 classification owns, not something the page layout can paper over.
+ */
+export function pickNsListingOperation(context: E6SiteMapGateContext, entityId: string, actors: string[] = []): string {
+  const mayRun = (id: string): boolean => {
+    const owners = context.operationActors[id];
+    return !owners || owners.length === 0 || owners.some(actor => actor === NS_PUBLIC_ACTOR || actors.includes(actor));
+  };
   const candidates = context.classificationOperationIds.filter(id =>
-    context.operationEntity[id] === entityId && isReadKind(context.operationKind[id]));
+    context.operationEntity[id] === entityId && isReadKind(context.operationKind[id]) && mayRun(id));
   const listing = candidates.find(id => {
     const pattern = context.operationAccessPattern?.[id];
     return pattern === 'list' || pattern === 'lookup';

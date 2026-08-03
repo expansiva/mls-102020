@@ -52,6 +52,7 @@ import {
 } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
 import { writeNsTrace, nsPromptChars } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
 import { readActors } from '/_102020_/l2/agentNewSolution/helpers/nsActors.js';
+import { isNsSoftMode } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
 import {
   NsCategoryCatalog,
   parseNsCategoryCatalog,
@@ -496,10 +497,12 @@ async function handleDetailResult(
   const equality = validateE6WorkspaceEquality(workspace, slice);
   const errors = [...equality, ...localGate.issues.filter(issue => issue.severity === 'error' && issue.code !== 'navigationEntry.target.unknown')];
   const attempt = parsedArgs.retryAttempt || 1;
+  const soft = isNsSoftMode(context.task?.iaCompressed?.longMemory);
   if (errors.length) {
     const traceMsg = errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
-    await writeNsTrace(moduleName, `e6-detail-${slice.workspaceId}`, AGENT_NAME, attempt, { workspace, errors }, traceMsg, nsPromptChars(step));
-    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `detail gate failed for ${slice.workspaceId} | ${traceMsg}`, 'input_output')];
+    await writeNsTrace(moduleName, `e6-detail-${slice.workspaceId}`, AGENT_NAME, attempt, { workspace, errors, soft }, traceMsg, nsPromptChars(step));
+    // /soft: record and keep going — the point of a diagnostic run is a COMPLETE l4 to measure.
+    if (!soft) return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `detail gate failed for ${slice.workspaceId} | ${traceMsg}`, 'input_output')];
   }
 
   // Stamp the slice hash → incremental re-runs regenerate only workspaces whose slice changed.
@@ -559,8 +562,11 @@ async function runE6Finalize(
       nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `${missing.length} workspaces missing (${missing.join(', ')}); repair round ${round}/${NS_MAX_REPAIR_ROUNDS - 1} started`),
     ];
   }
-  if (missing.length > 0) {
+  if (missing.length > 0 && !isNsSoftMode(context.task?.iaCompressed?.longMemory)) {
     return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `workspaces missing after repair round: ${missing.join(', ')}`)];
+  }
+  if (missing.length > 0) {
+    await writeNsTrace(moduleName, FINALIZE_PLAN, AGENT_NAME, round, { missing, soft: true }, `[soft] continuing without ${missing.join(', ')}`);
   }
 
   const artifact: NsE6JourneyMapArtifact = {
@@ -590,10 +596,11 @@ async function runE6Finalize(
   const check = validateE6Invariants(artifact, gateContext);
   const errors = check.issues.filter(issue => issue.severity === 'error');
   let pipeline = await readNsPipeline(moduleName) || createNsPipeline(moduleName);
+  const softRun = isNsSoftMode(context.task?.iaCompressed?.longMemory);
   if (errors.length > 0) {
     const traceMsg = errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
-    await writeNsTrace(moduleName, FINALIZE_PLAN, AGENT_NAME, parsedArgs.repairAttempt || 1, { errors }, traceMsg);
-    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `journey map invalid after assembly:\n${traceMsg}`)];
+    await writeNsTrace(moduleName, FINALIZE_PLAN, AGENT_NAME, parsedArgs.repairAttempt || 1, { errors, soft: softRun }, traceMsg);
+    if (!softRun) return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `journey map invalid after assembly:\n${traceMsg}`)];
   }
 
   // (the journeys were derived above: the pageInput check needs their declared context)
@@ -606,8 +613,8 @@ async function runE6Finalize(
   const journeyErrors = journeysCheck.issues.filter(issue => issue.severity === 'error');
   if (journeyErrors.length > 0) {
     const traceMsg = journeyErrors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
-    await writeNsTrace(moduleName, FINALIZE_PLAN, AGENT_NAME, parsedArgs.repairAttempt || 1, { journeyErrors }, traceMsg);
-    return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `journeys invalid:\n${traceMsg}`)];
+    await writeNsTrace(moduleName, FINALIZE_PLAN, AGENT_NAME, parsedArgs.repairAttempt || 1, { journeyErrors, soft: softRun }, traceMsg);
+    if (!softRun) return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `journeys invalid:\n${traceMsg}`)];
   }
   for (const journey of journeys) {
     await writeDefsArtifact(
@@ -628,7 +635,7 @@ async function runE6Finalize(
       planId: DONE_ANCHOR, dependsOn: [STEP_ID], stepTitle: 'Journey map ready',
       result: { type: DONE_ANCHOR, moduleName, workspaces: workspaces.map(workspace => workspace.workspaceId) },
     }),
-    nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e6-journey-map approved for ${moduleName} (${workspaces.length} workspaces)`),
+    nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e6-journey-map approved for ${moduleName} (${workspaces.length} workspaces)${softRun ? ' — /soft: gate findings recorded, not blocking' : ''}`),
   ];
 }
 

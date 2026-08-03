@@ -44,7 +44,7 @@ import {
   recordNsGateResult,
   writeNsPipeline,
 } from '/_102020_/l2/agentNewSolution/helpers/nsPipeline.js';
-import { isNsL4OnlyMode, NS_L4_ONLY_TRACE_NOTE } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
+import { isNsL4OnlyMode, isNsSoftMode, NS_L4_ONLY_TRACE_NOTE, NS_SOFT_TRACE_NOTE } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
 import { writeNsTrace } from '/_102020_/l2/agentNewSolution/helpers/nsTrace.js';
 import { NsE2JourneysArtifact } from '/_102020_/l2/agentNewSolution/steps/e2-journeys/gate.js';
 import {
@@ -195,7 +195,8 @@ async function runE7(
   );
 
   // 3. Errors = upstream bugs: fail visibly, NO retry step. The user reruns after fixing.
-  if (report.errors.length > 0) {
+  const softRun = isNsSoftMode(context.task?.iaCompressed?.longMemory);
+  if (report.errors.length > 0 && !softRun) {
     pipeline = recordNsGateResult(pipeline, STEP_ID, { ok: false, errors: errorLines, warnings: warningLines });
     await writeNsPipeline(pipeline);
     const shown = errorLines.slice(0, MAX_TRACE_ERRORS);
@@ -324,6 +325,7 @@ async function runE7(
   // /l4only: while the SPEC itself is what is being iterated on, the two follow-up tasks cost a lot
   // and are discarded on the next run. The l4/l5 artifacts above are written either way — only the
   // dispatch is suppressed, and the trace says so, so a missing frontend/backend is never a mystery.
+  if (softRun) await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, 1, { errors: report.errors.length }, NS_SOFT_TRACE_NOTE);
   const l4Only = isNsL4OnlyMode(context.task?.iaCompressed?.longMemory);
   if (l4Only) await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, 1, { handoff: 'suppressed' }, NS_L4_ONLY_TRACE_NOTE);
   else if (!nsHasStepWithPlanId(context, DONE_ANCHOR)) await dispatchNsHandoff(context, moduleName);
@@ -337,7 +339,7 @@ async function runE7(
     }),
     nsUpdateStatusIntent(
       context, mutationParent, step, hookSequential, 'completed',
-      `module ${moduleName} spec complete: ${report.counts.entities} entities, ${report.counts.workflows} workflows, ${report.counts.operations} operations${l4Only ? ' — /l4only: changeFrontend/changeBackend NOT started' : ''}`,
+      `module ${moduleName} spec complete: ${report.counts.entities} entities, ${report.counts.workflows} workflows, ${report.counts.operations} operations${softRun ? ` — /soft: ${report.errors.length} gate error(s) recorded, NOT blocking` : ''}${l4Only ? ' — /l4only: changeFrontend/changeBackend NOT started' : ''}`,
     ),
   ];
 }

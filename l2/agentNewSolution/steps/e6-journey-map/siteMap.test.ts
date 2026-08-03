@@ -205,3 +205,18 @@ void test('P2: co-locating a READ never changes the page kind', () => {
   const after = deriveE6SiteMapKinds(repairE6SiteMapColocation(managed, context, { carriedEntities: {} }).artifact, context).workspaces[0].kind;
   assert.equal(after, 'entityManagement');
 });
+
+// run06: co-location added a projectManager listing to a fieldWorker page and the D6 coverage rule
+// (`siteMap.actors.notCovering`) rejected the whole site map — correctly. Adding an operation to a page
+// does not grant its actors permission to run it.
+void test('P2: only a listing THIS page actors may run is co-located', () => {
+  const foreignActor = colocationContext({ operationActors: { browseMaterials: ['projectManager'] } });
+  assert.deepEqual(repairE6SiteMapColocation(colocationMap(), foreignActor, { carriedEntities: {} }).added, [],
+    'the field worker cannot run the manager listing: nothing to co-locate');
+
+  const shared = colocationContext({ operationActors: { browseMaterials: ['projectManager', 'fieldWorker'] } });
+  assert.equal(repairE6SiteMapColocation(colocationMap(), shared, { carriedEntities: {} }).added.length, 1);
+
+  // An operation with no declared actors is not treated as forbidden (same tolerance the D6 check has).
+  assert.equal(repairE6SiteMapColocation(colocationMap(), colocationContext(), { carriedEntities: {} }).added.length, 1);
+});

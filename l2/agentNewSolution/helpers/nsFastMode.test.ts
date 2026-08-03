@@ -6,9 +6,11 @@ import {
   isNsFastMode,
   isNsL4OnlyMode,
   isNsRebuildMode,
+  isNsSoftMode,
   parseNsFastMode,
   parseNsL4OnlyMode,
   parseNsRebuildMode,
+  parseNsSoftMode,
 } from '/_102020_/l2/agentNewSolution/helpers/nsFastMode.js';
 
 void test('parseNsFastMode detects /fast and strips it from the prompt', () => {
@@ -76,4 +78,20 @@ void test('the three flags compose in one prompt and leave it clean', () => {
   const l4Only = parseNsL4OnlyMode(rebuild.prompt);
   assert.equal(fast.fast && rebuild.rebuild && l4Only.l4Only, true);
   assert.equal(l4Only.prompt, 'gestão de obras');
+});
+
+void test('/soft is a diagnostic flag, parsed like its siblings', () => {
+  assert.deepEqual(parseNsSoftMode('gestão de obras /soft'), { soft: true, prompt: 'gestão de obras' });
+  assert.deepEqual(parseNsSoftMode('build the /software module'), { soft: false, prompt: 'build the /software module' });
+  assert.equal(isNsSoftMode({ soft: 'true' }), true);
+  assert.equal(isNsSoftMode({}), false);
+});
+
+void test('the four flags compose in one prompt and leave it clean', () => {
+  const fast = parseNsFastMode('/fast /rebuild /l4only /soft gestão de obras');
+  const rebuild = parseNsRebuildMode(fast.prompt);
+  const l4Only = parseNsL4OnlyMode(rebuild.prompt);
+  const soft = parseNsSoftMode(l4Only.prompt);
+  assert.equal(fast.fast && rebuild.rebuild && l4Only.l4Only && soft.soft, true);
+  assert.equal(soft.prompt, 'gestão de obras');
 });
