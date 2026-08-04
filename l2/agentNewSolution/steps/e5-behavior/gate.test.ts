@@ -18,9 +18,11 @@ import {
   NsE5FeatureRef,
   NsE5OperationArtifact,
   NsE5WorkflowArtifact,
+  describeNsE5LinkReconciliation,
   prepareE5Classification,
   prepareE5Operation,
   prepareE5Workflow,
+  reconcileE5ClassificationLinks,
   validateE5Classification,
   validateE5Operation,
   validateE5Workflow,
@@ -530,4 +532,61 @@ void test('E5 schema: the output shape cannot nest a third level', () => {
   assert.equal(item.properties.fields.items.$ref, '#/$defs/outputItemField', 'item columns must be leaves');
   assert.equal(schema.$defs.outputItemField.properties.item, undefined, 'a leaf column has no item of its own');
   assert.doesNotMatch(JSON.stringify(schema.$defs.outputItemField), /\$ref/, 'a leaf points nowhere');
+});
+
+// Runs 08 and 09 (102046, 03/08): workflow membership is written TWICE — `operation.workflowId` and
+// `workflow.operationIds` — and neither model kept the two in agreement. Run 08 (luna) failed the gate
+// with 14 `operation.workflow.unlisted` and recovered on the retry; run 09, on a model ~10x the price,
+// failed with 16 `unlisted` and then "fixed" it by moving the operations onto workflowIds it had never
+// declared (16 `operation.workflow.unknown`) — the retry budget ran out and the whole run died at e5.
+// A stronger model did not help because the defect is the redundancy, not the reasoning: reconcile the
+// mechanical half in code and leave the gate only what is genuinely ambiguous.
+void test('e5 link reconcile: an operation its own workflow does not list becomes standalone (run08/run09)', () => {
+  const artifact = validClassification();
+  artifact.workflows[0].operationIds = ['createOrder'];        // updateOrderStatus claims the workflow, the workflow lists only the trigger
+  const { reconciliation } = reconcileE5ClassificationLinks(artifact);
+  assert.deepEqual(reconciliation.narrowed, [{ operationId: 'updateOrderStatus', workflowId: 'orderLifecycle' }]);
+  assert.equal(artifact.operations[1].workflowId, undefined, 'membership drops to standalone');
+  assert.deepEqual(artifact.workflows[0].operationIds, ['createOrder'], 'operationIds is NEVER widened — the fan-out must transition what it lists');
+  const { issues } = validateE5Classification(artifact, classificationContext);
+  assert.equal(issues.filter(issue => issue.code === 'classification.operation.workflow.unlisted').length, 0);
+});
+
+void test('e5 link reconcile: an undeclared workflowId is re-owned by the workflow that lists it (run09)', () => {
+  const artifact = validClassification();
+  artifact.operations[1].workflowId = 'clientManagement';      // a workflow the model never declared
+  const { reconciliation } = reconcileE5ClassificationLinks(artifact);
+  assert.deepEqual(reconciliation.adopted, [{ operationId: 'updateOrderStatus', from: 'clientManagement', to: 'orderLifecycle' }]);
+  assert.equal(artifact.operations[1].workflowId, 'orderLifecycle');
+  const { issues } = validateE5Classification(artifact, classificationContext);
+  assert.equal(issues.filter(issue => issue.code.startsWith('classification.operation.workflow.')).length, 0);
+});
+
+void test('e5 link reconcile: an undeclared workflowId nobody lists makes the operation standalone', () => {
+  const artifact = validClassification();
+  artifact.operations[2].workflowId = 'menuLifecycle';         // createMenuItem is in no operationIds either
+  const { reconciliation } = reconcileE5ClassificationLinks(artifact);
+  assert.deepEqual(reconciliation.dropped, [{ operationId: 'createMenuItem', workflowId: 'menuLifecycle' }]);
+  assert.equal(artifact.operations[2].workflowId, undefined);
+  const { issues } = validateE5Classification(artifact, classificationContext);
+  assert.equal(issues.filter(issue => issue.severity === 'error').length, 0);
+});
+
+void test('e5 link reconcile: a coherent classification is left untouched, and standalone stays standalone', () => {
+  const artifact = validClassification();
+  const before = JSON.stringify(artifact);
+  const { reconciliation } = reconcileE5ClassificationLinks(artifact);
+  assert.deepEqual(reconciliation, { narrowed: [], adopted: [], dropped: [] });
+  assert.equal(JSON.stringify(artifact), before);
+});
+
+void test('e5 link reconcile: describe names every repaired link (the run trace)', () => {
+  const note = describeNsE5LinkReconciliation({
+    narrowed: [{ operationId: 'a', workflowId: 'w' }],
+    adopted: [{ operationId: 'b', from: 'ghost', to: 'w' }],
+    dropped: [{ operationId: 'c', workflowId: 'ghost2' }],
+  });
+  assert.match(note, /a \(w\)/);
+  assert.match(note, /b ghost→w/);
+  assert.match(note, /c \(ghost2\)/);
 });

@@ -1,0 +1,37 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewSolution4/pipeline/2026-08-04-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "flowId", "flowVersion", "moduleName", "sourcePrompt", "status", "steps", "nextStep", "createdAt", "updatedAt"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "2026-08-04-ns4-pipeline-v1" },
+    "flowId": { "type": "string", "const": "agentNewSolution4" },
+    "flowVersion": { "type": "string", "const": "2026-08-04-ns4-flow-v1" },
+    "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "sourcePrompt": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["inProgress", "complete", "failed"] },
+    "steps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["e1"],
+      "properties": {
+        "e1": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "updatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["running", "approved", "failed"] },
+            "artifactPath": { "type": "string" },
+            "approvedBy": { "type": "string", "enum": ["human", "auto"] },
+            "approvedAt": { "type": "string" },
+            "updatedAt": { "type": "string", "minLength": 10 }
+          }
+        }
+      }
+    },
+    "nextStep": { "type": "string", "const": "e2-journeys" },
+    "createdAt": { "type": "string", "minLength": 10 },
+    "updatedAt": { "type": "string", "minLength": 10 }
+  }
+}

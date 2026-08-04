@@ -1,0 +1,67 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewSolution4/module/2026-08-04-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "module", "designContext", "specStatus"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "2026-08-04-ns4-module-v1" },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["moduleName", "title", "purpose", "languages"],
+      "properties": {
+        "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "purpose": { "type": "string", "minLength": 1 },
+        "languages": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 2 } }
+      }
+    },
+    "designContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["initialPrompt", "clarification"],
+      "properties": {
+        "initialPrompt": { "type": "string", "minLength": 1 },
+        "clarification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mainActors", "mainGoal", "boundaries"],
+          "properties": {
+            "mainActors": { "type": "string" },
+            "mainGoal": { "type": "string", "minLength": 1 },
+            "boundaries": { "type": "string" }
+          }
+        }
+      }
+    },
+    "specStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["flowId", "flowVersion", "state", "artifactCompleteness", "completedSteps", "nextStep", "updatedAt"],
+      "properties": {
+        "flowId": { "type": "string", "const": "agentNewSolution4" },
+        "flowVersion": { "type": "string", "const": "2026-08-04-ns4-flow-v1" },
+        "state": { "type": "string", "const": "inProgress" },
+        "artifactCompleteness": { "type": "string", "const": "partial" },
+        "completedSteps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stepId", "status", "approvedBy", "approvedAt"],
+            "properties": {
+              "stepId": { "type": "string", "const": "e1" },
+              "status": { "type": "string", "const": "approved" },
+              "approvedBy": { "type": "string", "enum": ["human", "auto"] },
+              "approvedAt": { "type": "string", "minLength": 10 }
+            }
+          }
+        },
+        "nextStep": { "type": "string", "const": "e2-journeys" },
+        "updatedAt": { "type": "string", "minLength": 10 }
+      }
+    }
+  }
+}

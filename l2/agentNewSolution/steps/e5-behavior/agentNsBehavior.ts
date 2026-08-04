@@ -66,6 +66,7 @@ import {
   attachWorkflowDeterministic,
   computeE5WorkflowDemotions,
   demoteE5OperationDefs,
+  describeNsE5LinkReconciliation,
   NsE5ClassificationArtifact,
   NsE5EntityDefsInfo,
   NsE5FeatureRef,
@@ -75,6 +76,7 @@ import {
   prepareE5Classification,
   prepareE5Operation,
   prepareE5Workflow,
+  reconcileE5ClassificationLinks,
   renderE5Markdown,
   validateE5Classification,
   validateE5Operation,
@@ -418,6 +420,10 @@ async function handleClassificationResult(
   }
 
   const artifact = prepareE5Classification(output.result, { moduleName });
+  // Both sides of the workflow↔operation link are model-written and systematically disagree — repair
+  // the mechanical half before the gate speaks (see reconcileE5ClassificationLinks).
+  const { reconciliation } = reconcileE5ClassificationLinks(artifact);
+  const reconciliationNote = describeNsE5LinkReconciliation(reconciliation);
   const gateContext = {
     moduleName,
     actorIds: actorsRules.actors.map(actor => actor.actorId),
@@ -444,7 +450,7 @@ async function handleClassificationResult(
   const attempt = parsedArgs.retryAttempt || gate.attempts;
   if (!gate.ok) {
     const traceMsg = gate.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n');
-    await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate, retryContext: gate.retryContext }, traceMsg);
+    await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate, reconciliation, retryContext: gate.retryContext }, traceMsg);
     // Keep the pipeline alive on attempt 1: 'failed' would fail the whole task and orphan the retry
     // (downstream depends only on the 'e5-done' anchor, so completing this run unlocks nothing).
     if (attempt < 2) {
@@ -461,7 +467,7 @@ async function handleClassificationResult(
     return [nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', traceMsg)];
   }
 
-  await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate }, undefined, nsPromptChars(step));
+  await writeNsTrace(moduleName, STEP_ID, AGENT_NAME, attempt, { artifact, gate, reconciliation }, undefined, nsPromptChars(step));
   // Parallel fan-out (collab-messages parallel system, 5 slots, slots reused and deleted at the
   // end): one child per workflow, hosted under THIS step so its completion waits for the fan-out.
   // The 'e5-operations-phase' step unlocks when this step's planId completes — that is the
@@ -488,7 +494,7 @@ async function handleClassificationResult(
     status: 'waiting_dependency',
     prompt: { planId: 'e5-operations-phase', moduleName },
   }));
-  intents.push(nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e5-classification ready for ${moduleName} (${artifact.workflows.length} workflows, ${artifact.operations.length} operations)`, 'input_output'));
+  intents.push(nsUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', `e5-classification ready for ${moduleName} (${artifact.workflows.length} workflows, ${artifact.operations.length} operations)${reconciliationNote ? ` | links repaired: ${reconciliationNote}` : ''}`, 'input_output'));
   return intents;
 }
 

@@ -1,0 +1,71 @@
+{
+  "flowId": "agentNewSolution4",
+  "schemaVersion": "2026-08-04-ns4-flow-v1",
+  "status": "e1-only",
+  "description": "Compiler-style product specification pipeline. This first delivery implements only E1: clarification plus the first permanent L4 artifact.",
+  "canonicalReferences": [
+    "mls-base/skills/collab_messages.md",
+    "mls-base/skills/agentsBestPractices.md",
+    "mls-base/skills/modelTypes.md"
+  ],
+  "principles": [
+    "Every completed step writes a permanent L4 artifact.",
+    "Pipeline state on disk is the resume authority; task payloads are orchestration only.",
+    "An existing module is resumable only when its pipeline declares flowId agentNewSolution4.",
+    "A foreign existing module is never overwritten and produces a visible collision error.",
+    "The /fast flag accepts the clarification defaults without requiring the widget to render.",
+    "Prompts live in the owning step folder; deterministic validation decides whether artifacts are trusted."
+  ],
+  "invocation": {
+    "new": "@@newSolution4 <description-or-moduleName>",
+    "fast": "@@newSolution4 <description-or-moduleName> /fast",
+    "resume": "@@newSolution4 <moduleName>",
+    "resumeRule": "If l4/<module>/pipeline/pipeline.json belongs to agentNewSolution4, resume its next incomplete step. If E1 is already approved, report that E2 is the next step and is not implemented in this delivery. Otherwise rerun E1. A module without the v4 pipeline marker is a collision."
+  },
+  "artifacts": {
+    "module": "l4/{module}/module.defs.ts",
+    "pipeline": "l4/{module}/pipeline/pipeline.json"
+  },
+  "steps": [
+    {
+      "planId": "e1",
+      "agentName": "agentNewSolution4",
+      "type": "agent-clarification",
+      "goal": "Clarify the module name, actors, goal and boundaries, then write the initial permanent module contract.",
+      "input": [
+        "initial user prompt",
+        "clarification answers or /fast defaults"
+      ],
+      "output": [
+        "l4/{module}/module.defs.ts",
+        "l4/{module}/pipeline/pipeline.json"
+      ],
+      "gate": {
+        "file": "steps/e1/gate.ts",
+        "checks": [
+          "normalized lower-camel moduleName",
+          "non-empty title, purpose and userLanguage",
+          "module contract identifies agentNewSolution4",
+          "specStatus marks E1 approved and E2 as next",
+          "pipeline marks E1 approved only after module.defs.ts is written"
+        ]
+      },
+      "resume": "A running E1 pipeline may be safely rerun. An approved E1 with module.defs.ts advances to e2-journeys when that step exists.",
+      "runtimeNotes": [
+        "The root agent emits the clarification in its interaction payload so the standard widget can render it.",
+        "In /fast, afterPromptStep persists the defaults directly and completes the root step.",
+        "In interactive mode, the clarification callback persists the artifacts and records a completed e1-result step."
+      ]
+    }
+  ],
+  "plannedSteps": [
+    "e2-journeys",
+    "e3-ontology",
+    "e4-rules",
+    "e5-behaviors",
+    "e6-realization",
+    "e7-workspaces",
+    "e8-navigation-compiler",
+    "e9-validation"
+  ]
+}
