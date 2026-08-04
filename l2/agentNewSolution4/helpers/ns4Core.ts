@@ -84,6 +84,15 @@ export function parseNs4Invocation(value: string): { fast: boolean; prompt: stri
   return { fast, prompt };
 }
 
+export function createNs4ClarificationSubmitGuard(): () => boolean {
+  let submitted = false;
+  return () => {
+    if (submitted) return false;
+    submitted = true;
+    return true;
+  };
+}
+
 export function isNs4ModuleToken(value: string): boolean {
   return /^[a-z][A-Za-z0-9]*$/.test(String(value || '').trim());
 }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildNs4ModuleArtifact,
+  createNs4ClarificationSubmitGuard,
   createNs4Pipeline,
   markNs4E1Approved,
   normalizeNs4ModuleName,
@@ -36,6 +37,13 @@ test('E1 builds a valid partial permanent module contract', () => {
 test('/fast is a standalone flag and is removed from the business prompt', () => {
   assert.deepEqual(parseNs4Invocation('petShop /fast'), { fast: true, prompt: 'petShop' });
   assert.deepEqual(parseNs4Invocation('/fastlane petShop'), { fast: false, prompt: '/fastlane petShop' });
+});
+
+test('interactive clarification accepts only its first submit', () => {
+  const acceptSubmit = createNs4ClarificationSubmitGuard();
+  assert.equal(acceptSubmit(), true);
+  assert.equal(acceptSubmit(), false);
+  assert.equal(acceptSubmit(), false);
 });
 
 test('module names normalize deterministically', () => {

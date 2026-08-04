@@ -23,3 +23,6 @@ reruns E1. A folder with no v4 pipeline marker is never overwritten.
 
 `/fast` applies the LLM-proposed defaults directly in `afterPromptStep`; it does not rely on rendering
 the clarification widget.
+
+The interactive widget accepts only its first finish event. This keeps a rapid double click from
+persisting E1 twice and turning the second write into a false module-collision failure.

@@ -5,6 +5,7 @@ import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 
 import {
   buildNs4ModuleArtifact,
+  createNs4ClarificationSubmitGuard,
   createNs4Pipeline,
   isNs4Pipeline,
   markNs4E1Approved,
@@ -98,7 +99,10 @@ export async function beforeNs4E1ClarificationStep(
     autoAcceptSeconds: 0,
   };
   element.setAttribute('mode', 'new');
+  const acceptSubmit = createNs4ClarificationSubmitGuard();
   element.addEventListener('clarification-finish', (event: Event) => {
+    if (!acceptSubmit()) return;
+    (element as unknown as { readonly: boolean }).readonly = true;
     const detail = (event as CustomEvent<{ value: Ns4Clarification; action: 'continue' | 'cancel' }>).detail;
     void applyNs4E1Clarification(context, parentStep, step, hookSequential, detail.value, detail.action);
   });
