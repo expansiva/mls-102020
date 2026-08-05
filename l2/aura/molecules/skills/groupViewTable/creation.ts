@@ -31,9 +31,11 @@ export const skill = `
 | \`TableFooter\` | No | Footer section container |
 | \`Empty\` | No | Content shown when TableBody has no rows |
 | \`Loading\` | No | Content shown during loading state |
+| \`Detail\` | No | Content shown when a record is expanded. Only implementations that offer expansion read it — see **Detail Slot** below |
 
 \`\`\`typescript
-slotTags = ['Caption', 'TableHeader', 'TableBody', 'TableRow', 'TableHead', 'TableCell', 'TableFooter', 'Empty', 'Loading'];
+// Drop 'Detail' from the array if the molecule has no row-expansion feature.
+slotTags = ['Caption', 'TableHeader', 'TableBody', 'TableRow', 'TableHead', 'TableCell', 'TableFooter', 'Empty', 'Loading', 'Detail'];
 \`\`\`
 
 ### Slot Hierarchy
@@ -46,7 +48,8 @@ component (root)
 │       └── <TableHead key="..." sortable>
 ├── <TableBody>
 │   └── <TableRow>
-│       └── <TableCell>
+│       ├── <TableCell>
+│       └── <Detail>          (optional, expansion only)
 ├── <TableFooter>
 │   └── <TableRow>
 │       └── <TableCell>
@@ -60,6 +63,40 @@ component (root)
 |-----------|------|-------------|
 | \`key\` | \`string\` | Column identifier, used for sorting |
 | \`sortable\` | \`boolean\` (presence) | Column can be sorted |
+
+### Detail Slot — row detail
+
+Holds what appears when a record is expanded: the detail row shown immediately below its record.
+
+| Rule | Value |
+|------|-------|
+| Where | Direct child of \`<TableRow>\`, inside \`<TableBody>\` **only** — never in TableHeader or TableFooter |
+| How many | One per \`<TableRow>\`. Read it as \`:scope > Detail\`, so a nested one is not found |
+| Accepts | Text, web components, another table — the same freedom as \`<TableCell>\` |
+| Who fills it | The **consumer**, usually after \`rowClick\` (the lazy flow). Empty until then is a valid state, not a defect |
+
+**Only implementations that offer expansion read it.** A molecule in this group without a
+row-expansion feature simply leaves \`Detail\` out of its \`slotTags\`, and ignoring the slot is not a
+contract violation.
+
+**It must be a LIVE slot** — \`usesLiveSlots\` with \`renderLiveSlotFrom(detailEl)\`, never the
+serialized path. Detail content is exactly where consumers put buttons and nested tables, and
+serializing a slot destroys their handlers and component identity.
+
+A molecule that DOES declare \`Detail\` has to carry it all the way: list it among the content areas
+of its own \`.defs.ts\` and exercise it in its playground. The playground's slot list is generated
+from the defs, so a slot missing there produces a demo whose detail area opens blank — measured on
+2026-08-05 with \`ml-lazy-record-detail-table\`.
+
+> ⚠️ **Do not build the detail row by re-projecting the record's own \`<TableCell>\` nodes.** A live
+> slot MOVES nodes, and \`renderLiveSlotFrom\` keys the anchor by source ELEMENT — so a cell projected
+> into both the record row and the detail row gives two anchors ONE key, and the second steals the
+> nodes from the first. The visible cells go empty the moment the row expands. That is inherent to
+> moving, not a bug to work around: the detail needs a source of its own, which is what \`<Detail>\`
+> is for.
+
+**Not a general accordion.** To expand arbitrary content that is not a record inside a table, the
+group is \`groupExpandContent\`.
 
 ---
 

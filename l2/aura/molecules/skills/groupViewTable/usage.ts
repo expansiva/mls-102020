@@ -22,6 +22,7 @@ export const skill = `
 | \`TableFooter\` | Footer section container |
 | \`Empty\` | Content shown when no rows exist |
 | \`Loading\` | Content shown during loading state |
+| \`Detail\` | Content shown when a record is expanded. Goes **inside \`<TableRow>\`**, next to the cells. Only molecules that offer expansion read it |
 
 ---
 
@@ -99,6 +100,35 @@ one criterion carrying content from another.
   <Empty>No orders found</Empty>
 </molecules--data-table-102020>
 \`\`\`
+
+### Table with on-demand row detail
+
+Molecules with expansion accept a \`<Detail>\` per row. It starts **empty**: the molecule emits
+\`rowClick\` with the index, you load what you need and write inside that row's \`<Detail>\`. The slot
+is live, so what you put there keeps working — buttons fire, and a nested table is a real table.
+
+\`\`\`html
+<molecules--lazy-record-detail-table-102020>
+  <TableHeader>
+    <TableRow>
+      <TableHead key="id" sortable>Order</TableHead>
+      <TableHead key="customer" sortable>Customer</TableHead>
+    </TableRow>
+  </TableHeader>
+  <TableBody>
+    <TableRow>
+      <TableCell>#001</TableCell>
+      <TableCell>John Doe</TableCell>
+      <Detail>
+        <!-- empty until rowClick; then text, components or another table -->
+      </Detail>
+    </TableRow>
+  </TableBody>
+</molecules--lazy-record-detail-table-102020>
+\`\`\`
+
+Write the detail of the row you were given — one \`<Detail>\` per \`<TableRow>\`, as a direct child.
+Molecules without expansion ignore the slot.
 
 ---
 
