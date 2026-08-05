@@ -5,6 +5,7 @@ import {
   NS4_FLOW_VERSION,
   NS4_MODULE_SCHEMA_VERSION,
   Ns4ModuleArtifact,
+  normalizeNs4Languages,
   normalizeNs4ModuleName,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 
@@ -31,6 +32,11 @@ export function validateNs4E1Module(artifact: Ns4ModuleArtifact): Ns4E1GateResul
   if (!artifact.module.purpose.trim()) error(issues, 'module.purpose.missing', 'Module purpose is required.', 'module.purpose');
   if (artifact.module.languages.length === 0 || artifact.module.languages.some(language => language.trim().length < 2)) {
     error(issues, 'module.language.missing', 'At least one valid language is required.', 'module.languages');
+  }
+  const normalizedLanguages = normalizeNs4Languages(artifact.module.languages);
+  if (normalizedLanguages.length !== artifact.module.languages.length
+    || normalizedLanguages.some((language, index) => language !== artifact.module.languages[index])) {
+    error(issues, 'module.language.notNormalized', 'Product languages must be unique normalized BCP-47 tags.', 'module.languages');
   }
   if (!artifact.designContext.initialPrompt.trim()) error(issues, 'designContext.prompt.missing', 'Initial prompt is required.', 'designContext.initialPrompt');
   if (artifact.specStatus.flowId !== NS4_FLOW_ID || artifact.specStatus.flowVersion !== NS4_FLOW_VERSION) {

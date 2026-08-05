@@ -7,6 +7,9 @@ export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-04-ns4-pipeline-v1' as const
 
 export type Ns4ApprovedBy = 'human' | 'auto';
 export type Ns4E1Status = 'running' | 'approved' | 'failed';
+export type Ns4E2Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
+export type Ns4CompletedStepId = 'e1' | 'e2-journeys';
+export type Ns4NextStep = 'e2-journeys' | 'e3-ontology';
 
 export interface Ns4ClarificationQuestion {
   type: 'open';
@@ -44,12 +47,12 @@ export interface Ns4ModuleArtifact {
     state: 'inProgress';
     artifactCompleteness: 'partial';
     completedSteps: Array<{
-      stepId: 'e1';
+      stepId: Ns4CompletedStepId;
       status: 'approved';
       approvedBy: Ns4ApprovedBy;
       approvedAt: string;
     }>;
-    nextStep: 'e2-journeys';
+    nextStep: Ns4NextStep;
     updatedAt: string;
   };
 }
@@ -69,8 +72,17 @@ export interface Ns4PipelineState {
       approvedAt?: string;
       updatedAt: string;
     };
+    e2?: {
+      status: Ns4E2Status;
+      reviewRound: number;
+      draftPath?: string;
+      artifactPaths?: string[];
+      approvedBy?: Ns4ApprovedBy;
+      approvedAt?: string;
+      updatedAt: string;
+    };
   };
-  nextStep: 'e2-journeys';
+  nextStep: Ns4NextStep;
   createdAt: string;
   updatedAt: string;
 }
@@ -111,7 +123,7 @@ export function normalizeNs4ModuleName(value: unknown, fallback = 'newModule'): 
 export function normalizeNs4Clarification(value: unknown): Ns4Clarification {
   const record = asRecord(value);
   const questionsRecord = asRecord(record.questions);
-  const questionIds = ['moduleName', 'mainActors', 'mainGoal', 'boundaries'];
+  const questionIds = ['moduleName', 'productLanguages', 'mainActors', 'mainGoal', 'boundaries'];
   const questions: Record<string, Ns4ClarificationQuestion> = {};
   for (const id of questionIds) {
     const question = asRecord(questionsRecord[id]);
@@ -123,7 +135,7 @@ export function normalizeNs4Clarification(value: unknown): Ns4Clarification {
   }
   return {
     planId: 'e1-clarification',
-    userLanguage: readString(record.userLanguage) || 'en',
+    userLanguage: normalizeNs4Languages(record.userLanguage, 'en')[0],
     title: readString(record.title) || 'Clarification 1',
     legends: Array.isArray(record.legends) ? record.legends.map(readString).filter((item): item is string => !!item) : [],
     questions,
@@ -139,13 +151,14 @@ export function buildNs4ModuleArtifact(
   const clarification = normalizeNs4Clarification(clarificationInput);
   const moduleName = normalizeNs4ModuleName(clarification.questions.moduleName.answer, sourcePrompt);
   const mainGoal = clarification.questions.mainGoal.answer.trim() || `Define the ${humanizeNs4ModuleName(moduleName)} business module.`;
+  const productLanguages = normalizeNs4Languages(clarification.questions.productLanguages.answer, clarification.userLanguage);
   return {
     schemaVersion: NS4_MODULE_SCHEMA_VERSION,
     module: {
       moduleName,
       title: humanizeNs4ModuleName(moduleName),
       purpose: mainGoal,
-      languages: [clarification.userLanguage],
+      languages: productLanguages,
     },
     designContext: {
       initialPrompt: sourcePrompt.trim() || moduleName,
@@ -165,6 +178,23 @@ export function buildNs4ModuleArtifact(
       updatedAt: now,
     },
   };
+}
+
+export function normalizeNs4Languages(value: unknown, fallback = 'en'): string[] {
+  const rawValues = Array.isArray(value) ? value : [value];
+  const candidates = rawValues.flatMap(item => typeof item === 'string' ? item.split(/[,;\n]+/) : []);
+  const languages: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const language = normalizeNs4LanguageTag(candidate);
+    const key = language.toLowerCase();
+    if (!language || seen.has(key)) continue;
+    seen.add(key);
+    languages.push(language);
+  }
+  if (languages.length) return languages;
+  const normalizedFallback = normalizeNs4LanguageTag(fallback);
+  return [normalizedFallback || 'en'];
 }
 
 export function createNs4Pipeline(
@@ -205,6 +235,83 @@ export function markNs4E1Approved(
   };
 }
 
+export function markNs4E2Running(
+  state: Ns4PipelineState,
+  reviewRound: number,
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  return {
+    ...state,
+    steps: {
+      ...state.steps,
+      e2: { status: 'running', reviewRound: Math.max(1, reviewRound), updatedAt: now },
+    },
+    nextStep: 'e2-journeys',
+    updatedAt: now,
+  };
+}
+
+export function markNs4E2WaitingHuman(
+  state: Ns4PipelineState,
+  reviewRound: number,
+  draftPath: string,
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  return {
+    ...state,
+    steps: {
+      ...state.steps,
+      e2: { status: 'waitingHuman', reviewRound: Math.max(1, reviewRound), draftPath, updatedAt: now },
+    },
+    nextStep: 'e2-journeys',
+    updatedAt: now,
+  };
+}
+
+export function markNs4E2Approved(
+  state: Ns4PipelineState,
+  approvedBy: Ns4ApprovedBy,
+  artifactPaths: string[],
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  const reviewRound = state.steps.e2?.reviewRound || 1;
+  return {
+    ...state,
+    steps: {
+      ...state.steps,
+      e2: {
+        ...state.steps.e2,
+        status: 'approved',
+        reviewRound,
+        artifactPaths: [...artifactPaths],
+        approvedBy,
+        approvedAt: now,
+        updatedAt: now,
+      },
+    },
+    nextStep: 'e3-ontology',
+    updatedAt: now,
+  };
+}
+
+export function markNs4ModuleE2Approved(
+  artifact: Ns4ModuleArtifact,
+  approvedBy: Ns4ApprovedBy,
+  now = new Date().toISOString(),
+): Ns4ModuleArtifact {
+  const completedSteps = artifact.specStatus.completedSteps.filter(step => step.stepId !== 'e2-journeys');
+  completedSteps.push({ stepId: 'e2-journeys', status: 'approved', approvedBy, approvedAt: now });
+  return {
+    ...artifact,
+    specStatus: {
+      ...artifact.specStatus,
+      completedSteps,
+      nextStep: 'e3-ontology',
+      updatedAt: now,
+    },
+  };
+}
+
 export function resolveNs4ExistingAction(
   moduleExists: boolean,
   pipeline: unknown,
@@ -238,4 +345,16 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function normalizeNs4LanguageTag(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const raw = value.trim().replace(/_/g, '-');
+  if (!/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(raw)) return '';
+  return raw.split('-').map((part, index) => {
+    if (index === 0) return part.toLowerCase();
+    if (/^[A-Za-z]{2}$/.test(part)) return part.toUpperCase();
+    if (/^[A-Za-z]{4}$/.test(part)) return `${part.slice(0, 1).toUpperCase()}${part.slice(1).toLowerCase()}`;
+    return part;
+  }).join('-');
 }

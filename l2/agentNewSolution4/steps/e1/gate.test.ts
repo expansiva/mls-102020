@@ -6,6 +6,7 @@ import {
   createNs4ClarificationSubmitGuard,
   createNs4Pipeline,
   markNs4E1Approved,
+  normalizeNs4Languages,
   normalizeNs4ModuleName,
   parseNs4Invocation,
   resolveNs4ExistingAction,
@@ -19,6 +20,7 @@ const clarification = {
   legends: [],
   questions: {
     moduleName: { type: 'open', question: 'Nome?', answer: 'petShop' },
+    productLanguages: { type: 'open', question: 'Idiomas?', answer: 'pt-br, en, es' },
     mainActors: { type: 'open', question: 'Atores?', answer: 'Clientes e atendentes' },
     mainGoal: { type: 'open', question: 'Objetivo?', answer: 'Gerenciar reservas e vendas do pet shop.' },
     boundaries: { type: 'open', question: 'Limites?', answer: 'Sem prontuário veterinário.' },
@@ -29,9 +31,15 @@ test('E1 builds a valid partial permanent module contract', () => {
   const artifact = buildNs4ModuleArtifact('petShop', clarification, 'human', '2026-08-04T10:00:00.000Z');
   assert.equal(validateNs4E1Module(artifact).ok, true);
   assert.equal(artifact.module.moduleName, 'petShop');
+  assert.deepEqual(artifact.module.languages, ['pt-BR', 'en', 'es']);
   assert.equal(artifact.specStatus.completedSteps[0].status, 'approved');
   assert.equal(artifact.specStatus.nextStep, 'e2-journeys');
   assert.equal(artifact.specStatus.artifactCompleteness, 'partial');
+});
+
+test('product languages are normalized, ordered and deduplicated independently of widget language', () => {
+  assert.deepEqual(normalizeNs4Languages('pt-br, EN; es, pt-BR'), ['pt-BR', 'en', 'es']);
+  assert.deepEqual(normalizeNs4Languages('', 'pt-br'), ['pt-BR']);
 });
 
 test('/fast is a standalone flag and is removed from the business prompt', () => {

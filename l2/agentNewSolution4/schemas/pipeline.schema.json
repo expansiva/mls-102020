@@ -27,10 +27,24 @@
             "approvedAt": { "type": "string" },
             "updatedAt": { "type": "string", "minLength": 10 }
           }
+        },
+        "e2": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reviewRound", "updatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["running", "waitingHuman", "approved", "failed"] },
+            "reviewRound": { "type": "integer", "minimum": 1 },
+            "draftPath": { "type": "string" },
+            "artifactPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "approvedBy": { "type": "string", "enum": ["human", "auto"] },
+            "approvedAt": { "type": "string" },
+            "updatedAt": { "type": "string", "minLength": 10 }
+          }
         }
       }
     },
-    "nextStep": { "type": "string", "const": "e2-journeys" },
+    "nextStep": { "type": "string", "enum": ["e2-journeys", "e3-ontology"] },
     "createdAt": { "type": "string", "minLength": 10 },
     "updatedAt": { "type": "string", "minLength": 10 }
   }

@@ -3,6 +3,8 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   isNs4ModuleToken,
+  markNs4E2Running,
+  Ns4PipelineState,
   parseNs4Invocation,
   resolveNs4ExistingAction,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
@@ -11,6 +13,7 @@ import {
   ns4FileExists,
   ns4ModuleFile,
   readNs4Pipeline,
+  writeNs4Pipeline,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
 import {
   afterNs4E1PromptStep,
@@ -18,6 +21,12 @@ import {
   loadNs4E1SystemPrompt,
   loadNs4StatusPrompt,
 } from '/_102020_/l2/agentNewSolution4/steps/e1/agentNs4E1.js';
+import {
+  afterNs4E2PromptStep,
+  beforeNs4E2ClarificationStep,
+  beforeNs4E2PromptStep,
+  createNs4E2Step,
+} from '/_102020_/l2/agentNewSolution4/steps/e2/agentNs4E2.js';
 
 
 // === Agent Definition ===
@@ -26,15 +35,16 @@ export function createAgent(): IAgentAsync {
     agentName: 'agentNewSolution4',
     agentProject: 102020,
     agentFolder: 'agentNewSolution4',
-    agentDescription: 'L4 v4 product compiler — E1 initial module contract',
+    agentDescription: 'L4 v4 product compiler — module contract and permanent business journeys',
     visibility: 'public',
     beforePromptImplicit,
-    afterPromptStep: afterNs4E1PromptStep,
-    beforeClarificationStep: beforeNs4E1ClarificationStep,
+    beforePromptStep,
+    afterPromptStep,
+    beforeClarificationStep,
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-1 (2026-08-04) E1 clarification + partial module.defs + resume';
+export const NS4_AGENT_BUILD = 'build-2 (2026-08-04) E2 permanent journeys + human adjustment loop';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -63,10 +73,13 @@ async function beforePromptImplicit(
       )];
     }
     if (action === 'resume-next') {
+      if (pipeline?.steps.e2?.status !== 'approved') {
+        return startE2Task(agent, context, pipeline!, invocation.fast);
+      }
       return [await statusTask(
         agent,
         context,
-        `Módulo "${invocation.prompt}": E1 já está aprovado. O próximo passo é e2-journeys, ainda não implementado nesta entrega.`,
+        `Módulo "${invocation.prompt}": E1 e E2 já estão aprovados. O próximo passo é e3-ontology, ainda não implementado nesta entrega.`,
         `plan ${invocation.prompt}`,
       )];
     }
@@ -97,6 +110,110 @@ async function beforePromptImplicit(
       },
     },
   } as mls.msg.AgentIntentAddMessageAI];
+}
+
+async function startE2Task(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  pipeline: Ns4PipelineState,
+  fast: boolean,
+): Promise<mls.msg.AgentIntent[]> {
+  const reviewRound = Math.max(1, pipeline.steps.e2?.reviewRound || 1);
+  await writeNs4Pipeline(markNs4E2Running(pipeline, reviewRound));
+  const root: mls.msg.AgentIntentAddMessageAI = {
+    type: 'add-message-ai',
+    skipRootLLM: true,
+    request: {
+      action: 'addMessageAI',
+      agentName: agent.agentName,
+      inputAI: [
+        { type: 'system', content: 'agentNewSolution4 deterministic E2 resume bootstrap; root LLM skipped.' },
+        { type: 'human', content: `Resume E2 for ${pipeline.moduleName}.` },
+      ],
+      taskTitle: `plan ${pipeline.moduleName}`,
+      threadId: context.message.threadId,
+      userMessage: context.message.content,
+      longTermMemory: {
+        taskName: 'newSolution4', flowName: 'agentNewSolution4', rootMode: 'e2',
+        sourcePrompt: pipeline.sourcePrompt, resumeModule: pipeline.moduleName,
+        ...(fast ? { fastMode: 'true' } : {}),
+      },
+    },
+  };
+  const child: mls.msg.AgentIntentAddStep = {
+    type: 'add-step', messageId: '', threadId: context.message.threadId, taskId: '', parentStepId: 1,
+    step: createNs4E2Step(pipeline.moduleName, reviewRound),
+  };
+  return [root, child];
+}
+
+async function beforePromptStep(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args?: string,
+): Promise<mls.msg.AgentIntent[]> {
+  return beforeNs4E2PromptStep(agent, context, parentStep, step, hookSequential, args);
+}
+
+async function afterPromptStep(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+): Promise<mls.msg.AgentIntent[]> {
+  const planId = step.planning?.planId || '';
+  if (planId.startsWith('e2-journeys-round-')) {
+    return afterNs4E2PromptStep(agent, context, parentStep, step, hookSequential);
+  }
+  if (context.task?.iaCompressed?.longMemory?.rootMode === 'e2') {
+    return [rootStatus(context, parentStep, step, hookSequential, 'completed', 'E2 bootstrap completed without an LLM call.')];
+  }
+  return afterNs4E1PromptStep(agent, context, parentStep, step, hookSequential);
+}
+
+async function beforeClarificationStep(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIClarificationStep,
+  hookSequential: number,
+  json: unknown,
+): Promise<HTMLElement> {
+  const parsed = parseHookJson(json);
+  if (parsed?.planId === 'e2-review') {
+    return beforeNs4E2ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);
+  }
+  return beforeNs4E1ClarificationStep(agent, context, parentStep, step, hookSequential, json);
+}
+
+function rootStatus(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIPayload,
+  step: mls.msg.AIPayload,
+  hookSequential: number,
+  status: mls.msg.AIStepStatus,
+  traceMsg: string,
+): mls.msg.AgentIntentUpdateStatus {
+  return {
+    type: 'update-status', hookSequential, messageId: context.message.orderAt,
+    threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parentStep.stepId,
+    stepId: step.stepId, status, traceMsg,
+  };
+}
+
+function parseHookJson(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
 }
 
 async function statusTask(
