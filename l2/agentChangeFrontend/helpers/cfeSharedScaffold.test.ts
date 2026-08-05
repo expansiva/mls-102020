@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateSharedScaffold, parseContractInterfaces } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
+import { generateSharedScaffold, parseContractInterfaces, parsePreviousI18n } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
 
 const CONTRACT = `
 // bffCall listThings (query) — Output kind=paginated
@@ -165,4 +165,60 @@ test('a single-locale module still emits exactly one catalog', () => {
   const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', definition(), CONTRACT).code!;
   assert.equal(code.match(/^const message_/gmu)?.length, 1);
   assert.match(code, /export const messages: \{ \[key: string\]: MessageType \} = \{ 'en': message_en \};/);
+});
+
+// A catalog written by an earlier generator uses double quotes and no indentation. Reading only the
+// renderer's own single-quoted form made those files look like they had no i18n block at all, which cost
+// every page its skeleton with a message that blamed a block that was present.
+const DOUBLE_QUOTED = [
+  '/// **collab_i18n_start**',
+  'const message_en = {',
+  '"intent.things.title": "All things",',
+  '"intent.things.empty": "Nothing here",',
+  '};',
+  'export type MessageType = typeof message_en;',
+  'const message_pt_br: MessageType = {',
+  '"intent.things.title": "Todas as coisas",',
+  '"intent.things.empty": "Nada aqui",',
+  '};',
+  '/// **collab_i18n_end**',
+].join('\n');
+
+test('parsePreviousI18n reads a catalog written with double quotes', () => {
+  const byLocale = parsePreviousI18n(DOUBLE_QUOTED);
+  assert.deepEqual([...byLocale.keys()], ['en', 'pt-br']);
+  assert.equal(byLocale.get('pt-br')!['intent.things.title'], 'Todas as coisas');
+  assert.equal(byLocale.get('en')!['intent.things.empty'], 'Nothing here');
+});
+
+test('parsePreviousI18n keeps a quote of the other style inside the text', () => {
+  const source = [
+    '/// **collab_i18n_start**',
+    'const message_en = {',
+    `  'intent.things.title': 'All "things"',`,
+    `  "intent.things.note": "It's fine",`,
+    `  'intent.things.esc': 'a \\'b\\' c',`,
+    '};',
+    '/// **collab_i18n_end**',
+  ].join('\n');
+  const entries = parsePreviousI18n(source).get('en')!;
+  assert.equal(entries['intent.things.title'], 'All "things"');
+  assert.equal(entries['intent.things.note'], "It's fine");
+  assert.equal(entries['intent.things.esc'], "a 'b' c");
+});
+
+test('a previous catalog in double quotes still carries its translations forward', () => {
+  const previous = [
+    '/// **collab_i18n_start**',
+    'const message_en = {',
+    `"intent.things.title": "All 'things'",`,
+    '};',
+    'export type MessageType = typeof message_en;',
+    'const message_pt_br: MessageType = {',
+    '"intent.things.title": "TRADUZIDO",',
+    '};',
+    '/// **collab_i18n_end**',
+  ].join('\n');
+  const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', multiLocaleDefinition(), CONTRACT, previous).code!;
+  assert.match(code, /const message_pt_br: MessageType = \{\n  'intent.things.title': 'TRADUZIDO',/);
 });

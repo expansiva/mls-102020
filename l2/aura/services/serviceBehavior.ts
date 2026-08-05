@@ -3,7 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
-import { AuraInitState, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
+import { AuraInitState, getAuraState, moduleScopeTitle } from '/_102020_/l2/aura/helpers/auraState.js';
 
 import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
 import '/_102020_/l2/aura/plugins/selectWorkflow.js';
@@ -54,7 +54,7 @@ export class ServiceBehavior102020 extends ServiceBase {
         tooltip: 'Behavior',
         visible: true,
         widget: '_102020_/l2/aura/services/serviceBehavior',
-        level: [6],
+        level: [4],
     };
 
     public onClickMain(_op: string): void {
@@ -71,8 +71,15 @@ export class ServiceBehavior102020 extends ServiceBase {
 
     onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
         this._workflowReloadToken += 1; // re-scan the workflow list on each service (re)open
+        this._updateMenuTitle();
         // @ts-ignore
         this.requestUpdate();
+    }
+
+    /** nav-3 menu title: project + module this service is acting on (module picked at l5). */
+    private _updateMenuTitle(): void {
+        this.menu.title = moduleScopeTitle();
+        this.menu.updateTitle?.();
     }
 
     //State
@@ -156,6 +163,7 @@ export class ServiceBehavior102020 extends ServiceBase {
         super.connectedCallback();
         AuraInitState();
         this._loadData();
+        this._updateMenuTitle();
     }
 
     //Render

@@ -3,11 +3,13 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
-import { AuraInitState, getAuraState, setAuraState, saveAuraProject, getActualLanguage, setActualLanguage } from '/_102020_/l2/aura/helpers/auraState.js';
+import { AuraInitState, getAuraState, setAuraState, saveAuraProject, getActualLanguage, setActualLanguage, projectScopeTitle } from '/_102020_/l2/aura/helpers/auraState.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { readModuleLanguages } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
+import { dsIndexNameMap } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 
 import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
+import '/_102020_/l2/aura/plugins/selectDesignSystem.js';
 import '/_102020_/l2/aura/plugins/selectModule.js';
 import '/_102020_/l2/aura/plugins/selectLanguage.js';
 import '/_102020_/l2/aura/plugins/selectDevice.js';
@@ -16,9 +18,13 @@ import '/_102020_/l2/aura/plugins/selectAssetsPlugins.js';
 import '/_102020_/l2/aura/plugins/selectAssetsMedia.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
+// Display-only: the "designSystem" knob reads UI (full name on the tooltip). Internally
+// everything is still designSystem (config keys, folders, args).
 /// **collab_i18n_start**
 const message_en = {
     svcTitle: 'Project',
+    designSystem: 'UI',
+    designSystemFull: 'User Interface (design system)',
     module: 'Module',
     language: 'Language',
     device: 'Device',
@@ -29,6 +35,8 @@ const messages: Record<string, MessageType> = {
     en: message_en,
     pt: {
         svcTitle: 'Projeto',
+        designSystem: 'UI',
+        designSystemFull: 'User Interface (design system)',
         module: 'Módulo',
         language: 'Idioma',
         device: 'Dispositivo',
@@ -36,6 +44,8 @@ const messages: Record<string, MessageType> = {
     },
     es: {
         svcTitle: 'Proyecto',
+        designSystem: 'UI',
+        designSystemFull: 'User Interface (design system)',
         module: 'Módulo',
         language: 'Idioma',
         device: 'Dispositivo',
@@ -102,7 +112,7 @@ export class ServiceProject102020 extends ServiceBase {
         tooltip: 'Project',
         visible: true,
         widget: '_102020_/l2/aura/services/serviceProject',
-        level: [6],
+        level: [5],
     };
 
     public onClickMain(op: string): void {
@@ -119,6 +129,14 @@ export class ServiceProject102020 extends ServiceBase {
 
     onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
         this._moduleReloadToken += 1; // re-check the module variations on each service (re)open
+        this._initDsConfig();          // a DS may have been created/renamed elsewhere
+        this._updateMenuTitle();
+    }
+
+    /** nav-3 menu title: the project this service is acting on. */
+    private _updateMenuTitle(): void {
+        this.menu.title = projectScopeTitle();
+        this.menu.updateTitle?.();
     }
 
     // ─── State ────────────────────────────────────────────────────────
@@ -129,6 +147,7 @@ export class ServiceProject102020 extends ServiceBase {
     @state() private _moduleConfig: IKnobConfig = DISABLED_CONFIG('module');
     @state() private _moduleReloadToken: number = 0;
 
+    @state() private _dsValue: number | null = null;
     @state() private _moduleValue: number | null = null;
     @state() private _langValue: number | null = null;
     @state() private _deviceValue: number | null = 1;
@@ -136,6 +155,7 @@ export class ServiceProject102020 extends ServiceBase {
 
     @state() private _selectedKnob: string = 'module';
 
+    @state() private _dsConfig: IKnobConfig = DISABLED_CONFIG('designSystem');
     @state() private _langConfig: IKnobConfig = DISABLED_CONFIG('language');
     @state() private _deviceConfig: IKnobConfig = { ...DEVICE_CONFIG };
     @state() private _assetsConfig: IKnobConfig = { ...ASSETS_CONFIG };
@@ -177,6 +197,56 @@ export class ServiceProject102020 extends ServiceBase {
         modules.forEach((m, i) => { labels[i + 1] = m.name; });
         labels[modules.length + 1] = 'Custom';
         return { key: 'module', min: 0, max: modules.length + 1, labels };
+    }
+
+    // ─── Design System (project scope) ────────────────────────────────
+
+    /** DS knob from designSystem.ts (dsIndex → themeName): 0=All, dsIndex…=edit, last '+'=Add.
+     *  Always the ACTIVE project — the DS is a property of the project one is working on. */
+    private async _initDsConfig(): Promise<void> {
+        const project = getAuraState().actualProject;
+        if (!project) {
+            this._dsConfig = DISABLED_CONFIG('designSystem');
+            this.requestUpdate();
+            return;
+        }
+        try {
+            const dsMap = await dsIndexNameMap(project);
+            const keys = Object.keys(dsMap).map(Number).sort((a, b) => a - b);
+            const labels: Record<number, string> = { 0: 'All' };
+            keys.forEach(k => { labels[k] = dsMap[String(k)]; });
+            const customKey = keys.length ? keys[keys.length - 1] + 1 : 1;
+            labels[customKey] = '+';
+            this._onDsConfig(new CustomEvent('ds-config', {
+                detail: { min: 0, max: customKey, labels },
+            }));
+        } catch { /* ignore */ }
+    }
+
+    private _onDsConfig(e: CustomEvent) {
+        this._dsConfig = { key: 'designSystem', min: e.detail.min, max: e.detail.max, labels: e.detail.labels };
+        const actualDs = getAuraState().actualDesignSystem;
+        if (actualDs !== null && actualDs > 0 && actualDs < e.detail.max) {
+            this._dsValue = actualDs;
+        } else if (this._dsValue === null) {
+            this._dsValue = 0;
+        }
+        this.requestUpdate();
+    }
+
+    private async _onDsCreated(value: number) {
+        // A new design system was persisted. Rebuild the knob (new entry + fresh "+" slot),
+        // then select it.
+        await this._initDsConfig();
+        this._setKnobValue('designSystem', value);
+    }
+
+    /** Tell the runtime shell (mls.sites) which content variation is active — layout 2 + ds 1 →
+     *  setPage(21). The DS knob lives only here, so this is the one place that keeps the shell
+     *  from drifting on a DS change. No-op until the base registers its handlers. */
+    private _notifySitesPage(ds: number): void {
+        const layout = getAuraState().actualLayout ?? 1;
+        try { mls.sites.setPage(Number(`${layout}${ds}`)); } catch { /* base not registered */ }
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────
@@ -240,6 +310,7 @@ export class ServiceProject102020 extends ServiceBase {
 
     private get _knobValues(): Record<string, number | null> {
         return {
+            designSystem: this._dsValue,
             module: this._moduleValue,
             language: this._langValue,
             device: this._deviceValue,
@@ -249,6 +320,8 @@ export class ServiceProject102020 extends ServiceBase {
 
     private _getKnobConfig(key: string): IKnobConfig {
         switch (key) {
+            // Project scope — unlike the others, NOT gated on a selected module.
+            case 'designSystem': return this._dsConfig;
             case 'module': return this._moduleConfig;
             case 'language':
                 return this._moduleSelected ? this._langConfig : DISABLED_CONFIG('language');
@@ -262,6 +335,17 @@ export class ServiceProject102020 extends ServiceBase {
 
     private _setKnobValue(key: string, value: number | null) {
         switch (key) {
+            case 'designSystem':
+                this._dsValue = value;
+                // The "+" slot (new DS) must not be persisted; every real DS up to and
+                // including max is a valid selection.
+                if (value !== null && value > 0 && value <= this._dsConfig.max
+                    && this._dsConfig.labels[value] !== '+') {
+                    setAuraState('actualDesignSystem', value);
+                    saveAuraProject();
+                    this._notifySitesPage(value);
+                }
+                break;
             case 'module': {
                 this._moduleValue = value;
                 this._langValue = null;
@@ -310,6 +394,8 @@ export class ServiceProject102020 extends ServiceBase {
         super.connectedCallback();
         AuraInitState();
         this._loadModules();
+        this._initDsConfig();
+        this._updateMenuTitle();
     }
 
     // ─── Render ───────────────────────────────────────────────────────
@@ -338,6 +424,7 @@ export class ServiceProject102020 extends ServiceBase {
                 border-b border-gray-200 dark:border-gray-800
                 gap-0
             " style="--knob-scale: 0.5">
+                ${this._renderKnobItem('designSystem')}
                 ${this._renderKnobItem('module')}
                 ${this._renderKnobItem('language')}
                 ${this._renderKnobItem('device')}
@@ -401,6 +488,9 @@ export class ServiceProject102020 extends ServiceBase {
                     @select-assets=${(e: CustomEvent) => this._setKnobValue('assets', e.detail.value)}
                     @lang-config=${(e: CustomEvent) => this._onLangConfig(e)}
                     @select-language=${(e: CustomEvent) => this._setKnobValue('language', e.detail.value)}
+                    @ds-config=${(e: CustomEvent) => this._onDsConfig(e)}
+                    @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
+                    @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}
                 >
                     ${this._renderContextStatusArea()}
                 </div>
@@ -410,6 +500,15 @@ export class ServiceProject102020 extends ServiceBase {
 
     private _renderContextStatusArea() {
         switch (this._selectedKnob) {
+            case 'designSystem':
+                // DS = styling. The editor reads/writes the entries of the project's
+                // designSystem.ts. Knob: 0=All, 1..N=edit, last=Add.
+                return html`
+                    <aura--plugins--select-design-system-102020
+                        .projectId=${getAuraState().actualProject}
+                        .value=${this._dsValue}
+                    ></aura--plugins--select-design-system-102020>
+                `;
             case 'module':
                 return html`
                     <aura--plugins--select-module-102020

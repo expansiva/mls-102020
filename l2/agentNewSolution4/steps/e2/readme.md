@@ -1,0 +1,52 @@
+# E2 — permanent business journeys
+
+E2 turns the approved E1 module contract into permanent, human-approved business journeys.
+
+Before approval it writes only `l4/{module}/pipeline/e2-journeys.draft.json`. The checkpoint displays
+the proposed journeys and accepts either approval or a free-text change request. A change request
+starts another generation round using the previous draft as context and returns to the checkpoint.
+
+Approval writes:
+
+- `l4/{module}/journeys/{journeyId}.defs.ts` for each journey;
+- `l4/{module}/journeys/index.defs.ts` for discovery and feature mapping;
+- E2 approval state in `module.defs.ts` and `pipeline/pipeline.json`.
+
+Every journey freezes its `business` block with a stable SHA-256 hash. `resolution` and `realization`
+start pending so later steps can add ontology and implementation bindings without rewriting the
+human-approved business intent.
+
+The gate treats business context as a first-class contract. A command journey must carry, locate or
+receive a named record such as `selectedProject`; it must never make a future page ask for a raw id.
+Cross-journey handoffs are also checked: a prerequisite may only provide a context actually exported
+by the referenced journey, using the same stable `contextId`. Every `contextOrLookup` journey must
+materialize its direct-entry fallback through a `locate` step.
+
+The first deterministic gate failure does not immediately terminate the task. E2 stores the rejected
+draft and creates one bounded repair step carrying the exact gate diagnostics. The repair step is
+added before the current step is completed so parent auto-completion cannot close the task. A second
+gate failure is terminal and remains persisted in both the task trace and pipeline.
+
+Local smoke testing can validate and materialize an approved E1 folder without the Studio runtime:
+
+```text
+tsx --import test/register-hooks.mjs --import test/setup-l2.ts \
+  mls-102020/l2/agentNewSolution4/steps/e2/nodejsSmoke.ts \
+  <absolute-l4-module-dir> <absolute-e2-review.json> [--write|--verify]
+```
+
+The command defaults to dry-run. `--write` refuses to overwrite an already approved E2; `--verify`
+recomputes every business hash and compares the written permanent business blocks with the review.
+
+Live testing can call the same `collab-llm` alias declared in `prompt.md`, run the real gate and reuse
+the smoke writer:
+
+```text
+tsx --import test/register-hooks.mjs --import test/setup-l2.ts \
+  mls-102020/l2/agentNewSolution4/steps/e2/nodejsLiveE2.ts \
+  <project> <module> [--write] [--approve]
+```
+
+Without flags it calls the LLM and validates without writing. `--write` saves
+`pipeline/e2-live-review.json` and `pipeline/e2-live-llm-response.json` but does not change the pipeline.
+`--approve` additionally invokes the guarded smoke writer and therefore refuses an already approved E2.

@@ -508,6 +508,83 @@ export function attachOperationDeterministic(
 // invariants
 // ---------------------------------------------------------------------------
 
+export interface NsE5LinkReconciliation {
+  /** operation.workflowId named a real workflow that does not list it — membership dropped (standalone). */
+  narrowed: Array<{ operationId: string; workflowId: string }>;
+  /** operation.workflowId named no declared workflow, but exactly one declared workflow lists it. */
+  adopted: Array<{ operationId: string; from: string; to: string }>;
+  /** operation.workflowId named no declared workflow and nobody lists it — membership dropped. */
+  dropped: Array<{ operationId: string; workflowId: string }>;
+}
+
+/** Workflow membership is stored TWICE — `operation.workflowId` and `workflow.operationIds` — and the
+ *  prompt defines the two sides with DIFFERENT tests: operationIds is "every operation that causes one
+ *  of its transitions", workflowId is "when the operation belongs to a workflow". The second set
+ *  contains the first, so a model that reads carefully writes them unequal and the gate rejects it:
+ *  run09 declared 6 workflows with only their transition-causers in operationIds while 17 operations
+ *  claimed membership (17 `workflow.unlisted`), then on the retry moved them onto workflowIds it never
+ *  declared (`workflow.unknown`) and the run died. Run08 hit the same gate with 14.
+ *
+ *  Membership therefore requires BOTH declarations to agree; disagreement means standalone. Narrowing
+ *  (never widening operationIds) is the direction that matches the rest of the step: the workflow
+ *  fan-out must write a transition for what it lists, and over-listing is what pressures it into the
+ *  forbidden self-transitions (the 102048 finding); computeE5WorkflowDemotions would demote those ops
+ *  back at finalize anyway. Narrowing reaches that same end state before the fan-out pays for it, and
+ *  a standalone read/edit operation is exactly what rule 2 of the prompt asks for.
+ *
+ *  Runs BEFORE validateE5Classification; the reconciled artifact is what gets written and what the
+ *  workflow fan-out reads (its `workflow.operations.mismatch` compares against this set). */
+export function reconcileE5ClassificationLinks(
+  artifact: NsE5ClassificationArtifact,
+): { artifact: NsE5ClassificationArtifact; reconciliation: NsE5LinkReconciliation } {
+  const reconciliation: NsE5LinkReconciliation = { narrowed: [], adopted: [], dropped: [] };
+  const declared = new Map(artifact.workflows.map(workflow => [workflow.workflowId, workflow]));
+  const listedBy = new Map<string, string[]>();
+  for (const workflow of artifact.workflows) {
+    for (const operationId of workflow.operationIds) {
+      listedBy.set(operationId, [...(listedBy.get(operationId) || []), workflow.workflowId]);
+    }
+  }
+
+  for (const operation of artifact.operations) {
+    if (!operation.workflowId) continue;                    // standalone is legal — the gate ignores it
+    const owner = declared.get(operation.workflowId);
+    if (owner) {
+      if (owner.operationIds.includes(operation.operationId)) continue;   // both sides agree
+      reconciliation.narrowed.push({ operationId: operation.operationId, workflowId: owner.workflowId });
+      delete operation.workflowId;
+      continue;
+    }
+    // The named workflow does not exist. The listing side is the only other declaration of membership:
+    // trust it when it is unambiguous, otherwise the operation simply has no workflow (schema-optional).
+    // Ambiguous (2+ listers) falls through to standalone and may leave a stale id in some
+    // operationIds — harmless: no invariant forbids it and computeE5WorkflowDemotions drops it.
+    const owners = (listedBy.get(operation.operationId) || []).filter(id => declared.has(id));
+    if (owners.length === 1) {
+      reconciliation.adopted.push({ operationId: operation.operationId, from: operation.workflowId, to: owners[0] });
+      operation.workflowId = owners[0];
+      continue;
+    }
+    reconciliation.dropped.push({ operationId: operation.operationId, workflowId: operation.workflowId });
+    delete operation.workflowId;
+  }
+  return { artifact, reconciliation };
+}
+
+export function describeNsE5LinkReconciliation(reconciliation: NsE5LinkReconciliation): string {
+  const parts: string[] = [];
+  if (reconciliation.narrowed.length > 0) {
+    parts.push(`${reconciliation.narrowed.length} operation(s) claimed a workflow that does not list them and are now standalone: ${reconciliation.narrowed.map(item => `${item.operationId} (${item.workflowId})`).join(', ')}`);
+  }
+  if (reconciliation.adopted.length > 0) {
+    parts.push(`re-owned ${reconciliation.adopted.length} operation(s) from an undeclared workflow: ${reconciliation.adopted.map(item => `${item.operationId} ${item.from}→${item.to}`).join(', ')}`);
+  }
+  if (reconciliation.dropped.length > 0) {
+    parts.push(`dropped ${reconciliation.dropped.length} membership(s) in an undeclared workflow (now standalone): ${reconciliation.dropped.map(item => `${item.operationId} (${item.workflowId})`).join(', ')}`);
+  }
+  return parts.join(' | ');
+}
+
 export function validateE5Classification(
   artifact: NsE5ClassificationArtifact,
   context: E5ClassificationGateContext,

@@ -4,13 +4,11 @@ import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { checkIfHasLocalProject, getLocalProjectName } from '/_102027_/l2/libCommom.js';
-import { AuraInitState, getAuraState, setAuraState, saveAuraProject } from '/_102020_/l2/aura/helpers/auraState.js';
-import { dsIndexNameMap } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
+import { AuraInitState, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 
 import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
 import '/_102020_/l2/aura/plugins/selectOrganization.js';
 import '/_102020_/l2/aura/plugins/selectProject.js';
-import '/_102020_/l2/aura/plugins/selectDesignSystem.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -18,8 +16,6 @@ const message_en = {
     svcTitle: 'Explore Projects',
     organization: 'Organization',
     project: 'Project',
-    designSystem: 'UI',
-    designSystemFull: 'User Interface (design system)',
     orgScenarioTitle: 'Select Organization',
     orgScenarioDesc: 'An organization groups multiple projects under the same umbrella. Select one to browse the projects available to your team.',
     orgAllTitle: 'All Organizations',
@@ -33,8 +29,6 @@ const message_en = {
     projectCustomTitle: 'New Project',
     projectCustomDesc: 'Create a new project within this organization.',
     projectNeedsOrg: 'Select an organization first to see the available projects.',
-    dsScenarioTitle: 'Select Design System',
-    dsNeedsProject: 'Select a project first to see the available design systems.',
     projects: 'projects',
     noOrgs: 'No organizations found.',
 };
@@ -45,8 +39,6 @@ const messages: Record<string, MessageType> = {
         svcTitle: 'Explorar Projetos',
         organization: 'Organização',
         project: 'Projeto',
-        designSystem: 'UI',
-        designSystemFull: 'User Interface (design system)',
         orgScenarioTitle: 'Selecionar Organização',
         orgScenarioDesc: 'Uma organização agrupa vários projetos sob o mesmo guarda-chuva. Selecione uma para navegar pelos projetos disponíveis para o seu time.',
         orgAllTitle: 'Todas as Organizações',
@@ -60,8 +52,6 @@ const messages: Record<string, MessageType> = {
         projectCustomTitle: 'Novo Projeto',
         projectCustomDesc: 'Crie um novo projeto dentro desta organização.',
         projectNeedsOrg: 'Selecione uma organização primeiro para ver os projetos disponíveis.',
-        dsScenarioTitle: 'Selecionar Design System',
-        dsNeedsProject: 'Selecione um projeto primeiro para ver os design systems disponíveis.',
         projects: 'projetos',
         noOrgs: 'Nenhuma organização encontrada.',
     },
@@ -69,8 +59,6 @@ const messages: Record<string, MessageType> = {
         svcTitle: 'Explorar Proyectos',
         organization: 'Organización',
         project: 'Proyecto',
-        designSystem: 'UI',
-        designSystemFull: 'User Interface (design system)',
         orgScenarioTitle: 'Seleccionar Organización',
         orgScenarioDesc: 'Una organización agrupa múltiples proyectos bajo el mismo paraguas. Seleccione una para explorar los proyectos disponibles para su equipo.',
         orgAllTitle: 'Todas las Organizaciones',
@@ -84,8 +72,6 @@ const messages: Record<string, MessageType> = {
         projectCustomTitle: 'Nuevo Proyecto',
         projectCustomDesc: 'Cree un nuevo proyecto dentro de esta organización.',
         projectNeedsOrg: 'Seleccione una organización primero para ver los proyectos disponibles.',
-        dsScenarioTitle: 'Seleccionar Design System',
-        dsNeedsProject: 'Seleccione un proyecto primero para ver los sistemas de diseño disponibles.',
         projects: 'proyectos',
         noOrgs: 'No se encontraron organizaciones.',
     },
@@ -168,12 +154,10 @@ export class ServiceExploreProjects102020 extends ServiceBase {
 
     @state() private _orgValue: number | null = null;
     @state() private _projectValue: number | null = null;
-    @state() private _dsValue: number | null = null;
 
     @state() private _selectedKnob: string = 'organization';
 
     @state() private _projectConfig: IKnobConfig = DISABLED_CONFIG('project');
-    @state() private _dsConfig: IKnobConfig = DISABLED_CONFIG('designSystem');
 
     // ─── Org Loading ──────────────────────────────────────────────────
 
@@ -197,10 +181,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                 ? org.projects.findIndex(p => p.project === actualProjectId)
                 : -1;
             this._setKnobValue('project', matchedProjectPos >= 0 ? matchedProjectPos + 1 : 0);
-            if (matchedProjectPos >= 0 && actualProjectId) {
-                this._selectedKnob = 'project';
-                this._initDsConfig(actualProjectId);
-            }
+            if (matchedProjectPos >= 0 && actualProjectId) this._selectedKnob = 'project';
         }
     }
 
@@ -270,17 +251,10 @@ export class ServiceExploreProjects102020 extends ServiceBase {
         return this._orgs[this._orgValue - 1];
     }
 
-    private get _selectedProject(): IProject | null {
-        const org = this._selectedOrg;
-        if (!org || this._projectValue === null || this._projectValue <= 0 || this._projectValue > org.projects.length) return null;
-        return org.projects[this._projectValue - 1];
-    }
-
     private get _knobValues(): Record<string, number | null> {
         return {
             organization: this._orgValue,
             project: this._projectValue,
-            designSystem: this._dsValue,
         };
     }
 
@@ -288,16 +262,14 @@ export class ServiceExploreProjects102020 extends ServiceBase {
         switch (key) {
             case 'organization': return this._orgConfig;
             case 'project': return this._projectConfig;
-            case 'designSystem': return this._dsConfig;
             default: return DISABLED_CONFIG(key);
         }
     }
 
     private _setKnobValue(key: string, value: number | null) {
         switch (key) {
-            case 'organization':
+            case 'organization': {
                 this._orgValue = value;
-                this._dsValue = null;
                 const org = this._orgs[value !== null ? value - 1 : -1];
                 if (org) {
                     this._projectConfig = this._buildProjectConfigFromOrg(org);
@@ -306,27 +278,10 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                     this._projectConfig = DISABLED_CONFIG('project');
                     this._projectValue = null;
                 }
-                this._dsConfig = DISABLED_CONFIG('designSystem');
                 break;
+            }
             case 'project':
                 this._projectValue = value;
-                this._dsValue = null;
-                const orgLen = this._selectedOrg?.projects.length ?? 0;
-                const isRealProject = value !== null && value > 0 && value <= orgLen;
-                const candidateProject = isRealProject ? (this._selectedOrg?.projects[(value as number) - 1] ?? null) : null;
-                if (candidateProject) {
-                    this._initDsConfig(candidateProject.project);
-                } else {
-                    this._dsConfig = DISABLED_CONFIG('designSystem');
-                }
-                break;
-            case 'designSystem':
-                this._dsValue = value;
-                if (value !== null && value > 0 && value <= this._dsConfig.max
-                    && this._dsConfig.labels[value] !== '+') {
-                    setAuraState('actualDesignSystem', value);
-                    saveAuraProject();
-                }
                 break;
         }
         this.requestUpdate();
@@ -342,38 +297,6 @@ export class ServiceExploreProjects102020 extends ServiceBase {
     private _onKnobClick(key: string) {
         this._selectedKnob = key;
         this.requestUpdate();
-    }
-
-    private async _onDsCreated(value: number) {
-        // New DS persisted: rebuild the knob (new entry + fresh "+" slot), then select it.
-        const project = this._selectedProject?.project;
-        if (project != null) await this._initDsConfig(project);
-        this._setKnobValue('designSystem', value);
-    }
-
-    private _onDsConfig(e: CustomEvent) {
-        this._dsConfig = { key: 'designSystem', min: e.detail.min, max: e.detail.max, labels: e.detail.labels };
-        const actualDs = getAuraState().actualDesignSystem;
-        if (actualDs !== null && actualDs > 0 && actualDs < e.detail.max) {
-            this._dsValue = actualDs;
-        } else {
-            if (this._dsValue === null) this._dsValue = 0;
-        }
-        this.requestUpdate();
-    }
-
-    private async _initDsConfig(projectId: number): Promise<void> {
-        try {
-            const dsMap = await dsIndexNameMap(projectId);
-            const keys = Object.keys(dsMap).map(Number).sort((a, b) => a - b);
-            const labels: Record<number, string> = { 0: 'All' };
-            keys.forEach(k => { labels[k] = dsMap[String(k)]; });
-            const customKey = keys.length ? keys[keys.length - 1] + 1 : 1;
-            labels[customKey] = '+';
-            this._onDsConfig(new CustomEvent('ds-config', {
-                detail: { min: 0, max: customKey, labels },
-            }));
-        } catch { /* ignore */ }
     }
 
     // ─── Lifecycle ────────────────────────────────────────────────────
@@ -413,7 +336,6 @@ export class ServiceExploreProjects102020 extends ServiceBase {
             " style="--knob-scale: 0.5">
                 ${this._renderKnobItem('organization')}
                 ${this._renderKnobItem('project')}
-                ${this._renderKnobItem('designSystem')}
             </div>
         `;
     }
@@ -469,11 +391,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
     private _renderDetailsRow() {
         return html`
             <div class="flex flex-col flex-1">
-                <div class="flex flex-col gap-3 px-4 py-4 flex-1"
-                    @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
-                    @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}
-                    @ds-config=${(e: CustomEvent) => this._onDsConfig(e)}
-                >
+                <div class="flex flex-col gap-3 px-4 py-4 flex-1">
                     ${this._renderContextStatusArea()}
                 </div>
             </div>
@@ -497,14 +415,6 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                         .value=${this._projectValue}
                         @select-project=${(e: CustomEvent) => this._setKnobValue('project', e.detail.value)}
                     ></aura--plugins--select-project-102020>
-                `;
-            case 'designSystem':
-                // Phase B — DS = styling. Same tokens editor as the genome (project-wide tokens).
-                return html`
-                    <aura--plugins--select-design-system-102020
-                        .projectId=${this._selectedProject?.project ?? null}
-                        .value=${this._dsValue}
-                    ></aura--plugins--select-design-system-102020>
                 `;
             default:
                 return nothing;
