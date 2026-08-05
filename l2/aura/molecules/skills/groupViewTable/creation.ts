@@ -184,8 +184,48 @@ When \`isEditing\` changes, the table must propagate the \`is-editing\` attribut
 
 - The component handles sorting internally by reordering \`<TableRow>\` elements inside \`<TableBody>\`
 - Clicking a sortable \`<TableHead>\` toggles between ascending and descending order
-- Sort is based on the text content of the cell at the matching column index
+- **Use the shared helper — do not write the comparison again** (see below)
 - After sorting, emit \`sort\` event with \`{ key, direction }\`
+
+### 7.1 \`tableSort\` — the shared comparison
+
+\`\`\`typescript
+import { cellSortKey, compareSortKeys } from '/_102033_/l2/shared/molecules/tableSort.js';
+
+// key of the cell at the sorted column, then compare; direction is up to you
+const keyA = cellSortKey(a.cells[colIndex]);
+const keyB = cellSortKey(b.cells[colIndex]);
+return compareSortKeys(keyA, keyB) * (this.sortDirection === 'asc' ? 1 : -1);
+\`\`\`
+
+\`compareSortKeys\` is numeric when both keys are numbers and natural-collated text otherwise, and
+its number parser reads both \`1.234,50\` and \`1,234.50\` — when both separators are present the LAST
+one is the decimal.
+
+> ⚠️ **"Sort by the cell's text content" was the old rule of this contract and it is WRONG.** The
+> same comparison had been written three times in this group, and all three broke on \`R$ 1.234,50\`
+> — one read \`1.234\`, another \`1.2345\`, another \`1\`. That is why the helper exists. Text order is
+> also wrong for every column whose text does not sort like the data: \`dd/mm/yyyy\` dates, masked
+> currency, status labels.
+
+**In a molecule with LIVE slots, pass the projected text**: the source cell is empty once projected,
+so \`cell.textContent\` reads blank.
+
+\`\`\`typescript
+cellSortKey(cell, this.getLiveText(cell))
+\`\`\`
+
+### 7.2 \`sort-value\` — the consumer declares the real value
+
+A cell may declare what it should be sorted by, and \`cellSortKey\` prefers it over the text:
+
+\`\`\`html
+<TableCell sort-value="987">R$ 987,00</TableCell>
+<TableCell sort-value="2026-01-02">2 de janeiro</TableCell>
+\`\`\`
+
+Nothing to implement for this — reading it is what \`cellSortKey\` does. Just do not bypass the
+helper, or \`sort-value\` silently stops working.
 
 ---
 
@@ -221,6 +261,22 @@ same count). Then the molecule owns both operations:
 - emits \`sort\` and \`pageChange\` so the consumer can mirror the state — but does not depend on it
 
 Simplest mode for a consumer with data already in hand. Prefer it in demo and internal pages.
+
+> ⚠️ **The slice and the page count must read the SAME rule.** If \`render()\` slices by \`pageSize\`
+> while \`getTotalPages()\` derives the total from \`totalItems\` alone, INTERNAL mode silently HIDES
+> rows: the table shows the first page, "next" is born disabled because the count says 1, and the
+> rest of the set is reachable from nowhere. Measured on 2026-08-05 in
+> \`ml-lazy-record-detail-table\` — 8 rows, \`page-size="5"\`, 3 rows unreachable. In INTERNAL mode the
+> total is the ROW COUNT:
+>
+> \`\`\`typescript
+> const declared = Number(this.totalItems) || 0;
+> const total = declared > 0 ? declared : this.parseBodyRows().length;
+> \`\`\`
+>
+> A molecule that does NOT slice locally has not implemented INTERNAL mode at all — it is
+> EXTERNAL-only, and then a page count above 1 without \`total-items\` would be a control that
+> navigates nothing. Implement both halves or neither.
 
 ### 9.2 EXTERNAL mode — the consumer already sliced
 
