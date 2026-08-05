@@ -2,6 +2,11 @@
 
 E1 owns the first human clarification and writes the first permanent L4 artifact.
 
+The task root is only a deterministic bootstrap. It skips the root LLM call and schedules a dedicated
+`e1-clarification` child agent step, which owns both the LLM output and the widget lifecycle. This is
+required so completing the clarification closes the interactive screen instead of leaving a
+clarification payload attached to the completed task root.
+
 Inputs:
 
 - initial prompt;

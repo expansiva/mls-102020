@@ -56,9 +56,9 @@
       },
       "resume": "A running E1 pipeline may be safely rerun. An approved E1 with module.defs.ts advances to e2-journeys when that step exists.",
       "runtimeNotes": [
-        "The root agent emits the clarification in its interaction payload so the standard widget can render it.",
-        "In /fast, afterPromptStep persists the defaults directly and completes the root step.",
-        "In interactive mode, the clarification callback persists the artifacts and records a completed e1-result step."
+        "The root is a deterministic bootstrap and schedules a dedicated E1 clarification agent step; the root never owns a clarification payload.",
+        "In /fast, the E1 child afterPromptStep persists the defaults directly and completes without rendering the widget.",
+        "In interactive mode, the E1 child owns the standard clarification widget; its callback persists the artifacts and records a completed e1-result step."
       ]
     },
     {

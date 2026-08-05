@@ -13,6 +13,9 @@ E1 writes:
 - `l4/<module>/module.defs.ts` — partial permanent module contract;
 - `l4/<module>/pipeline/pipeline.json` — resumable build state.
 
+The task root is a deterministic bootstrap; a dedicated E1 child agent owns the clarification. This
+keeps the widget lifecycle isolated from the root and lets the screen close normally after submission.
+
 Run the same command after E1 approval to start E2. E2 first writes a review draft, then opens a
 journey widget where the user can approve or request changes. Approval writes:
 

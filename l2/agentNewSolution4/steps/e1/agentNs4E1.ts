@@ -2,6 +2,7 @@
 
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
+import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 
 import {
   buildNs4ModuleArtifact,
@@ -42,6 +43,32 @@ export async function loadNs4E1SystemPrompt(): Promise<string> {
 export async function loadNs4StatusPrompt(message: string): Promise<string> {
   const prompt = await readNs4AgentText('steps/e1', 'promptStatus');
   return prompt.replace('{{message}}', escapePromptMessage(message));
+}
+
+export async function beforeNs4E1PromptStep(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+): Promise<mls.msg.AgentIntent[]> {
+  if (!context.task) throw new Error('[agentNewSolution4:e1] task invalid');
+  const parsed = parseMaybeJson(step.prompt);
+  if (!isRecord(parsed) || parsed.planId !== 'e1-clarification') {
+    return [updateStatus(context, parentStep, step, hookSequential, 'failed', 'Invalid E1 clarification step arguments.')];
+  }
+  const sourcePrompt = memoryString(context, 'sourcePrompt') || 'new module';
+  return [{
+    type: 'prompt_ready',
+    args: step.prompt,
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task.PK,
+    hookSequential,
+    parentStepId: parentStep.stepId,
+    systemPrompt: await loadNs4E1SystemPrompt(),
+    humanPrompt: `## Initial request\n${sourcePrompt}`,
+  } as mls.msg.AgentIntentPromptReady];
 }
 
 export async function afterNs4E1PromptStep(

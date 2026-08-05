@@ -2,6 +2,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
+  createNs4E1Step,
   isNs4ModuleToken,
   markNs4E2Running,
   Ns4PipelineState,
@@ -18,7 +19,7 @@ import {
 import {
   afterNs4E1PromptStep,
   beforeNs4E1ClarificationStep,
-  loadNs4E1SystemPrompt,
+  beforeNs4E1PromptStep,
   loadNs4StatusPrompt,
 } from '/_102020_/l2/agentNewSolution4/steps/e1/agentNs4E1.js';
 import {
@@ -44,7 +45,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-2 (2026-08-04) E2 permanent journeys + human adjustment loop';
+export const NS4_AGENT_BUILD = 'build-3 (2026-08-04) child-owned E1 clarification lifecycle';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -88,15 +89,26 @@ async function beforePromptImplicit(
     taskTitle = `plan ${invocation.prompt}`;
   }
 
-  const systemPrompt = await loadNs4E1SystemPrompt();
-  return [{
+  return startE1Task(agent, context, sourcePrompt, invocation.fast, resumeModule, taskTitle);
+}
+
+function startE1Task(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  sourcePrompt: string,
+  fast: boolean,
+  resumeModule: string,
+  taskTitle: string,
+): mls.msg.AgentIntent[] {
+  const root: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
+    skipRootLLM: true,
     request: {
       action: 'addMessageAI',
       agentName: agent.agentName,
       inputAI: [
-        { type: 'system', content: systemPrompt },
-        { type: 'human', content: `## Initial request\n${sourcePrompt}` },
+        { type: 'system', content: 'agentNewSolution4 deterministic E1 bootstrap; root LLM skipped.' },
+        { type: 'human', content: `Start E1 clarification for ${resumeModule || sourcePrompt}.` },
       ],
       taskTitle,
       threadId: context.message.threadId,
@@ -104,12 +116,18 @@ async function beforePromptImplicit(
       longTermMemory: {
         taskName: 'newSolution4',
         flowName: 'agentNewSolution4',
+        rootMode: 'e1',
         sourcePrompt,
-        ...(invocation.fast ? { fastMode: 'true' } : {}),
+        ...(fast ? { fastMode: 'true' } : {}),
         ...(resumeModule ? { resumeModule } : {}),
       },
     },
-  } as mls.msg.AgentIntentAddMessageAI];
+  };
+  const child: mls.msg.AgentIntentAddStep = {
+    type: 'add-step', messageId: '', threadId: context.message.threadId, taskId: '', parentStepId: 1,
+    step: createNs4E1Step(),
+  };
+  return [root, child];
 }
 
 async function startE2Task(
@@ -155,6 +173,9 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  if (step.planning?.planId === 'e1-clarification') {
+    return beforeNs4E1PromptStep(agent, context, parentStep, step, hookSequential);
+  }
   return beforeNs4E2PromptStep(agent, context, parentStep, step, hookSequential, args);
 }
 
@@ -166,11 +187,15 @@ async function afterPromptStep(
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
   const planId = step.planning?.planId || '';
+  if (planId === 'e1-clarification') {
+    return afterNs4E1PromptStep(agent, context, parentStep, step, hookSequential);
+  }
   if (planId.startsWith('e2-journeys-round-')) {
     return afterNs4E2PromptStep(agent, context, parentStep, step, hookSequential);
   }
-  if (context.task?.iaCompressed?.longMemory?.rootMode === 'e2') {
-    return [rootStatus(context, parentStep, step, hookSequential, 'completed', 'E2 bootstrap completed without an LLM call.')];
+  const rootMode = context.task?.iaCompressed?.longMemory?.rootMode;
+  if (rootMode === 'e1' || rootMode === 'e2') {
+    return [rootStatus(context, parentStep, step, hookSequential, 'completed', `${rootMode.toUpperCase()} bootstrap completed without an LLM call.`)];
   }
   return afterNs4E1PromptStep(agent, context, parentStep, step, hookSequential);
 }

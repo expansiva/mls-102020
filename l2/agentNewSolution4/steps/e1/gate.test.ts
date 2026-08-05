@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildNs4ModuleArtifact,
+  createNs4E1Step,
   createNs4ClarificationSubmitGuard,
   createNs4Pipeline,
   markNs4E1Approved,
@@ -52,6 +53,14 @@ test('interactive clarification accepts only its first submit', () => {
   assert.equal(acceptSubmit(), true);
   assert.equal(acceptSubmit(), false);
   assert.equal(acceptSubmit(), false);
+});
+
+test('E1 clarification runs in a dedicated child agent step', () => {
+  const step = createNs4E1Step();
+  assert.equal(step.type, 'agent');
+  assert.equal(step.agentName, 'agentNewSolution4');
+  assert.equal(step.planning?.planId, 'e1-clarification');
+  assert.deepEqual(JSON.parse(step.prompt || ''), { planId: 'e1-clarification' });
 });
 
 test('module names normalize deterministically', () => {

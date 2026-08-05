@@ -105,6 +105,26 @@ export function createNs4ClarificationSubmitGuard(): () => boolean {
   };
 }
 
+export function createNs4E1Step(): mls.msg.AIAgentStep {
+  return {
+    type: 'agent',
+    stepId: 0,
+    interaction: null,
+    stepTitle: 'E1 — clarify module contract',
+    status: 'waiting_human_input',
+    nextSteps: [],
+    agentName: 'agentNewSolution4',
+    prompt: JSON.stringify({ planId: 'e1-clarification' }),
+    rags: [],
+    planning: {
+      planId: 'e1-clarification',
+      dependsOn: [],
+      executionMode: 'sequential',
+      executionHost: 'client',
+    },
+  };
+}
+
 export function isNs4ModuleToken(value: string): boolean {
   return /^[a-z][A-Za-z0-9]*$/.test(String(value || '').trim());
 }
