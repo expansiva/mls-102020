@@ -116,10 +116,14 @@ export class ServiceGenome102020 extends ServiceBase {
         await this._syncWithProjectDs();
     }
 
-    /** nav-3 menu title: project + module this service is acting on. The module comes from the
-     *  page ON SCREEN (fresher than aura state, which only follows the l5 module knob). */
+    /** nav-3 menu title: project + module this service is acting on. Prefers the module of the
+     *  page ON SCREEN (fresher than aura state, which only follows the l5 module knob) — but a
+     *  folder's first segment is only a MODULE when the ACTIVE project declares it, the same
+     *  guard _trySetActualModule uses. A leftover l3 file from another project would otherwise
+     *  print a module that does not belong to this project. */
     private _updateMenuTitle(): void {
-        const fromPage = (this._currentPageFile?.folder ?? '').split('/')[0] || null;
+        const segment = (this._currentPageFile?.folder ?? '').split('/')[0];
+        const fromPage = segment && this._moduleNames.includes(segment) ? segment : null;
         this.menu.title = moduleScopeTitle(fromPage);
         this.menu.updateTitle?.();
     }
@@ -138,6 +142,8 @@ export class ServiceGenome102020 extends ServiceBase {
     @state() private _pageConfig: IKnobConfig = { key: 'page', min: 0, max: 1, labels: { 0: 'All', 1: '+' } };
     @state() private _pageReloadToken: number = 0;
     private _pageEntries: Array<{ name: string; file: mls.stor.IFileInfo }> = [];
+    private _moduleNames: string[] = [];
+    private _moduleNamesProject: number | null = null;
 
     @state() private _layoutConfig: IKnobConfig = DISABLED_CONFIG('layout');
 
@@ -421,18 +427,27 @@ export class ServiceGenome102020 extends ServiceBase {
         return { project: mls.actual[3].project, folder, shortName, level: 3, extension: '.ts' } as mls.stor.IFileInfo;
     }
 
-    private async _trySetActualModule(file: mls.stor.IFileInfo | null): Promise<void> {
-        if (!file) return;
+    /** Module names declared by the ACTIVE project (project.js), cached per project. Tells a
+     *  real module folder from any other first path segment. */
+    private async _loadModuleNames(): Promise<string[]> {
         const project: number = mls.actualProject as number;
-        if (!project) return;
-        let modules: IModule[] = [];
+        if (!project) return [];
+        if (this._moduleNamesProject === project) return this._moduleNames;
         try {
             const mod = await import(`/_${project}_/l2/project.js`);
-            modules = mod?.projectConfig?.modules ?? [];
-        } catch { return; }
+            const modules: IModule[] = mod?.projectConfig?.modules ?? [];
+            this._moduleNames = modules.map((m: IModule) => m.name);
+            this._moduleNamesProject = project;
+        } catch { return []; }
+        return this._moduleNames;
+    }
+
+    private async _trySetActualModule(file: mls.stor.IFileInfo | null): Promise<void> {
+        if (!file) return;
+        const names = await this._loadModuleNames();
         const firstSegment = (file.folder ?? '').split('/')[0];
         if (!firstSegment) return;
-        if (modules.some((m: IModule) => m.name === firstSegment)) mls.setActualModule(firstSegment);
+        if (names.includes(firstSegment)) mls.setActualModule(firstSegment);
     }
 
     private async _updateCurrentPage(file: mls.stor.IFileInfo | null) {
@@ -571,6 +586,7 @@ export class ServiceGenome102020 extends ServiceBase {
         AuraInitState();
         subscribe('previewL3.selectedTagName', this);
         this._initLayoutKnob();
+        await this._loadModuleNames(); // warm the guard used by the menu title
         await this.setLastOpenedFileIfNeeded();
         mls.events.addEventListener([this.level], ['FileAction'], this._onFileActionGenome);
     }

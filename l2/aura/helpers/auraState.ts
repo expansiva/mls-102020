@@ -56,7 +56,36 @@ function getActualDesignSystem(): number | null {
 }
 
 function getActualPage(): IAuraPage | null {
-    return loadAuraProject(getActualProject())?.actualPage ?? null;
+    const project = getActualProject();
+    const entry = loadAuraProject(project);
+    return validAuraPage(entry?.actualPage ?? null, project, entry?.actualModule ?? null);
+}
+
+/**
+ * A page read back from localStorage is only worth restoring while it still EXISTS — the module
+ * may have been renamed or removed, the page deleted, or the entry may belong to another project.
+ * Restoring a ghost page makes every consumer (preview, genome, selectPage) act on a file that
+ * is not there.
+ *
+ * The check is the in-memory stor index (the same source selectPage/molecules enumerate). While
+ * that index is EMPTY — cold boot — absence is not proof, so the stored page is kept.
+ */
+function validAuraPage(page: IAuraPage | null, project: number | null, module?: string | null): IAuraPage | null {
+    if (!page) return null;
+    if (project && page.project !== project) return null; // entry from another project
+    // The first folder segment IS the module (parseAuraPageSource). An entry saved before the
+    // module switch started clearing the page can carry a page of a DIFFERENT module — the
+    // module is the scope, so the page is what gets dropped.
+    if (module && (page.folder ?? '').split('/')[0] !== module) return null;
+    const index = (mls?.stor?.files ?? null) as Record<string, mls.stor.IFileInfo> | null;
+    if (!index) return page;
+    const files = Object.values(index);
+    if (!files.length) return page; // index not loaded yet — cannot disprove
+    const exists = files.some(f =>
+        f.project === page.project
+        && f.shortName === page.shortName
+        && (f.folder ?? '') === (page.folder ?? ''));
+    return exists ? page : null;
 }
 
 export function AuraInitState(): void {
@@ -156,12 +185,18 @@ export function setAuraStateFromPageSource(project: number, source: string): IAu
 }
 
 export function setAuraState<K extends keyof IAuraState>(key: K, value: IAuraState[K]): void {
+    const previousModule = key === 'actualModule' ? (getAuraState()?.actualModule ?? null) : null;
     setState(`${STATE_KEY}.${key}`, value);
-    // Switching module changes the EFFECTIVE language — re-emit 'aura.actualLanguage' so
-    // existing subscribers (e.g. servicePreview) keep working without a new key.
     if (key === 'actualModule') {
+        // Switching module changes the EFFECTIVE language — re-emit 'aura.actualLanguage' so
+        // existing subscribers (e.g. servicePreview) keep working without a new key.
         const effective = getActualLanguage(value as string | null);
         if (effective) setState(`${STATE_KEY}.actualLanguage`, effective);
+        // The page BELONGS to the module — keeping it across a module switch leaves every
+        // consumer pointing at a page of the previous module. Callers that set both
+        // (setAuraStateFromPageSource, restoreAuraProject) set the module FIRST, so the page
+        // they carry still lands after this reset.
+        if (previousModule !== (value as string | null)) setState(`${STATE_KEY}.actualPage`, null);
     }
 }
 
@@ -270,7 +305,13 @@ export function restoreAuraProject(project: number): void {
     // Entries saved before actualLanguageByModule existed lack the key — reset it
     // explicitly so the previous project's per-module map never leaks across projects.
     if (!('actualLanguageByModule' in entry)) setAuraState('actualLanguageByModule', null);
+    // Module FIRST (setting it resets the page) and page LAST, explicitly — never rely on the
+    // key order of the stored entry. Same rule as the initial load: a page that no longer
+    // exists is not restored.
+    setAuraState('actualModule', entry.actualModule);
     (Object.keys(entry) as (keyof IAuraProjectEntry)[]).forEach(key => {
+        if (key === 'actualModule' || key === 'actualPage') return;
         setAuraState(key, entry[key]);
     });
+    setAuraState('actualPage', validAuraPage(entry.actualPage, project, entry.actualModule));
 }
