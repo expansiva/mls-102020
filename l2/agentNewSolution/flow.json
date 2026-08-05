@@ -275,7 +275,7 @@
     }
   ],
   "cli": {
-    "commands": ["/status (readable pipeline.json)", "/rebuild e{N} (reruns the step; refuses if upstream is dirty)", "/replay e{N} fixture={name} (golden run: runs the step on the fixture and performs a structural invariant diff)", "PROMPT FLAGS (parsed from the initial prompt, stripped from it, carried in longMemory): /fast auto-accepts both human clarifications; /rebuild cleans the module l4+l5 before regenerating; /l4only (2026-08-03) stops after the spec — e7 writes every l4/l5 artifact as always but does NOT start the @@changeFrontend/@@changeBackend follow-up tasks, for when the SPEC is what is being iterated on"],
+    "commands": ["/status (readable pipeline.json)", "/rebuild e{N} (reruns the step; refuses if upstream is dirty)", "/replay e{N} fixture={name} (golden run: runs the step on the fixture and performs a structural invariant diff)", "PROMPT FLAGS (parsed from the initial prompt, stripped from it, carried in longMemory): /fast auto-accepts both human clarifications; /rebuild cleans the module l4+l5 before regenerating; /soft (2026-08-03) is DIAGNOSTIC: the e6/e7 quality gates RECORD their findings instead of failing the run, so a COMPLETE l4 exists to be measured by the T0 ruler (steps/e6-journey-map/metrics.ts) — it loosens no check, the trace and the completion message both say the run was soft, and its output is a MEASUREMENT, never a deliverable; /l4only (2026-08-03) stops after the spec — e7 writes every l4/l5 artifact as always but does NOT start the @@changeFrontend/@@changeBackend follow-up tasks, for when the SPEC is what is being iterated on"],
     "reference": "same style as agentChangeFrontend/agentChangeBackend"
   },
   "handoffArtifacts": {

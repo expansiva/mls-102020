@@ -113,3 +113,8 @@ and ride `longMemory`:
   `@@changeFrontend` / `@@changeBackend` follow-up tasks. For when the l4 itself is what you are
   iterating on and the two generations would be thrown away on the next run. The suppression is
   recorded in the e7 trace and in the step's completion message, so a missing frontend is never a mystery.
+- `/soft` — DIAGNOSTIC: the e6/e7 quality gates record their findings instead of failing the run, so a
+  COMPLETE l4 comes out and can be measured end to end by the T0 ruler
+  (`steps/e6-journey-map/metrics.ts`). It loosens nothing — every check runs unchanged and every
+  finding is in the trace, the pipeline and the completion message. Never a default: a soft run proves
+  nothing about a real one, and what it leaves on disk is a MEASUREMENT, not a deliverable.

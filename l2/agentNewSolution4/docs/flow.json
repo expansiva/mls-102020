@@ -1,0 +1,90 @@
+{
+  "flowId": "agentNewSolution4",
+  "schemaVersion": "2026-08-05-ns4-flow-v3",
+  "status": "e1-e2",
+  "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
+  "canonicalReferences": [
+    "mls-base/skills/collab_messages.md",
+    "mls-base/skills/agentsBestPractices.md",
+    "mls-base/skills/modelTypes.md"
+  ],
+  "principles": [
+    "The root LLM detects the communication language, translates friendly step titles and creates the visible roadmap before clarification begins.",
+    "Human callbacks only persist an answer step and complete their clarification; artifact work belongs to dependency-unlocked compile steps.",
+    "Every implemented compile step writes a permanent L4 artifact and a stable result anchor.",
+    "Pipeline state on disk is the resume authority; task payloads are orchestration and presentation.",
+    "New artifacts retain userLanguage and localized stepTitles for maintenance and resume context.",
+    "Previous flow versions are never migrated automatically.",
+    "The /fast flag auto-accepts the same clarification widget path after a countdown."
+  ],
+  "invocation": {
+    "new": "@@newSolution4 <description-or-moduleName>",
+    "fast": "@@newSolution4 <description-or-moduleName> /fast",
+    "resume": "@@newSolution4 <moduleName>",
+    "resumeRule": "A v4-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Foreign modules are rejected."
+  },
+  "artifacts": {
+    "module": "l4/{module}/module.defs.ts",
+    "pipeline": "l4/{module}/pipeline/pipeline.json",
+    "journeyDraft": "l4/{module}/pipeline/e2-journeys.draft.json",
+    "journey": "l4/{module}/journeys/{journeyId}.defs.ts",
+    "journeyIndex": "l4/{module}/journeys/index.defs.ts"
+  },
+  "orchestration": {
+    "rootOutput": ["validPrompt", "userPrompt", "presentation.userLanguage", "presentation.stepTitles", "clarification"],
+    "treeCreation": "after root LLM, before any human clarification",
+    "implementedChain": [
+      "e1-clarification",
+      "e1-clarification-answer",
+      "e1-compile",
+      "e1-result",
+      "e2-journeys",
+      "e2-result"
+    ],
+    "roadmap": [
+      "e3-ontology",
+      "e4-rules",
+      "e5-behaviors",
+      "e6-realization",
+      "e7-workspaces",
+      "e8-navigation-compiler",
+      "e9-validation"
+    ],
+    "roadmapExecution": "Future steps are visible waiting_dependency/manual_later nodes until their implementations are delivered."
+  },
+  "steps": [
+    {
+      "planId": "e1-clarification",
+      "type": "agent-human-clarification",
+      "goal": "Confirm module identity, actors, goal, boundaries and product languages.",
+      "outputAnchor": "e1-clarification-answer",
+      "runtimeNotes": [
+        "The root plan seeds the localized clarification.",
+        "The callback only writes the answer anchor and completes the clarification.",
+        "/fast uses the same widget event with autoAcceptSeconds=10."
+      ]
+    },
+    {
+      "planId": "e1-compile",
+      "type": "deterministic-compile",
+      "dependsOn": ["e1-clarification-answer"],
+      "goal": "Validate and write the initial permanent module contract.",
+      "output": ["l4/{module}/module.defs.ts", "l4/{module}/pipeline/pipeline.json"],
+      "outputAnchor": "e1-result",
+      "gate": "steps/e1/gate.ts"
+    },
+    {
+      "planId": "e2-journeys",
+      "type": "agent-human-checkpoint-loop",
+      "dependsOn": ["e1-result"],
+      "goal": "Generate, adjust and approve permanent connected business journeys.",
+      "output": [
+        "l4/{module}/pipeline/e2-journeys.draft.json",
+        "l4/{module}/journeys/{journeyId}.defs.ts",
+        "l4/{module}/journeys/index.defs.ts"
+      ],
+      "outputAnchor": "e2-result",
+      "gate": "steps/e2/gate.ts"
+    }
+  ]
+}

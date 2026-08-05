@@ -63,3 +63,27 @@ export function isNsL4OnlyMode(longMemory: unknown): boolean {
   return typeof longMemory === 'object' && longMemory !== null
     && (longMemory as Record<string, unknown>)[NS_L4_ONLY_MEMORY_FLAG] === 'true';
 }
+
+// `/soft` (2026-08-03): DIAGNOSTIC mode. The e6/e7 quality gates stop failing the run — every artifact
+// is written and the findings are recorded — so a complete l4 can be measured end to end by the T0
+// ruler (`steps/e6-journey-map/metrics.ts`) instead of being judged only by the gate that blocked it.
+// It exists because the package spent six runs never seeing a finished l4: without one, M1–M6 and "does
+// the page come out with a list" are unanswerable.
+//
+// It does NOT loosen any gate: the checks run unchanged, the findings go to the trace and the pipeline
+// exactly as before, and the completion message says the run was soft. Never a default — a soft run
+// proves nothing about a real one, and the artifact it leaves behind is a MEASUREMENT, not a delivery.
+export const NS_SOFT_MEMORY_FLAG = 'soft';
+export const NS_SOFT_TRACE_NOTE = '[soft] gate errors recorded, run continued (diagnostic mode)';
+
+export function parseNsSoftMode(prompt: string): { soft: boolean; prompt: string } {
+  const raw = String(prompt || '');
+  const soft = /(^|\s)\/soft(\s|$)/i.test(raw);
+  const cleaned = raw.replace(/(^|\s)\/soft(?=\s|$)/gi, '$1').replace(/\s+/g, ' ').trim();
+  return { soft, prompt: cleaned };
+}
+
+export function isNsSoftMode(longMemory: unknown): boolean {
+  return typeof longMemory === 'object' && longMemory !== null
+    && (longMemory as Record<string, unknown>)[NS_SOFT_MEMORY_FLAG] === 'true';
+}

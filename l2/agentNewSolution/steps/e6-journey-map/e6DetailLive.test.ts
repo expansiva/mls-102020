@@ -31,7 +31,7 @@ import { validateE6WorkspaceEquality, NsE6SiteMapWorkspace } from '/_102020_/l2/
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MLS_BASE = path.resolve(HERE, '../../../../..'); // .../mls-base
 const DETAIL_TOOL = 'submitNsWorkspaceDetail';
-const MODEL_TYPES = ['code', 'design'] as const; // code=Grok, design=Kimi — the two strict-tool providers
+const MODEL_TYPES = ['design', 'code'] as const; // the step's native alias + the one rotateNsModelType retries on
 const MODULE = 'cafeFlow';
 const config = () => parseEnvFile(readFileSync(path.join(MLS_BASE, '.env'), 'utf8'));
 

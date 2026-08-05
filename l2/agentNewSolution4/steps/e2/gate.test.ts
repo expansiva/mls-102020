@@ -1,0 +1,112 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  buildNs4ModuleArtifact,
+  createNs4Pipeline,
+  markNs4E1Approved,
+  markNs4E2Approved,
+  markNs4E2Running,
+  markNs4E2WaitingHuman,
+  markNs4ModuleE2Approved,
+} from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
+import {
+  buildNs4JourneyArtifacts,
+  normalizeNs4E2Review,
+  sha256Ns4,
+} from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import { validateNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/gate.js';
+
+const reviewInput = {
+  planId: 'e2-review', moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', title: 'Revisar jornadas', reviewRound: 1,
+  journeys: [
+    {
+      journeyId: 'manageProjects',
+      business: {
+        actorRef: 'projectManager', title: 'Gerenciar projetos', goal: 'Localizar e acompanhar projetos.', prerequisites: [],
+        entry: { mode: 'coldStart', carries: [] },
+        steps: [{
+          stepId: 'selectProject', kind: 'locate', intent: 'Localizar um projeto pelo nome ou endereço.', requiresContext: [],
+          providesContext: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true, description: 'Projeto selecionado.' }],
+          result: 'Um projeto está selecionado.', featureRefs: ['projectManagement'],
+        }],
+        outcome: { statement: 'O projeto correto fica disponível para trabalho.', evidence: ['O projeto é mostrado pelo nome e endereço.'] },
+        businessRules: [],
+      },
+    },
+    {
+      journeyId: 'manageProjectChangeOrder',
+      business: {
+        actorRef: 'projectManager', title: 'Criar ordem de mudança', goal: 'Registrar uma mudança no projeto.',
+        prerequisites: [{ journeyRef: 'manageProjects', reason: 'A ordem pertence a um projeto.', required: false, providesContext: ['selectedProject'] }],
+        entry: {
+          mode: 'contextOrLookup', preferredFromJourneyRef: 'manageProjects',
+          carries: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true, description: 'Projeto da mudança.', stateRequirement: 'active' }],
+        },
+        steps: [{
+          stepId: 'captureChangeOrder', kind: 'act', intent: 'Informar a mudança.', requiresContext: ['selectedProject'],
+          providesContext: [{ contextId: 'createdChangeOrder', businessObject: 'ChangeOrder', cardinality: 'one', required: true, description: 'Ordem criada.' }],
+          result: 'A ordem fica vinculada ao projeto.', featureRefs: ['changeOrderManagement'],
+        }],
+        outcome: { statement: 'A mudança fica registrada no projeto correto.', evidence: ['A ordem exibe o projeto selecionado.'] },
+        businessRules: [{ journeyRuleId: 'jrProjectMustBeActive', statement: 'A ordem só pode ser criada para projeto ativo.' }],
+      },
+    },
+  ],
+  features: [
+    { featureId: 'projectManagement', title: 'Projetos', priority: 'now', journeyStepRefs: ['manageProjects.selectProject'] },
+    { featureId: 'changeOrderManagement', title: 'Ordens de mudança', priority: 'now', journeyStepRefs: ['manageProjectChangeOrder.captureChangeOrder'] },
+  ],
+};
+
+test('E2 accepts connected contextOrLookup journeys', () => {
+  const review = normalizeNs4E2Review(reviewInput);
+  assert.deepEqual(validateNs4E2Review(review), { ok: true, issues: [] });
+});
+
+test('E2 rejects a context consumed before it is carried or produced', () => {
+  const broken = structuredClone(reviewInput);
+  broken.journeys[1].business.steps[0].requiresContext = ['missingProject'];
+  const result = validateNs4E2Review(normalizeNs4E2Review(broken));
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_CONTEXT_ORDER'));
+});
+
+test('E2 rejects business text that asks for a raw technical id', () => {
+  const broken = structuredClone(reviewInput);
+  broken.journeys[1].business.steps[0].intent = 'Pedir o project id e registrar a mudança.';
+  const result = validateNs4E2Review(normalizeNs4E2Review(broken));
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_RAW_TECHNICAL_ID'));
+});
+
+test('business hash is stable across object key order', async () => {
+  assert.equal(await sha256Ns4({ b: 2, a: 1 }), await sha256Ns4({ a: 1, b: 2 }));
+  const artifacts = await buildNs4JourneyArtifacts(normalizeNs4E2Review(reviewInput));
+  assert.equal(artifacts.length, 2);
+  assert.match(artifacts[0].businessHash, /^sha256:[a-f0-9]{64}$/);
+  assert.equal(artifacts[0].realization.compiledFromBusinessHash, artifacts[0].businessHash);
+});
+
+test('E2 approval advances both pipeline and module to E3', () => {
+  const e1Clarification = {
+    planId: 'e1-clarification', userLanguage: 'pt-BR', title: 'E1', legends: [],
+    questions: {
+      moduleName: { type: 'open', question: 'Nome?', answer: 'buildFlowFsm' },
+      mainActors: { type: 'open', question: 'Atores?', answer: 'Gerentes' },
+      mainGoal: { type: 'open', question: 'Objetivo?', answer: 'Gerenciar obras.' },
+      boundaries: { type: 'open', question: 'Limites?', answer: 'Sem ERP.' },
+    },
+  };
+  const moduleArtifact = buildNs4ModuleArtifact('buildFlowFsm', e1Clarification, 'human', '2026-08-04T10:00:00.000Z');
+  const e2Module = markNs4ModuleE2Approved(moduleArtifact, 'human', '2026-08-04T10:05:00.000Z');
+  assert.equal(e2Module.specStatus.nextStep, 'e3-ontology');
+  assert.equal(e2Module.specStatus.completedSteps[1].stepId, 'e2-journeys');
+
+  const e1Pipeline = markNs4E1Approved(createNs4Pipeline('buildFlowFsm', 'prompt'), 'human', 'l4/buildFlowFsm/module.defs.ts');
+  const running = markNs4E2Running(e1Pipeline, 1);
+  const waiting = markNs4E2WaitingHuman(running, 1, 'l4/buildFlowFsm/pipeline/e2-journeys.draft.json');
+  const approved = markNs4E2Approved(waiting, 'human', ['l4/buildFlowFsm/journeys/manageProjects.defs.ts']);
+  assert.equal(approved.steps.e2?.status, 'approved');
+  assert.equal(approved.nextStep, 'e3-ontology');
+});

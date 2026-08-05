@@ -15,15 +15,22 @@ import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 // hour-long runs; 3 gives two extra rolls. Used by e5 and e6 finalize.
 export const NS_MAX_REPAIR_ROUNDS = 3;
 
-// Rotate the `<!-- modelType: X -->` marker between the two strict-tool providers (code=Grok, design=Kimi)
-// on EVEN attempts, so a repair of an item a provider keeps failing lands on the OTHER provider. Odd
-// attempts (incl. the first, attempt 1) keep the step's native modelType. Pure string swap.
+// Rotate the `<!-- modelType: X -->` marker to a DIFFERENT alias on EVEN attempts, so a repair of an
+// item one provider keeps failing lands on another provider. Odd attempts (incl. the first, attempt 1)
+// keep the step's native modelType. Pure string swap; the alias→model mapping lives in collab-llm, so
+// this is only a real rotation while the two aliases point at different models.
+const NS_MODEL_ROTATION: Record<string, string> = {
+  reasoning: 'code',
+  design: 'code',
+  code: 'design',
+};
+
 export function rotateNsModelType(systemPrompt: string, attempt: number | undefined): string {
   if (!attempt || attempt <= 1 || attempt % 2 !== 0) return systemPrompt;
-  return systemPrompt
-    .replace('<!-- modelType: code -->', '<!-- modelType: __nsrot__ -->')
-    .replace('<!-- modelType: design -->', '<!-- modelType: code -->')
-    .replace('<!-- modelType: __nsrot__ -->', '<!-- modelType: design -->');
+  const marker = /<!-- modelType: ([a-z]+) -->/.exec(systemPrompt);
+  const next = marker ? NS_MODEL_ROTATION[marker[1]] : undefined;
+  if (!marker || !next) return systemPrompt;
+  return systemPrompt.replace(marker[0], `<!-- modelType: ${next} -->`);
 }
 
 // cleaner: pass 'input_output' when the step's artifact is already persisted to disk — the LLM
