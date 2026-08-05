@@ -11,26 +11,23 @@ import { convertFileToTag, isPageFile } from '/_102020_/l2/utils.js';
 import { getLastOpenedFiles, saveOpenedFile } from '/_102027_/l2/libCommom.js';
 import { createModel } from '/_102027_/l2/libModel.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { dsIndexNameMap } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 
 import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
 import '/_102020_/l2/aura/plugins/selectPage.js';
 import '/_102020_/l2/aura/plugins/selectLayout.js';
 import '/_102020_/l2/aura/plugins/selectLayoutRules.js';
-import '/_102020_/l2/aura/plugins/selectDesignSystem.js';
 import '/_102020_/l2/aura/plugins/selectMolecule.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
-// Display-only: the "layout" knob reads UX and the "designSystem" knob reads UI (full name on
-// the tooltip). Internally everything is still layout/designSystem (config keys, folders, args).
+// Display-only: the "layout" knob reads UX (full name on the tooltip). Internally everything is
+// still layout (config keys, folders, args). The UI (design system) knob lives at project scope
+// (l6 · serviceExploreProjects) — the genome only READS the selected DS.
 const message_en = {
     svcTitle: 'Genome',
     page: 'Pages',
     layout: 'UX',
     layoutFull: 'User Experience (layout)',
-    designSystem: 'UI',
-    designSystemFull: 'User Interface (design system)',
     molecules: 'Molecules',
     noPageSelected: 'No page selected',
     notAPage: 'Current file is not a page',
@@ -43,8 +40,6 @@ const messages: Record<string, MessageType> = {
         page: 'Páginas',
         layout: 'UX',
         layoutFull: 'User Experience (layout)',
-        designSystem: 'UI',
-        designSystemFull: 'User Interface (design system)',
         molecules: 'Moléculas',
         noPageSelected: 'Nenhuma página selecionada',
         notAPage: 'O arquivo atual não é uma página',
@@ -54,8 +49,6 @@ const messages: Record<string, MessageType> = {
         page: 'Páginas',
         layout: 'UX',
         layoutFull: 'User Experience (layout)',
-        designSystem: 'UI',
-        designSystemFull: 'User Interface (design system)',
         molecules: 'Moléculas',
         noPageSelected: 'Ninguna página seleccionada',
         notAPage: 'El archivo actual no es una página',
@@ -115,11 +108,12 @@ export class ServiceGenome102020 extends ServiceBase {
 
     async onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
         this._initLayoutKnob();
-        this._initDsKnob();
         this._pageReloadToken += 1; // re-scan the page list on each service (re)open
         const file = await this._getActual3File();
         await this._trySetActualModule(file);
-        this._updateCurrentPage(file);
+        await this._updateCurrentPage(file);
+        // The DS is chosen at project scope (l6) — reconcile whatever was picked/edited there.
+        await this._syncWithProjectDs();
     }
 
     // ─── State ────────────────────────────────────────────────────────
@@ -129,7 +123,6 @@ export class ServiceGenome102020 extends ServiceBase {
     @state() private _layoutValue: number | null = 0;
     @state() private _currentPageFile: mls.stor.IFileInfo | null = null;
     @state() private _isPageContext: boolean = true;
-    @state() private _dsValue: number | null = 1;
     @state() private _moleculesValue: number | null = null;
     @state() private _selectedKnob: string = 'page';
 
@@ -139,7 +132,6 @@ export class ServiceGenome102020 extends ServiceBase {
     private _pageEntries: Array<{ name: string; file: mls.stor.IFileInfo }> = [];
 
     @state() private _layoutConfig: IKnobConfig = DISABLED_CONFIG('layout');
-    @state() private _dsConfig: IKnobConfig = DISABLED_CONFIG('designSystem');
 
     @state() private _moleculesConfig: IKnobConfig = DISABLED_CONFIG('molecules');
     @state() private _selectedMoleculeGroup: string = '';
@@ -159,7 +151,7 @@ export class ServiceGenome102020 extends ServiceBase {
         }
     }
 
-    // ─── Layout & Design System init from project.js ─────────────────
+    // ─── Layout init from project.js ─────────────────────────────────
 
     private async _loadProjectConfig(): Promise<any> {
         const project = getAuraState().actualProject;
@@ -184,35 +176,6 @@ export class ServiceGenome102020 extends ServiceBase {
         this._layoutConfig = { key: 'layout', min: 0, max: addSlot, labels };
         const stateLayout = getAuraState().actualLayout;
         this._layoutValue = (stateLayout !== null && stateLayout > 0 && stateLayout < addSlot) ? stateLayout : 0;
-        // @ts-ignore
-        this.requestUpdate();
-    }
-
-    private async _initDsKnob() {
-        // DS identity lives in designSystem.ts (dsIndex → themeName), not in project.json.
-        const project = getAuraState().actualProject;
-        if (!project) return;
-        const dsMap = await dsIndexNameMap(project);
-        const keys = Object.keys(dsMap).map(Number).sort((a, b) => a - b);
-        if (!keys.length) return;
-        const labels: Record<number, string> = { 0: 'All' };
-        keys.forEach(k => { labels[k] = dsMap[String(k)]; });
-        const customKey = keys[keys.length - 1] + 1;
-        labels[customKey] = '+';
-        this._onDsConfig(new CustomEvent('ds-config', {
-            detail: { min: 0, max: customKey, labels },
-        }));
-    }
-
-    private _onDsConfig(e: CustomEvent) {
-        this._dsConfig = { key: 'designSystem', min: e.detail.min, max: e.detail.max, labels: e.detail.labels };
-        const actualDs = getAuraState().actualDesignSystem;
-        if (actualDs !== null && actualDs > 0 && actualDs <= e.detail.max
-            && e.detail.labels[actualDs] !== '+') {
-            this._dsValue = actualDs;
-        } else if (this._dsValue === null || this._dsValue > this._dsConfig.max) {
-            this._dsValue = 0;
-        }
         // @ts-ignore
         this.requestUpdate();
     }
@@ -352,7 +315,6 @@ export class ServiceGenome102020 extends ServiceBase {
         return {
             page: this._pageValue,
             layout: this._layoutValue,
-            designSystem: this._dsValue,
             molecules: this._moleculesValue,
         };
     }
@@ -361,7 +323,6 @@ export class ServiceGenome102020 extends ServiceBase {
         switch (key) {
             case 'page': return this._pageConfig;
             case 'layout': return this._layoutConfig;
-            case 'designSystem': return this._dsConfig;
             case 'molecules': return this._moleculesConfig;
             default: return DISABLED_CONFIG(key);
         }
@@ -389,19 +350,6 @@ export class ServiceGenome102020 extends ServiceBase {
                     this._pageReloadToken += 1; // page list re-scans for the new variation
                 }
                 break;
-            case 'designSystem':
-                this._dsValue = value;
-                // The "+" slot (new DS, only at project scope) must not be persisted;
-                // every real DS up to and including max is a valid selection.
-                if (value !== null && value > 0 && value <= this._dsConfig.max
-                    && this._dsConfig.labels[value] !== '+') {
-                    setAuraState('actualDesignSystem', value);
-                    saveAuraProject();
-                    this._notifySitesPage();
-                    this._repaintPageForCombination();
-                    this._pageReloadToken += 1; // page list re-scans for the new variation
-                }
-                break;
             case 'molecules':
                 this._moleculesValue = value;
                 this._onMoleculesChanged(value);
@@ -415,13 +363,6 @@ export class ServiceGenome102020 extends ServiceBase {
         // includes the new entry (and a fresh "+ Add" slot), then select it.
         await this._initLayoutKnob();
         this._setKnobValue('layout', value);
-    }
-
-    private async _onDsCreated(value: number) {
-        // A new design system was persisted. Rebuild the DS knob (new entry + fresh "+"
-        // slot), then select it.
-        await this._initDsKnob();
-        this._setKnobValue('designSystem', value);
     }
 
     private _onKnobChange(key: string, e: CustomEvent) {
@@ -551,6 +492,24 @@ export class ServiceGenome102020 extends ServiceBase {
         mls.events.fire([mls.actualLevel], ['FileAction'], JSON.stringify(params), 0);
     }
 
+    /**
+     * Reconcile the preview with the DS picked at PROJECT scope (l6 · serviceExploreProjects).
+     * The genome has no DS knob, so (re)entering the service is when we pick up whatever was
+     * selected — or edited — there: a different variation folder is opened, and the SAME folder
+     * is repainted anyway, since the DS tokens (and therefore global.css) may have changed.
+     */
+    private async _syncWithProjectDs(): Promise<void> {
+        this._notifySitesPage();
+        if (!this._isPageContext) return;
+        const file = this._variationPageFile();
+        if (!file) return;
+        if (this._currentPageFile && file.folder !== this._currentPageFile.folder) {
+            await this._repaintPageForCombination();
+        } else {
+            this._repaintCurrentPage();
+        }
+    }
+
     /** Open a page into the preview (single implementation since the Page knob moved here). */
     private async _openPage(file: mls.stor.IFileInfo, storFiles?: any): Promise<void> {
         let name = `_${file.project}_${file.shortName}`;
@@ -603,7 +562,6 @@ export class ServiceGenome102020 extends ServiceBase {
         AuraInitState();
         subscribe('previewL3.selectedTagName', this);
         this._initLayoutKnob();
-        this._initDsKnob();
         await this.setLastOpenedFileIfNeeded();
         mls.events.addEventListener([this.level], ['FileAction'], this._onFileActionGenome);
     }
@@ -618,7 +576,8 @@ export class ServiceGenome102020 extends ServiceBase {
     async firstUpdated() {
         const file = await this._getActual3File();
         await this._trySetActualModule(file);
-        this._updateCurrentPage(file);
+        await this._updateCurrentPage(file);
+        await this._syncWithProjectDs();
     }
 
     // ─── Render ───────────────────────────────────────────────────────
@@ -649,7 +608,6 @@ export class ServiceGenome102020 extends ServiceBase {
             " style="--knob-scale: 0.5">
                 ${this._renderKnobItem('page')}
                 ${this._renderKnobItem('layout')}
-                ${this._renderKnobItem('designSystem')}
                 ${this._renderKnobItem('molecules')}
             </div>
         `;
@@ -717,10 +675,6 @@ export class ServiceGenome102020 extends ServiceBase {
                     @layout-created=${(e: CustomEvent) => this._onLayoutCreated(e.detail.value)}
                     @select-molecule=${(e: CustomEvent) => this._setKnobValue('molecules', e.detail.value)}
                     @molecule-replace-mode=${(e: CustomEvent) => { this._moleculeReplaceMode = e.detail.value; this.requestUpdate(); }}
-                    @ds-config=${(e: CustomEvent) => this._onDsConfig(e)}
-                    @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
-                    @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}
-                    @save-ds=${() => this._repaintCurrentPage()}
                 >
                     ${this._renderContextStatusArea()}
                 </div>
@@ -770,15 +724,6 @@ export class ServiceGenome102020 extends ServiceBase {
                     </div>
                 `;
             }
-            case 'designSystem':
-                // Phase B — DS = styling. The editor reads/writes designSystems[ds].tokens and
-                // regenerates global.css on save. Knob: 0=All, 1..N=edit, last=Add.
-                return html`
-                    <aura--plugins--select-design-system-102020
-                        .projectId=${getAuraState().actualProject}
-                        .value=${this._dsValue}
-                    ></aura--plugins--select-design-system-102020>
-                `;
             case 'molecules':
                 return html`
                     <aura--plugins--select-molecule-102020
