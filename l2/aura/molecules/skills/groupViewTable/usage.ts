@@ -18,10 +18,11 @@ export const skill = `
 | \`TableBody\` | Body section container |
 | \`TableRow\` | A table row (inside TableHeader, TableBody, TableFooter) |
 | \`TableHead\` | Header cell. Attributes: \`key\` (required), \`sortable\` (presence) |
-| \`TableCell\` | Data cell. May contain text or web components |
+| \`TableCell\` | Data cell. May contain text or web components. Optional \`sort-value\` declares what the cell sorts by — see **Sorting** |
 | \`TableFooter\` | Footer section container |
 | \`Empty\` | Content shown when no rows exist |
 | \`Loading\` | Content shown during loading state |
+| \`Detail\` | Content shown when a record is expanded. Goes **inside \`<TableRow>\`**, next to the cells. Only molecules that offer expansion read it |
 
 ---
 
@@ -99,6 +100,51 @@ one criterion carrying content from another.
   <Empty>No orders found</Empty>
 </molecules--data-table-102020>
 \`\`\`
+
+### Sorting a column whose text does not sort like the data
+
+Sorting reads the cell's text. That is wrong whenever the text does not order like the value it
+represents — masked currency, \`dd/mm/yyyy\` dates, status labels. Declare the real value with
+\`sort-value\` and the molecule sorts by it:
+
+\`\`\`html
+<TableCell sort-value="987">R$ 987,00</TableCell>
+<TableCell sort-value="2026-01-02">2 de janeiro</TableCell>
+<TableCell sort-value="3">Entregue</TableCell>
+\`\`\`
+
+Numbers already formatted in pt-BR or en-US are understood without \`sort-value\` (\`R$ 1.234,50\` and
+\`$1,234.50\` both sort as 1234.5). Use it when the ORDER differs from the text, not merely when the
+text is formatted.
+
+### Table with on-demand row detail
+
+Molecules with expansion accept a \`<Detail>\` per row. It starts **empty**: the molecule emits
+\`rowClick\` with the index, you load what you need and write inside that row's \`<Detail>\`. The slot
+is live, so what you put there keeps working — buttons fire, and a nested table is a real table.
+
+\`\`\`html
+<molecules--lazy-record-detail-table-102020>
+  <TableHeader>
+    <TableRow>
+      <TableHead key="id" sortable>Order</TableHead>
+      <TableHead key="customer" sortable>Customer</TableHead>
+    </TableRow>
+  </TableHeader>
+  <TableBody>
+    <TableRow>
+      <TableCell>#001</TableCell>
+      <TableCell>John Doe</TableCell>
+      <Detail>
+        <!-- empty until rowClick; then text, components or another table -->
+      </Detail>
+    </TableRow>
+  </TableBody>
+</molecules--lazy-record-detail-table-102020>
+\`\`\`
+
+Write the detail of the row you were given — one \`<Detail>\` per \`<TableRow>\`, as a direct child.
+Molecules without expansion ignore the slot.
 
 ---
 

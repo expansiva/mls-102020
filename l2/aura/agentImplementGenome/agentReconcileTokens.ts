@@ -238,9 +238,9 @@ You must return ONLY a valid JSON object. No preamble, no markdown fences. Start
 Map each molecule design token (--ml-*) to the project's design-system tokens (the --* vars
 listed in the human prompt), so the molecules follow the design system. For EACH --ml-* token
 pick the best expression:
-- direct  → "var(--<token>)" when a DS token matches the meaning (e.g. primary text → var(--text-primary-color)).
+- direct  → "var(--<token>)" when a DS token matches the meaning (e.g. body text → var(--text-default)).
 - derived → a CSS expression built ONLY from the listed --* vars for shades / hover / dim / on-color
-            contrast when no single token fits (e.g. color-mix(in srgb, var(--bg-primary-color) 92%, #000)).
+            contrast when no single token fits (e.g. color-mix(in srgb, var(--surface-bg) 92%, #000)).
 - keep    → dsExpr = null, when NO DS token fits (the molecule keeps its own default).
 
 ## Rules
