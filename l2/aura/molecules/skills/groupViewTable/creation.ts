@@ -164,14 +164,51 @@ When \`selectable=true\`:
 
 ---
 
-## 9. Pagination
+## 9. Pagination and sorting — TWO modes
 
-When \`pageSize > 0\`:
+A table molecule must support both, and **the mode decides whether it may reorder rows**.
 
-- Calculate total pages: \`Math.ceil(totalItems / pageSize)\`
-- Render pagination controls below the table (prev, page numbers, next)
-- On page click: update \`page\`, emit \`pageChange\`
-- The page listens to \`pageChange\` and updates the \`<TableBody>\` content via BFF
+The signal is implicit and must be read exactly like this:
+
+\`\`\`
+external = totalItems > (rows received in <TableBody>)
+\`\`\`
+
+### 9.1 INTERNAL mode — every row is in the DOM
+
+The consumer wrote all rows in \`<TableBody>\` and did not set \`total-items\` (or set it to the
+same count). Then the molecule owns both operations:
+
+- total pages: \`Math.ceil(rowCount / pageSize)\`
+- **sorts the whole set**, then slices to the current page
+- emits \`sort\` and \`pageChange\` so the consumer can mirror the state — but does not depend on it
+
+Simplest mode for a consumer with data already in hand. Prefer it in demo and internal pages.
+
+### 9.2 EXTERNAL mode — the consumer already sliced
+
+The consumer queried a BFF and wrote only the current page, setting \`total-items\` to the full
+count. Then:
+
+- total pages: \`Math.ceil(totalItems / pageSize)\`
+- **the molecule MUST NOT reorder**: it holds one page, so sorting there would order 10 rows out
+  of 60. It renders in the order received
+- it still emits \`sort\` (with \`key\` and \`direction\`) and \`pageChange\`; the consumer requeries
+  and rewrites \`<TableBody>\`
+
+> **Why "must not reorder" is not a style preference.** Clicking the header makes the molecule
+> schedule its own render *before* it emits \`sort\`. So the molecule's render runs first and reads
+> the PREVIOUS cell text, while the consumer updates those same projected nodes right after —
+> producing rows ordered by old values carrying new content. Measured on 2026-08-04 with
+> \`mls-102053/l2/demo/tabela-responsiva\`. On top of that, sorting by cell TEXT breaks any column
+> whose text does not order like the data (\`01/12/2025\` before \`02/01/2026\`, masked currency,
+> status labels) — which the consumer, holding the real values, orders correctly.
+
+### 9.3 Known limitation of the signal
+
+\`totalItems > rowCount\` is a heuristic. It cannot tell INTERNAL apart from a consumer that
+sliced **and** set \`total-items\` equal to the number of rows sent. An explicit property
+(\`sort-mode\`, for example) would remove the ambiguity, and is an open item for the group.
 
 ---
 
