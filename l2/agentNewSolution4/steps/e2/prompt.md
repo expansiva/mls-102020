@@ -24,11 +24,17 @@ Write in the user's language. Do not design pages, routes, database keys, APIs o
 
 1. `entry.carries` declares the business context available when a journey starts. Each item names a
    stable `contextId`, human business object, cardinality, requirement and description.
-2. `prerequisites[].providesContext` references ids declared in `entry.carries`.
+2. `prerequisites[].providesContext` references ids declared in `entry.carries` and actually exported
+   by the referenced journey. Keep the same `contextId` across the handoff; do not rename
+   `createdProject` to `selectedProject` between journeys.
 3. Each step lists `requiresContext` and declares new `providesContext` objects.
+   A later step may provide the same stable `contextId` again only for the same `businessObject`
+   (for example, both locating and creating a project may yield `selectedProject`).
 4. A context must be carried or produced by an earlier step before it is required.
 5. `act`/`decide` steps operating on an existing business record must require that record's context.
-6. Include an explicit `locate` step when an actor needs to choose/find a record locally.
+6. For `contextOrLookup`, include an explicit `locate` step whose `providesContext` contains every
+   required carried context. This represents the direct-entry fallback even when a previous journey
+   can carry the same context.
 7. Never solve missing context by asking for a raw technical id.
 
 ## Journey quality
@@ -95,7 +101,15 @@ Return exactly one JSON object (no markdown):
               "kind": "locate",
               "intent": "Manter o projeto recebido ou localizar um projeto ativo.",
               "requiresContext": [],
-              "providesContext": [],
+              "providesContext": [
+                {
+                  "contextId": "selectedProject",
+                  "businessObject": "Project",
+                  "cardinality": "one",
+                  "required": true,
+                  "description": "Projeto ativo recebido ou localizado para a mudança."
+                }
+              ],
               "result": "Um projeto ativo está selecionado.",
               "featureRefs": ["changeOrderManagement"]
             },

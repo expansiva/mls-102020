@@ -25,9 +25,14 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
 
   const journeyIds = new Set<string>();
   const journeyIndex = new Map<string, number>();
+  const exportedContexts = new Map<string, Map<string, string>>();
   review.journeys.forEach((journey, index) => {
     checkId(journey.journeyId, `journeys[${index}].journeyId`, 'journey', journeyIds, add);
     journeyIndex.set(journey.journeyId, index);
+    const exported = new Map<string, string>();
+    journey.business.entry.carries.forEach(context => exported.set(context.contextId, context.businessObject));
+    journey.business.steps.forEach(step => step.providesContext.forEach(context => exported.set(context.contextId, context.businessObject)));
+    exportedContexts.set(journey.journeyId, exported);
   });
 
   const featureIds = new Set<string>();
@@ -67,11 +72,15 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
       if (!prerequisite.reason) add('NS4_E2_PREREQUISITE_REASON', `${path}.reason`, 'Prerequisite reason is required.');
       prerequisite.providesContext.forEach(contextId => {
         if (!entryContexts.has(contextId)) add('NS4_E2_PREREQUISITE_CONTEXT', `${path}.providesContext`, `Prerequisite provides undeclared entry context ${contextId}.`);
+        const exported = exportedContexts.get(prerequisite.journeyRef);
+        if (exported && !exported.has(contextId)) {
+          add('NS4_E2_PREREQUISITE_HANDOFF', `${path}.providesContext`, `Journey ${prerequisite.journeyRef} does not export context ${contextId}. Use one stable contextId across the handoff.`);
+        }
       });
     });
 
     const availableContexts = new Set(entryContexts);
-    const allContextIds = new Set(entryContexts);
+    const contextObjects = new Map(business.entry.carries.map(context => [context.contextId, context.businessObject]));
     const stepIds = new Set<string>();
     business.steps.forEach((step, stepPosition) => {
       const path = `${base}.business.steps[${stepPosition}]`;
@@ -90,14 +99,31 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
         }
       });
       step.providesContext.forEach((context, contextPosition) => {
-        checkContext(context.contextId, context.businessObject, `${path}.providesContext[${contextPosition}]`, allContextIds, add);
-        checkBusinessText(context.description, `${path}.providesContext[${contextPosition}].description`, add);
+        const contextPath = `${path}.providesContext[${contextPosition}]`;
+        checkContextShape(context.contextId, context.businessObject, contextPath, add);
+        const previousObject = contextObjects.get(context.contextId);
+        if (previousObject && previousObject !== context.businessObject) {
+          add('NS4_E2_CONTEXT_OBJECT_CONFLICT', `${contextPath}.businessObject`, `Context ${context.contextId} must keep businessObject ${previousObject}, not ${context.businessObject}.`);
+        }
+        if (context.contextId) contextObjects.set(context.contextId, context.businessObject);
+        checkBusinessText(context.description, `${contextPath}.description`, add);
         availableContexts.add(context.contextId);
       });
       step.featureRefs.forEach(featureRef => {
         if (!featureIds.has(featureRef)) add('NS4_E2_FEATURE_REF', `${path}.featureRefs`, `Unknown featureRef ${featureRef}.`);
       });
     });
+
+    if (business.entry.mode === 'contextOrLookup') {
+      const located = new Set(
+        business.steps.filter(step => step.kind === 'locate').flatMap(step => step.providesContext.map(context => context.contextId)),
+      );
+      entryContexts.forEach(contextId => {
+        if (!located.has(contextId)) {
+          add('NS4_E2_LOOKUP_FALLBACK', `${base}.business.steps`, `contextOrLookup must include a locate step that provides fallback context ${contextId}.`);
+        }
+      });
+    }
 
     const ruleIds = new Set<string>();
     business.businessRules.forEach((rule, index) => {
@@ -129,6 +155,11 @@ function checkId(value: string, path: string, label: string, ids: Set<string>, a
 
 function checkContext(contextId: string, businessObject: string, path: string, ids: Set<string>, add: AddIssue): void {
   checkId(contextId, `${path}.contextId`, 'context', ids, add);
+  if (!businessObject) add('NS4_E2_CONTEXT_OBJECT', `${path}.businessObject`, 'Context businessObject is required.');
+}
+
+function checkContextShape(contextId: string, businessObject: string, path: string, add: AddIssue): void {
+  if (!ID_PATTERN.test(contextId)) add('NS4_E2_ID', `${path}.contextId`, 'context id must be a lower-camel identifier.');
   if (!businessObject) add('NS4_E2_CONTEXT_OBJECT', `${path}.businessObject`, 'Context businessObject is required.');
 }
 

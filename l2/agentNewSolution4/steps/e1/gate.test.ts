@@ -6,11 +6,14 @@ import {
   buildNs4ModuleArtifact,
   createNs4Pipeline,
   markNs4E1Approved,
+  markNs4E1Failed,
+  markNs4E2Failed,
   markNs4E2Running,
   normalizeNs4Languages,
   normalizeNs4ModuleName,
   normalizeNs4RootPlan,
   NS4_FLOW_VERSION,
+  NS4_PIPELINE_SCHEMA_VERSION,
   Ns4PipelineState,
   parseNs4Invocation,
   resolveNs4ExistingAction,
@@ -72,8 +75,10 @@ test('root plan localizes and creates the complete visible roadmap before E1 sta
   assert.equal(steps.length, 10);
   assert.equal(steps[0].stepTitle, titles['e1-clarification']);
   assert.equal(steps[0].status, 'waiting_human_input');
+  assert.equal(steps[0].onFailure, 'wait_after_prompt');
   assert.deepEqual(steps[1].planning?.dependsOn, ['e1-clarification-answer']);
   assert.deepEqual(steps[2].planning?.dependsOn, ['e1-result']);
+  assert.equal(steps[2].onFailure, 'wait_after_prompt');
   assert.equal(steps[3].planning?.executionMode, 'manual_later');
   const artifact = buildNs4ModuleArtifact(plan.userPrompt, clarification, 'human', '2026-08-05T10:00:00.000Z', plan.presentation);
   const pipeline = createNs4Pipeline('petShop', plan.userPrompt, '2026-08-05T10:00:00.000Z', plan.presentation);
@@ -99,8 +104,11 @@ test('root plan rejects an incomplete localized-title contract instead of silent
 
 test('new artifacts expose the E1-to-E2 lifecycle flow version', () => {
   const artifact = buildNs4ModuleArtifact('petShop', clarification, 'human', '2026-08-05T10:00:00.000Z');
+  const pipeline = createNs4Pipeline('petShop', 'petShop', '2026-08-05T10:00:00.000Z');
   assert.equal(NS4_FLOW_VERSION, '2026-08-05-ns4-flow-v3');
   assert.equal(artifact.specStatus.flowVersion, NS4_FLOW_VERSION);
+  assert.equal(NS4_PIPELINE_SCHEMA_VERSION, '2026-08-05-ns4-pipeline-v3');
+  assert.equal(pipeline.schemaVersion, NS4_PIPELINE_SCHEMA_VERSION);
 });
 
 test('continuing an earlier execution does not migrate its flow version', () => {
@@ -109,6 +117,22 @@ test('continuing an earlier execution does not migrate its flow version', () => 
     flowVersion: '2026-08-04-ns4-flow-v1',
   } as unknown as Ns4PipelineState;
   assert.equal(markNs4E2Running(legacy, 1).flowVersion, '2026-08-04-ns4-flow-v1');
+});
+
+test('terminal E1 and E2 failures are durable in the pipeline', () => {
+  const running = createNs4Pipeline('petShop', 'petShop', '2026-08-05T10:00:00.000Z');
+  const e1Failed = markNs4E1Failed(running, new Error('storage unavailable'), '2026-08-05T10:01:00.000Z');
+  assert.equal(e1Failed.status, 'failed');
+  assert.equal(e1Failed.steps.e1.status, 'failed');
+  assert.equal(e1Failed.steps.e1.error, 'storage unavailable');
+  assert.equal(e1Failed.steps.e1.failedAt, '2026-08-05T10:01:00.000Z');
+
+  const approved = markNs4E1Approved(running, 'human', 'l4/petShop/module.defs.ts', '2026-08-05T10:02:00.000Z');
+  const e2Failed = markNs4E2Failed(approved, 'LLM provider timeout', '2026-08-05T10:03:00.000Z');
+  assert.equal(e2Failed.status, 'failed');
+  assert.equal(e2Failed.steps.e2?.status, 'failed');
+  assert.equal(e2Failed.steps.e2?.error, 'LLM provider timeout');
+  assert.equal(e2Failed.steps.e2?.failedAt, '2026-08-05T10:03:00.000Z');
 });
 
 test('module names normalize deterministically', () => {

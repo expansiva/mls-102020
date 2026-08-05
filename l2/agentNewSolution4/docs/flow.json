@@ -14,6 +14,7 @@
     "Every implemented compile step writes a permanent L4 artifact and a stable result anchor.",
     "Pipeline state on disk is the resume authority; task payloads are orchestration and presentation.",
     "New artifacts retain userLanguage and localized stepTitles for maintenance and resume context.",
+    "Terminal step failures use traceMsg in the task and persist status, error and failedAt in the pipeline whenever a module pipeline already exists.",
     "Previous flow versions are never migrated automatically.",
     "The /fast flag auto-accepts the same clarification widget path after a countdown."
   ],
@@ -61,7 +62,8 @@
       "runtimeNotes": [
         "The root plan seeds the localized clarification.",
         "The callback only writes the answer anchor and completes the clarification.",
-        "/fast uses the same widget event with autoAcceptSeconds=10."
+        "/fast uses the same widget event with autoAcceptSeconds=10.",
+        "LLM failures return through afterPrompt and remain visible in the task trace."
       ]
     },
     {
@@ -84,7 +86,14 @@
         "l4/{module}/journeys/index.defs.ts"
       ],
       "outputAnchor": "e2-result",
-      "gate": "steps/e2/gate.ts"
+      "gate": "steps/e2/gate.ts",
+      "runtimeNotes": [
+        "prompt_ready preserves the hook args byte-for-byte.",
+        "E2 is marked running only after the LLM call returns to afterPrompt.",
+        "Terminal failures are persisted in pipeline.steps.e2.error and failedAt.",
+        "Prerequisite handoffs use stable context ids exported by the referenced journey.",
+        "contextOrLookup includes an explicit locate fallback for every carried context."
+      ]
     }
   ]
 }

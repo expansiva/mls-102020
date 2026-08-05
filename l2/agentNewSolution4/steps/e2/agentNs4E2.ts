@@ -8,6 +8,7 @@ import {
   createNs4E2Step,
   isNs4Pipeline,
   markNs4E2Approved,
+  markNs4E2Failed,
   markNs4E2Running,
   markNs4E2WaitingHuman,
   markNs4ModuleE2Approved,
@@ -34,6 +35,7 @@ import {
   Ns4E2ReviewEvent,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { validateNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/gate.js';
+import { resolveNs4E2HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e2/hookArgs.js';
 
 interface Ns4E2Args {
   planId: 'e2-journeys';
@@ -58,40 +60,48 @@ export async function beforeNs4E2PromptStep(
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
   if (!context.task) throw new Error('[agentNewSolution4:e2] task invalid');
-  const parsed = resolveE2Args(context, args || step.prompt);
-  const moduleArtifact = await readNs4Module(parsed.moduleName);
-  const pipeline = await readNs4Pipeline(parsed.moduleName);
-  if (!moduleArtifact || !isNs4Pipeline(pipeline) || pipeline.steps.e1.status !== 'approved') {
-    return [updateStatus(context, parentStep, step, hookSequential, 'failed', `E1 approved artifacts not found for ${parsed.moduleName}.`)];
+  const hookArgs = resolveNs4E2HookArgs(args, step.prompt);
+  let moduleName = '';
+  try {
+    const parsed = resolveE2Args(context, hookArgs);
+    moduleName = parsed.moduleName;
+    const moduleArtifact = await readNs4Module(moduleName);
+    const pipeline = await readNs4Pipeline(moduleName);
+    if (!moduleArtifact || !isNs4Pipeline(pipeline) || pipeline.steps.e1.status !== 'approved') {
+      throw new Error(`E1 approved artifacts not found for ${moduleName}.`);
+    }
+
+    const reviewRound = parsed.reviewRound || pipeline.steps.e2?.reviewRound || 1;
+    const previousDraft = parsed.adjustment ? await readDraftFromStorage(moduleName) : null;
+    const [prompt, platform] = await Promise.all([
+      readNs4AgentText('steps/e2', 'prompt'),
+      readNs4AgentText('skills', 'platform'),
+    ]);
+    const humanPrompt = [
+      '## Approved E1 module contract',
+      JSON.stringify(moduleArtifact, null, 2),
+      '',
+      `## Required review round\n${reviewRound}`,
+      parsed.adjustment ? `## Human adjustment request\n${parsed.adjustment}` : '',
+      previousDraft ? `## Previous E2 draft\n${JSON.stringify(previousDraft, null, 2)}` : '',
+    ].filter(Boolean).join('\n');
+
+    return [{
+      type: 'prompt_ready',
+      args: hookArgs,
+      messageId: context.message.orderAt,
+      threadId: context.message.threadId,
+      taskId: context.task.PK,
+      hookSequential,
+      parentStepId: parentStep.stepId,
+      systemPrompt: prompt.replace('{{platformSkill}}', platform),
+      humanPrompt,
+    } as mls.msg.AgentIntentPromptReady];
+  } catch (error) {
+    const message = errorMessage(error);
+    await recordNs4E2Failure(moduleName, message);
+    return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
   }
-
-  const reviewRound = parsed.reviewRound || pipeline.steps.e2?.reviewRound || 1;
-  await writeNs4Pipeline(markNs4E2Running(pipeline, reviewRound));
-  const previousDraft = parsed.adjustment ? await readDraftFromStorage(parsed.moduleName) : null;
-  const [prompt, platform] = await Promise.all([
-    readNs4AgentText('steps/e2', 'prompt'),
-    readNs4AgentText('skills', 'platform'),
-  ]);
-  const humanPrompt = [
-    '## Approved E1 module contract',
-    JSON.stringify(moduleArtifact, null, 2),
-    '',
-    `## Required review round\n${reviewRound}`,
-    parsed.adjustment ? `## Human adjustment request\n${parsed.adjustment}` : '',
-    previousDraft ? `## Previous E2 draft\n${JSON.stringify(previousDraft, null, 2)}` : '',
-  ].filter(Boolean).join('\n');
-
-  return [{
-    type: 'prompt_ready',
-    args: JSON.stringify({ ...parsed, reviewRound }),
-    messageId: context.message.orderAt,
-    threadId: context.message.threadId,
-    taskId: context.task.PK,
-    hookSequential,
-    parentStepId: parentStep.stepId,
-    systemPrompt: prompt.replace('{{platformSkill}}', platform),
-    humanPrompt,
-  } as mls.msg.AgentIntentPromptReady];
 }
 
 export async function afterNs4E2PromptStep(
@@ -101,11 +111,17 @@ export async function afterNs4E2PromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  let moduleName = '';
   try {
     const args = resolveE2Args(context, step.prompt);
+    moduleName = args.moduleName;
+    const pipeline = await requirePipeline(moduleName);
+    await writeNs4Pipeline(markNs4E2Running(pipeline, args.reviewRound || pipeline.steps.e2?.reviewRound || 1));
     const payload = unwrapPayload(step.interaction?.payload?.[0]);
     if (!isRecord(payload) || payload.type !== 'clarification' || !isRecord(payload.json)) {
-      return [updateStatus(context, parentStep, step, hookSequential, 'failed', 'E2 returned an invalid review payload.')];
+      const message = readE2FailureMessage(payload);
+      await recordNs4E2Failure(moduleName, message);
+      return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
     }
     const review = normalizeNs4E2Review(payload.json, args.moduleName);
     review.moduleName = args.moduleName;
@@ -113,13 +129,13 @@ export async function afterNs4E2PromptStep(
     const gate = validateNs4E2Review(review);
     if (!gate.ok) {
       const message = gate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
-      await markE2Failed(args.moduleName);
+      await recordNs4E2Failure(moduleName, message);
       return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
     }
 
     const draftPath = await writeNs4E2Draft(args.moduleName, review);
-    const pipeline = await requirePipeline(args.moduleName);
-    await writeNs4Pipeline(markNs4E2WaitingHuman(pipeline, review.reviewRound, draftPath));
+    const reviewedPipeline = await requirePipeline(moduleName);
+    await writeNs4Pipeline(markNs4E2WaitingHuman(reviewedPipeline, review.reviewRound, draftPath));
 
     if (!isFast(context)) return [];
     const saved = await persistNs4E2(args.moduleName, review, 'auto');
@@ -128,7 +144,9 @@ export async function afterNs4E2PromptStep(
       updateStatus(context, parentStep, step, hookSequential, 'completed', `E2 auto-approved ${saved.journeyCount} journeys.`, 'input_output'),
     ];
   } catch (error) {
-    return [updateStatus(context, parentStep, step, hookSequential, 'failed', errorMessage(error))];
+    const message = errorMessage(error);
+    await recordNs4E2Failure(moduleName, message);
+    return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
   }
 }
 
@@ -142,7 +160,11 @@ export async function beforeNs4E2ClarificationStep(
 ): Promise<HTMLElement> {
   const review = normalizeNs4E2Review(parseMaybeJson(json));
   const gate = validateNs4E2Review(review);
-  if (!gate.ok) throw new Error(gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  if (!gate.ok) {
+    const message = gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
+    await recordNs4E2Failure(review.moduleName, message);
+    throw new Error(message);
+  }
 
   await import('/_102020_/l2/agentNewSolution4/steps/e2/widgetNs4Journeys.js');
   const element = document.createElement('widget-ns4-journeys-102020');
@@ -184,7 +206,9 @@ async function applyNs4E2Review(
     }
     await continuePoolingTask(context);
   } catch (error) {
-    await applyIntents(context, [updateStatus(context, parentStep, step, hookSequential, 'failed', errorMessage(error))]);
+    const message = errorMessage(error);
+    await recordNs4E2Failure(event.review.moduleName, message);
+    await applyIntents(context, [updateStatus(context, mutationParent, step, hookSequential, 'failed', message)]);
   }
 }
 
@@ -227,14 +251,14 @@ async function requirePipeline(moduleName: string): Promise<Ns4PipelineState> {
   return pipeline;
 }
 
-async function markE2Failed(moduleName: string): Promise<void> {
-  const pipeline = await requirePipeline(moduleName);
-  const now = new Date().toISOString();
-  await writeNs4Pipeline({
-    ...pipeline,
-    steps: { ...pipeline.steps, e2: { status: 'failed', reviewRound: pipeline.steps.e2?.reviewRound || 1, updatedAt: now } },
-    updatedAt: now,
-  });
+async function recordNs4E2Failure(moduleName: string, failure: string): Promise<void> {
+  if (!moduleName) return;
+  try {
+    const pipeline = await readNs4Pipeline(moduleName);
+    if (isNs4Pipeline(pipeline)) await writeNs4Pipeline(markNs4E2Failed(pipeline, failure));
+  } catch {
+    // The step trace remains the fallback when the pipeline itself cannot be read or written.
+  }
 }
 
 async function readDraftFromStorage(moduleName: string): Promise<unknown> {
@@ -343,4 +367,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function readE2FailureMessage(payload: unknown): string {
+  if (isRecord(payload) && payload.type === 'result' && typeof payload.result === 'string' && payload.result.trim()) {
+    return payload.result.trim();
+  }
+  return 'E2 returned an invalid review payload.';
 }

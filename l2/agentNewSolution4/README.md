@@ -38,3 +38,6 @@ before the respective checkpoint is approved.
 
 The flow contract lives in `docs/flow.json`. Canonical agent-engine guidance lives in
 `mls-base/skills/collab_messages.md`, `agentsBestPractices.md` and `modelTypes.md`.
+
+Terminal failures always carry a `traceMsg` in the task. Once a module pipeline exists, the same
+failure is also stored as `status: failed`, `error` and `failedAt` in the corresponding E1/E2 state.

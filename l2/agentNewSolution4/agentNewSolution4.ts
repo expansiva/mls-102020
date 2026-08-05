@@ -43,7 +43,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-5 (2026-08-05) localized root plan and dependency-driven E1 compile';
+export const NS4_AGENT_BUILD = 'build-7 (2026-08-05) live-tested E2 context handoffs';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

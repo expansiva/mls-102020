@@ -3,7 +3,7 @@
 export const NS4_FLOW_ID = 'agentNewSolution4' as const;
 export const NS4_FLOW_VERSION = '2026-08-05-ns4-flow-v3' as const;
 export const NS4_MODULE_SCHEMA_VERSION = '2026-08-05-ns4-module-v2' as const;
-export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-05-ns4-pipeline-v2' as const;
+export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-05-ns4-pipeline-v3' as const;
 
 export const NS4_PLAN_IDS = [
   'e1-clarification',
@@ -100,6 +100,8 @@ export interface Ns4PipelineState {
       artifactPath?: string;
       approvedBy?: Ns4ApprovedBy;
       approvedAt?: string;
+      error?: string;
+      failedAt?: string;
       updatedAt: string;
     };
     e2?: {
@@ -109,6 +111,8 @@ export interface Ns4PipelineState {
       artifactPaths?: string[];
       approvedBy?: Ns4ApprovedBy;
       approvedAt?: string;
+      error?: string;
+      failedAt?: string;
       updatedAt: string;
     };
   };
@@ -218,11 +222,15 @@ function createNs4AgentStep(
   status: mls.msg.AIStepStatus,
   prompt: Record<string, unknown>,
 ): mls.msg.AIAgentStep {
-  return {
+  const step: mls.msg.AIAgentStep = {
     type: 'agent', stepId: 0, interaction: null, stepTitle, status, nextSteps: [],
     agentName: 'agentNewSolution4', prompt: JSON.stringify(prompt), rags: [],
     planning: { planId: planningPlanId, dependsOn, executionMode: 'sequential', executionHost: 'client' },
   };
+  if (planningPlanId === 'e1-clarification' || planningPlanId.startsWith('e2-journeys-round-')) {
+    step.onFailure = 'wait_after_prompt';
+  }
+  return step;
 }
 
 export function isNs4ModuleToken(value: string): boolean {
@@ -366,11 +374,47 @@ export function markNs4E2Running(
 ): Ns4PipelineState {
   return {
     ...state,
+    status: 'inProgress',
     steps: {
       ...state.steps,
       e2: { status: 'running', reviewRound: Math.max(1, reviewRound), updatedAt: now },
     },
     nextStep: 'e2-journeys',
+    updatedAt: now,
+  };
+}
+
+export function markNs4E1Failed(
+  state: Ns4PipelineState,
+  failure: unknown,
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  return {
+    ...state,
+    status: 'failed',
+    steps: {
+      ...state.steps,
+      e1: { status: 'failed', error: normalizeNs4Failure(failure), failedAt: now, updatedAt: now },
+    },
+    updatedAt: now,
+  };
+}
+
+export function markNs4E2Failed(
+  state: Ns4PipelineState,
+  failure: unknown,
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  const reviewRound = state.steps.e2?.reviewRound || 1;
+  return {
+    ...state,
+    status: 'failed',
+    steps: {
+      ...state.steps,
+      e2: {
+        status: 'failed', reviewRound, error: normalizeNs4Failure(failure), failedAt: now, updatedAt: now,
+      },
+    },
     updatedAt: now,
   };
 }
@@ -489,6 +533,11 @@ function defaultNs4Presentation(prompt: string): Ns4Presentation {
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function normalizeNs4Failure(value: unknown): string {
+  const message = value instanceof Error ? value.message : String(value || 'Unknown agent failure');
+  return message.trim().slice(0, 4000) || 'Unknown agent failure';
 }
 
 function normalizeNs4LanguageTag(value: unknown): string {
