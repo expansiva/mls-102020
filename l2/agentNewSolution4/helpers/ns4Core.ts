@@ -469,6 +469,7 @@ export function markNs4E2Running(
   reviewRound: number,
   now = new Date().toISOString(),
 ): Ns4PipelineState {
+  if (state.steps.e2?.status === 'approved') return state;
   return {
     ...state,
     status: 'inProgress',
@@ -502,6 +503,7 @@ export function markNs4E2Failed(
   failure: unknown,
   now = new Date().toISOString(),
 ): Ns4PipelineState {
+  if (state.steps.e2?.status === 'approved') return state;
   const reviewRound = state.steps.e2?.reviewRound || 1;
   return {
     ...state,
@@ -522,6 +524,7 @@ export function markNs4E2WaitingHuman(
   draftPath: string,
   now = new Date().toISOString(),
 ): Ns4PipelineState {
+  if (state.steps.e2?.status === 'approved') return state;
   return {
     ...state,
     steps: {
@@ -582,6 +585,7 @@ export function markNs4E3Running(
   reviewRound: number,
   now = new Date().toISOString(),
 ): Ns4PipelineState {
+  if (state.steps.e3?.status === 'approved') return state;
   return {
     ...state,
     status: 'inProgress',
@@ -600,6 +604,7 @@ export function markNs4E3WaitingHuman(
   draftPath: string,
   now = new Date().toISOString(),
 ): Ns4PipelineState {
+  if (state.steps.e3?.status === 'approved') return state;
   return {
     ...state,
     status: 'inProgress',
@@ -617,6 +622,7 @@ export function markNs4E3Failed(
   failure: unknown,
   now = new Date().toISOString(),
 ): Ns4PipelineState {
+  if (state.steps.e3?.status === 'approved') return state;
   const reviewRound = state.steps.e3?.reviewRound || 1;
   return {
     ...state,
@@ -670,6 +676,7 @@ export function markNs4E4Running(
   reviewRound: number,
   now = new Date().toISOString(),
 ): Ns4PipelineState {
+  if (state.steps.e4?.status === 'approved') return state;
   return {
     ...state,
     status: 'inProgress',
@@ -688,6 +695,7 @@ export function markNs4E4WaitingHuman(
   draftPath: string,
   now = new Date().toISOString(),
 ): Ns4PipelineState {
+  if (state.steps.e4?.status === 'approved') return state;
   return {
     ...state,
     status: 'inProgress',
@@ -705,6 +713,7 @@ export function markNs4E4Failed(
   failure: unknown,
   now = new Date().toISOString(),
 ): Ns4PipelineState {
+  if (state.steps.e4?.status === 'approved') return state;
   const reviewRound = state.steps.e4?.reviewRound || 1;
   return {
     ...state,

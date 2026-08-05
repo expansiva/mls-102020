@@ -7,6 +7,7 @@ import {
   createNs4Pipeline,
   markNs4E1Approved,
   markNs4E2Approved,
+  markNs4E2Failed,
   markNs4E2Running,
   markNs4E2WaitingHuman,
   markNs4ModuleE2Approved,
@@ -172,4 +173,7 @@ test('E2 approval advances both pipeline and module to the E3 access matrix', ()
   const approved = markNs4E2Approved(waiting, 'human', ['l4/buildFlowFsm/journeys/manageProjects.defs.ts']);
   assert.equal(approved.steps.e2?.status, 'approved');
   assert.equal(approved.nextStep, 'e3-access-matrix');
+  assert.equal(markNs4E2Running(approved, 2), approved);
+  assert.equal(markNs4E2WaitingHuman(approved, 2, 'late-draft.json'), approved);
+  assert.equal(markNs4E2Failed(approved, 'late duplicate callback'), approved);
 });

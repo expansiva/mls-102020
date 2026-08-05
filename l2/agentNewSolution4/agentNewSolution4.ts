@@ -7,6 +7,8 @@ import {
   createNs4E3Step,
   createNs4E4Step,
   isNs4ModuleToken,
+  isNs4Pipeline,
+  markNs4E3Approved,
   normalizeNs4RootPlan,
   Ns4RootPlan,
   parseNs4Invocation,
@@ -14,10 +16,13 @@ import {
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
   listNs4ModuleFolders,
+  ns4AccessMatrixFile,
   ns4FileExists,
   ns4ModuleFile,
   readNs4AgentText,
+  readNs4Module,
   readNs4Pipeline,
+  writeNs4Pipeline,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
 import {
   afterNs4E1PromptStep,
@@ -55,7 +60,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-10 (2026-08-05) resumable greenfield E4 ontology review and per-entity artifacts';
+export const NS4_AGENT_BUILD = 'build-11 (2026-08-05) race-safe E3 to E4 artifact handoff and resume reconciliation';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -73,7 +78,21 @@ async function beforePromptImplicit(
   let resumeRound = '';
   let taskTitle = 'new Solution 4';
   if (isNs4ModuleToken(invocation.prompt) && listNs4ModuleFolders().has(invocation.prompt)) {
-    const pipeline = await readNs4Pipeline(invocation.prompt);
+    let pipeline = await readNs4Pipeline(invocation.prompt);
+    if (isNs4Pipeline(pipeline) && pipeline.steps.e3?.status !== 'approved') {
+      const moduleArtifact = await readNs4Module(invocation.prompt);
+      const approvedE3 = moduleArtifact?.specStatus.completedSteps
+        .find(completed => completed.stepId === 'e3-access-matrix' && completed.status === 'approved');
+      if (approvedE3 && ns4FileExists(ns4AccessMatrixFile(invocation.prompt))) {
+        pipeline = markNs4E3Approved(
+          pipeline,
+          approvedE3.approvedBy,
+          `l4/${invocation.prompt}/access/access-matrix.defs.ts`,
+          approvedE3.approvedAt,
+        );
+        await writeNs4Pipeline(pipeline);
+      }
+    }
     const action = resolveNs4ExistingAction(true, pipeline, ns4FileExists(ns4ModuleFile(invocation.prompt)));
     if (action === 'collision') {
       return [await statusTask(

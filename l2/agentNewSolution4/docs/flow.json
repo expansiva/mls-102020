@@ -12,7 +12,8 @@
     "The root LLM detects the communication language, translates friendly step titles and creates the visible roadmap before clarification begins.",
     "E1 human callbacks persist only an answer anchor; E2 and E3 approval callbacks persist their already-gated permanent review artifacts before adding the result anchor.",
     "Every implemented compile step writes a permanent L4 artifact and a stable result anchor.",
-    "Pipeline state on disk is the resume authority; task payloads are orchestration and presentation.",
+    "Permanent L4 artifacts plus their approved module checkpoint are the resume authority; pipeline state is monotonic and is reconciled from those artifacts if a late callback lags behind.",
+    "A completed result anchor carries the bounded approved contract needed by the immediately unlocked successor, avoiding a storage-index visibility race between client hooks.",
     "New artifacts retain userLanguage and localized stepTitles for maintenance and resume context.",
     "Terminal step failures use traceMsg in the task and persist status, error and failedAt in the pipeline whenever a module pipeline already exists.",
     "Previous flow versions are never migrated automatically.",
@@ -124,6 +125,8 @@
         "External grants cannot use organization-wide scope.",
         "Limited disclosure records an enforceable projection intent; hiding fields in the frontend is insufficient.",
         "The /fast path validates and approves the same E3 contract without opening the widget.",
+        "The e3-result handoff carries the approved review, approval metadata and permanent artifact path for the immediately unlocked E4 hook.",
+        "Late or duplicate callbacks cannot regress an approved E3 pipeline state to running, waitingHuman or failed.",
         "Terminal failures are persisted in pipeline.steps.e3.error and failedAt."
       ]
     },
@@ -142,6 +145,7 @@
       "gate": "steps/e4/gate.ts",
       "runtimeNotes": [
         "The run carries solutionMode=new explicitly; it never infers or fabricates a legacy database contract.",
+        "E4 consumes the permanent access/access-matrix.defs.ts artifact; during the immediate E3-to-E4 transition it may consume the identical approved contract carried by e3-result.",
         "The review widget separates safe direct title/description edits from structural LLM requests.",
         "Before a structural revision, the current draft including direct human edits is persisted and supplied to the next round.",
         "A first deterministic gate failure persists the draft and schedules one bounded LLM repair step before failing the task.",

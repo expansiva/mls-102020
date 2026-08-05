@@ -140,4 +140,7 @@ test('E4 lifecycle resumes an E3-approved v4 pipeline and advances to E5', () =>
   const approved = markNs4E4Approved(waiting, 'human', ['Project.defs.ts', 'index.defs.ts']);
   assert.equal(approved.nextStep, 'e5-rules');
   assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-next');
+  assert.equal(markNs4E4Running(approved, 3), approved);
+  assert.equal(markNs4E4WaitingHuman(approved, 3, 'late-draft.json'), approved);
+  assert.equal(markNs4E4Failed(approved, 'late duplicate callback'), approved);
 });

@@ -50,6 +50,9 @@ interface Ns4PersistedE3 {
   authorityCount: number;
   grantCount: number;
   artifactPath: string;
+  approvedBy: Ns4ApprovedBy;
+  approvedAt: string;
+  approvedReview: Ns4E3Review;
 }
 
 export async function beforeNs4E3PromptStep(
@@ -220,7 +223,7 @@ async function persistNs4E3(
   await writeNs4Pipeline(markNs4E3Approved(pipeline, approvedBy, artifactPath, approvedAt));
   return {
     moduleName, profileCount: review.profiles.length, authorityCount: review.authorities.length,
-    grantCount: review.grants.length, artifactPath,
+    grantCount: review.grants.length, artifactPath, approvedBy, approvedAt, approvedReview: review,
   };
 }
 
