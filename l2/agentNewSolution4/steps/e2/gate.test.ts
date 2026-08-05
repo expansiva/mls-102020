@@ -16,6 +16,7 @@ import {
   sha256Ns4,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { validateNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/gate.js';
+import { resolveNs4E2HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e2/hookArgs.js';
 
 const reviewInput = {
   planId: 'e2-review', moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', title: 'Revisar jornadas', reviewRound: 1,
@@ -43,11 +44,18 @@ const reviewInput = {
           mode: 'contextOrLookup', preferredFromJourneyRef: 'manageProjects',
           carries: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true, description: 'Projeto da mudança.', stateRequirement: 'active' }],
         },
-        steps: [{
-          stepId: 'captureChangeOrder', kind: 'act', intent: 'Informar a mudança.', requiresContext: ['selectedProject'],
-          providesContext: [{ contextId: 'createdChangeOrder', businessObject: 'ChangeOrder', cardinality: 'one', required: true, description: 'Ordem criada.' }],
-          result: 'A ordem fica vinculada ao projeto.', featureRefs: ['changeOrderManagement'],
-        }],
+        steps: [
+          {
+            stepId: 'locateProject', kind: 'locate', intent: 'Manter ou localizar o projeto ativo.', requiresContext: [],
+            providesContext: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true, description: 'Projeto recebido ou localizado.' }],
+            result: 'Um projeto ativo está selecionado.', featureRefs: ['changeOrderManagement'],
+          },
+          {
+            stepId: 'captureChangeOrder', kind: 'act', intent: 'Informar a mudança.', requiresContext: ['selectedProject'],
+            providesContext: [{ contextId: 'createdChangeOrder', businessObject: 'ChangeOrder', cardinality: 'one', required: true, description: 'Ordem criada.' }],
+            result: 'A ordem fica vinculada ao projeto.', featureRefs: ['changeOrderManagement'],
+          },
+        ],
         outcome: { statement: 'A mudança fica registrada no projeto correto.', evidence: ['A ordem exibe o projeto selecionado.'] },
         businessRules: [{ journeyRuleId: 'jrProjectMustBeActive', statement: 'A ordem só pode ser criada para projeto ativo.' }],
       },
@@ -59,6 +67,12 @@ const reviewInput = {
   ],
 };
 
+test('E2 preserves the exact hook args used to match prompt_ready', () => {
+  const original = '{"planId":"e2-journeys","reviewRound":1}';
+  assert.equal(resolveNs4E2HookArgs(undefined, original), original);
+  assert.equal(resolveNs4E2HookArgs(original, '{"different":true}'), original);
+});
+
 test('E2 accepts connected contextOrLookup journeys', () => {
   const review = normalizeNs4E2Review(reviewInput);
   assert.deepEqual(validateNs4E2Review(review), { ok: true, issues: [] });
@@ -66,7 +80,7 @@ test('E2 accepts connected contextOrLookup journeys', () => {
 
 test('E2 rejects a context consumed before it is carried or produced', () => {
   const broken = structuredClone(reviewInput);
-  broken.journeys[1].business.steps[0].requiresContext = ['missingProject'];
+  broken.journeys[1].business.steps[1].requiresContext = ['missingProject'];
   const result = validateNs4E2Review(normalizeNs4E2Review(broken));
   assert.equal(result.ok, false);
   assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_CONTEXT_ORDER'));
@@ -74,10 +88,40 @@ test('E2 rejects a context consumed before it is carried or produced', () => {
 
 test('E2 rejects business text that asks for a raw technical id', () => {
   const broken = structuredClone(reviewInput);
-  broken.journeys[1].business.steps[0].intent = 'Pedir o project id e registrar a mudança.';
+  broken.journeys[1].business.steps[1].intent = 'Pedir o project id e registrar a mudança.';
   const result = validateNs4E2Review(normalizeNs4E2Review(broken));
   assert.equal(result.ok, false);
   assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_RAW_TECHNICAL_ID'));
+});
+
+test('E2 rejects a prerequisite that renames context across the journey handoff', () => {
+  const broken = structuredClone(reviewInput);
+  broken.journeys[0].business.steps[0].providesContext[0].contextId = 'createdProject';
+  const result = validateNs4E2Review(normalizeNs4E2Review(broken));
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_PREREQUISITE_HANDOFF'));
+});
+
+test('E2 contextOrLookup requires an explicit fallback locate output', () => {
+  const broken = structuredClone(reviewInput);
+  broken.journeys[1].business.steps[0].providesContext = [];
+  const result = validateNs4E2Review(normalizeNs4E2Review(broken));
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_LOOKUP_FALLBACK'));
+});
+
+test('E2 allows a stable context to be refreshed but rejects a different business object', () => {
+  const refreshed = structuredClone(reviewInput);
+  refreshed.journeys[1].business.steps[1].providesContext.push({
+    contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one' as const,
+    required: true, description: 'Projeto mantido após registrar a ordem.',
+  });
+  assert.equal(validateNs4E2Review(normalizeNs4E2Review(refreshed)).ok, true);
+
+  refreshed.journeys[1].business.steps[1].providesContext[1].businessObject = 'Client';
+  const result = validateNs4E2Review(normalizeNs4E2Review(refreshed));
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_CONTEXT_OBJECT_CONFLICT'));
 });
 
 test('business hash is stable across object key order', async () => {

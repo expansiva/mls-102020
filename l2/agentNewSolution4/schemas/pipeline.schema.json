@@ -1,11 +1,11 @@
 {
-  "$id": "https://collab.codes/schemas/agentNewSolution4/pipeline/2026-08-05-v2",
+  "$id": "https://collab.codes/schemas/agentNewSolution4/pipeline/2026-08-05-v3",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "flowId", "flowVersion", "moduleName", "sourcePrompt", "presentation", "status", "steps", "nextStep", "createdAt", "updatedAt"],
   "properties": {
-    "schemaVersion": { "type": "string", "const": "2026-08-05-ns4-pipeline-v2" },
+    "schemaVersion": { "type": "string", "const": "2026-08-05-ns4-pipeline-v3" },
     "flowId": { "type": "string", "const": "agentNewSolution4" },
     "flowVersion": { "type": "string", "const": "2026-08-05-ns4-flow-v3" },
     "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
@@ -50,6 +50,8 @@
             "artifactPath": { "type": "string" },
             "approvedBy": { "type": "string", "enum": ["human", "auto"] },
             "approvedAt": { "type": "string" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "failedAt": { "type": "string", "minLength": 10 },
             "updatedAt": { "type": "string", "minLength": 10 }
           }
         },
@@ -64,6 +66,8 @@
             "artifactPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
             "approvedBy": { "type": "string", "enum": ["human", "auto"] },
             "approvedAt": { "type": "string" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "failedAt": { "type": "string", "minLength": 10 },
             "updatedAt": { "type": "string", "minLength": 10 }
           }
         }

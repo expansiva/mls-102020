@@ -18,6 +18,9 @@ human-approved business intent.
 
 The gate treats business context as a first-class contract. A command journey must carry, locate or
 receive a named record such as `selectedProject`; it must never make a future page ask for a raw id.
+Cross-journey handoffs are also checked: a prerequisite may only provide a context actually exported
+by the referenced journey, using the same stable `contextId`. Every `contextOrLookup` journey must
+materialize its direct-entry fallback through a `locate` step.
 
 Local smoke testing can validate and materialize an approved E1 folder without the Studio runtime:
 
@@ -29,3 +32,16 @@ tsx --import test/register-hooks.mjs --import test/setup-l2.ts \
 
 The command defaults to dry-run. `--write` refuses to overwrite an already approved E2; `--verify`
 recomputes every business hash and compares the written permanent business blocks with the review.
+
+Live testing can call the same `collab-llm` alias declared in `prompt.md`, run the real gate and reuse
+the smoke writer:
+
+```text
+tsx --import test/register-hooks.mjs --import test/setup-l2.ts \
+  mls-102020/l2/agentNewSolution4/steps/e2/nodejsLiveE2.ts \
+  <project> <module> [--write] [--approve]
+```
+
+Without flags it calls the LLM and validates without writing. `--write` saves
+`pipeline/e2-live-review.json` and `pipeline/e2-live-llm-response.json` but does not change the pipeline.
+`--approve` additionally invokes the guarded smoke writer and therefore refuses an already approved E2.

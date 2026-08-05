@@ -1,5 +1,7 @@
 # E1 changelog
 
+- 2026-08-05 — Build 6 persists terminal compile failures with `error` and `failedAt`; LLM-call
+  failures use `wait_after_prompt` so their message remains in the task trace.
 - 2026-08-05 — Flow v3: restored the stable root-planner architecture, including prompt-language
   detection, LLM-localized E1–E9 titles and the complete dependency roadmap created at task start.
   Split clarification from deterministic compilation with the durable `e1-clarification-answer`

@@ -9,6 +9,7 @@ import {
   createNs4Pipeline,
   isNs4Pipeline,
   markNs4E1Approved,
+  markNs4E1Failed,
   normalizeNs4Clarification,
   normalizeNs4ModuleName,
   normalizeNs4RootPlan,
@@ -174,7 +175,9 @@ async function compileNs4E1(
       updateStatus(context, mutationParent, step, hookSequential, 'completed', `E1 compiled: ${saved.artifactPath}`, 'input_output'),
     ];
   } catch (error) {
-    return [updateStatus(context, parentStep, step, hookSequential, 'failed', errorMessage(error))];
+    const message = errorMessage(error);
+    await recordNs4E1Failure(context, message);
+    return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
   }
 }
 
@@ -212,12 +215,25 @@ async function persistNs4E1(
   const gate = validateNs4E1Module(artifact);
   if (!gate.ok) {
     const message = gate.issues.filter(issue => issue.severity === 'error').map(issue => `${issue.code}: ${issue.message}`).join('\n');
-    await writeNs4Pipeline({ ...running, steps: { e1: { status: 'failed', updatedAt: new Date().toISOString() } }, updatedAt: new Date().toISOString() });
+    await writeNs4Pipeline(markNs4E1Failed(running, message || 'E1 module gate failed.'));
     throw new Error(message || 'E1 module gate failed.');
   }
   const artifactPath = await writeNs4Module(moduleName, artifact);
   await writeNs4Pipeline(markNs4E1Approved(running, approvedBy, artifactPath));
   return { artifact, artifactPath };
+}
+
+async function recordNs4E1Failure(context: mls.msg.ExecutionContext, failure: string): Promise<void> {
+  try {
+    const answer = getClarificationAnswer(context);
+    const answerModule = answer ? normalizeNs4ModuleName(answer.clarification.questions.moduleName.answer) : '';
+    const moduleName = normalizeOptionalModuleName(memoryString(context, 'resumeModule')) || answerModule;
+    if (!moduleName) return;
+    const pipeline = await readNs4Pipeline(moduleName);
+    if (isNs4Pipeline(pipeline)) await writeNs4Pipeline(markNs4E1Failed(pipeline, failure));
+  } catch {
+    // The step trace remains the fallback when the pipeline itself cannot be read or written.
+  }
 }
 
 function clarificationAnswerStep(
