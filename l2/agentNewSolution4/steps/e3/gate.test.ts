@@ -146,5 +146,5 @@ test('E3 lifecycle persists rounds, failures and advances module and pipeline to
   const approved = markNs4E3Approved(waiting, 'human', 'l4/buildFlowFsm/access/access-matrix.defs.ts');
   assert.equal(approved.nextStep, 'e4-ontology');
   assert.equal(approved.steps.e3?.reviewRound, 2);
-  assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-next');
+  assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-e4');
 });

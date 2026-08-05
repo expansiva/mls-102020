@@ -25,8 +25,9 @@ export type Ns4ApprovedBy = 'human' | 'auto';
 export type Ns4E1Status = 'running' | 'approved' | 'failed';
 export type Ns4E2Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
 export type Ns4E3Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
-export type Ns4CompletedStepId = 'e1' | 'e2-journeys' | 'e3-access-matrix';
-export type Ns4NextStep = 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology';
+export type Ns4E4Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
+export type Ns4CompletedStepId = 'e1' | 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology';
+export type Ns4NextStep = 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology' | 'e5-rules';
 
 export interface Ns4ClarificationQuestion {
   type: 'open';
@@ -128,13 +129,25 @@ export interface Ns4PipelineState {
       failedAt?: string;
       updatedAt: string;
     };
+    e4?: {
+      status: Ns4E4Status;
+      reviewRound: number;
+      solutionMode: 'new';
+      draftPath?: string;
+      artifactPaths?: string[];
+      approvedBy?: Ns4ApprovedBy;
+      approvedAt?: string;
+      error?: string;
+      failedAt?: string;
+      updatedAt: string;
+    };
   };
   nextStep: Ns4NextStep;
   createdAt: string;
   updatedAt: string;
 }
 
-export type Ns4ExistingAction = 'new' | 'resume-e1' | 'resume-e2' | 'resume-e3' | 'resume-next' | 'collision';
+export type Ns4ExistingAction = 'new' | 'resume-e1' | 'resume-e2' | 'resume-e3' | 'resume-e4' | 'resume-next' | 'collision';
 
 export function parseNs4Invocation(value: string): { fast: boolean; prompt: string } {
   const raw = String(value || '');
@@ -193,6 +206,39 @@ export function createNs4E3Step(
   );
 }
 
+export function createNs4E4Step(
+  moduleName = '',
+  reviewRound = 1,
+  adjustment = '',
+  dependsOn: string[] = [],
+  stepTitle = NS4_DEFAULT_TITLES['e4-ontology'],
+): mls.msg.AIAgentStep {
+  const suffix = adjustment ? ` · ${reviewRound}` : '';
+  return createNs4AgentStep(
+    `e4-ontology-round-${reviewRound}`,
+    `${stepTitle}${suffix}`,
+    dependsOn,
+    dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
+    { planId: 'e4-ontology', ...(moduleName ? { moduleName } : {}), reviewRound, solutionMode: 'new', ...(adjustment ? { adjustment } : {}) },
+  );
+}
+
+export function createNs4E4RepairStep(
+  moduleName: string,
+  reviewRound: number,
+  repairAttempt: number,
+  gateFeedback: string,
+  stepTitle = NS4_DEFAULT_TITLES['e4-ontology'],
+): mls.msg.AIAgentStep {
+  return createNs4AgentStep(
+    `e4-ontology-round-${reviewRound}-repair-${repairAttempt}`,
+    `${stepTitle} · R${repairAttempt}`,
+    [],
+    'waiting_human_input',
+    { planId: 'e4-ontology', moduleName, reviewRound, solutionMode: 'new', repairAttempt, gateFeedback },
+  );
+}
+
 export const NS4_DEFAULT_TITLES: Record<Ns4PlanId, string> = {
   'e1-clarification': 'Clarify the module contract',
   'e1-compile': 'Compile the initial module contract',
@@ -247,7 +293,7 @@ export function buildNs4PlannedSteps(plan: Ns4RootPlan): mls.msg.AIAgentStep[] {
     createNs4AgentStep('e1-compile', title('e1-compile'), ['e1-clarification-answer'], 'waiting_dependency', { planId: 'e1-compile' }),
     createNs4E2Step('', 1, '', ['e1-result'], title('e2-journeys')),
     createNs4E3Step('', 1, '', ['e2-result'], title('e3-access-matrix')),
-    createNs4RoadmapStep('e4-ontology', title('e4-ontology'), ['e3-result']),
+    createNs4E4Step('', 1, '', ['e3-result'], title('e4-ontology')),
     createNs4RoadmapStep('e5-rules', title('e5-rules'), ['e4-result']),
     createNs4RoadmapStep('e6-behaviors', title('e6-behaviors'), ['e5-result']),
     createNs4RoadmapStep('e7-realization', title('e7-realization'), ['e6-result']),
@@ -277,7 +323,8 @@ function createNs4AgentStep(
   };
   if (planningPlanId === 'e1-clarification'
     || planningPlanId.startsWith('e2-journeys-round-')
-    || planningPlanId.startsWith('e3-access-matrix-round-')) {
+    || planningPlanId.startsWith('e3-access-matrix-round-')
+    || planningPlanId.startsWith('e4-ontology-round-')) {
     step.onFailure = 'wait_after_prompt';
   }
   return step;
@@ -618,6 +665,96 @@ export function markNs4ModuleE3Approved(
   };
 }
 
+export function markNs4E4Running(
+  state: Ns4PipelineState,
+  reviewRound: number,
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  return {
+    ...state,
+    status: 'inProgress',
+    steps: {
+      ...state.steps,
+      e4: { status: 'running', reviewRound: Math.max(1, reviewRound), solutionMode: 'new', updatedAt: now },
+    },
+    nextStep: 'e4-ontology',
+    updatedAt: now,
+  };
+}
+
+export function markNs4E4WaitingHuman(
+  state: Ns4PipelineState,
+  reviewRound: number,
+  draftPath: string,
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  return {
+    ...state,
+    status: 'inProgress',
+    steps: {
+      ...state.steps,
+      e4: { status: 'waitingHuman', reviewRound: Math.max(1, reviewRound), solutionMode: 'new', draftPath, updatedAt: now },
+    },
+    nextStep: 'e4-ontology',
+    updatedAt: now,
+  };
+}
+
+export function markNs4E4Failed(
+  state: Ns4PipelineState,
+  failure: unknown,
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  const reviewRound = state.steps.e4?.reviewRound || 1;
+  return {
+    ...state,
+    status: 'failed',
+    steps: {
+      ...state.steps,
+      e4: {
+        status: 'failed', reviewRound, solutionMode: 'new', error: normalizeNs4Failure(failure), failedAt: now, updatedAt: now,
+      },
+    },
+    nextStep: 'e4-ontology',
+    updatedAt: now,
+  };
+}
+
+export function markNs4E4Approved(
+  state: Ns4PipelineState,
+  approvedBy: Ns4ApprovedBy,
+  artifactPaths: string[],
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  const reviewRound = state.steps.e4?.reviewRound || 1;
+  return {
+    ...state,
+    status: 'inProgress',
+    steps: {
+      ...state.steps,
+      e4: {
+        ...state.steps.e4,
+        status: 'approved', reviewRound, solutionMode: 'new', artifactPaths: [...artifactPaths], approvedBy, approvedAt: now, updatedAt: now,
+      },
+    },
+    nextStep: 'e5-rules',
+    updatedAt: now,
+  };
+}
+
+export function markNs4ModuleE4Approved(
+  artifact: Ns4ModuleArtifact,
+  approvedBy: Ns4ApprovedBy,
+  now = new Date().toISOString(),
+): Ns4ModuleArtifact {
+  const completedSteps = artifact.specStatus.completedSteps.filter(step => step.stepId !== 'e4-ontology');
+  completedSteps.push({ stepId: 'e4-ontology', status: 'approved', approvedBy, approvedAt: now });
+  return {
+    ...artifact,
+    specStatus: { ...artifact.specStatus, completedSteps, nextStep: 'e5-rules', updatedAt: now },
+  };
+}
+
 export function resolveNs4ExistingAction(
   moduleExists: boolean,
   pipeline: unknown,
@@ -625,7 +762,8 @@ export function resolveNs4ExistingAction(
 ): Ns4ExistingAction {
   if (!moduleExists) return 'new';
   if (!isNs4Pipeline(pipeline)) return 'collision';
-  if (pipeline.steps.e3?.status === 'approved' && moduleArtifactExists) return 'resume-next';
+  if (pipeline.steps.e4?.status === 'approved' && moduleArtifactExists) return 'resume-next';
+  if (pipeline.steps.e3?.status === 'approved' && moduleArtifactExists) return 'resume-e4';
   if (pipeline.steps.e2?.status === 'approved' && moduleArtifactExists) return 'resume-e3';
   if (pipeline.steps.e1.status === 'approved' && moduleArtifactExists) return 'resume-e2';
   return 'resume-e1';

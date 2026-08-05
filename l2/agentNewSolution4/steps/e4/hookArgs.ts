@@ -1,0 +1,7 @@
+/// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e4/hookArgs.ts" enhancement="_blank"/>
+
+export function resolveNs4E4HookArgs(args: unknown, prompt: unknown): string {
+  if (typeof args === 'string') return args;
+  if (typeof prompt === 'string') return prompt;
+  return '';
+}

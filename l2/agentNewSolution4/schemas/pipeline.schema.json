@@ -87,10 +87,27 @@
             "failedAt": { "type": "string", "minLength": 10 },
             "updatedAt": { "type": "string", "minLength": 10 }
           }
+        },
+        "e4": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reviewRound", "solutionMode", "updatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["running", "waitingHuman", "approved", "failed"] },
+            "reviewRound": { "type": "integer", "minimum": 1 },
+            "solutionMode": { "type": "string", "const": "new" },
+            "draftPath": { "type": "string" },
+            "artifactPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "approvedBy": { "type": "string", "enum": ["human", "auto"] },
+            "approvedAt": { "type": "string" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "failedAt": { "type": "string", "minLength": 10 },
+            "updatedAt": { "type": "string", "minLength": 10 }
+          }
         }
       }
     },
-    "nextStep": { "type": "string", "enum": ["e2-journeys", "e3-access-matrix", "e4-ontology"] },
+    "nextStep": { "type": "string", "enum": ["e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules"] },
     "createdAt": { "type": "string", "minLength": 10 },
     "updatedAt": { "type": "string", "minLength": 10 }
   }

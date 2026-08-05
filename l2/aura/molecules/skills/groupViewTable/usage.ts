@@ -35,7 +35,21 @@ export const skill = `
 | \`is-editing\` | \`boolean\` | \`false\` | Propagates \`is-editing\` attribute to web components inside cells |
 | \`page\` | \`number\` | \`1\` | Current page number (1-based) |
 | \`page-size\` | \`number\` | \`0\` | Rows per page (0 = no pagination) |
-| \`total-items\` | \`number\` | \`0\` | Total number of items for pagination |
+| \`total-items\` | \`number\` | \`0\` | Total number of items. **Leaving it at 0 is what selects INTERNAL mode** — see below |
+
+### Pagination and sorting: pick one of the two modes
+
+| | write all rows in \`<TableBody>\`, leave \`total-items\` at \`0\` | write only the current page, set \`total-items\` to the full count |
+|---|---|---|
+| mode | **INTERNAL** | **EXTERNAL** |
+| who sorts | the molecule, over the whole set | **you**, over the whole set |
+| who slices the page | the molecule | you, on \`pageChange\` |
+| what you write | everything once | requery on \`sort\` and on \`pageChange\` |
+
+**Do not mix them.** In EXTERNAL mode the molecule does not reorder rows — it holds a single page,
+and reordering there would order 10 rows out of 60. It still emits \`sort\` so you can requery.
+If you sort in your page **and** expect the molecule to sort too, the result is rows ordered by
+one criterion carrying content from another.
 | \`disabled\` | \`boolean\` | \`false\` | Disables all interaction |
 | \`loading\` | \`boolean\` | \`false\` | Shows loading state |
 | \`fit-height\` | \`boolean\` | \`false\` | Take the container's height instead of growing with the rows: **only the body scrolls**, the column header stays stuck to the top, and pagination stays visible at the bottom without scrolling. Use it whenever the table lives inside a bounded viewport (split view, side panel) — without it the rows push pagination out of sight. Requires the parent to have a defined height |

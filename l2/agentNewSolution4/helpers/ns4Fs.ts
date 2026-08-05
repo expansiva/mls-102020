@@ -32,6 +32,18 @@ export function ns4AccessMatrixFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/access`, shortName: 'access-matrix', extension: '.defs.ts' };
 }
 
+export function ns4E4DraftFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e4-ontology.draft', extension: '.json' };
+}
+
+export function ns4OntologyEntityFile(moduleName: string, entityId: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/ontology`, shortName: entityId, extension: '.defs.ts' };
+}
+
+export function ns4OntologyIndexFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/ontology`, shortName: 'index', extension: '.defs.ts' };
+}
+
 export function ns4JourneyFile(moduleName: string, journeyId: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/journeys`, shortName: journeyId, extension: '.defs.ts' };
 }
@@ -93,9 +105,27 @@ export async function writeNs4E3Draft(moduleName: string, draft: unknown): Promi
   return displayPath(fileInfo);
 }
 
+export async function writeNs4E4Draft(moduleName: string, draft: unknown): Promise<string> {
+  const fileInfo = ns4E4DraftFile(moduleName);
+  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
 export async function writeNs4AccessMatrix(moduleName: string, artifact: unknown): Promise<string> {
   const fileInfo = ns4AccessMatrixFile(moduleName);
   await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}AccessMatrix`, artifact);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4OntologyEntity(moduleName: string, entityId: string, artifact: unknown): Promise<string> {
+  const fileInfo = ns4OntologyEntityFile(moduleName, entityId);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}Entity${entityId}`, artifact);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4OntologyIndex(moduleName: string, artifact: unknown): Promise<string> {
+  const fileInfo = ns4OntologyIndexFile(moduleName);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}OntologyIndex`, artifact);
   return displayPath(fileInfo);
 }
 
@@ -142,6 +172,17 @@ export async function readNs4Text(fileInfo: Ns4FileInfo, required: boolean): Pro
   }
   if (required) throw new Error(`[agentNewSolution4] invalid text file: ${displayPath(fileInfo)}`);
   return '';
+}
+
+export async function readNs4DefsJson<T>(fileInfo: Ns4FileInfo, required = false): Promise<T | null> {
+  const source = await readNs4Text(fileInfo, required);
+  const json = extractNs4JsonObject(source);
+  if (!json) return null;
+  try { return JSON.parse(json) as T; }
+  catch {
+    if (required) throw new Error(`[agentNewSolution4] invalid defs JSON: ${displayPath(fileInfo)}`);
+    return null;
+  }
 }
 
 async function writeNs4Text(fileInfo: Ns4FileInfo, content: string): Promise<void> {

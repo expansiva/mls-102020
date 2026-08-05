@@ -306,7 +306,7 @@ return html\\\`<div class=\\\${classes}>...</div>\\\`;
 Import \`cn\` from the project's molecules directory. Use it to merge component classes with consumer-provided classes:
 
 \`\`\`typescript
-import { cn } from '/_102033_/l2/cn.js';
+import { cn } from '/_102033_/l2/shared/molecules/cn.js';
 \`\`\`
 
 The base class \`MoleculeAuraElement\` provides:
