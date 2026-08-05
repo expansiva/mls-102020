@@ -9,7 +9,7 @@ const AGENT_PROJECT = 102020;
 const AGENT_FOLDER = 'agentNewSolution4';
 
 export function ns4AgentFile(folder: string, shortName: string, extension: string): Ns4FileInfo {
-  return { project: AGENT_PROJECT, level: 2, folder: `${AGENT_FOLDER}/${folder}`, shortName, extension };
+  return { project: AGENT_PROJECT, level: 2, folder: folder ? `${AGENT_FOLDER}/${folder}` : AGENT_FOLDER, shortName, extension };
 }
 
 export function ns4ModuleFile(moduleName: string): Ns4FileInfo {

@@ -2,10 +2,16 @@
 
 E1 owns the first human clarification and writes the first permanent L4 artifact.
 
-The task root is only a deterministic bootstrap. It skips the root LLM call and schedules a dedicated
-`e1-clarification` child agent step, which owns both the LLM output and the widget lifecycle. This is
-required so completing the clarification closes the interactive screen instead of leaving a
-clarification payload attached to the completed task root.
+The task root calls the planning LLM first. Its strict result contains the prompt language, friendly
+localized titles for every planned phase and the initial clarification proposal. The complete E1–E9
+roadmap is created before execution begins and its presentation metadata is later persisted in L4.
+
+`e1-clarification` refines that proposal and owns the widget lifecycle. Approval publishes the
+`e1-clarification-answer` result and completes only the clarification step. The already-planned
+`e1-compile` step depends on that result, so `collab-messages` unlocks it naturally. Compilation is
+deterministic: it validates and persists the module contract and pipeline, then publishes `e1-result`,
+which unlocks E2. No callback modifies IndexedDB, emits a task-change event or manufactures a second
+copy of the future plan.
 
 Inputs:
 
@@ -24,15 +30,15 @@ Persistence order is intentional:
 3. mark E1 `approved` in pipeline.
 
 If the run stops after item 1 or 2, `@@newSolution4 <module>` recognizes its own partial pipeline and
-reruns E1. A folder with no v4 pipeline marker is never overwritten.
+continues its next incomplete step. A folder with no v4 pipeline marker is never overwritten, and an
+older flow version is not silently migrated.
 
-`/fast` applies the LLM-proposed defaults directly in `afterPromptStep`; it does not rely on rendering
-the clarification widget.
+`/fast` uses the normal widget contract with automatic acceptance. The interactive and automatic paths
+therefore publish the same answer anchor and unlock the same compile step.
 
 `userLanguage` controls the clarification language only. The editable `productLanguages` answer owns
 the application's complete language list and is normalized into unique BCP-47 tags in
-`module.languages` (for example `pt-br, en, es` becomes `pt-BR`, `en`, `es`). Older E1 payloads that
-do not contain this answer remain compatible and fall back to `userLanguage`.
+`module.languages` (for example `pt-br, en, es` becomes `pt-BR`, `en`, `es`).
 
-The interactive widget accepts only its first finish event. This keeps a rapid double click from
-persisting E1 twice and turning the second write into a false module-collision failure.
+The LLM controls presentation text only. Stable plan IDs (`e1-clarification`, `e1-compile`, `e1-result`,
+and `e2-result`) remain language-independent and are the sole dependency anchors.

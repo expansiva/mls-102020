@@ -1,26 +1,27 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-04-ns4-flow-v1",
+  "schemaVersion": "2026-08-05-ns4-flow-v3",
   "status": "e1-e2",
-  "description": "Compiler-style product specification pipeline. E1 establishes the module contract; E2 creates and human-approves the permanent business journeys.",
+  "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
     "mls-base/skills/collab_messages.md",
     "mls-base/skills/agentsBestPractices.md",
     "mls-base/skills/modelTypes.md"
   ],
   "principles": [
-    "Every completed step writes a permanent L4 artifact.",
-    "Pipeline state on disk is the resume authority; task payloads are orchestration only.",
-    "An existing module is resumable only when its pipeline declares flowId agentNewSolution4.",
-    "A foreign existing module is never overwritten and produces a visible collision error.",
-    "The /fast flag accepts the clarification defaults without requiring the widget to render.",
-    "Prompts live in the owning step folder; deterministic validation decides whether artifacts are trusted."
+    "The root LLM detects the communication language, translates friendly step titles and creates the visible roadmap before clarification begins.",
+    "Human callbacks only persist an answer step and complete their clarification; artifact work belongs to dependency-unlocked compile steps.",
+    "Every implemented compile step writes a permanent L4 artifact and a stable result anchor.",
+    "Pipeline state on disk is the resume authority; task payloads are orchestration and presentation.",
+    "New artifacts retain userLanguage and localized stepTitles for maintenance and resume context.",
+    "Previous flow versions are never migrated automatically.",
+    "The /fast flag auto-accepts the same clarification widget path after a countdown."
   ],
   "invocation": {
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "If l4/<module>/pipeline/pipeline.json belongs to agentNewSolution4, resume its next incomplete step. An approved E1 starts or resumes E2; an approved E2 reports E3 as the next unimplemented step. A module without the v4 pipeline marker is a collision."
+    "resumeRule": "A v4-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Foreign modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",
@@ -29,92 +30,61 @@
     "journey": "l4/{module}/journeys/{journeyId}.defs.ts",
     "journeyIndex": "l4/{module}/journeys/index.defs.ts"
   },
+  "orchestration": {
+    "rootOutput": ["validPrompt", "userPrompt", "presentation.userLanguage", "presentation.stepTitles", "clarification"],
+    "treeCreation": "after root LLM, before any human clarification",
+    "implementedChain": [
+      "e1-clarification",
+      "e1-clarification-answer",
+      "e1-compile",
+      "e1-result",
+      "e2-journeys",
+      "e2-result"
+    ],
+    "roadmap": [
+      "e3-ontology",
+      "e4-rules",
+      "e5-behaviors",
+      "e6-realization",
+      "e7-workspaces",
+      "e8-navigation-compiler",
+      "e9-validation"
+    ],
+    "roadmapExecution": "Future steps are visible waiting_dependency/manual_later nodes until their implementations are delivered."
+  },
   "steps": [
     {
-      "planId": "e1",
-      "agentName": "agentNewSolution4",
-      "type": "agent-clarification",
-      "goal": "Clarify the module name, actors, goal, boundaries and product languages, then write the initial permanent module contract.",
-      "input": [
-        "initial user prompt",
-        "clarification answers or /fast defaults"
-      ],
-      "output": [
-        "l4/{module}/module.defs.ts",
-        "l4/{module}/pipeline/pipeline.json"
-      ],
-      "gate": {
-        "file": "steps/e1/gate.ts",
-        "checks": [
-          "normalized lower-camel moduleName",
-          "non-empty title and purpose",
-          "one or more unique normalized BCP-47 product languages",
-          "module contract identifies agentNewSolution4",
-          "specStatus marks E1 approved and E2 as next",
-          "pipeline marks E1 approved only after module.defs.ts is written"
-        ]
-      },
-      "resume": "A running E1 pipeline may be safely rerun. An approved E1 with module.defs.ts advances to e2-journeys when that step exists.",
+      "planId": "e1-clarification",
+      "type": "agent-human-clarification",
+      "goal": "Confirm module identity, actors, goal, boundaries and product languages.",
+      "outputAnchor": "e1-clarification-answer",
       "runtimeNotes": [
-        "The root is a deterministic bootstrap and schedules a dedicated E1 clarification agent step; the root never owns a clarification payload.",
-        "In /fast, the E1 child afterPromptStep persists the defaults directly and completes without rendering the widget.",
-        "In interactive mode, the E1 child owns the standard clarification widget; its callback persists the artifacts and records a completed e1-result step."
+        "The root plan seeds the localized clarification.",
+        "The callback only writes the answer anchor and completes the clarification.",
+        "/fast uses the same widget event with autoAcceptSeconds=10."
       ]
     },
     {
+      "planId": "e1-compile",
+      "type": "deterministic-compile",
+      "dependsOn": ["e1-clarification-answer"],
+      "goal": "Validate and write the initial permanent module contract.",
+      "output": ["l4/{module}/module.defs.ts", "l4/{module}/pipeline/pipeline.json"],
+      "outputAnchor": "e1-result",
+      "gate": "steps/e1/gate.ts"
+    },
+    {
       "planId": "e2-journeys",
-      "agentName": "agentNewSolution4",
       "type": "agent-human-checkpoint-loop",
-      "goal": "Define the permanent business journeys, including entry policy and named business context, then freeze the human-approved business blocks with SHA-256 hashes.",
-      "input": [
-        "l4/{module}/module.defs.ts",
-        "optional human adjustment request",
-        "previous E2 draft when adjusting"
-      ],
+      "dependsOn": ["e1-result"],
+      "goal": "Generate, adjust and approve permanent connected business journeys.",
       "output": [
         "l4/{module}/pipeline/e2-journeys.draft.json",
         "l4/{module}/journeys/{journeyId}.defs.ts",
-        "l4/{module}/journeys/index.defs.ts",
-        "updated l4/{module}/module.defs.ts",
-        "updated l4/{module}/pipeline/pipeline.json"
+        "l4/{module}/journeys/index.defs.ts"
       ],
-      "checkpoint": {
-        "widget": "widget-ns4-journeys-102020",
-        "actions": [
-          "approve",
-          "requestChanges"
-        ],
-        "approvalRule": "Permanent journey files are written only after approval. A change request starts another E2 generation round and returns to this widget."
-      },
-      "gate": {
-        "file": "steps/e2/gate.ts",
-        "checks": [
-          "unique stable journey, step, context, rule and feature ids",
-          "entry mode is coldStart, contextRequired, contextOrLookup or eventDriven",
-          "required context is carried, supplied by a prerequisite, or produced by an earlier step",
-          "act and decide steps cannot operate on an existing record without prior context",
-          "prerequisite journey references exist and do not reference themselves",
-          "outcomes contain observable evidence",
-          "every now feature references at least one journey step"
-        ]
-      },
-      "resume": "A running or waiting-human E2 reopens generation/review. An approved E2 advances to e3-ontology.",
-      "runtimeNotes": [
-        "The root uses a deterministic bootstrap and schedules an E2 agent step.",
-        "The model proposes a review bundle; the deterministic gate runs before the widget opens.",
-        "The widget displays prerequisites, entry context, context flow, rules, features and outcomes.",
-        "Duplicate approve/change events are ignored by a single-submit guard.",
-        "In /fast the valid E2 proposal is approved without rendering the widget."
-      ]
+      "outputAnchor": "e2-result",
+      "gate": "steps/e2/gate.ts"
     }
-  ],
-  "plannedSteps": [
-    "e3-ontology",
-    "e4-rules",
-    "e5-behaviors",
-    "e6-realization",
-    "e7-workspaces",
-    "e8-navigation-compiler",
-    "e9-validation"
   ]
 }

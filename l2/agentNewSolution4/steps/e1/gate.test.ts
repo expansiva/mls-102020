@@ -2,13 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildNs4PlannedSteps,
   buildNs4ModuleArtifact,
-  createNs4E1Step,
-  createNs4ClarificationSubmitGuard,
   createNs4Pipeline,
   markNs4E1Approved,
+  markNs4E2Running,
   normalizeNs4Languages,
   normalizeNs4ModuleName,
+  normalizeNs4RootPlan,
+  NS4_FLOW_VERSION,
+  Ns4PipelineState,
   parseNs4Invocation,
   resolveNs4ExistingAction,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
@@ -48,19 +51,64 @@ test('/fast is a standalone flag and is removed from the business prompt', () =>
   assert.deepEqual(parseNs4Invocation('/fastlane petShop'), { fast: false, prompt: '/fastlane petShop' });
 });
 
-test('interactive clarification accepts only its first submit', () => {
-  const acceptSubmit = createNs4ClarificationSubmitGuard();
-  assert.equal(acceptSubmit(), true);
-  assert.equal(acceptSubmit(), false);
-  assert.equal(acceptSubmit(), false);
+test('root plan localizes and creates the complete visible roadmap before E1 starts', () => {
+  const titles = {
+    'e1-clarification': 'Confirmar contrato do módulo',
+    'e1-compile': 'Compilar contrato inicial',
+    'e2-journeys': 'Definir jornadas de negócio',
+    'e3-ontology': 'Definir ontologia',
+    'e4-rules': 'Organizar regras',
+    'e5-behaviors': 'Definir comportamentos',
+    'e6-realization': 'Conectar jornadas',
+    'e7-workspaces': 'Desenhar áreas de trabalho',
+    'e8-navigation-compiler': 'Compilar navegação',
+    'e9-validation': 'Validar especificação',
+  };
+  const plan = normalizeNs4RootPlan({
+    type: 'flexible',
+    result: { validPrompt: true, userPrompt: 'Criar pet shop', userLanguage: 'pt-BR', titles, clarification },
+  }, 'Criar pet shop');
+  const steps = buildNs4PlannedSteps(plan);
+  assert.equal(steps.length, 10);
+  assert.equal(steps[0].stepTitle, titles['e1-clarification']);
+  assert.equal(steps[0].status, 'waiting_human_input');
+  assert.deepEqual(steps[1].planning?.dependsOn, ['e1-clarification-answer']);
+  assert.deepEqual(steps[2].planning?.dependsOn, ['e1-result']);
+  assert.equal(steps[3].planning?.executionMode, 'manual_later');
+  const artifact = buildNs4ModuleArtifact(plan.userPrompt, clarification, 'human', '2026-08-05T10:00:00.000Z', plan.presentation);
+  const pipeline = createNs4Pipeline('petShop', plan.userPrompt, '2026-08-05T10:00:00.000Z', plan.presentation);
+  assert.equal(artifact.presentation.userLanguage, 'pt-BR');
+  assert.equal(artifact.presentation.stepTitles['e9-validation'], titles['e9-validation']);
+  assert.deepEqual(pipeline.presentation, artifact.presentation);
 });
 
-test('E1 clarification runs in a dedicated child agent step', () => {
-  const step = createNs4E1Step();
-  assert.equal(step.type, 'agent');
-  assert.equal(step.agentName, 'agentNewSolution4');
-  assert.equal(step.planning?.planId, 'e1-clarification');
-  assert.deepEqual(JSON.parse(step.prompt || ''), { planId: 'e1-clarification' });
+test('root plan rejects an incomplete localized-title contract instead of silently mixing languages', () => {
+  const plan = normalizeNs4RootPlan({
+    type: 'flexible',
+    result: {
+      validPrompt: true,
+      userPrompt: 'Criar pet shop',
+      userLanguage: 'pt-BR',
+      titles: { 'e1-clarification': 'Confirmar contrato' },
+      clarification,
+    },
+  }, 'Criar pet shop');
+  assert.equal(plan.validPrompt, false);
+  assert.match(plan.invalidReason || '', /missing titles/);
+});
+
+test('new artifacts expose the E1-to-E2 lifecycle flow version', () => {
+  const artifact = buildNs4ModuleArtifact('petShop', clarification, 'human', '2026-08-05T10:00:00.000Z');
+  assert.equal(NS4_FLOW_VERSION, '2026-08-05-ns4-flow-v3');
+  assert.equal(artifact.specStatus.flowVersion, NS4_FLOW_VERSION);
+});
+
+test('continuing an earlier execution does not migrate its flow version', () => {
+  const legacy = {
+    ...createNs4Pipeline('petShop', 'petShop', '2026-08-04T10:00:00.000Z'),
+    flowVersion: '2026-08-04-ns4-flow-v1',
+  } as unknown as Ns4PipelineState;
+  assert.equal(markNs4E2Running(legacy, 1).flowVersion, '2026-08-04-ns4-flow-v1');
 });
 
 test('module names normalize deterministically', () => {

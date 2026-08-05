@@ -1,9 +1,24 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/helpers/ns4Core.ts" enhancement="_blank"/>
 
 export const NS4_FLOW_ID = 'agentNewSolution4' as const;
-export const NS4_FLOW_VERSION = '2026-08-04-ns4-flow-v1' as const;
-export const NS4_MODULE_SCHEMA_VERSION = '2026-08-04-ns4-module-v1' as const;
-export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-04-ns4-pipeline-v1' as const;
+export const NS4_FLOW_VERSION = '2026-08-05-ns4-flow-v3' as const;
+export const NS4_MODULE_SCHEMA_VERSION = '2026-08-05-ns4-module-v2' as const;
+export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-05-ns4-pipeline-v2' as const;
+
+export const NS4_PLAN_IDS = [
+  'e1-clarification',
+  'e1-compile',
+  'e2-journeys',
+  'e3-ontology',
+  'e4-rules',
+  'e5-behaviors',
+  'e6-realization',
+  'e7-workspaces',
+  'e8-navigation-compiler',
+  'e9-validation',
+] as const;
+
+export type Ns4PlanId = typeof NS4_PLAN_IDS[number];
 
 export type Ns4ApprovedBy = 'human' | 'auto';
 export type Ns4E1Status = 'running' | 'approved' | 'failed';
@@ -25,8 +40,22 @@ export interface Ns4Clarification {
   questions: Record<string, Ns4ClarificationQuestion>;
 }
 
+export interface Ns4Presentation {
+  userLanguage: string;
+  stepTitles: Record<Ns4PlanId, string>;
+}
+
+export interface Ns4RootPlan {
+  validPrompt: boolean;
+  invalidReason?: string;
+  userPrompt: string;
+  presentation: Ns4Presentation;
+  clarification: Ns4Clarification;
+}
+
 export interface Ns4ModuleArtifact {
   schemaVersion: typeof NS4_MODULE_SCHEMA_VERSION;
+  presentation: Ns4Presentation;
   module: {
     moduleName: string;
     title: string;
@@ -63,6 +92,7 @@ export interface Ns4PipelineState {
   flowVersion: typeof NS4_FLOW_VERSION;
   moduleName: string;
   sourcePrompt: string;
+  presentation: Ns4Presentation;
   status: 'inProgress' | 'complete' | 'failed';
   steps: {
     e1: {
@@ -96,32 +126,102 @@ export function parseNs4Invocation(value: string): { fast: boolean; prompt: stri
   return { fast, prompt };
 }
 
-export function createNs4ClarificationSubmitGuard(): () => boolean {
-  let submitted = false;
-  return () => {
-    if (submitted) return false;
-    submitted = true;
-    return true;
+export function createNs4E2Step(
+  moduleName = '',
+  reviewRound = 1,
+  adjustment = '',
+  dependsOn: string[] = [],
+  stepTitle = NS4_DEFAULT_TITLES['e2-journeys'],
+): mls.msg.AIAgentStep {
+  const suffix = adjustment ? ` adjustment ${reviewRound}` : '';
+  return createNs4AgentStep(
+    `e2-journeys-round-${reviewRound}`,
+    `${stepTitle}${suffix}`,
+    dependsOn,
+    dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
+    { planId: 'e2-journeys', ...(moduleName ? { moduleName } : {}), reviewRound, ...(adjustment ? { adjustment } : {}) },
+  );
+}
+
+export const NS4_DEFAULT_TITLES: Record<Ns4PlanId, string> = {
+  'e1-clarification': 'Clarify the module contract',
+  'e1-compile': 'Compile the initial module contract',
+  'e2-journeys': 'Define and approve business journeys',
+  'e3-ontology': 'Define the business ontology',
+  'e4-rules': 'Organize actors and business rules',
+  'e5-behaviors': 'Define workflows and operations',
+  'e6-realization': 'Connect journeys to system behavior',
+  'e7-workspaces': 'Design actor workspaces',
+  'e8-navigation-compiler': 'Compile navigation and page context',
+  'e9-validation': 'Validate the complete L4 specification',
+};
+
+export function normalizeNs4RootPlan(payload: unknown, sourcePrompt: string): Ns4RootPlan {
+  const parsed = parseMaybeJson(payload);
+  const result = asRecord(parsed).type === 'flexible' ? parseMaybeJson(asRecord(parsed).result) : parsed;
+  const record = asRecord(result);
+  const userPrompt = readString(record.userPrompt) || sourcePrompt.trim();
+  const userLanguage = normalizeNs4Languages(record.userLanguage, inferNs4PromptLanguage(userPrompt))[0];
+  const rawTitles = asRecord(record.titles);
+  const missingTitles: Ns4PlanId[] = [];
+  const stepTitles = {} as Record<Ns4PlanId, string>;
+  for (const planId of NS4_PLAN_IDS) {
+    const title = readString(rawTitles[planId]);
+    if (!title || title.length >= 140) missingTitles.push(planId);
+    stepTitles[planId] = title && title.length < 140 ? title : NS4_DEFAULT_TITLES[planId];
+  }
+  const validEnvelope = record.validPrompt === true
+    && !!readString(record.userPrompt)
+    && !!readString(record.userLanguage)
+    && missingTitles.length === 0;
+  const invalidReason = readString(record.invalidReason)
+    || (!validEnvelope ? `Root planner returned an incomplete contract${missingTitles.length ? `; missing titles: ${missingTitles.join(', ')}` : ''}.` : '');
+  return {
+    validPrompt: validEnvelope && userPrompt.length >= 2,
+    ...(invalidReason ? { invalidReason } : {}),
+    userPrompt,
+    presentation: { userLanguage, stepTitles },
+    clarification: normalizeNs4Clarification({
+      ...asRecord(record.clarification),
+      userLanguage,
+      planId: 'e1-clarification',
+    }),
   };
 }
 
-export function createNs4E1Step(): mls.msg.AIAgentStep {
+export function buildNs4PlannedSteps(plan: Ns4RootPlan): mls.msg.AIAgentStep[] {
+  const title = (planId: Ns4PlanId) => plan.presentation.stepTitles[planId] || NS4_DEFAULT_TITLES[planId];
+  return [
+    createNs4AgentStep('e1-clarification', title('e1-clarification'), [], 'waiting_human_input', { planId: 'e1-clarification' }),
+    createNs4AgentStep('e1-compile', title('e1-compile'), ['e1-clarification-answer'], 'waiting_dependency', { planId: 'e1-compile' }),
+    createNs4E2Step('', 1, '', ['e1-result'], title('e2-journeys')),
+    createNs4RoadmapStep('e3-ontology', title('e3-ontology'), ['e2-result']),
+    createNs4RoadmapStep('e4-rules', title('e4-rules'), ['e3-result']),
+    createNs4RoadmapStep('e5-behaviors', title('e5-behaviors'), ['e4-result']),
+    createNs4RoadmapStep('e6-realization', title('e6-realization'), ['e5-result']),
+    createNs4RoadmapStep('e7-workspaces', title('e7-workspaces'), ['e6-result']),
+    createNs4RoadmapStep('e8-navigation-compiler', title('e8-navigation-compiler'), ['e7-result']),
+    createNs4RoadmapStep('e9-validation', title('e9-validation'), ['e8-result']),
+  ];
+}
+
+function createNs4RoadmapStep(planId: Ns4PlanId, stepTitle: string, dependsOn: string[]): mls.msg.AIAgentStep {
+  const step = createNs4AgentStep(planId, stepTitle, dependsOn, 'waiting_dependency', { planId });
+  step.planning = { ...step.planning!, executionMode: 'manual_later' };
+  return step;
+}
+
+function createNs4AgentStep(
+  planningPlanId: string,
+  stepTitle: string,
+  dependsOn: string[],
+  status: mls.msg.AIStepStatus,
+  prompt: Record<string, unknown>,
+): mls.msg.AIAgentStep {
   return {
-    type: 'agent',
-    stepId: 0,
-    interaction: null,
-    stepTitle: 'E1 — clarify module contract',
-    status: 'waiting_human_input',
-    nextSteps: [],
-    agentName: 'agentNewSolution4',
-    prompt: JSON.stringify({ planId: 'e1-clarification' }),
-    rags: [],
-    planning: {
-      planId: 'e1-clarification',
-      dependsOn: [],
-      executionMode: 'sequential',
-      executionHost: 'client',
-    },
+    type: 'agent', stepId: 0, interaction: null, stepTitle, status, nextSteps: [],
+    agentName: 'agentNewSolution4', prompt: JSON.stringify(prompt), rags: [],
+    planning: { planId: planningPlanId, dependsOn, executionMode: 'sequential', executionHost: 'client' },
   };
 }
 
@@ -167,6 +267,7 @@ export function buildNs4ModuleArtifact(
   clarificationInput: unknown,
   approvedBy: Ns4ApprovedBy,
   now = new Date().toISOString(),
+  presentation: Ns4Presentation = defaultNs4Presentation(sourcePrompt),
 ): Ns4ModuleArtifact {
   const clarification = normalizeNs4Clarification(clarificationInput);
   const moduleName = normalizeNs4ModuleName(clarification.questions.moduleName.answer, sourcePrompt);
@@ -174,6 +275,7 @@ export function buildNs4ModuleArtifact(
   const productLanguages = normalizeNs4Languages(clarification.questions.productLanguages.answer, clarification.userLanguage);
   return {
     schemaVersion: NS4_MODULE_SCHEMA_VERSION,
+    presentation,
     module: {
       moduleName,
       title: humanizeNs4ModuleName(moduleName),
@@ -221,6 +323,7 @@ export function createNs4Pipeline(
   moduleNameInput: string,
   sourcePrompt: string,
   now = new Date().toISOString(),
+  presentation: Ns4Presentation = defaultNs4Presentation(sourcePrompt),
 ): Ns4PipelineState {
   const moduleName = normalizeNs4ModuleName(moduleNameInput);
   return {
@@ -229,6 +332,7 @@ export function createNs4Pipeline(
     flowVersion: NS4_FLOW_VERSION,
     moduleName,
     sourcePrompt: sourcePrompt.trim() || moduleName,
+    presentation,
     status: 'inProgress',
     steps: { e1: { status: 'running', updatedAt: now } },
     nextStep: 'e2-journeys',
@@ -361,6 +465,26 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function parseMaybeJson(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const clean = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try { return JSON.parse(clean); } catch { return value; }
+}
+
+function inferNs4PromptLanguage(prompt: string): string {
+  const text = prompt.toLowerCase();
+  if (/\b(pt-br|portugu[eê]s|linguagem\s*:\s*pt)\b/.test(text)) return 'pt-BR';
+  if (/\b(es|español|castellano)\b/.test(text)) return 'es';
+  return 'en';
+}
+
+function defaultNs4Presentation(prompt: string): Ns4Presentation {
+  return {
+    userLanguage: inferNs4PromptLanguage(prompt),
+    stepTitles: { ...NS4_DEFAULT_TITLES },
+  };
 }
 
 function readString(value: unknown): string | undefined {

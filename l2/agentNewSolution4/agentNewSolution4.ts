@@ -2,10 +2,11 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
-  createNs4E1Step,
+  buildNs4PlannedSteps,
+  createNs4E2Step,
   isNs4ModuleToken,
-  markNs4E2Running,
-  Ns4PipelineState,
+  normalizeNs4RootPlan,
+  Ns4RootPlan,
   parseNs4Invocation,
   resolveNs4ExistingAction,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
@@ -13,8 +14,8 @@ import {
   listNs4ModuleFolders,
   ns4FileExists,
   ns4ModuleFile,
+  readNs4AgentText,
   readNs4Pipeline,
-  writeNs4Pipeline,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
 import {
   afterNs4E1PromptStep,
@@ -26,17 +27,14 @@ import {
   afterNs4E2PromptStep,
   beforeNs4E2ClarificationStep,
   beforeNs4E2PromptStep,
-  createNs4E2Step,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/agentNs4E2.js';
 
-
-// === Agent Definition ===
 export function createAgent(): IAgentAsync {
   return {
     agentName: 'agentNewSolution4',
     agentProject: 102020,
     agentFolder: 'agentNewSolution4',
-    agentDescription: 'L4 v4 product compiler — module contract and permanent business journeys',
+    agentDescription: 'L4 v4 product compiler — localized roadmap and permanent business contracts',
     visibility: 'public',
     beforePromptImplicit,
     beforePromptStep,
@@ -45,7 +43,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-3 (2026-08-04) child-owned E1 clarification lifecycle';
+export const NS4_AGENT_BUILD = 'build-5 (2026-08-05) localized root plan and dependency-driven E1 compile';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -59,8 +57,9 @@ async function beforePromptImplicit(
 
   let sourcePrompt = invocation.prompt;
   let resumeModule = '';
+  let resumeTarget = '';
+  let resumeRound = '';
   let taskTitle = 'new Solution 4';
-
   if (isNs4ModuleToken(invocation.prompt) && listNs4ModuleFolders().has(invocation.prompt)) {
     const pipeline = await readNs4Pipeline(invocation.prompt);
     const action = resolveNs4ExistingAction(true, pipeline, ns4FileExists(ns4ModuleFile(invocation.prompt)));
@@ -73,42 +72,30 @@ async function beforePromptImplicit(
         true,
       )];
     }
-    if (action === 'resume-next') {
-      if (pipeline?.steps.e2?.status !== 'approved') {
-        return startE2Task(agent, context, pipeline!, invocation.fast);
-      }
+    if (action === 'resume-next' && pipeline?.steps.e2?.status === 'approved') {
       return [await statusTask(
         agent,
         context,
-        `Módulo "${invocation.prompt}": E1 e E2 já estão aprovados. O próximo passo é e3-ontology, ainda não implementado nesta entrega.`,
+        `Módulo "${invocation.prompt}": E1 e E2 já estão aprovados. O próximo passo é e3-ontology, ainda não implementado.`,
         `plan ${invocation.prompt}`,
       )];
     }
     resumeModule = invocation.prompt;
+    resumeTarget = action === 'resume-e1' ? 'e1' : 'e2';
+    resumeRound = resumeTarget === 'e2' ? String(Math.max(1, pipeline?.steps.e2?.reviewRound || 1)) : '';
     sourcePrompt = pipeline?.sourcePrompt || invocation.prompt;
     taskTitle = `plan ${invocation.prompt}`;
   }
 
-  return startE1Task(agent, context, sourcePrompt, invocation.fast, resumeModule, taskTitle);
-}
-
-function startE1Task(
-  agent: IAgentMeta,
-  context: mls.msg.ExecutionContext,
-  sourcePrompt: string,
-  fast: boolean,
-  resumeModule: string,
-  taskTitle: string,
-): mls.msg.AgentIntent[] {
-  const root: mls.msg.AgentIntentAddMessageAI = {
+  const planPrompt = await readNs4AgentText('', 'promptPlan');
+  return [{
     type: 'add-message-ai',
-    skipRootLLM: true,
     request: {
       action: 'addMessageAI',
       agentName: agent.agentName,
       inputAI: [
-        { type: 'system', content: 'agentNewSolution4 deterministic E1 bootstrap; root LLM skipped.' },
-        { type: 'human', content: `Start E1 clarification for ${resumeModule || sourcePrompt}.` },
+        { type: 'system', content: planPrompt },
+        { type: 'human', content: sourcePrompt },
       ],
       taskTitle,
       threadId: context.message.threadId,
@@ -116,53 +103,14 @@ function startE1Task(
       longTermMemory: {
         taskName: 'newSolution4',
         flowName: 'agentNewSolution4',
-        rootMode: 'e1',
         sourcePrompt,
-        ...(fast ? { fastMode: 'true' } : {}),
+        ...(invocation.fast ? { fastMode: 'true' } : {}),
         ...(resumeModule ? { resumeModule } : {}),
+        ...(resumeTarget ? { resumeTarget } : {}),
+        ...(resumeRound ? { resumeRound } : {}),
       },
     },
-  };
-  const child: mls.msg.AgentIntentAddStep = {
-    type: 'add-step', messageId: '', threadId: context.message.threadId, taskId: '', parentStepId: 1,
-    step: createNs4E1Step(),
-  };
-  return [root, child];
-}
-
-async function startE2Task(
-  agent: IAgentMeta,
-  context: mls.msg.ExecutionContext,
-  pipeline: Ns4PipelineState,
-  fast: boolean,
-): Promise<mls.msg.AgentIntent[]> {
-  const reviewRound = Math.max(1, pipeline.steps.e2?.reviewRound || 1);
-  await writeNs4Pipeline(markNs4E2Running(pipeline, reviewRound));
-  const root: mls.msg.AgentIntentAddMessageAI = {
-    type: 'add-message-ai',
-    skipRootLLM: true,
-    request: {
-      action: 'addMessageAI',
-      agentName: agent.agentName,
-      inputAI: [
-        { type: 'system', content: 'agentNewSolution4 deterministic E2 resume bootstrap; root LLM skipped.' },
-        { type: 'human', content: `Resume E2 for ${pipeline.moduleName}.` },
-      ],
-      taskTitle: `plan ${pipeline.moduleName}`,
-      threadId: context.message.threadId,
-      userMessage: context.message.content,
-      longTermMemory: {
-        taskName: 'newSolution4', flowName: 'agentNewSolution4', rootMode: 'e2',
-        sourcePrompt: pipeline.sourcePrompt, resumeModule: pipeline.moduleName,
-        ...(fast ? { fastMode: 'true' } : {}),
-      },
-    },
-  };
-  const child: mls.msg.AgentIntentAddStep = {
-    type: 'add-step', messageId: '', threadId: context.message.threadId, taskId: '', parentStepId: 1,
-    step: createNs4E2Step(pipeline.moduleName, reviewRound),
-  };
-  return [root, child];
+  } as mls.msg.AgentIntentAddMessageAI];
 }
 
 async function beforePromptStep(
@@ -173,10 +121,14 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  if (step.planning?.planId === 'e1-clarification') {
-    return beforeNs4E1PromptStep(agent, context, parentStep, step, hookSequential);
+  const planId = step.planning?.planId || '';
+  if (planId === 'e1-clarification' || planId === 'e1-compile') {
+    return beforeNs4E1PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
-  return beforeNs4E2PromptStep(agent, context, parentStep, step, hookSequential, args);
+  if (planId.startsWith('e2-journeys-round-')) {
+    return beforeNs4E2PromptStep(agent, context, parentStep, step, hookSequential, args);
+  }
+  return [rootStatus(context, parentStep, step, hookSequential, 'failed', `Unsupported implemented step: ${planId || '(missing)'}`)];
 }
 
 async function afterPromptStep(
@@ -193,11 +145,31 @@ async function afterPromptStep(
   if (planId.startsWith('e2-journeys-round-')) {
     return afterNs4E2PromptStep(agent, context, parentStep, step, hookSequential);
   }
-  const rootMode = context.task?.iaCompressed?.longMemory?.rootMode;
-  if (rootMode === 'e1' || rootMode === 'e2') {
-    return [rootStatus(context, parentStep, step, hookSequential, 'completed', `${rootMode.toUpperCase()} bootstrap completed without an LLM call.`)];
+  if (memoryString(context, 'statusOnly') === 'true') {
+    const failed = memoryString(context, 'statusOutcome') === 'error';
+    return [rootStatus(context, parentStep, step, hookSequential, failed ? 'failed' : 'completed', 'Status task completed.')];
   }
-  return afterNs4E1PromptStep(agent, context, parentStep, step, hookSequential);
+  try {
+    const plan = getNs4RootPlan(context, step);
+    if (!plan.validPrompt) {
+      return [rootStatus(context, parentStep, step, hookSequential, 'failed', plan.invalidReason || 'Invalid or insufficient business prompt.')];
+    }
+    const resumeModule = memoryString(context, 'resumeModule');
+    const resumeTarget = memoryString(context, 'resumeTarget');
+    const planned = resumeModule && resumeTarget === 'e2'
+      ? buildNs4ResumeSteps(plan, resumeModule, normalizeResumeRound(memoryString(context, 'resumeRound')))
+      : buildNs4PlannedSteps(plan);
+    return planned.map(plannedStep => ({
+      type: 'add-step',
+      messageId: context.message.orderAt,
+      threadId: context.message.threadId,
+      taskId: context.task?.PK || '',
+      parentStepId: step.stepId,
+      step: plannedStep,
+    } as mls.msg.AgentIntentAddStep));
+  } catch (error) {
+    return [rootStatus(context, parentStep, step, hookSequential, 'failed', errorMessage(error))];
+  }
 }
 
 async function beforeClarificationStep(
@@ -213,6 +185,25 @@ async function beforeClarificationStep(
     return beforeNs4E2ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);
   }
   return beforeNs4E1ClarificationStep(agent, context, parentStep, step, hookSequential, json);
+}
+
+export function getNs4RootPlan(context: mls.msg.ExecutionContext, rootHint?: mls.msg.AIAgentStep): Ns4RootPlan {
+  const root = rootHint || context.task?.iaCompressed?.nextSteps?.[0] as mls.msg.AIAgentStep | undefined;
+  return normalizeNs4RootPlan(root?.interaction?.payload?.[0], memoryString(context, 'sourcePrompt'));
+}
+
+function buildNs4ResumeSteps(plan: Ns4RootPlan, moduleName: string, reviewRound: number): mls.msg.AIAgentStep[] {
+  const all = buildNs4PlannedSteps(plan);
+  const roadmap = all.slice(3);
+  return [
+    createNs4E2Step(moduleName, reviewRound, '', [], plan.presentation.stepTitles['e2-journeys']),
+    ...roadmap,
+  ];
+}
+
+function normalizeResumeRound(value: string): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
 }
 
 function rootStatus(
@@ -261,11 +252,18 @@ async function statusTask(
       threadId: context.message.threadId,
       userMessage: context.message.content,
       longTermMemory: {
-        taskName: 'newSolution4',
-        flowName: 'agentNewSolution4',
-        statusOnly: 'true',
+        taskName: 'newSolution4', flowName: 'agentNewSolution4', statusOnly: 'true',
         statusOutcome: isError ? 'error' : 'info',
       },
     },
   };
+}
+
+function memoryString(context: mls.msg.ExecutionContext, key: string): string {
+  const value = context.task?.iaCompressed?.longMemory?.[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

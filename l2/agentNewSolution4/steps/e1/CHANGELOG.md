@@ -1,11 +1,9 @@
 # E1 changelog
 
-- 2026-08-05 — Moved the E1 LLM call and clarification payload from the task root to a dedicated
-  `e1-clarification` child agent step, matching the proven `agentNewSolution` lifecycle. Completing
-  the widget no longer leaves a root-owned clarification screen visible after the task is done.
-- 2026-08-05 — Separated widget `userLanguage` from editable product languages; explicit multilingual
-  prompts now produce a normalized, ordered `module.languages` list instead of losing all but one.
-- 2026-08-04 — Prevent duplicate interactive clarification submits from saving E1 once and then
-  failing the same step with a false module-collision error.
-- 2026-08-04 — Initial E1: clarification, real `/fast`, permanent partial `module.defs.ts`, resumable
-  pipeline and foreign-module collision guard.
+- 2026-08-05 — Flow v3: restored the stable root-planner architecture, including prompt-language
+  detection, LLM-localized E1–E9 titles and the complete dependency roadmap created at task start.
+  Split clarification from deterministic compilation with the durable `e1-clarification-answer`
+  anchor. Removed local UI-cache synchronization, submit locks and automatic version migration.
+- 2026-08-05 — Product languages became an explicit clarification field, normalized as ordered unique
+  BCP-47 tags independently from the widget language.
+- 2026-08-04 — Initial E1 artifact, resumable pipeline and foreign-module collision guard.

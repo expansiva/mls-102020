@@ -2,9 +2,10 @@
 
 import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
+import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import {
-  createNs4ClarificationSubmitGuard,
+  createNs4E2Step,
   isNs4Pipeline,
   markNs4E2Approved,
   markNs4E2Running,
@@ -36,7 +37,7 @@ import { validateNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/gat
 
 interface Ns4E2Args {
   planId: 'e2-journeys';
-  moduleName: string;
+  moduleName?: string;
   adjustment?: string;
   reviewRound?: number;
 }
@@ -57,7 +58,7 @@ export async function beforeNs4E2PromptStep(
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
   if (!context.task) throw new Error('[agentNewSolution4:e2] task invalid');
-  const parsed = parseE2Args(args || step.prompt);
+  const parsed = resolveE2Args(context, args || step.prompt);
   const moduleArtifact = await readNs4Module(parsed.moduleName);
   const pipeline = await readNs4Pipeline(parsed.moduleName);
   if (!moduleArtifact || !isNs4Pipeline(pipeline) || pipeline.steps.e1.status !== 'approved') {
@@ -65,6 +66,7 @@ export async function beforeNs4E2PromptStep(
   }
 
   const reviewRound = parsed.reviewRound || pipeline.steps.e2?.reviewRound || 1;
+  await writeNs4Pipeline(markNs4E2Running(pipeline, reviewRound));
   const previousDraft = parsed.adjustment ? await readDraftFromStorage(parsed.moduleName) : null;
   const [prompt, platform] = await Promise.all([
     readNs4AgentText('steps/e2', 'prompt'),
@@ -100,7 +102,7 @@ export async function afterNs4E2PromptStep(
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
   try {
-    const args = parseE2Args(step.prompt);
+    const args = resolveE2Args(context, step.prompt);
     const payload = unwrapPayload(step.interaction?.payload?.[0]);
     if (!isRecord(payload) || payload.type !== 'clarification' || !isRecord(payload.json)) {
       return [updateStatus(context, parentStep, step, hookSequential, 'failed', 'E2 returned an invalid review payload.')];
@@ -145,30 +147,12 @@ export async function beforeNs4E2ClarificationStep(
   await import('/_102020_/l2/agentNewSolution4/steps/e2/widgetNs4Journeys.js');
   const element = document.createElement('widget-ns4-journeys-102020');
   (element as unknown as { value: Ns4E2Review }).value = review;
-  const acceptSubmit = createNs4ClarificationSubmitGuard();
   element.addEventListener('ns4-journeys-review', (event: Event) => {
-    if (!acceptSubmit()) return;
-    (element as unknown as { readonly: boolean }).readonly = true;
     const detail = (event as CustomEvent<Ns4E2ReviewEvent>).detail;
-    void applyNs4E2Review(context, parentStep, step, hookSequential, detail);
+    void applyNs4E2Review(context, parentStep, step, hookSequential, detail)
+      .catch(error => console.error(`[${agent.agentName}] ${errorMessage(error)}`));
   });
   return element;
-}
-
-export function createNs4E2Step(moduleName: string, reviewRound = 1, adjustment = ''): mls.msg.AIAgentStep {
-  const suffix = adjustment ? ` adjustment ${reviewRound}` : '';
-  return {
-    type: 'agent',
-    stepId: 0,
-    interaction: null,
-    stepTitle: `E2 — business journeys${suffix}`,
-    status: 'waiting_human_input',
-    nextSteps: [],
-    agentName: 'agentNewSolution4',
-    prompt: JSON.stringify({ planId: 'e2-journeys', moduleName, reviewRound, ...(adjustment ? { adjustment } : {}) }),
-    rags: [],
-    planning: { planId: `e2-journeys-round-${reviewRound}`, dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
-  };
 }
 
 async function applyNs4E2Review(
@@ -179,12 +163,13 @@ async function applyNs4E2Review(
   event: Ns4E2ReviewEvent,
 ): Promise<void> {
   if (!context.task) throw new Error('[agentNewSolution4:e2] task invalid');
+  const mutationParent = findMutableParentStep(context, parentStep);
   try {
     if (event.action === 'approve') {
       const saved = await persistNs4E2(event.review.moduleName, event.review, 'human');
       await applyIntents(context, [
-        resultStep(context, parentStep, saved, 'E2 journeys approved'),
-        updateStatus(context, parentStep, step, hookSequential, 'completed', undefined, 'input_output'),
+        resultStep(context, mutationParent, saved, 'E2 journeys approved'),
+        updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
       ]);
     } else {
       if (!event.adjustment.trim()) throw new Error('Adjustment request cannot be empty.');
@@ -192,15 +177,30 @@ async function applyNs4E2Review(
       const pipeline = await requirePipeline(event.review.moduleName);
       await writeNs4Pipeline(markNs4E2Running(pipeline, nextRound));
       await applyIntents(context, [
-        addStep(context, parentStep, createNs4E2Step(event.review.moduleName, nextRound, event.adjustment)),
-        adjustmentResultStep(context, parentStep, event.review.moduleName, event.review.reviewRound, event.adjustment),
-        updateStatus(context, parentStep, step, hookSequential, 'completed', undefined, 'input_output'),
+        addStep(context, mutationParent, createNs4E2Step(event.review.moduleName, nextRound, event.adjustment)),
+        adjustmentResultStep(context, mutationParent, event.review.moduleName, event.review.reviewRound, event.adjustment),
+        updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
       ]);
     }
     await continuePoolingTask(context);
   } catch (error) {
     await applyIntents(context, [updateStatus(context, parentStep, step, hookSequential, 'failed', errorMessage(error))]);
   }
+}
+
+function findMutableParentStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep): mls.msg.AIAgentStep {
+  const all = getAllSteps(context.task?.iaCompressed?.nextSteps);
+  const current = all.find(item => item.stepId === parentStep.stepId);
+  if (current?.type === 'agent' && current.status !== 'completed' && current.status !== 'failed') return current;
+  for (const candidate of all) {
+    if (candidate.type !== 'agent') continue;
+    if (candidate.nextSteps?.some(child => child.stepId === parentStep.stepId)
+      || candidate.interaction?.payload?.some(child => child.stepId === parentStep.stepId)) {
+      if (candidate.status !== 'completed' && candidate.status !== 'failed') return candidate;
+    }
+  }
+  const root = context.task?.iaCompressed?.nextSteps?.[0];
+  return root?.type === 'agent' ? root : parentStep;
 }
 
 async function persistNs4E2(moduleName: string, review: Ns4E2Review, approvedBy: Ns4ApprovedBy): Promise<Ns4PersistedE2> {
@@ -253,7 +253,7 @@ function resultStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAge
   return addStep(context, parentStep, {
     type: 'result', stepId: 0, interaction: null, stepTitle: title, status: 'completed', nextSteps: [],
     result: JSON.stringify({ ...saved, completedStep: 'e2-journeys', nextStep: 'e3-ontology' }, null, 2),
-    planning: { planId: `e2-result-${Date.now()}`, dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
+    planning: { planId: 'e2-result', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
   } as mls.msg.AIResultStep);
 }
 
@@ -291,15 +291,34 @@ async function applyIntents(context: mls.msg.ExecutionContext, intents: mls.msg.
 
 function parseE2Args(value: unknown): Ns4E2Args {
   const parsed = parseMaybeJson(value);
-  if (!isRecord(parsed) || parsed.planId !== 'e2-journeys' || typeof parsed.moduleName !== 'string' || !parsed.moduleName.trim()) {
+  if (!isRecord(parsed) || parsed.planId !== 'e2-journeys') {
     throw new Error('Invalid E2 step arguments.');
   }
   return {
     planId: 'e2-journeys',
-    moduleName: parsed.moduleName.trim(),
+    ...(typeof parsed.moduleName === 'string' && parsed.moduleName.trim() ? { moduleName: parsed.moduleName.trim() } : {}),
     ...(typeof parsed.adjustment === 'string' && parsed.adjustment.trim() ? { adjustment: parsed.adjustment.trim() } : {}),
     ...(typeof parsed.reviewRound === 'number' ? { reviewRound: parsed.reviewRound } : {}),
   };
+}
+
+function resolveE2Args(context: mls.msg.ExecutionContext, value: unknown): Ns4E2Args & { moduleName: string } {
+  const parsed = parseE2Args(value);
+  const moduleName = parsed.moduleName || findE1ModuleName(context) || memoryString(context, 'resumeModule');
+  if (!moduleName) throw new Error('E1 module result not found for E2.');
+  return { ...parsed, moduleName };
+}
+
+function findE1ModuleName(context: mls.msg.ExecutionContext): string {
+  const result = getAllSteps(context.task?.iaCompressed?.nextSteps).find(step => step.planning?.planId === 'e1-result');
+  if (!result || result.type !== 'result' || !result.result) return '';
+  const parsed = parseMaybeJson(result.result);
+  return isRecord(parsed) && typeof parsed.moduleName === 'string' ? parsed.moduleName.trim() : '';
+}
+
+function memoryString(context: mls.msg.ExecutionContext, key: string): string {
+  const value = context.task?.iaCompressed?.longMemory?.[key];
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 function unwrapPayload(value: unknown): unknown {

@@ -4,6 +4,7 @@ import {
   NS4_FLOW_ID,
   NS4_FLOW_VERSION,
   NS4_MODULE_SCHEMA_VERSION,
+  NS4_PLAN_IDS,
   Ns4ModuleArtifact,
   normalizeNs4Languages,
   normalizeNs4ModuleName,
@@ -24,6 +25,12 @@ export interface Ns4E1GateResult {
 export function validateNs4E1Module(artifact: Ns4ModuleArtifact): Ns4E1GateResult {
   const issues: Ns4GateIssue[] = [];
   if (artifact.schemaVersion !== NS4_MODULE_SCHEMA_VERSION) error(issues, 'schema.version', 'Unexpected module schemaVersion.', 'schemaVersion');
+  if (!artifact.presentation.userLanguage.trim()) error(issues, 'presentation.language.missing', 'Presentation language is required.', 'presentation.userLanguage');
+  for (const planId of NS4_PLAN_IDS) {
+    if (!artifact.presentation.stepTitles[planId]?.trim()) {
+      error(issues, 'presentation.title.missing', `Friendly step title is required for ${planId}.`, `presentation.stepTitles.${planId}`);
+    }
+  }
   if (artifact.module.moduleName !== normalizeNs4ModuleName(artifact.module.moduleName)) {
     error(issues, 'module.name.notNormalized', 'moduleName must be normalized lower camel case.', 'module.moduleName');
   }

@@ -1,11 +1,36 @@
 {
-  "$id": "https://collab.codes/schemas/agentNewSolution4/module/2026-08-04-v1",
+  "$id": "https://collab.codes/schemas/agentNewSolution4/module/2026-08-05-v2",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "module", "designContext", "specStatus"],
+  "required": ["schemaVersion", "presentation", "module", "designContext", "specStatus"],
   "properties": {
-    "schemaVersion": { "type": "string", "const": "2026-08-04-ns4-module-v1" },
+    "schemaVersion": { "type": "string", "const": "2026-08-05-ns4-module-v2" },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["userLanguage", "stepTitles"],
+      "properties": {
+        "userLanguage": { "type": "string", "minLength": 2 },
+        "stepTitles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["e1-clarification", "e1-compile", "e2-journeys", "e3-ontology", "e4-rules", "e5-behaviors", "e6-realization", "e7-workspaces", "e8-navigation-compiler", "e9-validation"],
+          "properties": {
+            "e1-clarification": { "type": "string", "minLength": 1 },
+            "e1-compile": { "type": "string", "minLength": 1 },
+            "e2-journeys": { "type": "string", "minLength": 1 },
+            "e3-ontology": { "type": "string", "minLength": 1 },
+            "e4-rules": { "type": "string", "minLength": 1 },
+            "e5-behaviors": { "type": "string", "minLength": 1 },
+            "e6-realization": { "type": "string", "minLength": 1 },
+            "e7-workspaces": { "type": "string", "minLength": 1 },
+            "e8-navigation-compiler": { "type": "string", "minLength": 1 },
+            "e9-validation": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
     "module": {
       "type": "object",
       "additionalProperties": false,
@@ -46,7 +71,7 @@
       "required": ["flowId", "flowVersion", "state", "artifactCompleteness", "completedSteps", "nextStep", "updatedAt"],
       "properties": {
         "flowId": { "type": "string", "const": "agentNewSolution4" },
-        "flowVersion": { "type": "string", "const": "2026-08-04-ns4-flow-v1" },
+        "flowVersion": { "type": "string", "const": "2026-08-05-ns4-flow-v3" },
         "state": { "type": "string", "const": "inProgress" },
         "artifactCompleteness": { "type": "string", "const": "partial" },
         "completedSteps": {
