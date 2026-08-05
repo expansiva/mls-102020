@@ -32,6 +32,8 @@ Write in the user's language. Do not design pages, routes, database keys, APIs o
    (for example, both locating and creating a project may yield `selectedProject`).
 4. A context must be carried or produced by an earlier step before it is required.
 5. `act`/`decide` steps operating on an existing business record must require that record's context.
+   A portfolio, queue, dashboard or aggregate decision follows the same rule: an earlier `inspect` or
+   `locate` step must provide a named collection/assessment context, and the `decide` step must require it.
 6. For `contextOrLookup`, include an explicit `locate` step whose `providesContext` contains every
    required carried context. This represents the direct-entry fallback even when a previous journey
    can carry the same context.
@@ -40,6 +42,8 @@ Write in the user's language. Do not design pages, routes, database keys, APIs o
 ## Journey quality
 
 - Prefer a small complete set of outcome-oriented journeys over CRUD fragments.
+- Step `kind` must be exactly one of `locate`, `inspect`, `act`, `decide` or `handoff`. Use `inspect`
+  for reviewing information; never invent synonyms such as `review`.
 - Prerequisite journeys must appear earlier in the array.
 - Each step has one clear intent and observable result.
 - Every journey has observable outcome evidence.
@@ -53,6 +57,9 @@ Write in the user's language. Do not design pages, routes, database keys, APIs o
 If an adjustment request and previous draft are provided, return a complete replacement proposal.
 Apply the requested change without dropping unaffected journeys, prerequisites, context, rules,
 features or outcome evidence.
+
+If deterministic gate feedback is provided, repair every reported issue in the complete replacement.
+Preserve unaffected content. Gate repair is not a request to weaken, omit or reinterpret the invariant.
 
 ## Output
 

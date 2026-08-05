@@ -49,7 +49,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-8 (2026-08-05) iterative E3 access matrix';
+export const NS4_AGENT_BUILD = 'build-9 (2026-08-05) bounded E2 gate repair and iterative E3 access matrix';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

@@ -263,7 +263,7 @@ function entryMode(value: unknown): Ns4JourneyEntryMode {
 }
 
 function stepKind(value: unknown): Ns4JourneyStepKind {
-  return value === 'inspect' || value === 'act' || value === 'decide' || value === 'handoff' ? value : 'locate';
+  return typeof value === 'string' && value.trim() ? value.trim() as Ns4JourneyStepKind : 'locate';
 }
 
 function featurePriority(value: unknown): Ns4FeaturePriority {

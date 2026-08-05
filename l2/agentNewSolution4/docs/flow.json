@@ -95,6 +95,7 @@
         "prompt_ready preserves the hook args byte-for-byte.",
         "E2 is marked running only after the LLM call returns to afterPrompt.",
         "Terminal failures are persisted in pipeline.steps.e2.error and failedAt.",
+        "A first deterministic gate failure persists the invalid draft and schedules one bounded LLM repair step before failing the task.",
         "Prerequisite handoffs use stable context ids exported by the referenced journey.",
         "contextOrLookup includes an explicit locate fallback for every carried context."
       ]

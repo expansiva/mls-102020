@@ -1,5 +1,8 @@
 # E2 changelog
 
+- 2026-08-05: Added one bounded automatic LLM repair after a deterministic gate failure; unknown
+  step kinds are now preserved and rejected instead of silently becoming `locate`.
+
 - 2026-08-05 — Added a live `collab-llm` integration runner. The first 102046 run exposed context
   handoff aliases that the old gate accepted; prerequisites now require contexts actually exported by
   the referenced journey, and `contextOrLookup` requires an explicit lookup fallback.

@@ -6,6 +6,7 @@ import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import {
   createNs4E2Step,
+  createNs4E2RepairStep,
   isNs4Pipeline,
   markNs4E2Approved,
   markNs4E2Failed,
@@ -42,7 +43,11 @@ interface Ns4E2Args {
   moduleName?: string;
   adjustment?: string;
   reviewRound?: number;
+  repairAttempt?: number;
+  gateFeedback?: string;
 }
+
+const MAX_E2_GATE_REPAIRS = 1;
 
 interface Ns4PersistedE2 {
   moduleName: string;
@@ -72,7 +77,7 @@ export async function beforeNs4E2PromptStep(
     }
 
     const reviewRound = parsed.reviewRound || pipeline.steps.e2?.reviewRound || 1;
-    const previousDraft = parsed.adjustment ? await readDraftFromStorage(moduleName) : null;
+    const previousDraft = parsed.adjustment || parsed.gateFeedback ? await readDraftFromStorage(moduleName) : null;
     const [prompt, platform] = await Promise.all([
       readNs4AgentText('steps/e2', 'prompt'),
       readNs4AgentText('skills', 'platform'),
@@ -83,6 +88,7 @@ export async function beforeNs4E2PromptStep(
       '',
       `## Required review round\n${reviewRound}`,
       parsed.adjustment ? `## Human adjustment request\n${parsed.adjustment}` : '',
+      parsed.gateFeedback ? `## Deterministic gate repair required\n${parsed.gateFeedback}` : '',
       previousDraft ? `## Previous E2 draft\n${JSON.stringify(previousDraft, null, 2)}` : '',
     ].filter(Boolean).join('\n');
 
@@ -129,6 +135,23 @@ export async function afterNs4E2PromptStep(
     const gate = validateNs4E2Review(review);
     if (!gate.ok) {
       const message = gate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
+      const repairAttempt = args.repairAttempt || 0;
+      if (repairAttempt < MAX_E2_GATE_REPAIRS) {
+        await writeNs4E2Draft(moduleName, review);
+        const repairParent = findMutableParentStep(context, parentStep);
+        const repairStep = createNs4E2RepairStep(
+          moduleName,
+          review.reviewRound,
+          repairAttempt + 1,
+          message,
+          pipeline.presentation.stepTitles['e2-journeys'],
+        );
+        return [
+          addStep(context, repairParent, repairStep),
+          gateRepairResultStep(context, repairParent, moduleName, review.reviewRound, repairAttempt + 1, message),
+          updateStatus(context, repairParent, step, hookSequential, 'completed', `E2 gate requested automatic repair ${repairAttempt + 1}.`, 'input_output'),
+        ];
+      }
       await recordNs4E2Failure(moduleName, message);
       return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
     }
@@ -289,6 +312,21 @@ function adjustmentResultStep(context: mls.msg.ExecutionContext, parentStep: mls
   } as mls.msg.AIResultStep);
 }
 
+function gateRepairResultStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  moduleName: string,
+  round: number,
+  repairAttempt: number,
+  gateFeedback: string,
+): mls.msg.AgentIntentAddStep {
+  return addStep(context, parentStep, {
+    type: 'result', stepId: 0, interaction: null, stepTitle: `E2 gate repair ${repairAttempt}`,
+    status: 'completed', nextSteps: [], result: JSON.stringify({ moduleName, reviewRound: round, repairAttempt, gateFeedback }, null, 2),
+    planning: { planId: `e2-gate-repair-${round}-${repairAttempt}`, dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
+  } as mls.msg.AIResultStep);
+}
+
 function updateStatus(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIPayload,
@@ -323,6 +361,8 @@ function parseE2Args(value: unknown): Ns4E2Args {
     ...(typeof parsed.moduleName === 'string' && parsed.moduleName.trim() ? { moduleName: parsed.moduleName.trim() } : {}),
     ...(typeof parsed.adjustment === 'string' && parsed.adjustment.trim() ? { adjustment: parsed.adjustment.trim() } : {}),
     ...(typeof parsed.reviewRound === 'number' ? { reviewRound: parsed.reviewRound } : {}),
+    ...(typeof parsed.repairAttempt === 'number' ? { repairAttempt: parsed.repairAttempt } : {}),
+    ...(typeof parsed.gateFeedback === 'string' && parsed.gateFeedback.trim() ? { gateFeedback: parsed.gateFeedback.trim() } : {}),
   };
 }
 

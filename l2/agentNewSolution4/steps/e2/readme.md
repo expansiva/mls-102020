@@ -22,6 +22,11 @@ Cross-journey handoffs are also checked: a prerequisite may only provide a conte
 by the referenced journey, using the same stable `contextId`. Every `contextOrLookup` journey must
 materialize its direct-entry fallback through a `locate` step.
 
+The first deterministic gate failure does not immediately terminate the task. E2 stores the rejected
+draft and creates one bounded repair step carrying the exact gate diagnostics. The repair step is
+added before the current step is completed so parent auto-completion cannot close the task. A second
+gate failure is terminal and remains persisted in both the task trace and pipeline.
+
 Local smoke testing can validate and materialize an approved E1 folder without the Studio runtime:
 
 ```text

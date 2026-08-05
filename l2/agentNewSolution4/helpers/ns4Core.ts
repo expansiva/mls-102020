@@ -160,6 +160,22 @@ export function createNs4E2Step(
   );
 }
 
+export function createNs4E2RepairStep(
+  moduleName: string,
+  reviewRound: number,
+  repairAttempt: number,
+  gateFeedback: string,
+  stepTitle = NS4_DEFAULT_TITLES['e2-journeys'],
+): mls.msg.AIAgentStep {
+  return createNs4AgentStep(
+    `e2-journeys-round-${reviewRound}-repair-${repairAttempt}`,
+    `${stepTitle} · R${repairAttempt}`,
+    [],
+    'waiting_human_input',
+    { planId: 'e2-journeys', moduleName, reviewRound, repairAttempt, gateFeedback },
+  );
+}
+
 export function createNs4E3Step(
   moduleName = '',
   reviewRound = 1,

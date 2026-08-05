@@ -15,6 +15,7 @@ export interface Ns4E2GateResult {
 
 const ID_PATTERN = /^[a-z][A-Za-z0-9]*$/;
 const RAW_TECHNICAL_ID_PATTERN = /\b(?:[a-z][A-Za-z0-9]*Id|[a-z][a-z0-9]*_id|[A-Za-z][A-Za-z0-9]*\s+(?:id|ID))\b/;
+const STEP_KINDS = new Set(['locate', 'inspect', 'act', 'decide', 'handoff']);
 
 export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
   const issues: Ns4E2GateIssue[] = [];
@@ -86,6 +87,9 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
       const path = `${base}.business.steps[${stepPosition}]`;
       checkId(step.stepId, `${path}.stepId`, 'step', stepIds, add);
       validStepRefs.add(`${journey.journeyId}.${step.stepId}`);
+      if (!STEP_KINDS.has(step.kind)) {
+        add('NS4_E2_STEP_KIND', `${path}.kind`, `Unknown step kind ${step.kind || '(empty)'}. Use locate, inspect, act, decide or handoff.`);
+      }
       if (!step.intent) add('NS4_E2_STEP_INTENT', `${path}.intent`, 'Step intent is required.');
       if (!step.result) add('NS4_E2_STEP_RESULT', `${path}.result`, 'Step result must be observable.');
       checkBusinessText(step.intent, `${path}.intent`, add);

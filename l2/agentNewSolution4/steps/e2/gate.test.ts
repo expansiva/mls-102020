@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildNs4ModuleArtifact,
+  createNs4E2RepairStep,
   createNs4Pipeline,
   markNs4E1Approved,
   markNs4E2Approved,
@@ -84,6 +85,24 @@ test('E2 rejects a context consumed before it is carried or produced', () => {
   const result = validateNs4E2Review(normalizeNs4E2Review(broken));
   assert.equal(result.ok, false);
   assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_CONTEXT_ORDER'));
+});
+
+test('E2 rejects invented step kinds instead of silently normalizing them', () => {
+  const broken = structuredClone(reviewInput);
+  broken.journeys[0].business.steps[0].kind = 'review';
+  const result = validateNs4E2Review(normalizeNs4E2Review(broken));
+  assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_STEP_KIND'));
+});
+
+test('E2 creates one open repair step with deterministic gate feedback', () => {
+  const step = createNs4E2RepairStep('buildFlowFsm', 2, 1, 'NS4_E2_STEP_KIND journeys[0]');
+  assert.equal(step.planning?.planId, 'e2-journeys-round-2-repair-1');
+  assert.equal(step.status, 'waiting_human_input');
+  assert.equal(step.onFailure, 'wait_after_prompt');
+  assert.deepEqual(JSON.parse(step.prompt || '{}'), {
+    planId: 'e2-journeys', moduleName: 'buildFlowFsm', reviewRound: 2,
+    repairAttempt: 1, gateFeedback: 'NS4_E2_STEP_KIND journeys[0]',
+  });
 });
 
 test('E2 rejects business text that asks for a raw technical id', () => {
