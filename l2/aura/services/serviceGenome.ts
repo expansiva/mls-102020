@@ -730,7 +730,7 @@ export class ServiceGenome102020 extends ServiceBase {
                 const mod = folder.split('/')[0] || null;
                 const page = this._currentPageFile?.shortName ?? null;
                 // Real layout = 1..max-1; the last slot (max) is "+ Add layout" (handled inside
-                // selectLayout). Layout 1 is the default → its rules are read-only.
+                // selectLayout). Every real layout is configurable — layout 1 included.
                 const isRealLayout = !!this._layoutValue && this._layoutValue > 0 && this._layoutValue < this._layoutConfig.max;
                 return html`
                     <div class="flex flex-col gap-4">
@@ -743,7 +743,6 @@ export class ServiceGenome102020 extends ServiceBase {
                                 .layout=${this._layoutValue}
                                 .module=${mod}
                                 .page=${page}
-                                .readOnly=${this._layoutValue === 1}
                             ></aura--plugins--select-layout-rules-102020>
                         ` : nothing}
                     </div>

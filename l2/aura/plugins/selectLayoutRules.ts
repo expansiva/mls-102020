@@ -20,7 +20,6 @@ const message_en = {
     needsLayout: 'Select a layout first to configure its rules.',
     loading: 'Loading…',
     componentRulesHeader: 'Rules for components',
-    readOnlyNote: 'Default layout — read only.',
     tabLayout: 'Layout (base)',
     tabModule: 'Module',
     tabPage: 'Page',
@@ -72,7 +71,6 @@ const messages: Record<string, MessageType> = {
         needsLayout: 'Selecione um layout primeiro para configurar suas regras.',
         loading: 'Carregando…',
         componentRulesHeader: 'Rules for components',
-        readOnlyNote: 'Layout default — somente leitura.',
         tabLayout: 'Layout (base)',
         tabModule: 'Módulo',
         tabPage: 'Página',
@@ -121,7 +119,6 @@ const messages: Record<string, MessageType> = {
         needsLayout: 'Seleccione un layout primero para configurar sus reglas.',
         loading: 'Cargando…',
         componentRulesHeader: 'Rules for components',
-        readOnlyNote: 'Layout por defecto — solo lectura.',
         tabLayout: 'Layout (base)',
         tabModule: 'Módulo',
         tabPage: 'Página',
@@ -178,8 +175,6 @@ export class PluginSelectLayoutRules extends StateLitElement {
     @property({ attribute: false }) layout: number | null = null;
     @property({ attribute: false }) module: string | null = null;
     @property({ attribute: false }) page: string | null = null;
-    // Default layout → rules are read-only (view only).
-    @property({ attribute: false }) readOnly: boolean = false;
     // Draft mode (used by the "Add layout" form): no config load/persist, base scope only,
     // emits `rules-changed` so the parent can save the new layout in one go.
     @property({ attribute: false }) draft: boolean = false;
@@ -318,9 +313,7 @@ export class PluginSelectLayoutRules extends StateLitElement {
                 ${header}
                 ${this.draft
                     ? this._renderDraftForm()
-                    : this.readOnly
-                        ? this._renderReadOnly()
-                        : html`${this._renderScopeToggle()}${this._isBaseScope ? this._renderBaseForm() : this._renderScopedForm()}`}
+                    : html`${this._renderScopeToggle()}${this._isBaseScope ? this._renderBaseForm() : this._renderScopedForm()}`}
             </div>
         `;
     }
@@ -359,23 +352,6 @@ export class PluginSelectLayoutRules extends StateLitElement {
                 ${this._visibleSections.map(sec => this._renderSectionDetails(sec))}
             </div>
             ${this._renderAddMore()}
-        `;
-    }
-
-    /** Read-only view (default layout): the layout's rules as read-only chips, no editing. */
-    private _renderReadOnly() {
-        const levels: { title: string; rules: Record<string, string> }[] = [
-            { title: this.msg.tabLayout, rules: this._rules ?? {} },
-        ];
-        for (const [mod, r] of Object.entries(this._moduleOverrides)) levels.push({ title: `${this.msg.tabModule} · ${mod}`, rules: r });
-        for (const [key, r] of Object.entries(this._pageOverrides)) levels.push({ title: `${this.msg.tabPage} · ${key}`, rules: r });
-        return html`
-            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 px-3 py-2">
-                <span class="text-xs text-gray-500 dark:text-gray-400">${this.msg.readOnlyNote}</span>
-            </div>
-            <div class="flex flex-col gap-2">
-                ${levels.map(l => this._renderReadonlyLevel(l.title, l.rules))}
-            </div>
         `;
     }
 
