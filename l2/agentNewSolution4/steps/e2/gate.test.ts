@@ -132,7 +132,7 @@ test('business hash is stable across object key order', async () => {
   assert.equal(artifacts[0].realization.compiledFromBusinessHash, artifacts[0].businessHash);
 });
 
-test('E2 approval advances both pipeline and module to E3', () => {
+test('E2 approval advances both pipeline and module to the E3 access matrix', () => {
   const e1Clarification = {
     planId: 'e1-clarification', userLanguage: 'pt-BR', title: 'E1', legends: [],
     questions: {
@@ -144,7 +144,7 @@ test('E2 approval advances both pipeline and module to E3', () => {
   };
   const moduleArtifact = buildNs4ModuleArtifact('buildFlowFsm', e1Clarification, 'human', '2026-08-04T10:00:00.000Z');
   const e2Module = markNs4ModuleE2Approved(moduleArtifact, 'human', '2026-08-04T10:05:00.000Z');
-  assert.equal(e2Module.specStatus.nextStep, 'e3-ontology');
+  assert.equal(e2Module.specStatus.nextStep, 'e3-access-matrix');
   assert.equal(e2Module.specStatus.completedSteps[1].stepId, 'e2-journeys');
 
   const e1Pipeline = markNs4E1Approved(createNs4Pipeline('buildFlowFsm', 'prompt'), 'human', 'l4/buildFlowFsm/module.defs.ts');
@@ -152,5 +152,5 @@ test('E2 approval advances both pipeline and module to E3', () => {
   const waiting = markNs4E2WaitingHuman(running, 1, 'l4/buildFlowFsm/pipeline/e2-journeys.draft.json');
   const approved = markNs4E2Approved(waiting, 'human', ['l4/buildFlowFsm/journeys/manageProjects.defs.ts']);
   assert.equal(approved.steps.e2?.status, 'approved');
-  assert.equal(approved.nextStep, 'e3-ontology');
+  assert.equal(approved.nextStep, 'e3-access-matrix');
 });

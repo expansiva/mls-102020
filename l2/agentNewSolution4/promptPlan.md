@@ -19,13 +19,14 @@ Return JSON only with this exact envelope:
       "e1-clarification": "localized short title",
       "e1-compile": "localized short title",
       "e2-journeys": "localized short title",
-      "e3-ontology": "localized short title",
-      "e4-rules": "localized short title",
-      "e5-behaviors": "localized short title",
-      "e6-realization": "localized short title",
-      "e7-workspaces": "localized short title",
-      "e8-navigation-compiler": "localized short title",
-      "e9-validation": "localized short title"
+      "e3-access-matrix": "localized short title",
+      "e4-ontology": "localized short title",
+      "e5-rules": "localized short title",
+      "e6-behaviors": "localized short title",
+      "e7-realization": "localized short title",
+      "e8-workspaces": "localized short title",
+      "e9-navigation-compiler": "localized short title",
+      "e10-validation": "localized short title"
     },
     "clarification": {
       "planId": "e1-clarification",

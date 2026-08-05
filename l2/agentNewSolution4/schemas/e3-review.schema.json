@@ -1,0 +1,83 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewSolution4/e3-access-review/2026-08-05-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["planId", "moduleName", "userLanguage", "title", "reviewRound", "profiles", "authorities", "grants", "changeSummary"],
+  "properties": {
+    "planId": { "const": "e3-access-review" },
+    "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "userLanguage": { "type": "string", "minLength": 2 },
+    "title": { "type": "string", "minLength": 1 },
+    "reviewRound": { "type": "integer", "minimum": 1 },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["profileId", "title", "kind", "description", "actorRefs", "landingIntent"],
+        "properties": {
+          "profileId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+          "title": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["internal", "external"] },
+          "description": { "type": "string", "minLength": 1 },
+          "actorRefs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "landingIntent": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "authorities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["authorityRef", "title", "description", "journeyStepRefs", "informationNeeds"],
+        "properties": {
+          "authorityRef": { "type": "string", "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$" },
+          "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "journeyStepRefs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*\\.[a-z][A-Za-z0-9]*$" } },
+          "informationNeeds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "grants": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["profileRef", "authorityRef", "reason", "dataScope", "disclosure", "constraints"],
+        "properties": {
+          "profileRef": { "type": "string", "minLength": 1 },
+          "authorityRef": { "type": "string", "minLength": 3 },
+          "reason": { "type": "string", "minLength": 1 },
+          "dataScope": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode", "description"],
+            "properties": {
+              "mode": { "enum": ["organization", "assigned", "own", "related", "public", "custom"] },
+              "description": { "type": "string", "minLength": 1 }
+            }
+          },
+          "disclosure": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode", "description", "allowedInformation", "deniedInformation"],
+            "properties": {
+              "mode": { "enum": ["fullRecord", "summaryOnly", "fieldsOnly", "aggregateOnly"] },
+              "description": { "type": "string", "minLength": 1 },
+              "allowedInformation": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "deniedInformation": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+            }
+          },
+          "constraints": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "changeSummary": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  }
+}

@@ -1,13 +1,13 @@
 {
-  "$id": "https://collab.codes/schemas/agentNewSolution4/pipeline/2026-08-05-v3",
+  "$id": "https://collab.codes/schemas/agentNewSolution4/pipeline/2026-08-05-v4",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "flowId", "flowVersion", "moduleName", "sourcePrompt", "presentation", "status", "steps", "nextStep", "createdAt", "updatedAt"],
   "properties": {
-    "schemaVersion": { "type": "string", "const": "2026-08-05-ns4-pipeline-v3" },
+    "schemaVersion": { "type": "string", "const": "2026-08-05-ns4-pipeline-v4" },
     "flowId": { "type": "string", "const": "agentNewSolution4" },
-    "flowVersion": { "type": "string", "const": "2026-08-05-ns4-flow-v3" },
+    "flowVersion": { "type": "string", "const": "2026-08-05-ns4-flow-v4" },
     "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
     "sourcePrompt": { "type": "string", "minLength": 1 },
     "presentation": {
@@ -19,18 +19,19 @@
         "stepTitles": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["e1-clarification", "e1-compile", "e2-journeys", "e3-ontology", "e4-rules", "e5-behaviors", "e6-realization", "e7-workspaces", "e8-navigation-compiler", "e9-validation"],
+          "required": ["e1-clarification", "e1-compile", "e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors", "e7-realization", "e8-workspaces", "e9-navigation-compiler", "e10-validation"],
           "properties": {
             "e1-clarification": { "type": "string", "minLength": 1 },
             "e1-compile": { "type": "string", "minLength": 1 },
             "e2-journeys": { "type": "string", "minLength": 1 },
-            "e3-ontology": { "type": "string", "minLength": 1 },
-            "e4-rules": { "type": "string", "minLength": 1 },
-            "e5-behaviors": { "type": "string", "minLength": 1 },
-            "e6-realization": { "type": "string", "minLength": 1 },
-            "e7-workspaces": { "type": "string", "minLength": 1 },
-            "e8-navigation-compiler": { "type": "string", "minLength": 1 },
-            "e9-validation": { "type": "string", "minLength": 1 }
+            "e3-access-matrix": { "type": "string", "minLength": 1 },
+            "e4-ontology": { "type": "string", "minLength": 1 },
+            "e5-rules": { "type": "string", "minLength": 1 },
+            "e6-behaviors": { "type": "string", "minLength": 1 },
+            "e7-realization": { "type": "string", "minLength": 1 },
+            "e8-workspaces": { "type": "string", "minLength": 1 },
+            "e9-navigation-compiler": { "type": "string", "minLength": 1 },
+            "e10-validation": { "type": "string", "minLength": 1 }
           }
         }
       }
@@ -70,10 +71,26 @@
             "failedAt": { "type": "string", "minLength": 10 },
             "updatedAt": { "type": "string", "minLength": 10 }
           }
+        },
+        "e3": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reviewRound", "updatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["running", "waitingHuman", "approved", "failed"] },
+            "reviewRound": { "type": "integer", "minimum": 1 },
+            "draftPath": { "type": "string" },
+            "artifactPath": { "type": "string" },
+            "approvedBy": { "type": "string", "enum": ["human", "auto"] },
+            "approvedAt": { "type": "string" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "failedAt": { "type": "string", "minLength": 10 },
+            "updatedAt": { "type": "string", "minLength": 10 }
+          }
         }
       }
     },
-    "nextStep": { "type": "string", "enum": ["e2-journeys", "e3-ontology"] },
+    "nextStep": { "type": "string", "enum": ["e2-journeys", "e3-access-matrix", "e4-ontology"] },
     "createdAt": { "type": "string", "minLength": 10 },
     "updatedAt": { "type": "string", "minLength": 10 }
   }

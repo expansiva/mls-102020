@@ -1,7 +1,7 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-05-ns4-flow-v3",
-  "status": "e1-e2",
+  "schemaVersion": "2026-08-05-ns4-flow-v4",
+  "status": "e1-e3",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
     "mls-base/skills/collab_messages.md",
@@ -10,13 +10,13 @@
   ],
   "principles": [
     "The root LLM detects the communication language, translates friendly step titles and creates the visible roadmap before clarification begins.",
-    "Human callbacks only persist an answer step and complete their clarification; artifact work belongs to dependency-unlocked compile steps.",
+    "E1 human callbacks persist only an answer anchor; E2 and E3 approval callbacks persist their already-gated permanent review artifacts before adding the result anchor.",
     "Every implemented compile step writes a permanent L4 artifact and a stable result anchor.",
     "Pipeline state on disk is the resume authority; task payloads are orchestration and presentation.",
     "New artifacts retain userLanguage and localized stepTitles for maintenance and resume context.",
     "Terminal step failures use traceMsg in the task and persist status, error and failedAt in the pipeline whenever a module pipeline already exists.",
     "Previous flow versions are never migrated automatically.",
-    "The /fast flag auto-accepts the same clarification widget path after a countdown."
+    "The /fast flag uses the same deterministic gates and persistence paths; E1 auto-accepts its clarification and valid E2/E3 proposals are approved without opening their widgets."
   ],
   "invocation": {
     "new": "@@newSolution4 <description-or-moduleName>",
@@ -29,7 +29,9 @@
     "pipeline": "l4/{module}/pipeline/pipeline.json",
     "journeyDraft": "l4/{module}/pipeline/e2-journeys.draft.json",
     "journey": "l4/{module}/journeys/{journeyId}.defs.ts",
-    "journeyIndex": "l4/{module}/journeys/index.defs.ts"
+    "journeyIndex": "l4/{module}/journeys/index.defs.ts",
+    "accessDraft": "l4/{module}/pipeline/e3-access-matrix.draft.json",
+    "accessMatrix": "l4/{module}/access/access-matrix.defs.ts"
   },
   "orchestration": {
     "rootOutput": ["validPrompt", "userPrompt", "presentation.userLanguage", "presentation.stepTitles", "clarification"],
@@ -40,16 +42,18 @@
       "e1-compile",
       "e1-result",
       "e2-journeys",
-      "e2-result"
+      "e2-result",
+      "e3-access-matrix",
+      "e3-result"
     ],
     "roadmap": [
-      "e3-ontology",
-      "e4-rules",
-      "e5-behaviors",
-      "e6-realization",
-      "e7-workspaces",
-      "e8-navigation-compiler",
-      "e9-validation"
+      "e4-ontology",
+      "e5-rules",
+      "e6-behaviors",
+      "e7-realization",
+      "e8-workspaces",
+      "e9-navigation-compiler",
+      "e10-validation"
     ],
     "roadmapExecution": "Future steps are visible waiting_dependency/manual_later nodes until their implementations are delivered."
   },
@@ -93,6 +97,28 @@
         "Terminal failures are persisted in pipeline.steps.e2.error and failedAt.",
         "Prerequisite handoffs use stable context ids exported by the referenced journey.",
         "contextOrLookup includes an explicit locate fallback for every carried context."
+      ]
+    },
+    {
+      "planId": "e3-access-matrix",
+      "runtimePlanIdPattern": "e3-access-matrix-round-{reviewRound}",
+      "type": "agent-human-checkpoint-loop",
+      "dependsOn": ["e2-result"],
+      "goal": "Generate, iteratively adjust and approve the collab-auth access matrix, data scopes and disclosure boundaries.",
+      "output": [
+        "l4/{module}/pipeline/e3-access-matrix.draft.json",
+        "l4/{module}/access/access-matrix.defs.ts"
+      ],
+      "outputAnchor": "e3-result",
+      "gate": "steps/e3/gate.ts",
+      "runtimeNotes": [
+        "Each human change request adds the next open E3 round before completing the current clarification.",
+        "Every round returns to the same localized matrix widget until explicit approval.",
+        "Authorities follow the lowercase collab-auth domain:code convention and remain opaque to the agent.",
+        "External grants cannot use organization-wide scope.",
+        "Limited disclosure records an enforceable projection intent; hiding fields in the frontend is insufficient.",
+        "The /fast path validates and approves the same E3 contract without opening the widget.",
+        "Terminal failures are persisted in pipeline.steps.e3.error and failedAt."
       ]
     }
   ]

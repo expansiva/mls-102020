@@ -97,8 +97,8 @@ async function verifyWrittenArtifacts(
   pipeline: Record<string, any>,
   moduleArtifact: Ns4ModuleArtifact,
 ): Promise<void> {
-  if (pipeline.steps.e2?.status !== 'approved' || pipeline.nextStep !== 'e3-ontology') throw new Error('Written pipeline did not approve E2.');
-  if (!moduleArtifact.specStatus.completedSteps.some(step => step.stepId === 'e2-journeys') || moduleArtifact.specStatus.nextStep !== 'e3-ontology') {
+  if (pipeline.steps.e2?.status !== 'approved' || pipeline.nextStep !== 'e3-access-matrix') throw new Error('Written pipeline did not approve E2.');
+  if (!moduleArtifact.specStatus.completedSteps.some(step => step.stepId === 'e2-journeys') || moduleArtifact.specStatus.nextStep !== 'e3-access-matrix') {
     throw new Error('Written module contract did not advance to E3.');
   }
   for (const expected of artifacts) {

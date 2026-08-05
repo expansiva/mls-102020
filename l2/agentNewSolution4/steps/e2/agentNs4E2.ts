@@ -276,7 +276,7 @@ function addStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentS
 function resultStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, saved: Ns4PersistedE2, title: string): mls.msg.AgentIntentAddStep {
   return addStep(context, parentStep, {
     type: 'result', stepId: 0, interaction: null, stepTitle: title, status: 'completed', nextSteps: [],
-    result: JSON.stringify({ ...saved, completedStep: 'e2-journeys', nextStep: 'e3-ontology' }, null, 2),
+    result: JSON.stringify({ ...saved, completedStep: 'e2-journeys', nextStep: 'e3-access-matrix' }, null, 2),
     planning: { planId: 'e2-result', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
   } as mls.msg.AIResultStep);
 }

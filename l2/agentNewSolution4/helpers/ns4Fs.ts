@@ -24,6 +24,14 @@ export function ns4E2DraftFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e2-journeys.draft', extension: '.json' };
 }
 
+export function ns4E3DraftFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e3-access-matrix.draft', extension: '.json' };
+}
+
+export function ns4AccessMatrixFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/access`, shortName: 'access-matrix', extension: '.defs.ts' };
+}
+
 export function ns4JourneyFile(moduleName: string, journeyId: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/journeys`, shortName: journeyId, extension: '.defs.ts' };
 }
@@ -76,6 +84,18 @@ export async function writeNs4Module(moduleName: string, artifact: unknown): Pro
 export async function writeNs4E2Draft(moduleName: string, draft: unknown): Promise<string> {
   const fileInfo = ns4E2DraftFile(moduleName);
   await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4E3Draft(moduleName: string, draft: unknown): Promise<string> {
+  const fileInfo = ns4E3DraftFile(moduleName);
+  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4AccessMatrix(moduleName: string, artifact: unknown): Promise<string> {
+  const fileInfo = ns4AccessMatrixFile(moduleName);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}AccessMatrix`, artifact);
   return displayPath(fileInfo);
 }
 

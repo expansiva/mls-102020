@@ -59,31 +59,34 @@ test('root plan localizes and creates the complete visible roadmap before E1 sta
     'e1-clarification': 'Confirmar contrato do módulo',
     'e1-compile': 'Compilar contrato inicial',
     'e2-journeys': 'Definir jornadas de negócio',
-    'e3-ontology': 'Definir ontologia',
-    'e4-rules': 'Organizar regras',
-    'e5-behaviors': 'Definir comportamentos',
-    'e6-realization': 'Conectar jornadas',
-    'e7-workspaces': 'Desenhar áreas de trabalho',
-    'e8-navigation-compiler': 'Compilar navegação',
-    'e9-validation': 'Validar especificação',
+    'e3-access-matrix': 'Revisar acessos',
+    'e4-ontology': 'Definir ontologia',
+    'e5-rules': 'Organizar regras',
+    'e6-behaviors': 'Definir comportamentos',
+    'e7-realization': 'Conectar jornadas',
+    'e8-workspaces': 'Desenhar áreas de trabalho',
+    'e9-navigation-compiler': 'Compilar navegação',
+    'e10-validation': 'Validar especificação',
   };
   const plan = normalizeNs4RootPlan({
     type: 'flexible',
     result: { validPrompt: true, userPrompt: 'Criar pet shop', userLanguage: 'pt-BR', titles, clarification },
   }, 'Criar pet shop');
   const steps = buildNs4PlannedSteps(plan);
-  assert.equal(steps.length, 10);
+  assert.equal(steps.length, 11);
   assert.equal(steps[0].stepTitle, titles['e1-clarification']);
   assert.equal(steps[0].status, 'waiting_human_input');
   assert.equal(steps[0].onFailure, 'wait_after_prompt');
   assert.deepEqual(steps[1].planning?.dependsOn, ['e1-clarification-answer']);
   assert.deepEqual(steps[2].planning?.dependsOn, ['e1-result']);
   assert.equal(steps[2].onFailure, 'wait_after_prompt');
-  assert.equal(steps[3].planning?.executionMode, 'manual_later');
+  assert.deepEqual(steps[3].planning?.dependsOn, ['e2-result']);
+  assert.equal(steps[3].onFailure, 'wait_after_prompt');
+  assert.equal(steps[4].planning?.executionMode, 'manual_later');
   const artifact = buildNs4ModuleArtifact(plan.userPrompt, clarification, 'human', '2026-08-05T10:00:00.000Z', plan.presentation);
   const pipeline = createNs4Pipeline('petShop', plan.userPrompt, '2026-08-05T10:00:00.000Z', plan.presentation);
   assert.equal(artifact.presentation.userLanguage, 'pt-BR');
-  assert.equal(artifact.presentation.stepTitles['e9-validation'], titles['e9-validation']);
+  assert.equal(artifact.presentation.stepTitles['e10-validation'], titles['e10-validation']);
   assert.deepEqual(pipeline.presentation, artifact.presentation);
 });
 
@@ -102,12 +105,12 @@ test('root plan rejects an incomplete localized-title contract instead of silent
   assert.match(plan.invalidReason || '', /missing titles/);
 });
 
-test('new artifacts expose the E1-to-E2 lifecycle flow version', () => {
+test('new artifacts expose the current E1-to-E3 lifecycle flow version', () => {
   const artifact = buildNs4ModuleArtifact('petShop', clarification, 'human', '2026-08-05T10:00:00.000Z');
   const pipeline = createNs4Pipeline('petShop', 'petShop', '2026-08-05T10:00:00.000Z');
-  assert.equal(NS4_FLOW_VERSION, '2026-08-05-ns4-flow-v3');
+  assert.equal(NS4_FLOW_VERSION, '2026-08-05-ns4-flow-v4');
   assert.equal(artifact.specStatus.flowVersion, NS4_FLOW_VERSION);
-  assert.equal(NS4_PIPELINE_SCHEMA_VERSION, '2026-08-05-ns4-pipeline-v3');
+  assert.equal(NS4_PIPELINE_SCHEMA_VERSION, '2026-08-05-ns4-pipeline-v4');
   assert.equal(pipeline.schemaVersion, NS4_PIPELINE_SCHEMA_VERSION);
 });
 
@@ -117,6 +120,7 @@ test('continuing an earlier execution does not migrate its flow version', () => 
     flowVersion: '2026-08-04-ns4-flow-v1',
   } as unknown as Ns4PipelineState;
   assert.equal(markNs4E2Running(legacy, 1).flowVersion, '2026-08-04-ns4-flow-v1');
+  assert.equal(resolveNs4ExistingAction(true, legacy, true), 'collision');
 });
 
 test('terminal E1 and E2 failures are durable in the pipeline', () => {
@@ -147,6 +151,6 @@ test('resume is allowed only for a pipeline owned by agentNewSolution4', () => {
   assert.equal(resolveNs4ExistingAction(true, null, false), 'collision');
   assert.equal(resolveNs4ExistingAction(true, { flowId: 'agentNewSolution' }, true), 'collision');
   assert.equal(resolveNs4ExistingAction(true, running, false), 'resume-e1');
-  assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-next');
+  assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-e2');
   assert.equal(resolveNs4ExistingAction(true, approved, false), 'resume-e1');
 });

@@ -4,6 +4,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   buildNs4PlannedSteps,
   createNs4E2Step,
+  createNs4E3Step,
   isNs4ModuleToken,
   normalizeNs4RootPlan,
   Ns4RootPlan,
@@ -28,6 +29,11 @@ import {
   beforeNs4E2ClarificationStep,
   beforeNs4E2PromptStep,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/agentNs4E2.js';
+import {
+  afterNs4E3PromptStep,
+  beforeNs4E3ClarificationStep,
+  beforeNs4E3PromptStep,
+} from '/_102020_/l2/agentNewSolution4/steps/e3/agentNs4E3.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -43,7 +49,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-7 (2026-08-05) live-tested E2 context handoffs';
+export const NS4_AGENT_BUILD = 'build-8 (2026-08-05) iterative E3 access matrix';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -72,17 +78,19 @@ async function beforePromptImplicit(
         true,
       )];
     }
-    if (action === 'resume-next' && pipeline?.steps.e2?.status === 'approved') {
+    if (action === 'resume-next' && pipeline?.steps.e3?.status === 'approved') {
       return [await statusTask(
         agent,
         context,
-        `Módulo "${invocation.prompt}": E1 e E2 já estão aprovados. O próximo passo é e3-ontology, ainda não implementado.`,
+        `Módulo "${invocation.prompt}": E1, E2 e E3 já estão aprovados. O próximo passo é e4-ontology, ainda não implementado.`,
         `plan ${invocation.prompt}`,
       )];
     }
     resumeModule = invocation.prompt;
-    resumeTarget = action === 'resume-e1' ? 'e1' : 'e2';
-    resumeRound = resumeTarget === 'e2' ? String(Math.max(1, pipeline?.steps.e2?.reviewRound || 1)) : '';
+    resumeTarget = action === 'resume-e1' ? 'e1' : action === 'resume-e3' ? 'e3' : 'e2';
+    resumeRound = resumeTarget === 'e3'
+      ? String(Math.max(1, pipeline?.steps.e3?.reviewRound || 1))
+      : resumeTarget === 'e2' ? String(Math.max(1, pipeline?.steps.e2?.reviewRound || 1)) : '';
     sourcePrompt = pipeline?.sourcePrompt || invocation.prompt;
     taskTitle = `plan ${invocation.prompt}`;
   }
@@ -128,6 +136,9 @@ async function beforePromptStep(
   if (planId.startsWith('e2-journeys-round-')) {
     return beforeNs4E2PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
+  if (planId.startsWith('e3-access-matrix-round-')) {
+    return beforeNs4E3PromptStep(agent, context, parentStep, step, hookSequential, args);
+  }
   return [rootStatus(context, parentStep, step, hookSequential, 'failed', `Unsupported implemented step: ${planId || '(missing)'}`)];
 }
 
@@ -145,6 +156,9 @@ async function afterPromptStep(
   if (planId.startsWith('e2-journeys-round-')) {
     return afterNs4E2PromptStep(agent, context, parentStep, step, hookSequential);
   }
+  if (planId.startsWith('e3-access-matrix-round-')) {
+    return afterNs4E3PromptStep(agent, context, parentStep, step, hookSequential);
+  }
   if (memoryString(context, 'statusOnly') === 'true') {
     const failed = memoryString(context, 'statusOutcome') === 'error';
     return [rootStatus(context, parentStep, step, hookSequential, failed ? 'failed' : 'completed', 'Status task completed.')];
@@ -156,8 +170,8 @@ async function afterPromptStep(
     }
     const resumeModule = memoryString(context, 'resumeModule');
     const resumeTarget = memoryString(context, 'resumeTarget');
-    const planned = resumeModule && resumeTarget === 'e2'
-      ? buildNs4ResumeSteps(plan, resumeModule, normalizeResumeRound(memoryString(context, 'resumeRound')))
+    const planned = resumeModule && (resumeTarget === 'e2' || resumeTarget === 'e3')
+      ? buildNs4ResumeSteps(plan, resumeModule, resumeTarget, normalizeResumeRound(memoryString(context, 'resumeRound')))
       : buildNs4PlannedSteps(plan);
     return planned.map(plannedStep => ({
       type: 'add-step',
@@ -184,6 +198,9 @@ async function beforeClarificationStep(
   if (parsed?.planId === 'e2-review') {
     return beforeNs4E2ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);
   }
+  if (parsed?.planId === 'e3-access-review') {
+    return beforeNs4E3ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);
+  }
   return beforeNs4E1ClarificationStep(agent, context, parentStep, step, hookSequential, json);
 }
 
@@ -192,12 +209,17 @@ export function getNs4RootPlan(context: mls.msg.ExecutionContext, rootHint?: mls
   return normalizeNs4RootPlan(root?.interaction?.payload?.[0], memoryString(context, 'sourcePrompt'));
 }
 
-function buildNs4ResumeSteps(plan: Ns4RootPlan, moduleName: string, reviewRound: number): mls.msg.AIAgentStep[] {
+function buildNs4ResumeSteps(plan: Ns4RootPlan, moduleName: string, target: 'e2' | 'e3', reviewRound: number): mls.msg.AIAgentStep[] {
   const all = buildNs4PlannedSteps(plan);
-  const roadmap = all.slice(3);
+  if (target === 'e3') {
+    return [
+      createNs4E3Step(moduleName, reviewRound, '', [], plan.presentation.stepTitles['e3-access-matrix']),
+      ...all.slice(4),
+    ];
+  }
   return [
     createNs4E2Step(moduleName, reviewRound, '', [], plan.presentation.stepTitles['e2-journeys']),
-    ...roadmap,
+    ...all.slice(3),
   ];
 }
 
