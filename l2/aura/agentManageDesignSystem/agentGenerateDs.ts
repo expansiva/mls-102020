@@ -15,7 +15,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { mkCompleted, mkFail } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
-import { MANDATORY_COLOR_FAMILIES } from '/_102029_/l2/designSystemBase.js';
+import { MANDATORY_COLOR_ROLES } from '/_102029_/l2/designSystemBase.js';
 import { skill as dsTokenStandard } from '/_102020_/l2/aura/agentManageDesignSystem/skills/dsTokenStandard.js';
 import {
   buildGenerateDsHumanPrompt, sanitizeGeneratedDs,
@@ -124,13 +124,18 @@ You must return ONLY a valid JSON object. No preamble, no markdown fences. Start
 
 You are a senior brand/product designer. Given a brand palette (and optional brief), pick the
 color ANCHORS of a design system following the standard below. Return light AND dark anchors for
-each of the ${MANDATORY_COLOR_FAMILIES.length} families — nothing else (the system expands the
-shades/states and fills typography/spacing).
+each of the ${MANDATORY_COLOR_ROLES.length} roles — nothing else (the system derives the
+hover/focus/disabled states and fills typography/spacing).
+
+A ROLE says WHERE the color is used, so pick by usage, never by hue: "<role>-bg" is always paired
+with "<role>-text" and the pair must be legible together. Keep the surface hierarchy readable
+(page-bg behind surface-bg behind surface-alt-bg) and keep chart-series-1..6 mutually
+distinguishable IN ORDER (that order is the colour-blindness safeguard).
 
 ${dsTokenStandard}
 
-## Example (format reference — do NOT copy the values)
-{"type":"flexible","result":{"name":"earthy","description":"Warm, organic feel for an artisan marketplace.","families":{"text-primary":{"light":"#3b2f2f","dark":"#f6f1eb"},"text-secondary":{"light":"#8a7f75","dark":"#a89a8c"},"bg-primary":{"light":"#f6f1eb","dark":"#1b1714"},"bg-secondary":{"light":"#efe7dc","dark":"#262019"},"grey":{"light":"#e6e6e6","dark":"#575757"},"error":{"light":"#c0392b","dark":"#e57368"},"success":{"light":"#2e7d32","dark":"#4caf50"},"warning":{"light":"#e0a020","dark":"#eead2b"},"info":{"light":"#0a6dc9","dark":"#0b81ef"},"active":{"light":"#c85a2a","dark":"#e0723f"},"link":{"light":"#c85a2a","dark":"#e0723f"}}}}
+## Example (format reference — values ABRIDGED to 4 roles; you must return ALL of them)
+{"type":"flexible","result":{"name":"earthy","description":"Warm, organic feel for an artisan marketplace.","roles":{"page-bg":{"light":"#f6f1eb","dark":"#1b1714"},"surface-bg":{"light":"#fffdfa","dark":"#262019"},"text-default":{"light":"#3b2f2f","dark":"#f6f1eb"},"button-primary-bg":{"light":"#c85a2a","dark":"#e0723f"}}}}
 
 ## Output format
 [[OutputSection]]
@@ -142,7 +147,7 @@ export type Output = {
   result: {
     name: string;
     description: string;
-    families: Record<string, { light: string; dark: string }>;
+    roles: Record<string, { light: string; dark: string }>;
   };
 };
 //#endregion

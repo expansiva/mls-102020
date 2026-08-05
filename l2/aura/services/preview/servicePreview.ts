@@ -1208,11 +1208,11 @@ export class ServicePreview extends ServiceBase {
     const lang = this.getMessageKey(messages);
     this.msg = messages[lang];
 
-    return html`<collab-spliter-vertical-var-fixed-102027 msize=${this.msize} withresize="false" fixedheight="100" complementcolor="var(--bg-primary-color)">
+    return html`<collab-spliter-vertical-var-fixed-102027 msize=${this.msize} withresize="false" fixedheight="100" complementcolor="var(--page-bg)">
 
                 <collab-spliter-horizontal-var-fixed-102027
                     slot="top"
-                    complementcolor="var(--bg-primary-color);"
+                    complementcolor="var(--page-bg);"
                     fixedwidth="30%"
                     fixedvisible= "closed" 
                 >

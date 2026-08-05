@@ -1,12 +1,12 @@
 # agentNewSolution4
 
-L4 product compiler with E1 through E3 implemented and the complete build roadmap visible from the
+L4 product compiler with E1 through E4 implemented and the complete build roadmap visible from the
 start of the task.
 
 Invocation:
 
 - `@@newSolution4 petShop` — create a module or resume its next incomplete v4 step;
-- `@@newSolution4 petShop /fast` — auto-accept the proposed clarification and E2 review;
+- `@@newSolution4 petShop /fast` — auto-accept valid E1 through E4 proposals;
 - an existing module without an `agentNewSolution4` pipeline is rejected.
 
 The root planner reads the prompt language, validates the request and translates the friendly titles
@@ -41,11 +41,19 @@ and returns to the same widget. Approval writes:
   and disclosure limits;
 - updated module and pipeline status with `e4-ontology` as the next step.
 
-The ontology therefore starts at E4. A limited grant such as “client may see the published budget
-summary without seeing the Project record” becomes a backend projection obligation for later phases,
-not a frontend-only visibility hint.
+E4 currently treats the module explicitly as a new solution. It combines approved journeys and access
+information into a connected ontology checkpoint. The widget keeps safe title/description edits next
+to the selected entity and structural prompt changes in a separate panel. Approval writes:
 
-`/fast` auto-approves E1, E2 and E3 proposals through the same durable answer/result contracts used by
+- `l4/<module>/ontology/<EntityId>.defs.ts` — one complete, human-readable contract per entity;
+- `l4/<module>/ontology/index.defs.ts` — the relationship graph, discovery references and frozen hash;
+- updated module and pipeline status with `e5-rules` as the next step.
+
+A limited E3 grant such as “client may see the published budget summary without seeing the Project
+record” must be represented by an E4 projection or traceable information entity. Relationships preserve
+selected journey context so later screens do not ask humans to type foreign-key ids.
+
+`/fast` auto-approves E1, E2, E3 and E4 proposals through the same durable answer/result contracts used by
 the interactive flow. Without `/fast`, neither the E1 compile nor permanent E2 journeys can proceed
 before the respective checkpoint is approved.
 
@@ -53,4 +61,4 @@ The flow contract lives in `docs/flow.json`. Canonical agent-engine guidance liv
 `mls-base/skills/collab_messages.md`, `agentsBestPractices.md` and `modelTypes.md`.
 
 Terminal failures always carry a `traceMsg` in the task. Once a module pipeline exists, the same
-failure is also stored as `status: failed`, `error` and `failedAt` in the corresponding E1/E2/E3 state.
+failure is also stored as `status: failed`, `error` and `failedAt` in the corresponding E1/E2/E3/E4 state.

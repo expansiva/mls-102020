@@ -82,7 +82,9 @@ test('root plan localizes and creates the complete visible roadmap before E1 sta
   assert.equal(steps[2].onFailure, 'wait_after_prompt');
   assert.deepEqual(steps[3].planning?.dependsOn, ['e2-result']);
   assert.equal(steps[3].onFailure, 'wait_after_prompt');
-  assert.equal(steps[4].planning?.executionMode, 'manual_later');
+  assert.equal(steps[4].planning?.executionMode, 'sequential');
+  assert.equal(steps[4].onFailure, 'wait_after_prompt');
+  assert.equal(steps[5].planning?.executionMode, 'manual_later');
   const artifact = buildNs4ModuleArtifact(plan.userPrompt, clarification, 'human', '2026-08-05T10:00:00.000Z', plan.presentation);
   const pipeline = createNs4Pipeline('petShop', plan.userPrompt, '2026-08-05T10:00:00.000Z', plan.presentation);
   assert.equal(artifact.presentation.userLanguage, 'pt-BR');
