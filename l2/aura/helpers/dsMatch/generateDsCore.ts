@@ -2,20 +2,20 @@
 
 // Pure core of "generate a Design System with the LLM" (DS-3). The agent
 // (aura/agentManageDesignSystem/agentGenerateDs.ts) sends { name?, description?, palette?, brief? } and
-// the LLM answers a compact map of COLOR FAMILY BASES (11 families Ã— {light, dark}). This module
-// deterministically EXPANDS those bases into the full mandatory token set (lighter/darker/light/
-// dark variants Ã— hover/focus/disabled states + `_dark-` pairs) via HSL math, and fills
-// global/typography from the canonical template (`_102029_` â€” single source of truth). No
-// storage/framework imports â€” testable in isolation.
+// the LLM answers a compact map of COLOR ROLE BASES (44 roles x {light, dark}). This module
+// deterministically EXPANDS those bases into the full mandatory token set (each role x
+// hover/focus/disabled states + `_dark-` twins) via HSL math, and fills global/typography from
+// the canonical template (`_102029_` = single source of truth). No storage/framework imports,
+// so it is testable in isolation.
 //
-// Why bases-only: asking the LLM for ~120 hex values is expensive and fragile. It picks the 11
-// semantic anchors from the brand palette; the code derives every shade coherently and ALWAYS
-// produces a complete, valid entry (missing/invalid family â†’ template default for that family).
+// Why bases-only: asking the LLM for 352 hex values is expensive and fragile. It picks the 44
+// role anchors from the brand palette; the code derives every state coherently and ALWAYS
+// produces a complete, valid entry (missing/invalid role = template default for that role).
 
 import type { IKeyValueToken, IDesignSystemTokens } from '/_102029_/l2/designSystemBase.js';
 import {
-    MANDATORY_COLOR_FAMILIES, MANDATORY_TOKEN_KEYS, defaultTokensTemplate,
-    type MandatoryColorFamily,
+    MANDATORY_COLOR_ROLES, MANDATORY_TOKEN_KEYS, defaultTokensTemplate,
+    type MandatoryColorRole,
 } from '/_102029_/l2/designSystemBase.js';
 
 // â”€â”€â”€ Request / result contracts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -23,15 +23,15 @@ import {
 /** The plugin's generation request (JSON on the agent prompt + echoed via longMemory). */
 export interface GenerateDsRequest {
     projectId: number;
-    palette?: string[];          // brand colors â€” the SOURCE the LLM maps to family bases
+    palette?: string[];          // brand colors â€” the SOURCE the LLM maps to role bases
     brief?: string;              // optional free-text mood/use (extra context)
     nameHint?: string;           // user-typed name, if any (LLM may propose one otherwise)
     language?: string;           // 'en' | 'pt' | 'es' â€” language of name/description
     requestId?: string;          // one-shot correlation id: plugin â†” config.dsDraft
 }
 
-/** One color family's anchor colors, as returned by the LLM. */
-export interface FamilyBase { light: string; dark: string; }
+/** One color role's anchor colors, as returned by the LLM. */
+export interface RoleBase { light: string; dark: string; }
 
 /** Sanitized generation output â€” the tokens portion the plugin loads into its Add form. */
 export interface GeneratedDs {
@@ -92,75 +92,85 @@ function hslToHex(h: number, s: number, l: number): string {
     return `#${to2(r)}${to2(g)}${to2(b)}`;
 }
 
-/** Shift a color's lightness (percentage points) and optionally scale saturation. */
-function shade(hex: string, dl: number, satScale = 1): string {
+/** Scale a color's lightness by a factor (1 = unchanged, 0.93 = 7% darker). */
+function scaleLightness(hex: string, factor: number): string {
     const { h, s, l } = hexToHsl(hex);
-    return hslToHex(h, s * satScale, l + dl);
+    return hslToHex(h, s, l * factor);
 }
 
-// â”€â”€â”€ Family â†’ mandatory keys expansion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/** Mix `hex` toward `target` by `amount` (0 = hex, 1 = target), channel-wise. */
+function mixToward(hex: string, target: string, amount: number): string {
+    const ch = (h: string, i: number) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+    const to2 = (n: number) => Math.round(n).toString(16).padStart(2, '0');
+    return '#' + [0, 1, 2].map(i => to2(ch(hex, i) + (ch(target, i) - ch(hex, i)) * amount)).join('');
+}
 
-// Lightness deltas (percentage points) that turn a family BASE into each variant/state.
-// Tuned to yield distinct, readable shades â€” not to reproduce the template's hand-authored
-// values (the point is brand-derived coherence; the user can fine-tune afterwards).
-const VARIANT_DL: Record<string, number> = { lighter: 12, light: 8, '': 0, dark: -8, darker: -12 };
-const STATE_DL: Record<string, number> = { '': 0, hover: 6, focus: -6, disabled: 16 };
+// --- Role -> mandatory keys expansion ---------------------------------------------
 
-interface ParsedColorKey { dark: boolean; family: string; variant: string; state: string; }
+// How a role BASE becomes each state. Derived from the reference model
+// (`_102045_/l2/designSystem.ts`, entry "Default"), which is MULTIPLICATIVE in lightness: an
+// additive delta would be a no-op on the many near-white roles (surface-bg #ffffff), leaving
+// hover invisible. `disabled` washes toward a light neutral, which is what the reference does
+// for both dark text (#111827 -> #8b8f98) and saturated fills (#1273d4 -> #8bb8e6).
+const STATE_LIGHTNESS: Record<string, number> = { '': 1, hover: 0.93, focus: 0.87 };
+const DISABLED_TARGET = '#f6f7fa';
+const DISABLED_MIX = 0.55;
 
-/** Parse a mandatory color key into (family, variant, state, dark). Returns null if unrecognized. */
+interface ParsedColorKey { dark: boolean; role: string; state: string; }
+
+/**
+ * Parse a mandatory color key into (role, state, dark). Unambiguous: no role name ends in a
+ * state word, so the state suffix is stripped first and the remainder must be a known role.
+ */
 export function parseColorKey(key: string): ParsedColorKey | null {
     let rest = key;
     const dark = rest.startsWith('_dark-');
     if (dark) rest = rest.slice('_dark-'.length);
-    const family = (MANDATORY_COLOR_FAMILIES as readonly string[]).find(f => rest === `${f}-color` || rest.startsWith(`${f}-color-`));
-    if (!family) return null;
-    let tail = rest.slice(`${family}-color`.length); // '' | '-lighter' | '-darker-hover' | â€¦
     let state = '';
     for (const st of ['hover', 'focus', 'disabled']) {
-        if (tail.endsWith(`-${st}`)) { state = st; tail = tail.slice(0, -(st.length + 1)); break; }
+        if (rest.endsWith(`-${st}`)) { state = st; rest = rest.slice(0, -(st.length + 1)); break; }
     }
-    const variant = tail ? tail.slice(1) : ''; // strip leading '-'
-    return { dark, family, variant, state };
+    if (!(MANDATORY_COLOR_ROLES as readonly string[]).includes(rest)) return null;
+    return { dark, role: rest, state };
 }
 
-/** Value for one mandatory color key given its family's base {light,dark}. */
-function colorForKey(parsed: ParsedColorKey, base: FamilyBase): string {
+/** Value for one mandatory color key given its role's base {light,dark}. */
+function colorForKey(parsed: ParsedColorKey, base: RoleBase): string {
     const src = parsed.dark ? base.dark : base.light;
-    const dl = (VARIANT_DL[parsed.variant] ?? 0) + (STATE_DL[parsed.state] ?? 0);
-    return shade(src, dl, parsed.state === 'disabled' ? 0.6 : 1);
+    if (parsed.state === 'disabled') return mixToward(src, DISABLED_TARGET, DISABLED_MIX);
+    return scaleLightness(src, STATE_LIGHTNESS[parsed.state] ?? 1);
 }
 
 /**
- * Build the full mandatory color record from per-family bases. Every mandatory color key is
- * emitted (light + `_dark-`), computed from its family base; families absent/invalid in `bases`
+ * Build the full mandatory color record from per-role bases. Every mandatory color key is
+ * emitted (light + `_dark-`), computed from its role base; roles absent/invalid in `bases`
  * keep the canonical template default so the entry is ALWAYS complete.
  */
-export function expandColorTokens(bases: Partial<Record<MandatoryColorFamily, FamilyBase>>): IKeyValueToken {
+export function expandColorTokens(bases: Partial<Record<MandatoryColorRole, RoleBase>>): IKeyValueToken {
     const template = defaultTokensTemplate().color;
     const out: IKeyValueToken = {};
     for (const key of MANDATORY_TOKEN_KEYS.color) {
         const parsed = parseColorKey(key);
-        const base = parsed ? bases[parsed.family as MandatoryColorFamily] : undefined;
+        const base = parsed ? bases[parsed.role as MandatoryColorRole] : undefined;
         out[key] = (parsed && base) ? colorForKey(parsed, base) : template[key];
     }
     return out;
 }
 
-// â”€â”€â”€ Human prompt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Human prompt -----------------------------------------------------------------
 
 export function buildGenerateDsHumanPrompt(req: GenerateDsRequest): string {
     const parts: string[] = [];
     if (req.brief?.trim()) parts.push(`## Brief (mood / intended use)\n${req.brief.trim()}`);
     if (req.palette?.length) {
         parts.push([
-            `## Brand palette (SOURCE â€” map these to the family bases)`,
+            `## Brand palette (SOURCE â€” map these to the role bases)`,
             req.palette.map(c => `- ${c}`).join('\n'),
-            `Derive every family base from these brand colors. Do NOT invent an unrelated palette.`,
+            `Derive every role base from these brand colors. Do NOT invent an unrelated palette.`,
         ].join('\n'));
     }
     if (req.nameHint?.trim()) parts.push(`## Name\nThe design system is named "${req.nameHint.trim()}" (keep it).`);
-    parts.push(`## Families to return (each needs light + dark hex)\n${MANDATORY_COLOR_FAMILIES.map(f => `- ${f}`).join('\n')}`);
+    parts.push(`## Roles to return (each needs light + dark hex)\n${MANDATORY_COLOR_ROLES.map(r => `- ${r}`).join('\n')}`);
     parts.push(`## Language\nWrite "name" and "description" in language: ${req.language || 'en'}.`);
     return parts.join('\n\n');
 }
@@ -174,20 +184,21 @@ export interface SanitizeDsResult { ok: boolean; error?: string; value?: Generat
 
 /**
  * Validate the LLM's raw `result` into a complete GeneratedDs.
- * - families: each valid #hex light/dark pair seeds its family expansion; invalid/missing â†’ default.
+ * - roles: each valid #hex light/dark pair seeds its role expansion; invalid or missing falls
+ *   back to the template default.
  * - color: ALWAYS the full mandatory set (expandColorTokens), so the entry is never partial.
  * - typography/global: fixed from the canonical template (the AI focuses on colors).
  */
 export function sanitizeGeneratedDs(raw: any, req: GenerateDsRequest): SanitizeDsResult {
     if (!raw || typeof raw !== 'object') return { ok: false, error: 'LLM result is not an object' };
 
-    const rawFamilies = (raw.families && typeof raw.families === 'object') ? raw.families : {};
-    const bases: Partial<Record<MandatoryColorFamily, FamilyBase>> = {};
-    for (const family of MANDATORY_COLOR_FAMILIES) {
-        const f = rawFamilies[family];
-        const light = normalizeHex(f?.light);
-        const dark = normalizeHex(f?.dark);
-        if (light && dark) bases[family] = { light, dark };
+    const rawRoles = (raw.roles && typeof raw.roles === 'object') ? raw.roles : {};
+    const bases: Partial<Record<MandatoryColorRole, RoleBase>> = {};
+    for (const role of MANDATORY_COLOR_ROLES) {
+        const r = rawRoles[role];
+        const light = normalizeHex(r?.light);
+        const dark = normalizeHex(r?.dark);
+        if (light && dark) bases[role] = { light, dark };
     }
 
     const template = defaultTokensTemplate();
