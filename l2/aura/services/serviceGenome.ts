@@ -4,7 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { getState, setState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
-import { AuraInitState, getAuraState, setAuraState, saveAuraProject, IAuraPage } from '/_102020_/l2/aura/helpers/auraState.js';
+import { AuraInitState, getAuraState, setAuraState, saveAuraProject, moduleScopeTitle, IAuraPage } from '/_102020_/l2/aura/helpers/auraState.js';
 import { skills as listOfGroups } from '/_102020_/l2/aura/molecules/skills/index.js';
 import { replaceComponentTag } from '/_102020_/l2/aura/services/preview/previewTextEditor.js';
 import { convertFileToTag, isPageFile } from '/_102020_/l2/utils.js';
@@ -112,8 +112,16 @@ export class ServiceGenome102020 extends ServiceBase {
         const file = await this._getActual3File();
         await this._trySetActualModule(file);
         await this._updateCurrentPage(file);
-        // The DS is chosen at project scope (l6) — reconcile whatever was picked/edited there.
+        // The DS is chosen at project scope (l5) — reconcile whatever was picked/edited there.
         await this._syncWithProjectDs();
+    }
+
+    /** nav-3 menu title: project + module this service is acting on. The module comes from the
+     *  page ON SCREEN (fresher than aura state, which only follows the l5 module knob). */
+    private _updateMenuTitle(): void {
+        const fromPage = (this._currentPageFile?.folder ?? '').split('/')[0] || null;
+        this.menu.title = moduleScopeTitle(fromPage);
+        this.menu.updateTitle?.();
     }
 
     // ─── State ────────────────────────────────────────────────────────
@@ -429,6 +437,7 @@ export class ServiceGenome102020 extends ServiceBase {
 
     private async _updateCurrentPage(file: mls.stor.IFileInfo | null) {
         this._currentPageFile = file;
+        this._updateMenuTitle(); // single choke point for the page in context
         if (!file) {
             this._actualPage = null;
             this._isPageContext = false;

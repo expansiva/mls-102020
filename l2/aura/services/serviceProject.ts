@@ -3,7 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
-import { AuraInitState, getAuraState, setAuraState, saveAuraProject, getActualLanguage, setActualLanguage } from '/_102020_/l2/aura/helpers/auraState.js';
+import { AuraInitState, getAuraState, setAuraState, saveAuraProject, getActualLanguage, setActualLanguage, projectScopeTitle } from '/_102020_/l2/aura/helpers/auraState.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { readModuleLanguages } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { dsIndexNameMap } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
@@ -130,6 +130,13 @@ export class ServiceProject102020 extends ServiceBase {
     onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
         this._moduleReloadToken += 1; // re-check the module variations on each service (re)open
         this._initDsConfig();          // a DS may have been created/renamed elsewhere
+        this._updateMenuTitle();
+    }
+
+    /** nav-3 menu title: the project this service is acting on. */
+    private _updateMenuTitle(): void {
+        this.menu.title = projectScopeTitle();
+        this.menu.updateTitle?.();
     }
 
     // ─── State ────────────────────────────────────────────────────────
@@ -388,6 +395,7 @@ export class ServiceProject102020 extends ServiceBase {
         AuraInitState();
         this._loadModules();
         this._initDsConfig();
+        this._updateMenuTitle();
     }
 
     // ─── Render ───────────────────────────────────────────────────────

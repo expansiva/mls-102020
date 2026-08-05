@@ -165,6 +165,30 @@ export function setAuraState<K extends keyof IAuraState>(key: K, value: IAuraSta
     }
 }
 
+// ─── nav-3 menu titles ────────────────────────────────────────────────
+// The service tells the user WHICH project/module it is acting on — the same scope its
+// knobs edit. Consumed as `menu.title` + `menu.updateTitle?.()`.
+
+/** Project scope (l5): the project id — '102045'. Empty while there is no project. */
+export function projectScopeTitle(): string {
+    const project = getAuraState()?.actualProject;
+    return project ? String(project) : '';
+}
+
+/**
+ * Module scope (l3/l4): '<project>-<module>' — '102045-cafeFlow'.
+ * `module` overrides the state (the genome knows the module of the page ON SCREEN, which is
+ * fresher than aura state when pages of different modules are opened). Falls back to the
+ * project alone while no module is resolvable, and to '' with no project.
+ */
+export function moduleScopeTitle(module?: string | null): string {
+    const state = getAuraState();
+    const project = state?.actualProject;
+    if (!project) return '';
+    const name = module || state?.actualModule;
+    return name ? `${project}-${name}` : String(project);
+}
+
 /**
  * Language of a module (or of the actual module when omitted).
  * Falls back to the legacy single `actualLanguage` when the module has no entry yet
