@@ -112,6 +112,39 @@ group is \`groupExpandContent\`.
 
 ---
 
+## 2.9 Live slots in this group
+
+The tables of this group opt in with \`protected usesLiveSlots = true;\`. This group is the one
+where the split matters most: a cell is where consumers put buttons, inputs and even another
+table, and those have to keep working.
+
+| slot | path | how to render |
+|---|---|---|
+| \`TableCell\`, \`TableHead\` | **LIVE, by ELEMENT** | \`\\\${this.renderLiveSlotFrom(cell)}\` — there are N×M of them, so an anchor keyed by tag name cannot address them |
+| \`Caption\`, \`Empty\`, \`Loading\` | **LIVE** | \`\\\${this.renderLiveSlot('Caption')}\` |
+| \`Detail\` | **LIVE, by ELEMENT** | \`\\\${this.renderLiveSlotFrom(row.detailEl)}\` — see the Detail Slot section |
+| \`TableHeader\`, \`TableBody\`, \`TableFooter\`, \`TableRow\` | structure | read with \`getLiveSlot(tag)\`, never projected |
+
+**A new table of this group must follow this split.** Today 5 of the 11 do; the others are being
+brought over one at a time.
+
+### The two that bite in a table
+
+**1. Read structure with \`getLiveSlot\`, not \`getSlot\`.** \`getSlot\` reads the SNAPSHOT, and a molecule that
+projects cannot read from there: the source is emptied by the projection, and a re-snapshot after
+it reads blank rows.
+
+**2. Sorting MUST pass \`getLiveText\`.** After projection \`cell.textContent\` is empty, so sorting by cell
+text silently orders by nothing:
+
+\`\`\`typescript
+import { cellSortKey, compareSortKeys } from '/_102033_/l2/shared/molecules/tableSort.js';
+
+cellSortKey(cell, this.getLiveText(cell))   // NOT cellSortKey(cell)
+\`\`\`
+
+---
+
 ## 3. Properties
 
 ### 3.1 Configuration

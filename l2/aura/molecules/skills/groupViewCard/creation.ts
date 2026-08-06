@@ -56,6 +56,27 @@ All slots are optional. The card renders only the slots that are present:
 
 ---
 
+## 2.9 Live slots in this group
+
+The molecules of this group opt in with \`protected usesLiveSlots = true;\` and split the slots
+like this. **A new molecule of this group must follow the same split** — otherwise it becomes the
+only one where a component placed in the slot does not really work, and nobody notices.
+
+| slot | path | how to render |
+|---|---|---|
+| \`CardFooter\` | **LIVE** | \`\\\${this.renderLiveSlot('CardFooter')}\` |
+| \`CardAction\` | **LIVE** | \`\\\${this.renderLiveSlot('CardAction')}\` |
+| \`CardHeader\` | snapshot | \`\\\${unsafeHTML(this.getSlotContent('CardHeader'))}\` |
+| \`CardTitle\` | snapshot | \`\\\${unsafeHTML(this.getSlotContent('CardTitle'))}\` |
+| \`CardDescription\` | snapshot | \`\\\${unsafeHTML(this.getSlotContent('CardDescription'))}\` |
+| \`CardContent\` | snapshot | \`\\\${unsafeHTML(this.getSlotContent('CardContent'))}\` |
+
+> The rule and the three traps are in §10.1 of the general generation skill. The one that bites
+> here: **decide whether to render a live slot with \`hasSlot\`, never with \`getSlotContent\`** —
+> the source is empty once the nodes are projected.
+
+---
+
 ## 3. Properties
 
 ### 3.1 Configuration
