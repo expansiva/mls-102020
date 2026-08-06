@@ -72,7 +72,7 @@
       "required": ["flowId", "flowVersion", "state", "artifactCompleteness", "completedSteps", "nextStep", "updatedAt"],
       "properties": {
         "flowId": { "type": "string", "const": "agentNewSolution4" },
-        "flowVersion": { "type": "string", "const": "2026-08-05-ns4-flow-v4" },
+        "flowVersion": { "type": "string", "const": "2026-08-05-ns4-flow-v5" },
         "state": { "type": "string", "const": "inProgress" },
         "artifactCompleteness": { "type": "string", "const": "partial" },
         "completedSteps": {

@@ -50,6 +50,9 @@ interface Ns4PersistedE3 {
   authorityCount: number;
   grantCount: number;
   artifactPath: string;
+  approvedBy: Ns4ApprovedBy;
+  approvedAt: string;
+  approvedReview: Ns4E3Review;
 }
 
 export async function beforeNs4E3PromptStep(
@@ -157,7 +160,7 @@ export async function beforeNs4E3ClarificationStep(
     await recordNs4E3Failure(review.moduleName, message);
     throw new Error(message);
   }
-  await import('/_102020_/l2/agentNewSolution4/steps/e3/widgetNs4AccessMatrix.js');
+  await import('/_102020_/l2/agentNewSolution4/widgets/widgetNs4AccessMatrix.js');
   const element = document.createElement('widget-ns4-access-matrix-102020');
   (element as unknown as { value: Ns4E3Review }).value = review;
   element.addEventListener('ns4-access-matrix-review', (event: Event) => {
@@ -220,7 +223,7 @@ async function persistNs4E3(
   await writeNs4Pipeline(markNs4E3Approved(pipeline, approvedBy, artifactPath, approvedAt));
   return {
     moduleName, profileCount: review.profiles.length, authorityCount: review.authorities.length,
-    grantCount: review.grants.length, artifactPath,
+    grantCount: review.grants.length, artifactPath, approvedBy, approvedAt, approvedReview: review,
   };
 }
 

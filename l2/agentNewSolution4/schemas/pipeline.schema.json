@@ -7,7 +7,7 @@
   "properties": {
     "schemaVersion": { "type": "string", "const": "2026-08-05-ns4-pipeline-v4" },
     "flowId": { "type": "string", "const": "agentNewSolution4" },
-    "flowVersion": { "type": "string", "const": "2026-08-05-ns4-flow-v4" },
+    "flowVersion": { "type": "string", "const": "2026-08-05-ns4-flow-v5" },
     "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
     "sourcePrompt": { "type": "string", "minLength": 1 },
     "presentation": {

@@ -5,7 +5,7 @@ start of the task.
 
 Invocation:
 
-- `@@newSolution4 petShop` — create a module or resume its next incomplete v4 step;
+- `@@newSolution4 petShop` — create a module or resume its next incomplete v5 step;
 - `@@newSolution4 petShop /fast` — auto-accept valid E1 through E4 proposals;
 - an existing module without an `agentNewSolution4` pipeline is rejected.
 
@@ -42,11 +42,18 @@ and returns to the same widget. Approval writes:
 - updated module and pipeline status with `e4-ontology` as the next step.
 
 E4 currently treats the module explicitly as a new solution. It combines approved journeys and access
-information into a connected ontology checkpoint. The widget keeps safe title/description edits next
-to the selected entity and structural prompt changes in a separate panel. Approval writes:
+information into a connected ontology checkpoint. Every entity receives an explicit persistence
+destination: organization MDM for stable base registrations, module database for transactions, or
+derived/external/embedded for concepts without their own module table. The widget presents a colored
+persistence map before the entity details, highlights cross-store relationships, keeps safe
+title/description edits next to the selected entity and routes structural changes through a separate
+prompt panel. Static field constraints are backend-required validation contracts mirrored by the
+frontend; dynamic and time-relative conditions are deferred to E5 business rules.
+Approval writes:
 
 - `l4/<module>/ontology/<EntityId>.defs.ts` — one complete, human-readable contract per entity;
-- `l4/<module>/ontology/index.defs.ts` — the relationship graph, discovery references and frozen hash;
+- `l4/<module>/ontology/index.defs.ts` — relationship graph, compact persistence routing, discovery
+  references and frozen hash;
 - updated module and pipeline status with `e5-rules` as the next step.
 
 A limited E3 grant such as “client may see the published budget summary without seeing the Project

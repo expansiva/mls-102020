@@ -11,6 +11,7 @@ const MODULE_ID = /^[a-z][A-Za-z0-9]*$/;
 const ENTITY_ID = /^[A-Z][A-Za-z0-9]*$/;
 const MEMBER_ID = /^[a-z][A-Za-z0-9]*$/;
 const VERB_ENTITY = /^(Create|Update|Delete|Manage|View|Browse|Generate|Record|Process|Send|Close|Open)[A-Z]/;
+const MDM_TYPE = /^[a-z][A-Za-z0-9]*\.[A-Z][A-Za-z0-9]*$/;
 
 export function validateNs4E4Review(
   review: Ns4E4Review,
@@ -46,6 +47,7 @@ export function validateNs4E4Review(
     if (!entity.title) add('NS4_E4_ENTITY_TITLE', `${path}.title`, 'Entity title is required.');
     if (!entity.description) add('NS4_E4_ENTITY_DESCRIPTION', `${path}.description`, 'Entity description is required.');
     if (!entity.fields.length) add('NS4_E4_ENTITY_FIELDS', `${path}.fields`, 'Every entity must define its useful fields.');
+    if (!entity.storage.notes) add('NS4_E4_STORAGE_NOTES', `${path}.storage.notes`, 'Every persistence decision needs a human-readable reason.');
     if (!entity.sourceRefs.journeyIds.length && !entity.sourceRefs.featureIds.length && !entity.sourceRefs.authorityRefs.length) {
       add('NS4_E4_ENTITY_SOURCE', `${path}.sourceRefs`, 'Every entity must be traceable to a journey, feature or access authority.');
     }
@@ -83,9 +85,41 @@ export function validateNs4E4Review(
         }
       });
     });
-    if (entity.kind !== 'valueObject' && entity.kind !== 'projection'
+    const expectedTarget = entity.ownership === 'external' ? 'external'
+      : entity.kind === 'mdm' ? 'mdm'
+      : entity.kind === 'projection' ? 'derived'
+      : entity.kind === 'valueObject' ? 'embedded'
+      : 'moduleDatabase';
+    if (entity.storage.target !== expectedTarget) {
+      add('NS4_E4_STORAGE_TARGET', `${path}.storage.target`, `${entity.kind}/${entity.ownership} must use storage target ${expectedTarget}, not ${entity.storage.target}.`);
+    }
+    const expectedScope = expectedTarget === 'mdm' ? 'organization'
+      : expectedTarget === 'moduleDatabase' ? 'module'
+      : expectedTarget === 'external' ? 'platform'
+      : 'none';
+    if (entity.storage.scope !== expectedScope) {
+      add('NS4_E4_STORAGE_SCOPE', `${path}.storage.scope`, `${expectedTarget} storage must use scope ${expectedScope}.`);
+    }
+    if ((entity.storage.target === 'mdm' || entity.storage.target === 'moduleDatabase')
       && !entity.fields.some(field => field.required && /Id$/.test(field.fieldId))) {
       add('NS4_E4_ENTITY_IDENTIFIER', `${path}.fields`, 'Stored business entities need a required identifier field ending in Id.');
+    }
+    if (entity.storage.target === 'mdm' || entity.storage.target === 'moduleDatabase') {
+      const idField = entity.fields.find(field => field.fieldId === entity.storage.idField);
+      if (!entity.storage.idField || !idField || !idField.required || idField.type !== 'uuid') {
+        add('NS4_E4_STORAGE_ID_FIELD', `${path}.storage.idField`, 'Stored entities must name an existing required uuid idField.');
+      }
+    } else if (entity.storage.idField) {
+      add('NS4_E4_STORAGE_ID_UNUSED', `${path}.storage.idField`, `${entity.storage.target} entities must not declare a persisted idField.`);
+    }
+    if (entity.storage.target === 'mdm') {
+      if (!entity.storage.mdmType || !MDM_TYPE.test(entity.storage.mdmType)) {
+        add('NS4_E4_MDM_TYPE', `${path}.storage.mdmType`, 'MDM entities require mdmType in lowerCamelModule.PascalEntity form.');
+      } else if (entity.storage.mdmType !== `${review.moduleName}.${entity.entityId}`) {
+        add('NS4_E4_MDM_TYPE_MODULE', `${path}.storage.mdmType`, `Module-owned MDM type must be ${review.moduleName}.${entity.entityId}.`);
+      }
+    } else if (entity.storage.mdmType) {
+      add('NS4_E4_MDM_TYPE_UNUSED', `${path}.storage.mdmType`, 'Only MDM entities may declare mdmType.');
     }
     if (entity.lifecycleStates.length && !entity.fields.some(field => field.fieldId === 'status')) {
       add('NS4_E4_LIFECYCLE_STATUS', `${path}.lifecycleStates`, 'An entity with lifecycle states must define a status field.');

@@ -19,3 +19,6 @@ Rules:
 8. Console output is not a durable trace or a substitute for a failed step status.
 9. Version schemas and update fixtures/tests together.
 10. Run the touched tests and `tsc -p tsconfig.frontend.json --noEmit` before delivery.
+11. Approved pipeline states are monotonic; a late or duplicate callback must never regress them.
+12. Immediate successors receive a bounded approved result handoff and use permanent L4 artifacts
+    for resume. Draft files are never approval evidence.

@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e4/widgetNs4Ontology.less" enhancement="enhancementStyle"/>
+/// <mls fileReference="_102020_/l2/agentNewSolution4/widgets/widgetNs4Ontology.less" enhancement="enhancementStyle"/>
 
 widget-ns4-ontology-102020 {
   display: block; color: #172033;
@@ -17,26 +17,46 @@ widget-ns4-ontology-102020 {
   .ns4-badges { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
   .ns4-badges span { background: #eef2ff; border-radius: 999px; color: #3730a3; font-size: 12px; padding: 6px 10px; white-space: nowrap; }
 
-  .ns4-changes, .ns4-workbench, .ns4-relationships, .ns4-change-panel {
+  .ns4-changes, .ns4-persistence-map, .ns4-workbench, .ns4-relationships, .ns4-change-panel {
     background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px;
   }
   .ns4-changes { background: #f0fdf4; border-color: #bbf7d0; }
   .ns4-changes h3 { color: #166534; }
+  .ns4-section-title p, .ns4-fields > p { color: #64748b; line-height: 1.4; margin-top: 5px; }
+  .ns4-storage-groups { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-top: 12px; }
+  .ns4-storage-groups > article { border: 1px solid #e2e8f0; border-radius: 10px; min-width: 0; padding: 10px; }
+  .ns4-storage-groups > article > header { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
+  .ns4-storage-groups > article > header strong { font-size: 12px; }
+  .ns4-storage-groups > article > header span { background: rgba(255, 255, 255, .75); border-radius: 999px; font-size: 11px; padding: 3px 7px; }
+  .ns4-storage-groups > article > div { display: grid; gap: 5px; margin-top: 8px; }
+  .ns4-storage-groups button { background: rgba(255, 255, 255, .78); border: 1px solid transparent; border-radius: 7px; cursor: pointer; display: grid; gap: 2px; padding: 7px; text-align: left; }
+  .ns4-storage-groups button small { color: #64748b; }
+  .ns4-storage-groups button.selected { border-color: #4f46e5; box-shadow: 0 0 0 1px rgba(79, 70, 229, .12); }
+  .target-mdm { background: #ecfdf5; border-color: #86efac !important; color: #166534; }
+  .target-moduleDatabase { background: #eff6ff; border-color: #93c5fd !important; color: #1d4ed8; }
+  .target-derived { background: #faf5ff; border-color: #d8b4fe !important; color: #7e22ce; }
+  .target-external { background: #fff7ed; border-color: #fdba74 !important; color: #9a3412; }
+  .target-embedded { background: #f8fafc; border-color: #cbd5e1 !important; color: #475569; }
   .ns4-workbench { display: grid; gap: 16px; grid-template-columns: minmax(190px, 240px) minmax(0, 1fr); }
   nav { border-right: 1px solid #e2e8f0; display: grid; align-content: start; gap: 7px; padding-right: 14px; }
   nav h3 { margin-bottom: 3px; }
   nav button { background: #f8fafc; border: 1px solid transparent; border-radius: 8px; cursor: pointer; display: grid; gap: 3px; padding: 9px; text-align: left; }
   nav button small { color: #64748b; }
+  nav button .ns4-nav-target { border-radius: 999px; font-size: 10px; justify-self: start; margin-top: 2px; padding: 3px 6px; }
   nav button.selected { background: #eef2ff; border-color: #818cf8; color: #3730a3; }
   main { display: grid; gap: 13px; min-width: 0; }
+  .ns4-tabs { border-bottom: 1px solid #e2e8f0; display: flex; gap: 6px; }
+  .ns4-tabs button { background: #fff; border: 1px solid #cbd5e1; border-bottom: 0; border-radius: 8px 8px 0 0; color: #475569; cursor: pointer; padding: 8px 11px; }
+  .ns4-tabs button.selected { background: #4338ca; border-color: #4338ca; color: #fff; }
 
   .ns4-entity-head { display: grid; gap: 12px; grid-template-columns: minmax(0, 1.2fr) minmax(220px, .8fr); }
   .ns4-entity-head p { color: #52606d; line-height: 1.45; margin-top: 7px; }
+  .ns4-target-badge { border: 1px solid; border-radius: 999px; display: inline-block; font-size: 11px; margin-top: 8px; padding: 4px 8px; }
   .ns4-entity-head dl { background: #f8fafc; border-radius: 9px; display: grid; gap: 9px; padding: 11px; }
   .ns4-entity-head dt { color: #64748b; font-size: 11px; }
   .ns4-entity-head dd { font-size: 13px; line-height: 1.4; margin-top: 2px; overflow-wrap: anywhere; }
   .ns4-fields, .ns4-direct-edits, .ns4-entity-details article { background: #f8fafc; border-radius: 9px; padding: 11px; }
-  .ns4-fields h3 { margin-bottom: 9px; }
+  .ns4-fields h3 { margin-bottom: 0; }
   .ns4-table-scroll { overflow-x: auto; }
   table { border-collapse: collapse; min-width: 760px; width: 100%; }
   th, td { border-bottom: 1px solid #e2e8f0; padding: 8px; text-align: left; vertical-align: top; }
@@ -58,6 +78,7 @@ widget-ns4-ontology-102020 {
   .ns4-relationships > div { display: grid; gap: 9px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); margin-top: 10px; }
   .ns4-relationships article { background: #f8fafc; border-radius: 9px; padding: 11px; }
   .ns4-relationships article code { display: block; margin-top: 3px; }
+  .ns4-cross-store { background: #fef3c7; border-radius: 999px; color: #92400e; display: inline-block; font-size: 10px; margin-top: 5px; padding: 3px 7px; }
   .ns4-relationships article p { color: #52606d; line-height: 1.4; margin-top: 6px; }
 
   .ns4-change-panel { border-color: #c7d2fe; display: grid; gap: 11px; }

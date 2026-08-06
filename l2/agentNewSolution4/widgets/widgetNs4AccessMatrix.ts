@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e3/widgetNs4AccessMatrix.ts" enhancement="_102027_/l2/enhancementLit"/>
+/// <mls fileReference="_102020_/l2/agentNewSolution4/widgets/widgetNs4AccessMatrix.ts" enhancement="_102027_/l2/enhancementLit"/>
 
 import { html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -13,7 +13,7 @@ const labels = {
   en: {
     subtitle: 'Review who may perform each capability and exactly which information may be disclosed.',
     round: 'Review', profiles: 'Access profiles', internal: 'Internal', external: 'External',
-    actors: 'E2 actors', landing: 'Starting point', matrix: 'Profile × authority matrix',
+    actors: 'E2 actors', landing: 'Starting point', matrix: 'Profile × authority matrix', profileAccess: 'Authorities for this profile',
     authority: 'Authority', noAccess: 'No access', full: 'Full record', limited: 'Limited',
     details: 'Access details', reason: 'Business reason', scope: 'Data scope', disclosure: 'Disclosure boundary',
     allowed: 'May expose', denied: 'Must not expose', constraints: 'Constraints', journeySteps: 'Journey steps',
@@ -25,7 +25,7 @@ const labels = {
   pt: {
     subtitle: 'Revise quem pode executar cada capacidade e exatamente quais informações podem ser expostas.',
     round: 'Revisão', profiles: 'Perfis de acesso', internal: 'Interno', external: 'Externo',
-    actors: 'Atores do E2', landing: 'Ponto de entrada', matrix: 'Matriz perfil × autoridade',
+    actors: 'Atores do E2', landing: 'Ponto de entrada', matrix: 'Matriz perfil × autoridade', profileAccess: 'Autoridades deste perfil',
     authority: 'Autoridade', noAccess: 'Sem acesso', full: 'Registro completo', limited: 'Limitado',
     details: 'Detalhes do acesso', reason: 'Motivo de negócio', scope: 'Escopo dos dados', disclosure: 'Limite de exposição',
     allowed: 'Pode expor', denied: 'Não pode expor', constraints: 'Restrições', journeySteps: 'Passos das jornadas',
@@ -37,7 +37,7 @@ const labels = {
   es: {
     subtitle: 'Revise quién puede ejecutar cada capacidad y exactamente qué información puede exponerse.',
     round: 'Revisión', profiles: 'Perfiles de acceso', internal: 'Interno', external: 'Externo',
-    actors: 'Actores de E2', landing: 'Punto de entrada', matrix: 'Matriz perfil × autoridad',
+    actors: 'Actores de E2', landing: 'Punto de entrada', matrix: 'Matriz perfil × autoridad', profileAccess: 'Autoridades de este perfil',
     authority: 'Autoridad', noAccess: 'Sin acceso', full: 'Registro completo', limited: 'Limitado',
     details: 'Detalles del acceso', reason: 'Motivo de negocio', scope: 'Alcance de datos', disclosure: 'Límite de exposición',
     allowed: 'Puede exponer', denied: 'No puede exponer', constraints: 'Restricciones', journeySteps: 'Pasos de jornadas',
@@ -55,6 +55,7 @@ export class WidgetNs4AccessMatrix102020 extends StateLitElement {
 
   @state() private adjustment = '';
   @state() private submitting = false;
+  @state() private selectedProfileId = '';
   @state() private selectedGrantKey = '';
 
   private text() {
@@ -85,12 +86,27 @@ export class WidgetNs4AccessMatrix102020 extends StateLitElement {
 
   private selectedGrant(): Ns4AccessGrant | undefined {
     if (!this.value) return undefined;
-    return this.value.grants.find(grant => this.grantKey(grant) === this.selectedGrantKey) || this.value.grants[0];
+    const profile = this.selectedProfile();
+    return this.value.grants.find(grant => this.grantKey(grant) === this.selectedGrantKey)
+      || this.value.grants.find(grant => grant.profileRef === profile?.profileId)
+      || this.value.grants[0];
+  }
+
+  private selectedProfile() {
+    if (!this.value) return undefined;
+    return this.value.profiles.find(profile => profile.profileId === this.selectedProfileId) || this.value.profiles[0];
+  }
+
+  private selectProfile(profileId: string): void {
+    this.selectedProfileId = profileId;
+    const grant = this.value?.grants.find(item => item.profileRef === profileId);
+    this.selectedGrantKey = grant ? this.grantKey(grant) : '';
   }
 
   render() {
     const text = this.text();
     if (!this.value) return html`<div class="ns4-empty">${text.empty}</div>`;
+    const profile = this.selectedProfile();
     const selected = this.selectedGrant();
     return html`
       <section class="ns4-access-matrix">
@@ -105,40 +121,19 @@ export class WidgetNs4AccessMatrix102020 extends StateLitElement {
 
         <section class="ns4-profiles">
           <h3>${text.profiles}</h3>
-          <div>${this.value.profiles.map(profile => html`
-            <article>
-              <div><strong>${profile.title}</strong><span class=${profile.kind}>${profile.kind === 'external' ? text.external : text.internal}</span></div>
-              <p>${profile.description}</p>
+          <div>${this.value.profiles.map(item => html`
+            <button class="ns4-profile ${profile === item ? 'selected' : ''}" @click=${() => this.selectProfile(item.profileId)}>
+              <div><strong>${item.title}</strong><span class=${item.kind}>${item.kind === 'external' ? text.external : text.internal}</span></div>
+              <p>${item.description}</p>
               <dl>
-                <div><dt>${text.actors}</dt><dd>${profile.actorRefs.join(', ') || '—'}</dd></div>
-                <div><dt>${text.landing}</dt><dd>${profile.landingIntent}</dd></div>
+                <div><dt>${text.actors}</dt><dd>${item.actorRefs.map(actorRef => this.actorLabel(actorRef)).join(', ') || '—'}</dd></div>
+                <div><dt>${text.landing}</dt><dd>${item.landingIntent}</dd></div>
               </dl>
-            </article>
+            </button>
           `)}</div>
         </section>
 
-        <section class="ns4-matrix-card">
-          <h3>${text.matrix}</h3>
-          <div class="ns4-table-scroll"><table>
-            <thead><tr><th>${text.authority}</th>${this.value.profiles.map(profile => html`<th>${profile.title}</th>`)}</tr></thead>
-            <tbody>${this.value.authorities.map(authority => html`
-              <tr>
-                <th><strong>${authority.title}</strong><code>${authority.authorityRef}</code></th>
-                ${this.value!.profiles.map(profile => {
-                  const grant = this.value!.grants.find(item => item.profileRef === profile.profileId && item.authorityRef === authority.authorityRef);
-                  if (!grant) return html`<td><span class="ns4-none" title=${text.noAccess}>—</span></td>`;
-                  const key = this.grantKey(grant);
-                  const full = grant.disclosure.mode === 'fullRecord';
-                  return html`<td><button
-                    class="ns4-grant ${this.selectedGrantKey === key || (!this.selectedGrantKey && selected === grant) ? 'selected' : ''} ${full ? 'full' : 'limited'}"
-                    title=${grant.reason}
-                    @click=${() => { this.selectedGrantKey = key; }}
-                  >${full ? text.full : text.limited}</button></td>`;
-                })}
-              </tr>
-            `)}</tbody>
-          </table></div>
-        </section>
+        ${profile ? this.renderAuthorityList(profile, selected, text) : ''}
 
         ${selected ? this.renderDetails(selected, text) : ''}
 
@@ -178,6 +173,35 @@ export class WidgetNs4AccessMatrix102020 extends StateLitElement {
         </div>
       </section>
     `;
+  }
+
+  private renderAuthorityList(profile: Ns4E3Review['profiles'][number], selected: Ns4AccessGrant | undefined, text: typeof labels.en) {
+    return html`
+      <section class="ns4-matrix-card">
+        <div class="ns4-section-head"><div><h3>${text.profileAccess}</h3><p>${profile.title}</p></div><span>${this.value!.grants.filter(grant => grant.profileRef === profile.profileId).length} ${text.authority.toLowerCase()}</span></div>
+        <div class="ns4-authority-list">
+          ${this.value!.authorities.map(authority => {
+            const grant = this.value!.grants.find(item => item.profileRef === profile.profileId && item.authorityRef === authority.authorityRef);
+            if (!grant) return html`
+              <article class="ns4-authority no-access"><div><strong>${authority.title}</strong><code>${authority.authorityRef}</code><p>${authority.description}</p></div><span>${text.noAccess}</span></article>
+            `;
+            const full = grant.disclosure.mode === 'fullRecord';
+            const key = this.grantKey(grant);
+            return html`
+              <button class="ns4-authority ${selected === grant ? 'selected' : ''}" @click=${() => { this.selectedGrantKey = key; }}>
+                <div><strong>${authority.title}</strong><code>${authority.authorityRef}</code><p>${authority.description}</p></div>
+                <span class=${full ? 'full' : 'limited'}>${full ? text.full : text.limited}</span>
+              </button>
+            `;
+          })}
+        </div>
+      </section>
+    `;
+  }
+
+  private actorLabel(actorRef: string): string {
+    const readable = actorRef.replace(/([a-z])([A-Z])/g, '$1 $2');
+    return `${readable.slice(0, 1).toUpperCase()}${readable.slice(1)}`;
   }
 }
 

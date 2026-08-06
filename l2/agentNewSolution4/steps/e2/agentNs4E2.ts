@@ -189,7 +189,7 @@ export async function beforeNs4E2ClarificationStep(
     throw new Error(message);
   }
 
-  await import('/_102020_/l2/agentNewSolution4/steps/e2/widgetNs4Journeys.js');
+  await import('/_102020_/l2/agentNewSolution4/widgets/widgetNs4Journeys.js');
   const element = document.createElement('widget-ns4-journeys-102020');
   (element as unknown as { value: Ns4E2Review }).value = review;
   element.addEventListener('ns4-journeys-review', (event: Event) => {
