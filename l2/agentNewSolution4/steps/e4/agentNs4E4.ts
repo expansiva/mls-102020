@@ -8,6 +8,7 @@ import {
   createNs4E4Step,
   createNs4E4RepairStep,
   isNs4Pipeline,
+  markNs4E3Approved,
   markNs4E4Approved,
   markNs4E4Failed,
   markNs4E4Running,
@@ -18,9 +19,10 @@ import {
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
   ns4E2DraftFile,
-  ns4E3DraftFile,
+  ns4AccessMatrixFile,
   ns4E4DraftFile,
   readNs4AgentText,
+  readNs4DefsJson,
   readNs4Module,
   readNs4Pipeline,
   readNs4Text,
@@ -31,7 +33,11 @@ import {
   writeNs4Pipeline,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
 import { normalizeNs4E2Review, Ns4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
-import { normalizeNs4E3Review, Ns4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
+import {
+  normalizeNs4E3Review,
+  Ns4AccessMatrixArtifact,
+  Ns4E3Review,
+} from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import {
   buildNs4OntologyArtifacts,
   normalizeNs4E4Review,
@@ -75,15 +81,27 @@ export async function beforeNs4E4PromptStep(
   try {
     const parsed = resolveE4Args(context, hookArgs);
     moduleName = parsed.moduleName;
-    const [moduleArtifact, pipeline, journeys, access, prompt, platform] = await Promise.all([
+    const handoff = findE3Handoff(context, moduleName);
+    const storedPipeline = await readNs4Pipeline(moduleName);
+    if (!isNs4Pipeline(storedPipeline)) {
+      throw new Error(`E3 approved pipeline not found for ${moduleName}.`);
+    }
+    let pipeline = storedPipeline;
+    if (pipeline.steps.e3?.status !== 'approved') {
+      if (!handoff) throw new Error(`E3 approved pipeline state not found for ${moduleName}.`);
+      pipeline = markNs4E3Approved(
+        pipeline, handoff.approvedBy, handoff.artifactPath, handoff.approvedAt,
+      );
+      await writeNs4Pipeline(pipeline);
+    }
+    const [moduleArtifact, journeys, access, prompt, platform] = await Promise.all([
       readNs4Module(moduleName),
-      readNs4Pipeline(moduleName),
       readApprovedJourneys(moduleName),
-      readApprovedAccess(moduleName),
+      handoff?.approvedReview ? Promise.resolve(handoff.approvedReview) : readApprovedAccess(moduleName),
       readNs4AgentText('steps/e4', 'prompt'),
       readNs4AgentText('skills', 'platform'),
     ]);
-    if (!moduleArtifact || !isNs4Pipeline(pipeline) || pipeline.steps.e3?.status !== 'approved') {
+    if (!moduleArtifact) {
       throw new Error(`E3 approved artifacts not found for ${moduleName}.`);
     }
     const reviewRound = parsed.reviewRound || pipeline.steps.e4?.reviewRound || 1;
@@ -264,10 +282,9 @@ async function readApprovedJourneys(moduleName: string): Promise<Ns4E2Review> {
 }
 
 async function readApprovedAccess(moduleName: string): Promise<Ns4E3Review> {
-  const raw = await readNs4Text(ns4E3DraftFile(moduleName), false);
-  if (!raw.trim()) throw new Error(`Approved E3 access review not found for ${moduleName}.`);
-  try { return normalizeNs4E3Review(JSON.parse(raw), moduleName); }
-  catch { throw new Error(`Invalid approved E3 access review for ${moduleName}.`); }
+  const artifact = await readNs4DefsJson<Ns4AccessMatrixArtifact>(ns4AccessMatrixFile(moduleName));
+  if (!artifact) throw new Error(`Approved E3 access artifact not found for ${moduleName}.`);
+  return normalizeNs4E3Review(artifact, moduleName);
 }
 
 async function readDraftFromStorage(moduleName: string): Promise<unknown> {
@@ -382,6 +399,35 @@ function findE3ModuleName(context: mls.msg.ExecutionContext): string {
   if (!result || result.type !== 'result' || !result.result) return '';
   const parsed = parseMaybeJson(result.result);
   return isRecord(parsed) && typeof parsed.moduleName === 'string' ? parsed.moduleName.trim() : '';
+}
+
+interface Ns4E3Handoff {
+  moduleName: string;
+  artifactPath: string;
+  approvedBy: Ns4ApprovedBy;
+  approvedAt: string;
+  approvedReview?: Ns4E3Review;
+}
+
+function findE3Handoff(context: mls.msg.ExecutionContext, moduleName: string): Ns4E3Handoff | null {
+  const result = getAllSteps(context.task?.iaCompressed?.nextSteps)
+    .find(step => step.planning?.planId === 'e3-result');
+  if (!result || result.type !== 'result' || !result.result) return null;
+  const parsed = parseMaybeJson(result.result);
+  if (!isRecord(parsed) || parsed.moduleName !== moduleName
+    || typeof parsed.artifactPath !== 'string' || !parsed.artifactPath.trim()
+    || (parsed.approvedBy !== 'human' && parsed.approvedBy !== 'auto')
+    || typeof parsed.approvedAt !== 'string' || !parsed.approvedAt.trim()) return null;
+  const approvedReview = isRecord(parsed.approvedReview)
+    ? normalizeNs4E3Review(parsed.approvedReview, moduleName)
+    : undefined;
+  return {
+    moduleName,
+    artifactPath: parsed.artifactPath.trim(),
+    approvedBy: parsed.approvedBy,
+    approvedAt: parsed.approvedAt.trim(),
+    ...(approvedReview ? { approvedReview } : {}),
+  };
 }
 
 function memoryString(context: mls.msg.ExecutionContext, key: string): string {

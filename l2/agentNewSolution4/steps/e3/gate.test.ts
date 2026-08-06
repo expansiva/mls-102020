@@ -147,4 +147,7 @@ test('E3 lifecycle persists rounds, failures and advances module and pipeline to
   assert.equal(approved.nextStep, 'e4-ontology');
   assert.equal(approved.steps.e3?.reviewRound, 2);
   assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-e4');
+  assert.equal(markNs4E3Running(approved, 3), approved);
+  assert.equal(markNs4E3WaitingHuman(approved, 3, 'late-draft.json'), approved);
+  assert.equal(markNs4E3Failed(approved, 'late duplicate callback'), approved);
 });
