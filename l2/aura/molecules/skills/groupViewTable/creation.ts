@@ -64,9 +64,13 @@ component (root)
 | \`key\` | \`string\` | Column identifier, used for sorting |
 | \`sortable\` | \`boolean\` (presence) | Column can be sorted |
 
-### Detail Slot — row detail
+### Detail Slot — the expanded record
 
-Holds what appears when a record is expanded: the detail row shown immediately below its record.
+Holds what appears when a record is expanded.
+
+**How it is PRESENTED is up to the implementation** — a detail row right below the record
+(accordion), or a scene of its own that replaces the list. The slot is the same either way, which is
+what lets a consumer switch implementations by changing the tag, without rewriting any markup.
 
 | Rule | Value |
 |------|-------|
@@ -74,6 +78,14 @@ Holds what appears when a record is expanded: the detail row shown immediately b
 | How many | One per \`<TableRow>\`. Read it as \`:scope > Detail\`, so a nested one is not found |
 | Accepts | Text, web components, another table — the same freedom as \`<TableCell>\` |
 | Who fills it | The **consumer**, usually after \`rowClick\` (the lazy flow). Empty until then is a valid state, not a defect |
+| \`label\` | Optional. Short title for the record, for implementations that present the detail as its own scene and need a heading — \`<Detail label="Ana Silva">\`. Ignored by implementations that render a detail row |
+
+> ⚠️ **The attribute is \`label\`, not \`title\`.** \`title\` is a global HTML attribute and the browser
+> would turn it into a tooltip on the slot tag.
+
+**Do not derive the heading from the row's cells.** The first cell is frequently a composite (avatar
+plus name plus e-mail), and its text reads as one run — \`"AK Ana Silva ana@…"\`. When a heading is
+needed, it is the consumer who names it, through \`label\`.
 
 **Only implementations that offer expansion read it.** A molecule in this group without a
 row-expansion feature simply leaves \`Detail\` out of its \`slotTags\`, and ignoring the slot is not a
@@ -88,12 +100,12 @@ of its own \`.defs.ts\` and exercise it in its playground. The playground's slot
 from the defs, so a slot missing there produces a demo whose detail area opens blank — measured on
 2026-08-05 with \`ml-lazy-record-detail-table\`.
 
-> ⚠️ **Do not build the detail row by re-projecting the record's own \`<TableCell>\` nodes.** A live
-> slot MOVES nodes, and \`renderLiveSlotFrom\` keys the anchor by source ELEMENT — so a cell projected
-> into both the record row and the detail row gives two anchors ONE key, and the second steals the
-> nodes from the first. The visible cells go empty the moment the row expands. That is inherent to
-> moving, not a bug to work around: the detail needs a source of its own, which is what \`<Detail>\`
-> is for.
+> ⚠️ **Do not build the detail by re-projecting the record's own \`<TableCell>\` nodes** — in a row or
+> in a scene, the trap is the same. A live slot MOVES nodes, and \`renderLiveSlotFrom\` keys the anchor
+> by source ELEMENT, so a cell projected into both the record row and the detail gives two anchors
+> ONE key, and the second steals the nodes from the first. The visible cells go empty the moment the
+> record expands. That is inherent to moving, not a bug to work around: the detail needs a source of
+> its own, which is what \`<Detail>\` is for.
 
 **Not a general accordion.** To expand arbitrary content that is not a record inside a table, the
 group is \`groupExpandContent\`.
