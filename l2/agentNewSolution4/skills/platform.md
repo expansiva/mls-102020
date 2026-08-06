@@ -19,5 +19,10 @@ operations or rules that rebuild them:
 - messages, tasks and the agent runtime;
 - monitoring, audit plumbing and basic operational telemetry.
 
+The 102034 runtime also supplies shared MDM persistence, relationship traversal, bulk hydration,
+database monitoring and audit infrastructure. Modules define their own business master-record types
+and may write organization-scoped MDM records through that platform; they must not recreate the MDM
+engine or its common tables. Transactional records remain in the project-namespaced module database.
+
 Mention them as assumptions or external references only when relevant. The generated module must stay
 focused on the user's business domain.

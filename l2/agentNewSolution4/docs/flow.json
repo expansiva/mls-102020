@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-05-ns4-flow-v4",
+  "schemaVersion": "2026-08-05-ns4-flow-v5",
   "status": "e1-e4",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -18,13 +18,14 @@
     "Terminal step failures use traceMsg in the task and persist status, error and failedAt in the pipeline whenever a module pipeline already exists.",
     "Previous flow versions are never migrated automatically.",
     "The /fast flag uses the same deterministic gates and persistence paths; E1 auto-accepts its clarification and valid E2/E3/E4 proposals are approved without opening their widgets.",
-    "E4 currently compiles only explicit new-solution ontology contracts; legacy modernization intake will be introduced through E1 before E4 accepts that mode."
+    "E4 currently compiles only explicit new-solution ontology contracts; legacy modernization intake will be introduced through E1 before E4 accepts that mode.",
+    "E4 classifies every entity into an explicit persistence target: shared MDM for stable base records, module database for transactions, or derived/external/embedded storage for non-table concepts."
   ],
   "invocation": {
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v4-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. An E3-approved module created before delivery classification resumes E4 explicitly as a new solution. Foreign modules are rejected."
+    "resumeRule": "A v5-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",
@@ -146,6 +147,11 @@
       "runtimeNotes": [
         "The run carries solutionMode=new explicitly; it never infers or fabricates a legacy database contract.",
         "E4 consumes the permanent access/access-matrix.defs.ts artifact; during the immediate E3-to-E4 transition it may consume the identical approved contract carried by e3-result.",
+        "Stable base registrations such as clients, projects, regions and material catalogs are proposed as organization-scoped MDM; orders, movements, logs, invoices and other transactions use the module database.",
+        "Master data and operational state are separate entities: a Material catalog may be MDM while inventory balance, adjustment and usage remain transactional.",
+        "Every entity carries a structured storage target, scope, identifier and MDM type when applicable; the ontology index repeats this compact persistence routing for L1/L2 compilers.",
+        "Static field constraints are shared validation contracts: backend enforcement is mandatory and frontend mirrors them for early feedback. Dynamic, time-relative, cross-entity and authorization conditions remain E5 rules.",
+        "The review widget groups entities by persistence destination and highlights cross-store relationships before approval.",
         "The review widget separates safe direct title/description edits from structural LLM requests.",
         "Before a structural revision, the current draft including direct human edits is persisted and supplied to the next round.",
         "A first deterministic gate failure persists the draft and schedules one bounded LLM repair step before failing the task.",

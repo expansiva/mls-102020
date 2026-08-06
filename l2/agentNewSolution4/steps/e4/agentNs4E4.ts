@@ -202,7 +202,7 @@ export async function beforeNs4E4ClarificationStep(
     await recordNs4E4Failure(review.moduleName, message);
     throw new Error(message);
   }
-  await import('/_102020_/l2/agentNewSolution4/steps/e4/widgetNs4Ontology.js');
+  await import('/_102020_/l2/agentNewSolution4/widgets/widgetNs4Ontology.js');
   const element = document.createElement('widget-ns4-ontology-102020');
   (element as unknown as { value: Ns4E4Review }).value = review;
   element.addEventListener('ns4-ontology-review', (event: Event) => {

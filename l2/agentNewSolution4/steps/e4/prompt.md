@@ -42,13 +42,46 @@ discovered legacy tables, columns or constraints.
 - Stored business entities have a required identifier ending in `Id`.
 - Lifecycle states require a `status` field. Put allowed states in an `enum` constraint whose `value`
   is a compact JSON array string.
-- Constraints describe structural facts useful to frontend and backend, such as min/max, length,
-  pattern, enum, format or uniqueness. In this greenfield run their source is `journey`, `user` or
-  `inferred`, never `database` or `legacyCode`.
+- Constraints are structural field-validation contracts shared by frontend and backend. Kinds are
+  `min`, `max`, `minLength`, `maxLength`, `pattern`, `enum`, `format`, `unique` and `custom`. Backend
+  enforcement is mandatory; the frontend mirrors the same constraint for early feedback. Do not
+  invent domain-specific constraint kinds. Dynamic or time-relative conditions, such as age computed
+  from a birth date and the current date, are business rules compiled in E5 rather than field metadata.
+- In this greenfield run constraint source is `journey`, `user` or `inferred`, never `database` or
+  `legacyCode`.
 - Do not invent arbitrary restrictive minimums, maximums or enums. Each constraint needs a clear
   description and provenance.
-- `invariants` are entity-local truths. Full cross-entity business rules belong to E5.
-- `storage.mode` is always `new`; notes explain persistence intent without choosing SQL tables.
+- `invariants` are entity-local truths. Full cross-entity, authorization, transition and calculation
+  rules belong to E5.
+
+## Persistence and MDM decision
+
+Classify every entity into exactly one structured `storage.target`:
+
+- `mdm`: stable organization base registrations reused by many transactions and reports, such as
+  clients, projects, regions, service catalogs, material catalogs and units of measure. Use kind
+  `mdm`, scope `organization`, a required uuid `idField`, and `mdmType` exactly
+  `<moduleName>.<EntityId>`. Relationships between MDM records and from transactional records to MDM
+  records remain explicit so reporting can traverse client → projects, project → manager/region and
+  material → usages without duplicate master rows.
+- `moduleDatabase`: transactional or operational records owned by this module, such as service/work
+  orders, task execution, time logs, invoices, material movements, stock adjustments and decisions.
+  Use scope `module` and name the required uuid `idField`.
+- `derived`: projections and assessments calculated from other records. Use scope `none`; do not imply
+  a table. A later behavior phase may explicitly choose materialization when justified.
+- `external`: references owned by a platform/horizontal/plugin, including authenticated users. Use
+  scope `platform`; do not recreate User, authentication or platform audit entities.
+- `embedded`: value objects stored inside their owner. Use scope `none`.
+
+The master record and its operational state MUST be separate. `Material`/`MaterialCatalogItem` may be
+MDM, while `MaterialInventory`, `InventoryAdjustment` and `MaterialUsage` are module-database records.
+Likewise a service catalog item may be MDM while a service order is a transaction. Never place current
+quantity, running balance, accumulated totals or transaction history inside the MDM catalog entity.
+`storage.notes` explains the decision in human language; it cannot replace the structured target.
+Relationship persistence is compiled from the endpoint targets: MDM-to-MDM becomes an MDM
+relationship, local-to-local a module reference, and MDM-to-transaction a cross-store reference.
+For reports such as project by manager, keep the platform user id as an external reference on the
+Project master record and hydrate the authenticated identity; do not duplicate the user in MDM.
 
 ## Human edits and adjustment rounds
 
@@ -77,7 +110,7 @@ constraint, invariant and relationship; arrays may be empty only when semantical
         "entityId": "Project",
         "title": "Project",
         "description": "A construction engagement that carries client, scope, schedule and cost context.",
-        "kind": "core",
+        "kind": "mdm",
         "ownership": "moduleOwned",
         "sourceRefs": {
           "journeyIds": ["registerProject"],
@@ -104,7 +137,13 @@ constraint, invariant and relationship; arrays may be empty only when semantical
         ],
         "lifecycleStates": [],
         "invariants": [],
-        "storage": { "mode": "new", "notes": "Persisted by the generated application." }
+        "storage": {
+          "target": "mdm",
+          "scope": "organization",
+          "idField": "projectId",
+          "mdmType": "lowerCamelModule.Project",
+          "notes": "Organization master record reused by work orders, costing and reporting. Transactional activity remains in module-database entities."
+        }
       }
     ],
     "relationships": [
@@ -114,7 +153,8 @@ constraint, invariant and relationship; arrays may be empty only when semantical
         "toEntity": "Client",
         "type": "manyToOne",
         "required": true,
-        "description": "Each project belongs to one client; a client may have many projects."
+        "description": "Each project belongs to one client; a client may have many projects.",
+        "persistence": { "mode": "mdmRelationship" }
       }
     ],
     "changeSummary": ["Initial ontology proposal."]

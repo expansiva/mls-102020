@@ -60,7 +60,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-11 (2026-08-05) race-safe E3 to E4 artifact handoff and resume reconciliation';
+export const NS4_AGENT_BUILD = 'build-12 (2026-08-05) explicit MDM and transactional persistence ontology';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

@@ -160,7 +160,7 @@ export async function beforeNs4E3ClarificationStep(
     await recordNs4E3Failure(review.moduleName, message);
     throw new Error(message);
   }
-  await import('/_102020_/l2/agentNewSolution4/steps/e3/widgetNs4AccessMatrix.js');
+  await import('/_102020_/l2/agentNewSolution4/widgets/widgetNs4AccessMatrix.js');
   const element = document.createElement('widget-ns4-access-matrix-102020');
   (element as unknown as { value: Ns4E3Review }).value = review;
   element.addEventListener('ns4-access-matrix-review', (event: Event) => {

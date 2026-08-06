@@ -2,11 +2,15 @@
 
 import { sha256Ns4 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 
-export const NS4_ONTOLOGY_SCHEMA_VERSION = '2026-08-05-ns4-ontology-v1' as const;
+export const NS4_ONTOLOGY_SCHEMA_VERSION = '2026-08-05-ns4-ontology-v2' as const;
 
 export type Ns4EntityKind = 'core' | 'event' | 'supporting' | 'mdm' | 'projection' | 'valueObject';
 export type Ns4EntityOwnership = 'moduleOwned' | 'external' | 'derived';
 export type Ns4ConstraintSource = 'database' | 'journey' | 'user' | 'inferred' | 'legacyCode';
+export type Ns4StorageTarget = 'mdm' | 'moduleDatabase' | 'derived' | 'external' | 'embedded';
+export type Ns4StorageScope = 'organization' | 'module' | 'platform' | 'none';
+export type Ns4RelationshipPersistenceMode = 'mdmRelationship' | 'moduleReference' | 'crossStoreReference'
+  | 'derivedJoin' | 'externalReference' | 'embedded';
 
 export interface Ns4FieldConstraint {
   constraintId: string;
@@ -46,7 +50,10 @@ export interface Ns4OntologyEntity {
   lifecycleStates: string[];
   invariants: Ns4EntityInvariant[];
   storage: {
-    mode: 'new';
+    target: Ns4StorageTarget;
+    scope: Ns4StorageScope;
+    idField?: string;
+    mdmType?: string;
     notes: string;
   };
 }
@@ -58,6 +65,7 @@ export interface Ns4OntologyRelationship {
   type: 'oneToOne' | 'oneToMany' | 'manyToOne' | 'manyToMany';
   required: boolean;
   description: string;
+  persistence: { mode: Ns4RelationshipPersistenceMode };
 }
 
 export interface Ns4E4Review {
@@ -96,7 +104,13 @@ export interface Ns4OntologyIndexArtifact {
   solutionMode: 'new';
   title: string;
   businessDomain: string;
-  entities: Array<{ entityId: string; title: string; kind: Ns4EntityKind; definitionRef: string }>;
+  entities: Array<{
+    entityId: string;
+    title: string;
+    kind: Ns4EntityKind;
+    storage: Pick<Ns4OntologyEntity['storage'], 'target' | 'scope' | 'idField' | 'mdmType'>;
+    definitionRef: string;
+  }>;
   relationships: Ns4OntologyRelationship[];
   ontologyHash: string;
   approvedBy: 'human' | 'auto';
@@ -106,24 +120,29 @@ export interface Ns4OntologyIndexArtifact {
 
 export function normalizeNs4E4Review(value: unknown, fallbackModule = ''): Ns4E4Review {
   const root = record(value);
+  const moduleName = text(root.moduleName) || fallbackModule;
+  const entities = array(root.entities).map(item => normalizeEntity(item, moduleName));
   return {
     planId: 'e4-ontology-review',
-    moduleName: text(root.moduleName) || fallbackModule,
+    moduleName,
     userLanguage: text(root.userLanguage) || 'en',
     title: text(root.title) || 'Business ontology',
     reviewRound: positiveInteger(root.reviewRound, 1),
     solutionMode: 'new',
     businessDomain: text(root.businessDomain),
-    entities: array(root.entities).map(item => normalizeEntity(item)),
+    entities,
     relationships: array(root.relationships).map(item => {
       const relationship = record(item);
+      const fromEntity = text(relationship.fromEntity) || text(relationship.sourceEntity) || text(relationship.from);
+      const toEntity = text(relationship.toEntity) || text(relationship.targetEntity) || text(relationship.to);
       return {
         relationshipId: text(relationship.relationshipId),
-        fromEntity: text(relationship.fromEntity) || text(relationship.sourceEntity) || text(relationship.from),
-        toEntity: text(relationship.toEntity) || text(relationship.targetEntity) || text(relationship.to),
+        fromEntity,
+        toEntity,
         type: relationshipType(relationship.type),
         required: relationship.required === true,
         description: text(relationship.description),
+        persistence: { mode: relationshipPersistenceMode(entities, fromEntity, toEntity) },
       };
     }),
     changeSummary: strings(root.changeSummary),
@@ -164,6 +183,12 @@ export async function buildNs4OntologyArtifacts(
         entityId: entity.entityId,
         title: entity.title,
         kind: entity.kind,
+        storage: {
+          target: entity.storage.target,
+          scope: entity.storage.scope,
+          ...(entity.storage.idField ? { idField: entity.storage.idField } : {}),
+          ...(entity.storage.mdmType ? { mdmType: entity.storage.mdmType } : {}),
+        },
         definitionRef: `l4/${review.moduleName}/ontology/${entity.entityId}.defs.ts`,
       })),
       relationships: review.relationships,
@@ -175,41 +200,49 @@ export async function buildNs4OntologyArtifacts(
   };
 }
 
-function normalizeEntity(value: unknown): Ns4OntologyEntity {
+function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity {
   const entity = record(value);
   const sourceRefs = record(entity.sourceRefs);
   const storage = record(entity.storage);
+  const entityId = text(entity.entityId);
+  const kind = entityKind(entity.kind);
+  const entityOwnership = ownership(entity.ownership);
+  const fields = array(entity.fields).map(item => {
+    const field = record(item);
+    return {
+      fieldId: text(field.fieldId),
+      title: text(field.title),
+      type: fieldType(field.type),
+      required: field.required === true,
+      description: text(field.description),
+      constraints: array(field.constraints).map(constraintValue => {
+        const constraint = record(constraintValue);
+        return {
+          constraintId: text(constraint.constraintId),
+          kind: constraintKind(constraint.kind),
+          value: text(constraint.value),
+          description: text(constraint.description),
+          source: constraintSource(constraint.source),
+        };
+      }),
+    };
+  });
+  const target = storageTarget(storage.target, kind, entityOwnership);
+  const idField = text(storage.idField)
+    || fields.find(field => field.required && /Id$/.test(field.fieldId))?.fieldId
+    || '';
   return {
-    entityId: text(entity.entityId),
+    entityId,
     title: text(entity.title),
     description: text(entity.description),
-    kind: entityKind(entity.kind),
-    ownership: ownership(entity.ownership),
+    kind,
+    ownership: entityOwnership,
     sourceRefs: {
       journeyIds: strings(sourceRefs.journeyIds),
       featureIds: strings(sourceRefs.featureIds),
       authorityRefs: strings(sourceRefs.authorityRefs),
     },
-    fields: array(entity.fields).map(item => {
-      const field = record(item);
-      return {
-        fieldId: text(field.fieldId),
-        title: text(field.title),
-        type: fieldType(field.type),
-        required: field.required === true,
-        description: text(field.description),
-        constraints: array(field.constraints).map(constraintValue => {
-          const constraint = record(constraintValue);
-          return {
-            constraintId: text(constraint.constraintId),
-            kind: constraintKind(constraint.kind),
-            value: text(constraint.value),
-            description: text(constraint.description),
-            source: constraintSource(constraint.source),
-          };
-        }),
-      };
-    }),
+    fields,
     lifecycleStates: strings(entity.lifecycleStates),
     invariants: array(entity.invariants).map(item => {
       const invariant = record(item);
@@ -219,8 +252,32 @@ function normalizeEntity(value: unknown): Ns4OntologyEntity {
         source: constraintSource(invariant.source),
       };
     }),
-    storage: { mode: 'new', notes: text(storage.notes) },
+    storage: {
+      target,
+      scope: storageScope(storage.scope, target),
+      ...(idField && (target === 'mdm' || target === 'moduleDatabase') ? { idField } : {}),
+      ...(target === 'mdm' ? { mdmType: text(storage.mdmType) || `${moduleName}.${entityId}` } : {}),
+      notes: text(storage.notes),
+    },
   };
+}
+
+function storageTarget(value: unknown, kind: Ns4EntityKind, entityOwnership: Ns4EntityOwnership): Ns4StorageTarget {
+  if (value === 'mdm' || value === 'moduleDatabase' || value === 'derived'
+    || value === 'external' || value === 'embedded') return value;
+  if (entityOwnership === 'external') return 'external';
+  if (kind === 'mdm') return 'mdm';
+  if (kind === 'projection') return 'derived';
+  if (kind === 'valueObject') return 'embedded';
+  return 'moduleDatabase';
+}
+
+function storageScope(value: unknown, target: Ns4StorageTarget): Ns4StorageScope {
+  if (value === 'organization' || value === 'module' || value === 'platform' || value === 'none') return value;
+  if (target === 'mdm') return 'organization';
+  if (target === 'moduleDatabase') return 'module';
+  if (target === 'external') return 'platform';
+  return 'none';
 }
 
 function entityKind(value: unknown): Ns4EntityKind {
@@ -253,6 +310,23 @@ function constraintSource(value: unknown): Ns4ConstraintSource {
 function relationshipType(value: unknown): Ns4OntologyRelationship['type'] {
   if (value === 'oneToOne' || value === 'manyToOne' || value === 'manyToMany') return value;
   return 'oneToMany';
+}
+
+function relationshipPersistenceMode(
+  entities: Ns4OntologyEntity[],
+  fromEntity: string,
+  toEntity: string,
+): Ns4RelationshipPersistenceMode {
+  const from = entities.find(entity => entity.entityId === fromEntity)?.storage.target;
+  const to = entities.find(entity => entity.entityId === toEntity)?.storage.target;
+  if (from === 'embedded' || to === 'embedded') return 'embedded';
+  if (from === 'external' || to === 'external') return 'externalReference';
+  if (from === 'derived' || to === 'derived') return 'derivedJoin';
+  if (from === 'mdm' && to === 'mdm') return 'mdmRelationship';
+  if ((from === 'mdm' && to === 'moduleDatabase') || (from === 'moduleDatabase' && to === 'mdm')) {
+    return 'crossStoreReference';
+  }
+  return 'moduleReference';
 }
 
 function record(value: unknown): Record<string, unknown> {
