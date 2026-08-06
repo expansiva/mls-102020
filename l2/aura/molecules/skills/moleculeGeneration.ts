@@ -193,6 +193,10 @@ The base class automatically hides these tags so they don't appear on screen.
 
 Use the helper methods from \`MoleculeAuraElement\`:
 
+**Two paths exist, and picking the wrong one is a real defect — see §10.1.**
+
+**Snapshot path** — reads the slot as a STRING. Use it for slots that carry DATA to be parsed.
+
 | Method | Returns | Description |
 |--------|---------|-------------|
 | \`getSlot(tag)\` | \`Element \\| null\` | Single slot tag element |
@@ -200,6 +204,16 @@ Use the helper methods from \`MoleculeAuraElement\`:
 | \`getSlotAttr(tag, attr)\` | \`string \\| null\` | Attribute value from a slot tag |
 | \`getSlotContent(tag)\` | \`string\` | innerHTML of a slot tag |
 | \`hasSlot(tag)\` | \`boolean\` | Check if slot tag exists |
+
+**Live path** — MOVES the consumer's real nodes into place. Use it for slots that carry CONTROLS.
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| \`usesLiveSlots\` | \`boolean\` | Opt in, per molecule: \`protected usesLiveSlots = true;\` |
+| \`renderLiveSlot(tag, cls?)\` | \`TemplateResult\` | Anchor where that slot's nodes land |
+| \`renderLiveSlotFrom(el, cls?)\` | \`TemplateResult\` | Anchor bound to a specific source ELEMENT — for N×M destinations, like a table cell |
+| \`getLiveSlot(tag)\` | \`Element \\| null\` | The LIVE slot element, not the snapshot clone |
+| \`getLiveText(el)\` | \`string\` | Text currently rendered for a source element — needed because the source is EMPTY once projected |
 
 ---
 
@@ -396,7 +410,66 @@ private renderLabel(): TemplateResult | typeof nothing {
 
 ## 10. Rendering Slot Tag Content
 
-Slot Tag content may contain HTML. To render it properly, use \`unsafeHTML\` directive.
+**Decide the path FIRST — §10.1. Then render.** \`unsafeHTML\` below is the SNAPSHOT path; it is
+correct for slots that carry data or plain text, and wrong for slots that carry controls.
+
+## 10.1 Which path: the DATA × CONTROL rule
+
+| the slot carries | path | why |
+|---|---|---|
+| **CONTROL** — a button, an icon, any component the consumer expects to WORK | **live** | the nodes are moved, so listeners, props and internal \`@state\` survive |
+| **DATA to be parsed** — \`Item\`, \`Group\`, \`TableHead key=…\`, anything read with \`getSlotAttr\`/\`getSlots\` | **snapshot** | the molecule needs to READ it, and reading a string is what the parse expects |
+| **plain text** — \`Label\`, \`Helper\`, a placeholder | **snapshot** | text survives serialization, and it already updates: the base class observes \`characterData\` inside slot tags and re-renders. Measured 2026-08-06 |
+
+**The two paths coexist in the same molecule** — that is the normal case, not an exception. A
+molecule may project \`Action\` and keep \`Message\` serialized.
+
+Opting in:
+
+\`\`\`typescript
+protected usesLiveSlots = true;   // per molecule
+
+// anchor by TAG — one destination
+\\\${this.renderLiveSlot('Action')}
+
+// anchor by ELEMENT — many destinations (a cell per row)
+\\\${this.renderLiveSlotFrom(cell)}
+\`\`\`
+
+### The three traps — each one cost a real defect
+
+**1. Deciding whether to render: use \`hasSlot\`, never \`getSlotContent\`.** A live slot MOVES the
+nodes, so the source is EMPTY from the second render on. A presence check by content turns false and
+the consumer's content disappears from the screen.
+
+\`\`\`typescript
+// ❌ WRONG on a live slot — the anchor stops being emitted and the content vanishes
+const footer = this.getSlotContent('CardFooter');
+return footer ? html\\\`<div>\\\${this.renderLiveSlot('CardFooter')}</div>\\\` : html\\\`\\\`;
+
+// ✅ CORRECT — the slot TAG still exists after projection; only its children moved
+return this.hasSlot('CardFooter')
+  ? html\\\`<div>\\\${this.renderLiveSlot('CardFooter')}</div>\\\`
+  : html\\\`\\\`;
+\`\`\`
+
+**2. Reading text of a projected node: use \`getLiveText\`.** \`cell.textContent\` is empty after
+projection. Sorting a table by cell text breaks silently without this.
+
+\`\`\`typescript
+cellSortKey(cell, this.getLiveText(cell))
+\`\`\`
+
+**3. Never project the SAME node in two places.** The anchor is keyed by source element, so two
+anchors share one key and the second steals the nodes from the first — the first goes blank. If a
+second region needs content, it needs its own slot.
+
+### Where NOT to use it
+
+Do not migrate a slot to live "for consistency". Text slots gain nothing measurable, and the
+snapshot path is not dead: the clone is a real, upgraded custom element that renders and fires
+events. What it loses is props, direct listeners and internal \`@state\` — which is exactly why a
+CONTROL needs the live path and a LABEL does not.
 
 ### Do NOT use dynamic template strings
 
