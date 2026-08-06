@@ -10,6 +10,8 @@ import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrches
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
 import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
+import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
+import { ITask, setTask, getTask, getTasksByScope, hasRunning, clearScope, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
 
 // DESIGN SYSTEM = the entries of `_<project>_/l2/designSystem.ts` — the SINGLE home of
@@ -78,6 +80,12 @@ const message_en = {
     aiGenerating: 'Generating…',
     aiError: 'Could not generate the design system. Try again.',
     mandatoryHint: 'Mandatory token — value editable, cannot be removed.',
+    aiDraftReady: 'Draft generated — review the tokens below and save.',
+    followTask: 'Follow task',
+    unsavedChanges: 'Unsaved changes',
+    saveNow: 'Save now',
+    savedOk: 'Design system saved.',
+    discardDraft: 'Discard draft',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -139,6 +147,12 @@ const messages: Record<string, MessageType> = {
         aiGenerating: 'Gerando…',
         aiError: 'Não foi possível gerar o design system. Tente novamente.',
         mandatoryHint: 'Token obrigatório — valor editável, não pode ser removido.',
+        aiDraftReady: 'Rascunho gerado — revise os tokens abaixo e salve.',
+        followTask: 'Acompanhar task',
+        unsavedChanges: 'Alterações não salvas',
+        saveNow: 'Salvar agora',
+        savedOk: 'Design system salvo.',
+        discardDraft: 'Descartar rascunho',
     },
     es: {
         title: 'UI · User Interface',
@@ -197,6 +211,12 @@ const messages: Record<string, MessageType> = {
         aiGenerating: 'Generando…',
         aiError: 'No se pudo generar el design system. Inténtalo de nuevo.',
         mandatoryHint: 'Token obligatorio — valor editable, no se puede eliminar.',
+        aiDraftReady: 'Borrador generado — revise los tokens abajo y guarde.',
+        followTask: 'Seguir tarea',
+        unsavedChanges: 'Cambios no guardados',
+        saveNow: 'Guardar ahora',
+        savedOk: 'Design system guardado.',
+        discardDraft: 'Descartar borrador',
     },
 };
 /// **collab_i18n_end**
@@ -222,6 +242,20 @@ const FALLBACKS = ['sans-serif', 'serif', 'monospace'];
 // Suggested brand palette to seed the Add view (fully editable; the AI maps it to the tokens).
 const STARTER_PALETTE = ['#3B82F6', '#1E293B', '#F8FAFC', '#E2E8F0', '#22C55E'];
 
+// ─── Draft cache (module level, survives DOM re-creation) ─────────────
+// An AI-generated draft is NOT persisted until [save]. Leaving the panel (following the task,
+// switching knobs) destroys this element, so the draft is kept here and restored on re-entry —
+// losing an LLM generation to a navigation is worse than a stale draft the user can discard.
+interface IDsDraftCache {
+    projectId: number;
+    stamp: number;      // bumped on every write — lets a fresh instance spot a draft it has not applied
+    name: string; desc: string;
+    colors: IColorRow[]; typo: IValueRow[]; global: IValueRow[]; fonts: DsFont[];
+    palette: string[]; brief: string;
+}
+let _draftCache: IDsDraftCache | null = null;
+let _draftStamp = 0;
+
 // ─── Component ───────────────────────────────────────────────────────
 
 @customElement('aura--plugins--select-design-system-102020')
@@ -246,6 +280,13 @@ export class PluginSelectDesignSystem extends StateLitElement {
     @state() private _nameError = false;
     @state() private _saving = false;
     @state() private _saveError = '';
+    // Nothing here is persisted until [save] — track it so the sticky bar can SAY so (the save
+    // button used to sit at the very bottom of a long form and was easy to miss).
+    @state() private _dirty = false;
+    @state() private _saved = false;
+    // Which DS the confirmation belongs to: saving a NEW DS re-syncs the form to the fresh entry
+    // (value changes → _loadFromEntry), and the confirmation must survive that round trip.
+    private _savedKey: number | null = null;
 
     // ── AI generation (Add view): palette → agentGenerateDs → draft loaded into this form ──
     @state() private _palette: string[] = [];
@@ -254,10 +295,70 @@ export class PluginSelectDesignSystem extends StateLitElement {
     @state() private _generating = false;
     @state() private _genError = '';
     private _threadCache = new Map<string, Promise<any>>();
+    private _unsubTasks: (() => void) | undefined;
+    private _appliedStamp = 0;   // last draft stamp this instance has in the form
 
     connectedCallback() {
         super.connectedCallback();
+        // The sticky save bar needs a block-level host: the custom element is unknown to the
+        // browser (light DOM render root), so it would default to `display:inline`.
+        this.style.display = 'block';
+        this._unsubTasks = subscribeTaskManager(() => { this._adoptDraft(); this.requestUpdate(); });
         if (this.projectId) this._load(this.projectId);
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        this._unsubTasks?.();
+    }
+
+    /** Any edit to the working model — flips the "unsaved" indicator on the sticky save bar. */
+    private _touch(): void {
+        this._dirty = true;
+        this._saved = false;
+        this._savedKey = null;
+        // Keep the cached AI draft in sync with the user's review edits.
+        if (this._isAdd && _draftCache) this._cacheDraft();
+    }
+
+    /** A generation that finished in a previous (destroyed) instance still lands on the cache. */
+    private _adoptDraft(): void {
+        if (!this._isAdd || !_draftCache || _draftCache.projectId !== this.projectId) return;
+        if (_draftCache.stamp === this._appliedStamp) return;
+        this._restoreDraft(_draftCache);
+    }
+
+    private _cacheDraft(): void {
+        if (!this.projectId) return;
+        _draftCache = {
+            projectId: this.projectId,
+            stamp: ++_draftStamp,
+            name: this._name, desc: this._desc,
+            colors: this._colors.map(r => ({ ...r })),
+            typo: this._typo.map(r => ({ ...r })),
+            global: this._global.map(r => ({ ...r })),
+            fonts: this._fonts.map(f => ({ ...f, weights: f.weights ? [...f.weights] : undefined })),
+            palette: [...this._palette], brief: this._aiBrief,
+        };
+        this._appliedStamp = _draftCache.stamp;
+    }
+
+    private _restoreDraft(cache: IDsDraftCache): void {
+        this._name = cache.name; this._desc = cache.desc;
+        this._colors = cache.colors.map(r => ({ ...r }));
+        this._typo = cache.typo.map(r => ({ ...r }));
+        this._global = cache.global.map(r => ({ ...r }));
+        this._fonts = cache.fonts.map(f => ({ ...f, weights: f.weights ? [...f.weights] : undefined }));
+        this._palette = [...cache.palette]; this._aiBrief = cache.brief;
+        this._dirty = true; this._saved = false;
+        this._appliedStamp = cache.stamp;
+    }
+
+    /** Throw the cached draft away and go back to the canonical starter template. */
+    private _discardDraft(): void {
+        _draftCache = null;
+        this._loadStarter();
+        this.requestUpdate();
     }
 
     willUpdate(changed: Map<string, unknown>) {
@@ -336,6 +437,9 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._palette = [...STARTER_PALETTE];
         this._aiBrief = ''; this._genError = ''; this._generating = false;
         this._nameError = false; this._saveError = ''; this._saving = false;
+        this._dirty = false; this._saved = false; this._savedKey = null;
+        // An unsaved AI draft for this project wins over the blank template.
+        if (_draftCache && _draftCache.projectId === this.projectId) this._restoreDraft(_draftCache);
     }
 
     private _loadFromEntry(entry: IDsEntry): void {
@@ -355,6 +459,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._palette = [];
         this._aiBrief = ''; this._genError = ''; this._generating = false;
         this._nameError = false; this._saveError = ''; this._saving = false;
+        this._dirty = false; this._saved = this._savedKey === entry.key;
     }
 
     /** Load an AI-generated draft's tokens into the form (name/desc kept if the user typed them). */
@@ -364,6 +469,8 @@ export class PluginSelectDesignSystem extends StateLitElement {
         this._global = this._valueRowsFrom(tokens.global ?? {});
         if (name) this._name = name;
         if (desc) this._desc = desc;
+        this._touch();     // the draft is NOT persisted — the save bar must say so
+        this._cacheDraft(); // …and it must survive leaving the panel
     }
 
     /** color map → rows, pairing `<token>` + `_dark-<token>` into light/dark columns. */
@@ -445,6 +552,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         return html`
             <div class="flex flex-col gap-3">
                 ${this._navHeader(entry.name, this.msg.desc, this.value ?? 0)}
+                ${this._renderStatusBar()}
                 ${this._renderNameField()}
                 ${this._renderDescField()}
                 ${this._renderEditor()}
@@ -457,6 +565,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
         return html`
             <div class="flex flex-col gap-3">
                 ${this._navHeader(this.msg.addTitle, this.msg.addDesc, this._customKey)}
+                ${this._renderStatusBar()}
                 ${this._renderNameField()}
                 ${this._renderDescField()}
                 ${this._renderPaletteSection()}
@@ -492,17 +601,18 @@ export class PluginSelectDesignSystem extends StateLitElement {
     }
 
     private _renderAiSection() {
-        const canGenerate = !this._generating && (this._aiUsePalette ? this._palette.length > 0 : this._aiBrief.trim().length > 0);
+        const busy = this._generating || hasRunning('ds:generate');
+        const canGenerate = !busy && (this._aiUsePalette ? this._palette.length > 0 : this._aiBrief.trim().length > 0);
         return this._section(this.msg.aiTitle, this.msg.aiTag, true, html`
             <p class="text-[11px] text-gray-400 dark:text-gray-500">${this.msg.aiHint}</p>
             <textarea rows="2"
                 class="w-full text-[11px]! px-2.5 py-1.5 rounded-md resize-y border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                 placeholder=${this.msg.aiBriefPlaceholder} .value=${this._aiBrief}
-                ?disabled=${this._generating}
+                ?disabled=${busy}
                 @input=${(e: Event) => { this._aiBrief = (e.target as HTMLTextAreaElement).value; }}></textarea>
             <label class="flex items-center gap-2 cursor-pointer select-none">
                 <input type="checkbox" class="accent-indigo-500" .checked=${this._aiUsePalette}
-                    ?disabled=${this._generating}
+                    ?disabled=${busy}
                     @change=${(e: Event) => { this._aiUsePalette = (e.target as HTMLInputElement).checked; }} />
                 <span class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.aiUsePalette}</span>
                 <span class="flex h-3.5 w-12 rounded overflow-hidden border border-black/10 ${this._aiUsePalette ? '' : 'opacity-40'}">
@@ -510,14 +620,63 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 </span>
             </label>
             ${this._genError ? html`<div class="rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 px-2.5 py-1.5"><span class="text-[11px] text-red-600 dark:text-red-400">${this._genError}</span></div>` : nothing}
-            <button class="self-start text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            <button class="self-start flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
                 ?disabled=${!canGenerate} @click=${() => this._onGenerate()}>
-                ${this._generating ? this.msg.aiGenerating : this.msg.aiGenerate}</button>
+                ${busy ? this._renderSpinner('border-white') : nothing}
+                ${busy ? this.msg.aiGenerating : this.msg.aiGenerate}</button>
+            ${this._renderGenTasks()}
         `);
     }
 
+    /** Generation feedback: running / done / error per task, each with "follow task". */
+    private _renderGenTasks() {
+        const tasks = getTasksByScope('ds:generate');
+        if (tasks.size === 0) return nothing;
+        return html`
+            <div class="flex flex-col gap-1">
+                ${[...tasks.values()].map(task => html`
+                    <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-md
+                        ${task.status === 'running' ? 'bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-700'
+                        : task.status === 'done'    ? 'bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-700'
+                        :                             'bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-700'}
+                    ">
+                        ${task.status === 'running' ? this._renderSpinner() : nothing}
+                        ${task.status === 'done' ? html`<span class="text-xs text-emerald-500 dark:text-emerald-400">✓</span>` : nothing}
+                        ${task.status === 'error' ? html`<span class="text-xs text-red-500 dark:text-red-400">✕</span>` : nothing}
+                        <span class="text-[11px] leading-snug
+                            ${task.status === 'running' ? 'text-indigo-600 dark:text-indigo-400'
+                            : task.status === 'done'    ? 'text-emerald-600 dark:text-emerald-400'
+                            :                             'text-red-600 dark:text-red-400'}
+                        ">${task.status === 'running' ? this.msg.aiGenerating
+                            : task.status === 'done'   ? this.msg.aiDraftReady
+                            :                            (task.message || this.msg.aiError)}</span>
+                        ${task.taskData ? html`
+                            <button class="ml-auto shrink-0 text-[11px] text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
+                                @click=${() => this._openTaskInfo(task)}>${this.msg.followTask}</button>` : nothing}
+                    </div>
+                `)}
+            </div>
+        `;
+    }
+
+    /** Open the agent's task in the details pane — the draft survives via the module-level cache. */
+    private async _openTaskInfo(task: ITask): Promise<void> {
+        if (!task.taskData) return;
+        await import('/_102025_/l2/collabMessagesTaskInfo.js');
+        const el = document.createElement('collab-messages-task-info-102025');
+        el.setAttribute('messageId', task.messageId ?? '');
+        if (task.taskData.PK) el.setAttribute('taskId', task.taskData.PK);
+        (el as any)['task'] = task.taskData;
+        (el as any)['message'] = task.taskMessage;
+        openElementInServiceDetails(el);
+    }
+
+    private _renderSpinner(color: string = 'border-indigo-500 dark:border-indigo-400') {
+        return html`<div class="w-3 h-3 border-2 ${color} border-t-transparent rounded-full animate-spin shrink-0"></div>`;
+    }
+
     private async _onGenerate(): Promise<void> {
-        if (!this.projectId || this._generating) return;
+        if (!this.projectId || this._generating || hasRunning('ds:generate')) return;
         const brief = this._aiBrief.trim();
         const palette = this._aiUsePalette ? this._palette.filter(c => /^#[0-9a-fA-F]{6}$/.test(c)) : [];
         if (!brief && palette.length === 0) return;
@@ -534,24 +693,44 @@ export class PluginSelectDesignSystem extends StateLitElement {
             requestId,
         });
 
+        // Task card (running → done/error) so the end of the generation is VISIBLE, and the
+        // agent's task can be followed in the details pane while it runs.
+        const taskKey = `ds:generate:${requestId}`;
+        clearScope('ds:generate');
+        setTask(taskKey, { status: 'running', startedAt: Date.now() });
+
         this._generating = true;
         this._genError = '';
         try {
-            await this._executeAgent('agentGenerateDs', prompt);
+            await this._executeAgent('agentGenerateDs', prompt, data => {
+                // Park the task on the store (not on `this`) so "follow task" keeps working
+                // after the panel is re-created.
+                setTask(taskKey, {
+                    ...getTask(taskKey)!,
+                    taskId: data.taskId, taskData: data.task,
+                    taskMessage: data.message, messageId: data.message?.createAt,
+                });
+            });
             const config: any = await getConfigProject(this.projectId);
             const draft = config?.dsDraft;
             if (!draft || draft.requestId !== requestId || !draft.tokens) throw new Error('generation produced no draft');
             this._loadDraftTokens(draft.tokens, this._name.trim() || draft.name || '', this._desc.trim() || draft.description || '');
             delete config.dsDraft; // consume the one-shot draft
             await updateConfigProject(this.projectId, config);
-        } catch (err) {
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
+        } catch (err: any) {
             console.error('[selectDesignSystem] generate failed', err);
             this._genError = this.msg.aiError;
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: err?.message });
         }
         this._generating = false;
     }
 
-    private async _executeAgent(agentName: string, prompt: string): Promise<void> {
+    private async _executeAgent(
+        agentName: string,
+        prompt: string,
+        onTaskCreated?: (data: { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }) => void,
+    ): Promise<void> {
         const fullName = '_102020_/l2/serviceExploreProjects';
         let threadPromise = this._threadCache.get(fullName);
         if (!threadPromise) {
@@ -570,8 +749,9 @@ export class PluginSelectDesignSystem extends StateLitElement {
         const moduleAgent = await loadAgent(agentName);
         if (!moduleAgent) throw new Error('Invalid agent');
         const context = getTemporaryContext(threadId, userId, prompt);
-        for await (const _event of executeBeforePromptStream(moduleAgent, context)) {
+        for await (const event of executeBeforePromptStream(moduleAgent, context)) {
             // consume the whole lifecycle (LLM + afterPromptStep) — result lands on config.dsDraft
+            if (event.type === 'task-created') onTaskCreated?.({ taskId: event.taskId, task: event.task, message: event.message });
         }
     }
 
@@ -616,7 +796,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
             </div>
             <span class="text-[10px] text-gray-400 dark:text-gray-500">${this.msg.darkHint}</span>
             <button class="self-start text-xs font-semibold px-3 py-1.5 rounded-md border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors cursor-pointer"
-                @click=${() => { this._colors = [...this._colors, { name: '', light: '#888888', dark: '' }]; }}>${this.msg.addToken}</button>
+                @click=${() => { this._colors = [...this._colors, { name: '', light: '#888888', dark: '' }]; this._touch(); }}>${this.msg.addToken}</button>
         `);
     }
 
@@ -626,12 +806,12 @@ export class PluginSelectDesignSystem extends StateLitElement {
             <div class="grid grid-cols-[1fr_96px_96px_18px] gap-1.5 items-center">
                 <input class="min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none read-only:opacity-70 read-only:cursor-not-allowed"
                     .value=${row.name} placeholder="token" ?readonly=${locked} title=${locked ? this.msg.mandatoryHint : ''}
-                    @input=${(e: Event) => { row.name = (e.target as HTMLInputElement).value.trim(); }} />
+                    @input=${(e: Event) => { row.name = (e.target as HTMLInputElement).value.trim(); this._touch(); }} />
                 ${this._colorCell(row, 'light')}
                 ${this._colorCell(row, 'dark')}
                 ${locked ? this._lockCell() : html`
                     <button class="text-gray-400 hover:text-red-500 text-base cursor-pointer rounded h-6 leading-none"
-                        @click=${() => { this._colors = this._colors.filter((_, j) => j !== i); }}>×</button>`}
+                        @click=${() => { this._colors = this._colors.filter((_, j) => j !== i); this._touch(); }}>×</button>`}
             </div>
         `;
     }
@@ -653,11 +833,11 @@ export class PluginSelectDesignSystem extends StateLitElement {
             <div class="flex items-center gap-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-md px-1 py-1 bg-white dark:bg-gray-900">
                 <label class="relative w-4 h-4 rounded border border-black/10 overflow-hidden cursor-pointer shrink-0" style="background:${isHex ? value : 'transparent'}">
                     <input type="color" class="absolute inset-0 opacity-0 cursor-pointer" .value=${isHex ? value : '#888888'}
-                        @input=${(e: Event) => { row[variant] = (e.target as HTMLInputElement).value.toUpperCase(); this.requestUpdate(); }} />
+                        @input=${(e: Event) => { row[variant] = (e.target as HTMLInputElement).value.toUpperCase(); this._touch(); this.requestUpdate(); }} />
                 </label>
                 <input class="w-full min-w-0 text-[10px]! font-mono text-gray-600 dark:text-gray-400 bg-transparent border-0 outline-none p-0"
                     .value=${value} placeholder=${variant === 'dark' ? '—' : ''}
-                    @input=${(e: Event) => { row[variant] = (e.target as HTMLInputElement).value.trim(); }} />
+                    @input=${(e: Event) => { row[variant] = (e.target as HTMLInputElement).value.trim(); this._touch(); }} />
             </div>
         `;
     }
@@ -676,7 +856,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                     ${this._fonts.map((f, i) => this._renderFontCard(f, i))}
                 </div>
                 <button class="self-start text-xs font-semibold px-3 py-1.5 rounded-md border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors cursor-pointer"
-                    @click=${() => { this._fonts = [...this._fonts, { name: '', source: 'google', family: '', weights: [400], fallback: 'sans-serif' }]; }}>${this.msg.addFont}</button>
+                    @click=${() => { this._fonts = [...this._fonts, { name: '', source: 'google', family: '', weights: [400], fallback: 'sans-serif' }]; this._touch(); }}>${this.msg.addFont}</button>
             </div>
         `);
     }
@@ -699,18 +879,18 @@ export class PluginSelectDesignSystem extends StateLitElement {
                     <div class="grid grid-cols-[1fr_1fr_18px] gap-1.5 items-center">
                         <input class="min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md px-1.5 py-1.5 border border-transparent focus:border-indigo-400 focus:bg-white dark:focus:bg-gray-900 outline-none read-only:opacity-70 read-only:cursor-not-allowed"
                             .value=${r.name} placeholder="token" ?readonly=${locked} title=${locked ? this.msg.mandatoryHint : ''}
-                            @input=${(e: Event) => { r.name = (e.target as HTMLInputElement).value.trim(); }} />
+                            @input=${(e: Event) => { r.name = (e.target as HTMLInputElement).value.trim(); this._touch(); }} />
                         <input class="min-w-0 text-[11px]! font-mono text-gray-600 dark:text-gray-400 rounded-md px-1.5 py-1.5 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:outline-none focus:border-indigo-400"
                             .value=${r.value} placeholder="value"
-                            @input=${(e: Event) => { r.value = (e.target as HTMLInputElement).value; }} />
+                            @input=${(e: Event) => { r.value = (e.target as HTMLInputElement).value; this._touch(); }} />
                         ${locked ? this._lockCell() : html`
                             <button class="text-gray-400 hover:text-red-500 text-base cursor-pointer rounded h-6 leading-none"
-                                @click=${() => { commit(rows.filter((_, j) => j !== i)); }}>×</button>`}
+                                @click=${() => { commit(rows.filter((_, j) => j !== i)); this._touch(); }}>×</button>`}
                     </div>
                 `;})}
             </div>
             <button class="self-start text-xs font-semibold px-3 py-1.5 rounded-md border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors cursor-pointer"
-                @click=${() => { commit([...rows, { name: '', value: '' }]); }}>${this.msg.addToken}</button>
+                @click=${() => { commit([...rows, { name: '', value: '' }]); this._touch(); }}>${this.msg.addToken}</button>
         `;
     }
 
@@ -721,26 +901,26 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 <div class="flex items-center gap-2">
                     <input class="min-w-0 flex-1 text-[11px]! font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 rounded px-2 py-1 border border-transparent focus:border-indigo-400 outline-none"
                         .value=${font.name} placeholder=${this.msg.fontRolePlaceholder}
-                        @input=${(e: Event) => { font.name = (e.target as HTMLInputElement).value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'); }} />
+                        @input=${(e: Event) => { font.name = (e.target as HTMLInputElement).value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'); this._touch(); }} />
                     <button class="text-gray-400 hover:text-red-500 text-base leading-none cursor-pointer"
-                        @click=${() => { this._fonts = this._fonts.filter((_, j) => j !== i); }}>×</button>
+                        @click=${() => { this._fonts = this._fonts.filter((_, j) => j !== i); this._touch(); }}>×</button>
                 </div>
 
-                ${this._renderSegField(this.msg.fontSource, FONT_SOURCES, source, v => { font.source = v as DsFont['source']; this.requestUpdate(); })}
+                ${this._renderSegField(this.msg.fontSource, FONT_SOURCES, source, v => { font.source = v as DsFont['source']; this._touch(); this.requestUpdate(); })}
 
                 <div class="grid grid-cols-2 gap-2">
                     <div class="flex flex-col gap-1">
                         <label class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.fontFamily}</label>
                         ${source === 'system'
-                            ? this._renderInlineSelect(SYSTEM_FONTS, font.family, v => { font.family = v; this.requestUpdate(); })
+                            ? this._renderInlineSelect(SYSTEM_FONTS, font.family, v => { font.family = v; this._touch(); this.requestUpdate(); })
                             : html`<input class="min-w-0 text-[11px]! px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400"
                                 list=${source === 'google' ? 'ds-google-fonts' : nothing}
                                 .value=${font.family} placeholder=${this.msg.fontFamilyPlaceholder}
-                                @input=${(e: Event) => { font.family = (e.target as HTMLInputElement).value; this.requestUpdate(); }} />`}
+                                @input=${(e: Event) => { font.family = (e.target as HTMLInputElement).value; this._touch(); this.requestUpdate(); }} />`}
                     </div>
                     <div class="flex flex-col gap-1">
                         <label class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.fontFallback}</label>
-                        ${this._renderInlineSelect(FALLBACKS, font.fallback ?? 'sans-serif', v => { font.fallback = v; this.requestUpdate(); })}
+                        ${this._renderInlineSelect(FALLBACKS, font.fallback ?? 'sans-serif', v => { font.fallback = v; this._touch(); this.requestUpdate(); })}
                     </div>
                 </div>
 
@@ -749,7 +929,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                         <label class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.fontWeights}</label>
                         <input class="text-[11px]! px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400"
                             .value=${(font.weights ?? []).join(', ')} placeholder="400, 600, 700"
-                            @change=${(e: Event) => { font.weights = this._parseWeights((e.target as HTMLInputElement).value); }} />
+                            @change=${(e: Event) => { font.weights = this._parseWeights((e.target as HTMLInputElement).value); this._touch(); }} />
                     </div>` : nothing}
 
                 ${source === 'custom' ? html`
@@ -757,7 +937,7 @@ export class PluginSelectDesignSystem extends StateLitElement {
                         <label class="text-[11px] font-semibold text-gray-500 dark:text-gray-400">${this.msg.fontUrl}</label>
                         <input class="text-[11px]! px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-indigo-400 font-mono"
                             .value=${font.url ?? ''} placeholder=${this.msg.fontUrlPlaceholder}
-                            @input=${(e: Event) => { font.url = (e.target as HTMLInputElement).value.trim() || undefined; }} />
+                            @input=${(e: Event) => { font.url = (e.target as HTMLInputElement).value.trim() || undefined; this._touch(); }} />
                         <span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug">${this.msg.fontUrlHint}</span>
                     </div>` : nothing}
             </div>
@@ -800,8 +980,9 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 <input type="text"
                     class="w-full text-[11px]! px-2.5 py-1.5 rounded-md border bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400
                         ${this._nameError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'}"
+                    data-ds-name
                     placeholder=${this.msg.namePlaceholder} .value=${this._name}
-                    @input=${(e: Event) => { this._name = (e.target as HTMLInputElement).value; this._nameError = false; }} />
+                    @input=${(e: Event) => { this._name = (e.target as HTMLInputElement).value; this._nameError = false; this._touch(); }} />
                 ${this._nameError ? html`<span class="text-[11px] text-red-500 dark:text-red-400">${this.msg.nameRequired}</span>` : nothing}
             </div>
         `;
@@ -814,15 +995,52 @@ export class PluginSelectDesignSystem extends StateLitElement {
                 <textarea rows="2"
                     class="w-full text-[11px]! px-2.5 py-1.5 rounded-md resize-y border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                     placeholder=${this.msg.descPlaceholder} .value=${this._desc}
-                    @input=${(e: Event) => { this._desc = (e.target as HTMLTextAreaElement).value; }}></textarea>
+                    @input=${(e: Event) => { this._desc = (e.target as HTMLTextAreaElement).value; this._touch(); }}></textarea>
             </div>
         `;
     }
 
+    /** Top-of-form banner: unsaved work (with a save shortcut) or the save confirmation. */
+    private _renderStatusBar() {
+        if (this._saved) {
+            return html`
+                <div class="flex items-center gap-2 rounded-md border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/10 px-2.5 py-1.5">
+                    <span class="text-xs text-emerald-500 dark:text-emerald-400">✓</span>
+                    <span class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">${this.msg.savedOk}</span>
+                </div>
+            `;
+        }
+        if (!this._dirty) return nothing;
+        const hasDraft = this._isAdd && !!_draftCache;
+        return html`
+            <div class="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-2.5 py-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+                <span class="text-[11px] font-semibold text-amber-600 dark:text-amber-400">${this.msg.unsavedChanges}</span>
+                ${hasDraft ? html`
+                    <button class="ml-auto shrink-0 text-[11px] text-gray-500 dark:text-gray-400 hover:text-red-500 hover:underline cursor-pointer whitespace-nowrap"
+                        @click=${() => this._discardDraft()}>${this.msg.discardDraft}</button>` : nothing}
+                <button class="shrink-0 text-[11px] font-semibold px-2 py-1 rounded bg-amber-500 dark:bg-amber-600 text-white hover:bg-amber-600 dark:hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer
+                        ${hasDraft ? '' : 'ml-auto'}"
+                    ?disabled=${this._saving} @click=${() => this._onSave()}>${this._saving ? this.msg.saving : this.msg.saveNow}</button>
+            </div>
+        `;
+    }
+
+    // Sticky footer: the form is long and the save button used to scroll out of sight — pin it.
     private _renderSave(label: string) {
         return html`
-            <button class="self-start mt-1 text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                ?disabled=${this._saving} @click=${() => this._onSave()}>${this._saving ? this.msg.saving : label}</button>
+            <div class="sticky bottom-0 z-10 mt-1 py-2.5 flex items-center gap-2 border-t border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm">
+                <button class="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    ?disabled=${this._saving} @click=${() => this._onSave()}>
+                    ${this._saving ? this._renderSpinner('border-white') : nothing}
+                    ${this._saving ? this.msg.saving : label}</button>
+                ${this._dirty && !this._saved ? html`
+                    <span class="flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+                        <span class="text-[11px] font-semibold text-amber-600 dark:text-amber-400">${this.msg.unsavedChanges}</span>
+                    </span>` : nothing}
+                ${this._saved ? html`<span class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">✓ ${this.msg.savedOk}</span>` : nothing}
+            </div>
         `;
     }
 
@@ -874,7 +1092,13 @@ export class PluginSelectDesignSystem extends StateLitElement {
 
     private async _onSave(): Promise<void> {
         const name = this._name.trim();
-        if (!name) { this._nameError = true; return; }
+        if (!name) {
+            // Saving from the sticky footer: the field that blocks the save is far above — take
+            // the user there instead of failing silently.
+            this._nameError = true;
+            this.querySelector('[data-ds-name]')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            return;
+        }
         if (!this.projectId || this._saving) return;
 
         const isNew = this._isAdd;
@@ -903,8 +1127,14 @@ export class PluginSelectDesignSystem extends StateLitElement {
         // brand-new entry — upsert it optimistically so the list + knob reflect the save now.
         this._ensureEntry(key, dsIndex, name, this._desc.trim(), skill, theme);
         this._saving = false;
+        this._dirty = false;
+        this._saved = true;
+        this._savedKey = key;
 
         if (isNew) {
+            // The draft is now a real entry — drop the cache and the generation cards.
+            _draftCache = null;
+            clearScope('ds:generate');
             // Notify the host so it rebuilds the DS knob (new entry + fresh "+" slot) and selects it.
             this._editingKey = key;
             this.dispatchEvent(new CustomEvent('ds-created', { detail: { value: key }, bubbles: true, composed: true }));
