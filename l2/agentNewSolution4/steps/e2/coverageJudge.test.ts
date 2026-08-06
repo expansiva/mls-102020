@@ -1,0 +1,85 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { createNs4E2CoverageJudgeStep } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
+import {
+  formatNs4E2CoverageRepairFeedback,
+  normalizeNs4E2CoverageVerdict,
+  validateNs4E2CoverageVerdict,
+} from '/_102020_/l2/agentNewSolution4/steps/e2/coverageJudge.js';
+
+test('E2 creates a bounded automated coverage-judge step', () => {
+  const step = createNs4E2CoverageJudgeStep('buildFlowFsm', 2, 1, 1, 'Mapear jornadas');
+  assert.equal(step.planning?.planId, 'e2-journeys-round-2-coverage-judge-1');
+  assert.equal(step.stepTitle, '🔎 Mapear jornadas');
+  assert.equal(step.status, 'waiting_human_input');
+  assert.equal(step.onFailure, 'wait_after_prompt');
+  assert.deepEqual(JSON.parse(step.prompt || '{}'), {
+    planId: 'e2-journeys', stage: 'coverageJudge', moduleName: 'buildFlowFsm',
+    reviewRound: 2, repairAttempt: 1, judgeAttempt: 1,
+  });
+});
+
+test('E2 coverage judge accepts a complete verdict only without blockers', () => {
+  const complete = normalizeNs4E2CoverageVerdict({
+    planId: 'e2-coverage-judge', moduleName: 'buildFlowFsm', reviewRound: 1,
+    complete: true, summary: 'All explicit outcomes are covered.', issues: [],
+  });
+  assert.deepEqual(validateNs4E2CoverageVerdict(complete, 'buildFlowFsm', 1), { ok: true, errors: [] });
+
+  const contradictory = normalizeNs4E2CoverageVerdict({
+    planId: 'e2-coverage-judge', moduleName: 'buildFlowFsm', reviewRound: 1,
+    complete: true, summary: 'Incorrectly marked complete.',
+    issues: [{
+      issueId: 'clientJourneyMissing', severity: 'blocking', category: 'missingRecipientJourney',
+      sourceEvidence: 'E1 promises a client billing summary.',
+      finding: 'Only the internal billing handoff exists.',
+      repairInstruction: 'Add the client consumption journey.', relatedJourneyIds: ['manageProjectBilling'],
+    }],
+  });
+  assert.equal(validateNs4E2CoverageVerdict(contradictory, 'buildFlowFsm', 1).ok, false);
+});
+
+test('E2 coverage judge rejects fail-open and produces actionable repair feedback', () => {
+  const verdict = normalizeNs4E2CoverageVerdict({
+    planId: 'e2-coverage-judge', moduleName: 'buildFlowFsm', reviewRound: 1,
+    complete: false, summary: 'Client consumption and material selection are incomplete.',
+    issues: [
+      {
+        issueId: 'clientJourneyMissing', severity: 'blocking', category: 'missingRecipientJourney',
+        sourceEvidence: 'E1 promises a client billing summary.',
+        finding: 'The client cannot consume the published summary.',
+        repairInstruction: 'Add a client journey scoped to associated projects.',
+        relatedJourneyIds: ['manageProjectBilling'],
+      },
+      {
+        issueId: 'materialSelectionMissing', severity: 'blocking', category: 'missingContextAcquisition',
+        sourceEvidence: 'Material usage is recorded against a catalog material.',
+        finding: 'No selectedMaterial context is acquired.',
+        repairInstruction: 'Locate a material from the shared catalog before recording usage.',
+        relatedJourneyIds: ['recordDailyFieldProduction'],
+      },
+    ],
+  });
+  assert.deepEqual(validateNs4E2CoverageVerdict(verdict, 'buildFlowFsm', 1), { ok: true, errors: [] });
+  const feedback = formatNs4E2CoverageRepairFeedback(verdict);
+  assert.match(feedback, /clientJourneyMissing \[missingRecipientJourney\]/);
+  assert.match(feedback, /materialSelectionMissing \[missingContextAcquisition\]/);
+
+  const failOpen = normalizeNs4E2CoverageVerdict({
+    moduleName: 'buildFlowFsm', reviewRound: 1, complete: false,
+    summary: 'Incomplete but no actionable blockers.', issues: [],
+  });
+  assert.equal(validateNs4E2CoverageVerdict(failOpen, 'buildFlowFsm', 1).ok, false);
+});
+
+test('E2 coverage verdict is bound to the current module and review round', () => {
+  const verdict = normalizeNs4E2CoverageVerdict({
+    moduleName: 'otherModule', reviewRound: 3, complete: true,
+    summary: 'Complete.', issues: [],
+  });
+  const validation = validateNs4E2CoverageVerdict(verdict, 'buildFlowFsm', 2);
+  assert.equal(validation.ok, false);
+  assert.ok(validation.errors.some(error => error.includes('moduleName')));
+  assert.ok(validation.errors.some(error => error.includes('reviewRound')));
+});

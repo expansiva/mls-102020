@@ -16,25 +16,36 @@ widget-ns4-journeys-102020 {
   button, textarea { font: inherit; }
   button { border: 1px solid #cbd5e1; border-radius: 8px; cursor: pointer; }
   button:disabled { cursor: not-allowed; opacity: .56; }
+  button:focus-visible, textarea:focus-visible { outline: 3px solid #a5b4fc; outline-offset: 2px; }
 
   .ns4-journeys { display: grid; gap: 16px; min-width: 0; }
   .ns4-header { align-items: flex-start; display: flex; gap: 16px; justify-content: space-between; }
-  .ns4-breadcrumb { color: #64748b; font-size: 12px; margin-bottom: 8px; }
+  .ns4-breadcrumb { color: #4f46e5; font-size: 12px; font-weight: 650; margin-bottom: 5px; }
   .ns4-header p { margin-top: 6px; }
   .ns4-header-meta { align-items: flex-end; display: flex; flex-direction: column; gap: 6px; min-width: 148px; }
   .ns4-header-meta span, .ns4-header-meta strong, .ns4-pill {
     background: #eef2ff; border-radius: 999px; color: #3730a3; font-size: 12px; padding: 5px 9px;
   }
   .ns4-header-meta strong { background: #ecfdf5; color: #166534; }
+  .ns4-feedback { border: 1px solid; border-radius: 8px; display: grid; gap: 5px; padding: 11px 13px; }
+  .ns4-feedback strong { font-size: 13px; }
+  .ns4-feedback span, .ns4-feedback li { font-size: 13px; line-height: 1.4; }
+  .ns4-feedback.is-error { background: #fff1f2; border-color: #fda4af; color: #9f1239; }
+  .ns4-feedback.is-ok { background: #ecfdf5; border-color: #86efac; color: #166534; }
 
-  .ns4-filters { align-items: center; display: grid; gap: 12px; grid-template-columns: minmax(180px, 1fr) minmax(280px, 2fr); }
-  .ns4-filters > span { color: #64748b; font-size: 12px; }
-  .ns4-actor-filter { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+  .ns4-filters { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; }
+  .ns4-filters > summary { align-items: center; cursor: pointer; display: flex; font-weight: 700; justify-content: space-between; list-style: none; padding: 12px 14px; }
+  .ns4-filters > summary::-webkit-details-marker { display: none; }
+  .ns4-filters > summary::after { color: #64748b; content: '⌄'; font-size: 16px; }
+  .ns4-filters[open] > summary { border-bottom: 1px solid #e2e8f0; }
+  .ns4-filters[open] > summary::after { transform: rotate(180deg); }
+  .ns4-filter-content { display: grid; gap: 12px; padding: 12px; }
+  .ns4-actor-filter { display: flex; flex-wrap: wrap; gap: 8px; }
   .ns4-actor-filter button, .ns4-tabs button { background: #fff; color: #334155; padding: 8px 10px; }
   .ns4-actor-filter button { overflow-wrap: anywhere; }
   .ns4-actor-filter button.is-active, .ns4-tabs button.is-active { background: #4338ca; border-color: #4338ca; color: #fff; }
 
-  .ns4-actor-map, .ns4-list, .ns4-detail, .ns4-features, .ns4-review {
+  .ns4-actor-map, .ns4-list, .ns4-detail, .ns4-review {
     background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
   }
   .ns4-section-title { align-items: center; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; padding: 12px 14px; }
@@ -47,15 +58,16 @@ widget-ns4-journeys-102020 {
   .ns4-lane-items { display: grid; gap: 6px; }
   .ns4-lane-items button { background: #fff; overflow: hidden; padding: 7px 8px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
   .ns4-lane-items button.is-selected { border-color: #4338ca; color: #3730a3; }
-  .ns4-main { align-items: start; display: grid; gap: 16px; grid-template-columns: minmax(250px, .82fr) minmax(0, 2fr); }
-  .ns4-list-items { display: grid; gap: 8px; max-height: 760px; overflow: auto; padding: 12px; }
+  .ns4-main { align-items: stretch; display: grid; gap: 16px; grid-template-columns: minmax(250px, .82fr) minmax(0, 2fr); }
+  .ns4-list { height: 100%; }
+  .ns4-list-items { display: grid; gap: 8px; height: 100%; max-height: none; overflow: visible; padding: 12px; }
   .ns4-journey-card { background: #fff; display: grid; gap: 5px; padding: 12px; text-align: left; }
   .ns4-journey-card:hover { border-color: #a5b4fc; }
   .ns4-journey-card.is-selected { background: #f5f3ff; border-color: #7c3aed; }
   .ns4-journey-card span { color: #475569; font-size: 12px; }
   .ns4-journey-card small { color: #64748b; display: -webkit-box; line-height: 1.35; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 
-  .ns4-detail { display: grid; gap: 16px; padding: 16px; }
+  .ns4-detail { align-content: start; display: grid; gap: 16px; padding: 16px; }
   .ns4-detail-head { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; }
   .ns4-summary, .ns4-context-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ns4-summary > div, .ns4-context-grid > section, .ns4-two-columns > div { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; }
@@ -77,11 +89,6 @@ widget-ns4-journeys-102020 {
   .ns4-outcome { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; }
   .ns4-outcome p { margin-top: 6px; }
 
-  .ns4-feature-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); padding: 12px; }
-  .ns4-feature-grid article { align-items: center; border: 1px solid #e2e8f0; border-radius: 8px; display: flex; gap: 10px; justify-content: space-between; padding: 12px; }
-  .ns4-feature-grid article > div { display: grid; gap: 4px; }
-  .ns4-feature-grid article > span { background: #ecfdf5; border-radius: 999px; color: #166534; font-size: 11px; padding: 4px 8px; }
-
   .ns4-review { display: grid; gap: 12px; padding: 14px; }
   .ns4-review label, .ns4-review label span { display: grid; gap: 6px; }
   .ns4-review label > span { color: #64748b; font-size: 12px; }
@@ -89,13 +96,19 @@ widget-ns4-journeys-102020 {
   .ns4-review > div { display: flex; gap: 10px; justify-content: flex-end; }
   button { padding: 9px 14px; }
   button.secondary { background: #fff; color: #334155; }
+  button.secondary.is-active { background: #4338ca; border-color: #4338ca; color: #fff; }
   button.primary { background: #4338ca; border-color: #4338ca; color: #fff; }
+  button.cancel { background: #fff; border-color: #fecaca; color: #b91c1c; margin-right: auto; }
+  .ns4-dialog-backdrop { align-items: center; background: rgb(15 23 42 / .46); display: flex; inset: 0; justify-content: center; padding: 20px; position: fixed; z-index: 20; }
+  .ns4-cancel-dialog { background: #fff; border-radius: 12px; box-shadow: 0 20px 50px rgb(15 23 42 / .28); display: grid; gap: 12px; max-width: 460px; padding: 20px; width: 100%; }
+  .ns4-cancel-dialog p { color: #475569; }
+  .ns4-cancel-dialog > div { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+  .ns4-cancel-dialog button { background: #fff; padding: 9px 12px; }
+  .ns4-cancel-dialog button.danger { background: #b91c1c; border-color: #b91c1c; color: #fff; }
 
   @media (max-width: 760px) {
-    .ns4-filters, .ns4-main, .ns4-summary, .ns4-context-grid { grid-template-columns: 1fr; }
+    .ns4-main, .ns4-summary, .ns4-context-grid { grid-template-columns: 1fr; }
     .ns4-header { display: grid; }
     .ns4-header-meta { align-items: flex-start; }
-    .ns4-actor-filter { justify-content: flex-start; }
-    .ns4-list-items { max-height: 320px; }
   }
 }

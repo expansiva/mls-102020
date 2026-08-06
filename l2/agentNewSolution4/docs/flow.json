@@ -1,7 +1,7 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-05-ns4-flow-v5",
-  "status": "e1-e4",
+  "schemaVersion": "2026-08-06-ns4-flow-v7",
+  "status": "e1-e5",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
     "mls-base/skills/collab_messages.md",
@@ -10,22 +10,25 @@
   ],
   "principles": [
     "The root LLM detects the communication language, translates friendly step titles and creates the visible roadmap before clarification begins.",
-    "E1 human callbacks persist only an answer anchor; E2 and E3 approval callbacks persist their already-gated permanent review artifacts before adding the result anchor.",
+    "The runtime prefixes implemented human clarification/checkpoint step titles with the deterministic 👤 marker; persisted localized titles remain plain reusable text.",
+    "E2 proposals must pass an independent 🔎 semantic coverage judge before human review; one bounded complete-draft repair is allowed.",
+    "E1 preserves its full reviewed contract, supports repeated prompt-driven revisions and only unlocks compilation after the rich deterministic gate passes.",
+    "E2 through E5 approval callbacks persist their already-gated permanent review artifacts before adding the result anchor.",
     "Every implemented compile step writes a permanent L4 artifact and a stable result anchor.",
     "Permanent L4 artifacts plus their approved module checkpoint are the resume authority; pipeline state is monotonic and is reconciled from those artifacts if a late callback lags behind.",
     "A completed result anchor carries the bounded approved contract needed by the immediately unlocked successor, avoiding a storage-index visibility race between client hooks.",
     "New artifacts retain userLanguage and localized stepTitles for maintenance and resume context.",
     "Terminal step failures use traceMsg in the task and persist status, error and failedAt in the pipeline whenever a module pipeline already exists.",
     "Previous flow versions are never migrated automatically.",
-    "The /fast flag uses the same deterministic gates and persistence paths; E1 auto-accepts its clarification and valid E2/E3/E4 proposals are approved without opening their widgets.",
-    "E4 currently compiles only explicit new-solution ontology contracts; legacy modernization intake will be introduced through E1 before E4 accepts that mode.",
+    "The /fast flag uses the same deterministic gates and persistence paths; E1 auto-accepts its clarification and judged-complete E2/E5 plus valid E3/E4 proposals are approved without opening their widgets.",
+    "E1 records modernization strategies now; E4 currently compiles only explicit new-solution ontology contracts and fails closed for modernization instead of fabricating a greenfield or replacement database.",
     "E4 classifies every entity into an explicit persistence target: shared MDM for stable base records, module database for transactions, or derived/external/embedded storage for non-table concepts."
   ],
   "invocation": {
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v5-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Previous flow versions are not migrated; foreign or older modules are rejected."
+    "resumeRule": "A v7-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",
@@ -37,7 +40,11 @@
     "accessMatrix": "l4/{module}/access/access-matrix.defs.ts",
     "ontologyDraft": "l4/{module}/pipeline/e4-ontology.draft.json",
     "ontologyEntity": "l4/{module}/ontology/{EntityId}.defs.ts",
-    "ontologyIndex": "l4/{module}/ontology/index.defs.ts"
+    "ontologyIndex": "l4/{module}/ontology/index.defs.ts",
+    "rulesDraft": "l4/{module}/pipeline/e5-rules.draft.json",
+    "rulesApproved": "l4/{module}/pipeline/e5-rules.approved.json",
+    "rule": "l4/{module}/rules/{ruleId}.defs.ts",
+    "ruleIndex": "l4/{module}/rules/index.defs.ts"
   },
   "orchestration": {
     "rootOutput": ["validPrompt", "userPrompt", "presentation.userLanguage", "presentation.stepTitles", "clarification"],
@@ -48,31 +55,35 @@
       "e1-compile",
       "e1-result",
       "e2-journeys",
+      "e2-coverage-judge",
       "e2-result",
       "e3-access-matrix",
       "e3-result",
       "e4-ontology",
-      "e4-result"
+      "e4-result",
+      "e5-rules",
+      "e5-rules-judge",
+      "e5-result"
     ],
     "roadmap": [
-      "e5-rules",
       "e6-behaviors",
       "e7-realization",
       "e8-workspaces",
       "e9-navigation-compiler",
       "e10-validation"
     ],
-    "roadmapExecution": "E5 and later steps remain visible waiting_dependency/manual_later nodes until their implementations are delivered."
+    "roadmapExecution": "E6 and later steps remain visible waiting_dependency/manual_later nodes until their implementations are delivered."
   },
   "steps": [
     {
       "planId": "e1-clarification",
       "type": "agent-human-clarification",
-      "goal": "Confirm module identity, actors, goal, boundaries and product languages.",
+      "goal": "Confirm the complete initial product contract: identity, review policy, solution/modernization strategy, business scope, localization and declared constraints.",
       "outputAnchor": "e1-clarification-answer",
       "runtimeNotes": [
-        "The root plan seeds the localized clarification.",
-        "The callback only writes the answer anchor and completes the clarification.",
+        "The root plan seeds the localized clarification and the full normalized review is preserved in its answer anchor.",
+        "A human change request adds the next open E1 round before completing the current clarification.",
+        "Validation failures remain visible inside the same widget and do not mark the step or pipeline failed.",
         "/fast uses the same widget event with autoAcceptSeconds=10.",
         "LLM failures return through afterPrompt and remain visible in the task trace."
       ]
@@ -103,6 +114,11 @@
         "E2 is marked running only after the LLM call returns to afterPrompt.",
         "Terminal failures are persisted in pipeline.steps.e2.error and failedAt.",
         "A first deterministic gate failure persists the invalid draft and schedules one bounded LLM repair step before failing the task.",
+        "A structurally valid draft is not shown immediately: an independent reasoning-model judge compares all E1 actors, capabilities, screen intents and outcomes with E2.",
+        "The coverage judge rejects missing recipient journeys, orphan user outcomes, raw-id risks and human-selectable references without named context acquisition or a credible lookup source.",
+        "One complete-draft semantic repair is allowed; the repaired draft is judged again and fails closed if coverage remains incomplete.",
+        "An invalid judge envelope is retried once. Compact judge results remain in the task trace after large LLM interactions are cleaned.",
+        "Only a judged-complete draft opens the 👤 widget; /fast also waits for the same judgment before durable approval.",
         "Prerequisite handoffs use stable context ids exported by the referenced journey.",
         "contextOrLookup includes an explicit locate fallback for every carried context."
       ]
@@ -160,6 +176,33 @@
         "Approval writes one permanent defs file per entity plus a small ontology index with the frozen hash.",
         "Each human change request adds the next open E4 round before completing the current clarification.",
         "Terminal failures persist the invalid draft when available and pipeline.steps.e4.error/failedAt."
+      ]
+    },
+    {
+      "planId": "e5-rules",
+      "runtimePlanIdPattern": "e5-rules-round-{reviewRound}",
+      "type": "agent-judge-human-checkpoint-loop",
+      "dependsOn": ["e4-result"],
+      "goal": "Compile scattered E1-E4 statements into a durable, enforceable and traceable rule catalog.",
+      "output": [
+        "l4/{module}/pipeline/e5-rules.draft.json",
+        "l4/{module}/pipeline/e5-rules.approved.json",
+        "l4/{module}/rules/{ruleId}.defs.ts",
+        "l4/{module}/rules/index.defs.ts"
+      ],
+      "outputAnchor": "e5-result",
+      "gate": "steps/e5/gate.ts",
+      "judge": "steps/e5/judge.ts",
+      "runtimeNotes": [
+        "prompt_ready preserves the original hook args byte-for-byte so proposal, repair and judge stages cannot lose their round identity.",
+        "Every journey rule, ontology invariant and access constraint receives an exact source reference and an explicit compiled-or-routed disposition.",
+        "Static scalar constraints stay in E4; workflows and side-effect sequences are routed to E6; E5 owns dynamic, conditional, temporal, cross-entity, calculation, transition and access rules.",
+        "Blocking rules require backend enforcement; frontend behavior is only an early-feedback projection.",
+        "The deterministic gate rejects unknown E2/E3/E4 references, missing source coverage, invalid transition scope and unstable rejection error codes.",
+        "An independent reasoning judge detects semantic omissions, contradictions, unenforceable language, wrong routing and examples accidentally converted into hardcoded policy.",
+        "One full-draft repair and one invalid-judge retry are allowed before failing closed.",
+        "A human change request persists the edited draft and adds the next open E5 round before completing the current clarification.",
+        "Approval writes one defs artifact per rule, a compact index and an approved review snapshot for future maintenance and L1/L2 compilation."
       ]
     }
   ]

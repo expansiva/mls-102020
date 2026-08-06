@@ -153,7 +153,7 @@ test('E4 rejects an MDM entity routed to a local transactional table', () => {
   assert.ok(gate.issues.some(issue => issue.code === 'NS4_E4_STORAGE_TARGET'));
 });
 
-test('E4 lifecycle resumes an E3-approved v5 pipeline and advances to E5', () => {
+test('E4 lifecycle resumes an E3-approved v7 flow and advances to E5', () => {
   const e1 = markNs4E1Approved(createNs4Pipeline('buildFlowFsm', 'prompt'), 'human', 'module.defs.ts');
   const e2 = markNs4E2Approved(markNs4E2WaitingHuman(markNs4E2Running(e1, 1), 1, 'e2.json'), 'human', ['journey.ts']);
   const e3 = markNs4E3Approved(markNs4E3Running(e2, 1), 'human', 'access.defs.ts');
@@ -164,7 +164,7 @@ test('E4 lifecycle resumes an E3-approved v5 pipeline and advances to E5', () =>
   assert.equal(failed.steps.e4?.error, 'provider timeout');
   const approved = markNs4E4Approved(waiting, 'human', ['Project.defs.ts', 'index.defs.ts']);
   assert.equal(approved.nextStep, 'e5-rules');
-  assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-next');
+  assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-e5');
   assert.equal(markNs4E4Running(approved, 3), approved);
   assert.equal(markNs4E4WaitingHuman(approved, 3, 'late-draft.json'), approved);
   assert.equal(markNs4E4Failed(approved, 'late duplicate callback'), approved);

@@ -55,7 +55,7 @@ export interface Ns4E3Review {
 }
 
 export interface Ns4E3ReviewEvent {
-  action: 'approve' | 'requestChanges';
+  action: 'approve' | 'requestChanges' | 'cancel';
   adjustment: string;
   review: Ns4E3Review;
 }

@@ -5,19 +5,27 @@ import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import {
-  buildNs4ModuleArtifact,
+  createNs4E1Step,
   createNs4Pipeline,
   isNs4Pipeline,
   markNs4E1Approved,
   markNs4E1Failed,
-  normalizeNs4Clarification,
   normalizeNs4ModuleName,
   normalizeNs4RootPlan,
   Ns4ApprovedBy,
-  Ns4Clarification,
   Ns4ModuleArtifact,
   Ns4RootPlan,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
+import {
+  buildNs4ModuleArtifactFromReview,
+  Ns4E1Review,
+  Ns4E1ReviewEvent,
+  normalizeNs4E1Review,
+  validateNs4E1Review,
+} from '/_102020_/l2/agentNewSolution4/steps/e1/contracts.js';
+import {
+  showNs4ClarificationError,
+} from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
   listNs4ModuleFolders,
   readNs4AgentText,
@@ -33,7 +41,7 @@ interface Ns4PersistedE1 {
 }
 
 interface Ns4ClarificationAnswer {
-  clarification: Ns4Clarification;
+  review: Ns4E1Review;
   approvedBy: Ns4ApprovedBy;
 }
 
@@ -62,6 +70,9 @@ export async function beforeNs4E1PromptStep(
   const parsed = parseRecord(args || step.prompt);
   if (parsed.planId === 'e1-clarification') {
     const plan = getNs4RootPlan(context);
+    const reviewRound = positiveInteger(parsed.reviewRound, 1);
+    const previousReview = isRecord(parsed.previousReview) ? parsed.previousReview : null;
+    const adjustment = typeof parsed.adjustment === 'string' ? parsed.adjustment.trim() : '';
     return [{
       type: 'prompt_ready',
       args: args || step.prompt || JSON.stringify({ planId: 'e1-clarification' }),
@@ -77,6 +88,10 @@ export async function beforeNs4E1PromptStep(
         '',
         '## Root planner clarification seed',
         JSON.stringify(plan.clarification, null, 2),
+        '',
+        `## Required review round\n${reviewRound}`,
+        previousReview ? `## Current E1 review, including direct human edits\n${JSON.stringify(previousReview, null, 2)}` : '',
+        adjustment ? `## Human adjustment request\n${adjustment}` : '',
       ].join('\n'),
     } as mls.msg.AgentIntentPromptReady];
   }
@@ -100,6 +115,14 @@ export async function afterNs4E1PromptStep(
   if (!isRecord(payload) || payload.type !== 'clarification' || !isRecord(payload.json)) {
     return [updateStatus(context, parentStep, step, hookSequential, 'failed', 'E1 returned an invalid clarification payload.')];
   }
+  const review = normalizeNs4E1Review(payload.json);
+  const gate = validateNs4E1Review(review);
+  if (!gate.ok) {
+    return [updateStatus(
+      context, parentStep, step, hookSequential, 'failed',
+      gate.issues.filter(issue => issue.severity === 'error').map(issue => `${issue.code}: ${issue.message}`).join('\n'),
+    )];
+  }
   return [];
 }
 
@@ -112,24 +135,26 @@ export async function beforeNs4E1ClarificationStep(
   json: unknown,
 ): Promise<HTMLElement> {
   const plan = getNs4RootPlan(context);
-  const clarification = normalizeNs4Clarification({ ...plan.clarification, ...parseRecord(json) });
-  await import('/_102025_/l2/widgetQuestionsForClarification.js');
+  const review = normalizeNs4E1Review(parseRecord(json), {
+    userLanguage: plan.presentation.userLanguage,
+    moduleName: plan.clarification.questions.moduleName.answer,
+    productLanguages: plan.clarification.questions.productLanguages.answer,
+    mainActors: plan.clarification.questions.mainActors.answer,
+    mainGoal: plan.clarification.questions.mainGoal.answer,
+    boundaries: plan.clarification.questions.boundaries.answer,
+    sourcePrompt: plan.userPrompt,
+  });
+  await import('/_102020_/l2/agentNewSolution4/widgets/widgetNs4Intake.js');
   const wrapper = document.createElement('div');
-  const element = document.createElement('widget-questions-for-clarification-102025');
-  (element as unknown as { value: unknown }).value = {
-    taskId: context.task?.PK || '',
-    stepId: step.stepId,
-    title: clarification.title,
-    legends: clarification.legends,
-    userLanguage: clarification.userLanguage,
-    questions: clarification.questions,
-    autoAcceptSeconds: isFast(context) ? 10 : 0,
-  };
-  element.setAttribute('mode', 'new');
-  element.addEventListener('clarification-finish', (event: Event) => {
-    const detail = (event as CustomEvent<{ value: Ns4Clarification; action: 'continue' | 'cancel' }>).detail;
-    applyNs4E1Clarification(context, parentStep, step, hookSequential, detail.value, detail.action)
-      .catch(error => console.error(`[agentNewSolution4:e1] ${errorMessage(error)}`));
+  const element = document.createElement('widget-ns4-intake-102020');
+  (element as unknown as { value: Ns4E1Review }).value = review;
+  element.addEventListener('ns4-intake-review', (event: Event) => {
+    const detail = (event as CustomEvent<Ns4E1ReviewEvent>).detail;
+    void applyNs4E1Clarification(context, parentStep, step, hookSequential, detail)
+      .catch(error => {
+        console.error(`[agentNewSolution4:e1] ${errorMessage(error)}`);
+        showNs4ClarificationError(element, error);
+      });
   });
   wrapper.appendChild(element);
   return wrapper;
@@ -140,23 +165,44 @@ async function applyNs4E1Clarification(
   parentStep: mls.msg.AIAgentStep,
   step: mls.msg.AIClarificationStep,
   hookSequential: number,
-  value: Ns4Clarification,
-  action: 'continue' | 'cancel',
+  event: Ns4E1ReviewEvent,
 ): Promise<void> {
   if (!context.task) throw new Error('[agentNewSolution4:e1] task invalid');
   const mutationParent = findMutableParentStep(context, parentStep);
-  const status: mls.msg.AIStepStatus = action === 'continue' ? 'completed' : 'failed';
-  const intents: mls.msg.AgentIntent[] = [
-    updateStatus(context, mutationParent, step, hookSequential, status, undefined, status === 'completed' ? 'input_output' : undefined),
-  ];
-  if (action === 'continue') {
-    intents.unshift(clarificationAnswerStep(context, mutationParent, {
-      clarification: normalizeNs4Clarification(value),
-      approvedBy: isFast(context) ? 'auto' : 'human',
-    }));
+  if (event.action === 'cancel') {
+    throw new Error('O cancelamento terminal ainda depende do suporte cancelled no collab-messages; a execução foi mantida aberta.');
   }
-  await applyIntents(context, intents);
-  if (action === 'continue') await continuePoolingTask(context);
+  if (event.action === 'requestChanges') {
+    if (!event.adjustment.trim()) throw new Error('Descreva a alteração necessária antes de gerar outra proposta.');
+    const nextRound = event.review.reviewRound + 1;
+    const plan = getNs4RootPlan(context);
+    await applyIntents(context, [
+      addStep(context, mutationParent, createNs4E1Step(
+        nextRound,
+        event.adjustment,
+        event.review,
+        [],
+        plan.presentation.stepTitles['e1-clarification'],
+      )),
+      adjustmentResultStep(context, mutationParent, event.review, event.adjustment),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
+    ]);
+    await continuePoolingTask(context);
+    return;
+  }
+  const gate = validateNs4E1Review(event.review);
+  if (!gate.ok) {
+    const errors = gate.issues.filter(issue => issue.severity === 'error');
+    throw new Error(errors.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  }
+  await applyIntents(context, [
+    clarificationAnswerStep(context, mutationParent, {
+      review: event.review,
+      approvedBy: isFast(context) ? 'auto' : 'human',
+    }),
+    updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
+  ]);
+  await continuePoolingTask(context);
 }
 
 async function compileNs4E1(
@@ -168,7 +214,7 @@ async function compileNs4E1(
   try {
     const answer = getClarificationAnswer(context);
     if (!answer) throw new Error('E1 clarification answer not found.');
-    const saved = await persistNs4E1(context, answer.clarification, answer.approvedBy);
+    const saved = await persistNs4E1(context, answer.review, answer.approvedBy);
     const mutationParent = findMutableParentStep(context, parentStep);
     return [
       e1ResultStep(context, mutationParent, saved, getNs4RootPlan(context)),
@@ -183,12 +229,12 @@ async function compileNs4E1(
 
 async function persistNs4E1(
   context: mls.msg.ExecutionContext,
-  clarification: Ns4Clarification,
+  review: Ns4E1Review,
   approvedBy: Ns4ApprovedBy,
 ): Promise<Ns4PersistedE1> {
   const plan = getNs4RootPlan(context);
   const sourcePrompt = plan.userPrompt || memoryString(context, 'sourcePrompt') || 'new module';
-  const artifact = buildNs4ModuleArtifact(sourcePrompt, clarification, approvedBy, new Date().toISOString(), plan.presentation);
+  const artifact = buildNs4ModuleArtifactFromReview(review, sourcePrompt, approvedBy, plan.presentation);
   const moduleName = artifact.module.moduleName;
   const resumeModule = normalizeOptionalModuleName(memoryString(context, 'resumeModule'));
   if (resumeModule && moduleName !== resumeModule) {
@@ -226,7 +272,7 @@ async function persistNs4E1(
 async function recordNs4E1Failure(context: mls.msg.ExecutionContext, failure: string): Promise<void> {
   try {
     const answer = getClarificationAnswer(context);
-    const answerModule = answer ? normalizeNs4ModuleName(answer.clarification.questions.moduleName.answer) : '';
+    const answerModule = answer ? normalizeNs4ModuleName(answer.review.module.moduleName) : '';
     const moduleName = normalizeOptionalModuleName(memoryString(context, 'resumeModule')) || answerModule;
     if (!moduleName) return;
     const pipeline = await readNs4Pipeline(moduleName);
@@ -241,7 +287,22 @@ function clarificationAnswerStep(
   parentStep: mls.msg.AIAgentStep,
   answer: Ns4ClarificationAnswer,
 ): mls.msg.AgentIntentAddStep {
-  return addResultStep(context, parentStep, 'e1-clarification-answer', answer.clarification.title, answer);
+  return addResultStep(context, parentStep, 'e1-clarification-answer', answer.review.module.title || 'Initial solution definition', answer);
+}
+
+function adjustmentResultStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  review: Ns4E1Review,
+  adjustment: string,
+): mls.msg.AgentIntentAddStep {
+  return addResultStep(
+    context,
+    parentStep,
+    `e1-adjustment-request-${review.reviewRound}-${Date.now()}`,
+    `E1 changes requested after round ${review.reviewRound}`,
+    { reviewRound: review.reviewRound, adjustment, review },
+  );
 }
 
 function e1ResultStep(
@@ -276,6 +337,17 @@ function addResultStep(
   };
 }
 
+function addStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIPayload,
+): mls.msg.AgentIntentAddStep {
+  return {
+    type: 'add-step', messageId: context.message.orderAt, threadId: context.message.threadId,
+    taskId: context.task?.PK || '', parentStepId: parentStep.stepId, step,
+  };
+}
+
 function getNs4RootPlan(context: mls.msg.ExecutionContext): Ns4RootPlan {
   const root = context.task?.iaCompressed?.nextSteps?.[0] as mls.msg.AIAgentStep | undefined;
   return normalizeNs4RootPlan(root?.interaction?.payload?.[0], memoryString(context, 'sourcePrompt'));
@@ -285,7 +357,7 @@ function getClarificationAnswer(context: mls.msg.ExecutionContext): Ns4Clarifica
   const step = getAllSteps(context.task?.iaCompressed?.nextSteps).find(item => item.planning?.planId === 'e1-clarification-answer');
   if (!step || step.type !== 'result' || !step.result) return null;
   const parsed = parseMaybeJson(step.result);
-  return isRecord(parsed) && isRecord(parsed.clarification)
+  return isRecord(parsed) && isRecord(parsed.review)
     ? parsed as unknown as Ns4ClarificationAnswer
     : null;
 }
@@ -374,4 +446,8 @@ function readResultMessage(payload: Record<string, unknown>): string {
 
 function escapePromptMessage(message: string): string {
   return String(message || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n');
+}
+
+function positiveInteger(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback;
 }

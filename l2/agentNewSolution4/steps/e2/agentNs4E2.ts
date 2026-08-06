@@ -4,15 +4,19 @@ import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
+import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
+  createNs4E2CoverageJudgeStep,
   createNs4E2Step,
   createNs4E2RepairStep,
+  formatNs4VisibleStepTitle,
   isNs4Pipeline,
   markNs4E2Approved,
   markNs4E2Failed,
   markNs4E2Running,
   markNs4E2WaitingHuman,
   markNs4ModuleE2Approved,
+  NS4_AUTOMATED_JUDGE_ICON,
   Ns4ApprovedBy,
   Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
@@ -37,17 +41,26 @@ import {
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { validateNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/gate.js';
 import { resolveNs4E2HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e2/hookArgs.js';
+import {
+  formatNs4E2CoverageRepairFeedback,
+  normalizeNs4E2CoverageVerdict,
+  Ns4E2CoverageVerdict,
+  validateNs4E2CoverageVerdict,
+} from '/_102020_/l2/agentNewSolution4/steps/e2/coverageJudge.js';
 
 interface Ns4E2Args {
   planId: 'e2-journeys';
+  stage?: 'proposal' | 'coverageJudge';
   moduleName?: string;
   adjustment?: string;
   reviewRound?: number;
   repairAttempt?: number;
+  judgeAttempt?: number;
   gateFeedback?: string;
 }
 
-const MAX_E2_GATE_REPAIRS = 1;
+const MAX_E2_REPAIRS = 1;
+const MAX_E2_JUDGE_ATTEMPTS = 2;
 
 interface Ns4PersistedE2 {
   moduleName: string;
@@ -77,6 +90,31 @@ export async function beforeNs4E2PromptStep(
     }
 
     const reviewRound = parsed.reviewRound || pipeline.steps.e2?.reviewRound || 1;
+    if (parsed.stage === 'coverageJudge') {
+      const draft = await readDraftFromStorage(moduleName);
+      if (!draft) throw new Error(`E2 draft not found for coverage judge in ${moduleName}.`);
+      const judgePrompt = await readNs4AgentText('steps/e2', 'coverageJudge');
+      return [{
+        type: 'prompt_ready',
+        args: hookArgs,
+        messageId: context.message.orderAt,
+        threadId: context.message.threadId,
+        taskId: context.task.PK,
+        hookSequential,
+        parentStepId: parentStep.stepId,
+        systemPrompt: judgePrompt,
+        humanPrompt: [
+          '## Approved E1 product contract',
+          JSON.stringify(moduleArtifact, null, 2),
+          '',
+          '## Complete E2 journey draft to judge',
+          JSON.stringify(draft, null, 2),
+          '',
+          `## Required review round\n${reviewRound}`,
+        ].join('\n'),
+      } as mls.msg.AgentIntentPromptReady];
+    }
+
     const previousDraft = parsed.adjustment || parsed.gateFeedback ? await readDraftFromStorage(moduleName) : null;
     const [prompt, platform] = await Promise.all([
       readNs4AgentText('steps/e2', 'prompt'),
@@ -123,6 +161,9 @@ export async function afterNs4E2PromptStep(
     moduleName = args.moduleName;
     const pipeline = await requirePipeline(moduleName);
     await writeNs4Pipeline(markNs4E2Running(pipeline, args.reviewRound || pipeline.steps.e2?.reviewRound || 1));
+    if (args.stage === 'coverageJudge') {
+      return await afterNs4E2CoverageJudge(context, parentStep, step, hookSequential, args, pipeline);
+    }
     const payload = unwrapPayload(step.interaction?.payload?.[0]);
     if (!isRecord(payload) || payload.type !== 'clarification' || !isRecord(payload.json)) {
       const message = readE2FailureMessage(payload);
@@ -136,7 +177,7 @@ export async function afterNs4E2PromptStep(
     if (!gate.ok) {
       const message = gate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
       const repairAttempt = args.repairAttempt || 0;
-      if (repairAttempt < MAX_E2_GATE_REPAIRS) {
+      if (repairAttempt < MAX_E2_REPAIRS) {
         await writeNs4E2Draft(moduleName, review);
         const repairParent = findMutableParentStep(context, parentStep);
         const repairStep = createNs4E2RepairStep(
@@ -157,20 +198,131 @@ export async function afterNs4E2PromptStep(
     }
 
     const draftPath = await writeNs4E2Draft(args.moduleName, review);
-    const reviewedPipeline = await requirePipeline(moduleName);
-    await writeNs4Pipeline(markNs4E2WaitingHuman(reviewedPipeline, review.reviewRound, draftPath));
-
-    if (!isFast(context)) return [];
-    const saved = await persistNs4E2(args.moduleName, review, 'auto');
+    const judgeParent = findMutableParentStep(context, parentStep);
+    const judgeStep = createNs4E2CoverageJudgeStep(
+      moduleName,
+      review.reviewRound,
+      args.repairAttempt || 0,
+      1,
+      pipeline.presentation.stepTitles['e2-journeys'],
+    );
     return [
-      resultStep(context, parentStep, saved, 'E2 journeys auto-approved'),
-      updateStatus(context, parentStep, step, hookSequential, 'completed', `E2 auto-approved ${saved.journeyCount} journeys.`, 'input_output'),
+      addStep(context, judgeParent, judgeStep),
+      updateStatus(
+        context, judgeParent, step, hookSequential, 'completed',
+        `E2 structural gate passed; coverage judge scheduled for ${draftPath}.`, 'input_output',
+      ),
     ];
   } catch (error) {
     const message = errorMessage(error);
     await recordNs4E2Failure(moduleName, message);
     return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
   }
+}
+
+async function afterNs4E2CoverageJudge(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args: Ns4E2Args & { moduleName: string },
+  pipeline: Ns4PipelineState,
+): Promise<mls.msg.AgentIntent[]> {
+  const round = args.reviewRound || pipeline.steps.e2?.reviewRound || 1;
+  const judgeAttempt = args.judgeAttempt || 1;
+  const repairAttempt = args.repairAttempt || 0;
+  const judgeParent = findMutableParentStep(context, parentStep);
+  const payload = unwrapPayload(step.interaction?.payload?.[0]);
+  const verdict = normalizeNs4E2CoverageVerdict(payload, args.moduleName, round);
+  const validation = validateNs4E2CoverageVerdict(verdict, args.moduleName, round);
+
+  if (!validation.ok) {
+    const message = `Invalid E2 coverage verdict: ${validation.errors.join(' ')}`;
+    if (judgeAttempt < MAX_E2_JUDGE_ATTEMPTS) {
+      return [
+        addStep(context, judgeParent, createNs4E2CoverageJudgeStep(
+          args.moduleName,
+          round,
+          repairAttempt,
+          judgeAttempt + 1,
+          pipeline.presentation.stepTitles['e2-journeys'],
+        )),
+        coverageJudgeTraceStep(
+          context, judgeParent, round, judgeAttempt,
+          pipeline.presentation.stepTitles['e2-journeys'], { valid: false, errors: validation.errors },
+        ),
+        updateStatus(
+          context, judgeParent, step, hookSequential, 'completed',
+          `E2 coverage judge returned an invalid verdict; retry ${judgeAttempt + 1} scheduled.`, 'input_output',
+        ),
+      ];
+    }
+    await recordNs4E2Failure(args.moduleName, message);
+    return [updateStatus(context, judgeParent, step, hookSequential, 'failed', message)];
+  }
+
+  const storedDraft = await readDraftFromStorage(args.moduleName);
+  const review = normalizeNs4E2Review(storedDraft, args.moduleName);
+  const gate = validateNs4E2Review(review);
+  if (!gate.ok) {
+    const message = `E2 draft changed or became invalid before coverage approval: ${gate.issues.map(issue => `${issue.code} ${issue.path}`).join(', ')}`;
+    await recordNs4E2Failure(args.moduleName, message);
+    return [updateStatus(context, judgeParent, step, hookSequential, 'failed', message)];
+  }
+
+  if (!verdict.complete) {
+    const feedback = formatNs4E2CoverageRepairFeedback(verdict);
+    if (repairAttempt < MAX_E2_REPAIRS) {
+      return [
+        addStep(context, judgeParent, createNs4E2RepairStep(
+          args.moduleName,
+          round,
+          repairAttempt + 1,
+          feedback,
+          pipeline.presentation.stepTitles['e2-journeys'],
+        )),
+        coverageJudgeTraceStep(context, judgeParent, round, judgeAttempt, pipeline.presentation.stepTitles['e2-journeys'], verdict),
+        updateStatus(
+          context, judgeParent, step, hookSequential, 'completed',
+          `E2 coverage judge requested automatic repair ${repairAttempt + 1}.`, 'input_output',
+        ),
+      ];
+    }
+    const message = `E2 remains incomplete after automatic repair.\n${feedback}`;
+    await recordNs4E2Failure(args.moduleName, message);
+    return [
+      coverageJudgeTraceStep(context, judgeParent, round, judgeAttempt, pipeline.presentation.stepTitles['e2-journeys'], verdict),
+      updateStatus(context, judgeParent, step, hookSequential, 'failed', message),
+    ];
+  }
+
+  const draftPath = await writeNs4E2Draft(args.moduleName, review);
+  const reviewedPipeline = await requirePipeline(args.moduleName);
+  await writeNs4Pipeline(markNs4E2WaitingHuman(reviewedPipeline, round, draftPath));
+  const trace = coverageJudgeTraceStep(
+    context, judgeParent, round, judgeAttempt, pipeline.presentation.stepTitles['e2-journeys'], verdict,
+  );
+
+  if (isFast(context)) {
+    const saved = await persistNs4E2(args.moduleName, review, 'auto');
+    return [
+      trace,
+      resultStep(context, judgeParent, saved, 'E2 journeys auto-approved'),
+      updateStatus(
+        context, judgeParent, step, hookSequential, 'completed',
+        `E2 coverage approved and ${saved.journeyCount} journeys auto-approved.`, 'input_output',
+      ),
+    ];
+  }
+
+  return [
+    trace,
+    clarificationReviewStep(context, judgeParent, review, pipeline.presentation.stepTitles['e2-journeys']),
+    updateStatus(
+      context, judgeParent, step, hookSequential, 'completed',
+      'E2 coverage approved; human review opened.', 'input_output',
+    ),
+  ];
 }
 
 export async function beforeNs4E2ClarificationStep(
@@ -195,7 +347,7 @@ export async function beforeNs4E2ClarificationStep(
   element.addEventListener('ns4-journeys-review', (event: Event) => {
     const detail = (event as CustomEvent<Ns4E2ReviewEvent>).detail;
     void applyNs4E2Review(context, parentStep, step, hookSequential, detail)
-      .catch(error => console.error(`[${agent.agentName}] ${errorMessage(error)}`));
+      .catch(error => { showNs4ClarificationError(element, error); console.error(`[${agent.agentName}] ${errorMessage(error)}`); });
   });
   return element;
 }
@@ -209,30 +361,26 @@ async function applyNs4E2Review(
 ): Promise<void> {
   if (!context.task) throw new Error('[agentNewSolution4:e2] task invalid');
   const mutationParent = findMutableParentStep(context, parentStep);
-  try {
-    if (event.action === 'approve') {
-      const saved = await persistNs4E2(event.review.moduleName, event.review, 'human');
-      await applyIntents(context, [
-        resultStep(context, mutationParent, saved, 'E2 journeys approved'),
-        updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
-      ]);
-    } else {
-      if (!event.adjustment.trim()) throw new Error('Adjustment request cannot be empty.');
-      const nextRound = event.review.reviewRound + 1;
-      const pipeline = await requirePipeline(event.review.moduleName);
-      await writeNs4Pipeline(markNs4E2Running(pipeline, nextRound));
-      await applyIntents(context, [
-        addStep(context, mutationParent, createNs4E2Step(event.review.moduleName, nextRound, event.adjustment)),
-        adjustmentResultStep(context, mutationParent, event.review.moduleName, event.review.reviewRound, event.adjustment),
-        updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
-      ]);
-    }
-    await continuePoolingTask(context);
-  } catch (error) {
-    const message = errorMessage(error);
-    await recordNs4E2Failure(event.review.moduleName, message);
-    await applyIntents(context, [updateStatus(context, mutationParent, step, hookSequential, 'failed', message)]);
+  if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; esta revisão foi mantida aberta sem alterar o pipeline.');
+  if (event.action === 'approve') {
+    const saved = await persistNs4E2(event.review.moduleName, event.review, 'human');
+    await applyIntents(context, [
+      resultStep(context, mutationParent, saved, 'E2 journeys approved'),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
+    ]);
+  } else {
+    if (!event.adjustment.trim()) throw new Error('Adjustment request cannot be empty.');
+    const nextRound = event.review.reviewRound + 1;
+    const pipeline = await requirePipeline(event.review.moduleName);
+    await writeNs4E2Draft(event.review.moduleName, event.review);
+    await writeNs4Pipeline(markNs4E2Running(pipeline, nextRound));
+    await applyIntents(context, [
+      addStep(context, mutationParent, createNs4E2Step(event.review.moduleName, nextRound, event.adjustment)),
+      adjustmentResultStep(context, mutationParent, event.review.moduleName, event.review.reviewRound, event.adjustment),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
+    ]);
   }
+  await continuePoolingTask(context);
 }
 
 function findMutableParentStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep): mls.msg.AIAgentStep {
@@ -304,6 +452,42 @@ function resultStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAge
   } as mls.msg.AIResultStep);
 }
 
+function clarificationReviewStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  review: Ns4E2Review,
+  title: string,
+): mls.msg.AgentIntentAddStep {
+  return addStep(context, parentStep, {
+    type: 'clarification', stepId: 0, interaction: null,
+    stepTitle: formatNs4VisibleStepTitle('e2-journeys', title), status: 'pending', nextSteps: [],
+    json: JSON.stringify(review),
+    planning: {
+      planId: `e2-review-round-${review.reviewRound}`,
+      dependsOn: [], executionMode: 'sequential', executionHost: 'client',
+    },
+  } as mls.msg.AIClarificationStep);
+}
+
+function coverageJudgeTraceStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  round: number,
+  judgeAttempt: number,
+  title: string,
+  result: Ns4E2CoverageVerdict | { valid: false; errors: string[] },
+): mls.msg.AgentIntentAddStep {
+  const cleanTitle = title.trim().replace(/^[👤🔎]\s*/u, '');
+  return addStep(context, parentStep, {
+    type: 'result', stepId: 0, interaction: null, stepTitle: `${NS4_AUTOMATED_JUDGE_ICON} ${cleanTitle}`,
+    status: 'completed', nextSteps: [], result: JSON.stringify(result, null, 2),
+    planning: {
+      planId: `e2-coverage-judge-result-${round}-${judgeAttempt}`,
+      dependsOn: [], executionMode: 'manual_later', executionHost: 'client',
+    },
+  } as mls.msg.AIResultStep);
+}
+
 function adjustmentResultStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, moduleName: string, round: number, adjustment: string): mls.msg.AgentIntentAddStep {
   return addStep(context, parentStep, {
     type: 'result', stepId: 0, interaction: null, stepTitle: `E2 changes requested after round ${round}`, status: 'completed', nextSteps: [],
@@ -358,10 +542,12 @@ function parseE2Args(value: unknown): Ns4E2Args {
   }
   return {
     planId: 'e2-journeys',
+    ...(parsed.stage === 'coverageJudge' ? { stage: 'coverageJudge' as const } : {}),
     ...(typeof parsed.moduleName === 'string' && parsed.moduleName.trim() ? { moduleName: parsed.moduleName.trim() } : {}),
     ...(typeof parsed.adjustment === 'string' && parsed.adjustment.trim() ? { adjustment: parsed.adjustment.trim() } : {}),
     ...(typeof parsed.reviewRound === 'number' ? { reviewRound: parsed.reviewRound } : {}),
     ...(typeof parsed.repairAttempt === 'number' ? { repairAttempt: parsed.repairAttempt } : {}),
+    ...(typeof parsed.judgeAttempt === 'number' ? { judgeAttempt: parsed.judgeAttempt } : {}),
     ...(typeof parsed.gateFeedback === 'string' && parsed.gateFeedback.trim() ? { gateFeedback: parsed.gateFeedback.trim() } : {}),
   };
 }

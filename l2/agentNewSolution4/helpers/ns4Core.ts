@@ -1,9 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/helpers/ns4Core.ts" enhancement="_blank"/>
 
 export const NS4_FLOW_ID = 'agentNewSolution4' as const;
-export const NS4_FLOW_VERSION = '2026-08-05-ns4-flow-v5' as const;
-export const NS4_MODULE_SCHEMA_VERSION = '2026-08-05-ns4-module-v3' as const;
-export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-05-ns4-pipeline-v4' as const;
+export const NS4_FLOW_VERSION = '2026-08-06-ns4-flow-v7' as const;
+export const NS4_MODULE_SCHEMA_VERSION = '2026-08-06-ns4-module-v4' as const;
+export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-06-ns4-pipeline-v5' as const;
 
 export const NS4_PLAN_IDS = [
   'e1-clarification',
@@ -21,13 +21,25 @@ export const NS4_PLAN_IDS = [
 
 export type Ns4PlanId = typeof NS4_PLAN_IDS[number];
 
+export const NS4_HUMAN_CHECKPOINT_ICON = '👤' as const;
+export const NS4_AUTOMATED_JUDGE_ICON = '🔎' as const;
+
+const NS4_HUMAN_CHECKPOINT_PLAN_IDS: ReadonlySet<Ns4PlanId> = new Set([
+  'e1-clarification',
+  'e2-journeys',
+  'e3-access-matrix',
+  'e4-ontology',
+  'e5-rules',
+]);
+
 export type Ns4ApprovedBy = 'human' | 'auto';
 export type Ns4E1Status = 'running' | 'approved' | 'failed';
 export type Ns4E2Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
 export type Ns4E3Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
 export type Ns4E4Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
-export type Ns4CompletedStepId = 'e1' | 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology';
-export type Ns4NextStep = 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology' | 'e5-rules';
+export type Ns4E5Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
+export type Ns4CompletedStepId = 'e1' | 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology' | 'e5-rules';
+export type Ns4NextStep = 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology' | 'e5-rules' | 'e6-behaviors';
 
 export interface Ns4ClarificationQuestion {
   type: 'open';
@@ -72,6 +84,52 @@ export interface Ns4ModuleArtifact {
       mainGoal: string;
       boundaries: string;
     };
+  };
+  reviewPolicy: {
+    mode: 'guided' | 'smart' | 'automatic';
+  };
+  solutionStrategy: {
+    mode: 'newSolution' | 'modernizePreserveDatabase' | 'modernizeEvolveDatabase' | 'replaceAndMigrateData';
+    rationale: string;
+    databaseChangePolicy: 'new' | 'forbidden' | 'additiveControlled' | 'replacement';
+    modernization?: {
+      sourceSystemName: string;
+      sourceTechnology?: string;
+      databaseEngine?: string;
+      databaseVersion?: string;
+      schemaAvailability: 'uploadAtE4' | 'metadataAtE4' | 'notAvailableYet';
+      notes?: string;
+    };
+  };
+  businessScope: {
+    mainGoal: string;
+    actors: Array<{
+      actorId: string;
+      title: string;
+      kind: 'internal' | 'external' | 'system';
+      expectedOutcome: string;
+    }>;
+    expectedOutcomes: Array<{ outcomeId: string; title: string; description: string }>;
+    inScope: string[];
+    outOfScope: string[];
+  };
+  localization: {
+    productLanguages: string[];
+    defaultLanguage: string;
+    defaultLocale?: string;
+    currency?: string;
+    timeZone?: string;
+    primaryMarket?: string;
+  };
+  declaredConstraints: {
+    mandatoryIntegrations: Array<{
+      dependencyId: string;
+      title: string;
+      kind: 'externalSystem' | 'platform' | 'unknown';
+      reason: string;
+    }>;
+    regulatoryNotes?: string;
+    criticalNotes?: string;
   };
   specStatus: {
     flowId: typeof NS4_FLOW_ID;
@@ -141,13 +199,24 @@ export interface Ns4PipelineState {
       failedAt?: string;
       updatedAt: string;
     };
+    e5?: {
+      status: Ns4E5Status;
+      reviewRound: number;
+      draftPath?: string;
+      artifactPaths?: string[];
+      approvedBy?: Ns4ApprovedBy;
+      approvedAt?: string;
+      error?: string;
+      failedAt?: string;
+      updatedAt: string;
+    };
   };
   nextStep: Ns4NextStep;
   createdAt: string;
   updatedAt: string;
 }
 
-export type Ns4ExistingAction = 'new' | 'resume-e1' | 'resume-e2' | 'resume-e3' | 'resume-e4' | 'resume-next' | 'collision';
+export type Ns4ExistingAction = 'new' | 'resume-e1' | 'resume-e2' | 'resume-e3' | 'resume-e4' | 'resume-e5' | 'resume-next' | 'collision';
 
 export function parseNs4Invocation(value: string): { fast: boolean; prompt: string } {
   const raw = String(value || '');
@@ -166,10 +235,34 @@ export function createNs4E2Step(
   const suffix = adjustment ? ` adjustment ${reviewRound}` : '';
   return createNs4AgentStep(
     `e2-journeys-round-${reviewRound}`,
-    `${stepTitle}${suffix}`,
+    formatNs4VisibleStepTitle('e2-journeys', `${stepTitle}${suffix}`),
     dependsOn,
     dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
     { planId: 'e2-journeys', ...(moduleName ? { moduleName } : {}), reviewRound, ...(adjustment ? { adjustment } : {}) },
+  );
+}
+
+export function createNs4E1Step(
+  reviewRound = 1,
+  adjustment = '',
+  previousReview: unknown = undefined,
+  dependsOn: string[] = [],
+  stepTitle = NS4_DEFAULT_TITLES['e1-clarification'],
+): mls.msg.AIAgentStep {
+  const planningPlanId = reviewRound === 1 && !adjustment
+    ? 'e1-clarification'
+    : `e1-clarification-round-${reviewRound}`;
+  return createNs4AgentStep(
+    planningPlanId,
+    formatNs4VisibleStepTitle('e1-clarification', reviewRound > 1 ? `${stepTitle} · ${reviewRound}` : stepTitle),
+    dependsOn,
+    dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
+    {
+      planId: 'e1-clarification',
+      reviewRound,
+      ...(adjustment ? { adjustment } : {}),
+      ...(previousReview ? { previousReview } : {}),
+    },
   );
 }
 
@@ -182,10 +275,30 @@ export function createNs4E2RepairStep(
 ): mls.msg.AIAgentStep {
   return createNs4AgentStep(
     `e2-journeys-round-${reviewRound}-repair-${repairAttempt}`,
-    `${stepTitle} · R${repairAttempt}`,
+    formatNs4VisibleStepTitle('e2-journeys', `${stepTitle} · R${repairAttempt}`),
     [],
     'waiting_human_input',
     { planId: 'e2-journeys', moduleName, reviewRound, repairAttempt, gateFeedback },
+  );
+}
+
+export function createNs4E2CoverageJudgeStep(
+  moduleName: string,
+  reviewRound: number,
+  repairAttempt: number,
+  judgeAttempt: number,
+  stepTitle = NS4_DEFAULT_TITLES['e2-journeys'],
+): mls.msg.AIAgentStep {
+  const cleanTitle = stepTitle.trim().replace(/^[👤🔎]\s*/u, '');
+  return createNs4AgentStep(
+    `e2-journeys-round-${reviewRound}-coverage-judge-${judgeAttempt}`,
+    `${NS4_AUTOMATED_JUDGE_ICON} ${cleanTitle}`,
+    [],
+    'waiting_human_input',
+    {
+      planId: 'e2-journeys', stage: 'coverageJudge', moduleName, reviewRound,
+      repairAttempt, judgeAttempt,
+    },
   );
 }
 
@@ -199,7 +312,7 @@ export function createNs4E3Step(
   const suffix = adjustment ? ` · ${reviewRound}` : '';
   return createNs4AgentStep(
     `e3-access-matrix-round-${reviewRound}`,
-    `${stepTitle}${suffix}`,
+    formatNs4VisibleStepTitle('e3-access-matrix', `${stepTitle}${suffix}`),
     dependsOn,
     dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
     { planId: 'e3-access-matrix', ...(moduleName ? { moduleName } : {}), reviewRound, ...(adjustment ? { adjustment } : {}) },
@@ -216,7 +329,7 @@ export function createNs4E4Step(
   const suffix = adjustment ? ` · ${reviewRound}` : '';
   return createNs4AgentStep(
     `e4-ontology-round-${reviewRound}`,
-    `${stepTitle}${suffix}`,
+    formatNs4VisibleStepTitle('e4-ontology', `${stepTitle}${suffix}`),
     dependsOn,
     dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
     { planId: 'e4-ontology', ...(moduleName ? { moduleName } : {}), reviewRound, solutionMode: 'new', ...(adjustment ? { adjustment } : {}) },
@@ -232,10 +345,50 @@ export function createNs4E4RepairStep(
 ): mls.msg.AIAgentStep {
   return createNs4AgentStep(
     `e4-ontology-round-${reviewRound}-repair-${repairAttempt}`,
-    `${stepTitle} · R${repairAttempt}`,
+    formatNs4VisibleStepTitle('e4-ontology', `${stepTitle} · R${repairAttempt}`),
     [],
     'waiting_human_input',
     { planId: 'e4-ontology', moduleName, reviewRound, solutionMode: 'new', repairAttempt, gateFeedback },
+  );
+}
+
+export function createNs4E5Step(
+  moduleName = '',
+  reviewRound = 1,
+  adjustment = '',
+  dependsOn: string[] = [],
+  stepTitle = NS4_DEFAULT_TITLES['e5-rules'],
+  gateFeedback = '',
+  repairAttempt = 0,
+): mls.msg.AIAgentStep {
+  const suffix = adjustment ? ` · ${reviewRound}` : repairAttempt ? ` · R${repairAttempt}` : '';
+  return createNs4AgentStep(
+    `e5-rules-round-${reviewRound}${repairAttempt ? `-repair-${repairAttempt}` : ''}`,
+    formatNs4VisibleStepTitle('e5-rules', `${stepTitle}${suffix}`),
+    dependsOn,
+    dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
+    {
+      planId: 'e5-rules', ...(moduleName ? { moduleName } : {}), reviewRound,
+      ...(adjustment ? { adjustment } : {}), ...(gateFeedback ? { gateFeedback } : {}),
+      ...(repairAttempt ? { repairAttempt } : {}),
+    },
+  );
+}
+
+export function createNs4E5JudgeStep(
+  moduleName: string,
+  reviewRound: number,
+  repairAttempt: number,
+  judgeAttempt: number,
+  stepTitle = NS4_DEFAULT_TITLES['e5-rules'],
+): mls.msg.AIAgentStep {
+  const cleanTitle = stepTitle.trim().replace(/^[👤🔎]\s*/u, '');
+  return createNs4AgentStep(
+    `e5-rules-round-${reviewRound}${repairAttempt ? `-repair-${repairAttempt}` : ''}-judge-${judgeAttempt}`,
+    `${NS4_AUTOMATED_JUDGE_ICON} ${cleanTitle}`,
+    [],
+    'waiting_human_input',
+    { planId: 'e5-rules', stage: 'judge', moduleName, reviewRound, repairAttempt, judgeAttempt },
   );
 }
 
@@ -252,6 +405,13 @@ export const NS4_DEFAULT_TITLES: Record<Ns4PlanId, string> = {
   'e9-navigation-compiler': 'Compile navigation and page context',
   'e10-validation': 'Validate the complete L4 specification',
 };
+
+export function formatNs4VisibleStepTitle(planId: Ns4PlanId, title: string): string {
+  const cleanTitle = title.trim().replace(/^👤\s*/u, '');
+  return NS4_HUMAN_CHECKPOINT_PLAN_IDS.has(planId)
+    ? `${NS4_HUMAN_CHECKPOINT_ICON} ${cleanTitle}`
+    : cleanTitle;
+}
 
 export function normalizeNs4RootPlan(payload: unknown, sourcePrompt: string): Ns4RootPlan {
   const parsed = parseMaybeJson(payload);
@@ -289,12 +449,12 @@ export function normalizeNs4RootPlan(payload: unknown, sourcePrompt: string): Ns
 export function buildNs4PlannedSteps(plan: Ns4RootPlan): mls.msg.AIAgentStep[] {
   const title = (planId: Ns4PlanId) => plan.presentation.stepTitles[planId] || NS4_DEFAULT_TITLES[planId];
   return [
-    createNs4AgentStep('e1-clarification', title('e1-clarification'), [], 'waiting_human_input', { planId: 'e1-clarification' }),
+    createNs4E1Step(1, '', undefined, [], title('e1-clarification')),
     createNs4AgentStep('e1-compile', title('e1-compile'), ['e1-clarification-answer'], 'waiting_dependency', { planId: 'e1-compile' }),
     createNs4E2Step('', 1, '', ['e1-result'], title('e2-journeys')),
     createNs4E3Step('', 1, '', ['e2-result'], title('e3-access-matrix')),
     createNs4E4Step('', 1, '', ['e3-result'], title('e4-ontology')),
-    createNs4RoadmapStep('e5-rules', title('e5-rules'), ['e4-result']),
+    createNs4E5Step('', 1, '', ['e4-result'], title('e5-rules')),
     createNs4RoadmapStep('e6-behaviors', title('e6-behaviors'), ['e5-result']),
     createNs4RoadmapStep('e7-realization', title('e7-realization'), ['e6-result']),
     createNs4RoadmapStep('e8-workspaces', title('e8-workspaces'), ['e7-result']),
@@ -322,9 +482,11 @@ function createNs4AgentStep(
     planning: { planId: planningPlanId, dependsOn, executionMode: 'sequential', executionHost: 'client' },
   };
   if (planningPlanId === 'e1-clarification'
+    || planningPlanId.startsWith('e1-clarification-round-')
     || planningPlanId.startsWith('e2-journeys-round-')
     || planningPlanId.startsWith('e3-access-matrix-round-')
-    || planningPlanId.startsWith('e4-ontology-round-')) {
+    || planningPlanId.startsWith('e4-ontology-round-')
+    || planningPlanId.startsWith('e5-rules-round-')) {
     step.onFailure = 'wait_after_prompt';
   }
   return step;
@@ -395,6 +557,30 @@ export function buildNs4ModuleArtifact(
         boundaries: clarification.questions.boundaries.answer.trim(),
       },
     },
+    reviewPolicy: { mode: 'smart' },
+    solutionStrategy: {
+      mode: 'newSolution',
+      rationale: 'Legacy clarification did not declare a modernization strategy.',
+      databaseChangePolicy: 'new',
+    },
+    businessScope: {
+      mainGoal,
+      actors: clarification.questions.mainActors.answer.trim()
+        ? [{
+          actorId: 'primaryActor',
+          title: clarification.questions.mainActors.answer.trim(),
+          kind: 'internal',
+          expectedOutcome: mainGoal,
+        }]
+        : [],
+      expectedOutcomes: [{ outcomeId: 'primaryOutcome', title: mainGoal, description: mainGoal }],
+      inScope: [],
+      outOfScope: clarification.questions.boundaries.answer.trim()
+        ? [clarification.questions.boundaries.answer.trim()]
+        : [],
+    },
+    localization: { productLanguages, defaultLanguage: productLanguages[0] },
+    declaredConstraints: { mandatoryIntegrations: [] },
     specStatus: {
       flowId: NS4_FLOW_ID,
       flowVersion: NS4_FLOW_VERSION,
@@ -764,6 +950,91 @@ export function markNs4ModuleE4Approved(
   };
 }
 
+export function markNs4E5Running(
+  state: Ns4PipelineState,
+  reviewRound: number,
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  if (state.steps.e5?.status === 'approved') return state;
+  return {
+    ...state,
+    status: 'inProgress',
+    steps: { ...state.steps, e5: { status: 'running', reviewRound: Math.max(1, reviewRound), updatedAt: now } },
+    nextStep: 'e5-rules',
+    updatedAt: now,
+  };
+}
+
+export function markNs4E5WaitingHuman(
+  state: Ns4PipelineState,
+  reviewRound: number,
+  draftPath: string,
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  if (state.steps.e5?.status === 'approved') return state;
+  return {
+    ...state,
+    status: 'inProgress',
+    steps: { ...state.steps, e5: { status: 'waitingHuman', reviewRound: Math.max(1, reviewRound), draftPath, updatedAt: now } },
+    nextStep: 'e5-rules',
+    updatedAt: now,
+  };
+}
+
+export function markNs4E5Failed(
+  state: Ns4PipelineState,
+  failure: unknown,
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  if (state.steps.e5?.status === 'approved') return state;
+  const reviewRound = state.steps.e5?.reviewRound || 1;
+  return {
+    ...state,
+    status: 'failed',
+    steps: {
+      ...state.steps,
+      e5: { status: 'failed', reviewRound, error: normalizeNs4Failure(failure), failedAt: now, updatedAt: now },
+    },
+    nextStep: 'e5-rules',
+    updatedAt: now,
+  };
+}
+
+export function markNs4E5Approved(
+  state: Ns4PipelineState,
+  approvedBy: Ns4ApprovedBy,
+  artifactPaths: string[],
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  const reviewRound = state.steps.e5?.reviewRound || 1;
+  return {
+    ...state,
+    status: 'inProgress',
+    steps: {
+      ...state.steps,
+      e5: {
+        ...state.steps.e5,
+        status: 'approved', reviewRound, artifactPaths: [...artifactPaths], approvedBy, approvedAt: now, updatedAt: now,
+      },
+    },
+    nextStep: 'e6-behaviors',
+    updatedAt: now,
+  };
+}
+
+export function markNs4ModuleE5Approved(
+  artifact: Ns4ModuleArtifact,
+  approvedBy: Ns4ApprovedBy,
+  now = new Date().toISOString(),
+): Ns4ModuleArtifact {
+  const completedSteps = artifact.specStatus.completedSteps.filter(step => step.stepId !== 'e5-rules');
+  completedSteps.push({ stepId: 'e5-rules', status: 'approved', approvedBy, approvedAt: now });
+  return {
+    ...artifact,
+    specStatus: { ...artifact.specStatus, completedSteps, nextStep: 'e6-behaviors', updatedAt: now },
+  };
+}
+
 export function resolveNs4ExistingAction(
   moduleExists: boolean,
   pipeline: unknown,
@@ -771,7 +1042,8 @@ export function resolveNs4ExistingAction(
 ): Ns4ExistingAction {
   if (!moduleExists) return 'new';
   if (!isNs4Pipeline(pipeline)) return 'collision';
-  if (pipeline.steps.e4?.status === 'approved' && moduleArtifactExists) return 'resume-next';
+  if (pipeline.steps.e5?.status === 'approved' && moduleArtifactExists) return 'resume-next';
+  if (pipeline.steps.e4?.status === 'approved' && moduleArtifactExists) return 'resume-e5';
   if (pipeline.steps.e3?.status === 'approved' && moduleArtifactExists) return 'resume-e4';
   if (pipeline.steps.e2?.status === 'approved' && moduleArtifactExists) return 'resume-e3';
   if (pipeline.steps.e1.status === 'approved' && moduleArtifactExists) return 'resume-e2';

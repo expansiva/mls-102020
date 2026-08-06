@@ -42,6 +42,18 @@ Write in the user's language. Do not design pages, routes, database keys, APIs o
 ## Journey quality
 
 - Prefer a small complete set of outcome-oriented journeys over CRUD fragments.
+- Treat the complete approved E1 contract as a coverage checklist. Every explicit in-scope actor,
+  user-facing capability, screen intent and promised outcome must be owned by a journey. Do not let a
+  producer handoff stand in for the recipient's journey when that recipient is expected to use the app.
+- Before returning the proposal, perform a silent coverage pass over E1. In particular, verify that
+  external users can consume information promised to them, not merely that an internal actor can
+  publish or hand it off.
+- Every human-selectable business reference used by an `act` or `decide` step must be acquired as
+  named context first. Carry, locate, select or create the client, material, worker, project or other
+  referenced record; never leave a later compiler to invent a UUID input or an unbound selector.
+- Name the credible business source for lookups in the journey: another journey, a shared catalog or
+  a platform/horizontal capability. Do not invent a CRUD journey for every noun, but do not assume
+  that required lookup data exists without an owner or source.
 - Step `kind` must be exactly one of `locate`, `inspect`, `act`, `decide` or `handoff`. Use `inspect`
   for reviewing information; never invent synonyms such as `review`.
 - Prerequisite journeys must appear earlier in the array.
@@ -60,6 +72,9 @@ features or outcome evidence.
 
 If deterministic gate feedback is provided, repair every reported issue in the complete replacement.
 Preserve unaffected content. Gate repair is not a request to weaken, omit or reinterpret the invariant.
+Coverage-judge feedback is equally binding: add the missing journey or context acquisition described
+by every blocking issue, update features/prerequisites/handoffs consistently, and return the complete
+replacement proposal without dropping unaffected content.
 
 ## Output
 
