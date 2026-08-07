@@ -25,17 +25,20 @@ Cross-journey handoffs are also checked: a prerequisite may only provide a conte
 by the referenced journey, using the same stable `contextId`. Every `contextOrLookup` journey must
 materialize its direct-entry fallback through a `locate` step.
 
-The first deterministic gate failure does not immediately terminate the task. E2 stores the rejected
-draft and creates one bounded repair step carrying the exact gate diagnostics. The repair step is
-added before the current step is completed so parent auto-completion cannot close the task. A second
-gate failure is terminal and remains persisted in both the task trace and pipeline.
+The first deterministic gate failure in each proposal cycle does not immediately terminate the task.
+E2 stores the rejected draft and creates one bounded structural repair carrying the exact gate
+diagnostics. The repair step is added before the current step is completed so parent auto-completion
+cannot close the task. A second structural failure in that cycle is terminal and remains persisted in
+both the task trace and pipeline.
 
 Internal consistency is insufficient for product completeness, so the coverage judge independently
 checks E1 actors, explicit capabilities, screen intents, outcomes, recipient-side consumption and
-human-selectable references. Blocking omissions trigger the same one complete-draft repair path. The
-repaired draft is judged again and fails closed if incomplete. An invalid judge envelope is retried
-once; compact verdict results remain in the task for diagnosis. `/fast` skips only the human widget,
-never the structural gate or coverage judge.
+human-selectable references. Blocking omissions receive one separate complete-draft semantic repair;
+a prior structural repair does not consume this budget. The semantic repair returns through the
+structural gate, is judged again and fails closed if incomplete. An invalid judge envelope is retried
+once; compact verdict results remain in the task for diagnosis. Every generated plan id includes its
+repair cycle, preventing duplicate-step collisions. `/fast` skips only the human widget, never the
+structural gate or coverage judge.
 
 Local smoke testing can validate and materialize an approved E1 folder without the Studio runtime:
 

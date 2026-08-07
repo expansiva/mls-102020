@@ -5,7 +5,7 @@ start of the task.
 
 Invocation:
 
-- `@@newSolution4 petShop` — create a module or resume its next incomplete v7 step;
+- `@@newSolution4 petShop` — create a module or resume its next incomplete v8 step;
 - `@@newSolution4 petShop /fast` — auto-accept valid E1 through E5 proposals;
 - an existing module without an `agentNewSolution4` pipeline is rejected.
 
@@ -31,8 +31,8 @@ languages and constraints.
 After E1 approval, the already-planned E2 step is unlocked automatically. E2 writes a review draft,
 passes it through the deterministic structural gate and then through an independent semantic coverage
 judge. The judge compares the complete E1 contract with the proposed journeys and blocks missing
-actor outcomes, recipient journeys and business-context acquisition. One complete automatic repair is
-allowed; only a judged-complete draft opens the journey widget. `🔎` identifies the automated judge
+actor outcomes, recipient journeys and business-context acquisition. Structural repair and semantic
+coverage repair have independent bounded budgets; only a judged-complete draft opens the journey widget. `🔎` identifies the automated judge
 and `👤` identifies the subsequent human checkpoint. If a run is interrupted between steps, the same
 command resumes from the pipeline. Approval writes:
 

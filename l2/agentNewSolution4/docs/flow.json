@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-06-ns4-flow-v7",
+  "schemaVersion": "2026-08-07-ns4-flow-v8",
   "status": "e1-e5",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -11,7 +11,7 @@
   "principles": [
     "The root LLM detects the communication language, translates friendly step titles and creates the visible roadmap before clarification begins.",
     "The runtime prefixes implemented human clarification/checkpoint step titles with the deterministic 👤 marker; persisted localized titles remain plain reusable text.",
-    "E2 proposals must pass an independent 🔎 semantic coverage judge before human review; one bounded complete-draft repair is allowed.",
+    "E2 proposals must pass an independent 🔎 semantic coverage judge before human review; deterministic structural repair and semantic complete-draft repair have separate bounded budgets.",
     "E1 preserves its full reviewed contract, supports repeated prompt-driven revisions and only unlocks compilation after the rich deterministic gate passes.",
     "E2 through E5 approval callbacks persist their already-gated permanent review artifacts before adding the result anchor.",
     "Every implemented compile step writes a permanent L4 artifact and a stable result anchor.",
@@ -28,7 +28,7 @@
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v7-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Previous flow versions are not migrated; foreign or older modules are rejected."
+    "resumeRule": "A v8-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",
@@ -113,10 +113,10 @@
         "prompt_ready preserves the hook args byte-for-byte.",
         "E2 is marked running only after the LLM call returns to afterPrompt.",
         "Terminal failures are persisted in pipeline.steps.e2.error and failedAt.",
-        "A first deterministic gate failure persists the invalid draft and schedules one bounded LLM repair step before failing the task.",
+        "A deterministic gate failure persists the invalid draft and may schedule one bounded structural repair for the current proposal cycle.",
         "A structurally valid draft is not shown immediately: an independent reasoning-model judge compares all E1 actors, capabilities, screen intents and outcomes with E2.",
         "The coverage judge rejects missing recipient journeys, orphan user outcomes, raw-id risks and human-selectable references without named context acquisition or a credible lookup source.",
-        "One complete-draft semantic repair is allowed; the repaired draft is judged again and fails closed if coverage remains incomplete.",
+        "One complete-draft semantic repair is allowed independently of structural repair; it returns through the gate, is judged again and fails closed if coverage remains incomplete.",
         "An invalid judge envelope is retried once. Compact judge results remain in the task trace after large LLM interactions are cleaned.",
         "Only a judged-complete draft opens the 👤 widget; /fast also waits for the same judgment before durable approval.",
         "Prerequisite handoffs use stable context ids exported by the referenced journey.",

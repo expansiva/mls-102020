@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createNs4E2CoverageJudgeStep } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
+import {
+  createNs4E2CoverageJudgeStep,
+  createNs4E2CoverageRepairStep,
+  createNs4E2GateRepairStep,
+} from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
   formatNs4E2CoverageRepairFeedback,
   normalizeNs4E2CoverageVerdict,
@@ -10,13 +14,33 @@ import {
 
 test('E2 creates a bounded automated coverage-judge step', () => {
   const step = createNs4E2CoverageJudgeStep('buildFlowFsm', 2, 1, 1, 'Mapear jornadas');
-  assert.equal(step.planning?.planId, 'e2-journeys-round-2-coverage-judge-1');
+  assert.equal(step.planning?.planId, 'e2-journeys-round-2-coverage-1-judge-1');
   assert.equal(step.stepTitle, '🔎 Mapear jornadas');
   assert.equal(step.status, 'waiting_human_input');
   assert.equal(step.onFailure, 'wait_after_prompt');
   assert.deepEqual(JSON.parse(step.prompt || '{}'), {
     planId: 'e2-journeys', stage: 'coverageJudge', moduleName: 'buildFlowFsm',
-    reviewRound: 2, repairAttempt: 1, judgeAttempt: 1,
+    reviewRound: 2, coverageRepairAttempt: 1, judgeAttempt: 1,
+  });
+});
+
+test('E2 gives structural and semantic repairs independent bounded identities', () => {
+  const firstGateRepair = createNs4E2GateRepairStep('buildFlowFsm', 1, 1, 0, 'Fix context handoff');
+  const firstJudge = createNs4E2CoverageJudgeStep('buildFlowFsm', 1, 0, 1);
+  const semanticRepair = createNs4E2CoverageRepairStep('buildFlowFsm', 1, 1, 'Add missing actor journeys');
+  const repairedGateRepair = createNs4E2GateRepairStep('buildFlowFsm', 1, 1, 1, 'Fix repaired context handoff');
+  const repairedJudge = createNs4E2CoverageJudgeStep('buildFlowFsm', 1, 1, 1);
+
+  const planIds = [firstGateRepair, firstJudge, semanticRepair, repairedGateRepair, repairedJudge]
+    .map(step => step.planning?.planId);
+  assert.equal(new Set(planIds).size, planIds.length);
+  assert.deepEqual(JSON.parse(semanticRepair.prompt || '{}'), {
+    planId: 'e2-journeys', moduleName: 'buildFlowFsm', reviewRound: 1,
+    coverageRepairAttempt: 1, coverageFeedback: 'Add missing actor journeys',
+  });
+  assert.deepEqual(JSON.parse(repairedGateRepair.prompt || '{}'), {
+    planId: 'e2-journeys', moduleName: 'buildFlowFsm', reviewRound: 1,
+    gateRepairAttempt: 1, coverageRepairAttempt: 1, gateFeedback: 'Fix repaired context handoff',
   });
 });
 

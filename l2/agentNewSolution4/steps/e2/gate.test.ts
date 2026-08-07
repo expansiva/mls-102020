@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildNs4ModuleArtifact,
-  createNs4E2RepairStep,
+  createNs4E2GateRepairStep,
   createNs4Pipeline,
   markNs4E1Approved,
   markNs4E2Approved,
@@ -96,13 +96,14 @@ test('E2 rejects invented step kinds instead of silently normalizing them', () =
 });
 
 test('E2 creates one open repair step with deterministic gate feedback', () => {
-  const step = createNs4E2RepairStep('buildFlowFsm', 2, 1, 'NS4_E2_STEP_KIND journeys[0]');
-  assert.equal(step.planning?.planId, 'e2-journeys-round-2-repair-1');
+  const step = createNs4E2GateRepairStep('buildFlowFsm', 2, 1, 0, 'NS4_E2_STEP_KIND journeys[0]');
+  assert.equal(step.planning?.planId, 'e2-journeys-round-2-coverage-0-gate-repair-1');
   assert.equal(step.status, 'waiting_human_input');
   assert.equal(step.onFailure, 'wait_after_prompt');
   assert.deepEqual(JSON.parse(step.prompt || '{}'), {
     planId: 'e2-journeys', moduleName: 'buildFlowFsm', reviewRound: 2,
-    repairAttempt: 1, gateFeedback: 'NS4_E2_STEP_KIND journeys[0]',
+    gateRepairAttempt: 1, coverageRepairAttempt: 0,
+    gateFeedback: 'NS4_E2_STEP_KIND journeys[0]',
   });
 });
 

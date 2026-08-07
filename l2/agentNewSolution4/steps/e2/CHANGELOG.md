@@ -1,5 +1,9 @@
 # E2 changelog
 
+- 2026-08-07: Flow v8 separated deterministic structural repairs from semantic coverage repairs.
+  A context-shape correction can no longer consume the judge's only completeness-repair budget;
+  semantic repairs return through the gate and every repair/judge plan id remains unique.
+
 - 2026-08-06: Flow v6 added an independent semantic coverage judge between the structural gate and
   human review. It checks the full E1 contract for missing actor/recipient journeys, uncovered
   outcomes and selectable references without named context acquisition or a credible lookup source.

@@ -7,8 +7,9 @@ import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
   createNs4E2CoverageJudgeStep,
+  createNs4E2CoverageRepairStep,
+  createNs4E2GateRepairStep,
   createNs4E2Step,
-  createNs4E2RepairStep,
   formatNs4VisibleStepTitle,
   isNs4Pipeline,
   markNs4E2Approved,
@@ -54,12 +55,15 @@ interface Ns4E2Args {
   moduleName?: string;
   adjustment?: string;
   reviewRound?: number;
-  repairAttempt?: number;
+  gateRepairAttempt?: number;
+  coverageRepairAttempt?: number;
   judgeAttempt?: number;
   gateFeedback?: string;
+  coverageFeedback?: string;
 }
 
-const MAX_E2_REPAIRS = 1;
+const MAX_E2_GATE_REPAIRS = 1;
+const MAX_E2_COVERAGE_REPAIRS = 1;
 const MAX_E2_JUDGE_ATTEMPTS = 2;
 
 interface Ns4PersistedE2 {
@@ -115,7 +119,9 @@ export async function beforeNs4E2PromptStep(
       } as mls.msg.AgentIntentPromptReady];
     }
 
-    const previousDraft = parsed.adjustment || parsed.gateFeedback ? await readDraftFromStorage(moduleName) : null;
+    const previousDraft = parsed.adjustment || parsed.gateFeedback || parsed.coverageFeedback
+      ? await readDraftFromStorage(moduleName)
+      : null;
     const [prompt, platform] = await Promise.all([
       readNs4AgentText('steps/e2', 'prompt'),
       readNs4AgentText('skills', 'platform'),
@@ -127,6 +133,7 @@ export async function beforeNs4E2PromptStep(
       `## Required review round\n${reviewRound}`,
       parsed.adjustment ? `## Human adjustment request\n${parsed.adjustment}` : '',
       parsed.gateFeedback ? `## Deterministic gate repair required\n${parsed.gateFeedback}` : '',
+      parsed.coverageFeedback ? `## Semantic coverage repair required\n${parsed.coverageFeedback}` : '',
       previousDraft ? `## Previous E2 draft\n${JSON.stringify(previousDraft, null, 2)}` : '',
     ].filter(Boolean).join('\n');
 
@@ -176,21 +183,26 @@ export async function afterNs4E2PromptStep(
     const gate = validateNs4E2Review(review);
     if (!gate.ok) {
       const message = gate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
-      const repairAttempt = args.repairAttempt || 0;
-      if (repairAttempt < MAX_E2_REPAIRS) {
+      const gateRepairAttempt = args.gateRepairAttempt || 0;
+      const coverageRepairAttempt = args.coverageRepairAttempt || 0;
+      if (gateRepairAttempt < MAX_E2_GATE_REPAIRS) {
         await writeNs4E2Draft(moduleName, review);
         const repairParent = findMutableParentStep(context, parentStep);
-        const repairStep = createNs4E2RepairStep(
+        const repairStep = createNs4E2GateRepairStep(
           moduleName,
           review.reviewRound,
-          repairAttempt + 1,
+          gateRepairAttempt + 1,
+          coverageRepairAttempt,
           message,
           pipeline.presentation.stepTitles['e2-journeys'],
         );
         return [
           addStep(context, repairParent, repairStep),
-          gateRepairResultStep(context, repairParent, moduleName, review.reviewRound, repairAttempt + 1, message),
-          updateStatus(context, repairParent, step, hookSequential, 'completed', `E2 gate requested automatic repair ${repairAttempt + 1}.`, 'input_output'),
+          gateRepairResultStep(
+            context, repairParent, moduleName, review.reviewRound,
+            gateRepairAttempt + 1, coverageRepairAttempt, message,
+          ),
+          updateStatus(context, repairParent, step, hookSequential, 'completed', `E2 gate requested structural repair ${gateRepairAttempt + 1}.`, 'input_output'),
         ];
       }
       await recordNs4E2Failure(moduleName, message);
@@ -202,7 +214,7 @@ export async function afterNs4E2PromptStep(
     const judgeStep = createNs4E2CoverageJudgeStep(
       moduleName,
       review.reviewRound,
-      args.repairAttempt || 0,
+      args.coverageRepairAttempt || 0,
       1,
       pipeline.presentation.stepTitles['e2-journeys'],
     );
@@ -230,7 +242,7 @@ async function afterNs4E2CoverageJudge(
 ): Promise<mls.msg.AgentIntent[]> {
   const round = args.reviewRound || pipeline.steps.e2?.reviewRound || 1;
   const judgeAttempt = args.judgeAttempt || 1;
-  const repairAttempt = args.repairAttempt || 0;
+  const coverageRepairAttempt = args.coverageRepairAttempt || 0;
   const judgeParent = findMutableParentStep(context, parentStep);
   const payload = unwrapPayload(step.interaction?.payload?.[0]);
   const verdict = normalizeNs4E2CoverageVerdict(payload, args.moduleName, round);
@@ -243,12 +255,12 @@ async function afterNs4E2CoverageJudge(
         addStep(context, judgeParent, createNs4E2CoverageJudgeStep(
           args.moduleName,
           round,
-          repairAttempt,
+          coverageRepairAttempt,
           judgeAttempt + 1,
           pipeline.presentation.stepTitles['e2-journeys'],
         )),
         coverageJudgeTraceStep(
-          context, judgeParent, round, judgeAttempt,
+          context, judgeParent, round, coverageRepairAttempt, judgeAttempt,
           pipeline.presentation.stepTitles['e2-journeys'], { valid: false, errors: validation.errors },
         ),
         updateStatus(
@@ -272,26 +284,32 @@ async function afterNs4E2CoverageJudge(
 
   if (!verdict.complete) {
     const feedback = formatNs4E2CoverageRepairFeedback(verdict);
-    if (repairAttempt < MAX_E2_REPAIRS) {
+    if (coverageRepairAttempt < MAX_E2_COVERAGE_REPAIRS) {
       return [
-        addStep(context, judgeParent, createNs4E2RepairStep(
+        addStep(context, judgeParent, createNs4E2CoverageRepairStep(
           args.moduleName,
           round,
-          repairAttempt + 1,
+          coverageRepairAttempt + 1,
           feedback,
           pipeline.presentation.stepTitles['e2-journeys'],
         )),
-        coverageJudgeTraceStep(context, judgeParent, round, judgeAttempt, pipeline.presentation.stepTitles['e2-journeys'], verdict),
+        coverageJudgeTraceStep(
+          context, judgeParent, round, coverageRepairAttempt, judgeAttempt,
+          pipeline.presentation.stepTitles['e2-journeys'], verdict,
+        ),
         updateStatus(
           context, judgeParent, step, hookSequential, 'completed',
-          `E2 coverage judge requested automatic repair ${repairAttempt + 1}.`, 'input_output',
+          `E2 coverage judge requested semantic repair ${coverageRepairAttempt + 1}.`, 'input_output',
         ),
       ];
     }
     const message = `E2 remains incomplete after automatic repair.\n${feedback}`;
     await recordNs4E2Failure(args.moduleName, message);
     return [
-      coverageJudgeTraceStep(context, judgeParent, round, judgeAttempt, pipeline.presentation.stepTitles['e2-journeys'], verdict),
+      coverageJudgeTraceStep(
+        context, judgeParent, round, coverageRepairAttempt, judgeAttempt,
+        pipeline.presentation.stepTitles['e2-journeys'], verdict,
+      ),
       updateStatus(context, judgeParent, step, hookSequential, 'failed', message),
     ];
   }
@@ -300,7 +318,8 @@ async function afterNs4E2CoverageJudge(
   const reviewedPipeline = await requirePipeline(args.moduleName);
   await writeNs4Pipeline(markNs4E2WaitingHuman(reviewedPipeline, round, draftPath));
   const trace = coverageJudgeTraceStep(
-    context, judgeParent, round, judgeAttempt, pipeline.presentation.stepTitles['e2-journeys'], verdict,
+    context, judgeParent, round, coverageRepairAttempt, judgeAttempt,
+    pipeline.presentation.stepTitles['e2-journeys'], verdict,
   );
 
   if (isFast(context)) {
@@ -473,6 +492,7 @@ function coverageJudgeTraceStep(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
   round: number,
+  coverageRepairAttempt: number,
   judgeAttempt: number,
   title: string,
   result: Ns4E2CoverageVerdict | { valid: false; errors: string[] },
@@ -482,7 +502,7 @@ function coverageJudgeTraceStep(
     type: 'result', stepId: 0, interaction: null, stepTitle: `${NS4_AUTOMATED_JUDGE_ICON} ${cleanTitle}`,
     status: 'completed', nextSteps: [], result: JSON.stringify(result, null, 2),
     planning: {
-      planId: `e2-coverage-judge-result-${round}-${judgeAttempt}`,
+      planId: `e2-coverage-judge-result-${round}-${coverageRepairAttempt}-${judgeAttempt}`,
       dependsOn: [], executionMode: 'manual_later', executionHost: 'client',
     },
   } as mls.msg.AIResultStep);
@@ -501,13 +521,19 @@ function gateRepairResultStep(
   parentStep: mls.msg.AIAgentStep,
   moduleName: string,
   round: number,
-  repairAttempt: number,
+  gateRepairAttempt: number,
+  coverageRepairAttempt: number,
   gateFeedback: string,
 ): mls.msg.AgentIntentAddStep {
   return addStep(context, parentStep, {
-    type: 'result', stepId: 0, interaction: null, stepTitle: `E2 gate repair ${repairAttempt}`,
-    status: 'completed', nextSteps: [], result: JSON.stringify({ moduleName, reviewRound: round, repairAttempt, gateFeedback }, null, 2),
-    planning: { planId: `e2-gate-repair-${round}-${repairAttempt}`, dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
+    type: 'result', stepId: 0, interaction: null, stepTitle: `E2 structural repair ${gateRepairAttempt}`,
+    status: 'completed', nextSteps: [], result: JSON.stringify({
+      moduleName, reviewRound: round, gateRepairAttempt, coverageRepairAttempt, gateFeedback,
+    }, null, 2),
+    planning: {
+      planId: `e2-gate-repair-${round}-${coverageRepairAttempt}-${gateRepairAttempt}`,
+      dependsOn: [], executionMode: 'manual_later', executionHost: 'client',
+    },
   } as mls.msg.AIResultStep);
 }
 
@@ -546,9 +572,11 @@ function parseE2Args(value: unknown): Ns4E2Args {
     ...(typeof parsed.moduleName === 'string' && parsed.moduleName.trim() ? { moduleName: parsed.moduleName.trim() } : {}),
     ...(typeof parsed.adjustment === 'string' && parsed.adjustment.trim() ? { adjustment: parsed.adjustment.trim() } : {}),
     ...(typeof parsed.reviewRound === 'number' ? { reviewRound: parsed.reviewRound } : {}),
-    ...(typeof parsed.repairAttempt === 'number' ? { repairAttempt: parsed.repairAttempt } : {}),
+    ...(typeof parsed.gateRepairAttempt === 'number' ? { gateRepairAttempt: parsed.gateRepairAttempt } : {}),
+    ...(typeof parsed.coverageRepairAttempt === 'number' ? { coverageRepairAttempt: parsed.coverageRepairAttempt } : {}),
     ...(typeof parsed.judgeAttempt === 'number' ? { judgeAttempt: parsed.judgeAttempt } : {}),
     ...(typeof parsed.gateFeedback === 'string' && parsed.gateFeedback.trim() ? { gateFeedback: parsed.gateFeedback.trim() } : {}),
+    ...(typeof parsed.coverageFeedback === 'string' && parsed.coverageFeedback.trim() ? { coverageFeedback: parsed.coverageFeedback.trim() } : {}),
   };
 }
 
