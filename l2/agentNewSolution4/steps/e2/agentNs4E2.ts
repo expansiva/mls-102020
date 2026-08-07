@@ -172,12 +172,12 @@ export async function afterNs4E2PromptStep(
       return await afterNs4E2CoverageJudge(context, parentStep, step, hookSequential, args, pipeline);
     }
     const payload = unwrapPayload(step.interaction?.payload?.[0]);
-    if (!isRecord(payload) || payload.type !== 'clarification' || !isRecord(payload.json)) {
+    if (!isRecord(payload) || payload.planId !== 'e2-review') {
       const message = readE2FailureMessage(payload);
       await recordNs4E2Failure(moduleName, message);
       return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
     }
-    const review = normalizeNs4E2Review(payload.json, args.moduleName);
+    const review = normalizeNs4E2Review(payload, args.moduleName);
     review.moduleName = args.moduleName;
     review.reviewRound = args.reviewRound || review.reviewRound;
     const gate = validateNs4E2Review(review);
@@ -627,5 +627,5 @@ function readE2FailureMessage(payload: unknown): string {
   if (isRecord(payload) && payload.type === 'result' && typeof payload.result === 'string' && payload.result.trim()) {
     return payload.result.trim();
   }
-  return 'E2 returned an invalid review payload.';
+  return 'E2 returned an invalid internal review payload.';
 }

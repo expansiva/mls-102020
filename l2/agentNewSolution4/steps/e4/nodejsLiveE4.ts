@@ -6,8 +6,18 @@ import path from 'node:path';
 import { Ns4ModuleArtifact } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { normalizeNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { normalizeNs4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
-import { normalizeNs4E4Review } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
-import { validateNs4E4Review } from '/_102020_/l2/agentNewSolution4/steps/e4/gate.js';
+import {
+  assembleNs4E4Review,
+  normalizeNs4E4EntityDraft,
+  normalizeNs4E4PlanDraft,
+  Ns4E4EntityDraft,
+  Ns4E4PlanDraft,
+} from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
+import {
+  validateNs4E4EntityDraft,
+  validateNs4E4Plan,
+  validateNs4E4Review,
+} from '/_102020_/l2/agentNewSolution4/steps/e4/gate.js';
 
 interface OpenAiResponse {
   model?: string;
@@ -26,11 +36,12 @@ async function main(): Promise<void> {
   }
   const moduleDir = path.join(ROOT, `mls-${project}`, 'l4', moduleName);
   const pipelineDir = path.join(moduleDir, 'pipeline');
-  const [moduleSource, journeysSource, accessSource, promptTemplate, platformSkill] = await Promise.all([
+  const [moduleSource, journeysSource, accessSource, promptTemplate, entityPrompt, platformSkill] = await Promise.all([
     readFile(path.join(moduleDir, 'module.defs.ts'), 'utf8'),
     readFile(path.join(pipelineDir, 'e2-journeys.draft.json'), 'utf8'),
     readFile(path.join(pipelineDir, 'e3-access-matrix.draft.json'), 'utf8'),
     readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution4/steps/e4/prompt.md'), 'utf8'),
+    readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution4/steps/e4/promptEntity.md'), 'utf8'),
     readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution4/skills/platform.md'), 'utf8'),
   ]);
   const moduleArtifact = parseDefs(moduleSource) as Ns4ModuleArtifact;
@@ -47,23 +58,59 @@ async function main(): Promise<void> {
   const model = /<!--\s*modelType:\s*([^\s]+)\s*-->/i.exec(promptTemplate)?.[1] || 'reasoning';
   const config = await loadLlmConfig();
   const responses: OpenAiResponse[] = [];
-  let response = await callCollabLlm(config, { model, systemPrompt, humanPrompt });
+  let response = await callCollabLlm(config, { model, systemPrompt, humanPrompt, maxTokens: 16_384 });
   responses.push(response);
-  let review = parseReview(response, moduleName);
-  let gate = validateNs4E4Review(review, journeys, access);
+  let plan = parsePlan(response, moduleName);
+  let gate = validateNs4E4Plan(plan, journeys, access);
   if (!gate.ok) {
     const feedback = gate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
     response = await callCollabLlm(config, {
       model, systemPrompt,
-      humanPrompt: `${humanPrompt}\n\n## Deterministic gate repair required\n${feedback}\n\n## Previous E4 draft\n${JSON.stringify(review)}`,
+      humanPrompt: `${humanPrompt}\n\n## Deterministic gate repair required\n${feedback}\n\n## Previous E4 overview\n${JSON.stringify(plan)}`,
+      maxTokens: 16_384,
     });
     responses.push(response);
-    review = parseReview(response, moduleName);
-    gate = validateNs4E4Review(review, journeys, access);
+    plan = parsePlan(response, moduleName);
+    gate = validateNs4E4Plan(plan, journeys, access);
   }
   if (!gate.ok) throw new Error(gate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n'));
+  const details = await mapParallel(plan.entities, 20, async entity => {
+    const relationships = plan.relationships.filter(item => item.fromEntity === entity.entityId || item.toEntity === entity.entityId);
+    const relatedJourneys = journeys.journeys.filter(item => entity.sourceRefs.journeyIds.includes(item.journeyId));
+    const relatedFeatures = journeys.features.filter(item => entity.sourceRefs.featureIds.includes(item.featureId));
+    const relatedAuthorities = access.authorities.filter(item => entity.sourceRefs.authorityRefs.includes(item.authorityRef));
+    const relatedGrants = access.grants.filter(item => entity.sourceRefs.authorityRefs.includes(item.authorityRef));
+    const entityHumanPrompt = [
+      '## Frozen target entity overview', JSON.stringify(entity),
+      '## All valid entity ids and storage targets', JSON.stringify(plan.entities.map(item => ({ entityId: item.entityId, storage: item.storage.target }))),
+      '## Relationships touching this entity', JSON.stringify(relationships),
+      '## Related E2 journeys and features', JSON.stringify({ journeys: relatedJourneys, features: relatedFeatures }),
+      '## Related E3 authorities and grants', JSON.stringify({ authorities: relatedAuthorities, grants: relatedGrants }),
+      `## Required identity\nmoduleName=${moduleName}; reviewRound=1; entityId=${entity.entityId}; userLanguage=${plan.userLanguage}`,
+    ].join('\n\n');
+    let detailResponse = await callCollabLlm(config, { model, systemPrompt: entityPrompt, humanPrompt: entityHumanPrompt, maxTokens: 8_192 });
+    responses.push(detailResponse);
+    let detail = parseEntity(detailResponse, plan, entity.entityId);
+    let detailGate = validateNs4E4EntityDraft(plan, detail);
+    if (!detailGate.ok) {
+      const feedback = detailGate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
+      detailResponse = await callCollabLlm(config, {
+        model, systemPrompt: entityPrompt, maxTokens: 8_192,
+        humanPrompt: `${entityHumanPrompt}\n\n## Entity gate repair required\n${feedback}\n\n## Current entity draft\n${JSON.stringify(detail)}`,
+      });
+      responses.push(detailResponse);
+      detail = parseEntity(detailResponse, plan, entity.entityId);
+      detailGate = validateNs4E4EntityDraft(plan, detail);
+    }
+    if (!detailGate.ok) throw new Error(detailGate.issues.map(issue => `${entity.entityId} ${issue.code}: ${issue.message}`).join('\n'));
+    return detail;
+  });
+  const review = assembleNs4E4Review(plan, details);
+  const finalGate = validateNs4E4Review(review, journeys, access);
+  if (!finalGate.ok) throw new Error(finalGate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n'));
   process.stdout.write(`${JSON.stringify({
-    ok: true, mode: 'dry-run', project, moduleName, model: response.model || null, attempts: responses.length,
+    ok: true, mode: 'dry-run', project, moduleName, model: response.model || null,
+    calls: responses.length, maxParallel: 20,
     entityCount: review.entities.length, relationshipCount: review.relationships.length,
     fieldCount: review.entities.reduce((sum, entity) => sum + entity.fields.length, 0),
     informationAuthorities: access.authorities.filter(authority => authority.informationNeeds.length).map(authority => authority.authorityRef),
@@ -71,21 +118,25 @@ async function main(): Promise<void> {
   }, null, 2)}\n`);
 }
 
-function parseReview(response: OpenAiResponse, moduleName: string) {
+function parsePlan(response: OpenAiResponse, moduleName: string): Ns4E4PlanDraft {
   const parsed = parseJsonContent(response.choices?.[0]?.message?.content);
   const payload = isRecord(parsed) && parsed.type === 'flexible' ? parseJsonContent(parsed.result) : parsed;
-  if (!isRecord(payload) || payload.type !== 'clarification' || !isRecord(payload.json)) {
-    throw new Error('collab-llm returned no valid E4 clarification payload.');
-  }
-  const review = normalizeNs4E4Review(payload.json, moduleName);
-  review.moduleName = moduleName;
-  review.reviewRound = 1;
-  return review;
+  if (!isRecord(payload)) throw new Error('collab-llm returned no valid E4 overview payload.');
+  const plan = normalizeNs4E4PlanDraft(payload, moduleName);
+  plan.moduleName = moduleName; plan.reviewRound = 1;
+  return plan;
+}
+
+function parseEntity(response: OpenAiResponse, plan: Ns4E4PlanDraft, entityId: string): Ns4E4EntityDraft {
+  const parsed = parseJsonContent(response.choices?.[0]?.message?.content);
+  const payload = isRecord(parsed) && parsed.type === 'flexible' ? parseJsonContent(parsed.result) : parsed;
+  if (!isRecord(payload)) throw new Error(`collab-llm returned no valid E4 entity payload for ${entityId}.`);
+  return normalizeNs4E4EntityDraft(payload, plan.moduleName, plan.reviewRound, entityId);
 }
 
 async function callCollabLlm(
   config: { baseUrl: string; token: string; orgId: string },
-  input: { model: string; systemPrompt: string; humanPrompt: string },
+  input: { model: string; systemPrompt: string; humanPrompt: string; maxTokens: number },
 ): Promise<OpenAiResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 240_000);
@@ -100,7 +151,7 @@ async function callCollabLlm(
       body: JSON.stringify({
         model: input.model,
         messages: [{ role: 'system', content: input.systemPrompt }, { role: 'user', content: input.humanPrompt }],
-        stream: false, temperature: 0, max_tokens: 65_536,
+        stream: false, temperature: 0, max_tokens: input.maxTokens,
       }),
       signal: controller.signal,
     });
@@ -111,6 +162,20 @@ async function callCollabLlm(
     if (!response.ok) throw new Error(`collab-llm HTTP ${response.status}: ${body.error?.message || raw.slice(0, 500)}`);
     return body;
   } finally { clearTimeout(timeout); }
+}
+
+async function mapParallel<T, R>(items: T[], maxParallel: number, run: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(maxParallel, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await run(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 async function loadLlmConfig(): Promise<{ baseUrl: string; token: string; orgId: string }> {

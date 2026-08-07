@@ -62,6 +62,36 @@ export interface Ns4E5Review {
   changeSummary: string[];
 }
 
+export type Ns4RulePlanItem = Omit<Ns4RuleDefinition, 'trigger' | 'condition' | 'enforcement' | 'acceptanceCases'>;
+
+export interface Ns4E5UpstreamGap {
+  gapId: string;
+  sourceRefs: string[];
+  missingContract: string;
+  reason: string;
+}
+
+export interface Ns4E5PlanDraft {
+  planId: 'e5-rules-plan';
+  moduleName: string;
+  userLanguage: string;
+  title: string;
+  reviewRound: number;
+  rulePlans: Ns4RulePlanItem[];
+  routedStatements: Ns4RoutedStatement[];
+  coverage: Ns4RuleCoverage[];
+  upstreamGaps: Ns4E5UpstreamGap[];
+  changeSummary: string[];
+}
+
+export interface Ns4E5RuleDraft {
+  planId: 'e5-rule-detail';
+  moduleName: string;
+  reviewRound: number;
+  ruleId: string;
+  rule: Ns4RuleDefinition;
+}
+
 export interface Ns4E5ReviewEvent {
   action: 'approve' | 'requestChanges' | 'cancel';
   adjustment: string;
@@ -118,6 +148,54 @@ export function normalizeNs4E5Review(value: unknown, fallbackModule = ''): Ns4E5
     }),
     changeSummary: strings(root.changeSummary),
   };
+}
+
+export function normalizeNs4E5PlanDraft(value: unknown, fallbackModule = ''): Ns4E5PlanDraft {
+  const root = record(value);
+  const normalized = normalizeNs4E5Review({
+    ...root,
+    rules: array(root.rulePlans),
+  }, fallbackModule);
+  return {
+    planId: 'e5-rules-plan',
+    moduleName: normalized.moduleName,
+    userLanguage: normalized.userLanguage,
+    title: normalized.title,
+    reviewRound: normalized.reviewRound,
+    rulePlans: normalized.rules.map(({ trigger, condition, enforcement, acceptanceCases, ...rule }) => rule),
+    routedStatements: normalized.routedStatements,
+    coverage: normalized.coverage,
+    upstreamGaps: array(root.upstreamGaps).map(item => {
+      const gap = record(item);
+      return {
+        gapId: text(gap.gapId), sourceRefs: strings(gap.sourceRefs),
+        missingContract: text(gap.missingContract), reason: text(gap.reason),
+      };
+    }),
+    changeSummary: normalized.changeSummary,
+  };
+}
+
+export function normalizeNs4E5RuleDraft(
+  value: unknown,
+  moduleName: string,
+  reviewRound: number,
+  ruleId: string,
+): Ns4E5RuleDraft {
+  const root = record(value);
+  const rawRule = record(root.rule);
+  const rule = normalizeNs4E5Review({ rules: [{ ...rawRule, ruleId }] }, moduleName).rules[0];
+  return { planId: 'e5-rule-detail', moduleName, reviewRound, ruleId, rule };
+}
+
+export function assembleNs4E5Review(plan: Ns4E5PlanDraft, details: Ns4E5RuleDraft[]): Ns4E5Review {
+  const byRule = new Map(details.map(detail => [detail.ruleId, detail.rule]));
+  return normalizeNs4E5Review({
+    planId: 'e5-rules-review', moduleName: plan.moduleName, userLanguage: plan.userLanguage,
+    title: plan.title, reviewRound: plan.reviewRound,
+    rules: plan.rulePlans.map(rule => byRule.get(rule.ruleId)).filter(Boolean),
+    routedStatements: plan.routedStatements, coverage: plan.coverage, changeSummary: plan.changeSummary,
+  }, plan.moduleName);
 }
 
 export async function buildNs4RuleArtifacts(

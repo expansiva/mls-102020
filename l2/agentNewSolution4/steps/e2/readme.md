@@ -9,6 +9,11 @@ checkpoint, where the user may approve or make a free-text change request. A cha
 another generation round using the previous draft as context and returns through the same gate and
 judge before reopening the checkpoint.
 
+The proposal LLM returns an internal `flexible` payload rather than a clarification. This prevents an
+ungated candidate from briefly opening the journey widget while the deterministic gate, repair and
+coverage judge are still running. Guided review means that every approved checkpoint is shown; it
+does not bypass these pre-review quality gates.
+
 Approval writes:
 
 - `l4/{module}/journeys/{journeyId}.defs.ts` for each journey;

@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e5/judge.ts" enhancement="_blank"/>
 
 export type Ns4E5JudgeCategory = 'missingCoverage' | 'contradiction' | 'unenforceable'
-  | 'wrongDestination' | 'hardcodedExample' | 'invalidTraceability';
+  | 'wrongDestination' | 'hardcodedExample' | 'invalidTraceability' | 'upstreamGap';
 export interface Ns4E5JudgeIssue {
   issueId: string; severity: 'blocking' | 'advisory'; category: Ns4E5JudgeCategory;
   sourceEvidence: string; finding: string; repairInstruction: string; relatedRuleIds: string[];
@@ -12,7 +12,10 @@ export interface Ns4E5JudgeVerdict {
 }
 
 const ID = /^[a-z][A-Za-z0-9]*$/;
-const CATEGORIES = new Set<Ns4E5JudgeCategory>(['missingCoverage', 'contradiction', 'unenforceable', 'wrongDestination', 'hardcodedExample', 'invalidTraceability']);
+const CATEGORIES = new Set<Ns4E5JudgeCategory>([
+  'missingCoverage', 'contradiction', 'unenforceable', 'wrongDestination',
+  'hardcodedExample', 'invalidTraceability', 'upstreamGap',
+]);
 
 export function normalizeNs4E5JudgeVerdict(value: unknown, moduleName: string, reviewRound: number): Ns4E5JudgeVerdict {
   const root = unwrap(value);

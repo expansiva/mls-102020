@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-07-ns4-flow-v8",
+  "schemaVersion": "2026-08-07-ns4-flow-v10",
   "status": "e1-e5",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -22,13 +22,15 @@
     "Previous flow versions are never migrated automatically.",
     "The /fast flag uses the same deterministic gates and persistence paths; E1 auto-accepts its clarification and judged-complete E2/E5 plus valid E3/E4 proposals are approved without opening their widgets.",
     "E1 records modernization strategies now; E4 currently compiles only explicit new-solution ontology contracts and fails closed for modernization instead of fabricating a greenfield or replacement database.",
-    "E4 classifies every entity into an explicit persistence target: shared MDM for stable base records, module database for transactions, or derived/external/embedded storage for non-table concepts."
+    "E4 classifies every entity into an explicit persistence target: shared MDM for stable base records, module database for transactions, or derived/external/embedded storage for non-table concepts.",
+    "E4 first freezes a compact ontology overview, then details entities through the proven parallel_dynamic fan-out with maxParallel 20 and deterministically reassembles one human review.",
+    "E5 extracts source catalog and coverage mechanically, freezes a compact rule plan, details rules through parallel_dynamic with maxParallel 20, retries only invalid items and gives the semantic judge compact context."
   ],
   "invocation": {
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v8-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Previous flow versions are not migrated; foreign or older modules are rejected."
+    "resumeRule": "A v10-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",
@@ -39,8 +41,13 @@
     "accessDraft": "l4/{module}/pipeline/e3-access-matrix.draft.json",
     "accessMatrix": "l4/{module}/access/access-matrix.defs.ts",
     "ontologyDraft": "l4/{module}/pipeline/e4-ontology.draft.json",
+    "ontologyPlanDraft": "l4/{module}/pipeline/e4-ontology-plan.draft.json",
+    "ontologyEntityDraft": "l4/{module}/pipeline/e4-entities/{EntityId}.draft.json",
     "ontologyEntity": "l4/{module}/ontology/{EntityId}.defs.ts",
     "ontologyIndex": "l4/{module}/ontology/index.defs.ts",
+    "rulesSourceCatalog": "l4/{module}/pipeline/e5-source-catalog.json",
+    "rulesPlanDraft": "l4/{module}/pipeline/e5-rules-plan.draft.json",
+    "ruleDetailDraft": "l4/{module}/pipeline/e5-rules/{ruleId}.draft.json",
     "rulesDraft": "l4/{module}/pipeline/e5-rules.draft.json",
     "rulesApproved": "l4/{module}/pipeline/e5-rules.approved.json",
     "rule": "l4/{module}/rules/{ruleId}.defs.ts",
@@ -115,6 +122,7 @@
         "Terminal failures are persisted in pipeline.steps.e2.error and failedAt.",
         "A deterministic gate failure persists the invalid draft and may schedule one bounded structural repair for the current proposal cycle.",
         "A structurally valid draft is not shown immediately: an independent reasoning-model judge compares all E1 actors, capabilities, screen intents and outcomes with E2.",
+        "The generated candidate uses an internal flexible payload so it cannot flash as a human clarification before gate and judge approval.",
         "The coverage judge rejects missing recipient journeys, orphan user outcomes, raw-id risks and human-selectable references without named context acquisition or a credible lookup source.",
         "One complete-draft semantic repair is allowed independently of structural repair; it returns through the gate, is judged again and fails closed if coverage remains incomplete.",
         "An invalid judge envelope is retried once. Compact judge results remain in the task trace after large LLM interactions are cleaned.",
@@ -154,6 +162,8 @@
       "dependsOn": ["e3-result"],
       "goal": "Generate, directly annotate, structurally adjust and approve the connected greenfield business ontology.",
       "output": [
+        "l4/{module}/pipeline/e4-ontology-plan.draft.json",
+        "l4/{module}/pipeline/e4-entities/{EntityId}.draft.json",
         "l4/{module}/pipeline/e4-ontology.draft.json",
         "l4/{module}/ontology/{EntityId}.defs.ts",
         "l4/{module}/ontology/index.defs.ts"
@@ -161,6 +171,11 @@
       "outputAnchor": "e4-result",
       "gate": "steps/e4/gate.ts",
       "runtimeNotes": [
+        "The first reasoning call returns only the frozen cross-entity overview: entity identity, source refs, lifecycle, MDM/storage routing and relationships; it does not generate fields or invariants.",
+        "Before entity fan-out, the overview gate requires every required E2 carried or produced businessObject to exist as an E4 entity or projection with the same id.",
+        "One parallel_dynamic child then details each entity with filtered E2/E3 context; maxParallel is 20, matching the proven agentNewSolution ontology implementation.",
+        "Parallel children complete with trace on provider or gate failure so one entity cannot fail the fan-out; the deterministic finalizer runs one targeted parallel repair round for only missing or invalid entities.",
+        "The finalizer reassembles the unchanged human E4 review contract and reruns the complete journey/access/relationship gate before opening one widget or approving /fast.",
         "The run carries solutionMode=new explicitly; it never infers or fabricates a legacy database contract.",
         "E4 consumes the permanent access/access-matrix.defs.ts artifact; during the immediate E3-to-E4 transition it may consume the identical approved contract carried by e3-result.",
         "Stable base registrations such as clients, projects, regions and material catalogs are proposed as organization-scoped MDM; orders, movements, logs, invoices and other transactions use the module database.",
@@ -185,6 +200,9 @@
       "dependsOn": ["e4-result"],
       "goal": "Compile scattered E1-E4 statements into a durable, enforceable and traceable rule catalog.",
       "output": [
+        "l4/{module}/pipeline/e5-source-catalog.json",
+        "l4/{module}/pipeline/e5-rules-plan.draft.json",
+        "l4/{module}/pipeline/e5-rules/{ruleId}.draft.json",
         "l4/{module}/pipeline/e5-rules.draft.json",
         "l4/{module}/pipeline/e5-rules.approved.json",
         "l4/{module}/rules/{ruleId}.defs.ts",
@@ -195,12 +213,19 @@
       "judge": "steps/e5/judge.ts",
       "runtimeNotes": [
         "prompt_ready preserves the original hook args byte-for-byte so proposal, repair and judge stages cannot lose their round identity.",
-        "Every journey rule, ontology invariant and access constraint receives an exact source reference and an explicit compiled-or-routed disposition.",
+        "The runtime mechanically extracts every journey rule, ontology invariant, access constraint and declared module constraint into an exact immutable source catalog.",
+        "Coverage is mechanically derived from the frozen rule plan; the LLM cannot omit or fabricate the compiled-or-routed bookkeeping.",
+        "The first reasoning call returns only grouping, classification, frozen scope and routing; it does not generate triggers, conditions, enforcement or acceptance cases.",
+        "One parallel_dynamic child details each planned rule with only its exact evidence and related journey/access/ontology context; maxParallel is 20.",
+        "Parallel children clean input/output and complete with trace on provider or gate failure so the deterministic finalizer can retry only missing or invalid rules once.",
+        "The finalizer reassembles the original E5 review contract and runs the complete deterministic gate before scheduling the semantic judge.",
         "Static scalar constraints stay in E4; workflows and side-effect sequences are routed to E6; E5 owns dynamic, conditional, temporal, cross-entity, calculation, transition and access rules.",
         "Blocking rules require backend enforcement; frontend behavior is only an early-feedback projection.",
         "The deterministic gate rejects unknown E2/E3/E4 references, missing source coverage, invalid transition scope and unstable rejection error codes.",
-        "An independent reasoning judge detects semantic omissions, contradictions, unenforceable language, wrong routing and examples accidentally converted into hardcoded policy.",
-        "One full-draft repair and one invalid-judge retry are allowed before failing closed.",
+        "Required journey outputs without an E4 entity or projection are detected before fan-out; the E5 compiler fails closed instead of inventing an upstream contract.",
+        "An independent reasoning judge receives only the exact compact catalog/reference context plus the complete E5 draft and detects semantic omissions, contradictions, unenforceable language, wrong routing, upstream gaps and examples accidentally converted into hardcoded policy.",
+        "One plan-plus-parallel semantic repair and one invalid-judge retry are allowed before failing closed.",
+        "Terminal success and failure paths clean large step input/output; resumable catalog, plan and per-rule drafts remain in L4.",
         "A human change request persists the edited draft and adds the next open E5 round before completing the current clarification.",
         "Approval writes one defs artifact per rule, a compact index and an approved review snapshot for future maintenance and L1/L2 compilation."
       ]

@@ -5,7 +5,7 @@ start of the task.
 
 Invocation:
 
-- `@@newSolution4 petShop` — create a module or resume its next incomplete v8 step;
+- `@@newSolution4 petShop` — create a module or resume its next incomplete v10 step;
 - `@@newSolution4 petShop /fast` — auto-accept valid E1 through E5 proposals;
 - an existing module without an `agentNewSolution4` pipeline is rejected.
 
@@ -50,7 +50,12 @@ and returns to the same widget. Approval writes:
 - updated module and pipeline status with `e4-ontology` as the next step.
 
 E4 currently treats the module explicitly as a new solution. It combines approved journeys and access
-information into a connected ontology checkpoint. Every entity receives an explicit persistence
+information into a connected ontology checkpoint. Internally, one compact reasoning pass first freezes
+entity identity, traceability, MDM/storage routing and relationships. A proven `parallel_dynamic`
+fan-out then generates fields, constraints and invariants per entity with `maxParallel: 20`; each child
+receives only its related journeys, authorities and relationships. A deterministic finalizer retries
+only missing/invalid entities once, reassembles the complete contract and runs the full gate before the
+single human widget is opened. Every entity receives an explicit persistence
 destination: organization MDM for stable base registrations, module database for transactions, or
 derived/external/embedded for concepts without their own module table. The widget presents a colored
 persistence map before the entity details, highlights cross-store relationships, keeps safe
@@ -66,14 +71,19 @@ Approval writes:
   references and frozen hash;
 - updated module and pipeline status with `e5-rules` as the next step.
 
-E5 gathers journey rules, ontology invariants and access constraints into an enforceable catalog.
-Every source receives a compiled-or-routed disposition. A deterministic reference/enforcement gate is
-followed by an independent semantic judge that detects omissions, contradictions, wrong destinations,
-unenforceable wording and illustrative values accidentally turned into fixed policy. One full-draft
+E5 first builds the exact source catalog and coverage bookkeeping mechanically. A compact reasoning
+pass groups those sources into frozen rule plans, then a proven `parallel_dynamic` fan-out details one
+rule per child with `maxParallel: 20` and filtered journey, access and ontology context. The deterministic
+finalizer retries only missing or invalid rules once and reassembles the unchanged human review contract.
+An independent judge then reads the compact catalog/context and complete rule draft to detect semantic
+omissions, contradictions, wrong destinations, unenforceable wording, upstream contract gaps and
+illustrative values accidentally turned into fixed policy. One bounded plan-plus-parallel semantic
 repair is allowed. Approval writes:
 
 - `l4/<module>/rules/<ruleId>.defs.ts` — one permanent contract per rule;
 - `l4/<module>/rules/index.defs.ts` — compact discovery, routing, coverage and frozen hash;
+- `l4/<module>/pipeline/e5-source-catalog.json` — mechanically extracted source inventory;
+- `l4/<module>/pipeline/e5-rules-plan.draft.json` and `pipeline/e5-rules/<ruleId>.draft.json` — resumable compiler intermediates;
 - `l4/<module>/pipeline/e5-rules.approved.json` — the approved maintenance snapshot;
 - updated module and pipeline status with `e6-behaviors` as the next step.
 

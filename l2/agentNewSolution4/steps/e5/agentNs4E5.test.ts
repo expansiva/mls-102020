@@ -3,16 +3,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  buildNs4ModuleArtifact, createNs4E5JudgeStep, createNs4E5Step, createNs4Pipeline,
+  buildNs4ModuleArtifact, createNs4E5FinalizeStep, createNs4E5JudgeStep, createNs4E5Step, createNs4Pipeline,
   markNs4E1Approved, markNs4E2Approved, markNs4E2WaitingHuman, markNs4E3Approved,
   markNs4E4Approved, markNs4E5Approved, markNs4E5Running, markNs4E5WaitingHuman,
-  resolveNs4ExistingAction,
+  NS4_E5_MAX_PARALLEL, resolveNs4ExistingAction,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { normalizeNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { normalizeNs4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import { normalizeNs4E4Review } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
-import { buildNs4RuleArtifacts, normalizeNs4E5Review } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
-import { Ns4E5Sources, validateNs4E5Review } from '/_102020_/l2/agentNewSolution4/steps/e5/gate.js';
+import {
+  assembleNs4E5Review, buildNs4RuleArtifacts, normalizeNs4E5PlanDraft,
+  normalizeNs4E5Review, normalizeNs4E5RuleDraft,
+} from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
+import {
+  buildNs4E5SourceCatalog, completeNs4E5PlanCoverage, findNs4E5MechanicalUpstreamGaps,
+} from '/_102020_/l2/agentNewSolution4/steps/e5/catalog.js';
+import {
+  Ns4E5Sources, validateNs4E5Plan, validateNs4E5Review, validateNs4E5RuleDraft,
+} from '/_102020_/l2/agentNewSolution4/steps/e5/gate.js';
 import { normalizeNs4E5JudgeVerdict, validateNs4E5JudgeVerdict } from '/_102020_/l2/agentNewSolution4/steps/e5/judge.js';
 import { resolveNs4E5HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e5/hookArgs.js';
 
@@ -93,6 +101,42 @@ test('E5 deterministic gate accepts an enforceable catalog covering every upstre
   assert.deepEqual(validateNs4E5Review(normalizeNs4E5Review(reviewInput), sources), { ok: true, issues: [] });
 });
 
+test('E5 derives exact coverage mechanically and assembles parallel rule details', () => {
+  const catalog = buildNs4E5SourceCatalog(sources);
+  const fullReview = normalizeNs4E5Review(reviewInput);
+  const rulePlans = fullReview.rules.map(({ trigger, condition, enforcement, acceptanceCases, ...rule }) => rule);
+  const plan = completeNs4E5PlanCoverage(normalizeNs4E5PlanDraft({
+    ...fullReview, rulePlans, coverage: [], upstreamGaps: [],
+  }), catalog);
+  assert.equal(catalog.length, 3);
+  assert.deepEqual(plan.coverage, fullReview.coverage);
+  assert.deepEqual(validateNs4E5Plan(plan, sources), { ok: true, issues: [] });
+
+  const details = fullReview.rules.map(rule => normalizeNs4E5RuleDraft(
+    { rule }, fullReview.moduleName, fullReview.reviewRound, rule.ruleId,
+  ));
+  for (const detail of details) assert.deepEqual(validateNs4E5RuleDraft(plan, detail, sources), { ok: true, issues: [] });
+  assert.deepEqual(assembleNs4E5Review(plan, details), fullReview);
+
+  const stale = structuredClone(details[0]);
+  stale.rule.scope.entityRefs = [];
+  assert.ok(validateNs4E5RuleDraft(plan, stale, sources).issues.some(issue => issue.code === 'NS4_E5_RULE_PLAN_CHANGED'));
+});
+
+test('E5 detects a required journey output missing from E4 before generating rules', () => {
+  const missing = structuredClone(sources);
+  missing.journeys.journeys[0].business.steps[0].providesContext = [{
+    contextId: 'publishedClientStatus', businessObject: 'PublishedClientStatus', cardinality: 'one', required: true,
+    description: 'Published status visible to the client.',
+  }];
+  assert.deepEqual(findNs4E5MechanicalUpstreamGaps(missing), [{
+    gapId: 'missingPublishedClientStatus',
+    sourceRefs: ['journey:manageProjects:step:saveProject'],
+    missingContract: 'PublishedClientStatus',
+    reason: 'Required E2 journey output PublishedClientStatus has no matching E4 ontology entity or projection.',
+  }]);
+});
+
 test('E5 rejects frontend-only blocking rules and missing source coverage', () => {
   const broken = structuredClone(reviewInput) as any;
   broken.rules[0].enforcement.backend.required = false;
@@ -119,7 +163,12 @@ test('E5 judge contract fails closed on blocking findings', () => {
 test('E5 orchestration uses unique proposal/judge ids and resumes monotonically', () => {
   const originalArgs = '{"planId":"e5-rules","reviewRound":2,"repairAttempt":1}';
   assert.equal(resolveNs4E5HookArgs(originalArgs, '{}'), originalArgs);
+  assert.equal(NS4_E5_MAX_PARALLEL, 20);
   assert.equal(createNs4E5Step('buildFlowFsm', 2).planning?.planId, 'e5-rules-round-2');
+  const finalize = createNs4E5FinalizeStep('buildFlowFsm', 2, ['rule-a', 'rule-b']);
+  assert.equal(finalize.planning?.planId, 'e5-rules-round-2-finalize-0-0');
+  assert.deepEqual(finalize.planning?.dependsOn, ['rule-a', 'rule-b']);
+  assert.equal(finalize.status, 'waiting_dependency');
   assert.equal(createNs4E5JudgeStep('buildFlowFsm', 2, 1, 1).planning?.planId, 'e5-rules-round-2-repair-1-judge-1');
   const e1 = markNs4E1Approved(createNs4Pipeline('buildFlowFsm', 'prompt'), 'human', 'module.defs.ts');
   const e2 = markNs4E2Approved(markNs4E2WaitingHuman(e1, 1, 'e2.json'), 'human', ['journey.defs.ts']);

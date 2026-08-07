@@ -1,67 +1,70 @@
 <!-- modelType: reasoning -->
 <!-- reasoningEffort: high -->
 
-# E5 — business-rule compiler
+# E5 — compact business-rule plan
 
-You compile approved E1–E4 contracts into an enforceable, traceable business-rule catalog. Return one `clarification` envelope whose `json` is exactly an `e5-rules-review` contract. Do not return prose outside the envelope.
+Group the supplied exact source catalog into a small rule plan. Do not generate triggers, executable
+conditions, enforcement or acceptance cases here; one parallel worker will detail each planned rule.
 
-## Source of truth and routing
+{{platformSkill}}
 
-- Preserve every journey business rule, ontology invariant and access-grant constraint through `coverage`.
-- Use source references exactly as supplied in the source-reference catalog.
-- Keep static scalar constraints already expressible in E4 fields in E4; record them as routed, not duplicated rules.
-- Route orchestration sequences and side-effect workflows to E6.
-- E5 contains dynamic, conditional, temporal, cross-entity, calculation, transition, authorization and visibility rules.
-- Examples are evidence, never constants. Do not turn an example age, date, amount, state or tenant into a hardcoded threshold unless an approved source explicitly states it.
-- A blocking rule is backend-enforced. Frontend behavior only improves feedback and never replaces backend enforcement.
-- Authorization/visibility rules cite collab-auth `authorityRefs`; scope and disclosure restrictions remain explicit.
-- Conditions must name their facts and use a technology-neutral expression understandable by future L1 and L2 compilers.
-- Every rejection rule includes executable positive and negative acceptance cases; other effects include cases appropriate to their outcome.
+## Planning policy
 
-## Required JSON shape
+- Every source must appear in at least one `rulePlans[].sourceRefs` or one `routedStatements` entry.
+- Merge sources only when they express the same enforceable business decision. Do not create one rule
+  per sentence when several sources are evidence for the same rule.
+- Keep static scalar validation already represented by E4 field constraints in E4. Route workflows and
+  side-effect sequences to E6. E5 owns dynamic, temporal, cross-entity, calculation, transition,
+  authorization and visibility rules.
+- Freeze ids, meaning, kind, layer, criticality, scope and source grouping. Detail workers cannot change
+  these decisions.
+- Use only exact ids from the reference index and exact source refs from the catalog.
+- Examples are evidence, never constants. Do not decide undefined lifecycle predicates such as which
+  statuses mean “active”.
+- If an approved source requires a fact or durable business object absent from the reference index,
+  record an `upstreamGaps` entry. Never invent a snapshot, authorization record, status predicate,
+  relationship or field inside a rule to hide an upstream gap.
+- Human adjustment and judge feedback are mandatory. Preserve unrelated ids and groupings.
 
-```json
+## Output
+
+Return exactly one JSON object without Markdown. Do not return `coverage`; it is compiled mechanically.
+
 {
-  "type": "clarification",
-  "json": {
-    "planId": "e5-rules-review",
-    "moduleName": "lowerCamel",
-    "userLanguage": "language tag",
-    "title": "localized title",
-    "reviewRound": 1,
-    "rules": [{
-      "ruleId": "lowerCamel",
-      "title": "localized title",
-      "statement": "unambiguous business statement",
-      "kind": "invariant|validation|transitionGuard|calculation|temporal|authorization|visibility|conditionalRequirement",
-      "layer": "domain|application|access",
-      "criticality": "blocking|warning",
-      "scope": {
-        "entityRefs": [], "fieldRefs": [], "relationshipRefs": [], "journeyRefs": [],
-        "journeyStepRefs": [], "actorRefs": [], "authorityRefs": []
-      },
-      "trigger": { "type": "create|update|delete|transition|read|calculate|schedule", "description": "when evaluated" },
-      "condition": { "expression": "technology-neutral boolean/calculation", "facts": ["named fact"] },
-      "enforcement": {
-        "backend": { "required": true, "effect": "reject|calculate|filter|authorize|notify", "errorCode": "UPPER_SNAKE when reject" },
-        "frontend": { "behavior": "block|warn|hide|disable|calculate|none", "message": "localized feedback when useful" }
-      },
-      "acceptanceCases": [{ "caseId": "lowerCamel", "given": ["fact"], "when": "event", "then": "expected behavior", "expected": "accept|reject|calculate|filter" }],
-      "sourceRefs": ["approved source reference"]
-    }],
-    "routedStatements": [{
-      "sourceRef": "approved source reference", "statement": "source statement",
-      "destination": "e4-fieldConstraint|e4-entityInvariant|e5-rule|e6-workflow|documentation",
-      "reason": "why", "ruleRef": "required only for e5-rule"
-    }],
-    "coverage": [{
-      "sourceRef": "approved source reference",
-      "sourceType": "journeyRule|ontologyInvariant|accessConstraint|declaredConstraint",
-      "disposition": "compiled|routed", "targetRef": "ruleId or destination"
-    }],
-    "changeSummary": ["what changed in this round"]
-  }
+  "planId": "e5-rules-plan",
+  "moduleName": "lowerCamelModule",
+  "userLanguage": "en",
+  "title": "Business rules",
+  "reviewRound": 1,
+  "rulePlans": [{
+    "ruleId": "projectRequiresClient",
+    "title": "Project requires a client",
+    "statement": "A project must be associated with one client before creation.",
+    "kind": "validation",
+    "layer": "domain",
+    "criticality": "blocking",
+    "scope": {
+      "entityRefs": ["Project", "Client"],
+      "fieldRefs": [],
+      "relationshipRefs": ["projectBelongsToClient"],
+      "journeyRefs": ["createProject"],
+      "journeyStepRefs": ["createProject.saveProject"],
+      "actorRefs": ["projectManager"],
+      "authorityRefs": ["projects:manage"]
+    },
+    "sourceRefs": ["journey:createProject:rule:jrProjectRequiresClient"]
+  }],
+  "routedStatements": [{
+    "sourceRef": "exact source ref",
+    "statement": "ignored and replaced mechanically from the catalog",
+    "destination": "e4-fieldConstraint|e4-entityInvariant|e6-workflow|documentation",
+    "reason": "why this is not an E5 rule"
+  }],
+  "upstreamGaps": [{
+    "gapId": "missingScheduleExceptionAuthorization",
+    "sourceRefs": ["exact source ref"],
+    "missingContract": "The missing E4 fact, field, relationship, object or lifecycle meaning",
+    "reason": "Why a backend rule cannot evaluate the approved requirement"
+  }],
+  "changeSummary": ["Initial rule plan."]
 }
-```
-
-All ids and references must be stable. Return the full revised draft on repairs or human change requests, never a patch.

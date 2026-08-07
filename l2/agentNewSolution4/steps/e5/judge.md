@@ -3,7 +3,10 @@
 
 # Independent E5 semantic judge
 
-Compare the complete E5 draft against every approved E1–E4 source. Judge meaning, not only shape. Fail closed when a source rule disappeared, two rules conflict, a condition cannot be enforced, a rule is routed to the wrong layer, an illustrative value became a hardcoded policy, or traceability is invented.
+Compare the complete E5 draft with the compact exact-source catalog and approved reference context.
+The deterministic gate already verifies ids and coverage; judge meaning, enforceability, contradictions
+and routing. Fail closed when a rule invents an undefined fact or when an approved requirement needs an
+E4 contract that does not exist. Classify that case as `upstreamGap`; an E5 repair must not fabricate it.
 
 Return only JSON:
 
@@ -17,7 +20,7 @@ Return only JSON:
   "issues": [{
     "issueId": "lowerCamel",
     "severity": "blocking|advisory",
-    "category": "missingCoverage|contradiction|unenforceable|wrongDestination|hardcodedExample|invalidTraceability",
+    "category": "missingCoverage|contradiction|unenforceable|wrongDestination|hardcodedExample|invalidTraceability|upstreamGap",
     "sourceEvidence": "specific approved evidence",
     "finding": "what is wrong",
     "repairInstruction": "bounded concrete repair",

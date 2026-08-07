@@ -2,7 +2,13 @@
 
 import { Ns4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { Ns4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
-import { Ns4E4Review } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
+import {
+  assembleNs4E4Review,
+  Ns4E4EntityDraft,
+  Ns4E4PlanDraft,
+  Ns4E4Review,
+  Ns4OntologyField,
+} from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 
 export interface Ns4E4GateIssue { code: string; path: string; message: string }
 export interface Ns4E4GateResult { ok: boolean; issues: Ns4E4GateIssue[] }
@@ -146,6 +152,19 @@ export function validateNs4E4Review(
   requiredInformationAuthorities.forEach(ref => {
     if (!coveredAuthorities.has(ref)) add('NS4_E4_INFORMATION_COVERAGE', 'entities.sourceRefs.authorityRefs', `Information authority ${ref} is not represented in the ontology.`);
   });
+  const requiredContextObjects = new Set(journeys?.journeys.flatMap(journey => [
+    ...journey.business.entry.carries.filter(context => context.required).map(context => context.businessObject),
+    ...journey.business.steps.flatMap(step => step.providesContext
+      .filter(context => context.required).map(context => context.businessObject)),
+  ]) || []);
+  requiredContextObjects.forEach(businessObject => {
+    if (!entityIds.has(businessObject)) {
+      add(
+        'NS4_E4_REQUIRED_CONTEXT_OBJECT', 'entities',
+        `Required E2 journey business object ${businessObject} needs an E4 entity or projection with the same entityId.`,
+      );
+    }
+  });
 
   const relationshipIds = new Set<string>();
   const relatedEntities = new Set<string>();
@@ -173,4 +192,63 @@ export function validateNs4E4Review(
   }
 
   return { ok: issues.length === 0, issues };
+}
+
+/** Validates the frozen cross-entity decisions before expensive entity fan-out starts. */
+export function validateNs4E4Plan(
+  plan: Ns4E4PlanDraft,
+  journeys?: Ns4E2Review,
+  access?: Ns4E3Review,
+): Ns4E4GateResult {
+  const review: Ns4E4Review = {
+    ...plan,
+    planId: 'e4-ontology-review',
+    entities: plan.entities.map(entity => ({
+      ...entity,
+      fields: placeholderFields(entity.entityId, entity.storage.idField, entity.lifecycleStates.length > 0),
+      invariants: [],
+    })),
+  };
+  return validateNs4E4Review(review, journeys, access);
+}
+
+/** Validates one parallel entity result against the storage/lifecycle contract frozen by the plan. */
+export function validateNs4E4EntityDraft(
+  plan: Ns4E4PlanDraft,
+  detail: Ns4E4EntityDraft,
+): Ns4E4GateResult {
+  const issues: Ns4E4GateIssue[] = [];
+  if (detail.moduleName !== plan.moduleName) {
+    issues.push({ code: 'NS4_E4_ENTITY_MODULE', path: 'moduleName', message: `Expected module ${plan.moduleName}.` });
+  }
+  if (detail.reviewRound !== plan.reviewRound) {
+    issues.push({ code: 'NS4_E4_ENTITY_ROUND', path: 'reviewRound', message: `Expected review round ${plan.reviewRound}.` });
+  }
+  if (!plan.entities.some(entity => entity.entityId === detail.entityId)) {
+    issues.push({ code: 'NS4_E4_ENTITY_UNKNOWN', path: 'entityId', message: `Entity ${detail.entityId} is not in the ontology plan.` });
+  }
+  if (issues.length) return { ok: false, issues };
+  const review = assembleNs4E4Review(
+    { ...plan, entities: plan.entities.filter(entity => entity.entityId === detail.entityId), relationships: [] },
+    [detail],
+  );
+  return validateNs4E4Review(review);
+}
+
+function placeholderFields(entityId: string, idField: string | undefined, needsStatus: boolean): Ns4OntologyField[] {
+  const fields: Ns4OntologyField[] = [{
+    fieldId: idField || `${entityId.slice(0, 1).toLowerCase()}${entityId.slice(1)}Value`,
+    title: entityId,
+    type: idField ? 'uuid' : 'string',
+    required: true,
+    description: 'Plan-validation placeholder replaced by the entity detail pass.',
+    constraints: [],
+  }];
+  if (needsStatus && !fields.some(field => field.fieldId === 'status')) {
+    fields.push({
+      fieldId: 'status', title: 'Status', type: 'string', required: true,
+      description: 'Plan-validation lifecycle placeholder replaced by the entity detail pass.', constraints: [],
+    });
+  }
+  return fields;
 }

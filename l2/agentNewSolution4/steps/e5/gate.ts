@@ -4,7 +4,14 @@ import { Ns4ModuleArtifact } from '/_102020_/l2/agentNewSolution4/helpers/ns4Cor
 import { Ns4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { Ns4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import { Ns4E4Review } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
-import { Ns4E5Review } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
+import {
+  assembleNs4E5Review,
+  Ns4E5PlanDraft,
+  Ns4E5Review,
+  Ns4E5RuleDraft,
+  Ns4RuleDefinition,
+  Ns4RulePlanItem,
+} from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
 
 export interface Ns4E5GateIssue { code: string; path: string; message: string; }
 export interface Ns4E5GateResult { ok: boolean; issues: Ns4E5GateIssue[]; }
@@ -116,6 +123,72 @@ export function validateNs4E5Review(review: Ns4E5Review, sources: Ns4E5Sources):
     if (route.destination === 'e5-rule' && (!route.ruleRef || !ruleIds.has(route.ruleRef))) add('NS4_E5_ROUTE_RULE', `routedStatements[${index}].ruleRef`, 'E5 destinations must reference an existing rule.');
   });
   return { ok: issues.length === 0, issues };
+}
+
+export function validateNs4E5Plan(plan: Ns4E5PlanDraft, sources: Ns4E5Sources): Ns4E5GateResult {
+  const details: Ns4E5RuleDraft[] = plan.rulePlans.map(rulePlan => ({
+    planId: 'e5-rule-detail', moduleName: plan.moduleName, reviewRound: plan.reviewRound,
+    ruleId: rulePlan.ruleId, rule: placeholderRule(rulePlan),
+  }));
+  const gate = validateNs4E5Review(assembleNs4E5Review(plan, details), sources);
+  const issues = [...gate.issues];
+  const gapIds = new Set<string>();
+  plan.upstreamGaps.forEach((gap, index) => {
+    if (!MEMBER_ID.test(gap.gapId) || gapIds.has(gap.gapId)) {
+      issues.push({ code: 'NS4_E5_UPSTREAM_GAP_ID', path: `upstreamGaps[${index}].gapId`, message: 'Must be a unique lower-camel id.' });
+    }
+    gapIds.add(gap.gapId);
+    if (!gap.sourceRefs.length || !gap.missingContract || !gap.reason) {
+      issues.push({ code: 'NS4_E5_UPSTREAM_GAP_TEXT', path: `upstreamGaps[${index}]`, message: 'Gap evidence, missing contract and reason are required.' });
+    }
+  });
+  return { ok: issues.length === 0, issues };
+}
+
+export function validateNs4E5RuleDraft(
+  plan: Ns4E5PlanDraft,
+  detail: Ns4E5RuleDraft,
+  sources: Ns4E5Sources,
+): Ns4E5GateResult {
+  const issues: Ns4E5GateIssue[] = [];
+  const expected = plan.rulePlans.find(rule => rule.ruleId === detail.ruleId);
+  if (detail.moduleName !== plan.moduleName) issues.push({ code: 'NS4_E5_RULE_MODULE', path: 'moduleName', message: `Expected ${plan.moduleName}.` });
+  if (detail.reviewRound !== plan.reviewRound) issues.push({ code: 'NS4_E5_RULE_ROUND', path: 'reviewRound', message: `Expected ${plan.reviewRound}.` });
+  if (!expected) issues.push({ code: 'NS4_E5_RULE_UNKNOWN', path: 'ruleId', message: `Unknown planned rule ${detail.ruleId}.` });
+  if (expected && JSON.stringify(rulePlanOf(detail.rule)) !== JSON.stringify(expected)) {
+    issues.push({
+      code: 'NS4_E5_RULE_PLAN_CHANGED', path: 'rule',
+      message: 'Rule detail cannot change identity, classification, scope or source grouping frozen by the plan.',
+    });
+  }
+  if (issues.length) return { ok: false, issues };
+  const details = plan.rulePlans.map(rulePlan => ({
+    planId: 'e5-rule-detail' as const, moduleName: plan.moduleName, reviewRound: plan.reviewRound,
+    ruleId: rulePlan.ruleId,
+    rule: rulePlan.ruleId === detail.ruleId ? detail.rule : placeholderRule(rulePlan),
+  }));
+  return validateNs4E5Review(assembleNs4E5Review(plan, details), sources);
+}
+
+function rulePlanOf(rule: Ns4RuleDefinition): Ns4RulePlanItem {
+  const { trigger, condition, enforcement, acceptanceCases, ...plan } = rule;
+  return plan;
+}
+
+function placeholderRule(plan: Ns4RulePlanItem): Ns4RuleDefinition {
+  return {
+    ...plan,
+    trigger: { type: 'create', description: 'Detail pass pending.' },
+    condition: { expression: 'planned rule detail is pending', facts: ['planned rule'] },
+    enforcement: {
+      backend: { required: true, effect: 'filter' },
+      frontend: { behavior: 'none' },
+    },
+    acceptanceCases: [{
+      caseId: 'plannedRulePlaceholder', given: ['The rule plan is valid'],
+      when: 'The parallel detail pass runs', then: 'The placeholder is replaced', expected: 'filter',
+    }],
+  };
 }
 
 function validateRefs(values: string[], allowed: Set<string>, path: string, add: (code: string, path: string, message: string) => void): void {

@@ -70,7 +70,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-16 (2026-08-07) independent E2 structural and semantic repairs';
+export const NS4_AGENT_BUILD = 'build-20 (2026-08-07) parallel E5 rules compiler';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

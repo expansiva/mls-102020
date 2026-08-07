@@ -1,5 +1,9 @@
 # E2 changelog
 
+- 2026-08-07: E2 proposals now use an internal flexible payload, so an ungated journey candidate no
+  longer flashes as a human clarification while structural repair or coverage judgment is pending.
+  The journey list also sizes from all cards instead of overflowing beneath the review footer.
+
 - 2026-08-07: Flow v8 separated deterministic structural repairs from semantic coverage repairs.
   A context-shape correction can no longer consume the judge's only completeness-repair budget;
   semantic repairs return through the gate and every repair/judge plan id remains unique.

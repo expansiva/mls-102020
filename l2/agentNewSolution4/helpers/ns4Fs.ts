@@ -36,6 +36,14 @@ export function ns4E4DraftFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e4-ontology.draft', extension: '.json' };
 }
 
+export function ns4E4PlanDraftFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e4-ontology-plan.draft', extension: '.json' };
+}
+
+export function ns4E4EntityDraftFile(moduleName: string, entityId: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline/e4-entities`, shortName: `${entityId}.draft`, extension: '.json' };
+}
+
 export function ns4OntologyEntityFile(moduleName: string, entityId: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/ontology`, shortName: entityId, extension: '.defs.ts' };
 }
@@ -46,6 +54,18 @@ export function ns4OntologyIndexFile(moduleName: string): Ns4FileInfo {
 
 export function ns4E5DraftFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e5-rules.draft', extension: '.json' };
+}
+
+export function ns4E5CatalogFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e5-source-catalog', extension: '.json' };
+}
+
+export function ns4E5PlanDraftFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e5-rules-plan.draft', extension: '.json' };
+}
+
+export function ns4E5RuleDraftFile(moduleName: string, ruleId: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline/e5-rules`, shortName: `${ruleId}.draft`, extension: '.json' };
 }
 
 export function ns4E5ApprovedFile(moduleName: string): Ns4FileInfo {
@@ -127,8 +147,38 @@ export async function writeNs4E4Draft(moduleName: string, draft: unknown): Promi
   return displayPath(fileInfo);
 }
 
+export async function writeNs4E4PlanDraft(moduleName: string, draft: unknown): Promise<string> {
+  const fileInfo = ns4E4PlanDraftFile(moduleName);
+  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4E4EntityDraft(moduleName: string, entityId: string, draft: unknown): Promise<string> {
+  const fileInfo = ns4E4EntityDraftFile(moduleName, entityId);
+  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
 export async function writeNs4E5Draft(moduleName: string, draft: unknown): Promise<string> {
   const fileInfo = ns4E5DraftFile(moduleName);
+  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4E5Catalog(moduleName: string, catalog: unknown): Promise<string> {
+  const fileInfo = ns4E5CatalogFile(moduleName);
+  await writeNs4Text(fileInfo, `${JSON.stringify(catalog, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4E5PlanDraft(moduleName: string, draft: unknown): Promise<string> {
+  const fileInfo = ns4E5PlanDraftFile(moduleName);
+  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4E5RuleDraft(moduleName: string, ruleId: string, draft: unknown): Promise<string> {
+  const fileInfo = ns4E5RuleDraftFile(moduleName, ruleId);
   await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
   return displayPath(fileInfo);
 }

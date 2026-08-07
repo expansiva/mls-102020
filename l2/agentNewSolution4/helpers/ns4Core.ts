@@ -1,7 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/helpers/ns4Core.ts" enhancement="_blank"/>
 
 export const NS4_FLOW_ID = 'agentNewSolution4' as const;
-export const NS4_FLOW_VERSION = '2026-08-07-ns4-flow-v8' as const;
+export const NS4_FLOW_VERSION = '2026-08-07-ns4-flow-v10' as const;
+export const NS4_E4_MAX_PARALLEL = 20 as const;
+export const NS4_E5_MAX_PARALLEL = 20 as const;
 export const NS4_MODULE_SCHEMA_VERSION = '2026-08-06-ns4-module-v4' as const;
 export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-06-ns4-pipeline-v5' as const;
 
@@ -368,7 +370,26 @@ export function createNs4E4RepairStep(
     formatNs4VisibleStepTitle('e4-ontology', `${stepTitle} · R${repairAttempt}`),
     [],
     'waiting_human_input',
-    { planId: 'e4-ontology', moduleName, reviewRound, solutionMode: 'new', repairAttempt, gateFeedback },
+    { planId: 'e4-ontology', stage: 'plan', moduleName, reviewRound, solutionMode: 'new', repairAttempt, gateFeedback },
+  );
+}
+
+export function createNs4E4FinalizeStep(
+  moduleName: string,
+  reviewRound: number,
+  dependsOn: string[],
+  entityRepairRound = 0,
+  planRepairAttempt = 0,
+): mls.msg.AIAgentStep {
+  return createNs4AgentStep(
+    `e4-ontology-round-${reviewRound}-finalize-${entityRepairRound}-${planRepairAttempt}`,
+    `Finalize ontology · ${reviewRound}`,
+    dependsOn,
+    dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
+    {
+      planId: 'e4-ontology', stage: 'finalize', moduleName, reviewRound, solutionMode: 'new',
+      entityRepairRound, planRepairAttempt,
+    },
   );
 }
 
@@ -389,9 +410,26 @@ export function createNs4E5Step(
     dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
     {
       planId: 'e5-rules', ...(moduleName ? { moduleName } : {}), reviewRound,
+      stage: 'plan',
       ...(adjustment ? { adjustment } : {}), ...(gateFeedback ? { gateFeedback } : {}),
       ...(repairAttempt ? { repairAttempt } : {}),
     },
+  );
+}
+
+export function createNs4E5FinalizeStep(
+  moduleName: string,
+  reviewRound: number,
+  dependsOn: string[],
+  ruleRepairRound = 0,
+  planRepairAttempt = 0,
+): mls.msg.AIAgentStep {
+  return createNs4AgentStep(
+    `e5-rules-round-${reviewRound}-finalize-${ruleRepairRound}-${planRepairAttempt}`,
+    `Finalize business rules · ${reviewRound}`,
+    dependsOn,
+    dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
+    { planId: 'e5-rules', stage: 'finalize', moduleName, reviewRound, ruleRepairRound, planRepairAttempt },
   );
 }
 

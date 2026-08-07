@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  createNs4E4FinalizeStep,
   createNs4E4RepairStep,
   createNs4Pipeline,
+  NS4_E4_MAX_PARALLEL,
   markNs4E1Approved,
   markNs4E2Approved,
   markNs4E2Running,
@@ -18,8 +20,18 @@ import {
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { normalizeNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { normalizeNs4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
-import { buildNs4OntologyArtifacts, normalizeNs4E4Review } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
-import { validateNs4E4Review } from '/_102020_/l2/agentNewSolution4/steps/e4/gate.js';
+import {
+  assembleNs4E4Review,
+  buildNs4OntologyArtifacts,
+  normalizeNs4E4EntityDraft,
+  normalizeNs4E4PlanDraft,
+  normalizeNs4E4Review,
+} from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
+import {
+  validateNs4E4EntityDraft,
+  validateNs4E4Plan,
+  validateNs4E4Review,
+} from '/_102020_/l2/agentNewSolution4/steps/e4/gate.js';
 import { resolveNs4E4HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e4/hookArgs.js';
 
 const journeys = normalizeNs4E2Review({
@@ -90,6 +102,27 @@ test('E4 bounded repair step carries gate feedback under a unique open plan id',
   assert.match(String(step.prompt), /OperationsPortfolio is disconnected/);
 });
 
+test('E4 uses the proven 20-slot ontology fan-out and a dependency-bound finalizer', () => {
+  assert.equal(NS4_E4_MAX_PARALLEL, 20);
+  const step = createNs4E4FinalizeStep('buildFlowFsm', 2, ['e4-ontology-round-2'], 1, 0);
+  assert.equal(step.planning?.planId, 'e4-ontology-round-2-finalize-1-0');
+  assert.deepEqual(step.planning?.dependsOn, ['e4-ontology-round-2']);
+  assert.equal(step.status, 'waiting_dependency');
+  assert.match(String(step.prompt), /"stage":"finalize"/);
+});
+
+test('E4 overview freezes global decisions and entity detail reassembles the final review', () => {
+  const full = normalizeNs4E4Review(reviewInput);
+  const plan = normalizeNs4E4PlanDraft(reviewInput);
+  assert.deepEqual(validateNs4E4Plan(plan, journeys, access), { ok: true, issues: [] });
+  assert.ok(plan.entities.every(entity => !('fields' in entity) && !('invariants' in entity)));
+  const details = full.entities.map(entity => normalizeNs4E4EntityDraft(
+    entity, full.moduleName, full.reviewRound, entity.entityId,
+  ));
+  assert.ok(details.every(detail => validateNs4E4EntityDraft(plan, detail).ok));
+  assert.deepEqual(assembleNs4E4Review(plan, details), full);
+});
+
 test('E4 accepts a connected greenfield ontology covering journeys and access information', () => {
   const review = normalizeNs4E4Review(reviewInput);
   assert.deepEqual(validateNs4E4Review(review, journeys, access), { ok: true, issues: [] });
@@ -100,6 +133,17 @@ test('E4 rejects an access information need omitted from ontology traceability',
   broken.entities[1].sourceRefs.authorityRefs = [];
   const gate = validateNs4E4Review(normalizeNs4E4Review(broken), journeys, access);
   assert.ok(gate.issues.some(issue => issue.code === 'NS4_E4_INFORMATION_COVERAGE'));
+});
+
+test('E4 rejects a required journey business object omitted from the ontology overview', () => {
+  const missingObjectJourneys = structuredClone(journeys);
+  missingObjectJourneys.journeys[0].business.steps[0].providesContext.push({
+    contextId: 'publishedClientStatus', businessObject: 'PublishedClientStatus', cardinality: 'one',
+    required: true, description: 'Status package published to the client.',
+  });
+  const gate = validateNs4E4Plan(normalizeNs4E4PlanDraft(reviewInput), missingObjectJourneys, access);
+  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E4_REQUIRED_CONTEXT_OBJECT'
+    && issue.message.includes('PublishedClientStatus')));
 });
 
 test('E4 rejects disconnected business entities', () => {

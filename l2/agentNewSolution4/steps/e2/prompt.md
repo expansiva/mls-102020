@@ -81,8 +81,8 @@ replacement proposal without dropping unaffected content.
 Return exactly one JSON object (no markdown):
 
 {
-  "type": "clarification",
-  "json": {
+  "type": "flexible",
+  "result": {
     "planId": "e2-review",
     "moduleName": "lowerCamelModule",
     "userLanguage": "pt-BR",

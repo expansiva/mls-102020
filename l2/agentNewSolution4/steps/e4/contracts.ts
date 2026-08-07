@@ -68,6 +68,30 @@ export interface Ns4OntologyRelationship {
   persistence: { mode: Ns4RelationshipPersistenceMode };
 }
 
+export type Ns4OntologyEntityPlan = Omit<Ns4OntologyEntity, 'fields' | 'invariants'>;
+
+export interface Ns4E4PlanDraft {
+  planId: 'e4-ontology-plan';
+  moduleName: string;
+  userLanguage: string;
+  title: string;
+  reviewRound: number;
+  solutionMode: 'new';
+  businessDomain: string;
+  entities: Ns4OntologyEntityPlan[];
+  relationships: Ns4OntologyRelationship[];
+  changeSummary: string[];
+}
+
+export interface Ns4E4EntityDraft {
+  planId: 'e4-ontology-entity';
+  moduleName: string;
+  reviewRound: number;
+  entityId: string;
+  fields: Ns4OntologyField[];
+  invariants: Ns4EntityInvariant[];
+}
+
 export interface Ns4E4Review {
   planId: 'e4-ontology-review';
   moduleName: string;
@@ -147,6 +171,66 @@ export function normalizeNs4E4Review(value: unknown, fallbackModule = ''): Ns4E4
     }),
     changeSummary: strings(root.changeSummary),
   };
+}
+
+export function normalizeNs4E4PlanDraft(value: unknown, fallbackModule = ''): Ns4E4PlanDraft {
+  const root = record(value);
+  const moduleName = text(root.moduleName) || fallbackModule;
+  const full = normalizeNs4E4Review({
+    ...root,
+    moduleName,
+    entities: array(root.entities).map(item => ({ ...record(item), fields: [], invariants: [] })),
+  }, moduleName);
+  return {
+    planId: 'e4-ontology-plan',
+    moduleName,
+    userLanguage: full.userLanguage,
+    title: full.title,
+    reviewRound: full.reviewRound,
+    solutionMode: 'new',
+    businessDomain: full.businessDomain,
+    entities: full.entities.map(({ fields, invariants, ...entity }) => entity),
+    relationships: full.relationships,
+    changeSummary: full.changeSummary,
+  };
+}
+
+export function normalizeNs4E4EntityDraft(
+  value: unknown,
+  moduleName: string,
+  reviewRound: number,
+  entityId: string,
+): Ns4E4EntityDraft {
+  const root = record(value);
+  const normalized = normalizeEntity({
+    entityId,
+    fields: root.fields,
+    invariants: root.invariants,
+  }, moduleName);
+  return {
+    planId: 'e4-ontology-entity',
+    moduleName,
+    reviewRound,
+    entityId,
+    fields: normalized.fields,
+    invariants: normalized.invariants,
+  };
+}
+
+export function assembleNs4E4Review(
+  plan: Ns4E4PlanDraft,
+  details: Ns4E4EntityDraft[],
+): Ns4E4Review {
+  const byEntity = new Map(details.map(detail => [detail.entityId, detail]));
+  return normalizeNs4E4Review({
+    ...plan,
+    planId: 'e4-ontology-review',
+    entities: plan.entities.map(entity => ({
+      ...entity,
+      fields: byEntity.get(entity.entityId)?.fields || [],
+      invariants: byEntity.get(entity.entityId)?.invariants || [],
+    })),
+  }, plan.moduleName);
 }
 
 export async function buildNs4OntologyArtifacts(

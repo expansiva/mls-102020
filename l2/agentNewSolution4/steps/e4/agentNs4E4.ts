@@ -1,13 +1,20 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e4/agentNs4E4.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
+// E4 uses the proven agentNewSolution ontology topology: one compact cross-entity plan, one
+// parallel LLM call per entity, then a deterministic aggregate/finalize pass. The human still sees
+// one complete ontology clarification. A bad parallel child completes with trace; the finalizer
+// retries only missing/invalid entities, so one provider failure cannot fail the entire fan-out.
+
 import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
-  createNs4E4Step,
+  createNs4E4FinalizeStep,
   createNs4E4RepairStep,
+  createNs4E4Step,
+  formatNs4VisibleStepTitle,
   isNs4Pipeline,
   markNs4E3Approved,
   markNs4E4Approved,
@@ -15,19 +22,24 @@ import {
   markNs4E4Running,
   markNs4E4WaitingHuman,
   markNs4ModuleE4Approved,
+  NS4_E4_MAX_PARALLEL,
   Ns4ApprovedBy,
   Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
-  ns4E2DraftFile,
   ns4AccessMatrixFile,
+  ns4E2DraftFile,
   ns4E4DraftFile,
+  ns4E4EntityDraftFile,
+  ns4E4PlanDraftFile,
   readNs4AgentText,
   readNs4DefsJson,
   readNs4Module,
   readNs4Pipeline,
   readNs4Text,
   writeNs4E4Draft,
+  writeNs4E4EntityDraft,
+  writeNs4E4PlanDraft,
   writeNs4Module,
   writeNs4OntologyEntity,
   writeNs4OntologyIndex,
@@ -40,26 +52,38 @@ import {
   Ns4E3Review,
 } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import {
+  assembleNs4E4Review,
   buildNs4OntologyArtifacts,
+  normalizeNs4E4EntityDraft,
+  normalizeNs4E4PlanDraft,
   normalizeNs4E4Review,
+  Ns4E4EntityDraft,
+  Ns4E4PlanDraft,
   Ns4E4Review,
   Ns4E4ReviewEvent,
 } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
-import { validateNs4E4Review } from '/_102020_/l2/agentNewSolution4/steps/e4/gate.js';
+import {
+  validateNs4E4EntityDraft,
+  validateNs4E4Plan,
+  validateNs4E4Review,
+} from '/_102020_/l2/agentNewSolution4/steps/e4/gate.js';
 import { resolveNs4E4HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e4/hookArgs.js';
 
 interface Ns4E4Args {
   planId: 'e4-ontology';
+  stage?: 'plan' | 'finalize';
   moduleName?: string;
   adjustment?: string;
   reviewRound?: number;
   solutionMode: 'new';
   repairAttempt?: number;
+  entityRepairRound?: number;
+  planRepairAttempt?: number;
   gateFeedback?: string;
 }
 
-const MAX_E4_GATE_REPAIRS = 1;
-
+const MAX_PLAN_REPAIRS = 1;
+const MAX_ENTITY_REPAIR_ROUNDS = 1;
 interface Ns4PersistedE4 {
   moduleName: string;
   solutionMode: 'new';
@@ -78,61 +102,105 @@ export async function beforeNs4E4PromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   if (!context.task) throw new Error('[agentNewSolution4:e4] task invalid');
   const hookArgs = resolveNs4E4HookArgs(args, step.prompt);
+  const entityId = parseEntitySelector(hookArgs) || parseEntitySelector(step.prompt);
   let moduleName = '';
   try {
-    const parsed = resolveE4Args(context, hookArgs);
+    const parsed = resolveE4Args(context, entityId ? step.prompt : hookArgs);
     moduleName = parsed.moduleName;
-    const handoff = findE3Handoff(context, moduleName);
-    const storedPipeline = await readNs4Pipeline(moduleName);
-    if (!isNs4Pipeline(storedPipeline)) {
-      throw new Error(`E3 approved pipeline not found for ${moduleName}.`);
+    if (entityId) return [await buildEntityPrompt(context, parentStep, hookSequential, hookArgs, parsed, entityId)];
+    if (parsed.stage === 'finalize') {
+      return await finalizeOntology(context, parentStep, step, hookSequential, parsed);
     }
-    let pipeline = storedPipeline;
-    if (pipeline.steps.e3?.status !== 'approved') {
-      if (!handoff) throw new Error(`E3 approved pipeline state not found for ${moduleName}.`);
-      pipeline = markNs4E3Approved(
-        pipeline, handoff.approvedBy, handoff.artifactPath, handoff.approvedAt,
-      );
-      await writeNs4Pipeline(pipeline);
-    }
-    const [moduleArtifact, journeys, access, prompt, platform] = await Promise.all([
-      readNs4Module(moduleName),
-      readApprovedJourneys(moduleName),
-      handoff?.approvedReview ? Promise.resolve(handoff.approvedReview) : readApprovedAccess(moduleName),
-      readNs4AgentText('steps/e4', 'prompt'),
-      readNs4AgentText('skills', 'platform'),
-    ]);
-    if (!moduleArtifact) {
-      throw new Error(`E3 approved artifacts not found for ${moduleName}.`);
-    }
-    if (moduleArtifact.solutionStrategy.mode !== 'newSolution') {
-      throw new Error(
-        `E4 modernization intake is not implemented for strategy ${moduleArtifact.solutionStrategy.mode}. `
-        + 'The approved E1 contract was preserved; no greenfield ontology or replacement database was fabricated.',
-      );
-    }
-    const reviewRound = parsed.reviewRound || pipeline.steps.e4?.reviewRound || 1;
-    const previousDraft = parsed.adjustment || parsed.gateFeedback ? await readDraftFromStorage(moduleName) : null;
-    const humanPrompt = [
-      '## Explicit delivery mode for this run\nnew solution; new persistence design; no legacy database contract', '',
-      '## Approved module contract', JSON.stringify(moduleArtifact), '',
-      '## Approved E2 journeys', JSON.stringify(journeys), '',
-      '## Approved E3 access matrix', JSON.stringify(access), '',
-      `## Required review round\n${reviewRound}`,
-      parsed.adjustment ? `## Human structural change request\n${parsed.adjustment}` : '',
-      parsed.gateFeedback ? `## Deterministic gate repair required\n${parsed.gateFeedback}` : '',
-      previousDraft ? `## Current E4 draft, including direct human edits\n${JSON.stringify(previousDraft)}` : '',
-    ].filter(Boolean).join('\n');
-    return [{
-      type: 'prompt_ready', args: hookArgs, messageId: context.message.orderAt,
-      threadId: context.message.threadId, taskId: context.task.PK, hookSequential,
-      parentStepId: parentStep.stepId, systemPrompt: prompt.replace('{{platformSkill}}', platform), humanPrompt,
-    } as mls.msg.AgentIntentPromptReady];
+    return [await buildPlanPrompt(context, parentStep, hookSequential, hookArgs, parsed)];
   } catch (error) {
     const message = errorMessage(error);
+    if (entityId) {
+      return [updateStatus(context, parentStep, step, hookSequential, 'completed', `Entity ${entityId} prompt failed; finalizer will repair it. | ${message}`, 'input_output')];
+    }
     await recordNs4E4Failure(moduleName, message);
     return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
   }
+}
+
+async function buildPlanPrompt(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  hookSequential: number,
+  hookArgs: string,
+  args: Ns4E4Args & { moduleName: string },
+): Promise<mls.msg.AgentIntentPromptReady> {
+  const handoff = findE3Handoff(context, args.moduleName);
+  const storedPipeline = await readNs4Pipeline(args.moduleName);
+  if (!isNs4Pipeline(storedPipeline)) throw new Error(`E3 approved pipeline not found for ${args.moduleName}.`);
+  let pipeline = storedPipeline;
+  if (pipeline.steps.e3?.status !== 'approved') {
+    if (!handoff) throw new Error(`E3 approved pipeline state not found for ${args.moduleName}.`);
+    pipeline = markNs4E3Approved(pipeline, handoff.approvedBy, handoff.artifactPath, handoff.approvedAt);
+    await writeNs4Pipeline(pipeline);
+  }
+  const [moduleArtifact, journeys, access, prompt, platform] = await Promise.all([
+    readNs4Module(args.moduleName),
+    readApprovedJourneys(args.moduleName),
+    handoff?.approvedReview ? Promise.resolve(handoff.approvedReview) : readApprovedAccess(args.moduleName),
+    readNs4AgentText('steps/e4', 'prompt'),
+    readNs4AgentText('skills', 'platform'),
+  ]);
+  if (!moduleArtifact) throw new Error(`E3 approved artifacts not found for ${args.moduleName}.`);
+  if (moduleArtifact.solutionStrategy.mode !== 'newSolution') {
+    throw new Error(`E4 modernization intake is not implemented for strategy ${moduleArtifact.solutionStrategy.mode}.`);
+  }
+  const reviewRound = args.reviewRound || pipeline.steps.e4?.reviewRound || 1;
+  const previousDraft = args.adjustment || args.gateFeedback ? await readDraftFromStorage(args.moduleName) : null;
+  const previousPlan = args.gateFeedback ? await readOptionalPlanDraft(args.moduleName) : null;
+  const humanPrompt = [
+    '## Explicit delivery mode\nnew solution; new persistence design; no legacy database contract',
+    `## Required review round\n${reviewRound}`,
+    '## Approved module contract', JSON.stringify(moduleArtifact),
+    '## Approved E2 journeys', JSON.stringify(journeys),
+    '## Approved E3 access matrix', JSON.stringify(access),
+    args.adjustment ? `## Human structural change request\n${args.adjustment}` : '',
+    args.gateFeedback ? `## Deterministic gate repair required\n${args.gateFeedback}` : '',
+    previousPlan ? `## Current invalid overview; repair it rather than starting over\n${JSON.stringify(previousPlan)}` : '',
+    previousDraft ? `## Previous complete E4 review, including direct human edits\n${JSON.stringify(previousDraft)}` : '',
+  ].filter(Boolean).join('\n\n');
+  return promptReady(context, parentStep, hookSequential, hookArgs, prompt.replace('{{platformSkill}}', platform), humanPrompt);
+}
+
+async function buildEntityPrompt(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  hookSequential: number,
+  hookArgs: string,
+  args: Ns4E4Args & { moduleName: string },
+  entityId: string,
+): Promise<mls.msg.AgentIntentPromptReady> {
+  const plan = await readPlanDraft(args.moduleName);
+  const target = plan.entities.find(entity => entity.entityId === entityId);
+  if (!target) throw new Error(`Entity ${entityId} is not present in the E4 overview.`);
+  const [journeys, access, prompt, previousReview, currentDetail] = await Promise.all([
+    readApprovedJourneys(args.moduleName), readApprovedAccess(args.moduleName),
+    readNs4AgentText('steps/e4', 'promptEntity'), readReviewDraft(args.moduleName), readEntityDraft(args.moduleName, entityId),
+  ]);
+  const relatedJourneys = journeys.journeys.filter(journey => target.sourceRefs.journeyIds.includes(journey.journeyId));
+  const relatedFeatures = journeys.features.filter(feature => target.sourceRefs.featureIds.includes(feature.featureId));
+  const relatedAuthorities = access.authorities.filter(authority => target.sourceRefs.authorityRefs.includes(authority.authorityRef));
+  const relatedGrants = access.grants.filter(grant => target.sourceRefs.authorityRefs.includes(grant.authorityRef));
+  const previousEntity = previousReview?.entities.find(entity => entity.entityId === entityId);
+  const touchingRelationships = plan.relationships.filter(rel => rel.fromEntity === entityId || rel.toEntity === entityId);
+  const currentGate = currentDetail ? validateNs4E4EntityDraft(plan, currentDetail) : null;
+  const humanPrompt = [
+    '## Frozen target entity overview', JSON.stringify(target),
+    '## All valid entity ids and storage targets', JSON.stringify(plan.entities.map(entity => ({ entityId: entity.entityId, storage: entity.storage.target }))),
+    '## Relationships touching this entity', JSON.stringify(touchingRelationships),
+    '## Related E2 journeys and features', JSON.stringify({ journeys: relatedJourneys, features: relatedFeatures }),
+    '## Related E3 authorities and grants', JSON.stringify({ authorities: relatedAuthorities, grants: relatedGrants }),
+    previousEntity ? `## Previous human-reviewed entity; preserve unaffected edits\n${JSON.stringify(previousEntity)}` : '',
+    currentDetail ? `## Current entity draft\n${JSON.stringify(currentDetail)}` : '',
+    currentGate && !currentGate.ok
+      ? `## Entity gate repair required\n${formatGate(currentGate.issues)}` : '',
+    `## Required identity\nmoduleName=${plan.moduleName}; reviewRound=${plan.reviewRound}; entityId=${entityId}; userLanguage=${plan.userLanguage}`,
+  ].filter(Boolean).join('\n\n');
+  return promptReady(context, parentStep, hookSequential, hookArgs, prompt, humanPrompt);
 }
 
 export async function afterNs4E4PromptStep(
@@ -142,55 +210,155 @@ export async function afterNs4E4PromptStep(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  const entityId = parseEntitySelector(step.prompt);
   let moduleName = '';
   try {
-    const args = resolveE4Args(context, step.prompt);
+    const args = resolveE4Args(context, entityId ? JSON.stringify({ planId: 'e4-ontology' }) : step.prompt);
     moduleName = args.moduleName;
-    const pipeline = await requirePipeline(moduleName);
-    await writeNs4Pipeline(markNs4E4Running(pipeline, args.reviewRound || pipeline.steps.e4?.reviewRound || 1));
-    const payload = unwrapPayload(step.interaction?.payload?.[0]);
-    if (!isRecord(payload) || payload.type !== 'clarification' || !isRecord(payload.json)) {
-      const message = readE4FailureMessage(payload);
-      await recordNs4E4Failure(moduleName, message);
-      return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
-    }
-    const review = normalizeNs4E4Review(payload.json, moduleName);
-    review.moduleName = moduleName;
-    review.reviewRound = args.reviewRound || review.reviewRound;
-    const [journeys, access] = await Promise.all([readApprovedJourneys(moduleName), readApprovedAccess(moduleName)]);
-    const gate = validateNs4E4Review(review, journeys, access);
-    if (!gate.ok) {
-      const message = gate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
-      await writeNs4E4Draft(moduleName, review);
-      const repairAttempt = args.repairAttempt || 0;
-      if (repairAttempt < MAX_E4_GATE_REPAIRS) {
-        const repairParent = findMutableParentStep(context, parentStep);
-        const repairStep = createNs4E4RepairStep(
-          moduleName, review.reviewRound, repairAttempt + 1, message,
-          pipeline.presentation.stepTitles['e4-ontology'],
-        );
-        return [
-          addStep(context, repairParent, repairStep),
-          gateRepairResultStep(context, repairParent, moduleName, review.reviewRound, repairAttempt + 1, message),
-          updateStatus(context, repairParent, step, hookSequential, 'completed', `E4 gate requested automatic repair ${repairAttempt + 1}.`, 'input_output'),
-        ];
-      }
-      await recordNs4E4Failure(moduleName, message);
-      return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
-    }
-    const draftPath = await writeNs4E4Draft(moduleName, review);
-    await writeNs4Pipeline(markNs4E4WaitingHuman(await requirePipeline(moduleName), review.reviewRound, draftPath));
-    if (!isFast(context)) return [];
-    const saved = await persistNs4E4(moduleName, review, 'auto', journeys, access);
-    return [
-      resultStep(context, parentStep, saved, 'E4 ontology auto-approved'),
-      updateStatus(context, parentStep, step, hookSequential, 'completed', `E4 auto-approved ${saved.entityCount} entities.`, 'input_output'),
-    ];
+    const mutationParent = findMutableParentStep(context, parentStep);
+    if (entityId) return await handleEntityResult(context, mutationParent, step, hookSequential, args, entityId);
+    return await handlePlanResult(agent, context, mutationParent, step, hookSequential, args);
   } catch (error) {
     const message = errorMessage(error);
+    if (entityId) {
+      return [updateStatus(context, parentStep, step, hookSequential, 'completed', `Entity ${entityId} failed; finalizer will repair it. | ${message}`, 'input_output')];
+    }
     await recordNs4E4Failure(moduleName, message);
     return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
   }
+}
+
+async function handlePlanResult(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  mutationParent: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args: Ns4E4Args & { moduleName: string },
+): Promise<mls.msg.AgentIntent[]> {
+  const pipeline = await requirePipeline(args.moduleName);
+  const reviewRound = args.reviewRound || pipeline.steps.e4?.reviewRound || 1;
+  await writeNs4Pipeline(markNs4E4Running(pipeline, reviewRound));
+  const payload = unwrapPayload(step.interaction?.payload?.[0]);
+  if (!isRecord(payload)) throw new Error(readE4FailureMessage(payload));
+  const plan = normalizeNs4E4PlanDraft(payload, args.moduleName);
+  plan.moduleName = args.moduleName;
+  plan.reviewRound = reviewRound;
+  const [journeys, access] = await Promise.all([readApprovedJourneys(args.moduleName), readApprovedAccess(args.moduleName)]);
+  const gate = validateNs4E4Plan(plan, journeys, access);
+  if (!gate.ok) {
+    const message = formatGate(gate.issues);
+    await writeNs4E4PlanDraft(args.moduleName, plan);
+    const attempt = args.repairAttempt || args.planRepairAttempt || 0;
+    if (attempt < MAX_PLAN_REPAIRS) {
+      return [
+        addStep(context, mutationParent, createNs4E4RepairStep(
+          args.moduleName, reviewRound, attempt + 1, message, pipeline.presentation.stepTitles['e4-ontology'],
+        )),
+        gateRepairResultStep(context, mutationParent, args.moduleName, reviewRound, attempt + 1, message),
+        updateStatus(context, mutationParent, step, hookSequential, 'completed', `E4 overview gate requested repair ${attempt + 1}.`, 'input_output'),
+      ];
+    }
+    await recordNs4E4Failure(args.moduleName, message);
+    return [updateStatus(context, mutationParent, step, hookSequential, 'failed', message)];
+  }
+  await writeNs4E4PlanDraft(args.moduleName, plan);
+  const currentPlanId = step.planning?.planId || `e4-ontology-round-${reviewRound}`;
+  const planRepairAttempt = args.repairAttempt || args.planRepairAttempt || 0;
+  return [
+    parallelEntityStep(context, step, agent.agentName, plan, 0),
+    addStep(context, mutationParent, createNs4E4FinalizeStep(args.moduleName, reviewRound, [currentPlanId], 0, planRepairAttempt)),
+    updateStatus(context, mutationParent, step, hookSequential, 'completed', `E4 overview ready; detailing ${plan.entities.length} entities with maxParallel=${NS4_E4_MAX_PARALLEL}.`, 'input_output'),
+  ];
+}
+
+async function handleEntityResult(
+  context: mls.msg.ExecutionContext,
+  mutationParent: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args: Ns4E4Args & { moduleName: string },
+  entityId: string,
+): Promise<mls.msg.AgentIntent[]> {
+  const plan = await readPlanDraft(args.moduleName);
+  const payload = unwrapPayload(step.interaction?.payload?.[0]);
+  if (!isRecord(payload)) {
+    return [updateStatus(context, mutationParent, step, hookSequential, 'completed', `Entity ${entityId} returned no usable payload; finalizer will repair it.`, 'input_output')];
+  }
+  const detail = normalizeNs4E4EntityDraft(payload, plan.moduleName, plan.reviewRound, entityId);
+  await writeNs4E4EntityDraft(plan.moduleName, entityId, detail);
+  const gate = validateNs4E4EntityDraft(plan, detail);
+  if (!gate.ok) {
+    return [updateStatus(context, mutationParent, step, hookSequential, 'completed', `Entity ${entityId} gate failed; finalizer will repair it. | ${formatGate(gate.issues)}`, 'input_output')];
+  }
+  return [updateStatus(context, mutationParent, step, hookSequential, 'completed', `Entity ${entityId} detail saved.`, 'input_output')];
+}
+
+async function finalizeOntology(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args: Ns4E4Args & { moduleName: string },
+): Promise<mls.msg.AgentIntent[]> {
+  const mutationParent = findMutableParentStep(context, parentStep);
+  const [plan, pipeline] = await Promise.all([readPlanDraft(args.moduleName), requirePipeline(args.moduleName)]);
+  const details: Ns4E4EntityDraft[] = [];
+  const invalid: string[] = [];
+  for (const entity of plan.entities) {
+    const detail = await readEntityDraft(args.moduleName, entity.entityId);
+    if (!detail || !validateNs4E4EntityDraft(plan, detail).ok) invalid.push(entity.entityId);
+    else details.push(detail);
+  }
+  const entityRepairRound = args.entityRepairRound || 0;
+  if (invalid.length && entityRepairRound < MAX_ENTITY_REPAIR_ROUNDS) {
+    const currentPlanId = step.planning?.planId || `e4-ontology-round-${plan.reviewRound}-finalize-${entityRepairRound}-${args.planRepairAttempt || 0}`;
+    return [
+      parallelEntityStep(context, step, 'agentNewSolution4', plan, entityRepairRound + 1, invalid),
+      addStep(context, mutationParent, createNs4E4FinalizeStep(
+        args.moduleName, plan.reviewRound, [currentPlanId], entityRepairRound + 1, args.planRepairAttempt || 0,
+      )),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', `${invalid.length} invalid/missing entities; targeted parallel repair started: ${invalid.join(', ')}.`),
+    ];
+  }
+  if (invalid.length) {
+    const message = `E4 entities remain invalid after repair: ${invalid.join(', ')}.`;
+    await recordNs4E4Failure(args.moduleName, message);
+    return [updateStatus(context, mutationParent, step, hookSequential, 'failed', message)];
+  }
+  const review = assembleNs4E4Review(plan, details);
+  const [journeys, access] = await Promise.all([readApprovedJourneys(args.moduleName), readApprovedAccess(args.moduleName)]);
+  const gate = validateNs4E4Review(review, journeys, access);
+  if (!gate.ok) {
+    const message = formatGate(gate.issues);
+    await writeNs4E4Draft(args.moduleName, review);
+    const planRepairAttempt = args.planRepairAttempt || 0;
+    if (planRepairAttempt < MAX_PLAN_REPAIRS) {
+      return [
+        addStep(context, mutationParent, createNs4E4RepairStep(
+          args.moduleName, review.reviewRound, planRepairAttempt + 1, message,
+          pipeline.presentation.stepTitles['e4-ontology'],
+        )),
+        gateRepairResultStep(context, mutationParent, args.moduleName, review.reviewRound, planRepairAttempt + 1, message),
+        updateStatus(context, mutationParent, step, hookSequential, 'completed', 'Final aggregate gate requested one overview repair.', 'input_output'),
+      ];
+    }
+    await recordNs4E4Failure(args.moduleName, message);
+    return [updateStatus(context, mutationParent, step, hookSequential, 'failed', message)];
+  }
+  const draftPath = await writeNs4E4Draft(args.moduleName, review);
+  await writeNs4Pipeline(markNs4E4WaitingHuman(await requirePipeline(args.moduleName), review.reviewRound, draftPath));
+  if (isFast(context)) {
+    const saved = await persistNs4E4(args.moduleName, review, 'auto', journeys, access);
+    return [
+      resultStep(context, mutationParent, saved, 'E4 ontology auto-approved'),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', `E4 auto-approved ${saved.entityCount} entities.`, 'input_output'),
+    ];
+  }
+  return [
+    clarificationReviewStep(context, mutationParent, review, pipeline.presentation.stepTitles['e4-ontology']),
+    updateStatus(context, mutationParent, step, hookSequential, 'completed', `E4 assembled ${review.entities.length} entities; human review opened.`, 'input_output'),
+  ];
 }
 
 export async function beforeNs4E4ClarificationStep(
@@ -205,7 +373,7 @@ export async function beforeNs4E4ClarificationStep(
   const [journeys, access] = await Promise.all([readApprovedJourneys(review.moduleName), readApprovedAccess(review.moduleName)]);
   const gate = validateNs4E4Review(review, journeys, access);
   if (!gate.ok) {
-    const message = gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
+    const message = formatGate(gate.issues);
     await recordNs4E4Failure(review.moduleName, message);
     throw new Error(message);
   }
@@ -230,11 +398,9 @@ async function applyNs4E4Review(
   if (!context.task) throw new Error('[agentNewSolution4:e4] task invalid');
   const mutationParent = findMutableParentStep(context, parentStep);
   if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; esta revisão foi mantida aberta sem alterar o pipeline.');
-  const [journeys, access] = await Promise.all([
-    readApprovedJourneys(event.review.moduleName), readApprovedAccess(event.review.moduleName),
-  ]);
+  const [journeys, access] = await Promise.all([readApprovedJourneys(event.review.moduleName), readApprovedAccess(event.review.moduleName)]);
   const gate = validateNs4E4Review(event.review, journeys, access);
-  if (!gate.ok) throw new Error(gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  if (!gate.ok) throw new Error(formatGate(gate.issues));
   await writeNs4E4Draft(event.review.moduleName, event.review);
   if (event.action === 'approve') {
     const saved = await persistNs4E4(event.review.moduleName, event.review, 'human', journeys, access);
@@ -263,7 +429,7 @@ async function persistNs4E4(
   access: Ns4E3Review,
 ): Promise<Ns4PersistedE4> {
   const gate = validateNs4E4Review(review, journeys, access);
-  if (!gate.ok) throw new Error(gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  if (!gate.ok) throw new Error(formatGate(gate.issues));
   const [moduleArtifact, pipeline] = await Promise.all([readNs4Module(moduleName), requirePipeline(moduleName)]);
   if (!moduleArtifact || moduleArtifact.module.moduleName !== moduleName) throw new Error(`Invalid module artifact for ${moduleName}.`);
   const approvedAt = new Date().toISOString();
@@ -274,6 +440,47 @@ async function persistNs4E4(
   await writeNs4Module(moduleName, markNs4ModuleE4Approved(moduleArtifact, approvedBy, approvedAt));
   await writeNs4Pipeline(markNs4E4Approved(pipeline, approvedBy, artifactPaths, approvedAt));
   return { moduleName, solutionMode: 'new', entityCount: review.entities.length, relationshipCount: review.relationships.length, artifactPaths };
+}
+
+function parallelEntityStep(
+  context: mls.msg.ExecutionContext,
+  hostStep: mls.msg.AIAgentStep,
+  agentName: string,
+  plan: Ns4E4PlanDraft,
+  repairRound: number,
+  entityIds = plan.entities.map(entity => entity.entityId),
+): mls.msg.AgentIntentAddStep {
+  if (!context.task) throw new Error('[agentNewSolution4:e4] task invalid');
+  if (!entityIds.length) throw new Error('E4 entity fan-out cannot be empty.');
+  const planId = `e4-ontology-round-${plan.reviewRound}-entities-${repairRound}`;
+  return {
+    type: 'add-step', messageId: context.message.orderAt, threadId: context.message.threadId,
+    taskId: context.task.PK, parentStepId: hostStep.stepId,
+    step: {
+      type: 'agent', stepId: 0,
+      interaction: { input: [{ type: 'system', content: '<!-- modelType: reasoning -->' }], cost: 0,
+        trace: [`queued ${entityIds.length} E4 entities with maxParallel=${NS4_E4_MAX_PARALLEL}`], payload: null },
+      stepTitle: 'Detailing {{completed}}/{{total}} ontology entities, failed {{failed}}',
+      status: 'in_progress', nextSteps: [], agentName, onFailure: 'wait_after_prompt',
+      prompt: JSON.stringify({ planId: 'e4-ontology' }), rags: [],
+      planning: { planId, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' },
+    } as mls.msg.AIAgentStep,
+    executionMode: { type: 'parallel', args: entityIds.map(entityId => `entity:${entityId}`), maxParallel: NS4_E4_MAX_PARALLEL },
+  };
+}
+
+function promptReady(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args: string,
+  systemPrompt: string,
+  humanPrompt: string,
+): mls.msg.AgentIntentPromptReady {
+  return {
+    type: 'prompt_ready', args, messageId: context.message.orderAt, threadId: context.message.threadId,
+    taskId: context.task?.PK || '', hookSequential, parentStepId: parentStep.stepId, systemPrompt, humanPrompt,
+  } as mls.msg.AgentIntentPromptReady;
 }
 
 async function readApprovedJourneys(moduleName: string): Promise<Ns4E2Review> {
@@ -287,6 +494,33 @@ async function readApprovedAccess(moduleName: string): Promise<Ns4E3Review> {
   const artifact = await readNs4DefsJson<Ns4AccessMatrixArtifact>(ns4AccessMatrixFile(moduleName));
   if (!artifact) throw new Error(`Approved E3 access artifact not found for ${moduleName}.`);
   return normalizeNs4E3Review(artifact, moduleName);
+}
+
+async function readPlanDraft(moduleName: string): Promise<Ns4E4PlanDraft> {
+  const raw = await readNs4Text(ns4E4PlanDraftFile(moduleName), true);
+  const parsed = parseMaybeJson(raw);
+  if (!isRecord(parsed)) throw new Error(`Invalid E4 overview for ${moduleName}.`);
+  return normalizeNs4E4PlanDraft(parsed, moduleName);
+}
+
+async function readOptionalPlanDraft(moduleName: string): Promise<Ns4E4PlanDraft | null> {
+  const raw = await readNs4Text(ns4E4PlanDraftFile(moduleName), false);
+  const parsed = parseMaybeJson(raw);
+  return isRecord(parsed) ? normalizeNs4E4PlanDraft(parsed, moduleName) : null;
+}
+
+async function readEntityDraft(moduleName: string, entityId: string): Promise<Ns4E4EntityDraft | null> {
+  const raw = await readNs4Text(ns4E4EntityDraftFile(moduleName, entityId), false);
+  const parsed = parseMaybeJson(raw);
+  if (!isRecord(parsed)) return null;
+  const round = typeof parsed.reviewRound === 'number' ? parsed.reviewRound : 1;
+  return normalizeNs4E4EntityDraft(parsed, moduleName, round, entityId);
+}
+
+async function readReviewDraft(moduleName: string): Promise<Ns4E4Review | null> {
+  const raw = await readNs4Text(ns4E4DraftFile(moduleName), false);
+  const parsed = parseMaybeJson(raw);
+  return isRecord(parsed) ? normalizeNs4E4Review(parsed, moduleName) : null;
 }
 
 async function readDraftFromStorage(moduleName: string): Promise<unknown> {
@@ -328,6 +562,20 @@ function addStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentS
     taskId: context.task?.PK || '', parentStepId: parentStep.stepId, step };
 }
 
+function clarificationReviewStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  review: Ns4E4Review,
+  title: string,
+): mls.msg.AgentIntentAddStep {
+  return addStep(context, parentStep, {
+    type: 'clarification', stepId: 0, interaction: null,
+    stepTitle: formatNs4VisibleStepTitle('e4-ontology', title), status: 'pending', nextSteps: [],
+    json: JSON.stringify(review),
+    planning: { planId: `e4-ontology-review-round-${review.reviewRound}`, dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+  } as mls.msg.AIClarificationStep);
+}
+
 function resultStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, saved: Ns4PersistedE4, title: string): mls.msg.AgentIntentAddStep {
   return addStep(context, parentStep, {
     type: 'result', stepId: 0, interaction: null, stepTitle: title, status: 'completed', nextSteps: [],
@@ -353,15 +601,20 @@ function gateRepairResultStep(
   gateFeedback: string,
 ): mls.msg.AgentIntentAddStep {
   return addStep(context, parentStep, {
-    type: 'result', stepId: 0, interaction: null, stepTitle: `E4 gate repair ${repairAttempt}`,
+    type: 'result', stepId: 0, interaction: null, stepTitle: `E4 overview repair ${repairAttempt}`,
     status: 'completed', nextSteps: [], result: JSON.stringify({ moduleName, reviewRound: round, repairAttempt, gateFeedback }, null, 2),
-    planning: { planId: `e4-gate-repair-${round}-${repairAttempt}`, dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
+    planning: { planId: `e4-gate-repair-${round}-${repairAttempt}-${Date.now()}`, dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
   } as mls.msg.AIResultStep);
 }
 
 function updateStatus(
-  context: mls.msg.ExecutionContext, parentStep: mls.msg.AIPayload, step: mls.msg.AIPayload,
-  hookSequential: number, status: mls.msg.AIStepStatus, traceMsg?: string, cleaner?: 'input' | 'input_output',
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIPayload,
+  step: mls.msg.AIPayload,
+  hookSequential: number,
+  status: mls.msg.AIStepStatus,
+  traceMsg?: string,
+  cleaner?: 'input' | 'input_output',
 ): mls.msg.AgentIntentUpdateStatus {
   return { type: 'update-status', hookSequential, messageId: context.message.orderAt,
     threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parentStep.stepId,
@@ -381,10 +634,13 @@ function parseE4Args(value: unknown): Ns4E4Args {
   if (!isRecord(parsed) || parsed.planId !== 'e4-ontology') throw new Error('Invalid E4 step arguments.');
   return {
     planId: 'e4-ontology', solutionMode: 'new',
+    ...(parsed.stage === 'finalize' || parsed.stage === 'plan' ? { stage: parsed.stage } : {}),
     ...(typeof parsed.moduleName === 'string' && parsed.moduleName.trim() ? { moduleName: parsed.moduleName.trim() } : {}),
     ...(typeof parsed.adjustment === 'string' && parsed.adjustment.trim() ? { adjustment: parsed.adjustment.trim() } : {}),
     ...(typeof parsed.reviewRound === 'number' ? { reviewRound: parsed.reviewRound } : {}),
     ...(typeof parsed.repairAttempt === 'number' ? { repairAttempt: parsed.repairAttempt } : {}),
+    ...(typeof parsed.entityRepairRound === 'number' ? { entityRepairRound: parsed.entityRepairRound } : {}),
+    ...(typeof parsed.planRepairAttempt === 'number' ? { planRepairAttempt: parsed.planRepairAttempt } : {}),
     ...(typeof parsed.gateFeedback === 'string' && parsed.gateFeedback.trim() ? { gateFeedback: parsed.gateFeedback.trim() } : {}),
   };
 }
@@ -394,6 +650,12 @@ function resolveE4Args(context: mls.msg.ExecutionContext, value: unknown): Ns4E4
   const moduleName = parsed.moduleName || findE3ModuleName(context) || memoryString(context, 'resumeModule');
   if (!moduleName) throw new Error('E3 module result not found for E4.');
   return { ...parsed, moduleName };
+}
+
+function parseEntitySelector(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const match = /^entity:([A-Z][A-Za-z0-9]*)$/.exec(value.trim());
+  return match?.[1] || '';
 }
 
 function findE3ModuleName(context: mls.msg.ExecutionContext): string {
@@ -412,24 +674,16 @@ interface Ns4E3Handoff {
 }
 
 function findE3Handoff(context: mls.msg.ExecutionContext, moduleName: string): Ns4E3Handoff | null {
-  const result = getAllSteps(context.task?.iaCompressed?.nextSteps)
-    .find(step => step.planning?.planId === 'e3-result');
+  const result = getAllSteps(context.task?.iaCompressed?.nextSteps).find(step => step.planning?.planId === 'e3-result');
   if (!result || result.type !== 'result' || !result.result) return null;
   const parsed = parseMaybeJson(result.result);
   if (!isRecord(parsed) || parsed.moduleName !== moduleName
     || typeof parsed.artifactPath !== 'string' || !parsed.artifactPath.trim()
     || (parsed.approvedBy !== 'human' && parsed.approvedBy !== 'auto')
     || typeof parsed.approvedAt !== 'string' || !parsed.approvedAt.trim()) return null;
-  const approvedReview = isRecord(parsed.approvedReview)
-    ? normalizeNs4E3Review(parsed.approvedReview, moduleName)
-    : undefined;
-  return {
-    moduleName,
-    artifactPath: parsed.artifactPath.trim(),
-    approvedBy: parsed.approvedBy,
-    approvedAt: parsed.approvedAt.trim(),
-    ...(approvedReview ? { approvedReview } : {}),
-  };
+  const approvedReview = isRecord(parsed.approvedReview) ? normalizeNs4E3Review(parsed.approvedReview, moduleName) : undefined;
+  return { moduleName, artifactPath: parsed.artifactPath.trim(), approvedBy: parsed.approvedBy,
+    approvedAt: parsed.approvedAt.trim(), ...(approvedReview ? { approvedReview } : {}) };
 }
 
 function memoryString(context: mls.msg.ExecutionContext, key: string): string {
@@ -440,6 +694,7 @@ function memoryString(context: mls.msg.ExecutionContext, key: string): string {
 function unwrapPayload(value: unknown): unknown {
   const parsed = parseMaybeJson(value);
   if (isRecord(parsed) && parsed.type === 'flexible') return parseMaybeJson(parsed.result);
+  if (isRecord(parsed) && parsed.type === 'clarification' && isRecord(parsed.json)) return parsed.json;
   return parsed;
 }
 
@@ -447,6 +702,10 @@ function parseMaybeJson(value: unknown): unknown {
   if (typeof value !== 'string') return value;
   const clean = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try { return JSON.parse(clean); } catch { return value; }
+}
+
+function formatGate(issues: Array<{ code: string; path: string; message: string }>): string {
+  return issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
 }
 
 function isFast(context: mls.msg.ExecutionContext): boolean { return context.task?.iaCompressed?.longMemory?.fastMode === 'true'; }

@@ -70,12 +70,12 @@ async function main(): Promise<void> {
   const content = response.choices?.[0]?.message?.content;
   const parsed = parseJsonContent(content);
   const payload = isRecord(parsed) && parsed.type === 'flexible' ? parseJsonContent(parsed.result) : parsed;
-  if (!isRecord(payload) || payload.type !== 'clarification' || !isRecord(payload.json)) {
+  if (!isRecord(payload) || payload.planId !== 'e2-review') {
     await writeLiveTrace(pipelineDir, args, { startedAt, finishedAt, model, response, parsed: payload, gate: null });
-    throw new Error('collab-llm returned no valid E2 clarification payload');
+    throw new Error('collab-llm returned no valid E2 internal review payload');
   }
 
-  const review = normalizeNs4E2Review(payload.json, args.moduleName);
+  const review = normalizeNs4E2Review(payload, args.moduleName);
   review.moduleName = args.moduleName;
   review.reviewRound = 1;
   const gate = validateNs4E2Review(review);
