@@ -79,6 +79,7 @@ async function beforePromptImplicit(
 ): Promise<mls.msg.AgentIntent[]> {
   const invocation = parseNs4Invocation(userPrompt || '');
   if (!invocation.prompt) {
+    // error, i18n
     return [await statusTask(agent, context, 'Informe o nome ou a descrição do módulo após @@newSolution4.', 'new Solution 4', true)];
   }
 
