@@ -16,6 +16,7 @@
         "additionalProperties": false,
         "required": [
           "op",
+          "find",
           "content",
           "why"
         ],
@@ -26,11 +27,11 @@
               "replace",
               "append"
             ],
-            "description": "replace: swap an exact block of the card. append: add at the end of the page. There is no create — the group index always exists."
+            "description": "replace: swap an exact block of the card. append: add at the end of the page. There is no create \u2014 the group index always exists."
           },
           "find": {
             "type": "string",
-            "description": "Required by replace: the exact current text, copied verbatim, occurring EXACTLY ONCE in the page."
+            "description": "Required by replace: the exact current text, copied verbatim with its whitespace, occurring EXACTLY ONCE in the file. Send an EMPTY STRING on append and create \u2014 the field is always present because a strict provider rejects a tool whose schema has an optional property."
           },
           "content": {
             "type": "string",

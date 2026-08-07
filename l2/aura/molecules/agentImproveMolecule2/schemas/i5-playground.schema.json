@@ -3,7 +3,9 @@
   "version": 1,
   "type": "object",
   "additionalProperties": false,
-  "required": ["edits"],
+  "required": [
+    "edits"
+  ],
   "properties": {
     "edits": {
       "type": "array",
@@ -12,19 +14,35 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["op", "content", "why"],
+        "required": [
+          "op",
+          "find",
+          "content",
+          "why"
+        ],
         "properties": {
           "op": {
             "type": "string",
-            "enum": ["replace", "append", "create"],
+            "enum": [
+              "replace",
+              "append",
+              "create"
+            ],
             "description": "replace: swap an exact block. append: add at the end. create: write the whole page, only when it does not exist yet."
           },
           "find": {
             "type": "string",
-            "description": "Required by replace: the exact current text, copied verbatim, occurring EXACTLY ONCE in the page."
+            "description": "Required by replace: the exact current text, copied verbatim with its whitespace, occurring EXACTLY ONCE in the file. Send an EMPTY STRING on append and create \u2014 the field is always present because a strict provider rejects a tool whose schema has an optional property."
           },
-          "content": { "type": "string", "description": "The replacement text, the appended block, or the whole page on create." },
-          "why": { "type": "string", "minLength": 3, "description": "One short line, in the user's language." }
+          "content": {
+            "type": "string",
+            "description": "The replacement text, the appended block, or the whole page on create."
+          },
+          "why": {
+            "type": "string",
+            "minLength": 3,
+            "description": "One short line, in the user's language."
+          }
         }
       }
     }

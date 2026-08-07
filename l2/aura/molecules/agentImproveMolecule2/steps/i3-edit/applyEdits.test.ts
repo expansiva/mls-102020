@@ -112,3 +112,16 @@ test('an artifact this molecule does not have is rejected', () => {
   const result = applyEdits(new Map(), [edit()]);
   assert.match(result.errors[0], /not an artifact of this molecule/);
 });
+
+test('an empty `find` is fine on append and create, and rejected on replace', () => {
+  // The schema now REQUIRES `find` on every edit (agentsBestPractices §9: a strict provider rejects
+  // a tool with an optional property). Optionality moved here, where it can carry a real message.
+  const created = applyEdits(files(), [edit({ artifact: 'html', op: 'create', find: '', content: '<div></div>' })]);
+  assert.equal(created.errors.length, 0);
+
+  const appended = applyEdits(files(), [edit({ op: 'append', find: '', content: 'x' })]);
+  assert.equal(appended.errors.length, 0);
+
+  const replaced = applyEdits(files(), [edit({ op: 'replace', find: '' })]);
+  assert.match(replaced.errors[0], /replace without `find`/);
+});

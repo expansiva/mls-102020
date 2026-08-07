@@ -3,7 +3,9 @@
   "version": 1,
   "type": "object",
   "additionalProperties": false,
-  "required": ["edits"],
+  "required": [
+    "edits"
+  ],
   "properties": {
     "edits": {
       "type": "array",
@@ -12,21 +14,37 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["artifact", "op", "content", "why"],
+        "required": [
+          "artifact",
+          "op",
+          "find",
+          "content",
+          "why"
+        ],
         "properties": {
           "artifact": {
             "type": "string",
-            "enum": ["defs", "ts", "less", "html", "groupIndex"],
+            "enum": [
+              "defs",
+              "ts",
+              "less",
+              "html",
+              "groupIndex"
+            ],
             "description": "Which file of the molecule this edit changes."
           },
           "op": {
             "type": "string",
-            "enum": ["replace", "append", "create"],
+            "enum": [
+              "replace",
+              "append",
+              "create"
+            ],
             "description": "replace: swap an exact block. append: add at the end of the file. create: write a file that does not exist yet."
           },
           "find": {
             "type": "string",
-            "description": "Required by replace: the exact current text, copied verbatim with its whitespace. It must occur EXACTLY ONCE in the file — if it occurs twice the edit is rejected, so extend it until it is unique. Omit for append and create."
+            "description": "Required by replace: the exact current text, copied verbatim with its whitespace, occurring EXACTLY ONCE in the file. Send an EMPTY STRING on append and create \u2014 the field is always present because a strict provider rejects a tool whose schema has an optional property. If it occurs twice the edit is rejected, so extend it until it is unique."
           },
           "content": {
             "type": "string",
