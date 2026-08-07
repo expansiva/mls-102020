@@ -1,0 +1,219 @@
+/// <mls fileReference="_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i4-inherit/widgetInheritChoice.less" enhancement="enhancementStyle"/>
+
+// The three options are NOT visually equal, and that is deliberate: `parent` writes nothing and
+// `override` costs the shell its inheritance of a member. A neutral card for each would present
+// three equivalent buttons for three different consequences.
+
+widget-inherit-choice-102020 {
+  display: block;
+
+  .ihc {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    padding: 1rem;
+  }
+
+  .ihc-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .ihc-intro,
+  .ihc-parent,
+  .ihc-reason {
+    margin: 0.35rem 0 0;
+    font-size: 0.85rem;
+    opacity: 0.85;
+  }
+
+  .ihc-parent code {
+    padding: 0.05rem 0.3rem;
+    border-radius: 0.25rem;
+    background: var(--collab-surface-2, rgba(127, 127, 127, 0.12));
+  }
+
+  .ihc-parent-ref {
+    display: block;
+    font-size: 0.75rem;
+    opacity: 0.7;
+  }
+
+  .ihc-reason {
+    font-style: italic;
+  }
+
+  .ihc-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .ihc-option {
+    padding: 0.7rem 0.85rem;
+    border: 1px solid var(--collab-border, rgba(127, 127, 127, 0.35));
+    border-radius: 0.5rem;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--collab-primary, #3b82f6);
+    }
+
+    &.is-selected {
+      border-color: var(--collab-primary, #3b82f6);
+      background: var(--collab-surface-2, rgba(59, 130, 246, 0.06));
+    }
+  }
+
+  // `parent` is the choice that writes nothing. Muted, and never mistaken for the default.
+  .ihc-option-parent {
+    border-style: dashed;
+  }
+
+  .ihc-option-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .ihc-radio {
+    width: 0.85rem;
+    height: 0.85rem;
+    flex: none;
+    border: 2px solid var(--collab-border, rgba(127, 127, 127, 0.55));
+    border-radius: 50%;
+
+    &.is-on {
+      border-color: var(--collab-primary, #3b82f6);
+      background: var(--collab-primary, #3b82f6);
+      box-shadow: inset 0 0 0 2px var(--collab-surface, #fff);
+    }
+  }
+
+  .ihc-option-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  .ihc-badge {
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    background: var(--collab-primary, #3b82f6);
+    color: var(--collab-on-primary, #fff);
+  }
+
+  .ihc-option-body {
+    margin: 0.35rem 0 0 1.35rem;
+    font-size: 0.82rem;
+    opacity: 0.85;
+  }
+
+  .ihc-member {
+    margin: 0.6rem 0 0 1.35rem;
+  }
+
+  .ihc-member-label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+  }
+
+  .ihc-member-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .ihc-member-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--collab-border, rgba(127, 127, 127, 0.35));
+    border-radius: 0.35rem;
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.8rem;
+
+    &.is-on {
+      border-color: var(--collab-primary, #3b82f6);
+      background: var(--collab-surface-2, rgba(59, 130, 246, 0.1));
+    }
+
+    // The expensive one carries its cost in the border, before it is read in the warning.
+    &.is-expensive {
+      border-style: dashed;
+      border-color: var(--collab-warning, #d97706);
+    }
+  }
+
+  .ihc-member-name {
+    font-family: var(--collab-font-mono, monospace);
+  }
+
+  .ihc-member-kind,
+  .ihc-member-note {
+    font-size: 0.7rem;
+    opacity: 0.7;
+  }
+
+  .ihc-member-input {
+    width: 100%;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--collab-border, rgba(127, 127, 127, 0.35));
+    border-radius: 0.35rem;
+    background: transparent;
+    font-family: var(--collab-font-mono, monospace);
+    font-size: 0.8rem;
+  }
+
+  .ihc-hint,
+  .ihc-warning,
+  .ihc-blocking {
+    margin: 0.4rem 0 0;
+    font-size: 0.78rem;
+  }
+
+  .ihc-hint {
+    opacity: 0.7;
+  }
+
+  .ihc-warning,
+  .ihc-blocking {
+    color: var(--collab-warning, #d97706);
+  }
+
+  .ihc-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
+  .ihc-btn {
+    padding: 0.35rem 0.9rem;
+    border-radius: 0.35rem;
+    border: 1px solid var(--collab-border, rgba(127, 127, 127, 0.35));
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.85rem;
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .ihc-confirm {
+    border-color: var(--collab-primary, #3b82f6);
+    background: var(--collab-primary, #3b82f6);
+    color: var(--collab-on-primary, #fff);
+  }
+
+  .ihc-empty {
+    padding: 1rem;
+    opacity: 0.7;
+  }
+}

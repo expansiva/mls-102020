@@ -1,0 +1,48 @@
+{
+  "$id": "https://collab.codes/schemas/agentImproveMolecule2/i6-index.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "edits"
+  ],
+  "properties": {
+    "edits": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Targeted edits to the group index page, applied in this order. Only the showcase card of this molecule may be touched.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "op",
+          "content",
+          "why"
+        ],
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": [
+              "replace",
+              "append"
+            ],
+            "description": "replace: swap an exact block of the card. append: add at the end of the page. There is no create — the group index always exists."
+          },
+          "find": {
+            "type": "string",
+            "description": "Required by replace: the exact current text, copied verbatim, occurring EXACTLY ONCE in the page."
+          },
+          "content": {
+            "type": "string",
+            "description": "The replacement text, the appended block, or the whole page on create."
+          },
+          "why": {
+            "type": "string",
+            "minLength": 3,
+            "description": "One short line, in the user's language."
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,409 @@
+{
+  "flowId": "agentImproveMolecule2",
+  "schemaVersion": "2026-08-06-improvemolecule2-v1",
+  "specFirst": "Written BEFORE the code, per skills/agentsBestPractices.md §1. The design decisions this flow implements are closed in todo/analise-improve-molecule-2.md (§6 architecture, §7 open questions, §8 the two last calls). When behavior must change, change this spec first, then the code.",
+  "description": "Changes an EXISTING molecule. Triages the request into one of four routes: (A) definition change -> rebuild through the agentNewMolecule2 pipeline; (B) minor change -> edit, save, regenerate the playground when affected, and then the group index; (C) inherited shell whose fix needs parent code -> its own clarification, the user decides between .less and a local override; (D) out of scope -> readable failure. Replaces agentsManageMolecules/agentImproveMolecule{,Defs,Materialize}.ts, which stay in place until this one is accepted.",
+  "principles": [
+    "REUSE THE HELPERS, NOT THE STEPS. agentNewMolecule2 generates the same five artifacts, and its generation lives in helpers/nmTemplates.ts + helpers/nmFs.ts, not in the step agents. This flow imports those and brings its own steps and gates. Measured reason: nmFs.ts:75 states 'a new molecule must not overwrite an existing one' — the NM2 gate REFUSES an existing file, which is the exact inverse of this agent's precondition. Making the same step serve both would need a create/update mode field inside it, the 'multi-role agent switched by a mode field' that agentsBestPractices forbids.",
+    "CREATE vs UPDATE is the whole difference. Every step here reads the current artifact first and writes a delta. A step that cannot read what exists must not write.",
+    "Deterministic first. Which artifacts a change touches, whether the playground is affected, whether the index must follow, the tag, the paths — all derived in code. LLM calls are spent on judgment only: triage, the rebuild plan, the code edit, the stylesheet edit.",
+    "NEVER touch the parent. An inherited shell is fixed in its own file (.less first, local override second). Changing the base molecule is out of this agent's scope; it is a request the user opens in the base project.",
+    "Coherence over speed. The value of this agent is not editing faster — it is keeping the four artifacts saying the same thing: defs, molecule, playground and group index. Their divergence is what produced 13 defects found by accident in the week of 2026-08-05.",
+    "The gates REPORT, they do not block. This is an improve run: a coherence problem found here is an opportunity to fix it now, not a barrier. Blocking on pre-existing debt would freeze the agent on molecules nobody asked to repair."
+  ],
+  "conventions": {
+    "input": "PROSE ONLY: @@agentImproveMolecule2 <what to change, on which molecule>. Same parsing as agentNewMolecule2 (shared/mentionEntry: stripAgentMention + isBareMention); mls.common.safeParseArgs is NOT called — it throws on prose. A bare mention fails readable: there is nothing to change without a description.",
+    "targetProject": "mls.actualProject. The agent acts ONLY on the current project (decision §7.3). It never writes into another project, even when the fix belongs to a parent that lives elsewhere.",
+    "identity": "The target molecule is resolved to a fileReference _<project>_/l2/molecules/<groupLowercase>/<shortName>.ts and that reference is the single source of truth, exactly as in agentNewMolecule2. The tag is DERIVED from the path, never authored.",
+    "mustExist": "The inverse of the NM2 collision check: i1-locate FAILS when the target does not exist. Creating is agentNewMolecule2's job, and the failure message says so.",
+    "inheritance": "A molecule is a SHELL when its class extends another molecule imported from a different project. Detected deterministically from the import + extends clause. Measured on 2026-08-06: 84 shells exist (42 in mls-102054, 42 in mls-102055), 70 with an empty body, 14 overriding a single property, ZERO overriding render().",
+    "playgroundThenIndex": "If the playground changed, the group index MUST be updated in the same run. Not a heuristic — a rule. On 2026-08-05 the playground was fixed and the group page was left behind showing an empty detail; it was found by accident."
+  },
+  "modelAliases": {
+    "classify": "classifier",
+    "triage": "reasoning",
+    "plan": "reasoning",
+    "code": "code",
+    "less": "design",
+    "summary": "general"
+  },
+  "folderLayout": {
+    "agentImproveMolecule2.ts": "root: parses the prose mention, resolves the target molecule, runs the cheap route classification and plants the step tree for that route.",
+    "flow.json": "this spec",
+    "spec.md": "human-readable rationale",
+    "README.md": "how to run and test",
+    "helpers/": "imResolve.ts (locate the molecule from prose + read its 4 artifacts + the l4 work paths), imInherit.ts (shell detection and the overridable-member map), imCoherence.ts (the two report-only gates of §5), imRootPlan.ts (the i0-classify result as the steps read it back — kept here, not in the root file, so step → root is not a module cycle), imTypes.ts. Everything about GENERATING artifact content is imported from agentNewMolecule2/helpers — nmTemplates.ts, nmFs.ts, nmTypes.ts, nmLayoutAxes.ts — never reimplemented here.",
+    "steps/": "one folder per step: agent hook, prompt.md, deterministic gate + test, readme.md, CHANGELOG.md",
+    "schemas/": "i2-triage, i3-edit, i5-playground and i6-index schemas (tool outputs). i4-inherit has NONE: its answer is a clarification envelope, not a tool call, and its shape lives in the prompt."
+  },
+  "treeOverview": "i0-classify (the ROOT itself, no separate agent) -> i1-locate -> i2-triage -> i2r-route (the ROUTER, also the root) -> then ONE of: route A (hand off to agentNewMolecule2) | route B (i3-edit -> i5-playground -> i6-index) | route C (i4-inherit clarification -> i3-edit -> i5-playground -> i6-index) | route D (readable failure, nothing planted). Every route that wrote anything ends at i7-summary.",
+  "routes": {
+    "note": "THE TREE IS PLANTED PER ROUTE. i2-triage decides, and only that branch's steps are planted. This matters because dependsOn cannot be an AND across branches: a step waiting on an anchor from a branch that was never planted waits forever. The steps[] list below is the CATALOG of steps; this table is what actually runs.",
+    "A": {
+      "steps": [
+        "i0-classify",
+        "i1-locate",
+        "i2-triage",
+        "i2a-rebuild-handoff"
+      ],
+      "then": "the agentNewMolecule2 pipeline owns the rest; i7-summary is NOT planted here — NM2 has its own summary"
+    },
+    "B": {
+      "steps": [
+        "i0-classify",
+        "i1-locate",
+        "i2-triage",
+        "i3-edit",
+        "i5-playground",
+        "i6-index",
+        "i7-summary"
+      ],
+      "wiring": "i3-edit dependsOn i2-done"
+    },
+    "C": {
+      "steps": [
+        "i0-classify",
+        "i1-locate",
+        "i2-triage",
+        "i4-inherit",
+        "i3-edit",
+        "i5-playground",
+        "i6-index",
+        "i7-summary"
+      ],
+      "wiring": "i3-edit dependsOn i4-done"
+    },
+    "D": {
+      "steps": [
+        "i0-classify",
+        "i1-locate",
+        "i2-triage"
+      ],
+      "then": "readable failure, nothing written, no summary step"
+    }
+  },
+  "steps": [
+    {
+      "planId": "i0-classify",
+      "agentName": "agentImproveMolecule2 (the root itself — no separate step agent)",
+      "type": "agent",
+      "model": "classify",
+      "dependsOn": [],
+      "goal": "Cheap classifier over the prose: is this a change to an EXISTING molecule? Extract the molecule the user is talking about, detect userLanguage, propose the runKey slug and a short task title. Refuse readably when the prose is not about changing a component.",
+      "input": [
+        "prose from the mention"
+      ],
+      "output": {
+        "result": "{ target, runKey, userLanguage, title, validInput }"
+      },
+      "gate": {
+        "file": "steps/i1-locate/gate.ts (shared with the locate gate)",
+        "checks": [
+          "prose names something resolvable as a molecule",
+          "validInput is false only with a readable reason"
+        ],
+        "onFail": "NO retry: readable failure"
+      },
+      "doneAnchor": "none (the root plants the tree directly)"
+    },
+    {
+      "planId": "i1-locate",
+      "agentName": "agentIm2Locate",
+      "type": "deterministic",
+      "model": "none",
+      "dependsOn": [],
+      "goal": "Resolve the target to a fileReference in the CURRENT project and read the four artifacts that exist today (.defs.ts, .ts, .less, .html) plus the group index. Detect whether the molecule is a SHELL (extends a molecule from another project) and, if so, list the members it could override. Writes context.json. No LLM.",
+      "input": [
+        "i0 result",
+        "mls.actualProject"
+      ],
+      "output": {
+        "result": "{ fileReference, group, tag, isShell, parentRef, artifactsPresent }",
+        "savedArtifact": [
+          "l4/agentImproveMolecule2/<runKey>/context.json"
+        ]
+      },
+      "gate": {
+        "file": "steps/i1-locate/gate.ts",
+        "checks": [
+          "the molecule EXISTS — the inverse of the NM2 collision check; when absent, fail readable pointing at agentNewMolecule2",
+          "the folder is a known group and the group has a creation skill",
+          "the .ts and .defs.ts are readable; a missing .html or .less is recorded, not fatal",
+          "when isShell, the parent reference resolves and is in ANOTHER project"
+        ],
+        "onFail": "NO retry: readable failure"
+      },
+      "doneAnchor": "i1-done"
+    },
+    {
+      "planId": "i2-triage",
+      "agentName": "agentIm2Triage",
+      "type": "agent",
+      "model": "triage",
+      "dependsOn": [
+        "i1-done"
+      ],
+      "goal": "THE routing decision. Given the request and the current artifacts, decide the route: A (the DEFINITION changes — slots, properties, events, responsibilities), B (minor — style, code fix, text), C (the molecule is a shell AND the fix needs behaviour that comes from the parent), or D (out of scope). Returns the route plus, for B and C, the list of artifacts the change is expected to touch.",
+      "input": [
+        "context.json (the .defs.ts + a DERIVED public-surface summary; NOT the molecule source)",
+        "user prose"
+      ],
+      "output": {
+        "result": "{ route, rationale, expectedArtifacts[], definitionElements[] }",
+        "savedArtifact": [
+          "l4/agentImproveMolecule2/<runKey>/triage.json"
+        ]
+      },
+      "gate": {
+        "file": "steps/i2-triage/gate.ts",
+        "checks": [
+          "route is one of A|B|C|D — reported alone, since every other message is about a decision that was never made",
+          "route C requires context.inheritance.isShell — a non-shell can never take it (the measured half of the C condition; the other half, \"the behaviour lives in the parent\", is judgement and the gate says nothing about it)",
+          "route A requires at least one entry in definitionElements — that field was added to the schema so this check is implementable, and it pre-fills the rebuild clarification",
+          "definitionElements is empty on B, C and D — naming one there contradicts the route",
+          "expectedArtifacts is empty on A and D, non-empty on B and C",
+          "expectedArtifacts names only known artifact kinds, and an ABSENT one only when a later step creates it (less, html, groupIndex); .ts and .defs.ts are guaranteed by i1-locate",
+          "rationale is non-empty — on route D it is the only answer the user gets"
+        ],
+        "onFail": "retry 1 with the gate errors in context; a 2nd failure fails the step",
+        "normalization": "html implies groupIndex (conventions.playgroundThenIndex) is applied as a NORMALIZATION after the gate, not as a failure: code can derive it, and spending a retry on something derivable is the cost agentsBestPractices §3 warns about.",
+        "notCovered": "Whether A or B was the RIGHT call. That is judgement and it belongs to the prompt; the gate refuses only the mechanically impossible."
+      },
+      "doneAnchor": "i2-done"
+    },
+    {
+      "planId": "i2a-rebuild-handoff",
+      "agentName": "agentIm2RebuildHandoff",
+      "type": "deterministic",
+      "model": "none",
+      "dependsOn": [
+        "i2-done"
+      ],
+      "goal": "ROUTE A ONLY. A definition change is not an edit, it is a rebuild: hand the run over to the agentNewMolecule2 pipeline (n2-plan onward) carrying the EXISTING artifacts as the starting point, so its clarification opens pre-filled instead of empty. This step exists so the handoff is a declared boundary and not a hidden call.",
+      "input": [
+        "context.json",
+        "triage.json"
+      ],
+      "output": {
+        "result": "{ handedOff: true, nmRunKey }"
+      },
+      "gate": {
+        "file": "steps/i2a-rebuild-handoff/gate.ts",
+        "checks": [
+          "route == A",
+          "the NM2 run receives the existing artifacts (a rebuild must never start from a blank plan)",
+          "the NM2 collision check is satisfied by the update contract, not bypassed silently"
+        ],
+        "onFail": "NO retry: readable failure"
+      },
+      "doneAnchor": "i2a-done",
+      "openQuestion": "How the NM2 collision gate is satisfied on a rebuild is the one mechanical detail left: either NM2 gains an explicit 'update' entry contract, or the handoff writes into a staging path. Decide when writing steps/i2a; do NOT solve it with a mode flag inside the NM2 steps."
+    },
+    {
+      "planId": "i4-inherit",
+      "agentName": "agentIm2Inherit",
+      "type": "agent",
+      "model": "triage",
+      "dependsOn": [
+        "i2-done"
+      ],
+      "goal": "ROUTE C ONLY — the second clarification, and it is NOT the defs one. Asks WHERE to apply the change, with the consequence of each choice spelled out. Emits { type: 'clarification', json } and mounts its own widget; the defs widget of n2-plan is for a different question and must not be reused here.",
+      "input": [
+        "context.json",
+        "triage.json"
+      ],
+      "output": {
+        "result": "{ where: 'less' | 'override', member?: string } — 'parent' emits NO result and NO anchor",
+        "savedArtifact": [
+          "l4/agentImproveMolecule2/<runKey>/inherit-suggestion.json (the model proposal)",
+          "l4/agentImproveMolecule2/<runKey>/inherit.json (the human decision, only on less/override)"
+        ]
+      },
+      "options": {
+        "less": "Style only, in the shell's own .less. TRY THIS FIRST — 70 of the 84 shells need nothing else.",
+        "override": "A local override in the shell. Solves anything, but that shell STOPS INHERITING the parent: a later fix in the base no longer reaches it. Prefer the SMALLEST member — a property or a narrow method before render().",
+        "parent": "INFORMATION ONLY, never executed. The fix belongs to the base molecule, which lives in another project; this agent does not cross that boundary (§7.3). The user opens the request there."
+      },
+      "gate": {
+        "file": "steps/i4-inherit/gate.ts",
+        "checks": [
+          "the payload is a { type: 'clarification', json } envelope",
+          "reaching this step for a non-shell is refused — route C only exists for a shell, so the routing broke",
+          "where is one of less, override or parent",
+          "when where == override, member is a real member of the parent class — UNLESS the parent is unreadable from here, when imInherit returns an empty map and any name is accepted (refusing everything would leave the user unable to answer a question they were still asked)",
+          "a member named on a choice that does not target one is refused",
+          "the MODEL suggestion must carry a reason (it arrives pre-selected); the HUMAN answer need not",
+          "Cancel stops the run with nothing written"
+        ],
+        "onFail": "retry 1; a 2nd failure fails the step"
+      },
+      "doneAnchor": "i4-done",
+      "mechanism": "NO TOOL CALL. The reasoning answer IS a { type: 'clarification', json } envelope (nmClarificationPromptReady), afterPromptStep gates the suggestion and returns [] so the payload stays mounted, beforeClarificationStep mounts widget-inherit-choice-102020 rebuilding its value from DISK, and Confirm re-gates what the human chose. Built with a tool call first: a tool result is not a clarification envelope, so the widget would never mount and the step would silently skip the human.",
+      "parentIsNotExecutable": "'parent' passes the gate and ends the run: no i4-done anchor is emitted, so i3-edit never starts and nothing is written. The user may conclude the base molecule is wrong and this agent still will not touch it. It is offered prominently on purpose — hiding it pushes users into an override that is merely the reachable answer, and patching shared behaviour into one shell leaves every other shell broken while hiding the defect.",
+      "downstream": "i3-edit reads inherit.json and renders it as an INSTRUCTION, not as advice: it was chosen at a checkpoint with the cost of each option spelled out."
+    },
+    {
+      "planId": "i3-edit",
+      "agentName": "agentIm2Edit",
+      "type": "agent",
+      "model": "code",
+      "dependsOn": [
+        "i2-done  (route B) | i4-done  (route C) — see routes[]"
+      ],
+      "dependsOnNote": "ROUTE-DEPENDENT, and it must not be an AND. On route B the i4 step is never planted, so an anchor list containing i4-done would wait forever. The root plants ONE branch and wires i3 to that branch's anchor.",
+      "goal": "ROUTES B and C. Apply the change to the artifacts triage named, reading the current content and writing a delta — never regenerating from scratch. On route C the target is the shell only, in the shape the clarification chose. The .less edits use the design model; the .ts edits use the code model.",
+      "input": [
+        "context.json",
+        "triage.json",
+        "inherit.json (route C)"
+      ],
+      "output": {
+        "result": "{ touched[] }",
+        "savedArtifact": [
+          "the edited artifacts",
+          "l4/agentImproveMolecule2/<runKey>/edit.json"
+        ]
+      },
+      "gate": {
+        "file": "steps/i3-edit/gate.ts",
+        "checks": [
+          "every touched file was READ before being written — structural: a replace must quote text that is really there",
+          "no file outside the current project was touched — structural, and asserted anyway with offendingForeignWrite",
+          "on route C, the parent file was not touched — this is the hard invariant of the whole agent",
+          "the file header (fileReference + enhancement) is preserved byte-for-byte",
+          "the appearance/discipline detectors of n4-render run on the BEFORE and the AFTER; only what the edit INTRODUCED is an error",
+          "tsc/lessc has no NEW error in the touched files — the before content is compiled first to get the baseline"
+        ],
+        "onFail": "retry 1 with the gate errors; a 2nd failure fails the step. A rejected attempt is ROLLED BACK — unlike agentNewMolecule2, which keeps the failed file, because here the molecule already works and a twice-failed run must not leave it worse than it found."
+      },
+      "doneAnchor": "i3-done",
+      "mechanism": "The model returns TARGETED EDITS (replace/append/create), never rewritten files — see steps/i3-edit/applyEdits.ts. Three invariants become structural rather than checked: read-before-write, byte-identical untouched regions (header included), and no reachable path outside the current project.",
+      "modelNote": "ONE call with the code model for .ts and .less alike, though the goal line above says the .less uses the design model. A step emits one prompt_ready, so honouring the split needs two steps or a dispatcher/worker pair. Deferred: the design model earns its keep writing a whole stylesheet (n5-less), while an improve run changes a spacing or a token. Revisit if .less edits come back weak."
+    },
+    {
+      "planId": "i5-playground",
+      "agentName": "agentIm2Playground",
+      "type": "agent (conditional — most runs never call the model)",
+      "model": "code",
+      "dependsOn": [
+        "i3-done"
+      ],
+      "goal": "Regenerate the playground ONLY when the change affects it — a new slot, a new property, a new state. Whether it is affected is decided DETERMINISTICALLY from the diff of the defs and the class members; the LLM is only spent writing the examples. When nothing is affected, the step completes as a no-op and says so.",
+      "input": [
+        "context.json",
+        "edit.json"
+      ],
+      "output": {
+        "result": "{ playgroundChanged: boolean }",
+        "savedArtifact": [
+          "the .html playground when changed"
+        ]
+      },
+      "gate": {
+        "file": "steps/i5-playground/gate.ts",
+        "checks": [
+          "a no-op run wrote nothing — rewriting a correct page produces a diff to review and claims work that was not needed",
+          "when the surface moved, the page changed",
+          "every slot the run ADDED is exercised (slot=\"X\" or <X>); a slot the page never exercised is pre-existing debt and does not block",
+          "the state widget survived — every {{playground.*}} binding depends on it",
+          "the page still instantiates the tag, is still a fragment, and binds no property the molecule lost"
+        ],
+        "onFail": "retry 1; a 2nd failure fails the step"
+      },
+      "doneAnchor": "i5-done",
+      "mechanism": "diffSurface(context snapshot, disk) decides staleness in code. When the surface did not move, beforePromptStep returns the done anchor WITHOUT emitting a prompt. Edits, not a rewrite, so the examples someone wrote survive."
+    },
+    {
+      "planId": "i6-index",
+      "agentName": "agentIm2Index",
+      "type": "agent (conditional — deterministic for the import, model only for the showcase card)",
+      "model": "code (only when a card must change)",
+      "dependsOn": [
+        "i5-done"
+      ],
+      "goal": "If the playground changed, update the group index page to match. Mandatory, not conditional on judgment (see conventions.playgroundThenIndex). No LLM: the index entry is derived from the defs and the tag.",
+      "input": [
+        "context.json",
+        "i5 result"
+      ],
+      "output": {
+        "result": "{ indexUpdated: boolean }",
+        "savedArtifact": [
+          "the group index.ts when updated"
+        ]
+      },
+      "gate": {
+        "file": "steps/i6-index/gate.ts",
+        "checks": [
+          "playgroundChanged == true implies indexUpdated == true — the rule the 2026-08-05 incident produced; i5's answer is READ from its artifact, never recomputed, because a disagreement between the two steps IS the defect",
+          "the molecule is imported exactly once, counted by path with or without the .js extension",
+          "there is a <tag> instance — imported and never shown is a silent gap",
+          "every slot the run ADDED is exercised in the card",
+          "the page did not shrink by more than 10% — this step adds, it does not rewrite"
+        ],
+        "onFail": "retry 1; a 2nd failure fails the step"
+      },
+      "doneAnchor": "i6-done",
+      "correction": "flow.json originally declared this step fully deterministic. That was WRONG and building it is what showed it: the import line is derivable, the showcase card is not — a group index is a hand-written Lit page (groupviewtable/index.ts, 782 lines of per-molecule cards with chosen sample data). Three exits now: no-op, import-only (no model), card work (model). Leaving the old claim would have produced a step reporting \"index updated\" after fixing only an import, which is the 2026-08-05 failure wearing a different hat."
+    },
+    {
+      "planId": "i7-summary",
+      "agentName": "agentIm2Summary",
+      "type": "agent",
+      "model": "summary",
+      "dependsOn": [
+        "i6-done"
+      ],
+      "goal": "Short final summary in the user's language: what changed, in which artifacts, and the COHERENCE REPORT from the two gates of §5 — including problems that already existed. Report only, never blocking: an improve run is when they are cheapest to fix, and the user decides.",
+      "input": [
+        "context.json (the PRE-edit sources)",
+        "triage.json",
+        "edit.json / playground.json / index.json / inherit.json — whatever the run produced",
+        "the molecule AS IT STANDS NOW, for the coherence report"
+      ],
+      "output": {
+        "result": "human summary + coherence report"
+      },
+      "gate": {
+        "file": "steps/i7-summary/gather.ts (findingsCarried)",
+        "checks": [
+          "every coherence finding survived into the summary — the ONE failure mode that would defeat this step, and it costs a count comparison"
+        ],
+        "onFail": "retry 1; a SECOND failure still COMPLETES the step. Every other step fails the task on a second rejection because a half-written artifact leaves the molecule half-done — here the molecule is already written and correct, and failing would report a change that did happen as one that did not. The findings go out verbatim instead.",
+        "correction": "flow.json declared gate:none for this step. Building it showed the drop-a-finding failure mode is exactly what this agent exists to prevent, so the spec was corrected rather than the code bent to match it."
+      },
+      "doneAnchor": "none (last step)",
+      "factsNotRecall": "The model receives what the artifacts recorded and is told not to add to it. It is never asked to recall the pipeline: a model asked what happened invents the parts it did not see. Its only job is the user language."
+    }
+  ],
+  "coherenceReport": {
+    "when": "computed by helpers/imCoherence.ts and rendered by i7-summary. REPORT ONLY — never blocks (decision §8.2).",
+    "gate1": "defs x slotTags x group contract: the slots named in the defs text match the real slotTags array of the .ts, and both match the group's creation.ts. Catches the 2026-08-05 case where the defs described the OLD design, omitted a slot the code read, and claimed 'does not introduce slots beyond the contract' while violating it — three errors at once, none detected.",
+    "gate2": "declared x used: every tag in slotTags is actually read in the render (getSlotContent / getSlot / renderLiveSlot). Catches the 9 molecules that declare a slot they never read — writing <Label> in them does nothing, silently.",
+    "knownDebt": "Both gates WILL fire on molecules nobody asked to repair. That is intended: the report names it, the user decides.",
+    "notCovered": "A defect the agent itself just introduced (e.g. adding a slot to the defs and not to the code) is reported like any other. If that shows up in practice, the answer is ONE bounded repair attempt (agentsBestPractices §7), not a block. Deliberately out of v1."
+  },
+  "outOfScope": {
+    "parentEdits": "Changing the base molecule of a shell. Out of scope by decision §7.3: the agent only writes in the current project.",
+    "dependentWarning": "Warning that a base molecule has shells inheriting from it. NOT IMPLEMENTABLE today: from the base project the agent cannot see who inherits — the dependency is one-way and there is no access to other projects. Revisit only if that changes."
+  },
+  "acceptance": {
+    "test1": "Route B on a plain molecule: a style-only change. One artifact touched, playground untouched, index untouched, coherence report rendered.",
+    "test2": "Route B with a new property: playground regenerated AND the group index updated in the same run — the rule of conventions.playgroundThenIndex.",
+    "test3": "Route C on a shell of mls-102054: the clarification offers the three options, 'parent' ends the run with an instruction and NO write, 'override' writes only the shell, and the gate proves the parent file was untouched.",
+    "test4": "Route A: a definition change hands off to agentNewMolecule2 with the existing artifacts pre-filling the plan, and the rebuilt molecule keeps its fileReference.",
+    "test5": "Route D and the not-found case: both fail readable, with no retry and nothing written.",
+    "regression": "agentNewMolecule2 stays green — this flow imports its helpers and must not modify them. The three old agents stay in place and untouched until this one is accepted."
+  },
+  "planting": {
+    "note": "THE TREE IS PLANTED IN TWO PHASES, which is the one structural difference from agentNewMolecule2 (eight steps, always run, planted at once).",
+    "why": "The route is not known until i2-triage answers, and the branches cannot all be planted: i3-edit waits on i2-done on route B and on i4-done on route C, and an anchor list with both is an AND — the branch never planted would hang the one that was.",
+    "phase1": "The root, right after i0-classify: i1-locate, i2-triage, and i2r-route.",
+    "phase2": "i2r-route (a hook on the ROOT, deterministic, no LLM) reads i2's anchor result and plants that branch.",
+    "whyTheRoot": "The router is a hook on the root and not a step agent because it holds no logic of its own — it IS the routing table, and the table belongs where the tree is planted. Putting successors in each step's after-hook is the pattern agentsBestPractices §6 names as the reason reordering agentChangeBackend meant editing ~20 files."
+  },
+  "notBuilt": {
+    "i2a-rebuild-handoff": "NOT IMPLEMENTED. Route A cannot run and fails readably at the router. Blocked on the openQuestion: how the NM2 collision gate is satisfied on a rebuild.",
+    "policy": "A declared-but-absent step is SKIPPED, never planted: planting it puts a node in the tree whose agent does not resolve, which reads to the user as a crash rather than as \"this part is not built\". The router names every skipped step in its completion message — no silent truncation. As of 2026-08-06 only i2a-rebuild-handoff is absent."
+  }
+}

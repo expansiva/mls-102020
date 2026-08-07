@@ -1,0 +1,29 @@
+{
+  "$id": "https://collab.codes/schemas/agentImproveMolecule2/i2-triage.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["route", "rationale", "expectedArtifacts", "definitionElements"],
+  "properties": {
+    "route": {
+      "type": "string",
+      "enum": ["A", "B", "C", "D"],
+      "description": "A = the public definition changes (a slot, property or event is added, removed or changes meaning) and the molecule must be rebuilt. B = a minor change: appearance, a code defect, wording. C = the molecule is a shell AND the behaviour to change lives in its parent. D = the request is not about changing this molecule."
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 20,
+      "description": "One or two sentences, in the user's language, saying WHY this route. It is shown to the user, and on route D it is the whole answer they get."
+    },
+    "expectedArtifacts": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["defs", "ts", "less", "html", "groupIndex"] },
+      "description": "Which artifacts the change is expected to touch. EMPTY on routes A and D — A hands the work over to a rebuild and D writes nothing. At least one on routes B and C."
+    },
+    "definitionElements": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Only on route A: the named slots, properties or events that are added, removed or change meaning, e.g. 'slot Detail', 'property pageSize', 'event rowClick'. Empty on every other route. This list is what pre-fills the rebuild clarification, so a vague entry costs the user a round trip."
+    }
+  }
+}
