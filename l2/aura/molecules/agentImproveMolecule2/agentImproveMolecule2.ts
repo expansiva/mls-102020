@@ -316,7 +316,10 @@ function readTitles(payload: unknown): Record<string, string> {
   return out;
 }
 
-const rootPlanSystemPrompt = `You are the entry point of a flow that CHANGES a molecule (a web component) that already exists.
+const rootPlanSystemPrompt = `
+<!-- modelType: classifier -->
+
+You are the entry point of a flow that CHANGES a molecule (a web component) that already exists.
 
 This is a cheap classification. You do not decide what to change or how — later steps do, reading the code. You only read the prose.
 
