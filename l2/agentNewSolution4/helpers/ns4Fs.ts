@@ -44,6 +44,22 @@ export function ns4OntologyIndexFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/ontology`, shortName: 'index', extension: '.defs.ts' };
 }
 
+export function ns4E5DraftFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e5-rules.draft', extension: '.json' };
+}
+
+export function ns4E5ApprovedFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e5-rules.approved', extension: '.json' };
+}
+
+export function ns4RuleFile(moduleName: string, ruleId: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/rules`, shortName: ruleId, extension: '.defs.ts' };
+}
+
+export function ns4RuleIndexFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/rules`, shortName: 'index', extension: '.defs.ts' };
+}
+
 export function ns4JourneyFile(moduleName: string, journeyId: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/journeys`, shortName: journeyId, extension: '.defs.ts' };
 }
@@ -111,6 +127,18 @@ export async function writeNs4E4Draft(moduleName: string, draft: unknown): Promi
   return displayPath(fileInfo);
 }
 
+export async function writeNs4E5Draft(moduleName: string, draft: unknown): Promise<string> {
+  const fileInfo = ns4E5DraftFile(moduleName);
+  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4E5Approved(moduleName: string, review: unknown): Promise<string> {
+  const fileInfo = ns4E5ApprovedFile(moduleName);
+  await writeNs4Text(fileInfo, `${JSON.stringify(review, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
 export async function writeNs4AccessMatrix(moduleName: string, artifact: unknown): Promise<string> {
   const fileInfo = ns4AccessMatrixFile(moduleName);
   await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}AccessMatrix`, artifact);
@@ -126,6 +154,18 @@ export async function writeNs4OntologyEntity(moduleName: string, entityId: strin
 export async function writeNs4OntologyIndex(moduleName: string, artifact: unknown): Promise<string> {
   const fileInfo = ns4OntologyIndexFile(moduleName);
   await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}OntologyIndex`, artifact);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4Rule(moduleName: string, ruleId: string, artifact: unknown): Promise<string> {
+  const fileInfo = ns4RuleFile(moduleName, ruleId);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}Rule${ruleId}`, artifact);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4RuleIndex(moduleName: string, artifact: unknown): Promise<string> {
+  const fileInfo = ns4RuleIndexFile(moduleName);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}RuleIndex`, artifact);
   return displayPath(fileInfo);
 }
 

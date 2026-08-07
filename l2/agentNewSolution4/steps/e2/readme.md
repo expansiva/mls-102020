@@ -2,9 +2,12 @@
 
 E2 turns the approved E1 module contract into permanent, human-approved business journeys.
 
-Before approval it writes only `l4/{module}/pipeline/e2-journeys.draft.json`. The checkpoint displays
-the proposed journeys and accepts either approval or a free-text change request. A change request
-starts another generation round using the previous draft as context and returns to the checkpoint.
+Before approval it writes only `l4/{module}/pipeline/e2-journeys.draft.json`. A deterministic gate
+first validates internal structure and context flow. An independent `🔎` reasoning-model judge then
+compares the complete E1 contract with the draft. Only a judged-complete proposal reaches the `👤`
+checkpoint, where the user may approve or make a free-text change request. A change request starts
+another generation round using the previous draft as context and returns through the same gate and
+judge before reopening the checkpoint.
 
 Approval writes:
 
@@ -26,6 +29,13 @@ The first deterministic gate failure does not immediately terminate the task. E2
 draft and creates one bounded repair step carrying the exact gate diagnostics. The repair step is
 added before the current step is completed so parent auto-completion cannot close the task. A second
 gate failure is terminal and remains persisted in both the task trace and pipeline.
+
+Internal consistency is insufficient for product completeness, so the coverage judge independently
+checks E1 actors, explicit capabilities, screen intents, outcomes, recipient-side consumption and
+human-selectable references. Blocking omissions trigger the same one complete-draft repair path. The
+repaired draft is judged again and fails closed if incomplete. An invalid judge envelope is retried
+once; compact verdict results remain in the task for diagnosis. `/fast` skips only the human widget,
+never the structural gate or coverage judge.
 
 Local smoke testing can validate and materialize an approved E1 folder without the Studio runtime:
 
@@ -50,3 +60,5 @@ tsx --import test/register-hooks.mjs --import test/setup-l2.ts \
 Without flags it calls the LLM and validates without writing. `--write` saves
 `pipeline/e2-live-review.json` and `pipeline/e2-live-llm-response.json` but does not change the pipeline.
 `--approve` additionally invokes the guarded smoke writer and therefore refuses an already approved E2.
+`--judge-existing` performs a read-only coverage judgment of the module's existing
+`pipeline/e2-journeys.draft.json`; it never rewrites or approves the run.

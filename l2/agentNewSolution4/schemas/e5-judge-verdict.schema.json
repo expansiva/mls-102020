@@ -1,0 +1,30 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewSolution4/e5-judge-verdict/2026-08-06-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["planId", "moduleName", "reviewRound", "complete", "summary", "issues"],
+  "properties": {
+    "planId": { "const": "e5-rules-judge" },
+    "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "reviewRound": { "type": "integer", "minimum": 1 },
+    "complete": { "type": "boolean" },
+    "summary": { "type": "string", "minLength": 1 },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["issueId", "severity", "category", "sourceEvidence", "finding", "repairInstruction", "relatedRuleIds"],
+        "properties": {
+          "issueId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+          "severity": { "enum": ["blocking", "advisory"] },
+          "category": { "enum": ["missingCoverage", "contradiction", "unenforceable", "wrongDestination", "hardcodedExample", "invalidTraceability"] },
+          "sourceEvidence": { "type": "string", "minLength": 1 },
+          "finding": { "type": "string", "minLength": 1 },
+          "repairInstruction": { "type": "string", "minLength": 1 },
+          "relatedRuleIds": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" } }
+        }
+      }
+    }
+  }
+}

@@ -50,6 +50,8 @@ Rules:
 - Use the user's communication language for every title, legend and question. Product languages are
   a separate concern and must preserve every language explicitly requested for the generated app.
 - Titles must be short, friendly and describe what the user will see happen, not internal agent names.
+- Return plain titles without emoji or icon prefixes. The runtime deterministically adds `👤` to the
+  visible title of every implemented human clarification/checkpoint step.
 - A short module name is a valid request; propose conservative editable defaults.
 - Set `validPrompt=false` only when the request is clearly unrelated to creating a business solution.
 - Do not ask about implementation, pages, database, ontology, API design or technical architecture.

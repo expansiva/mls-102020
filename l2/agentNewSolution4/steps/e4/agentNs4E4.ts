@@ -4,6 +4,7 @@ import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
+import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
   createNs4E4Step,
   createNs4E4RepairStep,
@@ -103,6 +104,12 @@ export async function beforeNs4E4PromptStep(
     ]);
     if (!moduleArtifact) {
       throw new Error(`E3 approved artifacts not found for ${moduleName}.`);
+    }
+    if (moduleArtifact.solutionStrategy.mode !== 'newSolution') {
+      throw new Error(
+        `E4 modernization intake is not implemented for strategy ${moduleArtifact.solutionStrategy.mode}. `
+        + 'The approved E1 contract was preserved; no greenfield ontology or replacement database was fabricated.',
+      );
     }
     const reviewRound = parsed.reviewRound || pipeline.steps.e4?.reviewRound || 1;
     const previousDraft = parsed.adjustment || parsed.gateFeedback ? await readDraftFromStorage(moduleName) : null;
@@ -208,7 +215,7 @@ export async function beforeNs4E4ClarificationStep(
   element.addEventListener('ns4-ontology-review', (event: Event) => {
     const detail = (event as CustomEvent<Ns4E4ReviewEvent>).detail;
     void applyNs4E4Review(context, parentStep, step, hookSequential, detail)
-      .catch(error => console.error(`[${agent.agentName}] ${errorMessage(error)}`));
+      .catch(error => { showNs4ClarificationError(element, error); console.error(`[${agent.agentName}] ${errorMessage(error)}`); });
   });
   return element;
 }
@@ -222,35 +229,30 @@ async function applyNs4E4Review(
 ): Promise<void> {
   if (!context.task) throw new Error('[agentNewSolution4:e4] task invalid');
   const mutationParent = findMutableParentStep(context, parentStep);
-  try {
-    const [journeys, access] = await Promise.all([
-      readApprovedJourneys(event.review.moduleName), readApprovedAccess(event.review.moduleName),
+  if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; esta revisão foi mantida aberta sem alterar o pipeline.');
+  const [journeys, access] = await Promise.all([
+    readApprovedJourneys(event.review.moduleName), readApprovedAccess(event.review.moduleName),
+  ]);
+  const gate = validateNs4E4Review(event.review, journeys, access);
+  if (!gate.ok) throw new Error(gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  await writeNs4E4Draft(event.review.moduleName, event.review);
+  if (event.action === 'approve') {
+    const saved = await persistNs4E4(event.review.moduleName, event.review, 'human', journeys, access);
+    await applyIntents(context, [
+      resultStep(context, mutationParent, saved, 'E4 ontology approved'),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
     ]);
-    const gate = validateNs4E4Review(event.review, journeys, access);
-    if (!gate.ok) throw new Error(gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
-    await writeNs4E4Draft(event.review.moduleName, event.review);
-    if (event.action === 'approve') {
-      const saved = await persistNs4E4(event.review.moduleName, event.review, 'human', journeys, access);
-      await applyIntents(context, [
-        resultStep(context, mutationParent, saved, 'E4 ontology approved'),
-        updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
-      ]);
-    } else {
-      if (!event.adjustment.trim()) throw new Error('Structural change request cannot be empty.');
-      const nextRound = event.review.reviewRound + 1;
-      await writeNs4Pipeline(markNs4E4Running(await requirePipeline(event.review.moduleName), nextRound));
-      await applyIntents(context, [
-        addStep(context, mutationParent, createNs4E4Step(event.review.moduleName, nextRound, event.adjustment)),
-        adjustmentResultStep(context, mutationParent, event.review.moduleName, event.review.reviewRound, event.adjustment),
-        updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
-      ]);
-    }
-    await continuePoolingTask(context);
-  } catch (error) {
-    const message = errorMessage(error);
-    await recordNs4E4Failure(event.review.moduleName, message);
-    await applyIntents(context, [updateStatus(context, mutationParent, step, hookSequential, 'failed', message)]);
+  } else {
+    if (!event.adjustment.trim()) throw new Error('Structural change request cannot be empty.');
+    const nextRound = event.review.reviewRound + 1;
+    await writeNs4Pipeline(markNs4E4Running(await requirePipeline(event.review.moduleName), nextRound));
+    await applyIntents(context, [
+      addStep(context, mutationParent, createNs4E4Step(event.review.moduleName, nextRound, event.adjustment)),
+      adjustmentResultStep(context, mutationParent, event.review.moduleName, event.review.reviewRound, event.adjustment),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
+    ]);
   }
+  await continuePoolingTask(context);
 }
 
 async function persistNs4E4(

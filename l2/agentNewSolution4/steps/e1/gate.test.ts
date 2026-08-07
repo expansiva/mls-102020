@@ -5,6 +5,7 @@ import {
   buildNs4PlannedSteps,
   buildNs4ModuleArtifact,
   createNs4Pipeline,
+  formatNs4VisibleStepTitle,
   markNs4E1Approved,
   markNs4E1Failed,
   markNs4E2Failed,
@@ -19,6 +20,11 @@ import {
   resolveNs4ExistingAction,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { validateNs4E1Module } from '/_102020_/l2/agentNewSolution4/steps/e1/gate.js';
+import {
+  buildNs4ModuleArtifactFromReview,
+  normalizeNs4E1Review,
+  validateNs4E1Review,
+} from '/_102020_/l2/agentNewSolution4/steps/e1/contracts.js';
 
 const clarification = {
   planId: 'e1-clarification',
@@ -42,6 +48,35 @@ test('E1 builds a valid partial permanent module contract', () => {
   assert.equal(artifact.specStatus.completedSteps[0].status, 'approved');
   assert.equal(artifact.specStatus.nextStep, 'e2-journeys');
   assert.equal(artifact.specStatus.artifactCompleteness, 'partial');
+});
+
+test('E1 preserves the rich strategy, scope and localization contract', () => {
+  const review = normalizeNs4E1Review({
+    userLanguage: 'pt-BR', reviewRound: 2, reviewPolicy: { mode: 'guided' },
+    module: { moduleName: 'petShop', title: 'Pet Shop', purpose: 'Gerenciar reservas e vendas.' },
+    strategy: { mode: 'newSolution', rationale: 'Não existe sistema legado.', databaseChangePolicy: 'new' },
+    businessScope: {
+      mainGoal: 'Gerenciar reservas e vendas.',
+      actors: [{ actorId: 'customer', title: 'Cliente', kind: 'external', expectedOutcome: 'Agendar um serviço.' }],
+      expectedOutcomes: [{ outcomeId: 'serviceBooked', title: 'Serviço agendado', description: 'O cliente recebe confirmação.' }],
+      inScope: ['agendamentos'], outOfScope: ['prontuário veterinário'],
+    },
+    localization: { productLanguages: ['pt-BR', 'en', 'es'], defaultLanguage: 'pt-BR', currency: 'BRL' },
+    declaredConstraints: { mandatoryIntegrations: [] }, changeSummary: ['Escopo confirmado.'],
+  });
+  assert.deepEqual(validateNs4E1Review(review), { ok: true, issues: [] });
+  const plan = normalizeNs4RootPlan({
+    validPrompt: true, userPrompt: 'Criar pet shop', userLanguage: 'pt-BR',
+    titles: Object.fromEntries([
+      'e1-clarification', 'e1-compile', 'e2-journeys', 'e3-access-matrix', 'e4-ontology',
+      'e5-rules', 'e6-behaviors', 'e7-realization', 'e8-workspaces', 'e9-navigation-compiler', 'e10-validation',
+    ].map(id => [id, id])), clarification,
+  }, 'Criar pet shop');
+  const artifact = buildNs4ModuleArtifactFromReview(review, plan.userPrompt, 'human', plan.presentation);
+  assert.equal(artifact.reviewPolicy.mode, 'guided');
+  assert.equal(artifact.solutionStrategy.rationale, 'Não existe sistema legado.');
+  assert.deepEqual(artifact.localization.productLanguages, ['pt-BR', 'en', 'es']);
+  assert.equal(validateNs4E1Module(artifact).ok, true);
 });
 
 test('product languages are normalized, ordered and deduplicated independently of widget language', () => {
@@ -74,22 +109,34 @@ test('root plan localizes and creates the complete visible roadmap before E1 sta
   }, 'Criar pet shop');
   const steps = buildNs4PlannedSteps(plan);
   assert.equal(steps.length, 11);
-  assert.equal(steps[0].stepTitle, titles['e1-clarification']);
+  assert.equal(steps[0].stepTitle, `👤 ${titles['e1-clarification']}`);
   assert.equal(steps[0].status, 'waiting_human_input');
   assert.equal(steps[0].onFailure, 'wait_after_prompt');
   assert.deepEqual(steps[1].planning?.dependsOn, ['e1-clarification-answer']);
   assert.deepEqual(steps[2].planning?.dependsOn, ['e1-result']);
   assert.equal(steps[2].onFailure, 'wait_after_prompt');
+  assert.equal(steps[2].stepTitle, `👤 ${titles['e2-journeys']}`);
   assert.deepEqual(steps[3].planning?.dependsOn, ['e2-result']);
   assert.equal(steps[3].onFailure, 'wait_after_prompt');
+  assert.equal(steps[3].stepTitle, `👤 ${titles['e3-access-matrix']}`);
   assert.equal(steps[4].planning?.executionMode, 'sequential');
   assert.equal(steps[4].onFailure, 'wait_after_prompt');
-  assert.equal(steps[5].planning?.executionMode, 'manual_later');
+  assert.equal(steps[4].stepTitle, `👤 ${titles['e4-ontology']}`);
+  assert.equal(steps[5].planning?.executionMode, 'sequential');
+  assert.equal(steps[5].onFailure, 'wait_after_prompt');
+  assert.equal(steps[5].stepTitle, `👤 ${titles['e5-rules']}`);
+  assert.equal(steps[6].planning?.executionMode, 'manual_later');
   const artifact = buildNs4ModuleArtifact(plan.userPrompt, clarification, 'human', '2026-08-05T10:00:00.000Z', plan.presentation);
   const pipeline = createNs4Pipeline('petShop', plan.userPrompt, '2026-08-05T10:00:00.000Z', plan.presentation);
   assert.equal(artifact.presentation.userLanguage, 'pt-BR');
   assert.equal(artifact.presentation.stepTitles['e10-validation'], titles['e10-validation']);
   assert.deepEqual(pipeline.presentation, artifact.presentation);
+});
+
+test('human checkpoint icon is deterministic and never duplicated', () => {
+  assert.equal(formatNs4VisibleStepTitle('e2-journeys', 'Revisar jornadas'), '👤 Revisar jornadas');
+  assert.equal(formatNs4VisibleStepTitle('e2-journeys', '👤 Revisar jornadas'), '👤 Revisar jornadas');
+  assert.equal(formatNs4VisibleStepTitle('e1-compile', 'Compilar contrato'), 'Compilar contrato');
 });
 
 test('root plan rejects an incomplete localized-title contract instead of silently mixing languages', () => {
@@ -107,12 +154,12 @@ test('root plan rejects an incomplete localized-title contract instead of silent
   assert.match(plan.invalidReason || '', /missing titles/);
 });
 
-test('new artifacts expose the current E1-to-E4 lifecycle flow version', () => {
+test('new artifacts expose the current E1-to-E5 lifecycle flow version', () => {
   const artifact = buildNs4ModuleArtifact('petShop', clarification, 'human', '2026-08-05T10:00:00.000Z');
   const pipeline = createNs4Pipeline('petShop', 'petShop', '2026-08-05T10:00:00.000Z');
-  assert.equal(NS4_FLOW_VERSION, '2026-08-05-ns4-flow-v5');
+  assert.equal(NS4_FLOW_VERSION, '2026-08-06-ns4-flow-v7');
   assert.equal(artifact.specStatus.flowVersion, NS4_FLOW_VERSION);
-  assert.equal(NS4_PIPELINE_SCHEMA_VERSION, '2026-08-05-ns4-pipeline-v4');
+  assert.equal(NS4_PIPELINE_SCHEMA_VERSION, '2026-08-06-ns4-pipeline-v5');
   assert.equal(pipeline.schemaVersion, NS4_PIPELINE_SCHEMA_VERSION);
 });
 

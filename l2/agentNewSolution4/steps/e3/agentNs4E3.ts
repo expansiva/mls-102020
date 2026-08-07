@@ -4,6 +4,7 @@ import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
+import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
   createNs4E3Step,
   isNs4Pipeline,
@@ -166,7 +167,7 @@ export async function beforeNs4E3ClarificationStep(
   element.addEventListener('ns4-access-matrix-review', (event: Event) => {
     const detail = (event as CustomEvent<Ns4E3ReviewEvent>).detail;
     void applyNs4E3Review(context, parentStep, step, hookSequential, detail)
-      .catch(error => console.error(`[${agent.agentName}] ${errorMessage(error)}`));
+      .catch(error => { showNs4ClarificationError(element, error); console.error(`[${agent.agentName}] ${errorMessage(error)}`); });
   });
   return element;
 }
@@ -180,30 +181,26 @@ async function applyNs4E3Review(
 ): Promise<void> {
   if (!context.task) throw new Error('[agentNewSolution4:e3] task invalid');
   const mutationParent = findMutableParentStep(context, parentStep);
-  try {
-    const journeys = await readApprovedJourneys(event.review.moduleName);
-    if (event.action === 'approve') {
-      const saved = await persistNs4E3(event.review.moduleName, event.review, 'human', journeys);
-      await applyIntents(context, [
-        resultStep(context, mutationParent, saved, 'E3 access matrix approved'),
-        updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
-      ]);
-    } else {
-      if (!event.adjustment.trim()) throw new Error('Adjustment request cannot be empty.');
-      const nextRound = event.review.reviewRound + 1;
-      await writeNs4Pipeline(markNs4E3Running(await requirePipeline(event.review.moduleName), nextRound));
-      await applyIntents(context, [
-        addStep(context, mutationParent, createNs4E3Step(event.review.moduleName, nextRound, event.adjustment)),
-        adjustmentResultStep(context, mutationParent, event.review.moduleName, event.review.reviewRound, event.adjustment),
-        updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
-      ]);
-    }
-    await continuePoolingTask(context);
-  } catch (error) {
-    const message = errorMessage(error);
-    await recordNs4E3Failure(event.review.moduleName, message);
-    await applyIntents(context, [updateStatus(context, mutationParent, step, hookSequential, 'failed', message)]);
+  if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; esta revisão foi mantida aberta sem alterar o pipeline.');
+  const journeys = await readApprovedJourneys(event.review.moduleName);
+  if (event.action === 'approve') {
+    const saved = await persistNs4E3(event.review.moduleName, event.review, 'human', journeys);
+    await applyIntents(context, [
+      resultStep(context, mutationParent, saved, 'E3 access matrix approved'),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
+    ]);
+  } else {
+    if (!event.adjustment.trim()) throw new Error('Adjustment request cannot be empty.');
+    const nextRound = event.review.reviewRound + 1;
+    await writeNs4E3Draft(event.review.moduleName, event.review);
+    await writeNs4Pipeline(markNs4E3Running(await requirePipeline(event.review.moduleName), nextRound));
+    await applyIntents(context, [
+      addStep(context, mutationParent, createNs4E3Step(event.review.moduleName, nextRound, event.adjustment)),
+      adjustmentResultStep(context, mutationParent, event.review.moduleName, event.review.reviewRound, event.adjustment),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
+    ]);
   }
+  await continuePoolingTask(context);
 }
 
 async function persistNs4E3(

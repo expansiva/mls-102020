@@ -1,13 +1,13 @@
 {
-  "$id": "https://collab.codes/schemas/agentNewSolution4/pipeline/2026-08-05-v4",
+  "$id": "https://collab.codes/schemas/agentNewSolution4/pipeline/2026-08-06-v5",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "flowId", "flowVersion", "moduleName", "sourcePrompt", "presentation", "status", "steps", "nextStep", "createdAt", "updatedAt"],
   "properties": {
-    "schemaVersion": { "type": "string", "const": "2026-08-05-ns4-pipeline-v4" },
+    "schemaVersion": { "type": "string", "const": "2026-08-06-ns4-pipeline-v5" },
     "flowId": { "type": "string", "const": "agentNewSolution4" },
-    "flowVersion": { "type": "string", "const": "2026-08-05-ns4-flow-v5" },
+    "flowVersion": { "type": "string", "const": "2026-08-06-ns4-flow-v7" },
     "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
     "sourcePrompt": { "type": "string", "minLength": 1 },
     "presentation": {
@@ -104,10 +104,26 @@
             "failedAt": { "type": "string", "minLength": 10 },
             "updatedAt": { "type": "string", "minLength": 10 }
           }
+        },
+        "e5": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reviewRound", "updatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["running", "waitingHuman", "approved", "failed"] },
+            "reviewRound": { "type": "integer", "minimum": 1 },
+            "draftPath": { "type": "string" },
+            "artifactPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "approvedBy": { "type": "string", "enum": ["human", "auto"] },
+            "approvedAt": { "type": "string" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "failedAt": { "type": "string", "minLength": 10 },
+            "updatedAt": { "type": "string", "minLength": 10 }
+          }
         }
       }
     },
-    "nextStep": { "type": "string", "enum": ["e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules"] },
+    "nextStep": { "type": "string", "enum": ["e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors"] },
     "createdAt": { "type": "string", "minLength": 10 },
     "updatedAt": { "type": "string", "minLength": 10 }
   }

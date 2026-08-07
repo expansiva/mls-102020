@@ -112,7 +112,7 @@ export interface Ns4JourneyIndex {
 }
 
 export interface Ns4E2ReviewEvent {
-  action: 'approve' | 'requestChanges';
+  action: 'approve' | 'requestChanges' | 'cancel';
   adjustment: string;
   review: Ns4E2Review;
 }

@@ -9,6 +9,7 @@ import {
   normalizeNs4Languages,
   normalizeNs4ModuleName,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
+import { policyFor } from '/_102020_/l2/agentNewSolution4/steps/e1/contracts.js';
 
 export interface Ns4GateIssue {
   severity: 'error' | 'warning';
@@ -46,6 +47,33 @@ export function validateNs4E1Module(artifact: Ns4ModuleArtifact): Ns4E1GateResul
     error(issues, 'module.language.notNormalized', 'Product languages must be unique normalized BCP-47 tags.', 'module.languages');
   }
   if (!artifact.designContext.initialPrompt.trim()) error(issues, 'designContext.prompt.missing', 'Initial prompt is required.', 'designContext.initialPrompt');
+  if (!['guided', 'smart', 'automatic'].includes(artifact.reviewPolicy.mode)) {
+    error(issues, 'reviewPolicy.invalid', 'reviewPolicy.mode is invalid.', 'reviewPolicy.mode');
+  }
+  if (artifact.solutionStrategy.databaseChangePolicy !== policyFor(artifact.solutionStrategy.mode)) {
+    error(issues, 'strategy.policy.invalid', 'Database policy must match the selected solution strategy.', 'solutionStrategy.databaseChangePolicy');
+  }
+  if (!artifact.solutionStrategy.rationale.trim()) {
+    error(issues, 'strategy.rationale.missing', 'The selected solution strategy requires a rationale.', 'solutionStrategy.rationale');
+  }
+  if (artifact.solutionStrategy.mode !== 'newSolution') {
+    if (!artifact.solutionStrategy.modernization?.sourceSystemName.trim()) {
+      error(issues, 'strategy.source.missing', 'Modernization requires sourceSystemName.', 'solutionStrategy.modernization.sourceSystemName');
+    }
+    if (!artifact.solutionStrategy.modernization?.schemaAvailability) {
+      error(issues, 'strategy.schema.missing', 'Modernization requires schemaAvailability.', 'solutionStrategy.modernization.schemaAvailability');
+    }
+  }
+  if (!artifact.businessScope.mainGoal.trim()) error(issues, 'scope.goal.missing', 'Main business goal is required.', 'businessScope.mainGoal');
+  if (!artifact.businessScope.actors.length) error(issues, 'scope.actors.missing', 'At least one business actor is required.', 'businessScope.actors');
+  if (!artifact.businessScope.expectedOutcomes.length) error(issues, 'scope.outcomes.missing', 'At least one expected outcome is required.', 'businessScope.expectedOutcomes');
+  if (!artifact.localization.productLanguages.includes(artifact.localization.defaultLanguage)) {
+    error(issues, 'localization.default.invalid', 'Default language must belong to productLanguages.', 'localization.defaultLanguage');
+  }
+  const inScope = new Set(artifact.businessScope.inScope.map(item => item.trim().toLowerCase()));
+  if (artifact.businessScope.outOfScope.some(item => inScope.has(item.trim().toLowerCase()))) {
+    error(issues, 'scope.contradiction', 'The same scope item cannot be both included and excluded.', 'businessScope');
+  }
   if (artifact.specStatus.flowId !== NS4_FLOW_ID || artifact.specStatus.flowVersion !== NS4_FLOW_VERSION) {
     error(issues, 'status.flow.invalid', 'specStatus must identify agentNewSolution4 and its flow version.', 'specStatus');
   }

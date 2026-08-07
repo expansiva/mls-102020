@@ -1,5 +1,10 @@
 # E2 changelog
 
+- 2026-08-06: Flow v6 added an independent semantic coverage judge between the structural gate and
+  human review. It checks the full E1 contract for missing actor/recipient journeys, uncovered
+  outcomes and selectable references without named context acquisition or a credible lookup source.
+  One complete-draft repair and one invalid-verdict retry are bounded; `/fast` cannot bypass the judge.
+
 - 2026-08-05: Added one bounded automatic LLM repair after a deterministic gate failure; unknown
   step kinds are now preserved and rejected instead of silently becoming `locate`.
 

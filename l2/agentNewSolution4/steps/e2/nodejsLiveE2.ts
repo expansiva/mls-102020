@@ -7,12 +7,17 @@ import path from 'node:path';
 import { Ns4ModuleArtifact } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { normalizeNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { validateNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/gate.js';
+import {
+  normalizeNs4E2CoverageVerdict,
+  validateNs4E2CoverageVerdict,
+} from '/_102020_/l2/agentNewSolution4/steps/e2/coverageJudge.js';
 
 interface CliArgs {
   project: number;
   moduleName: string;
   write: boolean;
   approve: boolean;
+  judgeExisting: boolean;
 }
 
 interface OpenAiResponse {
@@ -30,12 +35,22 @@ async function main(): Promise<void> {
   const pipelineDir = path.join(moduleDir, 'pipeline');
   const [moduleSource, promptTemplate, platformSkill] = await Promise.all([
     readFile(path.join(moduleDir, 'module.defs.ts'), 'utf8'),
-    readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution4/steps/e2/prompt.md'), 'utf8'),
+    readFile(path.join(
+      ROOT,
+      args.judgeExisting
+        ? 'mls-102020/l2/agentNewSolution4/steps/e2/coverageJudge.md'
+        : 'mls-102020/l2/agentNewSolution4/steps/e2/prompt.md',
+    ), 'utf8'),
     readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution4/skills/platform.md'), 'utf8'),
   ]);
   const moduleArtifact = parseDefs(moduleSource) as Ns4ModuleArtifact;
   if (moduleArtifact.module.moduleName !== args.moduleName) {
     throw new Error(`module.defs.ts belongs to ${moduleArtifact.module.moduleName}, not ${args.moduleName}`);
+  }
+
+  if (args.judgeExisting) {
+    await judgeExistingDraft(args, moduleDir, moduleArtifact, promptTemplate);
+    return;
   }
 
   const systemPrompt = promptTemplate.replace('{{platformSkill}}', platformSkill);
@@ -157,10 +172,53 @@ function parseArgs(argv: string[]): CliArgs {
   const project = Number(positional[0]);
   const moduleName = positional[1] || '';
   if (!Number.isInteger(project) || project < 1 || !/^[a-z][A-Za-z0-9]*$/.test(moduleName)) {
-    throw new Error('Usage: nodejsLiveE2.ts <project> <moduleName> [--write] [--approve]');
+    throw new Error('Usage: nodejsLiveE2.ts <project> <moduleName> [--write] [--approve] [--judge-existing]');
   }
   const approve = argv.includes('--approve');
-  return { project, moduleName, write: argv.includes('--write') || approve, approve };
+  return {
+    project, moduleName, write: argv.includes('--write') || approve, approve,
+    judgeExisting: argv.includes('--judge-existing'),
+  };
+}
+
+async function judgeExistingDraft(
+  args: CliArgs,
+  moduleDir: string,
+  moduleArtifact: Ns4ModuleArtifact,
+  promptTemplate: string,
+): Promise<void> {
+  const draft = JSON.parse(await readFile(path.join(moduleDir, 'pipeline/e2-journeys.draft.json'), 'utf8'));
+  const model = parseModelType(promptTemplate);
+  const config = await loadLlmConfig();
+  const response = await callCollabLlm(config, {
+    model,
+    systemPrompt: promptTemplate,
+    humanPrompt: [
+      '## Approved E1 product contract',
+      JSON.stringify(moduleArtifact, null, 2),
+      '',
+      '## Complete E2 journey draft to judge',
+      JSON.stringify(draft, null, 2),
+      '',
+      `## Required review round\n${draft.reviewRound || 1}`,
+    ].join('\n'),
+  });
+  const parsed = parseJsonContent(response.choices?.[0]?.message?.content);
+  const payload = isRecord(parsed) && parsed.type === 'flexible' ? parseJsonContent(parsed.result) : parsed;
+  const verdict = normalizeNs4E2CoverageVerdict(payload, args.moduleName, draft.reviewRound || 1);
+  const validation = validateNs4E2CoverageVerdict(verdict, args.moduleName, draft.reviewRound || 1);
+  if (!validation.ok) throw new Error(`Invalid coverage verdict: ${validation.errors.join(' ')}`);
+  process.stdout.write(`${JSON.stringify({
+    ok: true,
+    mode: 'judge-existing-dry-run',
+    project: args.project,
+    moduleName: args.moduleName,
+    model,
+    complete: verdict.complete,
+    summary: verdict.summary,
+    issues: verdict.issues,
+    usage: response.usage || null,
+  }, null, 2)}\n`);
 }
 
 function parseModelType(prompt: string): string {
