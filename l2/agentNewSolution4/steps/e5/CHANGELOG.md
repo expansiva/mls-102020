@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-07 — flow v11
+
+- Parallel rule children use their stable `rule:` hook argument for before/after dispatch even when
+  the runtime materializes the child without `planning.planId`.
+
 ## 2026-08-07
 
 - Flow v10 substitui a proposta monolítica por catálogo/cobertura mecânicos, plano compacto, detalhamento

@@ -10,7 +10,7 @@ import {
   createNs4E2CoverageRepairStep,
   createNs4E2GateRepairStep,
   createNs4E2Step,
-  formatNs4VisibleStepTitle,
+  plainNs4StepTitle,
   isNs4Pipeline,
   markNs4E2Approved,
   markNs4E2Failed,
@@ -479,7 +479,7 @@ function clarificationReviewStep(
 ): mls.msg.AgentIntentAddStep {
   return addStep(context, parentStep, {
     type: 'clarification', stepId: 0, interaction: null,
-    stepTitle: formatNs4VisibleStepTitle('e2-journeys', title), status: 'pending', nextSteps: [],
+    stepTitle: plainNs4StepTitle(title), status: 'pending', nextSteps: [],
     json: JSON.stringify(review),
     planning: {
       planId: `e2-review-round-${review.reviewRound}`,

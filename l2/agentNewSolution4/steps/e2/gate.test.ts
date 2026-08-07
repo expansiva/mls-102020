@@ -100,6 +100,7 @@ test('E2 creates one open repair step with deterministic gate feedback', () => {
   assert.equal(step.planning?.planId, 'e2-journeys-round-2-coverage-0-gate-repair-1');
   assert.equal(step.status, 'waiting_human_input');
   assert.equal(step.onFailure, 'wait_after_prompt');
+  assert.doesNotMatch(String(step.stepTitle), /^👤/u);
   assert.deepEqual(JSON.parse(step.prompt || '{}'), {
     planId: 'e2-journeys', moduleName: 'buildFlowFsm', reviewRound: 2,
     gateRepairAttempt: 1, coverageRepairAttempt: 0,

@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-07-ns4-flow-v10",
+  "schemaVersion": "2026-08-07-ns4-flow-v11",
   "status": "e1-e5",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -10,7 +10,8 @@
   ],
   "principles": [
     "The root LLM detects the communication language, translates friendly step titles and creates the visible roadmap before clarification begins.",
-    "The runtime prefixes implemented human clarification/checkpoint step titles with the deterministic 👤 marker; persisted localized titles remain plain reusable text.",
+    "The runtime prefixes exactly the six E1-through-E6 roadmap checkpoints with the deterministic 👤 marker; dynamically appended technical and clarification nodes do not duplicate it, and persisted localized titles remain plain reusable text.",
+    "E4/E5 parallel children are dispatched by their stable entity:/rule: hook args because collab-messages does not retain planning.planId on materialized fan-out children.",
     "E2 proposals must pass an independent 🔎 semantic coverage judge before human review; deterministic structural repair and semantic complete-draft repair have separate bounded budgets.",
     "E1 preserves its full reviewed contract, supports repeated prompt-driven revisions and only unlocks compilation after the rich deterministic gate passes.",
     "E2 through E5 approval callbacks persist their already-gated permanent review artifacts before adding the result anchor.",
@@ -30,7 +31,7 @@
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v10-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Previous flow versions are not migrated; foreign or older modules are rejected."
+    "resumeRule": "A v11-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",

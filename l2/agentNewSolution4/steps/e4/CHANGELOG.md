@@ -1,5 +1,8 @@
 # E4 changelog
 
+- 2026-08-07: Flow v11 dispatches materialized `parallel_dynamic` children by their stable `entity:`
+  hook argument when `collab-messages` omits child `planning.planId`; run16 had failed all 19 children
+  with `Unsupported implemented step: (missing)` before any entity detail LLM call.
 - 2026-08-07: Flow v10 requires every required E2 journey business object to exist as an E4 entity or
   projection before entity fan-out, preventing a missing handoff contract from reaching E5.
 - 2026-08-07: Flow v9 split the oversized ontology call into a compact overview plus one filtered

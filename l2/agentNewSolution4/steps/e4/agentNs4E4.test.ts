@@ -99,6 +99,7 @@ test('E4 bounded repair step carries gate feedback under a unique open plan id',
   const step = createNs4E4RepairStep('buildFlowFsm', 2, 1, 'OperationsPortfolio is disconnected');
   assert.equal(step.planning?.planId, 'e4-ontology-round-2-repair-1');
   assert.equal(step.status, 'waiting_human_input');
+  assert.doesNotMatch(String(step.stepTitle), /^👤/u);
   assert.match(String(step.prompt), /OperationsPortfolio is disconnected/);
 });
 

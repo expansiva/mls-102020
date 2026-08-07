@@ -5,7 +5,7 @@ start of the task.
 
 Invocation:
 
-- `@@newSolution4 petShop` — create a module or resume its next incomplete v10 step;
+- `@@newSolution4 petShop` — create a module or resume its next incomplete v11 step;
 - `@@newSolution4 petShop /fast` — auto-accept valid E1 through E5 proposals;
 - an existing module without an `agentNewSolution4` pipeline is rejected.
 
@@ -14,9 +14,10 @@ for E1 through E10. It creates the complete dependency graph before E1 starts, s
 will be delivered next. The titles and detected language are persisted in both permanent artifacts;
 the orchestration does not translate or infer them again in later steps.
 
-Visible E1 through E5 titles receive a deterministic `👤` prefix because those implemented
-steps open a human clarification or review checkpoint. The localized titles stored in the L4 remain
-plain text, so presentation markers never contaminate the permanent product contract.
+The six E1-through-E6 roadmap checkpoints receive one deterministic `👤` prefix each. Technical
+repair, judge, fan-out, finalizer and dynamically appended clarification nodes do not duplicate that
+human marker. The localized titles stored in L4 remain plain text, so presentation markers never
+contaminate the permanent product contract.
 
 E1 writes:
 

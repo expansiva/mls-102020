@@ -9,9 +9,9 @@ import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import {
-  createNs4E5FinalizeStep, createNs4E5JudgeStep, createNs4E5Step, formatNs4VisibleStepTitle,
+  createNs4E5FinalizeStep, createNs4E5JudgeStep, createNs4E5Step,
   isNs4Pipeline, markNs4E5Approved, markNs4E5Failed, markNs4E5Running, markNs4E5WaitingHuman,
-  markNs4ModuleE5Approved, NS4_E5_MAX_PARALLEL, Ns4ApprovedBy, Ns4PipelineState,
+  markNs4ModuleE5Approved, NS4_E5_MAX_PARALLEL, plainNs4StepTitle, Ns4ApprovedBy, Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
@@ -179,8 +179,9 @@ async function buildJudgePrompt(
 export async function afterNs4E5PromptStep(
   agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep,
   step: mls.msg.AIAgentStep, hookSequential: number,
+  args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  const ruleId = parseRuleSelector(step.prompt);
+  const ruleId = parseRuleSelector(args) || parseRuleSelector(step.prompt);
   let moduleName = '';
   try {
     const args = resolveArgs(context, ruleId ? JSON.stringify({ planId: 'e5-rules' }) : step.prompt);
@@ -530,7 +531,7 @@ function resultStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAge
 }
 function clarificationStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, review: Ns4E5Review, title: string): mls.msg.AgentIntentAddStep {
   return addStep(context, parentStep, { type: 'clarification', stepId: 0, interaction: null,
-    stepTitle: formatNs4VisibleStepTitle('e5-rules', title), status: 'pending', nextSteps: [], json: JSON.stringify(review),
+    stepTitle: plainNs4StepTitle(title), status: 'pending', nextSteps: [], json: JSON.stringify(review),
     planning: { planId: `e5-rules-review-round-${review.reviewRound}`, dependsOn: [], executionMode: 'sequential', executionHost: 'client' } } as mls.msg.AIClarificationStep);
 }
 function updateStatus(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIPayload, step: mls.msg.AIPayload, hookSequential: number, status: mls.msg.AIStepStatus, traceMsg?: string, cleaner?: 'input' | 'input_output'): mls.msg.AgentIntentUpdateStatus {

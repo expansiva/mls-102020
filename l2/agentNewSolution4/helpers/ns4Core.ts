@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/helpers/ns4Core.ts" enhancement="_blank"/>
 
 export const NS4_FLOW_ID = 'agentNewSolution4' as const;
-export const NS4_FLOW_VERSION = '2026-08-07-ns4-flow-v10' as const;
+export const NS4_FLOW_VERSION = '2026-08-07-ns4-flow-v11' as const;
 export const NS4_E4_MAX_PARALLEL = 20 as const;
 export const NS4_E5_MAX_PARALLEL = 20 as const;
 export const NS4_MODULE_SCHEMA_VERSION = '2026-08-06-ns4-module-v4' as const;
@@ -32,6 +32,7 @@ const NS4_HUMAN_CHECKPOINT_PLAN_IDS: ReadonlySet<Ns4PlanId> = new Set([
   'e3-access-matrix',
   'e4-ontology',
   'e5-rules',
+  'e6-behaviors',
 ]);
 
 export type Ns4ApprovedBy = 'human' | 'auto';
@@ -237,7 +238,7 @@ export function createNs4E2Step(
   const suffix = adjustment ? ` adjustment ${reviewRound}` : '';
   return createNs4AgentStep(
     `e2-journeys-round-${reviewRound}`,
-    formatNs4VisibleStepTitle('e2-journeys', `${stepTitle}${suffix}`),
+    adjustment ? plainNs4StepTitle(`${stepTitle}${suffix}`) : formatNs4VisibleStepTitle('e2-journeys', stepTitle),
     dependsOn,
     dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
     { planId: 'e2-journeys', ...(moduleName ? { moduleName } : {}), reviewRound, ...(adjustment ? { adjustment } : {}) },
@@ -256,7 +257,9 @@ export function createNs4E1Step(
     : `e1-clarification-round-${reviewRound}`;
   return createNs4AgentStep(
     planningPlanId,
-    formatNs4VisibleStepTitle('e1-clarification', reviewRound > 1 ? `${stepTitle} · ${reviewRound}` : stepTitle),
+    reviewRound > 1 || adjustment
+      ? plainNs4StepTitle(`${stepTitle}${reviewRound > 1 ? ` · ${reviewRound}` : ''}`)
+      : formatNs4VisibleStepTitle('e1-clarification', stepTitle),
     dependsOn,
     dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
     {
@@ -278,7 +281,7 @@ export function createNs4E2GateRepairStep(
 ): mls.msg.AIAgentStep {
   return createNs4AgentStep(
     `e2-journeys-round-${reviewRound}-coverage-${coverageRepairAttempt}-gate-repair-${gateRepairAttempt}`,
-    formatNs4VisibleStepTitle('e2-journeys', `${stepTitle} · G${gateRepairAttempt}`),
+    `${plainNs4StepTitle(stepTitle)} · G${gateRepairAttempt}`,
     [],
     'waiting_human_input',
     {
@@ -297,7 +300,7 @@ export function createNs4E2CoverageRepairStep(
 ): mls.msg.AIAgentStep {
   return createNs4AgentStep(
     `e2-journeys-round-${reviewRound}-coverage-repair-${coverageRepairAttempt}`,
-    formatNs4VisibleStepTitle('e2-journeys', `${stepTitle} · C${coverageRepairAttempt}`),
+    `${plainNs4StepTitle(stepTitle)} · C${coverageRepairAttempt}`,
     [],
     'waiting_human_input',
     { planId: 'e2-journeys', moduleName, reviewRound, coverageRepairAttempt, coverageFeedback },
@@ -334,7 +337,7 @@ export function createNs4E3Step(
   const suffix = adjustment ? ` · ${reviewRound}` : '';
   return createNs4AgentStep(
     `e3-access-matrix-round-${reviewRound}`,
-    formatNs4VisibleStepTitle('e3-access-matrix', `${stepTitle}${suffix}`),
+    adjustment ? plainNs4StepTitle(`${stepTitle}${suffix}`) : formatNs4VisibleStepTitle('e3-access-matrix', stepTitle),
     dependsOn,
     dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
     { planId: 'e3-access-matrix', ...(moduleName ? { moduleName } : {}), reviewRound, ...(adjustment ? { adjustment } : {}) },
@@ -351,7 +354,7 @@ export function createNs4E4Step(
   const suffix = adjustment ? ` · ${reviewRound}` : '';
   return createNs4AgentStep(
     `e4-ontology-round-${reviewRound}`,
-    formatNs4VisibleStepTitle('e4-ontology', `${stepTitle}${suffix}`),
+    adjustment ? plainNs4StepTitle(`${stepTitle}${suffix}`) : formatNs4VisibleStepTitle('e4-ontology', stepTitle),
     dependsOn,
     dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
     { planId: 'e4-ontology', ...(moduleName ? { moduleName } : {}), reviewRound, solutionMode: 'new', ...(adjustment ? { adjustment } : {}) },
@@ -367,7 +370,7 @@ export function createNs4E4RepairStep(
 ): mls.msg.AIAgentStep {
   return createNs4AgentStep(
     `e4-ontology-round-${reviewRound}-repair-${repairAttempt}`,
-    formatNs4VisibleStepTitle('e4-ontology', `${stepTitle} · R${repairAttempt}`),
+    `${plainNs4StepTitle(stepTitle)} · R${repairAttempt}`,
     [],
     'waiting_human_input',
     { planId: 'e4-ontology', stage: 'plan', moduleName, reviewRound, solutionMode: 'new', repairAttempt, gateFeedback },
@@ -405,7 +408,9 @@ export function createNs4E5Step(
   const suffix = adjustment ? ` · ${reviewRound}` : repairAttempt ? ` · R${repairAttempt}` : '';
   return createNs4AgentStep(
     `e5-rules-round-${reviewRound}${repairAttempt ? `-repair-${repairAttempt}` : ''}`,
-    formatNs4VisibleStepTitle('e5-rules', `${stepTitle}${suffix}`),
+    adjustment || repairAttempt
+      ? plainNs4StepTitle(`${stepTitle}${suffix}`)
+      : formatNs4VisibleStepTitle('e5-rules', stepTitle),
     dependsOn,
     dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
     {
@@ -465,10 +470,23 @@ export const NS4_DEFAULT_TITLES: Record<Ns4PlanId, string> = {
 };
 
 export function formatNs4VisibleStepTitle(planId: Ns4PlanId, title: string): string {
-  const cleanTitle = title.trim().replace(/^👤\s*/u, '');
+  const cleanTitle = plainNs4StepTitle(title);
   return NS4_HUMAN_CHECKPOINT_PLAN_IDS.has(planId)
     ? `${NS4_HUMAN_CHECKPOINT_ICON} ${cleanTitle}`
     : cleanTitle;
+}
+
+export function plainNs4StepTitle(title: string): string {
+  return title.trim().replace(/^[👤🔎]\s*/u, '');
+}
+
+/** Dynamic fan-out children do not retain planning.planId; hook args are their stable dispatcher key. */
+export function resolveNs4DynamicWorker(value: unknown): 'e4' | 'e5' | '' {
+  if (typeof value !== 'string') return '';
+  const selector = value.trim();
+  if (/^entity:[A-Z][A-Za-z0-9]*$/.test(selector)) return 'e4';
+  if (/^rule:[a-z][A-Za-z0-9]*$/.test(selector)) return 'e5';
+  return '';
 }
 
 export function normalizeNs4RootPlan(payload: unknown, sourcePrompt: string): Ns4RootPlan {
@@ -522,7 +540,7 @@ export function buildNs4PlannedSteps(plan: Ns4RootPlan): mls.msg.AIAgentStep[] {
 }
 
 function createNs4RoadmapStep(planId: Ns4PlanId, stepTitle: string, dependsOn: string[]): mls.msg.AIAgentStep {
-  const step = createNs4AgentStep(planId, stepTitle, dependsOn, 'waiting_dependency', { planId });
+  const step = createNs4AgentStep(planId, formatNs4VisibleStepTitle(planId, stepTitle), dependsOn, 'waiting_dependency', { planId });
   step.planning = { ...step.planning!, executionMode: 'manual_later' };
   return step;
 }

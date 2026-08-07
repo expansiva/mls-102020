@@ -17,6 +17,8 @@ import {
   NS4_PIPELINE_SCHEMA_VERSION,
   Ns4PipelineState,
   parseNs4Invocation,
+  plainNs4StepTitle,
+  resolveNs4DynamicWorker,
   resolveNs4ExistingAction,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { validateNs4E1Module } from '/_102020_/l2/agentNewSolution4/steps/e1/gate.js';
@@ -126,6 +128,8 @@ test('root plan localizes and creates the complete visible roadmap before E1 sta
   assert.equal(steps[5].onFailure, 'wait_after_prompt');
   assert.equal(steps[5].stepTitle, `👤 ${titles['e5-rules']}`);
   assert.equal(steps[6].planning?.executionMode, 'manual_later');
+  assert.equal(steps[6].stepTitle, `👤 ${titles['e6-behaviors']}`);
+  assert.equal(steps.filter(step => String(step.stepTitle || '').startsWith('👤 ')).length, 6);
   const artifact = buildNs4ModuleArtifact(plan.userPrompt, clarification, 'human', '2026-08-05T10:00:00.000Z', plan.presentation);
   const pipeline = createNs4Pipeline('petShop', plan.userPrompt, '2026-08-05T10:00:00.000Z', plan.presentation);
   assert.equal(artifact.presentation.userLanguage, 'pt-BR');
@@ -136,7 +140,16 @@ test('root plan localizes and creates the complete visible roadmap before E1 sta
 test('human checkpoint icon is deterministic and never duplicated', () => {
   assert.equal(formatNs4VisibleStepTitle('e2-journeys', 'Revisar jornadas'), '👤 Revisar jornadas');
   assert.equal(formatNs4VisibleStepTitle('e2-journeys', '👤 Revisar jornadas'), '👤 Revisar jornadas');
+  assert.equal(formatNs4VisibleStepTitle('e6-behaviors', 'Definir comportamentos'), '👤 Definir comportamentos');
   assert.equal(formatNs4VisibleStepTitle('e1-compile', 'Compilar contrato'), 'Compilar contrato');
+  assert.equal(plainNs4StepTitle('👤 Revisar jornadas · G1'), 'Revisar jornadas · G1');
+});
+
+test('dynamic E4/E5 workers are dispatched by hook args when planning metadata is absent', () => {
+  assert.equal(resolveNs4DynamicWorker('entity:PublishedClientStatus'), 'e4');
+  assert.equal(resolveNs4DynamicWorker('rule:restrictProjectUpdate'), 'e5');
+  assert.equal(resolveNs4DynamicWorker('{"planId":"e4-ontology"}'), '');
+  assert.equal(resolveNs4DynamicWorker('entity:invalid-id'), '');
 });
 
 test('root plan rejects an incomplete localized-title contract instead of silently mixing languages', () => {
@@ -157,7 +170,7 @@ test('root plan rejects an incomplete localized-title contract instead of silent
 test('new artifacts expose the current E1-to-E5 lifecycle flow version', () => {
   const artifact = buildNs4ModuleArtifact('petShop', clarification, 'human', '2026-08-05T10:00:00.000Z');
   const pipeline = createNs4Pipeline('petShop', 'petShop', '2026-08-05T10:00:00.000Z');
-  assert.equal(NS4_FLOW_VERSION, '2026-08-07-ns4-flow-v10');
+  assert.equal(NS4_FLOW_VERSION, '2026-08-07-ns4-flow-v11');
   assert.equal(artifact.specStatus.flowVersion, NS4_FLOW_VERSION);
   assert.equal(NS4_PIPELINE_SCHEMA_VERSION, '2026-08-06-ns4-pipeline-v5');
   assert.equal(pipeline.schemaVersion, NS4_PIPELINE_SCHEMA_VERSION);

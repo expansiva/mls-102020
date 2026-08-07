@@ -58,13 +58,14 @@ widget-ns4-journeys-102020 {
   .ns4-lane-items { display: grid; gap: 6px; }
   .ns4-lane-items button { background: #fff; overflow: hidden; padding: 7px 8px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
   .ns4-lane-items button.is-selected { border-color: #4338ca; color: #3730a3; }
-  .ns4-main { align-items: stretch; display: grid; gap: 16px; grid-template-columns: minmax(250px, .82fr) minmax(0, 2fr); }
-  .ns4-list { align-self: start; min-height: 0; }
-  .ns4-list-items { display: grid; gap: 8px; padding: 12px; }
-  .ns4-journey-card { background: #fff; display: grid; gap: 5px; padding: 12px; text-align: left; }
+  .ns4-main { align-items: stretch; display: grid; gap: 16px; grid-template-columns: minmax(0, .82fr) minmax(0, 2fr); }
+  .ns4-list { align-self: start; min-height: 0; min-width: 0; }
+  .ns4-list-items { display: grid; gap: 8px; min-width: 0; padding: 12px; }
+  .ns4-journey-card { background: #fff; display: grid; gap: 5px; max-width: 100%; min-width: 0; overflow: hidden; padding: 12px; text-align: left; width: 100%; }
   .ns4-journey-card:hover { border-color: #a5b4fc; }
   .ns4-journey-card.is-selected { background: #f5f3ff; border-color: #7c3aed; }
   .ns4-journey-card span { color: #475569; font-size: 12px; }
+  .ns4-journey-card strong, .ns4-journey-card span, .ns4-journey-card code { overflow-wrap: anywhere; }
   .ns4-journey-card small { color: #64748b; display: -webkit-box; line-height: 1.35; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 
   .ns4-detail { align-content: start; display: grid; gap: 16px; padding: 16px; }

@@ -30,6 +30,8 @@ test('E2 gives structural and semantic repairs independent bounded identities', 
   const semanticRepair = createNs4E2CoverageRepairStep('buildFlowFsm', 1, 1, 'Add missing actor journeys');
   const repairedGateRepair = createNs4E2GateRepairStep('buildFlowFsm', 1, 1, 1, 'Fix repaired context handoff');
   const repairedJudge = createNs4E2CoverageJudgeStep('buildFlowFsm', 1, 1, 1);
+  assert.doesNotMatch(String(firstGateRepair.stepTitle), /^👤/u);
+  assert.doesNotMatch(String(semanticRepair.stepTitle), /^👤/u);
 
   const planIds = [firstGateRepair, firstJudge, semanticRepair, repairedGateRepair, repairedJudge]
     .map(step => step.planning?.planId);

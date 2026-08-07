@@ -14,7 +14,7 @@ import {
   createNs4E4FinalizeStep,
   createNs4E4RepairStep,
   createNs4E4Step,
-  formatNs4VisibleStepTitle,
+  plainNs4StepTitle,
   isNs4Pipeline,
   markNs4E3Approved,
   markNs4E4Approved,
@@ -209,8 +209,9 @@ export async function afterNs4E4PromptStep(
   parentStep: mls.msg.AIAgentStep,
   step: mls.msg.AIAgentStep,
   hookSequential: number,
+  args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  const entityId = parseEntitySelector(step.prompt);
+  const entityId = parseEntitySelector(args) || parseEntitySelector(step.prompt);
   let moduleName = '';
   try {
     const args = resolveE4Args(context, entityId ? JSON.stringify({ planId: 'e4-ontology' }) : step.prompt);
@@ -570,7 +571,7 @@ function clarificationReviewStep(
 ): mls.msg.AgentIntentAddStep {
   return addStep(context, parentStep, {
     type: 'clarification', stepId: 0, interaction: null,
-    stepTitle: formatNs4VisibleStepTitle('e4-ontology', title), status: 'pending', nextSteps: [],
+    stepTitle: plainNs4StepTitle(title), status: 'pending', nextSteps: [],
     json: JSON.stringify(review),
     planning: { planId: `e4-ontology-review-round-${review.reviewRound}`, dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
   } as mls.msg.AIClarificationStep);
