@@ -71,7 +71,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-23 (2026-08-08) linear E2 context repair';
+export const NS4_AGENT_BUILD = 'build-24 (2026-08-08) focused E2 convergence';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

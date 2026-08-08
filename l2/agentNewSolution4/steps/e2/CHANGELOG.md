@@ -1,5 +1,10 @@
 # E2 changelog
 
+- 2026-08-08: Flow v14 replaces full-draft semantic rewrites with mechanically merged journey and
+  feature upserts. Coverage may converge through three bounded judge/patch cycles, while an unchanged
+  blocker set fails early. The complete gate runs after every merge, and the judge receives only the
+  E1 coverage subset instead of unrelated review metadata.
+
 - 2026-08-08: Flow v13 makes the linear journey contract explicit: creation and maintenance with
   different context preconditions must be separate outcome journeys. Coverage-judge instructions no
   longer request an unrepresentable "update-only path"; repair feedback is a numbered checklist

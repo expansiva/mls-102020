@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-08-ns4-flow-v13",
+  "schemaVersion": "2026-08-08-ns4-flow-v14",
   "status": "e1-e5",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -14,6 +14,7 @@
     "E4/E5 parallel children are dispatched by their stable entity:/rule: hook args and reconstruct their base invocation because collab-messages does not retain planning.planId or step.prompt on materialized fan-out children.",
     "E2 proposals must pass an independent 🔎 semantic coverage judge before human review; deterministic structural repair and semantic complete-draft repair have separate bounded budgets.",
     "E2 linear steps cannot combine creation and maintenance when their context preconditions differ; the judge requires separate outcome journeys and repair instructions are placed after the complete draft.",
+    "E2 semantic coverage converges through at most three focused patch repairs: omitted contracts remain byte-for-byte equivalent after normalization, each patch passes the complete deterministic gate, and an unchanged blocker set fails early.",
     "E1 preserves its full reviewed contract, supports repeated prompt-driven revisions and only unlocks compilation after the rich deterministic gate passes.",
     "E2 through E5 approval callbacks persist their already-gated permanent review artifacts before adding the result anchor.",
     "Every implemented compile step writes a permanent L4 artifact and a stable result anchor.",

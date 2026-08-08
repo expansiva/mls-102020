@@ -20,7 +20,7 @@ test('E2 creates a bounded automated coverage-judge step', () => {
   assert.equal(step.onFailure, 'wait_after_prompt');
   assert.deepEqual(JSON.parse(step.prompt || '{}'), {
     planId: 'e2-journeys', stage: 'coverageJudge', moduleName: 'buildFlowFsm',
-    reviewRound: 2, coverageRepairAttempt: 1, judgeAttempt: 1,
+    reviewRound: 2, coverageRepairAttempt: 1, judgeAttempt: 1, coverageIssueIds: [],
   });
 });
 
@@ -37,13 +37,23 @@ test('E2 gives structural and semantic repairs independent bounded identities', 
     .map(step => step.planning?.planId);
   assert.equal(new Set(planIds).size, planIds.length);
   assert.deepEqual(JSON.parse(semanticRepair.prompt || '{}'), {
-    planId: 'e2-journeys', moduleName: 'buildFlowFsm', reviewRound: 1,
-    coverageRepairAttempt: 1, coverageFeedback: 'Add missing actor journeys',
+    planId: 'e2-journeys', stage: 'coverageRepair', moduleName: 'buildFlowFsm', reviewRound: 1,
+    coverageRepairAttempt: 1, coverageFeedback: 'Add missing actor journeys', coverageIssueIds: [],
   });
   assert.deepEqual(JSON.parse(repairedGateRepair.prompt || '{}'), {
     planId: 'e2-journeys', moduleName: 'buildFlowFsm', reviewRound: 1,
     gateRepairAttempt: 1, coverageRepairAttempt: 1, gateFeedback: 'Fix repaired context handoff',
   });
+});
+
+test('E2 carries the previous blocker ids from focused repair to the next judge', () => {
+  const issueIds = ['missingBillingPublish'];
+  const repair = createNs4E2CoverageRepairStep('buildFlowFsm', 1, 2, 'Publish billing', 'Map journeys', issueIds);
+  const gateRepair = createNs4E2GateRepairStep('buildFlowFsm', 1, 1, 2, 'Fix patch structure', 'Map journeys', issueIds);
+  const judge = createNs4E2CoverageJudgeStep('buildFlowFsm', 1, 2, 1, 'Map journeys', issueIds);
+  assert.deepEqual(JSON.parse(repair.prompt || '{}').coverageIssueIds, issueIds);
+  assert.deepEqual(JSON.parse(gateRepair.prompt || '{}').coverageIssueIds, issueIds);
+  assert.deepEqual(JSON.parse(judge.prompt || '{}').coverageIssueIds, issueIds);
 });
 
 test('E2 coverage judge accepts a complete verdict only without blockers', () => {

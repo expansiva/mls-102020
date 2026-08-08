@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/helpers/ns4Core.ts" enhancement="_blank"/>
 
 export const NS4_FLOW_ID = 'agentNewSolution4' as const;
-export const NS4_FLOW_VERSION = '2026-08-08-ns4-flow-v13' as const;
+export const NS4_FLOW_VERSION = '2026-08-08-ns4-flow-v14' as const;
 export const NS4_E4_MAX_PARALLEL = 20 as const;
 export const NS4_E5_MAX_PARALLEL = 20 as const;
 export const NS4_MODULE_SCHEMA_VERSION = '2026-08-06-ns4-module-v4' as const;
@@ -278,6 +278,7 @@ export function createNs4E2GateRepairStep(
   coverageRepairAttempt: number,
   gateFeedback: string,
   stepTitle = NS4_DEFAULT_TITLES['e2-journeys'],
+  coverageIssueIds: string[] = [],
 ): mls.msg.AIAgentStep {
   return createNs4AgentStep(
     `e2-journeys-round-${reviewRound}-coverage-${coverageRepairAttempt}-gate-repair-${gateRepairAttempt}`,
@@ -287,6 +288,7 @@ export function createNs4E2GateRepairStep(
     {
       planId: 'e2-journeys', moduleName, reviewRound,
       gateRepairAttempt, coverageRepairAttempt, gateFeedback,
+      ...(coverageIssueIds.length ? { coverageIssueIds } : {}),
     },
   );
 }
@@ -297,13 +299,17 @@ export function createNs4E2CoverageRepairStep(
   coverageRepairAttempt: number,
   coverageFeedback: string,
   stepTitle = NS4_DEFAULT_TITLES['e2-journeys'],
+  coverageIssueIds: string[] = [],
 ): mls.msg.AIAgentStep {
   return createNs4AgentStep(
     `e2-journeys-round-${reviewRound}-coverage-repair-${coverageRepairAttempt}`,
     `${plainNs4StepTitle(stepTitle)} · C${coverageRepairAttempt}`,
     [],
     'waiting_human_input',
-    { planId: 'e2-journeys', moduleName, reviewRound, coverageRepairAttempt, coverageFeedback },
+    {
+      planId: 'e2-journeys', stage: 'coverageRepair', moduleName, reviewRound,
+      coverageRepairAttempt, coverageFeedback, coverageIssueIds,
+    },
   );
 }
 
@@ -313,6 +319,7 @@ export function createNs4E2CoverageJudgeStep(
   coverageRepairAttempt: number,
   judgeAttempt: number,
   stepTitle = NS4_DEFAULT_TITLES['e2-journeys'],
+  coverageIssueIds: string[] = [],
 ): mls.msg.AIAgentStep {
   const cleanTitle = stepTitle.trim().replace(/^[👤🔎]\s*/u, '');
   return createNs4AgentStep(
@@ -322,7 +329,7 @@ export function createNs4E2CoverageJudgeStep(
     'waiting_human_input',
     {
       planId: 'e2-journeys', stage: 'coverageJudge', moduleName, reviewRound,
-      coverageRepairAttempt, judgeAttempt,
+      coverageRepairAttempt, judgeAttempt, coverageIssueIds,
     },
   );
 }

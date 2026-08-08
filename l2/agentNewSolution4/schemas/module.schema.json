@@ -131,7 +131,7 @@
       "required": ["flowId", "flowVersion", "state", "artifactCompleteness", "completedSteps", "nextStep", "updatedAt"],
       "properties": {
         "flowId": { "type": "string", "const": "agentNewSolution4" },
-        "flowVersion": { "type": "string", "const": "2026-08-08-ns4-flow-v13" },
+        "flowVersion": { "type": "string", "const": "2026-08-08-ns4-flow-v14" },
         "state": { "type": "string", "const": "inProgress" },
         "artifactCompleteness": { "type": "string", "const": "partial" },
         "completedSteps": {
