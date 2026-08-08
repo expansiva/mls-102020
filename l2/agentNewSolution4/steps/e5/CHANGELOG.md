@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-08 — build 28, flow contract unchanged (v17)
+
+- Run23 completed E1-E4, then its 20 E4 entity calls recorded 542,366 tokens inside one limiter
+  window. The following E5 plan was rejected by collab-llm with `limit_type=tpm`, but the empty
+  payload was mislabeled as an invalid plan and retained 118 KB of input in the task.
+- The E5 compact plan now receives only the exact mechanical catalog and allowed reference index;
+  full semantic context remains available later in filtered rule workers and the judge.
+- A transport/empty-payload failure gets one separately budgeted retry. The failed attempt is cleaned
+  before retry, and a compact trace preserves the provider reason without duplicating the prompt.
+
 ## 2026-08-08 — flow v12
 
 - Rule workers reconstruct `{ planId: "e5-rules" }` from `args=rule:<id>` instead of reading the

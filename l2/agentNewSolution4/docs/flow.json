@@ -223,7 +223,8 @@
         "prompt_ready preserves the original hook args byte-for-byte so proposal, repair and judge stages cannot lose their round identity.",
         "The runtime mechanically extracts every journey rule, ontology invariant, access constraint and declared module constraint into an exact immutable source catalog.",
         "Coverage is mechanically derived from the frozen rule plan; the LLM cannot omit or fabricate the compiled-or-routed bookkeeping.",
-        "The first reasoning call returns only grouping, classification, frozen scope and routing; it does not generate triggers, conditions, enforcement or acceptance cases.",
+        "The first reasoning call receives only the exact source catalog and allowed reference index, then returns grouping, classification, frozen scope and routing; full journey/ontology context is reserved for filtered rule workers and the judge.",
+        "A plan call rejected before producing a payload, including a collab-llm TPM/RPM response, is cleaned and retried once through a unique -transport-{attempt} step without consuming the semantic plan-repair budget.",
         "One parallel_dynamic child details each planned rule with only its exact evidence and related journey/access/ontology context; maxParallel is 20.",
         "Parallel children clean input/output and complete with trace on provider or gate failure so the deterministic finalizer can retry only missing or invalid rules once.",
         "The finalizer reassembles the original E5 review contract and runs the complete deterministic gate before scheduling the semantic judge.",
@@ -233,7 +234,7 @@
         "Required journey outputs without an E4 entity or projection are detected before fan-out; the E5 compiler fails closed instead of inventing an upstream contract.",
         "An independent reasoning judge receives only the exact compact catalog/reference context plus the complete E5 draft and detects semantic omissions, contradictions, unenforceable language, wrong routing, upstream gaps and examples accidentally converted into hardcoded policy.",
         "One plan-plus-parallel semantic repair and one invalid-judge retry are allowed before failing closed.",
-        "Terminal success and failure paths clean large step input/output; resumable catalog, plan and per-rule drafts remain in L4.",
+        "Success, bounded transport retry and terminal failure paths clean large step input/output; resumable catalog, plan and per-rule drafts remain in L4.",
         "A human change request persists the edited draft and adds the next open E5 round before completing the current clarification.",
         "Approval writes one defs artifact per rule, a compact index and an approved review snapshot for future maintenance and L1/L2 compilation."
       ]

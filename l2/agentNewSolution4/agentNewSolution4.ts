@@ -71,7 +71,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-27 (2026-08-08) unified required-context contract';
+export const NS4_AGENT_BUILD = 'build-28 (2026-08-08) compact E5 transport recovery';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

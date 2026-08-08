@@ -49,12 +49,14 @@ interface Ns4E5Args {
   judgeAttempt?: number;
   ruleRepairRound?: number;
   planRepairAttempt?: number;
+  transportRetryAttempt?: number;
 }
 
 interface Ns4PersistedE5 { moduleName: string; ruleCount: number; artifactPaths: string[]; indexPath: string; approvedPath: string; }
 const MAX_PLAN_REPAIRS = 1;
 const MAX_RULE_REPAIR_ROUNDS = 1;
 const MAX_JUDGE_ATTEMPTS = 2;
+const MAX_TRANSPORT_RETRIES = 1;
 
 export async function beforeNs4E5PromptStep(
   agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep,
@@ -100,7 +102,6 @@ async function buildPlanPrompt(
     `## Required identity\nmoduleName=${args.moduleName}; reviewRound=${round}; userLanguage=${sources.module.presentation.userLanguage}`,
     '## Exact source catalog', JSON.stringify(catalog),
     '## Approved reference index', JSON.stringify(buildNs4E5ReferenceIndex(sources)),
-    '## Compact semantic context', JSON.stringify(buildSemanticContext(sources)),
     gaps.length ? `## Mechanically detected upstream gaps; include them unchanged\n${JSON.stringify(gaps)}` : '',
     args.adjustment ? `## Human structural change request\n${args.adjustment}` : '',
     args.gateFeedback ? `## Judge or gate repair required\n${args.gateFeedback}` : '',
@@ -207,7 +208,23 @@ async function handlePlanResult(
   pipeline: Ns4PipelineState,
 ): Promise<mls.msg.AgentIntent[]> {
   const payload = unwrap(step.interaction?.payload?.[0]);
-  if (!isRecord(payload)) throw new Error('E5 returned an invalid compact rule plan.');
+  if (!isRecord(payload)) {
+    const failure = readE5PromptFailure(step, 'E5 plan returned no usable payload.');
+    const attempt = args.transportRetryAttempt || 0;
+    if (attempt < MAX_TRANSPORT_RETRIES) {
+      const semanticRepairAttempt = args.repairAttempt || args.planRepairAttempt || 0;
+      return [
+        addStep(context, mutationParent, createNs4E5Step(
+          args.moduleName, args.reviewRound || pipeline.steps.e5?.reviewRound || 1, '', [],
+          pipeline.presentation.stepTitles['e5-rules'], args.gateFeedback || '', semanticRepairAttempt, attempt + 1,
+        )),
+        traceStep(context, mutationParent, 'E5 transport retry', { attempt: attempt + 1, reason: failure }),
+        updateStatus(context, mutationParent, step, hookSequential, 'completed',
+          `E5 produced no payload; transport retry ${attempt + 1} scheduled.`, 'input_output'),
+      ];
+    }
+    throw new Error(failure);
+  }
   const sources = await readSources(args.moduleName);
   const catalog = buildNs4E5SourceCatalog(sources);
   const round = args.reviewRound || pipeline.steps.e5?.reviewRound || 1;
@@ -501,7 +518,8 @@ function resolveArgs(context: mls.msg.ExecutionContext, value: unknown): Ns4E5Ar
     ...(number(root.repairAttempt) ? { repairAttempt: number(root.repairAttempt) } : {}),
     ...(number(root.judgeAttempt) ? { judgeAttempt: number(root.judgeAttempt) } : {}),
     ...(number(root.ruleRepairRound) ? { ruleRepairRound: number(root.ruleRepairRound) } : {}),
-    ...(number(root.planRepairAttempt) ? { planRepairAttempt: number(root.planRepairAttempt) } : {}) };
+    ...(number(root.planRepairAttempt) ? { planRepairAttempt: number(root.planRepairAttempt) } : {}),
+    ...(number(root.transportRetryAttempt) ? { transportRetryAttempt: number(root.transportRetryAttempt) } : {}) };
 }
 function parseRuleSelector(value: unknown): string {
   if (typeof value !== 'string') return ''; const match = /^rule:([a-z][A-Za-z0-9]*)$/.exec(value.trim()); return match?.[1] || '';
@@ -549,6 +567,11 @@ function formatUpstreamGaps(plan: Ns4E5PlanDraft): string { return `E5 stopped b
 function unwrap(value: unknown): unknown { const root = parse(value); return isRecord(root) && root.type === 'flexible' ? parse(root.result) : root; }
 function parse(value: unknown): unknown { if (typeof value !== 'string') return value; const clean = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''); try { return JSON.parse(clean); } catch { return value; } }
 function isRecord(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
+function readE5PromptFailure(step: mls.msg.AIAgentStep, fallback: string): string {
+  const trace = Array.isArray(step.interaction?.trace) ? step.interaction.trace.map(String) : [];
+  const providerFailure = [...trace].reverse().find(line => /429 Too Many Requests|Error invoking Collab LLM proxy|AI request failed/i.test(line));
+  return providerFailure ? `${fallback} ${providerFailure}` : fallback;
+}
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
 function number(value: unknown): number { return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0; }
 function memoryString(context: mls.msg.ExecutionContext, key: string): string { const value = context.task?.iaCompressed?.longMemory?.[key]; return typeof value === 'string' ? value.trim() : ''; }

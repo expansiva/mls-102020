@@ -411,11 +411,15 @@ export function createNs4E5Step(
   stepTitle = NS4_DEFAULT_TITLES['e5-rules'],
   gateFeedback = '',
   repairAttempt = 0,
+  transportRetryAttempt = 0,
 ): mls.msg.AIAgentStep {
-  const suffix = adjustment ? ` · ${reviewRound}` : repairAttempt ? ` · R${repairAttempt}` : '';
+  const attemptSuffix = `${repairAttempt ? `-repair-${repairAttempt}` : ''}${transportRetryAttempt ? `-transport-${transportRetryAttempt}` : ''}`;
+  const titleSuffix = [repairAttempt ? `R${repairAttempt}` : '', transportRetryAttempt ? `T${transportRetryAttempt}` : '']
+    .filter(Boolean).join(' · ');
+  const suffix = adjustment ? ` · ${reviewRound}` : titleSuffix ? ` · ${titleSuffix}` : '';
   return createNs4AgentStep(
-    `e5-rules-round-${reviewRound}${repairAttempt ? `-repair-${repairAttempt}` : ''}`,
-    adjustment || repairAttempt
+    `e5-rules-round-${reviewRound}${attemptSuffix}`,
+    adjustment || repairAttempt || transportRetryAttempt
       ? plainNs4StepTitle(`${stepTitle}${suffix}`)
       : formatNs4VisibleStepTitle('e5-rules', stepTitle),
     dependsOn,
@@ -425,6 +429,7 @@ export function createNs4E5Step(
       stage: 'plan',
       ...(adjustment ? { adjustment } : {}), ...(gateFeedback ? { gateFeedback } : {}),
       ...(repairAttempt ? { repairAttempt } : {}),
+      ...(transportRetryAttempt ? { transportRetryAttempt } : {}),
     },
   );
 }

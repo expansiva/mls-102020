@@ -166,6 +166,12 @@ test('E5 orchestration uses unique proposal/judge ids and resumes monotonically'
   assert.equal(NS4_E5_MAX_PARALLEL, 20);
   assert.equal(createNs4E5Step('buildFlowFsm', 2).planning?.planId, 'e5-rules-round-2');
   assert.doesNotMatch(String(createNs4E5Step('buildFlowFsm', 2, '', [], '👤 Rules', 'repair', 1).stepTitle), /^👤/u);
+  const transportRetry = createNs4E5Step('buildFlowFsm', 2, '', [], '👤 Rules', '', 0, 1);
+  assert.equal(transportRetry.planning?.planId, 'e5-rules-round-2-transport-1');
+  assert.equal(JSON.parse(transportRetry.prompt || '{}').transportRetryAttempt, 1);
+  assert.doesNotMatch(String(transportRetry.stepTitle), /^👤/u);
+  const repairedTransportRetry = createNs4E5Step('buildFlowFsm', 2, '', [], 'Rules', 'repair', 1, 1);
+  assert.equal(repairedTransportRetry.planning?.planId, 'e5-rules-round-2-repair-1-transport-1');
   const finalize = createNs4E5FinalizeStep('buildFlowFsm', 2, ['rule-a', 'rule-b']);
   assert.equal(finalize.planning?.planId, 'e5-rules-round-2-finalize-0-0');
   assert.deepEqual(finalize.planning?.dependsOn, ['rule-a', 'rule-b']);
