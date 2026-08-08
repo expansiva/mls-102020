@@ -276,6 +276,19 @@ export function normalizeNs4BusinessObjectId(value: unknown): string {
   }).join('');
 }
 
+/** One source of truth for the journey contexts that are guaranteed to exist at runtime. */
+export function requiredNs4JourneyContexts(contexts: Ns4JourneyContext[]): Ns4JourneyContext[] {
+  return contexts.filter(context => context.required);
+}
+
+/** Business objects that later ontology compilation must realize as entities or projections. */
+export function collectNs4RequiredJourneyBusinessObjects(review: Ns4E2Review): string[] {
+  return [...new Set(review.journeys.flatMap(journey => [
+    ...requiredNs4JourneyContexts(journey.business.entry.carries),
+    ...journey.business.steps.flatMap(step => requiredNs4JourneyContexts(step.providesContext)),
+  ]).map(context => context.businessObject).filter(Boolean))];
+}
+
 function entryMode(value: unknown): Ns4JourneyEntryMode {
   return value === 'contextRequired' || value === 'contextOrLookup' || value === 'eventDriven' ? value : 'coldStart';
 }

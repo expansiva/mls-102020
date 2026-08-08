@@ -40,8 +40,12 @@ Write in the user's language. Do not design pages, routes, database keys, APIs o
 6. For `contextOrLookup`, include an explicit `locate` step whose `providesContext` contains every
    required carried context. This represents the direct-entry fallback even when a previous journey
    can carry the same context.
-7. Never solve missing context by asking for a raw technical id.
-8. Every `act` or `decide` step has one unconditional context contract. Never combine creation and
+7. `contextRequired`, `contextOrLookup` and `eventDriven` must declare at least one required carried
+   context. `coldStart` cannot depend on a required carried context. An optional carried context may
+   enrich the journey when present, but a step cannot list it in `requiresContext` unless an earlier
+   step produces it unconditionally.
+8. Never solve missing context by asking for a raw technical id.
+9. Every `act` or `decide` step has one unconditional context contract. Never combine creation and
    maintenance in wording such as "create or update" when updating requires selecting an existing
    record but creation does not. If both outcomes are in scope, model separate outcome-oriented
    journeys: creation produces the new record context; maintenance first carries or locates the

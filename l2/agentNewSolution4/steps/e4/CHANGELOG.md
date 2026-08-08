@@ -1,5 +1,9 @@
 # E4 changelog
 
+- 2026-08-08: Flow v17 imports the shared E2 required-context selector instead of maintaining its
+  own interpretation. Optional carried or produced context does not force an E4 entity; required
+  context remains an exact entity/projection contract.
+
 - 2026-08-08: Flow v16 receives canonical PascalCase journey `businessObject` ids from E2. This
   removes the impossible run21 overview-repair loop in which the E4 prompt correctly produced
   `ProjectPortfolio` while its gate compared the localized E2 label `Project portfolio` literally.

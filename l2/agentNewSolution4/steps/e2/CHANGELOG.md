@@ -1,5 +1,11 @@
 # E2 changelog
 
+- 2026-08-08: Flow v17 unifies the meaning of optional and required journey context across E2 and
+  E4. A `contextOrLookup` fallback now locates only required carried contexts; optional handoffs do
+  not become unconditional `requiresContext` inputs or mandatory ontology entities. The same shared
+  selector drives both gates. Run22 exposed the old contradiction after a valid coverage repair
+  introduced an optional `taskRiskAssessment` handoff.
+
 - 2026-08-08: Flow v16 makes `businessObject` a machine contract instead of localized display text.
   E2 normalizes human-spaced nouns to stable PascalCase ids before validation and persistence, and
   E4 therefore compares the same journey/ontology identifier. Run21 had every required ontology

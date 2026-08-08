@@ -1,6 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e4/gate.ts" enhancement="_blank"/>
 
-import { Ns4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import {
+  collectNs4RequiredJourneyBusinessObjects,
+  Ns4E2Review,
+} from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { Ns4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import {
   assembleNs4E4Review,
@@ -152,11 +155,7 @@ export function validateNs4E4Review(
   requiredInformationAuthorities.forEach(ref => {
     if (!coveredAuthorities.has(ref)) add('NS4_E4_INFORMATION_COVERAGE', 'entities.sourceRefs.authorityRefs', `Information authority ${ref} is not represented in the ontology.`);
   });
-  const requiredContextObjects = new Set(journeys?.journeys.flatMap(journey => [
-    ...journey.business.entry.carries.filter(context => context.required).map(context => context.businessObject),
-    ...journey.business.steps.flatMap(step => step.providesContext
-      .filter(context => context.required).map(context => context.businessObject)),
-  ]) || []);
+  const requiredContextObjects = new Set(journeys ? collectNs4RequiredJourneyBusinessObjects(journeys) : []);
   requiredContextObjects.forEach(businessObject => {
     if (!entityIds.has(businessObject)) {
       add(

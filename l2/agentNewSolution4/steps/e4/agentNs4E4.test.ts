@@ -180,6 +180,18 @@ test('E4 rejects a required journey business object omitted from the ontology ov
     && issue.message.includes('PublishedClientStatus')));
 });
 
+test('E4 does not require an entity for an optional journey handoff', () => {
+  const optionalObjectJourneys = structuredClone(journeys);
+  optionalObjectJourneys.journeys[0].business.steps[0].providesContext.push({
+    contextId: 'publishedClientStatus', businessObject: 'PublishedClientStatus', cardinality: 'one',
+    required: false, description: 'Optional status package when one has already been published.',
+  });
+  assert.deepEqual(
+    validateNs4E4Plan(normalizeNs4E4PlanDraft(reviewInput), optionalObjectJourneys, access),
+    { ok: true, issues: [] },
+  );
+});
+
 test('E4 rejects disconnected business entities', () => {
   const broken = structuredClone(reviewInput);
   broken.relationships = [];

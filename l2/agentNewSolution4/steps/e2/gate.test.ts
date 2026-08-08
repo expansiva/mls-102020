@@ -132,6 +132,35 @@ test('E2 contextOrLookup requires an explicit fallback locate output', () => {
   assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_LOOKUP_FALLBACK'));
 });
 
+test('E2 contextOrLookup does not turn an optional handoff into a mandatory lookup', () => {
+  const optional = structuredClone(reviewInput);
+  optional.journeys[1].business.entry.carries.push({
+    contextId: 'taskRiskAssessment', businessObject: 'TaskRiskAssessment', cardinality: 'one' as const,
+    required: false, description: 'Avaliação de risco disponível quando já tiver sido gerada.',
+  });
+  const accepted = validateNs4E2Review(normalizeNs4E2Review(optional));
+  assert.deepEqual(accepted, { ok: true, issues: [] });
+
+  optional.journeys[1].business.steps[1].requiresContext.push('taskRiskAssessment');
+  const unconditional = validateNs4E2Review(normalizeNs4E2Review(optional));
+  assert.ok(unconditional.issues.some(issue => issue.code === 'NS4_E2_CONTEXT_ORDER'));
+});
+
+test('E2 entry modes agree with their required context contract', () => {
+  const coldStart = structuredClone(reviewInput);
+  coldStart.journeys[0].business.entry.carries.push({
+    contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one' as const,
+    required: true, description: 'Projeto obrigatório.',
+  });
+  assert.ok(validateNs4E2Review(normalizeNs4E2Review(coldStart)).issues
+    .some(issue => issue.code === 'NS4_E2_COLD_START_CONTEXT'));
+
+  const eventDriven = structuredClone(reviewInput);
+  eventDriven.journeys[0].business.entry.mode = 'eventDriven';
+  assert.ok(validateNs4E2Review(normalizeNs4E2Review(eventDriven)).issues
+    .some(issue => issue.code === 'NS4_E2_ENTRY_CONTEXT'));
+});
+
 test('E2 allows a stable context to be refreshed but rejects a different business object', () => {
   const refreshed = structuredClone(reviewInput);
   refreshed.journeys[1].business.steps[1].providesContext.push({

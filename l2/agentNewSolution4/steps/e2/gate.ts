@@ -1,6 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e2/gate.ts" enhancement="_blank"/>
 
-import { Ns4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import {
+  Ns4E2Review,
+  requiredNs4JourneyContexts,
+} from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 
 export interface Ns4E2GateIssue {
   code: string;
@@ -62,8 +65,13 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
       checkContext(context.contextId, context.businessObject, `${base}.business.entry.carries[${index}]`, entryContexts, add);
       checkBusinessText(context.description, `${base}.business.entry.carries[${index}].description`, add);
     });
-    if ((business.entry.mode === 'contextRequired' || business.entry.mode === 'contextOrLookup') && !business.entry.carries.length) {
-      add('NS4_E2_ENTRY_CONTEXT', `${base}.business.entry.carries`, `${business.entry.mode} requires at least one carried business context.`);
+    const requiredEntryContexts = requiredNs4JourneyContexts(business.entry.carries);
+    if ((business.entry.mode === 'contextRequired' || business.entry.mode === 'contextOrLookup' || business.entry.mode === 'eventDriven')
+      && !requiredEntryContexts.length) {
+      add('NS4_E2_ENTRY_CONTEXT', `${base}.business.entry.carries`, `${business.entry.mode} requires at least one required carried business context.`);
+    }
+    if (business.entry.mode === 'coldStart' && requiredEntryContexts.length) {
+      add('NS4_E2_COLD_START_CONTEXT', `${base}.business.entry.carries`, 'coldStart cannot depend on a required carried context. Use contextRequired or contextOrLookup.');
     }
 
     const preferredRef = business.entry.preferredFromJourneyRef;
@@ -81,7 +89,7 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
       });
     });
 
-    const availableContexts = new Set(entryContexts);
+    const availableContexts = new Set(requiredEntryContexts.map(context => context.contextId));
     const contextObjects = new Map(business.entry.carries.map(context => [context.contextId, context.businessObject]));
     const stepIds = new Set<string>();
     business.steps.forEach((step, stepPosition) => {
@@ -123,7 +131,8 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
       const located = new Set(
         business.steps.filter(step => step.kind === 'locate').flatMap(step => step.providesContext.map(context => context.contextId)),
       );
-      entryContexts.forEach(contextId => {
+      requiredEntryContexts.forEach(context => {
+        const contextId = context.contextId;
         if (!located.has(contextId)) {
           add('NS4_E2_LOOKUP_FALLBACK', `${base}.business.steps`, `contextOrLookup must include a locate step that provides fallback context ${contextId}.`);
         }

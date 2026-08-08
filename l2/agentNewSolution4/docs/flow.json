@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-08-ns4-flow-v16",
+  "schemaVersion": "2026-08-08-ns4-flow-v17",
   "status": "e1-e5",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -14,6 +14,7 @@
     "E4/E5 parallel children are dispatched by stable entity:/rule: selectors and reconstruct their base invocation when collab-messages omits planning or prompt metadata on materialized fan-out children.",
     "Dynamic E4/E5 dispatch is symmetric: before-prompt prefers hook args, while after-prompt falls back to the selector retained in step.prompt when collab-messages omits callback args.",
     "E2 normalizes every journey businessObject to one stable PascalCase identifier; E4 consumes that exact id for its entity or projection instead of comparing a localized display label.",
+    "E2 treats required as an executable contract: only required entry contexts must be available or located, optional handoffs never become unconditional step prerequisites, and E4 requires ontology coverage only for required contexts.",
     "E2 proposals must pass an independent 🔎 semantic coverage judge before human review; deterministic structural repair and semantic complete-draft repair have separate bounded budgets.",
     "E2 linear steps cannot combine creation and maintenance when their context preconditions differ; the judge requires separate outcome journeys and repair instructions are placed after the complete draft.",
     "E2 semantic coverage converges through at most three focused patch repairs: omitted contracts remain byte-for-byte equivalent after normalization, each patch passes the complete deterministic gate, and an unchanged blocker set fails early.",
@@ -35,7 +36,7 @@
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v16-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Previous flow versions are not migrated; foreign or older modules are rejected."
+    "resumeRule": "A v17-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",
@@ -133,7 +134,9 @@
         "An invalid judge envelope is retried once. Compact judge results remain in the task trace after large LLM interactions are cleaned.",
         "Only a judged-complete draft opens the 👤 widget; /fast also waits for the same judgment before durable approval.",
         "Prerequisite handoffs use stable context ids exported by the referenced journey.",
-        "contextOrLookup includes an explicit locate fallback for every carried context."
+        "contextRequired, contextOrLookup and eventDriven declare at least one required entry context; coldStart declares no required entry context.",
+        "contextOrLookup includes an explicit locate fallback for every required carried context; optional handoffs may enrich the journey but cannot be an unconditional requiresContext unless an earlier step produces them.",
+        "E2 and E4 consume the same shared required-context semantics so an optional handoff cannot become an accidental ontology requirement."
       ]
     },
     {

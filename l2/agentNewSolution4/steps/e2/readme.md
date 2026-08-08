@@ -28,6 +28,9 @@ The gate treats business context as a first-class contract. A command journey mu
 receive a named record such as `selectedProject`; it must never make a future page ask for a raw id.
 Every `businessObject` is normalized once into a stable PascalCase identifier and that exact id is
 consumed by the E4 entity/projection contract; localized display text stays in descriptions and titles.
+The `required` flag has one shared meaning across E2 and E4: required entry contexts are guaranteed,
+must have a direct-entry lookup when applicable and require ontology realization; optional handoffs
+may enrich a flow but are not unconditional prerequisites and do not force an otherwise unused entity.
 Cross-journey handoffs are also checked: a prerequisite may only provide a context actually exported
 by the referenced journey, using the same stable `contextId`. Every `contextOrLookup` journey must
 materialize its direct-entry fallback through a `locate` step.
