@@ -73,7 +73,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-31 (2026-08-08) E5 upstream repair resume';
+export const NS4_AGENT_BUILD = 'build-32 (2026-08-08) shared permanent recovery sources';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

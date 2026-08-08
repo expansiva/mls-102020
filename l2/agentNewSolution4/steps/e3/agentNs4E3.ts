@@ -6,6 +6,9 @@ import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
+  readNs4ApprovedAccess, readNs4ApprovedJourneys,
+} from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
+import {
   createNs4E3Step,
   isNs4Pipeline,
   markNs4E3Approved,
@@ -17,18 +20,15 @@ import {
   Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
-  ns4E2DraftFile,
-  ns4E3DraftFile,
   readNs4AgentText,
   readNs4Module,
   readNs4Pipeline,
-  readNs4Text,
   writeNs4AccessMatrix,
   writeNs4E3Draft,
   writeNs4Module,
   writeNs4Pipeline,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
-import { normalizeNs4E2Review, Ns4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import { Ns4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import {
   buildNs4AccessMatrixArtifact,
   normalizeNs4E3Review,
@@ -73,7 +73,7 @@ export async function beforeNs4E3PromptStep(
     const [moduleArtifact, pipeline, journeys, prompt, platform] = await Promise.all([
       readNs4Module(moduleName),
       readNs4Pipeline(moduleName),
-      readApprovedJourneys(moduleName),
+      readNs4ApprovedJourneys(moduleName),
       readNs4AgentText('steps/e3', 'prompt'),
       readNs4AgentText('skills', 'platform'),
     ]);
@@ -81,7 +81,7 @@ export async function beforeNs4E3PromptStep(
       throw new Error(`E2 approved artifacts not found for ${moduleName}.`);
     }
     const reviewRound = parsed.reviewRound || pipeline.steps.e3?.reviewRound || 1;
-    const previousDraft = parsed.adjustment ? await readDraftFromStorage(moduleName) : null;
+    const previousDraft = parsed.adjustment ? await readNs4ApprovedAccess(moduleName) : null;
     const humanPrompt = [
       '## Approved module contract', JSON.stringify(moduleArtifact), '',
       '## Approved E2 journeys', JSON.stringify(journeys), '',
@@ -123,7 +123,7 @@ export async function afterNs4E3PromptStep(
     const review = normalizeNs4E3Review(payload.json, moduleName);
     review.moduleName = moduleName;
     review.reviewRound = args.reviewRound || review.reviewRound;
-    const journeys = await readApprovedJourneys(moduleName);
+    const journeys = await readNs4ApprovedJourneys(moduleName);
     const gate = validateNs4E3Review(review, journeys);
     if (!gate.ok) {
       const message = gate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
@@ -154,7 +154,7 @@ export async function beforeNs4E3ClarificationStep(
   json: unknown,
 ): Promise<HTMLElement> {
   const review = normalizeNs4E3Review(parseMaybeJson(json));
-  const journeys = await readApprovedJourneys(review.moduleName);
+  const journeys = await readNs4ApprovedJourneys(review.moduleName);
   const gate = validateNs4E3Review(review, journeys);
   if (!gate.ok) {
     const message = gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
@@ -182,7 +182,7 @@ async function applyNs4E3Review(
   if (!context.task) throw new Error('[agentNewSolution4:e3] task invalid');
   const mutationParent = findMutableParentStep(context, parentStep);
   if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; esta revisão foi mantida aberta sem alterar o pipeline.');
-  const journeys = await readApprovedJourneys(event.review.moduleName);
+  const journeys = await readNs4ApprovedJourneys(event.review.moduleName);
   if (event.action === 'approve') {
     const saved = await persistNs4E3(event.review.moduleName, event.review, 'human', journeys);
     await applyIntents(context, [
@@ -237,18 +237,6 @@ function findMutableParentStep(context: mls.msg.ExecutionContext, parentStep: ml
   }
   const root = context.task?.iaCompressed?.nextSteps?.[0];
   return root?.type === 'agent' ? root : parentStep;
-}
-
-async function readApprovedJourneys(moduleName: string): Promise<Ns4E2Review> {
-  const raw = await readNs4Text(ns4E2DraftFile(moduleName), false);
-  if (!raw.trim()) throw new Error(`Approved E2 journey review not found for ${moduleName}.`);
-  try { return normalizeNs4E2Review(JSON.parse(raw), moduleName); }
-  catch { throw new Error(`Invalid approved E2 journey review for ${moduleName}.`); }
-}
-
-async function readDraftFromStorage(moduleName: string): Promise<unknown> {
-  const raw = await readNs4Text(ns4E3DraftFile(moduleName), false);
-  try { return raw.trim() ? JSON.parse(raw) : null; } catch { return null; }
 }
 
 async function requirePipeline(moduleName: string): Promise<Ns4PipelineState> {

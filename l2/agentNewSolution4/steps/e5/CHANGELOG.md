@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-08 — build 32, flow contract unchanged (v17)
+
+- The first run24 repair task correctly entered E3 round 2 but failed immediately because E3 still
+  parsed the large E2 pipeline draft. Approved-source loading is now centralized for E3–E5 on the
+  journey/access/ontology permanent defs; the upcoming E4 repair no longer reads its large draft.
+
 ## 2026-08-08 — build 31, flow contract unchanged (v17)
 
 - Both resumed run23 and clean run24 reached E5 and produced valid compact plans, but stopped on six

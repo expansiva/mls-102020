@@ -11,6 +11,10 @@ import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
+  readNs4ApprovedAccess, readNs4ApprovedJourneys, readNs4ApprovedOntology,
+  readNs4ApprovedOntologyEntity,
+} from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
+import {
   createNs4E4FinalizeStep,
   createNs4E4RepairStep,
   createNs4E4Step,
@@ -27,13 +31,9 @@ import {
   Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
-  ns4AccessMatrixFile,
-  ns4E2DraftFile,
-  ns4E4DraftFile,
   ns4E4EntityDraftFile,
   ns4E4PlanDraftFile,
   readNs4AgentText,
-  readNs4DefsJson,
   readNs4Module,
   readNs4Pipeline,
   readNs4Text,
@@ -45,10 +45,9 @@ import {
   writeNs4OntologyIndex,
   writeNs4Pipeline,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
-import { normalizeNs4E2Review, Ns4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import { Ns4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import {
   normalizeNs4E3Review,
-  Ns4AccessMatrixArtifact,
   Ns4E3Review,
 } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import {
@@ -140,8 +139,8 @@ async function buildPlanPrompt(
   }
   const [moduleArtifact, journeys, access, prompt, platform] = await Promise.all([
     readNs4Module(args.moduleName),
-    readApprovedJourneys(args.moduleName),
-    handoff?.approvedReview ? Promise.resolve(handoff.approvedReview) : readApprovedAccess(args.moduleName),
+    readNs4ApprovedJourneys(args.moduleName),
+    handoff?.approvedReview ? Promise.resolve(handoff.approvedReview) : readNs4ApprovedAccess(args.moduleName),
     readNs4AgentText('steps/e4', 'prompt'),
     readNs4AgentText('skills', 'platform'),
   ]);
@@ -150,7 +149,7 @@ async function buildPlanPrompt(
     throw new Error(`E4 modernization intake is not implemented for strategy ${moduleArtifact.solutionStrategy.mode}.`);
   }
   const reviewRound = args.reviewRound || pipeline.steps.e4?.reviewRound || 1;
-  const previousDraft = args.adjustment || args.gateFeedback ? await readDraftFromStorage(args.moduleName) : null;
+  const previousDraft = args.adjustment || args.gateFeedback ? await readNs4ApprovedOntology(args.moduleName) : null;
   const previousPlan = args.gateFeedback ? await readOptionalPlanDraft(args.moduleName) : null;
   const humanPrompt = [
     '## Explicit delivery mode\nnew solution; new persistence design; no legacy database contract',
@@ -177,15 +176,14 @@ async function buildEntityPrompt(
   const plan = await readPlanDraft(args.moduleName);
   const target = plan.entities.find(entity => entity.entityId === entityId);
   if (!target) throw new Error(`Entity ${entityId} is not present in the E4 overview.`);
-  const [journeys, access, prompt, previousReview, currentDetail] = await Promise.all([
-    readApprovedJourneys(args.moduleName), readApprovedAccess(args.moduleName),
-    readNs4AgentText('steps/e4', 'promptEntity'), readReviewDraft(args.moduleName), readEntityDraft(args.moduleName, entityId),
+  const [journeys, access, prompt, previousEntity, currentDetail] = await Promise.all([
+    readNs4ApprovedJourneys(args.moduleName), readNs4ApprovedAccess(args.moduleName),
+    readNs4AgentText('steps/e4', 'promptEntity'), readNs4ApprovedOntologyEntity(args.moduleName, entityId), readEntityDraft(args.moduleName, entityId),
   ]);
   const relatedJourneys = journeys.journeys.filter(journey => target.sourceRefs.journeyIds.includes(journey.journeyId));
   const relatedFeatures = journeys.features.filter(feature => target.sourceRefs.featureIds.includes(feature.featureId));
   const relatedAuthorities = access.authorities.filter(authority => target.sourceRefs.authorityRefs.includes(authority.authorityRef));
   const relatedGrants = access.grants.filter(grant => target.sourceRefs.authorityRefs.includes(grant.authorityRef));
-  const previousEntity = previousReview?.entities.find(entity => entity.entityId === entityId);
   const touchingRelationships = plan.relationships.filter(rel => rel.fromEntity === entityId || rel.toEntity === entityId);
   const currentGate = currentDetail ? validateNs4E4EntityDraft(plan, currentDetail) : null;
   const upstreamRepairFeedback = memoryString(context, 'resumeFeedback');
@@ -247,7 +245,7 @@ async function handlePlanResult(
   const plan = normalizeNs4E4PlanDraft(payload, args.moduleName);
   plan.moduleName = args.moduleName;
   plan.reviewRound = reviewRound;
-  const [journeys, access] = await Promise.all([readApprovedJourneys(args.moduleName), readApprovedAccess(args.moduleName)]);
+  const [journeys, access] = await Promise.all([readNs4ApprovedJourneys(args.moduleName), readNs4ApprovedAccess(args.moduleName)]);
   const gate = validateNs4E4Plan(plan, journeys, access);
   if (!gate.ok) {
     const message = formatGate(gate.issues);
@@ -330,7 +328,7 @@ async function finalizeOntology(
     return [updateStatus(context, mutationParent, step, hookSequential, 'failed', message)];
   }
   const review = assembleNs4E4Review(plan, details);
-  const [journeys, access] = await Promise.all([readApprovedJourneys(args.moduleName), readApprovedAccess(args.moduleName)]);
+  const [journeys, access] = await Promise.all([readNs4ApprovedJourneys(args.moduleName), readNs4ApprovedAccess(args.moduleName)]);
   const gate = validateNs4E4Review(review, journeys, access);
   if (!gate.ok) {
     const message = formatGate(gate.issues);
@@ -373,7 +371,7 @@ export async function beforeNs4E4ClarificationStep(
   json: unknown,
 ): Promise<HTMLElement> {
   const review = normalizeNs4E4Review(parseMaybeJson(json));
-  const [journeys, access] = await Promise.all([readApprovedJourneys(review.moduleName), readApprovedAccess(review.moduleName)]);
+  const [journeys, access] = await Promise.all([readNs4ApprovedJourneys(review.moduleName), readNs4ApprovedAccess(review.moduleName)]);
   const gate = validateNs4E4Review(review, journeys, access);
   if (!gate.ok) {
     const message = formatGate(gate.issues);
@@ -401,7 +399,7 @@ async function applyNs4E4Review(
   if (!context.task) throw new Error('[agentNewSolution4:e4] task invalid');
   const mutationParent = findMutableParentStep(context, parentStep);
   if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; esta revisão foi mantida aberta sem alterar o pipeline.');
-  const [journeys, access] = await Promise.all([readApprovedJourneys(event.review.moduleName), readApprovedAccess(event.review.moduleName)]);
+  const [journeys, access] = await Promise.all([readNs4ApprovedJourneys(event.review.moduleName), readNs4ApprovedAccess(event.review.moduleName)]);
   const gate = validateNs4E4Review(event.review, journeys, access);
   if (!gate.ok) throw new Error(formatGate(gate.issues));
   await writeNs4E4Draft(event.review.moduleName, event.review);
@@ -486,19 +484,6 @@ function promptReady(
   } as mls.msg.AgentIntentPromptReady;
 }
 
-async function readApprovedJourneys(moduleName: string): Promise<Ns4E2Review> {
-  const raw = await readNs4Text(ns4E2DraftFile(moduleName), false);
-  if (!raw.trim()) throw new Error(`Approved E2 journey review not found for ${moduleName}.`);
-  try { return normalizeNs4E2Review(JSON.parse(raw), moduleName); }
-  catch { throw new Error(`Invalid approved E2 journey review for ${moduleName}.`); }
-}
-
-async function readApprovedAccess(moduleName: string): Promise<Ns4E3Review> {
-  const artifact = await readNs4DefsJson<Ns4AccessMatrixArtifact>(ns4AccessMatrixFile(moduleName));
-  if (!artifact) throw new Error(`Approved E3 access artifact not found for ${moduleName}.`);
-  return normalizeNs4E3Review(artifact, moduleName);
-}
-
 async function readPlanDraft(moduleName: string): Promise<Ns4E4PlanDraft> {
   const raw = await readNs4Text(ns4E4PlanDraftFile(moduleName), true);
   const parsed = parseMaybeJson(raw);
@@ -518,17 +503,6 @@ async function readEntityDraft(moduleName: string, entityId: string): Promise<Ns
   if (!isRecord(parsed)) return null;
   const round = typeof parsed.reviewRound === 'number' ? parsed.reviewRound : 1;
   return normalizeNs4E4EntityDraft(parsed, moduleName, round, entityId);
-}
-
-async function readReviewDraft(moduleName: string): Promise<Ns4E4Review | null> {
-  const raw = await readNs4Text(ns4E4DraftFile(moduleName), false);
-  const parsed = parseMaybeJson(raw);
-  return isRecord(parsed) ? normalizeNs4E4Review(parsed, moduleName) : null;
-}
-
-async function readDraftFromStorage(moduleName: string): Promise<unknown> {
-  const raw = await readNs4Text(ns4E4DraftFile(moduleName), false);
-  try { return raw.trim() ? JSON.parse(raw) : null; } catch { return null; }
 }
 
 async function requirePipeline(moduleName: string): Promise<Ns4PipelineState> {

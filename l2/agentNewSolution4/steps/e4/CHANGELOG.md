@@ -1,5 +1,9 @@
 # E4 changelog
 
+- 2026-08-08: Build 32 uses the same shared permanent journey/access readers as E3/E5. An ontology
+  repair overview is reconstructed from its approved index/entity defs, while each parallel worker
+  reads only its matching previous entity def instead of repeatedly loading the large E4 review draft.
+
 - 2026-08-08: Build 31 routes an E5 upstream-contract failure through a new E3/E4 round on explicit
   resume. E4 preserves the approved review, receives the exact gap report in both overview and entity
   workers, and must add the missing durable rule facts before E5 retries. Reapproval records the new

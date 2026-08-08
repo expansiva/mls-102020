@@ -76,6 +76,10 @@ Approval writes:
   references and frozen hash;
 - updated module and pipeline status with `e5-rules` as the next step.
 
+E3, E4 and E5 share the same approved-source loader. Recovery reads the permanent journey index and
+journey defs, access-matrix def, and ontology index/entity defs; the large pipeline drafts are review
+work products, not resume dependencies. E4 repair workers load only their own previous entity def.
+
 E5 first reconstructs its input from the approved permanent journey index/artifacts, access matrix
 and ontology index/entity artifacts, validating their frozen hashes instead of depending on the large
 pipeline review drafts during resume. It then builds the exact source catalog and coverage bookkeeping

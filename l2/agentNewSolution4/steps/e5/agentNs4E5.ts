@@ -16,18 +16,15 @@ import {
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
-  ns4AccessMatrixFile, ns4E5CatalogFile, ns4E5DraftFile, ns4E5PlanDraftFile, ns4E5RuleDraftFile,
-  ns4JourneyFile, ns4JourneyIndexFile, ns4OntologyEntityFile, ns4OntologyIndexFile,
-  Ns4FileInfo, readNs4AgentText, readNs4DefsJson, readNs4Module,
+  readNs4ApprovedAccess, readNs4ApprovedJourneys, readNs4ApprovedOntology,
+} from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
+import {
+  ns4E5CatalogFile, ns4E5DraftFile, ns4E5PlanDraftFile, ns4E5RuleDraftFile,
+  readNs4AgentText, readNs4Module,
   readNs4Pipeline, readNs4Text, writeNs4E5Approved, writeNs4E5Catalog, writeNs4E5Draft,
   writeNs4E5PlanDraft, writeNs4E5RuleDraft, writeNs4Module, writeNs4Pipeline, writeNs4Rule,
   writeNs4RuleIndex,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
-import { Ns4JourneyArtifact, Ns4JourneyIndex } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
-import { Ns4AccessMatrixArtifact } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
-import {
-  Ns4OntologyEntityArtifact, Ns4OntologyIndexArtifact,
-} from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import {
   assembleNs4E5Review, buildNs4RuleArtifacts, normalizeNs4E5PlanDraft, normalizeNs4E5Review,
   normalizeNs4E5RuleDraft, Ns4E5PlanDraft, Ns4E5Review, Ns4E5ReviewEvent, Ns4E5RuleDraft,
@@ -41,7 +38,6 @@ import {
   formatNs4E5JudgeFeedback, normalizeNs4E5JudgeVerdict, validateNs4E5JudgeVerdict,
 } from '/_102020_/l2/agentNewSolution4/steps/e5/judge.js';
 import { resolveNs4E5HookArgs, resolveNs4E5InvocationArgs } from '/_102020_/l2/agentNewSolution4/steps/e5/hookArgs.js';
-import { assembleNs4E5SourcesFromApprovedArtifacts } from '/_102020_/l2/agentNewSolution4/steps/e5/sources.js';
 
 interface Ns4E5Args {
   planId: 'e5-rules';
@@ -441,43 +437,14 @@ function parallelRuleStep(
 }
 
 async function readSources(moduleName: string): Promise<Ns4E5Sources> {
-  const [module, accessArtifact, journeyIndex, ontologyIndex, pipeline] = await Promise.all([
+  const [module, journeys, access, ontology] = await Promise.all([
     readNs4Module(moduleName),
-    readApprovedDefs<Ns4AccessMatrixArtifact>(ns4AccessMatrixFile(moduleName), 'access matrix'),
-    readApprovedDefs<Ns4JourneyIndex>(ns4JourneyIndexFile(moduleName), 'journey index'),
-    readApprovedDefs<Ns4OntologyIndexArtifact>(ns4OntologyIndexFile(moduleName), 'ontology index'),
-    requirePipeline(moduleName),
+    readNs4ApprovedJourneys(moduleName),
+    readNs4ApprovedAccess(moduleName),
+    readNs4ApprovedOntology(moduleName),
   ]);
   if (!module) throw new Error(`Approved module source not found for ${moduleName}.`);
-  const journeyArtifacts = await mapInBatches(journeyIndex.journeys, entry =>
-    readApprovedDefs<Ns4JourneyArtifact>(ns4JourneyFile(moduleName, entry.journeyId), `journey ${entry.journeyId}`));
-  const ontologyEntities = await mapInBatches(ontologyIndex.entities, entry =>
-    readApprovedDefs<Ns4OntologyEntityArtifact>(ns4OntologyEntityFile(moduleName, entry.entityId), `ontology entity ${entry.entityId}`));
-  return assembleNs4E5SourcesFromApprovedArtifacts(
-    module, accessArtifact, journeyIndex, journeyArtifacts, ontologyIndex, ontologyEntities, pipeline,
-  );
-}
-
-async function readApprovedDefs<T>(fileInfo: Ns4FileInfo, label: string): Promise<T> {
-  let lastFailure = '';
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    try {
-      const artifact = await readNs4DefsJson<T>(fileInfo, true);
-      if (artifact) return artifact;
-      lastFailure = 'storage returned non-parseable content';
-    } catch (error) {
-      lastFailure = errorMessage(error);
-    }
-  }
-  throw new Error(`Unable to read approved ${label} after 2 attempts: ${lastFailure}`);
-}
-
-async function mapInBatches<T, R>(items: T[], load: (item: T) => Promise<R>): Promise<R[]> {
-  const result: R[] = [];
-  for (let index = 0; index < items.length; index += 5) {
-    result.push(...await Promise.all(items.slice(index, index + 5).map(load)));
-  }
-  return result;
+  return { module, journeys, access, ontology };
 }
 
 function buildSemanticContext(sources: Ns4E5Sources): unknown {
