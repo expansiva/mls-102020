@@ -131,10 +131,10 @@ export async function beforeNs4E2PromptStep(
       JSON.stringify(moduleArtifact, null, 2),
       '',
       `## Required review round\n${reviewRound}`,
+      previousDraft ? `## Previous E2 draft\n${JSON.stringify(previousDraft, null, 2)}` : '',
       parsed.adjustment ? `## Human adjustment request\n${parsed.adjustment}` : '',
       parsed.gateFeedback ? `## Deterministic gate repair required\n${parsed.gateFeedback}` : '',
       parsed.coverageFeedback ? `## Semantic coverage repair required\n${parsed.coverageFeedback}` : '',
-      previousDraft ? `## Previous E2 draft\n${JSON.stringify(previousDraft, null, 2)}` : '',
     ].filter(Boolean).join('\n');
 
     return [{

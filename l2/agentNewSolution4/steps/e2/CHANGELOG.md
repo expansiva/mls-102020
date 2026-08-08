@@ -1,5 +1,10 @@
 # E2 changelog
 
+- 2026-08-08: Flow v13 makes the linear journey contract explicit: creation and maintenance with
+  different context preconditions must be separate outcome journeys. Coverage-judge instructions no
+  longer request an unrepresentable "update-only path"; repair feedback is a numbered checklist
+  placed after the complete previous draft so the single bounded repair remains salient.
+
 - 2026-08-07: E2 proposals now use an internal flexible payload, so an ungated journey candidate no
   longer flashes as a human clarification while structural repair or coverage judgment is pending.
   The journey list also sizes from all cards instead of overflowing beneath the review footer.

@@ -89,8 +89,10 @@ test('E2 coverage judge rejects fail-open and produces actionable repair feedbac
   });
   assert.deepEqual(validateNs4E2CoverageVerdict(verdict, 'buildFlowFsm', 1), { ok: true, errors: [] });
   const feedback = formatNs4E2CoverageRepairFeedback(verdict);
-  assert.match(feedback, /clientJourneyMissing \[missingRecipientJourney\]/);
-  assert.match(feedback, /materialSelectionMissing \[missingContextAcquisition\]/);
+  assert.match(feedback, /1\. clientJourneyMissing \[missingRecipientJourney\]/);
+  assert.match(feedback, /2\. materialSelectionMissing \[missingContextAcquisition\]/);
+  assert.match(feedback, /Split those outcomes into separate journeys/);
+  assert.match(feedback, /each numbered blocker is absent/);
 
   const failOpen = normalizeNs4E2CoverageVerdict({
     moduleName: 'buildFlowFsm', reviewRound: 1, complete: false,

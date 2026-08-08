@@ -18,6 +18,9 @@ user outcomes.
 3. When an `act` or `decide` step needs an existing business record chosen by a person, the journey
    must first carry, locate, select or create named business context. Examples include a client for a
    project, a material for usage, a worker for assignment and a project for a change order.
+   A linear step that says "create or update" is blocking when only the update outcome needs an
+   existing record: it hides two different context preconditions and can compile into a raw-id or
+   unbound update form.
 4. A human-selectable reference must have a credible business lookup source. It may come from another
    journey, an explicitly named shared catalog or an explicitly named platform/horizontal capability.
    A UUID field or an unnamed selector is not a source.
@@ -36,6 +39,11 @@ user outcomes.
 - `complete` is true only when there are no blocking issues.
 - Each blocking repair instruction must tell the repair model exactly which complete journey or named
   context acquisition is missing while preserving unaffected content.
+- The E2 contract is linear and has no conditional branches. For a combined create/update finding,
+  instruct the repair model to split creation and maintenance into separate outcome-oriented journeys:
+  creation produces the new record; maintenance locates or carries the existing record before acting.
+  Never request context "only on the update path" inside one combined step, because that path cannot
+  be represented by this contract.
 
 Return JSON only with this exact envelope:
 

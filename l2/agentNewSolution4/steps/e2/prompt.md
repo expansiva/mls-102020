@@ -38,6 +38,12 @@ Write in the user's language. Do not design pages, routes, database keys, APIs o
    required carried context. This represents the direct-entry fallback even when a previous journey
    can carry the same context.
 7. Never solve missing context by asking for a raw technical id.
+8. Every `act` or `decide` step has one unconditional context contract. Never combine creation and
+   maintenance in wording such as "create or update" when updating requires selecting an existing
+   record but creation does not. If both outcomes are in scope, model separate outcome-oriented
+   journeys: creation produces the new record context; maintenance first carries or locates the
+   existing record context and then requires it. Do not simulate a conditional branch inside one
+   linear step.
 
 ## Journey quality
 
@@ -75,6 +81,12 @@ Preserve unaffected content. Gate repair is not a request to weaken, omit or rei
 Coverage-judge feedback is equally binding: add the missing journey or context acquisition described
 by every blocking issue, update features/prerequisites/handoffs consistently, and return the complete
 replacement proposal without dropping unaffected content.
+
+For a coverage repair, process every blocking issue as a checklist after reading the previous draft.
+When an issue concerns a combined create/update operation, split the outcomes into separate journeys;
+do not merely reword the same combined step or make existing-record context mandatory for creation.
+Before returning, verify that each issue's named context is carried or produced before the affected
+`act`/`decide` step requires it.
 
 ## Output
 

@@ -71,7 +71,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-22 (2026-08-08) promptless parallel children';
+export const NS4_AGENT_BUILD = 'build-23 (2026-08-08) linear E2 context repair';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
