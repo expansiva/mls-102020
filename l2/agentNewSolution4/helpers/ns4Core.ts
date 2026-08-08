@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/helpers/ns4Core.ts" enhancement="_blank"/>
 
 export const NS4_FLOW_ID = 'agentNewSolution4' as const;
-export const NS4_FLOW_VERSION = '2026-08-08-ns4-flow-v14' as const;
+export const NS4_FLOW_VERSION = '2026-08-08-ns4-flow-v15' as const;
 export const NS4_E4_MAX_PARALLEL = 20 as const;
 export const NS4_E5_MAX_PARALLEL = 20 as const;
 export const NS4_MODULE_SCHEMA_VERSION = '2026-08-06-ns4-module-v4' as const;
@@ -494,6 +494,24 @@ export function resolveNs4DynamicWorker(value: unknown): 'e4' | 'e5' | '' {
   if (/^entity:[A-Z][A-Za-z0-9]*$/.test(selector)) return 'e4';
   if (/^rule:[a-z][A-Za-z0-9]*$/.test(selector)) return 'e5';
   return '';
+}
+
+export interface Ns4DynamicWorkerRequest {
+  worker: 'e4' | 'e5' | '';
+  args: string;
+}
+
+/**
+ * collab-messages supplies the selector as hook args before a parallel prompt, but may omit those
+ * args in the after-prompt callback while retaining the selector in step.prompt. Both callbacks must
+ * resolve through the same ordered fallback or a valid entity/rule payload reaches the root planner.
+ */
+export function resolveNs4DynamicWorkerRequest(args: unknown, stepPrompt: unknown): Ns4DynamicWorkerRequest {
+  for (const candidate of [args, stepPrompt]) {
+    const worker = resolveNs4DynamicWorker(candidate);
+    if (worker && typeof candidate === 'string') return { worker, args: candidate };
+  }
+  return { worker: '', args: '' };
 }
 
 export function normalizeNs4RootPlan(payload: unknown, sourcePrompt: string): Ns4RootPlan {

@@ -15,7 +15,7 @@ import {
   normalizeNs4RootPlan,
   Ns4RootPlan,
   parseNs4Invocation,
-  resolveNs4DynamicWorker,
+  resolveNs4DynamicWorkerRequest,
   resolveNs4ExistingAction,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
@@ -71,7 +71,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-24 (2026-08-08) focused E2 convergence';
+export const NS4_AGENT_BUILD = 'build-25 (2026-08-08) symmetric dynamic callbacks';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -190,9 +190,9 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  const dynamicWorker = resolveNs4DynamicWorker(args);
-  if (dynamicWorker === 'e4') return beforeNs4E4PromptStep(agent, context, parentStep, step, hookSequential, args);
-  if (dynamicWorker === 'e5') return beforeNs4E5PromptStep(agent, context, parentStep, step, hookSequential, args);
+  const dynamic = resolveNs4DynamicWorkerRequest(args, step.prompt);
+  if (dynamic.worker === 'e4') return beforeNs4E4PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
+  if (dynamic.worker === 'e5') return beforeNs4E5PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
   const planId = step.planning?.planId || '';
   if (planId === 'e1-clarification' || planId.startsWith('e1-clarification-round-') || planId === 'e1-compile') {
     return beforeNs4E1PromptStep(agent, context, parentStep, step, hookSequential, args);
@@ -220,9 +220,9 @@ async function afterPromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  const dynamicWorker = resolveNs4DynamicWorker(args);
-  if (dynamicWorker === 'e4') return afterNs4E4PromptStep(agent, context, parentStep, step, hookSequential, args);
-  if (dynamicWorker === 'e5') return afterNs4E5PromptStep(agent, context, parentStep, step, hookSequential, args);
+  const dynamic = resolveNs4DynamicWorkerRequest(args, step.prompt);
+  if (dynamic.worker === 'e4') return afterNs4E4PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
+  if (dynamic.worker === 'e5') return afterNs4E5PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
   const planId = step.planning?.planId || '';
   if (planId === 'e1-clarification' || planId.startsWith('e1-clarification-round-')) {
     return afterNs4E1PromptStep(agent, context, parentStep, step, hookSequential);

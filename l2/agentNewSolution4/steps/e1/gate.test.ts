@@ -19,6 +19,7 @@ import {
   parseNs4Invocation,
   plainNs4StepTitle,
   resolveNs4DynamicWorker,
+  resolveNs4DynamicWorkerRequest,
   resolveNs4ExistingAction,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { validateNs4E1Module } from '/_102020_/l2/agentNewSolution4/steps/e1/gate.js';
@@ -152,6 +153,21 @@ test('dynamic E4/E5 workers are dispatched by hook args when planning metadata i
   assert.equal(resolveNs4DynamicWorker('entity:invalid-id'), '');
 });
 
+test('dynamic fan-out callback falls back to step.prompt when after-prompt hook args are absent', () => {
+  assert.deepEqual(resolveNs4DynamicWorkerRequest(undefined, 'entity:Project'), {
+    worker: 'e4', args: 'entity:Project',
+  });
+  assert.deepEqual(resolveNs4DynamicWorkerRequest(undefined, 'rule:restrictProjectUpdate'), {
+    worker: 'e5', args: 'rule:restrictProjectUpdate',
+  });
+  assert.deepEqual(resolveNs4DynamicWorkerRequest('entity:Client', 'entity:Project'), {
+    worker: 'e4', args: 'entity:Client',
+  });
+  assert.deepEqual(resolveNs4DynamicWorkerRequest(undefined, '{"planId":"e4-ontology"}'), {
+    worker: '', args: '',
+  });
+});
+
 test('root plan rejects an incomplete localized-title contract instead of silently mixing languages', () => {
   const plan = normalizeNs4RootPlan({
     type: 'flexible',
@@ -170,7 +186,7 @@ test('root plan rejects an incomplete localized-title contract instead of silent
 test('new artifacts expose the current E1-to-E5 lifecycle flow version', () => {
   const artifact = buildNs4ModuleArtifact('petShop', clarification, 'human', '2026-08-05T10:00:00.000Z');
   const pipeline = createNs4Pipeline('petShop', 'petShop', '2026-08-05T10:00:00.000Z');
-  assert.equal(NS4_FLOW_VERSION, '2026-08-08-ns4-flow-v14');
+  assert.equal(NS4_FLOW_VERSION, '2026-08-08-ns4-flow-v15');
   assert.equal(artifact.specStatus.flowVersion, NS4_FLOW_VERSION);
   assert.equal(NS4_PIPELINE_SCHEMA_VERSION, '2026-08-06-ns4-pipeline-v5');
   assert.equal(pipeline.schemaVersion, NS4_PIPELINE_SCHEMA_VERSION);

@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-08-ns4-flow-v14",
+  "schemaVersion": "2026-08-08-ns4-flow-v15",
   "status": "e1-e5",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -11,7 +11,8 @@
   "principles": [
     "The root LLM detects the communication language, translates friendly step titles and creates the visible roadmap before clarification begins.",
     "The runtime prefixes exactly the six E1-through-E6 roadmap checkpoints with the deterministic 👤 marker; dynamically appended technical and clarification nodes do not duplicate it, and persisted localized titles remain plain reusable text.",
-    "E4/E5 parallel children are dispatched by their stable entity:/rule: hook args and reconstruct their base invocation because collab-messages does not retain planning.planId or step.prompt on materialized fan-out children.",
+    "E4/E5 parallel children are dispatched by stable entity:/rule: selectors and reconstruct their base invocation when collab-messages omits planning or prompt metadata on materialized fan-out children.",
+    "Dynamic E4/E5 dispatch is symmetric: before-prompt prefers hook args, while after-prompt falls back to the selector retained in step.prompt when collab-messages omits callback args.",
     "E2 proposals must pass an independent 🔎 semantic coverage judge before human review; deterministic structural repair and semantic complete-draft repair have separate bounded budgets.",
     "E2 linear steps cannot combine creation and maintenance when their context preconditions differ; the judge requires separate outcome journeys and repair instructions are placed after the complete draft.",
     "E2 semantic coverage converges through at most three focused patch repairs: omitted contracts remain byte-for-byte equivalent after normalization, each patch passes the complete deterministic gate, and an unchanged blocker set fails early.",

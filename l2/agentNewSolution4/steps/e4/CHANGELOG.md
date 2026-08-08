@@ -1,5 +1,10 @@
 # E4 changelog
 
+- 2026-08-08: Flow v15 makes dynamic dispatch symmetric across prompt callbacks. Run20 proved that
+  all 25 entity LLM calls returned valid entity payloads, but collab-messages omitted hook `args` only
+  on `afterPromptStep`; the root then parsed every entity as the initial roadmap. The shared dispatcher
+  now prefers hook args and falls back to the selector retained in `step.prompt`, for both E4 and E5.
+
 - 2026-08-08: Flow v12 reconstructs the E4 base invocation when a materialized parallel child carries
   only `args=entity:<Id>` and has neither `step.prompt` nor `planning`. Run17 had routed the children
   correctly but ended all 19 before their LLM calls because the internal E4 parser still read the
