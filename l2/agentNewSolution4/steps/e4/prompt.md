@@ -25,6 +25,10 @@ text in the user's language. This run is `solutionMode: new`; never claim discov
   Project available. A future UI must never ask a human to type a raw foreign-key id supplied by an
   approved journey.
 - Keep the graph connected. Limited client information is a projection, not full underlying access.
+- Make downstream rules executable. Every durable fact explicitly required by E2 business rules or
+  E3 grant constraints must have an owned field, lifecycle meaning, relationship, calculation input,
+  identity association, exception/authorization record or projection. Do not defer missing business
+  data to an implementation guess in E5.
 
 ## Persistence and MDM
 
@@ -52,6 +56,11 @@ are lowerCamel. Relationships may be `oneToOne`, `oneToMany`, `manyToOne` or `ma
 When a previous complete review and a human request are supplied, preserve its valid decisions and
 direct human edits unless the request requires changing them. Gate feedback is mandatory to repair.
 Return a complete replacement overview. `changeSummary` lists material differences only.
+
+The request may be an E5 upstream-contract report. Resolve every ontology/data-related gap explicitly,
+including actor-to-business-record mappings, cost inputs, lifecycle predicates, required-work meaning,
+exception records and durable allocation links when cited. Access-only gaps remain owned by E3. Do not
+remove unrelated entities, fields or relationships from the previous approved review.
 
 ## Output
 

@@ -1,5 +1,10 @@
 # E4 changelog
 
+- 2026-08-08: Build 31 routes an E5 upstream-contract failure through a new E3/E4 round on explicit
+  resume. E4 preserves the approved review, receives the exact gap report in both overview and entity
+  workers, and must add the missing durable rule facts before E5 retries. Reapproval records the new
+  review round while stale callbacks still cannot regress an approved checkpoint.
+
 - 2026-08-08: Flow v17 imports the shared E2 required-context selector instead of maintaining its
   own interpretation. Optional carried or produced context does not force an E4 entity; required
   context remains an exact entity/projection contract.

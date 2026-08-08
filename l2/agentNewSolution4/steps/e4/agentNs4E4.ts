@@ -188,6 +188,7 @@ async function buildEntityPrompt(
   const previousEntity = previousReview?.entities.find(entity => entity.entityId === entityId);
   const touchingRelationships = plan.relationships.filter(rel => rel.fromEntity === entityId || rel.toEntity === entityId);
   const currentGate = currentDetail ? validateNs4E4EntityDraft(plan, currentDetail) : null;
+  const upstreamRepairFeedback = memoryString(context, 'resumeFeedback');
   const humanPrompt = [
     '## Frozen target entity overview', JSON.stringify(target),
     '## All valid entity ids and storage targets', JSON.stringify(plan.entities.map(entity => ({ entityId: entity.entityId, storage: entity.storage.target }))),
@@ -198,6 +199,7 @@ async function buildEntityPrompt(
     currentDetail ? `## Current entity draft\n${JSON.stringify(currentDetail)}` : '',
     currentGate && !currentGate.ok
       ? `## Entity gate repair required\n${formatGate(currentGate.issues)}` : '',
+    upstreamRepairFeedback ? `## Downstream E5 contract gaps to resolve where this entity is relevant\n${upstreamRepairFeedback}` : '',
     `## Required identity\nmoduleName=${plan.moduleName}; reviewRound=${plan.reviewRound}; entityId=${entityId}; userLanguage=${plan.userLanguage}`,
   ].filter(Boolean).join('\n\n');
   return promptReady(context, parentStep, hookSequential, hookArgs, prompt, humanPrompt);
@@ -439,7 +441,7 @@ async function persistNs4E4(
   for (const entity of artifacts.entities) artifactPaths.push(await writeNs4OntologyEntity(moduleName, entity.entityId, entity));
   artifactPaths.push(await writeNs4OntologyIndex(moduleName, artifacts.index));
   await writeNs4Module(moduleName, markNs4ModuleE4Approved(moduleArtifact, approvedBy, approvedAt));
-  await writeNs4Pipeline(markNs4E4Approved(pipeline, approvedBy, artifactPaths, approvedAt));
+  await writeNs4Pipeline(markNs4E4Approved(pipeline, approvedBy, artifactPaths, approvedAt, review.reviewRound));
   return { moduleName, solutionMode: 'new', entityCount: review.entities.length, relationshipCount: review.relationships.length, artifactPaths };
 }
 

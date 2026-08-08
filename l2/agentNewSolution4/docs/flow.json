@@ -32,13 +32,14 @@
     "E4 classifies every entity into an explicit persistence target: shared MDM for stable base records, module database for transactions, or derived/external/embedded storage for non-table concepts.",
     "E4 first freezes a compact ontology overview, then details entities through the proven parallel_dynamic fan-out with maxParallel 20 and deterministically reassembles one human review.",
     "E5 reconstructs its inputs from approved permanent journey, access and ontology artifacts instead of the large pipeline review drafts; this is the same source of truth used by resume and future maintenance.",
+    "When E5 proves that approved rules need missing access or ontology contracts, it persists the exact gap report and the next explicit module resume reopens E3 then E4 with that feedback before retrying E5; approved artifacts are revised through their owning gates rather than patched inside E5.",
     "E5 extracts source catalog and coverage mechanically, freezes a compact rule plan, details rules through parallel_dynamic with maxParallel 20, retries only invalid items and gives the semantic judge compact context."
   ],
   "invocation": {
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v17-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
+    "resumeRule": "A v17-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. An E5 upstream-contract failure resumes at a new E3 access round, then a new E4 ontology round, and retries E5 with the persisted gap report. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",

@@ -3,10 +3,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  buildNs4ModuleArtifact, createNs4E5FinalizeStep, createNs4E5JudgeStep, createNs4E5Step, createNs4Pipeline,
+  buildNs4E5UpstreamRepairSteps, buildNs4ModuleArtifact, createNs4E5FinalizeStep, createNs4E5JudgeStep,
+  createNs4E5Step, createNs4Pipeline,
+  isNs4E5UpstreamContractFailure,
   markNs4E1Approved, markNs4E2Approved, markNs4E2WaitingHuman, markNs4E3Approved,
-  markNs4E4Approved, markNs4E5Approved, markNs4E5Running, markNs4E5WaitingHuman,
-  NS4_E5_MAX_PARALLEL, resolveNs4ExistingAction,
+  markNs4E4Approved, markNs4E5Approved, markNs4E5Failed, markNs4E5Running, markNs4E5WaitingHuman,
+  NS4_E5_MAX_PARALLEL, NS4_E5_UPSTREAM_FAILURE_PREFIX, resolveNs4ExistingAction,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
   buildNs4JourneyArtifacts, buildNs4JourneyIndex, normalizeNs4E2Review,
@@ -228,6 +230,39 @@ test('E5 orchestration uses unique proposal/judge ids and resumes monotonically'
   assert.equal(approved.nextStep, 'e6-behaviors');
   assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-next');
   assert.equal(markNs4E5Running(approved, 2), approved);
+});
+
+test('an E5 upstream-contract failure resumes through new E3 and E4 repair rounds', () => {
+  const e1 = markNs4E1Approved(createNs4Pipeline('buildFlowFsm', 'prompt'), 'auto', 'module.defs.ts');
+  const e2 = markNs4E2Approved(markNs4E2WaitingHuman(e1, 1, 'e2.json'), 'auto', ['journey.defs.ts']);
+  const e3 = markNs4E3Approved(e2, 'auto', 'access.defs.ts');
+  const e4 = markNs4E4Approved(e3, 'auto', ['ontology.defs.ts']);
+  const feedback = `${NS4_E5_UPSTREAM_FAILURE_PREFIX}\nmissingWorkerMapping: missing identity mapping`;
+  const failed = markNs4E5Failed(e4, feedback);
+  assert.equal(isNs4E5UpstreamContractFailure(failed.steps.e5?.error), true);
+  assert.equal(resolveNs4ExistingAction(true, failed, true), 'resume-e3');
+  assert.equal(resolveNs4ExistingAction(true, markNs4E5Failed(e4, 'provider timeout'), true), 'resume-e5');
+
+  const plan = {
+    validPrompt: true,
+    userPrompt: 'Build project flow',
+    presentation: moduleArtifact.presentation,
+    clarification: {
+      planId: 'e1-clarification' as const, userLanguage: 'en', title: 'Clarify', legends: [], questions: {},
+    },
+  };
+  const steps = buildNs4E5UpstreamRepairSteps(plan, 'buildFlowFsm', 2, feedback);
+  assert.equal(steps[0].planning?.planId, 'e3-access-matrix-round-2');
+  assert.equal(JSON.parse(steps[0].prompt || '{}').adjustment, feedback);
+  assert.deepEqual(steps[1].planning?.dependsOn, ['e3-result']);
+  assert.equal(JSON.parse(steps[1].prompt || '{}').adjustment, feedback);
+  assert.deepEqual(steps[2].planning?.dependsOn, ['e4-result']);
+  assert.equal(steps[3].planning?.planId, 'e6-behaviors');
+
+  const revisedE3 = markNs4E3Approved(e4, 'auto', 'access-v2.defs.ts', '2026-08-08T14:00:00.000Z', 2);
+  const revisedE4 = markNs4E4Approved(revisedE3, 'auto', ['ontology-v2.defs.ts'], '2026-08-08T14:01:00.000Z', 2);
+  assert.equal(revisedE3.steps.e3?.reviewRound, 2);
+  assert.equal(revisedE4.steps.e4?.reviewRound, 2);
 });
 
 test('E5 reconstructs base invocation when a parallel child has only rule hook args', () => {

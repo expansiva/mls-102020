@@ -4,6 +4,7 @@ export const NS4_FLOW_ID = 'agentNewSolution4' as const;
 export const NS4_FLOW_VERSION = '2026-08-08-ns4-flow-v17' as const;
 export const NS4_E4_MAX_PARALLEL = 20 as const;
 export const NS4_E5_MAX_PARALLEL = 20 as const;
+export const NS4_E5_UPSTREAM_FAILURE_PREFIX = 'E5 stopped before rule generation because approved upstream contracts are incomplete.' as const;
 export const NS4_MODULE_SCHEMA_VERSION = '2026-08-06-ns4-module-v4' as const;
 export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-06-ns4-pipeline-v5' as const;
 
@@ -569,6 +570,21 @@ export function buildNs4PlannedSteps(plan: Ns4RootPlan): mls.msg.AIAgentStep[] {
   ];
 }
 
+export function buildNs4E5UpstreamRepairSteps(
+  plan: Ns4RootPlan,
+  moduleName: string,
+  reviewRound: number,
+  feedback: string,
+): mls.msg.AIAgentStep[] {
+  const all = buildNs4PlannedSteps(plan);
+  return [
+    createNs4E3Step(moduleName, reviewRound, feedback, [], plan.presentation.stepTitles['e3-access-matrix']),
+    createNs4E4Step(moduleName, reviewRound, feedback, ['e3-result'], plan.presentation.stepTitles['e4-ontology']),
+    createNs4E5Step(moduleName, reviewRound, '', ['e4-result'], plan.presentation.stepTitles['e5-rules']),
+    ...all.slice(6),
+  ];
+}
+
 function createNs4RoadmapStep(planId: Ns4PlanId, stepTitle: string, dependsOn: string[]): mls.msg.AIAgentStep {
   const step = createNs4AgentStep(planId, formatNs4VisibleStepTitle(planId, stepTitle), dependsOn, 'waiting_dependency', { planId });
   step.planning = { ...step.planning!, executionMode: 'manual_later' };
@@ -942,8 +958,9 @@ export function markNs4E3Approved(
   approvedBy: Ns4ApprovedBy,
   artifactPath: string,
   now = new Date().toISOString(),
+  approvedReviewRound = state.steps.e3?.reviewRound || 1,
 ): Ns4PipelineState {
-  const reviewRound = state.steps.e3?.reviewRound || 1;
+  const reviewRound = Math.max(1, approvedReviewRound);
   return {
     ...state,
     status: 'inProgress',
@@ -1035,8 +1052,9 @@ export function markNs4E4Approved(
   approvedBy: Ns4ApprovedBy,
   artifactPaths: string[],
   now = new Date().toISOString(),
+  approvedReviewRound = state.steps.e4?.reviewRound || 1,
 ): Ns4PipelineState {
-  const reviewRound = state.steps.e4?.reviewRound || 1;
+  const reviewRound = Math.max(1, approvedReviewRound);
   return {
     ...state,
     status: 'inProgress',
@@ -1158,11 +1176,16 @@ export function resolveNs4ExistingAction(
   if (!moduleExists) return 'new';
   if (!isNs4Pipeline(pipeline)) return 'collision';
   if (pipeline.steps.e5?.status === 'approved' && moduleArtifactExists) return 'resume-next';
+  if (moduleArtifactExists && isNs4E5UpstreamContractFailure(pipeline.steps.e5?.error)) return 'resume-e3';
   if (pipeline.steps.e4?.status === 'approved' && moduleArtifactExists) return 'resume-e5';
   if (pipeline.steps.e3?.status === 'approved' && moduleArtifactExists) return 'resume-e4';
   if (pipeline.steps.e2?.status === 'approved' && moduleArtifactExists) return 'resume-e3';
   if (pipeline.steps.e1.status === 'approved' && moduleArtifactExists) return 'resume-e2';
   return 'resume-e1';
+}
+
+export function isNs4E5UpstreamContractFailure(value: unknown): boolean {
+  return typeof value === 'string' && value.startsWith(NS4_E5_UPSTREAM_FAILURE_PREFIX);
 }
 
 export function isNs4Pipeline(value: unknown): value is Ns4PipelineState {

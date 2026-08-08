@@ -11,7 +11,8 @@ import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import {
   createNs4E5FinalizeStep, createNs4E5JudgeStep, createNs4E5Step,
   isNs4Pipeline, markNs4E5Approved, markNs4E5Failed, markNs4E5Running, markNs4E5WaitingHuman,
-  markNs4ModuleE5Approved, NS4_E5_MAX_PARALLEL, plainNs4StepTitle, Ns4ApprovedBy, Ns4PipelineState,
+  markNs4ModuleE5Approved, NS4_E5_MAX_PARALLEL, NS4_E5_UPSTREAM_FAILURE_PREFIX,
+  plainNs4StepTitle, Ns4ApprovedBy, Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
@@ -597,7 +598,7 @@ async function applyIntents(context: mls.msg.ExecutionContext, intents: mls.msg.
   const applied = response as mls.msg.ResponseApplyIntents; context.task = applied.task; if (applied.message) context.message = applied.message;
 }
 function formatGate(issues: Array<{ code: string; path: string; message: string }>): string { return issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n'); }
-function formatUpstreamGaps(plan: Ns4E5PlanDraft): string { return `E5 stopped before rule generation because approved upstream contracts are incomplete.\n${plan.upstreamGaps.map(gap => `${gap.gapId}: missing ${gap.missingContract} | ${gap.reason} | ${gap.sourceRefs.join(', ')}`).join('\n')}`; }
+function formatUpstreamGaps(plan: Ns4E5PlanDraft): string { return `${NS4_E5_UPSTREAM_FAILURE_PREFIX}\n${plan.upstreamGaps.map(gap => `${gap.gapId}: missing ${gap.missingContract} | ${gap.reason} | ${gap.sourceRefs.join(', ')}`).join('\n')}`; }
 function unwrap(value: unknown): unknown { const root = parse(value); return isRecord(root) && root.type === 'flexible' ? parse(root.result) : root; }
 function parse(value: unknown): unknown { if (typeof value !== 'string') return value; const clean = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''); try { return JSON.parse(clean); } catch { return value; } }
 function isRecord(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }

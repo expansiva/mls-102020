@@ -78,14 +78,18 @@ Approval writes:
 
 E5 first reconstructs its input from the approved permanent journey index/artifacts, access matrix
 and ontology index/entity artifacts, validating their frozen hashes instead of depending on the large
-pipeline review drafts during resume. It then builds the exact source catalog and coverage bookkeeping mechanically. A compact reasoning
+pipeline review drafts during resume. It then builds the exact source catalog and coverage bookkeeping
+mechanically. A compact reasoning
 pass groups those sources into frozen rule plans, then a proven `parallel_dynamic` fan-out details one
 rule per child with `maxParallel: 20` and filtered journey, access and ontology context. The deterministic
 finalizer retries only missing or invalid rules once and reassembles the unchanged human review contract.
 An independent judge then reads the compact catalog/context and complete rule draft to detect semantic
 omissions, contradictions, wrong destinations, unenforceable wording, upstream contract gaps and
 illustrative values accidentally turned into fixed policy. One bounded plan-plus-parallel semantic
-repair is allowed. Approval writes:
+repair is allowed. If the plan proves that an enforceable rule needs a missing access or ontology
+contract, E5 fails closed and persists the exact report. The next explicit module resume runs a new
+E3 access round and E4 ontology round with that report and the previous approved reviews, then retries
+E5 only after both revised artifacts pass their owning gates. Approval writes:
 
 - `l4/<module>/rules/<ruleId>.defs.ts` — one permanent contract per rule;
 - `l4/<module>/rules/index.defs.ts` — compact discovery, routing, coverage and frozen hash;

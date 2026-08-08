@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-08 — build 31, flow contract unchanged (v17)
+
+- Both resumed run23 and clean run24 reached E5 and produced valid compact plans, but stopped on six
+  real upstream access/ontology gaps because the flow had detection without a repair route.
+- The gap failure remains fail-closed. On the next explicit module resume it deterministically reopens
+  E3 then E4 with the persisted report and previous approved contracts, records revision round 2, and
+  retries E5 only after both owning gates approve the repaired artifacts.
+
 ## 2026-08-08 — build 30, flow contract unchanged (v17)
 
 - A valid run23 resume reached E5 directly, but one large pipeline draft read returned the storage

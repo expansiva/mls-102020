@@ -217,7 +217,7 @@ async function persistNs4E3(
   const artifact = await buildNs4AccessMatrixArtifact(review, approvedBy, approvedAt);
   const artifactPath = await writeNs4AccessMatrix(moduleName, artifact);
   await writeNs4Module(moduleName, markNs4ModuleE3Approved(moduleArtifact, approvedBy, approvedAt));
-  await writeNs4Pipeline(markNs4E3Approved(pipeline, approvedBy, artifactPath, approvedAt));
+  await writeNs4Pipeline(markNs4E3Approved(pipeline, approvedBy, artifactPath, approvedAt, review.reviewRound));
   return {
     moduleName, profileCount: review.profiles.length, authorityCount: review.authorities.length,
     grantCount: review.grants.length, artifactPath, approvedBy, approvedAt, approvedReview: review,

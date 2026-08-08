@@ -3,11 +3,13 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   buildNs4PlannedSteps,
+  buildNs4E5UpstreamRepairSteps,
   createNs4E2Step,
   createNs4E3Step,
   createNs4E4Step,
   createNs4E5Step,
   isNs4Pipeline,
+  isNs4E5UpstreamContractFailure,
   markNs4E3Approved,
   markNs4E4Approved,
   markNs4E5Approved,
@@ -71,7 +73,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-30 (2026-08-08) permanent E5 resume sources';
+export const NS4_AGENT_BUILD = 'build-31 (2026-08-08) E5 upstream repair resume';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -88,6 +90,7 @@ async function beforePromptImplicit(
   let resumeModule = '';
   let resumeTarget = '';
   let resumeRound = '';
+  let resumeFeedback = '';
   let taskTitle = 'new Solution 4';
   const existingModule = resolveNs4ExistingModuleToken(invocation.prompt, listNs4ModuleFolders());
   if (existingModule) {
@@ -146,13 +149,17 @@ async function beforePromptImplicit(
     }
     resumeModule = existingModule;
     resumeTarget = action === 'resume-e1' ? 'e1' : action === 'resume-e5' ? 'e5' : action === 'resume-e4' ? 'e4' : action === 'resume-e3' ? 'e3' : 'e2';
-    resumeRound = resumeTarget === 'e5'
+    const upstreamRepair = resumeTarget === 'e3' && isNs4E5UpstreamContractFailure(pipeline?.steps.e5?.error);
+    resumeRound = upstreamRepair
+      ? String(Math.max(1, pipeline?.steps.e3?.reviewRound || 1) + 1)
+      : resumeTarget === 'e5'
       ? String(Math.max(1, pipeline?.steps.e5?.reviewRound || 1))
       : resumeTarget === 'e4'
       ? String(Math.max(1, pipeline?.steps.e4?.reviewRound || 1))
       : resumeTarget === 'e3'
       ? String(Math.max(1, pipeline?.steps.e3?.reviewRound || 1))
       : resumeTarget === 'e2' ? String(Math.max(1, pipeline?.steps.e2?.reviewRound || 1)) : '';
+    resumeFeedback = upstreamRepair ? String(pipeline?.steps.e5?.error || '') : '';
     sourcePrompt = pipeline?.sourcePrompt || invocation.prompt;
     taskTitle = `plan ${existingModule}`;
   }
@@ -178,6 +185,7 @@ async function beforePromptImplicit(
         ...(resumeModule ? { resumeModule } : {}),
         ...(resumeTarget ? { resumeTarget } : {}),
         ...(resumeRound ? { resumeRound } : {}),
+        ...(resumeFeedback ? { resumeFeedback } : {}),
       },
     },
   } as mls.msg.AgentIntentAddMessageAI];
@@ -251,8 +259,9 @@ async function afterPromptStep(
     }
     const resumeModule = memoryString(context, 'resumeModule');
     const resumeTarget = memoryString(context, 'resumeTarget');
+    const resumeFeedback = memoryString(context, 'resumeFeedback');
     const planned = resumeModule && (resumeTarget === 'e2' || resumeTarget === 'e3' || resumeTarget === 'e4' || resumeTarget === 'e5')
-      ? buildNs4ResumeSteps(plan, resumeModule, resumeTarget, normalizeResumeRound(memoryString(context, 'resumeRound')))
+      ? buildNs4ResumeSteps(plan, resumeModule, resumeTarget, normalizeResumeRound(memoryString(context, 'resumeRound')), resumeFeedback)
       : buildNs4PlannedSteps(plan);
     return planned.map(plannedStep => ({
       type: 'add-step',
@@ -296,7 +305,13 @@ export function getNs4RootPlan(context: mls.msg.ExecutionContext, rootHint?: mls
   return normalizeNs4RootPlan(root?.interaction?.payload?.[0], memoryString(context, 'sourcePrompt'));
 }
 
-function buildNs4ResumeSteps(plan: Ns4RootPlan, moduleName: string, target: 'e2' | 'e3' | 'e4' | 'e5', reviewRound: number): mls.msg.AIAgentStep[] {
+function buildNs4ResumeSteps(
+  plan: Ns4RootPlan,
+  moduleName: string,
+  target: 'e2' | 'e3' | 'e4' | 'e5',
+  reviewRound: number,
+  feedback = '',
+): mls.msg.AIAgentStep[] {
   const all = buildNs4PlannedSteps(plan);
   if (target === 'e5') {
     return [
@@ -311,6 +326,7 @@ function buildNs4ResumeSteps(plan: Ns4RootPlan, moduleName: string, target: 'e2'
     ];
   }
   if (target === 'e3') {
+    if (feedback) return buildNs4E5UpstreamRepairSteps(plan, moduleName, reviewRound, feedback);
     return [
       createNs4E3Step(moduleName, reviewRound, '', [], plan.presentation.stepTitles['e3-access-matrix']),
       ...all.slice(4),
