@@ -76,7 +76,9 @@ Approval writes:
   references and frozen hash;
 - updated module and pipeline status with `e5-rules` as the next step.
 
-E5 first builds the exact source catalog and coverage bookkeeping mechanically. A compact reasoning
+E5 first reconstructs its input from the approved permanent journey index/artifacts, access matrix
+and ontology index/entity artifacts, validating their frozen hashes instead of depending on the large
+pipeline review drafts during resume. It then builds the exact source catalog and coverage bookkeeping mechanically. A compact reasoning
 pass groups those sources into frozen rule plans, then a proven `parallel_dynamic` fan-out details one
 rule per child with `maxParallel: 20` and filtered journey, access and ontology context. The deterministic
 finalizer retries only missing or invalid rules once and reassembles the unchanged human review contract.

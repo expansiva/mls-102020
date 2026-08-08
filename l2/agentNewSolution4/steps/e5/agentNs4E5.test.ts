@@ -8,9 +8,18 @@ import {
   markNs4E4Approved, markNs4E5Approved, markNs4E5Running, markNs4E5WaitingHuman,
   NS4_E5_MAX_PARALLEL, resolveNs4ExistingAction,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
-import { normalizeNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
-import { normalizeNs4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
-import { normalizeNs4E4Review } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
+import {
+  buildNs4JourneyArtifacts, buildNs4JourneyIndex, normalizeNs4E2Review,
+} from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import {
+  buildNs4AccessMatrixArtifact, normalizeNs4E3Review,
+} from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
+import {
+  buildNs4OntologyArtifacts, normalizeNs4E4Review,
+} from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
+import {
+  assembleNs4E5SourcesFromApprovedArtifacts,
+} from '/_102020_/l2/agentNewSolution4/steps/e5/sources.js';
 import {
   assembleNs4E5Review, buildNs4RuleArtifacts, normalizeNs4E5PlanDraft,
   normalizeNs4E5Review, normalizeNs4E5RuleDraft,
@@ -121,6 +130,38 @@ test('E5 derives exact coverage mechanically and assembles parallel rule details
   const stale = structuredClone(details[0]);
   stale.rule.scope.entityRefs = [];
   assert.ok(validateNs4E5RuleDraft(plan, stale, sources).issues.some(issue => issue.code === 'NS4_E5_RULE_PLAN_CHANGED'));
+});
+
+test('E5 resume reconstructs sources from approved permanent artifacts and verifies hashes', async () => {
+  const approvedAt = '2026-08-08T12:00:00.000Z';
+  const journeyArtifacts = await buildNs4JourneyArtifacts(journeys);
+  const journeyIndex = buildNs4JourneyIndex(
+    'buildFlowFsm', journeys, journeyArtifacts,
+    journeyArtifacts.map(item => `l4/buildFlowFsm/journeys/${item.journeyId}.defs.ts`),
+    'auto', approvedAt,
+  );
+  const accessArtifact = await buildNs4AccessMatrixArtifact(access, 'auto', approvedAt);
+  const ontologyArtifacts = await buildNs4OntologyArtifacts(ontology, 'auto', approvedAt);
+  const e1 = markNs4E1Approved(createNs4Pipeline('buildFlowFsm', 'prompt'), 'auto', 'module.defs.ts');
+  const e2 = markNs4E2Approved(markNs4E2WaitingHuman(e1, 1, 'e2.json'), 'auto', ['journey.defs.ts']);
+  const e3 = markNs4E3Approved(e2, 'auto', 'access.defs.ts');
+  const pipeline = markNs4E4Approved(e3, 'auto', ['ontology.defs.ts']);
+  const rebuilt = assembleNs4E5SourcesFromApprovedArtifacts(
+    moduleArtifact, accessArtifact, journeyIndex, journeyArtifacts,
+    ontologyArtifacts.index, ontologyArtifacts.entities, pipeline,
+  );
+  assert.deepEqual(rebuilt.journeys.journeys, journeys.journeys);
+  assert.deepEqual(rebuilt.journeys.features, journeys.features);
+  assert.deepEqual(rebuilt.access.grants, access.grants);
+  assert.deepEqual(rebuilt.ontology.entities, ontology.entities);
+  assert.deepEqual(rebuilt.ontology.relationships, ontology.relationships);
+
+  const staleJourney = structuredClone(journeyArtifacts);
+  staleJourney[0].businessHash = 'sha256:stale';
+  assert.throws(() => assembleNs4E5SourcesFromApprovedArtifacts(
+    moduleArtifact, accessArtifact, journeyIndex, staleJourney,
+    ontologyArtifacts.index, ontologyArtifacts.entities, pipeline,
+  ), /Approved journey artifact mismatch/);
 });
 
 test('E5 detects a required journey output missing from E4 before generating rules', () => {

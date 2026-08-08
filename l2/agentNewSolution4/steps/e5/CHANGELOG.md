@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-08 — build 30, flow contract unchanged (v17)
+
+- A valid run23 resume reached E5 directly, but one large pipeline draft read returned the storage
+  sentinel `Erro`; E5 attempted to parse it as JSON and the task failed before the LLM call.
+- E5 now reconstructs journeys and ontology from their approved permanent indexes and per-item
+  `.defs.ts` artifacts, validates hashes/module ownership, reads details in bounded batches and
+  retries an invalid storage response once with an explicit artifact-specific error.
+
 ## 2026-08-08 — build 28, flow contract unchanged (v17)
 
 - Run23 completed E1-E4, then its 20 E4 entity calls recorded 542,366 tokens inside one limiter

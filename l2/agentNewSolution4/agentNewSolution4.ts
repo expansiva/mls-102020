@@ -71,7 +71,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-29 (2026-08-08) canonical resume lookup';
+export const NS4_AGENT_BUILD = 'build-30 (2026-08-08) permanent E5 resume sources';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
