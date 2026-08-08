@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-08 — flow v12
+
+- Rule workers reconstruct `{ planId: "e5-rules" }` from `args=rule:<id>` instead of reading the
+  absent prompt of a materialized parallel child.
+
 ## 2026-08-07 — flow v11
 
 - Parallel rule children use their stable `rule:` hook argument for before/after dispatch even when

@@ -5,7 +5,7 @@ start of the task.
 
 Invocation:
 
-- `@@newSolution4 petShop` — create a module or resume its next incomplete v11 step;
+- `@@newSolution4 petShop` — create a module or resume its next incomplete v12 step;
 - `@@newSolution4 petShop /fast` — auto-accept valid E1 through E5 proposals;
 - an existing module without an `agentNewSolution4` pipeline is rejected.
 

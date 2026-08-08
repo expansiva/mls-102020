@@ -71,7 +71,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-21 (2026-08-07) dynamic worker dispatch';
+export const NS4_AGENT_BUILD = 'build-22 (2026-08-08) promptless parallel children';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

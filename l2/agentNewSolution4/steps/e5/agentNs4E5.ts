@@ -36,7 +36,7 @@ import { Ns4E5Sources, validateNs4E5Plan, validateNs4E5Review, validateNs4E5Rule
 import {
   formatNs4E5JudgeFeedback, normalizeNs4E5JudgeVerdict, validateNs4E5JudgeVerdict,
 } from '/_102020_/l2/agentNewSolution4/steps/e5/judge.js';
-import { resolveNs4E5HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e5/hookArgs.js';
+import { resolveNs4E5HookArgs, resolveNs4E5InvocationArgs } from '/_102020_/l2/agentNewSolution4/steps/e5/hookArgs.js';
 
 interface Ns4E5Args {
   planId: 'e5-rules';
@@ -65,7 +65,7 @@ export async function beforeNs4E5PromptStep(
   const ruleId = parseRuleSelector(hookArgs) || parseRuleSelector(step.prompt);
   let moduleName = '';
   try {
-    const parsed = resolveArgs(context, ruleId ? step.prompt : hookArgs); moduleName = parsed.moduleName;
+    const parsed = resolveArgs(context, resolveNs4E5InvocationArgs(hookArgs, ruleId)); moduleName = parsed.moduleName;
     if (ruleId) return [await buildRulePrompt(context, parentStep, hookSequential, hookArgs, parsed, ruleId)];
     if (parsed.stage === 'finalize') return finalizeRules(context, parentStep, step, hookSequential, parsed);
     if (parsed.stage === 'judge') return [await buildJudgePrompt(context, parentStep, hookSequential, hookArgs, parsed)];
@@ -184,7 +184,7 @@ export async function afterNs4E5PromptStep(
   const ruleId = parseRuleSelector(args) || parseRuleSelector(step.prompt);
   let moduleName = '';
   try {
-    const args = resolveArgs(context, ruleId ? JSON.stringify({ planId: 'e5-rules' }) : step.prompt);
+    const args = resolveArgs(context, resolveNs4E5InvocationArgs(String(step.prompt || ''), ruleId));
     moduleName = args.moduleName;
     const pipeline = await requirePipeline(moduleName);
     const round = args.reviewRound || pipeline.steps.e5?.reviewRound || 1;

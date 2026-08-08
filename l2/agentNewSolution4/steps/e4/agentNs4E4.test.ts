@@ -32,7 +32,7 @@ import {
   validateNs4E4Plan,
   validateNs4E4Review,
 } from '/_102020_/l2/agentNewSolution4/steps/e4/gate.js';
-import { resolveNs4E4HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e4/hookArgs.js';
+import { resolveNs4E4HookArgs, resolveNs4E4InvocationArgs } from '/_102020_/l2/agentNewSolution4/steps/e4/hookArgs.js';
 
 const journeys = normalizeNs4E2Review({
   moduleName: 'buildFlowFsm', userLanguage: 'en', reviewRound: 1,
@@ -93,6 +93,14 @@ test('E4 preserves hook args byte-for-byte', () => {
   const original = '{"planId":"e4-ontology","reviewRound":2,"solutionMode":"new"}';
   assert.equal(resolveNs4E4HookArgs(undefined, original), original);
   assert.equal(resolveNs4E4HookArgs(original, '{}'), original);
+});
+
+test('E4 reconstructs base invocation when a parallel child has only entity hook args', () => {
+  const hookArgs = resolveNs4E4HookArgs('entity:Client', undefined);
+  assert.equal(hookArgs, 'entity:Client');
+  assert.deepEqual(JSON.parse(resolveNs4E4InvocationArgs(hookArgs, 'Client')), {
+    planId: 'e4-ontology', solutionMode: 'new',
+  });
 });
 
 test('E4 bounded repair step carries gate feedback under a unique open plan id', () => {

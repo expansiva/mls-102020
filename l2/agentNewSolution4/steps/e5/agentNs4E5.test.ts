@@ -22,7 +22,7 @@ import {
   Ns4E5Sources, validateNs4E5Plan, validateNs4E5Review, validateNs4E5RuleDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e5/gate.js';
 import { normalizeNs4E5JudgeVerdict, validateNs4E5JudgeVerdict } from '/_102020_/l2/agentNewSolution4/steps/e5/judge.js';
-import { resolveNs4E5HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e5/hookArgs.js';
+import { resolveNs4E5HookArgs, resolveNs4E5InvocationArgs } from '/_102020_/l2/agentNewSolution4/steps/e5/hookArgs.js';
 
 const moduleArtifact = buildNs4ModuleArtifact('Build a project app', {
   userLanguage: 'en', questions: {
@@ -181,4 +181,12 @@ test('E5 orchestration uses unique proposal/judge ids and resumes monotonically'
   assert.equal(approved.nextStep, 'e6-behaviors');
   assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-next');
   assert.equal(markNs4E5Running(approved, 2), approved);
+});
+
+test('E5 reconstructs base invocation when a parallel child has only rule hook args', () => {
+  const hookArgs = resolveNs4E5HookArgs('rule:restrictProjectUpdate', undefined);
+  assert.equal(hookArgs, 'rule:restrictProjectUpdate');
+  assert.deepEqual(JSON.parse(resolveNs4E5InvocationArgs(hookArgs, 'restrictProjectUpdate')), {
+    planId: 'e5-rules',
+  });
 });

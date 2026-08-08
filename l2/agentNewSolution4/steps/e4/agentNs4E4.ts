@@ -67,7 +67,7 @@ import {
   validateNs4E4Plan,
   validateNs4E4Review,
 } from '/_102020_/l2/agentNewSolution4/steps/e4/gate.js';
-import { resolveNs4E4HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e4/hookArgs.js';
+import { resolveNs4E4HookArgs, resolveNs4E4InvocationArgs } from '/_102020_/l2/agentNewSolution4/steps/e4/hookArgs.js';
 
 interface Ns4E4Args {
   planId: 'e4-ontology';
@@ -105,7 +105,7 @@ export async function beforeNs4E4PromptStep(
   const entityId = parseEntitySelector(hookArgs) || parseEntitySelector(step.prompt);
   let moduleName = '';
   try {
-    const parsed = resolveE4Args(context, entityId ? step.prompt : hookArgs);
+    const parsed = resolveE4Args(context, resolveNs4E4InvocationArgs(hookArgs, entityId));
     moduleName = parsed.moduleName;
     if (entityId) return [await buildEntityPrompt(context, parentStep, hookSequential, hookArgs, parsed, entityId)];
     if (parsed.stage === 'finalize') {
@@ -214,7 +214,7 @@ export async function afterNs4E4PromptStep(
   const entityId = parseEntitySelector(args) || parseEntitySelector(step.prompt);
   let moduleName = '';
   try {
-    const args = resolveE4Args(context, entityId ? JSON.stringify({ planId: 'e4-ontology' }) : step.prompt);
+    const args = resolveE4Args(context, resolveNs4E4InvocationArgs(String(step.prompt || ''), entityId));
     moduleName = args.moduleName;
     const mutationParent = findMutableParentStep(context, parentStep);
     if (entityId) return await handleEntityResult(context, mutationParent, step, hookSequential, args, entityId);

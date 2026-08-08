@@ -1,5 +1,9 @@
 # E4 changelog
 
+- 2026-08-08: Flow v12 reconstructs the E4 base invocation when a materialized parallel child carries
+  only `args=entity:<Id>` and has neither `step.prompt` nor `planning`. Run17 had routed the children
+  correctly but ended all 19 before their LLM calls because the internal E4 parser still read the
+  absent prompt; the targeted repair repeated the same failure.
 - 2026-08-07: Flow v11 dispatches materialized `parallel_dynamic` children by their stable `entity:`
   hook argument when `collab-messages` omits child `planning.planId`; run16 had failed all 19 children
   with `Unsupported implemented step: (missing)` before any entity detail LLM call.
