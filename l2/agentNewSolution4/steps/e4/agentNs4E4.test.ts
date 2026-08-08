@@ -162,6 +162,34 @@ test('E4 accepts a connected greenfield ontology covering journeys and access in
   assert.deepEqual(validateNs4E4Review(review, journeys, access), { ok: true, issues: [] });
 });
 
+test('E4 freezes named lifecycle meanings as exact reusable state predicates', () => {
+  const input = structuredClone(reviewInput) as any;
+  input.entities[0].lifecycleStates = ['notStarted', 'inProgress', 'completed', 'cancelled'];
+  input.entities[0].fields.push({
+    fieldId: 'status', title: 'Status', type: 'string', required: true, description: 'Task status.',
+    constraints: [{
+      constraintId: 'taskStatus', kind: 'enum',
+      value: '["notStarted","inProgress","completed","cancelled"]',
+      description: 'Supported states.', source: 'journey',
+    }],
+  });
+  input.entities[0].lifecyclePredicates = [{
+    predicateId: 'unfinishedWorkTask',
+    description: 'A work task is unfinished while not started or in progress.',
+    stateIds: ['notStarted', 'inProgress'], source: 'journey',
+  }];
+  const review = normalizeNs4E4Review(input);
+  const plan = normalizeNs4E4PlanDraft(input);
+  assert.deepEqual(validateNs4E4Review(review, journeys, access), { ok: true, issues: [] });
+  assert.deepEqual(plan.entities[0].lifecyclePredicates, review.entities[0].lifecyclePredicates);
+  assert.deepEqual(validateNs4E4Plan(plan, journeys, access), { ok: true, issues: [] });
+  assert.deepEqual(review.entities[0].lifecyclePredicates[0].stateIds, ['notStarted', 'inProgress']);
+
+  input.entities[0].lifecyclePredicates[0].stateIds.push('unknown');
+  const broken = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  assert.ok(broken.issues.some(issue => issue.code === 'NS4_E4_LIFECYCLE_PREDICATE_STATE'));
+});
+
 test('E4 rejects an access information need omitted from ontology traceability', () => {
   const broken = structuredClone(reviewInput);
   broken.entities[1].sourceRefs.authorityRefs = [];

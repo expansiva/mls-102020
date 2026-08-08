@@ -73,7 +73,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-32 (2026-08-08) shared permanent recovery sources';
+export const NS4_AGENT_BUILD = 'build-34 (2026-08-08) typed permanent L4 artifacts';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

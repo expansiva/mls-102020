@@ -81,7 +81,7 @@
       "type": "object", "additionalProperties": false, "required": ["sourceRef", "sourceType", "disposition", "targetRef"],
       "properties": {
         "sourceRef": { "type": "string", "minLength": 1 },
-        "sourceType": { "enum": ["journeyRule", "ontologyInvariant", "accessConstraint", "declaredConstraint"] },
+        "sourceType": { "enum": ["journeyRule", "ontologyInvariant", "ontologyLifecyclePredicate", "accessConstraint", "declaredConstraint"] },
         "disposition": { "enum": ["compiled", "routed"] }, "targetRef": { "type": "string", "minLength": 1 }
       }
     }

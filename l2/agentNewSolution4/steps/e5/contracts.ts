@@ -45,7 +45,7 @@ export interface Ns4RoutedStatement {
 
 export interface Ns4RuleCoverage {
   sourceRef: string;
-  sourceType: 'journeyRule' | 'ontologyInvariant' | 'accessConstraint' | 'declaredConstraint';
+  sourceType: 'journeyRule' | 'ontologyInvariant' | 'ontologyLifecyclePredicate' | 'accessConstraint' | 'declaredConstraint';
   disposition: 'compiled' | 'routed';
   targetRef: string;
 }
@@ -281,7 +281,8 @@ function destination(value: unknown): Ns4RoutedStatement['destination'] {
   return 'e5-rule';
 }
 function sourceType(value: unknown): Ns4RuleCoverage['sourceType'] {
-  if (value === 'ontologyInvariant' || value === 'accessConstraint' || value === 'declaredConstraint') return value;
+  if (value === 'ontologyInvariant' || value === 'ontologyLifecyclePredicate'
+    || value === 'accessConstraint' || value === 'declaredConstraint') return value;
   return 'journeyRule';
 }
 function record(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }

@@ -9,6 +9,7 @@ import {
   ns4AccessConstraintSourceRef,
   ns4JourneyRuleSourceRef,
   ns4OntologyInvariantSourceRef,
+  ns4OntologyLifecyclePredicateSourceRef,
   Ns4E5Sources,
 } from '/_102020_/l2/agentNewSolution4/steps/e5/gate.js';
 
@@ -37,6 +38,12 @@ export function buildNs4E5SourceCatalog(sources: Ns4E5Sources): Ns4E5SourceCatal
       sourceRef: ns4OntologyInvariantSourceRef(entity.entityId, invariant.invariantId),
       sourceType: 'ontologyInvariant' as const,
       statement: invariant.description,
+      origin: { entityId: entity.entityId },
+    }))),
+    ...sources.ontology.entities.flatMap(entity => entity.lifecyclePredicates.map(predicate => ({
+      sourceRef: ns4OntologyLifecyclePredicateSourceRef(entity.entityId, predicate.predicateId),
+      sourceType: 'ontologyLifecyclePredicate' as const,
+      statement: `${predicate.description} Exact states: ${predicate.stateIds.join(', ')}.`,
       origin: { entityId: entity.entityId },
     }))),
     ...sources.access.grants.flatMap(grant => grant.constraints.map((statement, index) => ({
@@ -135,6 +142,11 @@ export function buildNs4E5ReferenceIndex(sources: Ns4E5Sources): unknown {
       entityId: entity.entityId,
       fieldRefs: entity.fields.map(field => `${entity.entityId}.${field.fieldId}`),
       lifecycleStates: entity.lifecycleStates,
+      lifecyclePredicates: entity.lifecyclePredicates.map(predicate => ({
+        predicateId: predicate.predicateId,
+        stateIds: predicate.stateIds,
+        description: predicate.description,
+      })),
     })),
     relationships: sources.ontology.relationships.map(relationship => relationship.relationshipId),
   };

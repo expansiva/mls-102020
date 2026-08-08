@@ -27,7 +27,7 @@ import {
   normalizeNs4E5Review, normalizeNs4E5RuleDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
 import {
-  buildNs4E5SourceCatalog, completeNs4E5PlanCoverage, findNs4E5MechanicalUpstreamGaps,
+  buildNs4E5ReferenceIndex, buildNs4E5SourceCatalog, completeNs4E5PlanCoverage, findNs4E5MechanicalUpstreamGaps,
 } from '/_102020_/l2/agentNewSolution4/steps/e5/catalog.js';
 import {
   Ns4E5Sources, validateNs4E5Plan, validateNs4E5Review, validateNs4E5RuleDraft,
@@ -132,6 +132,24 @@ test('E5 derives exact coverage mechanically and assembles parallel rule details
   const stale = structuredClone(details[0]);
   stale.rule.scope.entityRefs = [];
   assert.ok(validateNs4E5RuleDraft(plan, stale, sources).issues.some(issue => issue.code === 'NS4_E5_RULE_PLAN_CHANGED'));
+});
+
+test('E5 receives lifecycle predicates as explicit reference data and catalog sources', () => {
+  const predicateSources = structuredClone(sources);
+  predicateSources.ontology.entities[0].lifecyclePredicates = [{
+    predicateId: 'unfinishedProject',
+    description: 'A project is unfinished while draft or active.',
+    stateIds: ['draft', 'active'], source: 'journey',
+  }];
+  const catalog = buildNs4E5SourceCatalog(predicateSources);
+  assert.ok(catalog.some(item => item.sourceRef === 'ontology:Project:lifecyclePredicate:unfinishedProject'
+    && item.sourceType === 'ontologyLifecyclePredicate' && item.statement.includes('draft, active')));
+  const index = buildNs4E5ReferenceIndex(predicateSources) as any;
+  assert.deepEqual(index.entities[0].lifecyclePredicates, [{
+    predicateId: 'unfinishedProject',
+    stateIds: ['draft', 'active'],
+    description: 'A project is unfinished while draft or active.',
+  }]);
 });
 
 test('E5 resume reconstructs sources from approved permanent artifacts and verifies hashes', async () => {

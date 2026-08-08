@@ -6,7 +6,8 @@
   "canonicalReferences": [
     "mls-base/skills/collab_messages.md",
     "mls-base/skills/agentsBestPractices.md",
-    "mls-base/skills/modelTypes.md"
+    "mls-base/skills/modelTypes.md",
+    "mls-base/mls-102020/l2/agentNewSolution4/types.ts"
   ],
   "principles": [
     "The root LLM detects the communication language, translates friendly step titles and creates the visible roadmap before clarification begins.",
@@ -21,6 +22,7 @@
     "E1 preserves its full reviewed contract, supports repeated prompt-driven revisions and only unlocks compilation after the rich deterministic gate passes.",
     "E2 through E5 approval callbacks persist their already-gated permanent review artifacts before adding the result anchor.",
     "Every implemented compile step writes a permanent L4 artifact and a stable result anchor.",
+    "Every permanent TypeScript artifact imports its canonical artifact interface from agentNewSolution4/types.ts, is emitted with as const satisfies and exports its exact typeof contract; module, journey, access, ontology and rule shape drift therefore fails tsc while module-specific literal unions remain available without copied strings.",
     "Permanent L4 artifacts plus their approved module checkpoint are the resume authority; pipeline state is monotonic and is reconciled from those artifacts if a late callback lags behind.",
     "A single module-name invocation is canonicalized before the root planner: BuildFlowFsm23 resolves to the existing buildFlowFsm23 folder, so resume never creates a fresh E1 tree before checking pipeline ownership.",
     "A completed result anchor carries the bounded approved contract needed by the immediately unlocked successor, avoiding a storage-index visibility race between client hooks.",
@@ -183,7 +185,7 @@
       "outputAnchor": "e4-result",
       "gate": "steps/e4/gate.ts",
       "runtimeNotes": [
-        "The first reasoning call returns only the frozen cross-entity overview: entity identity, source refs, lifecycle, MDM/storage routing and relationships; it does not generate fields or invariants.",
+        "The first reasoning call returns only the frozen cross-entity overview: entity identity, source refs, lifecycle states and predicates, MDM/storage routing and relationships; it does not generate fields or invariants.",
         "Before entity fan-out, the overview gate requires every required E2 carried or produced businessObject to exist as an E4 entity or projection with the same id.",
         "One parallel_dynamic child then details each entity with filtered E2/E3 context; maxParallel is 20, matching the proven agentNewSolution ontology implementation.",
         "Parallel children complete with trace on provider or gate failure so one entity cannot fail the fan-out; the deterministic finalizer runs one targeted parallel repair round for only missing or invalid entities.",
@@ -193,7 +195,7 @@
         "Stable base registrations such as clients, projects, regions and material catalogs are proposed as organization-scoped MDM; orders, movements, logs, invoices and other transactions use the module database.",
         "Master data and operational state are separate entities: a Material catalog may be MDM while inventory balance, adjustment and usage remain transactional.",
         "Every entity carries a structured storage target, scope, identifier and MDM type when applicable; the ontology index repeats this compact persistence routing for L1/L2 compilers.",
-        "Static field constraints are shared validation contracts: backend enforcement is mandatory and frontend mirrors them for early feedback. Dynamic, time-relative, cross-entity and authorization conditions remain E5 rules.",
+        "Static field constraints are shared validation contracts: backend enforcement is mandatory and frontend mirrors them for early feedback. Named lifecycle meanings required by sources are frozen as exact lifecycle predicate-to-state mappings; dynamic, time-relative, cross-entity and authorization conditions remain E5 rules.",
         "The review widget groups entities by persistence destination and highlights cross-store relationships before approval.",
         "The review widget separates safe direct title/description edits from structural LLM requests.",
         "Before a structural revision, the current draft including direct human edits is persisted and supplied to the next round.",
@@ -225,7 +227,7 @@
       "judge": "steps/e5/judge.ts",
       "runtimeNotes": [
         "prompt_ready preserves the original hook args byte-for-byte so proposal, repair and judge stages cannot lose their round identity.",
-        "The runtime mechanically extracts every journey rule, ontology invariant, access constraint and declared module constraint into an exact immutable source catalog.",
+        "The runtime mechanically extracts every journey rule, ontology invariant, ontology lifecycle predicate, access constraint and declared module constraint into an exact immutable source catalog.",
         "Coverage is mechanically derived from the frozen rule plan; the LLM cannot omit or fabricate the compiled-or-routed bookkeeping.",
         "The first reasoning call receives only the exact source catalog and allowed reference index, then returns grouping, classification, frozen scope and routing; full journey/ontology context is reserved for filtered rule workers and the judge.",
         "A plan call rejected before producing a payload, including a collab-llm TPM/RPM response, is cleaned and retried once through a unique -transport-{attempt} step without consuming the semantic plan-repair budget.",

@@ -1,5 +1,5 @@
 {
-  "$id": "https://collab.codes/schemas/agentNewSolution4/e4-review/2026-08-05-v1",
+  "$id": "https://collab.codes/schemas/agentNewSolution4/e4-review/2026-08-08-v3",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
@@ -58,9 +58,19 @@
         "source": { "type": "string", "enum": ["database", "journey", "user", "inferred", "legacyCode"] }
       }
     },
+    "lifecyclePredicate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["predicateId", "description", "stateIds", "source"],
+      "properties": {
+        "predicateId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "description": { "type": "string", "minLength": 1 },
+        "stateIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "source": { "type": "string", "enum": ["database", "journey", "user", "inferred", "legacyCode"] }
+      }
+    },
     "entity": {
       "type": "object", "additionalProperties": false,
-      "required": ["entityId", "title", "description", "kind", "ownership", "sourceRefs", "fields", "lifecycleStates", "invariants", "storage"],
+      "required": ["entityId", "title", "description", "kind", "ownership", "sourceRefs", "fields", "lifecycleStates", "lifecyclePredicates", "invariants", "storage"],
       "properties": {
         "entityId": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
         "title": { "type": "string", "minLength": 1 },
@@ -70,24 +80,38 @@
         "sourceRefs": { "$ref": "#/$defs/sourceRefs" },
         "fields": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/field" } },
         "lifecycleStates": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "lifecyclePredicates": { "type": "array", "items": { "$ref": "#/$defs/lifecyclePredicate" } },
         "invariants": { "type": "array", "items": { "$ref": "#/$defs/invariant" } },
         "storage": {
           "type": "object", "additionalProperties": false,
-          "required": ["mode", "notes"],
-          "properties": { "mode": { "type": "string", "const": "new" }, "notes": { "type": "string", "minLength": 1 } }
+          "required": ["target", "scope", "notes"],
+          "properties": {
+            "target": { "type": "string", "enum": ["mdm", "moduleDatabase", "derived", "external", "embedded"] },
+            "scope": { "type": "string", "enum": ["organization", "module", "platform", "none"] },
+            "idField": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+            "mdmType": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*\\.[A-Z][A-Za-z0-9]*$" },
+            "notes": { "type": "string", "minLength": 1 }
+          }
         }
       }
     },
     "relationship": {
       "type": "object", "additionalProperties": false,
-      "required": ["relationshipId", "fromEntity", "toEntity", "type", "required", "description"],
+      "required": ["relationshipId", "fromEntity", "toEntity", "type", "required", "description", "persistence"],
       "properties": {
         "relationshipId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
         "fromEntity": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
         "toEntity": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
         "type": { "type": "string", "enum": ["oneToOne", "oneToMany", "manyToOne", "manyToMany"] },
         "required": { "type": "boolean" },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "type": "string", "minLength": 1 },
+        "persistence": {
+          "type": "object", "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": { "type": "string", "enum": ["mdmRelationship", "moduleReference", "crossStoreReference", "derivedJoin", "externalReference", "embedded"] }
+          }
+        }
       }
     }
   }

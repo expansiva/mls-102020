@@ -15,6 +15,8 @@ entities or change relationships. Write human-facing text in the user's language
 - A stored entity must contain the overview's `idField` as required `uuid`.
 - Lifecycle states require a `status` field with an `enum` constraint whose value is a compact JSON
   array string containing exactly those states.
+- The overview already freezes any named lifecycle subsets required by the supplied sources. Use
+  those exact predicates when shaping fields and invariants; do not add, remove or reinterpret them.
 - Constraints are shared frontend/backend validation contracts. Kinds: `min`, `max`, `minLength`,
   `maxLength`, `pattern`, `enum`, `format`, `unique`, `custom`. Sources in this greenfield run are
   `journey`, `user` or `inferred`, never `database` or `legacyCode`.

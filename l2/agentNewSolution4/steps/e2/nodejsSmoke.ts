@@ -3,6 +3,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { renderNs4TypedDefsSource } from '/_102020_/l2/agentNewSolution4/helpers/ns4TypedDefs.js';
 import {
   isNs4Pipeline,
   markNs4E2Approved,
@@ -80,11 +81,20 @@ async function main(): Promise<void> {
   for (const artifact of artifacts) {
     await writeFile(
       path.join(journeyDir, `${artifact.journeyId}.defs.ts`),
-      renderDefs(projectId, review.moduleName, `journeys/${artifact.journeyId}.defs.ts`, `${artifact.journeyId}Journey`, artifact),
+      renderNs4TypedDefsSource(
+        { project: projectId, level: 4, folder: `${review.moduleName}/journeys`, shortName: artifact.journeyId, extension: '.defs.ts' },
+        `${artifact.journeyId}Journey`, artifact, 'Ns4JourneyArtifact',
+      ),
     );
   }
-  await writeFile(path.join(journeyDir, 'index.defs.ts'), renderDefs(projectId, review.moduleName, 'journeys/index.defs.ts', `${review.moduleName}JourneyIndex`, index));
-  await writeFile(moduleFile, renderDefs(projectId, review.moduleName, 'module.defs.ts', `${review.moduleName}Module`, approvedModule));
+  await writeFile(path.join(journeyDir, 'index.defs.ts'), renderNs4TypedDefsSource(
+    { project: projectId, level: 4, folder: `${review.moduleName}/journeys`, shortName: 'index', extension: '.defs.ts' },
+    `${review.moduleName}JourneyIndex`, index, 'Ns4JourneyIndex',
+  ));
+  await writeFile(moduleFile, renderNs4TypedDefsSource(
+    { project: projectId, level: 4, folder: review.moduleName, shortName: 'module', extension: '.defs.ts' },
+    `${review.moduleName}Module`, approvedModule, 'Ns4ModuleArtifact',
+  ));
   await writeFile(pipelineFile, `${JSON.stringify(approvedPipeline, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 }
@@ -133,12 +143,6 @@ function parseDefs(source: string): unknown {
     else if (char === '}' && --depth === 0) return JSON.parse(source.slice(start, index + 1));
   }
   throw new Error('Unterminated module.defs.ts object.');
-}
-
-function renderDefs(projectId: number, moduleName: string, suffix: string, exportName: string, value: unknown): string {
-  return `/// <mls fileReference="_${projectId}_/l4/${moduleName}/${suffix}" enhancement="_blank"/>\n\n`
-    + `export const ${exportName} = ${JSON.stringify(value, null, 2)} as const;\n\n`
-    + `export default ${exportName};\n`;
 }
 
 function projectIdFromPath(moduleDir: string): number {

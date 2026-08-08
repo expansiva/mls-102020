@@ -26,6 +26,9 @@ export function ns4JourneyRuleSourceRef(journeyId: string, ruleId: string): stri
 export function ns4OntologyInvariantSourceRef(entityId: string, invariantId: string): string {
   return `ontology:${entityId}:invariant:${invariantId}`;
 }
+export function ns4OntologyLifecyclePredicateSourceRef(entityId: string, predicateId: string): string {
+  return `ontology:${entityId}:lifecyclePredicate:${predicateId}`;
+}
 export function ns4AccessConstraintSourceRef(profileRef: string, authorityRef: string, index: number): string {
   return `access:${profileRef}:${authorityRef}:constraint:${index + 1}`;
 }
@@ -52,6 +55,8 @@ export function validateNs4E5Review(review: Ns4E5Review, sources: Ns4E5Sources):
       .map(rule => ns4JourneyRuleSourceRef(journey.journeyId, rule.journeyRuleId))),
     ...sources.ontology.entities.flatMap(entity => entity.invariants
       .map(invariant => ns4OntologyInvariantSourceRef(entity.entityId, invariant.invariantId))),
+    ...sources.ontology.entities.flatMap(entity => entity.lifecyclePredicates
+      .map(predicate => ns4OntologyLifecyclePredicateSourceRef(entity.entityId, predicate.predicateId))),
     ...sources.access.grants.flatMap(grant => grant.constraints
       .map((_, index) => ns4AccessConstraintSourceRef(grant.profileRef, grant.authorityRef, index))),
     ...sources.module.declaredConstraints.mandatoryIntegrations

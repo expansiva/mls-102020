@@ -460,6 +460,7 @@ function buildSemanticContext(sources: Ns4E5Sources): unknown {
     grants: sources.access.grants,
     entities: sources.ontology.entities.map(entity => ({
       entityId: entity.entityId, description: entity.description, lifecycleStates: entity.lifecycleStates,
+      lifecyclePredicates: entity.lifecyclePredicates,
       fields: entity.fields.map(field => ({ fieldId: field.fieldId, type: field.type, required: field.required, description: field.description })),
       storage: entity.storage,
     })),

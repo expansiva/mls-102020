@@ -133,7 +133,7 @@ test('E2 contextOrLookup requires an explicit fallback locate output', () => {
 });
 
 test('E2 contextOrLookup does not turn an optional handoff into a mandatory lookup', () => {
-  const optional = structuredClone(reviewInput);
+  const optional = normalizeNs4E2Review(structuredClone(reviewInput));
   optional.journeys[1].business.entry.carries.push({
     contextId: 'taskRiskAssessment', businessObject: 'TaskRiskAssessment', cardinality: 'one' as const,
     required: false, description: 'Avaliação de risco disponível quando já tiver sido gerada.',
@@ -147,7 +147,7 @@ test('E2 contextOrLookup does not turn an optional handoff into a mandatory look
 });
 
 test('E2 entry modes agree with their required context contract', () => {
-  const coldStart = structuredClone(reviewInput);
+  const coldStart = normalizeNs4E2Review(structuredClone(reviewInput));
   coldStart.journeys[0].business.entry.carries.push({
     contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one' as const,
     required: true, description: 'Projeto obrigatório.',

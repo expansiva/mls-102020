@@ -1,7 +1,21 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/helpers/ns4Fs.ts" enhancement="_blank"/>
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
-import { normalizeNs4ModuleName, Ns4ModuleArtifact, Ns4PipelineState } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
+import { normalizeNs4ModuleName } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
+import { renderNs4TypedDefsSource } from '/_102020_/l2/agentNewSolution4/helpers/ns4TypedDefs.js';
+import type {
+  Ns4AccessMatrixArtifact,
+  Ns4JourneyArtifact,
+  Ns4JourneyIndex,
+  Ns4ModuleArtifact,
+  Ns4OntologyEntityArtifact,
+  Ns4OntologyIndexArtifact,
+  Ns4PermanentArtifactByType,
+  Ns4PermanentArtifactTypeName,
+  Ns4PipelineState,
+  Ns4RuleArtifact,
+  Ns4RuleIndexArtifact,
+} from '/_102020_/l2/agentNewSolution4/types.js';
 
 export type Ns4FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
 
@@ -119,13 +133,10 @@ export async function writeNs4Pipeline(state: Ns4PipelineState): Promise<string>
   return displayPath(fileInfo);
 }
 
-export async function writeNs4Module(moduleName: string, artifact: unknown): Promise<string> {
+export async function writeNs4Module(moduleName: string, artifact: Ns4ModuleArtifact): Promise<string> {
   const fileInfo = ns4ModuleFile(moduleName);
   const exportName = `${normalizeNs4ModuleName(moduleName)}Module`;
-  const source = `/// <mls fileReference="_${fileInfo.project}_/l4/${fileInfo.folder}/module.defs.ts" enhancement="_blank"/>\n\n`
-    + `export const ${exportName} = ${JSON.stringify(artifact, null, 2)} as const;\n\n`
-    + `export default ${exportName};\n`;
-  await writeNs4Text(fileInfo, source);
+  await writeNs4Defs(fileInfo, exportName, artifact, 'Ns4ModuleArtifact');
   return displayPath(fileInfo);
 }
 
@@ -189,45 +200,45 @@ export async function writeNs4E5Approved(moduleName: string, review: unknown): P
   return displayPath(fileInfo);
 }
 
-export async function writeNs4AccessMatrix(moduleName: string, artifact: unknown): Promise<string> {
+export async function writeNs4AccessMatrix(moduleName: string, artifact: Ns4AccessMatrixArtifact): Promise<string> {
   const fileInfo = ns4AccessMatrixFile(moduleName);
-  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}AccessMatrix`, artifact);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}AccessMatrix`, artifact, 'Ns4AccessMatrixArtifact');
   return displayPath(fileInfo);
 }
 
-export async function writeNs4OntologyEntity(moduleName: string, entityId: string, artifact: unknown): Promise<string> {
+export async function writeNs4OntologyEntity(moduleName: string, entityId: string, artifact: Ns4OntologyEntityArtifact): Promise<string> {
   const fileInfo = ns4OntologyEntityFile(moduleName, entityId);
-  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}Entity${entityId}`, artifact);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}Entity${entityId}`, artifact, 'Ns4OntologyEntityArtifact');
   return displayPath(fileInfo);
 }
 
-export async function writeNs4OntologyIndex(moduleName: string, artifact: unknown): Promise<string> {
+export async function writeNs4OntologyIndex(moduleName: string, artifact: Ns4OntologyIndexArtifact): Promise<string> {
   const fileInfo = ns4OntologyIndexFile(moduleName);
-  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}OntologyIndex`, artifact);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}OntologyIndex`, artifact, 'Ns4OntologyIndexArtifact');
   return displayPath(fileInfo);
 }
 
-export async function writeNs4Rule(moduleName: string, ruleId: string, artifact: unknown): Promise<string> {
+export async function writeNs4Rule(moduleName: string, ruleId: string, artifact: Ns4RuleArtifact): Promise<string> {
   const fileInfo = ns4RuleFile(moduleName, ruleId);
-  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}Rule${ruleId}`, artifact);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}Rule${ruleId}`, artifact, 'Ns4RuleArtifact');
   return displayPath(fileInfo);
 }
 
-export async function writeNs4RuleIndex(moduleName: string, artifact: unknown): Promise<string> {
+export async function writeNs4RuleIndex(moduleName: string, artifact: Ns4RuleIndexArtifact): Promise<string> {
   const fileInfo = ns4RuleIndexFile(moduleName);
-  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}RuleIndex`, artifact);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}RuleIndex`, artifact, 'Ns4RuleIndexArtifact');
   return displayPath(fileInfo);
 }
 
-export async function writeNs4Journey(moduleName: string, journeyId: string, artifact: unknown): Promise<string> {
+export async function writeNs4Journey(moduleName: string, journeyId: string, artifact: Ns4JourneyArtifact): Promise<string> {
   const fileInfo = ns4JourneyFile(moduleName, journeyId);
-  await writeNs4Defs(fileInfo, `${journeyId}Journey`, artifact);
+  await writeNs4Defs(fileInfo, `${journeyId}Journey`, artifact, 'Ns4JourneyArtifact');
   return displayPath(fileInfo);
 }
 
-export async function writeNs4JourneyIndex(moduleName: string, index: unknown): Promise<string> {
+export async function writeNs4JourneyIndex(moduleName: string, index: Ns4JourneyIndex): Promise<string> {
   const fileInfo = ns4JourneyIndexFile(moduleName);
-  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}JourneyIndex`, index);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}JourneyIndex`, index, 'Ns4JourneyIndex');
   return displayPath(fileInfo);
 }
 
@@ -287,12 +298,13 @@ async function writeNs4Text(fileInfo: Ns4FileInfo, content: string): Promise<voi
   await mls.stor.localStor.setContent(file, { contentType: 'string', content });
 }
 
-async function writeNs4Defs(fileInfo: Ns4FileInfo, exportName: string, value: unknown): Promise<void> {
-  const safeExportName = normalizeNs4ModuleName(exportName);
-  const source = `/// <mls fileReference="_${fileInfo.project}_/l${fileInfo.level}/${fileInfo.folder}/${fileInfo.shortName}${fileInfo.extension}" enhancement="_blank"/>\n\n`
-    + `export const ${safeExportName} = ${JSON.stringify(value, null, 2)} as const;\n\n`
-    + `export default ${safeExportName};\n`;
-  await writeNs4Text(fileInfo, source);
+async function writeNs4Defs<T extends Ns4PermanentArtifactTypeName>(
+  fileInfo: Ns4FileInfo,
+  exportName: string,
+  value: NoInfer<Ns4PermanentArtifactByType[T]>,
+  artifactType: T,
+): Promise<void> {
+  await writeNs4Text(fileInfo, renderNs4TypedDefsSource(fileInfo, exportName, value, artifactType));
 }
 
 function extractNs4JsonObject(source: string): string {

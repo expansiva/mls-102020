@@ -5,7 +5,8 @@
 # E4 — ontology overview for a new solution
 
 Create the frozen cross-entity plan for the business ontology. This first pass intentionally does not
-generate fields or invariants: a parallel pass will detail each approved entity. Write human-facing
+generate fields or invariants: a parallel pass will detail each approved entity. It does freeze named
+lifecycle predicates because they are business meanings shared by rules and entity workers. Write human-facing
 text in the user's language. This run is `solutionMode: new`; never claim discovery of legacy schema.
 
 {{platformSkill}}
@@ -28,7 +29,9 @@ text in the user's language. This run is `solutionMode: new`; never claim discov
 - Make downstream rules executable. Every durable fact explicitly required by E2 business rules or
   E3 grant constraints must have an owned field, lifecycle meaning, relationship, calculation input,
   identity association, exception/authorization record or projection. Do not defer missing business
-  data to an implementation guess in E5.
+  data to an implementation guess in E5. When a source uses a named subset of lifecycle states such
+  as unfinished, active, applicable, billable, eligible or open, the entity detail must define an
+  explicit lifecycle predicate mapping that meaning to exact states.
 
 ## Persistence and MDM
 
@@ -64,7 +67,9 @@ remove unrelated entities, fields or relationships from the previous approved re
 
 ## Output
 
-Return exactly one JSON object without Markdown. Do not include `fields` or `invariants`.
+Return exactly one JSON object without Markdown. Do not include `fields` or `invariants`. The values
+below illustrate the JSON shape only; never copy their lifecycle states or predicate unless supplied
+sources establish that same meaning.
 
 {
   "planId": "e4-ontology-plan",
@@ -85,7 +90,13 @@ Return exactly one JSON object without Markdown. Do not include `fields` or `inv
       "featureIds": ["projectRegistration"],
       "authorityRefs": ["buildflow:projectsetup"]
     },
-    "lifecycleStates": [],
+    "lifecycleStates": ["planned", "active", "completed", "cancelled"],
+    "lifecyclePredicates": [{
+      "predicateId": "ongoingProject",
+      "description": "A project is ongoing while planned or active.",
+      "stateIds": ["planned", "active"],
+      "source": "journey"
+    }],
     "storage": {
       "target": "mdm",
       "scope": "organization",

@@ -2,7 +2,7 @@
 
 import { sha256Ns4 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 
-export const NS4_ONTOLOGY_SCHEMA_VERSION = '2026-08-05-ns4-ontology-v2' as const;
+export const NS4_ONTOLOGY_SCHEMA_VERSION = '2026-08-08-ns4-ontology-v3' as const;
 
 export type Ns4EntityKind = 'core' | 'event' | 'supporting' | 'mdm' | 'projection' | 'valueObject';
 export type Ns4EntityOwnership = 'moduleOwned' | 'external' | 'derived';
@@ -35,6 +35,13 @@ export interface Ns4EntityInvariant {
   source: Ns4ConstraintSource;
 }
 
+export interface Ns4LifecyclePredicate {
+  predicateId: string;
+  description: string;
+  stateIds: string[];
+  source: Ns4ConstraintSource;
+}
+
 export interface Ns4OntologyEntity {
   entityId: string;
   title: string;
@@ -48,6 +55,7 @@ export interface Ns4OntologyEntity {
   };
   fields: Ns4OntologyField[];
   lifecycleStates: string[];
+  lifecyclePredicates: Ns4LifecyclePredicate[];
   invariants: Ns4EntityInvariant[];
   storage: {
     target: Ns4StorageTarget;
@@ -328,6 +336,15 @@ function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity 
     },
     fields,
     lifecycleStates: strings(entity.lifecycleStates),
+    lifecyclePredicates: array(entity.lifecyclePredicates).map(item => {
+      const predicate = record(item);
+      return {
+        predicateId: text(predicate.predicateId),
+        description: text(predicate.description),
+        stateIds: strings(predicate.stateIds),
+        source: constraintSource(predicate.source),
+      };
+    }),
     invariants: array(entity.invariants).map(item => {
       const invariant = record(item);
       return {

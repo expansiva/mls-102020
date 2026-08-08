@@ -133,6 +133,37 @@ export function validateNs4E4Review(
     if (entity.lifecycleStates.length && !entity.fields.some(field => field.fieldId === 'status')) {
       add('NS4_E4_LIFECYCLE_STATUS', `${path}.lifecycleStates`, 'An entity with lifecycle states must define a status field.');
     }
+    const lifecycleStates = new Set(entity.lifecycleStates);
+    const lifecyclePredicateIds = new Set<string>();
+    entity.lifecyclePredicates.forEach((predicate, predicateIndex) => {
+      const predicatePath = `${path}.lifecyclePredicates[${predicateIndex}]`;
+      if (!MEMBER_ID.test(predicate.predicateId)) {
+        add('NS4_E4_LIFECYCLE_PREDICATE_ID', `${predicatePath}.predicateId`, 'predicateId must be lower-camel.');
+      }
+      if (lifecyclePredicateIds.has(predicate.predicateId)) {
+        add('NS4_E4_LIFECYCLE_PREDICATE_DUPLICATE', `${predicatePath}.predicateId`, `Duplicate lifecycle predicate ${predicate.predicateId}.`);
+      }
+      if (predicate.predicateId) lifecyclePredicateIds.add(predicate.predicateId);
+      if (!predicate.description) {
+        add('NS4_E4_LIFECYCLE_PREDICATE_DESCRIPTION', `${predicatePath}.description`, 'Lifecycle predicate description is required.');
+      }
+      if (!predicate.stateIds.length) {
+        add('NS4_E4_LIFECYCLE_PREDICATE_EMPTY', `${predicatePath}.stateIds`, 'A lifecycle predicate must identify at least one state.');
+      }
+      const predicateStates = new Set<string>();
+      predicate.stateIds.forEach(stateId => {
+        if (!lifecycleStates.has(stateId)) {
+          add('NS4_E4_LIFECYCLE_PREDICATE_STATE', `${predicatePath}.stateIds`, `Unknown lifecycle state ${stateId}.`);
+        }
+        if (predicateStates.has(stateId)) {
+          add('NS4_E4_LIFECYCLE_PREDICATE_STATE_DUPLICATE', `${predicatePath}.stateIds`, `Duplicate lifecycle state ${stateId}.`);
+        }
+        predicateStates.add(stateId);
+      });
+      if (predicate.source === 'database' || predicate.source === 'legacyCode') {
+        add('NS4_E4_GREENFIELD_LEGACY_PREDICATE', `${predicatePath}.source`, 'A new solution cannot claim a discovered legacy lifecycle predicate.');
+      }
+    });
     const invariantIds = new Set<string>();
     entity.invariants.forEach((invariant, invariantIndex) => {
       const invariantPath = `${path}.invariants[${invariantIndex}]`;

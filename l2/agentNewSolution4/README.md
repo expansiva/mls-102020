@@ -3,6 +3,15 @@
 L4 product compiler with E1 through E5 implemented and the complete build roadmap visible from the
 start of the task.
 
+`types.ts` is the stable public type facade for all implemented permanent E1–E5 contracts. Every
+generated `module`, journey/index, access matrix, ontology entity/index and rule/index `.defs.ts`
+imports its matching type and is emitted as `as const satisfies <ArtifactType>`. Persistence writers
+also accept only the matching artifact type, so a wrong writer/type pairing fails while compiling the
+agent and a malformed emitted literal fails when L4 is typechecked by the project build. Each defs
+also exports its exact `typeof` contract, preserving module-specific literal unions such as lifecycle
+states for consumers without copied strings. Pipeline and
+review JSON remain runtime-gated compiler state rather than TypeScript modules.
+
 Invocation:
 
 - `@@newSolution4 petShop` — create a module or resume its next incomplete v17 step;
@@ -66,7 +75,10 @@ derived/external/embedded for concepts without their own module table. The widge
 persistence map before the entity details, highlights cross-store relationships, keeps safe
 title/description edits next to the selected entity and routes structural changes through a separate
 prompt panel. Static field constraints are backend-required validation contracts mirrored by the
-frontend; dynamic and time-relative conditions are deferred to E5 business rules.
+frontend. The overview freezes named lifecycle meanings needed by rules—such as unfinished, active,
+applicable or billable—as exact predicate-to-state mappings instead of letting E5 or parallel workers
+guess them. Dynamic and
+time-relative conditions are deferred to E5 business rules.
 E1 can already preserve a modernization strategy, but E4 deliberately fails closed for those modes
 until legacy schema/file intake is implemented; it never silently replaces that strategy with a new database.
 Approval writes:
@@ -84,7 +96,9 @@ E5 first reconstructs its input from the approved permanent journey index/artifa
 and ontology index/entity artifacts, validating their frozen hashes instead of depending on the large
 pipeline review drafts during resume. It then builds the exact source catalog and coverage bookkeeping
 mechanically. A compact reasoning
-pass groups those sources into frozen rule plans, then a proven `parallel_dynamic` fan-out details one
+pass groups those sources into frozen rule plans. Ontology lifecycle predicates are first-class catalog
+sources and reference-index entries, so backend and frontend rules consume the same exact state
+semantics. A proven `parallel_dynamic` fan-out then details one
 rule per child with `maxParallel: 20` and filtered journey, access and ontology context. The deterministic
 finalizer retries only missing or invalid rules once and reassembles the unchanged human review contract.
 An independent judge then reads the compact catalog/context and complete rule draft to detect semantic
