@@ -23,7 +23,10 @@ Write in the user's language. Do not design pages, routes, database keys, APIs o
 ## Context rules
 
 1. `entry.carries` declares the business context available when a journey starts. Each item names a
-   stable `contextId`, human business object, cardinality, requirement and description.
+   stable lowerCamel `contextId`, a stable PascalCase `businessObject`, cardinality, requirement and
+   human description. `businessObject` is the exact future ontology entity/projection id: use
+   `ProjectPortfolio`, never a display label such as `Project portfolio`. Titles and descriptions
+   remain in the user's language.
 2. `prerequisites[].providesContext` references ids declared in `entry.carries` and actually exported
    by the referenced journey. Keep the same `contextId` across the handoff; do not rename
    `createdProject` to `selectedProject` between journeys.

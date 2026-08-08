@@ -71,7 +71,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-25 (2026-08-08) symmetric dynamic callbacks';
+export const NS4_AGENT_BUILD = 'build-26 (2026-08-08) canonical journey business objects';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

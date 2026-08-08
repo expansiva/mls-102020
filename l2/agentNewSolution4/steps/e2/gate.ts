@@ -14,6 +14,7 @@ export interface Ns4E2GateResult {
 }
 
 const ID_PATTERN = /^[a-z][A-Za-z0-9]*$/;
+const BUSINESS_OBJECT_PATTERN = /^[A-Z][A-Za-z0-9]*$/;
 const RAW_TECHNICAL_ID_PATTERN = /\b(?:[a-z][A-Za-z0-9]*Id|[a-z][a-z0-9]*_id|[A-Za-z][A-Za-z0-9]*\s+(?:id|ID))\b/;
 const STEP_KINDS = new Set(['locate', 'inspect', 'act', 'decide', 'handoff']);
 
@@ -160,11 +161,17 @@ function checkId(value: string, path: string, label: string, ids: Set<string>, a
 function checkContext(contextId: string, businessObject: string, path: string, ids: Set<string>, add: AddIssue): void {
   checkId(contextId, `${path}.contextId`, 'context', ids, add);
   if (!businessObject) add('NS4_E2_CONTEXT_OBJECT', `${path}.businessObject`, 'Context businessObject is required.');
+  else if (!BUSINESS_OBJECT_PATTERN.test(businessObject)) {
+    add('NS4_E2_CONTEXT_OBJECT_ID', `${path}.businessObject`, 'Context businessObject must be a stable PascalCase identifier.');
+  }
 }
 
 function checkContextShape(contextId: string, businessObject: string, path: string, add: AddIssue): void {
   if (!ID_PATTERN.test(contextId)) add('NS4_E2_ID', `${path}.contextId`, 'context id must be a lower-camel identifier.');
   if (!businessObject) add('NS4_E2_CONTEXT_OBJECT', `${path}.businessObject`, 'Context businessObject is required.');
+  else if (!BUSINESS_OBJECT_PATTERN.test(businessObject)) {
+    add('NS4_E2_CONTEXT_OBJECT_ID', `${path}.businessObject`, 'Context businessObject must be a stable PascalCase identifier.');
+  }
 }
 
 function checkBusinessText(value: string, path: string, add: AddIssue): void {

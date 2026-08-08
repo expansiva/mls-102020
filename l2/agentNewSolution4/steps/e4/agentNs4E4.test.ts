@@ -18,7 +18,10 @@ import {
   markNs4E4WaitingHuman,
   resolveNs4ExistingAction,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
-import { normalizeNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import {
+  normalizeNs4BusinessObjectId,
+  normalizeNs4E2Review,
+} from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { normalizeNs4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import {
   assembleNs4E4Review,
@@ -130,6 +133,28 @@ test('E4 overview freezes global decisions and entity detail reassembles the fin
   ));
   assert.ok(details.every(detail => validateNs4E4EntityDraft(plan, detail).ok));
   assert.deepEqual(assembleNs4E4Review(plan, details), full);
+});
+
+test('E2 and E4 share canonical PascalCase business object ids', () => {
+  assert.equal(normalizeNs4BusinessObjectId('Project portfolio'), 'ProjectPortfolio');
+  assert.equal(normalizeNs4BusinessObjectId('Worker or subcontractor'), 'WorkerOrSubcontractor');
+  assert.equal(normalizeNs4BusinessObjectId('WorkTask'), 'WorkTask');
+
+  const spacedJourneys = structuredClone(journeys) as any;
+  spacedJourneys.journeys[0].business.steps[0].providesContext[0].businessObject = 'Project portfolio';
+  const normalizedJourneys = normalizeNs4E2Review(spacedJourneys);
+  assert.equal(
+    normalizedJourneys.journeys[0].business.steps[0].providesContext[0].businessObject,
+    'ProjectPortfolio',
+  );
+
+  const matchingPlan = structuredClone(reviewInput) as any;
+  matchingPlan.entities[0].entityId = 'ProjectPortfolio';
+  matchingPlan.entities[0].storage.idField = 'projectPortfolioId';
+  matchingPlan.relationships[0].toEntity = 'ProjectPortfolio';
+  assert.deepEqual(validateNs4E4Plan(normalizeNs4E4PlanDraft(matchingPlan), normalizedJourneys, access), {
+    ok: true, issues: [],
+  });
 });
 
 test('E4 accepts a connected greenfield ontology covering journeys and access information', () => {

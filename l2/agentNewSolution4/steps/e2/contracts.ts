@@ -250,12 +250,30 @@ function normalizeContext(value: unknown): Ns4JourneyContext {
   const source = record(value);
   return {
     contextId: text(source.contextId),
-    businessObject: text(source.businessObject),
+    businessObject: normalizeNs4BusinessObjectId(source.businessObject),
     cardinality: source.cardinality === 'many' ? 'many' : 'one',
     required: boolean(source.required, true),
     description: text(source.description),
     ...(text(source.stateRequirement) ? { stateRequirement: text(source.stateRequirement) } : {}),
   };
+}
+
+/**
+ * Turns a human-spaced or already technical business noun into the stable PascalCase id shared by
+ * journeys and ontology entities. The transformation is intentionally lexical: it never translates
+ * or substitutes a domain noun.
+ */
+export function normalizeNs4BusinessObjectId(value: unknown): string {
+  const raw = text(value);
+  if (!raw) return '';
+  const decomposed = raw.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  const words = decomposed
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .match(/[A-Za-z0-9]+/g) || [];
+  return words.map(word => {
+    if (/^[A-Z0-9]+$/.test(word)) return word;
+    return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+  }).join('');
 }
 
 function entryMode(value: unknown): Ns4JourneyEntryMode {

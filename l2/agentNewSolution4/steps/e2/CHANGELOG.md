@@ -1,5 +1,10 @@
 # E2 changelog
 
+- 2026-08-08: Flow v16 makes `businessObject` a machine contract instead of localized display text.
+  E2 normalizes human-spaced nouns to stable PascalCase ids before validation and persistence, and
+  E4 therefore compares the same journey/ontology identifier. Run21 had every required ontology
+  concept, but its overview repair could never equate `Project portfolio` with `ProjectPortfolio`.
+
 - 2026-08-08: Flow v14 replaces full-draft semantic rewrites with mechanically merged journey and
   feature upserts. Coverage may converge through three bounded judge/patch cycles, while an unchanged
   blocker set fails early. The complete gate runs after every merge, and the judge receives only the

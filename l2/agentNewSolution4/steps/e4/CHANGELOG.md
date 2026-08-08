@@ -1,5 +1,9 @@
 # E4 changelog
 
+- 2026-08-08: Flow v16 receives canonical PascalCase journey `businessObject` ids from E2. This
+  removes the impossible run21 overview-repair loop in which the E4 prompt correctly produced
+  `ProjectPortfolio` while its gate compared the localized E2 label `Project portfolio` literally.
+
 - 2026-08-08: Flow v15 makes dynamic dispatch symmetric across prompt callbacks. Run20 proved that
   all 25 entity LLM calls returned valid entity payloads, but collab-messages omitted hook `args` only
   on `afterPromptStep`; the root then parsed every entity as the initial roadmap. The shared dispatcher
