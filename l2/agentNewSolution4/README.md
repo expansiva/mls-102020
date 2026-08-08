@@ -5,9 +5,13 @@ start of the task.
 
 Invocation:
 
-- `@@newSolution4 petShop` — create a module or resume its next incomplete v12 step;
+- `@@newSolution4 petShop` — create a module or resume its next incomplete v17 step;
 - `@@newSolution4 petShop /fast` — auto-accept valid E1 through E5 proposals;
 - an existing module without an `agentNewSolution4` pipeline is rejected.
+
+For a one-token module invocation, lookup is canonicalized before the root planner. For example,
+`@@newSolution4 BuildFlowFsm23 /fast` resumes the existing `buildFlowFsm23` module without creating
+a fresh E1 clarification tree.
 
 The root planner reads the prompt language, validates the request and translates the friendly titles
 for E1 through E10. It creates the complete dependency graph before E1 starts, so the user can see what

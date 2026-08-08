@@ -6,6 +6,7 @@ import {
   buildNs4ModuleArtifact,
   createNs4Pipeline,
   formatNs4VisibleStepTitle,
+  isNs4ModuleToken,
   markNs4E1Approved,
   markNs4E1Failed,
   markNs4E2Failed,
@@ -21,6 +22,7 @@ import {
   resolveNs4DynamicWorker,
   resolveNs4DynamicWorkerRequest,
   resolveNs4ExistingAction,
+  resolveNs4ExistingModuleToken,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { validateNs4E1Module } from '/_102020_/l2/agentNewSolution4/steps/e1/gate.js';
 import {
@@ -220,6 +222,15 @@ test('terminal E1 and E2 failures are durable in the pipeline', () => {
 test('module names normalize deterministically', () => {
   assert.equal(normalizeNs4ModuleName('Pet Shop Brasil'), 'petShopBrasil');
   assert.equal(normalizeNs4ModuleName('gestão-de-obras'), 'gestaoDeObras');
+});
+
+test('resume module lookup canonicalizes a module token before the root planner', () => {
+  const modules = new Set(['buildFlowFsm23', 'petShop']);
+  assert.equal(isNs4ModuleToken('BuildFlowFsm23'), true);
+  assert.equal(resolveNs4ExistingModuleToken('BuildFlowFsm23', modules), 'buildFlowFsm23');
+  assert.equal(resolveNs4ExistingModuleToken('buildFlowFsm23', modules), 'buildFlowFsm23');
+  assert.equal(resolveNs4ExistingModuleToken('Build Flow FSM 23', modules), '');
+  assert.equal(resolveNs4ExistingModuleToken('unknownModule', modules), '');
 });
 
 test('resume is allowed only for a pipeline owned by agentNewSolution4', () => {

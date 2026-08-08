@@ -7,7 +7,6 @@ import {
   createNs4E3Step,
   createNs4E4Step,
   createNs4E5Step,
-  isNs4ModuleToken,
   isNs4Pipeline,
   markNs4E3Approved,
   markNs4E4Approved,
@@ -17,6 +16,7 @@ import {
   parseNs4Invocation,
   resolveNs4DynamicWorkerRequest,
   resolveNs4ExistingAction,
+  resolveNs4ExistingModuleToken,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
   listNs4ModuleFolders,
@@ -71,7 +71,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-28 (2026-08-08) compact E5 transport recovery';
+export const NS4_AGENT_BUILD = 'build-29 (2026-08-08) canonical resume lookup';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -89,49 +89,50 @@ async function beforePromptImplicit(
   let resumeTarget = '';
   let resumeRound = '';
   let taskTitle = 'new Solution 4';
-  if (isNs4ModuleToken(invocation.prompt) && listNs4ModuleFolders().has(invocation.prompt)) {
-    let pipeline = await readNs4Pipeline(invocation.prompt);
+  const existingModule = resolveNs4ExistingModuleToken(invocation.prompt, listNs4ModuleFolders());
+  if (existingModule) {
+    let pipeline = await readNs4Pipeline(existingModule);
     if (isNs4Pipeline(pipeline)) {
-      const moduleArtifact = await readNs4Module(invocation.prompt);
+      const moduleArtifact = await readNs4Module(existingModule);
       const approvedE3 = moduleArtifact?.specStatus.completedSteps
         .find(completed => completed.stepId === 'e3-access-matrix' && completed.status === 'approved');
       const approvedE4 = moduleArtifact?.specStatus.completedSteps
         .find(completed => completed.stepId === 'e4-ontology' && completed.status === 'approved');
       const approvedE5 = moduleArtifact?.specStatus.completedSteps
         .find(completed => completed.stepId === 'e5-rules' && completed.status === 'approved');
-      if (pipeline.steps.e3?.status !== 'approved' && approvedE3 && ns4FileExists(ns4AccessMatrixFile(invocation.prompt))) {
+      if (pipeline.steps.e3?.status !== 'approved' && approvedE3 && ns4FileExists(ns4AccessMatrixFile(existingModule))) {
         pipeline = markNs4E3Approved(
           pipeline,
           approvedE3.approvedBy,
-          `l4/${invocation.prompt}/access/access-matrix.defs.ts`,
+          `l4/${existingModule}/access/access-matrix.defs.ts`,
           approvedE3.approvedAt,
         );
       }
-      if (pipeline.steps.e4?.status !== 'approved' && approvedE4 && ns4FileExists(ns4OntologyIndexFile(invocation.prompt))) {
+      if (pipeline.steps.e4?.status !== 'approved' && approvedE4 && ns4FileExists(ns4OntologyIndexFile(existingModule))) {
         pipeline = markNs4E4Approved(
           pipeline,
           approvedE4.approvedBy,
-          [`l4/${invocation.prompt}/ontology/index.defs.ts`],
+          [`l4/${existingModule}/ontology/index.defs.ts`],
           approvedE4.approvedAt,
         );
       }
-      if (pipeline.steps.e5?.status !== 'approved' && approvedE5 && ns4FileExists(ns4RuleIndexFile(invocation.prompt))) {
+      if (pipeline.steps.e5?.status !== 'approved' && approvedE5 && ns4FileExists(ns4RuleIndexFile(existingModule))) {
         pipeline = markNs4E5Approved(
           pipeline,
           approvedE5.approvedBy,
-          [`l4/${invocation.prompt}/rules/index.defs.ts`],
+          [`l4/${existingModule}/rules/index.defs.ts`],
           approvedE5.approvedAt,
         );
       }
       await writeNs4Pipeline(pipeline);
     }
-    const action = resolveNs4ExistingAction(true, pipeline, ns4FileExists(ns4ModuleFile(invocation.prompt)));
+    const action = resolveNs4ExistingAction(true, pipeline, ns4FileExists(ns4ModuleFile(existingModule)));
     if (action === 'collision') {
       return [await statusTask(
         agent,
         context,
-        `Módulo "${invocation.prompt}" já existe, mas não possui pipeline do agentNewSolution4. Nada foi alterado.`,
-        `plan ${invocation.prompt}`,
+        `Módulo "${existingModule}" já existe, mas não possui pipeline do agentNewSolution4. Nada foi alterado.`,
+        `plan ${existingModule}`,
         true,
       )];
     }
@@ -139,11 +140,11 @@ async function beforePromptImplicit(
       return [await statusTask(
         agent,
         context,
-        `Módulo "${invocation.prompt}": E1 a E5 já estão aprovados. O próximo passo é e6-behaviors, ainda não implementado.`,
-        `plan ${invocation.prompt}`,
+        `Módulo "${existingModule}": E1 a E5 já estão aprovados. O próximo passo é e6-behaviors, ainda não implementado.`,
+        `plan ${existingModule}`,
       )];
     }
-    resumeModule = invocation.prompt;
+    resumeModule = existingModule;
     resumeTarget = action === 'resume-e1' ? 'e1' : action === 'resume-e5' ? 'e5' : action === 'resume-e4' ? 'e4' : action === 'resume-e3' ? 'e3' : 'e2';
     resumeRound = resumeTarget === 'e5'
       ? String(Math.max(1, pipeline?.steps.e5?.reviewRound || 1))
@@ -153,7 +154,7 @@ async function beforePromptImplicit(
       ? String(Math.max(1, pipeline?.steps.e3?.reviewRound || 1))
       : resumeTarget === 'e2' ? String(Math.max(1, pipeline?.steps.e2?.reviewRound || 1)) : '';
     sourcePrompt = pipeline?.sourcePrompt || invocation.prompt;
-    taskTitle = `plan ${invocation.prompt}`;
+    taskTitle = `plan ${existingModule}`;
   }
 
   const planPrompt = await readNs4AgentText('', 'promptPlan');

@@ -1,5 +1,8 @@
 # E1 changelog
 
+- 2026-08-08 — Build 29 canonicalizes single-token module names before the root planner, so an
+  initial-capital command such as `BuildFlowFsm23` resumes `buildFlowFsm23` directly instead of
+  executing a fresh E1 and discovering the collision only during compilation.
 - 2026-08-05 — Build 6 persists terminal compile failures with `error` and `failedAt`; LLM-call
   failures use `wait_after_prompt` so their message remains in the task trace.
 - 2026-08-05 — Flow v3: restored the stable root-planner architecture, including prompt-language

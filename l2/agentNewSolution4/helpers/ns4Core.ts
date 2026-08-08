@@ -599,7 +599,7 @@ function createNs4AgentStep(
 }
 
 export function isNs4ModuleToken(value: string): boolean {
-  return /^[a-z][A-Za-z0-9]*$/.test(String(value || '').trim());
+  return /^[A-Za-z][A-Za-z0-9]*$/.test(String(value || '').trim());
 }
 
 export function normalizeNs4ModuleName(value: unknown, fallback = 'newModule'): string {
@@ -611,6 +611,15 @@ export function normalizeNs4ModuleName(value: unknown, fallback = 'newModule'): 
   const rest = words.slice(1).map(word => word.slice(0, 1).toUpperCase() + word.slice(1).toLowerCase()).join('');
   const candidate = `${first}${rest}`.replace(/^[^a-z]+/, '').slice(0, 60);
   return candidate || 'newModule';
+}
+
+export function resolveNs4ExistingModuleToken(
+  value: string,
+  existingModules: ReadonlySet<string>,
+): string {
+  if (!isNs4ModuleToken(value)) return '';
+  const normalized = normalizeNs4ModuleName(value);
+  return existingModules.has(normalized) ? normalized : '';
 }
 
 export function normalizeNs4Clarification(value: unknown): Ns4Clarification {

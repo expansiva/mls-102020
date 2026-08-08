@@ -31,7 +31,9 @@ Persistence order is intentional:
 
 If the run stops after item 1 or 2, `@@newSolution4 <module>` recognizes its own partial pipeline and
 continues its next incomplete step. A folder with no v4 pipeline marker is never overwritten, and an
-older flow version is not silently migrated.
+older flow version is not silently migrated. A single-token invocation is normalized before the root
+planner (`BuildFlowFsm23` resolves to `buildFlowFsm23`), preventing a valid resume from opening a new
+E1 tree because of capitalization alone.
 
 `/fast` uses the normal widget contract with automatic acceptance. The interactive and automatic paths
 therefore publish the same answer anchor and unlock the same compile step.
