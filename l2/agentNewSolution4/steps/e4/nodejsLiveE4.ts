@@ -8,14 +8,17 @@ import { normalizeNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/co
 import { normalizeNs4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import {
   assembleNs4E4Review,
+  applyNs4E4RelationshipBindings,
   normalizeNs4E4EntityDraft,
   normalizeNs4E4PlanDraft,
+  normalizeNs4E4RelationshipBindings,
   Ns4E4EntityDraft,
   Ns4E4PlanDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import {
   validateNs4E4EntityDraft,
   validateNs4E4Plan,
+  validateNs4E4RelationshipBindings,
   validateNs4E4Review,
 } from '/_102020_/l2/agentNewSolution4/steps/e4/gate.js';
 
@@ -36,12 +39,13 @@ async function main(): Promise<void> {
   }
   const moduleDir = path.join(ROOT, `mls-${project}`, 'l4', moduleName);
   const pipelineDir = path.join(moduleDir, 'pipeline');
-  const [moduleSource, journeysSource, accessSource, promptTemplate, entityPrompt, platformSkill] = await Promise.all([
+  const [moduleSource, journeysSource, accessSource, promptTemplate, entityPrompt, relationshipPrompt, platformSkill] = await Promise.all([
     readFile(path.join(moduleDir, 'module.defs.ts'), 'utf8'),
     readFile(path.join(pipelineDir, 'e2-journeys.draft.json'), 'utf8'),
     readFile(path.join(pipelineDir, 'e3-access-matrix.draft.json'), 'utf8'),
     readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution4/steps/e4/prompt.md'), 'utf8'),
     readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution4/steps/e4/promptEntity.md'), 'utf8'),
+    readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution4/steps/e4/promptRelationships.md'), 'utf8'),
     readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution4/skills/platform.md'), 'utf8'),
   ]);
   const moduleArtifact = parseDefs(moduleSource) as Ns4ModuleArtifact;
@@ -105,7 +109,31 @@ async function main(): Promise<void> {
     if (!detailGate.ok) throw new Error(detailGate.issues.map(issue => `${entity.entityId} ${issue.code}: ${issue.message}`).join('\n'));
     return detail;
   });
-  const review = assembleNs4E4Review(plan, details);
+  const unboundReview = assembleNs4E4Review(plan, details);
+  const bindingHumanPrompt = [
+    `## Required identity\nmoduleName=${moduleName}; reviewRound=1`,
+    '## Frozen entities and their exact available fields', JSON.stringify(unboundReview.entities.map(entity => ({
+      entityId: entity.entityId, kind: entity.kind, storage: entity.storage,
+      fields: entity.fields.map(field => ({ fieldId: field.fieldId, type: field.type, required: field.required, description: field.description })),
+    }))),
+    '## Frozen semantic relationships to bind', JSON.stringify(unboundReview.relationships),
+  ].join('\n\n');
+  let bindingResponse = await callCollabLlm(config, { model, systemPrompt: relationshipPrompt, humanPrompt: bindingHumanPrompt, maxTokens: 16_384 });
+  responses.push(bindingResponse);
+  let bindings = parseBindings(bindingResponse, moduleName);
+  let bindingGate = validateNs4E4RelationshipBindings(unboundReview, bindings, journeys, access);
+  if (!bindingGate.ok) {
+    const feedback = bindingGate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
+    bindingResponse = await callCollabLlm(config, {
+      model, systemPrompt: relationshipPrompt, maxTokens: 16_384,
+      humanPrompt: `${bindingHumanPrompt}\n\n## Deterministic binding gate repair required\n${feedback}`,
+    });
+    responses.push(bindingResponse);
+    bindings = parseBindings(bindingResponse, moduleName);
+    bindingGate = validateNs4E4RelationshipBindings(unboundReview, bindings, journeys, access);
+  }
+  if (!bindingGate.ok) throw new Error(bindingGate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n'));
+  const review = applyNs4E4RelationshipBindings(unboundReview, bindings);
   const finalGate = validateNs4E4Review(review, journeys, access);
   if (!finalGate.ok) throw new Error(finalGate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n'));
   process.stdout.write(`${JSON.stringify({
@@ -132,6 +160,13 @@ function parseEntity(response: OpenAiResponse, plan: Ns4E4PlanDraft, entityId: s
   const payload = isRecord(parsed) && parsed.type === 'flexible' ? parseJsonContent(parsed.result) : parsed;
   if (!isRecord(payload)) throw new Error(`collab-llm returned no valid E4 entity payload for ${entityId}.`);
   return normalizeNs4E4EntityDraft(payload, plan.moduleName, plan.reviewRound, entityId);
+}
+
+function parseBindings(response: OpenAiResponse, moduleName: string) {
+  const parsed = parseJsonContent(response.choices?.[0]?.message?.content);
+  const payload = isRecord(parsed) && parsed.type === 'flexible' ? parseJsonContent(parsed.result) : parsed;
+  if (!isRecord(payload)) throw new Error('collab-llm returned no valid E4 relationship binding payload.');
+  return normalizeNs4E4RelationshipBindings(payload, moduleName, 1);
 }
 
 async function callCollabLlm(

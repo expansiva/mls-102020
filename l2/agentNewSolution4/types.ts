@@ -12,6 +12,7 @@ import type {
   Ns4OntologyIndexArtifact,
 } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import type { Ns4RulesArtifact } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
+import type { Ns4CompositionArtifact } from '/_102020_/l2/agentNewSolution4/steps/e6/contracts.js';
 
 export type {
   Ns4ApprovedBy,
@@ -21,6 +22,7 @@ export type {
   Ns4E3Status,
   Ns4E4Status,
   Ns4E5Status,
+  Ns4E6Status,
   Ns4ModuleArtifact,
   Ns4NextStep,
   Ns4PipelineState,
@@ -59,6 +61,8 @@ export type {
   Ns4ConstraintSource,
   Ns4E4EntityDraft,
   Ns4E4PlanDraft,
+  Ns4E4RelationshipBinding,
+  Ns4E4RelationshipBindingsDraft,
   Ns4E4Review,
   Ns4E4ReviewEvent,
   Ns4EntityKind,
@@ -71,7 +75,11 @@ export type {
   Ns4OntologyField,
   Ns4OntologyIndexArtifact,
   Ns4OntologyRelationship,
+  Ns4RelationshipEndpointBinding,
   Ns4RelationshipPersistenceMode,
+  Ns4RelationshipRealization,
+  Ns4RelationshipRealizationKind,
+  Ns4ResolvedOntologyRelationship,
   Ns4StorageScope,
   Ns4StorageTarget,
 } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
@@ -83,6 +91,15 @@ export type {
   Ns4RulesArtifact,
 } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
 
+export type {
+  Ns4AdditionalCapability,
+  Ns4AdditionalCapabilityDecision,
+  Ns4AdditionalCapabilityKind,
+  Ns4CompositionArtifact,
+  Ns4E6Review,
+  Ns4E6ReviewEvent,
+} from '/_102020_/l2/agentNewSolution4/steps/e6/contracts.js';
+
 export const NS4_PERMANENT_ARTIFACT_TYPE_NAMES = [
   'Ns4ModuleArtifact',
   'Ns4JourneyArtifact',
@@ -91,6 +108,7 @@ export const NS4_PERMANENT_ARTIFACT_TYPE_NAMES = [
   'Ns4OntologyEntityArtifact',
   'Ns4OntologyIndexArtifact',
   'Ns4RulesArtifact',
+  'Ns4CompositionArtifact',
 ] as const;
 
 export type Ns4PermanentArtifactTypeName = typeof NS4_PERMANENT_ARTIFACT_TYPE_NAMES[number];
@@ -103,4 +121,5 @@ export interface Ns4PermanentArtifactByType {
   Ns4OntologyEntityArtifact: Ns4OntologyEntityArtifact;
   Ns4OntologyIndexArtifact: Ns4OntologyIndexArtifact;
   Ns4RulesArtifact: Ns4RulesArtifact;
+  Ns4CompositionArtifact: Ns4CompositionArtifact;
 }

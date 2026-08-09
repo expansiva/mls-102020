@@ -6,11 +6,15 @@ import {
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { Ns4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import {
+  applyNs4E4RelationshipBindings,
   assembleNs4E4Review,
   Ns4E4EntityDraft,
   Ns4E4PlanDraft,
+  Ns4E4RelationshipBindingsDraft,
   Ns4E4Review,
   Ns4OntologyField,
+  Ns4OntologyRelationship,
+  Ns4RelationshipRealizationKind,
 } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 
 export interface Ns4E4GateIssue { code: string; path: string; message: string }
@@ -26,6 +30,7 @@ export function validateNs4E4Review(
   review: Ns4E4Review,
   journeys?: Ns4E2Review,
   access?: Ns4E3Review,
+  options: { requireRelationshipRealization?: boolean } = {},
 ): Ns4E4GateResult {
   const issues: Ns4E4GateIssue[] = [];
   const add = (code: string, path: string, message: string) => issues.push({ code, path, message });
@@ -203,6 +208,9 @@ export function validateNs4E4Review(
     if (!entityIds.has(relationship.toEntity)) add('NS4_E4_RELATIONSHIP_TO', `${path}.toEntity`, `Unknown entity ${relationship.toEntity}.`);
     if (relationship.fromEntity === relationship.toEntity) add('NS4_E4_RELATIONSHIP_SELF', path, 'Self relationships require a later explicit design and are not accepted implicitly.');
     if (!relationship.description) add('NS4_E4_RELATIONSHIP_DESCRIPTION', `${path}.description`, 'Relationship description is required.');
+    if (options.requireRelationshipRealization !== false) {
+      validateRelationshipRealization(review, relationship, path).forEach(issue => issues.push(issue));
+    }
     relatedEntities.add(relationship.fromEntity);
     relatedEntities.add(relationship.toEntity);
   });
@@ -235,7 +243,112 @@ export function validateNs4E4Plan(
       useRules: [],
     })),
   };
-  return validateNs4E4Review(review, journeys, access);
+  return validateNs4E4Review(review, journeys, access, { requireRelationshipRealization: false });
+}
+
+/** Validates that the binding pass covered every frozen semantic relationship exactly once. */
+export function validateNs4E4RelationshipBindings(
+  review: Ns4E4Review,
+  draft: Ns4E4RelationshipBindingsDraft,
+  journeys?: Ns4E2Review,
+  access?: Ns4E3Review,
+): Ns4E4GateResult {
+  const issues: Ns4E4GateIssue[] = [];
+  if (draft.moduleName !== review.moduleName) {
+    issues.push({ code: 'NS4_E4_BINDING_MODULE', path: 'moduleName', message: `Expected module ${review.moduleName}.` });
+  }
+  if (draft.reviewRound !== review.reviewRound) {
+    issues.push({ code: 'NS4_E4_BINDING_ROUND', path: 'reviewRound', message: `Expected review round ${review.reviewRound}.` });
+  }
+  const expected = new Set(review.relationships.map(relationship => relationship.relationshipId));
+  const seen = new Set<string>();
+  draft.bindings.forEach((binding, index) => {
+    const path = `bindings[${index}].relationshipId`;
+    if (!expected.has(binding.relationshipId)) {
+      issues.push({ code: 'NS4_E4_BINDING_UNKNOWN', path, message: `Unknown relationship ${binding.relationshipId}.` });
+    }
+    if (seen.has(binding.relationshipId)) {
+      issues.push({ code: 'NS4_E4_BINDING_DUPLICATE', path, message: `Duplicate binding for ${binding.relationshipId}.` });
+    }
+    seen.add(binding.relationshipId);
+  });
+  expected.forEach(relationshipId => {
+    if (!seen.has(relationshipId)) {
+      issues.push({ code: 'NS4_E4_BINDING_MISSING', path: 'bindings', message: `Missing binding for ${relationshipId}.` });
+    }
+  });
+  if (issues.length) return { ok: false, issues };
+  return validateNs4E4Review(applyNs4E4RelationshipBindings(review, draft), journeys, access);
+}
+
+function validateRelationshipRealization(
+  review: Ns4E4Review,
+  relationship: Ns4OntologyRelationship,
+  path: string,
+): Ns4E4GateIssue[] {
+  const issues: Ns4E4GateIssue[] = [];
+  const add = (code: string, suffix: string, message: string) => issues.push({ code, path: `${path}.realization${suffix}`, message });
+  const realization = relationship.realization;
+  if (!realization) {
+    add('NS4_E4_RELATIONSHIP_REALIZATION', '', 'Every final relationship must identify the fields or derived strategy that realizes it.');
+    return issues;
+  }
+  if (realization.from.entityId !== relationship.fromEntity) {
+    add('NS4_E4_RELATIONSHIP_FROM_BINDING', '.from.entityId', `Expected ${relationship.fromEntity}.`);
+  }
+  if (realization.to.entityId !== relationship.toEntity) {
+    add('NS4_E4_RELATIONSHIP_TO_BINDING', '.to.entityId', `Expected ${relationship.toEntity}.`);
+  }
+  if (realization.ownerEntity !== relationship.fromEntity && realization.ownerEntity !== relationship.toEntity) {
+    add('NS4_E4_RELATIONSHIP_OWNER', '.ownerEntity', 'ownerEntity must be one of the relationship endpoints.');
+  }
+  if (!realization.description) add('NS4_E4_RELATIONSHIP_REALIZATION_DESCRIPTION', '.description', 'Field realization needs a human-readable explanation.');
+
+  const allowedKinds = expectedRealizationKinds(relationship.persistence.mode);
+  if (!allowedKinds.includes(realization.kind)) {
+    add('NS4_E4_RELATIONSHIP_REALIZATION_KIND', '.kind', `${relationship.persistence.mode} must use ${allowedKinds.join(' or ')}, not ${realization.kind}.`);
+  }
+  const fromEntity = review.entities.find(entity => entity.entityId === relationship.fromEntity);
+  const toEntity = review.entities.find(entity => entity.entityId === relationship.toEntity);
+  const fromFields = new Set(fromEntity?.fields.map(field => field.fieldId) || []);
+  const toFields = new Set(toEntity?.fields.map(field => field.fieldId) || []);
+  validateEndpointFields(realization.from.fieldIds, fromFields, '.from.fieldIds', add);
+  validateEndpointFields(realization.to.fieldIds, toFields, '.to.fieldIds', add);
+
+  if (realization.kind !== 'derived' && (!realization.from.fieldIds.length || !realization.to.fieldIds.length)) {
+    add('NS4_E4_RELATIONSHIP_FIELDS_REQUIRED', '', 'A persisted relationship must name at least one existing field at each endpoint.');
+  }
+  if (relationship.required && realization.kind !== 'derived') {
+    const owner = realization.ownerEntity === relationship.fromEntity ? fromEntity : toEntity;
+    const ownerFields = realization.ownerEntity === relationship.fromEntity
+      ? realization.from.fieldIds : realization.to.fieldIds;
+    if (ownerFields.some(fieldId => !owner?.fields.find(field => field.fieldId === fieldId)?.required)) {
+      add('NS4_E4_RELATIONSHIP_REQUIRED_FIELD', '.ownerEntity', 'A required relationship must use required field(s) on its owning entity.');
+    }
+  }
+  return issues;
+}
+
+function validateEndpointFields(
+  fieldIds: string[],
+  available: Set<string>,
+  path: string,
+  add: (code: string, suffix: string, message: string) => void,
+): void {
+  const seen = new Set<string>();
+  fieldIds.forEach(fieldId => {
+    if (seen.has(fieldId)) add('NS4_E4_RELATIONSHIP_FIELD_DUPLICATE', path, `Duplicate field ${fieldId}.`);
+    if (!available.has(fieldId)) add('NS4_E4_RELATIONSHIP_FIELD_UNKNOWN', path, `Unknown field ${fieldId}.`);
+    seen.add(fieldId);
+  });
+}
+
+function expectedRealizationKinds(mode: Ns4OntologyRelationship['persistence']['mode']): Ns4RelationshipRealizationKind[] {
+  if (mode === 'mdmRelationship') return ['mdmRelationship'];
+  if (mode === 'derivedJoin') return ['derived'];
+  if (mode === 'externalReference') return ['externalReference'];
+  if (mode === 'embedded') return ['embedded'];
+  return ['fieldReference', 'fieldCollection'];
 }
 
 /** Validates one parallel entity result against the storage/lifecycle contract frozen by the plan. */

@@ -6,6 +6,7 @@ import { readNs4AvailableContent } from '/_102020_/l2/agentNewSolution4/helpers/
 import { renderNs4TypedDefsSource } from '/_102020_/l2/agentNewSolution4/helpers/ns4TypedDefs.js';
 import type {
   Ns4AccessMatrixArtifact,
+  Ns4CompositionArtifact,
   Ns4JourneyArtifact,
   Ns4JourneyIndex,
   Ns4ModuleArtifact,
@@ -58,6 +59,10 @@ export function ns4E4EntityDraftFile(moduleName: string, entityId: string): Ns4F
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline/e4-entities`, shortName: `${entityId}.draft`, extension: '.json' };
 }
 
+export function ns4E4RelationshipBindingsDraftFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e4-relationship-bindings.draft', extension: '.json' };
+}
+
 export function ns4OntologyEntityFile(moduleName: string, entityId: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/ontology`, shortName: entityId, extension: '.defs.ts' };
 }
@@ -76,6 +81,18 @@ export function ns4E5ApprovedFile(moduleName: string): Ns4FileInfo {
 
 export function ns4RulesFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/rules`, shortName: 'rules', extension: '.defs.ts' };
+}
+
+export function ns4E6DraftFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e6-composition.draft', extension: '.json' };
+}
+
+export function ns4E6ApprovedFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e6-composition.approved', extension: '.json' };
+}
+
+export function ns4CompositionFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/composition`, shortName: 'additional-capabilities', extension: '.defs.ts' };
 }
 
 export function ns4JourneyFile(moduleName: string, journeyId: string): Ns4FileInfo {
@@ -154,6 +171,12 @@ export async function writeNs4E4EntityDraft(moduleName: string, entityId: string
   return displayPath(fileInfo);
 }
 
+export async function writeNs4E4RelationshipBindingsDraft(moduleName: string, draft: unknown): Promise<string> {
+  const fileInfo = ns4E4RelationshipBindingsDraftFile(moduleName);
+  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
 export async function writeNs4E5Draft(moduleName: string, draft: unknown): Promise<string> {
   const fileInfo = ns4E5DraftFile(moduleName);
   await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
@@ -162,6 +185,18 @@ export async function writeNs4E5Draft(moduleName: string, draft: unknown): Promi
 
 export async function writeNs4E5Approved(moduleName: string, review: unknown): Promise<string> {
   const fileInfo = ns4E5ApprovedFile(moduleName);
+  await writeNs4Text(fileInfo, `${JSON.stringify(review, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4E6Draft(moduleName: string, draft: unknown): Promise<string> {
+  const fileInfo = ns4E6DraftFile(moduleName);
+  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4E6Approved(moduleName: string, review: unknown): Promise<string> {
+  const fileInfo = ns4E6ApprovedFile(moduleName);
   await writeNs4Text(fileInfo, `${JSON.stringify(review, null, 2)}\n`);
   return displayPath(fileInfo);
 }
@@ -187,6 +222,12 @@ export async function writeNs4OntologyIndex(moduleName: string, artifact: Ns4Ont
 export async function writeNs4Rules(moduleName: string, artifact: Ns4RulesArtifact): Promise<string> {
   const fileInfo = ns4RulesFile(moduleName);
   await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}Rules`, artifact, 'Ns4RulesArtifact');
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4Composition(moduleName: string, artifact: Ns4CompositionArtifact): Promise<string> {
+  const fileInfo = ns4CompositionFile(moduleName);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}AdditionalCapabilities`, artifact, 'Ns4CompositionArtifact');
   return displayPath(fileInfo);
 }
 

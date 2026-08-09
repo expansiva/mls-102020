@@ -50,6 +50,8 @@ Rules:
 - Use the user's communication language for every title, legend and question. Product languages are
   a separate concern and must preserve every language explicitly requested for the generated app.
 - Titles must be short, friendly and describe what the user will see happen, not internal agent names.
+- The E6 title must describe reviewing additional/horizontal modules and plugins; E6 no longer designs
+  workflows or operations.
 - Return plain titles without emoji or icon prefixes. The runtime deterministically adds `👤` once to
   each of the six E1-through-E6 human checkpoint titles in the initial roadmap.
 - A short module name is a valid request; propose conservative editable defaults.

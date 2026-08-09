@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   createNs4E4FinalizeStep,
+  createNs4E4RelationshipBindingStep,
   createNs4E4RepairStep,
   createNs4Pipeline,
   NS4_E4_MAX_PARALLEL,
@@ -25,14 +26,17 @@ import {
 import { normalizeNs4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import {
   assembleNs4E4Review,
+  applyNs4E4RelationshipBindings,
   buildNs4OntologyArtifacts,
   normalizeNs4E4EntityDraft,
   normalizeNs4E4PlanDraft,
+  normalizeNs4E4RelationshipBindings,
   normalizeNs4E4Review,
 } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import {
   validateNs4E4EntityDraft,
   validateNs4E4Plan,
+  validateNs4E4RelationshipBindings,
   validateNs4E4Review,
 } from '/_102020_/l2/agentNewSolution4/steps/e4/gate.js';
 import { resolveNs4E4HookArgs, resolveNs4E4InvocationArgs } from '/_102020_/l2/agentNewSolution4/steps/e4/hookArgs.js';
@@ -88,7 +92,16 @@ const reviewInput = {
       lifecycleStates: [], useRules: [], storage: { target: 'derived', scope: 'none', notes: 'Derived from published project data.' },
     },
   ],
-  relationships: [{ relationshipId: 'summaryDescribesProject', fromEntity: 'ClientProjectSummary', toEntity: 'Project', type: 'manyToOne', required: true, description: 'Summary belongs to its related project.' }],
+  relationships: [{
+    relationshipId: 'summaryDescribesProject', fromEntity: 'ClientProjectSummary', toEntity: 'Project',
+    type: 'manyToOne', required: true, description: 'Summary belongs to its related project.',
+    realization: {
+      kind: 'derived', ownerEntity: 'ClientProjectSummary',
+      from: { entityId: 'ClientProjectSummary', fieldIds: ['projectId'] },
+      to: { entityId: 'Project', fieldIds: ['projectId'] },
+      description: 'The published projection is derived by matching its projectId to Project.projectId.',
+    },
+  }],
   changeSummary: ['Initial proposal.'],
 };
 
@@ -121,6 +134,15 @@ test('E4 uses the proven 20-slot ontology fan-out and a dependency-bound finaliz
   assert.deepEqual(step.planning?.dependsOn, ['e4-ontology-round-2']);
   assert.equal(step.status, 'waiting_dependency');
   assert.match(String(step.prompt), /"stage":"finalize"/);
+});
+
+test('E4 schedules a dedicated relationship binding pass with bounded repair state', () => {
+  const initial = createNs4E4RelationshipBindingStep('buildFlowFsm', 2);
+  assert.equal(initial.planning?.planId, 'e4-ontology-round-2-relationship-binding-0');
+  assert.match(String(initial.prompt), /"stage":"bindRelationships"/);
+  const repair = createNs4E4RelationshipBindingStep('buildFlowFsm', 2, 1, 'unknown projectRef');
+  assert.equal(repair.planning?.planId, 'e4-ontology-round-2-relationship-binding-1');
+  assert.match(String(repair.prompt), /unknown projectRef/);
 });
 
 test('E4 overview freezes global decisions and entity detail reassembles the final review', () => {
@@ -160,6 +182,59 @@ test('E2 and E4 share canonical PascalCase business object ids', () => {
 test('E4 accepts a connected greenfield ontology covering journeys and access information', () => {
   const review = normalizeNs4E4Review(reviewInput);
   assert.deepEqual(validateNs4E4Review(review, journeys, access), { ok: true, issues: [] });
+});
+
+test('E4 plan may defer field binding but the final review may not', () => {
+  const input = structuredClone(reviewInput) as any;
+  delete input.relationships[0].realization;
+  assert.deepEqual(validateNs4E4Plan(normalizeNs4E4PlanDraft(input), journeys, access), { ok: true, issues: [] });
+  const gate = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E4_RELATIONSHIP_REALIZATION'));
+});
+
+test('E4 applies exactly one field-checked binding per frozen relationship', () => {
+  const input = structuredClone(reviewInput) as any;
+  delete input.relationships[0].realization;
+  const unbound = normalizeNs4E4Review(input);
+  const bindings = normalizeNs4E4RelationshipBindings({
+    moduleName: 'buildFlowFsm', reviewRound: 1,
+    bindings: [{
+      relationshipId: 'summaryDescribesProject', realization: {
+        kind: 'derived', ownerEntity: 'ClientProjectSummary',
+        from: { entityId: 'ClientProjectSummary', fieldIds: ['projectId'] },
+        to: { entityId: 'Project', fieldIds: ['projectId'] },
+        description: 'Derived by the shared project identity.',
+      },
+    }],
+  }, 'buildFlowFsm', 1);
+  assert.deepEqual(validateNs4E4RelationshipBindings(unbound, bindings, journeys, access), { ok: true, issues: [] });
+  assert.equal(applyNs4E4RelationshipBindings(unbound, bindings).relationships[0].realization?.to.fieldIds[0], 'projectId');
+
+  bindings.bindings[0].realization.from.fieldIds = ['inventedProjectId'];
+  const broken = validateNs4E4RelationshipBindings(unbound, bindings, journeys, access);
+  assert.ok(broken.issues.some(issue => issue.code === 'NS4_E4_RELATIONSHIP_FIELD_UNKNOWN'));
+});
+
+test('E4 accepts a required foreign-key binding owned by either semantic endpoint', () => {
+  const input = structuredClone(reviewInput) as any;
+  input.entities[1].kind = 'supporting';
+  input.entities[1].ownership = 'moduleOwned';
+  input.entities[1].fields = [
+    { fieldId: 'summaryId', title: 'Summary id', type: 'uuid', required: true, description: 'Stable summary id.', constraints: [] },
+    { fieldId: 'projectRef', title: 'Project reference', type: 'uuid', required: true, description: 'Owning project.', constraints: [] },
+  ];
+  input.entities[1].storage = {
+    target: 'moduleDatabase', scope: 'module', idField: 'summaryId', notes: 'Module-owned published snapshot.',
+  };
+  input.relationships[0].realization = {
+    kind: 'fieldReference', ownerEntity: 'ClientProjectSummary',
+    from: { entityId: 'ClientProjectSummary', fieldIds: ['projectRef'] },
+    to: { entityId: 'Project', fieldIds: ['projectId'] },
+    description: 'ClientProjectSummary.projectRef references Project.projectId.',
+  };
+  const review = normalizeNs4E4Review(input);
+  assert.deepEqual(validateNs4E4Review(review, journeys, access), { ok: true, issues: [] });
+  assert.equal(review.relationships[0].persistence.mode, 'moduleReference');
 });
 
 test('E4 freezes named lifecycle meanings as exact reusable state predicates', () => {

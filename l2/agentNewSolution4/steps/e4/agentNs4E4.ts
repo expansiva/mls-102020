@@ -16,6 +16,7 @@ import {
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
 import {
   createNs4E4FinalizeStep,
+  createNs4E4RelationshipBindingStep,
   createNs4E4RepairStep,
   createNs4E4Step,
   plainNs4StepTitle,
@@ -40,6 +41,7 @@ import {
   writeNs4E4Draft,
   writeNs4E4EntityDraft,
   writeNs4E4PlanDraft,
+  writeNs4E4RelationshipBindingsDraft,
   writeNs4Module,
   writeNs4OntologyEntity,
   writeNs4OntologyIndex,
@@ -52,25 +54,29 @@ import {
 } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import {
   assembleNs4E4Review,
+  applyNs4E4RelationshipBindings,
   buildNs4OntologyArtifacts,
   normalizeNs4E4EntityDraft,
   normalizeNs4E4PlanDraft,
+  normalizeNs4E4RelationshipBindings,
   normalizeNs4E4Review,
   Ns4E4EntityDraft,
   Ns4E4PlanDraft,
+  Ns4E4RelationshipBindingsDraft,
   Ns4E4Review,
   Ns4E4ReviewEvent,
 } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import {
   validateNs4E4EntityDraft,
   validateNs4E4Plan,
+  validateNs4E4RelationshipBindings,
   validateNs4E4Review,
 } from '/_102020_/l2/agentNewSolution4/steps/e4/gate.js';
 import { resolveNs4E4HookArgs, resolveNs4E4InvocationArgs } from '/_102020_/l2/agentNewSolution4/steps/e4/hookArgs.js';
 
 interface Ns4E4Args {
   planId: 'e4-ontology';
-  stage?: 'plan' | 'finalize';
+  stage?: 'plan' | 'finalize' | 'bindRelationships';
   moduleName?: string;
   adjustment?: string;
   reviewRound?: number;
@@ -78,11 +84,13 @@ interface Ns4E4Args {
   repairAttempt?: number;
   entityRepairRound?: number;
   planRepairAttempt?: number;
+  bindingRepairAttempt?: number;
   gateFeedback?: string;
 }
 
 const MAX_PLAN_REPAIRS = 1;
 const MAX_ENTITY_REPAIR_ROUNDS = 1;
+const MAX_RELATIONSHIP_BINDING_REPAIRS = 1;
 interface Ns4PersistedE4 {
   moduleName: string;
   solutionMode: 'new';
@@ -109,6 +117,9 @@ export async function beforeNs4E4PromptStep(
     if (entityId) return [await buildEntityPrompt(context, parentStep, hookSequential, hookArgs, parsed, entityId)];
     if (parsed.stage === 'finalize') {
       return await finalizeOntology(context, parentStep, step, hookSequential, parsed);
+    }
+    if (parsed.stage === 'bindRelationships') {
+      return [await buildRelationshipBindingPrompt(context, parentStep, hookSequential, hookArgs, parsed)];
     }
     return [await buildPlanPrompt(context, parentStep, hookSequential, hookArgs, parsed)];
   } catch (error) {
@@ -203,6 +214,34 @@ async function buildEntityPrompt(
   return promptReady(context, parentStep, hookSequential, hookArgs, prompt, humanPrompt);
 }
 
+async function buildRelationshipBindingPrompt(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  hookSequential: number,
+  hookArgs: string,
+  args: Ns4E4Args & { moduleName: string },
+): Promise<mls.msg.AgentIntentPromptReady> {
+  const plan = await readPlanDraft(args.moduleName);
+  const details = await readAllEntityDrafts(plan);
+  const review = assembleNs4E4Review(plan, details);
+  const prompt = await readNs4AgentText('steps/e4', 'promptRelationships');
+  const compactEntities = review.entities.map(entity => ({
+    entityId: entity.entityId,
+    kind: entity.kind,
+    storage: entity.storage,
+    fields: entity.fields.map(field => ({
+      fieldId: field.fieldId, type: field.type, required: field.required, description: field.description,
+    })),
+  }));
+  const humanPrompt = [
+    `## Required identity\nmoduleName=${review.moduleName}; reviewRound=${review.reviewRound}`,
+    '## Frozen entities and their exact available fields', JSON.stringify(compactEntities),
+    '## Frozen semantic relationships to bind', JSON.stringify(review.relationships.map(({ realization: _ignored, ...relationship }) => relationship)),
+    args.gateFeedback ? `## Deterministic binding gate repair required\n${args.gateFeedback}` : '',
+  ].filter(Boolean).join('\n\n');
+  return promptReady(context, parentStep, hookSequential, hookArgs, prompt, humanPrompt);
+}
+
 export async function afterNs4E4PromptStep(
   agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
@@ -218,6 +257,9 @@ export async function afterNs4E4PromptStep(
     moduleName = args.moduleName;
     const mutationParent = findMutableParentStep(context, parentStep);
     if (entityId) return await handleEntityResult(context, mutationParent, step, hookSequential, args, entityId);
+    if (args.stage === 'bindRelationships') {
+      return await handleRelationshipBindingResult(context, mutationParent, step, hookSequential, args);
+    }
     return await handlePlanResult(agent, context, mutationParent, step, hookSequential, args);
   } catch (error) {
     const message = errorMessage(error);
@@ -295,6 +337,48 @@ async function handleEntityResult(
   return [updateStatus(context, mutationParent, step, hookSequential, 'completed', `Entity ${entityId} detail saved.`, 'input_output')];
 }
 
+async function handleRelationshipBindingResult(
+  context: mls.msg.ExecutionContext,
+  mutationParent: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args: Ns4E4Args & { moduleName: string },
+): Promise<mls.msg.AgentIntent[]> {
+  const plan = await readPlanDraft(args.moduleName);
+  const details = await readAllEntityDrafts(plan);
+  const unboundReview = assembleNs4E4Review(plan, details);
+  const payload = unwrapPayload(step.interaction?.payload?.[0]);
+  if (!isRecord(payload)) throw new Error(readE4FailureMessage(payload));
+  const bindings = normalizeNs4E4RelationshipBindings(payload, plan.moduleName, plan.reviewRound);
+  await writeNs4E4RelationshipBindingsDraft(args.moduleName, bindings);
+  const [journeys, access, pipeline] = await Promise.all([
+    readNs4ApprovedJourneys(args.moduleName), readNs4ApprovedAccess(args.moduleName), requirePipeline(args.moduleName),
+  ]);
+  const gate = validateNs4E4RelationshipBindings(unboundReview, bindings, journeys, access);
+  if (!gate.ok) {
+    const message = formatGate(gate.issues);
+    const attempt = args.bindingRepairAttempt || 0;
+    if (attempt < MAX_RELATIONSHIP_BINDING_REPAIRS) {
+      return [
+        addStep(context, mutationParent, createNs4E4RelationshipBindingStep(
+          args.moduleName, plan.reviewRound, attempt + 1, message,
+        )),
+        updateStatus(context, mutationParent, step, hookSequential, 'completed', `Relationship binding gate requested repair ${attempt + 1}.`, 'input_output'),
+      ];
+    }
+    await recordNs4E4Failure(args.moduleName, message);
+    return [updateStatus(context, mutationParent, step, hookSequential, 'failed', message, 'input_output')];
+  }
+  const review = applyNs4E4RelationshipBindings(unboundReview, bindings);
+  return openOntologyReview(context, mutationParent, step, hookSequential, review, pipeline, journeys, access);
+}
+
+async function readAllEntityDrafts(plan: Ns4E4PlanDraft): Promise<Ns4E4EntityDraft[]> {
+  const details = await Promise.all(plan.entities.map(entity => readEntityDraft(plan.moduleName, entity.entityId)));
+  if (details.some(detail => !detail)) throw new Error('E4 relationship binding cannot start before every entity detail exists.');
+  return details as Ns4E4EntityDraft[];
+}
+
 async function finalizeOntology(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
@@ -329,7 +413,7 @@ async function finalizeOntology(
   }
   const review = assembleNs4E4Review(plan, details);
   const [journeys, access] = await Promise.all([readNs4ApprovedJourneys(args.moduleName), readNs4ApprovedAccess(args.moduleName)]);
-  const gate = validateNs4E4Review(review, journeys, access);
+  const gate = validateNs4E4Review(review, journeys, access, { requireRelationshipRealization: false });
   if (!gate.ok) {
     const message = formatGate(gate.issues);
     await writeNs4E4Draft(args.moduleName, review);
@@ -347,18 +431,43 @@ async function finalizeOntology(
     await recordNs4E4Failure(args.moduleName, message);
     return [updateStatus(context, mutationParent, step, hookSequential, 'failed', message)];
   }
-  const draftPath = await writeNs4E4Draft(args.moduleName, review);
-  await writeNs4Pipeline(markNs4E4WaitingHuman(await requirePipeline(args.moduleName), review.reviewRound, draftPath));
+  if (!review.relationships.length) {
+    return openOntologyReview(context, mutationParent, step, hookSequential, review, pipeline, journeys, access);
+  }
+  return [
+    addStep(context, mutationParent, createNs4E4RelationshipBindingStep(args.moduleName, review.reviewRound)),
+    updateStatus(
+      context, mutationParent, step, hookSequential, 'completed',
+      `E4 assembled ${review.entities.length} entities; binding ${review.relationships.length} relationships to exact fields.`,
+      'input_output',
+    ),
+  ];
+}
+
+async function openOntologyReview(
+  context: mls.msg.ExecutionContext,
+  mutationParent: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  review: Ns4E4Review,
+  pipeline: Ns4PipelineState,
+  journeys: Ns4E2Review,
+  access: Ns4E3Review,
+): Promise<mls.msg.AgentIntent[]> {
+  const gate = validateNs4E4Review(review, journeys, access);
+  if (!gate.ok) throw new Error(formatGate(gate.issues));
+  const draftPath = await writeNs4E4Draft(review.moduleName, review);
+  await writeNs4Pipeline(markNs4E4WaitingHuman(await requirePipeline(review.moduleName), review.reviewRound, draftPath));
   if (isFast(context)) {
-    const saved = await persistNs4E4(args.moduleName, review, 'auto', journeys, access);
+    const saved = await persistNs4E4(review.moduleName, review, 'auto', journeys, access);
     return [
       resultStep(context, mutationParent, saved, 'E4 ontology auto-approved'),
-      updateStatus(context, mutationParent, step, hookSequential, 'completed', `E4 auto-approved ${saved.entityCount} entities.`, 'input_output'),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', `E4 auto-approved ${saved.entityCount} entities and ${saved.relationshipCount} bound relationships.`, 'input_output'),
     ];
   }
   return [
     clarificationReviewStep(context, mutationParent, review, pipeline.presentation.stepTitles['e4-ontology']),
-    updateStatus(context, mutationParent, step, hookSequential, 'completed', `E4 assembled ${review.entities.length} entities; human review opened.`, 'input_output'),
+    updateStatus(context, mutationParent, step, hookSequential, 'completed', `E4 assembled ${review.entities.length} entities and bound ${review.relationships.length} relationships; human review opened.`, 'input_output'),
   ];
 }
 
@@ -611,13 +720,14 @@ function parseE4Args(value: unknown): Ns4E4Args {
   if (!isRecord(parsed) || parsed.planId !== 'e4-ontology') throw new Error('Invalid E4 step arguments.');
   return {
     planId: 'e4-ontology', solutionMode: 'new',
-    ...(parsed.stage === 'finalize' || parsed.stage === 'plan' ? { stage: parsed.stage } : {}),
+    ...(parsed.stage === 'finalize' || parsed.stage === 'plan' || parsed.stage === 'bindRelationships' ? { stage: parsed.stage } : {}),
     ...(typeof parsed.moduleName === 'string' && parsed.moduleName.trim() ? { moduleName: parsed.moduleName.trim() } : {}),
     ...(typeof parsed.adjustment === 'string' && parsed.adjustment.trim() ? { adjustment: parsed.adjustment.trim() } : {}),
     ...(typeof parsed.reviewRound === 'number' ? { reviewRound: parsed.reviewRound } : {}),
     ...(typeof parsed.repairAttempt === 'number' ? { repairAttempt: parsed.repairAttempt } : {}),
     ...(typeof parsed.entityRepairRound === 'number' ? { entityRepairRound: parsed.entityRepairRound } : {}),
     ...(typeof parsed.planRepairAttempt === 'number' ? { planRepairAttempt: parsed.planRepairAttempt } : {}),
+    ...(typeof parsed.bindingRepairAttempt === 'number' ? { bindingRepairAttempt: parsed.bindingRepairAttempt } : {}),
     ...(typeof parsed.gateFeedback === 'string' && parsed.gateFeedback.trim() ? { gateFeedback: parsed.gateFeedback.trim() } : {}),
   };
 }

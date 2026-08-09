@@ -1,5 +1,10 @@
 # E4 changelog
 
+- 2026-08-09: Build 39 / flow v19 adds a post-fan-out relationship-binding compiler pass. Every
+  semantic edge now names exact existing endpoint fields or an explicit MDM/derived realization;
+  deterministic validation rejects missing/unknown bindings and permits one focused repair before the
+  ontology clarification. Ontology schema v5 freezes the resolved graph in the permanent index.
+
 - 2026-08-08: Build 32 uses the same shared permanent journey/access readers as E3/E5. An ontology
   repair overview is reconstructed from its approved index/entity defs, while each parallel worker
   reads only its matching previous entity def instead of repeatedly loading the large E4 review draft.

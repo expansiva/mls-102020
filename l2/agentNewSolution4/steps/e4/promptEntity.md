@@ -25,6 +25,10 @@ entities or change relationships. Write human-facing text in the user's language
   lower-camel ids; never repeat rule descriptions in the ontology.
 - Include relationship reference fields needed by the supplied touching relationships and connected
   journeys. A reference is carried/selected context, not a raw id that a user must type.
+- A later deterministic pass may bind relationships only to fields emitted now. For a stored scalar
+  relationship, place the required reference on its actual owning/cardinality side; for an existing
+  collection use an explicit JSON/list-reference field. MDM edges and derived joins should use their
+  identity or genuine derivation fields and must not receive a fabricated foreign key.
 
 ## Output
 

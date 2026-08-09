@@ -2,7 +2,7 @@
 
 import { sha256Ns4 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 
-export const NS4_ONTOLOGY_SCHEMA_VERSION = '2026-08-09-ns4-ontology-v4' as const;
+export const NS4_ONTOLOGY_SCHEMA_VERSION = '2026-08-09-ns4-ontology-v5' as const;
 
 export type Ns4EntityKind = 'core' | 'event' | 'supporting' | 'mdm' | 'projection' | 'valueObject';
 export type Ns4EntityOwnership = 'moduleOwned' | 'external' | 'derived';
@@ -11,6 +11,22 @@ export type Ns4StorageTarget = 'mdm' | 'moduleDatabase' | 'derived' | 'external'
 export type Ns4StorageScope = 'organization' | 'module' | 'platform' | 'none';
 export type Ns4RelationshipPersistenceMode = 'mdmRelationship' | 'moduleReference' | 'crossStoreReference'
   | 'derivedJoin' | 'externalReference' | 'embedded';
+export type Ns4RelationshipRealizationKind = 'fieldReference' | 'fieldCollection' | 'mdmRelationship'
+  | 'derived' | 'externalReference' | 'embedded';
+
+export interface Ns4RelationshipEndpointBinding {
+  entityId: string;
+  fieldIds: string[];
+}
+
+/** Concrete implementation of one semantic edge using fields that already exist in E4 entities. */
+export interface Ns4RelationshipRealization {
+  kind: Ns4RelationshipRealizationKind;
+  ownerEntity: string;
+  from: Ns4RelationshipEndpointBinding;
+  to: Ns4RelationshipEndpointBinding;
+  description: string;
+}
 
 export interface Ns4FieldConstraint {
   constraintId: string;
@@ -68,7 +84,13 @@ export interface Ns4OntologyRelationship {
   required: boolean;
   description: string;
   persistence: { mode: Ns4RelationshipPersistenceMode };
+  /** Absent only in the compact overview; mandatory before review and permanent emission. */
+  realization?: Ns4RelationshipRealization;
 }
+
+export type Ns4ResolvedOntologyRelationship = Ns4OntologyRelationship & {
+  realization: Ns4RelationshipRealization;
+};
 
 export type Ns4OntologyEntityPlan = Omit<Ns4OntologyEntity, 'fields' | 'useRules'>;
 
@@ -94,6 +116,18 @@ export interface Ns4E4EntityDraft {
   useRules: string[];
 }
 
+export interface Ns4E4RelationshipBinding {
+  relationshipId: string;
+  realization: Ns4RelationshipRealization;
+}
+
+export interface Ns4E4RelationshipBindingsDraft {
+  planId: 'e4-relationship-bindings';
+  moduleName: string;
+  reviewRound: number;
+  bindings: Ns4E4RelationshipBinding[];
+}
+
 export interface Ns4E4Review {
   planId: 'e4-ontology-review';
   moduleName: string;
@@ -113,7 +147,7 @@ export interface Ns4E4ReviewEvent {
   review: Ns4E4Review;
 }
 
-export interface Ns4OntologyEntityArtifactV4 extends Ns4OntologyEntity {
+export interface Ns4OntologyEntityArtifactV5 extends Ns4OntologyEntity {
   schemaVersion: typeof NS4_ONTOLOGY_SCHEMA_VERSION;
   moduleName: string;
   userLanguage: string;
@@ -124,15 +158,18 @@ export interface Ns4OntologyEntityArtifactV4 extends Ns4OntologyEntity {
 }
 
 /** Compile-only compatibility for already generated v3 L4 artifacts. */
-export interface Ns4OntologyEntityArtifactV3 extends Omit<Ns4OntologyEntityArtifactV4, 'schemaVersion' | 'useRules'> {
+export interface Ns4OntologyEntityArtifactV4 extends Omit<Ns4OntologyEntityArtifactV5, 'schemaVersion'> {
+  schemaVersion: '2026-08-09-ns4-ontology-v4';
+}
+
+export interface Ns4OntologyEntityArtifactV3 extends Omit<Ns4OntologyEntityArtifactV5, 'schemaVersion' | 'useRules'> {
   schemaVersion: '2026-08-08-ns4-ontology-v3';
   invariants: Array<{ invariantId: string; description: string; source: Ns4ConstraintSource }>;
 }
 
-export type Ns4OntologyEntityArtifact = Ns4OntologyEntityArtifactV4 | Ns4OntologyEntityArtifactV3;
+export type Ns4OntologyEntityArtifact = Ns4OntologyEntityArtifactV5 | Ns4OntologyEntityArtifactV4 | Ns4OntologyEntityArtifactV3;
 
-export interface Ns4OntologyIndexArtifact {
-  schemaVersion: typeof NS4_ONTOLOGY_SCHEMA_VERSION | '2026-08-08-ns4-ontology-v3';
+interface Ns4OntologyIndexArtifactBase {
   moduleName: string;
   userLanguage: string;
   solutionMode: 'new';
@@ -145,12 +182,24 @@ export interface Ns4OntologyIndexArtifact {
     storage: Pick<Ns4OntologyEntity['storage'], 'target' | 'scope' | 'idField' | 'mdmType'>;
     definitionRef: string;
   }>;
-  relationships: Ns4OntologyRelationship[];
   ontologyHash: string;
   approvedBy: 'human' | 'auto';
   approvedAt: string;
   realization: { status: 'pending'; compiledFromOntologyHash: string };
 }
+
+export interface Ns4OntologyIndexArtifactV5 extends Ns4OntologyIndexArtifactBase {
+  schemaVersion: typeof NS4_ONTOLOGY_SCHEMA_VERSION;
+  relationships: Ns4ResolvedOntologyRelationship[];
+}
+
+/** Compile-only compatibility for already generated v3/v4 L4 artifacts. */
+export interface Ns4OntologyIndexArtifactLegacy extends Ns4OntologyIndexArtifactBase {
+  schemaVersion: '2026-08-09-ns4-ontology-v4' | '2026-08-08-ns4-ontology-v3';
+  relationships: Ns4OntologyRelationship[];
+}
+
+export type Ns4OntologyIndexArtifact = Ns4OntologyIndexArtifactV5 | Ns4OntologyIndexArtifactLegacy;
 
 export function normalizeNs4E4Review(value: unknown, fallbackModule = ''): Ns4E4Review {
   const root = record(value);
@@ -169,6 +218,7 @@ export function normalizeNs4E4Review(value: unknown, fallbackModule = ''): Ns4E4
       const relationship = record(item);
       const fromEntity = text(relationship.fromEntity) || text(relationship.sourceEntity) || text(relationship.from);
       const toEntity = text(relationship.toEntity) || text(relationship.targetEntity) || text(relationship.to);
+      const realization = normalizeRelationshipRealization(relationship.realization, fromEntity, toEntity);
       return {
         relationshipId: text(relationship.relationshipId),
         fromEntity,
@@ -177,6 +227,7 @@ export function normalizeNs4E4Review(value: unknown, fallbackModule = ''): Ns4E4
         required: relationship.required === true,
         description: text(relationship.description),
         persistence: { mode: relationshipPersistenceMode(entities, fromEntity, toEntity) },
+        ...(realization ? { realization } : {}),
       };
     }),
     changeSummary: strings(root.changeSummary),
@@ -243,16 +294,54 @@ export function assembleNs4E4Review(
   }, plan.moduleName);
 }
 
+export function normalizeNs4E4RelationshipBindings(
+  value: unknown,
+  moduleName: string,
+  reviewRound: number,
+): Ns4E4RelationshipBindingsDraft {
+  const root = record(value);
+  return {
+    planId: 'e4-relationship-bindings',
+    moduleName: text(root.moduleName) || moduleName,
+    reviewRound: positiveInteger(root.reviewRound, reviewRound),
+    bindings: array(root.bindings).map(item => {
+      const binding = record(item);
+      return {
+        relationshipId: text(binding.relationshipId),
+        realization: normalizeRelationshipRealization(binding.realization, '', '') || {
+          kind: 'derived', ownerEntity: '',
+          from: { entityId: '', fieldIds: [] }, to: { entityId: '', fieldIds: [] }, description: '',
+        },
+      };
+    }),
+  };
+}
+
+export function applyNs4E4RelationshipBindings(
+  review: Ns4E4Review,
+  draft: Ns4E4RelationshipBindingsDraft,
+): Ns4E4Review {
+  const bindings = new Map(draft.bindings.map(binding => [binding.relationshipId, binding.realization]));
+  return normalizeNs4E4Review({
+    ...review,
+    relationships: review.relationships.map(relationship => ({
+      ...relationship,
+      ...(bindings.has(relationship.relationshipId) ? { realization: bindings.get(relationship.relationshipId) } : {}),
+    })),
+  }, review.moduleName);
+}
+
 export async function buildNs4OntologyArtifacts(
   review: Ns4E4Review,
   approvedBy: 'human' | 'auto',
   approvedAt: string,
-): Promise<{ entities: Ns4OntologyEntityArtifactV4[]; index: Ns4OntologyIndexArtifact }> {
+): Promise<{ entities: Ns4OntologyEntityArtifactV5[]; index: Ns4OntologyIndexArtifactV5 }> {
+  const relationships = requireResolvedRelationships(review.relationships);
   const ontologyHash = await sha256Ns4({
     solutionMode: review.solutionMode,
     businessDomain: review.businessDomain,
     entities: review.entities,
-    relationships: review.relationships,
+    relationships,
   });
   const entities = review.entities.map(entity => ({
     schemaVersion: NS4_ONTOLOGY_SCHEMA_VERSION,
@@ -285,13 +374,22 @@ export async function buildNs4OntologyArtifacts(
         },
         definitionRef: `l4/${review.moduleName}/ontology/${entity.entityId}.defs.ts`,
       })),
-      relationships: review.relationships,
+      relationships,
       ontologyHash,
       approvedBy,
       approvedAt,
       realization: { status: 'pending', compiledFromOntologyHash: ontologyHash },
     },
   };
+}
+
+function requireResolvedRelationships(relationships: Ns4OntologyRelationship[]): Ns4ResolvedOntologyRelationship[] {
+  return relationships.map(relationship => {
+    if (!relationship.realization) {
+      throw new Error(`Relationship ${relationship.relationshipId || '<unknown>'} has no field realization.`);
+    }
+    return { ...relationship, realization: relationship.realization };
+  });
 }
 
 function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity {
@@ -423,6 +521,30 @@ function relationshipPersistenceMode(
     return 'crossStoreReference';
   }
   return 'moduleReference';
+}
+
+function normalizeRelationshipRealization(
+  value: unknown,
+  fallbackFromEntity: string,
+  fallbackToEntity: string,
+): Ns4RelationshipRealization | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const realization = record(value);
+  const from = record(realization.from);
+  const to = record(realization.to);
+  return {
+    kind: relationshipRealizationKind(realization.kind),
+    ownerEntity: text(realization.ownerEntity),
+    from: { entityId: text(from.entityId) || fallbackFromEntity, fieldIds: strings(from.fieldIds) },
+    to: { entityId: text(to.entityId) || fallbackToEntity, fieldIds: strings(to.fieldIds) },
+    description: text(realization.description),
+  };
+}
+
+function relationshipRealizationKind(value: unknown): Ns4RelationshipRealizationKind {
+  if (value === 'fieldCollection' || value === 'mdmRelationship' || value === 'derived'
+    || value === 'externalReference' || value === 'embedded') return value;
+  return 'fieldReference';
 }
 
 function record(value: unknown): Record<string, unknown> {

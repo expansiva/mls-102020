@@ -1,10 +1,10 @@
 # agentNewSolution4
 
-L4 product compiler with E1 through E5 implemented and the complete build roadmap visible from the
+L4 product compiler with E1 through E6 implemented and the complete build roadmap visible from the
 start of the task.
 
-`types.ts` is the stable public type facade for all implemented permanent E1–E5 contracts. Every
-generated `module`, journey/index, access matrix, ontology entity/index and rule/index `.defs.ts`
+`types.ts` is the stable public type facade for all implemented permanent E1–E6 contracts. Every
+generated `module`, journey/index, access matrix, ontology entity/index, rule and composition `.defs.ts`
 imports its matching type and is emitted as `as const satisfies <ArtifactType>`. Persistence writers
 also accept only the matching artifact type, so a wrong writer/type pairing fails while compiling the
 agent and a malformed emitted literal fails when L4 is typechecked by the project build. Each defs
@@ -14,8 +14,8 @@ review JSON remain runtime-gated compiler state rather than TypeScript modules.
 
 Invocation:
 
-- `@@newSolution4 petShop` — create a module or resume its next incomplete v17 step;
-- `@@newSolution4 petShop /fast` — auto-accept valid E1 through E5 proposals;
+- `@@newSolution4 petShop` — create a module or resume its next incomplete v19 step;
+- `@@newSolution4 petShop /fast` — auto-accept valid E1 through E6 proposals;
 - an existing module without an `agentNewSolution4` pipeline is rejected.
 
 For a one-token module invocation, lookup is canonicalized before the root planner. For example,
@@ -68,8 +68,10 @@ information into a connected ontology checkpoint. Internally, one compact reason
 entity identity, traceability, MDM/storage routing and relationships. A proven `parallel_dynamic`
 fan-out then generates fields, constraints and rule-id references per entity with `maxParallel: 20`; each child
 receives only its related journeys, authorities and relationships. A deterministic finalizer retries
-only missing/invalid entities once, reassembles the complete contract and runs the full gate before the
-single human widget is opened. Every entity receives an explicit persistence
+only missing/invalid entities once and reassembles the complete contract. A compact relationship-binding
+pass then maps every semantic edge to exact existing `fieldId` values, or explicitly records an
+MDM/derived edge without a foreign key, with one bounded repair. The full gate runs before the single
+human widget is opened. Every entity receives an explicit persistence
 destination: organization MDM for stable base registrations, module database for transactions, or
 derived/external/embedded for concepts without their own module table. The widget presents a colored
 persistence map before the entity details, highlights cross-store relationships, keeps safe
@@ -84,8 +86,8 @@ until legacy schema/file intake is implemented; it never silently replaces that 
 Approval writes:
 
 - `l4/<module>/ontology/<EntityId>.defs.ts` — one complete, human-readable contract per entity;
-- `l4/<module>/ontology/index.defs.ts` — relationship graph, compact persistence routing, discovery
-  references and frozen hash;
+- `l4/<module>/ontology/index.defs.ts` — relationship graph with exact endpoint fields, compact
+  persistence routing, discovery references and frozen hash;
 - updated module and pipeline status with `e5-rules` as the next step.
 
 E3, E4 and E5 share the same approved-source loader. Recovery reads the permanent journey index and
@@ -108,11 +110,24 @@ Future pages, use cases, tables and behaviors scan the complete L4 and attach on
 Changing a rule therefore changes its meaning in one place, while impact analysis is the set of L4
 artifacts that reference that id.
 
+E6 is the sixth and final human clarification. It performs one conservative review of the approved
+L4 and asks whether realization actually needs an additional horizontal business module or an
+external plugin. Platform baseline capabilities are excluded, speculative architecture is omitted,
+and an empty recommendation list is a valid positive outcome. The screen is intentionally small:
+summary, recommendations, approve, request another proposal, or cancel. Approval writes:
+
+- `l4/<module>/composition/additional-capabilities.defs.ts` — permanent composition decision;
+- `l4/<module>/pipeline/e6-composition.approved.json` — approved maintenance snapshot;
+- updated module and pipeline status with `e7-realization` as the next step.
+
+The runtime keeps the historical `e6-behaviors` plan id as a stable internal identifier. The generated
+contract uses the clearer composition terminology. Older flow versions are rejected rather than migrated.
+
 A limited E3 grant such as “client may see the published budget summary without seeing the Project
 record” must be represented by an E4 projection or traceable information entity. Relationships preserve
 selected journey context so later screens do not ask humans to type foreign-key ids.
 
-`/fast` auto-approves E1 through E5 proposals through the same durable answer/result contracts used
+`/fast` auto-approves E1 through E6 proposals through the same durable answer/result contracts used
 by the interactive flow. E2 still passes its independent coverage judge, and E5 passes its deterministic
 reference gate, in fast mode. Without
 `/fast`, neither the E1 compile nor permanent E2 journeys can proceed before the respective checkpoint
@@ -122,7 +137,7 @@ The flow contract lives in `docs/flow.json`. Canonical agent-engine guidance liv
 `mls-base/skills/collab_messages.md`, `agentsBestPractices.md` and `modelTypes.md`.
 
 Terminal failures always carry a `traceMsg` in the task. Once a module pipeline exists, the same
-failure is also stored as `status: failed`, `error` and `failedAt` in the corresponding E1–E5 state.
+failure is also stored as `status: failed`, `error` and `failedAt` in the corresponding E1–E6 state.
 Errors returned by clarification callbacks remain recoverable and visible in the open widget; they do
 not convert the review into a terminal failed step. Terminal cancellation remains unavailable until
 `collab-messages` exposes an explicit cancelled/aborted lifecycle state.

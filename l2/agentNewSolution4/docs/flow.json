@@ -1,7 +1,7 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-09-ns4-flow-v18",
-  "status": "e1-e5",
+  "schemaVersion": "2026-08-09-ns4-flow-v19",
+  "status": "e1-e6",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
     "mls-base/skills/collab_messages.md",
@@ -20,7 +20,7 @@
     "E2 linear steps cannot combine creation and maintenance when their context preconditions differ; the judge requires separate outcome journeys and repair instructions are placed after the complete draft.",
     "E2 semantic coverage converges through at most three focused patch repairs: omitted contracts remain byte-for-byte equivalent after normalization, each patch passes the complete deterministic gate, and an unchanged blocker set fails early.",
     "E1 preserves its full reviewed contract, supports repeated prompt-driven revisions and only unlocks compilation after the rich deterministic gate passes.",
-    "E2 through E5 approval callbacks persist their already-gated permanent review artifacts before adding the result anchor.",
+    "E2 through E6 approval callbacks persist their already-gated permanent review artifacts before adding the result anchor.",
     "Every implemented compile step writes a permanent L4 artifact and a stable result anchor.",
     "Every permanent TypeScript artifact imports its canonical artifact interface from agentNewSolution4/types.ts, is emitted with as const satisfies and exports its exact typeof contract; module, journey, access, ontology and rule shape drift therefore fails tsc while module-specific literal unions remain available without copied strings.",
     "Permanent L4 artifacts plus their approved module checkpoint are the resume authority; pipeline state is monotonic and is reconciled from those artifacts if a late callback lags behind.",
@@ -29,21 +29,23 @@
     "New artifacts retain userLanguage and localized stepTitles for maintenance and resume context.",
     "Terminal step failures use traceMsg in the task and persist status, error and failedAt in the pipeline whenever a module pipeline already exists.",
     "Previous flow versions are never migrated automatically.",
-    "The /fast flag uses the same deterministic gates and persistence paths; E1 auto-accepts its clarification and valid E2-E5 proposals are approved without opening their widgets.",
+    "The /fast flag uses the same deterministic gates and persistence paths; E1 auto-accepts its clarification and valid E2-E6 proposals are approved without opening their widgets.",
     "E1 records modernization strategies now; E4 currently compiles only explicit new-solution ontology contracts and fails closed for modernization instead of fabricating a greenfield or replacement database.",
     "E4 classifies every entity into an explicit persistence target: shared MDM for stable base records, module database for transactions, or derived/external/embedded storage for non-table concepts.",
-    "E4 first freezes a compact ontology overview, then details entities through the proven parallel_dynamic fan-out with maxParallel 20 and deterministically reassembles one human review.",
+    "E4 first freezes a compact ontology overview, then details entities through the proven parallel_dynamic fan-out with maxParallel 20, binds every relationship to exact existing endpoint fields or an explicit non-FK realization, and only then opens one human review.",
     "E2, E3 and E4 carry business-rule references only as stable useRules ids; descriptions exist exactly once in rules/rules.defs.ts.",
     "E5 reconstructs its inputs from approved permanent journey, access and ontology artifacts, collects useRules mechanically and creates one concise rule catalog instead of compiling executable rule objects.",
     "E3, E4 and E5 use one shared approved-artifact reader: journey and ontology indexes plus their per-item defs, and the access-matrix def. Recovery never depends on the large E2/E4 pipeline drafts; E4 entity repair reads only the matching prior entity def.",
     "E5 uses one reasoning call, one deterministic gate and at most one bounded repair. The gate requires every useRules id referenced by E2-E4 to have one description.",
+    "E6 is the sixth and final clarification: one conservative reasoning call reviews only justified horizontal modules and external plugins, accepts an empty recommendation list and excludes platform baseline capabilities.",
+    "The historical e6-behaviors runtime plan id remains a stable internal identifier; the permanent artifact uses composition terminology and previous flow versions are rejected rather than migrated.",
     "Future pages, use cases, tables and maintenance operations scan the complete L4 and attach only useRules ids; changing a rule description never requires copying text into its consumers."
   ],
   "invocation": {
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v18-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
+    "resumeRule": "A v19-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",
@@ -56,11 +58,15 @@
     "ontologyDraft": "l4/{module}/pipeline/e4-ontology.draft.json",
     "ontologyPlanDraft": "l4/{module}/pipeline/e4-ontology-plan.draft.json",
     "ontologyEntityDraft": "l4/{module}/pipeline/e4-entities/{EntityId}.draft.json",
+    "ontologyRelationshipBindingsDraft": "l4/{module}/pipeline/e4-relationship-bindings.draft.json",
     "ontologyEntity": "l4/{module}/ontology/{EntityId}.defs.ts",
     "ontologyIndex": "l4/{module}/ontology/index.defs.ts",
     "rulesDraft": "l4/{module}/pipeline/e5-rules.draft.json",
     "rulesApproved": "l4/{module}/pipeline/e5-rules.approved.json",
-    "rules": "l4/{module}/rules/rules.defs.ts"
+    "rules": "l4/{module}/rules/rules.defs.ts",
+    "compositionDraft": "l4/{module}/pipeline/e6-composition.draft.json",
+    "compositionApproved": "l4/{module}/pipeline/e6-composition.approved.json",
+    "composition": "l4/{module}/composition/additional-capabilities.defs.ts"
   },
   "orchestration": {
     "rootOutput": ["validPrompt", "userPrompt", "presentation.userLanguage", "presentation.stepTitles", "clarification"],
@@ -78,16 +84,17 @@
       "e4-ontology",
       "e4-result",
       "e5-rules",
-      "e5-result"
+      "e5-result",
+      "e6-behaviors",
+      "e6-result"
     ],
     "roadmap": [
-      "e6-behaviors",
       "e7-realization",
       "e8-workspaces",
       "e9-navigation-compiler",
       "e10-validation"
     ],
-    "roadmapExecution": "E6 and later steps remain visible waiting_dependency/manual_later nodes until their implementations are delivered."
+    "roadmapExecution": "E7 and later steps remain visible waiting_dependency/manual_later nodes until their implementations are delivered."
   },
   "steps": [
     {
@@ -199,6 +206,8 @@
         "Before a structural revision, the current draft including direct human edits is persisted and supplied to the next round.",
         "A first deterministic gate failure persists the draft and schedules one bounded LLM repair step before failing the task.",
         "Every E2 journey, now feature and E3 information authority remains traceable from the ontology.",
+        "After entity fan-out, one compact reasoning pass binds every semantic relationship to exact existing endpoint fields, or explicitly declares an MDM/derived realization without a fake foreign key.",
+        "The binding gate rejects missing relationships, invented fields, endpoint drift and persistence-strategy mismatches; one localized binding repair is allowed before failure.",
         "Relationships must preserve selected business context so later screens never require typed foreign-key ids.",
         "Approval writes one permanent defs file per entity plus a small ontology index with the frozen hash.",
         "Each human change request adds the next open E4 round before completing the current clarification.",
@@ -229,6 +238,30 @@
         "A human change request persists the edited draft and adds the next open E5 round before completing the current clarification.",
         "Approval writes one rules/rules.defs.ts catalog and an approved review snapshot for future maintenance and L1/L2 compilation.",
         "Later page, use-case, table and behavior compilers scan the complete L4 for matching rule ids and store only useRules references."
+      ]
+    },
+    {
+      "planId": "e6-behaviors",
+      "runtimePlanIdPattern": "e6-behaviors-round-{reviewRound}",
+      "type": "agent-human-checkpoint-loop",
+      "dependsOn": ["e5-result"],
+      "goal": "Conservatively review whether realization needs an additional horizontal business module or external plugin.",
+      "output": [
+        "l4/{module}/pipeline/e6-composition.draft.json",
+        "l4/{module}/pipeline/e6-composition.approved.json",
+        "l4/{module}/composition/additional-capabilities.defs.ts"
+      ],
+      "outputAnchor": "e6-result",
+      "gate": "steps/e6/gate.ts",
+      "runtimeNotes": [
+        "This is the sixth and final human clarification before realization.",
+        "One compact reasoning call consumes approved E1, journeys, ontology and rules; fields and access details are omitted from the prompt.",
+        "An empty recommendation list is valid and preferred when approved L4 has no evidence for an addition.",
+        "Authentication/RBAC, i18n, tenant isolation, files, LLM proxy, messages/tasks, monitoring and auditing are platform baseline and cannot become recommendations.",
+        "Recommendations contain only id, kind, title, purpose and include/defer decision; implementation design is deferred to E7.",
+        "One transport retry and one deterministic-gate repair are bounded; there is no fan-out or independent judge.",
+        "A human may approve immediately or request another conservative proposal through the same localized 6/6 widget.",
+        "The stable e6-behaviors runtime id is internal; only modules owned by the current flow version may resume."
       ]
     }
   ]

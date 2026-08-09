@@ -20,7 +20,7 @@ const labels = {
     targetMdm: 'MDM · base records', targetModuleDatabase: 'Module database · transactions', targetDerived: 'Derived · no own table',
     targetExternal: 'External · platform owned', targetEmbedded: 'Embedded · owned value', scope: 'Scope', mdmType: 'MDM type', idField: 'Identifier', reason: 'Reason',
     fieldRulesHint: 'Click a field name or description to edit it in place.', crossStore: 'Cross-store',
-    sourceRelationships: 'As origin', destinationRelationships: 'As destination', noRelationships: 'No relationships for this table.', editInPlace: 'Click to edit',
+    sourceRelationships: 'As origin', destinationRelationships: 'As destination', noRelationships: 'No relationships for this table.', implementation: 'Field binding', editInPlace: 'Click to edit',
     direct: 'Direct description edits', directHint: 'Titles and descriptions are safe to edit here. Structural changes use the separate request panel.',
     entityTitle: 'Entity title', entityDescription: 'Entity description', fieldTitle: 'Field title', fieldDescription: 'Field description',
     structural: 'What should change?', structuralHint: 'Use the LLM for entities, fields, types, relationships, lifecycle or constraints.',
@@ -36,7 +36,7 @@ const labels = {
     targetMdm: 'MDM · cadastros base', targetModuleDatabase: 'Banco do módulo · transações', targetDerived: 'Derivado · sem tabela própria',
     targetExternal: 'Externo · mantido pela plataforma', targetEmbedded: 'Embutido · valor do proprietário', scope: 'Escopo', mdmType: 'Tipo MDM', idField: 'Identificador', reason: 'Motivo',
     fieldRulesHint: 'Clique no nome ou na descrição de um campo para editá-lo na própria tabela.', crossStore: 'Entre armazenamentos',
-    sourceRelationships: 'Como origem', destinationRelationships: 'Como destino', noRelationships: 'Nenhum relacionamento para esta tabela.', editInPlace: 'Clique para editar',
+    sourceRelationships: 'Como origem', destinationRelationships: 'Como destino', noRelationships: 'Nenhum relacionamento para esta tabela.', implementation: 'Vínculo entre campos', editInPlace: 'Clique para editar',
     direct: 'Edições diretas de descrição', directHint: 'Títulos e descrições podem ser editados aqui. Mudanças estruturais usam o painel separado.',
     entityTitle: 'Título da entidade', entityDescription: 'Descrição da entidade', fieldTitle: 'Título do campo', fieldDescription: 'Descrição do campo',
     structural: 'O que deve mudar?', structuralHint: 'Use a LLM para entidades, campos, tipos, relacionamentos, ciclos ou restrições.',
@@ -52,7 +52,7 @@ const labels = {
     targetMdm: 'MDM · datos maestros', targetModuleDatabase: 'Base del módulo · transacciones', targetDerived: 'Derivado · sin tabla propia',
     targetExternal: 'Externo · mantenido por la plataforma', targetEmbedded: 'Embebido · valor del propietario', scope: 'Alcance', mdmType: 'Tipo MDM', idField: 'Identificador', reason: 'Motivo',
     fieldRulesHint: 'Haga clic en el nombre o la descripción de un campo para editarlo en la tabla.', crossStore: 'Entre almacenamientos',
-    sourceRelationships: 'Como origen', destinationRelationships: 'Como destino', noRelationships: 'No hay relaciones para esta tabla.', editInPlace: 'Haga clic para editar',
+    sourceRelationships: 'Como origen', destinationRelationships: 'Como destino', noRelationships: 'No hay relaciones para esta tabla.', implementation: 'Vínculo entre campos', editInPlace: 'Haga clic para editar',
     direct: 'Ediciones directas de descripción', directHint: 'Títulos y descripciones se editan aquí. Los cambios estructurales usan el panel separado.',
     entityTitle: 'Título de la entidad', entityDescription: 'Descripción de la entidad', fieldTitle: 'Título del campo', fieldDescription: 'Descripción del campo',
     structural: '¿Qué debe cambiar?', structuralHint: 'Use la LLM para entidades, campos, tipos, relaciones, ciclos o restricciones.',
@@ -264,8 +264,14 @@ export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4Clari
       const from = this.value!.entities.find(item => item.entityId === relationship.fromEntity);
       const to = this.value!.entities.find(item => item.entityId === relationship.toEntity);
       const crossStore = !!from && !!to && from.storage.target !== to.storage.target;
+      const realization = relationship.realization;
+      const fromFields = realization?.from.fieldIds.join(', ') || '∅';
+      const toFields = realization?.to.fieldIds.join(', ') || '∅';
       return html`<article><strong>${relationship.fromEntity} → ${relationship.toEntity}</strong><code>${relationship.type} · ${relationship.persistence.mode}</code>
-        ${crossStore ? html`<span class="ns4-cross-store">${text.crossStore}</span>` : ''}<p>${relationship.description}</p></article>`;
+        ${realization ? html`<p><strong>${text.implementation}:</strong> <code>${realization.kind}</code> ·
+          <code>${relationship.fromEntity}.${fromFields}</code> → <code>${relationship.toEntity}.${toFields}</code></p>` : ''}
+        ${crossStore ? html`<span class="ns4-cross-store">${text.crossStore}</span>` : ''}<p>${relationship.description}</p>
+        ${realization ? html`<p>${realization.description}</p>` : ''}</article>`;
     })}</div>` : html`<p class="ns4-no-relationships">${text.noRelationships}</p>`;
   }
 
