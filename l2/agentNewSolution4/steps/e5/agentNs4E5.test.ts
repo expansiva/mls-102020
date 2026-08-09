@@ -136,6 +136,10 @@ test('E5 derives exact coverage mechanically and assembles parallel rule details
 
 test('E5 receives lifecycle predicates as explicit reference data and catalog sources', () => {
   const predicateSources = structuredClone(sources);
+  predicateSources.ontology.entities[0].fields[1].constraints = [{
+    constraintId: 'projectNameRequired', kind: 'minLength', value: '1',
+    description: 'Project name cannot be blank.', source: 'journey',
+  }];
   predicateSources.ontology.entities[0].lifecyclePredicates = [{
     predicateId: 'unfinishedProject',
     description: 'A project is unfinished while draft or active.',
@@ -149,6 +153,16 @@ test('E5 receives lifecycle predicates as explicit reference data and catalog so
     predicateId: 'unfinishedProject',
     stateIds: ['draft', 'active'],
     description: 'A project is unfinished while draft or active.',
+  }]);
+  assert.deepEqual(index.entities[0].fieldContracts[1], {
+    fieldRef: 'Project.name', type: 'string', required: true,
+    constraints: [{
+      constraintId: 'projectNameRequired', kind: 'minLength', value: '1',
+      description: 'Project name cannot be blank.',
+    }],
+  });
+  assert.deepEqual(index.entities[0].invariants, [{
+    invariantId: 'activeProjectNamed', description: 'An active project has a name.',
   }]);
 });
 
@@ -216,9 +230,11 @@ test('E5 builds one permanent artifact per rule and a frozen discovery index', a
 });
 
 test('E5 judge contract fails closed on blocking findings', () => {
-  const verdict = normalizeNs4E5JudgeVerdict({ moduleName: 'buildFlowFsm', reviewRound: 1, complete: false, summary: 'Hardcoded example.',
-    issues: [{ issueId: 'hardcodedAge', severity: 'blocking', category: 'hardcodedExample', sourceEvidence: 'Example only', finding: '16 became policy.', repairInstruction: 'Remove fixed age.', relatedRuleIds: ['requireProjectName'] }] }, 'buildFlowFsm', 1);
-  assert.deepEqual(validateNs4E5JudgeVerdict(verdict, 'buildFlowFsm', 1), []);
+  const verdict = normalizeNs4E5JudgeVerdict({ moduleName: 'staleModule', reviewRound: 1, complete: false, summary: 'Hardcoded example.',
+    issues: [{ issueId: 'hardcodedAge', severity: 'blocking', category: 'hardcodedExample', sourceEvidence: 'Example only', finding: '16 became policy.', repairInstruction: 'Remove fixed age.', relatedRuleIds: ['requireProjectName'] }] }, 'buildFlowFsm', 2);
+  assert.equal(verdict.moduleName, 'buildFlowFsm');
+  assert.equal(verdict.reviewRound, 2);
+  assert.deepEqual(validateNs4E5JudgeVerdict(verdict, 'buildFlowFsm', 2), []);
 });
 
 test('E5 orchestration uses unique proposal/judge ids and resumes monotonically', () => {

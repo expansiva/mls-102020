@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-09 — build 35, flow contract unchanged (v17)
+
+- E5 judge identity (`moduleName`, `reviewRound`) is frozen from its scheduled step, so a stale numeric
+  value copied from the static JSON example cannot discard an otherwise valid semantic verdict.
+- The compact reference and judge context now include approved field constraints and entity invariants;
+  routing to E4 is judged against facts that actually exist instead of producing false upstream gaps.
+- A genuine upstream gap discovered by the semantic judge is persisted with the standard resumable E5
+  failure prefix, reopening the owning E3/E4 rounds instead of leaving the pipeline running after an ABEND.
+
 ## 2026-08-08 — build 32, flow contract unchanged (v17)
 
 - The first run24 repair task correctly entered E3 round 2 but failed immediately because E3 still

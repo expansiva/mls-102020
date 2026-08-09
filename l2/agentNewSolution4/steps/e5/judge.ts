@@ -20,8 +20,9 @@ const CATEGORIES = new Set<Ns4E5JudgeCategory>([
 export function normalizeNs4E5JudgeVerdict(value: unknown, moduleName: string, reviewRound: number): Ns4E5JudgeVerdict {
   const root = unwrap(value);
   return {
-    planId: 'e5-rules-judge', moduleName: text(root.moduleName) || moduleName,
-    reviewRound: positiveInteger(root.reviewRound, reviewRound), complete: root.complete === true,
+    // Identity belongs to the scheduled step, not to the model. A static JSON example or stale
+    // previous round must never invalidate an otherwise usable semantic verdict.
+    planId: 'e5-rules-judge', moduleName, reviewRound, complete: root.complete === true,
     summary: text(root.summary), issues: array(root.issues).map(item => {
       const issue = record(item);
       return {
@@ -66,4 +67,3 @@ function unwrap(value: unknown): Record<string, unknown> {
 function record(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function array(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
-function positiveInteger(value: unknown, fallback: number): number { return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback; }

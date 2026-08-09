@@ -141,6 +141,21 @@ export function buildNs4E5ReferenceIndex(sources: Ns4E5Sources): unknown {
     entities: sources.ontology.entities.map(entity => ({
       entityId: entity.entityId,
       fieldRefs: entity.fields.map(field => `${entity.entityId}.${field.fieldId}`),
+      fieldContracts: entity.fields.map(field => ({
+        fieldRef: `${entity.entityId}.${field.fieldId}`,
+        type: field.type,
+        required: field.required,
+        constraints: field.constraints.map(constraint => ({
+          constraintId: constraint.constraintId,
+          kind: constraint.kind,
+          value: constraint.value,
+          description: constraint.description,
+        })),
+      })),
+      invariants: entity.invariants.map(invariant => ({
+        invariantId: invariant.invariantId,
+        description: invariant.description,
+      })),
       lifecycleStates: entity.lifecycleStates,
       lifecyclePredicates: entity.lifecyclePredicates.map(predicate => ({
         predicateId: predicate.predicateId,

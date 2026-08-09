@@ -30,3 +30,5 @@ Return only JSON:
 ```
 
 `complete=true` permits advisory issues but no blocking issue. `complete=false` requires at least one blocking issue. Do not redesign the module and do not add requirements without source evidence.
+The `moduleName` and `reviewRound` in the JSON example are illustrative. Copy their exact values from
+the supplied Required identity; never copy a stale example or earlier review round.

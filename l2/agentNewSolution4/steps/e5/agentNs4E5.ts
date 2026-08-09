@@ -35,7 +35,7 @@ import {
 } from '/_102020_/l2/agentNewSolution4/steps/e5/catalog.js';
 import { Ns4E5Sources, validateNs4E5Plan, validateNs4E5Review, validateNs4E5RuleDraft } from '/_102020_/l2/agentNewSolution4/steps/e5/gate.js';
 import {
-  formatNs4E5JudgeFeedback, normalizeNs4E5JudgeVerdict, validateNs4E5JudgeVerdict,
+  formatNs4E5JudgeFeedback, normalizeNs4E5JudgeVerdict, Ns4E5JudgeVerdict, validateNs4E5JudgeVerdict,
 } from '/_102020_/l2/agentNewSolution4/steps/e5/judge.js';
 import { resolveNs4E5HookArgs, resolveNs4E5InvocationArgs } from '/_102020_/l2/agentNewSolution4/steps/e5/hookArgs.js';
 
@@ -169,6 +169,7 @@ async function buildJudgePrompt(
   ]);
   if (!draft) throw new Error(`E5 draft not found for semantic judge in ${args.moduleName}.`);
   const humanPrompt = [
+    `## Required identity\nmoduleName=${draft.moduleName}; reviewRound=${draft.reviewRound}`,
     '## Exact source catalog', JSON.stringify(catalog),
     '## Approved reference and semantic context', JSON.stringify({
       references: buildNs4E5ReferenceIndex(sources), semantic: buildSemanticContext(sources),
@@ -334,7 +335,14 @@ async function afterJudge(
   if (!verdict.complete) {
     const feedback = formatNs4E5JudgeFeedback(verdict);
     const upstream = verdict.issues.filter(issue => issue.severity === 'blocking' && issue.category === 'upstreamGap');
-    if (upstream.length) throw new Error(`E5 requires an upstream E4/E2 contract revision; rules were not fabricated.\n${feedback}`);
+    if (upstream.length) {
+      const message = formatJudgeUpstreamGaps(upstream);
+      await recordFailure(args.moduleName, message);
+      return [
+        traceStep(context, mutationParent, 'E5 judge stopped on upstream contract gaps', upstream),
+        updateStatus(context, mutationParent, step, hookSequential, 'failed', message, 'input_output'),
+      ];
+    }
     if ((args.repairAttempt || 0) < MAX_PLAN_REPAIRS) return [
       addStep(context, mutationParent, createNs4E5Step(args.moduleName, round, '', [], pipeline.presentation.stepTitles['e5-rules'], feedback, 1)),
       traceStep(context, mutationParent, 'E5 semantic plan repair', verdict),
@@ -461,7 +469,11 @@ function buildSemanticContext(sources: Ns4E5Sources): unknown {
     entities: sources.ontology.entities.map(entity => ({
       entityId: entity.entityId, description: entity.description, lifecycleStates: entity.lifecycleStates,
       lifecyclePredicates: entity.lifecyclePredicates,
-      fields: entity.fields.map(field => ({ fieldId: field.fieldId, type: field.type, required: field.required, description: field.description })),
+      fields: entity.fields.map(field => ({
+        fieldId: field.fieldId, type: field.type, required: field.required,
+        description: field.description, constraints: field.constraints,
+      })),
+      invariants: entity.invariants,
       storage: entity.storage,
     })),
     relationships: sources.ontology.relationships,
@@ -567,6 +579,11 @@ async function applyIntents(context: mls.msg.ExecutionContext, intents: mls.msg.
 }
 function formatGate(issues: Array<{ code: string; path: string; message: string }>): string { return issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n'); }
 function formatUpstreamGaps(plan: Ns4E5PlanDraft): string { return `${NS4_E5_UPSTREAM_FAILURE_PREFIX}\n${plan.upstreamGaps.map(gap => `${gap.gapId}: missing ${gap.missingContract} | ${gap.reason} | ${gap.sourceRefs.join(', ')}`).join('\n')}`; }
+function formatJudgeUpstreamGaps(issues: Ns4E5JudgeVerdict['issues']): string {
+  return `${NS4_E5_UPSTREAM_FAILURE_PREFIX}\n${issues.map(issue =>
+    `${issue.issueId}: missing ${issue.finding} | ${issue.repairInstruction} | ${issue.sourceEvidence}`,
+  ).join('\n')}`;
+}
 function unwrap(value: unknown): unknown { const root = parse(value); return isRecord(root) && root.type === 'flexible' ? parse(root.result) : root; }
 function parse(value: unknown): unknown { if (typeof value !== 'string') return value; const clean = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''); try { return JSON.parse(clean); } catch { return value; } }
 function isRecord(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }

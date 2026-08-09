@@ -73,7 +73,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-34 (2026-08-08) typed permanent L4 artifacts';
+export const NS4_AGENT_BUILD = 'build-35 (2026-08-09) E5 judge identity and approved-contract evidence';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
