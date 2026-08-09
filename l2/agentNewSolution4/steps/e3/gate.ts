@@ -104,6 +104,10 @@ export function validateNs4E3Review(review: Ns4E3Review, journeys?: Ns4E2Review)
     if (profile?.kind === 'external' && grant.dataScope.mode === 'organization') {
       add('NS4_E3_EXTERNAL_ORGANIZATION_SCOPE', `${path}.dataScope.mode`, 'External profiles cannot receive organization-wide scope.');
     }
+    const ruleIds = new Set<string>();
+    grant.useRules.forEach((ruleId, ruleIndex) => {
+      checkId(ruleId, `${path}.useRules[${ruleIndex}]`, 'rule reference', ruleIds, add);
+    });
   });
   profileIds.forEach(profileId => {
     if (!grantedProfiles.has(profileId)) add('NS4_E3_PROFILE_NO_GRANTS', 'grants', `Profile ${profileId} has no authority grant.`);

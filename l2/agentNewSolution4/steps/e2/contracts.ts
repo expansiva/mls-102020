@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e2/contracts.ts" enhancement="_blank"/>
 
-export const NS4_JOURNEY_SCHEMA_VERSION = '2026-08-04-ns4-journey-v1' as const;
-export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-04-ns4-journey-index-v1' as const;
+export const NS4_JOURNEY_SCHEMA_VERSION = '2026-08-09-ns4-journey-v2' as const;
+export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-09-ns4-journey-index-v2' as const;
 
 export type Ns4JourneyEntryMode = 'coldStart' | 'contextRequired' | 'contextOrLookup' | 'eventDriven';
 export type Ns4JourneyStepKind = 'locate' | 'inspect' | 'act' | 'decide' | 'handoff';
@@ -33,11 +33,6 @@ export interface Ns4JourneyStep {
   featureRefs: string[];
 }
 
-export interface Ns4JourneyRule {
-  journeyRuleId: string;
-  statement: string;
-}
-
 export interface Ns4JourneyBusiness {
   actorRef: string;
   title: string;
@@ -53,7 +48,7 @@ export interface Ns4JourneyBusiness {
     statement: string;
     evidence: string[];
   };
-  businessRules: Ns4JourneyRule[];
+  useRules: string[];
 }
 
 export interface Ns4JourneyProposal {
@@ -78,7 +73,7 @@ export interface Ns4E2Review {
   features: Ns4E2Feature[];
 }
 
-export interface Ns4JourneyArtifact extends Ns4JourneyProposal {
+export interface Ns4JourneyArtifactV2 extends Ns4JourneyProposal {
   schemaVersion: typeof NS4_JOURNEY_SCHEMA_VERSION;
   revision: number;
   businessHash: string;
@@ -94,8 +89,22 @@ export interface Ns4JourneyArtifact extends Ns4JourneyProposal {
   };
 }
 
+/** Compile-only compatibility for permanent artifacts created before rule descriptions moved to E5. */
+export interface Ns4JourneyArtifactV1 extends Omit<Ns4JourneyProposal, 'business'> {
+  schemaVersion: '2026-08-04-ns4-journey-v1';
+  revision: number;
+  business: Omit<Ns4JourneyBusiness, 'useRules'> & {
+    businessRules: Array<{ journeyRuleId: string; statement: string }>;
+  };
+  businessHash: string;
+  resolution: { status: 'pending'; contexts: Record<string, never> };
+  realization: { status: 'pending'; compiledFromBusinessHash: string; steps: never[]; transitionRefs: never[] };
+}
+
+export type Ns4JourneyArtifact = Ns4JourneyArtifactV2 | Ns4JourneyArtifactV1;
+
 export interface Ns4JourneyIndex {
-  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION;
+  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION | '2026-08-04-ns4-journey-index-v1';
   moduleName: string;
   approvedAt: string;
   approvedBy: 'human' | 'auto';
@@ -140,7 +149,7 @@ export function normalizeNs4E2Review(value: unknown, fallbackModule = ''): Ns4E2
   };
 }
 
-export async function buildNs4JourneyArtifacts(review: Ns4E2Review): Promise<Ns4JourneyArtifact[]> {
+export async function buildNs4JourneyArtifacts(review: Ns4E2Review): Promise<Ns4JourneyArtifactV2[]> {
   return Promise.all(review.journeys.map(async journey => {
     const businessHash = await sha256Ns4(journey.business);
     return {
@@ -158,7 +167,7 @@ export async function buildNs4JourneyArtifacts(review: Ns4E2Review): Promise<Ns4
 export function buildNs4JourneyIndex(
   moduleName: string,
   review: Ns4E2Review,
-  artifacts: Ns4JourneyArtifact[],
+  artifacts: Ns4JourneyArtifactV2[],
   artifactPaths: string[],
   approvedBy: 'human' | 'auto',
   approvedAt: string,
@@ -238,10 +247,7 @@ function normalizeJourney(value: unknown): Ns4JourneyProposal {
         statement: text(outcome.statement),
         evidence: strings(outcome.evidence),
       },
-      businessRules: array(business.businessRules).map(item => {
-        const rule = record(item);
-        return { journeyRuleId: text(rule.journeyRuleId), statement: text(rule.statement) };
-      }),
+      useRules: strings(business.useRules),
     },
   };
 }

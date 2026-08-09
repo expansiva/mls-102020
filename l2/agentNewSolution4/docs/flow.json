@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-08-ns4-flow-v17",
+  "schemaVersion": "2026-08-09-ns4-flow-v18",
   "status": "e1-e5",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -12,8 +12,8 @@
   "principles": [
     "The root LLM detects the communication language, translates friendly step titles and creates the visible roadmap before clarification begins.",
     "The runtime prefixes exactly the six E1-through-E6 roadmap checkpoints with the deterministic 👤 marker; dynamically appended technical and clarification nodes do not duplicate it, and persisted localized titles remain plain reusable text.",
-    "E4/E5 parallel children are dispatched by stable entity:/rule: selectors and reconstruct their base invocation when collab-messages omits planning or prompt metadata on materialized fan-out children.",
-    "Dynamic E4/E5 dispatch is symmetric: before-prompt prefers hook args, while after-prompt falls back to the selector retained in step.prompt when collab-messages omits callback args.",
+    "E4 parallel children are dispatched by stable entity: selectors and reconstruct their base invocation when collab-messages omits planning or prompt metadata on materialized fan-out children.",
+    "Dynamic E4 dispatch is symmetric: before-prompt prefers hook args, while after-prompt falls back to the selector retained in step.prompt when collab-messages omits callback args.",
     "E2 normalizes every journey businessObject to one stable PascalCase identifier; E4 consumes that exact id for its entity or projection instead of comparing a localized display label.",
     "E2 treats required as an executable contract: only required entry contexts must be available or located, optional handoffs never become unconditional step prerequisites, and E4 requires ontology coverage only for required contexts.",
     "E2 proposals must pass an independent 🔎 semantic coverage judge before human review; deterministic structural repair and semantic complete-draft repair have separate bounded budgets.",
@@ -29,20 +29,21 @@
     "New artifacts retain userLanguage and localized stepTitles for maintenance and resume context.",
     "Terminal step failures use traceMsg in the task and persist status, error and failedAt in the pipeline whenever a module pipeline already exists.",
     "Previous flow versions are never migrated automatically.",
-    "The /fast flag uses the same deterministic gates and persistence paths; E1 auto-accepts its clarification and judged-complete E2/E5 plus valid E3/E4 proposals are approved without opening their widgets.",
+    "The /fast flag uses the same deterministic gates and persistence paths; E1 auto-accepts its clarification and valid E2-E5 proposals are approved without opening their widgets.",
     "E1 records modernization strategies now; E4 currently compiles only explicit new-solution ontology contracts and fails closed for modernization instead of fabricating a greenfield or replacement database.",
     "E4 classifies every entity into an explicit persistence target: shared MDM for stable base records, module database for transactions, or derived/external/embedded storage for non-table concepts.",
     "E4 first freezes a compact ontology overview, then details entities through the proven parallel_dynamic fan-out with maxParallel 20 and deterministically reassembles one human review.",
-    "E5 reconstructs its inputs from approved permanent journey, access and ontology artifacts instead of the large pipeline review drafts; this is the same source of truth used by resume and future maintenance.",
+    "E2, E3 and E4 carry business-rule references only as stable useRules ids; descriptions exist exactly once in rules/rules.defs.ts.",
+    "E5 reconstructs its inputs from approved permanent journey, access and ontology artifacts, collects useRules mechanically and creates one concise rule catalog instead of compiling executable rule objects.",
     "E3, E4 and E5 use one shared approved-artifact reader: journey and ontology indexes plus their per-item defs, and the access-matrix def. Recovery never depends on the large E2/E4 pipeline drafts; E4 entity repair reads only the matching prior entity def.",
-    "When E5 first proves that approved rules need missing access or ontology contracts, it persists the exact gap report and the next explicit module resume reopens E3 then E4 with that feedback before retrying E5. After that bounded repair, non-security semantic uncertainty is retained as knownGaps in the permanent rule index and compilation proceeds; mechanically missing objects plus access, tenant, disclosure and regulatory gaps always remain fail-closed.",
-    "E5 extracts source catalog and coverage mechanically, freezes a compact rule plan, details rules through parallel_dynamic with maxParallel 20, retries only invalid items and gives the semantic judge compact context."
+    "E5 uses one reasoning call, one deterministic gate and at most one bounded repair. The gate requires every useRules id referenced by E2-E4 to have one description.",
+    "Future pages, use cases, tables and maintenance operations scan the complete L4 and attach only useRules ids; changing a rule description never requires copying text into its consumers."
   ],
   "invocation": {
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v17-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. An E5 upstream-contract failure resumes at a new E3 access round, then a new E4 ontology round, and retries E5 with the persisted gap report. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
+    "resumeRule": "A v18-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",
@@ -57,13 +58,9 @@
     "ontologyEntityDraft": "l4/{module}/pipeline/e4-entities/{EntityId}.draft.json",
     "ontologyEntity": "l4/{module}/ontology/{EntityId}.defs.ts",
     "ontologyIndex": "l4/{module}/ontology/index.defs.ts",
-    "rulesSourceCatalog": "l4/{module}/pipeline/e5-source-catalog.json",
-    "rulesPlanDraft": "l4/{module}/pipeline/e5-rules-plan.draft.json",
-    "ruleDetailDraft": "l4/{module}/pipeline/e5-rules/{ruleId}.draft.json",
     "rulesDraft": "l4/{module}/pipeline/e5-rules.draft.json",
     "rulesApproved": "l4/{module}/pipeline/e5-rules.approved.json",
-    "rule": "l4/{module}/rules/{ruleId}.defs.ts",
-    "ruleIndex": "l4/{module}/rules/index.defs.ts"
+    "rules": "l4/{module}/rules/rules.defs.ts"
   },
   "orchestration": {
     "rootOutput": ["validPrompt", "userPrompt", "presentation.userLanguage", "presentation.stepTitles", "clarification"],
@@ -81,7 +78,6 @@
       "e4-ontology",
       "e4-result",
       "e5-rules",
-      "e5-rules-judge",
       "e5-result"
     ],
     "roadmap": [
@@ -143,6 +139,7 @@
         "contextRequired, contextOrLookup and eventDriven declare at least one required entry context; coldStart declares no required entry context.",
         "contextOrLookup includes an explicit locate fallback for every required carried context; optional handoffs may enrich the journey but cannot be an unconditional requiresContext unless an earlier step produces them.",
         "E2 and E4 consume the same shared required-context semantics so an optional handoff cannot become an accidental ontology requirement."
+        ,"Journey rule references are stored only in business.useRules as lower-camel ids; E2 never copies rule descriptions."
       ]
     },
     {
@@ -167,6 +164,7 @@
         "The e3-result handoff carries the approved review, approval metadata and permanent artifact path for the immediately unlocked E4 hook.",
         "Late or duplicate callbacks cannot regress an approved E3 pipeline state to running, waitingHuman or failed.",
         "Terminal failures are persisted in pipeline.steps.e3.error and failedAt."
+        ,"Grant rule references are stored only in grants[].useRules; descriptions remain owned by E5."
       ]
     },
     {
@@ -185,7 +183,7 @@
       "outputAnchor": "e4-result",
       "gate": "steps/e4/gate.ts",
       "runtimeNotes": [
-        "The first reasoning call returns only the frozen cross-entity overview: entity identity, source refs, lifecycle states and predicates, MDM/storage routing and relationships; it does not generate fields or invariants.",
+        "The first reasoning call returns only the frozen cross-entity overview: entity identity, source refs, lifecycle states and predicates, MDM/storage routing and relationships; it does not generate fields or rule descriptions.",
         "Before entity fan-out, the overview gate requires every required E2 carried or produced businessObject to exist as an E4 entity or projection with the same id.",
         "One parallel_dynamic child then details each entity with filtered E2/E3 context; maxParallel is 20, matching the proven agentNewSolution ontology implementation.",
         "Parallel children complete with trace on provider or gate failure so one entity cannot fail the fan-out; the deterministic finalizer runs one targeted parallel repair round for only missing or invalid entities.",
@@ -205,44 +203,32 @@
         "Approval writes one permanent defs file per entity plus a small ontology index with the frozen hash.",
         "Each human change request adds the next open E4 round before completing the current clarification.",
         "Terminal failures persist the invalid draft when available and pipeline.steps.e4.error/failedAt."
+        ,"Entity rule references are stored only in useRules; static field constraints remain typed data validation contracts rather than catalog business rules."
       ]
     },
     {
       "planId": "e5-rules",
       "runtimePlanIdPattern": "e5-rules-round-{reviewRound}",
-      "type": "agent-judge-human-checkpoint-loop",
+      "type": "agent-human-checkpoint-loop",
       "dependsOn": ["e4-result"],
-      "goal": "Compile scattered E1-E4 statements into a durable, enforceable and traceable rule catalog.",
+      "goal": "Create one human-readable source of truth for every business-rule id referenced by L4.",
       "output": [
-        "l4/{module}/pipeline/e5-source-catalog.json",
-        "l4/{module}/pipeline/e5-rules-plan.draft.json",
-        "l4/{module}/pipeline/e5-rules/{ruleId}.draft.json",
         "l4/{module}/pipeline/e5-rules.draft.json",
         "l4/{module}/pipeline/e5-rules.approved.json",
-        "l4/{module}/rules/{ruleId}.defs.ts",
-        "l4/{module}/rules/index.defs.ts"
+        "l4/{module}/rules/rules.defs.ts"
       ],
       "outputAnchor": "e5-result",
       "gate": "steps/e5/gate.ts",
-      "judge": "steps/e5/judge.ts",
       "runtimeNotes": [
-        "prompt_ready preserves the original hook args byte-for-byte so proposal, repair and judge stages cannot lose their round identity.",
-        "The runtime mechanically extracts every journey rule, ontology invariant, ontology lifecycle predicate, access constraint and declared module constraint into an exact immutable source catalog.",
-        "Coverage is mechanically derived from the frozen rule plan; the LLM cannot omit or fabricate the compiled-or-routed bookkeeping.",
-        "The first reasoning call receives only the exact source catalog and allowed reference index, then returns grouping, classification, frozen scope and routing; full journey/ontology context is reserved for filtered rule workers and the judge.",
-        "A plan call rejected before producing a payload, including a collab-llm TPM/RPM response, is cleaned and retried once through a unique -transport-{attempt} step without consuming the semantic plan-repair budget.",
-        "One parallel_dynamic child details each planned rule with only its exact evidence and related journey/access/ontology context; maxParallel is 20.",
-        "Parallel children clean input/output and complete with trace on provider or gate failure so the deterministic finalizer can retry only missing or invalid rules once.",
-        "The finalizer reassembles the original E5 review contract and runs the complete deterministic gate before scheduling the semantic judge.",
-        "Static scalar constraints stay in E4; workflows and side-effect sequences are routed to E6; E5 owns dynamic, conditional, temporal, cross-entity, calculation, transition and access rules.",
-        "Blocking rules require backend enforcement; frontend behavior is only an early-feedback projection.",
-        "The deterministic gate rejects unknown E2/E3/E4 references, missing source coverage, invalid transition scope and unstable rejection error codes.",
-        "Required journey outputs without an E4 entity or projection are detected before fan-out; the E5 compiler fails closed instead of inventing an upstream contract.",
-        "An independent reasoning judge receives only the exact compact catalog/reference context plus the complete E5 draft and detects semantic omissions, contradictions, unenforceable language, wrong routing, upstream gaps and examples accidentally converted into hardcoded policy.",
-        "One plan-plus-parallel semantic repair and one invalid-judge retry are allowed before failing closed.",
-        "Success, bounded transport retry and terminal failure paths clean large step input/output; resumable catalog, plan and per-rule drafts remain in L4.",
+        "prompt_ready preserves the original hook args byte-for-byte so proposal and repair stages cannot lose their round identity.",
+        "The runtime mechanically collects the unique useRules ids present in approved journeys, access grants and ontology entities.",
+        "One reasoning call receives those ids and compact approved L4 context, then returns only id and one precise human-readable description per rule.",
+        "The deterministic gate rejects duplicate or invalid ids and any referenced id without a description; unrelated catalog rules are allowed for future consumers.",
+        "One transport retry and one deterministic-gate repair are bounded; E5 has no per-rule fan-out, executable policy schema or independent judge.",
+        "Static scalar field constraints remain in E4 and are not duplicated as business rules.",
         "A human change request persists the edited draft and adds the next open E5 round before completing the current clarification.",
-        "Approval writes one defs artifact per rule, a compact index and an approved review snapshot for future maintenance and L1/L2 compilation."
+        "Approval writes one rules/rules.defs.ts catalog and an approved review snapshot for future maintenance and L1/L2 compilation.",
+        "Later page, use-case, table and behavior compilers scan the complete L4 for matching rule ids and store only useRules references."
       ]
     }
   ]

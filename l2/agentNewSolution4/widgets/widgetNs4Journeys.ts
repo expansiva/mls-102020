@@ -299,7 +299,7 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
     return html`
       <section class="ns4-rules">
         <p>${labels.rulesHelp}</p>
-        <ol>${journey.business.businessRules.map(rule => html`<li><code>${rule.journeyRuleId}</code><span>${rule.statement}</span></li>`)}</ol>
+        <ol>${journey.business.useRules.map(ruleId => html`<li><code>${ruleId}</code></li>`)}</ol>
         <div class="ns4-outcome"><h4>${labels.outcome}</h4><p>${journey.business.outcome.statement}</p><ul>${journey.business.outcome.evidence.map(item => html`<li>${item}</li>`)}</ul></div>
       </section>
     `;

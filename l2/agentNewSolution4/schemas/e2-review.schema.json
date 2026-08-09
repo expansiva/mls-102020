@@ -1,5 +1,5 @@
 {
-  "$id": "https://collab.codes/schemas/agentNewSolution4/e2-review/2026-08-04-v1",
+  "$id": "https://collab.codes/schemas/agentNewSolution4/e2-review/2026-08-09-v2",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "required": ["planId", "moduleName", "userLanguage", "title", "reviewRound", "journeys", "features"],

@@ -2,7 +2,7 @@
 
 import { sha256Ns4 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 
-export const NS4_ONTOLOGY_SCHEMA_VERSION = '2026-08-08-ns4-ontology-v3' as const;
+export const NS4_ONTOLOGY_SCHEMA_VERSION = '2026-08-09-ns4-ontology-v4' as const;
 
 export type Ns4EntityKind = 'core' | 'event' | 'supporting' | 'mdm' | 'projection' | 'valueObject';
 export type Ns4EntityOwnership = 'moduleOwned' | 'external' | 'derived';
@@ -29,12 +29,6 @@ export interface Ns4OntologyField {
   constraints: Ns4FieldConstraint[];
 }
 
-export interface Ns4EntityInvariant {
-  invariantId: string;
-  description: string;
-  source: Ns4ConstraintSource;
-}
-
 export interface Ns4LifecyclePredicate {
   predicateId: string;
   description: string;
@@ -56,7 +50,7 @@ export interface Ns4OntologyEntity {
   fields: Ns4OntologyField[];
   lifecycleStates: string[];
   lifecyclePredicates: Ns4LifecyclePredicate[];
-  invariants: Ns4EntityInvariant[];
+  useRules: string[];
   storage: {
     target: Ns4StorageTarget;
     scope: Ns4StorageScope;
@@ -76,7 +70,7 @@ export interface Ns4OntologyRelationship {
   persistence: { mode: Ns4RelationshipPersistenceMode };
 }
 
-export type Ns4OntologyEntityPlan = Omit<Ns4OntologyEntity, 'fields' | 'invariants'>;
+export type Ns4OntologyEntityPlan = Omit<Ns4OntologyEntity, 'fields' | 'useRules'>;
 
 export interface Ns4E4PlanDraft {
   planId: 'e4-ontology-plan';
@@ -97,7 +91,7 @@ export interface Ns4E4EntityDraft {
   reviewRound: number;
   entityId: string;
   fields: Ns4OntologyField[];
-  invariants: Ns4EntityInvariant[];
+  useRules: string[];
 }
 
 export interface Ns4E4Review {
@@ -119,7 +113,7 @@ export interface Ns4E4ReviewEvent {
   review: Ns4E4Review;
 }
 
-export interface Ns4OntologyEntityArtifact extends Ns4OntologyEntity {
+export interface Ns4OntologyEntityArtifactV4 extends Ns4OntologyEntity {
   schemaVersion: typeof NS4_ONTOLOGY_SCHEMA_VERSION;
   moduleName: string;
   userLanguage: string;
@@ -129,8 +123,16 @@ export interface Ns4OntologyEntityArtifact extends Ns4OntologyEntity {
   approvedAt: string;
 }
 
+/** Compile-only compatibility for already generated v3 L4 artifacts. */
+export interface Ns4OntologyEntityArtifactV3 extends Omit<Ns4OntologyEntityArtifactV4, 'schemaVersion' | 'useRules'> {
+  schemaVersion: '2026-08-08-ns4-ontology-v3';
+  invariants: Array<{ invariantId: string; description: string; source: Ns4ConstraintSource }>;
+}
+
+export type Ns4OntologyEntityArtifact = Ns4OntologyEntityArtifactV4 | Ns4OntologyEntityArtifactV3;
+
 export interface Ns4OntologyIndexArtifact {
-  schemaVersion: typeof NS4_ONTOLOGY_SCHEMA_VERSION;
+  schemaVersion: typeof NS4_ONTOLOGY_SCHEMA_VERSION | '2026-08-08-ns4-ontology-v3';
   moduleName: string;
   userLanguage: string;
   solutionMode: 'new';
@@ -187,7 +189,7 @@ export function normalizeNs4E4PlanDraft(value: unknown, fallbackModule = ''): Ns
   const full = normalizeNs4E4Review({
     ...root,
     moduleName,
-    entities: array(root.entities).map(item => ({ ...record(item), fields: [], invariants: [] })),
+    entities: array(root.entities).map(item => ({ ...record(item), fields: [], useRules: [] })),
   }, moduleName);
   return {
     planId: 'e4-ontology-plan',
@@ -197,7 +199,7 @@ export function normalizeNs4E4PlanDraft(value: unknown, fallbackModule = ''): Ns
     reviewRound: full.reviewRound,
     solutionMode: 'new',
     businessDomain: full.businessDomain,
-    entities: full.entities.map(({ fields, invariants, ...entity }) => entity),
+    entities: full.entities.map(({ fields, useRules, ...entity }) => entity),
     relationships: full.relationships,
     changeSummary: full.changeSummary,
   };
@@ -213,7 +215,7 @@ export function normalizeNs4E4EntityDraft(
   const normalized = normalizeEntity({
     entityId,
     fields: root.fields,
-    invariants: root.invariants,
+    useRules: root.useRules,
   }, moduleName);
   return {
     planId: 'e4-ontology-entity',
@@ -221,7 +223,7 @@ export function normalizeNs4E4EntityDraft(
     reviewRound,
     entityId,
     fields: normalized.fields,
-    invariants: normalized.invariants,
+    useRules: normalized.useRules,
   };
 }
 
@@ -236,7 +238,7 @@ export function assembleNs4E4Review(
     entities: plan.entities.map(entity => ({
       ...entity,
       fields: byEntity.get(entity.entityId)?.fields || [],
-      invariants: byEntity.get(entity.entityId)?.invariants || [],
+      useRules: byEntity.get(entity.entityId)?.useRules || [],
     })),
   }, plan.moduleName);
 }
@@ -245,7 +247,7 @@ export async function buildNs4OntologyArtifacts(
   review: Ns4E4Review,
   approvedBy: 'human' | 'auto',
   approvedAt: string,
-): Promise<{ entities: Ns4OntologyEntityArtifact[]; index: Ns4OntologyIndexArtifact }> {
+): Promise<{ entities: Ns4OntologyEntityArtifactV4[]; index: Ns4OntologyIndexArtifact }> {
   const ontologyHash = await sha256Ns4({
     solutionMode: review.solutionMode,
     businessDomain: review.businessDomain,
@@ -345,14 +347,7 @@ function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity 
         source: constraintSource(predicate.source),
       };
     }),
-    invariants: array(entity.invariants).map(item => {
-      const invariant = record(item);
-      return {
-        invariantId: text(invariant.invariantId),
-        description: text(invariant.description),
-        source: constraintSource(invariant.source),
-      };
-    }),
+    useRules: strings(entity.useRules),
     storage: {
       target,
       scope: storageScope(storage.scope, target),

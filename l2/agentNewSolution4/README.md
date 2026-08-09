@@ -66,7 +66,7 @@ and returns to the same widget. Approval writes:
 E4 currently treats the module explicitly as a new solution. It combines approved journeys and access
 information into a connected ontology checkpoint. Internally, one compact reasoning pass first freezes
 entity identity, traceability, MDM/storage routing and relationships. A proven `parallel_dynamic`
-fan-out then generates fields, constraints and invariants per entity with `maxParallel: 20`; each child
+fan-out then generates fields, constraints and rule-id references per entity with `maxParallel: 20`; each child
 receives only its related journeys, authorities and relationships. A deterministic finalizer retries
 only missing/invalid entities once, reassembles the complete contract and runs the full gate before the
 single human widget is opened. Every entity receives an explicit persistence
@@ -92,36 +92,29 @@ E3, E4 and E5 share the same approved-source loader. Recovery reads the permanen
 journey defs, access-matrix def, and ontology index/entity defs; the large pipeline drafts are review
 work products, not resume dependencies. E4 repair workers load only their own previous entity def.
 
-E5 first reconstructs its input from the approved permanent journey index/artifacts, access matrix
-and ontology index/entity artifacts, validating their frozen hashes instead of depending on the large
-pipeline review drafts during resume. It then builds the exact source catalog and coverage bookkeeping
-mechanically. A compact reasoning
-pass groups those sources into frozen rule plans. Ontology lifecycle predicates are first-class catalog
-sources and reference-index entries, so backend and frontend rules consume the same exact state
-semantics. A proven `parallel_dynamic` fan-out then details one
-rule per child with `maxParallel: 20` and filtered journey, access and ontology context. The deterministic
-finalizer retries only missing or invalid rules once and reassembles the unchanged human review contract.
-An independent judge then reads the compact catalog/context and complete rule draft to detect semantic
-omissions, contradictions, wrong destinations, unenforceable wording, upstream contract gaps and
-illustrative values accidentally turned into fixed policy. One bounded plan-plus-parallel semantic
-repair is allowed. If the plan proves that an enforceable rule needs a missing access or ontology
-contract, E5 fails closed and persists the exact report. The next explicit module resume runs a new
-E3 access round and E4 ontology round with that report and the previous approved reviews, then retries
-E5 only after both revised artifacts pass their owning gates. Approval writes:
+E5 reconstructs its input from the approved permanent journey, access and ontology artifacts. Those
+artifacts reference business rules only through stable lower-camel ids in `useRules`; they never copy
+the description. E5 mechanically collects those ids and makes one reasoning call with compact L4
+context. Its output is deliberately small: one `id` and one precise, human-readable `description`
+for each business rule. A deterministic gate guarantees that every id referenced by E2–E4 exists,
+rejects invalid or duplicate ids and allows one bounded repair. There is no rule fan-out, executable
+policy object or independent semantic judge. Approval writes:
 
-- `l4/<module>/rules/<ruleId>.defs.ts` — one permanent contract per rule;
-- `l4/<module>/rules/index.defs.ts` — compact discovery, routing, coverage and frozen hash;
-- `l4/<module>/pipeline/e5-source-catalog.json` — mechanically extracted source inventory;
-- `l4/<module>/pipeline/e5-rules-plan.draft.json` and `pipeline/e5-rules/<ruleId>.draft.json` — resumable compiler intermediates;
+- `l4/<module>/rules/rules.defs.ts` — the single permanent source of truth for all module rules;
 - `l4/<module>/pipeline/e5-rules.approved.json` — the approved maintenance snapshot;
 - updated module and pipeline status with `e6-behaviors` as the next step.
+
+Future pages, use cases, tables and behaviors scan the complete L4 and attach only `useRules` ids.
+Changing a rule therefore changes its meaning in one place, while impact analysis is the set of L4
+artifacts that reference that id.
 
 A limited E3 grant such as “client may see the published budget summary without seeing the Project
 record” must be represented by an E4 projection or traceable information entity. Relationships preserve
 selected journey context so later screens do not ask humans to type foreign-key ids.
 
 `/fast` auto-approves E1 through E5 proposals through the same durable answer/result contracts used
-by the interactive flow. E2 and E5 still must pass their independent judges in fast mode. Without
+by the interactive flow. E2 still passes its independent coverage judge, and E5 passes its deterministic
+reference gate, in fast mode. Without
 `/fast`, neither the E1 compile nor permanent E2 journeys can proceed before the respective checkpoint
 is approved.
 

@@ -1,5 +1,5 @@
 {
-  "$id": "https://collab.codes/schemas/agentNewSolution4/e4-review/2026-08-08-v3",
+  "$id": "https://collab.codes/schemas/agentNewSolution4/e4-review/2026-08-09-v4",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
@@ -49,15 +49,6 @@
         "constraints": { "type": "array", "items": { "$ref": "#/$defs/constraint" } }
       }
     },
-    "invariant": {
-      "type": "object", "additionalProperties": false,
-      "required": ["invariantId", "description", "source"],
-      "properties": {
-        "invariantId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
-        "description": { "type": "string", "minLength": 1 },
-        "source": { "type": "string", "enum": ["database", "journey", "user", "inferred", "legacyCode"] }
-      }
-    },
     "lifecyclePredicate": {
       "type": "object", "additionalProperties": false,
       "required": ["predicateId", "description", "stateIds", "source"],
@@ -70,7 +61,7 @@
     },
     "entity": {
       "type": "object", "additionalProperties": false,
-      "required": ["entityId", "title", "description", "kind", "ownership", "sourceRefs", "fields", "lifecycleStates", "lifecyclePredicates", "invariants", "storage"],
+      "required": ["entityId", "title", "description", "kind", "ownership", "sourceRefs", "fields", "lifecycleStates", "lifecyclePredicates", "useRules", "storage"],
       "properties": {
         "entityId": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
         "title": { "type": "string", "minLength": 1 },
@@ -81,7 +72,7 @@
         "fields": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/field" } },
         "lifecycleStates": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
         "lifecyclePredicates": { "type": "array", "items": { "$ref": "#/$defs/lifecyclePredicate" } },
-        "invariants": { "type": "array", "items": { "$ref": "#/$defs/invariant" } },
+        "useRules": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" } },
         "storage": {
           "type": "object", "additionalProperties": false,
           "required": ["target", "scope", "notes"],

@@ -14,7 +14,7 @@ const labels = {
   en: {
     subtitle: 'Review the business data, constraints and relationships that frontend and backend will share.', step: 'Step', of: 'of',
     round: 'Review', mode: 'New solution', changes: 'Changes in this round', entities: 'Entities',
-    fields: 'Fields', relationships: 'Relationships', lifecycle: 'Lifecycle', invariants: 'Local invariants', overview: 'Overview', descriptions: 'Descriptions',
+    fields: 'Fields', relationships: 'Relationships', lifecycle: 'Lifecycle', ruleRefs: 'Rule references', overview: 'Overview', descriptions: 'Descriptions',
     source: 'Traceability', storage: 'Persistence destination', required: 'Required', optional: 'Optional', constraints: 'Field rules',
     persistenceMap: 'Persistence map', persistenceHint: 'Confirm where every entity lives before approval. Select an entity to inspect its reason and fields.',
     targetMdm: 'MDM · base records', targetModuleDatabase: 'Module database · transactions', targetDerived: 'Derived · no own table',
@@ -30,7 +30,7 @@ const labels = {
   pt: {
     subtitle: 'Revise os dados de negócio, restrições e relacionamentos compartilhados pelo frontend e backend.', step: 'Etapa', of: 'de',
     round: 'Revisão', mode: 'Solução nova', changes: 'Alterações desta revisão', entities: 'Entidades',
-    fields: 'Campos', relationships: 'Relacionamentos', lifecycle: 'Ciclo de vida', invariants: 'Invariantes locais', overview: 'Visão geral', descriptions: 'Descrições',
+    fields: 'Campos', relationships: 'Relacionamentos', lifecycle: 'Ciclo de vida', ruleRefs: 'Referências de regras', overview: 'Visão geral', descriptions: 'Descrições',
     source: 'Rastreabilidade', storage: 'Destino da persistência', required: 'Obrigatório', optional: 'Opcional', constraints: 'Regras do campo',
     persistenceMap: 'Mapa de persistência', persistenceHint: 'Confirme onde cada entidade será armazenada antes de aprovar. Selecione uma entidade para ver o motivo e os campos.',
     targetMdm: 'MDM · cadastros base', targetModuleDatabase: 'Banco do módulo · transações', targetDerived: 'Derivado · sem tabela própria',
@@ -46,7 +46,7 @@ const labels = {
   es: {
     subtitle: 'Revise los datos de negocio, restricciones y relaciones compartidos por frontend y backend.', step: 'Paso', of: 'de',
     round: 'Revisión', mode: 'Solución nueva', changes: 'Cambios de esta revisión', entities: 'Entidades',
-    fields: 'Campos', relationships: 'Relaciones', lifecycle: 'Ciclo de vida', invariants: 'Invariantes locales', overview: 'Resumen', descriptions: 'Descripciones',
+    fields: 'Campos', relationships: 'Relaciones', lifecycle: 'Ciclo de vida', ruleRefs: 'Referencias de reglas', overview: 'Resumen', descriptions: 'Descripciones',
     source: 'Trazabilidad', storage: 'Destino de persistencia', required: 'Obligatorio', optional: 'Opcional', constraints: 'Reglas del campo',
     persistenceMap: 'Mapa de persistencia', persistenceHint: 'Confirme dónde vive cada entidad antes de aprobar. Seleccione una entidad para revisar su motivo y campos.',
     targetMdm: 'MDM · datos maestros', targetModuleDatabase: 'Base del módulo · transacciones', targetDerived: 'Derivado · sin tabla propia',
@@ -248,7 +248,7 @@ export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4Clari
       ${entity.storage.mdmType ? html`<div><dt>${text.mdmType}</dt><dd><code>${entity.storage.mdmType}</code></dd></div>` : ''}
       <div><dt>${text.reason}</dt><dd>${entity.storage.notes || '—'}</dd></div></dl>
       <div class="ns4-entity-details"><article><h3>${text.lifecycle}</h3><p>${entity.lifecycleStates.join(' → ') || '—'}</p></article>
-        <article><h3>${text.invariants}</h3><ul>${entity.invariants.map(item => html`<li>${item.description} <em>${item.source}</em></li>`)}</ul></article></div>
+        <article><h3>${text.ruleRefs}</h3><ul>${entity.useRules.map(ruleId => html`<li><code>${ruleId}</code></li>`)}</ul></article></div>
     </section>`;
   }
 

@@ -164,16 +164,12 @@ export function validateNs4E4Review(
         add('NS4_E4_GREENFIELD_LEGACY_PREDICATE', `${predicatePath}.source`, 'A new solution cannot claim a discovered legacy lifecycle predicate.');
       }
     });
-    const invariantIds = new Set<string>();
-    entity.invariants.forEach((invariant, invariantIndex) => {
-      const invariantPath = `${path}.invariants[${invariantIndex}]`;
-      if (!MEMBER_ID.test(invariant.invariantId)) add('NS4_E4_INVARIANT_ID', `${invariantPath}.invariantId`, 'invariantId must be lower-camel.');
-      if (invariantIds.has(invariant.invariantId)) add('NS4_E4_INVARIANT_DUPLICATE', `${invariantPath}.invariantId`, `Duplicate invariant ${invariant.invariantId}.`);
-      if (invariant.invariantId) invariantIds.add(invariant.invariantId);
-      if (!invariant.description) add('NS4_E4_INVARIANT_DESCRIPTION', `${invariantPath}.description`, 'Invariant description is required.');
-      if (invariant.source === 'database' || invariant.source === 'legacyCode') {
-        add('NS4_E4_GREENFIELD_LEGACY_INVARIANT', `${invariantPath}.source`, 'A new solution cannot claim a discovered legacy invariant.');
-      }
+    const ruleIds = new Set<string>();
+    entity.useRules.forEach((ruleId, ruleIndex) => {
+      const rulePath = `${path}.useRules[${ruleIndex}]`;
+      if (!MEMBER_ID.test(ruleId)) add('NS4_E4_RULE_ID', rulePath, 'Rule reference must be lower-camel.');
+      if (ruleIds.has(ruleId)) add('NS4_E4_RULE_DUPLICATE', rulePath, `Duplicate rule reference ${ruleId}.`);
+      if (ruleId) ruleIds.add(ruleId);
     });
   });
 
@@ -236,7 +232,7 @@ export function validateNs4E4Plan(
     entities: plan.entities.map(entity => ({
       ...entity,
       fields: placeholderFields(entity.entityId, entity.storage.idField, entity.lifecycleStates.length > 0),
-      invariants: [],
+      useRules: [],
     })),
   };
   return validateNs4E4Review(review, journeys, access);

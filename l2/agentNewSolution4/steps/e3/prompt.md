@@ -49,11 +49,6 @@ the request without dropping unaffected profiles, authorities, grants, scopes or
 Populate `changeSummary` with the material differences in this round. Never weaken existing access
 limits unless the human explicitly requested it.
 
-An adjustment may be a downstream E5 contract-gap report rather than ordinary human prose. Resolve
-every access-related gap by adding the minimum explicit authority, grant, scope or disclosure contract
-needed for backend enforcement. Do not alter ontology/data contracts here and do not invent broader
-privileges than the cited journey requires. Preserve all unrelated approved access decisions.
-
 ## Output
 
 Return exactly one JSON object without Markdown:
@@ -100,7 +95,7 @@ Return exactly one JSON object without Markdown:
           "allowedInformation": ["Nome público do projeto", "Orçamento aprovado para divulgação", "Resumo de faturamento publicado"],
           "deniedInformation": ["Margem interna", "Anotações internas", "Registro completo do projeto"]
         },
-        "constraints": ["A associação entre cliente e projeto deve ser validada no backend."]
+        "useRules": ["clientProjectAssociationRequired"]
       }
     ],
     "changeSummary": ["Proposta inicial da matriz de acesso."]

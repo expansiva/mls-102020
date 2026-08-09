@@ -72,7 +72,8 @@ Write in the user's language. Do not design pages, routes, database keys, APIs o
 - Prerequisite journeys must appear earlier in the array.
 - Each step has one clear intent and observable result.
 - Every journey has observable outcome evidence.
-- Rules are stable statements with `journeyRuleId`; later E4 will route them to typed rule contracts.
+- `useRules` contains only stable lower-camel rule ids. Never repeat a rule description inside a journey;
+  E5 is the single owner of every rule description.
 - Features use priority `now`, `next` or `later`; every `now` feature maps to one or more refs formatted
   `<journeyId>.<stepId>`.
 - Each step's `featureRefs` must reference the feature registry.
@@ -176,9 +177,7 @@ Return exactly one JSON object (no markdown):
             "statement": "A ordem decidida produz efeitos controlados no projeto.",
             "evidence": ["A ordem mantém vínculo com o projeto.", "A decisão e o responsável são observáveis."]
           },
-          "businessRules": [
-            {"journeyRuleId": "jrProjectMustBeActive", "statement": "A ordem só pode ser criada para projeto ativo."}
-          ]
+          "useRules": ["projectMustBeActive"]
         }
       }
     ],

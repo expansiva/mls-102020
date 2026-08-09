@@ -1,13 +1,11 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/helpers/ns4Core.ts" enhancement="_blank"/>
 
 export const NS4_FLOW_ID = 'agentNewSolution4' as const;
-export const NS4_FLOW_VERSION = '2026-08-08-ns4-flow-v17' as const;
+export const NS4_FLOW_VERSION = '2026-08-09-ns4-flow-v18' as const;
 export const NS4_E4_MAX_PARALLEL = 20 as const;
-export const NS4_E5_MAX_PARALLEL = 20 as const;
-export const NS4_E5_UPSTREAM_FAILURE_PREFIX = 'E5 stopped before rule generation because approved upstream contracts are incomplete.' as const;
-export const NS4_E5_HARD_UPSTREAM_FAILURE_PREFIX = `${NS4_E5_UPSTREAM_FAILURE_PREFIX} Blocking structural, access, security, disclosure, or regulatory gap.` as const;
 export const NS4_MODULE_SCHEMA_VERSION = '2026-08-06-ns4-module-v4' as const;
 export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-06-ns4-pipeline-v5' as const;
+export type Ns4PermanentFlowVersion = typeof NS4_FLOW_VERSION | '2026-08-08-ns4-flow-v17';
 
 export const NS4_PLAN_IDS = [
   'e1-clarification',
@@ -138,7 +136,8 @@ export interface Ns4ModuleArtifact {
   };
   specStatus: {
     flowId: typeof NS4_FLOW_ID;
-    flowVersion: typeof NS4_FLOW_VERSION;
+    /** v17 remains readable by tsc, but isNs4Pipeline deliberately rejects it for runtime resume. */
+    flowVersion: Ns4PermanentFlowVersion;
     state: 'inProgress';
     artifactCompleteness: 'partial';
     completedSteps: Array<{
@@ -436,39 +435,6 @@ export function createNs4E5Step(
   );
 }
 
-export function createNs4E5FinalizeStep(
-  moduleName: string,
-  reviewRound: number,
-  dependsOn: string[],
-  ruleRepairRound = 0,
-  planRepairAttempt = 0,
-): mls.msg.AIAgentStep {
-  return createNs4AgentStep(
-    `e5-rules-round-${reviewRound}-finalize-${ruleRepairRound}-${planRepairAttempt}`,
-    `Finalize business rules · ${reviewRound}`,
-    dependsOn,
-    dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
-    { planId: 'e5-rules', stage: 'finalize', moduleName, reviewRound, ruleRepairRound, planRepairAttempt },
-  );
-}
-
-export function createNs4E5JudgeStep(
-  moduleName: string,
-  reviewRound: number,
-  repairAttempt: number,
-  judgeAttempt: number,
-  stepTitle = NS4_DEFAULT_TITLES['e5-rules'],
-): mls.msg.AIAgentStep {
-  const cleanTitle = stepTitle.trim().replace(/^[👤🔎]\s*/u, '');
-  return createNs4AgentStep(
-    `e5-rules-round-${reviewRound}${repairAttempt ? `-repair-${repairAttempt}` : ''}-judge-${judgeAttempt}`,
-    `${NS4_AUTOMATED_JUDGE_ICON} ${cleanTitle}`,
-    [],
-    'waiting_human_input',
-    { planId: 'e5-rules', stage: 'judge', moduleName, reviewRound, repairAttempt, judgeAttempt },
-  );
-}
-
 export const NS4_DEFAULT_TITLES: Record<Ns4PlanId, string> = {
   'e1-clarification': 'Clarify the module contract',
   'e1-compile': 'Compile the initial module contract',
@@ -494,24 +460,23 @@ export function plainNs4StepTitle(title: string): string {
   return title.trim().replace(/^[👤🔎]\s*/u, '');
 }
 
-/** Dynamic fan-out children do not retain planning.planId; hook args are their stable dispatcher key. */
-export function resolveNs4DynamicWorker(value: unknown): 'e4' | 'e5' | '' {
+/** Dynamic E4 children do not retain planning.planId; hook args are their stable dispatcher key. */
+export function resolveNs4DynamicWorker(value: unknown): 'e4' | '' {
   if (typeof value !== 'string') return '';
   const selector = value.trim();
   if (/^entity:[A-Z][A-Za-z0-9]*$/.test(selector)) return 'e4';
-  if (/^rule:[a-z][A-Za-z0-9]*$/.test(selector)) return 'e5';
   return '';
 }
 
 export interface Ns4DynamicWorkerRequest {
-  worker: 'e4' | 'e5' | '';
+  worker: 'e4' | '';
   args: string;
 }
 
 /**
  * collab-messages supplies the selector as hook args before a parallel prompt, but may omit those
  * args in the after-prompt callback while retaining the selector in step.prompt. Both callbacks must
- * resolve through the same ordered fallback or a valid entity/rule payload reaches the root planner.
+ * resolve through the same ordered fallback or a valid entity payload reaches the root planner.
  */
 export function resolveNs4DynamicWorkerRequest(args: unknown, stepPrompt: unknown): Ns4DynamicWorkerRequest {
   for (const candidate of [args, stepPrompt]) {
@@ -568,21 +533,6 @@ export function buildNs4PlannedSteps(plan: Ns4RootPlan): mls.msg.AIAgentStep[] {
     createNs4RoadmapStep('e8-workspaces', title('e8-workspaces'), ['e7-result']),
     createNs4RoadmapStep('e9-navigation-compiler', title('e9-navigation-compiler'), ['e8-result']),
     createNs4RoadmapStep('e10-validation', title('e10-validation'), ['e9-result']),
-  ];
-}
-
-export function buildNs4E5UpstreamRepairSteps(
-  plan: Ns4RootPlan,
-  moduleName: string,
-  reviewRound: number,
-  feedback: string,
-): mls.msg.AIAgentStep[] {
-  const all = buildNs4PlannedSteps(plan);
-  return [
-    createNs4E3Step(moduleName, reviewRound, feedback, [], plan.presentation.stepTitles['e3-access-matrix']),
-    createNs4E4Step(moduleName, reviewRound, feedback, ['e3-result'], plan.presentation.stepTitles['e4-ontology']),
-    createNs4E5Step(moduleName, reviewRound, '', ['e4-result'], plan.presentation.stepTitles['e5-rules']),
-    ...all.slice(6),
   ];
 }
 
@@ -1177,27 +1127,11 @@ export function resolveNs4ExistingAction(
   if (!moduleExists) return 'new';
   if (!isNs4Pipeline(pipeline)) return 'collision';
   if (pipeline.steps.e5?.status === 'approved' && moduleArtifactExists) return 'resume-next';
-  if (moduleArtifactExists && isNs4E5UpstreamContractFailure(pipeline.steps.e5?.error)) {
-    const upstreamReviewRound = Math.max(
-      pipeline.steps.e3?.reviewRound || 1,
-      pipeline.steps.e4?.reviewRound || 1,
-    );
-    if (isNs4E5HardUpstreamContractFailure(pipeline.steps.e5?.error) || upstreamReviewRound < 2) return 'resume-e3';
-    return 'resume-e5';
-  }
   if (pipeline.steps.e4?.status === 'approved' && moduleArtifactExists) return 'resume-e5';
   if (pipeline.steps.e3?.status === 'approved' && moduleArtifactExists) return 'resume-e4';
   if (pipeline.steps.e2?.status === 'approved' && moduleArtifactExists) return 'resume-e3';
   if (pipeline.steps.e1.status === 'approved' && moduleArtifactExists) return 'resume-e2';
   return 'resume-e1';
-}
-
-export function isNs4E5UpstreamContractFailure(value: unknown): boolean {
-  return typeof value === 'string' && value.startsWith(NS4_E5_UPSTREAM_FAILURE_PREFIX);
-}
-
-export function isNs4E5HardUpstreamContractFailure(value: unknown): boolean {
-  return typeof value === 'string' && value.startsWith(NS4_E5_HARD_UPSTREAM_FAILURE_PREFIX);
 }
 
 export function isNs4Pipeline(value: unknown): value is Ns4PipelineState {

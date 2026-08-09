@@ -3,13 +3,11 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   buildNs4PlannedSteps,
-  buildNs4E5UpstreamRepairSteps,
   createNs4E2Step,
   createNs4E3Step,
   createNs4E4Step,
   createNs4E5Step,
   isNs4Pipeline,
-  isNs4E5UpstreamContractFailure,
   markNs4E3Approved,
   markNs4E4Approved,
   markNs4E5Approved,
@@ -26,7 +24,7 @@ import {
   ns4FileExists,
   ns4ModuleFile,
   ns4OntologyIndexFile,
-  ns4RuleIndexFile,
+  ns4RulesFile,
   readNs4AgentText,
   readNs4Module,
   readNs4Pipeline,
@@ -73,7 +71,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-36 (2026-08-09) bounded E5 semantic debt and local-first storage reads';
+export const NS4_AGENT_BUILD = 'build-37 (2026-08-09) simple maintainable rule catalog';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -90,7 +88,6 @@ async function beforePromptImplicit(
   let resumeModule = '';
   let resumeTarget = '';
   let resumeRound = '';
-  let resumeFeedback = '';
   let taskTitle = 'new Solution 4';
   const existingModule = resolveNs4ExistingModuleToken(invocation.prompt, listNs4ModuleFolders());
   if (existingModule) {
@@ -119,11 +116,11 @@ async function beforePromptImplicit(
           approvedE4.approvedAt,
         );
       }
-      if (pipeline.steps.e5?.status !== 'approved' && approvedE5 && ns4FileExists(ns4RuleIndexFile(existingModule))) {
+      if (pipeline.steps.e5?.status !== 'approved' && approvedE5 && ns4FileExists(ns4RulesFile(existingModule))) {
         pipeline = markNs4E5Approved(
           pipeline,
           approvedE5.approvedBy,
-          [`l4/${existingModule}/rules/index.defs.ts`],
+          [`l4/${existingModule}/rules/rules.defs.ts`],
           approvedE5.approvedAt,
         );
       }
@@ -149,17 +146,13 @@ async function beforePromptImplicit(
     }
     resumeModule = existingModule;
     resumeTarget = action === 'resume-e1' ? 'e1' : action === 'resume-e5' ? 'e5' : action === 'resume-e4' ? 'e4' : action === 'resume-e3' ? 'e3' : 'e2';
-    const upstreamRepair = resumeTarget === 'e3' && isNs4E5UpstreamContractFailure(pipeline?.steps.e5?.error);
-    resumeRound = upstreamRepair
-      ? String(Math.max(1, pipeline?.steps.e3?.reviewRound || 1) + 1)
-      : resumeTarget === 'e5'
+    resumeRound = resumeTarget === 'e5'
       ? String(Math.max(1, pipeline?.steps.e5?.reviewRound || 1))
       : resumeTarget === 'e4'
       ? String(Math.max(1, pipeline?.steps.e4?.reviewRound || 1))
       : resumeTarget === 'e3'
       ? String(Math.max(1, pipeline?.steps.e3?.reviewRound || 1))
       : resumeTarget === 'e2' ? String(Math.max(1, pipeline?.steps.e2?.reviewRound || 1)) : '';
-    resumeFeedback = upstreamRepair ? String(pipeline?.steps.e5?.error || '') : '';
     sourcePrompt = pipeline?.sourcePrompt || invocation.prompt;
     taskTitle = `plan ${existingModule}`;
   }
@@ -185,7 +178,6 @@ async function beforePromptImplicit(
         ...(resumeModule ? { resumeModule } : {}),
         ...(resumeTarget ? { resumeTarget } : {}),
         ...(resumeRound ? { resumeRound } : {}),
-        ...(resumeFeedback ? { resumeFeedback } : {}),
       },
     },
   } as mls.msg.AgentIntentAddMessageAI];
@@ -201,7 +193,6 @@ async function beforePromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   const dynamic = resolveNs4DynamicWorkerRequest(args, step.prompt);
   if (dynamic.worker === 'e4') return beforeNs4E4PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
-  if (dynamic.worker === 'e5') return beforeNs4E5PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
   const planId = step.planning?.planId || '';
   if (planId === 'e1-clarification' || planId.startsWith('e1-clarification-round-') || planId === 'e1-compile') {
     return beforeNs4E1PromptStep(agent, context, parentStep, step, hookSequential, args);
@@ -231,7 +222,6 @@ async function afterPromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   const dynamic = resolveNs4DynamicWorkerRequest(args, step.prompt);
   if (dynamic.worker === 'e4') return afterNs4E4PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
-  if (dynamic.worker === 'e5') return afterNs4E5PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
   const planId = step.planning?.planId || '';
   if (planId === 'e1-clarification' || planId.startsWith('e1-clarification-round-')) {
     return afterNs4E1PromptStep(agent, context, parentStep, step, hookSequential);
@@ -259,9 +249,8 @@ async function afterPromptStep(
     }
     const resumeModule = memoryString(context, 'resumeModule');
     const resumeTarget = memoryString(context, 'resumeTarget');
-    const resumeFeedback = memoryString(context, 'resumeFeedback');
     const planned = resumeModule && (resumeTarget === 'e2' || resumeTarget === 'e3' || resumeTarget === 'e4' || resumeTarget === 'e5')
-      ? buildNs4ResumeSteps(plan, resumeModule, resumeTarget, normalizeResumeRound(memoryString(context, 'resumeRound')), resumeFeedback)
+      ? buildNs4ResumeSteps(plan, resumeModule, resumeTarget, normalizeResumeRound(memoryString(context, 'resumeRound')))
       : buildNs4PlannedSteps(plan);
     return planned.map(plannedStep => ({
       type: 'add-step',
@@ -310,7 +299,6 @@ function buildNs4ResumeSteps(
   moduleName: string,
   target: 'e2' | 'e3' | 'e4' | 'e5',
   reviewRound: number,
-  feedback = '',
 ): mls.msg.AIAgentStep[] {
   const all = buildNs4PlannedSteps(plan);
   if (target === 'e5') {
@@ -326,7 +314,6 @@ function buildNs4ResumeSteps(
     ];
   }
   if (target === 'e3') {
-    if (feedback) return buildNs4E5UpstreamRepairSteps(plan, moduleName, reviewRound, feedback);
     return [
       createNs4E3Step(moduleName, reviewRound, '', [], plan.presentation.stepTitles['e3-access-matrix']),
       ...all.slice(4),

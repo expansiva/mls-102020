@@ -1,7 +1,9 @@
 # E5 — regras de negócio
 
-Compila regras distribuídas em E1–E4 para contratos permanentes, rastreáveis e consumíveis por L1 e L2. Na entrada, recompõe jornadas e ontologia pelos índices e artefatos permanentes aprovados, validando `businessHash`, `ontologyHash` e o módulo proprietário; os arquivos grandes de revisão em `pipeline/` não são dependência da retomada. O catálogo de fontes e a cobertura são derivados mecanicamente, incluindo predicados de ciclo de vida com o mapeamento exato para estados aprovado no E4. Uma chamada compacta organiza os planos de regra; cada regra é detalhada em paralelo com contexto filtrado (`maxParallel: 20`). O finalizador repara somente itens ausentes ou inválidos, agrega o catálogo e executa o gate completo. O juiz semântico independente recebe contexto compacto e verifica cobertura, contradições, destino, lacunas anteriores ao E5 e exemplos transformados indevidamente em constantes. Um reparo semântico limitado retorna pelo mesmo plano e fan-out antes da revisão humana.
+Mantém um único catálogo de regras legível por humanos e por LLMs. E2, E3 e E4 guardam somente ids em `useRules`; a descrição existe apenas no E5. Na entrada, o agente recompõe jornadas, matriz de acesso e ontologia pelos artefatos permanentes aprovados e coleta mecanicamente todos os ids referenciados.
 
-Intermediários retomáveis: `pipeline/e5-source-catalog.json`, `pipeline/e5-rules-plan.draft.json` e `pipeline/e5-rules/{ruleId}.draft.json`.
+Uma única chamada de reasoning recebe esses ids e o contexto L4 compacto. A resposta aceita somente `{ id, description }`. O gate determinístico exige ids lower-camel únicos, descrição não vazia e cobertura de todas as referências. Há no máximo um retry de transporte e um reparo de gate; não existem fan-out por regra, juiz, `appliesTo`, `sourceRefs` ou detalhes executáveis.
 
-Saídas: `pipeline/e5-rules.draft.json`, `pipeline/e5-rules.approved.json`, `rules/{ruleId}.defs.ts` e `rules/index.defs.ts`.
+Saídas: `pipeline/e5-rules.draft.json`, `pipeline/e5-rules.approved.json` e `rules/rules.defs.ts`.
+
+Páginas, casos de uso, tabelas e comportamentos futuros varrem o L4 e registram somente os ids aplicáveis em `useRules`. Assim, alterar uma descrição muda a regra em um único local, e a análise de impacto consiste em localizar as referências ao id no L4.

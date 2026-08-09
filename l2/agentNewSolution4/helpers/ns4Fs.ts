@@ -14,8 +14,7 @@ import type {
   Ns4PermanentArtifactByType,
   Ns4PermanentArtifactTypeName,
   Ns4PipelineState,
-  Ns4RuleArtifact,
-  Ns4RuleIndexArtifact,
+  Ns4RulesArtifact,
 } from '/_102020_/l2/agentNewSolution4/types.js';
 
 export type Ns4FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
@@ -71,28 +70,12 @@ export function ns4E5DraftFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e5-rules.draft', extension: '.json' };
 }
 
-export function ns4E5CatalogFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e5-source-catalog', extension: '.json' };
-}
-
-export function ns4E5PlanDraftFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e5-rules-plan.draft', extension: '.json' };
-}
-
-export function ns4E5RuleDraftFile(moduleName: string, ruleId: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline/e5-rules`, shortName: `${ruleId}.draft`, extension: '.json' };
-}
-
 export function ns4E5ApprovedFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e5-rules.approved', extension: '.json' };
 }
 
-export function ns4RuleFile(moduleName: string, ruleId: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/rules`, shortName: ruleId, extension: '.defs.ts' };
-}
-
-export function ns4RuleIndexFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/rules`, shortName: 'index', extension: '.defs.ts' };
+export function ns4RulesFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/rules`, shortName: 'rules', extension: '.defs.ts' };
 }
 
 export function ns4JourneyFile(moduleName: string, journeyId: string): Ns4FileInfo {
@@ -177,24 +160,6 @@ export async function writeNs4E5Draft(moduleName: string, draft: unknown): Promi
   return displayPath(fileInfo);
 }
 
-export async function writeNs4E5Catalog(moduleName: string, catalog: unknown): Promise<string> {
-  const fileInfo = ns4E5CatalogFile(moduleName);
-  await writeNs4Text(fileInfo, `${JSON.stringify(catalog, null, 2)}\n`);
-  return displayPath(fileInfo);
-}
-
-export async function writeNs4E5PlanDraft(moduleName: string, draft: unknown): Promise<string> {
-  const fileInfo = ns4E5PlanDraftFile(moduleName);
-  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
-  return displayPath(fileInfo);
-}
-
-export async function writeNs4E5RuleDraft(moduleName: string, ruleId: string, draft: unknown): Promise<string> {
-  const fileInfo = ns4E5RuleDraftFile(moduleName, ruleId);
-  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
-  return displayPath(fileInfo);
-}
-
 export async function writeNs4E5Approved(moduleName: string, review: unknown): Promise<string> {
   const fileInfo = ns4E5ApprovedFile(moduleName);
   await writeNs4Text(fileInfo, `${JSON.stringify(review, null, 2)}\n`);
@@ -219,15 +184,9 @@ export async function writeNs4OntologyIndex(moduleName: string, artifact: Ns4Ont
   return displayPath(fileInfo);
 }
 
-export async function writeNs4Rule(moduleName: string, ruleId: string, artifact: Ns4RuleArtifact): Promise<string> {
-  const fileInfo = ns4RuleFile(moduleName, ruleId);
-  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}Rule${ruleId}`, artifact, 'Ns4RuleArtifact');
-  return displayPath(fileInfo);
-}
-
-export async function writeNs4RuleIndex(moduleName: string, artifact: Ns4RuleIndexArtifact): Promise<string> {
-  const fileInfo = ns4RuleIndexFile(moduleName);
-  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}RuleIndex`, artifact, 'Ns4RuleIndexArtifact');
+export async function writeNs4Rules(moduleName: string, artifact: Ns4RulesArtifact): Promise<string> {
+  const fileInfo = ns4RulesFile(moduleName);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}Rules`, artifact, 'Ns4RulesArtifact');
   return displayPath(fileInfo);
 }
 

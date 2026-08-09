@@ -148,9 +148,9 @@ test('human checkpoint icon is deterministic and never duplicated', () => {
   assert.equal(plainNs4StepTitle('👤 Revisar jornadas · G1'), 'Revisar jornadas · G1');
 });
 
-test('dynamic E4/E5 workers are dispatched by hook args when planning metadata is absent', () => {
+test('dynamic E4 workers are dispatched by hook args when planning metadata is absent', () => {
   assert.equal(resolveNs4DynamicWorker('entity:PublishedClientStatus'), 'e4');
-  assert.equal(resolveNs4DynamicWorker('rule:restrictProjectUpdate'), 'e5');
+  assert.equal(resolveNs4DynamicWorker('rule:restrictProjectUpdate'), '');
   assert.equal(resolveNs4DynamicWorker('{"planId":"e4-ontology"}'), '');
   assert.equal(resolveNs4DynamicWorker('entity:invalid-id'), '');
 });
@@ -159,9 +159,7 @@ test('dynamic fan-out callback falls back to step.prompt when after-prompt hook 
   assert.deepEqual(resolveNs4DynamicWorkerRequest(undefined, 'entity:Project'), {
     worker: 'e4', args: 'entity:Project',
   });
-  assert.deepEqual(resolveNs4DynamicWorkerRequest(undefined, 'rule:restrictProjectUpdate'), {
-    worker: 'e5', args: 'rule:restrictProjectUpdate',
-  });
+  assert.deepEqual(resolveNs4DynamicWorkerRequest(undefined, 'rule:restrictProjectUpdate'), { worker: '', args: '' });
   assert.deepEqual(resolveNs4DynamicWorkerRequest('entity:Client', 'entity:Project'), {
     worker: 'e4', args: 'entity:Client',
   });
@@ -188,7 +186,7 @@ test('root plan rejects an incomplete localized-title contract instead of silent
 test('new artifacts expose the current E1-to-E5 lifecycle flow version', () => {
   const artifact = buildNs4ModuleArtifact('petShop', clarification, 'human', '2026-08-05T10:00:00.000Z');
   const pipeline = createNs4Pipeline('petShop', 'petShop', '2026-08-05T10:00:00.000Z');
-  assert.equal(NS4_FLOW_VERSION, '2026-08-08-ns4-flow-v17');
+  assert.equal(NS4_FLOW_VERSION, '2026-08-09-ns4-flow-v18');
   assert.equal(artifact.specStatus.flowVersion, NS4_FLOW_VERSION);
   assert.equal(NS4_PIPELINE_SCHEMA_VERSION, '2026-08-06-ns4-pipeline-v5');
   assert.equal(pipeline.schemaVersion, NS4_PIPELINE_SCHEMA_VERSION);

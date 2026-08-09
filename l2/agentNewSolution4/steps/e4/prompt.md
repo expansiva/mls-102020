@@ -5,7 +5,7 @@
 # E4 — ontology overview for a new solution
 
 Create the frozen cross-entity plan for the business ontology. This first pass intentionally does not
-generate fields or invariants: a parallel pass will detail each approved entity. It does freeze named
+generate fields or rule references: a parallel pass will detail each approved entity. It does freeze named
 lifecycle predicates because they are business meanings shared by rules and entity workers. Write human-facing
 text in the user's language. This run is `solutionMode: new`; never claim discovery of legacy schema.
 
@@ -26,8 +26,8 @@ text in the user's language. This run is `solutionMode: new`; never claim discov
   Project available. A future UI must never ask a human to type a raw foreign-key id supplied by an
   approved journey.
 - Keep the graph connected. Limited client information is a projection, not full underlying access.
-- Make downstream rules executable. Every durable fact explicitly required by E2 business rules or
-  E3 grant constraints must have an owned field, lifecycle meaning, relationship, calculation input,
+- Make downstream rules implementable. Every durable fact explicitly required by E2 journeys, E3
+  access contracts or their rule ids must have an owned field, lifecycle meaning, relationship, calculation input,
   identity association, exception/authorization record or projection. Do not defer missing business
   data to an implementation guess in E5. When a source uses a named subset of lifecycle states such
   as unfinished, active, applicable, billable, eligible or open, the entity detail must define an
@@ -67,7 +67,7 @@ remove unrelated entities, fields or relationships from the previous approved re
 
 ## Output
 
-Return exactly one JSON object without Markdown. Do not include `fields` or `invariants`. The values
+Return exactly one JSON object without Markdown. Do not include `fields` or `useRules`. The values
 below illustrate the JSON shape only; never copy their lifecycle states or predicate unless supplied
 sources establish that same meaning.
 

@@ -7,7 +7,7 @@ database evidence.
 Each round first writes `pipeline/e4-ontology-plan.draft.json`, then details entities through a
 `parallel_dynamic` fan-out with `maxParallel: 20` into `pipeline/e4-entities/{EntityId}.draft.json`.
 The overview freezes lifecycle states and named predicate-to-state mappings before the workers run;
-workers add fields, constraints and invariants without redefining those meanings.
+workers add fields, constraints and rule ids without redefining those meanings or duplicating rule descriptions.
 The deterministic finalizer repairs only missing/invalid entities once, assembles
 `pipeline/e4-ontology.draft.json` and renders the same single ontology widget. Titles
 and descriptions can be edited directly. Structural requests first persist those edits, then add the

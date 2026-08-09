@@ -140,10 +140,8 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
     }
 
     const ruleIds = new Set<string>();
-    business.businessRules.forEach((rule, index) => {
-      const path = `${base}.business.businessRules[${index}]`;
-      checkId(rule.journeyRuleId, `${path}.journeyRuleId`, 'journey rule', ruleIds, add);
-      if (!rule.statement) add('NS4_E2_RULE_STATEMENT', `${path}.statement`, 'Business rule statement is required.');
+    business.useRules.forEach((ruleId, index) => {
+      checkId(ruleId, `${base}.business.useRules[${index}]`, 'rule reference', ruleIds, add);
     });
   });
 

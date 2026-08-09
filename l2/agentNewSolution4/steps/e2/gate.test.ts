@@ -34,7 +34,7 @@ const reviewInput = {
           result: 'Um projeto está selecionado.', featureRefs: ['projectManagement'],
         }],
         outcome: { statement: 'O projeto correto fica disponível para trabalho.', evidence: ['O projeto é mostrado pelo nome e endereço.'] },
-        businessRules: [],
+        useRules: [],
       },
     },
     {
@@ -59,7 +59,7 @@ const reviewInput = {
           },
         ],
         outcome: { statement: 'A mudança fica registrada no projeto correto.', evidence: ['A ordem exibe o projeto selecionado.'] },
-        businessRules: [{ journeyRuleId: 'jrProjectMustBeActive', statement: 'A ordem só pode ser criada para projeto ativo.' }],
+        useRules: ['projectMustBeActive'],
       },
     },
   ],

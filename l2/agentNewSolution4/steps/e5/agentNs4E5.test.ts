@@ -2,335 +2,83 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {
-  buildNs4E5UpstreamRepairSteps, buildNs4ModuleArtifact, createNs4E5FinalizeStep, createNs4E5JudgeStep,
-  createNs4E5Step, createNs4Pipeline,
-  isNs4E5HardUpstreamContractFailure, isNs4E5UpstreamContractFailure,
-  markNs4E1Approved, markNs4E2Approved, markNs4E2WaitingHuman, markNs4E3Approved,
-  markNs4E4Approved, markNs4E5Approved, markNs4E5Failed, markNs4E5Running, markNs4E5WaitingHuman,
-  NS4_E5_HARD_UPSTREAM_FAILURE_PREFIX, NS4_E5_MAX_PARALLEL, NS4_E5_UPSTREAM_FAILURE_PREFIX,
-  resolveNs4ExistingAction,
-} from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
-import {
-  buildNs4JourneyArtifacts, buildNs4JourneyIndex, normalizeNs4E2Review,
-} from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
-import {
-  buildNs4AccessMatrixArtifact, normalizeNs4E3Review,
-} from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
-import {
-  buildNs4OntologyArtifacts, normalizeNs4E4Review,
-} from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
-import {
-  assembleNs4E5SourcesFromApprovedArtifacts,
-} from '/_102020_/l2/agentNewSolution4/steps/e5/sources.js';
-import {
-  assembleNs4E5Review, buildNs4RuleArtifacts, normalizeNs4E5PlanDraft,
-  normalizeNs4E5Review, normalizeNs4E5RuleDraft,
-} from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
-import {
-  buildNs4E5ReferenceIndex, buildNs4E5SourceCatalog, classifyNs4E5UpstreamGaps,
-  completeNs4E5PlanCoverage, findNs4E5MechanicalUpstreamGaps,
-} from '/_102020_/l2/agentNewSolution4/steps/e5/catalog.js';
-import {
-  Ns4E5Sources, validateNs4E5Plan, validateNs4E5Review, validateNs4E5RuleDraft,
-} from '/_102020_/l2/agentNewSolution4/steps/e5/gate.js';
-import { normalizeNs4E5JudgeVerdict, validateNs4E5JudgeVerdict } from '/_102020_/l2/agentNewSolution4/steps/e5/judge.js';
-import { resolveNs4E5HookArgs, resolveNs4E5InvocationArgs } from '/_102020_/l2/agentNewSolution4/steps/e5/hookArgs.js';
+import { buildNs4ModuleArtifact } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
+import { buildNs4RulesArtifact, normalizeNs4E5Review } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
+import { collectNs4ReferencedRuleIds, Ns4E5Sources, validateNs4E5Review } from '/_102020_/l2/agentNewSolution4/steps/e5/gate.js';
 
-const moduleArtifact = buildNs4ModuleArtifact('Build a project app', {
-  userLanguage: 'en', questions: {
-    moduleName: { question: 'Module?', answer: 'buildFlowFsm' },
-    productLanguages: { question: 'Languages?', answer: 'en,pt-BR' },
-    mainActors: { question: 'Actors?', answer: 'Project manager' },
-    mainGoal: { question: 'Goal?', answer: 'Manage construction projects.' },
-    boundaries: { question: 'Boundaries?', answer: 'No payroll.' },
+const moduleArtifact = buildNs4ModuleArtifact('Build projects', {
+  planId: 'e1-clarification', userLanguage: 'en', title: 'Initial', legends: [], questions: {
+    moduleName: { type: 'open', question: 'Module?', answer: 'buildFlowFsm' },
+    productLanguages: { type: 'open', question: 'Languages?', answer: 'en' },
+    mainActors: { type: 'open', question: 'Actors?', answer: 'Manager' },
+    mainGoal: { type: 'open', question: 'Goal?', answer: 'Manage projects' },
+    boundaries: { type: 'open', question: 'Boundaries?', answer: 'No accounting' },
   },
-}, 'human');
+}, 'auto', '2026-08-09T00:00:00.000Z');
 
-const journeys = normalizeNs4E2Review({
-  moduleName: 'buildFlowFsm', userLanguage: 'en', reviewRound: 1,
-  journeys: [{ journeyId: 'manageProjects', business: {
-    actorRef: 'primaryActor', title: 'Manage projects', goal: 'Keep projects valid.', prerequisites: [],
-    entry: { mode: 'coldStart', carries: [] },
-    steps: [{ stepId: 'saveProject', kind: 'act', intent: 'Save the project.', requiresContext: [], providesContext: [], result: 'Saved.', featureRefs: ['projects'] }],
-    outcome: { statement: 'Project saved.', evidence: ['Saved.'] },
-    businessRules: [{ journeyRuleId: 'projectNameRequired', statement: 'A project must have a name before it is saved.' }],
-  }}],
-  features: [{ featureId: 'projects', title: 'Projects', priority: 'now', journeyStepRefs: ['manageProjects.saveProject'] }],
-});
-
-const access = normalizeNs4E3Review({
-  moduleName: 'buildFlowFsm', userLanguage: 'en', reviewRound: 1,
-  profiles: [{ profileId: 'projectManager', title: 'Manager', kind: 'internal', description: 'Manager.', actorRefs: ['primaryActor'], landingIntent: 'Manage projects.' }],
-  authorities: [{ authorityRef: 'buildflow:projectwrite', title: 'Write project', description: 'Write projects.', journeyStepRefs: ['manageProjects.saveProject'], informationNeeds: [] }],
-  grants: [{ profileRef: 'projectManager', authorityRef: 'buildflow:projectwrite', reason: 'Manage projects.',
-    dataScope: { mode: 'assigned', description: 'Assigned projects.' },
-    disclosure: { mode: 'fullRecord', description: 'Full record.', allowedInformation: [], deniedInformation: [] },
-    constraints: ['The manager may update only assigned projects.'] }],
-});
-
-const ontology = normalizeNs4E4Review({
-  moduleName: 'buildFlowFsm', userLanguage: 'en', reviewRound: 1, businessDomain: 'Projects',
-  entities: [{ entityId: 'Project', title: 'Project', description: 'Construction project.', kind: 'mdm', ownership: 'moduleOwned',
-    sourceRefs: { journeyIds: ['manageProjects'], featureIds: ['projects'], authorityRefs: ['buildflow:projectwrite'] },
-    fields: [{ fieldId: 'projectId', title: 'Id', type: 'uuid', required: true, description: 'Id.', constraints: [] },
-      { fieldId: 'name', title: 'Name', type: 'string', required: true, description: 'Name.', constraints: [] }],
-    lifecycleStates: ['draft', 'active'], invariants: [{ invariantId: 'activeProjectNamed', description: 'An active project has a name.', source: 'journey' }],
-    storage: { target: 'mdm', scope: 'organization', idField: 'projectId', mdmType: 'buildFlowFsm.Project', notes: 'Shared project master.' } }],
-  relationships: [], changeSummary: [],
-});
-
-const sources: Ns4E5Sources = { module: moduleArtifact, journeys, access, ontology };
-const reviewInput = {
-  moduleName: 'buildFlowFsm', userLanguage: 'en', reviewRound: 1, title: 'Business rules',
-  rules: [
-    { ruleId: 'requireProjectName', title: 'Require project name', statement: 'A project must have a name before save.',
-      kind: 'validation', layer: 'domain', criticality: 'blocking',
-      scope: { entityRefs: ['Project'], fieldRefs: ['Project.name'], relationshipRefs: [], journeyRefs: ['manageProjects'], journeyStepRefs: ['manageProjects.saveProject'], actorRefs: ['primaryActor'], authorityRefs: [] },
-      trigger: { type: 'create', description: 'Before project persistence.' }, condition: { expression: 'Project.name is not blank', facts: ['Project.name'] },
-      enforcement: { backend: { required: true, effect: 'reject', errorCode: 'PROJECT_NAME_REQUIRED' }, frontend: { behavior: 'block', message: 'Enter a project name.' } },
-      acceptanceCases: [
-        { caseId: 'acceptNamedProject', given: ['Project.name is present'], when: 'Project is saved', then: 'Save is accepted', expected: 'accept' },
-        { caseId: 'rejectBlankName', given: ['Project.name is blank'], when: 'Project is saved', then: 'Save is rejected', expected: 'reject' },
-      ],
-      sourceRefs: ['journey:manageProjects:rule:projectNameRequired', 'ontology:Project:invariant:activeProjectNamed'] },
-    { ruleId: 'restrictProjectUpdate', title: 'Restrict project update', statement: 'Managers update only assigned projects.',
-      kind: 'authorization', layer: 'access', criticality: 'blocking',
-      scope: { entityRefs: ['Project'], fieldRefs: [], relationshipRefs: [], journeyRefs: ['manageProjects'], journeyStepRefs: ['manageProjects.saveProject'], actorRefs: ['primaryActor'], authorityRefs: ['buildflow:projectwrite'] },
-      trigger: { type: 'update', description: 'Before project update.' }, condition: { expression: 'Project is assigned to current principal', facts: ['Project.projectId', 'principal assignments'] },
-      enforcement: { backend: { required: true, effect: 'authorize' }, frontend: { behavior: 'disable', message: 'Project is not assigned.' } },
-      acceptanceCases: [{ caseId: 'rejectUnassigned', given: ['Project is not assigned'], when: 'Manager updates', then: 'Update is denied', expected: 'reject' }],
-      sourceRefs: ['access:projectManager:buildflow:projectwrite:constraint:1'] },
-  ],
-  routedStatements: [],
-  coverage: [
-    { sourceRef: 'journey:manageProjects:rule:projectNameRequired', sourceType: 'journeyRule', disposition: 'compiled', targetRef: 'requireProjectName' },
-    { sourceRef: 'ontology:Project:invariant:activeProjectNamed', sourceType: 'ontologyInvariant', disposition: 'compiled', targetRef: 'requireProjectName' },
-    { sourceRef: 'access:projectManager:buildflow:projectwrite:constraint:1', sourceType: 'accessConstraint', disposition: 'compiled', targetRef: 'restrictProjectUpdate' },
-  ], changeSummary: ['Initial catalog.'],
+const sources: Ns4E5Sources = {
+  module: moduleArtifact,
+  journeys: {
+    planId: 'e2-review', moduleName: 'buildFlowFsm', userLanguage: 'en', title: 'Journeys', reviewRound: 1,
+    features: [], journeys: [{ journeyId: 'createProject', business: {
+      actorRef: 'manager', title: 'Create project', goal: 'Create a project', prerequisites: [],
+      entry: { mode: 'coldStart', carries: [] }, steps: [{ stepId: 'saveProject', kind: 'act', intent: 'Save project', requiresContext: [], providesContext: [], result: 'Project saved', featureRefs: [] }],
+      outcome: { statement: 'Project exists', evidence: ['Saved project'] }, useRules: ['projectRequiresClient'],
+    } }],
+  },
+  access: {
+    planId: 'e3-access-review', moduleName: 'buildFlowFsm', userLanguage: 'en', title: 'Access', reviewRound: 1,
+    profiles: [{ profileId: 'manager', title: 'Manager', kind: 'internal', description: 'Manager', actorRefs: ['manager'], landingIntent: 'Manage' }],
+    authorities: [{ authorityRef: 'buildflow:manage', title: 'Manage', description: 'Manage projects', journeyStepRefs: ['createProject.saveProject'], informationNeeds: [] }],
+    grants: [{ profileRef: 'manager', authorityRef: 'buildflow:manage', reason: 'Manages projects', dataScope: { mode: 'organization', description: 'Organization projects' }, disclosure: { mode: 'fullRecord', description: 'Full project', allowedInformation: [], deniedInformation: [] }, useRules: ['projectRequiresClient'] }],
+    changeSummary: [],
+  },
+  ontology: {
+    planId: 'e4-ontology-review', moduleName: 'buildFlowFsm', userLanguage: 'en', title: 'Ontology', reviewRound: 1,
+    solutionMode: 'new', businessDomain: 'Projects', relationships: [], changeSummary: [],
+    entities: [{ entityId: 'Project', title: 'Project', description: 'Project', kind: 'core', ownership: 'moduleOwned',
+      sourceRefs: { journeyIds: ['createProject'], featureIds: [], authorityRefs: ['buildflow:manage'] },
+      fields: [{ fieldId: 'projectId', title: 'Id', type: 'uuid', required: true, description: 'Id', constraints: [] }],
+      lifecycleStates: [], lifecyclePredicates: [], useRules: ['projectRequiresClient'],
+      storage: { target: 'moduleDatabase', scope: 'module', idField: 'projectId', notes: 'Project data' } }],
+  },
 };
 
-test('E5 deterministic gate accepts an enforceable catalog covering every upstream rule source', () => {
-  assert.deepEqual(validateNs4E5Review(normalizeNs4E5Review(reviewInput), sources), { ok: true, issues: [] });
+test('E5 collects unique rule ids referenced by journeys, access and ontology', () => {
+  assert.deepEqual(collectNs4ReferencedRuleIds(sources), ['projectRequiresClient']);
 });
 
-test('E5 derives exact coverage mechanically and assembles parallel rule details', () => {
-  const catalog = buildNs4E5SourceCatalog(sources);
-  const fullReview = normalizeNs4E5Review(reviewInput);
-  const rulePlans = fullReview.rules.map(({ trigger, condition, enforcement, acceptanceCases, ...rule }) => rule);
-  const plan = completeNs4E5PlanCoverage(normalizeNs4E5PlanDraft({
-    ...fullReview, rulePlans, coverage: [], upstreamGaps: [],
-  }), catalog);
-  assert.equal(catalog.length, 3);
-  assert.deepEqual(plan.coverage, fullReview.coverage);
-  assert.deepEqual(validateNs4E5Plan(plan, sources), { ok: true, issues: [] });
-
-  const details = fullReview.rules.map(rule => normalizeNs4E5RuleDraft(
-    { rule }, fullReview.moduleName, fullReview.reviewRound, rule.ruleId,
-  ));
-  for (const detail of details) assert.deepEqual(validateNs4E5RuleDraft(plan, detail, sources), { ok: true, issues: [] });
-  assert.deepEqual(assembleNs4E5Review(plan, details), fullReview);
-
-  const stale = structuredClone(details[0]);
-  stale.rule.scope.entityRefs = [];
-  assert.ok(validateNs4E5RuleDraft(plan, stale, sources).issues.some(issue => issue.code === 'NS4_E5_RULE_PLAN_CHANGED'));
-});
-
-test('E5 receives lifecycle predicates as explicit reference data and catalog sources', () => {
-  const predicateSources = structuredClone(sources);
-  predicateSources.ontology.entities[0].fields[1].constraints = [{
-    constraintId: 'projectNameRequired', kind: 'minLength', value: '1',
-    description: 'Project name cannot be blank.', source: 'journey',
-  }];
-  predicateSources.ontology.entities[0].lifecyclePredicates = [{
-    predicateId: 'unfinishedProject',
-    description: 'A project is unfinished while draft or active.',
-    stateIds: ['draft', 'active'], source: 'journey',
-  }];
-  predicateSources.ontology.relationships = [{
-    relationshipId: 'assessmentForProject', fromEntity: 'Project', toEntity: 'Project',
-    type: 'oneToOne', required: true, description: 'Approved derived join.',
-    persistence: { mode: 'derivedJoin' },
-  }];
-  const catalog = buildNs4E5SourceCatalog(predicateSources);
-  assert.ok(catalog.some(item => item.sourceRef === 'ontology:Project:lifecyclePredicate:unfinishedProject'
-    && item.sourceType === 'ontologyLifecyclePredicate' && item.statement.includes('draft, active')));
-  const index = buildNs4E5ReferenceIndex(predicateSources) as any;
-  assert.deepEqual(index.entities[0].lifecyclePredicates, [{
-    predicateId: 'unfinishedProject',
-    stateIds: ['draft', 'active'],
-    description: 'A project is unfinished while draft or active.',
-  }]);
-  assert.deepEqual(index.entities[0].fieldContracts[1], {
-    fieldRef: 'Project.name', type: 'string', required: true,
-    constraints: [{
-      constraintId: 'projectNameRequired', kind: 'minLength', value: '1',
-      description: 'Project name cannot be blank.',
-    }],
+test('E5 accepts rules containing only id and description', async () => {
+  const review = normalizeNs4E5Review({
+    planId: 'e5-rules-review', moduleName: 'buildFlowFsm', userLanguage: 'en', title: 'Business rules', reviewRound: 1,
+    rules: [{ id: 'projectRequiresClient', description: 'A project must have one client.' }], changeSummary: ['Initial catalog.'],
   });
-  assert.deepEqual(index.entities[0].invariants, [{
-    invariantId: 'activeProjectNamed', description: 'An active project has a name.',
-  }]);
-  assert.deepEqual(index.relationshipContracts, [{
-    relationshipId: 'assessmentForProject', fromEntity: 'Project', toEntity: 'Project',
-    type: 'oneToOne', required: true, persistenceMode: 'derivedJoin',
-    description: 'Approved derived join.',
-  }]);
+  assert.deepEqual(validateNs4E5Review(review, sources), { ok: true, issues: [] });
+  const artifact = await buildNs4RulesArtifact(review, 'human', '2026-08-09T01:00:00.000Z');
+  assert.deepEqual(artifact.rules, [{ id: 'projectRequiresClient', description: 'A project must have one client.' }]);
+  assert.equal(artifact.realization.status, 'pending');
 });
 
-test('E5 defers only repaired semantic gaps while mechanical and access gaps remain blocking', () => {
-  const semantic = { gapId: 'missingSchedulePath', sourceRefs: ['journey:manageProjects:rule:projectNameRequired'],
-    missingContract: 'A direct schedule relationship', reason: 'A transitive derived path may be sufficient.' };
-  assert.deepEqual(classifyNs4E5UpstreamGaps([semantic], [], 1), { blocking: [semantic], deferred: [] });
-  assert.deepEqual(classifyNs4E5UpstreamGaps([semantic], [], 2), { blocking: [], deferred: [semantic] });
-  assert.deepEqual(classifyNs4E5UpstreamGaps([semantic], [semantic], 2), { blocking: [semantic], deferred: [] });
-  const access = { ...semantic, gapId: 'missingTenantScope', sourceRefs: ['access:manager:projects:constraint:1'] };
-  assert.deepEqual(classifyNs4E5UpstreamGaps([access], [], 2), { blocking: [access], deferred: [] });
+test('E5 rejects a referenced id without a permanent description', () => {
+  const review = normalizeNs4E5Review({ moduleName: 'buildFlowFsm', rules: [{ id: 'anotherRule', description: 'Another rule.' }] });
+  const gate = validateNs4E5Review(review, sources);
+  assert.equal(gate.ok, false);
+  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E5_RULE_REFERENCE_MISSING'));
 });
 
-test('E5 resume reconstructs sources from approved permanent artifacts and verifies hashes', async () => {
-  const approvedAt = '2026-08-08T12:00:00.000Z';
-  const journeyArtifacts = await buildNs4JourneyArtifacts(journeys);
-  const journeyIndex = buildNs4JourneyIndex(
-    'buildFlowFsm', journeys, journeyArtifacts,
-    journeyArtifacts.map(item => `l4/buildFlowFsm/journeys/${item.journeyId}.defs.ts`),
-    'auto', approvedAt,
-  );
-  const accessArtifact = await buildNs4AccessMatrixArtifact(access, 'auto', approvedAt);
-  const ontologyArtifacts = await buildNs4OntologyArtifacts(ontology, 'auto', approvedAt);
-  const e1 = markNs4E1Approved(createNs4Pipeline('buildFlowFsm', 'prompt'), 'auto', 'module.defs.ts');
-  const e2 = markNs4E2Approved(markNs4E2WaitingHuman(e1, 1, 'e2.json'), 'auto', ['journey.defs.ts']);
-  const e3 = markNs4E3Approved(e2, 'auto', 'access.defs.ts');
-  const pipeline = markNs4E4Approved(e3, 'auto', ['ontology.defs.ts']);
-  const rebuilt = assembleNs4E5SourcesFromApprovedArtifacts(
-    moduleArtifact, accessArtifact, journeyIndex, journeyArtifacts,
-    ontologyArtifacts.index, ontologyArtifacts.entities, pipeline,
-  );
-  assert.deepEqual(rebuilt.journeys.journeys, journeys.journeys);
-  assert.deepEqual(rebuilt.journeys.features, journeys.features);
-  assert.deepEqual(rebuilt.access.grants, access.grants);
-  assert.deepEqual(rebuilt.ontology.entities, ontology.entities);
-  assert.deepEqual(rebuilt.ontology.relationships, ontology.relationships);
-
-  const staleJourney = structuredClone(journeyArtifacts);
-  staleJourney[0].businessHash = 'sha256:stale';
-  assert.throws(() => assembleNs4E5SourcesFromApprovedArtifacts(
-    moduleArtifact, accessArtifact, journeyIndex, staleJourney,
-    ontologyArtifacts.index, ontologyArtifacts.entities, pipeline,
-  ), /Approved journey artifact mismatch/);
+test('E5 accepts an empty catalog when no approved artifact references a rule', () => {
+  const withoutRules = structuredClone(sources);
+  withoutRules.journeys.journeys[0].business.useRules = [];
+  withoutRules.access.grants[0].useRules = [];
+  withoutRules.ontology.entities[0].useRules = [];
+  const review = normalizeNs4E5Review({ moduleName: 'buildFlowFsm', rules: [] });
+  assert.deepEqual(validateNs4E5Review(review, withoutRules), { ok: true, issues: [] });
 });
 
-test('E5 detects a required journey output missing from E4 before generating rules', () => {
-  const missing = structuredClone(sources);
-  missing.journeys.journeys[0].business.steps[0].providesContext = [{
-    contextId: 'publishedClientStatus', businessObject: 'PublishedClientStatus', cardinality: 'one', required: true,
-    description: 'Published status visible to the client.',
-  }];
-  assert.deepEqual(findNs4E5MechanicalUpstreamGaps(missing), [{
-    gapId: 'missingPublishedClientStatus',
-    sourceRefs: ['journey:manageProjects:step:saveProject'],
-    missingContract: 'PublishedClientStatus',
-    reason: 'Required E2 journey output PublishedClientStatus has no matching E4 ontology entity or projection.',
-  }]);
-});
-
-test('E5 rejects frontend-only blocking rules and missing source coverage', () => {
-  const broken = structuredClone(reviewInput) as any;
-  broken.rules[0].enforcement.backend.required = false;
-  broken.coverage = broken.coverage.filter((item: any) => !item.sourceRef.startsWith('ontology:'));
-  const gate = validateNs4E5Review(normalizeNs4E5Review(broken), sources);
-  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E5_BACKEND_REQUIRED'));
-  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E5_COVERAGE'));
-});
-
-test('E5 builds one permanent artifact per rule and a frozen discovery index', async () => {
-  const built = await buildNs4RuleArtifacts(normalizeNs4E5Review(reviewInput), 'human', '2026-08-06T20:00:00.000Z');
-  assert.equal(built.rules.length, 2);
-  assert.match(built.index.rulesHash, /^sha256:[a-f0-9]{64}$/);
-  assert.ok(built.rules.every(rule => rule.rulesHash === built.index.rulesHash));
-  assert.equal(built.index.rules[0].definitionRef, 'l4/buildFlowFsm/rules/requireProjectName.defs.ts');
-});
-
-test('E5 judge contract fails closed on blocking findings', () => {
-  const verdict = normalizeNs4E5JudgeVerdict({ moduleName: 'staleModule', reviewRound: 1, complete: false, summary: 'Hardcoded example.',
-    issues: [{ issueId: 'hardcodedAge', severity: 'blocking', category: 'hardcodedExample', sourceEvidence: 'Example only', finding: '16 became policy.', repairInstruction: 'Remove fixed age.', relatedRuleIds: ['requireProjectName'] }] }, 'buildFlowFsm', 2);
-  assert.equal(verdict.moduleName, 'buildFlowFsm');
-  assert.equal(verdict.reviewRound, 2);
-  assert.deepEqual(validateNs4E5JudgeVerdict(verdict, 'buildFlowFsm', 2), []);
-});
-
-test('E5 orchestration uses unique proposal/judge ids and resumes monotonically', () => {
-  const originalArgs = '{"planId":"e5-rules","reviewRound":2,"repairAttempt":1}';
-  assert.equal(resolveNs4E5HookArgs(originalArgs, '{}'), originalArgs);
-  assert.equal(NS4_E5_MAX_PARALLEL, 20);
-  assert.equal(createNs4E5Step('buildFlowFsm', 2).planning?.planId, 'e5-rules-round-2');
-  assert.doesNotMatch(String(createNs4E5Step('buildFlowFsm', 2, '', [], '👤 Rules', 'repair', 1).stepTitle), /^👤/u);
-  const transportRetry = createNs4E5Step('buildFlowFsm', 2, '', [], '👤 Rules', '', 0, 1);
-  assert.equal(transportRetry.planning?.planId, 'e5-rules-round-2-transport-1');
-  assert.equal(JSON.parse(transportRetry.prompt || '{}').transportRetryAttempt, 1);
-  assert.doesNotMatch(String(transportRetry.stepTitle), /^👤/u);
-  const repairedTransportRetry = createNs4E5Step('buildFlowFsm', 2, '', [], 'Rules', 'repair', 1, 1);
-  assert.equal(repairedTransportRetry.planning?.planId, 'e5-rules-round-2-repair-1-transport-1');
-  const finalize = createNs4E5FinalizeStep('buildFlowFsm', 2, ['rule-a', 'rule-b']);
-  assert.equal(finalize.planning?.planId, 'e5-rules-round-2-finalize-0-0');
-  assert.deepEqual(finalize.planning?.dependsOn, ['rule-a', 'rule-b']);
-  assert.equal(finalize.status, 'waiting_dependency');
-  assert.equal(createNs4E5JudgeStep('buildFlowFsm', 2, 1, 1).planning?.planId, 'e5-rules-round-2-repair-1-judge-1');
-  const e1 = markNs4E1Approved(createNs4Pipeline('buildFlowFsm', 'prompt'), 'human', 'module.defs.ts');
-  const e2 = markNs4E2Approved(markNs4E2WaitingHuman(e1, 1, 'e2.json'), 'human', ['journey.defs.ts']);
-  const e3 = markNs4E3Approved(e2, 'human', 'access.defs.ts');
-  const e4 = markNs4E4Approved(e3, 'human', ['Project.defs.ts']);
-  assert.equal(resolveNs4ExistingAction(true, e4, true), 'resume-e5');
-  const waiting = markNs4E5WaitingHuman(markNs4E5Running(e4, 1), 1, 'e5.json');
-  const approved = markNs4E5Approved(waiting, 'human', ['rule.defs.ts']);
-  assert.equal(approved.nextStep, 'e6-behaviors');
-  assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-next');
-  assert.equal(markNs4E5Running(approved, 2), approved);
-});
-
-test('an E5 upstream-contract failure resumes through new E3 and E4 repair rounds', () => {
-  const e1 = markNs4E1Approved(createNs4Pipeline('buildFlowFsm', 'prompt'), 'auto', 'module.defs.ts');
-  const e2 = markNs4E2Approved(markNs4E2WaitingHuman(e1, 1, 'e2.json'), 'auto', ['journey.defs.ts']);
-  const e3 = markNs4E3Approved(e2, 'auto', 'access.defs.ts');
-  const e4 = markNs4E4Approved(e3, 'auto', ['ontology.defs.ts']);
-  const feedback = `${NS4_E5_UPSTREAM_FAILURE_PREFIX}\nmissingWorkerMapping: missing identity mapping`;
-  const failed = markNs4E5Failed(e4, feedback);
-  assert.equal(isNs4E5UpstreamContractFailure(failed.steps.e5?.error), true);
-  assert.equal(resolveNs4ExistingAction(true, failed, true), 'resume-e3');
-  assert.equal(resolveNs4ExistingAction(true, markNs4E5Failed(e4, 'provider timeout'), true), 'resume-e5');
-
-  const plan = {
-    validPrompt: true,
-    userPrompt: 'Build project flow',
-    presentation: moduleArtifact.presentation,
-    clarification: {
-      planId: 'e1-clarification' as const, userLanguage: 'en', title: 'Clarify', legends: [], questions: {},
-    },
-  };
-  const steps = buildNs4E5UpstreamRepairSteps(plan, 'buildFlowFsm', 2, feedback);
-  assert.equal(steps[0].planning?.planId, 'e3-access-matrix-round-2');
-  assert.equal(JSON.parse(steps[0].prompt || '{}').adjustment, feedback);
-  assert.deepEqual(steps[1].planning?.dependsOn, ['e3-result']);
-  assert.equal(JSON.parse(steps[1].prompt || '{}').adjustment, feedback);
-  assert.deepEqual(steps[2].planning?.dependsOn, ['e4-result']);
-  assert.equal(steps[3].planning?.planId, 'e6-behaviors');
-
-  const revisedE3 = markNs4E3Approved(e4, 'auto', 'access-v2.defs.ts', '2026-08-08T14:00:00.000Z', 2);
-  const revisedE4 = markNs4E4Approved(revisedE3, 'auto', ['ontology-v2.defs.ts'], '2026-08-08T14:01:00.000Z', 2);
-  assert.equal(revisedE3.steps.e3?.reviewRound, 2);
-  assert.equal(revisedE4.steps.e4?.reviewRound, 2);
-  const semanticFailureAfterRepair = markNs4E5Failed(revisedE4, feedback);
-  assert.equal(resolveNs4ExistingAction(true, semanticFailureAfterRepair, true), 'resume-e5');
-  const hardFeedback = `${NS4_E5_HARD_UPSTREAM_FAILURE_PREFIX}\nmissingTenantScope: access scope is incomplete`;
-  const hardFailureAfterRepair = markNs4E5Failed(revisedE4, hardFeedback);
-  assert.equal(isNs4E5HardUpstreamContractFailure(hardFailureAfterRepair.steps.e5?.error), true);
-  assert.equal(resolveNs4ExistingAction(true, hardFailureAfterRepair, true), 'resume-e3');
-});
-
-test('E5 reconstructs base invocation when a parallel child has only rule hook args', () => {
-  const hookArgs = resolveNs4E5HookArgs('rule:restrictProjectUpdate', undefined);
-  assert.equal(hookArgs, 'rule:restrictProjectUpdate');
-  assert.deepEqual(JSON.parse(resolveNs4E5InvocationArgs(hookArgs, 'restrictProjectUpdate')), {
-    planId: 'e5-rules',
-  });
+test('normalization discards implementation detail fields from rules', () => {
+  const review = normalizeNs4E5Review({ moduleName: 'buildFlowFsm', rules: [{
+    id: 'projectRequiresClient', description: 'A project must have one client.',
+    scope: { entityRefs: ['Project'] }, sourceRefs: ['journey:createProject'], enforcement: { backend: true },
+  }] });
+  assert.deepEqual(review.rules[0], { id: 'projectRequiresClient', description: 'A project must have one client.' });
 });

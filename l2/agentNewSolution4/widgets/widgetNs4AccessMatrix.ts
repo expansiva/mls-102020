@@ -16,7 +16,7 @@ const labels = {
     actors: 'E2 actors', landing: 'Starting point', matrix: 'Profile × authority matrix', profileAccess: 'Authorities for this profile',
     authority: 'Authority', noAccess: 'No access', full: 'Full record', limited: 'Limited',
     details: 'Access details', reason: 'Business reason', scope: 'Data scope', disclosure: 'Disclosure boundary',
-    allowed: 'May expose', denied: 'Must not expose', constraints: 'Constraints', journeySteps: 'Journey steps',
+    allowed: 'May expose', denied: 'Must not expose', ruleRefs: 'Rule references', journeySteps: 'Journey steps',
     informationNeeds: 'Information needs', close: 'Close', adjustment: 'What should change?',
     placeholder: 'Example: Add authority to view project budgets; some clients may see a summary without seeing the whole project.',
     requestChanges: 'Generate another proposal', approve: 'Approve access matrix',
@@ -28,7 +28,7 @@ const labels = {
     actors: 'Atores do E2', landing: 'Ponto de entrada', matrix: 'Matriz perfil × autoridade', profileAccess: 'Autoridades deste perfil',
     authority: 'Autoridade', noAccess: 'Sem acesso', full: 'Registro completo', limited: 'Limitado',
     details: 'Detalhes do acesso', reason: 'Motivo de negócio', scope: 'Escopo dos dados', disclosure: 'Limite de exposição',
-    allowed: 'Pode expor', denied: 'Não pode expor', constraints: 'Restrições', journeySteps: 'Passos das jornadas',
+    allowed: 'Pode expor', denied: 'Não pode expor', ruleRefs: 'Referências de regras', journeySteps: 'Passos das jornadas',
     informationNeeds: 'Necessidades de informação', close: 'Fechar', adjustment: 'O que deve mudar?',
     placeholder: 'Exemplo: adicione autoridade para ver orçamentos; alguns clientes podem ver um resumo sem acessar o projeto inteiro.',
     requestChanges: 'Gerar nova proposta', approve: 'Aprovar matriz de acesso',
@@ -40,7 +40,7 @@ const labels = {
     actors: 'Actores de E2', landing: 'Punto de entrada', matrix: 'Matriz perfil × autoridad', profileAccess: 'Autoridades de este perfil',
     authority: 'Autoridad', noAccess: 'Sin acceso', full: 'Registro completo', limited: 'Limitado',
     details: 'Detalles del acceso', reason: 'Motivo de negocio', scope: 'Alcance de datos', disclosure: 'Límite de exposición',
-    allowed: 'Puede exponer', denied: 'No puede exponer', constraints: 'Restricciones', journeySteps: 'Pasos de jornadas',
+    allowed: 'Puede exponer', denied: 'No puede exponer', ruleRefs: 'Referencias de reglas', journeySteps: 'Pasos de jornadas',
     informationNeeds: 'Necesidades de información', close: 'Cerrar', adjustment: '¿Qué debe cambiar?',
     placeholder: 'Ejemplo: agregue autoridad para ver presupuestos; algunos clientes pueden ver un resumen sin acceder al proyecto completo.',
     requestChanges: 'Generar otra propuesta', approve: 'Aprobar matriz de acceso',
@@ -181,7 +181,7 @@ export class WidgetNs4AccessMatrix102020 extends StateLitElement implements Ns4C
         <div class="ns4-detail-lists">
           <article><h4>${text.allowed}</h4><ul>${grant.disclosure.allowedInformation.map(item => html`<li>${item}</li>`)}</ul></article>
           <article><h4>${text.denied}</h4><ul>${grant.disclosure.deniedInformation.map(item => html`<li>${item}</li>`)}</ul></article>
-          <article><h4>${text.constraints}</h4><ul>${grant.constraints.map(item => html`<li>${item}</li>`)}</ul></article>
+          <article><h4>${text.ruleRefs}</h4><ul>${grant.useRules.map(ruleId => html`<li><code>${ruleId}</code></li>`)}</ul></article>
           <article><h4>${text.informationNeeds}</h4><ul>${authority?.informationNeeds.map(item => html`<li>${item}</li>`)}</ul></article>
         </div>
       </section>

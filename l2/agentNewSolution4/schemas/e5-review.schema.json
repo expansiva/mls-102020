@@ -1,89 +1,27 @@
 {
-  "$id": "https://collab.codes/schemas/agentNewSolution4/e5-review/2026-08-06-v1",
+  "$id": "https://collab.codes/schemas/agentNewSolution4/e5-review/2026-08-09-v2",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["planId", "moduleName", "userLanguage", "title", "reviewRound", "rules", "routedStatements", "coverage", "changeSummary"],
+  "required": ["planId", "moduleName", "userLanguage", "title", "reviewRound", "rules", "changeSummary"],
   "properties": {
     "planId": { "const": "e5-rules-review" },
-    "moduleName": { "$ref": "#/$defs/memberId" },
+    "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
     "userLanguage": { "type": "string", "minLength": 2 },
     "title": { "type": "string", "minLength": 1 },
     "reviewRound": { "type": "integer", "minimum": 1 },
-    "rules": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/rule" } },
-    "routedStatements": { "type": "array", "items": { "$ref": "#/$defs/routed" } },
-    "coverage": { "type": "array", "items": { "$ref": "#/$defs/coverage" } },
-    "changeSummary": { "$ref": "#/$defs/strings" }
-  },
-  "$defs": {
-    "memberId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
-    "strings": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-    "scope": {
-      "type": "object", "additionalProperties": false,
-      "required": ["entityRefs", "fieldRefs", "relationshipRefs", "journeyRefs", "journeyStepRefs", "actorRefs", "authorityRefs"],
-      "properties": {
-        "entityRefs": { "$ref": "#/$defs/strings" }, "fieldRefs": { "$ref": "#/$defs/strings" },
-        "relationshipRefs": { "$ref": "#/$defs/strings" }, "journeyRefs": { "$ref": "#/$defs/strings" },
-        "journeyStepRefs": { "$ref": "#/$defs/strings" }, "actorRefs": { "$ref": "#/$defs/strings" },
-        "authorityRefs": { "$ref": "#/$defs/strings" }
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+          "description": { "type": "string", "minLength": 1 }
+        }
       }
     },
-    "acceptanceCase": {
-      "type": "object", "additionalProperties": false, "required": ["caseId", "given", "when", "then", "expected"],
-      "properties": {
-        "caseId": { "$ref": "#/$defs/memberId" }, "given": { "$ref": "#/$defs/strings" },
-        "when": { "type": "string", "minLength": 1 }, "then": { "type": "string", "minLength": 1 },
-        "expected": { "enum": ["accept", "reject", "calculate", "filter"] }
-      }
-    },
-    "rule": {
-      "type": "object", "additionalProperties": false,
-      "required": ["ruleId", "title", "statement", "kind", "layer", "criticality", "scope", "trigger", "condition", "enforcement", "acceptanceCases", "sourceRefs"],
-      "properties": {
-        "ruleId": { "$ref": "#/$defs/memberId" }, "title": { "type": "string", "minLength": 1 },
-        "statement": { "type": "string", "minLength": 1 },
-        "kind": { "enum": ["invariant", "validation", "transitionGuard", "calculation", "temporal", "authorization", "visibility", "conditionalRequirement"] },
-        "layer": { "enum": ["domain", "application", "access"] }, "criticality": { "enum": ["blocking", "warning"] },
-        "scope": { "$ref": "#/$defs/scope" },
-        "trigger": {
-          "type": "object", "additionalProperties": false, "required": ["type", "description"],
-          "properties": { "type": { "enum": ["create", "update", "delete", "transition", "read", "calculate", "schedule"] }, "description": { "type": "string", "minLength": 1 } }
-        },
-        "condition": {
-          "type": "object", "additionalProperties": false, "required": ["expression", "facts"],
-          "properties": { "expression": { "type": "string", "minLength": 1 }, "facts": { "$ref": "#/$defs/strings" } }
-        },
-        "enforcement": {
-          "type": "object", "additionalProperties": false, "required": ["backend", "frontend"],
-          "properties": {
-            "backend": { "type": "object", "additionalProperties": false, "required": ["required", "effect"], "properties": {
-              "required": { "type": "boolean" }, "effect": { "enum": ["reject", "calculate", "filter", "authorize", "notify"] },
-              "errorCode": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
-            } },
-            "frontend": { "type": "object", "additionalProperties": false, "required": ["behavior"], "properties": {
-              "behavior": { "enum": ["block", "warn", "hide", "disable", "calculate", "none"] }, "message": { "type": "string" }
-            } }
-          }
-        },
-        "acceptanceCases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/acceptanceCase" } },
-        "sourceRefs": { "$ref": "#/$defs/strings" }
-      }
-    },
-    "routed": {
-      "type": "object", "additionalProperties": false, "required": ["sourceRef", "statement", "destination", "reason"],
-      "properties": {
-        "sourceRef": { "type": "string", "minLength": 1 }, "statement": { "type": "string", "minLength": 1 },
-        "destination": { "enum": ["e4-fieldConstraint", "e4-entityInvariant", "e5-rule", "e6-workflow", "documentation"] },
-        "reason": { "type": "string", "minLength": 1 }, "ruleRef": { "$ref": "#/$defs/memberId" }
-      }
-    },
-    "coverage": {
-      "type": "object", "additionalProperties": false, "required": ["sourceRef", "sourceType", "disposition", "targetRef"],
-      "properties": {
-        "sourceRef": { "type": "string", "minLength": 1 },
-        "sourceType": { "enum": ["journeyRule", "ontologyInvariant", "ontologyLifecyclePredicate", "accessConstraint", "declaredConstraint"] },
-        "disposition": { "enum": ["compiled", "routed"] }, "targetRef": { "type": "string", "minLength": 1 }
-      }
-    }
+    "changeSummary": { "type": "array", "items": { "type": "string", "minLength": 1 } }
   }
 }

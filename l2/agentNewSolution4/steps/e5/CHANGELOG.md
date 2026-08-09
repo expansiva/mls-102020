@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-09 — build 37, simple rule catalog, flow v18
+
+- Regras permanentes agora contêm somente `id` e `description` em um único
+  `rules/rules.defs.ts`.
+- Jornadas, grants de acesso e entidades guardam somente ids em `useRules`; descrições não são
+  duplicadas fora do catálogo.
+- E5 coleta as referências mecanicamente e usa uma única chamada com gate determinístico e um reparo
+  limitado. Foram removidos fan-out, catálogo intermediário, plano, arquivos por regra e juiz.
+- A versão do fluxo mudou porque artefatos v17 não são retomados automaticamente no novo contrato.
+
 ## 2026-08-09 — build 36, rule-index contract v2, flow contract unchanged (v17)
 
 - The compact reference index now exposes relationship endpoints and persistence, allowing E5 to use

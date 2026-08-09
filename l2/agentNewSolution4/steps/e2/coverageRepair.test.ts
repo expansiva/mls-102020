@@ -11,8 +11,8 @@ import {
 const previous = normalizeNs4E2Review({
   moduleName: 'buildFlowFsm', reviewRound: 1,
   journeys: [
-    { journeyId: 'firstJourney', business: { actorRef: 'manager', title: 'First', goal: 'First goal', prerequisites: [], entry: { mode: 'coldStart', carries: [] }, steps: [], outcome: { statement: 'First outcome', evidence: ['First evidence'] }, businessRules: [] } },
-    { journeyId: 'secondJourney', business: { actorRef: 'worker', title: 'Second', goal: 'Second goal', prerequisites: [], entry: { mode: 'coldStart', carries: [] }, steps: [], outcome: { statement: 'Second outcome', evidence: ['Second evidence'] }, businessRules: [] } },
+    { journeyId: 'firstJourney', business: { actorRef: 'manager', title: 'First', goal: 'First goal', prerequisites: [], entry: { mode: 'coldStart', carries: [] }, steps: [], outcome: { statement: 'First outcome', evidence: ['First evidence'] }, useRules: [] } },
+    { journeyId: 'secondJourney', business: { actorRef: 'worker', title: 'Second', goal: 'Second goal', prerequisites: [], entry: { mode: 'coldStart', carries: [] }, steps: [], outcome: { statement: 'Second outcome', evidence: ['Second evidence'] }, useRules: [] } },
   ],
   features: [
     { featureId: 'firstFeature', title: 'First feature', priority: 'now', journeyStepRefs: [] },
@@ -24,8 +24,8 @@ test('E2 coverage patch replaces named contracts, appends new contracts and pres
   const patch = normalizeNs4E2CoveragePatch({
     moduleName: 'buildFlowFsm', reviewRound: 1,
     journeyUpserts: [
-      { journeyId: 'secondJourney', business: { actorRef: 'supervisor', title: 'Second repaired', goal: 'Repair second', prerequisites: [], entry: { mode: 'coldStart', carries: [] }, steps: [], outcome: { statement: 'Repaired', evidence: ['Visible'] }, businessRules: [] } },
-      { journeyId: 'thirdJourney', business: { actorRef: 'client', title: 'Third', goal: 'Add third', prerequisites: [], entry: { mode: 'coldStart', carries: [] }, steps: [], outcome: { statement: 'Third outcome', evidence: ['Visible'] }, businessRules: [] } },
+      { journeyId: 'secondJourney', business: { actorRef: 'supervisor', title: 'Second repaired', goal: 'Repair second', prerequisites: [], entry: { mode: 'coldStart', carries: [] }, steps: [], outcome: { statement: 'Repaired', evidence: ['Visible'] }, useRules: [] } },
+      { journeyId: 'thirdJourney', business: { actorRef: 'client', title: 'Third', goal: 'Add third', prerequisites: [], entry: { mode: 'coldStart', carries: [] }, steps: [], outcome: { statement: 'Third outcome', evidence: ['Visible'] }, useRules: [] } },
     ],
     featureUpserts: [
       { featureId: 'secondFeature', title: 'Second repaired', priority: 'now', journeyStepRefs: [] },

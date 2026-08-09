@@ -3,23 +3,8 @@
 import { html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
-import { Ns4ClarificationAction, Ns4ClarificationEvent, Ns4ClarificationFeedback, Ns4ClarificationIssue, Ns4ClarificationWidgetApi } from './clarification.js';
-
-export type Ns4RuleKind = 'invariant' | 'validation' | 'transitionGuard' | 'calculation' | 'temporal' | 'authorization' | 'visibility' | 'conditionalRequirement';
-type Ns4RuleLayer = 'domain' | 'application' | 'access';
-type Ns4Predicate = { type: 'factComparison'; factRef: string; operator: string; value?: unknown; comparisonFactRef?: string } | { type: 'all' | 'any'; conditions: Ns4Predicate[] } | { type: 'manualSpecification'; description: string };
-type Ns4Scope = { entityRefs: string[]; fieldRefs: string[]; relationshipRefs: string[]; journeyRefs: string[]; journeyStepRefs: string[]; actorRefs: string[]; authorityRefs: string[] };
-type Ns4AcceptanceCase = { caseId: string; title: string; given: Record<string, unknown>; when?: string; expect: 'allow' | 'reject' | 'filter' | 'calculate' | 'requireEvidence'; expectedValue?: unknown; errorCode?: string };
-export type Ns4RuleDefinition = {
-  schemaVersion: 'ns4-rule-v1'; ruleId: string; title: string; statement: string; kind: Ns4RuleKind; layer: Ns4RuleLayer; criticality: 'normal' | 'critical'; scope: Ns4Scope;
-  trigger: { type: 'command' | 'transition' | 'read' | 'calculation' | 'time' | 'always'; description: string }; predicate: Ns4Predicate;
-  enforcement: { backend: { required: boolean; effect: 'reject' | 'filter' | 'calculate' | 'requireEvidence' | 'audit'; errorCode?: string }; frontend: { behavior: 'none' | 'hide' | 'disable' | 'readonly' | 'filter' | 'calculatePreview' | 'requireInput' | 'showMessage'; message?: string } };
-  acceptanceCases: Ns4AcceptanceCase[]; sourceRefs: Array<{ kind: string; ref: string }>;
-};
-export type Ns4E5Review = { planId: 'e5-rules-review'; moduleName: string; userLanguage: string; title: string; reviewRound: number; rules: Ns4RuleDefinition[]; routedStatements: Array<{ sourceRef: string; destination: string; targetRef?: string; reason: string }>; coverage: Array<{ sourceRef: string; coveredBy: string[]; status: 'covered' | 'routed' | 'missing' }>; changeSummary: string[] };
-export type Ns4E5ReviewEvent = Ns4ClarificationEvent<Ns4E5Review>;
-
-type Tab = 'summary' | 'condition' | 'application' | 'cases' | 'traceability' | 'coverage';
+import { Ns4E5Review, Ns4E5ReviewEvent, Ns4RuleDefinition } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
+import { Ns4ClarificationAction, Ns4ClarificationFeedback, Ns4ClarificationIssue, Ns4ClarificationWidgetApi } from './clarification.js';
 
 @customElement('widget-ns4-rules-102020')
 export class WidgetNs4Rules102020 extends StateLitElement implements Ns4ClarificationWidgetApi {
@@ -28,108 +13,120 @@ export class WidgetNs4Rules102020 extends StateLitElement implements Ns4Clarific
   @property({ type: String }) msgError = '';
   @property({ type: String }) msgOk = '';
   @state() private search = '';
-  @state() private kind = '';
-  @state() private layer = '';
-  @state() private entity = '';
-  @state() private journey = '';
-  @state() private authority = '';
-  @state() private consumer = '';
-  @state() private onlyCritical = false;
-  @state() private onlyIssues = false;
-  @state() private onlyMissingCoverage = false;
   @state() private selectedRuleId = '';
-  @state() private activeTab: Tab = 'summary';
   @state() private adjustment = '';
   @state() private submitting = false;
   @state() private feedbackIssues: Ns4ClarificationIssue[] = [];
   @state() private cancelOpen = false;
-  private feedbackFocusPending = false;
-  private feedbackScrollPending = false;
   private cancelOrigin: HTMLElement | null = null;
 
   private text() {
     const language = this.value?.userLanguage?.toLowerCase() || 'en';
-    if (language.startsWith('pt')) return { step: '👤 Etapa 5 de 6 — Regras', review: 'Revisão', rules: 'regras', critical: 'críticas', backend: 'backend obrigatório', issues: 'issues', filters: 'Filtros', search: 'Buscar por texto ou ID', kind: 'Tipo', layer: 'Camada', entity: 'Entidade', journey: 'Jornada', authority: 'Autoridade', consumer: 'Consumidor', all: 'Todos', criticalOnly: 'Somente críticas', issuesOnly: 'Com issue', missingOnly: 'Sem cobertura', summary: 'Resumo', condition: 'Condição', application: 'Aplicação', cases: 'Casos de aceite', traceability: 'Rastreabilidade', coverage: 'Cobertura', trigger: 'Disparo', statement: 'Regra', frontend: 'Frontend', message: 'Mensagem para o usuário', errorCode: 'Código de erro', backendRequired: 'Validação de backend obrigatória', effect: 'Efeito', behavior: 'Comportamento', frontendWarning: 'O frontend antecipa a experiência, mas não substitui a proteção do backend.', source: 'Fonte', routed: 'Statement roteado', noRule: 'Nenhuma regra atende aos filtros.', noSelection: 'Selecione uma regra para revisar.', adjustment: 'O que deve mudar?', placeholder: 'Exemplo: inclua uma regra de visibilidade para o cliente ver apenas o orçamento aprovado.', request: 'Gerar nova proposta', approve: 'Aprovar regras', cancel: 'Cancelar execução', adjustmentRequired: 'Descreva a alteração necessária antes de gerar nova proposta.', processingApproval: 'Validando catálogo de regras…', processingChanges: 'Preparando nova revisão…', processingCancel: 'Cancelando execução…', revise: 'Revise os itens abaixo', cancelTitle: 'Cancelar esta execução?', cancelText: 'O processamento será encerrado. O histórico e os artefatos já aprovados serão preservados.', keepWorking: 'Continuar trabalhando', edit: 'Clique para editar', complete: 'Rastreabilidade completa', incomplete: 'Rastreabilidade incompleta', required: 'Obrigatório', notRequired: 'Não obrigatório' };
-    if (language.startsWith('es')) return { step: '👤 Paso 5 de 6 — Reglas', review: 'Revisión', rules: 'reglas', critical: 'críticas', backend: 'backend obligatorio', issues: 'issues', filters: 'Filtros', search: 'Buscar texto o ID', kind: 'Tipo', layer: 'Capa', entity: 'Entidad', journey: 'Jornada', authority: 'Autoridad', consumer: 'Consumidor', all: 'Todos', criticalOnly: 'Solo críticas', issuesOnly: 'Con issue', missingOnly: 'Sin cobertura', summary: 'Resumen', condition: 'Condición', application: 'Aplicación', cases: 'Casos de aceptación', traceability: 'Trazabilidad', coverage: 'Cobertura', trigger: 'Disparador', statement: 'Regla', frontend: 'Frontend', message: 'Mensaje para el usuario', errorCode: 'Código de error', backendRequired: 'Validación de backend obligatoria', effect: 'Efecto', behavior: 'Comportamiento', frontendWarning: 'El frontend anticipa la experiencia, pero no reemplaza la protección del backend.', source: 'Fuente', routed: 'Statement encaminado', noRule: 'Ninguna regla cumple los filtros.', noSelection: 'Seleccione una regla para revisar.', adjustment: '¿Qué debe cambiar?', placeholder: 'Ejemplo: incluya una regla de visibilidad para que el cliente vea solo el presupuesto aprobado.', request: 'Generar otra propuesta', approve: 'Aprobar reglas', cancel: 'Cancelar ejecución', adjustmentRequired: 'Describa el cambio necesario antes de generar una propuesta nueva.', processingApproval: 'Validando catálogo de reglas…', processingChanges: 'Preparando una nueva revisión…', processingCancel: 'Cancelando la ejecución…', revise: 'Revise los elementos a continuación', cancelTitle: '¿Cancelar esta ejecución?', cancelText: 'El procesamiento terminará. Se conservarán el historial y los artefactos aprobados.', keepWorking: 'Seguir trabajando', edit: 'Haga clic para editar', complete: 'Trazabilidad completa', incomplete: 'Trazabilidad incompleta', required: 'Obligatorio', notRequired: 'No obligatorio' };
-    return { step: '👤 Step 5 of 6 — Rules', review: 'Review', rules: 'rules', critical: 'critical', backend: 'backend required', issues: 'issues', filters: 'Filters', search: 'Search text or ID', kind: 'Kind', layer: 'Layer', entity: 'Entity', journey: 'Journey', authority: 'Authority', consumer: 'Consumer', all: 'All', criticalOnly: 'Critical only', issuesOnly: 'Has issue', missingOnly: 'Missing coverage', summary: 'Summary', condition: 'Condition', application: 'Application', cases: 'Acceptance cases', traceability: 'Traceability', coverage: 'Coverage', trigger: 'Trigger', statement: 'Rule', frontend: 'Frontend', message: 'User message', errorCode: 'Error code', backendRequired: 'Backend enforcement required', effect: 'Effect', behavior: 'Behavior', frontendWarning: 'Frontend feedback improves the experience but does not replace backend protection.', source: 'Source', routed: 'Routed statement', noRule: 'No rules match the filters.', noSelection: 'Select a rule to review.', adjustment: 'What should change?', placeholder: 'Example: add a visibility rule so the client sees only the approved budget.', request: 'Generate another proposal', approve: 'Approve rules', cancel: 'Cancel execution', adjustmentRequired: 'Describe the required change before generating another proposal.', processingApproval: 'Validating rules catalog…', processingChanges: 'Preparing a new review…', processingCancel: 'Cancelling execution…', revise: 'Review the items below', cancelTitle: 'Cancel this execution?', cancelText: 'Processing will end. The history and approved artifacts will be preserved.', keepWorking: 'Keep working', edit: 'Click to edit', complete: 'Complete traceability', incomplete: 'Incomplete traceability', required: 'Required', notRequired: 'Not required' };
+    if (language.startsWith('pt')) return {
+      step: '👤 Etapa 5 de 6 — Regras de negócio', review: 'Revisão', rules: 'regras', search: 'Buscar por ID ou descrição',
+      noRule: 'Nenhuma regra encontrada.', adjustment: 'O que deve mudar?',
+      placeholder: 'Exemplo: altere a regra clientAvailable para permitir somente um cliente ativo por projeto.',
+      request: 'Gerar nova proposta', approve: 'Aprovar regras', cancel: 'Cancelar execução',
+      adjustmentRequired: 'Descreva a alteração necessária antes de gerar outra proposta.',
+      processingApproval: 'Validando regras…', processingChanges: 'Preparando nova revisão…', processingCancel: 'Cancelando execução…',
+      revise: 'Revise os itens abaixo', cancelTitle: 'Cancelar esta execução?',
+      cancelText: 'O processamento será encerrado. Os artefatos já aprovados serão preservados.', keepWorking: 'Continuar trabalhando',
+      hint: 'Cada regra permanente contém somente um ID estável e uma descrição de negócio.', edit: 'Clique para editar a descrição',
+    };
+    if (language.startsWith('es')) return {
+      step: '👤 Paso 5 de 6 — Reglas de negocio', review: 'Revisión', rules: 'reglas', search: 'Buscar por ID o descripción',
+      noRule: 'No se encontraron reglas.', adjustment: '¿Qué debe cambiar?',
+      placeholder: 'Ejemplo: cambie la regla clientAvailable para permitir solo un cliente activo por proyecto.',
+      request: 'Generar otra propuesta', approve: 'Aprobar reglas', cancel: 'Cancelar ejecución',
+      adjustmentRequired: 'Describa el cambio antes de generar otra propuesta.',
+      processingApproval: 'Validando reglas…', processingChanges: 'Preparando otra revisión…', processingCancel: 'Cancelando ejecución…',
+      revise: 'Revise los elementos siguientes', cancelTitle: '¿Cancelar esta ejecución?',
+      cancelText: 'El procesamiento terminará. Los artefactos aprobados serán preservados.', keepWorking: 'Seguir trabajando',
+      hint: 'Cada regla permanente contiene solo un ID estable y una descripción de negocio.', edit: 'Haga clic para editar la descripción',
+    };
+    return {
+      step: '👤 Step 5 of 6 — Business rules', review: 'Review', rules: 'rules', search: 'Search by ID or description',
+      noRule: 'No rules found.', adjustment: 'What should change?',
+      placeholder: 'Example: change clientAvailable to allow only one active client per project.',
+      request: 'Generate another proposal', approve: 'Approve rules', cancel: 'Cancel execution',
+      adjustmentRequired: 'Describe the required change before generating another proposal.',
+      processingApproval: 'Validating rules…', processingChanges: 'Preparing another review…', processingCancel: 'Cancelling execution…',
+      revise: 'Review the items below', cancelTitle: 'Cancel this execution?',
+      cancelText: 'Processing will end. Approved artifacts will be preserved.', keepWorking: 'Keep working',
+      hint: 'Each permanent rule contains only a stable ID and one business description.', edit: 'Click to edit the description',
+    };
   }
 
-  setFeedback(feedback: Ns4ClarificationFeedback | null): void { this.feedbackIssues = feedback?.issues || []; this.msgError = feedback?.kind === 'error' ? feedback.message : ''; this.msgOk = feedback && feedback.kind !== 'error' ? feedback.message : ''; this.feedbackFocusPending = feedback?.kind === 'error'; }
+  setFeedback(feedback: Ns4ClarificationFeedback | null): void {
+    this.feedbackIssues = feedback?.issues || [];
+    this.msgError = feedback?.kind === 'error' ? feedback.message : '';
+    this.msgOk = feedback && feedback.kind !== 'error' ? feedback.message : '';
+  }
   setSubmitting(submitting: boolean): void { this.submitting = submitting; }
-  updated(): void {
-    if (this.feedbackFocusPending && this.msgError) { this.feedbackFocusPending = false; setTimeout(() => (this.querySelector('.ns4-feedback[role="alert"]') as HTMLElement | null)?.focus()); }
-    if (this.feedbackScrollPending && (this.msgError || this.msgOk)) { this.feedbackScrollPending = false; (this.querySelector('.ns4-feedback') as HTMLElement | null)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-    if (this.cancelOpen) setTimeout(() => (this.querySelector('.ns4-cancel-stay') as HTMLButtonElement | null)?.focus());
-  }
 
-  private hasIssue(rule: Ns4RuleDefinition): boolean { return !rule.sourceRefs.length || (rule.criticality === 'critical' && !rule.enforcement.backend.required); }
-  private selected(): Ns4RuleDefinition | undefined { return this.visibleRules().find(rule => rule.ruleId === this.selectedRuleId) || this.visibleRules()[0] || this.value?.rules[0]; }
   private visibleRules(): Ns4RuleDefinition[] {
-    if (!this.value) return [];
-    const q = this.search.trim().toLowerCase();
-    return this.value.rules.filter(rule => {
-      const hasMissingCoverage = rule.sourceRefs.some(source => this.value!.coverage.find(item => item.sourceRef === source.ref)?.status === 'missing');
-      return (!q || `${rule.ruleId} ${rule.title} ${rule.statement}`.toLowerCase().includes(q))
-        && (!this.kind || rule.kind === this.kind)
-        && (!this.layer || rule.layer === this.layer)
-        && (!this.entity || rule.scope.entityRefs.includes(this.entity))
-        && (!this.journey || rule.scope.journeyRefs.includes(this.journey))
-        && (!this.authority || rule.scope.authorityRefs.includes(this.authority))
-        && (!this.consumer || (this.consumer === 'backend' ? rule.enforcement.backend.required : rule.enforcement.frontend.behavior !== 'none'))
-        && (!this.onlyCritical || rule.criticality === 'critical')
-        && (!this.onlyIssues || this.hasIssue(rule))
-        && (!this.onlyMissingCoverage || hasMissingCoverage);
-    });
+    const query = this.search.trim().toLowerCase();
+    return (this.value?.rules || []).filter(rule => !query || `${rule.id} ${rule.description}`.toLowerCase().includes(query));
   }
-  private updateRule(ruleId: string, patch: Partial<Ns4RuleDefinition>): void { if (!this.value || this.readonly || this.submitting) return; this.value = { ...this.value, rules: this.value.rules.map(rule => rule.ruleId === ruleId ? { ...rule, ...patch } : rule) }; }
-  private updateText(rule: Ns4RuleDefinition, property: 'title' | 'statement', event: Event): void { this.updateRule(rule.ruleId, { [property]: (event.currentTarget as HTMLElement).innerText.trim() }); }
-  private updateFrontendMessage(rule: Ns4RuleDefinition, event: Event): void { this.updateRule(rule.ruleId, { enforcement: { ...rule.enforcement, frontend: { ...rule.enforcement.frontend, message: (event.currentTarget as HTMLElement).innerText.trim() } } }); }
-  private updateCaseTitle(rule: Ns4RuleDefinition, caseId: string, event: Event): void { this.updateRule(rule.ruleId, { acceptanceCases: rule.acceptanceCases.map(item => item.caseId === caseId ? { ...item, title: (event.currentTarget as HTMLElement).innerText.trim() } : item) }); }
-  private finishEdit(event: KeyboardEvent): void { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); (event.currentTarget as HTMLElement).blur(); } }
-  private submit(action: Ns4ClarificationAction): void { if (!this.value || this.readonly || this.submitting) return; const text = this.text(); if (action === 'requestChanges' && !this.adjustment.trim()) { this.setFeedback({ kind: 'error', message: text.adjustmentRequired }); return; } this.setFeedback({ kind: 'information', message: action === 'approve' ? text.processingApproval : action === 'cancel' ? text.processingCancel : text.processingChanges }); this.feedbackScrollPending = true; this.setSubmitting(true); this.dispatchEvent(new CustomEvent<Ns4E5ReviewEvent>('ns4-rules-review', { detail: { action, adjustment: this.adjustment.trim(), review: this.value }, bubbles: true, composed: true })); }
+  private selected(): Ns4RuleDefinition | undefined {
+    const visible = this.visibleRules();
+    return visible.find(rule => rule.id === this.selectedRuleId) || visible[0] || this.value?.rules[0];
+  }
+  private updateDescription(ruleId: string, event: Event): void {
+    if (!this.value || this.readonly || this.submitting) return;
+    const description = (event.currentTarget as HTMLElement).innerText.trim();
+    this.value = { ...this.value, rules: this.value.rules.map(rule => rule.id === ruleId ? { id: ruleId, description } : rule) };
+  }
+  private finishEdit(event: KeyboardEvent): void {
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    event.preventDefault(); (event.currentTarget as HTMLElement).blur();
+  }
+  private submit(action: Ns4ClarificationAction): void {
+    if (!this.value || this.readonly || this.submitting) return;
+    const text = this.text();
+    if (action === 'requestChanges' && !this.adjustment.trim()) {
+      this.setFeedback({ kind: 'error', message: text.adjustmentRequired }); return;
+    }
+    this.setFeedback({ kind: 'information', message: action === 'approve' ? text.processingApproval : action === 'cancel' ? text.processingCancel : text.processingChanges });
+    this.setSubmitting(true);
+    this.dispatchEvent(new CustomEvent<Ns4E5ReviewEvent>('ns4-rules-review', {
+      detail: { action, adjustment: this.adjustment.trim(), review: this.value }, bubbles: true, composed: true,
+    }));
+  }
   private openCancel(event: Event): void { this.cancelOrigin = event.currentTarget as HTMLElement; this.cancelOpen = true; }
   private closeCancel(): void { this.cancelOpen = false; setTimeout(() => this.cancelOrigin?.focus()); }
-  private trapCancel(event: KeyboardEvent): void { if (event.key === 'Escape') { event.preventDefault(); this.closeCancel(); return; } if (event.key !== 'Tab') return; const controls = [...this.querySelectorAll<HTMLButtonElement>('.ns4-cancel-dialog button')]; const index = controls.indexOf(document.activeElement as HTMLButtonElement); event.preventDefault(); controls[(index + (event.shiftKey ? controls.length - 1 : 1)) % controls.length]?.focus(); }
 
   render() {
     const text = this.text();
-    if (!this.value) return html`<div class="ns4-empty">${text.noSelection}</div>`;
-    const rules = this.visibleRules(); const selected = this.selected(); const hasAdjustment = Boolean(this.adjustment.trim()); const critical = this.value.rules.filter(rule => rule.criticality === 'critical').length; const backend = this.value.rules.filter(rule => rule.enforcement.backend.required).length; const issues = this.value.rules.filter(rule => this.hasIssue(rule)).length;
-    return html`<section class="ns4-rules"><header><div><p class="ns4-step">${text.step}</p><h2>${this.value.title}</h2><p>${this.value.moduleName}</p></div><div class="ns4-header-meta"><span>${text.review} ${this.value.reviewRound}</span><strong>${this.value.rules.length} ${text.rules}</strong></div></header>${this.renderFeedback(text)}
-      <section class="ns4-metrics"><span><strong>${critical}</strong>${text.critical}</span><span><strong>${backend}</strong>${text.backend}</span><span class=${issues ? 'has-issues' : ''}><strong>${issues}</strong>${text.issues}</span></section>
-      <div class="ns4-workbench"><aside><div class="ns4-filter-head"><h3>${text.rules}</h3><span>${rules.length}/${this.value.rules.length}</span></div>${this.renderFilters(text)}<div class="ns4-rule-list">${rules.length ? rules.map(rule => this.renderRuleItem(rule, selected, text)) : html`<p>${text.noRule}</p>`}</div></aside>${selected ? this.renderDetail(selected, text) : html`<main class="ns4-no-selection">${text.noSelection}</main>`}</div>
-      <footer><label><span>${text.adjustment}</span><textarea .value=${this.adjustment} placeholder=${text.placeholder} ?disabled=${this.submitting || this.readonly} @input=${(event: Event) => { this.adjustment = (event.target as HTMLTextAreaElement).value; }}></textarea></label><div><button class="cancel" ?disabled=${this.submitting || this.readonly} @click=${this.openCancel}>${text.cancel}</button><button class="secondary ${hasAdjustment ? 'is-active' : ''}" ?disabled=${this.submitting || this.readonly || !hasAdjustment} @click=${() => this.submit('requestChanges')}>${text.request}</button><button class="primary ${hasAdjustment ? '' : 'is-active'}" ?disabled=${this.submitting || this.readonly || hasAdjustment} @click=${() => this.submit('approve')}>${text.approve}</button></div></footer>${this.renderCancelDialog(text)}</section>`;
+    if (!this.value) return html`<div class="ns4-empty">${text.noRule}</div>`;
+    const rules = this.visibleRules(); const selected = this.selected(); const hasAdjustment = Boolean(this.adjustment.trim());
+    return html`<section class="ns4-rules"><header><div><p class="ns4-step">${text.step}</p><h2>${this.value.title}</h2><p>${text.hint}</p></div><div class="ns4-header-meta"><span>${text.review} ${this.value.reviewRound}</span><strong>${this.value.rules.length} ${text.rules}</strong></div></header>
+      ${this.renderFeedback(text)}
+      <div class="ns4-workbench"><aside><input aria-label=${text.search} placeholder=${text.search} .value=${this.search}
+        ?disabled=${this.submitting || this.readonly} @input=${(event: Event) => { this.search = (event.target as HTMLInputElement).value; }}>
+        <div class="ns4-rule-list">${rules.length ? rules.map(rule => html`<button class="ns4-rule-item ${selected?.id === rule.id ? 'selected' : ''}"
+          @click=${() => { this.selectedRuleId = rule.id; }}><code>${rule.id}</code><small>${rule.description}</small></button>`) : html`<p>${text.noRule}</p>`}</div></aside>
+        ${selected ? html`<main class="ns4-detail"><div class="ns4-detail-head"><code>${selected.id}</code></div><p class="ns4-edit statement"
+          contenteditable=${this.readonly ? 'false' : 'true'} title=${text.edit}
+          @blur=${(event: Event) => this.updateDescription(selected.id, event)} @keydown=${this.finishEdit}>${selected.description}</p></main>` : ''}
+      </div>
+      <footer><label><span>${text.adjustment}</span><textarea .value=${this.adjustment} placeholder=${text.placeholder}
+        ?disabled=${this.submitting || this.readonly} @input=${(event: Event) => { this.adjustment = (event.target as HTMLTextAreaElement).value; }}></textarea></label><div>
+        <button class="cancel" ?disabled=${this.submitting || this.readonly} @click=${this.openCancel}>${text.cancel}</button>
+        <button class="secondary ${hasAdjustment ? 'is-active' : ''}" ?disabled=${this.submitting || this.readonly || !hasAdjustment} @click=${() => this.submit('requestChanges')}>${text.request}</button>
+        <button class="primary ${hasAdjustment ? '' : 'is-active'}" ?disabled=${this.submitting || this.readonly || hasAdjustment} @click=${() => this.submit('approve')}>${text.approve}</button>
+      </div></footer>${this.renderCancelDialog(text)}</section>`;
   }
 
-  private refs(key: keyof Ns4Scope): string[] { return [...new Set(this.value?.rules.flatMap(rule => rule.scope[key]) || [])].sort(); }
-  private renderFilters(text: ReturnType<WidgetNs4Rules102020['text']>) {
-    return html`<details class="ns4-filters"><summary>${text.filters}</summary><div class="ns4-filter-content"><input aria-label=${text.search} placeholder=${text.search} .value=${this.search} ?disabled=${this.submitting || this.readonly} @input=${(event: Event) => { this.search = (event.target as HTMLInputElement).value; }}><div class="ns4-selects">${this.select(text.kind, this.kind, ['invariant','validation','transitionGuard','calculation','temporal','authorization','visibility','conditionalRequirement'], value => { this.kind = value; })}${this.select(text.layer, this.layer, ['domain','application','access'], value => { this.layer = value; })}${this.select(text.entity, this.entity, this.refs('entityRefs'), value => { this.entity = value; })}${this.select(text.journey, this.journey, this.refs('journeyRefs'), value => { this.journey = value; })}${this.select(text.authority, this.authority, this.refs('authorityRefs'), value => { this.authority = value; })}${this.select(text.consumer, this.consumer, ['backend','frontend'], value => { this.consumer = value; })}</div><div class="ns4-checks"><label><input type="checkbox" .checked=${this.onlyCritical} @change=${(event: Event) => { this.onlyCritical = (event.target as HTMLInputElement).checked; }}>${text.criticalOnly}</label><label><input type="checkbox" .checked=${this.onlyIssues} @change=${(event: Event) => { this.onlyIssues = (event.target as HTMLInputElement).checked; }}>${text.issuesOnly}</label><label><input type="checkbox" .checked=${this.onlyMissingCoverage} @change=${(event: Event) => { this.onlyMissingCoverage = (event.target as HTMLInputElement).checked; }}>${text.missingOnly}</label></div></div></details>`;
+  private renderFeedback(text: ReturnType<WidgetNs4Rules102020['text']>) {
+    if (!this.msgError && !this.msgOk) return '';
+    const error = Boolean(this.msgError);
+    return html`<section class="ns4-feedback ${error ? 'is-error' : 'is-ok'}" role=${error ? 'alert' : 'status'} tabindex="-1">${error ? html`<strong>${text.revise}</strong>` : ''}<span>${this.msgError || this.msgOk}</span>${this.feedbackIssues.length ? html`<ul>${this.feedbackIssues.map(issue => html`<li>${issue.path ? html`<code>${issue.path}</code> — ` : ''}${issue.message}</li>`)}</ul>` : ''}</section>`;
   }
-  private select(label: string, value: string, options: string[], change: (value: string) => void) { return html`<label><span>${label}</span><select .value=${value} @change=${(event: Event) => change((event.target as HTMLSelectElement).value)}><option value="">${this.text().all}</option>${options.map(option => html`<option value=${option}>${option}</option>`)}</select></label>`; }
-  private renderRuleItem(rule: Ns4RuleDefinition, selected: Ns4RuleDefinition | undefined, text: ReturnType<WidgetNs4Rules102020['text']>) { const complete = rule.sourceRefs.length > 0; return html`<button class="ns4-rule-item ${selected?.ruleId === rule.ruleId ? 'selected' : ''}" @click=${() => { this.selectedRuleId = rule.ruleId; this.activeTab = 'summary'; }}><div><code>${rule.ruleId}</code><strong>${rule.title}</strong></div><span class="ns4-badges"><em>${rule.kind}</em><em>${rule.layer}</em>${rule.enforcement.backend.required ? html`<em class="backend">${text.backend}</em>` : ''}${rule.criticality === 'critical' ? html`<em class="critical">${text.critical}</em>` : ''}</span><small>${rule.scope.entityRefs.slice(0, 2).join(' · ') || rule.scope.journeyRefs.slice(0, 2).join(' · ') || '—'} · ${rule.acceptanceCases.length} ✓</small><i class=${complete ? 'complete' : 'incomplete'}>${complete ? text.complete : text.incomplete}</i></button>`; }
-  private renderDetail(rule: Ns4RuleDefinition, text: ReturnType<WidgetNs4Rules102020['text']>) { return html`<main class="ns4-detail"><div class="ns4-detail-head"><div><code>${rule.ruleId}</code><h3 class="ns4-edit" contenteditable=${this.readonly ? 'false' : 'true'} title=${text.edit} @blur=${(event: Event) => this.updateText(rule, 'title', event)} @keydown=${this.finishEdit}>${rule.title}</h3></div><span class=${rule.criticality === 'critical' ? 'critical' : ''}>${rule.kind} · ${rule.layer}</span></div><nav class="ns4-tabs">${(['summary','condition','application','cases','traceability','coverage'] as Tab[]).map(tab => html`<button class=${this.activeTab === tab ? 'selected' : ''} @click=${() => { this.activeTab = tab; }}>${text[tab]}</button>`)}</nav>${this.activeTab === 'summary' ? this.summary(rule, text) : ''}${this.activeTab === 'condition' ? this.condition(rule, text) : ''}${this.activeTab === 'application' ? this.application(rule, text) : ''}${this.activeTab === 'cases' ? this.cases(rule, text) : ''}${this.activeTab === 'traceability' ? this.traceability(rule, text) : ''}${this.activeTab === 'coverage' ? this.coverage(rule, text) : ''}</main>`; }
-  private summary(rule: Ns4RuleDefinition, text: ReturnType<WidgetNs4Rules102020['text']>) { return html`<section class="ns4-panel"><h4>${text.statement}</h4><p class="ns4-edit statement" contenteditable=${this.readonly ? 'false' : 'true'} title=${text.edit} @blur=${(event: Event) => this.updateText(rule, 'statement', event)} @keydown=${this.finishEdit}>${rule.statement}</p><dl><div><dt>${text.trigger}</dt><dd>${rule.trigger.type} — ${rule.trigger.description}</dd></div><div><dt>${text.kind}</dt><dd>${rule.kind} · ${rule.layer}</dd></div><div><dt>${text.critical}</dt><dd>${rule.criticality}</dd></div></dl></section>`; }
-  private condition(rule: Ns4RuleDefinition, text: ReturnType<WidgetNs4Rules102020['text']>) { return html`<section class="ns4-panel"><h4>${text.condition}</h4><div class="ns4-predicate">${this.predicate(rule.predicate)}</div></section>`; }
-  private predicate(predicate: Ns4Predicate): unknown {
-    if (predicate.type === 'manualSpecification') return html`<p>${predicate.description}</p>`;
-    if (predicate.type === 'all' || predicate.type === 'any') return html`<div><strong>${predicate.type === 'all' ? 'ALL' : 'ANY'}</strong><ul>${predicate.conditions.map(item => html`<li>${this.predicate(item)}</li>`)}</ul></div>`;
-    if (predicate.type === 'factComparison') return html`<code>${predicate.factRef} ${predicate.operator} ${predicate.comparisonFactRef || this.print(predicate.value)}</code>`;
-    return '';
+  private renderCancelDialog(text: ReturnType<WidgetNs4Rules102020['text']>) {
+    if (!this.cancelOpen) return '';
+    return html`<div class="ns4-dialog-backdrop"><section class="ns4-cancel-dialog" role="dialog" aria-modal="true"><h3>${text.cancelTitle}</h3><p>${text.cancelText}</p><div><button class="secondary ns4-cancel-stay" @click=${this.closeCancel}>${text.keepWorking}</button><button class="danger" @click=${() => { this.closeCancel(); this.submit('cancel'); }}>${text.cancel}</button></div></section></div>`;
   }
-  private application(rule: Ns4RuleDefinition, text: ReturnType<WidgetNs4Rules102020['text']>) { return html`<section class="ns4-application"><article><h4>Backend</h4><strong>${rule.enforcement.backend.required ? text.required : text.notRequired}</strong><dl><div><dt>${text.effect}</dt><dd>${rule.enforcement.backend.effect}</dd></div><div><dt>${text.errorCode}</dt><dd><code>${rule.enforcement.backend.errorCode || '—'}</code></dd></div></dl></article><article><h4>${text.frontend}</h4><dl><div><dt>${text.behavior}</dt><dd>${rule.enforcement.frontend.behavior}</dd></div><div><dt>${text.message}</dt><dd class="ns4-edit" contenteditable=${this.readonly ? 'false' : 'true'} title=${text.edit} @blur=${(event: Event) => this.updateFrontendMessage(rule, event)} @keydown=${this.finishEdit}>${rule.enforcement.frontend.message || '—'}</dd></div></dl><p>${text.frontendWarning}</p></article></section>`; }
-  private cases(rule: Ns4RuleDefinition, text: ReturnType<WidgetNs4Rules102020['text']>) { return html`<section class="ns4-cases">${rule.acceptanceCases.map(item => html`<article><div><code>${item.caseId}</code><h4 class="ns4-edit" contenteditable=${this.readonly ? 'false' : 'true'} title=${text.edit} @blur=${(event: Event) => this.updateCaseTitle(rule, item.caseId, event)} @keydown=${this.finishEdit}>${item.title}</h4></div><span class=${item.expect === 'reject' ? 'reject' : 'allow'}>${item.expect}</span><p>${item.when || '—'}</p><dl><div><dt>Given</dt><dd>${Object.entries(item.given).map(([key, value]) => html`<code>${key}: ${this.print(value)}</code>`)}</dd></div><div><dt>Expected</dt><dd>${item.expectedValue === undefined ? '—' : this.print(item.expectedValue)} ${item.errorCode ? html`<code>${item.errorCode}</code>` : ''}</dd></div></dl></article>`)}</section>`; }
-  private traceability(rule: Ns4RuleDefinition, text: ReturnType<WidgetNs4Rules102020['text']>) {
-    const groups: Array<{ title: string; refs: string[] }> = [
-      { title: text.entity, refs: rule.scope.entityRefs }, { title: 'Fields', refs: rule.scope.fieldRefs }, { title: 'Relationships', refs: rule.scope.relationshipRefs },
-      { title: text.journey, refs: rule.scope.journeyRefs }, { title: 'Journey steps', refs: rule.scope.journeyStepRefs }, { title: 'Actors', refs: rule.scope.actorRefs }, { title: text.authority, refs: rule.scope.authorityRefs },
-    ];
-    return html`<section class="ns4-traceability">${groups.filter(group => group.refs.length).map(group => this.traceGroup(group.title, group.refs))}<div><h4>${text.source}</h4>${rule.sourceRefs.map(ref => html`<code>${ref.kind}: ${ref.ref}</code>`)}</div></section>`;
-  }
-  private traceGroup(title: string, refs: string[]) { return html`<div><h4>${title}</h4>${refs.map(ref => html`<code>${ref}</code>`)}</div>`; }
-  private coverage(rule: Ns4RuleDefinition, text: ReturnType<WidgetNs4Rules102020['text']>) { const refs = new Set(rule.sourceRefs.map(source => source.ref)); const coverage = this.value!.coverage.filter(item => refs.has(item.sourceRef)); const routed = this.value!.routedStatements.filter(item => refs.has(item.sourceRef)); return html`<section class="ns4-coverage"><h4>${text.coverage}</h4>${coverage.map(item => html`<article><code>${item.sourceRef}</code><span class="status-${item.status}">${item.status}</span><p>${item.coveredBy.join(', ') || '—'}</p></article>`)}${routed.length ? html`<h4>${text.routed}</h4>${routed.map(item => html`<article><code>${item.sourceRef}</code><strong>${item.destination}${item.targetRef ? ` → ${item.targetRef}` : ''}</strong><p>${item.reason}</p></article>`)}` : ''}</section>`; }
-  private renderFeedback(text: ReturnType<WidgetNs4Rules102020['text']>) { if (!this.msgError && !this.msgOk) return ''; const error = Boolean(this.msgError); return html`<section class="ns4-feedback ${error ? 'is-error' : 'is-ok'}" role=${error ? 'alert' : 'status'} aria-live=${error ? 'assertive' : 'polite'} tabindex="-1">${error ? html`<strong>${text.revise}</strong>` : ''}<span>${this.msgError || this.msgOk}</span>${this.feedbackIssues.length ? html`<ul>${this.feedbackIssues.map(item => html`<li>${item.path ? html`<code>${item.path}</code> — ` : ''}${item.message}</li>`)}</ul>` : ''}</section>`; }
-  private renderCancelDialog(text: ReturnType<WidgetNs4Rules102020['text']>) { if (!this.cancelOpen) return ''; return html`<div class="ns4-dialog-backdrop"><section class="ns4-cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="ns4-rules-cancel-title" @keydown=${this.trapCancel}><h3 id="ns4-rules-cancel-title">${text.cancelTitle}</h3><p>${text.cancelText}</p><div><button class="secondary ns4-cancel-stay" @click=${this.closeCancel}>${text.keepWorking}</button><button class="danger" @click=${() => { this.closeCancel(); this.submit('cancel'); }}>${text.cancel}</button></div></section></div>`; }
-  private print(value: unknown): string { return value === undefined ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value); }
 }
 
 declare global { interface HTMLElementTagNameMap { 'widget-ns4-rules-102020': WidgetNs4Rules102020; } }

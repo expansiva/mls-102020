@@ -11,7 +11,7 @@ import type {
   Ns4OntologyEntityArtifact,
   Ns4OntologyIndexArtifact,
 } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
-import type { Ns4RuleArtifact, Ns4RuleIndexArtifact } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
+import type { Ns4RulesArtifact } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
 
 export type {
   Ns4ApprovedBy,
@@ -39,7 +39,6 @@ export type {
   Ns4JourneyIndex,
   Ns4JourneyPrerequisite,
   Ns4JourneyProposal,
-  Ns4JourneyRule,
   Ns4JourneyStep,
   Ns4JourneyStepKind,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
@@ -62,7 +61,6 @@ export type {
   Ns4E4PlanDraft,
   Ns4E4Review,
   Ns4E4ReviewEvent,
-  Ns4EntityInvariant,
   Ns4EntityKind,
   Ns4EntityOwnership,
   Ns4FieldConstraint,
@@ -79,19 +77,10 @@ export type {
 } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 
 export type {
-  Ns4E5PlanDraft,
   Ns4E5Review,
   Ns4E5ReviewEvent,
-  Ns4E5RuleDraft,
-  Ns4E5UpstreamGap,
-  Ns4RoutedStatement,
-  Ns4RuleArtifact,
-  Ns4RuleCoverage,
   Ns4RuleDefinition,
-  Ns4RuleIndexArtifact,
-  Ns4RuleKind,
-  Ns4RuleLayer,
-  Ns4RulePlanItem,
+  Ns4RulesArtifact,
 } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
 
 export const NS4_PERMANENT_ARTIFACT_TYPE_NAMES = [
@@ -101,8 +90,7 @@ export const NS4_PERMANENT_ARTIFACT_TYPE_NAMES = [
   'Ns4AccessMatrixArtifact',
   'Ns4OntologyEntityArtifact',
   'Ns4OntologyIndexArtifact',
-  'Ns4RuleArtifact',
-  'Ns4RuleIndexArtifact',
+  'Ns4RulesArtifact',
 ] as const;
 
 export type Ns4PermanentArtifactTypeName = typeof NS4_PERMANENT_ARTIFACT_TYPE_NAMES[number];
@@ -114,6 +102,5 @@ export interface Ns4PermanentArtifactByType {
   Ns4AccessMatrixArtifact: Ns4AccessMatrixArtifact;
   Ns4OntologyEntityArtifact: Ns4OntologyEntityArtifact;
   Ns4OntologyIndexArtifact: Ns4OntologyIndexArtifact;
-  Ns4RuleArtifact: Ns4RuleArtifact;
-  Ns4RuleIndexArtifact: Ns4RuleIndexArtifact;
+  Ns4RulesArtifact: Ns4RulesArtifact;
 }

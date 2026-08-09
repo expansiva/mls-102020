@@ -2,7 +2,7 @@
 
 import { sha256Ns4 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 
-export const NS4_ACCESS_MATRIX_SCHEMA_VERSION = '2026-08-05-ns4-access-matrix-v1' as const;
+export const NS4_ACCESS_MATRIX_SCHEMA_VERSION = '2026-08-09-ns4-access-matrix-v2' as const;
 
 export type Ns4AccessProfileKind = 'internal' | 'external';
 export type Ns4AccessScopeMode = 'organization' | 'assigned' | 'own' | 'related' | 'public' | 'custom';
@@ -39,7 +39,7 @@ export interface Ns4AccessGrant {
     allowedInformation: string[];
     deniedInformation: string[];
   };
-  constraints: string[];
+  useRules: string[];
 }
 
 export interface Ns4E3Review {
@@ -60,7 +60,7 @@ export interface Ns4E3ReviewEvent {
   review: Ns4E3Review;
 }
 
-export interface Ns4AccessMatrixArtifact {
+export interface Ns4AccessMatrixArtifactV2 {
   schemaVersion: typeof NS4_ACCESS_MATRIX_SCHEMA_VERSION;
   moduleName: string;
   userLanguage: string;
@@ -77,6 +77,14 @@ export interface Ns4AccessMatrixArtifact {
     operationAuthorityRefs: never[];
   };
 }
+
+/** Compile-only compatibility for already generated v1 L4 artifacts. */
+export interface Ns4AccessMatrixArtifactV1 extends Omit<Ns4AccessMatrixArtifactV2, 'schemaVersion' | 'grants'> {
+  schemaVersion: '2026-08-05-ns4-access-matrix-v1';
+  grants: Array<Omit<Ns4AccessGrant, 'useRules'> & { constraints: string[] }>;
+}
+
+export type Ns4AccessMatrixArtifact = Ns4AccessMatrixArtifactV2 | Ns4AccessMatrixArtifactV1;
 
 export function normalizeNs4E3Review(value: unknown, fallbackModule = ''): Ns4E3Review {
   const root = record(value);
@@ -125,7 +133,7 @@ export function normalizeNs4E3Review(value: unknown, fallbackModule = ''): Ns4E3
           allowedInformation: strings(disclosure.allowedInformation),
           deniedInformation: strings(disclosure.deniedInformation),
         },
-        constraints: strings(grant.constraints),
+        useRules: strings(grant.useRules),
       };
     }),
     changeSummary: strings(root.changeSummary),
@@ -136,7 +144,7 @@ export async function buildNs4AccessMatrixArtifact(
   review: Ns4E3Review,
   approvedBy: 'human' | 'auto',
   approvedAt: string,
-): Promise<Ns4AccessMatrixArtifact> {
+): Promise<Ns4AccessMatrixArtifactV2> {
   const accessContract = {
     profiles: review.profiles,
     authorities: review.authorities,

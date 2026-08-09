@@ -1,76 +1,41 @@
 <!-- modelType: reasoning -->
 <!-- reasoningEffort: high -->
 
-# E5 — compact business-rule plan
+# E5 — maintainable business-rule catalog
 
-Group the supplied exact source catalog into a small rule plan. Do not generate triggers, executable
-conditions, enforcement or acceptance cases here; one parallel worker will detail each planned rule.
+Create the module's single human-maintainable business-rule catalog. A rule has exactly two fields:
+`id` and `description`.
 
-{{platformSkill}}
+## Policy
 
-## Planning policy
-
-- Every source must appear in at least one `rulePlans[].sourceRefs` or one `routedStatements` entry.
-- Merge sources only when they express the same enforceable business decision. Do not create one rule
-  per sentence when several sources are evidence for the same rule.
-- Keep static scalar validation already represented by E4 field constraints in E4. Route workflows and
-  side-effect sequences to E6. E5 owns dynamic, temporal, cross-entity, calculation, transition,
-  authorization and visibility rules.
-- Freeze ids, meaning, kind, layer, criticality, scope and source grouping. Detail workers cannot change
-  these decisions.
-- Use only exact ids from the reference index and exact source refs from the catalog.
-- Examples are evidence, never constants. Do not decide undefined lifecycle predicates such as which
-  statuses mean “active”.
-- If an approved source requires a fact or durable business object absent from the reference index,
-  record an `upstreamGaps` entry. Never invent a snapshot, authorization record, status predicate,
-  relationship or field inside a rule to hide an upstream gap.
-- A derived projection may use an approved transitive relationship path. Do not demand a duplicated
-  direct relationship or denormalized field when `relationshipContracts` supplies a valid join through
-  an existing entity; cite every relationship in the rule scope and compile the derivation in E5.
-- A previously repaired non-security semantic gap may be retained as known technical debt by the
-  runtime. Access, tenant isolation, disclosure, regulatory and mechanically missing-object gaps are
-  never deferrable.
-- Human adjustment and judge feedback are mandatory. Preserve unrelated ids and groupings.
+- Preserve every required rule id supplied by the approved E2, E3 and E4 artifacts.
+- When the approved L4 has no business rules, return an empty `rules` array instead of inventing one.
+- Infer each description from the complete approved L4 business context.
+- A description is one precise, technology-neutral business sentence that a human and a future LLM
+  can understand without reading implementation code.
+- Consolidate the full business meaning in the description. Do not replace part of the meaning with
+  phrases such as “defined elsewhere”, “maintained by E4” or “enforced by the backend”.
+- Do not add scope, source references, triggers, conditions, authorities, error codes, frontend messages,
+  acceptance cases, implementation advice or technical fields to a rule.
+- Do not duplicate rules merely because several journeys, entities or grants use the same rule id.
+- A human change request updates the affected descriptions or adds/removes rules as requested while
+  preserving unrelated rules byte-for-byte.
+- The generated L4 is the source of truth. Future pages, use cases, tables and maintenance agents scan
+  this catalog and decide which rule ids they must use.
 
 ## Output
 
-Return exactly one JSON object without Markdown. Do not return `coverage`; it is compiled mechanically.
+Return exactly one JSON object without Markdown:
 
 {
-  "planId": "e5-rules-plan",
+  "planId": "e5-rules-review",
   "moduleName": "lowerCamelModule",
-  "userLanguage": "en",
-  "title": "Business rules",
+  "userLanguage": "pt-BR",
+  "title": "Regras de negócio",
   "reviewRound": 1,
-  "rulePlans": [{
-    "ruleId": "projectRequiresClient",
-    "title": "Project requires a client",
-    "statement": "A project must be associated with one client before creation.",
-    "kind": "validation",
-    "layer": "domain",
-    "criticality": "blocking",
-    "scope": {
-      "entityRefs": ["Project", "Client"],
-      "fieldRefs": [],
-      "relationshipRefs": ["projectBelongsToClient"],
-      "journeyRefs": ["createProject"],
-      "journeyStepRefs": ["createProject.saveProject"],
-      "actorRefs": ["projectManager"],
-      "authorityRefs": ["projects:manage"]
-    },
-    "sourceRefs": ["journey:createProject:rule:jrProjectRequiresClient"]
+  "rules": [{
+    "id": "clientAvailableForBusinessActivity",
+    "description": "Em um projeto, faturamento ou comunicação, só é permitido usar um cliente que esteja ativo, tenha nome e pelo menos um contato: e-mail ou telefone."
   }],
-  "routedStatements": [{
-    "sourceRef": "exact source ref",
-    "statement": "ignored and replaced mechanically from the catalog",
-    "destination": "e4-fieldConstraint|e4-entityInvariant|e6-workflow|documentation",
-    "reason": "why this is not an E5 rule"
-  }],
-  "upstreamGaps": [{
-    "gapId": "missingScheduleExceptionAuthorization",
-    "sourceRefs": ["exact source ref"],
-    "missingContract": "The missing E4 fact, field, relationship, object or lifecycle meaning",
-    "reason": "Why a backend rule cannot evaluate the approved requirement"
-  }],
-  "changeSummary": ["Initial rule plan."]
+  "changeSummary": ["Catálogo inicial de regras."]
 }

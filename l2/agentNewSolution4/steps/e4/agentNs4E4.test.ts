@@ -42,7 +42,7 @@ const journeys = normalizeNs4E2Review({
   journeys: [{
     journeyId: 'manageProjects', business: {
       actorRef: 'projectManager', title: 'Manage projects', goal: 'Manage a selected project.', prerequisites: [],
-      entry: { mode: 'coldStart', carries: [] }, businessRules: [],
+      entry: { mode: 'coldStart', carries: [] }, useRules: [],
       steps: [{
         stepId: 'selectProject', kind: 'locate', intent: 'Select a project.', requiresContext: [],
         providesContext: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true, description: 'Selected project.' }],
@@ -63,7 +63,7 @@ const access = normalizeNs4E3Review({
   grants: [{
     profileRef: 'projectManager', authorityRef: 'buildflow:projectread', reason: 'Manage projects.',
     dataScope: { mode: 'assigned', description: 'Assigned projects.' },
-    disclosure: { mode: 'fullRecord', description: 'Full project record.', allowedInformation: [], deniedInformation: [] }, constraints: [],
+    disclosure: { mode: 'fullRecord', description: 'Full project record.', allowedInformation: [], deniedInformation: [] }, useRules: [],
   }],
 });
 
@@ -77,7 +77,7 @@ const reviewInput = {
       fields: [
         { fieldId: 'projectId', title: 'Project id', type: 'uuid', required: true, description: 'Stable id.', constraints: [{ constraintId: 'uniqueProjectId', kind: 'unique', value: 'true', description: 'Unique id.', source: 'inferred' }] },
         { fieldId: 'name', title: 'Name', type: 'string', required: true, description: 'Project name.', constraints: [] },
-      ], lifecycleStates: [], invariants: [], storage: {
+      ], lifecycleStates: [], useRules: [], storage: {
         target: 'moduleDatabase', scope: 'module', idField: 'projectId', notes: 'Transactional module persistence.',
       },
     },
@@ -85,7 +85,7 @@ const reviewInput = {
       entityId: 'ClientProjectSummary', title: 'Client project summary', description: 'Published related-project projection.', kind: 'projection', ownership: 'derived',
       sourceRefs: { journeyIds: [], featureIds: [], authorityRefs: ['buildflow:clientprojectview'] },
       fields: [{ fieldId: 'projectId', title: 'Project id', type: 'uuid', required: true, description: 'Related project.', constraints: [] }],
-      lifecycleStates: [], invariants: [], storage: { target: 'derived', scope: 'none', notes: 'Derived from published project data.' },
+      lifecycleStates: [], useRules: [], storage: { target: 'derived', scope: 'none', notes: 'Derived from published project data.' },
     },
   ],
   relationships: [{ relationshipId: 'summaryDescribesProject', fromEntity: 'ClientProjectSummary', toEntity: 'Project', type: 'manyToOne', required: true, description: 'Summary belongs to its related project.' }],
@@ -127,7 +127,7 @@ test('E4 overview freezes global decisions and entity detail reassembles the fin
   const full = normalizeNs4E4Review(reviewInput);
   const plan = normalizeNs4E4PlanDraft(reviewInput);
   assert.deepEqual(validateNs4E4Plan(plan, journeys, access), { ok: true, issues: [] });
-  assert.ok(plan.entities.every(entity => !('fields' in entity) && !('invariants' in entity)));
+  assert.ok(plan.entities.every(entity => !('fields' in entity) && !('useRules' in entity)));
   const details = full.entities.map(entity => normalizeNs4E4EntityDraft(
     entity, full.moduleName, full.reviewRound, entity.entityId,
   ));

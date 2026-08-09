@@ -27,8 +27,7 @@ test('permanent artifact registry covers every implemented E1-E5 defs contract',
     'Ns4AccessMatrixArtifact',
     'Ns4OntologyEntityArtifact',
     'Ns4OntologyIndexArtifact',
-    'Ns4RuleArtifact',
-    'Ns4RuleIndexArtifact',
+    'Ns4RulesArtifact',
   ]);
 });
 
