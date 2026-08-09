@@ -11,7 +11,7 @@ import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import {
   createNs4E5FinalizeStep, createNs4E5JudgeStep, createNs4E5Step,
   isNs4Pipeline, markNs4E5Approved, markNs4E5Failed, markNs4E5Running, markNs4E5WaitingHuman,
-  markNs4ModuleE5Approved, NS4_E5_MAX_PARALLEL, NS4_E5_UPSTREAM_FAILURE_PREFIX,
+  markNs4ModuleE5Approved, NS4_E5_HARD_UPSTREAM_FAILURE_PREFIX, NS4_E5_MAX_PARALLEL,
   plainNs4StepTitle, Ns4ApprovedBy, Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
@@ -30,7 +30,7 @@ import {
   normalizeNs4E5RuleDraft, Ns4E5PlanDraft, Ns4E5Review, Ns4E5ReviewEvent, Ns4E5RuleDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
 import {
-  buildNs4E5ReferenceIndex, buildNs4E5SourceCatalog, completeNs4E5PlanCoverage,
+  buildNs4E5ReferenceIndex, buildNs4E5SourceCatalog, classifyNs4E5UpstreamGaps, completeNs4E5PlanCoverage,
   findNs4E5MechanicalUpstreamGaps, Ns4E5SourceCatalogEntry,
 } from '/_102020_/l2/agentNewSolution4/steps/e5/catalog.js';
 import { Ns4E5Sources, validateNs4E5Plan, validateNs4E5Review, validateNs4E5RuleDraft } from '/_102020_/l2/agentNewSolution4/steps/e5/gate.js';
@@ -247,17 +247,26 @@ async function handlePlanResult(
     ];
     throw new Error(feedback);
   }
-  if (plan.upstreamGaps.length) {
-    const message = formatUpstreamGaps(plan);
+  const gapPolicy = classifyNs4E5UpstreamGaps(
+    plan.upstreamGaps,
+    mechanicalGaps,
+    Math.max(pipeline.steps.e3?.reviewRound || 1, pipeline.steps.e4?.reviewRound || 1),
+  );
+  if (gapPolicy.blocking.length) {
+    const blockingPlan = { ...plan, upstreamGaps: gapPolicy.blocking };
+    const message = formatUpstreamGaps(blockingPlan);
     await recordFailure(args.moduleName, message);
     return [
-      traceStep(context, mutationParent, 'E5 stopped on upstream contract gaps', plan.upstreamGaps),
+      traceStep(context, mutationParent, 'E5 stopped on upstream contract gaps', gapPolicy.blocking),
       updateStatus(context, mutationParent, step, hookSequential, 'failed', message, 'input_output'),
     ];
   }
   const currentPlanId = step.planning?.planId || `e5-rules-round-${round}`;
   const planRepairAttempt = args.repairAttempt || args.planRepairAttempt || 0;
   return [
+    ...(gapPolicy.deferred.length
+      ? [traceStep(context, mutationParent, 'E5 proceeding with recorded semantic gaps', gapPolicy.deferred)]
+      : []),
     parallelRuleStep(context, step, agent.agentName, plan, 0, undefined, planRepairAttempt),
     addStep(context, mutationParent, createNs4E5FinalizeStep(args.moduleName, round, [currentPlanId], 0, planRepairAttempt)),
     updateStatus(context, mutationParent, step, hookSequential, 'completed', `E5 plan ready; detailing ${plan.rulePlans.length} rules with maxParallel=${NS4_E5_MAX_PARALLEL}.`, 'input_output'),
@@ -484,7 +493,7 @@ function compactReview(review: Ns4E5Review): unknown {
   return { title: review.title, rules: review.rules.map(rule => ({
     ruleId: rule.ruleId, title: rule.title, statement: rule.statement, kind: rule.kind,
     layer: rule.layer, criticality: rule.criticality, scope: rule.scope, sourceRefs: rule.sourceRefs,
-  })), routedStatements: review.routedStatements, changeSummary: review.changeSummary };
+  })), routedStatements: review.routedStatements, knownGaps: review.knownGaps, changeSummary: review.changeSummary };
 }
 
 async function readPlan(moduleName: string): Promise<Ns4E5PlanDraft> {
@@ -578,9 +587,9 @@ async function applyIntents(context: mls.msg.ExecutionContext, intents: mls.msg.
   const applied = response as mls.msg.ResponseApplyIntents; context.task = applied.task; if (applied.message) context.message = applied.message;
 }
 function formatGate(issues: Array<{ code: string; path: string; message: string }>): string { return issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n'); }
-function formatUpstreamGaps(plan: Ns4E5PlanDraft): string { return `${NS4_E5_UPSTREAM_FAILURE_PREFIX}\n${plan.upstreamGaps.map(gap => `${gap.gapId}: missing ${gap.missingContract} | ${gap.reason} | ${gap.sourceRefs.join(', ')}`).join('\n')}`; }
+function formatUpstreamGaps(plan: Ns4E5PlanDraft): string { return `${NS4_E5_HARD_UPSTREAM_FAILURE_PREFIX}\n${plan.upstreamGaps.map(gap => `${gap.gapId}: missing ${gap.missingContract} | ${gap.reason} | ${gap.sourceRefs.join(', ')}`).join('\n')}`; }
 function formatJudgeUpstreamGaps(issues: Ns4E5JudgeVerdict['issues']): string {
-  return `${NS4_E5_UPSTREAM_FAILURE_PREFIX}\n${issues.map(issue =>
+  return `${NS4_E5_HARD_UPSTREAM_FAILURE_PREFIX}\n${issues.map(issue =>
     `${issue.issueId}: missing ${issue.finding} | ${issue.repairInstruction} | ${issue.sourceEvidence}`,
   ).join('\n')}`;
 }

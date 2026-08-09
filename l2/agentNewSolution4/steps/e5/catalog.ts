@@ -26,6 +26,11 @@ export interface Ns4E5SourceCatalogEntry {
   };
 }
 
+export interface Ns4E5GapPolicy {
+  blocking: Ns4E5UpstreamGap[];
+  deferred: Ns4E5UpstreamGap[];
+}
+
 export function buildNs4E5SourceCatalog(sources: Ns4E5Sources): Ns4E5SourceCatalogEntry[] {
   return [
     ...sources.journeys.journeys.flatMap(journey => journey.business.businessRules.map(rule => ({
@@ -130,6 +135,30 @@ export function findNs4E5MechanicalUpstreamGaps(sources: Ns4E5Sources): Ns4E5Ups
   }));
 }
 
+/**
+ * A first semantic gap reopens its owning upstream contracts. If the approved contracts have already
+ * completed a repair round, non-security semantic uncertainty becomes explicit technical debt instead
+ * of causing an unbounded E3/E4 loop. Mechanical, access and regulatory gaps always remain blocking.
+ */
+export function classifyNs4E5UpstreamGaps(
+  gaps: Ns4E5UpstreamGap[],
+  mechanicalGaps: Ns4E5UpstreamGap[],
+  upstreamReviewRound: number,
+): Ns4E5GapPolicy {
+  const mechanicalIds = new Set(mechanicalGaps.map(gap => gap.gapId));
+  const blocking: Ns4E5UpstreamGap[] = [];
+  const deferred: Ns4E5UpstreamGap[] = [];
+  for (const gap of gaps) {
+    const evidence = `${gap.missingContract} ${gap.reason} ${gap.sourceRefs.join(' ')}`;
+    const protectedContract = gap.sourceRefs.some(ref => ref.startsWith('access:')
+      || ref === 'module:regulatoryNotes' || ref === 'module:criticalNotes')
+      || /\b(authori[sz]|permission|tenant|security|regulat|compliance|data scope|disclosure)/i.test(evidence);
+    if (mechanicalIds.has(gap.gapId) || protectedContract || upstreamReviewRound < 2) blocking.push(gap);
+    else deferred.push(gap);
+  }
+  return { blocking, deferred };
+}
+
 export function buildNs4E5ReferenceIndex(sources: Ns4E5Sources): unknown {
   return {
     actors: sources.module.businessScope.actors.map(actor => actor.actorId),
@@ -164,5 +193,14 @@ export function buildNs4E5ReferenceIndex(sources: Ns4E5Sources): unknown {
       })),
     })),
     relationships: sources.ontology.relationships.map(relationship => relationship.relationshipId),
+    relationshipContracts: sources.ontology.relationships.map(relationship => ({
+      relationshipId: relationship.relationshipId,
+      fromEntity: relationship.fromEntity,
+      toEntity: relationship.toEntity,
+      type: relationship.type,
+      required: relationship.required,
+      persistenceMode: relationship.persistence.mode,
+      description: relationship.description,
+    })),
   };
 }

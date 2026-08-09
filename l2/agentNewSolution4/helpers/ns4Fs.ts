@@ -2,6 +2,7 @@
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import { normalizeNs4ModuleName } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
+import { readNs4AvailableContent } from '/_102020_/l2/agentNewSolution4/helpers/ns4ContentRead.js';
 import { renderNs4TypedDefsSource } from '/_102020_/l2/agentNewSolution4/helpers/ns4TypedDefs.js';
 import type {
   Ns4AccessMatrixArtifact,
@@ -266,11 +267,15 @@ export async function readNs4Text(fileInfo: Ns4FileInfo, required: boolean): Pro
     if (required) throw new Error(`[agentNewSolution4] file not found: ${displayPath(fileInfo)}`);
     return '';
   }
-  const content = await file.getContent();
-  if (typeof content === 'string') return content;
-  if (fileInfo.extension === '.json' && typeof content === 'object' && content !== null) {
-    return `${JSON.stringify(content, null, 2)}\n`;
+  // Files created during the current task have versionRef="0" until Studio persists them remotely.
+  // Reading that sentinel through the GitHub driver requests /git/blobs/0. Prefer the authoritative
+  // local value and fail locally if it is temporarily unavailable; never issue an invalid network read.
+  const content = await readNs4AvailableContent(file, fileInfo.extension);
+  if (content.unavailableNewFile) {
+    if (required) throw new Error(`[agentNewSolution4] local content unavailable for new file: ${displayPath(fileInfo)}`);
+    return '';
   }
+  if (content.text !== null) return content.text;
   if (required) throw new Error(`[agentNewSolution4] invalid text file: ${displayPath(fileInfo)}`);
   return '';
 }

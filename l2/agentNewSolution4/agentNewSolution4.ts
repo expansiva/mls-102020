@@ -73,7 +73,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-35 (2026-08-09) E5 judge identity and approved-contract evidence';
+export const NS4_AGENT_BUILD = 'build-36 (2026-08-09) bounded E5 semantic debt and local-first storage reads';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

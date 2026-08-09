@@ -35,7 +35,7 @@
     "E4 first freezes a compact ontology overview, then details entities through the proven parallel_dynamic fan-out with maxParallel 20 and deterministically reassembles one human review.",
     "E5 reconstructs its inputs from approved permanent journey, access and ontology artifacts instead of the large pipeline review drafts; this is the same source of truth used by resume and future maintenance.",
     "E3, E4 and E5 use one shared approved-artifact reader: journey and ontology indexes plus their per-item defs, and the access-matrix def. Recovery never depends on the large E2/E4 pipeline drafts; E4 entity repair reads only the matching prior entity def.",
-    "When E5 proves that approved rules need missing access or ontology contracts, it persists the exact gap report and the next explicit module resume reopens E3 then E4 with that feedback before retrying E5; approved artifacts are revised through their owning gates rather than patched inside E5.",
+    "When E5 first proves that approved rules need missing access or ontology contracts, it persists the exact gap report and the next explicit module resume reopens E3 then E4 with that feedback before retrying E5. After that bounded repair, non-security semantic uncertainty is retained as knownGaps in the permanent rule index and compilation proceeds; mechanically missing objects plus access, tenant, disclosure and regulatory gaps always remain fail-closed.",
     "E5 extracts source catalog and coverage mechanically, freezes a compact rule plan, details rules through parallel_dynamic with maxParallel 20, retries only invalid items and gives the semantic judge compact context."
   ],
   "invocation": {

@@ -3,7 +3,7 @@
 import { sha256Ns4 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 
 export const NS4_RULE_SCHEMA_VERSION = '2026-08-06-ns4-rule-v1' as const;
-export const NS4_RULE_INDEX_SCHEMA_VERSION = '2026-08-06-ns4-rule-index-v1' as const;
+export const NS4_RULE_INDEX_SCHEMA_VERSION = '2026-08-09-ns4-rule-index-v2' as const;
 
 export type Ns4RuleKind = 'invariant' | 'validation' | 'transitionGuard' | 'calculation'
   | 'temporal' | 'authorization' | 'visibility' | 'conditionalRequirement';
@@ -59,6 +59,7 @@ export interface Ns4E5Review {
   rules: Ns4RuleDefinition[];
   routedStatements: Ns4RoutedStatement[];
   coverage: Ns4RuleCoverage[];
+  knownGaps: Ns4E5UpstreamGap[];
   changeSummary: string[];
 }
 
@@ -116,6 +117,7 @@ export interface Ns4RuleIndexArtifact {
   rules: Array<Pick<Ns4RuleDefinition, 'ruleId' | 'title' | 'kind' | 'layer' | 'criticality'> & { definitionRef: string }>;
   routedStatements: Ns4RoutedStatement[];
   coverage: Ns4RuleCoverage[];
+  knownGaps: Ns4E5UpstreamGap[];
   approvedBy: 'human' | 'auto';
   approvedAt: string;
   realization: { status: 'pending'; compiledFromRulesHash: string; operationRefs: never[] };
@@ -146,6 +148,7 @@ export function normalizeNs4E5Review(value: unknown, fallbackModule = ''): Ns4E5
         targetRef: text(coverage.targetRef),
       };
     }),
+    knownGaps: array(root.knownGaps).map(normalizeUpstreamGap),
     changeSummary: strings(root.changeSummary),
   };
 }
@@ -165,13 +168,7 @@ export function normalizeNs4E5PlanDraft(value: unknown, fallbackModule = ''): Ns
     rulePlans: normalized.rules.map(({ trigger, condition, enforcement, acceptanceCases, ...rule }) => rule),
     routedStatements: normalized.routedStatements,
     coverage: normalized.coverage,
-    upstreamGaps: array(root.upstreamGaps).map(item => {
-      const gap = record(item);
-      return {
-        gapId: text(gap.gapId), sourceRefs: strings(gap.sourceRefs),
-        missingContract: text(gap.missingContract), reason: text(gap.reason),
-      };
-    }),
+    upstreamGaps: array(root.upstreamGaps).map(normalizeUpstreamGap),
     changeSummary: normalized.changeSummary,
   };
 }
@@ -194,7 +191,8 @@ export function assembleNs4E5Review(plan: Ns4E5PlanDraft, details: Ns4E5RuleDraf
     planId: 'e5-rules-review', moduleName: plan.moduleName, userLanguage: plan.userLanguage,
     title: plan.title, reviewRound: plan.reviewRound,
     rules: plan.rulePlans.map(rule => byRule.get(rule.ruleId)).filter(Boolean),
-    routedStatements: plan.routedStatements, coverage: plan.coverage, changeSummary: plan.changeSummary,
+    routedStatements: plan.routedStatements, coverage: plan.coverage,
+    knownGaps: plan.upstreamGaps, changeSummary: plan.changeSummary,
   }, plan.moduleName);
 }
 
@@ -203,7 +201,10 @@ export async function buildNs4RuleArtifacts(
   approvedBy: 'human' | 'auto',
   approvedAt: string,
 ): Promise<{ rules: Ns4RuleArtifact[]; index: Ns4RuleIndexArtifact }> {
-  const rulesHash = await sha256Ns4({ rules: review.rules, routedStatements: review.routedStatements, coverage: review.coverage });
+  const rulesHash = await sha256Ns4({
+    rules: review.rules, routedStatements: review.routedStatements,
+    coverage: review.coverage, knownGaps: review.knownGaps,
+  });
   const rules = review.rules.map(rule => ({
     schemaVersion: NS4_RULE_SCHEMA_VERSION, moduleName: review.moduleName, userLanguage: review.userLanguage,
     ...rule, rulesHash, approvedBy, approvedAt,
@@ -217,7 +218,8 @@ export async function buildNs4RuleArtifacts(
         ruleId: rule.ruleId, title: rule.title, kind: rule.kind, layer: rule.layer,
         criticality: rule.criticality, definitionRef: `l4/${review.moduleName}/rules/${rule.ruleId}.defs.ts`,
       })),
-      routedStatements: review.routedStatements, coverage: review.coverage, approvedBy, approvedAt,
+      routedStatements: review.routedStatements, coverage: review.coverage,
+      knownGaps: review.knownGaps, approvedBy, approvedAt,
       realization: { status: 'pending', compiledFromRulesHash: rulesHash, operationRefs: [] },
     },
   };
@@ -284,6 +286,13 @@ function sourceType(value: unknown): Ns4RuleCoverage['sourceType'] {
   if (value === 'ontologyInvariant' || value === 'ontologyLifecyclePredicate'
     || value === 'accessConstraint' || value === 'declaredConstraint') return value;
   return 'journeyRule';
+}
+function normalizeUpstreamGap(value: unknown): Ns4E5UpstreamGap {
+  const gap = record(value);
+  return {
+    gapId: text(gap.gapId), sourceRefs: strings(gap.sourceRefs),
+    missingContract: text(gap.missingContract), reason: text(gap.reason),
+  };
 }
 function record(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function array(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }

@@ -5,6 +5,7 @@ export const NS4_FLOW_VERSION = '2026-08-08-ns4-flow-v17' as const;
 export const NS4_E4_MAX_PARALLEL = 20 as const;
 export const NS4_E5_MAX_PARALLEL = 20 as const;
 export const NS4_E5_UPSTREAM_FAILURE_PREFIX = 'E5 stopped before rule generation because approved upstream contracts are incomplete.' as const;
+export const NS4_E5_HARD_UPSTREAM_FAILURE_PREFIX = `${NS4_E5_UPSTREAM_FAILURE_PREFIX} Blocking structural, access, security, disclosure, or regulatory gap.` as const;
 export const NS4_MODULE_SCHEMA_VERSION = '2026-08-06-ns4-module-v4' as const;
 export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-06-ns4-pipeline-v5' as const;
 
@@ -1176,7 +1177,14 @@ export function resolveNs4ExistingAction(
   if (!moduleExists) return 'new';
   if (!isNs4Pipeline(pipeline)) return 'collision';
   if (pipeline.steps.e5?.status === 'approved' && moduleArtifactExists) return 'resume-next';
-  if (moduleArtifactExists && isNs4E5UpstreamContractFailure(pipeline.steps.e5?.error)) return 'resume-e3';
+  if (moduleArtifactExists && isNs4E5UpstreamContractFailure(pipeline.steps.e5?.error)) {
+    const upstreamReviewRound = Math.max(
+      pipeline.steps.e3?.reviewRound || 1,
+      pipeline.steps.e4?.reviewRound || 1,
+    );
+    if (isNs4E5HardUpstreamContractFailure(pipeline.steps.e5?.error) || upstreamReviewRound < 2) return 'resume-e3';
+    return 'resume-e5';
+  }
   if (pipeline.steps.e4?.status === 'approved' && moduleArtifactExists) return 'resume-e5';
   if (pipeline.steps.e3?.status === 'approved' && moduleArtifactExists) return 'resume-e4';
   if (pipeline.steps.e2?.status === 'approved' && moduleArtifactExists) return 'resume-e3';
@@ -1186,6 +1194,10 @@ export function resolveNs4ExistingAction(
 
 export function isNs4E5UpstreamContractFailure(value: unknown): boolean {
   return typeof value === 'string' && value.startsWith(NS4_E5_UPSTREAM_FAILURE_PREFIX);
+}
+
+export function isNs4E5HardUpstreamContractFailure(value: unknown): boolean {
+  return typeof value === 'string' && value.startsWith(NS4_E5_HARD_UPSTREAM_FAILURE_PREFIX);
 }
 
 export function isNs4Pipeline(value: unknown): value is Ns4PipelineState {

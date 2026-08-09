@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-09 — build 36, rule-index contract v2, flow contract unchanged (v17)
+
+- The compact reference index now exposes relationship endpoints and persistence, allowing E5 to use
+  approved transitive joins instead of demanding duplicated direct relationships on projections.
+- After one upstream repair round, non-security semantic uncertainty is recorded in `knownGaps` and E5
+  continues. Mechanical missing objects plus access, tenant, disclosure and regulatory gaps still fail
+  closed. Permanent `rules/index.defs.ts` v2 carries the debt for maintenance and later validation.
+- A persisted semantic E5 failure from an already completed E3/E4 repair now resumes E5 directly;
+  hard structural or protected-scope failures have a distinct marker and still reopen E3/E4.
+- NS4 storage reads prefer `getValueInfo()` for new files and never ask the GitHub driver for the
+  sentinel `versionRef=0`, removing invalid `/git/blobs/0` requests caused by unsaved local artifacts.
+
 ## 2026-08-09 — build 35, flow contract unchanged (v17)
 
 - E5 judge identity (`moduleName`, `reviewRound`) is frozen from its scheduled step, so a stale numeric

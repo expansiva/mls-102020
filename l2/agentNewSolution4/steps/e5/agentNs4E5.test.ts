@@ -5,10 +5,11 @@ import test from 'node:test';
 import {
   buildNs4E5UpstreamRepairSteps, buildNs4ModuleArtifact, createNs4E5FinalizeStep, createNs4E5JudgeStep,
   createNs4E5Step, createNs4Pipeline,
-  isNs4E5UpstreamContractFailure,
+  isNs4E5HardUpstreamContractFailure, isNs4E5UpstreamContractFailure,
   markNs4E1Approved, markNs4E2Approved, markNs4E2WaitingHuman, markNs4E3Approved,
   markNs4E4Approved, markNs4E5Approved, markNs4E5Failed, markNs4E5Running, markNs4E5WaitingHuman,
-  NS4_E5_MAX_PARALLEL, NS4_E5_UPSTREAM_FAILURE_PREFIX, resolveNs4ExistingAction,
+  NS4_E5_HARD_UPSTREAM_FAILURE_PREFIX, NS4_E5_MAX_PARALLEL, NS4_E5_UPSTREAM_FAILURE_PREFIX,
+  resolveNs4ExistingAction,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
   buildNs4JourneyArtifacts, buildNs4JourneyIndex, normalizeNs4E2Review,
@@ -27,7 +28,8 @@ import {
   normalizeNs4E5Review, normalizeNs4E5RuleDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
 import {
-  buildNs4E5ReferenceIndex, buildNs4E5SourceCatalog, completeNs4E5PlanCoverage, findNs4E5MechanicalUpstreamGaps,
+  buildNs4E5ReferenceIndex, buildNs4E5SourceCatalog, classifyNs4E5UpstreamGaps,
+  completeNs4E5PlanCoverage, findNs4E5MechanicalUpstreamGaps,
 } from '/_102020_/l2/agentNewSolution4/steps/e5/catalog.js';
 import {
   Ns4E5Sources, validateNs4E5Plan, validateNs4E5Review, validateNs4E5RuleDraft,
@@ -145,6 +147,11 @@ test('E5 receives lifecycle predicates as explicit reference data and catalog so
     description: 'A project is unfinished while draft or active.',
     stateIds: ['draft', 'active'], source: 'journey',
   }];
+  predicateSources.ontology.relationships = [{
+    relationshipId: 'assessmentForProject', fromEntity: 'Project', toEntity: 'Project',
+    type: 'oneToOne', required: true, description: 'Approved derived join.',
+    persistence: { mode: 'derivedJoin' },
+  }];
   const catalog = buildNs4E5SourceCatalog(predicateSources);
   assert.ok(catalog.some(item => item.sourceRef === 'ontology:Project:lifecyclePredicate:unfinishedProject'
     && item.sourceType === 'ontologyLifecyclePredicate' && item.statement.includes('draft, active')));
@@ -164,6 +171,21 @@ test('E5 receives lifecycle predicates as explicit reference data and catalog so
   assert.deepEqual(index.entities[0].invariants, [{
     invariantId: 'activeProjectNamed', description: 'An active project has a name.',
   }]);
+  assert.deepEqual(index.relationshipContracts, [{
+    relationshipId: 'assessmentForProject', fromEntity: 'Project', toEntity: 'Project',
+    type: 'oneToOne', required: true, persistenceMode: 'derivedJoin',
+    description: 'Approved derived join.',
+  }]);
+});
+
+test('E5 defers only repaired semantic gaps while mechanical and access gaps remain blocking', () => {
+  const semantic = { gapId: 'missingSchedulePath', sourceRefs: ['journey:manageProjects:rule:projectNameRequired'],
+    missingContract: 'A direct schedule relationship', reason: 'A transitive derived path may be sufficient.' };
+  assert.deepEqual(classifyNs4E5UpstreamGaps([semantic], [], 1), { blocking: [semantic], deferred: [] });
+  assert.deepEqual(classifyNs4E5UpstreamGaps([semantic], [], 2), { blocking: [], deferred: [semantic] });
+  assert.deepEqual(classifyNs4E5UpstreamGaps([semantic], [semantic], 2), { blocking: [semantic], deferred: [] });
+  const access = { ...semantic, gapId: 'missingTenantScope', sourceRefs: ['access:manager:projects:constraint:1'] };
+  assert.deepEqual(classifyNs4E5UpstreamGaps([access], [], 2), { blocking: [access], deferred: [] });
 });
 
 test('E5 resume reconstructs sources from approved permanent artifacts and verifies hashes', async () => {
@@ -297,6 +319,12 @@ test('an E5 upstream-contract failure resumes through new E3 and E4 repair round
   const revisedE4 = markNs4E4Approved(revisedE3, 'auto', ['ontology-v2.defs.ts'], '2026-08-08T14:01:00.000Z', 2);
   assert.equal(revisedE3.steps.e3?.reviewRound, 2);
   assert.equal(revisedE4.steps.e4?.reviewRound, 2);
+  const semanticFailureAfterRepair = markNs4E5Failed(revisedE4, feedback);
+  assert.equal(resolveNs4ExistingAction(true, semanticFailureAfterRepair, true), 'resume-e5');
+  const hardFeedback = `${NS4_E5_HARD_UPSTREAM_FAILURE_PREFIX}\nmissingTenantScope: access scope is incomplete`;
+  const hardFailureAfterRepair = markNs4E5Failed(revisedE4, hardFeedback);
+  assert.equal(isNs4E5HardUpstreamContractFailure(hardFailureAfterRepair.steps.e5?.error), true);
+  assert.equal(resolveNs4ExistingAction(true, hardFailureAfterRepair, true), 'resume-e3');
 });
 
 test('E5 reconstructs base invocation when a parallel child has only rule hook args', () => {

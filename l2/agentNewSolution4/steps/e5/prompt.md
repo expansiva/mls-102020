@@ -24,6 +24,12 @@ conditions, enforcement or acceptance cases here; one parallel worker will detai
 - If an approved source requires a fact or durable business object absent from the reference index,
   record an `upstreamGaps` entry. Never invent a snapshot, authorization record, status predicate,
   relationship or field inside a rule to hide an upstream gap.
+- A derived projection may use an approved transitive relationship path. Do not demand a duplicated
+  direct relationship or denormalized field when `relationshipContracts` supplies a valid join through
+  an existing entity; cite every relationship in the rule scope and compile the derivation in E5.
+- A previously repaired non-security semantic gap may be retained as known technical debt by the
+  runtime. Access, tenant isolation, disclosure, regulatory and mechanically missing-object gaps are
+  never deferrable.
 - Human adjustment and judge feedback are mandatory. Preserve unrelated ids and groupings.
 
 ## Output

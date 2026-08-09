@@ -127,6 +127,16 @@ export function validateNs4E5Review(review: Ns4E5Review, sources: Ns4E5Sources):
     if (route.sourceRef && !expectedSources.has(route.sourceRef)) add('NS4_E5_ROUTE_SOURCE', `routedStatements[${index}].sourceRef`, `Unknown or invented source ${route.sourceRef}.`);
     if (route.destination === 'e5-rule' && (!route.ruleRef || !ruleIds.has(route.ruleRef))) add('NS4_E5_ROUTE_RULE', `routedStatements[${index}].ruleRef`, 'E5 destinations must reference an existing rule.');
   });
+  const knownGapIds = new Set<string>();
+  review.knownGaps.forEach((gap, index) => {
+    const path = `knownGaps[${index}]`;
+    if (!MEMBER_ID.test(gap.gapId) || knownGapIds.has(gap.gapId)) add('NS4_E5_KNOWN_GAP_ID', `${path}.gapId`, 'Must be a unique lower-camel id.');
+    knownGapIds.add(gap.gapId);
+    if (!gap.sourceRefs.length || !gap.missingContract || !gap.reason) add('NS4_E5_KNOWN_GAP_TEXT', path, 'Evidence, missing contract and reason are required.');
+    for (const sourceRef of gap.sourceRefs) {
+      if (!expectedSources.has(sourceRef)) add('NS4_E5_KNOWN_GAP_SOURCE', `${path}.sourceRefs`, `Unknown or invented source ${sourceRef}.`);
+    }
+  });
   return { ok: issues.length === 0, issues };
 }
 
