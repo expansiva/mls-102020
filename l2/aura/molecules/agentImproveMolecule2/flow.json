@@ -277,7 +277,7 @@
         "onFail": "retry 1 with the gate errors; a 2nd failure fails the step. A rejected attempt is ROLLED BACK — unlike agentNewMolecule2, which keeps the failed file, because here the molecule already works and a twice-failed run must not leave it worse than it found."
       },
       "doneAnchor": "i3-done",
-      "mechanism": "The model returns TARGETED EDITS (replace/append/create), never rewritten files — see steps/i3-edit/applyEdits.ts. Three invariants become structural rather than checked: read-before-write, byte-identical untouched regions (header included), and no reachable path outside the current project.",
+      "mechanism": "The model returns TARGETED EDITS (replace/append/create), never rewritten files — see steps/i3-edit/applyEdits.ts. Matching is EXACT FIRST and, on a miss, tolerant of whitespace RUNS: measured 2026-08-10, 32 of the 153 molecules in mls-102040 have collapsed indentation (every nested line at one space), and a code model reindents them when asked to copy verbatim — the second real run died on exactly that. The span replaced is the one really found, so untouched bytes stay untouched on either path, and an ambiguous match is still refused.",
       "modelNote": "ONE call with the code model for .ts and .less alike, though the goal line above says the .less uses the design model. A step emits one prompt_ready, so honouring the split needs two steps or a dispatcher/worker pair. Deferred: the design model earns its keep writing a whole stylesheet (n5-less), while an improve run changes a spacing or a token. Revisit if .less edits come back weak."
     },
     {

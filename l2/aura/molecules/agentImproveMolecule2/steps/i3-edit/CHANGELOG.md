@@ -28,3 +28,39 @@
 - The files are shown with `----- FILE: … -----` delimiters, not fenced with backticks: a
   `.defs.ts` carries a markdown skill full of them and a fence would end mid-file.
 - `EDITABLE` excludes `html` and `groupIndex` so the model cannot reach into what i5 and i6 own.
+
+## 2026-08-10 — o `find` exato não sobrevive à indentação colapsada da biblioteca
+
+O segundo run real morreu aqui, nas duas tentativas, com dois `find` que não casavam. Não era o
+modelo sendo desatento: era o arquivo.
+
+**MEDIDO: 32 das 153 moléculas do mls-102040 têm INDENTAÇÃO COLAPSADA** — toda linha aninhada com
+exatamente UM espaço, em qualquer profundidade. A `ml-hierarchy-tree.ts` é uma delas: 367 linhas com
+um espaço, 38 com zero.
+
+Um modelo de código que lê ` private parseNodes() {` e recebe a ordem de copiar verbatim reindenta
+para dois ou quatro espaços. É o instinto de normalização mais forte que esse tipo de modelo tem, e
+insistência no prompt não vence — as duas tentativas do run queimaram nisso.
+
+O casamento passou a ter dois caminhos:
+
+1. **exato primeiro**, byte a byte, que é o caso comum e o mais preciso;
+2. **na falha, ignorando RUNS de espaço em branco** — cada sequência de whitespace do `find` casa
+   `\s+`, o resto é literal.
+
+O trecho substituído é o realmente encontrado no arquivo, então **os bytes ao redor continuam os
+mesmos** nos dois caminhos, e a indentação do arquivo fica exatamente tão estranha quanto era.
+Ambiguidade continua recusada: dois casamentos, mesmo frouxos, são erro.
+
+A mensagem de erro também mudou. Antes dizia *"copy it verbatim, whitespace included"* — instrução
+que apontava para o lado errado. Agora, quando falha, diz **"not even ignoring whitespace — the text
+itself is not there"**, que é a única coisa que o erro passou a significar.
+
+E os prompts de i3/i5/i6 passaram a dizer que a indentação **não** precisa casar, para o modelo não
+gastar tentativa tentando reproduzir espaçamento impossível.
+
+**Nota de honestidade:** o `quote()` da mensagem já colapsava whitespace para exibir, o que ESCONDEU
+a causa no relato do usuário — o texto aparecia normalizado, então não havia como ver que o problema
+era espaçamento. O `find` exato foi uma escolha minha de 06/08, justificada com "três invariantes de
+graça"; ela seguia valendo, mas eu nunca medi se os arquivos suportavam casamento exato. Não
+suportavam.

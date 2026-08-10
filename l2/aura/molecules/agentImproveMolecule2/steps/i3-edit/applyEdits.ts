@@ -68,6 +68,47 @@ function countOccurrences(haystack: string, needle: string): number {
 }
 
 /**
+ * WHITESPACE-TOLERANT MATCHING, and it is not a convenience — it is the difference between this
+ * step working and not working.
+ *
+ * MEASURED 2026-08-10, after the first real run failed on exactly this: 32 of the 153 molecules in
+ * mls-102040 have COLLAPSED INDENTATION — every indented line sits at exactly ONE space, whatever
+ * its nesting depth. ml-hierarchy-tree.ts is one of them: 367 lines at one space, 38 at zero.
+ *
+ * A code model shown ` private parseNodes() {` and told to copy it verbatim re-indents it to two or
+ * four spaces. That is the strongest normalization instinct such a model has, and no amount of
+ * prompt insistence reliably beats it — the first run burned both attempts on it.
+ *
+ * So the exact match is tried FIRST (byte-precise, the common case), and only on a miss does the
+ * text get matched ignoring whitespace RUNS. The span replaced is the one really found in the file,
+ * so untouched bytes stay untouched either way, and an ambiguous match is still refused.
+ */
+function flexiblePattern(find: string): RegExp {
+  const escaped = find
+    .trim()
+    .split(/\s+/)
+    .map(chunk => chunk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('\\s+');
+  return new RegExp(escaped, 'g');
+}
+
+interface FlexibleMatch {
+  count: number;
+  start: number;
+  end: number;
+}
+
+function findFlexible(haystack: string, find: string): FlexibleMatch {
+  const matches = [...haystack.matchAll(flexiblePattern(find))];
+  const first = matches[0];
+  return {
+    count: matches.length,
+    start: first?.index ?? -1,
+    end: first ? first.index + first[0].length : -1,
+  };
+}
+
+/**
  * Applies the edits in order onto a copy of the current files.
  *
  * Order matters and is the model's: a later `replace` sees the result of an earlier one. That is
@@ -132,26 +173,53 @@ export function applyEdits(
       errors.push(fail(index, edit.artifact, 'replace without `find`'));
       return;
     }
-    const occurrences = countOccurrences(current, find);
-    if (occurrences === 0) {
-      errors.push(
-        fail(index, edit.artifact, `\`find\` does not occur in the file — copy it verbatim, whitespace included: "${quote(find)}"`),
-      );
-      return;
-    }
-    if (occurrences > 1) {
-      errors.push(
-        fail(index, edit.artifact, `\`find\` occurs ${occurrences} times — extend it until it is unique: "${quote(find)}"`),
-      );
-      return;
-    }
-    if (find === edit.content) {
+    if (find.trim() === edit.content.trim()) {
       errors.push(fail(index, edit.artifact, '`find` and `content` are identical — this edit changes nothing'));
       return;
     }
-    working.set(edit.artifact, current.replace(find, () => edit.content));
+
+    const exact = countOccurrences(current, find);
+    if (exact === 1) {
+      working.set(edit.artifact, current.replace(find, () => edit.content));
+      touched.add(edit.artifact);
+      applied.push(`${edit.artifact}: ${edit.why.trim() || 'replaced a block'}`);
+      return;
+    }
+    if (exact > 1) {
+      errors.push(
+        fail(index, edit.artifact, `\`find\` occurs ${exact} times — extend it until it is unique: "${quote(find)}"`),
+      );
+      return;
+    }
+
+    // No exact hit. Try again ignoring whitespace runs — see flexiblePattern for why this is the
+    // normal case and not the exception.
+    const loose = findFlexible(current, find);
+    if (loose.count === 0) {
+      errors.push(
+        fail(
+          index,
+          edit.artifact,
+          `\`find\` does not occur in the file, not even ignoring whitespace — the text itself is not there: "${quote(find)}"`,
+        ),
+      );
+      return;
+    }
+    if (loose.count > 1) {
+      errors.push(
+        fail(index, edit.artifact, `\`find\` occurs ${loose.count} times — extend it until it is unique: "${quote(find)}"`),
+      );
+      return;
+    }
+
+    // Only the span really found is replaced, so everything around it keeps its own bytes — the
+    // file's indentation is left exactly as odd as it was.
+    working.set(
+      edit.artifact,
+      current.slice(0, loose.start) + edit.content.trim() + current.slice(loose.end),
+    );
     touched.add(edit.artifact);
-    applied.push(`${edit.artifact}: ${edit.why.trim() || 'replaced a block'}`);
+    applied.push(`${edit.artifact}: ${edit.why.trim() || 'replaced a block'} (whitespace-tolerant match)`);
   });
 
   if (errors.length) return { changed: new Map(), errors, applied: [] };

@@ -125,3 +125,70 @@ test('an empty `find` is fine on append and create, and rejected on replace', ()
   const replaced = applyEdits(files(), [edit({ op: 'replace', find: '' })]);
   assert.match(replaced.errors[0], /replace without `find`/);
 });
+
+// ---- whitespace-tolerant matching (o defeito do primeiro run real, 2026-08-10) ----
+
+// A indentação REAL de ml-hierarchy-tree.ts: um espaço em qualquer profundidade. 32 das 153
+// moléculas do mls-102040 são assim.
+const COLAPSADO = `/// <mls fileReference="_102040_/l2/molecules/groupviewhierarchy/ml-hierarchy-tree.ts" enhancement="_blank"/>
+export class Tree extends MoleculeAuraElement {
+ private parseNodes() {
+ this.nodeIdCounter = 0;
+ const nodeElements = this.getSlots('Node');
+ }
+}
+`;
+
+test('THE 2026-08-10 DEFECT: o modelo reindenta, e o find casa mesmo assim', () => {
+  // O modelo lê ' private parseNodes() {' com UM espaço e escreve com dois — é o instinto de
+  // normalização mais forte que um modelo de código tem. Casamento exato morre aqui.
+  const result = applyEdits(files({ ts: { present: true, source: COLAPSADO } }), [
+    edit({
+      artifact: 'ts',
+      find: "  private parseNodes() {\n    this.nodeIdCounter = 0;\n    const nodeElements = this.getSlots('Node');\n  }",
+      content: "  private parseNodes() {\n    this.nodeIdCounter = 1;\n    const nodeElements = this.getSlots('Node');\n  }",
+    }),
+  ]);
+  assert.equal(result.errors.length, 0, result.errors.join('\n'));
+  assert.match(result.changed.get('ts')!, /this\.nodeIdCounter = 1;/);
+});
+
+test('o casamento tolerante substitui SÓ o trecho achado — o resto mantém os próprios bytes', () => {
+  const result = applyEdits(files({ ts: { present: true, source: COLAPSADO } }), [
+    edit({ artifact: 'ts', find: 'this.nodeIdCounter   =   0;', content: 'this.nodeIdCounter = 7;' }),
+  ]);
+  const after = result.changed.get('ts')!;
+  assert.equal(mlsHeaderOf(after), mlsHeaderOf(COLAPSADO));
+  // as linhas vizinhas continuam com UM espaço, como estavam
+  assert.match(after, /\n private parseNodes\(\) \{/);
+  assert.match(after, /\n const nodeElements/);
+});
+
+test('o caminho exato tem precedência, e é byte a byte', () => {
+  const result = applyEdits(files(), [edit({ find: 'padding: 4px;', content: 'padding: 9px;' })]);
+  assert.equal(result.changed.get('less'), LESS.replace('padding: 4px;', 'padding: 9px;'));
+  assert.deepEqual(result.applied, ['less: more room']);
+});
+
+test('ambiguidade continua sendo recusada no caminho tolerante', () => {
+  const source = ' a();\n a();\n';
+  const result = applyEdits(files({ ts: { present: true, source } }), [
+    edit({ artifact: 'ts', find: '  a();', content: '  b();' }),
+  ]);
+  assert.equal(result.changed.size, 0);
+  assert.match(result.errors[0], /occurs 2 times/);
+});
+
+test('texto que realmente não está lá diz isso, e não culpa o espaçamento', () => {
+  const result = applyEdits(files({ ts: { present: true, source: COLAPSADO } }), [
+    edit({ artifact: 'ts', find: 'this.naoExiste()', content: 'x' }),
+  ]);
+  assert.match(result.errors[0], /not even ignoring whitespace/);
+});
+
+test('find e content iguais a menos de espaçamento é erro, não substituição vazia', () => {
+  const result = applyEdits(files({ ts: { present: true, source: COLAPSADO } }), [
+    edit({ artifact: 'ts', find: 'this.nodeIdCounter = 0;', content: '  this.nodeIdCounter = 0;  ' }),
+  ]);
+  assert.match(result.errors[0], /identical/);
+});

@@ -20,7 +20,7 @@ For each slot listed, add real content inside the `<{{tag}}>` instance on this p
 
 ## The rules of an edit
 
-**`find` must be copied verbatim** from the page below and must occur **exactly once**. If it appears twice, extend it until it is unique. Order matters: a later edit sees the result of the earlier ones.
+**Copy `find` from the page below** — the words, the punctuation, the line breaks. **Indentation does not have to match**: whitespace runs are matched flexibly, because some files here have collapsed indentation. It must occur **exactly once**; if it appears twice, extend it until it is unique. Order matters: a later edit sees the result of the earlier ones.
 
 ## The group index today
 
