@@ -22,7 +22,6 @@ import {
   readJsonArtifact,
   toDisplayPath,
   writeJsonArtifact,
-  writeStorTextAtomic,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import {
   buildVToolInstruction,
@@ -51,6 +50,7 @@ import {
   imTriageFileInfo,
   imWorkFile,
   readImAgentText,
+  writeImSource,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
 import { getImRunKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imRootPlan.js';
 import { ImEdit, ImFileState, applyEdits } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/applyEdits.js';
@@ -172,7 +172,7 @@ async function afterPromptStep(
     const created = !artifact?.present;
 
     if (!created) compileErrorsBefore.push(...await compileOf(kind, fileInfo, ''));
-    await writeStorTextAtomic(fileInfo, after, created);
+    await writeImSource(fileInfo, after);
     compileErrors.push(...await compileOf(kind, fileInfo, after));
 
     written.push({ kind, reference: artifact?.reference || toDisplayPath(fileInfo), before, after, created });
@@ -206,7 +206,7 @@ async function afterPromptStep(
     // The retry loses nothing: it gets the gate errors, and the prompt shows the original files —
     // which is exactly the state its `find` strings have to match.
     for (const file of written) {
-      await writeStorTextAtomic(imFileInfoFor(ctx, file.kind), file.before, false);
+      await writeImSource(imFileInfoFor(ctx, file.kind), file.before);
     }
     return retryOrFail(context, parentStep, step, hookSequential, runKey, attempt, errorText, edits);
   }

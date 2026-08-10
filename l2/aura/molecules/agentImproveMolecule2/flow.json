@@ -17,7 +17,8 @@
     "identity": "The target molecule is resolved to a fileReference _<project>_/l2/molecules/<groupLowercase>/<shortName>.ts and that reference is the single source of truth, exactly as in agentNewMolecule2. The tag is DERIVED from the path, never authored.",
     "mustExist": "The inverse of the NM2 collision check: i1-locate FAILS when the target does not exist. Creating is agentNewMolecule2's job, and the failure message says so.",
     "inheritance": "A molecule is a SHELL when its class extends another molecule imported from a different project. Detected deterministically from the import + extends clause. Measured on 2026-08-06: 84 shells exist (42 in mls-102054, 42 in mls-102055), 70 with an empty body, 14 overriding a single property, ZERO overriding render().",
-    "playgroundThenIndex": "If the playground changed, the group index MUST be updated in the same run. Not a heuristic — a rule. On 2026-08-05 the playground was fixed and the group page was left behind showing an empty detail; it was found by accident."
+    "playgroundThenIndex": "If the playground changed, the group index MUST be updated in the same run. Not a heuristic — a rule. On 2026-08-05 the playground was fixed and the group page was left behind showing an empty detail; it was found by accident.",
+    "writingSource": "SEMPRE por helpers/imResolve.writeImSource, nunca writeStorTextAtomic direto. O terceiro argumento (needCreateModel) precisa ser TRUE para artefato de código: com false o model do editor não é atualizado, a escrita não chega onde o Studio persiste, E o compileStorTs passa a compilar o conteúdo ANTIGO — o gate de compilação fica cego. Em 2026-08-10 as seis chamadas deste agente passavam false e um run inteiro reportou sucesso sem alterar nenhum arquivo."
   },
   "modelAliases": {
     "classify": "classifier",

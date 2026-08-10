@@ -19,7 +19,6 @@ import {
   readJsonArtifact,
   readStorText,
   writeJsonArtifact,
-  writeStorTextAtomic,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import {
   buildVToolInstruction,
@@ -43,6 +42,7 @@ import {
   imTraceFileInfo,
   imWorkFile,
   readImAgentText,
+  writeImSource,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
 import { getImRunKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imRootPlan.js';
 import { ImEdit, ImFileState, applyEdits } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/applyEdits.js';
@@ -112,7 +112,7 @@ async function beforePromptStep(
     if (!gate.ok) {
       return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', gate.errors.join('\n'))];
     }
-    if (after !== before) await writeStorTextAtomic(imFileInfoFor(ctx, 'groupIndex'), after, false);
+    if (after !== before) await writeImSource(imFileInfoFor(ctx, 'groupIndex'), after);
     return done(
       context, parentStep, step, hookSequential, runKey, after !== before,
       after !== before ? 'index updated — import added' : 'index already in step',
@@ -129,7 +129,7 @@ async function beforePromptStep(
   let current = before;
   if (plan.missingImport) {
     current = insertImport(before, plan.missingImport, lastMoleculeImport(before, ctx.target.project, ctx.target.groupFolder));
-    await writeStorTextAtomic(imFileInfoFor(ctx, 'groupIndex'), current, false);
+    await writeImSource(imFileInfoFor(ctx, 'groupIndex'), current);
   }
 
   const systemPrompt = promptMd
@@ -226,7 +226,7 @@ async function afterPromptStep(
     ];
   }
 
-  await writeStorTextAtomic(imFileInfoFor(ctx, 'groupIndex'), after, false);
+  await writeImSource(imFileInfoFor(ctx, 'groupIndex'), after);
   await writeJsonArtifact(imWorkFile(runKey, 'index'), {
     savedAt: new Date().toISOString(),
     indexUpdated: true,

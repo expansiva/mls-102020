@@ -21,6 +21,7 @@ import {
   nmFileExists,
   readStorText,
   toMlsFileReference,
+  writeStorTextAtomic,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { detectInheritance } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 import {
@@ -115,6 +116,33 @@ export async function readArtifacts(target: ImTargetRef): Promise<ImArtifact[]> 
     });
   }
   return out;
+}
+
+/**
+ * Writing a SOURCE artifact of the molecule. Use this and never writeStorTextAtomic directly.
+ *
+ * ⚠️ THE 2026-08-10 DEFECT, and it cost a full run that reported success while changing nothing.
+ *
+ * `writeStorTextAtomic`'s third argument is `needCreateModel`, and its own comment states the rule:
+ * TRUE for source artifacts, FALSE for l4 work files. Every one of this agent's six call sites
+ * passed `false` (or `!present`, which is `false` for a file that exists) — treating a molecule's
+ * `.ts` like a scratch JSON. Two things followed:
+ *
+ *   1. the editor model was never updated, so the write never reached where the Studio persists
+ *      from: `ml-hierarchy-tree.ts` kept its 2026-08-05 timestamp while the run wrote its l4
+ *      artifacts and reported "edited: ts";
+ *   2. worse, THE COMPILE GATE WENT BLIND. compileStorTs compiles the MODEL, and the model still
+ *      held the old content — so it compiled the OLD code, found no new error, and passed. Every
+ *      "no new compile error" verdict in that run meant nothing.
+ *
+ * The second failure is the one already documented in that same comment: the n4-render blindness of
+ * 2026-07-30, one paragraph below the line I ignored.
+ *
+ * The argument is not exposed here on purpose. A boolean that must always be true at six call sites
+ * is a footgun, not a parameter.
+ */
+export async function writeImSource(fileInfo: NmFileInfo, content: string): Promise<void> {
+  await writeStorTextAtomic(fileInfo, content, true);
 }
 
 // ---- this agent's own files (prompt.md, schemas) ----

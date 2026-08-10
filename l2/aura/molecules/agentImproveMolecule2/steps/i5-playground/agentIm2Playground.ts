@@ -16,7 +16,6 @@ import {
   readJsonArtifact,
   readStorText,
   writeJsonArtifact,
-  writeStorTextAtomic,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import {
   buildVToolInstruction,
@@ -41,6 +40,7 @@ import {
   imTraceFileInfo,
   imWorkFile,
   readImAgentText,
+  writeImSource,
   sourceOf,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
 import { getImRunKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imRootPlan.js';
@@ -208,7 +208,7 @@ async function afterPromptStep(
     ];
   }
 
-  await writeStorTextAtomic(imFileInfoFor(ctx, 'html'), after, !artifact?.present);
+  await writeImSource(imFileInfoFor(ctx, 'html'), after);
   await writeJsonArtifact(imWorkFile(runKey, 'playground'), {
     savedAt: new Date().toISOString(),
     playgroundChanged: true,

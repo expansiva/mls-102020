@@ -64,3 +64,32 @@ a causa no relato do usuário — o texto aparecia normalizado, então não havi
 era espaçamento. O `find` exato foi uma escolha minha de 06/08, justificada com "três invariantes de
 graça"; ela seguia valendo, mas eu nunca medi se os arquivos suportavam casamento exato. Não
 suportavam.
+
+## 2026-08-10 (2) — o run reportou sucesso e não escreveu nada
+
+O terceiro run real percorreu o pipeline inteiro, gravou `edit.json` com `touched: ["ts"]`, e a
+`ml-hierarchy-tree.ts` continuou com o timestamp de 05/08. Nenhum arquivo da molécula mudou.
+
+**A causa:** o terceiro argumento do `writeStorTextAtomic` é `needCreateModel`, e o comentário da
+própria função diz a regra — **true para artefatos de código, false para arquivos de trabalho l4**.
+As **seis** chamadas deste agente passavam `false` (ou `!present`, que é `false` para arquivo que
+existe). Eu tratei o `.ts` de uma molécula como um JSON de rascunho. As seis do NM2 passam `true`.
+
+Duas consequências, e a segunda é pior:
+
+1. **o model do editor nunca era atualizado**, então a escrita não chegava onde o Studio persiste;
+2. **o gate de compilação ficou CEGO.** O `compileStorTs` compila o *model*, e o model ainda tinha o
+   conteúdo antigo — compilou o código velho, não achou erro novo, e passou. Todo veredito de "sem
+   erro novo de compilação" daquele run não significava nada.
+
+A segunda é a falha já documentada naquele mesmo comentário: a cegueira do n4-render de 30/07, um
+parágrafo abaixo da linha que eu ignorei.
+
+**Conserto:** as seis chamadas passam por `writeImSource()` no `imResolve`, que sempre passa `true`.
+O argumento não é exposto de propósito — um booleano que precisa ser sempre `true` em seis lugares é
+armadilha, não parâmetro.
+
+**O que o run tinha acertado**, e vale registrar porque foi jogado no lixo pela plumbing: o triage
+mandou rota B com o argumento certo, e o modelo diagnosticou o bug corretamente — `render()` chama
+`parseNodes()` e `initializeExpandedState()` (linhas 360-361), então cada render zera o
+`expandedNodes` que o clique acabou de mudar. O trabalho estava certo; a escrita é que não existia.
