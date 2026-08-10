@@ -7,10 +7,12 @@ import {
   createNs4E2GateRepairStep,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
+  applyNs4E2PolicyDecisionImpacts,
   formatNs4E2CoverageRepairFeedback,
   normalizeNs4E2CoverageVerdict,
   validateNs4E2CoverageVerdict,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageJudge.js';
+import { normalizeNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 
 test('E2 creates a bounded automated coverage-judge step', () => {
   const step = createNs4E2CoverageJudgeStep('buildFlowFsm', 2, 1, 1, 'Mapear jornadas');
@@ -120,4 +122,21 @@ test('E2 coverage verdict is bound to the current module and review round', () =
   assert.equal(validation.ok, false);
   assert.ok(validation.errors.some(error => error.includes('moduleName')));
   assert.ok(validation.errors.some(error => error.includes('reviewRound')));
+});
+
+test('E2 coverage judge is the only stage that adds policy impacts', () => {
+  const review = normalizeNs4E2Review({
+    moduleName: 'buildFlowFsm', journeys: [{
+      journeyId: 'manageChanges', policyDecisions: [{
+        decisionId: 'changeDecisionMode', question: 'Como decidir?', chosen: 'Diretamente.', alternatives: ['Com aprovação.'],
+      }], business: { actorRef: 'manager', title: 'Mudanças', goal: 'Decidir mudanças.', prerequisites: [], entry: { mode: 'coldStart', carries: [] }, steps: [], outcome: { statement: 'Decisão registrada.', evidence: ['Decisão visível.'] }, useRules: [] },
+    }], features: [],
+  });
+  const verdict = normalizeNs4E2CoverageVerdict({
+    moduleName: 'buildFlowFsm', reviewRound: 1, complete: true, summary: 'Completo.', issues: [],
+    policyDecisionImpacts: [{ decisionId: 'changeDecisionMode', impact: 'Aprovação cria uma jornada adicional.', relatedJourneyIds: ['manageChanges'] }],
+  });
+  const enriched = applyNs4E2PolicyDecisionImpacts(review, verdict);
+  assert.equal(enriched.journeys[0].policyDecisions[0].impact, 'Aprovação cria uma jornada adicional.');
+  assert.deepEqual(enriched.journeys[0].policyDecisions[0].relatedJourneyIds, ['manageChanges']);
 });

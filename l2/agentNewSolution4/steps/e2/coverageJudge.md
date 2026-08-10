@@ -44,6 +44,9 @@ user outcomes.
   creation produces the new record; maintenance locates or carries the existing record before acting.
   Never request context "only on the update path" inside one combined step, because that path cannot
   be represented by this contract.
+- For each existing policy decision with a material consequence, return its `decisionId`, concise
+  `impact` and affected existing `relatedJourneyIds` in `policyDecisionImpacts`. Do not invent a
+  decision or change `chosen`; report a missing material decision as a blocking repair issue.
 
 Return JSON only with this exact envelope:
 
@@ -56,6 +59,13 @@ Return JSON only with this exact envelope:
     "reviewRound": 1,
     "complete": false,
     "summary": "Short judgment summary in the user's communication language",
+    "policyDecisionImpacts": [
+      {
+        "decisionId": "changeOrderDecisionMode",
+        "impact": "A proposal-and-approval alternative requires an explicit decision journey before the order takes effect.",
+        "relatedJourneyIds": ["manageProjectChangeOrder"]
+      }
+    ],
     "issues": [
       {
         "issueId": "clientCannotConsumeBillingSummary",

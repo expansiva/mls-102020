@@ -54,6 +54,8 @@ export type {
   Ns4JourneyProposal,
   Ns4JourneyStep,
   Ns4JourneyStepKind,
+  Ns4PolicyDecision,
+  Ns4PolicyDecisionSelection,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 
 export type {

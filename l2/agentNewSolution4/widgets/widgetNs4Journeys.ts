@@ -3,10 +3,30 @@
 import { html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
-import { Ns4E2Review, Ns4JourneyProposal } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
-import { Ns4ClarificationAction, Ns4ClarificationEvent, Ns4ClarificationFeedback, Ns4ClarificationIssue, Ns4ClarificationWidgetApi } from './clarification.js';
+import { Ns4E2Review, Ns4E2ReviewEvent, Ns4JourneyProposal } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import { Ns4ClarificationAction, Ns4ClarificationFeedback, Ns4ClarificationIssue, Ns4ClarificationWidgetApi } from './clarification.js';
 
-type Ns4JourneysTab = 'steps' | 'overview' | 'rules' | 'prerequisites';
+type Ns4JourneysTab = 'steps' | 'overview' | 'rules' | 'outcome';
+type Ns4PolicyDecision = { decisionId: string; question: string; chosen: string; alternatives: string[]; impact?: string };
+type Ns4JourneyView = {
+  journeyId: string;
+  business: {
+    actorRef: string; title: string; goal: string;
+    steps: Array<{ stepId: string; kind: string; intent: string; result: string }>;
+    outcome: { statement: string; evidence: string[] };
+    useRules?: string[];
+  };
+  policyDecisions?: Ns4PolicyDecision[];
+};
+type Ns4PolicyChange = {
+  journeyId: string;
+  journeyTitle: string;
+  decisionId: string;
+  question: string;
+  generatedChoice: string;
+  selectedChoice: string;
+  impact?: string;
+};
 
 @customElement('widget-ns4-journeys-102020')
 export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4ClarificationWidgetApi {
@@ -18,6 +38,7 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
   @state() private selectedActorRef = 'all';
   @state() private selectedJourneyId = '';
   @state() private activeTab: Ns4JourneysTab = 'steps';
+  @state() private selectedPolicyOptions: Record<string, string> = {};
   @state() private feedbackIssues: Ns4ClarificationIssue[] = [];
   @state() private cancelOpen = false;
   @property({ type: String }) msgError = '';
@@ -30,11 +51,10 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
     const pt = this.value?.userLanguage?.toLowerCase().startsWith('pt');
     return pt ? {
       subtitle: 'Estas jornadas serão a fonte de verdade permanente do produto.',
-      actor: 'Ator', goal: 'Objetivo', entry: 'Entrada', prerequisites: 'Pré-requisitos',
-      context: 'Contexto de negócio', steps: 'Passos', requires: 'Requer', provides: 'Produz',
-      rules: 'Regras', outcome: 'Resultado e evidências', filters: 'Filtros',
+      actor: 'Ator', goal: 'Objetivo', steps: 'Passos',
+      rules: 'Regras', outcome: 'Resultado e evidências', filters: 'Filtros', impact: 'Impacto', noPolicyDecision: 'Nenhuma decisão de política foi informada para esta jornada.',
       journeys: 'Jornadas', journeysFound: 'jornadas encontradas', selectJourney: 'Selecione uma jornada para revisar.',
-      allActors: 'Todos os atores', actorMap: 'Mapa de jornadas por ator', actors: 'atores', overview: 'Visão geral', prerequisitesTab: 'Pré-requisitos',
+      allActors: 'Todos os atores', actorMap: 'Mapa de jornadas por ator', actors: 'atores', overview: 'Visão geral', actual: '(atual)',
       rulesHelp: 'Regras que devem continuar verdadeiras em toda execução desta jornada.',
       adjustment: 'O que deve mudar?', placeholder: 'Descreva a alteração necessária sem reescrever o que já está correto.',
       requestChanges: 'Pedir mudanças', approve: 'Aprovar jornadas', round: 'Revisão', step: 'Etapa', of: 'de',
@@ -44,11 +64,10 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
       cancelText: 'O processamento será encerrado. O histórico e os artefatos já aprovados serão preservados.', keepWorking: 'Continuar trabalhando',
     } : {
       subtitle: 'These journeys will become the permanent source of truth for the product.',
-      actor: 'Actor', goal: 'Goal', entry: 'Entry', prerequisites: 'Prerequisites',
-      context: 'Business context', steps: 'Steps', requires: 'Requires', provides: 'Provides',
-      rules: 'Rules', outcome: 'Outcome and evidence', filters: 'Filters',
+      actor: 'Actor', goal: 'Goal', steps: 'Steps',
+      rules: 'Rules', outcome: 'Outcome and evidence', filters: 'Filters', impact: 'Impact', noPolicyDecision: 'No policy decision was provided for this journey.',
       journeys: 'Journeys', journeysFound: 'journeys found', selectJourney: 'Select a journey to review.',
-      allActors: 'All actors', actorMap: 'Journey map by actor', actors: 'actors', overview: 'Overview', prerequisitesTab: 'Pre-requisites',
+      allActors: 'All actors', actorMap: 'Journey map by actor', actors: 'actors', overview: 'Overview', actual: '(actual)',
       rulesHelp: 'Rules that must remain true in every execution of this journey.',
       adjustment: 'What should change?', placeholder: 'Describe the needed change without rewriting what is already correct.',
       requestChanges: 'Request changes', approve: 'Approve journeys', round: 'Review', step: 'Step', of: 'of',
@@ -83,15 +102,17 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
   private submit(action: Ns4ClarificationAction) {
     if (!this.value || this.readonly || this.submitting) return;
     const labels = this.labels();
-    if (action === 'requestChanges' && !this.adjustment.trim()) {
+    const policyChanges = this.policyChanges();
+    const adjustment = this.adjustment.trim();
+    if (action === 'requestChanges' && !adjustment) {
       this.setFeedback({ kind: 'error', message: labels.adjustmentRequired });
       return;
     }
     this.setFeedback({ kind: 'information', message: action === 'approve' ? labels.processingApproval : action === 'cancel' ? labels.processingCancel : labels.processingChanges });
     this.feedbackScrollPending = true;
     this.setSubmitting(true);
-    this.dispatchEvent(new CustomEvent<Ns4ClarificationEvent<Ns4E2Review>>('ns4-journeys-review', {
-      detail: { action, adjustment: this.adjustment.trim(), review: this.value },
+    this.dispatchEvent(new CustomEvent<Ns4E2ReviewEvent>('ns4-journeys-review', {
+      detail: { action, adjustment, review: this.value, policyDecisionSelections: this.policyDecisionSelections() },
       bubbles: true,
       composed: true,
     }));
@@ -129,8 +150,9 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
     const actorRefs = [...new Set(this.value.journeys.map(item => item.business.actorRef))];
     const visibleJourneys = this.value.journeys.filter(item => this.selectedActorRef === 'all' || item.business.actorRef === this.selectedActorRef);
     const journey = visibleJourneys.find(item => item.journeyId === this.selectedJourneyId) || visibleJourneys[0] || this.value.journeys[0];
-    const hasAdjustment = Boolean(this.adjustment.trim());
+    const hasChanges = Boolean(this.adjustment.trim()) || this.policyChanges().length > 0;
     if (!journey) return html`<div class="ns4-empty">${labels.selectJourney}</div>`;
+    const journeyView = this.view(journey);
     return html`
       <section class="ns4-journeys">
         <header class="ns4-header">
@@ -184,29 +206,26 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
                   <code>${item.journeyId}</code>
                   <strong>${item.business.title}</strong>
                   <span>${this.actorLabel(item.business.actorRef)}</span>
-                  <small>${item.business.goal}</small>
+                  <small><em>${labels.goal}</em>${item.business.goal}</small>
                 </button>
               `)}
             </div>
           </aside>
 
           <article class="ns4-detail">
-            <div class="ns4-detail-head">
-              <div><code>${journey.journeyId}</code><h3>${journey.business.title}</h3></div>
-              <span class="ns4-pill">${journey.business.entry.mode}</span>
-            </div>
+            <div class="ns4-detail-head">${this.renderPolicySelector(journeyView, labels)}</div>
 
             <nav class="ns4-tabs" role="tablist">
               ${this.renderTab('steps', labels.steps)}
               ${this.renderTab('overview', labels.overview)}
               ${this.renderTab('rules', labels.rules)}
-              ${this.renderTab('prerequisites', labels.prerequisitesTab)}
+              ${this.renderTab('outcome', labels.outcome)}
             </nav>
 
-            ${this.activeTab === 'steps' ? this.renderSteps(journey, labels)
-              : this.activeTab === 'overview' ? this.renderOverview(journey, labels)
-                : this.activeTab === 'rules' ? this.renderRules(journey, labels)
-                  : this.renderPrerequisites(journey, labels)}
+            ${this.activeTab === 'steps' ? this.renderSteps(journeyView, labels)
+              : this.activeTab === 'overview' ? this.renderOverview(journeyView, labels)
+                : this.activeTab === 'rules' ? this.renderRules(journeyView, labels)
+                  : this.renderOutcome(journeyView, labels)}
           </article>
         </div>
 
@@ -219,8 +238,8 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
           ></textarea></label>
           <div>
             <button class="cancel" ?disabled=${this.submitting || this.readonly} @click=${this.openCancel}>${labels.cancel}</button>
-            <button class="secondary ${hasAdjustment ? 'is-active' : ''}" ?disabled=${this.submitting || this.readonly || !hasAdjustment} @click=${() => this.submit('requestChanges')}>${labels.requestChanges}</button>
-            <button class="primary ${hasAdjustment ? '' : 'is-active'}" ?disabled=${this.submitting || this.readonly || hasAdjustment} @click=${() => this.submit('approve')}>${labels.approve}</button>
+            <button class="secondary ${hasChanges ? 'is-active' : ''}" ?disabled=${this.submitting || this.readonly || !hasChanges} @click=${() => this.submit('requestChanges')}>${labels.requestChanges}</button>
+            <button class="primary ${hasChanges ? '' : 'is-active'}" ?disabled=${this.submitting || this.readonly || hasChanges} @click=${() => this.submit('approve')}>${labels.approve}</button>
           </div>
         </footer>
         ${this.renderCancelDialog(labels)}
@@ -244,40 +263,77 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
     this.activeTab = 'steps';
   }
 
+  private view(journey: Ns4JourneyProposal): Ns4JourneyView { return journey as unknown as Ns4JourneyView; }
+
+  private policyChanges(): Ns4PolicyChange[] {
+    return (this.value?.journeys || []).flatMap(journey => {
+      const view = this.view(journey);
+      return (view.policyDecisions || []).flatMap(decision => {
+        const selectionKey = `${journey.journeyId}:${decision.decisionId}`;
+        const selectedValue = this.selectedPolicyOptions[selectionKey];
+        if (!selectedValue || selectedValue === `${decision.decisionId}:actual`) return [];
+        const alternativeIndex = Number(selectedValue.split(':').at(-1));
+        const selectedChoice = decision.alternatives[alternativeIndex];
+        if (!selectedChoice) return [];
+        return [{
+          journeyId: journey.journeyId,
+          journeyTitle: view.business.title,
+          decisionId: decision.decisionId,
+          question: decision.question,
+          generatedChoice: decision.chosen,
+          selectedChoice,
+          impact: decision.impact,
+        }];
+      });
+    });
+  }
+
+  private policyDecisionSelections(): Array<{ decisionId: string; selectedChoice: string }> {
+    return (this.value?.journeys || []).flatMap(journey => {
+      const view = this.view(journey);
+      return (view.policyDecisions || []).map(decision => {
+        const selectionKey = `${journey.journeyId}:${decision.decisionId}`;
+        const selected = this.selectedPolicyOptions[selectionKey] || `${decision.decisionId}:actual`;
+        const alternativeIndex = selected === `${decision.decisionId}:actual` ? -1 : Number(selected.split(':').at(-1));
+        return { decisionId: decision.decisionId, selectedChoice: alternativeIndex < 0 ? decision.chosen : decision.alternatives[alternativeIndex] || decision.chosen };
+      });
+    });
+  }
+
+  private renderPolicySelector(journey: Ns4JourneyView, labels: ReturnType<WidgetNs4Journeys102020['labels']>) {
+    const decisions = journey.policyDecisions || [];
+    if (!decisions.length) return html`<p class="ns4-no-policy">${labels.noPolicyDecision}</p>`;
+    return html`<section class="ns4-policy-decisions">${decisions.map(decision => {
+      const actualValue = `${decision.decisionId}:actual`;
+      const selectionKey = `${journey.journeyId}:${decision.decisionId}`;
+      const options = [actualValue, ...decision.alternatives.map((_alternative, index) => `${decision.decisionId}:alternative:${index}`)];
+      const selected = options.includes(this.selectedPolicyOptions[selectionKey]) ? this.selectedPolicyOptions[selectionKey] : actualValue;
+      return html`<label class="ns4-policy-selector"><span>${decision.question}</span><select ?disabled=${this.submitting || this.readonly} @change=${(event: Event) => {
+        this.selectedPolicyOptions = { ...this.selectedPolicyOptions, [selectionKey]: (event.target as HTMLSelectElement).value };
+      }}>
+        <option value=${actualValue} .selected=${selected === actualValue}>${labels.actual} ${decision.chosen}</option>
+        ${decision.alternatives.map((alternative, index) => {
+          const value = `${decision.decisionId}:alternative:${index}`;
+          return html`<option value=${value} .selected=${selected === value}>${alternative}</option>`;
+        })}
+      </select>${decision.impact ? html`<p class="ns4-policy-impact"><span aria-hidden="true">⚠</span><span><strong>${labels.impact}</strong>${decision.impact}</span></p>` : ''}</label>`;
+    })}</section>`;
+  }
+
   private renderTab(tab: Ns4JourneysTab, label: string) {
     return html`<button role="tab" aria-selected=${this.activeTab === tab ? 'true' : 'false'} class=${this.activeTab === tab ? 'is-active' : ''} @click=${() => { this.activeTab = tab; }}>${label}</button>`;
   }
 
-  private renderOverview(journey: Ns4JourneyProposal, labels: ReturnType<WidgetNs4Journeys102020['labels']>) {
+  private renderOverview(journey: Ns4JourneyView, labels: ReturnType<WidgetNs4Journeys102020['labels']>) {
     return html`
       <dl class="ns4-summary">
         <div><dt>${labels.actor}</dt><dd>${this.actorLabel(journey.business.actorRef)}</dd></div>
         <div><dt>${labels.goal}</dt><dd>${journey.business.goal}</dd></div>
-        <div><dt>${labels.outcome}</dt><dd>${journey.business.outcome.statement}</dd></div>
       </dl>
     `;
   }
 
-  private renderPrerequisites(journey: Ns4JourneyProposal, labels: ReturnType<WidgetNs4Journeys102020['labels']>) {
-    return html`
-      <div class="ns4-context-grid">
-        <section>
-          <h4>${labels.prerequisites}</h4>
-          ${journey.business.prerequisites.length ? html`<ul>${journey.business.prerequisites.map(item => html`
-            <li><code>${item.journeyRef}</code> — ${item.reason}${item.providesContext.length ? html` → <code>${item.providesContext.join(', ')}</code>` : ''}</li>
-          `)}</ul>` : html`<p>—</p>`}
-        </section>
-        <section>
-          <h4>${labels.entry} · ${labels.context}</h4>
-          ${journey.business.entry.carries.length ? html`<ul>${journey.business.entry.carries.map(context => html`
-            <li><code>${context.contextId}</code> — ${context.businessObject}: ${context.description}${context.stateRequirement ? html` (${context.stateRequirement})` : ''}</li>
-          `)}</ul>` : html`<p>—</p>`}
-        </section>
-      </div>
-    `;
-  }
-
-  private renderSteps(journey: Ns4JourneyProposal, labels: ReturnType<WidgetNs4Journeys102020['labels']>) {
+  private renderSteps(journey: Ns4JourneyView, labels: ReturnType<WidgetNs4Journeys102020['labels']>) {
     return html`
       <section class="ns4-steps-section">
         <h4>${labels.steps}</h4>
@@ -287,7 +343,6 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
             <div>
               <div class="ns4-step-title"><span>${step.kind}</span><strong>${step.intent}</strong><code>${step.stepId}</code></div>
               <p>${step.result}</p>
-              <small>${labels.requires}: ${step.requiresContext.join(', ') || '—'} · ${labels.provides}: ${step.providesContext.map(item => item.contextId).join(', ') || '—'}</small>
             </div>
           </li>
         `)}</ol>
@@ -295,14 +350,17 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
     `;
   }
 
-  private renderRules(journey: Ns4JourneyProposal, labels: ReturnType<WidgetNs4Journeys102020['labels']>) {
+  private renderRules(journey: Ns4JourneyView, labels: ReturnType<WidgetNs4Journeys102020['labels']>) {
     return html`
       <section class="ns4-rules">
         <p>${labels.rulesHelp}</p>
-        <ol>${journey.business.useRules.map(ruleId => html`<li><code>${ruleId}</code></li>`)}</ol>
-        <div class="ns4-outcome"><h4>${labels.outcome}</h4><p>${journey.business.outcome.statement}</p><ul>${journey.business.outcome.evidence.map(item => html`<li>${item}</li>`)}</ul></div>
+        <ol>${(journey.business.useRules || []).map(ruleId => html`<li><code>${ruleId}</code></li>`)}</ol>
       </section>
     `;
+  }
+
+  private renderOutcome(journey: Ns4JourneyView, labels: ReturnType<WidgetNs4Journeys102020['labels']>) {
+    return html`<section class="ns4-outcome"><h4>${labels.outcome}</h4><p>${journey.business.outcome.statement}</p><ul>${journey.business.outcome.evidence.map(item => html`<li>${item}</li>`)}</ul></section>`;
   }
 }
 

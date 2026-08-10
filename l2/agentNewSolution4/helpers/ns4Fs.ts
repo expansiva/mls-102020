@@ -43,6 +43,20 @@ export function ns4E2DraftFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e2-journeys.draft', extension: '.json' };
 }
 
+export function ns4E2VersionedDraftFile(moduleName: string, reviewRound: number): Ns4FileInfo {
+  return {
+    project: mls.actualProject || 0,
+    level: 4,
+    folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`,
+    shortName: `e2-journeys.draft.v${Math.max(1, Math.floor(reviewRound))}`,
+    extension: '.json',
+  };
+}
+
+export function ns4E2ImpactReportFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e2-impact-report', extension: '.json' };
+}
+
 export function ns4E3DraftFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e3-access-matrix.draft', extension: '.json' };
 }
@@ -177,6 +191,18 @@ export async function writeNs4Module(moduleName: string, artifact: Ns4ModuleArti
 export async function writeNs4E2Draft(moduleName: string, draft: unknown): Promise<string> {
   const fileInfo = ns4E2DraftFile(moduleName);
   await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4E2VersionedDraft(moduleName: string, reviewRound: number, draft: unknown): Promise<string> {
+  const fileInfo = ns4E2VersionedDraftFile(moduleName, reviewRound);
+  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4E2ImpactReport(moduleName: string, report: unknown): Promise<string> {
+  const fileInfo = ns4E2ImpactReportFile(moduleName);
+  await writeNs4Text(fileInfo, `${JSON.stringify(report, null, 2)}\n`);
   return displayPath(fileInfo);
 }
 

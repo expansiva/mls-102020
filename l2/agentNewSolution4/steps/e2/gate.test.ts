@@ -14,10 +14,11 @@ import {
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
   buildNs4JourneyArtifacts,
+  buildNs4PolicyDecisionSelections,
   normalizeNs4E2Review,
   sha256Ns4,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
-import { validateNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/gate.js';
+import { validateNs4E2PolicySelections, validateNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/gate.js';
 import { resolveNs4E2HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e2/hookArgs.js';
 
 const reviewInput = {
@@ -181,6 +182,30 @@ test('business hash is stable across object key order', async () => {
   assert.equal(artifacts.length, 2);
   assert.match(artifacts[0].businessHash, /^sha256:[a-f0-9]{64}$/);
   assert.equal(artifacts[0].realization.compiledFromBusinessHash, artifacts[0].businessHash);
+});
+
+test('E2 policy selections are valid alternatives and a rewritten draft must honor them', () => {
+  const input = structuredClone(reviewInput);
+  input.journeys[1].policyDecisions = [{
+    decisionId: 'changeOrderDecisionMode',
+    question: 'Como a mudança é decidida?',
+    chosen: 'Decisão direta pelo gerente.',
+    alternatives: ['Proposta com aprovação ou recusa.'],
+  }];
+  const review = normalizeNs4E2Review(input);
+  const selection = [{ decisionId: 'changeOrderDecisionMode', selectedChoice: 'Proposta com aprovação ou recusa.' }];
+  assert.equal(validateNs4E2PolicySelections(review, selection).ok, true);
+  assert.ok(validateNs4E2PolicySelections(review, selection, true).issues.some(issue => issue.code === 'NS4_E2_POLICY_SELECTION_NOT_HONORED'));
+
+  review.journeys[1].policyDecisions[0].chosen = 'Proposta com aprovação ou recusa.';
+  assert.equal(validateNs4E2PolicySelections(review, selection, true).ok, true);
+  const persisted = buildNs4PolicyDecisionSelections(review, selection, 'human', '2026-08-10T12:00:00.000Z');
+  assert.deepEqual(persisted, [{
+    decisionId: 'changeOrderDecisionMode',
+    generatedChoice: 'Proposta com aprovação ou recusa.',
+    selectedChoice: 'Proposta com aprovação ou recusa.',
+    selectedBy: 'human', selectedAt: '2026-08-10T12:00:00.000Z',
+  }]);
 });
 
 test('E2 approval advances both pipeline and module to the E3 access matrix', () => {

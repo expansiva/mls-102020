@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e2/contracts.ts" enhancement="_blank"/>
 
-export const NS4_JOURNEY_SCHEMA_VERSION = '2026-08-09-ns4-journey-v2' as const;
-export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-09-ns4-journey-index-v2' as const;
+export const NS4_JOURNEY_SCHEMA_VERSION = '2026-08-10-ns4-journey-v4' as const;
+export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-10-ns4-journey-index-v4' as const;
 export const NS4_REALIZED_JOURNEY_SCHEMA_VERSION = '2026-08-10-ns4-journey-v3' as const;
 
 export type Ns4JourneyEntryMode = 'coldStart' | 'contextRequired' | 'contextOrLookup' | 'eventDriven';
@@ -55,6 +55,27 @@ export interface Ns4JourneyBusiness {
 export interface Ns4JourneyProposal {
   journeyId: string;
   business: Ns4JourneyBusiness;
+  policyDecisions: Ns4PolicyDecision[];
+}
+
+/** A product choice made while generating a journey, before any human review. */
+export interface Ns4PolicyDecision {
+  decisionId: string;
+  question: string;
+  chosen: string;
+  alternatives: string[];
+  /** Only the independent E2 judge may add this explanation. */
+  impact?: string;
+  relatedJourneyIds?: string[];
+}
+
+/** Durable audit record of the choice the reviewer approved. */
+export interface Ns4PolicyDecisionSelection {
+  decisionId: string;
+  generatedChoice: string;
+  selectedChoice: string;
+  selectedBy: 'human' | 'auto';
+  selectedAt: string;
 }
 
 export interface Ns4E2Feature {
@@ -74,7 +95,7 @@ export interface Ns4E2Review {
   features: Ns4E2Feature[];
 }
 
-export interface Ns4JourneyArtifactV2 extends Ns4JourneyProposal {
+export interface Ns4JourneyArtifactV4 extends Ns4JourneyProposal {
   schemaVersion: typeof NS4_JOURNEY_SCHEMA_VERSION;
   revision: number;
   businessHash: string;
@@ -100,7 +121,7 @@ export interface Ns4JourneyStepRealization {
   useCaseRefs: string[];
 }
 
-export interface Ns4JourneyArtifactV3 extends Ns4JourneyProposal {
+export interface Ns4JourneyArtifactV3 extends Omit<Ns4JourneyProposal, 'policyDecisions'> {
   schemaVersion: typeof NS4_REALIZED_JOURNEY_SCHEMA_VERSION;
   revision: number;
   businessHash: string;
@@ -118,7 +139,7 @@ export interface Ns4JourneyArtifactV3 extends Ns4JourneyProposal {
 }
 
 /** Compile-only compatibility for permanent artifacts created before rule descriptions moved to E5. */
-export interface Ns4JourneyArtifactV1 extends Omit<Ns4JourneyProposal, 'business'> {
+export interface Ns4JourneyArtifactV1 extends Omit<Ns4JourneyProposal, 'business' | 'policyDecisions'> {
   schemaVersion: '2026-08-04-ns4-journey-v1';
   revision: number;
   business: Omit<Ns4JourneyBusiness, 'useRules'> & {
@@ -129,10 +150,19 @@ export interface Ns4JourneyArtifactV1 extends Omit<Ns4JourneyProposal, 'business
   realization: { status: 'pending'; compiledFromBusinessHash: string; steps: never[]; transitionRefs: never[] };
 }
 
-export type Ns4JourneyArtifact = Ns4JourneyArtifactV3 | Ns4JourneyArtifactV2 | Ns4JourneyArtifactV1;
+export type Ns4JourneyArtifact = Ns4JourneyArtifactV3 | Ns4JourneyArtifactV4 | Ns4JourneyArtifactV2 | Ns4JourneyArtifactV1;
+
+/** Compatibility for artifacts created by flow versions before policy decisions were persisted. */
+export interface Ns4JourneyArtifactV2 extends Omit<Ns4JourneyProposal, 'policyDecisions'> {
+  schemaVersion: '2026-08-09-ns4-journey-v2';
+  revision: number;
+  businessHash: string;
+  resolution: { status: 'pending'; contexts: Record<string, never> };
+  realization: { status: 'pending'; compiledFromBusinessHash: string; steps: never[]; transitionRefs: never[] };
+}
 
 export interface Ns4JourneyIndex {
-  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION | '2026-08-04-ns4-journey-index-v1' | '2026-08-10-ns4-journey-index-v3';
+  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION | '2026-08-04-ns4-journey-index-v1' | '2026-08-10-ns4-journey-index-v3' | '2026-08-09-ns4-journey-index-v2';
   moduleName: string;
   approvedAt: string;
   approvedBy: 'human' | 'auto';
@@ -147,6 +177,7 @@ export interface Ns4JourneyIndex {
     useCaseRefs?: string[];
   }>;
   features: Ns4E2Feature[];
+  policyDecisionSelections?: Ns4PolicyDecisionSelection[];
   realizationHash?: string;
 }
 
@@ -154,6 +185,15 @@ export interface Ns4E2ReviewEvent {
   action: 'approve' | 'requestChanges' | 'cancel';
   adjustment: string;
   review: Ns4E2Review;
+  policyDecisionSelections: Array<Pick<Ns4PolicyDecisionSelection, 'decisionId' | 'selectedChoice'>>;
+}
+
+export interface Ns4E2ImpactReport {
+  schemaVersion: '2026-08-10-ns4-e2-impact-report-v1';
+  moduleName: string;
+  generatedAt: string;
+  changes: Array<{ journeyId: string; reason: 'hashDivergent' | 'journeyNew' | 'journeyRemoved' }>;
+  affectedSteps: Array<'e3-access-matrix' | 'e4-ontology' | 'e5-rules' | 'e7-realization'>;
 }
 
 export function normalizeNs4E2Review(value: unknown, fallbackModule = ''): Ns4E2Review {
@@ -179,7 +219,7 @@ export function normalizeNs4E2Review(value: unknown, fallbackModule = ''): Ns4E2
   };
 }
 
-export async function buildNs4JourneyArtifacts(review: Ns4E2Review): Promise<Ns4JourneyArtifactV2[]> {
+export async function buildNs4JourneyArtifacts(review: Ns4E2Review): Promise<Ns4JourneyArtifactV4[]> {
   return Promise.all(review.journeys.map(async journey => {
     const businessHash = await sha256Ns4(journey.business);
     return {
@@ -187,6 +227,7 @@ export async function buildNs4JourneyArtifacts(review: Ns4E2Review): Promise<Ns4
       journeyId: journey.journeyId,
       revision: 1,
       business: journey.business,
+      policyDecisions: journey.policyDecisions,
       businessHash,
       resolution: { status: 'pending', contexts: {} },
       realization: { status: 'pending', compiledFromBusinessHash: businessHash, steps: [], transitionRefs: [] },
@@ -197,10 +238,11 @@ export async function buildNs4JourneyArtifacts(review: Ns4E2Review): Promise<Ns4
 export function buildNs4JourneyIndex(
   moduleName: string,
   review: Ns4E2Review,
-  artifacts: Ns4JourneyArtifactV2[],
+  artifacts: Ns4JourneyArtifactV4[],
   artifactPaths: string[],
   approvedBy: 'human' | 'auto',
   approvedAt: string,
+  policyDecisionSelections: Ns4PolicyDecisionSelection[] = [],
 ): Ns4JourneyIndex {
   return {
     schemaVersion: NS4_JOURNEY_INDEX_SCHEMA_VERSION,
@@ -217,6 +259,47 @@ export function buildNs4JourneyIndex(
       artifactPath: artifactPaths[index],
     })),
     features: review.features,
+    policyDecisionSelections,
+  };
+}
+
+export function buildNs4PolicyDecisionSelections(
+  review: Ns4E2Review,
+  selectedChoices: Array<Pick<Ns4PolicyDecisionSelection, 'decisionId' | 'selectedChoice'>>,
+  selectedBy: 'human' | 'auto',
+  selectedAt: string,
+): Ns4PolicyDecisionSelection[] {
+  const selections = new Map(selectedChoices.map(selection => [selection.decisionId, selection.selectedChoice]));
+  return review.journeys.flatMap(journey => journey.policyDecisions.map(decision => ({
+    decisionId: decision.decisionId,
+    generatedChoice: decision.chosen,
+    selectedChoice: selections.get(decision.decisionId) || decision.chosen,
+    selectedBy,
+    selectedAt,
+  })));
+}
+
+export function buildNs4E2ImpactReport(
+  moduleName: string,
+  previousIndex: Ns4JourneyIndex | null,
+  artifacts: Array<Pick<Ns4JourneyArtifactV4, 'journeyId' | 'businessHash'>>,
+  generatedAt: string,
+): Ns4E2ImpactReport {
+  const previous = new Map((previousIndex?.journeys || []).map(journey => [journey.journeyId, journey.businessHash]));
+  const changes: Ns4E2ImpactReport['changes'] = [];
+  artifacts.forEach(artifact => {
+    const oldHash = previous.get(artifact.journeyId);
+    if (!oldHash) changes.push({ journeyId: artifact.journeyId, reason: 'journeyNew' });
+    else if (oldHash !== artifact.businessHash) changes.push({ journeyId: artifact.journeyId, reason: 'hashDivergent' });
+    previous.delete(artifact.journeyId);
+  });
+  previous.forEach((_hash, journeyId) => changes.push({ journeyId, reason: 'journeyRemoved' }));
+  return {
+    schemaVersion: '2026-08-10-ns4-e2-impact-report-v1',
+    moduleName,
+    generatedAt,
+    changes: changes.sort((left, right) => left.journeyId.localeCompare(right.journeyId) || left.reason.localeCompare(right.reason)),
+    affectedSteps: changes.length ? ['e3-access-matrix', 'e4-ontology', 'e5-rules', 'e7-realization'] : [],
   };
 }
 
@@ -243,6 +326,19 @@ function normalizeJourney(value: unknown): Ns4JourneyProposal {
   const outcome = record(business.outcome);
   return {
     journeyId: text(source.journeyId),
+    policyDecisions: array(source.policyDecisions).map(item => {
+      const decision = record(item);
+      const impact = text(decision.impact);
+      const relatedJourneyIds = strings(decision.relatedJourneyIds);
+      return {
+        decisionId: text(decision.decisionId),
+        question: text(decision.question),
+        chosen: text(decision.chosen),
+        alternatives: strings(decision.alternatives),
+        ...(impact ? { impact } : {}),
+        ...(relatedJourneyIds.length ? { relatedJourneyIds } : {}),
+      };
+    }),
     business: {
       actorRef: text(business.actorRef),
       title: text(business.title),

@@ -2,6 +2,14 @@
 
 E2 turns the approved E1 module contract into permanent, human-approved business journeys.
 
+Policy choices are part of this contract. The generator attaches zero or more explicit
+`policyDecisions` to each journey, without impact; the independent judge alone supplies impact and
+related-journey context. The widget emits structured selections rather than hiding them in free text.
+Selecting an alternative writes the current `draft.v{N}.json`, starts a complete next-round rewrite,
+and the honor gate requires the rewritten decision to choose that alternative. Approval writes every
+generated/selected pair to the journey index and emits `pipeline/e2-impact-report.json`; changed,
+new or removed journeys mark their E3/E4/E5/E7 derived pipeline states stale.
+
 Before approval it writes only `l4/{module}/pipeline/e2-journeys.draft.json`. A deterministic gate
 first validates internal structure and context flow. An independent `🔎` reasoning-model judge then
 compares the complete E1 contract with the draft. Only a judged-complete proposal reaches the `👤`

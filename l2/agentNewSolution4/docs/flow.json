@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-10-ns4-flow-v20",
+  "schemaVersion": "2026-08-10-ns4-flow-v21",
   "status": "e1-e7",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -17,6 +17,8 @@
     "E2 normalizes every journey businessObject to one stable PascalCase identifier; E4 consumes that exact id for its entity or projection instead of comparing a localized display label.",
     "E2 treats required as an executable contract: only required entry contexts must be available or located, optional handoffs never become unconditional step prerequisites, and E4 requires ontology coverage only for required contexts.",
     "E2 proposals must pass an independent 🔎 semantic coverage judge before human review; deterministic structural repair and semantic complete-draft repair have separate bounded budgets.",
+    "E2 policy decisions are explicit journey contracts: generation declares chosen alternatives without impact, the independent judge adds impact and related journeys, and human selections are preserved in the approved journey index.",
+    "A human policy selection different from the generated choice always starts a complete next-round E2 rewrite. A deterministic honor gate rejects a rewritten draft that does not make each selected choice its chosen value.",
     "E2 linear steps cannot combine creation and maintenance when their context preconditions differ; the judge requires separate outcome journeys and repair instructions are placed after the complete draft.",
     "E2 semantic coverage converges through at most three focused patch repairs: omitted contracts remain byte-for-byte equivalent after normalization, each patch passes the complete deterministic gate, and an unchanged blocker set fails early.",
     "E1 preserves its full reviewed contract, supports repeated prompt-driven revisions and only unlocks compilation after the rich deterministic gate passes.",
@@ -48,12 +50,14 @@
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v19-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
+    "resumeRule": "A v21-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",
     "pipeline": "l4/{module}/pipeline/pipeline.json",
     "journeyDraft": "l4/{module}/pipeline/e2-journeys.draft.json",
+    "journeyRoundDraft": "l4/{module}/pipeline/e2-journeys.draft.v{round}.json",
+    "journeyImpactReport": "l4/{module}/pipeline/e2-impact-report.json",
     "journey": "l4/{module}/journeys/{journeyId}.defs.ts",
     "journeyIndex": "l4/{module}/journeys/index.defs.ts",
     "accessDraft": "l4/{module}/pipeline/e3-access-matrix.draft.json",
@@ -152,6 +156,9 @@
         "One complete-draft semantic repair is allowed independently of structural repair; it returns through the gate, is judged again and fails closed if coverage remains incomplete.",
         "An invalid judge envelope is retried once. Compact judge results remain in the task trace after large LLM interactions are cleaned.",
         "Only a judged-complete draft opens the 👤 widget; /fast also waits for the same judgment before durable approval.",
+        "Generation declares journey policy decisions before journeys and never supplies impact; the independent judge is the only stage that may add decision impact and related journeys.",
+        "Selecting an alternative or requesting free-text changes preserves the current versioned draft, starts a full replacement round, and passes the deterministic selected-choice honor gate before the widget can reopen.",
+        "Approval persists every decision selection, including unchanged generated choices, in the journey index. A deterministic E2 impact report records downstream E3-E7 contracts made stale by changed, added or removed journeys.",
         "Prerequisite handoffs use stable context ids exported by the referenced journey.",
         "contextRequired, contextOrLookup and eventDriven declare at least one required entry context; coldStart declares no required entry context.",
         "contextOrLookup includes an explicit locate fallback for every required carried context; optional handoffs may enrich the journey but cannot be an unconditional requiresContext unless an earlier step produces them.",

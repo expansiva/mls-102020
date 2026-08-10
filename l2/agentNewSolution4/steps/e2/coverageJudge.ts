@@ -1,5 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e2/coverageJudge.ts" enhancement="_blank"/>
 
+import type { Ns4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+
 export type Ns4E2CoverageCategory =
   | 'missingJourney'
   | 'missingActorJourney'
@@ -26,6 +28,11 @@ export interface Ns4E2CoverageVerdict {
   complete: boolean;
   summary: string;
   issues: Ns4E2CoverageIssue[];
+  policyDecisionImpacts: Array<{
+    decisionId: string;
+    impact: string;
+    relatedJourneyIds: string[];
+  }>;
 }
 
 export interface Ns4E2CoverageVerdictValidation {
@@ -68,6 +75,14 @@ export function normalizeNs4E2CoverageVerdict(
         relatedJourneyIds: strings(issue.relatedJourneyIds),
       };
     }),
+    policyDecisionImpacts: array(source.policyDecisionImpacts).map(item => {
+      const impact = record(item);
+      return {
+        decisionId: text(impact.decisionId),
+        impact: text(impact.impact),
+        relatedJourneyIds: strings(impact.relatedJourneyIds),
+      };
+    }),
   };
 }
 
@@ -96,7 +111,32 @@ export function validateNs4E2CoverageVerdict(
   const blockers = verdict.issues.filter(issue => issue.severity === 'blocking');
   if (verdict.complete && blockers.length) errors.push('complete=true cannot contain blocking issues.');
   if (!verdict.complete && !blockers.length) errors.push('complete=false requires at least one blocking issue.');
+  const impactIds = new Set<string>();
+  verdict.policyDecisionImpacts.forEach((impact, index) => {
+    const path = `policyDecisionImpacts[${index}]`;
+    if (!MEMBER_ID.test(impact.decisionId)) errors.push(`${path}.decisionId must be lower-camel.`);
+    if (impactIds.has(impact.decisionId)) errors.push(`${path}.decisionId duplicates ${impact.decisionId}.`);
+    if (impact.decisionId) impactIds.add(impact.decisionId);
+    if (!impact.impact) errors.push(`${path}.impact is required.`);
+  });
   return { ok: errors.length === 0, errors };
+}
+
+export function applyNs4E2PolicyDecisionImpacts(
+  review: Ns4E2Review,
+  verdict: Ns4E2CoverageVerdict,
+): Ns4E2Review {
+  const impacts = new Map(verdict.policyDecisionImpacts.map(impact => [impact.decisionId, impact]));
+  return {
+    ...review,
+    journeys: review.journeys.map(journey => ({
+      ...journey,
+      policyDecisions: journey.policyDecisions.map(decision => {
+        const impact = impacts.get(decision.decisionId);
+        return impact ? { ...decision, impact: impact.impact, ...(impact.relatedJourneyIds.length ? { relatedJourneyIds: impact.relatedJourneyIds } : {}) } : decision;
+      }),
+    })),
+  };
 }
 
 export function formatNs4E2CoverageRepairFeedback(verdict: Ns4E2CoverageVerdict): string {

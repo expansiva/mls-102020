@@ -1,15 +1,28 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "agentNewSolution4/e2-coverage-verdict.schema.json",
+  "$id": "https://collab.codes/schemas/agentNewSolution4/e2-coverage-verdict/2026-08-10-v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["planId", "moduleName", "reviewRound", "complete", "summary", "issues"],
+  "required": ["planId", "moduleName", "reviewRound", "complete", "summary", "issues", "policyDecisionImpacts"],
   "properties": {
     "planId": { "const": "e2-coverage-judge" },
     "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
     "reviewRound": { "type": "integer", "minimum": 1 },
     "complete": { "type": "boolean" },
     "summary": { "type": "string", "minLength": 1 },
+    "policyDecisionImpacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["decisionId", "impact", "relatedJourneyIds"],
+        "properties": {
+          "decisionId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+          "impact": { "type": "string", "minLength": 1 },
+          "relatedJourneyIds": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" }, "uniqueItems": true }
+        }
+      }
+    },
     "issues": {
       "type": "array",
       "items": {

@@ -15,6 +15,7 @@ import {
 import {
   buildNs4JourneyArtifacts,
   buildNs4JourneyIndex,
+  buildNs4PolicyDecisionSelections,
   normalizeNs4E2Review,
   stableNs4Stringify,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
@@ -46,7 +47,10 @@ async function main(): Promise<void> {
   const artifactPaths = artifacts.map(artifact => `l4/${review.moduleName}/journeys/${artifact.journeyId}.defs.ts`);
   const approvedAt = new Date().toISOString();
   const indexPath = `l4/${review.moduleName}/journeys/index.defs.ts`;
-  const index = buildNs4JourneyIndex(review.moduleName, review, artifacts, artifactPaths, 'auto', approvedAt);
+  const index = buildNs4JourneyIndex(
+    review.moduleName, review, artifacts, artifactPaths, 'auto', approvedAt,
+    buildNs4PolicyDecisionSelections(review, [], 'auto', approvedAt),
+  );
   const running = markNs4E2Running(pipeline, review.reviewRound, approvedAt);
   const draftPath = `l4/${review.moduleName}/pipeline/e2-journeys.draft.json`;
   const waiting = markNs4E2WaitingHuman(running, review.reviewRound, draftPath, approvedAt);

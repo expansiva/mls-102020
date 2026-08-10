@@ -1,12 +1,12 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/helpers/ns4Core.ts" enhancement="_blank"/>
 
 export const NS4_FLOW_ID = 'agentNewSolution4' as const;
-export const NS4_FLOW_VERSION = '2026-08-10-ns4-flow-v20' as const;
+export const NS4_FLOW_VERSION = '2026-08-10-ns4-flow-v21' as const;
 export const NS4_E4_MAX_PARALLEL = 20 as const;
 export const NS4_E7_MAX_PARALLEL = 20 as const;
 export const NS4_MODULE_SCHEMA_VERSION = '2026-08-06-ns4-module-v4' as const;
 export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-06-ns4-pipeline-v5' as const;
-export type Ns4PermanentFlowVersion = typeof NS4_FLOW_VERSION | '2026-08-09-ns4-flow-v19' | '2026-08-09-ns4-flow-v18' | '2026-08-08-ns4-flow-v17';
+export type Ns4PermanentFlowVersion = typeof NS4_FLOW_VERSION | '2026-08-10-ns4-flow-v20' | '2026-08-09-ns4-flow-v19' | '2026-08-09-ns4-flow-v18' | '2026-08-08-ns4-flow-v17';
 
 export const NS4_PLAN_IDS = [
   'e1-clarification',
@@ -39,11 +39,11 @@ const NS4_HUMAN_CHECKPOINT_PLAN_IDS: ReadonlySet<Ns4PlanId> = new Set([
 export type Ns4ApprovedBy = 'human' | 'auto';
 export type Ns4E1Status = 'running' | 'approved' | 'failed';
 export type Ns4E2Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
-export type Ns4E3Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
-export type Ns4E4Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
-export type Ns4E5Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
+export type Ns4E3Status = 'running' | 'waitingHuman' | 'approved' | 'failed' | 'stale';
+export type Ns4E4Status = 'running' | 'waitingHuman' | 'approved' | 'failed' | 'stale';
+export type Ns4E5Status = 'running' | 'waitingHuman' | 'approved' | 'failed' | 'stale';
 export type Ns4E6Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
-export type Ns4E7Status = 'running' | 'approved' | 'failed';
+export type Ns4E7Status = 'running' | 'approved' | 'failed' | 'stale';
 export type Ns4CompletedStepId = 'e1' | 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology' | 'e5-rules' | 'e6-behaviors' | 'e7-realization';
 export type Ns4NextStep = 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology' | 'e5-rules' | 'e6-behaviors' | 'e7-realization' | 'e8-workspaces';
 
@@ -258,6 +258,7 @@ export function createNs4E2Step(
   adjustment = '',
   dependsOn: string[] = [],
   stepTitle = NS4_DEFAULT_TITLES['e2-journeys'],
+  policyDecisionSelections: Array<{ decisionId: string; selectedChoice: string }> = [],
 ): mls.msg.AIAgentStep {
   const suffix = adjustment ? ` adjustment ${reviewRound}` : '';
   return createNs4AgentStep(
@@ -265,7 +266,11 @@ export function createNs4E2Step(
     adjustment ? plainNs4StepTitle(`${stepTitle}${suffix}`) : formatNs4VisibleStepTitle('e2-journeys', stepTitle),
     dependsOn,
     dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
-    { planId: 'e2-journeys', ...(moduleName ? { moduleName } : {}), reviewRound, ...(adjustment ? { adjustment } : {}) },
+    {
+      planId: 'e2-journeys', ...(moduleName ? { moduleName } : {}), reviewRound,
+      ...(adjustment ? { adjustment } : {}),
+      ...(policyDecisionSelections.length ? { policyDecisionSelections } : {}),
+    },
   );
 }
 
@@ -916,12 +921,35 @@ export function markNs4E2Approved(
   };
 }
 
+/** A changed approved E2 contract invalidates only downstream contracts derived from journeys. */
+export function markNs4E2ImpactStale(state: Ns4PipelineState, hasJourneyImpact: boolean, now = new Date().toISOString()): Ns4PipelineState {
+  if (!hasJourneyImpact) return state;
+  const stale = <T extends { status: string; updatedAt: string }>(step: T | undefined): T | undefined =>
+    step?.status === 'approved' ? { ...step, status: 'stale', updatedAt: now } as T : step;
+  return {
+    ...state,
+    steps: {
+      ...state.steps,
+      e3: stale(state.steps.e3),
+      e4: stale(state.steps.e4),
+      e5: stale(state.steps.e5),
+      e7: stale(state.steps.e7),
+    },
+    nextStep: 'e3-access-matrix',
+    updatedAt: now,
+  };
+}
+
 export function markNs4ModuleE2Approved(
   artifact: Ns4ModuleArtifact,
   approvedBy: Ns4ApprovedBy,
   now = new Date().toISOString(),
+  invalidateDownstream = false,
 ): Ns4ModuleArtifact {
-  const completedSteps = artifact.specStatus.completedSteps.filter(step => step.stepId !== 'e2-journeys');
+  const invalidated = new Set<Ns4CompletedStepId>(invalidateDownstream
+    ? ['e2-journeys', 'e3-access-matrix', 'e4-ontology', 'e5-rules', 'e7-realization']
+    : ['e2-journeys']);
+  const completedSteps = artifact.specStatus.completedSteps.filter(step => !invalidated.has(step.stepId));
   completedSteps.push({ stepId: 'e2-journeys', status: 'approved', approvedBy, approvedAt: now });
   return {
     ...artifact,

@@ -1,5 +1,12 @@
 # E2 changelog
 
+- 2026-08-10: Flow v21 makes policy choices first-class E2 contracts. Generation declares a
+  journey's choices without impact; the independent judge adds impact/related-journey context; the
+  widget sends structured selections. Any alternative selection triggers a complete versioned rewrite
+  and the deterministic honor gate requires the rewritten `chosen` value to match it. Approval
+  records every selection in the journey index and writes an E2 impact report that reopens affected
+  downstream journey-derived checkpoints.
+
 - 2026-08-08: Flow v17 unifies the meaning of optional and required journey context across E2 and
   E4. A `contextOrLookup` fallback now locates only required carried contexts; optional handoffs do
   not become unconditional `requiresContext` inputs or mandatory ontology entities. The same shared

@@ -2,6 +2,7 @@
 
 import {
   Ns4E2Review,
+  Ns4PolicyDecisionSelection,
   requiredNs4JourneyContexts,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 
@@ -38,6 +39,21 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
     journey.business.entry.carries.forEach(context => exported.set(context.contextId, context.businessObject));
     journey.business.steps.forEach(step => step.providesContext.forEach(context => exported.set(context.contextId, context.businessObject)));
     exportedContexts.set(journey.journeyId, exported);
+  });
+
+  const policyDecisionIds = new Set<string>();
+  review.journeys.forEach((journey, journeyPosition) => {
+    journey.policyDecisions.forEach((decision, decisionPosition) => {
+      const path = `journeys[${journeyPosition}].policyDecisions[${decisionPosition}]`;
+      checkId(decision.decisionId, `${path}.decisionId`, 'policy decision', policyDecisionIds, add);
+      if (!decision.question) add('NS4_E2_POLICY_QUESTION', `${path}.question`, 'Policy decision question is required.');
+      if (!decision.chosen) add('NS4_E2_POLICY_CHOSEN', `${path}.chosen`, 'Policy decision chosen value is required.');
+      if (decision.alternatives.some(alternative => !alternative)) add('NS4_E2_POLICY_ALTERNATIVE', `${path}.alternatives`, 'Policy alternatives cannot be empty.');
+      if (new Set(decision.alternatives).size !== decision.alternatives.length) add('NS4_E2_POLICY_ALTERNATIVE_DUPLICATE', `${path}.alternatives`, 'Policy alternatives must be unique.');
+      decision.relatedJourneyIds?.forEach(relatedJourneyId => {
+        if (!journeyIds.has(relatedJourneyId)) add('NS4_E2_POLICY_RELATED_JOURNEY', `${path}.relatedJourneyIds`, `Unknown related journey ${relatedJourneyId}.`);
+      });
+    });
   });
 
   const featureIds = new Set<string>();
@@ -154,6 +170,37 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
     });
   });
 
+  return { ok: issues.length === 0, issues };
+}
+
+/**
+ * Selection integrity is separate from the structural review gate because an alternative is valid
+ * at the human checkpoint but must become the generated choice in the next complete rewrite.
+ */
+export function validateNs4E2PolicySelections(
+  review: Ns4E2Review,
+  selections: Array<Pick<Ns4PolicyDecisionSelection, 'decisionId' | 'selectedChoice'>>,
+  requireHonored = false,
+): Ns4E2GateResult {
+  const issues: Ns4E2GateIssue[] = [];
+  const decisions = new Map(review.journeys.flatMap(journey => journey.policyDecisions.map(decision => [decision.decisionId, decision])));
+  const seen = new Set<string>();
+  selections.forEach((selection, index) => {
+    const path = `policyDecisionSelections[${index}]`;
+    if (seen.has(selection.decisionId)) issues.push({ code: 'NS4_E2_POLICY_SELECTION_DUPLICATE', path, message: `Duplicate selection for ${selection.decisionId}.` });
+    seen.add(selection.decisionId);
+    const decision = decisions.get(selection.decisionId);
+    if (!decision) {
+      issues.push({ code: 'NS4_E2_POLICY_SELECTION_UNKNOWN', path, message: `Unknown policy decision ${selection.decisionId}.` });
+      return;
+    }
+    if (selection.selectedChoice !== decision.chosen && !decision.alternatives.includes(selection.selectedChoice)) {
+      issues.push({ code: 'NS4_E2_POLICY_SELECTION_VALUE', path, message: 'Selected policy choice must be the generated choice or one declared alternative.' });
+    }
+    if (requireHonored && selection.selectedChoice !== decision.chosen) {
+      issues.push({ code: 'NS4_E2_POLICY_SELECTION_NOT_HONORED', path, message: `Rewritten draft must choose the human selection for ${selection.decisionId}.` });
+    }
+  });
   return { ok: issues.length === 0, issues };
 }
 

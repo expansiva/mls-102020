@@ -16,6 +16,7 @@ import {
   markNs4E2Failed,
   markNs4E2Running,
   markNs4E2WaitingHuman,
+  markNs4E2ImpactStale,
   markNs4ModuleE2Approved,
   NS4_AUTOMATED_JUDGE_ICON,
   Ns4ApprovedBy,
@@ -24,11 +25,15 @@ import {
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
   readNs4AgentText,
+  readNs4DefsJson,
   readNs4Text,
   readNs4Module,
   readNs4Pipeline,
   ns4E2DraftFile,
+  ns4JourneyIndexFile,
   writeNs4E2Draft,
+  writeNs4E2VersionedDraft,
+  writeNs4E2ImpactReport,
   writeNs4Journey,
   writeNs4JourneyIndex,
   writeNs4Module,
@@ -36,15 +41,20 @@ import {
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
 import {
   buildNs4JourneyArtifacts,
+  buildNs4E2ImpactReport,
   buildNs4JourneyIndex,
+  buildNs4PolicyDecisionSelections,
   normalizeNs4E2Review,
   Ns4E2Review,
   Ns4E2ReviewEvent,
+  Ns4PolicyDecisionSelection,
+  Ns4JourneyIndex,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
-import { validateNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/gate.js';
+import { validateNs4E2PolicySelections, validateNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/gate.js';
 import { resolveNs4E2HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e2/hookArgs.js';
 import {
   formatNs4E2CoverageRepairFeedback,
+  applyNs4E2PolicyDecisionImpacts,
   normalizeNs4E2CoverageVerdict,
   Ns4E2CoverageVerdict,
   validateNs4E2CoverageVerdict,
@@ -67,6 +77,7 @@ interface Ns4E2Args {
   gateFeedback?: string;
   coverageFeedback?: string;
   coverageIssueIds?: string[];
+  policyDecisionSelections?: Array<Pick<Ns4PolicyDecisionSelection, 'decisionId' | 'selectedChoice'>>;
 }
 
 const MAX_E2_GATE_REPAIRS = 1;
@@ -157,7 +168,7 @@ export async function beforeNs4E2PromptStep(
       } as mls.msg.AgentIntentPromptReady];
     }
 
-    const previousDraft = parsed.adjustment || parsed.gateFeedback || parsed.coverageFeedback
+    const previousDraft = parsed.adjustment || parsed.gateFeedback || parsed.coverageFeedback || parsed.policyDecisionSelections?.length
       ? await readDraftFromStorage(moduleName)
       : null;
     const [prompt, platform] = await Promise.all([
@@ -171,6 +182,7 @@ export async function beforeNs4E2PromptStep(
       `## Required review round\n${reviewRound}`,
       previousDraft ? `## Previous E2 draft\n${JSON.stringify(previousDraft, null, 2)}` : '',
       parsed.adjustment ? `## Human adjustment request\n${parsed.adjustment}` : '',
+      parsed.policyDecisionSelections?.length ? `## Human policy selections that the complete replacement MUST honor\n${JSON.stringify(parsed.policyDecisionSelections, null, 2)}` : '',
       parsed.gateFeedback ? `## Deterministic gate repair required\n${parsed.gateFeedback}` : '',
       parsed.coverageFeedback ? `## Semantic coverage repair required\n${parsed.coverageFeedback}` : '',
     ].filter(Boolean).join('\n');
@@ -262,7 +274,15 @@ export async function afterNs4E2PromptStep(
       return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
     }
 
+    const selectionGate = validateNs4E2PolicySelections(review, args.policyDecisionSelections || [], true);
+    if (!selectionGate.ok) {
+      const message = selectionGate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
+      await recordNs4E2Failure(moduleName, message);
+      return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
+    }
+
     const draftPath = await writeNs4E2Draft(args.moduleName, review);
+    await writeNs4E2VersionedDraft(args.moduleName, review.reviewRound, review);
     const judgeParent = findMutableParentStep(context, parentStep);
     const judgeStep = createNs4E2CoverageJudgeStep(
       moduleName,
@@ -329,7 +349,15 @@ async function afterNs4E2CoverageJudge(
   }
 
   const storedDraft = await readDraftFromStorage(args.moduleName);
-  const review = normalizeNs4E2Review(storedDraft, args.moduleName);
+  const originalReview = normalizeNs4E2Review(storedDraft, args.moduleName);
+  const knownDecisionIds = new Set(originalReview.journeys.flatMap(journey => journey.policyDecisions.map(decision => decision.decisionId)));
+  const unknownImpact = verdict.policyDecisionImpacts.find(impact => !knownDecisionIds.has(impact.decisionId));
+  if (unknownImpact) {
+    const message = `E2 coverage judge returned impact for unknown policy decision ${unknownImpact.decisionId}.`;
+    await recordNs4E2Failure(args.moduleName, message);
+    return [updateStatus(context, judgeParent, step, hookSequential, 'failed', message)];
+  }
+  const review = applyNs4E2PolicyDecisionImpacts(originalReview, verdict);
   const gate = validateNs4E2Review(review);
   if (!gate.ok) {
     const message = `E2 draft changed or became invalid before coverage approval: ${gate.issues.map(issue => `${issue.code} ${issue.path}`).join(', ')}`;
@@ -386,6 +414,7 @@ async function afterNs4E2CoverageJudge(
   }
 
   const draftPath = await writeNs4E2Draft(args.moduleName, review);
+  await writeNs4E2VersionedDraft(args.moduleName, review.reviewRound, review);
   const reviewedPipeline = await requirePipeline(args.moduleName);
   await writeNs4Pipeline(markNs4E2WaitingHuman(reviewedPipeline, round, draftPath));
   const trace = coverageJudgeTraceStep(
@@ -485,19 +514,25 @@ async function applyNs4E2Review(
   const mutationParent = findMutableParentStep(context, parentStep);
   if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; esta revisão foi mantida aberta sem alterar o pipeline.');
   if (event.action === 'approve') {
-    const saved = await persistNs4E2(event.review.moduleName, event.review, 'human');
+    const selectionGate = validateNs4E2PolicySelections(event.review, event.policyDecisionSelections, true);
+    if (!selectionGate.ok) throw new Error(selectionGate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+    const saved = await persistNs4E2(event.review.moduleName, event.review, 'human', event.policyDecisionSelections);
     await applyIntents(context, [
       resultStep(context, mutationParent, saved, 'E2 journeys approved'),
       updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
     ]);
   } else {
-    if (!event.adjustment.trim()) throw new Error('Adjustment request cannot be empty.');
+    if (!event.adjustment.trim() && !event.policyDecisionSelections.some(selection => {
+      const decision = event.review.journeys.flatMap(journey => journey.policyDecisions).find(item => item.decisionId === selection.decisionId);
+      return decision && decision.chosen !== selection.selectedChoice;
+    })) throw new Error('Adjustment request or a different policy selection is required.');
     const nextRound = event.review.reviewRound + 1;
     const pipeline = await requirePipeline(event.review.moduleName);
     await writeNs4E2Draft(event.review.moduleName, event.review);
+    await writeNs4E2VersionedDraft(event.review.moduleName, event.review.reviewRound, event.review);
     await writeNs4Pipeline(markNs4E2Running(pipeline, nextRound));
     await applyIntents(context, [
-      addStep(context, mutationParent, createNs4E2Step(event.review.moduleName, nextRound, event.adjustment)),
+      addStep(context, mutationParent, createNs4E2Step(event.review.moduleName, nextRound, event.adjustment, [], undefined, event.policyDecisionSelections)),
       adjustmentResultStep(context, mutationParent, event.review.moduleName, event.review.reviewRound, event.adjustment),
       updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output'),
     ]);
@@ -520,7 +555,12 @@ function findMutableParentStep(context: mls.msg.ExecutionContext, parentStep: ml
   return root?.type === 'agent' ? root : parentStep;
 }
 
-async function persistNs4E2(moduleName: string, review: Ns4E2Review, approvedBy: Ns4ApprovedBy): Promise<Ns4PersistedE2> {
+async function persistNs4E2(
+  moduleName: string,
+  review: Ns4E2Review,
+  approvedBy: Ns4ApprovedBy,
+  requestedSelections: Array<Pick<Ns4PolicyDecisionSelection, 'decisionId' | 'selectedChoice'>> = [],
+): Promise<Ns4PersistedE2> {
   const gate = validateNs4E2Review(review);
   if (!gate.ok) throw new Error(gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
   const moduleArtifact = await readNs4Module(moduleName);
@@ -528,13 +568,19 @@ async function persistNs4E2(moduleName: string, review: Ns4E2Review, approvedBy:
   if (!moduleArtifact || moduleArtifact.module.moduleName !== moduleName) throw new Error(`Invalid module artifact for ${moduleName}.`);
 
   const artifacts = await buildNs4JourneyArtifacts(review);
+  const previousIndex = await readNs4DefsJson<Ns4JourneyIndex>(ns4JourneyIndexFile(moduleName));
   const artifactPaths: string[] = [];
   for (const artifact of artifacts) artifactPaths.push(await writeNs4Journey(moduleName, artifact.journeyId, artifact));
   const approvedAt = new Date().toISOString();
-  const index = buildNs4JourneyIndex(moduleName, review, artifacts, artifactPaths, approvedBy, approvedAt);
+  const selections = buildNs4PolicyDecisionSelections(review, requestedSelections, approvedBy, approvedAt);
+  const index = buildNs4JourneyIndex(moduleName, review, artifacts, artifactPaths, approvedBy, approvedAt, selections);
   const indexPath = await writeNs4JourneyIndex(moduleName, index);
-  await writeNs4Module(moduleName, markNs4ModuleE2Approved(moduleArtifact, approvedBy, approvedAt));
-  await writeNs4Pipeline(markNs4E2Approved(pipeline, approvedBy, [...artifactPaths, indexPath], approvedAt));
+  const impactReport = buildNs4E2ImpactReport(moduleName, previousIndex, artifacts, approvedAt);
+  const impactReportPath = await writeNs4E2ImpactReport(moduleName, impactReport);
+  const invalidated = impactReport.changes.length > 0;
+  await writeNs4Module(moduleName, markNs4ModuleE2Approved(moduleArtifact, approvedBy, approvedAt, invalidated));
+  const approvedPipeline = markNs4E2Approved(pipeline, approvedBy, [...artifactPaths, indexPath, impactReportPath], approvedAt);
+  await writeNs4Pipeline(markNs4E2ImpactStale(approvedPipeline, invalidated, approvedAt));
   return { moduleName, journeyCount: artifacts.length, artifactPaths, indexPath };
 }
 
@@ -684,6 +730,12 @@ function parseE2Args(value: unknown): Ns4E2Args {
     ...(typeof parsed.coverageFeedback === 'string' && parsed.coverageFeedback.trim() ? { coverageFeedback: parsed.coverageFeedback.trim() } : {}),
     ...(Array.isArray(parsed.coverageIssueIds)
       ? { coverageIssueIds: parsed.coverageIssueIds.filter((value): value is string => typeof value === 'string' && !!value.trim()).map(value => value.trim()) }
+      : {}),
+    ...(Array.isArray(parsed.policyDecisionSelections)
+      ? { policyDecisionSelections: parsed.policyDecisionSelections.map(item => isRecord(item) ? ({
+        decisionId: typeof item.decisionId === 'string' ? item.decisionId.trim() : '',
+        selectedChoice: typeof item.selectedChoice === 'string' ? item.selectedChoice.trim() : '',
+      }) : null).filter((item): item is { decisionId: string; selectedChoice: string } => !!item?.decisionId && !!item.selectedChoice) }
       : {}),
   };
 }

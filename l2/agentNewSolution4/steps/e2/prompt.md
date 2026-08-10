@@ -54,6 +54,20 @@ Write in the user's language. Do not design pages, routes, database keys, APIs o
 
 ## Journey quality
 
+## Policy decisions first
+
+Before writing any journey, list the consequential policy bifurcations for that journey and select
+one option. Then write journeys consistent with those selected choices. Attach them as
+`policyDecisions` on the journey using `{ decisionId, question, chosen, alternatives }`.
+
+- `decisionId` is globally unique, stable lower-camel and describes the policy, not a UI control.
+- `chosen` must be one of the explicit alternatives or a clearly stated current option; alternatives
+  are real viable choices, not wording variants.
+- Do **not** include `impact` or `relatedJourneyIds`: the independent judge owns those fields.
+- When human policy selections are supplied for an adjustment round, rewrite the complete set and
+  make every selected value the matching decision's `chosen`. A selection can add, remove or reshape
+  journeys; never treat it as a local text patch.
+
 - Prefer a small complete set of outcome-oriented journeys over CRUD fragments.
 - Treat the complete approved E1 contract as a coverage checklist. Every explicit in-scope actor,
   user-facing capability, screen intent and promised outcome must be owned by a journey. Do not let a
@@ -111,6 +125,14 @@ Return exactly one JSON object (no markdown):
     "journeys": [
       {
         "journeyId": "manageProjectChangeOrder",
+        "policyDecisions": [
+          {
+            "decisionId": "changeOrderDecisionMode",
+            "question": "Como uma ordem de mudança passa a valer?",
+            "chosen": "O gerente decide a ordem diretamente durante o registro.",
+            "alternatives": ["Fluxo separado de proposta com aprovação ou recusa"]
+          }
+        ],
         "business": {
           "actorRef": "projectManager",
           "title": "Criar e decidir ordem de mudança",
