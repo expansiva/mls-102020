@@ -227,6 +227,17 @@ export async function readParentDefs(parentReference: string): Promise<string> {
   return readParentSource(parentReference.replace(/\.ts$/, '.defs.ts'));
 }
 
+/**
+ * The parent's SOURCE, for when a shell overrides one of its members.
+ *
+ * ⚠️ 2026-08-10: without it the model wrote an override referencing `this.open`, a member the parent
+ * keeps private — two attempts burned on a compile error. Overriding a member means reading the
+ * member, and the model cannot read what it was not shown.
+ */
+export async function readParentTs(parentReference: string): Promise<string> {
+  return readParentSource(parentReference);
+}
+
 /** Best-effort read of a file in another project. Returns '' when it is not reachable. */
 async function readParentSource(parentReference: string): Promise<string> {
   const m = parentReference.match(/^_?(\d+)_\/l(\d+)\/(.+)\/([^/]+)\.ts$/);

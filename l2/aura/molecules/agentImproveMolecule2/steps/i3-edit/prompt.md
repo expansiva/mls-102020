@@ -48,6 +48,8 @@ Return **targeted edits**, not rewritten files. Each edit quotes the exact text 
 
 {{files}}
 
+{{parentSource}}
+
 ## Output
 
 Call the tool with `edits`. Each carries `artifact`, `op`, `find` (on `replace`), `content` and a one-line `why` **in {{userLanguage}}** — the `why` lines become the summary the user reads.

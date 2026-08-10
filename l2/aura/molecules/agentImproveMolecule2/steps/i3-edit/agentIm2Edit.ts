@@ -50,6 +50,7 @@ import {
   imTriageFileInfo,
   imWorkFile,
   readImAgentText,
+  readParentTs,
   writeImSource,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
 import { getImRunKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imRootPlan.js';
@@ -90,6 +91,22 @@ async function beforePromptStep(
   // Route C only. On route B it is absent and renderInheritance falls back to the generic warning.
   const choice = await readJsonArtifact<ImInheritChoice>(imWorkFile(runKey, 'inherit'), false);
 
+  // ROUTE C, 'parent': the human decided the fix belongs to the base component, which this agent
+  // never edits. There is nothing for a model to do, so no prompt is emitted — the same declared
+  // no-op shape i5-playground uses. i5, i6 and i7 follow and the run ends with the instruction.
+  if (choice?.where === 'parent') {
+    const summary = `nothing edited — the fix belongs to ${ctx.inheritance.parentReference || 'the base component'}`;
+    return [
+      nmResultStepIntent(context, parentStep, {
+        planId: imDoneAnchor(PLAN_ID),
+        dependsOn: [],
+        stepTitle: summary,
+        result: { touched: [], why: [], runKey, attempt: 1, skipped: 'parent' },
+      }),
+      nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', summary, 'input_output'),
+    ];
+  }
+
   const promptMd = await readImAgentText('steps/i3-edit', 'prompt', '.md', true);
   const schemaRaw = await readImAgentText('schemas', 'i3-edit.schema', '.json', true);
   const schema = parseMaybeJson(schemaRaw);
@@ -102,7 +119,12 @@ async function beforePromptStep(
     .split('{{userLanguage}}').join(ctx.userLanguage || 'the language of the request')
     .split('{{triage}}').join(renderTriage(triage))
     .split('{{inheritance}}').join(renderInheritance(ctx, choice))
-    .split('{{files}}').join(renderFiles(ctx, triage))
+    .split('{{files}}').join(renderFiles(ctx, triage, choice))
+    .split('{{parentSource}}').join(
+      choice?.where === 'override' && ctx.inheritance.parentReference
+        ? `----- FILE: the PARENT, read-only (${ctx.inheritance.parentReference}) -----\n${await readParentTs(ctx.inheritance.parentReference)}\n----- END FILE -----`
+        : '',
+    )
     .split('{{contract}}').join(ctx.contract.source.trim()
       ? (ctx.contract.inherited
         ? `The contract below belongs to this shell's PARENT (\`${ctx.contract.reference}\`) — it is what the molecule promises.\n\n${ctx.contract.source}`
@@ -142,6 +164,7 @@ async function afterPromptStep(
   const attempt = parsedArgs.retryAttempt || 1;
   const runKey = getImRunKey(context, parsedArgs.runKey);
   const { ctx } = await readRun(runKey);
+  const choice = await readJsonArtifact<ImInheritChoice>(imWorkFile(runKey, 'inherit'), false);
 
   let edits: ImEdit[] = [];
   let extractError = '';
@@ -157,7 +180,7 @@ async function afterPromptStep(
   // whole, so a half-applied edit never reaches the disk.
   const apply = extractError
     ? { changed: new Map<ImArtifactKind, string>(), errors: [`extract: ${extractError}`], applied: [] as string[] }
-    : applyEdits(fileStates(ctx), edits);
+    : applyEdits(fileStates(ctx, choice), edits);
 
   if (apply.errors.length) {
     return retryOrFail(context, parentStep, step, hookSequential, runKey, attempt, apply.errors.join('\n'), edits);
@@ -253,10 +276,18 @@ async function compileOf(kind: ImArtifactKind, fileInfo: ReturnType<typeof imFil
   return [];
 }
 
-/** Only the editable artifacts are offered to applyEdits — i5 owns the playground, i6 the index. */
-function fileStates(ctx: ImContext): Map<ImArtifactKind, ImFileState> {
+/**
+ * Only the editable artifacts are offered to applyEdits — i5 owns the playground, i6 the index.
+ *
+ * ⚠️ On route C the HUMAN's choice narrows this further, and it is enforced HERE rather than asked
+ * of the model. 2026-08-10: with the choice 'less', the model edited the `.ts` anyway — the prompt
+ * said not to, and the triage's expectedArtifacts said `ts`, and the triage won. An instruction the
+ * model can lose an argument with is not an instruction; a Map it cannot reach is.
+ */
+function fileStates(ctx: ImContext, choice: ImInheritChoice | null): Map<ImArtifactKind, ImFileState> {
+  const allowed = choice?.where === 'less' ? (['less'] as ImArtifactKind[]) : EDITABLE;
   const out = new Map<ImArtifactKind, ImFileState>();
-  for (const kind of EDITABLE) {
+  for (const kind of allowed) {
     const artifact = artifactOf(ctx.artifacts, kind);
     out.set(kind, { present: !!artifact?.present, source: artifact?.source || '' });
   }
@@ -279,7 +310,15 @@ function normalizeEdits(raw: unknown): ImEdit[] {
  * them, and a fence would end in the middle of the file. The model must copy `find` character for
  * character, so nothing may be added to the content — no line numbers, no indentation fixes.
  */
-function renderFiles(ctx: ImContext, triage: ImTriage): string {
+function renderFiles(ctx: ImContext, triage: ImTriage, choice: ImInheritChoice | null): string {
+  // The human's route C choice wins over the triage's prediction: it was made at a checkpoint with
+  // the cost of each option on screen.
+  if (choice?.where === 'less') {
+    const less = artifactOf(ctx.artifacts, 'less');
+    return less
+      ? `----- FILE: less (${less.reference}) -----\n${less.source}\n----- END FILE: less -----`
+      : '----- FILE: less — DOES NOT EXIST YET, use op "create" -----';
+  }
   const wanted = EDITABLE.filter(kind => triage.expectedArtifacts.includes(kind));
   // The .ts is always shown: it is what the .less styles and what the .defs.ts describes, so an
   // edit to either is decided by reading it.
@@ -341,6 +380,16 @@ function renderInheritance(ctx: ImContext, choice: ImInheritChoice | null): stri
     lines.push(`**By overriding \`${choice.member}\` in this molecule's own class.** Add that member to the shell`);
     lines.push('and nothing more. Every other behaviour keeps coming from the parent, which is the point of a');
     lines.push('shell — do not copy the parent\'s implementation across to "have it here".');
+    lines.push('');
+    lines.push('The parent\'s source is printed below, read-only. Read it before writing the override:');
+    lines.push('');
+    lines.push(`- **match the parent's signature exactly** — same name, same parameter types, and the SAME`);
+    lines.push('  visibility. A member the parent declares `public` cannot be overridden as `protected`, and a');
+    lines.push('  parameter type that is merely similar does not compile.');
+    lines.push('- **only touch what the parent exposes.** Its `private` members do not exist as far as this');
+    lines.push('  class is concerned. If the behaviour you need depends on one of them, this override cannot');
+    lines.push('  work — say so in the `why` and change nothing.');
+    lines.push('- call `super.<member>(...)` when the parent\'s behaviour should still happen first.');
   }
   return lines.join('\n');
 }
