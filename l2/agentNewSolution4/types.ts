@@ -15,9 +15,13 @@ import type { Ns4RulesArtifact } from '/_102020_/l2/agentNewSolution4/steps/e5/c
 import type { Ns4CompositionArtifact } from '/_102020_/l2/agentNewSolution4/steps/e6/contracts.js';
 import type {
   Ns4UseCaseArtifact,
+  Ns4UseCaseArtifactV3,
   Ns4UseCaseIndexArtifact,
+  Ns4UseCaseIndexArtifactV3,
   Ns4WorkflowArtifact,
+  Ns4WorkflowArtifactV2,
   Ns4WorkflowIndexArtifact,
+  Ns4WorkflowIndexArtifactV2,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 
 export type {
@@ -112,17 +116,21 @@ export type {
   Ns4E7PlanUseCase,
   Ns4E7SourceHashes,
   Ns4UseCaseArtifact,
+  Ns4UseCaseArtifactV3,
   Ns4UseCaseDraft,
   Ns4UseCaseEntityAccess,
   Ns4UseCaseError,
   Ns4UseCaseFieldRef,
   Ns4UseCaseIndexArtifact,
+  Ns4UseCaseIndexArtifactV3,
   Ns4UseCaseInput,
   Ns4UseCaseKind,
   Ns4UseCaseOutput,
   Ns4UseCaseTransition,
   Ns4WorkflowArtifact,
+  Ns4WorkflowArtifactV2,
   Ns4WorkflowIndexArtifact,
+  Ns4WorkflowIndexArtifactV2,
   Ns4WorkflowTransition,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 
@@ -136,9 +144,13 @@ export const NS4_PERMANENT_ARTIFACT_TYPE_NAMES = [
   'Ns4RulesArtifact',
   'Ns4CompositionArtifact',
   'Ns4UseCaseArtifact',
+  'Ns4UseCaseArtifactV3',
   'Ns4UseCaseIndexArtifact',
+  'Ns4UseCaseIndexArtifactV3',
   'Ns4WorkflowArtifact',
+  'Ns4WorkflowArtifactV2',
   'Ns4WorkflowIndexArtifact',
+  'Ns4WorkflowIndexArtifactV2',
 ] as const;
 
 export type Ns4PermanentArtifactTypeName = typeof NS4_PERMANENT_ARTIFACT_TYPE_NAMES[number];
@@ -153,7 +165,11 @@ export interface Ns4PermanentArtifactByType {
   Ns4RulesArtifact: Ns4RulesArtifact;
   Ns4CompositionArtifact: Ns4CompositionArtifact;
   Ns4UseCaseArtifact: Ns4UseCaseArtifact;
+  Ns4UseCaseArtifactV3: Ns4UseCaseArtifactV3;
   Ns4UseCaseIndexArtifact: Ns4UseCaseIndexArtifact;
+  Ns4UseCaseIndexArtifactV3: Ns4UseCaseIndexArtifactV3;
   Ns4WorkflowArtifact: Ns4WorkflowArtifact;
+  Ns4WorkflowArtifactV2: Ns4WorkflowArtifactV2;
   Ns4WorkflowIndexArtifact: Ns4WorkflowIndexArtifact;
+  Ns4WorkflowIndexArtifactV2: Ns4WorkflowIndexArtifactV2;
 }

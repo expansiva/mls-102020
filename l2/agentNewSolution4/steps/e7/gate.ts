@@ -8,7 +8,7 @@ import {
   NS4_USE_CASE_DRAFT_VERSION,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 import type {
-  Ns4E7PlanDraft, Ns4E7SourceHashes, Ns4UseCaseDraft, Ns4UseCaseFieldRef, Ns4WorkflowArtifact,
+  Ns4E7PlanDraft, Ns4E7SourceHashes, Ns4UseCaseDraft, Ns4WorkflowArtifactV2,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 
 export interface Ns4E7GateIssue { code: string; path: string; message: string; }
@@ -93,42 +93,24 @@ export function validateNs4UseCaseDraft(
     add('NS4_E7_CONTEXT_PROVIDED', 'contexts.provides', `Must reference exactly: ${expectedProvides.join(', ') || '(none)'}.`);
   }
 
-  for (const input of draft.inputs) validateValue(input, 'inputs', sources, add);
-  for (const output of draft.outputs) {
-    validateValue(output, 'outputs', sources, add);
-    if (output.contextId && !expectedProvides.includes(output.contextId)) {
-      add('NS4_E7_OUTPUT_CONTEXT', `outputs.${output.outputId}.contextId`, `Unknown provided context ${output.contextId}.`);
-    }
-  }
-  for (const contextId of expectedProvides) if (!draft.outputs.some(output => output.contextId === contextId)) {
-    add('NS4_E7_OUTPUT_CONTEXT_MISSING', 'outputs', `Provided context ${contextId} needs at least one canonical output.`);
-  }
-
   const entities = new Map(sources.ontology.entities.map(entity => [entity.entityId, entity]));
-  for (const [collectionName, accesses] of [['reads', draft.reads], ['writes', draft.writes]] as const) {
-    accesses.forEach((access, index) => {
-      const entity = entities.get(access.entityId);
-      if (!entity) add('NS4_E7_ENTITY', `${collectionName}[${index}].entityId`, `Unknown entity ${access.entityId}.`);
-      else for (const field of access.fieldRefs) if (!entity.fields.some(item => item.fieldId === field)) {
-        add('NS4_E7_FIELD', `${collectionName}[${index}].fieldRefs`, `Unknown field ${access.entityId}.${field}.`);
-      }
-      if (!access.fieldRefs.length) add('NS4_E7_ACCESS_FIELDS', `${collectionName}[${index}].fieldRefs`, 'At least one exact ontology field is required.');
-    });
+  if (!draft.entityRefs.length) add('NS4_E7_ENTITY_REFS', 'entityRefs', 'A behavior must reference at least one ontology entity.');
+  for (const entityRef of draft.entityRefs) if (!entities.has(entityRef)) {
+    add('NS4_E7_ENTITY', 'entityRefs', `Unknown entity ${entityRef}.`);
   }
-  if (draft.kind === 'query' && draft.writes.length) add('NS4_E7_QUERY_WRITES', 'writes', 'A query cannot change business data.');
 
   const ruleIds = new Set(sources.rules.rules.map(rule => rule.id));
-  const usedRules = [draft.useRules, ...draft.errors.map(error => error.useRules), ...draft.transitions.map(transition => transition.useRules)].flat();
+  const usedRules = [draft.useRules, ...draft.transitions.map(transition => transition.useRules)].flat();
   for (const rule of usedRules) if (!ruleIds.has(rule)) add('NS4_E7_RULE', 'useRules', `Unknown rule ${rule}.`);
-  draft.errors.forEach((error, index) => {
-    if (!MEMBER_ID.test(error.errorId)) add('NS4_E7_ERROR_ID', `errors[${index}].errorId`, 'Error id must be lower-camel.');
-    if (!error.description || !error.when) add('NS4_E7_ERROR', `errors[${index}]`, 'Business error needs description and condition.');
-  });
+  if (draft.kind === 'query' && draft.transitions.length) add('NS4_E7_QUERY_TRANSITION', 'transitions', 'A query cannot change lifecycle state.');
   for (const transition of draft.transitions) {
     const entity = entities.get(transition.entityRef);
     if (!entity) add('NS4_E7_TRANSITION_ENTITY', 'transitions', `Unknown transition entity ${transition.entityRef}.`);
     else for (const state of [...transition.fromStates, transition.toState]) if (!entity.lifecycleStates.includes(state)) {
       add('NS4_E7_TRANSITION_STATE', 'transitions', `Unknown ${transition.entityRef} lifecycle state ${state}.`);
+    }
+    if (!draft.entityRefs.includes(transition.entityRef)) {
+      add('NS4_E7_TRANSITION_REF', 'entityRefs', `Transition entity ${transition.entityRef} must be referenced by the behavior.`);
     }
     if (!MEMBER_ID.test(transition.transitionId)) add('NS4_E7_TRANSITION_ID', 'transitions', 'Transition id must be lower-camel.');
     if (!transition.fromStates.length || !transition.toState) add('NS4_E7_TRANSITION_BOUNDS', 'transitions', 'Transition needs at least one from state and one target state.');
@@ -136,7 +118,7 @@ export function validateNs4UseCaseDraft(
   return { ok: issues.length === 0, issues };
 }
 
-export function validateNs4Workflows(workflows: Ns4WorkflowArtifact[], sources: Ns4E7Sources): Ns4E7GateResult {
+export function validateNs4Workflows(workflows: Ns4WorkflowArtifactV2[], sources: Ns4E7Sources): Ns4E7GateResult {
   const issues: Ns4E7GateIssue[] = [];
   const add = issueAdder(issues);
   const entities = new Map(sources.ontology.entities.map(entity => [entity.entityId, entity]));
@@ -164,28 +146,6 @@ function collectSteps(journeys: Ns4E2Review): Map<string, SourceStep> {
     kind: step.kind, requiresContext: step.requiresContext, providesContext: step.providesContext,
   });
   return result;
-}
-
-function validateValue(
-  value: { inputId?: string; outputId?: string; type?: string; fieldRef?: Ns4UseCaseFieldRef; description: string },
-  collection: 'inputs' | 'outputs',
-  sources: Ns4E7Sources,
-  add: ReturnType<typeof issueAdder>,
-): void {
-  const id = value.inputId || value.outputId || '';
-  if (!MEMBER_ID.test(id)) add('NS4_E7_VALUE_ID', `${collection}.${id || '?'}`, 'Value id must be lower-camel.');
-  if (!value.description) add('NS4_E7_VALUE_DESCRIPTION', `${collection}.${id}`, 'A short business description is required.');
-  if (!value.fieldRef) {
-    if (!value.type) add('NS4_E7_VALUE_TYPE', `${collection}.${id}.type`, 'A non-ontology value needs an explicit type.');
-    return;
-  }
-  const field = findField(value.fieldRef, sources);
-  if (!field) add('NS4_E7_FIELD', `${collection}.${id}.fieldRef`, `Unknown field ${value.fieldRef.entityId}.${value.fieldRef.fieldId}.`);
-}
-
-function findField(ref: Ns4UseCaseFieldRef, sources: Ns4E7Sources) {
-  return sources.ontology.entities.find(entity => entity.entityId === ref.entityId)?.fields
-    .find(field => field.fieldId === ref.fieldId);
 }
 
 function issueAdder(issues: Ns4E7GateIssue[]) {
