@@ -5,6 +5,10 @@ ids into stable N→1 use cases, details each use case with a `parallel_dynamic`
 deterministic targeted repair for invalid drafts, derives lifecycle workflows and emits permanent typed
 L4 contracts.
 
+Journey context ids and lineage are reconciled mechanically, while authenticated-actor context remains
+an explicit runtime input. Journey/access rules are mandatory; entity rules are candidates selected only
+when the use case enforces them. A resumed E7 reuses every valid saved draft and fans out only unresolved work.
+
 The step never edits journey `business` and verifies its `businessHash`. It writes only realization
 metadata back to journey/access contracts. Use cases are channel-neutral; E8 operations are the future
 frontend/backend integration endpoints.

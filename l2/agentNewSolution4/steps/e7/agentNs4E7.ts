@@ -28,7 +28,7 @@ import {
   normalizeNs4UseCaseDraft, Ns4E7PlanDraft, Ns4E7SourceHashes, Ns4UseCaseDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 import {
-  Ns4E7Sources, validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows,
+  Ns4E7Sources, reconcileNs4UseCaseDraft, validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/gate.js';
 
 interface Ns4E7Args {
@@ -98,7 +98,9 @@ export async function afterNs4E7PromptStep(
     const [plan, bundle] = await Promise.all([readPlan(moduleName), loadBundle(moduleName)]);
     const payload = unwrap(step.interaction?.payload?.[0]);
     if (!isRecord(payload)) return [updateStatus(context, parentStep, step, hookSequential, 'completed', `Use case ${useCaseId} returned no usable payload; finalizer will repair it.`, 'input_output')];
-    const draft = normalizeNs4UseCaseDraft(payload, plan, useCaseId);
+    const draft = reconcileNs4UseCaseDraft(
+      plan, normalizeNs4UseCaseDraft(payload, plan, useCaseId), bundle,
+    );
     await writeNs4E7UseCaseDraft(moduleName, useCaseId, draft);
     const gate = validateNs4UseCaseDraft(plan, draft, bundle);
     return [updateStatus(context, parentStep, step, hookSequential, 'completed', gate.ok
@@ -124,13 +126,23 @@ async function startE7(
   if (!gate.ok) throw new Error(formatGate(gate.issues));
   const planPath = await writeNs4E7PlanDraft(moduleName, plan);
   await writeNs4Pipeline(markNs4E7Running(bundle.pipeline, planPath));
+  const existing = await Promise.all(plan.useCases.map(async target => ({
+    useCaseId: target.useCaseId,
+    draft: await readDraft(moduleName, target.useCaseId, bundle, plan),
+  })));
+  const pending = existing.filter(item => !item.draft || !validateNs4UseCaseDraft(plan, item.draft, bundle).ok)
+    .map(item => item.useCaseId);
+  if (!pending.length) {
+    return finalizeE7(context, parentStep, step, hookSequential,
+      { planId: 'e7-realization', moduleName, stage: 'finalize', repairRound: 0 });
+  }
   const mutationParent = findMutableParent(context, parentStep);
-  const parallel = parallelUseCaseStep(context, step, agentName, plan, 0);
+  const parallel = parallelUseCaseStep(context, step, agentName, plan, 0, pending);
   return [
     parallel,
     addStep(context, mutationParent, createFinalizeStep(moduleName, 0, [String(parallel.step.planning?.planId || '')])),
     updateStatus(context, mutationParent, step, hookSequential, 'completed',
-      `E7 planned ${plan.useCases.length} use cases; detailing with maxParallel=${NS4_E7_MAX_PARALLEL}.`, 'input_output'),
+      `E7 planned ${plan.useCases.length} use cases; ${plan.useCases.length - pending.length} valid drafts reused and ${pending.length} detailing with maxParallel=${NS4_E7_MAX_PARALLEL}.`, 'input_output'),
   ];
 }
 
@@ -142,9 +154,10 @@ async function buildUseCasePrompt(
   moduleName: string,
   useCaseId: string,
 ): Promise<mls.msg.AgentIntentPromptReady> {
-  const [plan, bundle, prompt, current] = await Promise.all([
-    readPlan(moduleName), loadBundle(moduleName), readNs4AgentText('steps/e7', 'promptUseCase'), readDraft(moduleName, useCaseId),
+  const [plan, bundle, prompt] = await Promise.all([
+    readPlan(moduleName), loadBundle(moduleName), readNs4AgentText('steps/e7', 'promptUseCase'),
   ]);
+  const current = await readDraft(moduleName, useCaseId, bundle, plan);
   const target = plan.useCases.find(item => item.useCaseId === useCaseId);
   if (!target) throw new Error(`Use case ${useCaseId} is not present in the E7 plan.`);
   const sourceRefs = new Set(target.compiledFrom);
@@ -208,7 +221,7 @@ async function finalizeE7(
   const valid: Ns4UseCaseDraft[] = [];
   const invalid: string[] = [];
   for (const target of plan.useCases) {
-    const draft = await readDraft(args.moduleName, target.useCaseId);
+    const draft = await readDraft(args.moduleName, target.useCaseId, bundle, plan);
     if (!draft || !validateNs4UseCaseDraft(plan, draft, bundle).ok) invalid.push(target.useCaseId);
     else valid.push(draft);
   }
@@ -345,10 +358,17 @@ async function readPlan(moduleName: string): Promise<Ns4E7PlanDraft> {
   if (!isRecord(parsed) || parsed.planId !== 'e7-realization-plan') throw new Error(`Invalid E7 plan for ${moduleName}.`);
   return parsed as unknown as Ns4E7PlanDraft;
 }
-async function readDraft(moduleName: string, useCaseId: string): Promise<Ns4UseCaseDraft | null> {
+async function readDraft(
+  moduleName: string,
+  useCaseId: string,
+  sources?: Ns4E7Sources,
+  existingPlan?: Ns4E7PlanDraft,
+): Promise<Ns4UseCaseDraft | null> {
   const parsed = parse(await readNs4Text(ns4E7UseCaseDraftFile(moduleName, useCaseId), false));
   if (!isRecord(parsed)) return null;
-  return normalizeNs4UseCaseDraft(parsed, await readPlan(moduleName), useCaseId);
+  const plan = existingPlan || await readPlan(moduleName);
+  const draft = normalizeNs4UseCaseDraft(parsed, plan, useCaseId);
+  return sources ? reconcileNs4UseCaseDraft(plan, draft, sources) : draft;
 }
 async function requirePipeline(moduleName: string): Promise<Ns4PipelineState> {
   const pipeline = await readNs4Pipeline(moduleName);

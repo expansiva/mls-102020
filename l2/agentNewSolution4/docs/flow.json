@@ -294,6 +294,9 @@
       "runtimeNotes": [
         "The plan is mechanical: identical stable step ids converge into one use case and every journey step remains covered through compiledFrom.",
         "One parallel_dynamic reasoning child details each use case with filtered journey, access, ontology, rules and composition context; maxParallel is 20.",
+        "Journey context ids and lineage are reconciled mechanically; explicit authenticated-actor context is accepted as an implicit runtime source.",
+        "Journey and access rules are mandatory. Entity rules are applicability candidates and are not forced merely because an entity is read.",
+        "A resumed E7 reuses valid saved drafts and fans out only missing or still-invalid use cases.",
         "The gate rejects invented authorities, entities, fields, rules, scopes, states and capability ports, and rejects raw or undeclared context inputs.",
         "Queries declare access patterns and exact E3 data scopes; commands declare writes/effects, transactions, idempotency, typed errors and valid lifecycle transitions.",
         "A deterministic finalizer repairs only invalid or missing use cases once, derives workflows, writes typed permanent artifacts and advances to E8.",

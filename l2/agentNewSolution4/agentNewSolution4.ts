@@ -86,7 +86,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-41 (2026-08-09) E7 use-case realization compiler';
+export const NS4_AGENT_BUILD = 'build-42 (2026-08-09) E7 deterministic reconciliation and draft reuse';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

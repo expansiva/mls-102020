@@ -13,9 +13,13 @@ application layer and its ports. It never knows pages, routes, widgets, HTTP, BF
 - Preserve every supplied actor and exact E3 authority. Never invent an authority code.
 - Carry every required and produced E2 context explicitly. Context comes from entry, a previous step,
   a lookup, the actor session or an event; a selected business object is never a raw id typed by a user.
+  Journey context ids and source refs are mechanically reconciled after your answer. Add an actor-session
+  context only when the behavior actually consumes authenticated-member identity.
 - Use exact E4 entity and field ids. `reads`, `writes`, inputs, outputs, filters and projections must name
   real fields. Relationships already include their concrete endpoint bindings.
-- Reference E5 rules only by exact id. Do not copy rule descriptions.
+- Reference E5 rules only by exact id. Do not copy rule descriptions. Journey and access rules are mandatory.
+  Entity rules are candidates: include only rules whose condition this use case actually enforces. Merely
+  reading an entity does not make every rule attached to that entity applicable.
 - Apply every supplied E3 grant as an exact `dataScopes` entry. Assigned, own and related scopes are
   query/application predicates, not frontend hiding.
 - A query has no writes and declares filters, pagination, selection, ordering and projection.

@@ -6,7 +6,8 @@ import type { Ns4E4Review } from '/_102020_/l2/agentNewSolution4/steps/e4/contra
 import type { Ns4RulesArtifact } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
 import type { Ns4CompositionArtifact } from '/_102020_/l2/agentNewSolution4/steps/e6/contracts.js';
 import type {
-  Ns4E7PlanDraft, Ns4E7SourceHashes, Ns4UseCaseDraft, Ns4UseCaseFieldRef, Ns4WorkflowArtifact,
+  Ns4E7PlanDraft, Ns4E7SourceHashes, Ns4UseCaseContextBinding, Ns4UseCaseDraft,
+  Ns4UseCaseFieldRef, Ns4WorkflowArtifact,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 
 export interface Ns4E7GateIssue { code: string; path: string; message: string; }
@@ -22,6 +23,49 @@ export interface Ns4E7Sources {
   rules: Ns4RulesArtifact;
   composition: Ns4CompositionArtifact;
   sourceHashes?: Ns4E7SourceHashes;
+}
+
+/**
+ * Freezes journey-owned contexts mechanically. The LLM describes behavior and
+ * mappings, but it must not invent a different dependency graph. Actor-session
+ * context is preserved because authentication is an implicit runtime source,
+ * not a journey transition.
+ */
+export function reconcileNs4UseCaseDraft(
+  plan: Ns4E7PlanDraft,
+  draft: Ns4UseCaseDraft,
+  sources: Ns4E7Sources,
+): Ns4UseCaseDraft {
+  const target = plan.useCases.find(item => item.useCaseId === draft.useCaseId);
+  if (!target) return draft;
+  const stepRefs = new Set(target.compiledFrom);
+  const sourceJourneys = sources.journeys.journeys.filter(journey =>
+    target.compiledFrom.some(ref => ref.startsWith(`${journey.journeyId}.`)));
+  const expectedRequires = new Set<string>();
+  const expectedProvides = new Set<string>();
+  for (const journey of sourceJourneys) for (const step of journey.business.steps) {
+    if (!stepRefs.has(`${journey.journeyId}.${step.stepId}`)) continue;
+    step.requiresContext.forEach(contextId => expectedRequires.add(contextId));
+    step.providesContext.forEach(context => expectedProvides.add(context.contextId));
+  }
+  const currentRequires = new Map(draft.contexts.requires.map(context => [context.contextId, context]));
+  const currentProvides = new Map(draft.contexts.provides.map(context => [context.contextId, context]));
+  const actorSessionContexts = draft.contexts.requires.filter(context =>
+    context.source === 'actorSession' && !expectedRequires.has(context.contextId));
+  return {
+    ...draft,
+    contexts: {
+      requires: [
+        ...[...expectedRequires].sort().map(contextId => canonicalContext(
+          contextId, 'requires', target.compiledFrom, sourceJourneys, currentRequires.get(contextId), draft.kind,
+        )),
+        ...actorSessionContexts,
+      ],
+      provides: [...expectedProvides].sort().map(contextId => canonicalContext(
+        contextId, 'provides', target.compiledFrom, sourceJourneys, currentProvides.get(contextId), draft.kind,
+      )),
+    },
+  };
 }
 
 export function validateNs4E7Plan(plan: Ns4E7PlanDraft, sources: Ns4E7Sources): Ns4E7GateResult {
@@ -97,6 +141,12 @@ export function validateNs4UseCaseDraft(
   const actualProvides = new Set(draft.contexts.provides.map(context => context.contextId));
   for (const context of expectedRequires) if (!actualRequires.has(context)) add('NS4_E7_CONTEXT_REQUIRED', 'contexts.requires', `Missing required context ${context}.`);
   for (const context of expectedProvides) if (!actualProvides.has(context)) add('NS4_E7_CONTEXT_PROVIDED', 'contexts.provides', `Missing provided context ${context}.`);
+  for (const context of draft.contexts.requires) if (!expectedRequires.has(context.contextId) && context.source !== 'actorSession') {
+    add('NS4_E7_CONTEXT_REQUIRED_EXTRA', 'contexts.requires', `Context ${context.contextId} is not required by the compiled journey steps.`);
+  }
+  for (const context of draft.contexts.provides) if (!expectedProvides.has(context.contextId)) {
+    add('NS4_E7_CONTEXT_PROVIDED_EXTRA', 'contexts.provides', `Context ${context.contextId} is not provided by the compiled journey steps.`);
+  }
   const sourceJourneyIds = new Set(target.compiledFrom.map(ref => ref.split('.')[0]));
   const sourceJourneyStepRefs = new Set(sources.journeys.journeys.filter(item => sourceJourneyIds.has(item.journeyId))
     .flatMap(journey => journey.business.steps.map(step => `${journey.journeyId}.${step.stepId}`)));
@@ -108,6 +158,17 @@ export function validateNs4UseCaseDraft(
   }
   for (const [kind, contexts] of [['requires', draft.contexts.requires], ['provides', draft.contexts.provides]] as const) {
     for (const context of contexts) {
+      if (!context.sourceRefs.length) add('NS4_E7_CONTEXT_SOURCE_EMPTY', `contexts.${kind}.${context.contextId}.sourceRefs`, 'At least one canonical source is required.');
+      if (context.source === 'actorSession') {
+        if (kind !== 'requires') add('NS4_E7_CONTEXT_SESSION_DIRECTION', `contexts.${kind}.${context.contextId}`, 'Actor-session context can only be required.');
+        if (!sources.ontology.entities.some(entity => entity.entityId === context.businessObject)) {
+          add('NS4_E7_CONTEXT_OBJECT', `contexts.${kind}.${context.contextId}`, `Unknown actor-session business object ${context.businessObject}.`);
+        }
+        for (const ref of context.sourceRefs) if (!expectedActors.has(ref)) {
+          add('NS4_E7_CONTEXT_SOURCE', `contexts.${kind}.${context.contextId}.sourceRefs`, `Actor-session source ${ref} is not a source actor.`);
+        }
+        continue;
+      }
       const businessObject = knownContexts.get(context.contextId);
       if (!businessObject) add('NS4_E7_CONTEXT_EXTRA', `contexts.${kind}`, `Context ${context.contextId} is not declared by the source journeys.`);
       else if (businessObject !== context.businessObject) add('NS4_E7_CONTEXT_OBJECT', `contexts.${kind}.${context.contextId}`, `Expected business object ${businessObject}, found ${context.businessObject}.`);
@@ -159,11 +220,9 @@ export function validateNs4UseCaseDraft(
   const ruleIds = new Set(sources.rules.rules.map(rule => rule.id));
   const usedRules = [draft.useRules, ...draft.errors.map(error => error.useRules), ...(draft.command?.transitions || []).map(transition => transition.useRules)].flat();
   for (const rule of usedRules) if (!ruleIds.has(rule)) add('NS4_E7_RULE', 'useRules', `Unknown rule ${rule}.`);
-  const accessedEntities = new Set([...draft.reads, ...draft.writes].map(access => access.entityId));
   const requiredRules = new Set([
     ...sources.journeys.journeys.filter(journey => sourceJourneyIds.has(journey.journeyId)).flatMap(journey => journey.business.useRules),
     ...sources.access.grants.filter(grant => expectedAuthorities.has(grant.authorityRef)).flatMap(grant => grant.useRules),
-    ...sources.ontology.entities.filter(entity => accessedEntities.has(entity.entityId)).flatMap(entity => entity.useRules),
   ]);
   for (const rule of requiredRules) if (!draft.useRules.includes(rule)) add('NS4_E7_RULE_MISSING', 'useRules', `Missing applicable source rule ${rule}.`);
   draft.errors.forEach((error, index) => {
@@ -243,4 +302,49 @@ function issueAdder(issues: Ns4E7GateIssue[]) {
 }
 function sameSet(left: string[], right: string[]): boolean {
   return left.length === right.length && [...new Set(left)].sort().join('|') === [...new Set(right)].sort().join('|');
+}
+
+function canonicalContext(
+  contextId: string,
+  direction: 'requires' | 'provides',
+  compiledFrom: string[],
+  journeys: Ns4E7Sources['journeys']['journeys'],
+  current: Ns4UseCaseContextBinding | undefined,
+  kind: Ns4UseCaseDraft['kind'],
+): Ns4UseCaseContextBinding {
+  const compiled = new Set(compiledFrom);
+  const refs: string[] = [];
+  const definitions: Array<{ businessObject: string; required: boolean }> = [];
+  for (const journey of journeys) {
+    const steps = journey.business.steps;
+    for (let index = 0; index < steps.length; index += 1) {
+      const step = steps[index];
+      const ref = `${journey.journeyId}.${step.stepId}`;
+      if (!compiled.has(ref)) continue;
+      if (direction === 'provides') {
+        const definition = step.providesContext.find(context => context.contextId === contextId);
+        if (definition) { refs.push(ref); definitions.push(definition); }
+        continue;
+      }
+      if (!step.requiresContext.includes(contextId)) continue;
+      const producer = steps.slice(0, index).reverse().find(candidate =>
+        candidate.providesContext.some(context => context.contextId === contextId));
+      const definition = producer?.providesContext.find(context => context.contextId === contextId)
+        || journey.business.entry.carries.find(context => context.contextId === contextId);
+      if (producer) refs.push(`${journey.journeyId}.${producer.stepId}`);
+      else if (definition) refs.push(`${journey.journeyId}.entry`);
+      if (definition) definitions.push(definition);
+    }
+  }
+  const definition = definitions[0];
+  const sourceRefs = [...new Set(refs)].sort();
+  return {
+    contextId,
+    businessObject: definition?.businessObject || current?.businessObject || '',
+    required: definitions.some(item => item.required) || current?.required === true,
+    source: direction === 'requires'
+      ? (sourceRefs.every(ref => ref.endsWith('.entry')) ? 'entry' : 'previousStep')
+      : (kind === 'query' ? 'lookup' : 'event'),
+    sourceRefs,
+  };
 }
