@@ -16,6 +16,10 @@ import type {
   Ns4PermanentArtifactTypeName,
   Ns4PipelineState,
   Ns4RulesArtifact,
+  Ns4UseCaseArtifact,
+  Ns4UseCaseIndexArtifact,
+  Ns4WorkflowArtifact,
+  Ns4WorkflowIndexArtifact,
 } from '/_102020_/l2/agentNewSolution4/types.js';
 
 export type Ns4FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
@@ -93,6 +97,30 @@ export function ns4E6ApprovedFile(moduleName: string): Ns4FileInfo {
 
 export function ns4CompositionFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/composition`, shortName: 'additional-capabilities', extension: '.defs.ts' };
+}
+
+export function ns4E7PlanDraftFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e7-realization-plan.draft', extension: '.json' };
+}
+
+export function ns4E7UseCaseDraftFile(moduleName: string, useCaseId: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline/e7-usecases`, shortName: `${useCaseId}.draft`, extension: '.json' };
+}
+
+export function ns4UseCaseFile(moduleName: string, useCaseId: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/usecases`, shortName: useCaseId, extension: '.defs.ts' };
+}
+
+export function ns4UseCaseIndexFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/usecases`, shortName: 'index', extension: '.defs.ts' };
+}
+
+export function ns4WorkflowFile(moduleName: string, workflowId: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/workflows`, shortName: workflowId, extension: '.defs.ts' };
+}
+
+export function ns4WorkflowIndexFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/workflows`, shortName: 'index', extension: '.defs.ts' };
 }
 
 export function ns4JourneyFile(moduleName: string, journeyId: string): Ns4FileInfo {
@@ -201,6 +229,18 @@ export async function writeNs4E6Approved(moduleName: string, review: unknown): P
   return displayPath(fileInfo);
 }
 
+export async function writeNs4E7PlanDraft(moduleName: string, draft: unknown): Promise<string> {
+  const fileInfo = ns4E7PlanDraftFile(moduleName);
+  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4E7UseCaseDraft(moduleName: string, useCaseId: string, draft: unknown): Promise<string> {
+  const fileInfo = ns4E7UseCaseDraftFile(moduleName, useCaseId);
+  await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
 export async function writeNs4AccessMatrix(moduleName: string, artifact: Ns4AccessMatrixArtifact): Promise<string> {
   const fileInfo = ns4AccessMatrixFile(moduleName);
   await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}AccessMatrix`, artifact, 'Ns4AccessMatrixArtifact');
@@ -228,6 +268,30 @@ export async function writeNs4Rules(moduleName: string, artifact: Ns4RulesArtifa
 export async function writeNs4Composition(moduleName: string, artifact: Ns4CompositionArtifact): Promise<string> {
   const fileInfo = ns4CompositionFile(moduleName);
   await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}AdditionalCapabilities`, artifact, 'Ns4CompositionArtifact');
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4UseCase(moduleName: string, useCaseId: string, artifact: Ns4UseCaseArtifact): Promise<string> {
+  const fileInfo = ns4UseCaseFile(moduleName, useCaseId);
+  await writeNs4Defs(fileInfo, `${useCaseId}UseCase`, artifact, 'Ns4UseCaseArtifact');
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4UseCaseIndex(moduleName: string, artifact: Ns4UseCaseIndexArtifact): Promise<string> {
+  const fileInfo = ns4UseCaseIndexFile(moduleName);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}UseCaseIndex`, artifact, 'Ns4UseCaseIndexArtifact');
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4Workflow(moduleName: string, workflowId: string, artifact: Ns4WorkflowArtifact): Promise<string> {
+  const fileInfo = ns4WorkflowFile(moduleName, workflowId);
+  await writeNs4Defs(fileInfo, `${workflowId}Workflow`, artifact, 'Ns4WorkflowArtifact');
+  return displayPath(fileInfo);
+}
+
+export async function writeNs4WorkflowIndex(moduleName: string, artifact: Ns4WorkflowIndexArtifact): Promise<string> {
+  const fileInfo = ns4WorkflowIndexFile(moduleName);
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}WorkflowIndex`, artifact, 'Ns4WorkflowIndexArtifact');
   return displayPath(fileInfo);
 }
 

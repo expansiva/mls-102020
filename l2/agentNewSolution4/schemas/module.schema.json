@@ -142,14 +142,14 @@
             "additionalProperties": false,
             "required": ["stepId", "status", "approvedBy", "approvedAt"],
             "properties": {
-              "stepId": { "type": "string", "enum": ["e1", "e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors"] },
+              "stepId": { "type": "string", "enum": ["e1", "e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors", "e7-realization"] },
               "status": { "type": "string", "const": "approved" },
               "approvedBy": { "type": "string", "enum": ["human", "auto"] },
               "approvedAt": { "type": "string", "minLength": 10 }
             }
           }
         },
-        "nextStep": { "type": "string", "enum": ["e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors", "e7-realization"] },
+        "nextStep": { "type": "string", "enum": ["e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors", "e7-realization", "e8-workspaces"] },
         "updatedAt": { "type": "string", "minLength": 10 }
       }
     }

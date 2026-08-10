@@ -2,6 +2,7 @@
 
 export const NS4_JOURNEY_SCHEMA_VERSION = '2026-08-09-ns4-journey-v2' as const;
 export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-09-ns4-journey-index-v2' as const;
+export const NS4_REALIZED_JOURNEY_SCHEMA_VERSION = '2026-08-10-ns4-journey-v3' as const;
 
 export type Ns4JourneyEntryMode = 'coldStart' | 'contextRequired' | 'contextOrLookup' | 'eventDriven';
 export type Ns4JourneyStepKind = 'locate' | 'inspect' | 'act' | 'decide' | 'handoff';
@@ -89,6 +90,33 @@ export interface Ns4JourneyArtifactV2 extends Ns4JourneyProposal {
   };
 }
 
+export interface Ns4JourneyResolvedContext extends Ns4JourneyContext {
+  sourceRefs: string[];
+  consumerStepRefs: string[];
+}
+
+export interface Ns4JourneyStepRealization {
+  stepId: string;
+  useCaseRefs: string[];
+}
+
+export interface Ns4JourneyArtifactV3 extends Ns4JourneyProposal {
+  schemaVersion: typeof NS4_REALIZED_JOURNEY_SCHEMA_VERSION;
+  revision: number;
+  businessHash: string;
+  resolution: {
+    status: 'compiled';
+    contexts: Record<string, Ns4JourneyResolvedContext>;
+  };
+  realization: {
+    status: 'compiled';
+    compiledFromBusinessHash: string;
+    steps: Ns4JourneyStepRealization[];
+    transitionRefs: string[];
+    realizationHash: string;
+  };
+}
+
 /** Compile-only compatibility for permanent artifacts created before rule descriptions moved to E5. */
 export interface Ns4JourneyArtifactV1 extends Omit<Ns4JourneyProposal, 'business'> {
   schemaVersion: '2026-08-04-ns4-journey-v1';
@@ -101,10 +129,10 @@ export interface Ns4JourneyArtifactV1 extends Omit<Ns4JourneyProposal, 'business
   realization: { status: 'pending'; compiledFromBusinessHash: string; steps: never[]; transitionRefs: never[] };
 }
 
-export type Ns4JourneyArtifact = Ns4JourneyArtifactV2 | Ns4JourneyArtifactV1;
+export type Ns4JourneyArtifact = Ns4JourneyArtifactV3 | Ns4JourneyArtifactV2 | Ns4JourneyArtifactV1;
 
 export interface Ns4JourneyIndex {
-  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION | '2026-08-04-ns4-journey-index-v1';
+  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION | '2026-08-04-ns4-journey-index-v1' | '2026-08-10-ns4-journey-index-v3';
   moduleName: string;
   approvedAt: string;
   approvedBy: 'human' | 'auto';
@@ -116,8 +144,10 @@ export interface Ns4JourneyIndex {
     entryMode: Ns4JourneyEntryMode;
     businessHash: string;
     artifactPath: string;
+    useCaseRefs?: string[];
   }>;
   features: Ns4E2Feature[];
+  realizationHash?: string;
 }
 
 export interface Ns4E2ReviewEvent {

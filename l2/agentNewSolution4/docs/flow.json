@@ -1,7 +1,7 @@
 {
   "flowId": "agentNewSolution4",
   "schemaVersion": "2026-08-09-ns4-flow-v19",
-  "status": "e1-e6",
+  "status": "e1-e7",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
     "mls-base/skills/collab_messages.md",
@@ -20,7 +20,7 @@
     "E2 linear steps cannot combine creation and maintenance when their context preconditions differ; the judge requires separate outcome journeys and repair instructions are placed after the complete draft.",
     "E2 semantic coverage converges through at most three focused patch repairs: omitted contracts remain byte-for-byte equivalent after normalization, each patch passes the complete deterministic gate, and an unchanged blocker set fails early.",
     "E1 preserves its full reviewed contract, supports repeated prompt-driven revisions and only unlocks compilation after the rich deterministic gate passes.",
-    "E2 through E6 approval callbacks persist their already-gated permanent review artifacts before adding the result anchor.",
+    "E2 through E6 approval callbacks persist their already-gated permanent review artifacts before adding the result anchor; E7 is an automated compiler after the sixth checkpoint.",
     "Every implemented compile step writes a permanent L4 artifact and a stable result anchor.",
     "Every permanent TypeScript artifact imports its canonical artifact interface from agentNewSolution4/types.ts, is emitted with as const satisfies and exports its exact typeof contract; module, journey, access, ontology and rule shape drift therefore fails tsc while module-specific literal unions remain available without copied strings.",
     "Permanent L4 artifacts plus their approved module checkpoint are the resume authority; pipeline state is monotonic and is reconciled from those artifacts if a late callback lags behind.",
@@ -39,7 +39,10 @@
     "E5 uses one reasoning call, one deterministic gate and at most one bounded repair. The gate requires every useRules id referenced by E2-E4 to have one description.",
     "E6 is the sixth and final clarification: one conservative reasoning call reviews only justified horizontal modules and external plugins, accepts an empty recommendation list and excludes platform baseline capabilities.",
     "The historical e6-behaviors runtime plan id remains a stable internal identifier; the permanent artifact uses composition terminology and previous flow versions are rejected rather than migrated.",
-    "Future pages, use cases, tables and maintenance operations scan the complete L4 and attach only useRules ids; changing a rule description never requires copying text into its consumers."
+    "Future pages, use cases, tables and maintenance operations scan the complete L4 and attach only useRules ids; changing a rule description never requires copying text into its consumers.",
+    "E7 mechanically groups identical journey step ids into stable N-to-one channel-neutral use cases, details them with a maxParallel 20 fan-out and runs one targeted repair round for invalid drafts.",
+    "E7 preserves every journey businessHash, compiles typed contexts and step-to-use-case refs, applies exact E3 authorities/data scopes, exact E4 fields and exact E5 rule ids, and derives workflows only from valid lifecycle transitions.",
+    "Use cases are the source of the backend application layer and ports; they never contain pages, routes or BFF aggregation. E8 operations will be the frontend/backend integration contract."
   ],
   "invocation": {
     "new": "@@newSolution4 <description-or-moduleName>",
@@ -66,7 +69,13 @@
     "rules": "l4/{module}/rules/rules.defs.ts",
     "compositionDraft": "l4/{module}/pipeline/e6-composition.draft.json",
     "compositionApproved": "l4/{module}/pipeline/e6-composition.approved.json",
-    "composition": "l4/{module}/composition/additional-capabilities.defs.ts"
+    "composition": "l4/{module}/composition/additional-capabilities.defs.ts",
+    "realizationPlanDraft": "l4/{module}/pipeline/e7-realization-plan.draft.json",
+    "useCaseDraft": "l4/{module}/pipeline/e7-usecases/{useCaseId}.draft.json",
+    "useCase": "l4/{module}/usecases/{useCaseId}.defs.ts",
+    "useCaseIndex": "l4/{module}/usecases/index.defs.ts",
+    "workflow": "l4/{module}/workflows/{workflowId}.defs.ts",
+    "workflowIndex": "l4/{module}/workflows/index.defs.ts"
   },
   "orchestration": {
     "rootOutput": ["validPrompt", "userPrompt", "presentation.userLanguage", "presentation.stepTitles", "clarification"],
@@ -86,15 +95,16 @@
       "e5-rules",
       "e5-result",
       "e6-behaviors",
-      "e6-result"
+      "e6-result",
+      "e7-realization",
+      "e7-result"
     ],
     "roadmap": [
-      "e7-realization",
       "e8-workspaces",
       "e9-navigation-compiler",
       "e10-validation"
     ],
-    "roadmapExecution": "E7 and later steps remain visible waiting_dependency/manual_later nodes until their implementations are delivered."
+    "roadmapExecution": "E8 and later steps remain visible waiting_dependency/manual_later nodes until their implementations are delivered."
   },
   "steps": [
     {
@@ -262,6 +272,33 @@
         "One transport retry and one deterministic-gate repair are bounded; there is no fan-out or independent judge.",
         "A human may approve immediately or request another conservative proposal through the same localized 6/6 widget.",
         "The stable e6-behaviors runtime id is internal; only modules owned by the current flow version may resume."
+      ]
+    },
+    {
+      "planId": "e7-realization",
+      "type": "automated-realization-compiler",
+      "dependsOn": ["e6-result"],
+      "goal": "Compile approved journeys into channel-neutral use cases, application ports and lifecycle workflows.",
+      "output": [
+        "l4/{module}/pipeline/e7-realization-plan.draft.json",
+        "l4/{module}/pipeline/e7-usecases/{useCaseId}.draft.json",
+        "l4/{module}/usecases/{useCaseId}.defs.ts",
+        "l4/{module}/usecases/index.defs.ts",
+        "l4/{module}/workflows/{workflowId}.defs.ts",
+        "l4/{module}/workflows/index.defs.ts",
+        "realized l4/{module}/journeys/*.defs.ts",
+        "realized l4/{module}/access/access-matrix.defs.ts"
+      ],
+      "outputAnchor": "e7-result",
+      "gate": "steps/e7/gate.ts",
+      "runtimeNotes": [
+        "The plan is mechanical: identical stable step ids converge into one use case and every journey step remains covered through compiledFrom.",
+        "One parallel_dynamic reasoning child details each use case with filtered journey, access, ontology, rules and composition context; maxParallel is 20.",
+        "The gate rejects invented authorities, entities, fields, rules, scopes, states and capability ports, and rejects raw or undeclared context inputs.",
+        "Queries declare access patterns and exact E3 data scopes; commands declare writes/effects, transactions, idempotency, typed errors and valid lifecycle transitions.",
+        "A deterministic finalizer repairs only invalid or missing use cases once, derives workflows, writes typed permanent artifacts and advances to E8.",
+        "Journey business blocks and businessHash values are immutable; E7 writes only resolution/realization metadata.",
+        "E7 has no human checkpoint. E6 remains the sixth and final clarification."
       ]
     }
   ]

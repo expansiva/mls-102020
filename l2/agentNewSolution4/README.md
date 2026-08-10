@@ -126,6 +126,18 @@ summary, recommendations, approve, request another proposal, or cancel. Approval
 The runtime keeps the historical `e6-behaviors` plan id as a stable internal identifier. The generated
 contract uses the clearer composition terminology. Older flow versions are rejected rather than migrated.
 
+E7 runs automatically after E6. It groups repeated journey steps into reusable channel-neutral use
+cases, details them through a `maxParallel: 20` fan-out, applies deterministic gates and one targeted
+repair round, and derives lifecycle workflows. It writes:
+
+- `l4/<module>/usecases/<useCaseId>.defs.ts` plus `usecases/index.defs.ts`;
+- `l4/<module>/workflows/<workflowId>.defs.ts` plus `workflows/index.defs.ts`;
+- compiled context/use-case references in journeys and use-case authority references in the access matrix;
+- updated module and pipeline status with `e8-workspaces` as the next step.
+
+The journey `business` block and its hash remain unchanged. Use cases are the source of backend
+application behavior and ports, but never know pages or routes; E8 operations will own that integration.
+
 A limited E3 grant such as “client may see the published budget summary without seeing the Project
 record” must be represented by an E4 projection or traceable information entity. Relationships preserve
 selected journey context so later screens do not ask humans to type foreign-key ids.
@@ -140,7 +152,7 @@ The flow contract lives in `docs/flow.json`. Canonical agent-engine guidance liv
 `mls-base/skills/collab_messages.md`, `agentsBestPractices.md` and `modelTypes.md`.
 
 Terminal failures always carry a `traceMsg` in the task. Once a module pipeline exists, the same
-failure is also stored as `status: failed`, `error` and `failedAt` in the corresponding E1–E6 state.
+failure is also stored as `status: failed`, `error` and `failedAt` in the corresponding E1–E7 state.
 Errors returned by clarification callbacks remain recoverable and visible in the open widget; they do
 not convert the review into a terminal failed step. Terminal cancellation remains unavailable until
 `collab-messages` exposes an explicit cancelled/aborted lifecycle state.

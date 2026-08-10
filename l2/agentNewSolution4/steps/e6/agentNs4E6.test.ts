@@ -43,11 +43,11 @@ test('E6 validates recommendation identity, kind and decision mechanically', () 
   assert.ok(result.issues.some(issue => issue.code === 'NS4_E6_DECISION'));
 });
 
-test('current-flow E5 modules resume E6 and approved E6 modules stop before E7', () => {
+test('current-flow E5 modules resume E6 and approved E6 modules resume E7', () => {
   const e1 = createNs4Pipeline('buildFlowFsm', 'Gerenciar projetos', '2026-08-09T00:00:00.000Z');
   const e5 = markNs4E5Approved(e1, 'human', ['l4/buildFlowFsm/rules/rules.defs.ts']);
   assert.equal(resolveNs4ExistingAction(true, e5, true), 'resume-e6');
   const e6 = markNs4E6Approved(e5, 'human', ['l4/buildFlowFsm/composition/additional-capabilities.defs.ts']);
   assert.equal(e6.nextStep, 'e7-realization');
-  assert.equal(resolveNs4ExistingAction(true, e6, true), 'resume-next');
+  assert.equal(resolveNs4ExistingAction(true, e6, true), 'resume-e7');
 });

@@ -136,10 +136,24 @@
             "failedAt": { "type": "string", "minLength": 10 },
             "updatedAt": { "type": "string", "minLength": 10 }
           }
+        },
+        "e7": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "updatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["running", "approved", "failed"] },
+            "planPath": { "type": "string" },
+            "artifactPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "approvedAt": { "type": "string" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "failedAt": { "type": "string", "minLength": 10 },
+            "updatedAt": { "type": "string", "minLength": 10 }
+          }
         }
       }
     },
-    "nextStep": { "type": "string", "enum": ["e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors", "e7-realization"] },
+    "nextStep": { "type": "string", "enum": ["e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors", "e7-realization", "e8-workspaces"] },
     "createdAt": { "type": "string", "minLength": 10 },
     "updatedAt": { "type": "string", "minLength": 10 }
   }

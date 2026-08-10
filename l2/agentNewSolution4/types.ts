@@ -13,6 +13,12 @@ import type {
 } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import type { Ns4RulesArtifact } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
 import type { Ns4CompositionArtifact } from '/_102020_/l2/agentNewSolution4/steps/e6/contracts.js';
+import type {
+  Ns4UseCaseArtifact,
+  Ns4UseCaseIndexArtifact,
+  Ns4WorkflowArtifact,
+  Ns4WorkflowIndexArtifact,
+} from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 
 export type {
   Ns4ApprovedBy,
@@ -23,6 +29,7 @@ export type {
   Ns4E4Status,
   Ns4E5Status,
   Ns4E6Status,
+  Ns4E7Status,
   Ns4ModuleArtifact,
   Ns4NextStep,
   Ns4PipelineState,
@@ -100,6 +107,30 @@ export type {
   Ns4E6ReviewEvent,
 } from '/_102020_/l2/agentNewSolution4/steps/e6/contracts.js';
 
+export type {
+  Ns4E7PlanDraft,
+  Ns4E7PlanUseCase,
+  Ns4E7SourceHashes,
+  Ns4UseCaseArtifact,
+  Ns4UseCaseCommandContract,
+  Ns4UseCaseContextBinding,
+  Ns4UseCaseDataScope,
+  Ns4UseCaseDraft,
+  Ns4UseCaseEntityAccess,
+  Ns4UseCaseError,
+  Ns4UseCaseFieldRef,
+  Ns4UseCaseIndexArtifact,
+  Ns4UseCaseInput,
+  Ns4UseCaseKind,
+  Ns4UseCaseOutput,
+  Ns4UseCasePort,
+  Ns4UseCaseQueryContract,
+  Ns4UseCaseTransition,
+  Ns4WorkflowArtifact,
+  Ns4WorkflowIndexArtifact,
+  Ns4WorkflowTransition,
+} from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
+
 export const NS4_PERMANENT_ARTIFACT_TYPE_NAMES = [
   'Ns4ModuleArtifact',
   'Ns4JourneyArtifact',
@@ -109,6 +140,10 @@ export const NS4_PERMANENT_ARTIFACT_TYPE_NAMES = [
   'Ns4OntologyIndexArtifact',
   'Ns4RulesArtifact',
   'Ns4CompositionArtifact',
+  'Ns4UseCaseArtifact',
+  'Ns4UseCaseIndexArtifact',
+  'Ns4WorkflowArtifact',
+  'Ns4WorkflowIndexArtifact',
 ] as const;
 
 export type Ns4PermanentArtifactTypeName = typeof NS4_PERMANENT_ARTIFACT_TYPE_NAMES[number];
@@ -122,4 +157,8 @@ export interface Ns4PermanentArtifactByType {
   Ns4OntologyIndexArtifact: Ns4OntologyIndexArtifact;
   Ns4RulesArtifact: Ns4RulesArtifact;
   Ns4CompositionArtifact: Ns4CompositionArtifact;
+  Ns4UseCaseArtifact: Ns4UseCaseArtifact;
+  Ns4UseCaseIndexArtifact: Ns4UseCaseIndexArtifact;
+  Ns4WorkflowArtifact: Ns4WorkflowArtifact;
+  Ns4WorkflowIndexArtifact: Ns4WorkflowIndexArtifact;
 }
