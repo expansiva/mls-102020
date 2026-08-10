@@ -78,30 +78,43 @@ test('E7 is dependency-bound after E6 and advances a resumed module to E8', () =
   assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-next');
 });
 
-test('E7 validates the minimal behavior contract and exact ontology fields', () => {
+test('E7 validates a minimal behavior contract without backend field instructions', () => {
   const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', journeys, sourceHashes);
   const draft = normalizeNs4UseCaseDraft({ title: 'Localizar projeto', description: 'Localiza projetos.',
-    contexts: { requires: [], provides: ['selectedProject'] },
-    inputs: [], outputs: [{ outputId: 'projectId', type: 'uuid', required: true, contextId: 'selectedProject', fieldRef: { entityId: 'Project', fieldId: 'projectId' }, description: 'Projeto selecionado.' }],
-    reads: [{ entityId: 'Project', fieldRefs: ['projectId', 'name'] }], writes: [], useRules: [], transitions: [], errors: [] }, plan, 'locateProject');
+    contexts: { requires: [], provides: ['selectedProject'] }, entityRefs: ['Project'],
+    useRules: [], transitions: [] }, plan, 'locateProject');
   assert.deepEqual(validateNs4UseCaseDraft(plan, draft, sources), { ok: true, issues: [] });
   assert.equal('actorRefs' in draft, false);
   assert.equal('authorityRefs' in draft, false);
   assert.equal('dataScopes' in draft, false);
   assert.equal('ports' in draft, false);
   assert.equal('query' in draft, false);
+  assert.equal('inputs' in draft, false);
+  assert.equal('outputs' in draft, false);
+  assert.equal('reads' in draft, false);
+  assert.equal('writes' in draft, false);
+  assert.equal('errors' in draft, false);
 });
 
 test('E7 emits typed use cases, workflows and realization metadata without changing business hashes', async () => {
   const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', journeys, sourceHashes);
   const drafts = plan.useCases.map(target => normalizeNs4UseCaseDraft(target.kind === 'query' ? {
-    title: target.title, description: 'Localiza projetos.', contexts: { requires: [], provides: ['selectedProject'] }, inputs: [], outputs: [{ outputId: 'projectId', type: 'uuid', required: true, contextId: 'selectedProject', fieldRef: { entityId: 'Project', fieldId: 'projectId' }, description: 'Projeto selecionado.' }], reads: [{ entityId: 'Project', fieldRefs: ['projectId'] }], writes: [], useRules: [], transitions: [], errors: [] } : {
-    title: target.title, description: 'Cria tarefa.', contexts: { requires: ['selectedProject'], provides: ['createdTask'] }, inputs: [], outputs: [{ outputId: 'workTaskId', type: 'uuid', required: true, contextId: 'createdTask', fieldRef: { entityId: 'WorkTask', fieldId: 'workTaskId' }, description: 'Tarefa criada.' }], reads: [{ entityId: 'Project', fieldRefs: ['projectId'] }], writes: [{ entityId: 'WorkTask', fieldRefs: ['workTaskId', 'projectId'] }], useRules: [], transitions: [{ transitionId: 'completeTask', entityRef: 'WorkTask', fromStates: ['open'], toState: 'done', useRules: [] }], errors: [] }, plan, target.useCaseId));
+    title: target.title, description: 'Localiza projetos.', contexts: { requires: [], provides: ['selectedProject'] },
+    entityRefs: ['Project'], useRules: [], transitions: [] } : {
+    title: target.title, description: 'Cria tarefa.', contexts: { requires: ['selectedProject'], provides: ['createdTask'] },
+    entityRefs: ['Project', 'WorkTask'], useRules: [], transitions: [{ transitionId: 'completeTask', entityRef: 'WorkTask', fromStates: ['open'], toState: 'done', useRules: [] }] }, plan, target.useCaseId));
   drafts.forEach(draft => assert.equal(validateNs4UseCaseDraft(plan, draft, sources).ok, true));
   const generatedAt = '2026-08-10T01:00:00.000Z';
   const built = await buildNs4UseCaseArtifacts(plan, drafts, generatedAt);
-  const workflows = await buildNs4WorkflowArtifacts(plan, built.artifacts, new Map(ontology.entities.map(entity => [entity.entityId, entity.lifecycleStates])), generatedAt);
+  const workflows = await buildNs4WorkflowArtifacts(plan, drafts, new Map(ontology.entities.map(entity => [entity.entityId, entity.lifecycleStates])), generatedAt);
   assert.equal(validateNs4Workflows(workflows.artifacts, sources).ok, true);
+  assert.equal('sourceHashes' in built.artifacts[0], false);
+  assert.equal('userLanguage' in built.artifacts[0], false);
+  assert.equal('generatedAt' in built.artifacts[0], false);
+  const createTask = built.artifacts.find(artifact => artifact.useCaseId === 'createWorkTask');
+  assert.ok(createTask);
+  assert.equal('transitions' in createTask, false);
+  assert.deepEqual(createTask.transitionRefs, ['completeTask']);
   const sourceJourneys = await buildNs4JourneyArtifacts(journeys);
   const realized = await buildNs4RealizedJourneyArtifact(sourceJourneys[1], built.artifacts);
   assert.equal(realized.businessHash, sourceJourneys[1].businessHash);

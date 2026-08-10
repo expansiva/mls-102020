@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-09-ns4-flow-v19",
+  "schemaVersion": "2026-08-10-ns4-flow-v20",
   "status": "e1-e7",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -26,7 +26,7 @@
     "Permanent L4 artifacts plus their approved module checkpoint are the resume authority; pipeline state is monotonic and is reconciled from those artifacts if a late callback lags behind.",
     "A single module-name invocation is canonicalized before the root planner: BuildFlowFsm23 resolves to the existing buildFlowFsm23 folder, so resume never creates a fresh E1 tree before checking pipeline ownership.",
     "A completed result anchor carries the bounded approved contract needed by the immediately unlocked successor, avoiding a storage-index visibility race between client hooks.",
-    "New artifacts retain userLanguage and localized stepTitles for maintenance and resume context.",
+    "Module and index artifacts retain userLanguage and localized stepTitles for maintenance and resume context; per-item E7 artifacts do not repeat it.",
     "Terminal step failures use traceMsg in the task and persist status, error and failedAt in the pipeline whenever a module pipeline already exists.",
     "Previous flow versions are never migrated automatically.",
     "The /fast flag uses the same deterministic gates and persistence paths; E1 auto-accepts its clarification and valid E2-E6 proposals are approved without opening their widgets.",
@@ -41,7 +41,7 @@
     "The historical e6-behaviors runtime plan id remains a stable internal identifier; the permanent artifact uses composition terminology and previous flow versions are rejected rather than migrated.",
     "Future pages, use cases, tables and maintenance operations scan the complete L4 and attach only useRules ids; changing a rule description never requires copying text into its consumers.",
     "E7 mechanically groups identical journey step ids into stable N-to-one channel-neutral use cases, details them with a maxParallel 20 fan-out and runs one targeted repair round for invalid drafts.",
-    "E7 preserves every journey businessHash and compiles small reusable behaviors with exact context ids, ontology field refs, behavior-owned rule ids, expected errors and valid lifecycle transitions.",
+    "E7 preserves every journey businessHash and compiles small reusable behaviors with exact context ids, ontology entity refs, behavior-owned rule ids and references to valid lifecycle transitions.",
     "Use cases do not copy E3 actors, authorities or scopes and do not prescribe ports, repositories, storage routing or backend architecture. E3 owns authorization and E8 owns channel integration."
   ],
   "invocation": {
@@ -281,6 +281,7 @@
       "goal": "Compile approved journeys into small channel- and architecture-neutral business behaviors and lifecycle workflows.",
       "output": [
         "l4/{module}/pipeline/e7-realization-plan.draft.json",
+        "l4/{module}/pipeline/e7-validation-report.json",
         "l4/{module}/pipeline/e7-usecases/{useCaseId}.draft.json",
         "l4/{module}/usecases/{useCaseId}.defs.ts",
         "l4/{module}/usecases/index.defs.ts",
@@ -297,9 +298,10 @@
         "Context requires/provides are exact E2 ids; context lineage remains compiled mechanically in journey realization instead of being copied into use cases.",
         "E5 rules are candidates and the use case references only rules enforced by its own behavior.",
         "Draft contract versions are explicit. A resume reuses only drafts from the current simple contract and never migrates the previous oversized shape silently.",
-        "The gate validates descriptions, exact E2 contexts, exact E4 entity/field refs, existing E5 ids, expected business errors and valid lifecycle transitions; ontology field types are derived rather than copied.",
-        "Actors, authorities and scopes remain in E3; pagination, selection, projections and route binding remain in E8; ports, transactions and adapters are implementation choices.",
-        "A deterministic finalizer repairs only invalid or missing use cases once, derives workflows, writes typed permanent artifacts and advances to E8.",
+        "The gate validates descriptions, exact E2 contexts, E4 entity refs, existing E5 ids and valid lifecycle transitions; field selection and persistence are not part of the use-case contract.",
+        "Actors, authorities and scopes remain in E3; inputs, outputs, errors, pagination, selection, projections and route binding remain in E8 or downstream generation; ports, transactions and adapters are implementation choices.",
+        "A deterministic finalizer records every gate issue in e7-validation-report.json, repairs only invalid or missing use cases once, derives workflows, writes typed permanent artifacts and advances to E8.",
+        "Full transitions live only in workflow artifacts; use cases and journeys keep transition refs. Global source hashes, language and timestamps live only in indexes.",
         "Journey business blocks and businessHash values are immutable; E7 writes only resolution/realization metadata.",
         "E7 has no human checkpoint. E6 remains the sixth and final clarification."
       ]

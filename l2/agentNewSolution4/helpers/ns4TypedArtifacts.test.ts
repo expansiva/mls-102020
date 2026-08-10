@@ -30,9 +30,13 @@ test('permanent artifact registry covers every implemented E1-E7 defs contract',
     'Ns4RulesArtifact',
     'Ns4CompositionArtifact',
     'Ns4UseCaseArtifact',
+    'Ns4UseCaseArtifactV3',
     'Ns4UseCaseIndexArtifact',
+    'Ns4UseCaseIndexArtifactV3',
     'Ns4WorkflowArtifact',
+    'Ns4WorkflowArtifactV2',
     'Ns4WorkflowIndexArtifact',
+    'Ns4WorkflowIndexArtifactV2',
   ]);
 });
 

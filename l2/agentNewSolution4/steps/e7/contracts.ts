@@ -11,11 +11,11 @@ import type {
 import { NS4_REALIZED_ACCESS_MATRIX_SCHEMA_VERSION } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import type { Ns4OntologyField } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 
-export const NS4_USE_CASE_DRAFT_VERSION = '2026-08-10-ns4-usecase-draft-simple-v2' as const;
-export const NS4_USE_CASE_SCHEMA_VERSION = '2026-08-10-ns4-usecase-v2' as const;
-export const NS4_USE_CASE_INDEX_SCHEMA_VERSION = '2026-08-10-ns4-usecase-index-v2' as const;
-export const NS4_WORKFLOW_SCHEMA_VERSION = '2026-08-10-ns4-workflow-v1' as const;
-export const NS4_WORKFLOW_INDEX_SCHEMA_VERSION = '2026-08-10-ns4-workflow-index-v1' as const;
+export const NS4_USE_CASE_DRAFT_VERSION = '2026-08-10-ns4-usecase-draft-minimal-v3' as const;
+export const NS4_USE_CASE_SCHEMA_VERSION = '2026-08-10-ns4-usecase-v3' as const;
+export const NS4_USE_CASE_INDEX_SCHEMA_VERSION = '2026-08-10-ns4-usecase-index-v3' as const;
+export const NS4_WORKFLOW_SCHEMA_VERSION = '2026-08-10-ns4-workflow-v2' as const;
+export const NS4_WORKFLOW_INDEX_SCHEMA_VERSION = '2026-08-10-ns4-workflow-index-v2' as const;
 
 export type Ns4UseCaseKind = 'query' | 'command';
 export type Ns4UseCaseFieldType = Ns4OntologyField['type'];
@@ -93,24 +93,18 @@ export interface Ns4UseCaseDraft extends Ns4E7PlanUseCase {
     requires: string[];
     provides: string[];
   };
-  inputs: Ns4UseCaseInput[];
-  outputs: Ns4UseCaseOutput[];
-  reads: Ns4UseCaseEntityAccess[];
-  writes: Ns4UseCaseEntityAccess[];
+  entityRefs: string[];
   useRules: string[];
   transitions: Ns4UseCaseTransition[];
-  errors: Ns4UseCaseError[];
 }
 
-export interface Ns4UseCaseArtifact extends Omit<Ns4UseCaseDraft, 'planId' | 'draftVersion'> {
+export interface Ns4UseCaseArtifactV3 extends Omit<Ns4UseCaseDraft, 'planId' | 'draftVersion' | 'transitions'> {
   schemaVersion: typeof NS4_USE_CASE_SCHEMA_VERSION;
-  userLanguage: string;
-  sourceHashes: Ns4E7SourceHashes;
+  transitionRefs: string[];
   useCaseHash: string;
-  generatedAt: string;
 }
 
-export interface Ns4UseCaseIndexArtifact {
+export interface Ns4UseCaseIndexArtifactV3 {
   schemaVersion: typeof NS4_USE_CASE_INDEX_SCHEMA_VERSION;
   moduleName: string;
   userLanguage: string;
@@ -131,8 +125,63 @@ export interface Ns4WorkflowTransition extends Ns4UseCaseTransition {
   useCaseId: string;
 }
 
-export interface Ns4WorkflowArtifact {
+export interface Ns4WorkflowArtifactV2 {
   schemaVersion: typeof NS4_WORKFLOW_SCHEMA_VERSION;
+  moduleName: string;
+  workflowId: string;
+  entityRef: string;
+  states: string[];
+  transitions: Ns4WorkflowTransition[];
+  workflowHash: string;
+}
+
+export interface Ns4WorkflowIndexArtifactV2 {
+  schemaVersion: typeof NS4_WORKFLOW_INDEX_SCHEMA_VERSION;
+  moduleName: string;
+  userLanguage: string;
+  workflows: Array<{
+    workflowId: string;
+    entityRef: string;
+    workflowHash: string;
+    artifactPath: string;
+  }>;
+  sourceHashes: Ns4E7SourceHashes;
+  realizationHash: string;
+  generatedAt: string;
+}
+
+// Versioned legacy contracts keep already-generated L4 modules type-safe. New E7 runs emit only
+// the explicitly versioned V3/V2 types above; old drafts are never resumed or migrated.
+export interface Ns4UseCaseArtifact extends Ns4E7PlanUseCase {
+  schemaVersion: '2026-08-10-ns4-usecase-v2';
+  moduleName: string;
+  description: string;
+  inputs: Ns4UseCaseInput[];
+  outputs: Ns4UseCaseOutput[];
+  reads: Ns4UseCaseEntityAccess[];
+  writes: Ns4UseCaseEntityAccess[];
+  useRules: string[];
+  transitions: Ns4UseCaseTransition[];
+  errors: Ns4UseCaseError[];
+  userLanguage: string;
+  sourceHashes: Ns4E7SourceHashes;
+  useCaseHash: string;
+  generatedAt: string;
+}
+
+export interface Ns4UseCaseIndexArtifact {
+  schemaVersion: '2026-08-10-ns4-usecase-index-v2';
+  moduleName: string;
+  userLanguage: string;
+  sourceHashes: Ns4E7SourceHashes;
+  useCases: Array<{ useCaseId: string; title: string; kind: Ns4UseCaseKind; compiledFrom: string[];
+    useCaseHash: string; artifactPath: string }>;
+  realizationHash: string;
+  generatedAt: string;
+}
+
+export interface Ns4WorkflowArtifact {
+  schemaVersion: '2026-08-10-ns4-workflow-v1';
   moduleName: string;
   userLanguage: string;
   workflowId: string;
@@ -145,15 +194,10 @@ export interface Ns4WorkflowArtifact {
 }
 
 export interface Ns4WorkflowIndexArtifact {
-  schemaVersion: typeof NS4_WORKFLOW_INDEX_SCHEMA_VERSION;
+  schemaVersion: '2026-08-10-ns4-workflow-index-v1';
   moduleName: string;
   userLanguage: string;
-  workflows: Array<{
-    workflowId: string;
-    entityRef: string;
-    workflowHash: string;
-    artifactPath: string;
-  }>;
+  workflows: Array<{ workflowId: string; entityRef: string; workflowHash: string; artifactPath: string }>;
   sourceHashes: Ns4E7SourceHashes;
   realizationHash: string;
   generatedAt: string;
@@ -202,10 +246,8 @@ export function normalizeNs4UseCaseDraft(
     title: text(root.title) || target.title, kind: target.kind,
     compiledFrom: [...target.compiledFrom], description: text(root.description),
     contexts: { requires: [...target.contexts.requires], provides: [...target.contexts.provides] },
-    inputs: array(root.inputs).map(normalizeInput), outputs: array(root.outputs).map(normalizeOutput),
-    reads: array(root.reads).map(normalizeEntityAccess), writes: array(root.writes).map(normalizeEntityAccess),
-    useRules: strings(root.useRules), transitions: array(root.transitions).map(normalizeTransition),
-    errors: array(root.errors).map(normalizeError),
+    entityRefs: uniqueStrings(root.entityRefs), useRules: uniqueStrings(root.useRules),
+    transitions: array(root.transitions).map(normalizeTransition),
   };
 }
 
@@ -213,14 +255,14 @@ export async function buildNs4UseCaseArtifacts(
   plan: Ns4E7PlanDraft,
   drafts: Ns4UseCaseDraft[],
   generatedAt: string,
-): Promise<{ artifacts: Ns4UseCaseArtifact[]; index: Ns4UseCaseIndexArtifact }> {
+): Promise<{ artifacts: Ns4UseCaseArtifactV3[]; index: Ns4UseCaseIndexArtifactV3 }> {
   const artifacts = await Promise.all(drafts.map(async draft => {
-    const { planId: _planId, draftVersion: _draftVersion, ...contract } = draft;
-    const useCaseHash = await sha256Ns4({ ...contract, sourceHashes: plan.sourceHashes });
+    const { planId: _planId, draftVersion: _draftVersion, transitions, ...contract } = draft;
+    const transitionRefs = [...new Set(transitions.map(transition => transition.transitionId))].sort();
+    const useCaseHash = await sha256Ns4({ ...contract, transitionRefs });
     return {
-      schemaVersion: NS4_USE_CASE_SCHEMA_VERSION, ...contract, userLanguage: plan.userLanguage,
-      sourceHashes: plan.sourceHashes, useCaseHash, generatedAt,
-    } satisfies Ns4UseCaseArtifact;
+      schemaVersion: NS4_USE_CASE_SCHEMA_VERSION, ...contract, transitionRefs, useCaseHash,
+    } satisfies Ns4UseCaseArtifactV3;
   }));
   const realizationHash = await sha256Ns4(artifacts.map(item => ({ useCaseId: item.useCaseId, useCaseHash: item.useCaseHash })));
   return {
@@ -238,12 +280,12 @@ export async function buildNs4UseCaseArtifacts(
 
 export async function buildNs4WorkflowArtifacts(
   plan: Ns4E7PlanDraft,
-  useCases: Ns4UseCaseArtifact[],
+  drafts: Ns4UseCaseDraft[],
   ontologyStates: Map<string, string[]>,
   generatedAt: string,
-): Promise<{ artifacts: Ns4WorkflowArtifact[]; index: Ns4WorkflowIndexArtifact }> {
+): Promise<{ artifacts: Ns4WorkflowArtifactV2[]; index: Ns4WorkflowIndexArtifactV2 }> {
   const byEntity = new Map<string, Ns4WorkflowTransition[]>();
-  for (const useCase of useCases) {
+  for (const useCase of drafts) {
     for (const transition of useCase.transitions) {
       const values = byEntity.get(transition.entityRef) || [];
       values.push({ ...transition, useCaseId: useCase.useCaseId });
@@ -254,10 +296,9 @@ export async function buildNs4WorkflowArtifacts(
     .map(async ([entityRef, transitions]) => {
       const workflowId = `${entityRef.slice(0, 1).toLowerCase()}${entityRef.slice(1)}Lifecycle`;
       const states = ontologyStates.get(entityRef) || [];
-      const workflowHash = await sha256Ns4({ entityRef, states, transitions, sourceHashes: plan.sourceHashes });
+      const workflowHash = await sha256Ns4({ entityRef, states, transitions });
       return { schemaVersion: NS4_WORKFLOW_SCHEMA_VERSION, moduleName: plan.moduleName,
-        userLanguage: plan.userLanguage, workflowId, entityRef, states, transitions,
-        sourceHashes: plan.sourceHashes, workflowHash, generatedAt } satisfies Ns4WorkflowArtifact;
+        workflowId, entityRef, states, transitions, workflowHash } satisfies Ns4WorkflowArtifactV2;
     }));
   const realizationHash = await sha256Ns4(artifacts.map(item => ({ workflowId: item.workflowId, workflowHash: item.workflowHash })));
   return {
@@ -274,7 +315,7 @@ export async function buildNs4WorkflowArtifacts(
 
 export async function buildNs4RealizedJourneyArtifact(
   source: Ns4JourneyArtifact,
-  useCases: Ns4UseCaseArtifact[],
+  useCases: Ns4UseCaseArtifactV3[],
 ): Promise<Ns4JourneyArtifactV3> {
   if (!('useRules' in source.business)) throw new Error(`E7 does not migrate legacy journey ${source.journeyId}.`);
   const business = source.business;
@@ -300,7 +341,7 @@ export async function buildNs4RealizedJourneyArtifact(
   const steps = business.steps.map(step => ({ stepId: step.stepId,
     useCaseRefs: journeyUseCases.filter(useCase => useCase.compiledFrom.includes(`${source.journeyId}.${step.stepId}`))
       .map(useCase => useCase.useCaseId).sort() }));
-  const transitionRefs = journeyUseCases.flatMap(useCase => useCase.transitions.map(transition => transition.transitionId));
+  const transitionRefs = journeyUseCases.flatMap(useCase => useCase.transitionRefs);
   const realizationHash = await sha256Ns4({ contexts: resolvedContexts, steps, transitionRefs, businessHash: source.businessHash });
   return {
     schemaVersion: NS4_REALIZED_JOURNEY_SCHEMA_VERSION, journeyId: source.journeyId,
@@ -325,7 +366,7 @@ export async function buildNs4RealizedJourneyIndex(
 
 export async function buildNs4RealizedAccessArtifact(
   source: Ns4AccessMatrixArtifact,
-  useCases: Ns4UseCaseArtifact[],
+  useCases: Ns4UseCaseArtifactV3[],
 ): Promise<Ns4AccessMatrixArtifactV3> {
   if (source.grants.some(grant => !('useRules' in grant))) throw new Error('E7 does not migrate a legacy access matrix.');
   const grants = source.grants as Ns4AccessMatrixArtifactV3['grants'];
@@ -345,43 +386,14 @@ export async function buildNs4RealizedAccessArtifact(
   };
 }
 
-function normalizeFieldRef(value: unknown): Ns4UseCaseFieldRef | undefined {
-  const item = record(value); const entityId = text(item.entityId); const fieldId = text(item.fieldId);
-  return entityId && fieldId ? { entityId, fieldId } : undefined;
-}
-function fieldType(value: unknown): Ns4UseCaseFieldType {
-  const candidate = text(value);
-  return ['uuid', 'string', 'text', 'number', 'integer', 'boolean', 'money', 'date', 'datetime', 'json'].includes(candidate)
-    ? candidate as Ns4UseCaseFieldType : 'string';
-}
-function normalizeInput(value: unknown): Ns4UseCaseInput {
-  const item = record(value); const ref = normalizeFieldRef(item.fieldRef);
-  return { inputId: text(item.inputId), required: item.required === true,
-    ...(!ref ? { type: fieldType(item.type) } : {}),
-    ...(ref ? { fieldRef: ref } : {}),
-    description: text(item.description) };
-}
-function normalizeOutput(value: unknown): Ns4UseCaseOutput {
-  const item = record(value); const ref = normalizeFieldRef(item.fieldRef);
-  return { outputId: text(item.outputId), required: item.required === true,
-    ...(!ref ? { type: fieldType(item.type) } : {}),
-    ...(text(item.contextId) ? { contextId: text(item.contextId) } : {}), ...(ref ? { fieldRef: ref } : {}),
-    description: text(item.description) };
-}
-function normalizeEntityAccess(value: unknown): Ns4UseCaseEntityAccess {
-  const item = record(value); return { entityId: text(item.entityId), fieldRefs: strings(item.fieldRefs) };
-}
 function normalizeTransition(value: unknown): Ns4UseCaseTransition {
   const transition = record(value); return {
     transitionId: text(transition.transitionId), entityRef: text(transition.entityRef),
     fromStates: strings(transition.fromStates), toState: text(transition.toState), useRules: strings(transition.useRules),
   };
 }
-function normalizeError(value: unknown): Ns4UseCaseError {
-  const item = record(value); return { errorId: text(item.errorId), description: text(item.description),
-    when: text(item.when), useRules: strings(item.useRules) };
-}
 function record(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function array(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
 function strings(value: unknown): string[] { return array(value).map(text).filter(Boolean); }
+function uniqueStrings(value: unknown): string[] { return [...new Set(strings(value))].sort(); }
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }

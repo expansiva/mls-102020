@@ -10,10 +10,10 @@ import {
   readNs4ApprovedAccess, readNs4ApprovedJourneys, readNs4ApprovedOntology,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
 import {
-  ns4AccessMatrixFile, ns4E7PlanDraftFile, ns4E7UseCaseDraftFile,
+  ns4AccessMatrixFile, ns4E7PlanDraftFile, ns4E7UseCaseDraftFile, ns4E7ValidationReportFile,
   ns4JourneyFile, ns4JourneyIndexFile, ns4OntologyIndexFile, ns4RulesFile,
   readNs4AgentText, readNs4DefsJson, readNs4Module, readNs4Pipeline, readNs4Text,
-  writeNs4AccessMatrix, writeNs4E7PlanDraft, writeNs4E7UseCaseDraft, writeNs4Journey,
+  writeNs4AccessMatrix, writeNs4E7PlanDraft, writeNs4E7UseCaseDraft, writeNs4E7ValidationReport, writeNs4Journey,
   writeNs4JourneyIndex, writeNs4Module, writeNs4Pipeline, writeNs4UseCase,
   writeNs4UseCaseIndex, writeNs4Workflow, writeNs4WorkflowIndex,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
@@ -27,7 +27,7 @@ import {
   normalizeNs4UseCaseDraft, NS4_USE_CASE_DRAFT_VERSION, Ns4E7PlanDraft, Ns4E7SourceHashes, Ns4UseCaseDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 import {
-  Ns4E7Sources, validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows,
+  Ns4E7GateIssue, Ns4E7Sources, validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/gate.js';
 
 interface Ns4E7Args {
@@ -48,6 +48,15 @@ interface Ns4E7Bundle extends Ns4E7Sources {
 }
 
 const MAX_REPAIR_ROUNDS = 1;
+
+interface Ns4E7ValidationReport {
+  schemaVersion: '2026-08-10-ns4-e7-validation-report-v1';
+  moduleName: string;
+  attempts: Array<{ round: number; checkedAt: string; valid: number; invalid: number;
+    results: Array<{ useCaseId: string; status: 'valid' | 'invalid' | 'missing'; issues: Ns4E7GateIssue[] }> }>;
+  finalStatus: 'repairing' | 'passed' | 'failed';
+  updatedAt: string;
+}
 
 export async function beforeNs4E7PromptStep(
   agent: IAgentMeta,
@@ -164,7 +173,7 @@ async function buildUseCasePrompt(
     const requiredContexts = new Set(compiledSteps.flatMap(step => step.requiresContext));
     const producerSteps = journey.business.steps.filter(step => step.providesContext.some(context => requiredContexts.has(context.contextId)));
     const relevantStepIds = new Set([...compiledSteps, ...producerSteps].map(step => step.stepId));
-    return { journeyId: journey.journeyId, entry: journey.business.entry,
+    return { journeyId: journey.journeyId, entry: journey.business.entry, useRules: journey.business.useRules,
       steps: journey.business.steps.filter(step => relevantStepIds.has(step.stepId)) };
   });
   const businessObjects = new Set(journeys.flatMap(journey => [
@@ -177,13 +186,19 @@ async function buildUseCasePrompt(
     ...businessObjects,
     ...relationships.flatMap(rel => [rel.fromEntity, rel.toEntity]),
   ]);
-  const entities = bundle.ontology.entities.filter(entity => entityIds.has(entity.entityId));
-  const relevantRules = bundle.rules.rules;
+  const entities = bundle.ontology.entities.filter(entity => entityIds.has(entity.entityId))
+    .map(entity => ({ entityId: entity.entityId, title: entity.title, description: entity.description,
+      lifecycleStates: entity.lifecycleStates }));
+  const relationshipSummary = relationships.map(relationship => ({ relationshipId: relationship.relationshipId,
+    fromEntity: relationship.fromEntity, toEntity: relationship.toEntity, type: relationship.type,
+    required: relationship.required, description: relationship.description }));
+  const candidateRuleIds = new Set(journeys.flatMap(journey => journey.useRules));
+  const relevantRules = bundle.rules.rules.filter(rule => candidateRuleIds.has(rule.id));
   const currentGate = current ? validateNs4UseCaseDraft(plan, current, bundle) : null;
   const humanPrompt = [
     `## Frozen use case plan\n${JSON.stringify(target)}`,
     `## Source journey steps and typed contexts\n${JSON.stringify(journeys)}`,
-    `## Relevant E4 entities and relationship field bindings\n${JSON.stringify({ entities, relationships })}`,
+    `## Relevant E4 entity and relationship catalog\n${JSON.stringify({ entities, relationships: relationshipSummary })}`,
     `## Candidate E5 rules; select only behavior-owned rules\n${JSON.stringify(relevantRules)}`,
     current ? `## Current draft; preserve valid decisions\n${JSON.stringify(current)}` : '',
     currentGate && !currentGate.ok ? `## Deterministic repair required\n${formatGate(currentGate.issues)}` : '',
@@ -204,12 +219,24 @@ async function finalizeE7(
   const [plan, bundle] = await Promise.all([readPlan(args.moduleName), loadBundle(args.moduleName)]);
   const valid: Ns4UseCaseDraft[] = [];
   const invalid: string[] = [];
+  const validationResults: Ns4E7ValidationReport['attempts'][number]['results'] = [];
   for (const target of plan.useCases) {
     const draft = await readDraft(args.moduleName, target.useCaseId, plan);
-    if (!draft || !validateNs4UseCaseDraft(plan, draft, bundle).ok) invalid.push(target.useCaseId);
+    if (!draft) {
+      invalid.push(target.useCaseId);
+      validationResults.push({ useCaseId: target.useCaseId, status: 'missing', issues: [{
+        code: 'NS4_E7_DRAFT_MISSING', path: 'draft', message: 'Use case draft was not persisted.',
+      }] });
+      continue;
+    }
+    const draftGate = validateNs4UseCaseDraft(plan, draft, bundle);
+    validationResults.push({ useCaseId: target.useCaseId, status: draftGate.ok ? 'valid' : 'invalid', issues: draftGate.issues });
+    if (!draftGate.ok) invalid.push(target.useCaseId);
     else valid.push(draft);
   }
   const repairRound = args.repairRound || 0;
+  const reportStatus = invalid.length ? repairRound < MAX_REPAIR_ROUNDS ? 'repairing' : 'failed' : 'passed';
+  await updateValidationReport(args.moduleName, repairRound, validationResults, reportStatus);
   const mutationParent = findMutableParent(context, parentStep);
   if (invalid.length && repairRound < MAX_REPAIR_ROUNDS) {
     const parallel = parallelUseCaseStep(context, step, 'agentNewSolution4', plan, repairRound + 1, invalid);
@@ -223,7 +250,7 @@ async function finalizeE7(
   const generatedAt = new Date().toISOString();
   const { artifacts: useCases, index: useCaseIndex } = await buildNs4UseCaseArtifacts(plan, valid, generatedAt);
   const ontologyStates = new Map(bundle.ontology.entities.map(entity => [entity.entityId, entity.lifecycleStates]));
-  const { artifacts: workflows, index: workflowIndex } = await buildNs4WorkflowArtifacts(plan, useCases, ontologyStates, generatedAt);
+  const { artifacts: workflows, index: workflowIndex } = await buildNs4WorkflowArtifacts(plan, valid, ontologyStates, generatedAt);
   const workflowGate = validateNs4Workflows(workflows, bundle);
   if (!workflowGate.ok) throw new Error(formatGate(workflowGate.issues));
 
@@ -340,6 +367,31 @@ async function readPlan(moduleName: string): Promise<Ns4E7PlanDraft> {
   if (!isRecord(parsed) || parsed.planId !== 'e7-realization-plan') throw new Error(`Invalid E7 plan for ${moduleName}.`);
   return parsed as unknown as Ns4E7PlanDraft;
 }
+
+async function updateValidationReport(
+  moduleName: string,
+  round: number,
+  results: Ns4E7ValidationReport['attempts'][number]['results'],
+  finalStatus: Ns4E7ValidationReport['finalStatus'],
+): Promise<void> {
+  const now = new Date().toISOString();
+  const previous = round > 0 ? await readValidationReport(moduleName) : null;
+  const attempt = { round, checkedAt: now, valid: results.filter(result => result.status === 'valid').length,
+    invalid: results.filter(result => result.status !== 'valid').length, results };
+  const attempts = [...(previous?.attempts || []).filter(item => item.round !== round), attempt]
+    .sort((left, right) => left.round - right.round);
+  await writeNs4E7ValidationReport(moduleName, {
+    schemaVersion: '2026-08-10-ns4-e7-validation-report-v1', moduleName, attempts, finalStatus, updatedAt: now,
+  } satisfies Ns4E7ValidationReport);
+}
+
+async function readValidationReport(moduleName: string): Promise<Ns4E7ValidationReport | null> {
+  const parsed = parse(await readNs4Text(ns4E7ValidationReportFile(moduleName), false));
+  if (!isRecord(parsed) || parsed.schemaVersion !== '2026-08-10-ns4-e7-validation-report-v1'
+    || parsed.moduleName !== moduleName || !Array.isArray(parsed.attempts)) return null;
+  return parsed as unknown as Ns4E7ValidationReport;
+}
+
 async function readDraft(
   moduleName: string,
   useCaseId: string,

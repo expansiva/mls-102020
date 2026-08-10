@@ -86,7 +86,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-43 (2026-08-09) E7 simple architecture-neutral use cases';
+export const NS4_AGENT_BUILD = 'build-44 (2026-08-10) E7 minimal ontology-referenced use cases';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
