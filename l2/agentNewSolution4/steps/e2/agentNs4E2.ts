@@ -244,7 +244,12 @@ export async function afterNs4E2PromptStep(
       review.moduleName = args.moduleName;
       review.reviewRound = args.reviewRound || review.reviewRound;
     }
-    const gate = validateNs4E2Review(review);
+    const structuralGate = validateNs4E2Review(review);
+    const selectionGate = validateNs4E2PolicySelections(review, args.policyDecisionSelections || [], true);
+    const gate = {
+      ok: structuralGate.ok && selectionGate.ok,
+      issues: [...structuralGate.issues, ...selectionGate.issues],
+    };
     if (!gate.ok) {
       const message = gate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
       const gateRepairAttempt = args.gateRepairAttempt || 0;
@@ -260,6 +265,7 @@ export async function afterNs4E2PromptStep(
           message,
           pipeline.presentation.stepTitles['e2-journeys'],
           args.coverageIssueIds,
+          args.policyDecisionSelections,
         );
         return [
           addStep(context, repairParent, repairStep),
@@ -270,13 +276,6 @@ export async function afterNs4E2PromptStep(
           updateStatus(context, repairParent, step, hookSequential, 'completed', `E2 gate requested structural repair ${gateRepairAttempt + 1}.`, 'input_output'),
         ];
       }
-      await recordNs4E2Failure(moduleName, message);
-      return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
-    }
-
-    const selectionGate = validateNs4E2PolicySelections(review, args.policyDecisionSelections || [], true);
-    if (!selectionGate.ok) {
-      const message = selectionGate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
       await recordNs4E2Failure(moduleName, message);
       return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
     }

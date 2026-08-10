@@ -109,6 +109,12 @@ test('E2 creates one open repair step with deterministic gate feedback', () => {
   });
 });
 
+test('E2 preserves policy selections when the honor gate requests its bounded repair', () => {
+  const selections = [{ decisionId: 'changeOrderDecisionMode', selectedChoice: 'Proposal with approval or rejection.' }];
+  const step = createNs4E2GateRepairStep('buildFlowFsm', 2, 1, 0, 'Honor the human policy choice.', undefined, [], selections);
+  assert.deepEqual(JSON.parse(step.prompt || '{}').policyDecisionSelections, selections);
+});
+
 test('E2 rejects business text that asks for a raw technical id', () => {
   const broken = structuredClone(reviewInput);
   broken.journeys[1].business.steps[1].intent = 'Pedir o project id e registrar a mudança.';

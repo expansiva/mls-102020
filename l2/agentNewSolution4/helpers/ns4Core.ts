@@ -308,6 +308,7 @@ export function createNs4E2GateRepairStep(
   gateFeedback: string,
   stepTitle = NS4_DEFAULT_TITLES['e2-journeys'],
   coverageIssueIds: string[] = [],
+  policyDecisionSelections: Array<{ decisionId: string; selectedChoice: string }> = [],
 ): mls.msg.AIAgentStep {
   return createNs4AgentStep(
     `e2-journeys-round-${reviewRound}-coverage-${coverageRepairAttempt}-gate-repair-${gateRepairAttempt}`,
@@ -318,6 +319,7 @@ export function createNs4E2GateRepairStep(
       planId: 'e2-journeys', moduleName, reviewRound,
       gateRepairAttempt, coverageRepairAttempt, gateFeedback,
       ...(coverageIssueIds.length ? { coverageIssueIds } : {}),
+      ...(policyDecisionSelections.length ? { policyDecisionSelections } : {}),
     },
   );
 }
