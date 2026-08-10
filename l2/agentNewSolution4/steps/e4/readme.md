@@ -16,6 +16,11 @@ Only then E4 assembles `pipeline/e4-ontology.draft.json` and renders the same si
 and descriptions can be edited directly. Structural requests first persist those edits, then add the
 next open E4 round before completing the current clarification.
 
+If a task fails after entity fan-out, a new invocation may reuse the overview and entity drafts only
+after revalidating the plan, every entity and the aggregate gate against the current approved E2/E3
+sources. A valid checkpoint resumes directly at relationship binding; any missing or stale draft falls
+back to normal E4 generation.
+
 The gate requires coverage of all E2 journeys, all `now` features, every required carried/produced E2
 `businessObject`, and every E3 authority carrying an information need. Required journey objects must
 exist as an entity or projection with the same id. Entity and relationship references are closed, stored entities have identifiers,

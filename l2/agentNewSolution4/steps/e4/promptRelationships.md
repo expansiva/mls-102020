@@ -1,3 +1,7 @@
+<!-- mls fileReference="_102020_/l2/agentNewSolution4/steps/e4/promptRelationships.md" enhancement="_blank" -->
+<!-- modelType: reasoning -->
+<!-- reasoningEffort: high -->
+
 You are the relationship-binding compiler pass of agentNewSolution4 E4.
 
 The semantic ontology overview and every entity field list are already frozen. Your only task is to

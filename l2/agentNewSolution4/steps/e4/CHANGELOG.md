@@ -1,5 +1,13 @@
 # E4 changelog
 
+- 2026-08-09: Build 40 declares `modelType: reasoning` and high reasoning effort on the new
+  relationship-binding prompt. Run27 exposed that an unannotated prompt falls back to the inactive
+  `cost` alias before any ontology payload is produced. A regression test now checks every E4 LLM
+  prompt for an explicit active alias.
+  A failed post-fan-out invocation can also resume directly at binding after mechanically revalidating
+  the overview, every entity draft and the aggregate E4 contract; run27 therefore does not need to
+  repeat its 22 successful entity calls.
+
 - 2026-08-09: Build 39 / flow v19 adds a post-fan-out relationship-binding compiler pass. Every
   semantic edge now names exact existing endpoint fields or an explicit MDM/derived realization;
   deterministic validation rejects missing/unknown bindings and permits one focused repair before the

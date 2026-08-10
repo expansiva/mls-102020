@@ -79,7 +79,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-39 (2026-08-09) field-bound ontology relationships';
+export const NS4_AGENT_BUILD = 'build-40 (2026-08-09) explicit relationship-binding model alias';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

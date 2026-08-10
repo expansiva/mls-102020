@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   createNs4E4FinalizeStep,
@@ -143,6 +144,13 @@ test('E4 schedules a dedicated relationship binding pass with bounded repair sta
   const repair = createNs4E4RelationshipBindingStep('buildFlowFsm', 2, 1, 'unknown projectRef');
   assert.equal(repair.planning?.planId, 'e4-ontology-round-2-relationship-binding-1');
   assert.match(String(repair.prompt), /unknown projectRef/);
+});
+
+test('every E4 LLM prompt declares an active model alias explicitly', () => {
+  for (const file of ['prompt.md', 'promptEntity.md', 'promptRelationships.md']) {
+    const prompt = readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.match(prompt, /<!--\s*modelType:\s*reasoning\s*-->/, `${file} must not fall back to the inactive cost alias`);
+  }
 });
 
 test('E4 overview freezes global decisions and entity detail reassembles the final review', () => {

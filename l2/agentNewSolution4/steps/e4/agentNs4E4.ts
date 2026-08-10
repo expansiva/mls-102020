@@ -121,6 +121,12 @@ export async function beforeNs4E4PromptStep(
     if (parsed.stage === 'bindRelationships') {
       return [await buildRelationshipBindingPrompt(context, parentStep, hookSequential, hookArgs, parsed)];
     }
+    if (!parsed.stage && !parsed.adjustment && !parsed.gateFeedback) {
+      const resumed = await resumeRelationshipBindingFromValidDrafts(
+        context, parentStep, step, hookSequential, parsed,
+      );
+      if (resumed) return resumed;
+    }
     return [await buildPlanPrompt(context, parentStep, hookSequential, hookArgs, parsed)];
   } catch (error) {
     const message = errorMessage(error);
@@ -174,6 +180,47 @@ async function buildPlanPrompt(
     previousDraft ? `## Previous complete E4 review, including direct human edits\n${JSON.stringify(previousDraft)}` : '',
   ].filter(Boolean).join('\n\n');
   return promptReady(context, parentStep, hookSequential, hookArgs, prompt.replace('{{platformSkill}}', platform), humanPrompt);
+}
+
+async function resumeRelationshipBindingFromValidDrafts(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args: Ns4E4Args & { moduleName: string },
+): Promise<mls.msg.AgentIntent[] | null> {
+  const pipeline = await requirePipeline(args.moduleName);
+  if (pipeline.steps.e4?.status !== 'failed') return null;
+  const plan = await readOptionalPlanDraft(args.moduleName);
+  if (!plan || plan.reviewRound !== (pipeline.steps.e4.reviewRound || 1)) return null;
+  const [journeys, access] = await Promise.all([
+    readNs4ApprovedJourneys(args.moduleName), readNs4ApprovedAccess(args.moduleName),
+  ]);
+  if (!validateNs4E4Plan(plan, journeys, access).ok) return null;
+  const details: Ns4E4EntityDraft[] = [];
+  for (const entity of plan.entities) {
+    const detail = await readEntityDraft(args.moduleName, entity.entityId);
+    if (!detail || !validateNs4E4EntityDraft(plan, detail).ok) return null;
+    details.push(detail);
+  }
+  const review = assembleNs4E4Review(plan, details);
+  if (!validateNs4E4Review(review, journeys, access, { requireRelationshipRealization: false }).ok) return null;
+  const runningPipeline = markNs4E4Running(pipeline, plan.reviewRound);
+  await writeNs4Pipeline(runningPipeline);
+  const mutationParent = findMutableParentStep(context, parentStep);
+  if (!review.relationships.length) {
+    return openOntologyReview(
+      context, mutationParent, step, hookSequential, review, runningPipeline, journeys, access,
+    );
+  }
+  return [
+    addStep(context, mutationParent, createNs4E4RelationshipBindingStep(args.moduleName, plan.reviewRound)),
+    updateStatus(
+      context, mutationParent, step, hookSequential, 'completed',
+      `E4 resumed from ${details.length} revalidated entity drafts; continuing at relationship binding.`,
+      'input_output',
+    ),
+  ];
 }
 
 async function buildEntityPrompt(

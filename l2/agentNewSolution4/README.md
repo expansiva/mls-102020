@@ -92,7 +92,10 @@ Approval writes:
 
 E3, E4 and E5 share the same approved-source loader. Recovery reads the permanent journey index and
 journey defs, access-matrix def, and ontology index/entity defs; the large pipeline drafts are review
-work products, not resume dependencies. E4 repair workers load only their own previous entity def.
+work products, not resume dependencies after approval. Before E4 approval, a failed post-fan-out run
+may resume directly at relationship binding only when its overview and every entity draft are present
+and pass all current deterministic gates again; otherwise E4 regenerates normally. E4 repair workers
+load only their own previous entity def.
 
 E5 reconstructs its input from the approved permanent journey, access and ontology artifacts. Those
 artifacts reference business rules only through stable lower-camel ids in `useRules`; they never copy
