@@ -393,7 +393,8 @@
     "test3": "Route C on a shell of mls-102054: the clarification offers the three options, 'parent' ends the run with an instruction and NO write, 'override' writes only the shell, and the gate proves the parent file was untouched.",
     "test4": "Route A: a definition change hands off to agentNewMolecule2 with the existing artifacts pre-filling the plan, and the rebuilt molecule keeps its fileReference.",
     "test5": "Route D and the not-found case: both fail readable, with no retry and nothing written.",
-    "regression": "agentNewMolecule2 stays green — this flow imports its helpers and must not modify them. The three old agents stay in place and untouched until this one is accepted."
+    "regression": "agentNewMolecule2 stays green — this flow imports its helpers and must not modify them. The three old agents stay in place and untouched until this one is accepted.",
+    "test6_regressao_2026_08_10": "DEFEITO NÃO É ROTA A. Pedido real do primeiro run: \"o componente não está funcionando corretamente. Ao clicar em um node, deveria expandir ou retrair o nível\" na _102040_/l2/molecules/groupviewhierarchy/ml-hierarchy-tree.ts. Esperado: rota B. O contrato PROMETE o comportamento (\"Allow nodes with children to expand and reveal their children or collapse and hide them\") e o .ts tem o handler ligado ao clique — prometido + implementado + não funciona = defeito. Em 2026-08-10 o triage respondeu rota A e o run morreu no roteador; a causa e o conserto estão no CHANGELOG do i2-triage. NÃO É TESTÁVEL POR GATE: julgamento não é. Rodar este pedido e um claramente de definição (\"adicione um slot de rodapé\") e olhar a rota é a única verificação que existe."
   },
   "planting": {
     "note": "THE TREE IS PLANTED IN TWO PHASES, which is the one structural difference from agentNewMolecule2 (eight steps, always run, planted at once).",

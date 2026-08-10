@@ -94,6 +94,7 @@ export function createAgent(): IAgentAsync {
     beforePromptImplicit,
     beforePromptStep,
     afterPromptStep,
+    scope: ['l2_preview'],
   };
 }
 
@@ -223,9 +224,21 @@ async function beforePromptStep(
   }
 
   // A route whose FIRST step is missing cannot start at all — that is route A today.
+  //
+  // The message carries WHY this route was chosen, and it must. Without it the user is told "route A
+  // is not built" and has no way to tell a correct classification from a mis-routing — which is the
+  // first thing they need to know, because one of the two is a missing feature and the other is a
+  // defect in the triage prompt.
   const firstMissing = NOT_BUILT[planned[0]];
   if (firstMissing) {
-    return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', firstMissing)];
+    const because = [
+      decision.rationale ? `Why route ${route}: ${decision.rationale}` : '',
+      decision.definitionElements.length
+        ? `What it says changes in the public definition: ${decision.definitionElements.join('; ')}`
+        : '',
+      'If that reading is wrong — nothing in the public definition (slots, properties, events) actually changes — say so and the request is a route B edit.',
+    ].filter(Boolean).join('\n');
+    return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `${firstMissing}\n\n${because}`)];
   }
 
   const runnable = planned.filter(planId => !NOT_BUILT[planId] && STEP_AGENTS[planId]);
@@ -288,18 +301,22 @@ function addStep(
 }
 
 /** i2-triage's answer, read from the anchor result it planted. */
-function readTriageResult(context: mls.msg.ExecutionContext): { route: ImRoute | null; rationale: string } {
+function readTriageResult(context: mls.msg.ExecutionContext): { route: ImRoute | null; rationale: string; definitionElements: string[] } {
   const anchor = imDoneAnchor('i2-triage');
   const found = getAllSteps(context.task?.iaCompressed?.nextSteps).find(
     item => item.type === 'result' && item.planning?.planId === anchor,
   ) as mls.msg.AIResultStep | undefined;
 
   const parsed = parseMaybeJson(found?.result);
-  if (!isRecord(parsed)) return { route: null, rationale: '' };
+  if (!isRecord(parsed)) return { route: null, rationale: '', definitionElements: [] };
   const route = String(parsed.route || '').trim().toUpperCase();
   return {
     route: (['A', 'B', 'C', 'D'].includes(route) ? route : null) as ImRoute | null,
     rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
+    // On route A these ARE the argument: they name the slots, properties or events that changed.
+    definitionElements: Array.isArray(parsed.definitionElements)
+      ? parsed.definitionElements.filter((item): item is string => typeof item === 'string')
+      : [],
   };
 }
 
