@@ -135,8 +135,9 @@ repair round, and derives lifecycle workflows. It writes:
 - compiled context/use-case references in journeys and use-case authority references in the access matrix;
 - updated module and pipeline status with `e8-workspaces` as the next step.
 
-The journey `business` block and its hash remain unchanged. Use cases are the source of backend
-application behavior and ports, but never know pages or routes; E8 operations will own that integration.
+The journey `business` block and its hash remain unchanged. Use cases describe reusable business
+behavior and exact ontology/rule references. They do not prescribe actors, authorization, pages, routes,
+ports, repositories or a backend architecture; E3 and E8 retain those separate responsibilities.
 
 A limited E3 grant such as “client may see the published budget summary without seeing the Project
 record” must be represented by an E4 projection or traceable information entity. Relationships preserve

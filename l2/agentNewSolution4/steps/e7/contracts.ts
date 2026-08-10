@@ -11,24 +11,19 @@ import type {
 import { NS4_REALIZED_ACCESS_MATRIX_SCHEMA_VERSION } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import type { Ns4OntologyField } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 
-export const NS4_USE_CASE_SCHEMA_VERSION = '2026-08-10-ns4-usecase-v1' as const;
-export const NS4_USE_CASE_INDEX_SCHEMA_VERSION = '2026-08-10-ns4-usecase-index-v1' as const;
+export const NS4_USE_CASE_DRAFT_VERSION = '2026-08-10-ns4-usecase-draft-simple-v2' as const;
+export const NS4_USE_CASE_SCHEMA_VERSION = '2026-08-10-ns4-usecase-v2' as const;
+export const NS4_USE_CASE_INDEX_SCHEMA_VERSION = '2026-08-10-ns4-usecase-index-v2' as const;
 export const NS4_WORKFLOW_SCHEMA_VERSION = '2026-08-10-ns4-workflow-v1' as const;
 export const NS4_WORKFLOW_INDEX_SCHEMA_VERSION = '2026-08-10-ns4-workflow-index-v1' as const;
 
 export type Ns4UseCaseKind = 'query' | 'command';
 export type Ns4UseCaseFieldType = Ns4OntologyField['type'];
-export type Ns4UseCaseInputSource = 'context' | 'userInput' | 'actorSession' | 'system' | 'event';
-export type Ns4UseCaseContextSource = 'entry' | 'previousStep' | 'lookup' | 'actorSession' | 'event';
-export type Ns4UseCasePortKind = 'repository' | 'mdm' | 'externalService' | 'plugin'
-  | 'horizontalModule' | 'eventPublisher' | 'communication';
 
 export interface Ns4E7SourceHashes {
   journeys: Array<{ journeyId: string; businessHash: string }>;
-  accessHash: string;
   ontologyHash: string;
   rulesHash: string;
-  compositionHash: string;
 }
 
 export interface Ns4E7PlanUseCase {
@@ -36,6 +31,7 @@ export interface Ns4E7PlanUseCase {
   title: string;
   kind: Ns4UseCaseKind;
   compiledFrom: string[];
+  contexts: { requires: string[]; provides: string[] };
 }
 
 export interface Ns4E7PlanDraft {
@@ -51,27 +47,17 @@ export interface Ns4UseCaseFieldRef {
   fieldId: string;
 }
 
-export interface Ns4UseCaseContextBinding {
-  contextId: string;
-  businessObject: string;
-  required: boolean;
-  source: Ns4UseCaseContextSource;
-  sourceRefs: string[];
-}
-
 export interface Ns4UseCaseInput {
   inputId: string;
-  type: Ns4UseCaseFieldType;
+  type?: Ns4UseCaseFieldType;
   required: boolean;
-  source: Ns4UseCaseInputSource;
-  contextId?: string;
   fieldRef?: Ns4UseCaseFieldRef;
   description: string;
 }
 
 export interface Ns4UseCaseOutput {
   outputId: string;
-  type: Ns4UseCaseFieldType;
+  type?: Ns4UseCaseFieldType;
   required: boolean;
   contextId?: string;
   fieldRef?: Ns4UseCaseFieldRef;
@@ -81,28 +67,6 @@ export interface Ns4UseCaseOutput {
 export interface Ns4UseCaseEntityAccess {
   entityId: string;
   fieldRefs: string[];
-  purpose: string;
-}
-
-export interface Ns4UseCaseDataScope {
-  profileRef: string;
-  authorityRef: string;
-  mode: 'organization' | 'assigned' | 'own' | 'related' | 'public' | 'custom';
-  description: string;
-}
-
-export interface Ns4UseCaseFilter {
-  fieldRef: Ns4UseCaseFieldRef;
-  source: 'context' | 'selection' | 'userInput' | 'actorSession';
-  required: boolean;
-}
-
-export interface Ns4UseCaseQueryContract {
-  filters: Ns4UseCaseFilter[];
-  pagination: 'none' | 'offset' | 'cursor';
-  selection: 'none' | 'single' | 'multiple';
-  orderBy: Ns4UseCaseFieldRef[];
-  projection: Ns4UseCaseFieldRef[];
 }
 
 export interface Ns4UseCaseTransition {
@@ -113,13 +77,6 @@ export interface Ns4UseCaseTransition {
   useRules: string[];
 }
 
-export interface Ns4UseCaseCommandContract {
-  transaction: 'required' | 'notRequired';
-  idempotency: 'required' | 'recommended' | 'notRequired';
-  transitions: Ns4UseCaseTransition[];
-  emits: string[];
-}
-
 export interface Ns4UseCaseError {
   errorId: string;
   description: string;
@@ -127,37 +84,25 @@ export interface Ns4UseCaseError {
   useRules: string[];
 }
 
-export interface Ns4UseCasePort {
-  portId: string;
-  kind: Ns4UseCasePortKind;
-  purpose: string;
-  entityRef?: string;
-  capabilityRef?: string;
-}
-
 export interface Ns4UseCaseDraft extends Ns4E7PlanUseCase {
+  draftVersion: typeof NS4_USE_CASE_DRAFT_VERSION;
   planId: 'e7-usecase';
   moduleName: string;
   description: string;
-  actorRefs: string[];
-  authorityRefs: string[];
   contexts: {
-    requires: Ns4UseCaseContextBinding[];
-    provides: Ns4UseCaseContextBinding[];
+    requires: string[];
+    provides: string[];
   };
   inputs: Ns4UseCaseInput[];
   outputs: Ns4UseCaseOutput[];
   reads: Ns4UseCaseEntityAccess[];
   writes: Ns4UseCaseEntityAccess[];
   useRules: string[];
-  dataScopes: Ns4UseCaseDataScope[];
-  query?: Ns4UseCaseQueryContract;
-  command?: Ns4UseCaseCommandContract;
+  transitions: Ns4UseCaseTransition[];
   errors: Ns4UseCaseError[];
-  ports: Ns4UseCasePort[];
 }
 
-export interface Ns4UseCaseArtifact extends Omit<Ns4UseCaseDraft, 'planId'> {
+export interface Ns4UseCaseArtifact extends Omit<Ns4UseCaseDraft, 'planId' | 'draftVersion'> {
   schemaVersion: typeof NS4_USE_CASE_SCHEMA_VERSION;
   userLanguage: string;
   sourceHashes: Ns4E7SourceHashes;
@@ -220,13 +165,17 @@ export function buildNs4E7Plan(
   journeys: Ns4E2Review,
   sourceHashes: Ns4E7SourceHashes,
 ): Ns4E7PlanDraft {
-  const grouped = new Map<string, { kinds: Set<Ns4JourneyStepKind>; refs: string[]; intents: string[] }>();
+  const grouped = new Map<string, { kinds: Set<Ns4JourneyStepKind>; refs: string[]; intents: string[];
+    requires: Set<string>; provides: Set<string> }>();
   for (const journey of journeys.journeys) {
     for (const step of journey.business.steps) {
-      const current = grouped.get(step.stepId) || { kinds: new Set<Ns4JourneyStepKind>(), refs: [], intents: [] };
+      const current = grouped.get(step.stepId) || { kinds: new Set<Ns4JourneyStepKind>(), refs: [], intents: [],
+        requires: new Set<string>(), provides: new Set<string>() };
       current.kinds.add(step.kind);
       current.refs.push(`${journey.journeyId}.${step.stepId}`);
       current.intents.push(step.intent);
+      step.requiresContext.forEach(contextId => current.requires.add(contextId));
+      step.providesContext.forEach(context => current.provides.add(context.contextId));
       grouped.set(step.stepId, current);
     }
   }
@@ -235,6 +184,7 @@ export function buildNs4E7Plan(
     title: group.intents[0] || useCaseId,
     kind: [...group.kinds].every(kind => kind === 'locate' || kind === 'inspect') ? 'query' as const : 'command' as const,
     compiledFrom: [...new Set(group.refs)].sort(),
+    contexts: { requires: [...group.requires].sort(), provides: [...group.provides].sort() },
   }));
   return { planId: 'e7-realization-plan', moduleName, userLanguage, useCases, sourceHashes };
 }
@@ -247,22 +197,15 @@ export function normalizeNs4UseCaseDraft(
   const root = record(value);
   const target = plan.useCases.find(item => item.useCaseId === useCaseId);
   if (!target) throw new Error(`Unknown E7 use case ${useCaseId}.`);
-  const contexts = record(root.contexts);
   return {
-    planId: 'e7-usecase', moduleName: plan.moduleName, useCaseId,
+    draftVersion: NS4_USE_CASE_DRAFT_VERSION, planId: 'e7-usecase', moduleName: plan.moduleName, useCaseId,
     title: text(root.title) || target.title, kind: target.kind,
     compiledFrom: [...target.compiledFrom], description: text(root.description),
-    actorRefs: strings(root.actorRefs), authorityRefs: strings(root.authorityRefs),
-    contexts: {
-      requires: array(contexts.requires).map(normalizeContext),
-      provides: array(contexts.provides).map(normalizeContext),
-    },
+    contexts: { requires: [...target.contexts.requires], provides: [...target.contexts.provides] },
     inputs: array(root.inputs).map(normalizeInput), outputs: array(root.outputs).map(normalizeOutput),
     reads: array(root.reads).map(normalizeEntityAccess), writes: array(root.writes).map(normalizeEntityAccess),
-    useRules: strings(root.useRules), dataScopes: array(root.dataScopes).map(normalizeDataScope),
-    ...(target.kind === 'query' ? { query: normalizeQuery(root.query) } : {}),
-    ...(target.kind === 'command' ? { command: normalizeCommand(root.command) } : {}),
-    errors: array(root.errors).map(normalizeError), ports: array(root.ports).map(normalizePort),
+    useRules: strings(root.useRules), transitions: array(root.transitions).map(normalizeTransition),
+    errors: array(root.errors).map(normalizeError),
   };
 }
 
@@ -272,7 +215,7 @@ export async function buildNs4UseCaseArtifacts(
   generatedAt: string,
 ): Promise<{ artifacts: Ns4UseCaseArtifact[]; index: Ns4UseCaseIndexArtifact }> {
   const artifacts = await Promise.all(drafts.map(async draft => {
-    const { planId: _planId, ...contract } = draft;
+    const { planId: _planId, draftVersion: _draftVersion, ...contract } = draft;
     const useCaseHash = await sha256Ns4({ ...contract, sourceHashes: plan.sourceHashes });
     return {
       schemaVersion: NS4_USE_CASE_SCHEMA_VERSION, ...contract, userLanguage: plan.userLanguage,
@@ -301,7 +244,7 @@ export async function buildNs4WorkflowArtifacts(
 ): Promise<{ artifacts: Ns4WorkflowArtifact[]; index: Ns4WorkflowIndexArtifact }> {
   const byEntity = new Map<string, Ns4WorkflowTransition[]>();
   for (const useCase of useCases) {
-    for (const transition of useCase.command?.transitions || []) {
+    for (const transition of useCase.transitions) {
       const values = byEntity.get(transition.entityRef) || [];
       values.push({ ...transition, useCaseId: useCase.useCaseId });
       byEntity.set(transition.entityRef, values);
@@ -357,7 +300,7 @@ export async function buildNs4RealizedJourneyArtifact(
   const steps = business.steps.map(step => ({ stepId: step.stepId,
     useCaseRefs: journeyUseCases.filter(useCase => useCase.compiledFrom.includes(`${source.journeyId}.${step.stepId}`))
       .map(useCase => useCase.useCaseId).sort() }));
-  const transitionRefs = journeyUseCases.flatMap(useCase => (useCase.command?.transitions || []).map(transition => transition.transitionId));
+  const transitionRefs = journeyUseCases.flatMap(useCase => useCase.transitions.map(transition => transition.transitionId));
   const realizationHash = await sha256Ns4({ contexts: resolvedContexts, steps, transitionRefs, businessHash: source.businessHash });
   return {
     schemaVersion: NS4_REALIZED_JOURNEY_SCHEMA_VERSION, journeyId: source.journeyId,
@@ -386,11 +329,11 @@ export async function buildNs4RealizedAccessArtifact(
 ): Promise<Ns4AccessMatrixArtifactV3> {
   if (source.grants.some(grant => !('useRules' in grant))) throw new Error('E7 does not migrate a legacy access matrix.');
   const grants = source.grants as Ns4AccessMatrixArtifactV3['grants'];
-  const useCaseAuthorityRefs = useCases.flatMap(useCase => useCase.authorityRefs.map(authorityRef => ({
-    useCaseId: useCase.useCaseId, authorityRef,
-    journeyStepRefs: useCase.compiledFrom.filter(ref => source.authorities
-      .find(authority => authority.authorityRef === authorityRef)?.journeyStepRefs.includes(ref)),
-  }))).sort((left, right) => `${left.useCaseId}|${left.authorityRef}`.localeCompare(`${right.useCaseId}|${right.authorityRef}`));
+  const useCaseAuthorityRefs = useCases.flatMap(useCase => source.authorities.flatMap(authority => {
+    const journeyStepRefs = useCase.compiledFrom.filter(ref => authority.journeyStepRefs.includes(ref));
+    return journeyStepRefs.length ? [{ useCaseId: useCase.useCaseId,
+      authorityRef: authority.authorityRef, journeyStepRefs }] : [];
+  })).sort((left, right) => `${left.useCaseId}|${left.authorityRef}`.localeCompare(`${right.useCaseId}|${right.authorityRef}`));
   const realizationHash = await sha256Ns4({ accessHash: source.accessHash, useCaseAuthorityRefs });
   return {
     schemaVersion: NS4_REALIZED_ACCESS_MATRIX_SCHEMA_VERSION, moduleName: source.moduleName,
@@ -402,14 +345,6 @@ export async function buildNs4RealizedAccessArtifact(
   };
 }
 
-function normalizeContext(value: unknown): Ns4UseCaseContextBinding {
-  const item = record(value);
-  const source = text(item.source);
-  return { contextId: text(item.contextId), businessObject: text(item.businessObject),
-    required: item.required === true,
-    source: ['entry', 'previousStep', 'lookup', 'actorSession', 'event'].includes(source)
-      ? source as Ns4UseCaseContextSource : 'entry', sourceRefs: strings(item.sourceRefs) };
-}
 function normalizeFieldRef(value: unknown): Ns4UseCaseFieldRef | undefined {
   const item = record(value); const entityId = text(item.entityId); const fieldId = text(item.fieldId);
   return entityId && fieldId ? { entityId, fieldId } : undefined;
@@ -420,60 +355,31 @@ function fieldType(value: unknown): Ns4UseCaseFieldType {
     ? candidate as Ns4UseCaseFieldType : 'string';
 }
 function normalizeInput(value: unknown): Ns4UseCaseInput {
-  const item = record(value); const source = text(item.source); const ref = normalizeFieldRef(item.fieldRef);
-  return { inputId: text(item.inputId), type: fieldType(item.type), required: item.required === true,
-    source: ['context', 'userInput', 'actorSession', 'system', 'event'].includes(source)
-      ? source as Ns4UseCaseInputSource : 'userInput',
-    ...(text(item.contextId) ? { contextId: text(item.contextId) } : {}), ...(ref ? { fieldRef: ref } : {}),
+  const item = record(value); const ref = normalizeFieldRef(item.fieldRef);
+  return { inputId: text(item.inputId), required: item.required === true,
+    ...(!ref ? { type: fieldType(item.type) } : {}),
+    ...(ref ? { fieldRef: ref } : {}),
     description: text(item.description) };
 }
 function normalizeOutput(value: unknown): Ns4UseCaseOutput {
   const item = record(value); const ref = normalizeFieldRef(item.fieldRef);
-  return { outputId: text(item.outputId), type: fieldType(item.type), required: item.required === true,
+  return { outputId: text(item.outputId), required: item.required === true,
+    ...(!ref ? { type: fieldType(item.type) } : {}),
     ...(text(item.contextId) ? { contextId: text(item.contextId) } : {}), ...(ref ? { fieldRef: ref } : {}),
     description: text(item.description) };
 }
 function normalizeEntityAccess(value: unknown): Ns4UseCaseEntityAccess {
-  const item = record(value); return { entityId: text(item.entityId), fieldRefs: strings(item.fieldRefs), purpose: text(item.purpose) };
+  const item = record(value); return { entityId: text(item.entityId), fieldRefs: strings(item.fieldRefs) };
 }
-function normalizeDataScope(value: unknown): Ns4UseCaseDataScope {
-  const item = record(value); const mode = text(item.mode);
-  return { profileRef: text(item.profileRef), authorityRef: text(item.authorityRef),
-    mode: ['organization', 'assigned', 'own', 'related', 'public', 'custom'].includes(mode)
-      ? mode as Ns4UseCaseDataScope['mode'] : 'custom', description: text(item.description) };
-}
-function normalizeQuery(value: unknown): Ns4UseCaseQueryContract {
-  const item = record(value); const pagination = text(item.pagination); const selection = text(item.selection);
-  return { filters: array(item.filters).map(filter => { const source = record(filter); return {
-      fieldRef: normalizeFieldRef(source.fieldRef) || { entityId: '', fieldId: '' },
-      source: ['context', 'selection', 'userInput', 'actorSession'].includes(text(source.source))
-        ? text(source.source) as Ns4UseCaseFilter['source'] : 'userInput', required: source.required === true };
-    }), pagination: ['none', 'offset', 'cursor'].includes(pagination) ? pagination as Ns4UseCaseQueryContract['pagination'] : 'none',
-    selection: ['none', 'single', 'multiple'].includes(selection) ? selection as Ns4UseCaseQueryContract['selection'] : 'none',
-    orderBy: array(item.orderBy).map(normalizeFieldRef).filter((ref): ref is Ns4UseCaseFieldRef => !!ref),
-    projection: array(item.projection).map(normalizeFieldRef).filter((ref): ref is Ns4UseCaseFieldRef => !!ref) };
-}
-function normalizeCommand(value: unknown): Ns4UseCaseCommandContract {
-  const item = record(value); return {
-    transaction: item.transaction === 'notRequired' ? 'notRequired' : 'required',
-    idempotency: item.idempotency === 'required' || item.idempotency === 'recommended' ? item.idempotency : 'notRequired',
-    transitions: array(item.transitions).map(value => { const transition = record(value); return {
-      transitionId: text(transition.transitionId), entityRef: text(transition.entityRef),
-      fromStates: strings(transition.fromStates), toState: text(transition.toState), useRules: strings(transition.useRules) };
-    }), emits: strings(item.emits),
+function normalizeTransition(value: unknown): Ns4UseCaseTransition {
+  const transition = record(value); return {
+    transitionId: text(transition.transitionId), entityRef: text(transition.entityRef),
+    fromStates: strings(transition.fromStates), toState: text(transition.toState), useRules: strings(transition.useRules),
   };
 }
 function normalizeError(value: unknown): Ns4UseCaseError {
   const item = record(value); return { errorId: text(item.errorId), description: text(item.description),
     when: text(item.when), useRules: strings(item.useRules) };
-}
-function normalizePort(value: unknown): Ns4UseCasePort {
-  const item = record(value); const kind = text(item.kind);
-  return { portId: text(item.portId),
-    kind: ['repository', 'mdm', 'externalService', 'plugin', 'horizontalModule', 'eventPublisher', 'communication'].includes(kind)
-      ? kind as Ns4UseCasePortKind : 'repository', purpose: text(item.purpose),
-    ...(text(item.entityRef) ? { entityRef: text(item.entityRef) } : {}),
-    ...(text(item.capabilityRef) ? { capabilityRef: text(item.capabilityRef) } : {}) };
 }
 function record(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function array(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }

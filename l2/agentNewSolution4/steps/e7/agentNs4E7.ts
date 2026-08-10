@@ -10,7 +10,7 @@ import {
   readNs4ApprovedAccess, readNs4ApprovedJourneys, readNs4ApprovedOntology,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
 import {
-  ns4AccessMatrixFile, ns4CompositionFile, ns4E7PlanDraftFile, ns4E7UseCaseDraftFile,
+  ns4AccessMatrixFile, ns4E7PlanDraftFile, ns4E7UseCaseDraftFile,
   ns4JourneyFile, ns4JourneyIndexFile, ns4OntologyIndexFile, ns4RulesFile,
   readNs4AgentText, readNs4DefsJson, readNs4Module, readNs4Pipeline, readNs4Text,
   writeNs4AccessMatrix, writeNs4E7PlanDraft, writeNs4E7UseCaseDraft, writeNs4Journey,
@@ -21,14 +21,13 @@ import type { Ns4JourneyArtifact, Ns4JourneyIndex } from '/_102020_/l2/agentNewS
 import type { Ns4AccessMatrixArtifact } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import type { Ns4OntologyIndexArtifact } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import type { Ns4RulesArtifact } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
-import type { Ns4CompositionArtifact } from '/_102020_/l2/agentNewSolution4/steps/e6/contracts.js';
 import {
   buildNs4E7Plan, buildNs4RealizedAccessArtifact, buildNs4RealizedJourneyArtifact,
   buildNs4RealizedJourneyIndex, buildNs4UseCaseArtifacts, buildNs4WorkflowArtifacts,
-  normalizeNs4UseCaseDraft, Ns4E7PlanDraft, Ns4E7SourceHashes, Ns4UseCaseDraft,
+  normalizeNs4UseCaseDraft, NS4_USE_CASE_DRAFT_VERSION, Ns4E7PlanDraft, Ns4E7SourceHashes, Ns4UseCaseDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 import {
-  Ns4E7Sources, reconcileNs4UseCaseDraft, validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows,
+  Ns4E7Sources, validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/gate.js';
 
 interface Ns4E7Args {
@@ -98,9 +97,7 @@ export async function afterNs4E7PromptStep(
     const [plan, bundle] = await Promise.all([readPlan(moduleName), loadBundle(moduleName)]);
     const payload = unwrap(step.interaction?.payload?.[0]);
     if (!isRecord(payload)) return [updateStatus(context, parentStep, step, hookSequential, 'completed', `Use case ${useCaseId} returned no usable payload; finalizer will repair it.`, 'input_output')];
-    const draft = reconcileNs4UseCaseDraft(
-      plan, normalizeNs4UseCaseDraft(payload, plan, useCaseId), bundle,
-    );
+    const draft = normalizeNs4UseCaseDraft(payload, plan, useCaseId);
     await writeNs4E7UseCaseDraft(moduleName, useCaseId, draft);
     const gate = validateNs4UseCaseDraft(plan, draft, bundle);
     return [updateStatus(context, parentStep, step, hookSequential, 'completed', gate.ok
@@ -128,7 +125,7 @@ async function startE7(
   await writeNs4Pipeline(markNs4E7Running(bundle.pipeline, planPath));
   const existing = await Promise.all(plan.useCases.map(async target => ({
     useCaseId: target.useCaseId,
-    draft: await readDraft(moduleName, target.useCaseId, bundle, plan),
+    draft: await readDraft(moduleName, target.useCaseId, plan),
   })));
   const pending = existing.filter(item => !item.draft || !validateNs4UseCaseDraft(plan, item.draft, bundle).ok)
     .map(item => item.useCaseId);
@@ -157,7 +154,7 @@ async function buildUseCasePrompt(
   const [plan, bundle, prompt] = await Promise.all([
     readPlan(moduleName), loadBundle(moduleName), readNs4AgentText('steps/e7', 'promptUseCase'),
   ]);
-  const current = await readDraft(moduleName, useCaseId, bundle, plan);
+  const current = await readDraft(moduleName, useCaseId, plan);
   const target = plan.useCases.find(item => item.useCaseId === useCaseId);
   if (!target) throw new Error(`Use case ${useCaseId} is not present in the E7 plan.`);
   const sourceRefs = new Set(target.compiledFrom);
@@ -167,40 +164,27 @@ async function buildUseCasePrompt(
     const requiredContexts = new Set(compiledSteps.flatMap(step => step.requiresContext));
     const producerSteps = journey.business.steps.filter(step => step.providesContext.some(context => requiredContexts.has(context.contextId)));
     const relevantStepIds = new Set([...compiledSteps, ...producerSteps].map(step => step.stepId));
-    return { journeyId: journey.journeyId, actorRef: journey.business.actorRef, entry: journey.business.entry,
-      steps: journey.business.steps.filter(step => relevantStepIds.has(step.stepId)), useRules: journey.business.useRules };
+    return { journeyId: journey.journeyId, entry: journey.business.entry,
+      steps: journey.business.steps.filter(step => relevantStepIds.has(step.stepId)) };
   });
-  const authorities = bundle.access.authorities.filter(authority => authority.journeyStepRefs.some(ref => sourceRefs.has(ref)));
-  const authorityRefs = new Set(authorities.map(authority => authority.authorityRef));
-  const grants = bundle.access.grants.filter(grant => authorityRefs.has(grant.authorityRef));
   const businessObjects = new Set(journeys.flatMap(journey => [
     ...journey.entry.carries.map(context => context.businessObject),
     ...journey.steps.flatMap(step => step.providesContext.map(context => context.businessObject)),
   ]));
-  const entities = bundle.ontology.entities.filter(entity => businessObjects.has(entity.entityId)
-    || entity.sourceRefs.journeyIds.some(id => journeyIds.has(id))
-    || entity.sourceRefs.authorityRefs.some(ref => authorityRefs.has(ref)));
-  const entityIds = new Set(entities.map(entity => entity.entityId));
-  const relationships = bundle.ontology.relationships.filter(rel => entityIds.has(rel.fromEntity) || entityIds.has(rel.toEntity));
-  for (const relationship of relationships) {
-    const from = bundle.ontology.entities.find(entity => entity.entityId === relationship.fromEntity);
-    const to = bundle.ontology.entities.find(entity => entity.entityId === relationship.toEntity);
-    if (from && !entityIds.has(from.entityId)) { entities.push(from); entityIds.add(from.entityId); }
-    if (to && !entityIds.has(to.entityId)) { entities.push(to); entityIds.add(to.entityId); }
-  }
-  const ruleIds = new Set([
-    ...journeys.flatMap(journey => journey.useRules), ...grants.flatMap(grant => grant.useRules),
-    ...entities.flatMap(entity => entity.useRules),
+  const relationships = bundle.ontology.relationships.filter(rel =>
+    businessObjects.has(rel.fromEntity) || businessObjects.has(rel.toEntity));
+  const entityIds = new Set([
+    ...businessObjects,
+    ...relationships.flatMap(rel => [rel.fromEntity, rel.toEntity]),
   ]);
-  const relevantRules = bundle.rules.rules.filter(rule => ruleIds.has(rule.id));
+  const entities = bundle.ontology.entities.filter(entity => entityIds.has(entity.entityId));
+  const relevantRules = bundle.rules.rules;
   const currentGate = current ? validateNs4UseCaseDraft(plan, current, bundle) : null;
   const humanPrompt = [
     `## Frozen use case plan\n${JSON.stringify(target)}`,
     `## Source journey steps and typed contexts\n${JSON.stringify(journeys)}`,
-    `## Exact authorities and E3 grants\n${JSON.stringify({ authorities, grants })}`,
     `## Relevant E4 entities and relationship field bindings\n${JSON.stringify({ entities, relationships })}`,
-    `## Relevant E5 rules\n${JSON.stringify(relevantRules)}`,
-    `## Included E6 capabilities\n${JSON.stringify(bundle.composition.recommendations.filter(item => item.decision === 'include'))}`,
+    `## Candidate E5 rules; select only behavior-owned rules\n${JSON.stringify(relevantRules)}`,
     current ? `## Current draft; preserve valid decisions\n${JSON.stringify(current)}` : '',
     currentGate && !currentGate.ok ? `## Deterministic repair required\n${formatGate(currentGate.issues)}` : '',
     `## Required identity\nmoduleName=${moduleName}; useCaseId=${useCaseId}; userLanguage=${plan.userLanguage}`,
@@ -221,7 +205,7 @@ async function finalizeE7(
   const valid: Ns4UseCaseDraft[] = [];
   const invalid: string[] = [];
   for (const target of plan.useCases) {
-    const draft = await readDraft(args.moduleName, target.useCaseId, bundle, plan);
+    const draft = await readDraft(args.moduleName, target.useCaseId, plan);
     if (!draft || !validateNs4UseCaseDraft(plan, draft, bundle).ok) invalid.push(target.useCaseId);
     else valid.push(draft);
   }
@@ -264,16 +248,15 @@ async function finalizeE7(
 }
 
 async function loadBundle(moduleName: string): Promise<Ns4E7Bundle> {
-  const [module, pipeline, journeys, access, ontology, journeyIndex, accessArtifact, ontologyIndex, rules, composition] = await Promise.all([
+  const [module, pipeline, journeys, access, ontology, journeyIndex, accessArtifact, ontologyIndex, rules] = await Promise.all([
     readNs4Module(moduleName), requirePipeline(moduleName), readNs4ApprovedJourneys(moduleName),
     readNs4ApprovedAccess(moduleName), readNs4ApprovedOntology(moduleName),
     readNs4DefsJson<Ns4JourneyIndex>(ns4JourneyIndexFile(moduleName), true),
     readNs4DefsJson<Ns4AccessMatrixArtifact>(ns4AccessMatrixFile(moduleName), true),
     readNs4DefsJson<Ns4OntologyIndexArtifact>(ns4OntologyIndexFile(moduleName), true),
     readNs4DefsJson<Ns4RulesArtifact>(ns4RulesFile(moduleName), true),
-    readNs4DefsJson<Ns4CompositionArtifact>(ns4CompositionFile(moduleName), true),
   ]);
-  if (!module || !journeyIndex || !accessArtifact || !ontologyIndex || !rules || !composition) {
+  if (!module || !journeyIndex || !accessArtifact || !ontologyIndex || !rules) {
     throw new Error(`E7 approved source artifacts are incomplete for ${moduleName}.`);
   }
   const journeyArtifacts = await Promise.all(journeyIndex.journeys.map(entry =>
@@ -281,12 +264,11 @@ async function loadBundle(moduleName: string): Promise<Ns4E7Bundle> {
   if (journeyArtifacts.some(item => !item)) throw new Error(`E7 cannot read every approved journey for ${moduleName}.`);
   const sourceHashes: Ns4E7SourceHashes = {
     journeys: journeyIndex.journeys.map(entry => ({ journeyId: entry.journeyId, businessHash: entry.businessHash })),
-    accessHash: accessArtifact.accessHash, ontologyHash: ontologyIndex.ontologyHash,
-    rulesHash: rules.rulesHash, compositionHash: composition.compositionHash,
+    ontologyHash: ontologyIndex.ontologyHash, rulesHash: rules.rulesHash,
   };
   return { module, pipeline, journeys, access, ontology, journeyIndex,
     journeyArtifacts: journeyArtifacts as Ns4JourneyArtifact[], accessArtifact, ontologyIndex,
-    rules, composition, sourceHashes };
+    rules, sourceHashes };
 }
 
 function parallelUseCaseStep(
@@ -361,14 +343,12 @@ async function readPlan(moduleName: string): Promise<Ns4E7PlanDraft> {
 async function readDraft(
   moduleName: string,
   useCaseId: string,
-  sources?: Ns4E7Sources,
   existingPlan?: Ns4E7PlanDraft,
 ): Promise<Ns4UseCaseDraft | null> {
   const parsed = parse(await readNs4Text(ns4E7UseCaseDraftFile(moduleName, useCaseId), false));
-  if (!isRecord(parsed)) return null;
+  if (!isRecord(parsed) || parsed.draftVersion !== NS4_USE_CASE_DRAFT_VERSION) return null;
   const plan = existingPlan || await readPlan(moduleName);
-  const draft = normalizeNs4UseCaseDraft(parsed, plan, useCaseId);
-  return sources ? reconcileNs4UseCaseDraft(plan, draft, sources) : draft;
+  return normalizeNs4UseCaseDraft(parsed, plan, useCaseId);
 }
 async function requirePipeline(moduleName: string): Promise<Ns4PipelineState> {
   const pipeline = await readNs4Pipeline(moduleName);

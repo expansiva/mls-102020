@@ -10,14 +10,11 @@ import { normalizeNs4E2Review, buildNs4JourneyArtifacts, buildNs4JourneyIndex } 
 import { buildNs4AccessMatrixArtifact, normalizeNs4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import { normalizeNs4E4Review } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import type { Ns4RulesArtifact } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
-import type { Ns4CompositionArtifact } from '/_102020_/l2/agentNewSolution4/steps/e6/contracts.js';
 import {
   buildNs4E7Plan, buildNs4RealizedAccessArtifact, buildNs4RealizedJourneyArtifact,
   buildNs4UseCaseArtifacts, buildNs4WorkflowArtifacts, normalizeNs4UseCaseDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
-import {
-  reconcileNs4UseCaseDraft, validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows,
-} from '/_102020_/l2/agentNewSolution4/steps/e7/gate.js';
+import { validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows } from '/_102020_/l2/agentNewSolution4/steps/e7/gate.js';
 
 const journeys = normalizeNs4E2Review({ moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', reviewRound: 1,
   journeys: [
@@ -58,9 +55,8 @@ const ontology = normalizeNs4E4Review({ moduleName: 'buildFlowFsm', userLanguage
   ], relationships: [{ relationshipId: 'taskBelongsToProject', fromEntity: 'WorkTask', toEntity: 'Project', type: 'manyToOne', required: true, description: 'Tarefa pertence ao projeto.', persistence: { mode: 'crossStoreReference' }, realization: { kind: 'fieldReference', ownerEntity: 'WorkTask', from: { entityId: 'WorkTask', fieldIds: ['projectId'] }, to: { entityId: 'Project', fieldIds: ['projectId'] }, description: 'Referência ao projeto.' } }], changeSummary: [] });
 
 const rules: Ns4RulesArtifact = { schemaVersion: '2026-08-09-ns4-rules-v2', moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', rules: [{ id: 'projectCandidateRule', description: 'Regra candidata aplicada somente quando o comportamento exigir.' }], rulesHash: 'sha256:rules', approvedBy: 'auto', approvedAt: '2026-08-10T00:00:00.000Z', realization: { status: 'pending', compiledFromRulesHash: 'sha256:rules' } };
-const composition: Ns4CompositionArtifact = { schemaVersion: '2026-08-09-ns4-composition-v1', moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', analysisSummary: 'Sem adicionais.', recommendations: [], compositionHash: 'sha256:composition', approvedBy: 'auto', approvedAt: '2026-08-10T00:00:00.000Z', realization: { status: 'pending', compiledFromCompositionHash: 'sha256:composition' } };
-const sourceHashes = { journeys: journeys.journeys.map(journey => ({ journeyId: journey.journeyId, businessHash: `sha256:${journey.journeyId}` })), accessHash: 'sha256:access', ontologyHash: 'sha256:ontology', rulesHash: rules.rulesHash, compositionHash: composition.compositionHash };
-const sources = { journeys, access, ontology, rules, composition };
+const sourceHashes = { journeys: journeys.journeys.map(journey => ({ journeyId: journey.journeyId, businessHash: `sha256:${journey.journeyId}` })), ontologyHash: 'sha256:ontology', rulesHash: rules.rulesHash };
+const sources = { journeys, access, ontology, rules };
 
 test('E7 mechanically deduplicates repeated journey step ids and covers every source step', () => {
   const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', journeys, sourceHashes);
@@ -82,45 +78,25 @@ test('E7 is dependency-bound after E6 and advances a resumed module to E8', () =
   assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-next');
 });
 
-test('E7 validates query context, authorities, scopes and exact ontology fields', () => {
+test('E7 validates the minimal behavior contract and exact ontology fields', () => {
   const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', journeys, sourceHashes);
-  const draft = normalizeNs4UseCaseDraft({ title: 'Localizar projeto', description: 'Localiza projetos visíveis.',
-    actorRefs: ['projectManager'], authorityRefs: ['buildflow:projectread'],
-    contexts: { requires: [], provides: [{ contextId: 'selectedProject', businessObject: 'Project', required: true, source: 'lookup', sourceRefs: ['createTask.locateProject', 'manageProjects.locateProject'] }] },
+  const draft = normalizeNs4UseCaseDraft({ title: 'Localizar projeto', description: 'Localiza projetos.',
+    contexts: { requires: [], provides: ['selectedProject'] },
     inputs: [], outputs: [{ outputId: 'projectId', type: 'uuid', required: true, contextId: 'selectedProject', fieldRef: { entityId: 'Project', fieldId: 'projectId' }, description: 'Projeto selecionado.' }],
-    reads: [{ entityId: 'Project', fieldRefs: ['projectId', 'name'], purpose: 'Localizar projetos.' }], writes: [], useRules: [],
-    dataScopes: [{ profileRef: 'projectManager', authorityRef: 'buildflow:projectread', mode: 'assigned', description: 'Projetos atribuídos.' }],
-    query: { filters: [], pagination: 'cursor', selection: 'single', orderBy: [{ entityId: 'Project', fieldId: 'name' }], projection: [{ entityId: 'Project', fieldId: 'projectId' }, { entityId: 'Project', fieldId: 'name' }] },
-    errors: [], ports: [{ portId: 'projectReader', kind: 'mdm', purpose: 'Ler projetos.', entityRef: 'Project' }] }, plan, 'locateProject');
+    reads: [{ entityId: 'Project', fieldRefs: ['projectId', 'name'] }], writes: [], useRules: [], transitions: [], errors: [] }, plan, 'locateProject');
   assert.deepEqual(validateNs4UseCaseDraft(plan, draft, sources), { ok: true, issues: [] });
-});
-
-test('E7 mechanically fixes journey context lineage and preserves legitimate actor-session context', () => {
-  const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', journeys, sourceHashes);
-  const draft = normalizeNs4UseCaseDraft({ title: 'Criar tarefa', description: 'Cria uma tarefa no projeto.',
-    actorRefs: ['projectManager'], authorityRefs: ['buildflow:taskwrite'],
-    contexts: { requires: [
-      { contextId: 'selectedProject', businessObject: 'Project', required: true, source: 'entry', sourceRefs: ['manageProjects'] },
-      { contextId: 'unplannedContext', businessObject: 'Project', required: true, source: 'entry', sourceRefs: ['manageProjects'] },
-      { contextId: 'authenticatedProjectManager', businessObject: 'Project', required: true, source: 'actorSession', sourceRefs: ['projectManager'] },
-    ], provides: [{ contextId: 'createdTask', businessObject: 'WorkTask', required: true, source: 'event', sourceRefs: ['wrong'] }] },
-    inputs: [], outputs: [], reads: [], writes: [], useRules: [], dataScopes: [], command: { transaction: 'required', idempotency: 'recommended', transitions: [], emits: [] }, errors: [], ports: [] },
-  plan, 'createWorkTask');
-  const reconciled = reconcileNs4UseCaseDraft(plan, draft, sources);
-  assert.deepEqual(reconciled.contexts.requires.map(context => [context.contextId, context.sourceRefs]), [
-    ['selectedProject', ['createTask.locateProject']],
-    ['authenticatedProjectManager', ['projectManager']],
-  ]);
-  assert.deepEqual(reconciled.contexts.provides.map(context => [context.contextId, context.sourceRefs]), [
-    ['createdTask', ['createTask.createWorkTask']],
-  ]);
+  assert.equal('actorRefs' in draft, false);
+  assert.equal('authorityRefs' in draft, false);
+  assert.equal('dataScopes' in draft, false);
+  assert.equal('ports' in draft, false);
+  assert.equal('query' in draft, false);
 });
 
 test('E7 emits typed use cases, workflows and realization metadata without changing business hashes', async () => {
   const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', journeys, sourceHashes);
   const drafts = plan.useCases.map(target => normalizeNs4UseCaseDraft(target.kind === 'query' ? {
-    title: target.title, description: 'Localiza projetos.', actorRefs: ['projectManager'], authorityRefs: ['buildflow:projectread'], contexts: { requires: [], provides: [{ contextId: 'selectedProject', businessObject: 'Project', required: true, source: 'lookup', sourceRefs: target.compiledFrom }] }, inputs: [], outputs: [{ outputId: 'projectId', type: 'uuid', required: true, contextId: 'selectedProject', fieldRef: { entityId: 'Project', fieldId: 'projectId' }, description: 'Projeto selecionado.' }], reads: [{ entityId: 'Project', fieldRefs: ['projectId'], purpose: 'Ler projeto.' }], writes: [], useRules: [], dataScopes: [{ profileRef: 'projectManager', authorityRef: 'buildflow:projectread', mode: 'assigned', description: 'Projetos atribuídos.' }], query: { filters: [], pagination: 'cursor', selection: 'single', orderBy: [], projection: [{ entityId: 'Project', fieldId: 'projectId' }] }, errors: [], ports: [{ portId: 'projectReader', kind: 'mdm', purpose: 'Ler projeto.', entityRef: 'Project' }] } : {
-    title: target.title, description: 'Cria tarefa.', actorRefs: ['projectManager'], authorityRefs: ['buildflow:taskwrite'], contexts: { requires: [{ contextId: 'selectedProject', businessObject: 'Project', required: true, source: 'entry', sourceRefs: ['createTask.entry'] }], provides: [{ contextId: 'createdTask', businessObject: 'WorkTask', required: true, source: 'previousStep', sourceRefs: ['createTask.createWorkTask'] }] }, inputs: [], outputs: [{ outputId: 'workTaskId', type: 'uuid', required: true, contextId: 'createdTask', fieldRef: { entityId: 'WorkTask', fieldId: 'workTaskId' }, description: 'Tarefa criada.' }], reads: [{ entityId: 'Project', fieldRefs: ['projectId'], purpose: 'Validar projeto.' }], writes: [{ entityId: 'WorkTask', fieldRefs: ['workTaskId', 'projectId'], purpose: 'Criar tarefa.' }], useRules: [], dataScopes: [{ profileRef: 'projectManager', authorityRef: 'buildflow:taskwrite', mode: 'assigned', description: 'Projetos atribuídos.' }], command: { transaction: 'required', idempotency: 'recommended', transitions: [{ transitionId: 'completeTask', entityRef: 'WorkTask', fromStates: ['open'], toState: 'done', useRules: [] }], emits: [] }, errors: [], ports: [{ portId: 'workTaskRepository', kind: 'repository', purpose: 'Persistir tarefa.', entityRef: 'WorkTask' }] }, plan, target.useCaseId));
+    title: target.title, description: 'Localiza projetos.', contexts: { requires: [], provides: ['selectedProject'] }, inputs: [], outputs: [{ outputId: 'projectId', type: 'uuid', required: true, contextId: 'selectedProject', fieldRef: { entityId: 'Project', fieldId: 'projectId' }, description: 'Projeto selecionado.' }], reads: [{ entityId: 'Project', fieldRefs: ['projectId'] }], writes: [], useRules: [], transitions: [], errors: [] } : {
+    title: target.title, description: 'Cria tarefa.', contexts: { requires: ['selectedProject'], provides: ['createdTask'] }, inputs: [], outputs: [{ outputId: 'workTaskId', type: 'uuid', required: true, contextId: 'createdTask', fieldRef: { entityId: 'WorkTask', fieldId: 'workTaskId' }, description: 'Tarefa criada.' }], reads: [{ entityId: 'Project', fieldRefs: ['projectId'] }], writes: [{ entityId: 'WorkTask', fieldRefs: ['workTaskId', 'projectId'] }], useRules: [], transitions: [{ transitionId: 'completeTask', entityRef: 'WorkTask', fromStates: ['open'], toState: 'done', useRules: [] }], errors: [] }, plan, target.useCaseId));
   drafts.forEach(draft => assert.equal(validateNs4UseCaseDraft(plan, draft, sources).ok, true));
   const generatedAt = '2026-08-10T01:00:00.000Z';
   const built = await buildNs4UseCaseArtifacts(plan, drafts, generatedAt);
@@ -139,6 +115,8 @@ test('E7 emits typed use cases, workflows and realization metadata without chang
 
 test('E7 reasoning prompt keeps use cases channel-neutral', () => {
   const prompt = readFileSync(new URL('promptUseCase.md', import.meta.url), 'utf8');
-  assert.match(prompt, /never knows pages, routes, widgets, HTTP, BFF slices or navigation/i);
+  assert.match(prompt, /neutral to channel, caller and software\s+architecture/i);
+  assert.match(prompt, /Never include actors, profiles, authorities or data scopes/i);
+  assert.match(prompt, /Never include repositories, ports, adapters, MDM routing/i);
   assert.match(prompt, /<!--\s*modelType:\s*reasoning\s*-->/);
 });
