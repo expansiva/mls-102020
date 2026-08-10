@@ -49,7 +49,7 @@ import {
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
 import { getImRunKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imRootPlan.js';
 import { readSurface, renderSurface } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
-import { ImInheritAnswer, isExecutableChoice, runImInheritGate } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i4-inherit/gate.js';
+import { ImInheritAnswer, runImInheritGate } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i4-inherit/gate.js';
 import type {
   InheritChoiceResult,
   InheritChoiceValue,
@@ -262,29 +262,31 @@ async function applyChoice(
     return;
   }
 
-  // 'parent' ENDS THE RUN. It is a real answer — the base molecule is where the fix belongs — and
-  // it is not one this agent can carry out. No i4-done anchor is emitted, so i3-edit never starts
-  // and nothing is written anywhere.
-  if (!isExecutableChoice(confirmed.where)) {
-    const reference = ctx.inheritance.parentReference || '(the base molecule)';
-    const message = pt
-      ? `A correção pertence ao componente base. Nada foi alterado aqui.\n\nAbra este pedido no projeto da base, em: ${reference}`
-      : `The fix belongs to the base component. Nothing was changed here.\n\nOpen this request in the base project, at: ${reference}`;
-    await nmApplyIntentsAndRefresh(context, [
-      nmUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', message, 'input_output'),
-    ], false);
-    return;
-  }
-
+  // 'parent' IS A LEGITIMATE OUTCOME, and it must not look like a failure.
+  //
+  // ⚠️ THE 2026-08-10 DEFECT: the first version emitted no anchor at all — "no i4-done, so i3-edit
+  // never starts" — and passed resume:false. The step went green and the run HUNG: i3/i5/i6/i7 were
+  // already planted by the router and sat on an anchor that would never land. From the user's side,
+  // Confirm did nothing.
+  //
+  // So the anchor IS emitted, carrying where:'parent'. i3-edit reads it and completes as a declared
+  // no-op without calling a model, i5 and i6 no-op after it, and i7 closes with the instruction and
+  // the coherence report. Nothing is written to any file, and the run ENDS — which is what "the fix
+  // belongs to the base" means.
   const choice: ImInheritChoice = {
     where: confirmed.where,
     ...(confirmed.member ? { member: confirmed.member } : {}),
   };
   await writeJsonArtifact(imWorkFile(ctx.runKey, 'inherit'), { ...choice, confirmedAt: new Date().toISOString() });
 
+  const reference = ctx.inheritance.parentReference || '(the base molecule)';
   const summary = choice.where === 'less'
     ? (pt ? 'a correção vai no .less da casca' : 'the fix goes in the shell\'s .less')
-    : (pt ? `sobrescrever \`${choice.member}\` na casca` : `override \`${choice.member}\` in the shell`);
+    : choice.where === 'override'
+      ? (pt ? `sobrescrever \`${choice.member}\` na casca` : `override \`${choice.member}\` in the shell`)
+      : (pt
+        ? `a correção é do componente base — nada será alterado aqui. Abra o pedido em: ${reference}`
+        : `the fix belongs to the base component — nothing will be changed here. Open the request at: ${reference}`);
 
   // Intent order matters: the completed answer result (the 'i4-done' anchor i3-edit depends on)
   // lands BEFORE the update-status that closes this step.

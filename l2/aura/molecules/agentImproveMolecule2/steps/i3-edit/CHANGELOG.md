@@ -93,3 +93,36 @@ armadilha, não parâmetro.
 mandou rota B com o argumento certo, e o modelo diagnosticou o bug corretamente — `render()` chama
 `parseNodes()` e `initializeExpandedState()` (linhas 360-361), então cada render zera o
 `expandedNodes` que o clique acabou de mudar. O trabalho estava certo; a escrita é que não existia.
+
+## 2026-08-10 (3) — a escolha do humano na rota C não estava sendo aplicada
+
+Dois defeitos no mesmo run, e a raiz é a mesma: eu **pedia** ao modelo o que deveria **impor** em
+código.
+
+**Escolha `less` → o modelo editou o `.ts`.** O prompt dizia "não toque no `.ts`", e o
+`expectedArtifacts` do triage dizia `ts`, e o triage venceu. Resultado: dois erros de compilação
+sobre `updated` ser `protected` na casca e `public` no pai.
+
+> Uma instrução com a qual o modelo pode perder uma discussão não é instrução. Um `Map` que ele não
+> alcança, é.
+
+Agora o `fileStates()` recebe a escolha e, em `less`, só oferece o `.less`. O `renderFiles()` mostra
+só o `.less` também — a escolha do humano ganha da previsão do triage, porque foi feita num
+checkpoint com o custo de cada opção na tela.
+
+**Escolha `override` → o modelo referenciou `this.open`, membro privado do pai.** Duas tentativas
+queimadas num erro de compilação. A causa é banal: **o prompt nunca mostrava o código do pai.**
+Sobrescrever um membro é ler o membro, e o modelo não lê o que não recebe.
+
+Agora, e só quando a escolha é `override`, o prompt inclui o `.ts` do pai como somente-leitura, com
+três regras que os dois erros deste run produziram:
+
+- casar a assinatura do pai **exatamente**, incluindo a visibilidade — `public` não pode virar
+  `protected` (foi o TS2415 deste run);
+- os membros `private` do pai **não existem** para esta classe; se o comportamento depende de um
+  deles, o override não funciona e o modelo deve dizer isso no `why` em vez de tentar;
+- chamar `super.<membro>(...)` quando o comportamento do pai ainda deve acontecer.
+
+**Nota positiva:** os três erros foram pegos pelo **gate de compilação** — que é o mesmo gate que
+estava cego dois dias atrás por causa do `needCreateModel`. Ele funcionou, recusou, tentou de novo e
+falhou de forma legível. Nenhum arquivo quebrado foi salvo.

@@ -24,3 +24,24 @@
 - `render()` is flagged in three places (cost 100 in `imInherit`, a dashed warning border, an
   explicit sentence). 0 of the 84 real shells override it; the widget should not make it look like
   a normal option.
+
+## 2026-08-10 — 'parent' pendurava o run, e Confirmar não fazia nada
+
+Primeiro run real da rota C. O widget montou, as três opções apareceram, e escolher **"a correção é
+do componente base"** + Confirmar **não fazia nada**.
+
+**A causa:** a versão anterior tinha o comentário *"No i4-done anchor is emitted, so i3-edit never
+starts"* — e isso estava certo sobre o i3 e errado sobre o run. Os passos i3/i5/i6/i7 **já haviam
+sido plantados pelo roteador**, esperando uma âncora que nunca chegaria. Somado ao `resume: false`,
+o pooling não continuava. O passo ficava verde e a tarefa ficava presa para sempre.
+
+Eu tratei "não executável" como "não emitir âncora". São coisas diferentes: **'parent' é um desfecho
+legítimo — muitas vezes o certo — e um desfecho legítimo não pode parecer falha.**
+
+**Conserto:** a âncora É emitida, carregando `where: 'parent'`. O `i3-edit` lê e completa como no-op
+declarado, sem chamar modelo; i5 e i6 fazem no-op na sequência; o i7 fecha com a instrução de qual
+arquivo abrir no projeto da base **e com o relatório de coerência**. Nada é escrito em arquivo
+nenhum, e o run **termina**.
+
+Descartada a alternativa de marcar o passo como `failed` com a instrução: seria uma linha, e
+ensinaria o usuário que a resposta mais correta da rota C é um erro vermelho.
