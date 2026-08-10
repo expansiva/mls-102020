@@ -113,6 +113,19 @@ export interface ImContext {
   };
   artifacts: ImArtifact[];
   inheritance: ImInheritance;
+  /**
+   * The contract that GOVERNS this molecule, and where it came from.
+   *
+   * For a normal molecule it is its own .defs.ts. For a shell with no .defs.ts of its own it is the
+   * PARENT's — a shell changes appearance, not promises, so the parent's contract is the molecule's
+   * contract. The steps render `source` and say which of the two it is; nothing downstream has to
+   * know the rule.
+   */
+  contract: {
+    source: string;
+    reference: string;
+    inherited: boolean;
+  };
 }
 
 export interface ImTriage {

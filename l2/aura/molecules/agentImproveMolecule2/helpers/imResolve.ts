@@ -212,6 +212,21 @@ export async function readInheritance(tsSource: string): Promise<ImInheritance> 
   return parentSource ? detectInheritance(tsSource, parentSource) : shallow;
 }
 
+/**
+ * The contract of a SHELL's parent.
+ *
+ * A shell exists to give another molecule a different appearance, not different behaviour, so what
+ * the molecule PROMISES is stated in the parent's .defs.ts. Reading it is not a nicety: i2-triage
+ * decides bug-versus-definition by asking "does the contract already promise this?", and for a
+ * shell the only contract there is lives one project away.
+ *
+ * Measured 2026-08-10: mls-102054 carries ZERO .defs.ts across its 42 shells (mls-102055 carries 42
+ * of 42), so without this every route C run in that project had nothing to judge against.
+ */
+export async function readParentDefs(parentReference: string): Promise<string> {
+  return readParentSource(parentReference.replace(/\.ts$/, '.defs.ts'));
+}
+
 /** Best-effort read of a file in another project. Returns '' when it is not reachable. */
 async function readParentSource(parentReference: string): Promise<string> {
   const m = parentReference.match(/^_?(\d+)_\/l(\d+)\/(.+)\/([^/]+)\.ts$/);

@@ -36,6 +36,10 @@ Return **targeted edits**, not rewritten files. Each edit quotes the exact text 
 
 {{userPrompt}}
 
+### Its contract — what the molecule promises
+
+{{contract}}
+
 ### The routing decision
 
 {{triage}}

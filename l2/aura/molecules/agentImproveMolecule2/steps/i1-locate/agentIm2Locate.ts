@@ -26,11 +26,13 @@ import {
 import {
   ImNotFoundError,
   ImTargetRef,
+  artifactOf,
   deriveTag,
   imContextFileInfo,
   imTraceFileInfo,
   readArtifacts,
   readInheritance,
+  readParentDefs,
   resolveTarget,
   sourceOf,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
@@ -82,6 +84,14 @@ async function beforePromptStep(
     ? await readInheritance(sourceOf(artifacts, 'ts'))
     : { isShell: false, parentReference: null, parentProject: null, parentClassName: null, ownMembers: [], overridableMembers: [] };
 
+  // A shell's contract lives in its parent. Read it whenever the shell has none of its own — the
+  // triage's first question is "does the contract already promise this?", and for 42 of the 84
+  // shells there is no local contract to ask.
+  const ownDefs = target ? sourceOf(artifacts, 'defs') : '';
+  const parentDefsSource = !ownDefs.trim() && inheritance.isShell && inheritance.parentReference
+    ? await readParentDefs(inheritance.parentReference)
+    : '';
+
   const groupEntry = target
     ? skillList.find(item => item.name.toLowerCase() === target.groupFolder.toLowerCase())
     : undefined;
@@ -110,6 +120,9 @@ async function beforePromptStep(
         },
         artifacts,
         inheritance,
+        contract: ownDefs.trim()
+          ? { source: ownDefs, reference: artifactOf(artifacts, 'defs')?.reference || '', inherited: false }
+          : { source: parentDefsSource, reference: inheritance.parentReference || '', inherited: !!parentDefsSource },
       }
     : null;
 
@@ -122,6 +135,7 @@ async function beforePromptStep(
     inheritance,
     destProject,
     context: ctx,
+    parentDefsSource,
   };
   const gate = runImLocateGate(gateInputs);
   if (!gate.ok || !ctx) {

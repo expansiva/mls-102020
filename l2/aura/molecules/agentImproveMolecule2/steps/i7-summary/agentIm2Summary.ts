@@ -258,13 +258,18 @@ async function coherence(ctx: ImContext) {
   const groupCreationSkill = await loadGroupSkill(ctx);
   return buildCoherenceReport(
     {
-      defsSource: await readStorText(imFileInfoFor(ctx, 'defs'), false),
+      // A shell has no .defs.ts of its own; the contract that governs it is the parent's, and
+      // gate 1 must be judged against THAT — reading an empty local defs would report every slot
+      // as undocumented.
+      defsSource: ctx.contract.inherited
+        ? ctx.contract.source
+        : await readStorText(imFileInfoFor(ctx, 'defs'), false),
       tsSource: await readStorText(imFileInfoFor(ctx, 'ts'), false),
       groupCreationSkill,
       reference: ctx.target.fileReference,
       // The pre-edit snapshot. Without both, every finding is reported as pre-existing.
       previousTsSource: sourceOf(ctx.artifacts, 'ts'),
-      previousDefsSource: sourceOf(ctx.artifacts, 'defs'),
+      previousDefsSource: ctx.contract.inherited ? ctx.contract.source : sourceOf(ctx.artifacts, 'defs'),
     },
     new Date().toISOString(),
   );

@@ -70,6 +70,8 @@ export interface ImLocateInputs {
   inheritance: ImInheritance;
   destProject: number;
   context: ImContext | null;
+  /** A shell's contract lives in its parent; '' when the molecule has its own or none was found. */
+  parentDefsSource?: string;
 }
 
 function sourceOf(artifacts: ImArtifact[], kind: ImArtifactKind): ImArtifact | undefined {
@@ -116,12 +118,26 @@ export function runImLocateGate(inputs: ImLocateInputs): ImGateResult {
   if (!ts?.present || !ts.source.trim()) {
     errors.push(issue('ts_unreadable', 'the molecule .ts was located but came back empty — nothing can be edited from it'));
   }
+  // A SHELL is exempt, and finding that out cost a run: mls-102054 has ZERO .defs.ts across its 42
+  // shells while mls-102055 has 42 of 42 (measured 2026-08-10), so route C died at the gate on half
+  // the shells in the library. A shell's contract lives in its PARENT — it exists to give another
+  // molecule a different appearance, not a different behaviour — and i1-locate reads the parent's
+  // contract for exactly that reason. Which of the two theme projects is right about carrying its
+  // own .defs.ts is a separate question, and not this gate's to settle.
   const defs = sourceOf(inputs.artifacts, 'defs');
-  if (!defs?.present || !defs.source.trim()) {
+  if ((!defs?.present || !defs.source.trim()) && !inputs.inheritance.isShell) {
     errors.push(
       issue(
         'defs_missing',
         'the molecule has no readable .defs.ts — the playground slot list and the Design System catalog are both built from it, so a change made without it silently drops the molecule out of the catalog',
+      ),
+    );
+  }
+  if ((!defs?.present || !defs.source.trim()) && inputs.inheritance.isShell && !inputs.parentDefsSource?.trim()) {
+    errors.push(
+      issue(
+        'contract_unreachable',
+        `this shell has no .defs.ts of its own and the contract of its parent (${inputs.inheritance.parentReference}) could not be read either — nothing states what the molecule is supposed to do, and the triage decides bug-versus-definition by reading exactly that`,
       ),
     );
   }

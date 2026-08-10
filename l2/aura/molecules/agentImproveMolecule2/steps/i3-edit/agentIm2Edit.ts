@@ -103,6 +103,11 @@ async function beforePromptStep(
     .split('{{triage}}').join(renderTriage(triage))
     .split('{{inheritance}}').join(renderInheritance(ctx, choice))
     .split('{{files}}').join(renderFiles(ctx, triage))
+    .split('{{contract}}').join(ctx.contract.source.trim()
+      ? (ctx.contract.inherited
+        ? `The contract below belongs to this shell's PARENT (\`${ctx.contract.reference}\`) — it is what the molecule promises.\n\n${ctx.contract.source}`
+        : ctx.contract.source)
+      : '(the contract could not be read)')
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the change cannot be made from what is shown')}`;
 
   const humanPrompt = [

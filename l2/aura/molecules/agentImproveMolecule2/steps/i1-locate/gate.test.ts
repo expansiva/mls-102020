@@ -44,6 +44,7 @@ function inputs(over: Partial<ImLocateInputs> = {}): ImLocateInputs {
     inheritance: NOT_A_SHELL,
     destProject: 102040,
     context: { schemaVersion: 1 } as unknown as ImLocateInputs['context'],
+    parentDefsSource: '',
     ...over,
   };
 }
@@ -161,4 +162,48 @@ test('classification: prose that is not a molecule name is rejected before it se
   const result = checkImClassification({ validInput: true, target: 'the table on the customers page' });
   assert.equal(result.ok, false);
   assert.match(result.errors[0], /^target_shape: /);
+});
+
+const SHELL_SEM_DEFS: ImInheritance = {
+  isShell: true,
+  parentReference: '_102040_/l2/molecules/groupenternumber/ml-range-slider.ts',
+  parentProject: 102040,
+  parentClassName: 'RangeSliderMolecule',
+  ownMembers: [],
+  overridableMembers: [],
+};
+
+test('THE T4 DEFECT: uma casca sem .defs.ts próprio PASSA, se o contrato do pai foi lido', () => {
+  // mls-102054 tem ZERO .defs.ts nas 42 cascas (mls-102055 tem 42 de 42). Tratar o defs como
+  // fatal matava a rota C em metade das cascas da biblioteca, no primeiro gate.
+  const result = runImLocateGate(
+    inputs({
+      destProject: 102054,
+      inheritance: SHELL_SEM_DEFS,
+      artifacts: artifacts({ defs: { present: false, source: '' } }),
+      parentDefsSource: 'export const skill = `# Objective\nUm slider de faixa.`;',
+    }),
+  );
+  assert.deepEqual(result, { ok: true, errors: [] });
+});
+
+test('uma casca sem contrato NENHUM é recusada — o triage não teria o que julgar', () => {
+  // A primeira pergunta do triage é "o contrato já promete isso?". Sem contrato local nem do pai,
+  // não há resposta possível e o modelo chutaria — que é o defeito de 10/08 de novo.
+  const result = runImLocateGate(
+    inputs({
+      destProject: 102054,
+      inheritance: SHELL_SEM_DEFS,
+      artifacts: artifacts({ defs: { present: false, source: '' } }),
+      parentDefsSource: '',
+    }),
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors[0], /^contract_unreachable: /);
+});
+
+test('uma molécula NORMAL sem .defs.ts continua sendo recusada', () => {
+  const result = runImLocateGate(inputs({ artifacts: artifacts({ defs: { present: false, source: '' } }) }));
+  assert.equal(result.ok, false);
+  assert.match(result.errors[0], /^defs_missing: /);
 });

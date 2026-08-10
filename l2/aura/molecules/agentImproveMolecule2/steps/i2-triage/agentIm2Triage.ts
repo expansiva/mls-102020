@@ -88,7 +88,7 @@ async function beforePromptStep(
     .split('{{artifactsPresent}}').join(present.join(', ') || '(none)')
     .split('{{inheritance}}').join(renderInheritance(ctx))
     .split('{{surface}}').join(renderSurface(readSurface(sourceOf(ctx.artifacts, 'ts'))))
-    .split('{{defs}}').join(sourceOf(ctx.artifacts, 'defs') || '(the contract could not be read)')
+    .split('{{defs}}').join(renderContract(ctx))
     .split('{{userPrompt}}').join(ctx.userPrompt)
     .split('{{userLanguage}}').join(ctx.userLanguage || 'the language of the request')
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the request cannot be routed from what is shown')}`;
@@ -221,6 +221,23 @@ function normalizeOutput(result: Record<string, unknown>): ImTriageOutput {
     expectedArtifacts: list(result.expectedArtifacts),
     definitionElements: list(result.definitionElements),
   };
+}
+
+/**
+ * The contract that governs the molecule — its own, or its parent's when it is a shell without one.
+ * Saying WHICH matters: a shell's contract describes the parent, so "the contract promises X" is
+ * still the right test, but the reader must know it is not this file that promises it.
+ */
+function renderContract(ctx: ImContext): string {
+  if (!ctx.contract.source.trim()) return '(the contract could not be read — decide from the code alone, and say so in the rationale)';
+  if (!ctx.contract.inherited) return ctx.contract.source;
+  return [
+    `⚠️ This molecule is a shell and has no contract of its own. What follows is the contract of its`,
+    `PARENT, \`${ctx.contract.reference}\` — it is what the molecule promises, because a shell changes`,
+    `appearance and not promises.`,
+    '',
+    ctx.contract.source,
+  ].join('\n');
 }
 
 /**

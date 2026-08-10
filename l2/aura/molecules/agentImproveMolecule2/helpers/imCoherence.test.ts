@@ -125,3 +125,45 @@ test('without the previous sources, everything is reported as pre-existing', () 
   assert.ok(report.findings.length > 0);
   assert.ok(report.findings.every((f) => f.severity === 'preexisting'));
 });
+
+test('AGRUPAMENTO: quatro slots ficcionais dão quatro linhas, não oito', () => {
+  // O run real de 2026-08-10 na ml-address-field: os dois gates dispararam em cada um dos 4 slots.
+  // Estava correto e lia-se como ruído.
+  const ts = `slotTags = ['Label', 'Helper', 'Prefix', 'Suffix'];`;
+  const report = buildCoherenceReport(
+    { defsSource: 'nada sobre áreas de conteúdo', tsSource: ts, groupCreationSkill: '', reference: 'ml-address-field.ts' },
+    '2026-08-10T00:00:00.000Z',
+  );
+  assert.equal(report.findings.length, 4);
+  for (const slot of ['Label', 'Helper', 'Prefix', 'Suffix']) {
+    assert.ok(report.findings.some((f) => f.message.includes(`'${slot}' is fiction`)), `faltou ${slot}`);
+  }
+});
+
+test('AGRUPAMENTO: um slot que é LIDO e só falta no contrato mantém a mensagem própria', () => {
+  // O caso de 2026-08-05: o Detail era lido, só não estava documentado. Fundir tudo esconderia
+  // qual dos dois problemas era o real.
+  const ts = `
+    slotTags = ['Detail'];
+    render() { return this.renderLiveSlot('Detail'); }
+  `;
+  const report = buildCoherenceReport(
+    { defsSource: 'sem menção', tsSource: ts, groupCreationSkill: '', reference: 'ml-lazy-record-detail-table.ts' },
+    '2026-08-10T00:00:00.000Z',
+  );
+  assert.equal(report.findings.length, 1);
+  assert.match(report.findings[0].message, /never mentions it/);
+  assert.doesNotMatch(report.findings[0].message, /is fiction/);
+});
+
+test('AGRUPAMENTO: o cálculo de introduzido continua funcionando depois da fusão', () => {
+  const before = `slotTags = ['A'];`;
+  const after = `slotTags = ['A', 'B'];`;
+  const report = buildCoherenceReport(
+    { defsSource: 'nada', tsSource: after, groupCreationSkill: '', reference: 'ml-x.ts', previousTsSource: before, previousDefsSource: 'nada' },
+    '2026-08-10T00:00:00.000Z',
+  );
+  const introduzidos = report.findings.filter((f) => f.severity === 'introduced');
+  assert.equal(introduzidos.length, 1);
+  assert.match(introduzidos[0].message, /'B'/);
+});

@@ -98,9 +98,13 @@ on every run. A shell is fixed in its own file: `.less` first, a local override 
 the smallest member, because a shell that overrides `render()` **stops inheriting** every future fix
 from the base.
 
-**3. The coherence report will accuse molecules you did not touch.** That is intended. Nine
-molecules declare a slot they never read; the report names them and the user decides. It never
-blocks — an improve run is when these are cheapest to fix.
+**3. The coherence report will accuse molecules you did not touch.** That is intended. **32**
+molecules of mls-102040 declare a slot they never read (measured 2026-08-10; an earlier, narrower
+sweep had said 9). The report names them, one line per slot, and the user decides. It never blocks —
+an improve run is when these are cheapest to fix.
+
+First real run, on `ml-address-field`: four slots reported as fiction — declared in code, absent from
+the contract, and never read.
 
 ## Relationship to the old flow
 

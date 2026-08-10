@@ -113,9 +113,9 @@ export function gateDefsCoherence(
 /**
  * GATE 2 — every declared slot must actually be read by the code.
  *
- * Catches the 9 molecules that declare a slot they never read: groupentertext/ml-address-field
- * declares Label, Helper, Prefix and Suffix and reads NONE of them, and 8 more declare `Trigger`
- * without rendering it. Writing <Label> into them does nothing, silently.
+ * MEASURED 2026-08-10: 32 molecules of mls-102040 declare a slot they never read (an earlier,
+ * narrower sweep had said 9). groupentertext/ml-address-field declares Label, Helper, Prefix and
+ * Suffix and reads NONE of them. Writing <Label> into them does nothing, silently.
  *
  * Two of those 8 carry the reason in a code comment — `'Trigger', // not used in table variant but
  * kept for contract` — so the finding is worded as a question, not an accusation: it may be
@@ -141,6 +141,59 @@ export function gateDeclaredVsUsed(tsSource: string, reference: string): ImCoher
 }
 
 /**
+ * One line per SLOT, with the reasons merged.
+ *
+ * MEASURED on the first real run (2026-08-10): ml-address-field produced EIGHT findings for FOUR
+ * slots — gate 1 fired on each ("the defs never mentions it") and gate 2 fired on each ("never
+ * read"). Both were true, and the report read as noise. A report that reads as noise is ignored,
+ * which defeats the point of having one.
+ *
+ * The merge is per slot and never wholesale, because the gates do NOT always co-occur: on
+ * 2026-08-05 the `Detail` slot of ml-lazy-record-detail-table WAS read and only missing from the
+ * contract, so only gate 1 fired. Merging everything would have hidden which of the two was wrong.
+ */
+export function groupFindingsBySlot(findings: ImCoherenceFinding[]): ImCoherenceFinding[] {
+  const bySlot = new Map<string, ImCoherenceFinding[]>();
+  const rest: ImCoherenceFinding[] = [];
+
+  for (const finding of findings) {
+    const slot = finding.message.match(/slot '([^']+)'/)?.[1];
+    if (!slot) {
+      rest.push(finding);
+      continue;
+    }
+    const key = `${finding.reference}|${slot}`;
+    const list = bySlot.get(key) || [];
+    list.push(finding);
+    bySlot.set(key, list);
+  }
+
+  const merged: ImCoherenceFinding[] = [];
+  for (const [key, list] of bySlot) {
+    if (list.length === 1) {
+      merged.push(list[0]);
+      continue;
+    }
+    const slot = key.split('|')[1];
+    const undocumented = list.some(f => f.gate === 'defs-x-slottags-x-contract');
+    const unread = list.some(f => f.gate === 'declared-x-used');
+    merged.push({
+      // Both gates produced it, so neither name alone is honest; the pair is reported under the
+      // gate whose consequence is worse — a slot nothing reads.
+      gate: unread ? 'declared-x-used' : 'defs-x-slottags-x-contract',
+      // A finding this run introduced stays 'introduced' even when merged with a pre-existing one.
+      severity: list.some(f => f.severity === 'introduced') ? 'introduced' : 'preexisting',
+      reference: list[0].reference,
+      message: undocumented && unread
+        ? `the slot '${slot}' is fiction: the code declares it, the .defs.ts never mentions it, and nothing reads it. A consumer writing <${slot}> gets nothing, and the playground cannot even offer it. Either implement it or drop it from slotTags`
+        : list.map(f => f.message).join(' — and '),
+    });
+  }
+
+  return [...merged, ...rest];
+}
+
+/**
  * The report rendered by i7-summary.
  *
  * `previousTsSource` marks findings the CURRENT run introduced. v1 does not act differently on
@@ -159,17 +212,19 @@ export function buildCoherenceReport(
   },
   now: string,
 ): ImCoherenceReport {
-  const findings = [
+  const findings = groupFindingsBySlot([
     ...gateDefsCoherence(input.defsSource, input.tsSource, input.groupCreationSkill, input.reference),
     ...gateDeclaredVsUsed(input.tsSource, input.reference),
-  ];
+  ]);
 
   if (input.previousTsSource !== undefined && input.previousDefsSource !== undefined) {
+    // O antes passa pelo MESMO agrupamento: sem isso as mensagens fundidas nunca casariam com as
+    // separadas, e todo achado pré-existente seria reportado como introduzido por esta execução.
     const before = new Set(
-      [
+      groupFindingsBySlot([
         ...gateDefsCoherence(input.previousDefsSource, input.previousTsSource, input.groupCreationSkill, input.reference),
         ...gateDeclaredVsUsed(input.previousTsSource, input.reference),
-      ].map((f) => `${f.gate}|${f.message}`),
+      ]).map((f) => `${f.gate}|${f.message}`),
     );
     for (const finding of findings) {
       if (!before.has(`${finding.gate}|${finding.message}`)) finding.severity = 'introduced';
