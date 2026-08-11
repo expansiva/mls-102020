@@ -80,6 +80,8 @@ export class PluginSelectOrganization extends StateLitElement {
 
     @property({ attribute: false }) orgs: IOrg[] = [];
     @property({ attribute: false }) value: number | null = null;
+    /** Studio client: the org is the app's and cannot be switched (see getStudioRunMode). */
+    @property({ type: Boolean }) locked: boolean = false;
 
     @state() private _search: string = '';
 
@@ -110,6 +112,8 @@ export class PluginSelectOrganization extends StateLitElement {
     createRenderRoot() { return this; }
 
     render() {
+        // Locked: the All and Custom scenarios are switching paths, so they are unreachable.
+        if (this.locked) return this._renderSelected();
         if (this._isAll) return this._renderAll();
         if (this._isCustom) return this._renderCustom();
         return this._renderSelected();
@@ -117,7 +121,8 @@ export class PluginSelectOrganization extends StateLitElement {
 
     private _renderSelected() {
         const org = this._selectedOrg;
-        const max = this.orgs.length + 1;
+        // min === max === value leaves the nav-header's four arrows disabled by itself.
+        const max = this.locked ? (this.value ?? 0) : this.orgs.length + 1;
         return html`
             <div class="flex flex-col gap-3">
                 <aura--plugins--nav-header-102020
@@ -125,7 +130,7 @@ export class PluginSelectOrganization extends StateLitElement {
                     .itemName=${org?.name ?? ''}
                     .desc=${this.msg.desc}
                     .value=${this.value ?? 0}
-                    .min=${0}
+                    .min=${this.locked ? (this.value ?? 0) : 0}
                     .max=${max}
                     @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
                 ></aura--plugins--nav-header-102020>

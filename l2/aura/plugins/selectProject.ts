@@ -111,6 +111,8 @@ export class PluginSelectProject extends StateLitElement {
 
     @property({ attribute: false }) selectedOrg: IOrg | null = null;
     @property({ attribute: false }) value: number | null = null;
+    /** Studio client: the project is the app's and cannot be switched (see getStudioRunMode). */
+    @property({ type: Boolean }) locked: boolean = false;
 
     @state() private _search: string = '';
     @state() private _pluginsByCategory: Record<string, IPluginItem[]> = {};
@@ -150,6 +152,9 @@ export class PluginSelectProject extends StateLitElement {
 
     render() {
         if (!this.selectedOrg) return this._renderNeedsOrg();
+        // Locked: the All and Custom scenarios are switching paths, so they are unreachable —
+        // this also keeps pluginCreateProjectAura from ever being imported in the client app.
+        if (this.locked) return this._renderSelected();
         if (this._isAll) return this._renderAll();
         if (this._isCustom) return this._renderCustom();
         return this._renderSelected();
@@ -223,7 +228,8 @@ export class PluginSelectProject extends StateLitElement {
     private _renderSelected() {
         const project = this._selectedProject;
         const org = this.selectedOrg!;
-        const max = (org?.projects.length ?? 0) + 1;
+        // min === max === value leaves the nav-header's four arrows disabled by itself.
+        const max = this.locked ? (this.value ?? 0) : (org?.projects.length ?? 0) + 1;
         const isLocal = project?.project === mls.stor.LOCALPROJECTNUMBER;
         return html`
             <div class="flex flex-col gap-3">
@@ -232,7 +238,7 @@ export class PluginSelectProject extends StateLitElement {
                     .itemName=${project?.name ?? ''}
                     .desc=${this.msg.desc}
                     .value=${this.value ?? 0}
-                    .min=${0}
+                    .min=${this.locked ? (this.value ?? 0) : 0}
                     .max=${max}
                     @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
                 ></aura--plugins--nav-header-102020>
@@ -245,7 +251,8 @@ export class PluginSelectProject extends StateLitElement {
                                     bg-emerald-100 dark:bg-emerald-900/30
                                     text-emerald-600 dark:text-emerald-400
                                 ">${this.msg.actualProject}</span>`
-                                : html`<button
+                                // Locked: this button is the switch itself (setActualProject + reload).
+                                : this.locked ? nothing : html`<button
                                     class="
                                         text-sm px-2.5 py-1 rounded
                                         bg-indigo-500 dark:bg-indigo-600 text-white
@@ -262,7 +269,7 @@ export class PluginSelectProject extends StateLitElement {
                                         window.location.reload();
                                     }}
                                 >${this.msg.selectBtn}</button>`}
-                            ${isLocal
+                            ${isLocal && !this.locked
                                 ? html`<button
                                     class="
                                         flex items-center gap-1.5
@@ -303,7 +310,9 @@ export class PluginSelectProject extends StateLitElement {
 
     private _renderSelectedProjectDetail(project: IProject, org: IOrg) {
         const isLocal = project.project === mls.stor.LOCALPROJECTNUMBER;
-        const isActual = getAuraState().actualProject === project.project && !isLocal;
+        // Locked: the project on screen IS the app's by construction, and with the select button
+        // gone a stale aura state would otherwise hide the l5Project plugins for good.
+        const isActual = this.locked || (getAuraState().actualProject === project.project && !isLocal);
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
                 <div class="flex items-center gap-2">
