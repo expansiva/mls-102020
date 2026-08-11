@@ -3,6 +3,7 @@
 import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
+import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import {
   createNs4E6Step, isNs4Pipeline, markNs4E6Approved, markNs4E6Failed, markNs4E6Running,
@@ -82,7 +83,7 @@ export async function afterNs4E6PromptStep(
     const pipeline = await requirePipeline(moduleName);
     const round = parsed.reviewRound || pipeline.steps.e6?.reviewRound || 1;
     await writeNs4Pipeline(markNs4E6Running(pipeline, round));
-    const mutationParent = findParent(context, parentStep);
+    const mutationParent = findParent(context, parentStep, step);
     const payload = unwrap(step.interaction?.payload?.[0]);
     if (!isRecord(payload)) {
       const failure = readPromptFailure(step, 'E6 returned no usable composition proposal.');
@@ -228,12 +229,8 @@ function findE5Module(context: mls.msg.ExecutionContext): string {
   const result = getAllSteps(context.task?.iaCompressed?.nextSteps).find(step => step.planning?.planId === 'e5-result');
   const parsed = result?.type === 'result' ? parse(result.result) : null; return isRecord(parsed) ? text(parsed.moduleName) : '';
 }
-function findParent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep): mls.msg.AIAgentStep {
-  const all = getAllSteps(context.task?.iaCompressed?.nextSteps); const current = all.find(item => item.stepId === parentStep.stepId);
-  if (current?.type === 'agent' && current.status !== 'completed' && current.status !== 'failed') return current;
-  const owner = all.find(candidate => candidate.type === 'agent' && candidate.status !== 'completed' && candidate.status !== 'failed'
-    && (candidate.nextSteps?.some(child => child.stepId === parentStep.stepId) || candidate.interaction?.payload?.some(child => child.stepId === parentStep.stepId)));
-  const root = context.task?.iaCompressed?.nextSteps?.[0]; return owner?.type === 'agent' ? owner : root?.type === 'agent' ? root : parentStep;
+function findParent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, phaseStep?: mls.msg.AIAgentStep): mls.msg.AIAgentStep {
+  return resolveNs4MutableParent(getAllSteps(context.task?.iaCompressed?.nextSteps), parentStep, phaseStep);
 }
 function promptReady(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, hookSequential: number, args: string, systemPrompt: string, humanPrompt: string): mls.msg.AgentIntentPromptReady {
   return { type: 'prompt_ready', args, messageId: context.message.orderAt, threadId: context.message.threadId,

@@ -47,6 +47,9 @@ user outcomes.
 - For each existing policy decision with a material consequence, return its `decisionId`, concise
   `impact` and affected existing `relatedJourneyIds` in `policyDecisionImpacts`. Do not invent a
   decision or change `chosen`; report a missing material decision as a blocking repair issue.
+- Emit `impact` only when the selected choice creates a dead state/journey, leaves a required
+  dependency without a provider, or causes an irreversible loss. Pure preference or naming choices
+  have no impact entry: the warning icon must remain a useful signal, not a decoration on every decision.
 
 Return JSON only with this exact envelope:
 

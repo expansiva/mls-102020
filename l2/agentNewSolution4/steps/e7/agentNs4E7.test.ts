@@ -96,6 +96,28 @@ test('E7 validates a minimal behavior contract without backend field instruction
   assert.equal('errors' in draft, false);
 });
 
+test('E7 warns when an inspection ignores lifecycle eligibility rules of its principal entity', () => {
+  const inspectionJourneys = normalizeNs4E2Review({ moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', reviewRound: 1,
+    journeys: [{ journeyId: 'inspectProjects', business: { actorRef: 'projectManager', title: 'Projetos', goal: 'Inspecionar projeto.', prerequisites: [],
+      entry: { mode: 'coldStart', carries: [] }, useRules: [],
+      steps: [{ stepId: 'inspectProject', kind: 'inspect', intent: 'Inspecionar projeto.', requiresContext: [], providesContext: [], result: 'Projeto inspecionado.', featureRefs: ['projects'] }],
+      outcome: { statement: 'Projeto inspecionado.', evidence: [] } } }],
+    features: [{ featureId: 'projects', title: 'Projetos', priority: 'now', journeyStepRefs: ['inspectProjects.inspectProject'] }],
+  });
+  const inspectionOntology = normalizeNs4E4Review({ ...ontology, entities: ontology.entities.map(entity => entity.entityId === 'Project'
+    ? { ...entity, lifecyclePredicates: ['projectMustBeActive'] }
+    : entity) });
+  const inspectionSources = { ...sources, journeys: inspectionJourneys, ontology: inspectionOntology };
+  const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', inspectionJourneys, { journeys: [], ontologyHash: 'sha256:ontology', rulesHash: rules.rulesHash });
+  const draft = normalizeNs4UseCaseDraft({ title: 'Inspecionar projeto', description: 'Consulta projeto elegível.', contexts: { requires: [], provides: [] },
+    entityRefs: ['Project'], useRules: [], transitions: [] }, plan, 'inspectProject');
+
+  const result = validateNs4UseCaseDraft(plan, draft, inspectionSources);
+
+  assert.equal(result.ok, true, JSON.stringify(result.issues));
+  assert.ok(result.issues.some(issue => issue.code === 'NS4_E7_INSPECTION_ELIGIBILITY_RULES' && issue.severity === 'warning'));
+});
+
 test('E7 emits typed use cases, workflows and realization metadata without changing business hashes', async () => {
   const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', journeys, sourceHashes);
   const drafts = plan.useCases.map(target => normalizeNs4UseCaseDraft(target.kind === 'query' ? {
@@ -124,6 +146,18 @@ test('E7 emits typed use cases, workflows and realization metadata without chang
   assert.equal(realizedAccess.realization.status, 'useCasesCompiled');
   assert.ok(realizedAccess.realization.useCaseAuthorityRefs.length >= 2);
   assert.equal(buildNs4JourneyIndex('buildFlowFsm', journeys, sourceJourneys, sourceJourneys.map(item => `l4/buildFlowFsm/journeys/${item.journeyId}.defs.ts`), 'auto', generatedAt).journeys.length, 2);
+});
+
+test('E7 rejects a declared lifecycle state without an incoming transition', () => {
+  const unreachableWorkflow = {
+    schemaVersion: '2026-08-11-ns4-workflow-v3', moduleName: 'buildFlowFsm', workflowId: 'workTaskLifecycle',
+    entityRef: 'WorkTask', initialState: 'open', terminalStates: ['done', 'withdrawn'],
+    states: ['open', 'done', 'withdrawn'],
+    transitions: [{ transitionId: 'completeTask', entityRef: 'WorkTask', fromStates: ['open'], toState: 'done', useRules: [], useCaseId: 'createWorkTask' }],
+    workflowHash: 'sha256:test',
+  } as any;
+  const result = validateNs4Workflows([unreachableWorkflow], sources);
+  assert.ok(result.issues.some(issue => issue.code === 'NS4_E7_WORKFLOW_UNREACHABLE' && /withdrawn/.test(issue.message)));
 });
 
 test('E7 reasoning prompt keeps use cases channel-neutral', () => {

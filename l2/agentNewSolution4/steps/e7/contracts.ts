@@ -14,8 +14,8 @@ import type { Ns4OntologyField } from '/_102020_/l2/agentNewSolution4/steps/e4/c
 export const NS4_USE_CASE_DRAFT_VERSION = '2026-08-10-ns4-usecase-draft-minimal-v3' as const;
 export const NS4_USE_CASE_SCHEMA_VERSION = '2026-08-10-ns4-usecase-v3' as const;
 export const NS4_USE_CASE_INDEX_SCHEMA_VERSION = '2026-08-10-ns4-usecase-index-v3' as const;
-export const NS4_WORKFLOW_SCHEMA_VERSION = '2026-08-10-ns4-workflow-v2' as const;
-export const NS4_WORKFLOW_INDEX_SCHEMA_VERSION = '2026-08-10-ns4-workflow-index-v2' as const;
+export const NS4_WORKFLOW_SCHEMA_VERSION = '2026-08-11-ns4-workflow-v3' as const;
+export const NS4_WORKFLOW_INDEX_SCHEMA_VERSION = '2026-08-11-ns4-workflow-index-v3' as const;
 
 export type Ns4UseCaseKind = 'query' | 'command';
 export type Ns4UseCaseFieldType = Ns4OntologyField['type'];
@@ -122,7 +122,8 @@ export interface Ns4UseCaseIndexArtifactV3 {
 }
 
 export interface Ns4WorkflowTransition extends Ns4UseCaseTransition {
-  useCaseId: string;
+  useCaseId?: string;
+  trigger?: 'system';
 }
 
 export interface Ns4WorkflowArtifactV2 {
@@ -130,6 +131,8 @@ export interface Ns4WorkflowArtifactV2 {
   moduleName: string;
   workflowId: string;
   entityRef: string;
+  initialState: string;
+  terminalStates: string[];
   states: string[];
   transitions: Ns4WorkflowTransition[];
   workflowHash: string;
@@ -296,9 +299,11 @@ export async function buildNs4WorkflowArtifacts(
     .map(async ([entityRef, transitions]) => {
       const workflowId = `${entityRef.slice(0, 1).toLowerCase()}${entityRef.slice(1)}Lifecycle`;
       const states = ontologyStates.get(entityRef) || [];
-      const workflowHash = await sha256Ns4({ entityRef, states, transitions });
+      const initialState = states[0] || '';
+      const terminalStates = states.filter(state => !transitions.some(transition => transition.fromStates.includes(state)));
+      const workflowHash = await sha256Ns4({ entityRef, initialState, terminalStates, states, transitions });
       return { schemaVersion: NS4_WORKFLOW_SCHEMA_VERSION, moduleName: plan.moduleName,
-        workflowId, entityRef, states, transitions, workflowHash } satisfies Ns4WorkflowArtifactV2;
+        workflowId, entityRef, initialState, terminalStates, states, transitions, workflowHash } satisfies Ns4WorkflowArtifactV2;
     }));
   const realizationHash = await sha256Ns4(artifacts.map(item => ({ workflowId: item.workflowId, workflowHash: item.workflowHash })));
   return {

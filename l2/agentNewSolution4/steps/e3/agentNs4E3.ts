@@ -3,6 +3,7 @@
 import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
+import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
@@ -114,6 +115,7 @@ export async function afterNs4E3PromptStep(
     moduleName = args.moduleName;
     const pipeline = await requirePipeline(moduleName);
     await writeNs4Pipeline(markNs4E3Running(pipeline, args.reviewRound || pipeline.steps.e3?.reviewRound || 1));
+    const mutationParent = findMutableParentStep(context, parentStep, step);
     const payload = unwrapPayload(step.interaction?.payload?.[0]);
     if (!isRecord(payload) || payload.type !== 'clarification' || !isRecord(payload.json)) {
       const message = readE3FailureMessage(payload);
@@ -135,8 +137,8 @@ export async function afterNs4E3PromptStep(
     if (!isFast(context)) return [];
     const saved = await persistNs4E3(moduleName, review, 'auto', journeys);
     return [
-      resultStep(context, parentStep, saved, 'E3 access matrix auto-approved'),
-      updateStatus(context, parentStep, step, hookSequential, 'completed', `E3 auto-approved ${saved.authorityCount} authorities.`, 'input_output'),
+      resultStep(context, mutationParent, saved, 'E3 access matrix auto-approved'),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', `E3 auto-approved ${saved.authorityCount} authorities.`, 'input_output'),
     ];
   } catch (error) {
     const message = errorMessage(error);
@@ -224,19 +226,12 @@ async function persistNs4E3(
   };
 }
 
-function findMutableParentStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep): mls.msg.AIAgentStep {
-  const all = getAllSteps(context.task?.iaCompressed?.nextSteps);
-  const current = all.find(item => item.stepId === parentStep.stepId);
-  if (current?.type === 'agent' && current.status !== 'completed' && current.status !== 'failed') return current;
-  for (const candidate of all) {
-    if (candidate.type !== 'agent') continue;
-    if (candidate.nextSteps?.some(child => child.stepId === parentStep.stepId)
-      || candidate.interaction?.payload?.some(child => child.stepId === parentStep.stepId)) {
-      if (candidate.status !== 'completed' && candidate.status !== 'failed') return candidate;
-    }
-  }
-  const root = context.task?.iaCompressed?.nextSteps?.[0];
-  return root?.type === 'agent' ? root : parentStep;
+function findMutableParentStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  phaseStep?: mls.msg.AIAgentStep,
+): mls.msg.AIAgentStep {
+  return resolveNs4MutableParent(getAllSteps(context.task?.iaCompressed?.nextSteps), parentStep, phaseStep);
 }
 
 async function requirePipeline(moduleName: string): Promise<Ns4PipelineState> {

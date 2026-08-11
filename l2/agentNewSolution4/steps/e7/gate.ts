@@ -11,7 +11,7 @@ import type {
   Ns4E7PlanDraft, Ns4E7SourceHashes, Ns4UseCaseDraft, Ns4WorkflowArtifactV2,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 
-export interface Ns4E7GateIssue { code: string; path: string; message: string; }
+export interface Ns4E7GateIssue { code: string; path: string; message: string; severity?: 'warning'; }
 export interface Ns4E7GateResult { ok: boolean; issues: Ns4E7GateIssue[]; }
 
 const MEMBER_ID = /^[a-z][A-Za-z0-9]*$/;
@@ -102,6 +102,14 @@ export function validateNs4UseCaseDraft(
   const ruleIds = new Set(sources.rules.rules.map(rule => rule.id));
   const usedRules = [draft.useRules, ...draft.transitions.map(transition => transition.useRules)].flat();
   for (const rule of usedRules) if (!ruleIds.has(rule)) add('NS4_E7_RULE', 'useRules', `Unknown rule ${rule}.`);
+  const principalEntity = entities.get(draft.entityRefs[0] || '');
+  const isInspection = sourceSteps.some(step => step.kind === 'inspect');
+  const hasEligibilityRules = !!principalEntity?.lifecyclePredicates.length
+    && principalEntity.useRules.some(ruleId => ruleIds.has(ruleId));
+  if (draft.kind === 'query' && isInspection && hasEligibilityRules && draft.useRules.length === 0) {
+    add('NS4_E7_INSPECTION_ELIGIBILITY_RULES', 'useRules',
+      `Inspection of ${principalEntity?.entityId} has lifecycle eligibility rules available but selects none.`, 'warning');
+  }
   if (draft.kind === 'query' && draft.transitions.length) add('NS4_E7_QUERY_TRANSITION', 'transitions', 'A query cannot change lifecycle state.');
   for (const transition of draft.transitions) {
     const entity = entities.get(transition.entityRef);
@@ -115,7 +123,7 @@ export function validateNs4UseCaseDraft(
     if (!MEMBER_ID.test(transition.transitionId)) add('NS4_E7_TRANSITION_ID', 'transitions', 'Transition id must be lower-camel.');
     if (!transition.fromStates.length || !transition.toState) add('NS4_E7_TRANSITION_BOUNDS', 'transitions', 'Transition needs at least one from state and one target state.');
   }
-  return { ok: issues.length === 0, issues };
+  return { ok: issues.every(issue => issue.severity === 'warning'), issues };
 }
 
 export function validateNs4Workflows(workflows: Ns4WorkflowArtifactV2[], sources: Ns4E7Sources): Ns4E7GateResult {
@@ -130,6 +138,26 @@ export function validateNs4Workflows(workflows: Ns4WorkflowArtifactV2[], sources
     if (!entity) add('NS4_E7_WORKFLOW_ENTITY', workflow.workflowId, `Unknown entity ${workflow.entityRef}.`);
     else if (!sameSet(workflow.states, entity.lifecycleStates)) add('NS4_E7_WORKFLOW_STATES', workflow.workflowId, 'Workflow states must exactly match E4 lifecycle states.');
     if (!workflow.transitions.length) add('NS4_E7_WORKFLOW_EMPTY', workflow.workflowId, 'A workflow requires at least one transition.');
+    if (!workflow.states.includes(workflow.initialState)) add('NS4_E7_WORKFLOW_INITIAL', workflow.workflowId, 'Workflow initialState must be a declared lifecycle state.');
+    const terminalStates = new Set(workflow.terminalStates);
+    workflow.terminalStates.forEach(state => {
+      if (!workflow.states.includes(state)) add('NS4_E7_WORKFLOW_TERMINAL', workflow.workflowId, `Unknown terminal state ${state}.`);
+    });
+    workflow.transitions.forEach((transition, index) => {
+      const path = `${workflow.workflowId}.transitions[${index}]`;
+      if (!transition.useCaseId && transition.trigger !== 'system') add('NS4_E7_WORKFLOW_TRIGGER', path, 'Transition requires a useCaseId or trigger="system".');
+      if (transition.useCaseId && transition.trigger) add('NS4_E7_WORKFLOW_TRIGGER', path, 'Transition cannot have both useCaseId and trigger.');
+    });
+    workflow.states.filter(state => state !== workflow.initialState).forEach(state => {
+      if (!workflow.transitions.some(transition => transition.toState === state)) {
+        add('NS4_E7_WORKFLOW_UNREACHABLE', workflow.workflowId, `Lifecycle state ${state} has no incoming transition.`);
+      }
+    });
+    workflow.states.filter(state => !terminalStates.has(state)).forEach(state => {
+      if (!workflow.transitions.some(transition => transition.fromStates.includes(state))) {
+        add('NS4_E7_WORKFLOW_DEAD_END', workflow.workflowId, `Non-terminal lifecycle state ${state} has no outgoing transition.`);
+      }
+    });
   }
   return { ok: issues.length === 0, issues };
 }
@@ -149,7 +177,7 @@ function collectSteps(journeys: Ns4E2Review): Map<string, SourceStep> {
 }
 
 function issueAdder(issues: Ns4E7GateIssue[]) {
-  return (code: string, path: string, message: string) => issues.push({ code, path, message });
+  return (code: string, path: string, message: string, severity?: 'warning') => issues.push({ code, path, message, ...(severity ? { severity } : {}) });
 }
 
 function sameSet(left: string[], right: string[]): boolean {

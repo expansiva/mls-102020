@@ -103,7 +103,7 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
     if (!this.value || this.readonly || this.submitting) return;
     const labels = this.labels();
     const policyChanges = this.policyChanges();
-    const adjustment = this.adjustment.trim();
+    const adjustment = this.submissionAdjustment(policyChanges);
     if (action === 'requestChanges' && !adjustment) {
       this.setFeedback({ kind: 'error', message: labels.adjustmentRequired });
       return;
@@ -286,6 +286,20 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
         }];
       });
     });
+  }
+
+  private submissionAdjustment(policyChanges: Ns4PolicyChange[]): string {
+    const requestedDecisions = policyChanges.length ? [
+      'Human-selected policy decisions:',
+      ...policyChanges.map(change => [
+        `- Journey: ${change.journeyId} — ${change.journeyTitle}`,
+        `  Question: ${change.question}`,
+        `  Generated choice: ${change.generatedChoice}`,
+        `  Human selected: ${change.selectedChoice}`,
+        change.impact ? `  Impact: ${change.impact}` : '',
+      ].filter(Boolean).join('\n')),
+    ].join('\n') : '';
+    return [this.adjustment.trim(), requestedDecisions].filter(Boolean).join('\n\n');
   }
 
   private policyDecisionSelections(): Array<{ decisionId: string; selectedChoice: string }> {

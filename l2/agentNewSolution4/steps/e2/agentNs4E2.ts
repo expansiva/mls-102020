@@ -3,6 +3,7 @@
 import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
+import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
@@ -256,7 +257,7 @@ export async function afterNs4E2PromptStep(
       const coverageRepairAttempt = args.coverageRepairAttempt || 0;
       if (gateRepairAttempt < MAX_E2_GATE_REPAIRS) {
         await writeNs4E2Draft(moduleName, review);
-        const repairParent = findMutableParentStep(context, parentStep);
+        const repairParent = findMutableParentStep(context, parentStep, step);
         const repairStep = createNs4E2GateRepairStep(
           moduleName,
           review.reviewRound,
@@ -282,7 +283,7 @@ export async function afterNs4E2PromptStep(
 
     const draftPath = await writeNs4E2Draft(args.moduleName, review);
     await writeNs4E2VersionedDraft(args.moduleName, review.reviewRound, review);
-    const judgeParent = findMutableParentStep(context, parentStep);
+    const judgeParent = findMutableParentStep(context, parentStep, step);
     const judgeStep = createNs4E2CoverageJudgeStep(
       moduleName,
       review.reviewRound,
@@ -539,19 +540,12 @@ async function applyNs4E2Review(
   await continuePoolingTask(context);
 }
 
-function findMutableParentStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep): mls.msg.AIAgentStep {
-  const all = getAllSteps(context.task?.iaCompressed?.nextSteps);
-  const current = all.find(item => item.stepId === parentStep.stepId);
-  if (current?.type === 'agent' && current.status !== 'completed' && current.status !== 'failed') return current;
-  for (const candidate of all) {
-    if (candidate.type !== 'agent') continue;
-    if (candidate.nextSteps?.some(child => child.stepId === parentStep.stepId)
-      || candidate.interaction?.payload?.some(child => child.stepId === parentStep.stepId)) {
-      if (candidate.status !== 'completed' && candidate.status !== 'failed') return candidate;
-    }
-  }
-  const root = context.task?.iaCompressed?.nextSteps?.[0];
-  return root?.type === 'agent' ? root : parentStep;
+function findMutableParentStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  phaseStep?: mls.msg.AIAgentStep,
+): mls.msg.AIAgentStep {
+  return resolveNs4MutableParent(getAllSteps(context.task?.iaCompressed?.nextSteps), parentStep, phaseStep);
 }
 
 async function persistNs4E2(

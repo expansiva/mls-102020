@@ -8,6 +8,7 @@
 import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
+import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
@@ -302,7 +303,7 @@ export async function afterNs4E4PromptStep(
   try {
     const args = resolveE4Args(context, resolveNs4E4InvocationArgs(String(step.prompt || ''), entityId));
     moduleName = args.moduleName;
-    const mutationParent = findMutableParentStep(context, parentStep);
+    const mutationParent = findMutableParentStep(context, parentStep, entityId ? undefined : step);
     if (entityId) return await handleEntityResult(context, mutationParent, step, hookSequential, args, entityId);
     if (args.stage === 'bindRelationships') {
       return await handleRelationshipBindingResult(context, mutationParent, step, hookSequential, args);
@@ -675,19 +676,12 @@ async function recordNs4E4Failure(moduleName: string, failure: string): Promise<
   } catch { /* task trace is the fallback */ }
 }
 
-function findMutableParentStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep): mls.msg.AIAgentStep {
-  const all = getAllSteps(context.task?.iaCompressed?.nextSteps);
-  const current = all.find(item => item.stepId === parentStep.stepId);
-  if (current?.type === 'agent' && current.status !== 'completed' && current.status !== 'failed') return current;
-  for (const candidate of all) {
-    if (candidate.type !== 'agent') continue;
-    if (candidate.nextSteps?.some(child => child.stepId === parentStep.stepId)
-      || candidate.interaction?.payload?.some(child => child.stepId === parentStep.stepId)) {
-      if (candidate.status !== 'completed' && candidate.status !== 'failed') return candidate;
-    }
-  }
-  const root = context.task?.iaCompressed?.nextSteps?.[0];
-  return root?.type === 'agent' ? root : parentStep;
+function findMutableParentStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  phaseStep?: mls.msg.AIAgentStep,
+): mls.msg.AIAgentStep {
+  return resolveNs4MutableParent(getAllSteps(context.task?.iaCompressed?.nextSteps), parentStep, phaseStep);
 }
 
 function addStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIPayload): mls.msg.AgentIntentAddStep {

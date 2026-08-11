@@ -14,6 +14,7 @@ import {
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
   buildNs4JourneyArtifacts,
+  buildNs4E2ImpactReport,
   buildNs4PolicyDecisionSelections,
   normalizeNs4E2Review,
   sha256Ns4,
@@ -35,7 +36,7 @@ const reviewInput = {
           result: 'Um projeto está selecionado.', featureRefs: ['projectManagement'],
         }],
         outcome: { statement: 'O projeto correto fica disponível para trabalho.', evidence: ['O projeto é mostrado pelo nome e endereço.'] },
-        useRules: [],
+        useRules: [], policyDecisions: [],
       },
     },
     {
@@ -60,7 +61,7 @@ const reviewInput = {
           },
         ],
         outcome: { statement: 'A mudança fica registrada no projeto correto.', evidence: ['A ordem exibe o projeto selecionado.'] },
-        useRules: ['projectMustBeActive'],
+        useRules: ['projectMustBeActive'], policyDecisions: [],
       },
     },
   ],
@@ -212,6 +213,26 @@ test('E2 policy selections are valid alternatives and a rewritten draft must hon
     selectedChoice: 'Proposta com aprovação ou recusa.',
     selectedBy: 'human', selectedAt: '2026-08-10T12:00:00.000Z',
   }]);
+});
+
+test('E2 impact report records changed, new and removed journeys', () => {
+  const previous = {
+    schemaVersion: '2026-08-10-ns4-journey-index-v4' as const, moduleName: 'buildFlowFsm', approvedAt: '2026-08-10T00:00:00.000Z', approvedBy: 'human' as const,
+    journeys: [
+      { journeyId: 'removedJourney', actorRef: 'manager', title: 'Removed', goal: 'Removed', entryMode: 'coldStart' as const, businessHash: 'sha256:removed', artifactPath: 'removed' },
+      { journeyId: 'changedJourney', actorRef: 'manager', title: 'Changed', goal: 'Changed', entryMode: 'coldStart' as const, businessHash: 'sha256:before', artifactPath: 'changed' },
+    ], features: [], policyDecisionSelections: [],
+  };
+  const report = buildNs4E2ImpactReport('buildFlowFsm', previous, [
+    { journeyId: 'changedJourney', businessHash: 'sha256:after' },
+    { journeyId: 'newJourney', businessHash: 'sha256:new' },
+  ], '2026-08-11T00:00:00.000Z');
+  assert.deepEqual(report.changes, [
+    { journeyId: 'changedJourney', reason: 'hashDivergent' },
+    { journeyId: 'newJourney', reason: 'journeyNew' },
+    { journeyId: 'removedJourney', reason: 'journeyRemoved' },
+  ]);
+  assert.deepEqual(report.affectedSteps, ['e3-access-matrix', 'e4-ontology', 'e5-rules', 'e7-realization']);
 });
 
 test('E2 approval advances both pipeline and module to the E3 access matrix', () => {

@@ -2,6 +2,7 @@
 
 import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
+import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
 import {
   createNs4E7Step, isNs4Pipeline, markNs4E7Approved, markNs4E7Failed, markNs4E7Running,
   markNs4ModuleE7Approved, NS4_E7_MAX_PARALLEL, Ns4PipelineState,
@@ -142,7 +143,7 @@ async function startE7(
     return finalizeE7(context, parentStep, step, hookSequential,
       { planId: 'e7-realization', moduleName, stage: 'finalize', repairRound: 0 });
   }
-  const mutationParent = findMutableParent(context, parentStep);
+  const mutationParent = findMutableParent(context, parentStep, step);
   const parallel = parallelUseCaseStep(context, step, agentName, plan, 0, pending);
   return [
     parallel,
@@ -188,11 +189,14 @@ async function buildUseCasePrompt(
   ]);
   const entities = bundle.ontology.entities.filter(entity => entityIds.has(entity.entityId))
     .map(entity => ({ entityId: entity.entityId, title: entity.title, description: entity.description,
-      lifecycleStates: entity.lifecycleStates }));
+      lifecycleStates: entity.lifecycleStates, useRules: entity.useRules }));
   const relationshipSummary = relationships.map(relationship => ({ relationshipId: relationship.relationshipId,
     fromEntity: relationship.fromEntity, toEntity: relationship.toEntity, type: relationship.type,
     required: relationship.required, description: relationship.description }));
-  const candidateRuleIds = new Set(journeys.flatMap(journey => journey.useRules));
+  const candidateRuleIds = new Set([
+    ...journeys.flatMap(journey => journey.useRules),
+    ...entities.flatMap(entity => entity.useRules),
+  ]);
   const relevantRules = bundle.rules.rules.filter(rule => candidateRuleIds.has(rule.id));
   const currentGate = current ? validateNs4UseCaseDraft(plan, current, bundle) : null;
   const humanPrompt = [
@@ -352,15 +356,12 @@ function updateStatus(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIP
     threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parentStep.stepId,
     stepId: step.stepId, status, ...(traceMsg ? { traceMsg } : {}), ...(cleaner ? { cleaner } : {}) };
 }
-function findMutableParent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep): mls.msg.AIAgentStep {
-  const all = getAllSteps(context.task?.iaCompressed?.nextSteps);
-  const current = all.find(item => item.stepId === parentStep.stepId);
-  if (current?.type === 'agent' && current.status !== 'completed' && current.status !== 'failed') return current;
-  const owner = all.find(candidate => candidate.type === 'agent' && candidate.status !== 'completed' && candidate.status !== 'failed'
-    && (candidate.nextSteps?.some(child => child.stepId === parentStep.stepId)
-      || candidate.interaction?.payload?.some(child => child.stepId === parentStep.stepId)));
-  const root = context.task?.iaCompressed?.nextSteps?.[0];
-  return owner?.type === 'agent' ? owner : root?.type === 'agent' ? root : parentStep;
+function findMutableParent(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  phaseStep?: mls.msg.AIAgentStep,
+): mls.msg.AIAgentStep {
+  return resolveNs4MutableParent(getAllSteps(context.task?.iaCompressed?.nextSteps), parentStep, phaseStep);
 }
 async function readPlan(moduleName: string): Promise<Ns4E7PlanDraft> {
   const parsed = parse(await readNs4Text(ns4E7PlanDraftFile(moduleName), true));
