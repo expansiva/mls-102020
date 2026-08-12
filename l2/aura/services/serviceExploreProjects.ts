@@ -4,6 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { checkIfHasLocalProject, getLocalProjectName } from '/_102027_/l2/libCommom.js';
+import { isStudioClient, getStudioScopeProject } from '/_102027_/l2/utils.js';
 import { AuraInitState, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 
 import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
@@ -113,6 +114,15 @@ const DISABLED_CONFIG = (key: string): IKnobConfig => ({
     disabled: true,
 });
 
+// Studio client: a single position, no 'All' and no 'Custom' — there is one project to edit.
+const LOCKED_CONFIG = (key: string, label: string): IKnobConfig => ({
+    key,
+    min: 1,
+    max: 1,
+    labels: { 1: label },
+    disabled: true,
+});
+
 const LOCAL_ORG_KEY = 'local-projects';
 const LOCAL_ORG_NAME = 'Local Projects';
 
@@ -159,12 +169,36 @@ export class ServiceExploreProjects102020 extends ServiceBase {
 
     @state() private _projectConfig: IKnobConfig = DISABLED_CONFIG('project');
 
+    // ─── Run mode ─────────────────────────────────────────────────────
+    // The studio client (the app served by the client's own server) edits ONE project: the
+    // app's. Everything that switches org/project is locked there — the full studio
+    // (on.collab.codes) is untouched. Resolved once, before the first render.
+
+    private _locked: boolean = false;
+    private _scopeProject: number | undefined;
+
+    private _resolveRunMode() {
+        if (!isStudioClient()) return;
+        this._scopeProject = getStudioScopeProject();
+        this._locked = this._scopeProject !== undefined;
+    }
+
     // ─── Org Loading ──────────────────────────────────────────────────
 
     private _loadOrgs() {
-        const orgs = this._getOrgsFromMls();
+        let orgs = this._getOrgsFromMls();
+        if (this._locked) orgs = this._applyClientScope(orgs);
         this._orgs = orgs;
         this._orgConfig = this._buildOrgConfig(orgs);
+
+        if (this._locked) {
+            // One org, one project — assigned directly because _setKnobValue is a no-op while locked.
+            this._orgValue = 1;
+            this._projectConfig = this._buildProjectConfigFromOrg(orgs[0]);
+            this._projectValue = 1;
+            this._selectedKnob = 'project';
+            return;
+        }
 
         const isLocalActual = mls.actualProject === mls.stor.LOCALPROJECTNUMBER;
         const actualOrgIndex: number | null = mls?.l5?.actualOrg ?? null;
@@ -183,6 +217,23 @@ export class ServiceExploreProjects102020 extends ServiceBase {
             this._setKnobValue('project', matchedProjectPos >= 0 ? matchedProjectPos + 1 : 0);
             if (matchedProjectPos >= 0 && actualProjectId) this._selectedKnob = 'project';
         }
+    }
+
+    /**
+     * Reduces the list to the org/project the client app belongs to. When that project is not
+     * there (anonymous login, stor still cold) the scope cannot be honoured — keep the full list
+     * and unlock, because degrading to the studio behaviour beats showing an empty service.
+     */
+    private _applyClientScope(orgs: IOrg[]): IOrg[] {
+        const org = orgs.find(o => o.projects.some(p => p.project === this._scopeProject));
+        const project = org?.projects.find(p => p.project === this._scopeProject);
+        if (!org || !project) {
+            console.warn(`[serviceExploreProjects] project ${this._scopeProject} not among the loaded orgs — client scope not applied`);
+            this._locked = false;
+            this._scopeProject = undefined;
+            return orgs;
+        }
+        return [{ ...org, projects: [project] }];
     }
 
     private _getOrgsFromMls(): IOrg[] {
@@ -214,7 +265,10 @@ export class ServiceExploreProjects102020 extends ServiceBase {
             if (prj.length <= 0) return;
             result.push({ name, created_at, description, key: org, index, projects: prj });
         });
-        if (checkIfHasLocalProject()) result.unshift(this._buildLocalOrg());
+        // No local project in the client app — it only ever serves the app's own project.
+        // Asked of the run mode, not of _locked: the scope may fail to apply and unlock below,
+        // and a local org would still make no sense there.
+        if (!isStudioClient() && checkIfHasLocalProject()) result.unshift(this._buildLocalOrg());
         return result;
     }
 
@@ -231,6 +285,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
     }
 
     private _buildOrgConfig(orgs: IOrg[]): IKnobConfig {
+        if (this._locked) return LOCKED_CONFIG('organization', orgs[0]?.name ?? '');
         const labels: Record<number, string> = { 0: 'All' };
         orgs.forEach((org, i) => { labels[i + 1] = org.name; });
         labels[orgs.length + 1] = 'Custom';
@@ -238,6 +293,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
     }
 
     private _buildProjectConfigFromOrg(org: IOrg): IKnobConfig {
+        if (this._locked) return LOCKED_CONFIG('project', org.projects[0]?.name ?? '');
         const labels: Record<number, string> = { 0: 'All' };
         org.projects.forEach((p, i) => { labels[i + 1] = p.name; });
         labels[org.projects.length + 1] = 'Custom';
@@ -267,6 +323,9 @@ export class ServiceExploreProjects102020 extends ServiceBase {
     }
 
     private _setKnobValue(key: string, value: number | null) {
+        // Single choke point of every switch path (knob, nav-header arrows, All/Custom cards):
+        // in the studio client the org/project are fixed to the app's.
+        if (this._locked) return;
         switch (key) {
             case 'organization': {
                 this._orgValue = value;
@@ -304,6 +363,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
     connectedCallback() {
         super.connectedCallback();
         AuraInitState();
+        this._resolveRunMode();
         this._loadOrgs();
     }
 
@@ -405,6 +465,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                     <aura--plugins--select-organization-102020
                         .orgs=${this._orgs}
                         .value=${this._orgValue}
+                        .locked=${this._locked}
                         @select-org=${(e: CustomEvent) => this._setKnobValue('organization', e.detail.value)}
                     ></aura--plugins--select-organization-102020>
                 `;
@@ -413,6 +474,7 @@ export class ServiceExploreProjects102020 extends ServiceBase {
                     <aura--plugins--select-project-102020
                         .selectedOrg=${this._selectedOrg}
                         .value=${this._projectValue}
+                        .locked=${this._locked}
                         @select-project=${(e: CustomEvent) => this._setKnobValue('project', e.detail.value)}
                     ></aura--plugins--select-project-102020>
                 `;
