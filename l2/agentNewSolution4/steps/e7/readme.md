@@ -19,8 +19,11 @@ metadata back to journey/access contracts. E3 realization derives authority link
 E8 operations are the future channel integration endpoints, and backend generators choose their architecture.
 
 Workflow compilation starts from the explicit E4 lifecycle but emits a partial workflow containing
-only states operated by approved journey use cases. Unoperated intermediate states are removed from
-that workflow only, recorded as `shrinkLifecycle` system decisions with `operateState` alternatives,
-and do not alter the approved E4 ontology or open a mandatory clarification. Binary inactivation or
-reversal flags still do not require a workflow. The deterministic gate remains terminal for broken
-entity/use-case references, invalid transition bounds/operators and other structural defects.
+only states reachable through approved journey transitions. Build and gate import the same reachability
+function. Shrink iterates to a fixed point: removing an unreachable source also removes its outgoing
+transition and may make further targets unreachable. Every removed state is recorded as a
+`shrinkLifecycle` system decision with `operateState` as an alternative. Predicates whose states all
+disappear receive a dormant-consumption decision while E4 and E5 stay unchanged. A workflow with no
+remaining transition is omitted with explicit decision evidence. Binary inactivation or reversal flags
+still do not require a workflow. The deterministic post-resolution gate remains a terminal invariant
+for broken entity/use-case references, invalid transition bounds/operators and compiler/gate drift.

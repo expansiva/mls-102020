@@ -268,9 +268,10 @@ async function finalizeE7(
     states: entity.lifecycleStates,
     initialState: entity.initialState,
     terminalStates: entity.terminalStates,
+    lifecyclePredicates: entity.lifecyclePredicates.map(predicate => ({ predicateId: predicate.predicateId, stateIds: predicate.stateIds })),
   }]));
   const { artifacts: workflows, index: workflowIndex } = await buildNs4WorkflowArtifacts(plan, valid, ontologyLifecycles, generatedAt);
-  const workflowGate = validateNs4Workflows(workflows, bundle, useCases.map(useCase => useCase.useCaseId));
+  const workflowGate = validateNs4Workflows(workflows, bundle, useCases.map(useCase => useCase.useCaseId), workflowIndex.systemDecisions);
   if (!workflowGate.ok) {
     await updateValidationReport(args.moduleName, repairRound, validationResults, 'failed', workflowGate.issues);
     throw new Error(`E7 workflow structural gate failed: ${formatGate(workflowGate.issues)}.`);

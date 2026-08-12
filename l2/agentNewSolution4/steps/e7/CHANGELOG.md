@@ -1,5 +1,9 @@
 # Changelog
 
+- 2026-08-12: Run 36 aligns lifecycle shrink and gate on one reachability function. Shrink now reaches
+  a fixed point, records cascading state and dormant-predicate decisions, and omits transitionless
+  workflows with explicit evidence while retaining the post-resolution invariant throw.
+
 - 2026-08-12: Accept the platform tool-call transport around the strict worker envelope as well as
   direct and legacy raw worker artifacts.
 

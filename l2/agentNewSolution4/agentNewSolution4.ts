@@ -93,7 +93,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-47 (2026-08-12) automatic semantic resolution';
+export const NS4_AGENT_BUILD = 'build-49 (2026-08-12) E7 fixed-point reachability';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

@@ -1,5 +1,9 @@
 # E2 changelog
 
+- 2026-08-12: Restored the documented `/fast` behavior after the coverage judge: E2 persists the
+  gated draft and its generated policy choices as an automatic approval instead of unconditionally
+  opening the journey clarification. The judge and both repair budgets remain unchanged.
+
 - 2026-08-10: Flow v21 makes policy choices first-class E2 contracts. Generation declares a
   journey's choices without impact; the independent judge adds impact/related-journey context; the
   widget sends structured selections. Any alternative selection triggers a complete versioned rewrite

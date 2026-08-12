@@ -53,6 +53,7 @@ import {
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { validateNs4E2PolicySelections, validateNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/gate.js';
 import { resolveNs4E2HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e2/hookArgs.js';
+import { isNs4E2FastMode } from '/_102020_/l2/agentNewSolution4/steps/e2/fastMode.js';
 import {
   formatNs4E2CoverageRepairFeedback,
   applyNs4E2PolicyDecisionImpacts,
@@ -405,6 +406,18 @@ async function afterNs4E2CoverageJudge(
     pipeline.presentation.stepTitles['e2-journeys'], verdict,
   );
 
+  if (isFast(context)) {
+    const saved = await persistNs4E2(args.moduleName, review, 'auto');
+    return [
+      trace,
+      resultStep(context, judgeParent, saved, 'E2 journeys auto-approved'),
+      updateStatus(
+        context, judgeParent, step, hookSequential, 'completed',
+        `E2 coverage reviewed and ${saved.journeyCount} journeys auto-approved.`, 'input_output',
+      ),
+    ];
+  }
+
   return [
     trace,
     clarificationReviewStep(context, judgeParent, review, pipeline.presentation.stepTitles['e2-journeys']),
@@ -628,6 +641,8 @@ function adjustmentResultStep(context: mls.msg.ExecutionContext, parentStep: mls
     planning: { planId: `e2-adjustment-request-${Date.now()}`, dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
   } as mls.msg.AIResultStep);
 }
+
+function isFast(context: mls.msg.ExecutionContext): boolean { return isNs4E2FastMode(context); }
 
 function gateRepairResultStep(
   context: mls.msg.ExecutionContext,

@@ -10,6 +10,8 @@ import {
 import type {
   Ns4E7PlanDraft, Ns4E7SourceHashes, Ns4UseCaseDraft, Ns4WorkflowArtifactV2,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
+import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
+import { collectNs4ReachableWorkflowStates } from '/_102020_/l2/agentNewSolution4/steps/e7/reachability.js';
 
 export interface Ns4E7LifecycleRepairOption {
   action: 'operateState' | 'shrinkLifecycle';
@@ -142,11 +144,15 @@ export function validateNs4Workflows(
   workflows: Ns4WorkflowArtifactV2[],
   sources: Ns4E7Sources,
   useCaseIds: Iterable<string>,
+  systemDecisions: Ns4SystemDecision[] = [],
 ): Ns4E7GateResult {
   const issues: Ns4E7GateIssue[] = [];
   const add = issueAdder(issues);
   const entities = new Map(sources.ontology.entities.map(entity => [entity.entityId, entity]));
   const knownUseCaseIds = new Set(useCaseIds);
+  const omittedWorkflowEntities = new Set(systemDecisions
+    .filter(decision => decision.chosen === 'omitWorkflow' && decision.findingRef.startsWith('workflow.missing:'))
+    .map(decision => decision.findingRef.slice('workflow.missing:'.length)));
   const ids = new Set<string>();
   for (const workflow of workflows) {
     if (ids.has(workflow.workflowId)) add('NS4_E7_WORKFLOW_DUPLICATE', 'workflows', `Duplicate workflow ${workflow.workflowId}.`);
@@ -178,8 +184,9 @@ export function validateNs4Workflows(
       });
       if (!workflow.states.includes(transition.toState)) add('NS4_E7_WORKFLOW_TRANSITION_STATE', path, `Unknown target lifecycle state ${transition.toState}.`);
     });
+    const reachableStates = collectNs4ReachableWorkflowStates(workflow.initialState, workflow.transitions);
     workflow.states.filter(state => state !== workflow.initialState).forEach(state => {
-      if (!workflow.transitions.some(transition => transition.toState === state)) {
+      if (!reachableStates.has(state)) {
         addLifecycleIssue(issues, 'workflow.state.unreachable', workflow.workflowId,
           `Lifecycle state ${state} has no incoming transition.`, workflow.entityRef, state);
       }
@@ -194,19 +201,19 @@ export function validateNs4Workflows(
     const workflow = workflows.find(item => item.entityRef === entity.entityId);
     const terminalStates = new Set(entity.terminalStates || []);
     const hasIntermediateState = entity.lifecycleStates.some(state => state !== entity.initialState && !terminalStates.has(state));
-    if (hasIntermediateState && !workflow) {
+    if (hasIntermediateState && !workflow && !omittedWorkflowEntities.has(entity.entityId)) {
       addLifecycleIssue(issues, 'workflow.missing', entity.entityId,
         `Entity ${entity.entityId} has an intermediate lifecycle state but no compiled workflow.`, entity.entityId);
       continue;
     }
     if (!workflow) continue;
+    const reachableStates = collectNs4ReachableWorkflowStates(workflow.initialState, workflow.transitions);
     for (const predicate of entity.lifecyclePredicates) {
       for (const state of predicate.stateIds) {
         // A state intentionally omitted from the compiled partial workflow is already covered by
         // the workflow index's shrinkLifecycle system decision; E4 remains unchanged.
         if (!workflow.states.includes(state)) continue;
-        const reachable = state === entity.initialState || workflow.transitions.some(transition => transition.toState === state);
-        if (entity.lifecycleStates.length && !reachable) {
+        if (entity.lifecycleStates.length && !reachableStates.has(state)) {
           addLifecycleIssue(issues, 'workflow.predicate.dead', entity.entityId,
             `Lifecycle predicate ${predicate.predicateId} references state ${state}, which no workflow transition reaches.`, entity.entityId, state);
         }

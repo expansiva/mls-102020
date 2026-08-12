@@ -16,11 +16,14 @@ import {
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 import { createNs4E7LifecycleResolutionReview } from '/_102020_/l2/agentNewSolution4/steps/e7/lifecycleResolution.js';
 import { validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows } from '/_102020_/l2/agentNewSolution4/steps/e7/gate.js';
+import { shrinkNs4WorkflowToReachable } from '/_102020_/l2/agentNewSolution4/steps/e7/reachability.js';
 
 const lifecycleFixture = JSON.parse(readFileSync(new URL('fixtures/a2_1-lifecycle-gate.json', import.meta.url), 'utf8')) as {
   binaryFlag: { states: string[]; initialState: string; terminalStates: string[]; predicateState: string };
   expectedMissing: string[];
   expectedSystemDecisions: string[];
+  fixedPoint: { entityId: string; states: string[]; initialState: string; terminalStates: string[]; transitions: any[]; expectedRemovedStates: string[] };
+  run36: { entityId: string; states: string[]; initialState: string; terminalStates: string[]; predicate: { predicateId: string; stateIds: string[] }; transition: any };
 };
 
 const journeys = normalizeNs4E2Review({ moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', reviewRound: 1,
@@ -240,7 +243,7 @@ test('E7 exempts binary lifecycle flags and treats the initial state as predicat
   assert.deepEqual(validateNs4Workflows([], binarySources, []), { ok: true, issues: [] });
 });
 
-test('run 32 compiles partial workflows and records one shrink decision per unoperated intermediate', async () => {
+test('run 32 omits transitionless workflows and records every fixed-point lifecycle resolution', async () => {
   const run32Sources = {
     ...sources,
     ontology: normalizeNs4E4Review({ ...ontology, entities: [
@@ -254,12 +257,44 @@ test('run 32 compiles partial workflows and records one shrink decision per unop
   });
   const built = await buildNs4WorkflowArtifacts(plan, [], new Map(run32Sources.ontology.entities.map(entity => [entity.entityId, {
     states: entity.lifecycleStates, initialState: entity.initialState, terminalStates: entity.terminalStates,
+    lifecyclePredicates: entity.lifecyclePredicates.map(predicate => ({ predicateId: predicate.predicateId, stateIds: predicate.stateIds })),
   }])), '2026-08-12T12:00:00.000Z');
-  assert.equal(built.artifacts.length, 3);
-  assert.ok(built.artifacts.every(workflow => workflow.states.length === 1 && workflow.states[0] === workflow.initialState));
+  assert.equal(built.artifacts.length, 0);
   assert.deepEqual(built.index.systemDecisions.map(decision => decision.decisionId), lifecycleFixture.expectedSystemDecisions);
-  assert.ok(built.index.systemDecisions.every(decision => decision.chosen === 'shrinkLifecycle' && decision.alternatives.includes('operateState')));
-  assert.equal(validateNs4Workflows(built.artifacts, run32Sources, []).ok, true);
+  assert.ok(built.index.systemDecisions.every(decision => decision.alternatives.includes('operateState')));
+  assert.equal(validateNs4Workflows(built.artifacts, run32Sources, [], built.index.systemDecisions).ok, true);
+  assert.equal(validateNs4Workflows(built.artifacts, run32Sources, []).ok, false);
+});
+
+test('E7 reachability reaches a fixed point when removing b makes c unreachable', () => {
+  const fixture = lifecycleFixture.fixedPoint;
+  const result = shrinkNs4WorkflowToReachable(fixture.initialState, fixture.states, fixture.transitions);
+  assert.deepEqual(result.removedStates, fixture.expectedRemovedStates);
+  assert.deepEqual(result.states, [fixture.initialState]);
+  assert.deepEqual(result.transitions, []);
+});
+
+test('run 36 shrinks source-only reviewed, cascades shared, records the dormant predicate and passes the invariant gate', async () => {
+  const fixture = lifecycleFixture.run36;
+  const plan = buildNs4E7Plan('buildFlowFsm36', 'en', normalizeNs4E2Review({ moduleName: 'buildFlowFsm36', journeys: [], features: [] }), {
+    journeys: [], ontologyHash: 'sha256:ontology', rulesHash: 'sha256:rules',
+  });
+  const draft = normalizeNs4UseCaseDraft({ moduleName: 'buildFlowFsm36', useCaseId: 'shareStatusReport', description: 'Share report.', entityRefs: [fixture.entityId], useRules: [], transitions: [fixture.transition] },
+    { ...plan, useCases: [{ useCaseId: 'shareStatusReport', title: 'Share report', kind: 'command', compiledFrom: ['shareProjectStatusReport.shareStatusReport'], contexts: { requires: [], provides: [] } }] }, 'shareStatusReport');
+  const built = await buildNs4WorkflowArtifacts(plan, [draft], new Map([[fixture.entityId, {
+    states: fixture.states, initialState: fixture.initialState, terminalStates: fixture.terminalStates, lifecyclePredicates: [fixture.predicate],
+  }]]), '2026-08-12T23:00:00.000Z');
+  assert.equal(built.artifacts.length, 0);
+  assert.deepEqual(built.index.systemDecisions.filter(decision => decision.chosen === 'shrinkLifecycle').map(decision => decision.findingRef), [
+    'workflow.state.unreachable:ProjectStatusReport.reviewed',
+    'workflow.state.unreachable:ProjectStatusReport.shared',
+  ]);
+  assert.ok(built.index.systemDecisions.some(decision => decision.findingRef === 'workflow.predicate.dead:ProjectStatusReport.reviewedStatusReport'
+    && decision.chosen === 'leavePredicateDormant'));
+  const run36Ontology = normalizeNs4E4Review({ ...ontology, moduleName: 'buildFlowFsm36', entities: [{ ...ontology.entities[1], entityId: fixture.entityId,
+    lifecycleStates: fixture.states, initialState: fixture.initialState, terminalStates: fixture.terminalStates,
+    lifecyclePredicates: [{ ...fixture.predicate, description: 'Reviewed before sharing.', source: 'journey' }] }] });
+  assert.equal(validateNs4Workflows(built.artifacts, { ...sources, ontology: run36Ontology }, ['shareStatusReport'], built.index.systemDecisions).ok, true);
 });
 
 test('E7 accepts an ontology with no lifecycle workflows', () => {

@@ -15,8 +15,10 @@ first validates internal structure and context flow. An independent `🔎` reaso
 compares the complete E1 contract with the draft. It may request one semantic repair. A stable
 remaining business bifurcation is recorded as a system decision using the behavior already implicit
 in the generated draft; it does not fail E2. Every structurally valid proposal then reaches the `👤`
-checkpoint, including `/fast`, where assumed decisions are read-only and the user may approve or ask
-for a change. A change request starts another generation round using the previous draft as context.
+checkpoint in interactive mode, where assumed decisions are read-only and the user may approve or ask
+for a change. `/fast` persists those same generated choices and system decisions automatically after
+the gate and coverage judge, without creating the widget. A change request starts another generation
+round using the previous draft as context.
 
 The proposal LLM returns an internal `flexible` payload rather than a clarification. This prevents an
 ungated candidate from briefly opening the journey widget while the deterministic gate, repair and

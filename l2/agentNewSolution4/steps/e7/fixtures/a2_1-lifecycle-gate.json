@@ -11,5 +11,35 @@
     { "entityId": "Invoice", "states": ["prepared", "issued", "paid", "voided"], "initialState": "prepared", "terminalStates": ["paid", "voided"] }
   ],
   "expectedMissing": ["workflow.missing:Project", "workflow.missing:WorkTask", "workflow.missing:Invoice"],
-  "expectedSystemDecisions": ["shrinkInvoiceIssued", "shrinkProjectActive", "shrinkWorkTaskInProgress"]
+  "expectedSystemDecisions": [
+    "shrinkInvoiceIssued",
+    "shrinkInvoicePaid",
+    "shrinkInvoiceVoided",
+    "omitInvoiceWorkflow",
+    "shrinkProjectActive",
+    "shrinkProjectArchived",
+    "dormantProjectIsActive",
+    "omitProjectWorkflow",
+    "shrinkWorkTaskInProgress",
+    "shrinkWorkTaskCompleted",
+    "omitWorkTaskWorkflow"
+  ],
+  "fixedPoint": {
+    "entityId": "FixedPointRecord",
+    "states": ["a", "b", "c"],
+    "initialState": "a",
+    "terminalStates": ["c"],
+    "transitions": [
+      { "transitionId": "advanceC", "entityRef": "FixedPointRecord", "fromStates": ["b"], "toState": "c", "useRules": [] }
+    ],
+    "expectedRemovedStates": ["b", "c"]
+  },
+  "run36": {
+    "entityId": "ProjectStatusReport",
+    "states": ["generated", "reviewed", "shared"],
+    "initialState": "generated",
+    "terminalStates": ["shared"],
+    "predicate": { "predicateId": "reviewedStatusReport", "stateIds": ["reviewed"] },
+    "transition": { "transitionId": "shareStatusReport", "entityRef": "ProjectStatusReport", "fromStates": ["reviewed"], "toState": "shared", "useRules": ["reviewedStatusReport"] }
+  }
 }

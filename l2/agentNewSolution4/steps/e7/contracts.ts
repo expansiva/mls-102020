@@ -11,6 +11,7 @@ import type {
 import { NS4_REALIZED_ACCESS_MATRIX_SCHEMA_VERSION } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import type { Ns4OntologyField } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import { resolveNs4Findings, type Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
+import { shrinkNs4WorkflowToReachable } from '/_102020_/l2/agentNewSolution4/steps/e7/reachability.js';
 
 export const NS4_USE_CASE_DRAFT_VERSION = '2026-08-10-ns4-usecase-draft-minimal-v3' as const;
 export const NS4_USE_CASE_SCHEMA_VERSION = '2026-08-10-ns4-usecase-v3' as const;
@@ -132,6 +133,7 @@ export interface Ns4WorkflowLifecycleDefinition {
   states: string[];
   initialState?: string;
   terminalStates?: string[];
+  lifecyclePredicates?: Array<{ predicateId: string; stateIds: string[] }>;
 }
 
 export interface Ns4WorkflowArtifactV2 {
@@ -313,41 +315,79 @@ export async function buildNs4WorkflowArtifacts(
     return byEntity.has(entityRef) || lifecycle.states.some(state => state !== lifecycle.initialState && !terminal.has(state));
   }).sort(([left], [right]) => left.localeCompare(right));
   const decisions: Ns4SystemDecision[] = [];
-  const artifacts = await Promise.all(relevantEntities.map(async ([entityRef, lifecycle]) => {
+  const artifacts = (await Promise.all(relevantEntities.map(async ([entityRef, lifecycle]) => {
       const transitions = byEntity.get(entityRef) || [];
       const workflowId = `${entityRef.slice(0, 1).toLowerCase()}${entityRef.slice(1)}Lifecycle`;
       const initialState = lifecycle.initialState || '';
-      const operatedStates = new Set([initialState, ...transitions.flatMap(transition => [...transition.fromStates, transition.toState])]);
-      const ontologyTerminal = new Set(lifecycle.terminalStates || []);
-      const intermediateStates = lifecycle.states.filter(state => state !== initialState && !ontologyTerminal.has(state));
       const portuguese = plan.userLanguage.toLowerCase().startsWith('pt');
       const base = {
-        states: lifecycle.states.filter(state => operatedStates.has(state) || intermediateStates.includes(state)),
-        terminalStates: (lifecycle.terminalStates || []).filter(state => operatedStates.has(state)),
+        states: [...lifecycle.states],
+        terminalStates: [...(lifecycle.terminalStates || [])],
+        transitions,
       };
-      const resolution = resolveNs4Findings(base, intermediateStates
-        .filter(state => !operatedStates.has(state))
+      const shrink = shrinkNs4WorkflowToReachable(initialState, base.states, base.transitions);
+      const resolution = resolveNs4Findings(base, shrink.removedStates
         .map(state => ({
           classification: 'C' as const,
           decisionId: `shrink${entityRef}${state.slice(0, 1).toUpperCase()}${state.slice(1)}`,
-          findingRef: `${transitions.length ? 'workflow.state.unreachable' : 'workflow.missing'}:${entityRef}.${state}`,
+          findingRef: `workflow.state.unreachable:${entityRef}.${state}`,
           stage: 'e7',
           question: portuguese
-            ? `Como o estado não operado ${entityRef}.${state} deve ser tratado?`
-            : `How should the unoperated ${entityRef}.${state} lifecycle state be handled?`,
+            ? `Como o estado inalcançável ${entityRef}.${state} deve ser tratado?`
+            : `How should the unreachable ${entityRef}.${state} lifecycle state be handled?`,
           deterministicChoice: 'shrinkLifecycle',
           alternatives: ['operateState'],
           changeHint: portuguese
-            ? `Adicione uma operação explícita no E2 para ${entityRef}.${state} antes de restaurá-lo no workflow compilado; a ontologia E4 permanece inalterada.`
-            : `Add an explicit E2 operation for ${entityRef}.${state} before restoring it to the compiled workflow; the E4 ontology remains unchanged.`,
-          apply: (artifact: typeof base) => ({ ...artifact, states: artifact.states.filter(item => item !== state), terminalStates: artifact.terminalStates.filter(item => item !== state) }),
+            ? `Adicione uma jornada/operação explícita no E2 que alcance ${entityRef}.${state} antes de restaurá-lo no workflow compilado; a ontologia E4 permanece inalterada.`
+            : `Add an explicit E2 journey/operation that reaches ${entityRef}.${state} before restoring it to the compiled workflow; the E4 ontology remains unchanged.`,
+          apply: (artifact: typeof base) => {
+            const next = shrinkNs4WorkflowToReachable(initialState, artifact.states.filter(item => item !== state), artifact.transitions
+              .filter(transition => transition.toState !== state)
+              .map(transition => ({ ...transition, fromStates: transition.fromStates.filter(item => item !== state) }))
+              .filter(transition => transition.fromStates.length));
+            return { states: next.states, transitions: next.transitions,
+              terminalStates: artifact.terminalStates.filter(item => next.states.includes(item)) };
+          },
         })));
       decisions.push(...resolution.systemDecisions);
-      const { states, terminalStates } = resolution.artifact;
-      const workflowHash = await sha256Ns4({ entityRef, initialState, terminalStates, states, transitions });
+      const { states, terminalStates, transitions: resolvedTransitions } = resolution.artifact;
+      const dormantPredicates = (lifecycle.lifecyclePredicates || []).filter(predicate => predicate.stateIds.length
+        && predicate.stateIds.every(state => !states.includes(state)));
+      const predicateResolution = resolveNs4Findings(states, dormantPredicates.map(predicate => ({
+        classification: 'C' as const,
+        decisionId: `dormant${entityRef}${predicate.predicateId.slice(0, 1).toUpperCase()}${predicate.predicateId.slice(1)}`,
+        findingRef: `workflow.predicate.dead:${entityRef}.${predicate.predicateId}`,
+        stage: 'e7',
+        question: portuguese
+          ? `O critério ${predicate.predicateId} não tem efeito nesta versão — nenhum estado que o satisfaz é alcançado.`
+          : `The ${predicate.predicateId} criterion has no effect in this version — none of its states is reachable.`,
+        deterministicChoice: 'leavePredicateDormant', alternatives: ['operateState'],
+        changeHint: portuguese
+          ? `Adicione no E2 uma jornada que alcance um dos estados ${predicate.stateIds.join(', ')}; a regra E5 e a ontologia E4 permanecem inalteradas.`
+          : `Add an E2 journey that reaches one of ${predicate.stateIds.join(', ')}; the E5 rule and E4 ontology remain unchanged.`,
+        apply: (artifact: string[]) => artifact,
+      })));
+      decisions.push(...predicateResolution.systemDecisions);
+      if (!resolvedTransitions.length) {
+        const omission = resolveNs4Findings(true, [{
+          classification: 'C' as const, decisionId: `omit${entityRef}Workflow`,
+          findingRef: `workflow.missing:${entityRef}`, stage: 'e7',
+          question: portuguese
+            ? `${entityRef} está sem fluxo de estados operado nesta versão.`
+            : `${entityRef} has no operated state flow in this version.`,
+          deterministicChoice: 'omitWorkflow', alternatives: ['operateState'],
+          changeHint: portuguese
+            ? `Adicione no E2 uma jornada que opere uma transição de ${entityRef}; a ontologia E4 permanece inalterada.`
+            : `Add an E2 journey that operates a ${entityRef} transition; the E4 ontology remains unchanged.`,
+          apply: () => false,
+        }]);
+        decisions.push(...omission.systemDecisions);
+        return null;
+      }
+      const workflowHash = await sha256Ns4({ entityRef, initialState, terminalStates, states, transitions: resolvedTransitions });
       return { schemaVersion: NS4_WORKFLOW_SCHEMA_VERSION, moduleName: plan.moduleName,
-        workflowId, entityRef, initialState, terminalStates, states, transitions, workflowHash } satisfies Ns4WorkflowArtifactV2;
-    }));
+        workflowId, entityRef, initialState, terminalStates, states, transitions: resolvedTransitions, workflowHash } satisfies Ns4WorkflowArtifactV2;
+    }))).filter((artifact): artifact is Ns4WorkflowArtifactV2 => !!artifact);
   const realizationHash = await sha256Ns4(artifacts.map(item => ({ workflowId: item.workflowId, workflowHash: item.workflowHash })));
   return {
     artifacts,

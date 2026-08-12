@@ -1,29 +1,50 @@
-# NS4 terminal-failure audit — flow v29
+# NS4 terminal-failure audit — flow v30
 
-The audit boundary is every runtime branch that sets a task step or persisted pipeline to `failed`.
-Line numbers refer to the v29 source. Validation errors shown inside an open clarification are not
-terminal transitions and are therefore excluded.
+Audit boundary: runtime branches under `agentNewSolution4.ts`, `steps/e1`–`steps/e8` and shared
+helpers that throw, return a failed task intent or persist a failed pipeline state. The inventory was
+refreshed with:
 
-| Location | Class | Action |
+```text
+rg -n "throw new Error|status.*'failed'|recordNs4.*Failure" \
+  agentNewSolution4.ts steps helpers --glob '*.ts' --glob '!*.test.ts'
+```
+
+CLI/live/smoke utilities are test tools rather than task-state transitions and are excluded. Errors
+raised inside an open clarification callback are recoverable UI feedback and are listed separately.
+
+## Terminal and invariant boundaries
+
+| Owner/location | Class | Audited action |
 | --- | --- | --- |
-| `agentNewSolution4.ts:266,308,313,329` | A | Stop: unsupported plan id, failed dependency, invalid root prompt/envelope, or root hook exception. |
-| `steps/e1/agentNs4E1.ts:101,113,116,225-226,264-265` | A | Stop: invalid args/provider envelope, missing approved input, or deterministic module-contract failure. |
-| `steps/e2/agentNs4E2.ts:205-206,242-243,281-282,305-306` | A | Stop: missing source/draft, invalid provider envelope, exhausted structural repair, or infrastructure exception. |
-| `steps/e2/agentNs4E2.ts:348-366,446-447` | A | Stop: invalid judge protocol after retry, broken policy-decision reference, draft integrity drift, or invalid repair envelope after its bounded retry. Semantic coverage remnants are no longer in these branches. |
-| `steps/e3/agentNs4E3.ts:100-101,122-146,163-164` | A | Stop: source/protocol failure or deterministic access-contract failure after its bounded repair. |
-| `steps/e4/agentNs4E4.ts:139-140,322-323,358-359,424-425,466-487,542-543` | A | Stop: source/protocol failure, invalid overview/entity/binding contract after bounded repair, or infrastructure exception. Parallel worker-local failures remain completed for finalizer repair. |
-| `steps/e5/agentNs4E5.ts:75-76,128-129,229-230` | A | Stop: source/protocol failure, invalid rule catalog after bounded repair, or infrastructure exception. |
-| `steps/e6/agentNs4E6.ts:71-72,121-122,214-215` | A | Stop: source/protocol failure, invalid composition contract after bounded repair, or infrastructure exception. |
-| `steps/e7/agentNs4E7.ts:93-94,109,262,276,541-543` | A | Stop: invalid orchestration, exhausted use-case repair, structurally invalid workflow/reference, or infrastructure exception. Worker-local payload/gate failures remain completed for the bounded finalizer repair. |
-| `steps/e8/agentNs4E8.ts:39,55,65,148` | A | Stop: invalid orchestration/provider envelope, invalid skeleton after bounded handling, exhausted workspace repair, missing/broken source artifacts, or infrastructure exception. Worker-local failures remain completed for finalizer repair. |
-| `helpers/ns4Core.ts:876,892,1034,1126,1214,1299,1366,1407` | A sink | These functions only persist a terminal decision already made by the owning step; they do not classify findings. |
+| Root `agentNewSolution4.ts` planning and dispatch | A | Stop on unsupported plan id, failed dependency, invalid root envelope/prompt or root hook exception. |
+| E1 prompt/compile and permanent module gate | A | Stop on provider/protocol failure, invalid ownership/resume, missing approved input or deterministic module-contract failure. |
+| E2 proposal, structural repair and coverage judge | A | Stop on missing source/draft, invalid provider/judge protocol after its bounded retry, broken policy-decision reference, draft integrity drift or exhausted structural repair. Coverage bifurcations after the semantic budget are Type B decisions, not terminal. |
+| E3 access compilation | A | Stop on source/protocol failure or deterministic access-contract failure after bounded repair. |
+| E4 overview/entity/binding finalizers | A | Stop on source/protocol failure, invalid structural contract after bounded repair or incomplete approved artifact input. Worker-local failures complete for targeted repair. |
+| E5 rule compilation | A | Stop on source/protocol failure, invalid rule catalog after repair or approved-source failure. |
+| E6 composition compilation | A | Stop on source/protocol failure, invalid composition contract after repair or approved-source failure. |
+| E7 use-case finalizer | A | Stop after exhausted missing/invalid use-case repair. Worker-local failures remain completed for the bounded finalizer repair. |
+| E7 post-resolution workflow gate (`agentNs4E7.ts`, `E7 workflow structural gate failed`) | A invariant | Keep the throw. Build first resolves reachability, predicate cascades and evidence-backed workflow omission; any remaining gate error means compiler/gate drift. The complete E7 validation report is persisted before this assertion. Run 36 exposed exactly this boundary and led to the shared reachability fix rather than weakening the gate. |
+| E8 skeleton/workspace finalizers | A | Stop on invalid orchestration/provider envelope, invalid skeleton, missing/broken approved sources or unresolved Type A workspace findings after repair. The E8 report is durable before the remaining finalizer throw. |
+| `helpers/ns4ApprovedArtifacts.ts` and required reads in `ns4Fs.ts` | A source integrity | Ownership mismatch, duplicate/missing approved defs and exhausted bounded reads bubble to the owning step and become its terminal source failure. |
+| Typed contract builders (`steps/*/contracts.ts`) | A invariant | Unknown targets, legacy contracts and impossible relationship realizations are programmer/source-contract errors and are caught by the owning runtime phase. |
+| `helpers/ns4Core.ts` `markNs4*Failed` functions | A sink | Persist a terminal decision already made by the owning phase; they never classify findings. |
 
-Non-terminal resolution points:
+## Non-terminal resolution boundaries
 
-| Location | Class | Action |
+| Owner/location | Class | Audited action |
 | --- | --- | --- |
-| `steps/e2/agentNs4E2.ts:372-413` + `steps/e2/coverageJudge.ts:153-170` | B | After one semantic repair, record the judge-reported generator default in `systemDecisions`, persist it in E2 review/index, and open the normal review checkpoint. |
-| `steps/e7/contracts.ts:299-360` | C | Compile the operated lifecycle subset, remove each unoperated intermediate state only from the workflow, record `shrinkLifecycle` with `operateState` as alternative, and leave E4 unchanged. |
+| E2 semantic coverage resolver | B | After one semantic repair, record the generator default in `systemDecisions`; `/fast` auto-approves it and interactive mode opens the normal review. |
+| E7 fixed-point workflow compiler | C | Use the same reachability function as the gate, remove every unreachable state and cascading transition, record `shrinkLifecycle`, record predicates made dormant and omit a transitionless workflow with explicit evidence. E4 and E5 remain unchanged. |
+| E8 disclosure and invalid-field resolver | B/C | Record prose-only `fieldsOnly` review decisions; patch exact invalid field refs after repair and preserve the full validation history. |
 | `helpers/ns4Resolve.ts` | A/B/C boundary | Return A unresolved; record B without changing the artifact; apply and record C. |
 
-Conclusion: no audited Type B or mechanically resolvable Type C branch still marks the task failed.
+## Recoverable clarification errors
+
+E1–E6/E8 clarification callbacks may throw for cancellation not yet supported, an empty adjustment,
+invalid selections or edited review data that fails its deterministic gate. The widget catches these
+errors, remains open and does not mark the task or pipeline failed.
+
+Conclusion: every runtime terminal branch is either Type A infrastructure/source/protocol failure or
+an explicit post-resolution invariant. Known Type B and mechanically resolvable Type C findings have
+durable non-terminal paths.
