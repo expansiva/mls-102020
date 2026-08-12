@@ -167,7 +167,9 @@ async function buildPlanPrompt(
     throw new Error(`E4 modernization intake is not implemented for strategy ${moduleArtifact.solutionStrategy.mode}.`);
   }
   const reviewRound = args.reviewRound || pipeline.steps.e4?.reviewRound || 1;
-  const previousDraft = args.adjustment || args.gateFeedback ? await readNs4ApprovedOntology(args.moduleName) : null;
+  // A plan-gate repair runs before E4 has produced any approved ontology artifact. Its persisted
+  // overview is supplied below as previousPlan; only a later human adjustment may read E4 output.
+  const previousDraft = args.adjustment ? await readNs4ApprovedOntology(args.moduleName) : null;
   const previousPlan = args.gateFeedback ? await readOptionalPlanDraft(args.moduleName) : null;
   const humanPrompt = [
     '## Explicit delivery mode\nnew solution; new persistence design; no legacy database contract',
