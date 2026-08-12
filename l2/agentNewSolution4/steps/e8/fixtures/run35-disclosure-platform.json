@@ -1,0 +1,22 @@
+{
+  "platformEntity": {
+    "entityId": "AccountIdentity",
+    "title": "Identidade",
+    "description": "Identidade mantida pela plataforma.",
+    "kind": "core",
+    "ownership": "external",
+    "sourceRefs": { "journeyIds": ["locateProjects"], "featureIds": [], "authorityRefs": [] },
+    "fields": [{ "fieldId": "accountIdentityId" }],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "useRules": [],
+    "storage": { "target": "external", "scope": "platform", "notes": "Platform-owned." }
+  },
+  "fieldsOnly": {
+    "mode": "fieldsOnly",
+    "description": "Somente o resumo atribuído.",
+    "allowedInformation": ["Assigned project name and current status"],
+    "deniedInformation": ["Internal margin"]
+  },
+  "invalidFieldRef": { "entityId": "Project", "fieldId": "fieldThatDoesNotExist", "label": "Campo inválido" }
+}

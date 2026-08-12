@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
   buildNs4WorkspaceArtifacts, deriveE8HubScore, deriveNs4E8Skeleton, hashNs4E8Skeleton, normalizeNs4WorkspaceDetail,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
-import { validateNs4E8Skeleton, validateNs4WorkspaceDetail } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
+import { resolveNs4WorkspaceDetailFindings, validateNs4E8Skeleton, validateNs4WorkspaceDetail } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
+
+const run35Fixture = JSON.parse(readFileSync(new URL('fixtures/run35-disclosure-platform.json', import.meta.url), 'utf8')) as {
+  platformEntity: any; fieldsOnly: any; invalidFieldRef: { entityId: string; fieldId: string; label: string };
+};
 
 const sources: any = {
   journeys: { moduleName: 'construction', userLanguage: 'pt-BR', journeys: [
@@ -82,4 +87,48 @@ test('E8 degrades to a flat menu when no anchor dominates', () => {
   };
   const skeleton = deriveNs4E8Skeleton(flatSources);
   assert.equal(skeleton.workspaces.some(workspace => workspace.kind === 'hub'), false);
+});
+
+test('E8 excludes a platform entity from hub ranking by ownership and storage markers, regardless of its name', () => {
+  const platformSources = { ...sources, ontology: { ...sources.ontology, entities: [...sources.ontology.entities, run35Fixture.platformEntity] } };
+  assert.equal(deriveE8HubScore(platformSources).some(item => item.entityRef === 'AccountIdentity'), false);
+});
+
+test('E8 records fieldsOnly disclosure once per workspace and authority without text-to-field matching', async () => {
+  const fieldsOnlySources = { ...sources, access: { ...sources.access, grants: sources.access.grants.map((grant: any) => grant.authorityRef === 'construction:project-read' ? { ...grant, disclosure: run35Fixture.fieldsOnly } : grant) } };
+  const skeleton = deriveNs4E8Skeleton(fieldsOnlySources); skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
+  const detail = normalizeNs4WorkspaceDetail({ moduleName: 'construction', workspaceId: skeleton.workspaces[0].workspaceId, skeletonHash: skeleton.skeletonHash,
+    scenarios: skeleton.workspaces[0].scenarios.map(scenario => ({ scenarioId: scenario.scenarioId,
+      organisms: scenario.authorityRefs.includes('construction:project-read') ? [{ role: 'summary', fragmentRef: 'projectSummary', fieldRefs: [{ entityId: 'Project', fieldId: 'projectId', label: 'Projeto' }], intent: 'Mostrar projeto.' }] : [], commandInputs: [] })) });
+  const gate = validateNs4WorkspaceDetail(detail, skeleton, fieldsOnlySources);
+  assert.equal(gate.ok, true);
+  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E8_DISCLOSURE' && issue.severity === 'warning'));
+  const resolved = resolveNs4WorkspaceDetailFindings(detail, gate.issues);
+  assert.equal(resolved.systemDecisions.filter(decision => decision.findingRef.includes('NS4_E8_DISCLOSURE')).length, 1);
+  assert.equal(resolved.systemDecisions[0].chosen, 'keepE3Projection');
+  const built = await buildNs4WorkspaceArtifacts(skeleton, [resolved.artifact], 'auto', '2026-08-12T00:00:00.000Z', resolved.systemDecisions);
+  assert.deepEqual(built.index.systemDecisions, resolved.systemDecisions);
+});
+
+test('E8 keeps an unknown field visible as a Type C finding and removes only that reference', async () => {
+  const skeleton = deriveNs4E8Skeleton(sources); skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
+  const scenario = skeleton.workspaces[0].scenarios[0];
+  const detail = normalizeNs4WorkspaceDetail({ moduleName: 'construction', workspaceId: skeleton.workspaces[0].workspaceId, skeletonHash: skeleton.skeletonHash,
+    scenarios: skeleton.workspaces[0].scenarios.map(item => ({ scenarioId: item.scenarioId, organisms: item.scenarioId === scenario.scenarioId ? [{ role: 'summary', fragmentRef: 'projectSummary', fieldRefs: [run35Fixture.invalidFieldRef], intent: 'Mostrar projeto.' }] : [], commandInputs: [] })) });
+  const gate = validateNs4WorkspaceDetail(detail, skeleton, sources);
+  const issue = gate.issues.find(item => item.code === 'NS4_E8_FIELD');
+  assert.equal(gate.ok, false);
+  assert.match(issue?.message || '', /Project\.fieldThatDoesNotExist/);
+  const resolved = resolveNs4WorkspaceDetailFindings(detail, gate.issues);
+  assert.equal(resolved.artifact.scenarios.find(item => item.scenarioId === scenario.scenarioId)?.organisms[0].fieldRefs.length, 0);
+  assert.equal(validateNs4WorkspaceDetail(resolved.artifact, skeleton, sources).ok, true);
+  assert.ok(resolved.systemDecisions.some(decision => decision.chosen === 'removeInvalidFieldRef'));
+});
+
+test('E8 reports an empty menu section as a non-blocking recorder warning', () => {
+  const skeleton = deriveNs4E8Skeleton(sources);
+  skeleton.menu.sections.push({ sectionId: 'emptyFeature', label: 'Vazio', featureRef: 'emptyFeature', workspaceIds: [] });
+  const gate = validateNs4E8Skeleton(skeleton, sources);
+  assert.equal(gate.ok, true);
+  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E8_MENU_EMPTY' && issue.severity === 'warning'));
 });

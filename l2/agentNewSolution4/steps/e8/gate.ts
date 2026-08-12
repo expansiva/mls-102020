@@ -1,6 +1,13 @@
 import type { Ns4E8SkeletonReview, Ns4E8Sources, Ns4WorkspaceDetailDraft } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
+import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
+import type { Ns4ResolutionFinding, Ns4ResolutionResult } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 
-export interface Ns4E8GateIssue { code: string; path: string; message: string; }
+type Ns4E8IssueResolution =
+  | { kind: 'disclosureReview'; workspaceId: string; authorityRef: string; profileRef: string; scenarioId: string; screenTitle: string }
+  | { kind: 'removeOrganismFieldRef'; scenarioId: string; organismIndex: number; entityId: string; fieldId: string }
+  | { kind: 'removeCommandInputFieldRef'; scenarioId: string; commandIndex: number; inputIndex: number; entityId: string; fieldId: string };
+
+export interface Ns4E8GateIssue { code: string; path: string; message: string; severity?: 'warning'; resolution?: Ns4E8IssueResolution; }
 export interface Ns4E8GateResult { ok: boolean; issues: Ns4E8GateIssue[]; }
 
 const MEMBER_ID = /^[a-z][A-Za-z0-9]*$/;
@@ -8,7 +15,7 @@ const MAX_MENU_ITEMS = 7;
 
 export function validateNs4E8Skeleton(skeleton: Ns4E8SkeletonReview, sources: Ns4E8Sources): Ns4E8GateResult {
   const issues: Ns4E8GateIssue[] = [];
-  const add = (code: string, path: string, message: string) => issues.push({ code, path, message });
+  const add = (code: string, path: string, message: string, severity?: 'warning') => issues.push({ code, path, message, ...(severity ? { severity } : {}) });
   if (skeleton.moduleName !== sources.journeys.moduleName || skeleton.moduleName !== sources.access.moduleName || skeleton.moduleName !== sources.ontology.moduleName) add('NS4_E8_MODULE', 'moduleName', 'All approved sources and the skeleton must belong to the same module.');
   const workspaceIds = new Set<string>(); const stepRefs = new Set<string>(); const useCaseRefs = new Set<string>();
   const sourceUseCases = new Set(sources.useCases.map(item => item.useCaseId));
@@ -54,6 +61,7 @@ export function validateNs4E8Skeleton(skeleton: Ns4E8SkeletonReview, sources: Ns
   skeleton.menu.headerLinks.forEach(id => { if (!workspaceIds.has(id)) add('NS4_E8_HEADER_LINK', 'menu.headerLinks', `Unknown workspace ${id}.`); });
   skeleton.menu.sections.forEach((section, index) => {
     if (!section.label || !section.featureRef) add('NS4_E8_MENU_LABEL', `menu.sections[${index}]`, 'Menu section requires label and feature reference.');
+    if (!section.workspaceIds.length) add('NS4_E8_MENU_EMPTY', `menu.sections[${index}].workspaceIds`, `Menu section ${section.sectionId || index} has no workspace items; mechanical grouping must omit or regroup it.`, 'warning');
     if (section.workspaceIds.length > MAX_MENU_ITEMS) add('NS4_E8_MENU_CAP', `menu.sections[${index}].workspaceIds`, `Menu section exceeds the ${MAX_MENU_ITEMS} item limit; regroup it.`);
     section.workspaceIds.forEach(id => { if (!workspaceIds.has(id)) add('NS4_E8_MENU_WORKSPACE', `menu.sections[${index}]`, `Unknown workspace ${id}.`); });
   });
@@ -75,12 +83,12 @@ export function validateNs4E8Skeleton(skeleton: Ns4E8SkeletonReview, sources: Ns
       if (!isLanding) add('NS4_E8_PAGE_CONTEXT_COVERAGE', workspace.workspaceId, `Required page context ${context.contextId} has no candidate incoming edge.`);
     });
   });
-  return { ok: issues.length === 0, issues };
+  return { ok: issues.every(issue => issue.severity === 'warning'), issues };
 }
 
 export function validateNs4WorkspaceDetail(detail: Ns4WorkspaceDetailDraft, skeleton: Ns4E8SkeletonReview, sources: Ns4E8Sources): Ns4E8GateResult {
   const issues: Ns4E8GateIssue[] = [];
-  const add = (code: string, path: string, message: string) => issues.push({ code, path, message });
+  const add = (code: string, path: string, message: string, severity?: 'warning', resolution?: Ns4E8IssueResolution) => issues.push({ code, path, message, ...(severity ? { severity } : {}), ...(resolution ? { resolution } : {}) });
   const workspace = skeleton.workspaces.find(item => item.workspaceId === detail.workspaceId);
   if (!workspace) return { ok: false, issues: [{ code: 'NS4_E8_WORKSPACE_UNKNOWN', path: 'workspaceId', message: `Unknown workspace ${detail.workspaceId}.` }] };
   if (detail.moduleName !== skeleton.moduleName) add('NS4_E8_DETAIL_MODULE', 'moduleName', 'Worker output must match the frozen skeleton module.');
@@ -92,6 +100,7 @@ export function validateNs4WorkspaceDetail(detail: Ns4WorkspaceDetailDraft, skel
   const fields = new Map(sources.ontology.entities.flatMap(entity => entity.fields.map(field => [`${entity.entityId}.${field.fieldId}`, field] as const)));
   const queryUseCases = new Map(sources.useCases.filter(item => item.kind === 'query').map(item => [item.useCaseId, item]));
   const grants = new Map(sources.access.grants.map(grant => [`${grant.profileRef}\u0000${grant.authorityRef}`, grant]));
+  const recordedDisclosure = new Set<string>();
   detail.scenarios.forEach((scenario, index) => {
     const target = workspace.scenarios.find(item => item.scenarioId === scenario.scenarioId); if (!target) return;
     scenario.organisms.forEach((organism, organismIndex) => {
@@ -100,26 +109,83 @@ export function validateNs4WorkspaceDetail(detail: Ns4WorkspaceDetailDraft, skel
       const useCase = organism.sliceId ? queryUseCases.get(organism.sliceId) : undefined;
       if (organism.sliceId && !workspace.slices.some(slice => slice.sliceId === organism.sliceId)) add('NS4_E8_SLICE', `${path}.sliceId`, `Unknown frozen slice ${organism.sliceId}.`);
       organism.fieldRefs.forEach(field => {
-        if (!fields.has(`${field.entityId}.${field.fieldId}`)) add('NS4_E8_FIELD', `${path}.fieldRefs`, `Unknown ontology field ${field.entityId}.${field.fieldId}.`);
-        if (useCase && !useCase.entityRefs.includes(field.entityId)) add('NS4_E8_SLICE_ENTITY', `${path}.fieldRefs`, `Slice ${organism.sliceId} cannot project fields from ${field.entityId}.`);
+        const fieldExists = fields.has(`${field.entityId}.${field.fieldId}`);
+        if (!fieldExists) add('NS4_E8_FIELD', `${path}.fieldRefs`, `Unknown ontology field ${field.entityId}.${field.fieldId}.`, undefined,
+          { kind: 'removeOrganismFieldRef', scenarioId: scenario.scenarioId, organismIndex, entityId: field.entityId, fieldId: field.fieldId });
+        else if (useCase && !useCase.entityRefs.includes(field.entityId)) add('NS4_E8_SLICE_ENTITY', `${path}.fieldRefs`, `Slice ${organism.sliceId} cannot project fields from ${field.entityId}.`);
       });
-      for (const authority of target.authorityRefs) for (const profile of workspace.profileRefs) {
-        const grant = grants.get(`${profile}\u0000${authority}`);
-        if (grant?.disclosure.mode === 'fieldsOnly') organism.fieldRefs.forEach(field => {
-          const allowed = new Set(grant.disclosure.allowedInformation);
-          if (!allowed.has(field.fieldId) && !allowed.has(`${field.entityId}.${field.fieldId}`)) add('NS4_E8_DISCLOSURE', `${path}.fieldRefs`, `${profile} fieldsOnly disclosure does not allow ${field.entityId}.${field.fieldId}.`);
-        });
-      }
     });
+    for (const authority of target.authorityRefs) {
+      const profile = workspace.profileRefs.find(profileRef => grants.get(`${profileRef}\u0000${authority}`)?.disclosure.mode === 'fieldsOnly');
+      if (profile && scenario.organisms.some(organism => organism.fieldRefs.length) && !recordedDisclosure.has(authority)) {
+        recordedDisclosure.add(authority);
+        add('NS4_E8_DISCLOSURE', `scenarios[${index}].organisms`,
+          `The ${target.title} screen projects fields for ${profile} under fieldsOnly disclosure; E3 allowedInformation is business prose and cannot be matched mechanically to ontology fields.`, 'warning',
+          { kind: 'disclosureReview', workspaceId: workspace.workspaceId, authorityRef: authority, profileRef: profile, scenarioId: scenario.scenarioId, screenTitle: target.title });
+      }
+    }
     scenario.commandInputs.forEach((command, commandIndex) => command.inputs.forEach((input, inputIndex) => {
       const path = `scenarios[${index}].commandInputs[${commandIndex}].inputs[${inputIndex}]`;
       if (!target.useCaseIds.includes(command.useCaseId)) add('NS4_E8_COMMAND', path, `Command ${command.useCaseId} is not hosted by scenario ${target.scenarioId}.`);
-      if (input.fieldRef && !fields.has(`${input.fieldRef.entityId}.${input.fieldRef.fieldId}`)) add('NS4_E8_INPUT_FIELD', path, 'Input field must exist in the ontology.');
+      if (input.fieldRef && !fields.has(`${input.fieldRef.entityId}.${input.fieldRef.fieldId}`)) add('NS4_E8_INPUT_FIELD', path, `Unknown ontology input field ${input.fieldRef.entityId}.${input.fieldRef.fieldId}.`, undefined,
+        { kind: 'removeCommandInputFieldRef', scenarioId: scenario.scenarioId, commandIndex, inputIndex, entityId: input.fieldRef.entityId, fieldId: input.fieldRef.fieldId });
       if (input.source === 'pageContext' && (!input.sourceRef || !workspace.pageContext.some(context => context.contextId === input.sourceRef))) add('NS4_E8_INPUT_PAGE_CONTEXT', path, 'pageContext input must reference workspace pageContext.');
       if (input.source === 'selection' && (!input.sourceRef || !workspace.slices.some(slice => slice.sliceId === input.sourceRef))) add('NS4_E8_INPUT_SELECTION', path, 'selection input must reference a frozen slice.');
     }));
   });
-  return { ok: issues.length === 0, issues };
+  return { ok: issues.every(issue => issue.severity === 'warning'), issues };
+}
+
+export function resolveNs4WorkspaceDetailFindings(detail: Ns4WorkspaceDetailDraft, issues: Ns4E8GateIssue[]): Ns4ResolutionResult<Ns4WorkspaceDetailDraft> {
+  const seenDisclosure = new Set<string>();
+  const findings = issues.flatMap((issue): Array<Ns4ResolutionFinding<Ns4WorkspaceDetailDraft>> => {
+    const resolution = issue.resolution;
+    if (resolution?.kind === 'disclosureReview') {
+      const key = `${resolution.workspaceId}\u0000${resolution.authorityRef}`;
+      if (seenDisclosure.has(key)) return [];
+      seenDisclosure.add(key);
+      return [{
+        classification: 'B', decisionId: decisionId('e8Disclosure', resolution.workspaceId, resolution.authorityRef),
+        findingRef: `NS4_E8_DISCLOSURE:${resolution.workspaceId}:${resolution.authorityRef}`, stage: 'e8-workspaces',
+        question: `A tela ${resolution.screenTitle} mostra campos ao perfil ${resolution.profileRef} sob divulgação limitada; a verificação automática campo-a-campo ainda não é possível — o servidor continua aplicando a projeção do E3. Revisar os campos exibidos?`,
+        defaultChoice: 'keepE3Projection', alternatives: ['reviewDisplayedFields'],
+        changeHint: `Revisar os campos exibidos no cenário ${resolution.scenarioId} do workspace ${resolution.workspaceId}.`,
+      }];
+    }
+    if (resolution?.kind === 'removeOrganismFieldRef') return [{
+      classification: 'C', decisionId: decisionId('e8RemoveInvalidField', detail.workspaceId, resolution.scenarioId, resolution.entityId, resolution.fieldId),
+      findingRef: `${issue.code}:${detail.workspaceId}:${resolution.scenarioId}:${resolution.entityId}.${resolution.fieldId}`, stage: 'e8-workspaces',
+      question: `O rascunho de ${detail.workspaceId} referencia o campo inexistente ${resolution.entityId}.${resolution.fieldId}. Remover essa referência inválida?`,
+      deterministicChoice: 'removeInvalidFieldRef', alternatives: ['repairWorkspaceDraftManually'], changeHint: `Revisar o organismo do cenário ${resolution.scenarioId}.`,
+      apply: artifact => removeOrganismFieldRef(artifact, resolution),
+    }];
+    if (resolution?.kind === 'removeCommandInputFieldRef') return [{
+      classification: 'C', decisionId: decisionId('e8RemoveInvalidInputField', detail.workspaceId, resolution.scenarioId, resolution.entityId, resolution.fieldId),
+      findingRef: `${issue.code}:${detail.workspaceId}:${resolution.scenarioId}:${resolution.entityId}.${resolution.fieldId}`, stage: 'e8-workspaces',
+      question: `O rascunho de ${detail.workspaceId} referencia o campo de entrada inexistente ${resolution.entityId}.${resolution.fieldId}. Remover essa referência inválida?`,
+      deterministicChoice: 'removeInvalidFieldRef', alternatives: ['repairWorkspaceDraftManually'], changeHint: `Revisar as entradas do cenário ${resolution.scenarioId}.`,
+      apply: artifact => removeCommandInputFieldRef(artifact, resolution),
+    }];
+    return [{ classification: 'A', findingRef: `${issue.code}:${detail.workspaceId}:${issue.path}`, stage: 'e8-workspaces',
+      question: issue.message, alternatives: [], changeHint: `Corrigir ${issue.path} no draft do workspace ${detail.workspaceId}.` }];
+  });
+  return resolveNs4Findings(detail, findings);
+}
+
+function removeOrganismFieldRef(detail: Ns4WorkspaceDetailDraft, target: Extract<Ns4E8IssueResolution, { kind: 'removeOrganismFieldRef' }>): Ns4WorkspaceDetailDraft {
+  return { ...detail, scenarios: detail.scenarios.map(scenario => scenario.scenarioId !== target.scenarioId ? scenario : { ...scenario,
+    organisms: scenario.organisms.map((organism, index) => index !== target.organismIndex ? organism : { ...organism,
+      fieldRefs: organism.fieldRefs.filter(field => field.entityId !== target.entityId || field.fieldId !== target.fieldId) }) }) };
+}
+
+function removeCommandInputFieldRef(detail: Ns4WorkspaceDetailDraft, target: Extract<Ns4E8IssueResolution, { kind: 'removeCommandInputFieldRef' }>): Ns4WorkspaceDetailDraft {
+  return { ...detail, scenarios: detail.scenarios.map(scenario => scenario.scenarioId !== target.scenarioId ? scenario : { ...scenario,
+    commandInputs: scenario.commandInputs.map((command, commandIndex) => commandIndex !== target.commandIndex ? command : { ...command,
+      inputs: command.inputs.map((input, inputIndex) => inputIndex !== target.inputIndex ? input : { ...input, fieldRef: undefined }) }) }) };
+}
+
+function decisionId(prefix: string, ...parts: string[]): string {
+  return prefix + parts.map(part => part.replace(/[^A-Za-z0-9]+(.)?/g, (_match, next: string | undefined) => next ? next.toUpperCase() : '')).map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
 }
 
 function validateQueue(path: string, workspaceUseCases: string[], sources: Ns4E8Sources, add: (code: string, path: string, message: string) => void): void {

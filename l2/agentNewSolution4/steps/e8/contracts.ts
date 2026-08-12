@@ -3,10 +3,11 @@ import type { Ns4E2Review, Ns4JourneyContext, Ns4JourneyStepKind, Ns4PolicyDecis
 import type { Ns4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import type { Ns4E4Review } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import type { Ns4UseCaseArtifactV3, Ns4WorkflowArtifactV2 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
+import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 
 export const NS4_E8_SKELETON_VERSION = '2026-08-11-ns4-e8-skeleton-v1' as const;
 export const NS4_WORKSPACE_SCHEMA_VERSION = '2026-08-11-ns4-workspace-v1' as const;
-export const NS4_WORKSPACE_INDEX_SCHEMA_VERSION = '2026-08-11-ns4-workspace-index-v1' as const;
+export const NS4_WORKSPACE_INDEX_SCHEMA_VERSION = '2026-08-12-ns4-workspace-index-v2' as const;
 
 export type Ns4WorkspaceKind = 'hub' | 'place';
 export type Ns4WorkspaceScenarioKind = 'collection' | 'record' | 'list' | 'detail' | 'form' | 'review' | 'queue';
@@ -165,6 +166,7 @@ export interface Ns4WorkspaceIndex {
     contextCatalog: Ns4WorkspaceContext[];
   };
   skeletonHash: string;
+  systemDecisions: Ns4SystemDecision[];
   approvedBy: 'human' | 'auto';
   approvedAt: string;
 }
@@ -181,7 +183,7 @@ export interface Ns4E8Sources {
 export function deriveE8HubScore(sources: Ns4E8Sources): Ns4E8HubScore[] {
   const contexts = collectContexts(sources.journeys);
   const results = sources.ontology.entities
-    .filter(entity => entity.entityId !== 'PlatformUser')
+    .filter(entity => !isPlatformOwnedEntity(entity))
     .map(entity => {
       const selected = `selected${entity.entityId}`;
       const anchoredJourneyIds = new Set<string>();
@@ -317,7 +319,7 @@ export async function hashNs4E8Skeleton(skeleton: Ns4E8SkeletonReview): Promise<
   return sha256Ns4(stable);
 }
 
-export async function buildNs4WorkspaceArtifacts(skeleton: Ns4E8SkeletonReview, details: Ns4WorkspaceDetailDraft[], approvedBy: 'human' | 'auto', approvedAt: string): Promise<{ artifacts: Ns4WorkspaceArtifact[]; index: Ns4WorkspaceIndex }> {
+export async function buildNs4WorkspaceArtifacts(skeleton: Ns4E8SkeletonReview, details: Ns4WorkspaceDetailDraft[], approvedBy: 'human' | 'auto', approvedAt: string, systemDecisions: Ns4SystemDecision[] = []): Promise<{ artifacts: Ns4WorkspaceArtifact[]; index: Ns4WorkspaceIndex }> {
   const skeletonHash = skeleton.skeletonHash || await hashNs4E8Skeleton(skeleton);
   const detailById = new Map(details.map(detail => [detail.workspaceId, detail]));
   const artifacts = await Promise.all(skeleton.workspaces.map(async workspace => {
@@ -336,7 +338,11 @@ export async function buildNs4WorkspaceArtifacts(skeleton: Ns4E8SkeletonReview, 
   return { artifacts, index: { schemaVersion: NS4_WORKSPACE_INDEX_SCHEMA_VERSION, moduleName: skeleton.moduleName, userLanguage: skeleton.userLanguage,
     workspaces: artifacts.map(item => ({ workspaceId: item.workspaceId, title: item.title, kind: item.kind, ...(item.anchorEntity ? { anchorEntity: item.anchorEntity } : {}), profileRefs: item.profileRefs, scenarioIds: item.scenarios.map(scenario => scenario.scenarioId), artifactPath: `l4/${skeleton.moduleName}/workspaces/${item.workspaceId}.defs.ts`, workspaceHash: item.workspaceHash })),
     hubs: artifacts.filter(item => item.kind === 'hub' && item.anchorEntity).map(item => ({ hubId: item.workspaceId, anchorEntity: item.anchorEntity!, workspaceId: item.workspaceId })),
-    menu: { headerLinks: skeleton.menu.headerLinks, sections: skeleton.menu.sections.map(section => ({ sectionId: section.sectionId, label: section.label, featureRef: section.featureRef, items: section.workspaceIds.map(workspaceId => ({ workspaceId, ...(artifacts.find(item => item.workspaceId === workspaceId)?.kind === 'hub' ? { hub: artifacts.find(item => item.workspaceId === workspaceId)?.anchorEntity } : {}) })) })), landings: skeleton.menu.landings, edges: skeleton.edges, contextCatalog: skeleton.contextCatalog }, skeletonHash, approvedBy, approvedAt } };
+    menu: { headerLinks: skeleton.menu.headerLinks, sections: skeleton.menu.sections.map(section => ({ sectionId: section.sectionId, label: section.label, featureRef: section.featureRef, items: section.workspaceIds.map(workspaceId => ({ workspaceId, ...(artifacts.find(item => item.workspaceId === workspaceId)?.kind === 'hub' ? { hub: artifacts.find(item => item.workspaceId === workspaceId)?.anchorEntity } : {}) })) })), landings: skeleton.menu.landings, edges: skeleton.edges, contextCatalog: skeleton.contextCatalog }, skeletonHash, systemDecisions, approvedBy, approvedAt } };
+}
+
+export function isPlatformOwnedEntity(entity: Ns4E4Review['entities'][number]): boolean {
+  return entity.ownership === 'external' && entity.storage?.target === 'external' && entity.storage.scope === 'platform';
 }
 
 function collectContexts(journeys: Ns4E2Review): Map<string, Ns4WorkspaceContext> {

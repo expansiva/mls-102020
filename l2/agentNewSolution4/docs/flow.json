@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-12-ns4-flow-v29",
+  "schemaVersion": "2026-08-12-ns4-flow-v30",
   "status": "e1-e8",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -91,6 +91,7 @@
     "workflowIndex": "l4/{module}/workflows/index.defs.ts",
     "workspaceSkeletonDraft": "l4/{module}/pipeline/e8-skeleton.draft.json",
     "workspaceDetailDraft": "l4/{module}/pipeline/e8-workspaces/{workspaceId}.draft.json",
+    "workspaceValidationReport": "l4/{module}/pipeline/e8-validation-report.json",
     "workspace": "l4/{module}/workspaces/{workspaceId}.defs.ts",
     "workspaceIndex": "l4/{module}/workspaces/index.defs.ts"
   },
@@ -340,6 +341,7 @@
       "output": [
         "l4/{module}/pipeline/e8-skeleton.draft.json",
         "l4/{module}/pipeline/e8-workspaces/{workspaceId}.draft.json",
+        "l4/{module}/pipeline/e8-validation-report.json",
         "l4/{module}/workspaces/{workspaceId}.defs.ts",
         "l4/{module}/workspaces/index.defs.ts"
       ],
@@ -348,11 +350,13 @@
       "runtimeNotes": [
         "Code derives the complete workspace partition, context catalog, hub ranking, candidate edges, hosted use cases and scenario ids from approved E2 through E7 artifacts.",
         "One small reasoning call may localize labels, group already-derived workspaces under existing E2 features, order menu items and select only queueAction, contextualModal or batchAction surfaces; it cannot create, remove or rename structural ids.",
-        "The skeleton gate requires total use-case coverage, non-empty workspaces, resolvable page context, collection and record scenarios for a hub, reachable FSM evidence for queues and at most seven menu items per section.",
+        "The skeleton gate requires total use-case coverage, non-empty workspaces, resolvable page context, collection and record scenarios for a hub, reachable FSM evidence for queues and at most seven menu items per section. Empty menu sections are corrected by the mechanical grouping phase and remain visible as NS4_E8_MENU_EMPTY recorder warnings if encountered.",
         "The human checkpoint reviews the map: header links, feature menu, workspaces, scenarios, profiles and context-carrying candidate edges. A requested change starts the next skeleton round.",
         "After approval, one dynamic worker per workspace returns organisms, ontology field projections and command inputs. Each worker is isolated and receives at most one targeted repair round; maxParallel is 20.",
-        "Workers cannot change the frozen skeleton. The deterministic detail gate rejects unknown fields, slice/entity drift, unresolved pageContext or selection input, and fieldsOnly disclosure violations.",
-        "The finalizer stamps picker use, derives command invalidations from command/slice entity intersections and writes typed workspace defs plus index. E9 owns route and global navigation compilation."
+        "Workers cannot change the frozen skeleton. The deterministic detail gate rejects unknown fields, slice/entity drift and unresolved pageContext or selection input. A fieldsOnly projection is recorded once per workspace and authority as a Type B system decision because E3 allowedInformation is prose; the backend continues enforcing the approved E3 projection and no text-to-field heuristic is attempted.",
+        "Every finalizer round persists the complete per-workspace findings, including passing results, in e8-validation-report.json. After the bounded worker repair, remaining findings pass through helpers/ns4Resolve.ts: deterministic Type C patches and Type B decisions continue, while only irrecoverable Type A findings fail after the report is durable.",
+        "Hub ranking excludes platform-owned external entities by ontology ownership/storage markers rather than by entity name.",
+        "The finalizer stamps picker use, derives command invalidations from command/slice entity intersections and writes typed workspace defs plus index with durable system decisions. E9 owns route and global navigation compilation."
       ]
     }
   ]

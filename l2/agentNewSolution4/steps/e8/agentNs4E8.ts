@@ -11,20 +11,31 @@ import {
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { readNs4ApprovedAccess, readNs4ApprovedJourneys, readNs4ApprovedOntology } from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
 import {
-  ns4AgentFile, ns4E8SkeletonDraftFile, ns4E8WorkspaceDraftFile, ns4JourneyIndexFile, ns4UseCaseFile, ns4UseCaseIndexFile, ns4WorkflowFile, ns4WorkflowIndexFile,
+  ns4AgentFile, ns4E8SkeletonDraftFile, ns4E8ValidationReportFile, ns4E8WorkspaceDraftFile, ns4JourneyIndexFile, ns4UseCaseFile, ns4UseCaseIndexFile, ns4WorkflowFile, ns4WorkflowIndexFile,
   readNs4AgentText, readNs4DefsJson, readNs4Module, readNs4Pipeline, readNs4Text,
-  writeNs4E8SkeletonDraft, writeNs4E8WorkspaceDraft, writeNs4Module, writeNs4Pipeline, writeNs4Workspace, writeNs4WorkspaceIndex,
+  writeNs4E8SkeletonDraft, writeNs4E8ValidationReport, writeNs4E8WorkspaceDraft, writeNs4Module, writeNs4Pipeline, writeNs4Workspace, writeNs4WorkspaceIndex,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
+import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 import type { Ns4JourneyIndex } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import type { Ns4UseCaseArtifactV3, Ns4UseCaseIndexArtifactV3, Ns4WorkflowArtifactV2, Ns4WorkflowIndexArtifactV2, Ns4WorkflowIndexArtifactV3 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 import {
   buildNs4WorkspaceArtifacts, deriveNs4E8Skeleton, hashNs4E8Skeleton, normalizeNs4E8Skeleton,
   normalizeNs4WorkspaceDetail, overlayNs4E8Presentation, Ns4E8SkeletonReview, Ns4E8Sources, Ns4E8ReviewEvent, Ns4WorkspaceDetailDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
-import { validateNs4E8Skeleton, validateNs4WorkspaceDetail } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
+import { resolveNs4WorkspaceDetailFindings, validateNs4E8Skeleton, validateNs4WorkspaceDetail } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
+import type { Ns4E8GateIssue } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
 
 interface Ns4E8Args { planId: 'e8-workspaces'; moduleName?: string; reviewRound?: number; adjustment?: string; stage?: 'skeleton' | 'finalize'; repairRound?: number; approvedBy?: Ns4ApprovedBy; }
 interface PersistedE8 { moduleName: string; workspaceCount: number; artifactPaths: string[]; }
+interface Ns4E8ValidationReport {
+  schemaVersion: '2026-08-12-ns4-e8-validation-report-v1';
+  moduleName: string;
+  attempts: Array<{ round: number; checkedAt: string; valid: number; invalid: number;
+    results: Array<{ workspaceId: string; status: 'valid' | 'invalid' | 'missing' | 'resolved'; issues: Ns4E8GateIssue[]; postResolutionIssues?: Ns4E8GateIssue[] }>;
+    systemDecisions: Ns4SystemDecision[] }>;
+  finalStatus: 'repairing' | 'passed' | 'failed';
+  updatedAt: string;
+}
 const MAX_WORKER_REPAIRS = 1;
 
 export async function beforeNs4E8PromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
@@ -122,16 +133,53 @@ async function beginWorkers(context: mls.msg.ExecutionContext, parent: mls.msg.A
 }
 
 async function finalize(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args: Ns4E8Args & { moduleName: string }): Promise<mls.msg.AgentIntent[]> {
-  const [skeleton, sources] = await Promise.all([readSkeleton(args.moduleName), loadSources(args.moduleName)]); const invalid: string[] = []; const details: Ns4WorkspaceDetailDraft[] = [];
-  for (const workspace of skeleton.workspaces) { const detail = await readDetail(args.moduleName, workspace.workspaceId); if (!detail || !validateNs4WorkspaceDetail(detail, skeleton, sources).ok) invalid.push(workspace.workspaceId); else details.push(detail); }
+  const [skeleton, sources] = await Promise.all([readSkeleton(args.moduleName), loadSources(args.moduleName)]);
+  const evaluations: Array<{ workspaceId: string; detail: Ns4WorkspaceDetailDraft | null; issues: Ns4E8GateIssue[]; ok: boolean }> = [];
+  for (const workspace of skeleton.workspaces) {
+    const detail = await readDetail(args.moduleName, workspace.workspaceId);
+    if (!detail) evaluations.push({ workspaceId: workspace.workspaceId, detail: null, ok: false, issues: [{ code: 'NS4_E8_DRAFT_MISSING', path: 'draft', message: 'Workspace detail draft was not persisted.' }] });
+    else { const gate = validateNs4WorkspaceDetail(detail, skeleton, sources); evaluations.push({ workspaceId: workspace.workspaceId, detail, ok: gate.ok, issues: gate.issues }); }
+  }
+  const invalid = evaluations.filter(item => !item.ok).map(item => item.workspaceId);
   const repairRound = args.repairRound || 0; const mutationParent = findParent(context, parent, step);
-  if (invalid.length && repairRound < MAX_WORKER_REPAIRS) { const parallel = workerStep(context, step, skeleton, repairRound + 1, invalid); return [parallel, addStep(context, mutationParent, createFinalize(args.moduleName, args.approvedBy || 'human', repairRound + 1, [String(parallel.step.planning?.planId || '')])), status(context, mutationParent, step, hookSequential, 'completed', `E8 repairing ${invalid.length} invalid workspace detail(s): ${invalid.join(', ')}.`, 'input_output')]; }
-  if (invalid.length) throw new Error(`E8 workspace details remain invalid after repair: ${invalid.join(', ')}.`);
-  const approvedAt = new Date().toISOString(); const built = await buildNs4WorkspaceArtifacts(skeleton, details, args.approvedBy || 'human', approvedAt); const artifactPaths: string[] = [];
+  if (invalid.length && repairRound < MAX_WORKER_REPAIRS) {
+    await updateValidationReport(args.moduleName, repairRound, evaluations.map(item => ({ workspaceId: item.workspaceId, status: item.detail ? item.ok ? 'valid' : 'invalid' : 'missing', issues: item.issues })), [], 'repairing');
+    const parallel = workerStep(context, step, skeleton, repairRound + 1, invalid); return [parallel, addStep(context, mutationParent, createFinalize(args.moduleName, args.approvedBy || 'human', repairRound + 1, [String(parallel.step.planning?.planId || '')])), status(context, mutationParent, step, hookSequential, 'completed', `E8 repairing ${invalid.length} invalid workspace detail(s): ${invalid.join(', ')}.`, 'input_output')];
+  }
+  const details: Ns4WorkspaceDetailDraft[] = []; const decisions: Ns4SystemDecision[] = [];
+  const results: Ns4E8ValidationReport['attempts'][number]['results'] = [];
+  for (const evaluation of evaluations) {
+    if (!evaluation.detail) { results.push({ workspaceId: evaluation.workspaceId, status: 'missing', issues: evaluation.issues }); continue; }
+    const resolved = resolveNs4WorkspaceDetailFindings(evaluation.detail, evaluation.issues); decisions.push(...resolved.systemDecisions);
+    if (resolved.artifact !== evaluation.detail) await writeNs4E8WorkspaceDraft(args.moduleName, evaluation.workspaceId, resolved.artifact);
+    const postGate = validateNs4WorkspaceDetail(resolved.artifact, skeleton, sources);
+    if (postGate.ok) details.push(resolved.artifact);
+    results.push({ workspaceId: evaluation.workspaceId, status: postGate.ok ? evaluation.ok ? 'valid' : 'resolved' : 'invalid', issues: evaluation.issues,
+      ...(!evaluation.ok || !postGate.ok ? { postResolutionIssues: postGate.issues } : {}) });
+  }
+  const unresolved = results.filter(item => item.status === 'invalid' || item.status === 'missing').map(item => item.workspaceId);
+  const uniqueDecisions = [...new Map(decisions.map(decision => [decision.findingRef, decision])).values()];
+  const reportPath = await updateValidationReport(args.moduleName, repairRound, results, uniqueDecisions, unresolved.length ? 'failed' : 'passed');
+  if (unresolved.length) throw new Error(`E8 workspace details remain irrecoverable after repair: ${unresolved.join(', ')}. See ${reportPath}.`);
+  const approvedAt = new Date().toISOString(); const built = await buildNs4WorkspaceArtifacts(skeleton, details, args.approvedBy || 'human', approvedAt, uniqueDecisions); const artifactPaths: string[] = [reportPath];
   for (const artifact of built.artifacts) artifactPaths.push(await writeNs4Workspace(args.moduleName, artifact.workspaceId, artifact)); artifactPaths.push(await writeNs4WorkspaceIndex(args.moduleName, built.index));
   const module = await readNs4Module(args.moduleName); if (!module) throw new Error(`Module artifact not found for ${args.moduleName}.`);
   await writeNs4Module(args.moduleName, markNs4ModuleE8Approved(module, args.approvedBy || 'human', approvedAt)); await writeNs4Pipeline(markNs4E8Approved(await requirePipeline(args.moduleName), args.approvedBy || 'human', artifactPaths, approvedAt));
   return [result(context, mutationParent, { moduleName: args.moduleName, workspaceCount: built.artifacts.length, artifactPaths }, 'E8 workspaces approved'), status(context, mutationParent, step, hookSequential, 'completed', `E8 compiled ${built.artifacts.length} workspaces.`, 'input_output')];
+}
+
+async function updateValidationReport(moduleName: string, round: number, results: Ns4E8ValidationReport['attempts'][number]['results'], systemDecisions: Ns4SystemDecision[], finalStatus: Ns4E8ValidationReport['finalStatus']): Promise<string> {
+  const now = new Date().toISOString(); const previous = round > 0 ? await readValidationReport(moduleName) : null;
+  const attempt = { round, checkedAt: now, valid: results.filter(result => result.status === 'valid' || result.status === 'resolved').length,
+    invalid: results.filter(result => result.status === 'invalid' || result.status === 'missing').length, results, systemDecisions };
+  const attempts = [...(previous?.attempts || []).filter(item => item.round !== round), attempt].sort((left, right) => left.round - right.round);
+  return writeNs4E8ValidationReport(moduleName, { schemaVersion: '2026-08-12-ns4-e8-validation-report-v1', moduleName, attempts, finalStatus, updatedAt: now } satisfies Ns4E8ValidationReport);
+}
+
+async function readValidationReport(moduleName: string): Promise<Ns4E8ValidationReport | null> {
+  const parsed = parse(await readNs4Text(ns4E8ValidationReportFile(moduleName), false));
+  if (!isRecord(parsed) || parsed.schemaVersion !== '2026-08-12-ns4-e8-validation-report-v1' || parsed.moduleName !== moduleName || !Array.isArray(parsed.attempts)) return null;
+  return parsed as unknown as Ns4E8ValidationReport;
 }
 
 function workerStep(context: mls.msg.ExecutionContext, host: mls.msg.AIPayload, skeleton: Ns4E8SkeletonReview, repairRound: number, workspaceIds = skeleton.workspaces.map(workspace => workspace.workspaceId)): mls.msg.AgentIntentAddStep {

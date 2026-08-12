@@ -150,6 +150,9 @@ export function ns4E8SkeletonDraftFile(moduleName: string): Ns4FileInfo {
 export function ns4E8WorkspaceDraftFile(moduleName: string, workspaceId: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline/e8-workspaces`, shortName: `${workspaceId}.draft`, extension: '.json' };
 }
+export function ns4E8ValidationReportFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e8-validation-report', extension: '.json' };
+}
 export function ns4WorkspaceFile(moduleName: string, workspaceId: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/workspaces`, shortName: workspaceId, extension: '.defs.ts' };
 }
@@ -297,6 +300,9 @@ export async function writeNs4E8SkeletonDraft(moduleName: string, draft: unknown
 }
 export async function writeNs4E8WorkspaceDraft(moduleName: string, workspaceId: string, draft: unknown): Promise<string> {
   const fileInfo = ns4E8WorkspaceDraftFile(moduleName, workspaceId); await writeNs4Text(fileInfo, `${JSON.stringify(draft, null, 2)}\n`); return displayPath(fileInfo);
+}
+export async function writeNs4E8ValidationReport(moduleName: string, report: unknown): Promise<string> {
+  const fileInfo = ns4E8ValidationReportFile(moduleName); await writeNs4Text(fileInfo, `${JSON.stringify(report, null, 2)}\n`); return displayPath(fileInfo);
 }
 
 export async function writeNs4AccessMatrix(moduleName: string, artifact: Ns4AccessMatrixArtifact): Promise<string> {
