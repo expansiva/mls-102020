@@ -30,7 +30,22 @@ export function createNs4FlexibleWorkerTool(
 /** Keeps already persisted raw worker payloads resumable while new workers use the envelope. */
 export function unwrapNs4FlexibleWorkerPayload(value: unknown): unknown {
   const root = parse(value);
-  return isRecord(root) && root.type === 'flexible' ? parse(root.result) : root;
+  const payload = isRecord(root) && root.type === 'flexible' ? parse(root.result) : root;
+  const argumentsValue = toolArguments(payload);
+  if (argumentsValue === undefined) return payload;
+  const argumentsPayload = parse(argumentsValue);
+  return isRecord(argumentsPayload) && argumentsPayload.type === 'flexible'
+    ? parse(argumentsPayload.result)
+    : argumentsPayload;
+}
+
+function toolArguments(value: unknown): unknown {
+  if (!isRecord(value)) return undefined;
+  if ('arguments' in value) return value.arguments;
+  const calls = value.tool_calls;
+  if (!Array.isArray(calls) || !isRecord(calls[0])) return undefined;
+  const call = calls[0];
+  return isRecord(call.function) && 'arguments' in call.function ? call.function.arguments : call.arguments;
 }
 
 function parse(value: unknown): unknown {

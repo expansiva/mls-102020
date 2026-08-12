@@ -5,7 +5,7 @@ import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
-import { createNs4FlexibleWorkerTool } from '/_102020_/l2/agentNewSolution4/helpers/ns4WorkerTools.js';
+import { createNs4FlexibleWorkerTool, unwrapNs4FlexibleWorkerPayload } from '/_102020_/l2/agentNewSolution4/helpers/ns4WorkerTools.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
   createNs4E2Step, createNs4E4Step, createNs4E7Step, isNs4Pipeline, markNs4E7Approved, markNs4E7Failed, markNs4E7Running,
@@ -571,7 +571,7 @@ async function readNs4UseCaseWorkerTool(): Promise<mls.msg.LLMTool> {
   if (!isRecord(schema)) throw new Error('Invalid E7 use case worker tool schema.');
   return createNs4FlexibleWorkerTool('submitNs4E7UseCase', 'Submit one E7 use case detail.', schema);
 }
-function unwrap(value: unknown): unknown { const root = parse(value); return isRecord(root) && root.type === 'flexible' ? parse(root.result) : root; }
+function unwrap(value: unknown): unknown { return unwrapNs4FlexibleWorkerPayload(value); }
 function parse(value: unknown): unknown { if (typeof value !== 'string') return value; const clean = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''); try { return JSON.parse(clean); } catch { return value; } }
 function isRecord(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }

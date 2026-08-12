@@ -3,7 +3,7 @@ import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
-import { createNs4FlexibleWorkerTool } from '/_102020_/l2/agentNewSolution4/helpers/ns4WorkerTools.js';
+import { createNs4FlexibleWorkerTool, unwrapNs4FlexibleWorkerPayload } from '/_102020_/l2/agentNewSolution4/helpers/ns4WorkerTools.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
   createNs4E8Step, isNs4Pipeline, markNs4E8Approved, markNs4E8Failed, markNs4E8Running,
@@ -155,7 +155,7 @@ function status(context: mls.msg.ExecutionContext, parent: mls.msg.AIPayload, st
 async function applyIntents(context: mls.msg.ExecutionContext, intents: mls.msg.AgentIntent[]): Promise<void> { const response = await msgApplyIntents({ userId: context.message.senderId, intents }); if (!response || response.statusCode !== 200) throw new Error((response as mls.msg.ResponseBase | undefined)?.msg || 'Error applying E8 intents.'); const applied = response as mls.msg.ResponseApplyIntents; context.task = applied.task; if (applied.message) context.message = applied.message; }
 function workspaceSelector(value: unknown): string { return typeof value === 'string' ? /^workspace:([a-z][A-Za-z0-9]*)$/.exec(value.trim())?.[1] || '' : ''; }
 async function readNs4WorkspaceWorkerTool(): Promise<mls.msg.LLMTool> { const raw = await readNs4Text(ns4AgentFile('schemas', 'e8-workspace-detail-worker.schema', '.json'), true); const schema = parse(raw); if (!isRecord(schema)) throw new Error('Invalid E8 workspace worker tool schema.'); return createNs4FlexibleWorkerTool('submitNs4E8WorkspaceDetail', 'Submit one E8 workspace detail.', schema); }
-function unwrap(value: unknown): unknown { const root = parse(value); return isRecord(root) && root.type === 'flexible' ? parse(root.result) : root; }
+function unwrap(value: unknown): unknown { return unwrapNs4FlexibleWorkerPayload(value); }
 function parse(value: unknown): unknown { if (typeof value !== 'string') return value; try { return JSON.parse(value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); } catch { return value; } }
 function isRecord(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }

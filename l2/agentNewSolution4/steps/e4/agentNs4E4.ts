@@ -9,7 +9,7 @@ import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
-import { createNs4FlexibleWorkerTool } from '/_102020_/l2/agentNewSolution4/helpers/ns4WorkerTools.js';
+import { createNs4FlexibleWorkerTool, unwrapNs4FlexibleWorkerPayload } from '/_102020_/l2/agentNewSolution4/helpers/ns4WorkerTools.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
@@ -836,7 +836,7 @@ function memoryString(context: mls.msg.ExecutionContext, key: string): string {
 }
 
 function unwrapPayload(value: unknown): unknown {
-  const parsed = parseMaybeJson(value);
+  const parsed = unwrapNs4FlexibleWorkerPayload(value);
   if (isRecord(parsed) && parsed.type === 'flexible') return parseMaybeJson(parsed.result);
   if (isRecord(parsed) && parsed.type === 'clarification' && isRecord(parsed.json)) return parsed.json;
   return parsed;

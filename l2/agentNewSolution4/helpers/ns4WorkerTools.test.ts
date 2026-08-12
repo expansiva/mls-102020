@@ -39,10 +39,12 @@ test('NS4 worker fixtures unwrap the new flexible envelope and retain raw-run co
   const e4 = readJson('steps/e4/fixtures/flexible-entity-envelope.json');
   const e7 = readJson('steps/e7/fixtures/flexible-usecase-envelope.json');
   const e8 = readJson('steps/e8/fixtures/flexible-workspace-envelope.json');
+  const e4ToolCall = readJson('steps/e4/fixtures/tool-call-flexible-entity.json');
   const rawE7 = readJson('steps/e7/fixtures/raw-usecase-legacy.json');
 
   assert.equal((unwrapNs4FlexibleWorkerPayload(e4) as Record<string, unknown>).entityId, 'Project');
   assert.equal((unwrapNs4FlexibleWorkerPayload(e7) as Record<string, unknown>).useCaseId, 'locateProject');
   assert.equal((unwrapNs4FlexibleWorkerPayload(e8) as Record<string, unknown>).workspaceId, 'projectWorkspace');
+  assert.equal((unwrapNs4FlexibleWorkerPayload(e4ToolCall) as Record<string, unknown>).entityId, 'Project');
   assert.deepEqual(unwrapNs4FlexibleWorkerPayload(rawE7), rawE7);
 });

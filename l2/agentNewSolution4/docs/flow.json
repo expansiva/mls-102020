@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-12-ns4-flow-v27",
+  "schemaVersion": "2026-08-12-ns4-flow-v28",
   "status": "e1-e8",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -14,6 +14,7 @@
     "The runtime prefixes E1-through-E6 and the E8 skeleton checkpoint with the deterministic 👤 marker; dynamically appended technical nodes do not duplicate it, and persisted localized titles remain plain reusable text.",
     "E4 parallel children are dispatched by stable entity: selectors and reconstruct their base invocation when collab-messages omits planning or prompt metadata on materialized fan-out children.",
     "Every E4, E7 and E8 parallel artifact worker submits a strict-tool flexible envelope. The envelope is a valid collab-messages payload, so healthy workers never transiently enter the failed state before their deterministic after-prompt gate runs.",
+    "E4, E7 and E8 readers accept the platform tool-call transport (`flexible.result.arguments`) as well as direct flexible and legacy raw artifacts before applying their deterministic gate.",
     "Nested artifact schemas used by a worker tool hoist $defs to the function-parameters root and omit the embedded $id; strict providers resolve root-relative refs from that root.",
     "Dynamic E4 dispatch is symmetric: before-prompt prefers hook args, while after-prompt falls back to the selector retained in step.prompt when collab-messages omits callback args.",
     "E2 normalizes every journey businessObject to one stable PascalCase identifier; E4 consumes that exact id for its entity or projection instead of comparing a localized display label.",

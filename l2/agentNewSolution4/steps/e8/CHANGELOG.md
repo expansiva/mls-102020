@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-12 — tool-call reader
+
+- Accept the platform tool-call transport around the strict worker envelope as well as direct and
+  legacy raw workspace artifacts.
+
 ## 2026-08-12 — worker envelope
 
 - Workspace-detail fan-out now submits a strict `flexible` envelope so healthy workers do not

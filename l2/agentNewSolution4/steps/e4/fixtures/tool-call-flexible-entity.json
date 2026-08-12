@@ -1,0 +1,19 @@
+{
+  "type": "flexible",
+  "result": {
+    "toolName": "submitNs4E4Entity",
+    "arguments": {
+      "type": "flexible",
+      "result": {
+        "planId": "e4-ontology-entity",
+        "moduleName": "buildFlowFsm33",
+        "reviewRound": 1,
+        "entityId": "Project",
+        "fields": [
+          { "fieldId": "projectId", "title": "Project ID", "type": "uuid", "required": true, "description": "Stable project identifier.", "constraints": [] }
+        ],
+        "useRules": []
+      }
+    }
+  }
+}

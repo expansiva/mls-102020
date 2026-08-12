@@ -1,5 +1,8 @@
 # E4 changelog
 
+- 2026-08-12: Unwrap the platform tool-call transport before normalizing an entity worker result.
+  Run 33 otherwise persisted every valid worker answer as an empty entity draft.
+
 - 2026-08-12: Entity fan-out now submits its artifact through a strict `flexible` tool envelope,
   preventing healthy workers from being provisionally coerced to `failed` before `afterPrompt`.
 

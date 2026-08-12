@@ -1,5 +1,8 @@
 # Changelog
 
+- 2026-08-12: Accept the platform tool-call transport around the strict worker envelope as well as
+  direct and legacy raw worker artifacts.
+
 - 2026-08-12: A2.1 narrows workflow-required lifecycle detection to states between the declared
   initial and terminal states. Binary flags do not require workflows; a missing workflow suppresses
   same-entity predicate cascades and opens a human E2/E4 resolution checkpoint instead of failing E7.
