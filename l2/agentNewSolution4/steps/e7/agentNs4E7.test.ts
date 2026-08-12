@@ -49,9 +49,9 @@ const access = normalizeNs4E3Review({ moduleName: 'buildFlowFsm', userLanguage: 
 const ontology = normalizeNs4E4Review({ moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', title: 'Ontologia', reviewRound: 1, solutionMode: 'new', businessDomain: 'Projetos',
   entities: [
     { entityId: 'Project', title: 'Projeto', description: 'Projeto.', kind: 'mdm', ownership: 'moduleOwned', sourceRefs: { journeyIds: ['manageProjects', 'createTask'], featureIds: ['projects'], authorityRefs: ['buildflow:projectread'] },
-      fields: [{ fieldId: 'projectId', title: 'Id', type: 'uuid', required: true, description: 'Id.', constraints: [] }, { fieldId: 'name', title: 'Nome', type: 'string', required: true, description: 'Nome.', constraints: [] }], lifecycleStates: ['active', 'completed'], lifecyclePredicates: [], useRules: ['projectCandidateRule'], storage: { target: 'mdm', scope: 'organization', idField: 'projectId', mdmType: 'buildFlowFsm.Project', notes: 'Cadastro base.' } },
+      fields: [{ fieldId: 'projectId', title: 'Id', type: 'uuid', required: true, description: 'Id.', constraints: [] }, { fieldId: 'name', title: 'Nome', type: 'string', required: true, description: 'Nome.', constraints: [] }], lifecycleStates: [], lifecyclePredicates: [], useRules: ['projectCandidateRule'], storage: { target: 'mdm', scope: 'organization', idField: 'projectId', mdmType: 'buildFlowFsm.Project', notes: 'Cadastro base.' } },
     { entityId: 'WorkTask', title: 'Tarefa', description: 'Tarefa.', kind: 'core', ownership: 'moduleOwned', sourceRefs: { journeyIds: ['createTask'], featureIds: ['tasks'], authorityRefs: ['buildflow:taskwrite'] },
-      fields: [{ fieldId: 'workTaskId', title: 'Id', type: 'uuid', required: true, description: 'Id.', constraints: [] }, { fieldId: 'projectId', title: 'Projeto', type: 'uuid', required: true, description: 'Projeto.', constraints: [] }], lifecycleStates: ['open', 'done'], lifecyclePredicates: [], useRules: [], storage: { target: 'moduleDatabase', scope: 'module', idField: 'workTaskId', notes: 'Operacional.' } },
+      fields: [{ fieldId: 'workTaskId', title: 'Id', type: 'uuid', required: true, description: 'Id.', constraints: [] }, { fieldId: 'projectId', title: 'Projeto', type: 'uuid', required: true, description: 'Projeto.', constraints: [] }], lifecycleStates: ['open', 'done'], initialState: 'open', terminalStates: ['done'], lifecyclePredicates: [], useRules: [], storage: { target: 'moduleDatabase', scope: 'module', idField: 'workTaskId', notes: 'Operacional.' } },
   ], relationships: [{ relationshipId: 'taskBelongsToProject', fromEntity: 'WorkTask', toEntity: 'Project', type: 'manyToOne', required: true, description: 'Tarefa pertence ao projeto.', persistence: { mode: 'crossStoreReference' }, realization: { kind: 'fieldReference', ownerEntity: 'WorkTask', from: { entityId: 'WorkTask', fieldIds: ['projectId'] }, to: { entityId: 'Project', fieldIds: ['projectId'] }, description: 'Referência ao projeto.' } }], changeSummary: [] });
 
 const rules: Ns4RulesArtifact = { schemaVersion: '2026-08-09-ns4-rules-v2', moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', rules: [{ id: 'projectCandidateRule', description: 'Regra candidata aplicada somente quando o comportamento exigir.' }], rulesHash: 'sha256:rules', approvedBy: 'auto', approvedAt: '2026-08-10T00:00:00.000Z', realization: { status: 'pending', compiledFromRulesHash: 'sha256:rules' } };
@@ -75,7 +75,7 @@ test('E7 is dependency-bound after E6 and advances a resumed module to E8', () =
   assert.equal(resolveNs4ExistingAction(true, pipeline, true), 'resume-e7');
   const approved = markNs4E7Approved(pipeline, ['l4/buildFlowFsm/usecases/index.defs.ts']);
   assert.equal(approved.nextStep, 'e8-workspaces');
-  assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-next');
+  assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-e8');
 });
 
 test('E7 validates a minimal behavior contract without backend field instructions', () => {
@@ -128,8 +128,10 @@ test('E7 emits typed use cases, workflows and realization metadata without chang
   drafts.forEach(draft => assert.equal(validateNs4UseCaseDraft(plan, draft, sources).ok, true));
   const generatedAt = '2026-08-10T01:00:00.000Z';
   const built = await buildNs4UseCaseArtifacts(plan, drafts, generatedAt);
-  const workflows = await buildNs4WorkflowArtifacts(plan, drafts, new Map(ontology.entities.map(entity => [entity.entityId, entity.lifecycleStates])), generatedAt);
-  assert.equal(validateNs4Workflows(workflows.artifacts, sources).ok, true);
+  const workflows = await buildNs4WorkflowArtifacts(plan, drafts, new Map(ontology.entities.map(entity => [entity.entityId, {
+    states: entity.lifecycleStates, initialState: entity.initialState, terminalStates: entity.terminalStates,
+  }])), generatedAt);
+  assert.equal(validateNs4Workflows(workflows.artifacts, sources, built.artifacts.map(artifact => artifact.useCaseId)).ok, true);
   assert.equal('sourceHashes' in built.artifacts[0], false);
   assert.equal('userLanguage' in built.artifacts[0], false);
   assert.equal('generatedAt' in built.artifacts[0], false);
@@ -150,14 +152,83 @@ test('E7 emits typed use cases, workflows and realization metadata without chang
 
 test('E7 rejects a declared lifecycle state without an incoming transition', () => {
   const unreachableWorkflow = {
-    schemaVersion: '2026-08-11-ns4-workflow-v3', moduleName: 'buildFlowFsm', workflowId: 'workTaskLifecycle',
-    entityRef: 'WorkTask', initialState: 'open', terminalStates: ['done', 'withdrawn'],
+    schemaVersion: '2026-08-11-ns4-workflow-v4', moduleName: 'buildFlowFsm', workflowId: 'workTaskLifecycle',
+    entityRef: 'WorkTask', initialState: 'open', terminalStates: ['done'],
     states: ['open', 'done', 'withdrawn'],
     transitions: [{ transitionId: 'completeTask', entityRef: 'WorkTask', fromStates: ['open'], toState: 'done', useRules: [], useCaseId: 'createWorkTask' }],
     workflowHash: 'sha256:test',
   } as any;
-  const result = validateNs4Workflows([unreachableWorkflow], sources);
-  assert.ok(result.issues.some(issue => issue.code === 'NS4_E7_WORKFLOW_UNREACHABLE' && /withdrawn/.test(issue.message)));
+  const result = validateNs4Workflows([unreachableWorkflow], sources, ['createWorkTask']);
+  const finding = result.issues.find(issue => issue.code === 'workflow.state.unreachable' && /withdrawn/.test(issue.message));
+  assert.ok(finding);
+  assert.deepEqual(finding.repairOptions?.map(option => [option.action, option.owner]), [
+    ['operateState', 'e2'], ['shrinkLifecycle', 'e4'],
+  ]);
+
+  const shrunkLifecycle = { ...unreachableWorkflow, states: ['open', 'done'] };
+  assert.equal(validateNs4Workflows([shrunkLifecycle], sources, ['createWorkTask']).ok, true);
+});
+
+test('E7 accepts an E2-derived operation that makes a lifecycle state reachable', () => {
+  const operatedOntology = normalizeNs4E4Review({ ...ontology, entities: ontology.entities.map(entity => entity.entityId === 'WorkTask'
+    ? { ...entity, lifecycleStates: ['open', 'done', 'withdrawn'], initialState: 'open', terminalStates: ['done', 'withdrawn'] }
+    : entity) });
+  const operatedSources = { ...sources, ontology: operatedOntology };
+  const operatedWorkflow = {
+    schemaVersion: '2026-08-11-ns4-workflow-v4', moduleName: 'buildFlowFsm', workflowId: 'workTaskLifecycle',
+    entityRef: 'WorkTask', initialState: 'open', terminalStates: ['done', 'withdrawn'], states: ['open', 'done', 'withdrawn'],
+    transitions: [
+      { transitionId: 'completeTask', entityRef: 'WorkTask', fromStates: ['open'], toState: 'done', useRules: [], useCaseId: 'createWorkTask' },
+      { transitionId: 'withdrawTask', entityRef: 'WorkTask', fromStates: ['open'], toState: 'withdrawn', useRules: [], useCaseId: 'withdrawWorkTask' },
+    ],
+    workflowHash: 'sha256:test',
+  } as any;
+
+  assert.equal(validateNs4Workflows([operatedWorkflow], operatedSources, ['createWorkTask', 'withdrawWorkTask']).ok, true);
+});
+
+test('E7 accepts a system transition and rejects an unknown or ambiguous transition operator', () => {
+  const systemWorkflow = {
+    schemaVersion: '2026-08-11-ns4-workflow-v4', moduleName: 'buildFlowFsm', workflowId: 'workTaskLifecycle',
+    entityRef: 'WorkTask', initialState: 'open', terminalStates: ['done'], states: ['open', 'done'],
+    transitions: [{ transitionId: 'expireTask', entityRef: 'WorkTask', fromStates: ['open'], toState: 'done', useRules: [], trigger: 'system' }],
+    workflowHash: 'sha256:test',
+  } as any;
+  assert.equal(validateNs4Workflows([systemWorkflow], sources, []).ok, true);
+
+  systemWorkflow.transitions[0].useCaseId = 'missingUseCase';
+  const ambiguous = validateNs4Workflows([systemWorkflow], sources, []);
+  assert.ok(ambiguous.issues.some(issue => issue.code === 'workflow.transition.operation'));
+});
+
+test('E7 rejects a dead lifecycle predicate and a multi-state entity without a workflow', () => {
+  const lifecycleOntology = normalizeNs4E4Review({ ...ontology, entities: ontology.entities.map(entity => entity.entityId === 'WorkTask'
+    ? { ...entity, lifecycleStates: ['open', 'billable', 'done'], initialState: 'open', terminalStates: ['done'],
+      lifecyclePredicates: [{ predicateId: 'billable', description: 'Ready for billing.', stateIds: ['billable'], source: 'journey' }] }
+    : entity) });
+  const lifecycleSources = { ...sources, ontology: lifecycleOntology };
+  const workflow = {
+    schemaVersion: '2026-08-11-ns4-workflow-v4', moduleName: 'buildFlowFsm', workflowId: 'workTaskLifecycle',
+    entityRef: 'WorkTask', initialState: 'open', terminalStates: ['done'], states: ['open', 'billable', 'done'],
+    transitions: [{ transitionId: 'completeTask', entityRef: 'WorkTask', fromStates: ['open'], toState: 'done', useRules: [], useCaseId: 'createWorkTask' }],
+    workflowHash: 'sha256:test',
+  } as any;
+  const deadPredicate = validateNs4Workflows([workflow], lifecycleSources, ['createWorkTask']);
+  assert.ok(deadPredicate.issues.some(issue => issue.code === 'workflow.predicate.dead' && /billable/.test(issue.message)));
+
+  const missingWorkflow = validateNs4Workflows([], lifecycleSources, []);
+  assert.ok(missingWorkflow.issues.some(issue => issue.code === 'workflow.missing' && /WorkTask/.test(issue.message)));
+});
+
+test('E7 accepts an ontology with no lifecycle workflows', () => {
+  const noLifecycleSources = {
+    ...sources,
+    ontology: normalizeNs4E4Review({ ...ontology, entities: ontology.entities.map(entity => ({
+      ...entity, lifecycleStates: [], lifecyclePredicates: [],
+      initialState: undefined, terminalStates: undefined,
+    })) }),
+  };
+  assert.deepEqual(validateNs4Workflows([], noLifecycleSources, []), { ok: true, issues: [] });
 });
 
 test('E7 reasoning prompt keeps use cases channel-neutral', () => {

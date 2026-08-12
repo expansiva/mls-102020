@@ -19,7 +19,7 @@ const clarification = {
   },
 };
 
-test('permanent artifact registry covers every implemented E1-E7 defs contract', () => {
+test('permanent artifact registry covers every implemented E1-E8 defs contract', () => {
   assert.deepEqual(NS4_PERMANENT_ARTIFACT_TYPE_NAMES, [
     'Ns4ModuleArtifact',
     'Ns4JourneyArtifact',
@@ -37,6 +37,8 @@ test('permanent artifact registry covers every implemented E1-E7 defs contract',
     'Ns4WorkflowArtifactV2',
     'Ns4WorkflowIndexArtifact',
     'Ns4WorkflowIndexArtifactV2',
+    'Ns4WorkspaceArtifact',
+    'Ns4WorkspaceIndex',
   ]);
 });
 

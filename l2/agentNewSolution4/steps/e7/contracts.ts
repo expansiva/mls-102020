@@ -14,8 +14,8 @@ import type { Ns4OntologyField } from '/_102020_/l2/agentNewSolution4/steps/e4/c
 export const NS4_USE_CASE_DRAFT_VERSION = '2026-08-10-ns4-usecase-draft-minimal-v3' as const;
 export const NS4_USE_CASE_SCHEMA_VERSION = '2026-08-10-ns4-usecase-v3' as const;
 export const NS4_USE_CASE_INDEX_SCHEMA_VERSION = '2026-08-10-ns4-usecase-index-v3' as const;
-export const NS4_WORKFLOW_SCHEMA_VERSION = '2026-08-11-ns4-workflow-v3' as const;
-export const NS4_WORKFLOW_INDEX_SCHEMA_VERSION = '2026-08-11-ns4-workflow-index-v3' as const;
+export const NS4_WORKFLOW_SCHEMA_VERSION = '2026-08-11-ns4-workflow-v4' as const;
+export const NS4_WORKFLOW_INDEX_SCHEMA_VERSION = '2026-08-11-ns4-workflow-index-v4' as const;
 
 export type Ns4UseCaseKind = 'query' | 'command';
 export type Ns4UseCaseFieldType = Ns4OntologyField['type'];
@@ -124,6 +124,13 @@ export interface Ns4UseCaseIndexArtifactV3 {
 export interface Ns4WorkflowTransition extends Ns4UseCaseTransition {
   useCaseId?: string;
   trigger?: 'system';
+}
+
+/** Lifecycle facts are owned by E4 and copied mechanically into E7 workflows. */
+export interface Ns4WorkflowLifecycleDefinition {
+  states: string[];
+  initialState?: string;
+  terminalStates?: string[];
 }
 
 export interface Ns4WorkflowArtifactV2 {
@@ -284,7 +291,7 @@ export async function buildNs4UseCaseArtifacts(
 export async function buildNs4WorkflowArtifacts(
   plan: Ns4E7PlanDraft,
   drafts: Ns4UseCaseDraft[],
-  ontologyStates: Map<string, string[]>,
+  ontologyLifecycles: Map<string, Ns4WorkflowLifecycleDefinition>,
   generatedAt: string,
 ): Promise<{ artifacts: Ns4WorkflowArtifactV2[]; index: Ns4WorkflowIndexArtifactV2 }> {
   const byEntity = new Map<string, Ns4WorkflowTransition[]>();
@@ -298,9 +305,10 @@ export async function buildNs4WorkflowArtifacts(
   const artifacts = await Promise.all([...byEntity.entries()].sort(([left], [right]) => left.localeCompare(right))
     .map(async ([entityRef, transitions]) => {
       const workflowId = `${entityRef.slice(0, 1).toLowerCase()}${entityRef.slice(1)}Lifecycle`;
-      const states = ontologyStates.get(entityRef) || [];
-      const initialState = states[0] || '';
-      const terminalStates = states.filter(state => !transitions.some(transition => transition.fromStates.includes(state)));
+      const lifecycle = ontologyLifecycles.get(entityRef);
+      const states = lifecycle?.states || [];
+      const initialState = lifecycle?.initialState || '';
+      const terminalStates = lifecycle?.terminalStates || [];
       const workflowHash = await sha256Ns4({ entityRef, initialState, terminalStates, states, transitions });
       return { schemaVersion: NS4_WORKFLOW_SCHEMA_VERSION, moduleName: plan.moduleName,
         workflowId, entityRef, initialState, terminalStates, states, transitions, workflowHash } satisfies Ns4WorkflowArtifactV2;

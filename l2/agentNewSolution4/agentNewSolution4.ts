@@ -9,6 +9,7 @@ import {
   createNs4E5Step,
   createNs4E6Step,
   createNs4E7Step,
+  createNs4E8Step,
   isNs4Pipeline,
   markNs4E3Approved,
   markNs4E4Approved,
@@ -71,6 +72,11 @@ import {
   afterNs4E7PromptStep,
   beforeNs4E7PromptStep,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/agentNs4E7.js';
+import {
+  afterNs4E8PromptStep,
+  beforeNs4E8ClarificationStep,
+  beforeNs4E8PromptStep,
+} from '/_102020_/l2/agentNewSolution4/steps/e8/agentNs4E8.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -86,7 +92,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-44 (2026-08-10) E7 minimal ontology-referenced use cases';
+export const NS4_AGENT_BUILD = 'build-45 (2026-08-11) E8 derived workspaces';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -170,17 +176,17 @@ async function beforePromptImplicit(
         true,
       )];
     }
-    if (action === 'resume-next' && pipeline?.steps.e7?.status === 'approved') {
+    if (action === 'resume-next' && pipeline?.steps.e8?.status === 'approved') {
       return [await statusTask(
         agent,
         context,
-        `Módulo "${existingModule}": E7 está concluído. O próximo passo é e8-workspaces, ainda não implementado.`,
+        `Módulo "${existingModule}": E8 está concluído. O próximo passo é e9-navigation-compiler, ainda não implementado.`,
         `plan ${existingModule}`,
       )];
     }
     resumeModule = existingModule;
-    resumeTarget = action === 'resume-e1' ? 'e1' : action === 'resume-e7' ? 'e7' : action === 'resume-e6' ? 'e6' : action === 'resume-e5' ? 'e5' : action === 'resume-e4' ? 'e4' : action === 'resume-e3' ? 'e3' : 'e2';
-    resumeRound = resumeTarget === 'e7' ? '' : resumeTarget === 'e6'
+    resumeTarget = action === 'resume-e1' ? 'e1' : action === 'resume-e8' ? 'e8' : action === 'resume-e7' ? 'e7' : action === 'resume-e6' ? 'e6' : action === 'resume-e5' ? 'e5' : action === 'resume-e4' ? 'e4' : action === 'resume-e3' ? 'e3' : 'e2';
+    resumeRound = resumeTarget === 'e7' ? '' : resumeTarget === 'e8' ? String(Math.max(1, pipeline?.steps.e8?.reviewRound || 1)) : resumeTarget === 'e6'
       ? String(Math.max(1, pipeline?.steps.e6?.reviewRound || 1))
       : resumeTarget === 'e5'
       ? String(Math.max(1, pipeline?.steps.e5?.reviewRound || 1))
@@ -230,6 +236,7 @@ async function beforePromptStep(
   const dynamic = resolveNs4DynamicWorkerRequest(args, step.prompt);
   if (dynamic.worker === 'e4') return beforeNs4E4PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
   if (dynamic.worker === 'e7') return beforeNs4E7PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
+  if (dynamic.worker === 'e8') return beforeNs4E8PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
   const planId = step.planning?.planId || '';
   if (planId === 'e1-clarification' || planId.startsWith('e1-clarification-round-') || planId === 'e1-compile') {
     return beforeNs4E1PromptStep(agent, context, parentStep, step, hookSequential, args);
@@ -252,6 +259,9 @@ async function beforePromptStep(
   if (planId === 'e7-realization' || planId.startsWith('e7-realization-finalize-')) {
     return beforeNs4E7PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
+  if (planId.startsWith('e8-workspaces-round-') || planId.startsWith('e8-workspaces-finalize-')) {
+    return beforeNs4E8PromptStep(agent, context, parentStep, step, hookSequential, args);
+  }
   return [rootStatus(context, parentStep, step, hookSequential, 'failed', `Unsupported implemented step: ${planId || '(missing)'}`)];
 }
 
@@ -266,6 +276,7 @@ async function afterPromptStep(
   const dynamic = resolveNs4DynamicWorkerRequest(args, step.prompt);
   if (dynamic.worker === 'e4') return afterNs4E4PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
   if (dynamic.worker === 'e7') return afterNs4E7PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
+  if (dynamic.worker === 'e8') return afterNs4E8PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
   const planId = step.planning?.planId || '';
   if (planId === 'e1-clarification' || planId.startsWith('e1-clarification-round-')) {
     return afterNs4E1PromptStep(agent, context, parentStep, step, hookSequential);
@@ -288,6 +299,9 @@ async function afterPromptStep(
   if (planId === 'e7-realization' || planId.startsWith('e7-realization-finalize-')) {
     return afterNs4E7PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
+  if (planId.startsWith('e8-workspaces-round-') || planId.startsWith('e8-workspaces-finalize-')) {
+    return afterNs4E8PromptStep(agent, context, parentStep, step, hookSequential, args);
+  }
   if (memoryString(context, 'statusOnly') === 'true') {
     const failed = memoryString(context, 'statusOutcome') === 'error';
     return [rootStatus(context, parentStep, step, hookSequential, failed ? 'failed' : 'completed', 'Status task completed.')];
@@ -299,7 +313,7 @@ async function afterPromptStep(
     }
     const resumeModule = memoryString(context, 'resumeModule');
     const resumeTarget = memoryString(context, 'resumeTarget');
-    const planned = resumeModule && (resumeTarget === 'e2' || resumeTarget === 'e3' || resumeTarget === 'e4' || resumeTarget === 'e5' || resumeTarget === 'e6' || resumeTarget === 'e7')
+    const planned = resumeModule && (resumeTarget === 'e2' || resumeTarget === 'e3' || resumeTarget === 'e4' || resumeTarget === 'e5' || resumeTarget === 'e6' || resumeTarget === 'e7' || resumeTarget === 'e8')
       ? buildNs4ResumeSteps(plan, resumeModule, resumeTarget, normalizeResumeRound(memoryString(context, 'resumeRound')))
       : buildNs4PlannedSteps(plan);
     return planned.map(plannedStep => ({
@@ -339,6 +353,9 @@ async function beforeClarificationStep(
   if (parsed?.planId === 'e6-composition-review') {
     return beforeNs4E6ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);
   }
+  if (parsed?.planId === 'e8-skeleton-review') {
+    return beforeNs4E8ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);
+  }
   return beforeNs4E1ClarificationStep(agent, context, parentStep, step, hookSequential, json);
 }
 
@@ -350,7 +367,7 @@ export function getNs4RootPlan(context: mls.msg.ExecutionContext, rootHint?: mls
 function buildNs4ResumeSteps(
   plan: Ns4RootPlan,
   moduleName: string,
-  target: 'e2' | 'e3' | 'e4' | 'e5' | 'e6' | 'e7',
+  target: 'e2' | 'e3' | 'e4' | 'e5' | 'e6' | 'e7' | 'e8',
   reviewRound: number,
 ): mls.msg.AIAgentStep[] {
   const all = buildNs4PlannedSteps(plan);
@@ -358,6 +375,12 @@ function buildNs4ResumeSteps(
     return [
       createNs4E7Step(moduleName, [], plan.presentation.stepTitles['e7-realization']),
       ...all.slice(8),
+    ];
+  }
+  if (target === 'e8') {
+    return [
+      createNs4E8Step(moduleName, reviewRound, '', [], plan.presentation.stepTitles['e8-workspaces']),
+      ...all.slice(9),
     ];
   }
   if (target === 'e6') {

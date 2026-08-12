@@ -15,3 +15,8 @@ Full transitions have one owner in workflow artifacts; use cases and journeys st
 Global provenance and generation metadata live in indexes, not in every artifact. The step never edits journey `business` and verifies its `businessHash`. It writes only realization
 metadata back to journey/access contracts. E3 realization derives authority links from journey-step refs;
 E8 operations are the future channel integration endpoints, and backend generators choose their architecture.
+
+Workflow compilation copies the explicit E4 initial and terminal states. Its deterministic lifecycle gate
+rejects unreachable states, transitions without one compiled use case or `system` trigger, dead predicate
+states and multi-state entities with no workflow. The validation report gives the human exactly two repair
+routes for each lifecycle finding: add the operating journey in E2 or shrink/redefine the lifecycle in E4.

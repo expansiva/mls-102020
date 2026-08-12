@@ -6,7 +6,7 @@ database evidence.
 
 Each round first writes `pipeline/e4-ontology-plan.draft.json`, then details entities through a
 `parallel_dynamic` fan-out with `maxParallel: 20` into `pipeline/e4-entities/{EntityId}.draft.json`.
-The overview freezes lifecycle states and named predicate-to-state mappings before the workers run;
+The overview freezes lifecycle states, one explicit initial state, optional terminal states and named predicate-to-state mappings before the workers run;
 workers add fields, constraints and rule ids without redefining those meanings or duplicating rule descriptions.
 The deterministic finalizer repairs only missing/invalid entities once. It then starts one compact
 relationship-binding pass, which writes `pipeline/e4-relationship-bindings.draft.json` and maps every
@@ -24,7 +24,7 @@ back to normal E4 generation.
 The gate requires coverage of all E2 journeys, all `now` features, every required carried/produced E2
 `businessObject`, and every E3 authority carrying an information need. Required journey objects must
 exist as an entity or projection with the same id. Entity and relationship references are closed, stored entities have identifiers,
-lifecycle entities have status, lifecycle predicates contain only exact declared states, and persistent business entities form a connected graph. Persistence
+lifecycle entities have status and an initial state that is not terminal, lifecycle predicates and terminal states contain only exact declared states, and persistent business entities form a connected graph. Persistence
 is explicit and closed: `mdm` for organization master records, `moduleDatabase` for transactions,
 `derived`, `external` or `embedded` for concepts without a module table. Kind, scope, idField and
 mdmType must agree. Master data never carries mutable operational balances or transaction history.

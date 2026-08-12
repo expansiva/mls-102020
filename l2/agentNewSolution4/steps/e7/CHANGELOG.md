@@ -1,5 +1,7 @@
 # Changelog
 
+- 2026-08-11: Copy explicit E4 lifecycle initial/terminal contracts into workflow artifacts and fail closed on unreachable, unoperated, dead-predicate or missing workflows with structured E2/E4 repair alternatives.
+
 - 2026-08-10: Reduce permanent use cases to descriptions, contexts, entity refs, rule ids and transition
   refs. Move provenance/language/timestamps to indexes, keep full transitions only in workflows, remove
   field-level inputs/outputs/read/write/error contracts, and persist deterministic validation attempts.

@@ -21,6 +21,7 @@ text in the user's language. This run is `solutionMode: new`; never claim discov
   must have an entity or projection with that exact `entityId`; these named journey handoffs are L4
   contracts, not optional examples.
 - Freeze every entity id, kind, ownership, lifecycle, source references and persistence decision here.
+- For every entity with lifecycle states, declare the single state in which a record is born as `initialState` and every state that ends its lifecycle as `terminalStates`; use only declared lifecycle state ids and never infer either meaning from the order of the list or from missing transitions.
 - Freeze every relationship here. Relationships must carry journey context: when a journey selects a
   Project and later creates an order, usage, time log or invoice, the graph must make that selected
   Project available. A future UI must never ask a human to type a raw foreign-key id supplied by an
@@ -91,6 +92,8 @@ sources establish that same meaning.
       "authorityRefs": ["buildflow:projectsetup"]
     },
     "lifecycleStates": ["planned", "active", "completed", "cancelled"],
+    "initialState": "planned",
+    "terminalStates": ["completed", "cancelled"],
     "lifecyclePredicates": [{
       "predicateId": "ongoingProject",
       "description": "A project is ongoing while planned or active.",

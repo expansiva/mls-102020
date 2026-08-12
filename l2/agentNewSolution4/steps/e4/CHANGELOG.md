@@ -1,5 +1,7 @@
 # E4 changelog
 
+- 2026-08-11: Make lifecycle birth and completion explicit with `initialState` and optional `terminalStates`; the deterministic gate rejects unknown states and initial-terminal overlap.
+
 - 2026-08-09: Build 40 declares `modelType: reasoning` and high reasoning effort on the new
   relationship-binding prompt. Run27 exposed that an unannotated prompt falls back to the inactive
   `cost` alias before any ontology payload is produced. A regression test now checks every E4 LLM

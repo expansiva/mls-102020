@@ -51,10 +51,11 @@ interface Ns4E7Bundle extends Ns4E7Sources {
 const MAX_REPAIR_ROUNDS = 1;
 
 interface Ns4E7ValidationReport {
-  schemaVersion: '2026-08-10-ns4-e7-validation-report-v1';
+  schemaVersion: '2026-08-11-ns4-e7-validation-report-v2';
   moduleName: string;
   attempts: Array<{ round: number; checkedAt: string; valid: number; invalid: number;
-    results: Array<{ useCaseId: string; status: 'valid' | 'invalid' | 'missing'; issues: Ns4E7GateIssue[] }> }>;
+    results: Array<{ useCaseId: string; status: 'valid' | 'invalid' | 'missing'; issues: Ns4E7GateIssue[] }>;
+    lifecycleIssues: Ns4E7GateIssue[] }>;
   finalStatus: 'repairing' | 'passed' | 'failed';
   updatedAt: string;
 }
@@ -240,23 +241,34 @@ async function finalizeE7(
   }
   const repairRound = args.repairRound || 0;
   const reportStatus = invalid.length ? repairRound < MAX_REPAIR_ROUNDS ? 'repairing' : 'failed' : 'passed';
-  await updateValidationReport(args.moduleName, repairRound, validationResults, reportStatus);
   const mutationParent = findMutableParent(context, parentStep);
   if (invalid.length && repairRound < MAX_REPAIR_ROUNDS) {
+    await updateValidationReport(args.moduleName, repairRound, validationResults, reportStatus);
     const parallel = parallelUseCaseStep(context, step, 'agentNewSolution4', plan, repairRound + 1, invalid);
     return [parallel,
       addStep(context, mutationParent, createFinalizeStep(args.moduleName, repairRound + 1, [String(parallel.step.planning?.planId || '')])),
       updateStatus(context, mutationParent, step, hookSequential, 'completed',
         `${invalid.length} invalid/missing use cases; targeted parallel repair started: ${invalid.join(', ')}.`, 'input_output')];
   }
-  if (invalid.length) throw new Error(`E7 use cases remain invalid after repair: ${invalid.join(', ')}.`);
+  if (invalid.length) {
+    await updateValidationReport(args.moduleName, repairRound, validationResults, reportStatus);
+    throw new Error(`E7 use cases remain invalid after repair: ${invalid.join(', ')}.`);
+  }
 
   const generatedAt = new Date().toISOString();
   const { artifacts: useCases, index: useCaseIndex } = await buildNs4UseCaseArtifacts(plan, valid, generatedAt);
-  const ontologyStates = new Map(bundle.ontology.entities.map(entity => [entity.entityId, entity.lifecycleStates]));
-  const { artifacts: workflows, index: workflowIndex } = await buildNs4WorkflowArtifacts(plan, valid, ontologyStates, generatedAt);
-  const workflowGate = validateNs4Workflows(workflows, bundle);
-  if (!workflowGate.ok) throw new Error(formatGate(workflowGate.issues));
+  const ontologyLifecycles = new Map(bundle.ontology.entities.map(entity => [entity.entityId, {
+    states: entity.lifecycleStates,
+    initialState: entity.initialState,
+    terminalStates: entity.terminalStates,
+  }]));
+  const { artifacts: workflows, index: workflowIndex } = await buildNs4WorkflowArtifacts(plan, valid, ontologyLifecycles, generatedAt);
+  const workflowGate = validateNs4Workflows(workflows, bundle, useCases.map(useCase => useCase.useCaseId));
+  if (!workflowGate.ok) {
+    await updateValidationReport(args.moduleName, repairRound, validationResults, 'failed', workflowGate.issues);
+    throw new Error(formatGate(workflowGate.issues));
+  }
+  await updateValidationReport(args.moduleName, repairRound, validationResults, 'passed');
 
   const artifactPaths: string[] = [];
   for (const useCase of useCases) artifactPaths.push(await writeNs4UseCase(args.moduleName, useCase.useCaseId, useCase));
@@ -374,21 +386,22 @@ async function updateValidationReport(
   round: number,
   results: Ns4E7ValidationReport['attempts'][number]['results'],
   finalStatus: Ns4E7ValidationReport['finalStatus'],
+  lifecycleIssues: Ns4E7GateIssue[] = [],
 ): Promise<void> {
   const now = new Date().toISOString();
   const previous = round > 0 ? await readValidationReport(moduleName) : null;
   const attempt = { round, checkedAt: now, valid: results.filter(result => result.status === 'valid').length,
-    invalid: results.filter(result => result.status !== 'valid').length, results };
+    invalid: results.filter(result => result.status !== 'valid').length, results, lifecycleIssues };
   const attempts = [...(previous?.attempts || []).filter(item => item.round !== round), attempt]
     .sort((left, right) => left.round - right.round);
   await writeNs4E7ValidationReport(moduleName, {
-    schemaVersion: '2026-08-10-ns4-e7-validation-report-v1', moduleName, attempts, finalStatus, updatedAt: now,
+    schemaVersion: '2026-08-11-ns4-e7-validation-report-v2', moduleName, attempts, finalStatus, updatedAt: now,
   } satisfies Ns4E7ValidationReport);
 }
 
 async function readValidationReport(moduleName: string): Promise<Ns4E7ValidationReport | null> {
   const parsed = parse(await readNs4Text(ns4E7ValidationReportFile(moduleName), false));
-  if (!isRecord(parsed) || parsed.schemaVersion !== '2026-08-10-ns4-e7-validation-report-v1'
+  if (!isRecord(parsed) || parsed.schemaVersion !== '2026-08-11-ns4-e7-validation-report-v2'
     || parsed.moduleName !== moduleName || !Array.isArray(parsed.attempts)) return null;
   return parsed as unknown as Ns4E7ValidationReport;
 }

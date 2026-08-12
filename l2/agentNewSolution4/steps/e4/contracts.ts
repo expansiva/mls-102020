@@ -2,7 +2,7 @@
 
 import { sha256Ns4 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 
-export const NS4_ONTOLOGY_SCHEMA_VERSION = '2026-08-09-ns4-ontology-v5' as const;
+export const NS4_ONTOLOGY_SCHEMA_VERSION = '2026-08-11-ns4-ontology-v6' as const;
 
 export type Ns4EntityKind = 'core' | 'event' | 'supporting' | 'mdm' | 'projection' | 'valueObject';
 export type Ns4EntityOwnership = 'moduleOwned' | 'external' | 'derived';
@@ -65,6 +65,8 @@ export interface Ns4OntologyEntity {
   };
   fields: Ns4OntologyField[];
   lifecycleStates: string[];
+  initialState?: string;
+  terminalStates?: string[];
   lifecyclePredicates: Ns4LifecyclePredicate[];
   useRules: string[];
   storage: {
@@ -436,6 +438,8 @@ function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity 
     },
     fields,
     lifecycleStates: strings(entity.lifecycleStates),
+    ...(text(entity.initialState) ? { initialState: text(entity.initialState) } : {}),
+    ...(strings(entity.terminalStates).length ? { terminalStates: strings(entity.terminalStates) } : {}),
     lifecyclePredicates: array(entity.lifecyclePredicates).map(item => {
       const predicate = record(item);
       return {

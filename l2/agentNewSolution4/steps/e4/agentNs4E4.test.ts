@@ -248,6 +248,8 @@ test('E4 accepts a required foreign-key binding owned by either semantic endpoin
 test('E4 freezes named lifecycle meanings as exact reusable state predicates', () => {
   const input = structuredClone(reviewInput) as any;
   input.entities[0].lifecycleStates = ['notStarted', 'inProgress', 'completed', 'cancelled'];
+  input.entities[0].initialState = 'notStarted';
+  input.entities[0].terminalStates = ['completed', 'cancelled'];
   input.entities[0].fields.push({
     fieldId: 'status', title: 'Status', type: 'string', required: true, description: 'Task status.',
     constraints: [{
@@ -271,6 +273,23 @@ test('E4 freezes named lifecycle meanings as exact reusable state predicates', (
   input.entities[0].lifecyclePredicates[0].stateIds.push('unknown');
   const broken = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
   assert.ok(broken.issues.some(issue => issue.code === 'NS4_E4_LIFECYCLE_PREDICATE_STATE'));
+});
+
+test('E4 requires an explicit non-terminal initial lifecycle state', () => {
+  const input = structuredClone(reviewInput) as any;
+  input.entities[0].lifecycleStates = ['draft', 'published'];
+  input.entities[0].fields.push({ fieldId: 'status', title: 'Status', type: 'string', required: true, description: 'Lifecycle status.', constraints: [] });
+  input.entities[0].terminalStates = ['published'];
+  let gate = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E4_LIFECYCLE_INITIAL_REQUIRED'));
+
+  input.entities[0].initialState = 'missing';
+  gate = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E4_LIFECYCLE_INITIAL_STATE'));
+
+  input.entities[0].initialState = 'published';
+  gate = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E4_LIFECYCLE_INITIAL_TERMINAL'));
 });
 
 test('E4 rejects an access information need omitted from ontology traceability', () => {

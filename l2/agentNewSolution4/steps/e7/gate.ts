@@ -11,7 +11,19 @@ import type {
   Ns4E7PlanDraft, Ns4E7SourceHashes, Ns4UseCaseDraft, Ns4WorkflowArtifactV2,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 
-export interface Ns4E7GateIssue { code: string; path: string; message: string; severity?: 'warning'; }
+export interface Ns4E7LifecycleRepairOption {
+  action: 'operateState' | 'shrinkLifecycle';
+  owner: 'e2' | 'e4';
+  instruction: string;
+}
+
+export interface Ns4E7GateIssue {
+  code: string;
+  path: string;
+  message: string;
+  severity?: 'warning';
+  repairOptions?: [Ns4E7LifecycleRepairOption, Ns4E7LifecycleRepairOption];
+}
 export interface Ns4E7GateResult { ok: boolean; issues: Ns4E7GateIssue[]; }
 
 const MEMBER_ID = /^[a-z][A-Za-z0-9]*$/;
@@ -126,17 +138,26 @@ export function validateNs4UseCaseDraft(
   return { ok: issues.every(issue => issue.severity === 'warning'), issues };
 }
 
-export function validateNs4Workflows(workflows: Ns4WorkflowArtifactV2[], sources: Ns4E7Sources): Ns4E7GateResult {
+export function validateNs4Workflows(
+  workflows: Ns4WorkflowArtifactV2[],
+  sources: Ns4E7Sources,
+  useCaseIds: Iterable<string>,
+): Ns4E7GateResult {
   const issues: Ns4E7GateIssue[] = [];
   const add = issueAdder(issues);
   const entities = new Map(sources.ontology.entities.map(entity => [entity.entityId, entity]));
+  const knownUseCaseIds = new Set(useCaseIds);
   const ids = new Set<string>();
   for (const workflow of workflows) {
     if (ids.has(workflow.workflowId)) add('NS4_E7_WORKFLOW_DUPLICATE', 'workflows', `Duplicate workflow ${workflow.workflowId}.`);
     ids.add(workflow.workflowId);
     const entity = entities.get(workflow.entityRef);
     if (!entity) add('NS4_E7_WORKFLOW_ENTITY', workflow.workflowId, `Unknown entity ${workflow.entityRef}.`);
-    else if (!sameSet(workflow.states, entity.lifecycleStates)) add('NS4_E7_WORKFLOW_STATES', workflow.workflowId, 'Workflow states must exactly match E4 lifecycle states.');
+    else {
+      if (!sameSet(workflow.states, entity.lifecycleStates)) add('NS4_E7_WORKFLOW_STATES', workflow.workflowId, 'Workflow states must exactly match E4 lifecycle states.');
+      if (workflow.initialState !== entity.initialState) add('workflow.initialState', workflow.workflowId, 'Workflow initialState must exactly match the E4 lifecycle initialState.');
+      if (!sameSet(workflow.terminalStates, entity.terminalStates || [])) add('workflow.terminalStates', workflow.workflowId, 'Workflow terminalStates must exactly match the E4 lifecycle terminalStates.');
+    }
     if (!workflow.transitions.length) add('NS4_E7_WORKFLOW_EMPTY', workflow.workflowId, 'A workflow requires at least one transition.');
     if (!workflow.states.includes(workflow.initialState)) add('NS4_E7_WORKFLOW_INITIAL', workflow.workflowId, 'Workflow initialState must be a declared lifecycle state.');
     const terminalStates = new Set(workflow.terminalStates);
@@ -145,21 +166,46 @@ export function validateNs4Workflows(workflows: Ns4WorkflowArtifactV2[], sources
     });
     workflow.transitions.forEach((transition, index) => {
       const path = `${workflow.workflowId}.transitions[${index}]`;
-      if (!transition.useCaseId && transition.trigger !== 'system') add('NS4_E7_WORKFLOW_TRIGGER', path, 'Transition requires a useCaseId or trigger="system".');
-      if (transition.useCaseId && transition.trigger) add('NS4_E7_WORKFLOW_TRIGGER', path, 'Transition cannot have both useCaseId and trigger.');
+      const hasUseCase = !!transition.useCaseId;
+      const isSystem = transition.trigger === 'system';
+      if (hasUseCase === isSystem) add('workflow.transition.operation', path, 'Transition requires exactly one of useCaseId or trigger="system".');
+      if (hasUseCase && !knownUseCaseIds.has(transition.useCaseId || '')) add('workflow.transition.operation', path, `Transition useCaseId ${transition.useCaseId} is not compiled by E7.`);
+      if (transition.entityRef !== workflow.entityRef) add('NS4_E7_WORKFLOW_TRANSITION_ENTITY', path, 'Workflow transitions must operate their workflow entity.');
+      if (!transition.fromStates.length || !transition.toState) add('NS4_E7_WORKFLOW_TRANSITION_BOUNDS', path, 'Transition needs at least one from state and one target state.');
+      transition.fromStates.forEach(state => {
+        if (!workflow.states.includes(state)) add('NS4_E7_WORKFLOW_TRANSITION_STATE', path, `Unknown source lifecycle state ${state}.`);
+      });
+      if (!workflow.states.includes(transition.toState)) add('NS4_E7_WORKFLOW_TRANSITION_STATE', path, `Unknown target lifecycle state ${transition.toState}.`);
     });
     workflow.states.filter(state => state !== workflow.initialState).forEach(state => {
       if (!workflow.transitions.some(transition => transition.toState === state)) {
-        add('NS4_E7_WORKFLOW_UNREACHABLE', workflow.workflowId, `Lifecycle state ${state} has no incoming transition.`);
+        addLifecycleIssue(issues, 'workflow.state.unreachable', workflow.workflowId,
+          `Lifecycle state ${state} has no incoming transition.`, workflow.entityRef, state);
       }
     });
     workflow.states.filter(state => !terminalStates.has(state)).forEach(state => {
       if (!workflow.transitions.some(transition => transition.fromStates.includes(state))) {
-        add('NS4_E7_WORKFLOW_DEAD_END', workflow.workflowId, `Non-terminal lifecycle state ${state} has no outgoing transition.`);
+        add('workflow.state.deadEnd', workflow.workflowId, `Non-terminal lifecycle state ${state} has no outgoing transition.`, 'warning');
       }
     });
   }
-  return { ok: issues.length === 0, issues };
+  for (const entity of entities.values()) {
+    if (entity.lifecycleStates.length >= 2 && !workflows.some(workflow => workflow.entityRef === entity.entityId)) {
+      addLifecycleIssue(issues, 'workflow.missing', entity.entityId,
+        `Entity ${entity.entityId} declares ${entity.lifecycleStates.length} lifecycle states but has no compiled workflow.`, entity.entityId);
+    }
+    for (const predicate of entity.lifecyclePredicates) {
+      for (const state of predicate.stateIds) {
+        const reachable = state === entity.initialState || workflows.some(workflow => workflow.entityRef === entity.entityId
+          && workflow.transitions.some(transition => transition.toState === state));
+        if (entity.lifecycleStates.length && !reachable) {
+          addLifecycleIssue(issues, 'workflow.predicate.dead', entity.entityId,
+            `Lifecycle predicate ${predicate.predicateId} references state ${state}, which no workflow transition reaches.`, entity.entityId, state);
+        }
+      }
+    }
+  }
+  return { ok: issues.every(issue => issue.severity === 'warning'), issues };
 }
 
 interface SourceStep {
@@ -174,6 +220,32 @@ function collectSteps(journeys: Ns4E2Review): Map<string, SourceStep> {
     kind: step.kind, requiresContext: step.requiresContext, providesContext: step.providesContext,
   });
   return result;
+}
+
+function addLifecycleIssue(
+  issues: Ns4E7GateIssue[],
+  code: string,
+  path: string,
+  message: string,
+  entityRef: string,
+  state?: string,
+): void {
+  const target = state ? ` lifecycle state ${state}` : ' lifecycle contract';
+  issues.push({
+    code,
+    path,
+    message,
+    repairOptions: [
+      {
+        action: 'operateState', owner: 'e2',
+        instruction: `Reopen the E2 checkpoint and add or amend a journey step that operates the${target} for ${entityRef}; E7 will compile its use case and transition on the next round.`,
+      },
+      {
+        action: 'shrinkLifecycle', owner: 'e4',
+        instruction: `Reopen the E4 checkpoint and remove or redefine the${target} for ${entityRef} when it is not a required business outcome.`,
+      },
+    ],
+  });
 }
 
 function issueAdder(issues: Ns4E7GateIssue[]) {

@@ -1,12 +1,13 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/helpers/ns4Core.ts" enhancement="_blank"/>
 
 export const NS4_FLOW_ID = 'agentNewSolution4' as const;
-export const NS4_FLOW_VERSION = '2026-08-11-ns4-flow-v23' as const;
+export const NS4_FLOW_VERSION = '2026-08-11-ns4-flow-v25' as const;
 export const NS4_E4_MAX_PARALLEL = 20 as const;
 export const NS4_E7_MAX_PARALLEL = 20 as const;
+export const NS4_E8_MAX_PARALLEL = 20 as const;
 export const NS4_MODULE_SCHEMA_VERSION = '2026-08-06-ns4-module-v4' as const;
 export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-06-ns4-pipeline-v5' as const;
-export type Ns4PermanentFlowVersion = typeof NS4_FLOW_VERSION | '2026-08-11-ns4-flow-v22' | '2026-08-10-ns4-flow-v21' | '2026-08-10-ns4-flow-v20' | '2026-08-09-ns4-flow-v19' | '2026-08-09-ns4-flow-v18' | '2026-08-08-ns4-flow-v17';
+export type Ns4PermanentFlowVersion = typeof NS4_FLOW_VERSION | '2026-08-11-ns4-flow-v24' | '2026-08-11-ns4-flow-v22' | '2026-08-10-ns4-flow-v21' | '2026-08-10-ns4-flow-v20' | '2026-08-09-ns4-flow-v19' | '2026-08-09-ns4-flow-v18' | '2026-08-08-ns4-flow-v17';
 
 export const NS4_PLAN_IDS = [
   'e1-clarification',
@@ -34,6 +35,7 @@ const NS4_HUMAN_CHECKPOINT_PLAN_IDS: ReadonlySet<Ns4PlanId> = new Set([
   'e4-ontology',
   'e5-rules',
   'e6-behaviors',
+  'e8-workspaces',
 ]);
 
 export type Ns4ApprovedBy = 'human' | 'auto';
@@ -44,8 +46,9 @@ export type Ns4E4Status = 'running' | 'waitingHuman' | 'approved' | 'failed' | '
 export type Ns4E5Status = 'running' | 'waitingHuman' | 'approved' | 'failed' | 'stale';
 export type Ns4E6Status = 'running' | 'waitingHuman' | 'approved' | 'failed';
 export type Ns4E7Status = 'running' | 'approved' | 'failed' | 'stale';
-export type Ns4CompletedStepId = 'e1' | 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology' | 'e5-rules' | 'e6-behaviors' | 'e7-realization';
-export type Ns4NextStep = 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology' | 'e5-rules' | 'e6-behaviors' | 'e7-realization' | 'e8-workspaces';
+export type Ns4E8Status = 'running' | 'waitingHuman' | 'approved' | 'failed' | 'stale';
+export type Ns4CompletedStepId = 'e1' | 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology' | 'e5-rules' | 'e6-behaviors' | 'e7-realization' | 'e8-workspaces';
+export type Ns4NextStep = 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology' | 'e5-rules' | 'e6-behaviors' | 'e7-realization' | 'e8-workspaces' | 'e9-navigation-compiler';
 
 export interface Ns4ClarificationQuestion {
   type: 'open';
@@ -237,13 +240,24 @@ export interface Ns4PipelineState {
       failedAt?: string;
       updatedAt: string;
     };
+    e8?: {
+      status: Ns4E8Status;
+      reviewRound: number;
+      skeletonPath?: string;
+      artifactPaths?: string[];
+      approvedBy?: Ns4ApprovedBy;
+      approvedAt?: string;
+      error?: string;
+      failedAt?: string;
+      updatedAt: string;
+    };
   };
   nextStep: Ns4NextStep;
   createdAt: string;
   updatedAt: string;
 }
 
-export type Ns4ExistingAction = 'new' | 'resume-e1' | 'resume-e2' | 'resume-e3' | 'resume-e4' | 'resume-e5' | 'resume-e6' | 'resume-e7' | 'resume-next' | 'collision';
+export type Ns4ExistingAction = 'new' | 'resume-e1' | 'resume-e2' | 'resume-e3' | 'resume-e4' | 'resume-e5' | 'resume-e6' | 'resume-e7' | 'resume-e8' | 'resume-next' | 'collision';
 
 export function parseNs4Invocation(value: string): { fast: boolean; prompt: string } {
   const raw = String(value || '');
@@ -526,6 +540,21 @@ export function createNs4E7Step(
   );
 }
 
+export function createNs4E8Step(
+  moduleName = '',
+  reviewRound = 1,
+  adjustment = '',
+  dependsOn: string[] = [],
+  stepTitle = NS4_DEFAULT_TITLES['e8-workspaces'],
+): mls.msg.AIAgentStep {
+  return createNs4AgentStep(
+    `e8-workspaces-round-${reviewRound}`,
+    adjustment ? plainNs4StepTitle(`${stepTitle} · ${reviewRound}`) : formatNs4VisibleStepTitle('e8-workspaces', stepTitle),
+    dependsOn, dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
+    { planId: 'e8-workspaces', ...(moduleName ? { moduleName } : {}), reviewRound, ...(adjustment ? { adjustment } : {}), stage: 'skeleton' },
+  );
+}
+
 export const NS4_DEFAULT_TITLES: Record<Ns4PlanId, string> = {
   'e1-clarification': 'Clarify the module contract',
   'e1-compile': 'Compile the initial module contract',
@@ -552,16 +581,17 @@ export function plainNs4StepTitle(title: string): string {
 }
 
 /** Dynamic E4 children do not retain planning.planId; hook args are their stable dispatcher key. */
-export function resolveNs4DynamicWorker(value: unknown): 'e4' | 'e7' | '' {
+export function resolveNs4DynamicWorker(value: unknown): 'e4' | 'e7' | 'e8' | '' {
   if (typeof value !== 'string') return '';
   const selector = value.trim();
   if (/^entity:[A-Z][A-Za-z0-9]*$/.test(selector)) return 'e4';
   if (/^usecase:[a-z][A-Za-z0-9]*$/.test(selector)) return 'e7';
+  if (/^workspace:[a-z][A-Za-z0-9]*$/.test(selector)) return 'e8';
   return '';
 }
 
 export interface Ns4DynamicWorkerRequest {
-  worker: 'e4' | 'e7' | '';
+  worker: 'e4' | 'e7' | 'e8' | '';
   args: string;
 }
 
@@ -622,7 +652,7 @@ export function buildNs4PlannedSteps(plan: Ns4RootPlan): mls.msg.AIAgentStep[] {
     createNs4E5Step('', 1, '', ['e4-result'], title('e5-rules')),
     createNs4E6Step('', 1, '', ['e5-result'], title('e6-behaviors')),
     createNs4E7Step('', ['e6-result'], title('e7-realization')),
-    createNs4RoadmapStep('e8-workspaces', title('e8-workspaces'), ['e7-result']),
+    createNs4E8Step('', 1, '', ['e7-result'], title('e8-workspaces')),
     createNs4RoadmapStep('e9-navigation-compiler', title('e9-navigation-compiler'), ['e8-result']),
     createNs4RoadmapStep('e10-validation', title('e10-validation'), ['e9-result']),
   ];
@@ -1367,6 +1397,26 @@ export function markNs4ModuleE7Approved(
   return { ...artifact, specStatus: { ...artifact.specStatus, completedSteps, nextStep: 'e8-workspaces', updatedAt: now } };
 }
 
+export function markNs4E8Running(state: Ns4PipelineState, reviewRound = 1, skeletonPath = '', now = new Date().toISOString()): Ns4PipelineState {
+  if (state.steps.e8?.status === 'approved') return state;
+  return { ...state, status: 'inProgress', steps: { ...state.steps, e8: { ...state.steps.e8, status: 'running', reviewRound, ...(skeletonPath ? { skeletonPath } : {}), updatedAt: now } }, nextStep: 'e8-workspaces', updatedAt: now };
+}
+export function markNs4E8WaitingHuman(state: Ns4PipelineState, reviewRound: number, skeletonPath: string, now = new Date().toISOString()): Ns4PipelineState {
+  return { ...state, status: 'inProgress', steps: { ...state.steps, e8: { status: 'waitingHuman', reviewRound, skeletonPath, updatedAt: now } }, nextStep: 'e8-workspaces', updatedAt: now };
+}
+export function markNs4E8Failed(state: Ns4PipelineState, failure: unknown, now = new Date().toISOString()): Ns4PipelineState {
+  if (state.steps.e8?.status === 'approved') return state;
+  return { ...state, status: 'failed', steps: { ...state.steps, e8: { ...state.steps.e8, status: 'failed', reviewRound: state.steps.e8?.reviewRound || 1, error: normalizeNs4Failure(failure), failedAt: now, updatedAt: now } }, nextStep: 'e8-workspaces', updatedAt: now };
+}
+export function markNs4E8Approved(state: Ns4PipelineState, approvedBy: Ns4ApprovedBy, artifactPaths: string[], now = new Date().toISOString()): Ns4PipelineState {
+  return { ...state, status: 'inProgress', steps: { ...state.steps, e8: { ...state.steps.e8, status: 'approved', reviewRound: state.steps.e8?.reviewRound || 1, artifactPaths: [...artifactPaths], approvedBy, approvedAt: now, updatedAt: now } }, nextStep: 'e9-navigation-compiler', updatedAt: now };
+}
+export function markNs4ModuleE8Approved(artifact: Ns4ModuleArtifact, approvedBy: Ns4ApprovedBy, now = new Date().toISOString()): Ns4ModuleArtifact {
+  const completedSteps = artifact.specStatus.completedSteps.filter(step => step.stepId !== 'e8-workspaces');
+  completedSteps.push({ stepId: 'e8-workspaces', status: 'approved', approvedBy, approvedAt: now });
+  return { ...artifact, specStatus: { ...artifact.specStatus, completedSteps, nextStep: 'e9-navigation-compiler', updatedAt: now } };
+}
+
 export function resolveNs4ExistingAction(
   moduleExists: boolean,
   pipeline: unknown,
@@ -1374,7 +1424,8 @@ export function resolveNs4ExistingAction(
 ): Ns4ExistingAction {
   if (!moduleExists) return 'new';
   if (!isNs4Pipeline(pipeline)) return 'collision';
-  if (pipeline.steps.e7?.status === 'approved' && moduleArtifactExists) return 'resume-next';
+  if (pipeline.steps.e8?.status === 'approved' && moduleArtifactExists) return 'resume-next';
+  if (pipeline.steps.e7?.status === 'approved' && moduleArtifactExists) return 'resume-e8';
   if (pipeline.steps.e6?.status === 'approved' && moduleArtifactExists) return 'resume-e7';
   if (pipeline.steps.e5?.status === 'approved' && moduleArtifactExists) return 'resume-e6';
   if (pipeline.steps.e4?.status === 'approved' && moduleArtifactExists) return 'resume-e5';

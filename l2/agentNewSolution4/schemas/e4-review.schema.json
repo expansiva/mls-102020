@@ -1,5 +1,5 @@
 {
-  "$id": "https://collab.codes/schemas/agentNewSolution4/e4-review/2026-08-09-v5",
+  "$id": "https://collab.codes/schemas/agentNewSolution4/e4-review/2026-08-11-v6",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
@@ -71,6 +71,8 @@
         "sourceRefs": { "$ref": "#/$defs/sourceRefs" },
         "fields": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/field" } },
         "lifecycleStates": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "initialState": { "type": "string", "minLength": 1 },
+        "terminalStates": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
         "lifecyclePredicates": { "type": "array", "items": { "$ref": "#/$defs/lifecyclePredicate" } },
         "useRules": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" } },
         "storage": {
@@ -84,7 +86,11 @@
             "notes": { "type": "string", "minLength": 1 }
           }
         }
-      }
+      },
+      "allOf": [{
+        "if": { "properties": { "lifecycleStates": { "minItems": 1 } }, "required": ["lifecycleStates"] },
+        "then": { "required": ["initialState"] }
+      }]
     },
     "relationship": {
       "type": "object", "additionalProperties": false,

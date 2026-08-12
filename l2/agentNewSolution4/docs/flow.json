@@ -1,7 +1,7 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-11-ns4-flow-v23",
-  "status": "e1-e7",
+  "schemaVersion": "2026-08-11-ns4-flow-v25",
+  "status": "e1-e8",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
     "mls-base/skills/collab_messages.md",
@@ -11,7 +11,7 @@
   ],
   "principles": [
     "The root LLM detects the communication language, translates friendly step titles and creates the visible roadmap before clarification begins.",
-    "The runtime prefixes exactly the six E1-through-E6 roadmap checkpoints with the deterministic 👤 marker; dynamically appended technical and clarification nodes do not duplicate it, and persisted localized titles remain plain reusable text.",
+    "The runtime prefixes E1-through-E6 and the E8 skeleton checkpoint with the deterministic 👤 marker; dynamically appended technical nodes do not duplicate it, and persisted localized titles remain plain reusable text.",
     "E4 parallel children are dispatched by stable entity: selectors and reconstruct their base invocation when collab-messages omits planning or prompt metadata on materialized fan-out children.",
     "Dynamic E4 dispatch is symmetric: before-prompt prefers hook args, while after-prompt falls back to the selector retained in step.prompt when collab-messages omits callback args.",
     "E2 normalizes every journey businessObject to one stable PascalCase identifier; E4 consumes that exact id for its entity or projection instead of comparing a localized display label.",
@@ -34,6 +34,7 @@
     "The /fast flag uses the same deterministic gates and persistence paths; E1 auto-accepts its clarification and valid E2-E6 proposals are approved without opening their widgets.",
     "E1 records modernization strategies now; E4 currently compiles only explicit new-solution ontology contracts and fails closed for modernization instead of fabricating a greenfield or replacement database.",
     "E4 classifies every entity into an explicit persistence target: shared MDM for stable base records, module database for transactions, or derived/external/embedded storage for non-table concepts.",
+    "Every E4 lifecycle declares its initial state and optional terminal states explicitly; E7 copies that contract mechanically rather than inferring lifecycle meaning from state ordering or missing outgoing transitions.",
     "E4 first freezes a compact ontology overview, then details entities through the proven parallel_dynamic fan-out with maxParallel 20, binds every relationship to exact existing endpoint fields or an explicit non-FK realization, and only then opens one human review.",
     "E2, E3 and E4 carry business-rule references only as stable useRules ids; descriptions exist exactly once in rules/rules.defs.ts.",
     "E5 reconstructs its inputs from approved permanent journey, access and ontology artifacts, collects useRules mechanically and creates one concise rule catalog instead of compiling executable rule objects.",
@@ -44,13 +45,16 @@
     "Future pages, use cases, tables and maintenance operations scan the complete L4 and attach only useRules ids; changing a rule description never requires copying text into its consumers.",
     "E7 mechanically groups identical journey step ids into stable N-to-one channel-neutral use cases, details them with a maxParallel 20 fan-out and runs one targeted repair round for invalid drafts.",
     "E7 preserves every journey businessHash and compiles small reusable behaviors with exact context ids, ontology entity refs, behavior-owned rule ids and references to valid lifecycle transitions.",
-    "Use cases do not copy E3 actors, authorities or scopes and do not prescribe ports, repositories, storage routing or backend architecture. E3 owns authorization and E8 owns channel integration."
+    "E7 deterministically rejects unreachable lifecycle states, unoperated transitions, dead lifecycle predicates and multi-state entities without workflows; its report presents an explicit human choice to add an upstream E2 operation or shrink the E4 lifecycle, never choosing silently.",
+    "Use cases do not copy E3 actors, authorities or scopes and do not prescribe ports, repositories, storage routing or backend architecture. E3 owns authorization and E8 owns channel integration.",
+    "E8 derives workspace partition, page context, slices, invalidations, hub candidacy and navigation candidates from approved L4 contracts; its LLM calls may only localize presentation and select a closed surface catalog.",
+    "E8 has one human checkpoint for the frozen skeleton. Its workspace-detail fan-out is bounded to 20 workers, validates each worker independently, and writes permanent typed workspace artifacts plus a workspace index."
   ],
   "invocation": {
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v23-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
+    "resumeRule": "A v24-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",
@@ -79,7 +83,11 @@
     "useCase": "l4/{module}/usecases/{useCaseId}.defs.ts",
     "useCaseIndex": "l4/{module}/usecases/index.defs.ts",
     "workflow": "l4/{module}/workflows/{workflowId}.defs.ts",
-    "workflowIndex": "l4/{module}/workflows/index.defs.ts"
+    "workflowIndex": "l4/{module}/workflows/index.defs.ts",
+    "workspaceSkeletonDraft": "l4/{module}/pipeline/e8-skeleton.draft.json",
+    "workspaceDetailDraft": "l4/{module}/pipeline/e8-workspaces/{workspaceId}.draft.json",
+    "workspace": "l4/{module}/workspaces/{workspaceId}.defs.ts",
+    "workspaceIndex": "l4/{module}/workspaces/index.defs.ts"
   },
   "orchestration": {
     "rootOutput": ["validPrompt", "userPrompt", "presentation.userLanguage", "presentation.stepTitles", "clarification"],
@@ -101,14 +109,15 @@
       "e6-behaviors",
       "e6-result",
       "e7-realization",
-      "e7-result"
+      "e7-result",
+      "e8-workspaces",
+      "e8-result"
     ],
     "roadmap": [
-      "e8-workspaces",
       "e9-navigation-compiler",
       "e10-validation"
     ],
-    "roadmapExecution": "E8 and later steps remain visible waiting_dependency/manual_later nodes until their implementations are delivered."
+    "roadmapExecution": "E9 and later steps remain visible waiting_dependency/manual_later nodes until their implementations are delivered."
   },
   "steps": [
     {
@@ -218,6 +227,7 @@
         "Master data and operational state are separate entities: a Material catalog may be MDM while inventory balance, adjustment and usage remain transactional.",
         "Every entity carries a structured storage target, scope, identifier and MDM type when applicable; the ontology index repeats this compact persistence routing for L1/L2 compilers.",
         "Static field constraints are shared validation contracts: backend enforcement is mandatory and frontend mirrors them for early feedback. Named lifecycle meanings required by sources are frozen as exact lifecycle predicate-to-state mappings; dynamic, time-relative, cross-entity and authorization conditions remain E5 rules.",
+        "Every non-empty lifecycle declares one initialState and may declare terminalStates; the E4 gate verifies membership and rejects an initial state marked terminal.",
         "The review widget groups entities by persistence destination and highlights cross-store relationships before approval.",
         "The review widget separates safe direct title/description edits from structural LLM requests.",
         "Before a structural revision, the current draft including direct human edits is persisted and supplied to the next round.",
@@ -308,9 +318,34 @@
         "The gate validates descriptions, exact E2 contexts, E4 entity refs, existing E5 ids and valid lifecycle transitions; field selection and persistence are not part of the use-case contract.",
         "Actors, authorities and scopes remain in E3; inputs, outputs, errors, pagination, selection, projections and route binding remain in E8 or downstream generation; ports, transactions and adapters are implementation choices.",
         "A deterministic finalizer records every gate issue in e7-validation-report.json, repairs only invalid or missing use cases once, derives workflows, writes typed permanent artifacts and advances to E8.",
+        "Workflow finalization copies initialState and terminalStates from E4, validates state reachability and transition operation deterministically, and records explicit E2/E4 repair alternatives for any lifecycle finding before failing closed.",
         "Full transitions live only in workflow artifacts; use cases and journeys keep transition refs. Global source hashes, language and timestamps live only in indexes.",
         "Journey business blocks and businessHash values are immutable; E7 writes only resolution/realization metadata.",
         "E7 has no human checkpoint. E6 remains the sixth and final clarification."
+      ]
+    },
+    {
+      "planId": "e8-workspaces",
+      "runtimePlanIdPattern": "e8-workspaces-round-{reviewRound}",
+      "type": "agent-human-skeleton-then-parallel-compiler",
+      "dependsOn": ["e7-result"],
+      "goal": "Derive, review and compile access-aware workspaces with one composed view call per workspace.",
+      "output": [
+        "l4/{module}/pipeline/e8-skeleton.draft.json",
+        "l4/{module}/pipeline/e8-workspaces/{workspaceId}.draft.json",
+        "l4/{module}/workspaces/{workspaceId}.defs.ts",
+        "l4/{module}/workspaces/index.defs.ts"
+      ],
+      "outputAnchor": "e8-result",
+      "gate": "steps/e8/gate.ts",
+      "runtimeNotes": [
+        "Code derives the complete workspace partition, context catalog, hub ranking, candidate edges, hosted use cases and scenario ids from approved E2 through E7 artifacts.",
+        "One small reasoning call may localize labels, group already-derived workspaces under existing E2 features, order menu items and select only queueAction, contextualModal or batchAction surfaces; it cannot create, remove or rename structural ids.",
+        "The skeleton gate requires total use-case coverage, non-empty workspaces, resolvable page context, collection and record scenarios for a hub, reachable FSM evidence for queues and at most seven menu items per section.",
+        "The human checkpoint reviews the map: header links, feature menu, workspaces, scenarios, profiles and context-carrying candidate edges. A requested change starts the next skeleton round.",
+        "After approval, one dynamic worker per workspace returns organisms, ontology field projections and command inputs. Each worker is isolated and receives at most one targeted repair round; maxParallel is 20.",
+        "Workers cannot change the frozen skeleton. The deterministic detail gate rejects unknown fields, slice/entity drift, unresolved pageContext or selection input, and fieldsOnly disclosure violations.",
+        "The finalizer stamps picker use, derives command invalidations from command/slice entity intersections and writes typed workspace defs plus index. E9 owns route and global navigation compilation."
       ]
     }
   ]

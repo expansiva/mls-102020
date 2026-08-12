@@ -23,6 +23,7 @@ import type {
   Ns4WorkflowIndexArtifact,
   Ns4WorkflowIndexArtifactV2,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
+import type { Ns4WorkspaceArtifact, Ns4WorkspaceIndex } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
 
 export type {
   Ns4ApprovedBy,
@@ -34,6 +35,7 @@ export type {
   Ns4E5Status,
   Ns4E6Status,
   Ns4E7Status,
+  Ns4E8Status,
   Ns4ModuleArtifact,
   Ns4NextStep,
   Ns4PipelineState,
@@ -136,6 +138,26 @@ export type {
   Ns4WorkflowTransition,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 
+export type {
+  Ns4E8Edge,
+  Ns4E8HubScore,
+  Ns4E8MenuSection,
+  Ns4E8SkeletonReview,
+  Ns4E8SkeletonWorkspace,
+  Ns4WorkspaceArtifact,
+  Ns4WorkspaceCommandInput,
+  Ns4WorkspaceContext,
+  Ns4WorkspaceDetailDraft,
+  Ns4WorkspaceDetailScenario,
+  Ns4WorkspaceFieldRef,
+  Ns4WorkspaceIndex,
+  Ns4WorkspaceKind,
+  Ns4WorkspaceOrganism,
+  Ns4WorkspaceScenario,
+  Ns4WorkspaceScenarioKind,
+  Ns4WorkspaceSlice,
+} from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
+
 export const NS4_PERMANENT_ARTIFACT_TYPE_NAMES = [
   'Ns4ModuleArtifact',
   'Ns4JourneyArtifact',
@@ -153,6 +175,8 @@ export const NS4_PERMANENT_ARTIFACT_TYPE_NAMES = [
   'Ns4WorkflowArtifactV2',
   'Ns4WorkflowIndexArtifact',
   'Ns4WorkflowIndexArtifactV2',
+  'Ns4WorkspaceArtifact',
+  'Ns4WorkspaceIndex',
 ] as const;
 
 export type Ns4PermanentArtifactTypeName = typeof NS4_PERMANENT_ARTIFACT_TYPE_NAMES[number];
@@ -174,4 +198,6 @@ export interface Ns4PermanentArtifactByType {
   Ns4WorkflowArtifactV2: Ns4WorkflowArtifactV2;
   Ns4WorkflowIndexArtifact: Ns4WorkflowIndexArtifact;
   Ns4WorkflowIndexArtifactV2: Ns4WorkflowIndexArtifactV2;
+  Ns4WorkspaceArtifact: Ns4WorkspaceArtifact;
+  Ns4WorkspaceIndex: Ns4WorkspaceIndex;
 }

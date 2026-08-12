@@ -139,6 +139,21 @@ export function validateNs4E4Review(
       add('NS4_E4_LIFECYCLE_STATUS', `${path}.lifecycleStates`, 'An entity with lifecycle states must define a status field.');
     }
     const lifecycleStates = new Set(entity.lifecycleStates);
+    const terminalStates = new Set(entity.terminalStates || []);
+    if (entity.lifecycleStates.length && !entity.initialState) {
+      add('NS4_E4_LIFECYCLE_INITIAL_REQUIRED', `${path}.initialState`, 'An entity with lifecycle states must declare its initialState.');
+    }
+    if (entity.initialState && !lifecycleStates.has(entity.initialState)) {
+      add('NS4_E4_LIFECYCLE_INITIAL_STATE', `${path}.initialState`, 'initialState must be a declared lifecycle state.');
+    }
+    if (entity.initialState && terminalStates.has(entity.initialState)) {
+      add('NS4_E4_LIFECYCLE_INITIAL_TERMINAL', `${path}.initialState`, 'initialState cannot also be a terminal state.');
+    }
+    terminalStates.forEach(stateId => {
+      if (!lifecycleStates.has(stateId)) {
+        add('NS4_E4_LIFECYCLE_TERMINAL_STATE', `${path}.terminalStates`, `Unknown terminal lifecycle state ${stateId}.`);
+      }
+    });
     const lifecyclePredicateIds = new Set<string>();
     entity.lifecyclePredicates.forEach((predicate, predicateIndex) => {
       const predicatePath = `${path}.lifecyclePredicates[${predicateIndex}]`;
