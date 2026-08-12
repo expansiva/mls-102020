@@ -130,11 +130,14 @@ test('E4 bounded repair step carries gate feedback under a unique open plan id',
 
 test('E4 uses the proven 20-slot ontology fan-out and a dependency-bound finalizer', () => {
   assert.equal(NS4_E4_MAX_PARALLEL, 20);
-  const step = createNs4E4FinalizeStep('buildFlowFsm', 2, ['e4-ontology-round-2'], 1, 0);
+  const step = createNs4E4FinalizeStep('buildFlowFsm', 2, ['e4-ontology-round-2-entities-1'], 1, 0);
   assert.equal(step.planning?.planId, 'e4-ontology-round-2-finalize-1-0');
-  assert.deepEqual(step.planning?.dependsOn, ['e4-ontology-round-2']);
+  assert.deepEqual(step.planning?.dependsOn, ['e4-ontology-round-2-entities-1']);
   assert.equal(step.status, 'waiting_dependency');
   assert.match(String(step.prompt), /"stage":"finalize"/);
+  const source = readFileSync(new URL('agentNs4E4.ts', import.meta.url), 'utf8');
+  assert.match(source, /parallel\.step\.planning\?\.planId/);
+  assert.doesNotMatch(source, /createNs4E4FinalizeStep\(args\.moduleName, reviewRound, \[currentPlanId\]/);
 });
 
 test('E4 schedules a dedicated relationship binding pass with bounded repair state', () => {

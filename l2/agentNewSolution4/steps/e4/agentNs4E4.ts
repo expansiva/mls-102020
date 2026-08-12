@@ -356,11 +356,13 @@ async function handlePlanResult(
     return [updateStatus(context, mutationParent, step, hookSequential, 'failed', message)];
   }
   await writeNs4E4PlanDraft(args.moduleName, plan);
-  const currentPlanId = step.planning?.planId || `e4-ontology-round-${reviewRound}`;
   const planRepairAttempt = args.repairAttempt || args.planRepairAttempt || 0;
+  const parallel = parallelEntityStep(context, step, agent.agentName, plan, 0);
   return [
-    parallelEntityStep(context, step, agent.agentName, plan, 0),
-    addStep(context, mutationParent, createNs4E4FinalizeStep(args.moduleName, reviewRound, [currentPlanId], 0, planRepairAttempt)),
+    parallel,
+    addStep(context, mutationParent, createNs4E4FinalizeStep(
+      args.moduleName, reviewRound, [String(parallel.step.planning?.planId || '')], 0, planRepairAttempt,
+    )),
     updateStatus(context, mutationParent, step, hookSequential, 'completed', `E4 overview ready; detailing ${plan.entities.length} entities with maxParallel=${NS4_E4_MAX_PARALLEL}.`, 'input_output'),
   ];
 }
@@ -447,11 +449,11 @@ async function finalizeOntology(
   }
   const entityRepairRound = args.entityRepairRound || 0;
   if (invalid.length && entityRepairRound < MAX_ENTITY_REPAIR_ROUNDS) {
-    const currentPlanId = step.planning?.planId || `e4-ontology-round-${plan.reviewRound}-finalize-${entityRepairRound}-${args.planRepairAttempt || 0}`;
+    const parallel = parallelEntityStep(context, step, 'agentNewSolution4', plan, entityRepairRound + 1, invalid);
     return [
-      parallelEntityStep(context, step, 'agentNewSolution4', plan, entityRepairRound + 1, invalid),
+      parallel,
       addStep(context, mutationParent, createNs4E4FinalizeStep(
-        args.moduleName, plan.reviewRound, [currentPlanId], entityRepairRound + 1, args.planRepairAttempt || 0,
+        args.moduleName, plan.reviewRound, [String(parallel.step.planning?.planId || '')], entityRepairRound + 1, args.planRepairAttempt || 0,
       )),
       updateStatus(context, mutationParent, step, hookSequential, 'completed', `${invalid.length} invalid/missing entities; targeted parallel repair started: ${invalid.join(', ')}.`),
     ];
