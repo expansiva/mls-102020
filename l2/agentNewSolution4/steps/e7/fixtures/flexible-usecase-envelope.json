@@ -1,0 +1,17 @@
+{
+  "type": "flexible",
+  "result": {
+    "draftVersion": "2026-08-10-ns4-usecase-draft-minimal-v3",
+    "planId": "e7-usecase",
+    "moduleName": "sampleModule",
+    "useCaseId": "locateProject",
+    "title": "Locate project",
+    "kind": "query",
+    "compiledFrom": ["manageProjects.locateProject"],
+    "description": "Locates the selected project.",
+    "contexts": { "requires": [], "provides": ["selectedProject"] },
+    "entityRefs": ["Project"],
+    "useRules": [],
+    "transitions": []
+  }
+}

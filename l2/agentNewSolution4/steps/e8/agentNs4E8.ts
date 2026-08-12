@@ -3,6 +3,7 @@ import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
+import { createNs4FlexibleWorkerTool } from '/_102020_/l2/agentNewSolution4/helpers/ns4WorkerTools.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
   createNs4E8Step, isNs4Pipeline, markNs4E8Approved, markNs4E8Failed, markNs4E8Running,
@@ -10,7 +11,7 @@ import {
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { readNs4ApprovedAccess, readNs4ApprovedJourneys, readNs4ApprovedOntology } from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
 import {
-  ns4E8SkeletonDraftFile, ns4E8WorkspaceDraftFile, ns4JourneyIndexFile, ns4UseCaseFile, ns4UseCaseIndexFile, ns4WorkflowFile, ns4WorkflowIndexFile,
+  ns4AgentFile, ns4E8SkeletonDraftFile, ns4E8WorkspaceDraftFile, ns4JourneyIndexFile, ns4UseCaseFile, ns4UseCaseIndexFile, ns4WorkflowFile, ns4WorkflowIndexFile,
   readNs4AgentText, readNs4DefsJson, readNs4Module, readNs4Pipeline, readNs4Text,
   writeNs4E8SkeletonDraft, writeNs4E8WorkspaceDraft, writeNs4Module, writeNs4Pipeline, writeNs4Workspace, writeNs4WorkspaceIndex,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
@@ -84,7 +85,7 @@ async function skeletonPrompt(context: mls.msg.ExecutionContext, parent: mls.msg
 }
 
 async function workerPrompt(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, hookSequential: number, workspaceId: string, moduleName: string): Promise<mls.msg.AgentIntentPromptReady> {
-  const [skeleton, sources, prompt, current] = await Promise.all([readSkeleton(moduleName), loadSources(moduleName), readNs4AgentText('steps/e8', 'promptWorkspace'), readDetail(moduleName, workspaceId)]);
+  const [skeleton, sources, prompt, current, tool] = await Promise.all([readSkeleton(moduleName), loadSources(moduleName), readNs4AgentText('steps/e8', 'promptWorkspace'), readDetail(moduleName, workspaceId), readNs4WorkspaceWorkerTool()]);
   const workspace = skeleton.workspaces.find(item => item.workspaceId === workspaceId); if (!workspace) throw new Error(`Workspace ${workspaceId} is not present in the frozen skeleton.`);
   const relevantEntities = new Set(workspace.slices.flatMap(slice => slice.entityRefs));
   const entities = sources.ontology.entities.filter(entity => relevantEntities.has(entity.entityId)).map(entity => ({ entityId: entity.entityId, fields: entity.fields.map(field => ({ fieldId: field.fieldId, title: field.title, type: field.type, constraints: field.constraints })) }));
@@ -98,7 +99,7 @@ async function workerPrompt(context: mls.msg.ExecutionContext, parent: mls.msg.A
     `## Frozen policy decision selections\n${JSON.stringify(sources.policyDecisionSelections || [])}`,
     current ? `## Current worker detail; repair only deterministic failures\n${JSON.stringify(current)}` : '',
     `## Required identity\nmoduleName=${moduleName}; workspaceId=${workspaceId}; skeletonHash=${skeleton.skeletonHash}`,
-  ].filter(Boolean).join('\n\n'));
+  ].filter(Boolean).join('\n\n'), tool);
 }
 
 async function applyReview(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIClarificationStep, hookSequential: number, event: Ns4E8ReviewEvent): Promise<void> {
@@ -148,11 +149,12 @@ async function fail(moduleName: string, message: string): Promise<void> { if (!m
 function clarification(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, skeleton: Ns4E8SkeletonReview, title: string): mls.msg.AgentIntentAddStep { return addStep(context, parent, { type: 'clarification', stepId: 0, interaction: null, stepTitle: title.trim().replace(/^[👤🔎]\s*/u, ''), status: 'pending', nextSteps: [], json: JSON.stringify(skeleton), planning: { planId: `e8-skeleton-review-round-${skeleton.reviewRound}`, dependsOn: [], executionMode: 'sequential', executionHost: 'client' } } as mls.msg.AIClarificationStep); }
 function result(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, saved: PersistedE8, title: string): mls.msg.AgentIntentAddStep { return addStep(context, parent, { type: 'result', stepId: 0, interaction: null, stepTitle: title, status: 'completed', nextSteps: [], result: JSON.stringify({ ...saved, completedStep: 'e8-workspaces', nextStep: 'e9-navigation-compiler' }, null, 2), planning: { planId: 'e8-result', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' } } as mls.msg.AIResultStep); }
 function findParent(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step?: mls.msg.AIAgentStep): mls.msg.AIAgentStep { return resolveNs4MutableParent(getAllSteps(context.task?.iaCompressed?.nextSteps), parent, step); }
-function promptReady(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, hookSequential: number, args: string, systemPrompt: string, humanPrompt: string): mls.msg.AgentIntentPromptReady { return { type: 'prompt_ready', args, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', hookSequential, parentStepId: parent.stepId, systemPrompt, humanPrompt }; }
+function promptReady(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, hookSequential: number, args: string, systemPrompt: string, humanPrompt: string, tool?: mls.msg.LLMTool): mls.msg.AgentIntentPromptReady { return { type: 'prompt_ready', args, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', hookSequential, parentStepId: parent.stepId, systemPrompt, humanPrompt, ...(tool ? { tools: [tool], toolChoice: { type: 'function', function: { name: tool.function.name } } } : {}) }; }
 function addStep(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIPayload): mls.msg.AgentIntentAddStep { return { type: 'add-step', messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parent.stepId, step }; }
 function status(context: mls.msg.ExecutionContext, parent: mls.msg.AIPayload, step: mls.msg.AIPayload, hookSequential: number, state: mls.msg.AIStepStatus, traceMsg?: string, cleaner?: 'input' | 'input_output'): mls.msg.AgentIntentUpdateStatus { return { type: 'update-status', hookSequential, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parent.stepId, stepId: step.stepId, status: state, ...(traceMsg ? { traceMsg } : {}), ...(cleaner ? { cleaner } : {}) }; }
 async function applyIntents(context: mls.msg.ExecutionContext, intents: mls.msg.AgentIntent[]): Promise<void> { const response = await msgApplyIntents({ userId: context.message.senderId, intents }); if (!response || response.statusCode !== 200) throw new Error((response as mls.msg.ResponseBase | undefined)?.msg || 'Error applying E8 intents.'); const applied = response as mls.msg.ResponseApplyIntents; context.task = applied.task; if (applied.message) context.message = applied.message; }
 function workspaceSelector(value: unknown): string { return typeof value === 'string' ? /^workspace:([a-z][A-Za-z0-9]*)$/.exec(value.trim())?.[1] || '' : ''; }
+async function readNs4WorkspaceWorkerTool(): Promise<mls.msg.LLMTool> { const raw = await readNs4Text(ns4AgentFile('schemas', 'e8-workspace-detail-worker.schema', '.json'), true); const schema = parse(raw); if (!isRecord(schema)) throw new Error('Invalid E8 workspace worker tool schema.'); return createNs4FlexibleWorkerTool('submitNs4E8WorkspaceDetail', 'Submit one E8 workspace detail.', schema); }
 function unwrap(value: unknown): unknown { const root = parse(value); return isRecord(root) && root.type === 'flexible' ? parse(root.result) : root; }
 function parse(value: unknown): unknown { if (typeof value !== 'string') return value; try { return JSON.parse(value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); } catch { return value; } }
 function isRecord(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }

@@ -1,0 +1,41 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewSolution4/e7-usecase-worker/2026-08-12-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["draftVersion", "planId", "moduleName", "useCaseId", "title", "kind", "compiledFrom", "description", "contexts", "entityRefs", "useRules", "transitions"],
+  "properties": {
+    "draftVersion": { "type": "string", "const": "2026-08-10-ns4-usecase-draft-minimal-v3" },
+    "planId": { "type": "string", "const": "e7-usecase" },
+    "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "useCaseId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "title": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "enum": ["query", "command"] },
+    "compiledFrom": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*\\.[a-z][A-Za-z0-9]*$" } },
+    "description": { "type": "string", "minLength": 1 },
+    "contexts": { "$ref": "#/$defs/contexts" },
+    "entityRefs": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" } },
+    "useRules": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" } },
+    "transitions": { "type": "array", "items": { "$ref": "#/$defs/transition" } }
+  },
+  "$defs": {
+    "contexts": {
+      "type": "object", "additionalProperties": false, "required": ["requires", "provides"],
+      "properties": {
+        "requires": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" } },
+        "provides": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" } }
+      }
+    },
+    "transition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["transitionId", "entityRef", "fromStates", "toState", "useRules"],
+      "properties": {
+        "transitionId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "entityRef": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
+        "fromStates": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "toState": { "type": "string", "minLength": 1 },
+        "useRules": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" } }
+      }
+    }
+  }
+}

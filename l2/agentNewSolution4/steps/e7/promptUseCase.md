@@ -31,7 +31,8 @@ architecture. It does not prescribe how frontend or backend code is organized.
 
 ## Output
 
-Return exactly one JSON object without Markdown:
+Return exactly one `{ "type": "flexible", "result": { ... } }` object without Markdown. The `result`
+value must be the use case artifact below.
 
 {
   "draftVersion": "2026-08-10-ns4-usecase-draft-minimal-v3",

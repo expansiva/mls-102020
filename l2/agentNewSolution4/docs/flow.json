@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-11-ns4-flow-v25",
+  "schemaVersion": "2026-08-12-ns4-flow-v27",
   "status": "e1-e8",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -13,6 +13,8 @@
     "The root LLM detects the communication language, translates friendly step titles and creates the visible roadmap before clarification begins.",
     "The runtime prefixes E1-through-E6 and the E8 skeleton checkpoint with the deterministic 👤 marker; dynamically appended technical nodes do not duplicate it, and persisted localized titles remain plain reusable text.",
     "E4 parallel children are dispatched by stable entity: selectors and reconstruct their base invocation when collab-messages omits planning or prompt metadata on materialized fan-out children.",
+    "Every E4, E7 and E8 parallel artifact worker submits a strict-tool flexible envelope. The envelope is a valid collab-messages payload, so healthy workers never transiently enter the failed state before their deterministic after-prompt gate runs.",
+    "Nested artifact schemas used by a worker tool hoist $defs to the function-parameters root and omit the embedded $id; strict providers resolve root-relative refs from that root.",
     "Dynamic E4 dispatch is symmetric: before-prompt prefers hook args, while after-prompt falls back to the selector retained in step.prompt when collab-messages omits callback args.",
     "E2 normalizes every journey businessObject to one stable PascalCase identifier; E4 consumes that exact id for its entity or projection instead of comparing a localized display label.",
     "E2 treats required as an executable contract: only required entry contexts must be available or located, optional handoffs never become unconditional step prerequisites, and E4 requires ontology coverage only for required contexts.",
@@ -318,10 +320,12 @@
         "The gate validates descriptions, exact E2 contexts, E4 entity refs, existing E5 ids and valid lifecycle transitions; field selection and persistence are not part of the use-case contract.",
         "Actors, authorities and scopes remain in E3; inputs, outputs, errors, pagination, selection, projections and route binding remain in E8 or downstream generation; ports, transactions and adapters are implementation choices.",
         "A deterministic finalizer records every gate issue in e7-validation-report.json, repairs only invalid or missing use cases once, derives workflows, writes typed permanent artifacts and advances to E8.",
-        "Workflow finalization copies initialState and terminalStates from E4, validates state reachability and transition operation deterministically, and records explicit E2/E4 repair alternatives for any lifecycle finding before failing closed.",
+        "Workflow finalization requires a workflow only for lifecycles with an intermediate state outside initialState and terminalStates; binary inactivation or reversal flags remain valid without one.",
+        "A missing workflow suppresses same-entity unreachable and predicate findings. Predicate reachability includes initialState and transition targets.",
+        "Lifecycle findings are persisted with explicit operateState (E2) or shrinkLifecycle (E4) choices and open a human resolution checkpoint; they never retry an LLM or fail the task.",
         "Full transitions live only in workflow artifacts; use cases and journeys keep transition refs. Global source hashes, language and timestamps live only in indexes.",
         "Journey business blocks and businessHash values are immutable; E7 writes only resolution/realization metadata.",
-        "E7 has no human checkpoint. E6 remains the sixth and final clarification."
+        "E7 has no routine human checkpoint. E6 remains the sixth and final product-design clarification; lifecycle findings open only their explicit E2/E4 resolution checkpoint."
       ]
     },
     {

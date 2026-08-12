@@ -9,6 +9,7 @@ import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
+import { createNs4FlexibleWorkerTool } from '/_102020_/l2/agentNewSolution4/helpers/ns4WorkerTools.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
@@ -35,6 +36,7 @@ import {
 import {
   ns4E4EntityDraftFile,
   ns4E4PlanDraftFile,
+  ns4AgentFile,
   readNs4AgentText,
   readNs4Module,
   readNs4Pipeline,
@@ -237,9 +239,10 @@ async function buildEntityPrompt(
   const plan = await readPlanDraft(args.moduleName);
   const target = plan.entities.find(entity => entity.entityId === entityId);
   if (!target) throw new Error(`Entity ${entityId} is not present in the E4 overview.`);
-  const [journeys, access, prompt, previousEntity, currentDetail] = await Promise.all([
+  const [journeys, access, prompt, previousEntity, currentDetail, tool] = await Promise.all([
     readNs4ApprovedJourneys(args.moduleName), readNs4ApprovedAccess(args.moduleName),
     readNs4AgentText('steps/e4', 'promptEntity'), readNs4ApprovedOntologyEntity(args.moduleName, entityId), readEntityDraft(args.moduleName, entityId),
+    readNs4EntityWorkerTool(),
   ]);
   const relatedJourneys = journeys.journeys.filter(journey => target.sourceRefs.journeyIds.includes(journey.journeyId));
   const relatedFeatures = journeys.features.filter(feature => target.sourceRefs.featureIds.includes(feature.featureId));
@@ -261,7 +264,7 @@ async function buildEntityPrompt(
     upstreamRepairFeedback ? `## Downstream E5 contract gaps to resolve where this entity is relevant\n${upstreamRepairFeedback}` : '',
     `## Required identity\nmoduleName=${plan.moduleName}; reviewRound=${plan.reviewRound}; entityId=${entityId}; userLanguage=${plan.userLanguage}`,
   ].filter(Boolean).join('\n\n');
-  return promptReady(context, parentStep, hookSequential, hookArgs, prompt, humanPrompt);
+  return promptReady(context, parentStep, hookSequential, hookArgs, prompt, humanPrompt, tool);
 }
 
 async function buildRelationshipBindingPrompt(
@@ -638,11 +641,20 @@ function promptReady(
   args: string,
   systemPrompt: string,
   humanPrompt: string,
+  tool?: mls.msg.LLMTool,
 ): mls.msg.AgentIntentPromptReady {
   return {
     type: 'prompt_ready', args, messageId: context.message.orderAt, threadId: context.message.threadId,
     taskId: context.task?.PK || '', hookSequential, parentStepId: parentStep.stepId, systemPrompt, humanPrompt,
+    ...(tool ? { tools: [tool], toolChoice: { type: 'function' as const, function: { name: tool.function.name } } } : {}),
   } as mls.msg.AgentIntentPromptReady;
+}
+
+async function readNs4EntityWorkerTool(): Promise<mls.msg.LLMTool> {
+  const raw = await readNs4Text(ns4AgentFile('schemas', 'e4-entity-worker.schema', '.json'), true);
+  const schema = parseMaybeJson(raw);
+  if (!isRecord(schema)) throw new Error('Invalid E4 entity worker tool schema.');
+  return createNs4FlexibleWorkerTool('submitNs4E4Entity', 'Submit one E4 entity detail.', schema);
 }
 
 async function readPlanDraft(moduleName: string): Promise<Ns4E4PlanDraft> {

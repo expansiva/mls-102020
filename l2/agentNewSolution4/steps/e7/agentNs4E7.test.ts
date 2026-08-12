@@ -14,7 +14,13 @@ import {
   buildNs4E7Plan, buildNs4RealizedAccessArtifact, buildNs4RealizedJourneyArtifact,
   buildNs4UseCaseArtifacts, buildNs4WorkflowArtifacts, normalizeNs4UseCaseDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
+import { createNs4E7LifecycleResolutionReview } from '/_102020_/l2/agentNewSolution4/steps/e7/lifecycleResolution.js';
 import { validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows } from '/_102020_/l2/agentNewSolution4/steps/e7/gate.js';
+
+const lifecycleFixture = JSON.parse(readFileSync(new URL('fixtures/a2_1-lifecycle-gate.json', import.meta.url), 'utf8')) as {
+  binaryFlag: { states: string[]; initialState: string; terminalStates: string[]; predicateState: string };
+  expectedMissing: string[];
+};
 
 const journeys = normalizeNs4E2Review({ moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', reviewRound: 1,
   journeys: [
@@ -201,7 +207,7 @@ test('E7 accepts a system transition and rejects an unknown or ambiguous transit
   assert.ok(ambiguous.issues.some(issue => issue.code === 'workflow.transition.operation'));
 });
 
-test('E7 rejects a dead lifecycle predicate and a multi-state entity without a workflow', () => {
+test('E7 suppresses predicate cascade when an intermediate lifecycle has no workflow', () => {
   const lifecycleOntology = normalizeNs4E4Review({ ...ontology, entities: ontology.entities.map(entity => entity.entityId === 'WorkTask'
     ? { ...entity, lifecycleStates: ['open', 'billable', 'done'], initialState: 'open', terminalStates: ['done'],
       lifecyclePredicates: [{ predicateId: 'billable', description: 'Ready for billing.', stateIds: ['billable'], source: 'journey' }] }
@@ -217,7 +223,34 @@ test('E7 rejects a dead lifecycle predicate and a multi-state entity without a w
   assert.ok(deadPredicate.issues.some(issue => issue.code === 'workflow.predicate.dead' && /billable/.test(issue.message)));
 
   const missingWorkflow = validateNs4Workflows([], lifecycleSources, []);
-  assert.ok(missingWorkflow.issues.some(issue => issue.code === 'workflow.missing' && /WorkTask/.test(issue.message)));
+  assert.deepEqual(missingWorkflow.issues.map(issue => issue.code), ['workflow.missing']);
+  const resolution = createNs4E7LifecycleResolutionReview('buildFlowFsm', missingWorkflow.issues);
+  assert.deepEqual(resolution.findings[0]?.repairOptions?.map(option => option.action), ['operateState', 'shrinkLifecycle']);
+});
+
+test('E7 exempts binary lifecycle flags and treats the initial state as predicate-reachable', () => {
+  const binarySources = {
+    ...sources,
+    ontology: normalizeNs4E4Review({ ...ontology, entities: ontology.entities.map(entity => entity.entityId === 'WorkTask'
+      ? { ...entity, lifecycleStates: lifecycleFixture.binaryFlag.states, initialState: lifecycleFixture.binaryFlag.initialState, terminalStates: lifecycleFixture.binaryFlag.terminalStates,
+        lifecyclePredicates: [{ predicateId: 'isActive', description: 'Active records only.', stateIds: [lifecycleFixture.binaryFlag.predicateState], source: 'journey' }] }
+      : entity) }),
+  };
+  assert.deepEqual(validateNs4Workflows([], binarySources, []), { ok: true, issues: [] });
+});
+
+test('E7 derives lifecycle findings from every unoperated intermediate state', () => {
+  const run32Sources = {
+    ...sources,
+    ontology: normalizeNs4E4Review({ ...ontology, entities: [
+      { ...ontology.entities[0], lifecycleStates: ['planned', 'active', 'archived'], initialState: 'planned', terminalStates: ['archived'], lifecyclePredicates: [{ predicateId: 'isActive', description: 'Project can be used.', stateIds: ['active'], source: 'journey' }] },
+      { ...ontology.entities[1], lifecycleStates: ['notStarted', 'inProgress', 'completed'], initialState: 'notStarted', terminalStates: ['completed'], lifecyclePredicates: [] },
+      { ...ontology.entities[1], entityId: 'Invoice', lifecycleStates: ['prepared', 'issued', 'paid', 'voided'], initialState: 'prepared', terminalStates: ['paid', 'voided'], lifecyclePredicates: [] },
+    ] }),
+  };
+  const gate = validateNs4Workflows([], run32Sources, []);
+  assert.deepEqual(gate.issues.map(issue => `${issue.code}:${issue.path}`), lifecycleFixture.expectedMissing);
+  assert.equal(createNs4E7LifecycleResolutionReview('buildFlowFsm', gate.issues).findings.length, 3);
 });
 
 test('E7 accepts an ontology with no lifecycle workflows', () => {

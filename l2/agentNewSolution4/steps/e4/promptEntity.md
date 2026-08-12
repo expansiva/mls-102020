@@ -32,7 +32,8 @@ entities or change relationships. Write human-facing text in the user's language
 
 ## Output
 
-Return exactly one JSON object without Markdown:
+Return exactly one `{ "type": "flexible", "result": { ... } }` object without Markdown. The `result`
+value must be the entity artifact below.
 
 {
   "planId": "e4-ontology-entity",

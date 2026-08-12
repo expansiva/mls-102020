@@ -1,0 +1,14 @@
+{
+  "binaryFlag": {
+    "states": ["active", "inactive"],
+    "initialState": "active",
+    "terminalStates": ["inactive"],
+    "predicateState": "active"
+  },
+  "run32Intermediates": [
+    { "entityId": "Project", "states": ["planned", "active", "archived"], "initialState": "planned", "terminalStates": ["archived"] },
+    { "entityId": "WorkTask", "states": ["notStarted", "inProgress", "completed"], "initialState": "notStarted", "terminalStates": ["completed"] },
+    { "entityId": "Invoice", "states": ["prepared", "issued", "paid", "voided"], "initialState": "prepared", "terminalStates": ["paid", "voided"] }
+  ],
+  "expectedMissing": ["workflow.missing:Project", "workflow.missing:WorkTask", "workflow.missing:Invoice"]
+}

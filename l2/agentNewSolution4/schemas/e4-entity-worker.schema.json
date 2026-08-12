@@ -1,0 +1,40 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewSolution4/e4-entity-worker/2026-08-12-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["planId", "moduleName", "reviewRound", "entityId", "fields", "useRules"],
+  "properties": {
+    "planId": { "type": "string", "const": "e4-ontology-entity" },
+    "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "reviewRound": { "type": "integer", "minimum": 1 },
+    "entityId": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
+    "fields": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/field" } },
+    "useRules": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" } }
+  },
+  "$defs": {
+    "field": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fieldId", "title", "type", "required", "description", "constraints"],
+      "properties": {
+        "fieldId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "title": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "enum": ["uuid", "string", "text", "number", "integer", "boolean", "money", "date", "datetime", "json"] },
+        "required": { "type": "boolean" },
+        "description": { "type": "string", "minLength": 1 },
+        "constraints": { "type": "array", "items": { "$ref": "#/$defs/constraint" } }
+      }
+    },
+    "constraint": {
+      "type": "object", "additionalProperties": false,
+      "required": ["constraintId", "kind", "value", "description", "source"],
+      "properties": {
+        "constraintId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "kind": { "type": "string", "enum": ["min", "max", "minLength", "maxLength", "pattern", "enum", "format", "unique", "custom"] },
+        "value": { "type": "string" },
+        "description": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "enum": ["journey", "user", "inferred"] }
+      }
+    }
+  }
+}

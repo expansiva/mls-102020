@@ -190,14 +190,18 @@ export function validateNs4Workflows(
     });
   }
   for (const entity of entities.values()) {
-    if (entity.lifecycleStates.length >= 2 && !workflows.some(workflow => workflow.entityRef === entity.entityId)) {
+    const workflow = workflows.find(item => item.entityRef === entity.entityId);
+    const terminalStates = new Set(entity.terminalStates || []);
+    const hasIntermediateState = entity.lifecycleStates.some(state => state !== entity.initialState && !terminalStates.has(state));
+    if (hasIntermediateState && !workflow) {
       addLifecycleIssue(issues, 'workflow.missing', entity.entityId,
-        `Entity ${entity.entityId} declares ${entity.lifecycleStates.length} lifecycle states but has no compiled workflow.`, entity.entityId);
+        `Entity ${entity.entityId} has an intermediate lifecycle state but no compiled workflow.`, entity.entityId);
+      continue;
     }
+    if (!workflow) continue;
     for (const predicate of entity.lifecyclePredicates) {
       for (const state of predicate.stateIds) {
-        const reachable = state === entity.initialState || workflows.some(workflow => workflow.entityRef === entity.entityId
-          && workflow.transitions.some(transition => transition.toState === state));
+        const reachable = state === entity.initialState || workflow.transitions.some(transition => transition.toState === state);
         if (entity.lifecycleStates.length && !reachable) {
           addLifecycleIssue(issues, 'workflow.predicate.dead', entity.entityId,
             `Lifecycle predicate ${predicate.predicateId} references state ${state}, which no workflow transition reaches.`, entity.entityId, state);

@@ -70,6 +70,7 @@ import {
 } from '/_102020_/l2/agentNewSolution4/steps/e6/agentNs4E6.js';
 import {
   afterNs4E7PromptStep,
+  beforeNs4E7ClarificationStep,
   beforeNs4E7PromptStep,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/agentNs4E7.js';
 import {
@@ -92,7 +93,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-45 (2026-08-11) E8 derived workspaces';
+export const NS4_AGENT_BUILD = 'build-46 (2026-08-12) A2.1 lifecycle resolution';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -352,6 +353,9 @@ async function beforeClarificationStep(
   }
   if (parsed?.planId === 'e6-composition-review') {
     return beforeNs4E6ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);
+  }
+  if (parsed?.planId === 'e7-lifecycle-resolution') {
+    return beforeNs4E7ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);
   }
   if (parsed?.planId === 'e8-skeleton-review') {
     return beforeNs4E8ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);

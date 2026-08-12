@@ -1,5 +1,12 @@
 # Changelog
 
+- 2026-08-12: A2.1 narrows workflow-required lifecycle detection to states between the declared
+  initial and terminal states. Binary flags do not require workflows; a missing workflow suppresses
+  same-entity predicate cascades and opens a human E2/E4 resolution checkpoint instead of failing E7.
+
+- 2026-08-12: Use-case fan-out now submits its artifact through a strict `flexible` tool envelope,
+  avoiding provisional worker failures for healthy tool results.
+
 - 2026-08-11: Copy explicit E4 lifecycle initial/terminal contracts into workflow artifacts and fail closed on unreachable, unoperated, dead-predicate or missing workflows with structured E2/E4 repair alternatives.
 
 - 2026-08-10: Reduce permanent use cases to descriptions, contexts, entity refs, rule ids and transition

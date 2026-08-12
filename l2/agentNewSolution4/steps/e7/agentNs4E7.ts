@@ -2,16 +2,20 @@
 
 import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
+import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
+import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
+import { createNs4FlexibleWorkerTool } from '/_102020_/l2/agentNewSolution4/helpers/ns4WorkerTools.js';
+import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
-  createNs4E7Step, isNs4Pipeline, markNs4E7Approved, markNs4E7Failed, markNs4E7Running,
+  createNs4E2Step, createNs4E4Step, createNs4E7Step, isNs4Pipeline, markNs4E7Approved, markNs4E7Failed, markNs4E7Running,
   markNs4ModuleE7Approved, NS4_E7_MAX_PARALLEL, Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import {
   readNs4ApprovedAccess, readNs4ApprovedJourneys, readNs4ApprovedOntology,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
 import {
-  ns4AccessMatrixFile, ns4E7PlanDraftFile, ns4E7UseCaseDraftFile, ns4E7ValidationReportFile,
+  ns4AccessMatrixFile, ns4AgentFile, ns4E7PlanDraftFile, ns4E7UseCaseDraftFile, ns4E7ValidationReportFile,
   ns4JourneyFile, ns4JourneyIndexFile, ns4OntologyIndexFile, ns4RulesFile,
   readNs4AgentText, readNs4DefsJson, readNs4Module, readNs4Pipeline, readNs4Text,
   writeNs4AccessMatrix, writeNs4E7PlanDraft, writeNs4E7UseCaseDraft, writeNs4E7ValidationReport, writeNs4Journey,
@@ -30,6 +34,8 @@ import {
 import {
   Ns4E7GateIssue, Ns4E7Sources, validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/gate.js';
+import { createNs4E7LifecycleResolutionReview } from '/_102020_/l2/agentNewSolution4/steps/e7/lifecycleResolution.js';
+import type { Ns4E7LifecycleResolutionEvent, Ns4E7LifecycleResolutionReview } from '/_102020_/l2/agentNewSolution4/steps/e7/lifecycleResolution.js';
 
 interface Ns4E7Args {
   planId: 'e7-realization';
@@ -51,12 +57,12 @@ interface Ns4E7Bundle extends Ns4E7Sources {
 const MAX_REPAIR_ROUNDS = 1;
 
 interface Ns4E7ValidationReport {
-  schemaVersion: '2026-08-11-ns4-e7-validation-report-v2';
+  schemaVersion: '2026-08-12-ns4-e7-validation-report-v3';
   moduleName: string;
   attempts: Array<{ round: number; checkedAt: string; valid: number; invalid: number;
     results: Array<{ useCaseId: string; status: 'valid' | 'invalid' | 'missing'; issues: Ns4E7GateIssue[] }>;
     lifecycleIssues: Ns4E7GateIssue[] }>;
-  finalStatus: 'repairing' | 'passed' | 'failed';
+  finalStatus: 'repairing' | 'passed' | 'failed' | 'needsHumanResolution';
   updatedAt: string;
 }
 
@@ -162,8 +168,8 @@ async function buildUseCasePrompt(
   moduleName: string,
   useCaseId: string,
 ): Promise<mls.msg.AgentIntentPromptReady> {
-  const [plan, bundle, prompt] = await Promise.all([
-    readPlan(moduleName), loadBundle(moduleName), readNs4AgentText('steps/e7', 'promptUseCase'),
+  const [plan, bundle, prompt, tool] = await Promise.all([
+    readPlan(moduleName), loadBundle(moduleName), readNs4AgentText('steps/e7', 'promptUseCase'), readNs4UseCaseWorkerTool(),
   ]);
   const current = await readDraft(moduleName, useCaseId, plan);
   const target = plan.useCases.find(item => item.useCaseId === useCaseId);
@@ -211,7 +217,8 @@ async function buildUseCasePrompt(
   ].filter(Boolean).join('\n\n');
   return { type: 'prompt_ready', args: hookArgs, messageId: context.message.orderAt,
     threadId: context.message.threadId, taskId: context.task?.PK || '', hookSequential,
-    parentStepId: parentStep.stepId, systemPrompt: prompt, humanPrompt };
+    parentStepId: parentStep.stepId, systemPrompt: prompt, humanPrompt,
+    tools: [tool], toolChoice: { type: 'function', function: { name: tool.function.name } } };
 }
 
 async function finalizeE7(
@@ -265,8 +272,12 @@ async function finalizeE7(
   const { artifacts: workflows, index: workflowIndex } = await buildNs4WorkflowArtifacts(plan, valid, ontologyLifecycles, generatedAt);
   const workflowGate = validateNs4Workflows(workflows, bundle, useCases.map(useCase => useCase.useCaseId));
   if (!workflowGate.ok) {
-    await updateValidationReport(args.moduleName, repairRound, validationResults, 'failed', workflowGate.issues);
-    throw new Error(formatGate(workflowGate.issues));
+    await updateValidationReport(args.moduleName, repairRound, validationResults, 'needsHumanResolution', workflowGate.issues);
+    return [
+      lifecycleResolutionStep(context, mutationParent, args.moduleName, workflowGate.issues),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed',
+        `${workflowGate.issues.length} lifecycle finding(s) need a human E2/E4 decision; no LLM retry was scheduled.`, 'input_output'),
+    ];
   }
   await updateValidationReport(args.moduleName, repairRound, validationResults, 'passed');
 
@@ -343,6 +354,109 @@ function createFinalizeStep(moduleName: string, repairRound: number, dependsOn: 
     planning: { planId: `e7-realization-finalize-${repairRound}`, dependsOn, executionMode: 'sequential', executionHost: 'client' } };
 }
 
+export async function beforeNs4E7ClarificationStep(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIClarificationStep,
+  hookSequential: number,
+  json: unknown,
+): Promise<HTMLElement> {
+  const review = parseLifecycleResolution(json);
+  if (!review) throw new Error('Invalid E7 lifecycle resolution checkpoint.');
+  await import('/_102020_/l2/agentNewSolution4/widgets/widgetNs4LifecycleResolution.js');
+  const element = document.createElement('widget-ns4-lifecycle-resolution-102020');
+  (element as unknown as { value: Ns4E7LifecycleResolutionReview }).value = review;
+  element.addEventListener('ns4-lifecycle-resolution', (event: Event) => {
+    void applyLifecycleResolution(context, parentStep, step, hookSequential,
+      (event as CustomEvent<Ns4E7LifecycleResolutionEvent>).detail)
+      .catch(error => { showNs4ClarificationError(element, error); console.error(`[${agent.agentName}] ${errorMessage(error)}`); });
+  });
+  return element;
+}
+
+async function applyLifecycleResolution(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIClarificationStep,
+  hookSequential: number,
+  event: Ns4E7LifecycleResolutionEvent,
+): Promise<void> {
+  if (!context.task) throw new Error('[agentNewSolution4:e7] task invalid');
+  const review = parseLifecycleResolution(step.json);
+  if (!review || event.moduleName !== review.moduleName) throw new Error('Lifecycle resolution does not match its checkpoint.');
+  const actions = new Map(event.selections.map(selection => [selection.findingId, selection.action]));
+  if (actions.size !== review.findings.length || review.findings.some(finding => !actions.has(finding.findingId))) {
+    throw new Error('Choose operateState or shrinkLifecycle for every lifecycle finding.');
+  }
+  if ([...actions.values()].some(action => action !== 'operateState' && action !== 'shrinkLifecycle')) {
+    throw new Error('Each lifecycle resolution must be operateState or shrinkLifecycle.');
+  }
+  const selected = review.findings.map(finding => ({ finding, action: actions.get(finding.findingId)! }));
+  const operate = selected.filter(item => item.action === 'operateState');
+  const shrink = selected.filter(item => item.action === 'shrinkLifecycle');
+  const pipeline = await requirePipeline(review.moduleName);
+  const parent = findMutableParent(context, parentStep);
+  const intents: mls.msg.AgentIntent[] = [];
+  if (operate.length) {
+    const feedback = lifecycleFeedback(operate, 'operateState');
+    intents.push(addStep(context, parent, createNs4E2Step(
+      review.moduleName, Math.max(1, (pipeline.steps.e2?.reviewRound || 1) + 1), feedback,
+      [], pipeline.presentation.stepTitles['e2-journeys'],
+    )));
+  }
+  if (shrink.length) {
+    const feedback = lifecycleFeedback(shrink, 'shrinkLifecycle');
+    intents.push(addStep(context, parent, createNs4E4Step(
+      review.moduleName, Math.max(1, (pipeline.steps.e4?.reviewRound || 1) + 1), feedback,
+      operate.length ? ['e2-result'] : [], pipeline.presentation.stepTitles['e4-ontology'],
+    )));
+  }
+  intents.push(updateStatus(context, parent, step, hookSequential, 'completed',
+    'Lifecycle decisions recorded; the selected upstream round is ready without retrying E7.', 'input_output'));
+  await applyIntents(context, intents);
+  await continuePoolingTask(context);
+}
+
+function lifecycleResolutionStep(
+  context: mls.msg.ExecutionContext,
+  parent: mls.msg.AIAgentStep,
+  moduleName: string,
+  issues: Ns4E7GateIssue[],
+): mls.msg.AgentIntentAddStep {
+  const review = createNs4E7LifecycleResolutionReview(moduleName, issues);
+  return addStep(context, parent, {
+    type: 'clarification', stepId: 0, interaction: null, status: 'pending', nextSteps: [],
+    stepTitle: 'Resolve lifecycle findings',
+    json: JSON.stringify(review),
+    planning: { planId: 'e7-lifecycle-resolution', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+  } as mls.msg.AIClarificationStep);
+}
+
+
+function parseLifecycleResolution(value: unknown): Ns4E7LifecycleResolutionReview | null {
+  const root = parse(value);
+  if (!isRecord(root) || root.planId !== 'e7-lifecycle-resolution' || !text(root.moduleName) || !Array.isArray(root.findings)) return null;
+  const findings = root.findings.filter(isRecord).map(item => ({
+    findingId: text(item.findingId), code: text(item.code), path: text(item.path), message: text(item.message),
+    repairOptions: item.repairOptions,
+  })).filter(item => item.findingId && item.code && item.path && item.message && Array.isArray(item.repairOptions)) as Ns4E7LifecycleResolutionReview['findings'];
+  return findings.length === root.findings.length ? { planId: 'e7-lifecycle-resolution', moduleName: text(root.moduleName), findings } : null;
+}
+
+function lifecycleFeedback(
+  selected: Array<{ finding: Ns4E7LifecycleResolutionReview['findings'][number]; action: 'operateState' | 'shrinkLifecycle' }>,
+  action: 'operateState' | 'shrinkLifecycle',
+): string {
+  return [
+    'Human lifecycle resolution:',
+    ...selected.map(({ finding }) => `- ${finding.code} ${finding.path}: ${finding.message}`),
+    action === 'operateState'
+      ? 'Add or amend explicit journey steps that operate these lifecycle states; preserve all unrelated approved contracts.'
+      : 'Remove or redefine only these lifecycle states when they are not required business outcomes; preserve all unrelated approved contracts.',
+  ].join('\n');
+}
+
 function resultStep(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
@@ -361,6 +475,13 @@ function resultStep(
 function addStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIPayload): mls.msg.AgentIntentAddStep {
   return { type: 'add-step', messageId: context.message.orderAt, threadId: context.message.threadId,
     taskId: context.task?.PK || '', parentStepId: parentStep.stepId, step };
+}
+async function applyIntents(context: mls.msg.ExecutionContext, intents: mls.msg.AgentIntent[]): Promise<void> {
+  const response = await msgApplyIntents({ userId: context.message.senderId, intents });
+  if (!response || response.statusCode !== 200) throw new Error((response as mls.msg.ResponseBase | undefined)?.msg || 'Error applying E7 lifecycle resolution intents.');
+  const applied = response as mls.msg.ResponseApplyIntents;
+  context.task = applied.task;
+  if (applied.message) context.message = applied.message;
 }
 function updateStatus(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIPayload, step: mls.msg.AIPayload,
   hookSequential: number, status: mls.msg.AIStepStatus, traceMsg?: string, cleaner?: 'input' | 'input_output'): mls.msg.AgentIntentUpdateStatus {
@@ -395,13 +516,13 @@ async function updateValidationReport(
   const attempts = [...(previous?.attempts || []).filter(item => item.round !== round), attempt]
     .sort((left, right) => left.round - right.round);
   await writeNs4E7ValidationReport(moduleName, {
-    schemaVersion: '2026-08-11-ns4-e7-validation-report-v2', moduleName, attempts, finalStatus, updatedAt: now,
+    schemaVersion: '2026-08-12-ns4-e7-validation-report-v3', moduleName, attempts, finalStatus, updatedAt: now,
   } satisfies Ns4E7ValidationReport);
 }
 
 async function readValidationReport(moduleName: string): Promise<Ns4E7ValidationReport | null> {
   const parsed = parse(await readNs4Text(ns4E7ValidationReportFile(moduleName), false));
-  if (!isRecord(parsed) || parsed.schemaVersion !== '2026-08-11-ns4-e7-validation-report-v2'
+  if (!isRecord(parsed) || parsed.schemaVersion !== '2026-08-12-ns4-e7-validation-report-v3'
     || parsed.moduleName !== moduleName || !Array.isArray(parsed.attempts)) return null;
   return parsed as unknown as Ns4E7ValidationReport;
 }
@@ -443,6 +564,12 @@ function resolveModuleName(context: mls.msg.ExecutionContext): string {
 function parseUseCaseSelector(value: unknown): string {
   if (typeof value !== 'string') return '';
   return /^usecase:([a-z][A-Za-z0-9]*)$/.exec(value.trim())?.[1] || '';
+}
+async function readNs4UseCaseWorkerTool(): Promise<mls.msg.LLMTool> {
+  const raw = await readNs4Text(ns4AgentFile('schemas', 'e7-usecase-worker.schema', '.json'), true);
+  const schema = parse(raw);
+  if (!isRecord(schema)) throw new Error('Invalid E7 use case worker tool schema.');
+  return createNs4FlexibleWorkerTool('submitNs4E7UseCase', 'Submit one E7 use case detail.', schema);
 }
 function unwrap(value: unknown): unknown { const root = parse(value); return isRecord(root) && root.type === 'flexible' ? parse(root.result) : root; }
 function parse(value: unknown): unknown { if (typeof value !== 'string') return value; const clean = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''); try { return JSON.parse(clean); } catch { return value; } }

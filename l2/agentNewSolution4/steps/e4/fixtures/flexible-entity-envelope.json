@@ -1,0 +1,20 @@
+{
+  "type": "flexible",
+  "result": {
+    "planId": "e4-ontology-entity",
+    "moduleName": "sampleModule",
+    "reviewRound": 1,
+    "entityId": "Project",
+    "fields": [
+      {
+        "fieldId": "projectId",
+        "title": "Project id",
+        "type": "uuid",
+        "required": true,
+        "description": "Stable project identity.",
+        "constraints": []
+      }
+    ],
+    "useRules": []
+  }
+}

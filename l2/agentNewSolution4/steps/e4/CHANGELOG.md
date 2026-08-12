@@ -1,5 +1,8 @@
 # E4 changelog
 
+- 2026-08-12: Entity fan-out now submits its artifact through a strict `flexible` tool envelope,
+  preventing healthy workers from being provisionally coerced to `failed` before `afterPrompt`.
+
 - 2026-08-11: Make lifecycle birth and completion explicit with `initialState` and optional `terminalStates`; the deterministic gate rejects unknown states and initial-terminal overlap.
 
 - 2026-08-09: Build 40 declares `modelType: reasoning` and high reasoning effort on the new
