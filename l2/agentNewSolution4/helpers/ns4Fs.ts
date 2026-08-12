@@ -19,7 +19,7 @@ import type {
   Ns4UseCaseArtifactV3,
   Ns4UseCaseIndexArtifactV3,
   Ns4WorkflowArtifactV2,
-  Ns4WorkflowIndexArtifactV2,
+  Ns4WorkflowIndexArtifactV3,
   Ns4WorkspaceArtifact,
   Ns4WorkspaceIndex,
 } from '/_102020_/l2/agentNewSolution4/types.js';
@@ -347,9 +347,9 @@ export async function writeNs4Workflow(moduleName: string, workflowId: string, a
   return displayPath(fileInfo);
 }
 
-export async function writeNs4WorkflowIndex(moduleName: string, artifact: Ns4WorkflowIndexArtifactV2): Promise<string> {
+export async function writeNs4WorkflowIndex(moduleName: string, artifact: Ns4WorkflowIndexArtifactV3): Promise<string> {
   const fileInfo = ns4WorkflowIndexFile(moduleName);
-  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}WorkflowIndex`, artifact, 'Ns4WorkflowIndexArtifactV2');
+  await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}WorkflowIndex`, artifact, 'Ns4WorkflowIndexArtifactV3');
   return displayPath(fileInfo);
 }
 export async function writeNs4Workspace(moduleName: string, workspaceId: string, artifact: Ns4WorkspaceArtifact): Promise<string> {

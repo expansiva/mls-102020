@@ -20,10 +20,10 @@ const sources: Ns4E5Sources = {
   module: moduleArtifact,
   journeys: {
     planId: 'e2-review', moduleName: 'buildFlowFsm', userLanguage: 'en', title: 'Journeys', reviewRound: 1,
-    features: [], journeys: [{ journeyId: 'createProject', business: {
+    features: [], systemDecisions: [], journeys: [{ journeyId: 'createProject', policyDecisions: [], business: {
       actorRef: 'manager', title: 'Create project', goal: 'Create a project', prerequisites: [],
       entry: { mode: 'coldStart', carries: [] }, steps: [{ stepId: 'saveProject', kind: 'act', intent: 'Save project', requiresContext: [], providesContext: [], result: 'Project saved', featureRefs: [] }],
-      outcome: { statement: 'Project exists', evidence: ['Saved project'] }, useRules: ['projectRequiresClient'], policyDecisions: [],
+      outcome: { statement: 'Project exists', evidence: ['Saved project'] }, useRules: ['projectRequiresClient'],
     } }],
   },
   access: {

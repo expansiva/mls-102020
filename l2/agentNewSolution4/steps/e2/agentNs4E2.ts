@@ -57,6 +57,7 @@ import {
   formatNs4E2CoverageRepairFeedback,
   applyNs4E2PolicyDecisionImpacts,
   normalizeNs4E2CoverageVerdict,
+  resolveNs4E2CoverageFindings,
   Ns4E2CoverageVerdict,
   validateNs4E2CoverageVerdict,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageJudge.js';
@@ -82,7 +83,7 @@ interface Ns4E2Args {
 }
 
 const MAX_E2_GATE_REPAIRS = 1;
-const MAX_E2_COVERAGE_REPAIRS = 3;
+const MAX_E2_COVERAGE_REPAIRS = 1;
 const MAX_E2_JUDGE_ATTEMPTS = 2;
 
 interface Ns4PersistedE2 {
@@ -357,7 +358,7 @@ async function afterNs4E2CoverageJudge(
     await recordNs4E2Failure(args.moduleName, message);
     return [updateStatus(context, judgeParent, step, hookSequential, 'failed', message)];
   }
-  const review = applyNs4E2PolicyDecisionImpacts(originalReview, verdict);
+  let review = applyNs4E2PolicyDecisionImpacts(originalReview, verdict);
   const gate = validateNs4E2Review(review);
   if (!gate.ok) {
     const message = `E2 draft changed or became invalid before coverage approval: ${gate.issues.map(issue => `${issue.code} ${issue.path}`).join(', ')}`;
@@ -371,18 +372,8 @@ async function afterNs4E2CoverageJudge(
       .filter(issue => issue.severity === 'blocking')
       .map(issue => issue.issueId)
       .sort();
-    if (sameStringSet(currentIssueIds, args.coverageIssueIds || [])) {
-      const message = `E2 coverage repair did not converge; the same blocking findings remained.\n${feedback}`;
-      await recordNs4E2Failure(args.moduleName, message);
-      return [
-        coverageJudgeTraceStep(
-          context, judgeParent, round, coverageRepairAttempt, judgeAttempt,
-          pipeline.presentation.stepTitles['e2-journeys'], verdict,
-        ),
-        updateStatus(context, judgeParent, step, hookSequential, 'failed', message),
-      ];
-    }
-    if (coverageRepairAttempt < MAX_E2_COVERAGE_REPAIRS) {
+    const repeated = sameStringSet(currentIssueIds, args.coverageIssueIds || []);
+    if (!repeated && coverageRepairAttempt < MAX_E2_COVERAGE_REPAIRS) {
       return [
         addStep(context, judgeParent, createNs4E2CoverageRepairStep(
           args.moduleName,
@@ -402,15 +393,7 @@ async function afterNs4E2CoverageJudge(
         ),
       ];
     }
-    const message = `E2 remains incomplete after automatic repair.\n${feedback}`;
-    await recordNs4E2Failure(args.moduleName, message);
-    return [
-      coverageJudgeTraceStep(
-        context, judgeParent, round, coverageRepairAttempt, judgeAttempt,
-        pipeline.presentation.stepTitles['e2-journeys'], verdict,
-      ),
-      updateStatus(context, judgeParent, step, hookSequential, 'failed', message),
-    ];
+    review = resolveNs4E2CoverageFindings(review, verdict);
   }
 
   const draftPath = await writeNs4E2Draft(args.moduleName, review);
@@ -422,24 +405,12 @@ async function afterNs4E2CoverageJudge(
     pipeline.presentation.stepTitles['e2-journeys'], verdict,
   );
 
-  if (isFast(context)) {
-    const saved = await persistNs4E2(args.moduleName, review, 'auto');
-    return [
-      trace,
-      resultStep(context, judgeParent, saved, 'E2 journeys auto-approved'),
-      updateStatus(
-        context, judgeParent, step, hookSequential, 'completed',
-        `E2 coverage approved and ${saved.journeyCount} journeys auto-approved.`, 'input_output',
-      ),
-    ];
-  }
-
   return [
     trace,
     clarificationReviewStep(context, judgeParent, review, pipeline.presentation.stepTitles['e2-journeys']),
     updateStatus(
       context, judgeParent, step, hookSequential, 'completed',
-      'E2 coverage approved; human review opened.', 'input_output',
+      `E2 coverage reviewed; human review opened with ${review.systemDecisions.length} assumed decision(s).`, 'input_output',
     ),
   ];
 }
@@ -781,10 +752,6 @@ function parseMaybeJson(value: unknown): unknown {
   if (typeof value !== 'string') return value;
   const clean = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try { return JSON.parse(clean); } catch { return value; }
-}
-
-function isFast(context: mls.msg.ExecutionContext): boolean {
-  return context.task?.iaCompressed?.longMemory?.fastMode === 'true';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

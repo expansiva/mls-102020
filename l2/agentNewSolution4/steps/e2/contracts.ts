@@ -1,7 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e2/contracts.ts" enhancement="_blank"/>
 
+import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
+
 export const NS4_JOURNEY_SCHEMA_VERSION = '2026-08-10-ns4-journey-v4' as const;
-export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-10-ns4-journey-index-v4' as const;
+export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-12-ns4-journey-index-v5' as const;
 export const NS4_REALIZED_JOURNEY_SCHEMA_VERSION = '2026-08-10-ns4-journey-v3' as const;
 
 export type Ns4JourneyEntryMode = 'coldStart' | 'contextRequired' | 'contextOrLookup' | 'eventDriven';
@@ -93,6 +95,7 @@ export interface Ns4E2Review {
   reviewRound: number;
   journeys: Ns4JourneyProposal[];
   features: Ns4E2Feature[];
+  systemDecisions: Ns4SystemDecision[];
 }
 
 export interface Ns4JourneyArtifactV4 extends Ns4JourneyProposal {
@@ -162,7 +165,7 @@ export interface Ns4JourneyArtifactV2 extends Omit<Ns4JourneyProposal, 'policyDe
 }
 
 export interface Ns4JourneyIndex {
-  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION | '2026-08-04-ns4-journey-index-v1' | '2026-08-10-ns4-journey-index-v3' | '2026-08-09-ns4-journey-index-v2';
+  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION | '2026-08-10-ns4-journey-index-v4' | '2026-08-04-ns4-journey-index-v1' | '2026-08-10-ns4-journey-index-v3' | '2026-08-09-ns4-journey-index-v2';
   moduleName: string;
   approvedAt: string;
   approvedBy: 'human' | 'auto';
@@ -178,6 +181,7 @@ export interface Ns4JourneyIndex {
   }>;
   features: Ns4E2Feature[];
   policyDecisionSelections?: Ns4PolicyDecisionSelection[];
+  systemDecisions?: Ns4SystemDecision[];
   realizationHash?: string;
 }
 
@@ -216,6 +220,7 @@ export function normalizeNs4E2Review(value: unknown, fallbackModule = ''): Ns4E2
     reviewRound: positiveInteger(root.reviewRound, 1),
     journeys,
     features,
+    systemDecisions: normalizeSystemDecisions(root.systemDecisions),
   };
 }
 
@@ -230,8 +235,8 @@ export async function buildNs4JourneyArtifacts(review: Ns4E2Review): Promise<Ns4
       policyDecisions: journey.policyDecisions,
       businessHash,
       resolution: { status: 'pending', contexts: {} },
-      realization: { status: 'pending', compiledFromBusinessHash: businessHash, steps: [], transitionRefs: [] },
-    };
+      realization: { status: 'pending', compiledFromBusinessHash: businessHash, steps: [] as never[], transitionRefs: [] as never[] },
+    } satisfies Ns4JourneyArtifactV4;
   }));
 }
 
@@ -260,7 +265,19 @@ export function buildNs4JourneyIndex(
     })),
     features: review.features,
     policyDecisionSelections,
+    systemDecisions: review.systemDecisions,
   };
+}
+
+function normalizeSystemDecisions(value: unknown): Ns4SystemDecision[] {
+  return array(value).map(item => {
+    const decision = record(item);
+    return {
+      decisionId: text(decision.decisionId), stage: text(decision.stage), question: text(decision.question),
+      chosen: text(decision.chosen), alternatives: strings(decision.alternatives), decidedBy: 'system' as const,
+      findingRef: text(decision.findingRef), changeHint: text(decision.changeHint),
+    };
+  }).filter(decision => decision.decisionId && decision.stage && decision.question && decision.chosen && decision.findingRef);
 }
 
 export function buildNs4PolicyDecisionSelections(

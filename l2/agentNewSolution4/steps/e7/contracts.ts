@@ -4,18 +4,19 @@ import { sha256Ns4 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js'
 import type {
   Ns4E2Review, Ns4JourneyArtifact, Ns4JourneyArtifactV3, Ns4JourneyIndex, Ns4JourneyStepKind,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
-import { NS4_REALIZED_JOURNEY_SCHEMA_VERSION } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import { NS4_JOURNEY_INDEX_SCHEMA_VERSION, NS4_REALIZED_JOURNEY_SCHEMA_VERSION } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import type {
   Ns4AccessMatrixArtifact, Ns4AccessMatrixArtifactV3,
 } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import { NS4_REALIZED_ACCESS_MATRIX_SCHEMA_VERSION } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import type { Ns4OntologyField } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
+import { resolveNs4Findings, type Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 
 export const NS4_USE_CASE_DRAFT_VERSION = '2026-08-10-ns4-usecase-draft-minimal-v3' as const;
 export const NS4_USE_CASE_SCHEMA_VERSION = '2026-08-10-ns4-usecase-v3' as const;
 export const NS4_USE_CASE_INDEX_SCHEMA_VERSION = '2026-08-10-ns4-usecase-index-v3' as const;
 export const NS4_WORKFLOW_SCHEMA_VERSION = '2026-08-11-ns4-workflow-v4' as const;
-export const NS4_WORKFLOW_INDEX_SCHEMA_VERSION = '2026-08-11-ns4-workflow-index-v4' as const;
+export const NS4_WORKFLOW_INDEX_SCHEMA_VERSION = '2026-08-12-ns4-workflow-index-v5' as const;
 
 export type Ns4UseCaseKind = 'query' | 'command';
 export type Ns4UseCaseFieldType = Ns4OntologyField['type'];
@@ -146,7 +147,7 @@ export interface Ns4WorkflowArtifactV2 {
 }
 
 export interface Ns4WorkflowIndexArtifactV2 {
-  schemaVersion: typeof NS4_WORKFLOW_INDEX_SCHEMA_VERSION;
+  schemaVersion: '2026-08-11-ns4-workflow-index-v4';
   moduleName: string;
   userLanguage: string;
   workflows: Array<{
@@ -158,6 +159,11 @@ export interface Ns4WorkflowIndexArtifactV2 {
   sourceHashes: Ns4E7SourceHashes;
   realizationHash: string;
   generatedAt: string;
+}
+
+export interface Ns4WorkflowIndexArtifactV3 extends Omit<Ns4WorkflowIndexArtifactV2, 'schemaVersion'> {
+  schemaVersion: typeof NS4_WORKFLOW_INDEX_SCHEMA_VERSION;
+  systemDecisions: Ns4SystemDecision[];
 }
 
 // Versioned legacy contracts keep already-generated L4 modules type-safe. New E7 runs emit only
@@ -293,7 +299,7 @@ export async function buildNs4WorkflowArtifacts(
   drafts: Ns4UseCaseDraft[],
   ontologyLifecycles: Map<string, Ns4WorkflowLifecycleDefinition>,
   generatedAt: string,
-): Promise<{ artifacts: Ns4WorkflowArtifactV2[]; index: Ns4WorkflowIndexArtifactV2 }> {
+): Promise<{ artifacts: Ns4WorkflowArtifactV2[]; index: Ns4WorkflowIndexArtifactV3 }> {
   const byEntity = new Map<string, Ns4WorkflowTransition[]>();
   for (const useCase of drafts) {
     for (const transition of useCase.transitions) {
@@ -302,13 +308,42 @@ export async function buildNs4WorkflowArtifacts(
       byEntity.set(transition.entityRef, values);
     }
   }
-  const artifacts = await Promise.all([...byEntity.entries()].sort(([left], [right]) => left.localeCompare(right))
-    .map(async ([entityRef, transitions]) => {
+  const relevantEntities = [...ontologyLifecycles.entries()].filter(([entityRef, lifecycle]) => {
+    const terminal = new Set(lifecycle.terminalStates || []);
+    return byEntity.has(entityRef) || lifecycle.states.some(state => state !== lifecycle.initialState && !terminal.has(state));
+  }).sort(([left], [right]) => left.localeCompare(right));
+  const decisions: Ns4SystemDecision[] = [];
+  const artifacts = await Promise.all(relevantEntities.map(async ([entityRef, lifecycle]) => {
+      const transitions = byEntity.get(entityRef) || [];
       const workflowId = `${entityRef.slice(0, 1).toLowerCase()}${entityRef.slice(1)}Lifecycle`;
-      const lifecycle = ontologyLifecycles.get(entityRef);
-      const states = lifecycle?.states || [];
-      const initialState = lifecycle?.initialState || '';
-      const terminalStates = lifecycle?.terminalStates || [];
+      const initialState = lifecycle.initialState || '';
+      const operatedStates = new Set([initialState, ...transitions.flatMap(transition => [...transition.fromStates, transition.toState])]);
+      const ontologyTerminal = new Set(lifecycle.terminalStates || []);
+      const intermediateStates = lifecycle.states.filter(state => state !== initialState && !ontologyTerminal.has(state));
+      const portuguese = plan.userLanguage.toLowerCase().startsWith('pt');
+      const base = {
+        states: lifecycle.states.filter(state => operatedStates.has(state) || intermediateStates.includes(state)),
+        terminalStates: (lifecycle.terminalStates || []).filter(state => operatedStates.has(state)),
+      };
+      const resolution = resolveNs4Findings(base, intermediateStates
+        .filter(state => !operatedStates.has(state))
+        .map(state => ({
+          classification: 'C' as const,
+          decisionId: `shrink${entityRef}${state.slice(0, 1).toUpperCase()}${state.slice(1)}`,
+          findingRef: `${transitions.length ? 'workflow.state.unreachable' : 'workflow.missing'}:${entityRef}.${state}`,
+          stage: 'e7',
+          question: portuguese
+            ? `Como o estado não operado ${entityRef}.${state} deve ser tratado?`
+            : `How should the unoperated ${entityRef}.${state} lifecycle state be handled?`,
+          deterministicChoice: 'shrinkLifecycle',
+          alternatives: ['operateState'],
+          changeHint: portuguese
+            ? `Adicione uma operação explícita no E2 para ${entityRef}.${state} antes de restaurá-lo no workflow compilado; a ontologia E4 permanece inalterada.`
+            : `Add an explicit E2 operation for ${entityRef}.${state} before restoring it to the compiled workflow; the E4 ontology remains unchanged.`,
+          apply: (artifact: typeof base) => ({ ...artifact, states: artifact.states.filter(item => item !== state), terminalStates: artifact.terminalStates.filter(item => item !== state) }),
+        })));
+      decisions.push(...resolution.systemDecisions);
+      const { states, terminalStates } = resolution.artifact;
       const workflowHash = await sha256Ns4({ entityRef, initialState, terminalStates, states, transitions });
       return { schemaVersion: NS4_WORKFLOW_SCHEMA_VERSION, moduleName: plan.moduleName,
         workflowId, entityRef, initialState, terminalStates, states, transitions, workflowHash } satisfies Ns4WorkflowArtifactV2;
@@ -321,7 +356,7 @@ export async function buildNs4WorkflowArtifacts(
       userLanguage: plan.userLanguage,
       workflows: artifacts.map(item => ({ workflowId: item.workflowId, entityRef: item.entityRef,
         workflowHash: item.workflowHash, artifactPath: `l4/${plan.moduleName}/workflows/${item.workflowId}.defs.ts` })),
-      sourceHashes: plan.sourceHashes, realizationHash, generatedAt,
+      sourceHashes: plan.sourceHashes, realizationHash, generatedAt, systemDecisions: decisions,
     },
   };
 }
@@ -374,7 +409,7 @@ export async function buildNs4RealizedJourneyIndex(
     useCaseRefs: [...new Set((byId.get(entry.journeyId)?.realization.steps || []).flatMap(step => step.useCaseRefs))].sort() }));
   const realizationHash = await sha256Ns4(journeys.map(journey => ({ journeyId: journey.journeyId,
     realizationHash: journey.realization.realizationHash })));
-  return { ...source, schemaVersion: '2026-08-10-ns4-journey-index-v3', journeys: entries, realizationHash };
+  return { ...source, schemaVersion: NS4_JOURNEY_INDEX_SCHEMA_VERSION, journeys: entries, realizationHash };
 }
 
 export async function buildNs4RealizedAccessArtifact(

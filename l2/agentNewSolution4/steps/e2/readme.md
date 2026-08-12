@@ -12,10 +12,11 @@ new or removed journeys mark their E3/E4/E5/E7 derived pipeline states stale.
 
 Before approval it writes only `l4/{module}/pipeline/e2-journeys.draft.json`. A deterministic gate
 first validates internal structure and context flow. An independent `🔎` reasoning-model judge then
-compares the complete E1 contract with the draft. Only a judged-complete proposal reaches the `👤`
-checkpoint, where the user may approve or make a free-text change request. A change request starts
-another generation round using the previous draft as context and returns through the same gate and
-judge before reopening the checkpoint.
+compares the complete E1 contract with the draft. It may request one semantic repair. A stable
+remaining business bifurcation is recorded as a system decision using the behavior already implicit
+in the generated draft; it does not fail E2. Every structurally valid proposal then reaches the `👤`
+checkpoint, including `/fast`, where assumed decisions are read-only and the user may approve or ask
+for a change. A change request starts another generation round using the previous draft as context.
 
 The proposal LLM returns an internal `flexible` payload rather than a clarification. This prevents an
 ungated candidate from briefly opening the journey widget while the deterministic gate, repair and

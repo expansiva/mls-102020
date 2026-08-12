@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://collab.codes/schemas/agentNewSolution4/e2-coverage-verdict/2026-08-10-v2",
+  "$id": "https://collab.codes/schemas/agentNewSolution4/e2-coverage-verdict/2026-08-12-v3",
   "type": "object",
   "additionalProperties": false,
   "required": ["planId", "moduleName", "reviewRound", "complete", "summary", "issues", "policyDecisionImpacts"],
@@ -28,7 +28,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["issueId", "severity", "category", "sourceEvidence", "finding", "repairInstruction", "relatedJourneyIds"],
+        "required": ["issueId", "severity", "category", "sourceEvidence", "finding", "repairInstruction", "relatedJourneyIds", "question", "alternatives", "defaultChoice"],
         "properties": {
           "issueId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
           "severity": { "enum": ["blocking", "advisory"] },
@@ -46,6 +46,9 @@
           "sourceEvidence": { "type": "string", "minLength": 1 },
           "finding": { "type": "string", "minLength": 1 },
           "repairInstruction": { "type": "string", "minLength": 1 },
+          "question": { "type": "string", "minLength": 1 },
+          "alternatives": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 2, "uniqueItems": true },
+          "defaultChoice": { "type": "string", "minLength": 1 },
           "relatedJourneyIds": {
             "type": "array",
             "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },

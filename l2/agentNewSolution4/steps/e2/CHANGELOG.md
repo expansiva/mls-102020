@@ -55,3 +55,5 @@
   human review widget, adjustment loop, `/fast` approval and resumable pipeline state.
 - 2026-08-05 — Added a guarded local smoke runner with dry-run, write and hash/business verification
   modes; exercised it against `mls-102046/l4/buildFlowFsm3`.
+- 2026-08-12: Flow v29 limits semantic repair to one round, adds judge question/alternatives/defaultChoice,
+  persists remaining coverage bifurcations as system decisions, and always opens the E2 review widget.

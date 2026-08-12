@@ -39,6 +39,10 @@ user outcomes.
 - `complete` is true only when there are no blocking issues.
 - Each blocking repair instruction must tell the repair model exactly which complete journey or named
   context acquisition is missing while preserving unaffected content.
+- For every issue, phrase one business-language `question`, list at least two `alternatives`, and set
+  `defaultChoice` to the behavior already implicit in the generated E2 draft. This is evidence about
+  the draft, never the judge's preference. After the bounded repair, the runtime may record that
+  default as a non-blocking system decision.
 - The E2 contract is linear and has no conditional branches. For a combined create/update finding,
   instruct the repair model to split creation and maintenance into separate outcome-oriented journeys:
   creation produces the new record; maintenance locates or carries the existing record before acting.
@@ -77,6 +81,9 @@ Return JSON only with this exact envelope:
         "sourceEvidence": "E1 requires a client billing summary, but E2 only hands it off from an internal actor.",
         "finding": "The client has no journey for consulting the published summary.",
         "repairInstruction": "Add a client journey that locates an associated project and inspects its published billing summary without exposing the full project.",
+        "question": "Should clients consume the published billing summary in this application?",
+        "alternatives": ["no, internal publication only", "yes, add client consumption"],
+        "defaultChoice": "no, internal publication only",
         "relatedJourneyIds": ["manageProjectBilling"]
       }
     ]

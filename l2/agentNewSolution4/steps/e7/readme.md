@@ -18,9 +18,9 @@ Global provenance and generation metadata live in indexes, not in every artifact
 metadata back to journey/access contracts. E3 realization derives authority links from journey-step refs;
 E8 operations are the future channel integration endpoints, and backend generators choose their architecture.
 
-Workflow compilation copies the explicit E4 initial and terminal states. Its deterministic lifecycle gate
-rejects unreachable states, transitions without one compiled use case or `system` trigger, dead predicate
-states and lifecycles with an unoperated intermediate state but no workflow. Binary inactivation or reversal
-flags do not require a workflow. A missing workflow suppresses same-entity predicate cascades, and the
-validation report opens a human choice for each lifecycle finding: add the operating journey in E2 or
-shrink/redefine the lifecycle in E4; it never retries the LLM or fails the task for that business decision.
+Workflow compilation starts from the explicit E4 lifecycle but emits a partial workflow containing
+only states operated by approved journey use cases. Unoperated intermediate states are removed from
+that workflow only, recorded as `shrinkLifecycle` system decisions with `operateState` alternatives,
+and do not alter the approved E4 ontology or open a mandatory clarification. Binary inactivation or
+reversal flags still do not require a workflow. The deterministic gate remains terminal for broken
+entity/use-case references, invalid transition bounds/operators and other structural defects.

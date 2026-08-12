@@ -22,3 +22,5 @@
   treat entity rules as applicability candidates instead of mandatory-on-read rules, and reuse valid drafts on resume.
 - 2026-08-10: Initial E7 realization compiler with mechanical N→1 planning, parallel use-case detail,
   deterministic gates, targeted repair, typed permanent use-case/workflow artifacts and E8 handoff.
+- 2026-08-12: Flow v29 replaces the mandatory lifecycle-resolution checkpoint with deterministic
+  partial-workflow compilation and durable shrinkLifecycle system decisions.

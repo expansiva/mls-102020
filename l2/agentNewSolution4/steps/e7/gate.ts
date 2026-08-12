@@ -154,11 +154,12 @@ export function validateNs4Workflows(
     const entity = entities.get(workflow.entityRef);
     if (!entity) add('NS4_E7_WORKFLOW_ENTITY', workflow.workflowId, `Unknown entity ${workflow.entityRef}.`);
     else {
-      if (!sameSet(workflow.states, entity.lifecycleStates)) add('NS4_E7_WORKFLOW_STATES', workflow.workflowId, 'Workflow states must exactly match E4 lifecycle states.');
+      const unknownStates = workflow.states.filter(state => !entity.lifecycleStates.includes(state));
+      if (unknownStates.length) add('NS4_E7_WORKFLOW_STATES', workflow.workflowId, `Workflow contains states absent from E4: ${unknownStates.join(', ')}.`);
       if (workflow.initialState !== entity.initialState) add('workflow.initialState', workflow.workflowId, 'Workflow initialState must exactly match the E4 lifecycle initialState.');
-      if (!sameSet(workflow.terminalStates, entity.terminalStates || [])) add('workflow.terminalStates', workflow.workflowId, 'Workflow terminalStates must exactly match the E4 lifecycle terminalStates.');
+      const unknownTerminals = workflow.terminalStates.filter(state => !(entity.terminalStates || []).includes(state));
+      if (unknownTerminals.length) add('workflow.terminalStates', workflow.workflowId, `Workflow contains terminal states absent from E4: ${unknownTerminals.join(', ')}.`);
     }
-    if (!workflow.transitions.length) add('NS4_E7_WORKFLOW_EMPTY', workflow.workflowId, 'A workflow requires at least one transition.');
     if (!workflow.states.includes(workflow.initialState)) add('NS4_E7_WORKFLOW_INITIAL', workflow.workflowId, 'Workflow initialState must be a declared lifecycle state.');
     const terminalStates = new Set(workflow.terminalStates);
     workflow.terminalStates.forEach(state => {
@@ -201,6 +202,9 @@ export function validateNs4Workflows(
     if (!workflow) continue;
     for (const predicate of entity.lifecyclePredicates) {
       for (const state of predicate.stateIds) {
+        // A state intentionally omitted from the compiled partial workflow is already covered by
+        // the workflow index's shrinkLifecycle system decision; E4 remains unchanged.
+        if (!workflow.states.includes(state)) continue;
         const reachable = state === entity.initialState || workflow.transitions.some(transition => transition.toState === state);
         if (entity.lifecycleStates.length && !reachable) {
           addLifecycleIssue(issues, 'workflow.predicate.dead', entity.entityId,

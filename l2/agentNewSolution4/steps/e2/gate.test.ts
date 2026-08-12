@@ -192,7 +192,7 @@ test('business hash is stable across object key order', async () => {
 });
 
 test('E2 policy selections are valid alternatives and a rewritten draft must honor them', () => {
-  const input = structuredClone(reviewInput);
+  const input: any = structuredClone(reviewInput);
   input.journeys[1].policyDecisions = [{
     decisionId: 'changeOrderDecisionMode',
     question: 'Como a mudança é decidida?',

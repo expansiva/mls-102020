@@ -22,6 +22,7 @@ import type {
   Ns4WorkflowArtifactV2,
   Ns4WorkflowIndexArtifact,
   Ns4WorkflowIndexArtifactV2,
+  Ns4WorkflowIndexArtifactV3,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 import type { Ns4WorkspaceArtifact, Ns4WorkspaceIndex } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
 
@@ -135,6 +136,7 @@ export type {
   Ns4WorkflowArtifactV2,
   Ns4WorkflowIndexArtifact,
   Ns4WorkflowIndexArtifactV2,
+  Ns4WorkflowIndexArtifactV3,
   Ns4WorkflowTransition,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 
@@ -175,6 +177,7 @@ export const NS4_PERMANENT_ARTIFACT_TYPE_NAMES = [
   'Ns4WorkflowArtifactV2',
   'Ns4WorkflowIndexArtifact',
   'Ns4WorkflowIndexArtifactV2',
+  'Ns4WorkflowIndexArtifactV3',
   'Ns4WorkspaceArtifact',
   'Ns4WorkspaceIndex',
 ] as const;
@@ -198,6 +201,7 @@ export interface Ns4PermanentArtifactByType {
   Ns4WorkflowArtifactV2: Ns4WorkflowArtifactV2;
   Ns4WorkflowIndexArtifact: Ns4WorkflowIndexArtifact;
   Ns4WorkflowIndexArtifactV2: Ns4WorkflowIndexArtifactV2;
+  Ns4WorkflowIndexArtifactV3: Ns4WorkflowIndexArtifactV3;
   Ns4WorkspaceArtifact: Ns4WorkspaceArtifact;
   Ns4WorkspaceIndex: Ns4WorkspaceIndex;
 }

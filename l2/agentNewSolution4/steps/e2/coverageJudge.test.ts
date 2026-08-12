@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   createNs4E2CoverageJudgeStep,
@@ -10,6 +11,7 @@ import {
   applyNs4E2PolicyDecisionImpacts,
   formatNs4E2CoverageRepairFeedback,
   normalizeNs4E2CoverageVerdict,
+  resolveNs4E2CoverageFindings,
   validateNs4E2CoverageVerdict,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageJudge.js';
 import { normalizeNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
@@ -73,6 +75,7 @@ test('E2 coverage judge accepts a complete verdict only without blockers', () =>
       sourceEvidence: 'E1 promises a client billing summary.',
       finding: 'Only the internal billing handoff exists.',
       repairInstruction: 'Add the client consumption journey.', relatedJourneyIds: ['manageProjectBilling'],
+      question: 'Should clients consume billing?', alternatives: ['no, internal only', 'yes, add client journey'], defaultChoice: 'no, internal only',
     }],
   });
   assert.equal(validateNs4E2CoverageVerdict(contradictory, 'buildFlowFsm', 1).ok, false);
@@ -88,6 +91,7 @@ test('E2 coverage judge rejects fail-open and produces actionable repair feedbac
         sourceEvidence: 'E1 promises a client billing summary.',
         finding: 'The client cannot consume the published summary.',
         repairInstruction: 'Add a client journey scoped to associated projects.',
+        question: 'Should clients consume billing?', alternatives: ['no, internal only', 'yes, add client journey'], defaultChoice: 'no, internal only',
         relatedJourneyIds: ['manageProjectBilling'],
       },
       {
@@ -95,6 +99,7 @@ test('E2 coverage judge rejects fail-open and produces actionable repair feedbac
         sourceEvidence: 'Material usage is recorded against a catalog material.',
         finding: 'No selectedMaterial context is acquired.',
         repairInstruction: 'Locate a material from the shared catalog before recording usage.',
+        question: 'How is material selected?', alternatives: ['use existing implicit selection', 'add catalog lookup'], defaultChoice: 'use existing implicit selection',
         relatedJourneyIds: ['recordDailyFieldProduction'],
       },
     ],
@@ -111,6 +116,23 @@ test('E2 coverage judge rejects fail-open and produces actionable repair feedbac
     summary: 'Incomplete but no actionable blockers.', issues: [],
   });
   assert.equal(validateNs4E2CoverageVerdict(failOpen, 'buildFlowFsm', 1).ok, false);
+});
+
+test('run 34 remnant becomes one non-blocking system decision with the generated default', () => {
+  const review = normalizeNs4E2Review({
+    moduleName: 'buildFlowFsm34', journeys: [], features: [],
+  });
+  const verdict = normalizeNs4E2CoverageVerdict(JSON.parse(readFileSync(
+    new URL('fixtures/run34-coverage-remnant.json', import.meta.url), 'utf8',
+  )));
+  assert.equal(validateNs4E2CoverageVerdict(verdict, 'buildFlowFsm34', 1).ok, true);
+  const resolved = resolveNs4E2CoverageFindings(review, verdict);
+  assert.equal(resolved.systemDecisions.length, 1);
+  assert.equal(resolved.systemDecisions[0]?.chosen, 'não, apenas no faturamento');
+  assert.equal(resolved.systemDecisions[0]?.decidedBy, 'system');
+  const widgetSource = readFileSync(new URL('../../widgets/widgetNs4Journeys.ts', import.meta.url), 'utf8');
+  assert.match(widgetSource, /Decisões assumidas/);
+  assert.match(widgetSource, /this\.value\.systemDecisions\.length/);
 });
 
 test('E2 coverage verdict is bound to the current module and review round', () => {

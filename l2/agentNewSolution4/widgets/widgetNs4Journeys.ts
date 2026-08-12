@@ -62,6 +62,7 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
       processingApproval: 'Validando jornadas…', processingChanges: 'Preparando nova revisão…', processingCancel: 'Cancelando execução…',
       revise: 'Revise os itens abaixo', cancel: 'Cancelar execução', cancelTitle: 'Cancelar esta execução?',
       cancelText: 'O processamento será encerrado. O histórico e os artefatos já aprovados serão preservados.', keepWorking: 'Continuar trabalhando',
+      assumedDecisions: 'Decisões assumidas', changeHint: 'Como alterar depois',
     } : {
       subtitle: 'These journeys will become the permanent source of truth for the product.',
       actor: 'Actor', goal: 'Goal', steps: 'Steps',
@@ -75,6 +76,7 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
       processingApproval: 'Validating journeys…', processingChanges: 'Preparing a new review…', processingCancel: 'Cancelling execution…',
       revise: 'Review the items below', cancel: 'Cancel execution', cancelTitle: 'Cancel this execution?',
       cancelText: 'Processing will end. The history and approved artifacts will be preserved.', keepWorking: 'Keep working',
+      assumedDecisions: 'Assumed decisions', changeHint: 'How to change later',
     };
   }
 
@@ -167,6 +169,18 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
           </div>
         </header>
         ${this.renderFeedback(labels)}
+        ${this.value.systemDecisions.length ? html`
+          <details class="ns4-system-decisions">
+            <summary>${labels.assumedDecisions} (${this.value.systemDecisions.length})</summary>
+            <div>${this.value.systemDecisions.map(decision => html`
+              <article>
+                <strong>${decision.question}</strong>
+                <p>${decision.chosen}</p>
+                <small><b>${labels.changeHint}:</b> ${decision.changeHint}</small>
+              </article>
+            `)}</div>
+          </details>
+        ` : ''}
 
         <details class="ns4-filters">
           <summary>${labels.filters}</summary>

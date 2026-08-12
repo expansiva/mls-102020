@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e2/coverageJudge.ts" enhancement="_blank"/>
 
 import type { Ns4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 
 export type Ns4E2CoverageCategory =
   | 'missingJourney'
@@ -19,6 +20,9 @@ export interface Ns4E2CoverageIssue {
   finding: string;
   repairInstruction: string;
   relatedJourneyIds: string[];
+  question: string;
+  alternatives: string[];
+  defaultChoice: string;
 }
 
 export interface Ns4E2CoverageVerdict {
@@ -73,6 +77,9 @@ export function normalizeNs4E2CoverageVerdict(
         finding: text(issue.finding),
         repairInstruction: text(issue.repairInstruction),
         relatedJourneyIds: strings(issue.relatedJourneyIds),
+        question: text(issue.question),
+        alternatives: strings(issue.alternatives),
+        defaultChoice: text(issue.defaultChoice),
       };
     }),
     policyDecisionImpacts: array(source.policyDecisionImpacts).map(item => {
@@ -106,6 +113,10 @@ export function validateNs4E2CoverageVerdict(
     if (!issue.sourceEvidence) errors.push(`${path}.sourceEvidence is required.`);
     if (!issue.finding) errors.push(`${path}.finding is required.`);
     if (!issue.repairInstruction) errors.push(`${path}.repairInstruction is required.`);
+    if (!issue.question) errors.push(`${path}.question is required.`);
+    if (!issue.defaultChoice) errors.push(`${path}.defaultChoice is required.`);
+    if (issue.alternatives.length < 2) errors.push(`${path}.alternatives requires at least two choices.`);
+    if (issue.defaultChoice && !issue.alternatives.includes(issue.defaultChoice)) errors.push(`${path}.defaultChoice must be one of alternatives.`);
   });
 
   const blockers = verdict.issues.filter(issue => issue.severity === 'blocking');
@@ -137,6 +148,26 @@ export function applyNs4E2PolicyDecisionImpacts(
       }),
     })),
   };
+}
+
+export function resolveNs4E2CoverageFindings(
+  review: Ns4E2Review,
+  verdict: Ns4E2CoverageVerdict,
+): Ns4E2Review {
+  const resolution = resolveNs4Findings(review, verdict.issues
+    .filter(issue => issue.severity === 'blocking')
+    .map(issue => ({
+      classification: 'B' as const,
+      findingRef: issue.issueId,
+      stage: 'e2',
+      question: issue.question,
+      defaultChoice: issue.defaultChoice,
+      alternatives: issue.alternatives,
+      changeHint: issue.repairInstruction,
+    })));
+  const byId = new Map(review.systemDecisions.map(decision => [decision.decisionId, decision]));
+  resolution.systemDecisions.forEach(decision => byId.set(decision.decisionId, decision));
+  return { ...resolution.artifact, systemDecisions: [...byId.values()] };
 }
 
 export function formatNs4E2CoverageRepairFeedback(verdict: Ns4E2CoverageVerdict): string {

@@ -93,7 +93,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-46 (2026-08-12) A2.1 lifecycle resolution';
+export const NS4_AGENT_BUILD = 'build-47 (2026-08-12) automatic semantic resolution';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,

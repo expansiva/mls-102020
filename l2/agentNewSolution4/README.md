@@ -45,10 +45,12 @@ languages and constraints.
 After E1 approval, the already-planned E2 step is unlocked automatically. E2 writes a review draft,
 passes it through the deterministic structural gate and then through an independent semantic coverage
 judge. The judge compares the complete E1 contract with the proposed journeys and blocks missing
-actor outcomes, recipient journeys and business-context acquisition. Structural repair and semantic
-coverage repair have independent bounded budgets; only a judged-complete draft opens the journey widget. `🔎` identifies the automated judge
-and `👤` identifies the subsequent human checkpoint. If a run is interrupted between steps, the same
-command resumes from the pipeline. Approval writes:
+actor outcomes, recipient journeys and business-context acquisition. Structural repair and the single
+semantic repair have independent budgets. Stable semantic remainders become visible system decisions
+using the generated behavior as the default, then every structurally valid draft opens the journey
+widget without failing the task. `🔎` identifies the automated judge and `👤` identifies the subsequent
+human checkpoint. If a run is interrupted between steps, the same command resumes from the pipeline.
+Approval writes:
 
 - `l4/<module>/journeys/<journeyId>.defs.ts` — permanent business source of truth;
 - `l4/<module>/journeys/index.defs.ts` — journey/feature discovery index;

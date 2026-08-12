@@ -57,12 +57,12 @@ interface Ns4E7Bundle extends Ns4E7Sources {
 const MAX_REPAIR_ROUNDS = 1;
 
 interface Ns4E7ValidationReport {
-  schemaVersion: '2026-08-12-ns4-e7-validation-report-v3';
+  schemaVersion: '2026-08-12-ns4-e7-validation-report-v4';
   moduleName: string;
   attempts: Array<{ round: number; checkedAt: string; valid: number; invalid: number;
     results: Array<{ useCaseId: string; status: 'valid' | 'invalid' | 'missing'; issues: Ns4E7GateIssue[] }>;
     lifecycleIssues: Ns4E7GateIssue[] }>;
-  finalStatus: 'repairing' | 'passed' | 'failed' | 'needsHumanResolution';
+  finalStatus: 'repairing' | 'passed' | 'failed';
   updatedAt: string;
 }
 
@@ -272,12 +272,8 @@ async function finalizeE7(
   const { artifacts: workflows, index: workflowIndex } = await buildNs4WorkflowArtifacts(plan, valid, ontologyLifecycles, generatedAt);
   const workflowGate = validateNs4Workflows(workflows, bundle, useCases.map(useCase => useCase.useCaseId));
   if (!workflowGate.ok) {
-    await updateValidationReport(args.moduleName, repairRound, validationResults, 'needsHumanResolution', workflowGate.issues);
-    return [
-      lifecycleResolutionStep(context, mutationParent, args.moduleName, workflowGate.issues),
-      updateStatus(context, mutationParent, step, hookSequential, 'completed',
-        `${workflowGate.issues.length} lifecycle finding(s) need a human E2/E4 decision; no LLM retry was scheduled.`, 'input_output'),
-    ];
+    await updateValidationReport(args.moduleName, repairRound, validationResults, 'failed', workflowGate.issues);
+    throw new Error(`E7 workflow structural gate failed: ${formatGate(workflowGate.issues)}.`);
   }
   await updateValidationReport(args.moduleName, repairRound, validationResults, 'passed');
 
@@ -297,7 +293,7 @@ async function finalizeE7(
   return [
     resultStep(context, mutationParent, args.moduleName, useCases.length, workflows.length, artifactPaths),
     updateStatus(context, mutationParent, step, hookSequential, 'completed',
-      `E7 compiled ${useCases.length} use cases and ${workflows.length} workflows.`, 'input_output'),
+      `E7 compiled ${useCases.length} use cases and ${workflows.length} workflows with ${workflowIndex.systemDecisions.length} system decision(s).`, 'input_output'),
   ];
 }
 
@@ -516,7 +512,7 @@ async function updateValidationReport(
   const attempts = [...(previous?.attempts || []).filter(item => item.round !== round), attempt]
     .sort((left, right) => left.round - right.round);
   await writeNs4E7ValidationReport(moduleName, {
-    schemaVersion: '2026-08-12-ns4-e7-validation-report-v3', moduleName, attempts, finalStatus, updatedAt: now,
+    schemaVersion: '2026-08-12-ns4-e7-validation-report-v4', moduleName, attempts, finalStatus, updatedAt: now,
   } satisfies Ns4E7ValidationReport);
 }
 

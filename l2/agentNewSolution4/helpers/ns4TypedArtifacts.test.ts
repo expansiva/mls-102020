@@ -37,6 +37,7 @@ test('permanent artifact registry covers every implemented E1-E8 defs contract',
     'Ns4WorkflowArtifactV2',
     'Ns4WorkflowIndexArtifact',
     'Ns4WorkflowIndexArtifactV2',
+    'Ns4WorkflowIndexArtifactV3',
     'Ns4WorkspaceArtifact',
     'Ns4WorkspaceIndex',
   ]);
