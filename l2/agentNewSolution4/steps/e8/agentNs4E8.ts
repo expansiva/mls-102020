@@ -44,7 +44,7 @@ export async function beforeNs4E8PromptStep(agent: IAgentMeta, context: mls.msg.
   try {
     const parsed = resolveArgs(context, selector ? { planId: 'e8-workspaces', stage: 'finalize' } : args || step.prompt); moduleName = parsed.moduleName;
     if (selector) return [await workerPrompt(context, parent, hookSequential, selector, moduleName)];
-    if (parsed.stage === 'finalize') return finalize(context, parent, step, hookSequential, parsed);
+    if (parsed.stage === 'finalize') return await finalize(context, parent, step, hookSequential, parsed);
     return [await skeletonPrompt(context, parent, hookSequential, args || String(step.prompt || ''), parsed)];
   } catch (error) {
     const message = errorMessage(error); if (selector) return [status(context, parent, step, hookSequential, 'completed', `Workspace ${selector} prompt failed; finalizer will repair it. | ${message}`, 'input_output')];

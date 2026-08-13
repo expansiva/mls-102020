@@ -6,7 +6,7 @@ import {
   buildNs4WorkspaceArtifacts, deriveE8HubScore, deriveNs4E8Skeleton, hashNs4E8Skeleton, normalizeNs4E8PresentationProposal,
   normalizeNs4WorkspaceDetail, overlayNs4E8Presentation, previewNs4E8Routes, resolveNs4E8PresentationDefaults,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
-import { hasNs4E8DetailsDispatch, ns4E8DetailsPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
+import { hasNs4E8DetailsDispatch, isNs4E8PresentationRepairPlanId, ns4E8DetailsPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
 import { resolveNs4WorkspaceDetailFindings, validateNs4E8PresentationProposal, validateNs4E8Skeleton, validateNs4WorkspaceDetail } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
 
 const run35Fixture = JSON.parse(readFileSync(new URL('fixtures/run35-disclosure-platform.json', import.meta.url), 'utf8')) as {
@@ -17,6 +17,12 @@ const run36DuplicateFixture = JSON.parse(readFileSync(new URL('fixtures/run36-du
 };
 const run37ColdStartFixture = JSON.parse(readFileSync(new URL('fixtures/run37-cold-start-command.json', import.meta.url), 'utf8')) as any;
 const run38UrlRolesFixture = JSON.parse(readFileSync(new URL('fixtures/run38-url-roles.json', import.meta.url), 'utf8')) as any;
+const run39PresentationRepairFixture = JSON.parse(readFileSync(new URL('fixtures/run39-presentation-repair.json', import.meta.url), 'utf8')) as {
+  observedPlanId: string; malformedPlanIds: string[];
+};
+const run40SelectionFixture = JSON.parse(readFileSync(new URL('fixtures/run40-selection-source.json', import.meta.url), 'utf8')) as {
+  invalidSourceRef: string; compatibleSliceId: string; entityId: string; fieldId: string;
+};
 
 const sources: any = {
   journeys: { moduleName: 'construction', userLanguage: 'pt-BR', journeys: [
@@ -66,6 +72,30 @@ test('E8 rejects a worker that renames a frozen scenario or references an unknow
   const result = validateNs4WorkspaceDetail(detail, skeleton, sources);
   assert.ok(result.issues.some(issue => issue.code === 'NS4_E8_DETAIL_SCENARIO'));
   assert.ok(result.issues.some(issue => issue.code === 'NS4_E8_SLICE'));
+});
+
+test('run 40 retargets an invalid selection source only when one frozen slice is compatible', async () => {
+  const skeleton = deriveNs4E8Skeleton(sources); skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
+  const replaySources = structuredClone(sources); replaySources.ontology.entities.push({ entityId: run40SelectionFixture.entityId, fields: [{ fieldId: run40SelectionFixture.fieldId }] });
+  const workspace = skeleton.workspaces[0]; workspace.slices[0] = { ...workspace.slices[0], sliceId: run40SelectionFixture.compatibleSliceId, entityRefs: [run40SelectionFixture.entityId] };
+  const target = workspace.scenarios.find(scenario => scenario.scenarioId === 'reviewDecideChangeOrder')!;
+  const detail = normalizeNs4WorkspaceDetail({ moduleName: 'construction', workspaceId: workspace.workspaceId, skeletonHash: skeleton.skeletonHash,
+    scenarios: workspace.scenarios.map(scenario => ({ scenarioId: scenario.scenarioId, organisms: [], commandInputs: scenario.scenarioId === target.scenarioId ? [{ useCaseId: 'decideChangeOrder', inputs: [{ inputId: run40SelectionFixture.invalidSourceRef,
+      source: 'selection', sourceRef: run40SelectionFixture.invalidSourceRef, fieldRef: { entityId: run40SelectionFixture.entityId, fieldId: run40SelectionFixture.fieldId, label: '' } }] }] : [] })) });
+  const gate = validateNs4WorkspaceDetail(detail, skeleton, replaySources);
+  const finding = gate.issues.find(issue => issue.code === 'NS4_E8_INPUT_SELECTION');
+  assert.equal(gate.ok, true);
+  assert.equal(finding?.severity, 'warning');
+  const resolved = resolveNs4WorkspaceDetailFindings(detail, gate.issues);
+  const input = resolved.artifact.scenarios.find(scenario => scenario.scenarioId === target.scenarioId)!.commandInputs[0].inputs[0];
+  assert.equal(input.sourceRef, run40SelectionFixture.compatibleSliceId);
+  assert.equal(validateNs4WorkspaceDetail(resolved.artifact, skeleton, replaySources).ok, true);
+  assert.ok(resolved.systemDecisions.some(decision => decision.chosen === 'retargetUniqueSelectionSlice'));
+
+  workspace.slices.push({ ...workspace.slices[0], sliceId: `${run40SelectionFixture.compatibleSliceId}Alternative` });
+  const ambiguous = validateNs4WorkspaceDetail(detail, skeleton, replaySources);
+  assert.equal(ambiguous.ok, false);
+  assert.equal(ambiguous.issues.find(issue => issue.code === 'NS4_E8_INPUT_SELECTION')?.severity, undefined);
 });
 
 test('E8 accepts a module with no lifecycle and emits no queue scenario', async () => {
@@ -189,6 +219,11 @@ test('run 36 duplicate approval is recognized by the stable E8 detail plan id', 
   assert.equal(run36DuplicateFixture.steps.filter(step => step.planning.planId === planId).length, run36DuplicateFixture.observedFanoutCount);
   assert.equal(hasNs4E8DetailsDispatch(run36DuplicateFixture.steps, run36DuplicateFixture.reviewRound), true);
   assert.equal(hasNs4E8DetailsDispatch([{ planning: { planId: 'e8-workspaces-round-2-details-0' } }], run36DuplicateFixture.reviewRound), false);
+});
+
+test('run 39 constrained presentation repair uses an exact routable E8 plan id', () => {
+  assert.equal(isNs4E8PresentationRepairPlanId(run39PresentationRepairFixture.observedPlanId), true);
+  run39PresentationRepairFixture.malformedPlanIds.forEach(planId => assert.equal(isNs4E8PresentationRepairPlanId(planId), false));
 });
 
 test('run 37 accepts a cold-start creation form without invented record context', async () => {

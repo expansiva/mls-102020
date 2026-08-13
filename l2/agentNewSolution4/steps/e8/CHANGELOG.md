@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-13 — run 40 bounded selection repair
+
+- Retarget an invalid selection source deterministically only when its ontology field identifies
+  exactly one compatible frozen slice; ambiguous and missing candidates remain blocking.
+- Await the deterministic finalizer inside the E8 failure boundary so terminal findings persist
+  failed pipeline state instead of leaving the stage marked as running.
+
 ## 2026-08-13 — E8 URL-role boundary
 
 - Versioned routed contexts and moved scenario-local selections out of `workspace.pageContext`.
