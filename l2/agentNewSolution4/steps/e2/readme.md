@@ -8,7 +8,8 @@ related-journey context. The widget emits structured selections rather than hidi
 Selecting an alternative writes the current `draft.v{N}.json`, starts a complete next-round rewrite,
 and the honor gate requires the rewritten decision to choose that alternative. Approval writes every
 generated/selected pair to the journey index and emits `pipeline/e2-impact-report.json`; changed,
-new or removed journeys mark their E3/E4/E5/E7 derived pipeline states stale.
+new or removed journeys mark their E3/E4/E5/E7 derived pipeline states stale. The same report records
+the complete module histogram for `locate`, `inspect`, `act`, `decide` and `handoff` steps.
 
 Before approval it writes only `l4/{module}/pipeline/e2-journeys.draft.json`. A deterministic gate
 first validates internal structure and context flow. An independent `🔎` reasoning-model judge then
@@ -19,6 +20,14 @@ checkpoint in interactive mode, where assumed decisions are read-only and the us
 for a change. `/fast` persists those same generated choices and system decisions automatically after
 the gate and coverage judge, without creating the widget. A change request starts another generation
 round using the previous draft as context.
+
+After the structural gate, code computes the whole-module step-kind histogram. The only active
+aggregate signal is `moduleWithoutDecide`: `decide == 0` is sent to the existing judge together with
+the original request. The judge must turn that fact into one business-language question tied to an
+existing journey. The existing single semantic repair may add a justified `decide` step or explicitly
+sustain the current behavior with an empty patch. If the signal remains, it becomes a normal
+`policyDecision` in that journey, so the checkpoint shows the current choice and its alternatives.
+It never becomes a blocking gate.
 
 The proposal LLM returns an internal `flexible` payload rather than a clarification. This prevents an
 ungated candidate from briefly opening the journey widget while the deterministic gate, repair and
@@ -56,8 +65,10 @@ Internal consistency is insufficient for product completeness, so the coverage j
 checks E1 actors, explicit capabilities, screen intents, outcomes, recipient-side consumption and
 human-selectable references. Blocking omissions receive one separate complete-draft semantic repair;
 a prior structural repair does not consume this budget. The semantic repair returns through the
-structural gate, is judged again and fails closed if incomplete. An invalid judge envelope is retried
-once; compact verdict results remain in the task for diagnosis. Every generated plan id includes its
+structural gate and is judged again; remaining business findings are recorded without failing the run.
+An invalid judge envelope is retried once. When decision coverage itself cannot be evaluated after
+that retry, E2 records a system decision and proceeds to the normal checkpoint. Compact verdict
+results remain in the task for diagnosis. Every generated plan id includes its
 repair cycle, preventing duplicate-step collisions. `/fast` skips only the human widget, never the
 structural gate or coverage judge.
 

@@ -1,10 +1,15 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e2/contracts.ts" enhancement="_blank"/>
 
 import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
+import {
+  analyzeNs4E2MechanicalCoverage,
+  Ns4E2StepKindHistogram,
+} from '/_102020_/l2/agentNewSolution4/steps/e2/coverageSignals.js';
 
 export const NS4_JOURNEY_SCHEMA_VERSION = '2026-08-10-ns4-journey-v4' as const;
 export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-12-ns4-journey-index-v5' as const;
 export const NS4_REALIZED_JOURNEY_SCHEMA_VERSION = '2026-08-10-ns4-journey-v3' as const;
+export const NS4_E2_IMPACT_REPORT_SCHEMA_VERSION = '2026-08-13-ns4-e2-impact-report-v2' as const;
 
 export type Ns4JourneyEntryMode = 'coldStart' | 'contextRequired' | 'contextOrLookup' | 'eventDriven';
 export type Ns4JourneyStepKind = 'locate' | 'inspect' | 'act' | 'decide' | 'handoff';
@@ -193,9 +198,10 @@ export interface Ns4E2ReviewEvent {
 }
 
 export interface Ns4E2ImpactReport {
-  schemaVersion: '2026-08-10-ns4-e2-impact-report-v1';
+  schemaVersion: typeof NS4_E2_IMPACT_REPORT_SCHEMA_VERSION;
   moduleName: string;
   generatedAt: string;
+  stepKindHistogram: Ns4E2StepKindHistogram;
   changes: Array<{ journeyId: string; reason: 'hashDivergent' | 'journeyNew' | 'journeyRemoved' }>;
   affectedSteps: Array<'e3-access-matrix' | 'e4-ontology' | 'e5-rules' | 'e7-realization'>;
 }
@@ -301,6 +307,7 @@ export function buildNs4E2ImpactReport(
   previousIndex: Ns4JourneyIndex | null,
   artifacts: Array<Pick<Ns4JourneyArtifactV4, 'journeyId' | 'businessHash'>>,
   generatedAt: string,
+  review: Pick<Ns4E2Review, 'journeys'>,
 ): Ns4E2ImpactReport {
   const previous = new Map((previousIndex?.journeys || []).map(journey => [journey.journeyId, journey.businessHash]));
   const changes: Ns4E2ImpactReport['changes'] = [];
@@ -312,9 +319,10 @@ export function buildNs4E2ImpactReport(
   });
   previous.forEach((_hash, journeyId) => changes.push({ journeyId, reason: 'journeyRemoved' }));
   return {
-    schemaVersion: '2026-08-10-ns4-e2-impact-report-v1',
+    schemaVersion: NS4_E2_IMPACT_REPORT_SCHEMA_VERSION,
     moduleName,
     generatedAt,
+    stepKindHistogram: analyzeNs4E2MechanicalCoverage(review).stepKindHistogram,
     changes: changes.sort((left, right) => left.journeyId.localeCompare(right.journeyId) || left.reason.localeCompare(right.reason)),
     affectedSteps: changes.length ? ['e3-access-matrix', 'e4-ontology', 'e5-rules', 'e7-realization'] : [],
   };

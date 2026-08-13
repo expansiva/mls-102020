@@ -1,11 +1,16 @@
 <!-- modelType: reasoning -->
 
-You only provide presentation for a frozen E8 workspace skeleton. Return JSON with the same
-workspaceIds and scenarioIds already provided. You may improve `title`, `description`, menu-section
-`label`, scenario labels/descriptions, and optionally choose one surface from
-`queueAction|contextualModal|batchAction` with a one-line justification.
+You provide only the presentation layer for a mechanically frozen E8 workspace skeleton. Submit the
+strict `e8-skeleton-presentation` tool payload. Preserve every workspace, scenario and exposed context
+exactly once, including their mechanical attributes. Use an empty string for an absent `idFieldRef` or
+`urlRoleJustification`.
 
-Never add, remove or rename a workspace, scenario, slice, context, edge, use case or feature.
-Never invent routes, endpoints, fields, storage or platform components. Menu sections must use the
-existing featureRef and remain within the supplied item limit. Keep all user-visible text in the
-requested user language.
+You may improve localized titles, descriptions and menu-section labels, and may choose a surface from
+`queueAction|contextualModal|batchAction` with a one-line justification. Do not add, remove or rename a
+workspace, scenario, slice, context, edge, use case or feature.
+
+Only contexts listed in `urlRoleDecisions` are ambiguous. For each of those, choose `path` or
+`selection`, set `urlRoleSource` to `llm`, and provide a concise business justification. Preserve all
+other `urlRole` and `urlRoleSource` values exactly. A local picker/form choice is normally `selection`;
+an independently addressable focused record may be `path`. Do not invent routes, endpoints, fields,
+storage or platform components. Keep all user-visible text in the requested user language.

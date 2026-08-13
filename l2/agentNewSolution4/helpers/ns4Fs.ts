@@ -22,6 +22,14 @@ import type {
   Ns4WorkflowIndexArtifactV3,
   Ns4WorkspaceArtifact,
   Ns4WorkspaceIndex,
+  Ns4NavigationIndexArtifact,
+  Ns4NavigationStoreArtifact,
+  Ns4NotificationCatalogArtifact,
+  Ns4BffContractArtifact,
+  Ns4E10ValidationReport,
+  Ns4L5TodoFrontendArtifact,
+  Ns4L5TodoBackendArtifact,
+  Ns4L5ProcessArtifact,
 } from '/_102020_/l2/agentNewSolution4/types.js';
 
 export type Ns4FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
@@ -158,6 +166,33 @@ export function ns4WorkspaceFile(moduleName: string, workspaceId: string): Ns4Fi
 }
 export function ns4WorkspaceIndexFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/workspaces`, shortName: 'index', extension: '.defs.ts' };
+}
+export function ns4NavigationIndexFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/navigation`, shortName: 'index', extension: '.defs.ts' };
+}
+export function ns4NavigationStoreFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/navigation`, shortName: 'store', extension: '.defs.ts' };
+}
+export function ns4NotificationsFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/navigation`, shortName: 'notifications', extension: '.defs.ts' };
+}
+export function ns4BffContractFile(moduleName: string, workspaceId: string, functionId: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/contracts`, shortName: `${workspaceId}.${functionId}`, extension: '.defs.ts' };
+}
+export function ns4E10ValidationReportFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e10-validation-report', extension: '.json' };
+}
+export function ns4L5ConfigFile(): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 5, folder: '', shortName: 'config', extension: '.json' };
+}
+export function ns4TodoFrontendFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 5, folder: normalizeNs4ModuleName(moduleName), shortName: 'todoFrontend', extension: '.defs.ts' };
+}
+export function ns4TodoBackendFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 5, folder: normalizeNs4ModuleName(moduleName), shortName: 'todoBackend', extension: '.defs.ts' };
+}
+export function ns4ProcessFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 5, folder: normalizeNs4ModuleName(moduleName), shortName: 'process', extension: '.defs.ts' };
 }
 
 export function ns4JourneyFile(moduleName: string, journeyId: string): Ns4FileInfo {
@@ -363,6 +398,43 @@ export async function writeNs4Workspace(moduleName: string, workspaceId: string,
 }
 export async function writeNs4WorkspaceIndex(moduleName: string, artifact: Ns4WorkspaceIndex): Promise<string> {
   const fileInfo = ns4WorkspaceIndexFile(moduleName); await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}WorkspaceIndex`, artifact, 'Ns4WorkspaceIndex'); return displayPath(fileInfo);
+}
+export async function writeNs4NavigationIndex(moduleName: string, artifact: Ns4NavigationIndexArtifact): Promise<string> {
+  const fileInfo = ns4NavigationIndexFile(moduleName); await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}NavigationIndex`, artifact, 'Ns4NavigationIndexArtifact'); return displayPath(fileInfo);
+}
+export async function writeNs4NavigationStore(moduleName: string, artifact: Ns4NavigationStoreArtifact): Promise<string> {
+  const fileInfo = ns4NavigationStoreFile(moduleName); await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}NavigationStore`, artifact, 'Ns4NavigationStoreArtifact'); return displayPath(fileInfo);
+}
+export async function writeNs4Notifications(moduleName: string, artifact: Ns4NotificationCatalogArtifact): Promise<string> {
+  const fileInfo = ns4NotificationsFile(moduleName); await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}Notifications`, artifact, 'Ns4NotificationCatalogArtifact'); return displayPath(fileInfo);
+}
+export async function writeNs4BffContract(moduleName: string, artifact: Ns4BffContractArtifact): Promise<string> {
+  const fileInfo = ns4BffContractFile(moduleName, artifact.workspaceId, artifact.functionId); await writeNs4Defs(fileInfo, `${artifact.workspaceId}${artifact.functionId}Contract`, artifact, 'Ns4BffContractArtifact'); return displayPath(fileInfo);
+}
+export async function writeNs4E10ValidationReport(moduleName: string, report: Ns4E10ValidationReport): Promise<string> {
+  const fileInfo = ns4E10ValidationReportFile(moduleName); await writeNs4Text(fileInfo, `${JSON.stringify(report, null, 2)}\n`); return displayPath(fileInfo);
+}
+export async function readNs4L5Config(): Promise<Record<string, unknown> | null> {
+  const raw = await readNs4Text(ns4L5ConfigFile(), false); if (!raw.trim()) return null;
+  try {
+    const value = JSON.parse(raw);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('root must be an object');
+    return value as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(`[agentNewSolution4] existing l5/config.json is invalid and was preserved: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+export async function writeNs4L5Config(config: Record<string, unknown>): Promise<string> {
+  const fileInfo = ns4L5ConfigFile(); await writeNs4Text(fileInfo, `${JSON.stringify(config, null, 2)}\n`); return displayPath(fileInfo);
+}
+export async function writeNs4TodoFrontend(moduleName: string, artifact: Ns4L5TodoFrontendArtifact): Promise<string> {
+  const fileInfo = ns4TodoFrontendFile(moduleName); await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}TodoFrontend`, artifact, 'Ns4L5TodoFrontendArtifact'); return displayPath(fileInfo);
+}
+export async function writeNs4TodoBackend(moduleName: string, artifact: Ns4L5TodoBackendArtifact): Promise<string> {
+  const fileInfo = ns4TodoBackendFile(moduleName); await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}TodoBackend`, artifact, 'Ns4L5TodoBackendArtifact'); return displayPath(fileInfo);
+}
+export async function writeNs4Process(moduleName: string, artifact: Ns4L5ProcessArtifact): Promise<string> {
+  const fileInfo = ns4ProcessFile(moduleName); await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}Process`, artifact, 'Ns4L5ProcessArtifact'); return displayPath(fileInfo);
 }
 
 export async function writeNs4Journey(moduleName: string, journeyId: string, artifact: Ns4JourneyArtifact): Promise<string> {

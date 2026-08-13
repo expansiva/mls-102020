@@ -12,8 +12,10 @@ import {
   formatNs4E2CoverageRepairFeedback,
   normalizeNs4E2CoverageVerdict,
   resolveNs4E2CoverageFindings,
+  resolveNs4E2CoverageJudgeFailure,
   validateNs4E2CoverageVerdict,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageJudge.js';
+import { analyzeNs4E2MechanicalCoverage } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageSignals.js';
 import { normalizeNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 
 test('E2 creates a bounded automated coverage-judge step', () => {
@@ -26,6 +28,16 @@ test('E2 creates a bounded automated coverage-judge step', () => {
     planId: 'e2-journeys', stage: 'coverageJudge', moduleName: 'buildFlowFsm',
     reviewRound: 2, coverageRepairAttempt: 1, judgeAttempt: 1, coverageIssueIds: [],
   });
+});
+
+test('E2 coverage schema v4 admits the mechanical S1 category with strict enum types', () => {
+  const schema = JSON.parse(readFileSync(
+    new URL('../../schemas/e2-coverage-verdict.schema.json', import.meta.url), 'utf8',
+  ));
+  assert.match(schema.$id, /2026-08-13-v4$/);
+  assert.equal(schema.properties.planId.type, 'string');
+  assert.equal(schema.properties.issues.items.properties.category.type, 'string');
+  assert.ok(schema.properties.issues.items.properties.category.enum.includes('moduleWithoutDecide'));
 });
 
 test('E2 gives structural and semantic repairs independent bounded identities', () => {
@@ -161,4 +173,70 @@ test('E2 coverage judge is the only stage that adds policy impacts', () => {
   const enriched = applyNs4E2PolicyDecisionImpacts(review, verdict);
   assert.equal(enriched.journeys[0].policyDecisions[0].impact, 'Aprovação cria uma jornada adicional.');
   assert.deepEqual(enriched.journeys[0].policyDecisions[0].relatedJourneyIds, ['manageChanges']);
+});
+
+test('S1 requires one business issue and becomes a visible policy choice after the single repair', () => {
+  const review = normalizeNs4E2Review({
+    moduleName: 'buildFlowFsm38', userLanguage: 'pt-BR', journeys: [{
+      journeyId: 'manageProjectChangeOrder', policyDecisions: [],
+      business: {
+        actorRef: 'manager', title: 'Gerenciar mudança', goal: 'Registrar mudança.', prerequisites: [],
+        entry: { mode: 'coldStart', carries: [] },
+        steps: [{ stepId: 'recordChangeOrder', kind: 'act', intent: 'Registrar mudança.', requiresContext: [], providesContext: [], result: 'Mudança registrada.', featureRefs: [] }],
+        outcome: { statement: 'Mudança registrada.', evidence: ['Registro visível.'] }, useRules: [],
+      },
+    }], features: [],
+  });
+  const signal = analyzeNs4E2MechanicalCoverage(review);
+  const verdict = normalizeNs4E2CoverageVerdict({
+    moduleName: 'buildFlowFsm38', reviewRound: 1, complete: false,
+    summary: 'A política de aprovação ainda não está explícita.', policyDecisionImpacts: [],
+    issues: [{
+      issueId: 'moduleWithoutDecide', severity: 'blocking', category: 'moduleWithoutDecide',
+      sourceEvidence: 'O módulo inteiro tem decide=0 e contém uma jornada de mudança.',
+      finding: 'Mudanças são registradas sem aprovação explícita.',
+      repairInstruction: 'Adicionar decisão de aprovação ou sustentar o registro direto.',
+      relatedJourneyIds: ['manageProjectChangeOrder'],
+      question: 'Ordens de mudança precisam de aprovação antes de afetar custo e faturamento?',
+      alternatives: ['Não — registradas diretamente (atual)', 'Sim — aprovação do gestor', 'Sim — aprovação do cliente'],
+      defaultChoice: 'Não — registradas diretamente (atual)',
+    }],
+  });
+  assert.deepEqual(validateNs4E2CoverageVerdict(verdict, 'buildFlowFsm38', 1, signal, review), { ok: true, errors: [] });
+  const resolved = resolveNs4E2CoverageFindings(review, verdict);
+  const decision = resolved.journeys[0].policyDecisions[0];
+  assert.equal(decision.decisionId, 'moduleWithoutDecidePolicy');
+  assert.equal(decision.chosen, 'Não — registradas diretamente (atual)');
+  assert.deepEqual(decision.alternatives, ['Sim — aprovação do gestor', 'Sim — aprovação do cliente']);
+  assert.equal(resolved.systemDecisions.length, 0);
+});
+
+test('S1 cannot be omitted by the judge or invented for a module that already decides', () => {
+  const withoutDecide = normalizeNs4E2Review({ moduleName: 'buildFlowFsm', journeys: [], features: [] });
+  const active = analyzeNs4E2MechanicalCoverage(withoutDecide);
+  const omitted = normalizeNs4E2CoverageVerdict({
+    moduleName: 'buildFlowFsm', reviewRound: 1, complete: true, summary: 'Completo.', issues: [], policyDecisionImpacts: [],
+  });
+  assert.equal(validateNs4E2CoverageVerdict(omitted, 'buildFlowFsm', 1, active, withoutDecide).ok, false);
+
+  const healthy = normalizeNs4E2Review({
+    moduleName: 'buildFlowFsm', journeys: [{ journeyId: 'approveOrder', policyDecisions: [], business: {
+      actorRef: 'manager', title: 'Aprovar', goal: 'Decidir.', prerequisites: [], entry: { mode: 'coldStart', carries: [] },
+      steps: [{ stepId: 'decideOrder', kind: 'decide', intent: 'Decidir.', requiresContext: [], providesContext: [], result: 'Decidido.', featureRefs: [] }],
+      outcome: { statement: 'Decidido.', evidence: ['Estado visível.'] }, useRules: [],
+    } }], features: [],
+  });
+  const invented = normalizeNs4E2CoverageVerdict({
+    moduleName: 'buildFlowFsm', reviewRound: 1, complete: false, summary: 'Incorreto.', policyDecisionImpacts: [],
+    issues: [{ issueId: 'moduleWithoutDecide', severity: 'blocking', category: 'moduleWithoutDecide', sourceEvidence: 'x', finding: 'x', repairInstruction: 'x', relatedJourneyIds: ['approveOrder'], question: 'x', alternatives: ['a', 'b'], defaultChoice: 'a' }],
+  });
+  assert.equal(validateNs4E2CoverageVerdict(invented, 'buildFlowFsm', 1, analyzeNs4E2MechanicalCoverage(healthy), healthy).ok, false);
+});
+
+test('judge exhaustion records that decision coverage was not evaluated instead of failing', () => {
+  const review = normalizeNs4E2Review({ moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', journeys: [], features: [] });
+  const resolved = resolveNs4E2CoverageJudgeFailure(review);
+  assert.equal(resolved.systemDecisions.length, 1);
+  assert.match(resolved.systemDecisions[0].findingRef, /moduleWithoutDecide\.judgeUnavailable/);
+  assert.match(resolved.systemDecisions[0].chosen, /Não avaliada/);
 });

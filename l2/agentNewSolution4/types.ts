@@ -25,6 +25,12 @@ import type {
   Ns4WorkflowIndexArtifactV3,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 import type { Ns4WorkspaceArtifact, Ns4WorkspaceIndex } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
+import type {
+  Ns4BffContractArtifact, Ns4NavigationIndexArtifact, Ns4NavigationStoreArtifact, Ns4NotificationCatalogArtifact,
+} from '/_102020_/l2/agentNewSolution4/steps/e9/contracts.js';
+import type {
+  Ns4L5ProcessArtifact, Ns4L5TodoBackendArtifact, Ns4L5TodoFrontendArtifact,
+} from '/_102020_/l2/agentNewSolution4/steps/e10/contracts.js';
 
 export type {
   Ns4ApprovedBy,
@@ -37,6 +43,8 @@ export type {
   Ns4E6Status,
   Ns4E7Status,
   Ns4E8Status,
+  Ns4E9Status,
+  Ns4E10Status,
   Ns4ModuleArtifact,
   Ns4NextStep,
   Ns4PipelineState,
@@ -63,6 +71,8 @@ export type {
 
 export type {
   Ns4AccessAuthority,
+  Ns4AccessMatrixArtifactV4,
+  Ns4AccessOperationAuthorityRef,
   Ns4AccessGrant,
   Ns4AccessMatrixArtifact,
   Ns4AccessProfile,
@@ -160,6 +170,37 @@ export type {
   Ns4WorkspaceSlice,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
 
+export type {
+  Ns4BffContractArtifact,
+  Ns4BffFieldContract,
+  Ns4BffOutputField,
+  Ns4ContractValueType,
+  Ns4E9Warning,
+  Ns4NavigationIndexArtifact,
+  Ns4NavigationRoute,
+  Ns4NavigationStoreArtifact,
+  Ns4NavigationStoreContext,
+  Ns4NotificationCatalogArtifact,
+  Ns4NotificationEntry,
+} from '/_102020_/l2/agentNewSolution4/steps/e9/contracts.js';
+
+export type {
+  Ns4E10CheckSummary,
+  Ns4E10Delivery,
+  Ns4E10Issue,
+  Ns4E10RepairStep,
+  Ns4E10ReviewEvent,
+  Ns4E10ValidationReport,
+  Ns4L5BackendOwner,
+  Ns4L5FrontendOwner,
+  Ns4L5HeaderLink,
+  Ns4L5ModuleNavigation,
+  Ns4L5NavigationItem,
+  Ns4L5ProcessArtifact,
+  Ns4L5TodoBackendArtifact,
+  Ns4L5TodoFrontendArtifact,
+} from '/_102020_/l2/agentNewSolution4/steps/e10/contracts.js';
+
 export const NS4_PERMANENT_ARTIFACT_TYPE_NAMES = [
   'Ns4ModuleArtifact',
   'Ns4JourneyArtifact',
@@ -180,6 +221,13 @@ export const NS4_PERMANENT_ARTIFACT_TYPE_NAMES = [
   'Ns4WorkflowIndexArtifactV3',
   'Ns4WorkspaceArtifact',
   'Ns4WorkspaceIndex',
+  'Ns4NavigationIndexArtifact',
+  'Ns4NavigationStoreArtifact',
+  'Ns4NotificationCatalogArtifact',
+  'Ns4BffContractArtifact',
+  'Ns4L5TodoFrontendArtifact',
+  'Ns4L5TodoBackendArtifact',
+  'Ns4L5ProcessArtifact',
 ] as const;
 
 export type Ns4PermanentArtifactTypeName = typeof NS4_PERMANENT_ARTIFACT_TYPE_NAMES[number];
@@ -204,4 +252,11 @@ export interface Ns4PermanentArtifactByType {
   Ns4WorkflowIndexArtifactV3: Ns4WorkflowIndexArtifactV3;
   Ns4WorkspaceArtifact: Ns4WorkspaceArtifact;
   Ns4WorkspaceIndex: Ns4WorkspaceIndex;
+  Ns4NavigationIndexArtifact: Ns4NavigationIndexArtifact;
+  Ns4NavigationStoreArtifact: Ns4NavigationStoreArtifact;
+  Ns4NotificationCatalogArtifact: Ns4NotificationCatalogArtifact;
+  Ns4BffContractArtifact: Ns4BffContractArtifact;
+  Ns4L5TodoFrontendArtifact: Ns4L5TodoFrontendArtifact;
+  Ns4L5TodoBackendArtifact: Ns4L5TodoBackendArtifact;
+  Ns4L5ProcessArtifact: Ns4L5ProcessArtifact;
 }

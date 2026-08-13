@@ -226,13 +226,19 @@ test('E2 impact report records changed, new and removed journeys', () => {
   const report = buildNs4E2ImpactReport('buildFlowFsm', previous, [
     { journeyId: 'changedJourney', businessHash: 'sha256:after' },
     { journeyId: 'newJourney', businessHash: 'sha256:new' },
-  ], '2026-08-11T00:00:00.000Z');
+  ], '2026-08-11T00:00:00.000Z', normalizeNs4E2Review({
+    moduleName: 'buildFlowFsm', journeys: [{ journeyId: 'changedJourney', business: {
+      steps: [{ kind: 'locate' }, { kind: 'decide' }],
+    } }],
+  }));
+  assert.equal(report.schemaVersion, '2026-08-13-ns4-e2-impact-report-v2');
   assert.deepEqual(report.changes, [
     { journeyId: 'changedJourney', reason: 'hashDivergent' },
     { journeyId: 'newJourney', reason: 'journeyNew' },
     { journeyId: 'removedJourney', reason: 'journeyRemoved' },
   ]);
   assert.deepEqual(report.affectedSteps, ['e3-access-matrix', 'e4-ontology', 'e5-rules', 'e7-realization']);
+  assert.deepEqual(report.stepKindHistogram, { locate: 1, inspect: 0, act: 0, decide: 1, handoff: 0 });
 });
 
 test('E2 approval advances both pipeline and module to the E3 access matrix', () => {

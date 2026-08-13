@@ -1,0 +1,133 @@
+{
+  "journeys": {
+    "planId": "e2-review",
+    "moduleName": "buildFlowFsm38",
+    "userLanguage": "en",
+    "title": "Journeys",
+    "reviewRound": 1,
+    "features": [{"featureId": "projects", "title": "Projects", "priority": "now"}],
+    "journeys": [
+      {"journeyId": "viewProject", "business": {"actorRef": "supervisor", "prerequisites": [], "entry": {"mode": "coldStart", "carries": []}, "steps": [
+        {"stepId": "locateProject", "kind": "locate", "intent": "Locate a project.", "requiresContext": [], "providesContext": [{"contextId": "selectedProject", "businessObject": "Project", "cardinality": "one", "required": true}], "featureRefs": ["projects"]},
+        {"stepId": "inspectProject", "kind": "inspect", "intent": "Inspect a project.", "requiresContext": ["selectedProject"], "providesContext": [], "featureRefs": ["projects"]}
+      ]}},
+      {"journeyId": "assignTask", "business": {"actorRef": "supervisor", "prerequisites": [], "entry": {"mode": "contextOrLookup", "carries": [{"contextId": "selectedProject", "businessObject": "Project", "cardinality": "one", "required": true}, {"contextId": "selectedAssignee", "businessObject": "Worker", "cardinality": "one", "required": true}]}, "steps": [
+        {"stepId": "locateAssignee", "kind": "locate", "intent": "Locate an assignee.", "requiresContext": [], "providesContext": [{"contextId": "selectedAssignee", "businessObject": "Worker", "cardinality": "one", "required": true}], "featureRefs": ["projects"]},
+        {"stepId": "createTask", "kind": "act", "intent": "Create an assigned task.", "requiresContext": ["selectedProject", "selectedAssignee"], "providesContext": [{"contextId": "createdTask", "businessObject": "WorkTask", "cardinality": "one", "required": true}], "featureRefs": ["projects"]}
+      ]}}
+    ],
+    "systemDecisions": [],
+    "changeSummary": []
+  },
+  "access": {
+    "schemaVersion": "2026-08-10-ns4-access-matrix-v3",
+    "moduleName": "buildFlowFsm38",
+    "userLanguage": "en",
+    "title": "Access",
+    "profiles": [{"profileId": "supervisor", "title": "Supervisor", "kind": "internal", "description": "Supervisor.", "actorRefs": ["supervisor"], "landingIntent": "Open projects."}],
+    "authorities": [
+      {"authorityRef": "build:project-read", "title": "Read projects", "description": "Read projects.", "journeyStepRefs": ["viewProject.locateProject", "viewProject.inspectProject"], "informationNeeds": []},
+      {"authorityRef": "build:task-create", "title": "Create tasks", "description": "Create tasks.", "journeyStepRefs": ["assignTask.locateAssignee", "assignTask.createTask"], "informationNeeds": []}
+    ],
+    "grants": [
+      {"profileRef": "supervisor", "authorityRef": "build:project-read", "reason": "Work.", "dataScope": {"mode": "organization", "description": "Organization."}, "disclosure": {"mode": "fullRecord", "description": "Full.", "allowedInformation": [], "deniedInformation": []}, "useRules": []},
+      {"profileRef": "supervisor", "authorityRef": "build:task-create", "reason": "Work.", "dataScope": {"mode": "organization", "description": "Organization."}, "disclosure": {"mode": "fullRecord", "description": "Full.", "allowedInformation": [], "deniedInformation": []}, "useRules": []}
+    ],
+    "accessHash": "access-hash",
+    "approvedBy": "auto",
+    "approvedAt": "2026-08-13T00:00:00.000Z",
+    "realization": {"status": "useCasesCompiled", "compiledFromAccessHash": "access-hash", "useCaseAuthorityRefs": [
+      {"useCaseId": "locateProject", "authorityRef": "build:project-read", "journeyStepRefs": ["viewProject.locateProject"]},
+      {"useCaseId": "inspectProject", "authorityRef": "build:project-read", "journeyStepRefs": ["viewProject.inspectProject"]},
+      {"useCaseId": "locateAssignee", "authorityRef": "build:task-create", "journeyStepRefs": ["assignTask.locateAssignee"]},
+      {"useCaseId": "createTask", "authorityRef": "build:task-create", "journeyStepRefs": ["assignTask.createTask"]}
+    ], "operationAuthorityRefs": [], "realizationHash": "usecase-access-hash"}
+  },
+  "ontology": {
+    "planId": "e4-ontology-review",
+    "moduleName": "buildFlowFsm38",
+    "userLanguage": "en",
+    "title": "Ontology",
+    "reviewRound": 1,
+    "solutionMode": "new",
+    "businessDomain": "Construction",
+    "relationships": [],
+    "entities": [
+      {"entityId": "Project", "title": "Project", "description": "Project.", "kind": "core", "ownership": "moduleOwned", "sourceRefs": {"journeyIds": ["viewProject"], "featureIds": ["projects"], "authorityRefs": []}, "fields": [
+        {"fieldId": "projectId", "title": "Project ID", "type": "uuid", "required": true, "description": "ID.", "constraints": []},
+        {"fieldId": "name", "title": "Project name", "type": "string", "required": true, "description": "Name.", "constraints": []}
+      ], "lifecycleStates": [], "lifecyclePredicates": [], "useRules": [], "storage": {"target": "moduleDatabase", "scope": "module", "idField": "projectId", "notes": ""}},
+      {"entityId": "Worker", "title": "Worker", "description": "Worker.", "kind": "core", "ownership": "moduleOwned", "sourceRefs": {"journeyIds": ["assignTask"], "featureIds": ["projects"], "authorityRefs": []}, "fields": [
+        {"fieldId": "workerId", "title": "Worker ID", "type": "uuid", "required": true, "description": "ID.", "constraints": []},
+        {"fieldId": "name", "title": "Worker name", "type": "string", "required": true, "description": "Name.", "constraints": []}
+      ], "lifecycleStates": [], "lifecyclePredicates": [], "useRules": [], "storage": {"target": "moduleDatabase", "scope": "module", "idField": "workerId", "notes": ""}},
+      {"entityId": "WorkTask", "title": "Task", "description": "Task.", "kind": "core", "ownership": "moduleOwned", "sourceRefs": {"journeyIds": ["assignTask"], "featureIds": ["projects"], "authorityRefs": []}, "fields": [
+        {"fieldId": "workTaskId", "title": "Task ID", "type": "uuid", "required": true, "description": "ID.", "constraints": []},
+        {"fieldId": "description", "title": "Task description", "type": "text", "required": true, "description": "Description.", "constraints": []}
+      ], "lifecycleStates": ["planned", "completed"], "initialState": "planned", "terminalStates": ["completed"], "lifecyclePredicates": [], "useRules": [], "storage": {"target": "moduleDatabase", "scope": "module", "idField": "workTaskId", "notes": ""}}
+    ],
+    "changeSummary": []
+  },
+  "useCases": [
+    {"schemaVersion": "2026-08-10-ns4-usecase-v3", "moduleName": "buildFlowFsm38", "useCaseId": "locateProject", "title": "Locate project", "kind": "query", "compiledFrom": ["viewProject.locateProject"], "description": "Locate.", "contexts": {"requires": [], "provides": ["selectedProject"]}, "entityRefs": ["Project"], "useRules": [], "transitionRefs": [], "useCaseHash": "uc-locate-project"},
+    {"schemaVersion": "2026-08-10-ns4-usecase-v3", "moduleName": "buildFlowFsm38", "useCaseId": "inspectProject", "title": "Inspect project", "kind": "query", "compiledFrom": ["viewProject.inspectProject"], "description": "Inspect.", "contexts": {"requires": ["selectedProject"], "provides": []}, "entityRefs": ["Project"], "useRules": [], "transitionRefs": [], "useCaseHash": "uc-inspect-project"},
+    {"schemaVersion": "2026-08-10-ns4-usecase-v3", "moduleName": "buildFlowFsm38", "useCaseId": "locateAssignee", "title": "Locate assignee", "kind": "query", "compiledFrom": ["assignTask.locateAssignee"], "description": "Locate.", "contexts": {"requires": [], "provides": ["selectedAssignee"]}, "entityRefs": ["Worker"], "useRules": [], "transitionRefs": [], "useCaseHash": "uc-locate-worker"},
+    {"schemaVersion": "2026-08-10-ns4-usecase-v3", "moduleName": "buildFlowFsm38", "useCaseId": "createTask", "title": "Create task", "kind": "command", "compiledFrom": ["assignTask.createTask"], "description": "Create.", "contexts": {"requires": ["selectedProject", "selectedAssignee"], "provides": ["createdTask"]}, "entityRefs": ["Project", "Worker", "WorkTask"], "useRules": ["taskDescriptionRequired"], "transitionRefs": [], "useCaseHash": "uc-create-task"}
+  ],
+  "workflows": [],
+  "workspaceIndex": {
+    "schemaVersion": "2026-08-13-ns4-workspace-index-v3",
+    "moduleName": "buildFlowFsm38",
+    "userLanguage": "en",
+    "workspaces": [
+      {"workspaceId": "projectWorkspace", "title": "Projects", "kind": "hub", "anchorEntity": "Project", "profileRefs": ["supervisor"], "scenarioIds": ["collection", "record", "detailInspectProject", "formCreateTask"], "artifactPath": "l4/buildFlowFsm38/workspaces/projectWorkspace.defs.ts", "workspaceHash": "project-workspace-hash"},
+      {"workspaceId": "workerWorkspace", "title": "Workers", "kind": "place", "anchorEntity": "Worker", "profileRefs": ["supervisor"], "scenarioIds": ["listLocateAssignee"], "artifactPath": "l4/buildFlowFsm38/workspaces/workerWorkspace.defs.ts", "workspaceHash": "worker-workspace-hash"}
+    ],
+    "hubs": [{"hubId": "projectWorkspace", "anchorEntity": "Project", "workspaceId": "projectWorkspace"}],
+    "menu": {
+      "headerLinks": ["projectWorkspace", "workerWorkspace"],
+      "sections": [{"sectionId": "projects", "label": "Projects", "featureRef": "projects", "items": [{"workspaceId": "projectWorkspace", "hub": "Project"}, {"workspaceId": "workerWorkspace"}]}],
+      "landings": [{"profileRef": "supervisor", "workspaceId": "projectWorkspace", "scenarioId": "collection"}],
+      "edges": [{"from": "workerWorkspace", "to": "projectWorkspace", "carries": ["selectedAssignee"], "preferredFromJourneyRef": "assignTask.locateAssignee"}],
+      "contextCatalog": [
+        {"contextId": "selectedProject", "businessObject": "Project", "cardinality": "one", "required": true, "idFieldRef": "projectId"},
+        {"contextId": "selectedAssignee", "businessObject": "Worker", "cardinality": "one", "required": true, "idFieldRef": "workerId"},
+        {"contextId": "createdTask", "businessObject": "WorkTask", "cardinality": "one", "required": true, "idFieldRef": "workTaskId"}
+      ]
+    },
+    "skeletonHash": "skeleton-hash",
+    "systemDecisions": [],
+    "approvedBy": "auto",
+    "approvedAt": "2026-08-13T00:00:00.000Z"
+  },
+  "workspaces": [
+    {
+      "schemaVersion": "2026-08-13-ns4-workspace-v2", "moduleName": "buildFlowFsm38", "workspaceId": "projectWorkspace", "kind": "hub", "title": "Projects", "description": "Projects.", "anchorEntity": "Project", "profileRefs": ["supervisor"],
+      "pageContext": [{"contextId": "selectedProject", "businessObject": "Project", "cardinality": "one", "required": true, "idFieldRef": "projectId", "urlRole": "path", "urlRoleSource": "hubAnchor", "urlRoleJustification": "Hub identity."}],
+      "scenarios": [
+        {"scenarioId": "collection", "kind": "collection", "title": "Projects", "description": "List.", "stepRefs": ["viewProject.locateProject"], "useCaseIds": ["locateProject"], "authorityRefs": ["build:project-read"], "selectionContexts": [], "organisms": [{"role": "list", "fragmentRef": "Project", "sliceId": "locateProject", "fieldRefs": [{"entityId": "Project", "fieldId": "projectId", "label": ""}, {"entityId": "Project", "fieldId": "name", "label": ""}], "intent": "List."}], "commandInputs": []},
+        {"scenarioId": "record", "kind": "record", "title": "Project", "description": "Record.", "stepRefs": [], "useCaseIds": [], "authorityRefs": [], "selectionContexts": [], "organisms": [], "commandInputs": []},
+        {"scenarioId": "detailInspectProject", "kind": "detail", "title": "Project details", "description": "Inspect.", "stepRefs": ["viewProject.inspectProject"], "useCaseIds": ["inspectProject"], "authorityRefs": ["build:project-read"], "selectionContexts": [], "organisms": [{"role": "detail", "fragmentRef": "Project", "sliceId": "inspectProject", "fieldRefs": [{"entityId": "Project", "fieldId": "name", "label": ""}], "intent": "Inspect."}], "commandInputs": []},
+        {"scenarioId": "formCreateTask", "kind": "form", "title": "Create task", "description": "Create.", "stepRefs": ["assignTask.createTask"], "useCaseIds": ["createTask"], "authorityRefs": ["build:task-create"], "selectionContexts": [{"contextId": "selectedAssignee", "businessObject": "Worker", "cardinality": "one", "required": true, "idFieldRef": "workerId", "urlRole": "selection", "urlRoleSource": "localSelection", "urlRoleJustification": "Picker."}], "organisms": [{"role": "form", "fragmentRef": "WorkTask", "fieldRefs": [{"entityId": "WorkTask", "fieldId": "description", "label": ""}], "intent": "Create."}], "commandInputs": [{"useCaseId": "createTask", "inputs": [
+          {"inputId": "selectedProject", "fieldRef": {"entityId": "Project", "fieldId": "projectId", "label": ""}, "source": "pageContext", "sourceRef": "selectedProject"},
+          {"inputId": "selectedAssignee", "fieldRef": {"entityId": "Worker", "fieldId": "workerId", "label": ""}, "source": "selection", "sourceRef": "locateAssignee"},
+          {"inputId": "description", "fieldRef": {"entityId": "WorkTask", "fieldId": "description", "label": ""}, "source": "userDecision"}
+        ]}]}
+      ],
+      "viewCall": {"uses": [{"sliceId": "locateProject", "useCaseId": "locateProject", "entityRefs": ["Project"]}, {"sliceId": "inspectProject", "useCaseId": "inspectProject", "entityRefs": ["Project"]}, {"sliceId": "locateAssignee", "useCaseId": "locateAssignee", "entityRefs": ["Worker"], "optional": true}]},
+      "commands": ["createTask"], "invalidations": [{"useCaseId": "createTask", "sliceIds": ["locateProject", "inspectProject", "locateAssignee"]}], "skeletonHash": "skeleton-hash", "workspaceHash": "project-workspace-hash"
+    },
+    {
+      "schemaVersion": "2026-08-13-ns4-workspace-v2", "moduleName": "buildFlowFsm38", "workspaceId": "workerWorkspace", "kind": "place", "title": "Workers", "description": "Workers.", "anchorEntity": "Worker", "profileRefs": ["supervisor"], "pageContext": [],
+      "scenarios": [{"scenarioId": "listLocateAssignee", "kind": "list", "title": "Workers", "description": "List.", "stepRefs": ["assignTask.locateAssignee"], "useCaseIds": ["locateAssignee"], "authorityRefs": ["build:task-create"], "selectionContexts": [], "organisms": [{"role": "list", "fragmentRef": "Worker", "sliceId": "locateAssignee", "fieldRefs": [{"entityId": "Worker", "fieldId": "workerId", "label": ""}, {"entityId": "Worker", "fieldId": "name", "label": ""}], "intent": "List."}], "commandInputs": []}],
+      "viewCall": {"uses": [{"sliceId": "locateAssignee", "useCaseId": "locateAssignee", "entityRefs": ["Worker"]}]}, "commands": [], "invalidations": [], "skeletonHash": "skeleton-hash", "workspaceHash": "worker-workspace-hash"
+    }
+  ],
+  "expected": {"hubRecord": "/buildFlowFsm38/projects/:projectId", "forbiddenSegments": [":workerId", ":materialId"], "projectLabel": "Project name"},
+  "notificationPatch": {
+    "context": {"contextId": "selectedInspection", "businessObject": "Inspection", "cardinality": "one", "required": true, "idFieldRef": "inspectionId"},
+    "entity": {"entityId": "Inspection", "title": "Inspection", "description": "Inspection.", "kind": "core", "ownership": "moduleOwned", "sourceRefs": {"journeyIds": ["sendInspection", "openInspection"], "featureIds": ["projects"], "authorityRefs": []}, "fields": [{"fieldId": "inspectionId", "title": "Inspection ID", "type": "uuid", "required": true, "description": "ID.", "constraints": []}], "lifecycleStates": [], "lifecyclePredicates": [], "useRules": [], "storage": {"target": "moduleDatabase", "scope": "module", "idField": "inspectionId", "notes": ""}},
+    "sourceJourney": {"journeyId": "sendInspection", "business": {"actorRef": "supervisor", "prerequisites": [], "entry": {"mode": "coldStart", "carries": []}, "steps": [{"stepId": "handoffInspection", "kind": "handoff", "intent": "Send inspection.", "requiresContext": [], "providesContext": [{"contextId": "selectedInspection", "businessObject": "Inspection", "cardinality": "one", "required": true}], "featureRefs": ["projects"]}]}},
+    "targetJourney": {"journeyId": "openInspection", "business": {"actorRef": "supervisor", "prerequisites": [{"journeyRef": "sendInspection", "required": true, "providesContext": ["selectedInspection"]}], "entry": {"mode": "eventDriven", "carries": [{"contextId": "selectedInspection", "businessObject": "Inspection", "cardinality": "one", "required": true}]}, "steps": [{"stepId": "inspectInspection", "kind": "inspect", "intent": "Open inspection.", "requiresContext": ["selectedInspection"], "providesContext": [], "featureRefs": ["projects"]}]}}
+  }
+}

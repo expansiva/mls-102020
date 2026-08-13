@@ -59,6 +59,7 @@ import {
   applyNs4E2PolicyDecisionImpacts,
   normalizeNs4E2CoverageVerdict,
   resolveNs4E2CoverageFindings,
+  resolveNs4E2CoverageJudgeFailure,
   Ns4E2CoverageVerdict,
   validateNs4E2CoverageVerdict,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageJudge.js';
@@ -67,6 +68,10 @@ import {
   normalizeNs4E2CoveragePatch,
   validateNs4E2CoveragePatch,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageRepair.js';
+import {
+  analyzeNs4E2MechanicalCoverage,
+  NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL,
+} from '/_102020_/l2/agentNewSolution4/steps/e2/coverageSignals.js';
 
 interface Ns4E2Args {
   planId: 'e2-journeys';
@@ -118,6 +123,8 @@ export async function beforeNs4E2PromptStep(
     if (parsed.stage === 'coverageJudge') {
       const draft = await readDraftFromStorage(moduleName);
       if (!draft) throw new Error(`E2 draft not found for coverage judge in ${moduleName}.`);
+      const normalizedDraft = normalizeNs4E2Review(draft, moduleName);
+      const mechanicalCoverage = analyzeNs4E2MechanicalCoverage(normalizedDraft);
       const judgePrompt = await readNs4AgentText('steps/e2', 'coverageJudge');
       return [{
         type: 'prompt_ready',
@@ -132,8 +139,14 @@ export async function beforeNs4E2PromptStep(
           '## Approved E1 coverage contract',
           JSON.stringify(compactE1CoverageContract(moduleArtifact), null, 2),
           '',
+          '## Original module request',
+          pipeline.sourcePrompt,
+          '',
           '## Complete E2 journey draft to judge',
-          JSON.stringify(draft, null, 2),
+          JSON.stringify(normalizedDraft, null, 2),
+          '',
+          '## Mechanical whole-module coverage report',
+          JSON.stringify(mechanicalCoverage, null, 2),
           '',
           `## Required review round\n${reviewRound}`,
         ].join('\n'),
@@ -228,14 +241,18 @@ export async function afterNs4E2PromptStep(
     let review: Ns4E2Review;
     if (args.stage === 'coverageRepair') {
       const round = args.reviewRound || pipeline.steps.e2?.reviewRound || 1;
+      const storedDraft = normalizeNs4E2Review(await readDraftFromStorage(args.moduleName), args.moduleName);
+      const mechanicalCoverage = analyzeNs4E2MechanicalCoverage(storedDraft);
+      const allowNoOp = mechanicalCoverage.findings.some(finding =>
+        finding.signalId === NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL
+      ) && args.coverageIssueIds?.includes(NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL) === true;
       const patch = normalizeNs4E2CoveragePatch(payload, args.moduleName, round);
-      const patchValidation = validateNs4E2CoveragePatch(patch, args.moduleName, round);
+      const patchValidation = validateNs4E2CoveragePatch(patch, args.moduleName, round, allowNoOp);
       if (!patchValidation.ok) {
         return await retryInvalidCoveragePatch(
           context, parentStep, step, hookSequential, args, pipeline, patchValidation.errors,
         );
       }
-      const storedDraft = normalizeNs4E2Review(await readDraftFromStorage(args.moduleName), args.moduleName);
       review = applyNs4E2CoveragePatch(storedDraft, patch);
     } else {
       if (!isRecord(payload) || payload.planId !== 'e2-review') {
@@ -321,11 +338,15 @@ async function afterNs4E2CoverageJudge(
   const coverageRepairAttempt = args.coverageRepairAttempt || 0;
   const judgeParent = findMutableParentStep(context, parentStep);
   const payload = unwrapPayload(step.interaction?.payload?.[0]);
+  const storedDraft = await readDraftFromStorage(args.moduleName);
+  const originalReview = normalizeNs4E2Review(storedDraft, args.moduleName);
+  const mechanicalCoverage = analyzeNs4E2MechanicalCoverage(originalReview);
   const verdict = normalizeNs4E2CoverageVerdict(payload, args.moduleName, round);
-  const validation = validateNs4E2CoverageVerdict(verdict, args.moduleName, round);
+  const validation = validateNs4E2CoverageVerdict(
+    verdict, args.moduleName, round, mechanicalCoverage, originalReview,
+  );
 
   if (!validation.ok) {
-    const message = `Invalid E2 coverage verdict: ${validation.errors.join(' ')}`;
     if (judgeAttempt < MAX_E2_JUDGE_ATTEMPTS) {
       return [
         addStep(context, judgeParent, createNs4E2CoverageJudgeStep(
@@ -346,12 +367,17 @@ async function afterNs4E2CoverageJudge(
         ),
       ];
     }
-    await recordNs4E2Failure(args.moduleName, message);
-    return [updateStatus(context, judgeParent, step, hookSequential, 'failed', message)];
+    const review = resolveNs4E2CoverageJudgeFailure(originalReview);
+    return await continueNs4E2AfterCoverageJudge(
+      context, judgeParent, step, hookSequential, args, pipeline, review,
+      coverageJudgeTraceStep(
+        context, judgeParent, round, coverageRepairAttempt, judgeAttempt,
+        pipeline.presentation.stepTitles['e2-journeys'], { valid: false, errors: validation.errors },
+      ),
+      `E2 decision coverage judge was unavailable after retry; the decision was recorded and the run continued.`,
+    );
   }
 
-  const storedDraft = await readDraftFromStorage(args.moduleName);
-  const originalReview = normalizeNs4E2Review(storedDraft, args.moduleName);
   const knownDecisionIds = new Set(originalReview.journeys.flatMap(journey => journey.policyDecisions.map(decision => decision.decisionId)));
   const unknownImpact = verdict.policyDecisionImpacts.find(impact => !knownDecisionIds.has(impact.decisionId));
   if (unknownImpact) {
@@ -397,15 +423,32 @@ async function afterNs4E2CoverageJudge(
     review = resolveNs4E2CoverageFindings(review, verdict);
   }
 
-  const draftPath = await writeNs4E2Draft(args.moduleName, review);
-  await writeNs4E2VersionedDraft(args.moduleName, review.reviewRound, review);
-  const reviewedPipeline = await requirePipeline(args.moduleName);
-  await writeNs4Pipeline(markNs4E2WaitingHuman(reviewedPipeline, round, draftPath));
   const trace = coverageJudgeTraceStep(
     context, judgeParent, round, coverageRepairAttempt, judgeAttempt,
     pipeline.presentation.stepTitles['e2-journeys'], verdict,
   );
 
+  return continueNs4E2AfterCoverageJudge(
+    context, judgeParent, step, hookSequential, args, pipeline, review, trace,
+  );
+}
+
+async function continueNs4E2AfterCoverageJudge(
+  context: mls.msg.ExecutionContext,
+  judgeParent: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args: Ns4E2Args & { moduleName: string },
+  pipeline: Ns4PipelineState,
+  review: Ns4E2Review,
+  trace: mls.msg.AgentIntentAddStep,
+  statusPrefix = 'E2 coverage reviewed',
+): Promise<mls.msg.AgentIntent[]> {
+  const round = args.reviewRound || pipeline.steps.e2?.reviewRound || 1;
+  const draftPath = await writeNs4E2Draft(args.moduleName, review);
+  await writeNs4E2VersionedDraft(args.moduleName, review.reviewRound, review);
+  const reviewedPipeline = await requirePipeline(args.moduleName);
+  await writeNs4Pipeline(markNs4E2WaitingHuman(reviewedPipeline, round, draftPath));
   if (isFast(context)) {
     const saved = await persistNs4E2(args.moduleName, review, 'auto');
     return [
@@ -413,17 +456,16 @@ async function afterNs4E2CoverageJudge(
       resultStep(context, judgeParent, saved, 'E2 journeys auto-approved'),
       updateStatus(
         context, judgeParent, step, hookSequential, 'completed',
-        `E2 coverage reviewed and ${saved.journeyCount} journeys auto-approved.`, 'input_output',
+        `${statusPrefix} and ${saved.journeyCount} journeys were auto-approved.`, 'input_output',
       ),
     ];
   }
-
   return [
     trace,
     clarificationReviewStep(context, judgeParent, review, pipeline.presentation.stepTitles['e2-journeys']),
     updateStatus(
       context, judgeParent, step, hookSequential, 'completed',
-      `E2 coverage reviewed; human review opened with ${review.systemDecisions.length} assumed decision(s).`, 'input_output',
+      `${statusPrefix}; human review opened with ${review.systemDecisions.length} assumed decision(s).`, 'input_output',
     ),
   ];
 }
@@ -552,7 +594,7 @@ async function persistNs4E2(
   const selections = buildNs4PolicyDecisionSelections(review, requestedSelections, approvedBy, approvedAt);
   const index = buildNs4JourneyIndex(moduleName, review, artifacts, artifactPaths, approvedBy, approvedAt, selections);
   const indexPath = await writeNs4JourneyIndex(moduleName, index);
-  const impactReport = buildNs4E2ImpactReport(moduleName, previousIndex, artifacts, approvedAt);
+  const impactReport = buildNs4E2ImpactReport(moduleName, previousIndex, artifacts, approvedAt, review);
   const impactReportPath = await writeNs4E2ImpactReport(moduleName, impactReport);
   const invalidated = impactReport.changes.length > 0;
   await writeNs4Module(moduleName, markNs4ModuleE2Approved(moduleArtifact, approvedBy, approvedAt, invalidated));

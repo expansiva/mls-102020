@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://collab.codes/schemas/agentNewSolution4/e2-coverage-verdict/2026-08-12-v3",
+  "$id": "https://collab.codes/schemas/agentNewSolution4/e2-coverage-verdict/2026-08-13-v4",
   "type": "object",
   "additionalProperties": false,
   "required": ["planId", "moduleName", "reviewRound", "complete", "summary", "issues", "policyDecisionImpacts"],
   "properties": {
-    "planId": { "const": "e2-coverage-judge" },
+    "planId": { "type": "string", "const": "e2-coverage-judge" },
     "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
     "reviewRound": { "type": "integer", "minimum": 1 },
     "complete": { "type": "boolean" },
@@ -31,8 +31,9 @@
         "required": ["issueId", "severity", "category", "sourceEvidence", "finding", "repairInstruction", "relatedJourneyIds", "question", "alternatives", "defaultChoice"],
         "properties": {
           "issueId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
-          "severity": { "enum": ["blocking", "advisory"] },
+          "severity": { "type": "string", "enum": ["blocking", "advisory"] },
           "category": {
+            "type": "string",
             "enum": [
               "missingJourney",
               "missingActorJourney",
@@ -40,6 +41,7 @@
               "missingContextAcquisition",
               "missingLookupSource",
               "missingOutcomeCoverage",
+              "moduleWithoutDecide",
               "contradictoryScope"
             ]
           },

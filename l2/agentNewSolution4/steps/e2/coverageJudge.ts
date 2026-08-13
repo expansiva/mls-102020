@@ -2,6 +2,10 @@
 
 import type { Ns4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
+import {
+  NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL,
+  Ns4E2MechanicalCoverageReport,
+} from '/_102020_/l2/agentNewSolution4/steps/e2/coverageSignals.js';
 
 export type Ns4E2CoverageCategory =
   | 'missingJourney'
@@ -10,6 +14,7 @@ export type Ns4E2CoverageCategory =
   | 'missingContextAcquisition'
   | 'missingLookupSource'
   | 'missingOutcomeCoverage'
+  | 'moduleWithoutDecide'
   | 'contradictoryScope';
 
 export interface Ns4E2CoverageIssue {
@@ -52,6 +57,7 @@ const CATEGORIES = new Set<Ns4E2CoverageCategory>([
   'missingContextAcquisition',
   'missingLookupSource',
   'missingOutcomeCoverage',
+  'moduleWithoutDecide',
   'contradictoryScope',
 ]);
 
@@ -97,6 +103,8 @@ export function validateNs4E2CoverageVerdict(
   verdict: Ns4E2CoverageVerdict,
   expectedModule: string,
   expectedRound: number,
+  mechanicalCoverage?: Ns4E2MechanicalCoverageReport,
+  review?: Ns4E2Review,
 ): Ns4E2CoverageVerdictValidation {
   const errors: string[] = [];
   if (verdict.moduleName !== expectedModule) errors.push(`moduleName must be ${expectedModule}.`);
@@ -117,7 +125,23 @@ export function validateNs4E2CoverageVerdict(
     if (!issue.defaultChoice) errors.push(`${path}.defaultChoice is required.`);
     if (issue.alternatives.length < 2) errors.push(`${path}.alternatives requires at least two choices.`);
     if (issue.defaultChoice && !issue.alternatives.includes(issue.defaultChoice)) errors.push(`${path}.defaultChoice must be one of alternatives.`);
+    if (issue.category === NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL) {
+      if (issue.issueId !== NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL) errors.push(`${path}.issueId must be moduleWithoutDecide.`);
+      if (issue.severity !== 'blocking') errors.push(`${path}.severity must be blocking for moduleWithoutDecide.`);
+      if (!issue.relatedJourneyIds.length) errors.push(`${path}.relatedJourneyIds must identify the affected journey for moduleWithoutDecide.`);
+      const journeyIds = new Set(review?.journeys.map(journey => journey.journeyId) || []);
+      if (review) issue.relatedJourneyIds.forEach(journeyId => {
+        if (!journeyIds.has(journeyId)) errors.push(`${path}.relatedJourneyIds contains unknown journey ${journeyId}.`);
+      });
+    }
   });
+
+  if (mechanicalCoverage) {
+    const active = mechanicalCoverage.findings.some(finding => finding.signalId === NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL);
+    const matching = verdict.issues.filter(issue => issue.category === NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL);
+    if (active && matching.length !== 1) errors.push('moduleWithoutDecide mechanical signal requires exactly one matching issue.');
+    if (!active && matching.length) errors.push('moduleWithoutDecide issue is not allowed when the module contains a decide step.');
+  }
 
   const blockers = verdict.issues.filter(issue => issue.severity === 'blocking');
   if (verdict.complete && blockers.length) errors.push('complete=true cannot contain blocking issues.');
@@ -154,8 +178,36 @@ export function resolveNs4E2CoverageFindings(
   review: Ns4E2Review,
   verdict: Ns4E2CoverageVerdict,
 ): Ns4E2Review {
-  const resolution = resolveNs4Findings(review, verdict.issues
-    .filter(issue => issue.severity === 'blocking')
+  const moduleWithoutDecide = verdict.issues.find(issue =>
+    issue.severity === 'blocking' && issue.category === NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL
+  );
+  let reviewWithPolicy = review;
+  if (moduleWithoutDecide) {
+    const existingJourneyIds = new Set(review.journeys.map(journey => journey.journeyId));
+    const ownerJourneyId = moduleWithoutDecide.relatedJourneyIds.find(journeyId => existingJourneyIds.has(journeyId));
+    if (ownerJourneyId) {
+      const decision = {
+        decisionId: 'moduleWithoutDecidePolicy',
+        question: moduleWithoutDecide.question,
+        chosen: moduleWithoutDecide.defaultChoice,
+        alternatives: moduleWithoutDecide.alternatives.filter(choice => choice !== moduleWithoutDecide.defaultChoice),
+        impact: moduleWithoutDecide.finding,
+        relatedJourneyIds: moduleWithoutDecide.relatedJourneyIds,
+      };
+      reviewWithPolicy = {
+        ...review,
+        journeys: review.journeys.map(journey => journey.journeyId !== ownerJourneyId ? journey : {
+          ...journey,
+          policyDecisions: [
+            ...journey.policyDecisions.filter(item => item.decisionId !== decision.decisionId),
+            decision,
+          ],
+        }),
+      };
+    }
+  }
+  const resolution = resolveNs4Findings(reviewWithPolicy, verdict.issues
+    .filter(issue => issue.severity === 'blocking' && issue.category !== NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL)
     .map(issue => ({
       classification: 'B' as const,
       findingRef: issue.issueId,
@@ -165,6 +217,30 @@ export function resolveNs4E2CoverageFindings(
       alternatives: issue.alternatives,
       changeHint: issue.repairInstruction,
     })));
+  const byId = new Map(reviewWithPolicy.systemDecisions.map(decision => [decision.decisionId, decision]));
+  resolution.systemDecisions.forEach(decision => byId.set(decision.decisionId, decision));
+  return { ...resolution.artifact, systemDecisions: [...byId.values()] };
+}
+
+export function resolveNs4E2CoverageJudgeFailure(review: Ns4E2Review): Ns4E2Review {
+  const portuguese = review.userLanguage.toLowerCase().startsWith('pt');
+  const resolution = resolveNs4Findings(review, [{
+    classification: 'B' as const,
+    findingRef: `${NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL}.judgeUnavailable`,
+    stage: 'e2',
+    question: portuguese
+      ? 'A necessidade de decisões ou aprovações nas jornadas do módulo foi avaliada nesta versão?'
+      : 'Was the need for decision or approval steps evaluated in this module version?',
+    defaultChoice: portuguese
+      ? 'Não avaliada; as jornadas atuais foram preservadas.'
+      : 'Not evaluated; the current journeys were preserved.',
+    alternatives: [portuguese
+      ? 'Reavaliar a cobertura de decisões em uma nova revisão.'
+      : 'Re-evaluate decision coverage in a new review.'],
+    changeHint: portuguese
+      ? 'Peça uma nova revisão do E2 para avaliar decisões e aprovações.'
+      : 'Request a new E2 review to evaluate decisions and approvals.',
+  }]);
   const byId = new Map(review.systemDecisions.map(decision => [decision.decisionId, decision]));
   resolution.systemDecisions.forEach(decision => byId.set(decision.decisionId, decision));
   return { ...resolution.artifact, systemDecisions: [...byId.values()] };

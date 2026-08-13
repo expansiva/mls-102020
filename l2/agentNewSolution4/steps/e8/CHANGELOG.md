@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-13 — E8 URL-role boundary
+
+- Versioned routed contexts and moved scenario-local selections out of `workspace.pageContext`.
+- Derive hub/external path identities and local picker selections mechanically; reserve only viable
+  focused-context ambiguity for the strict L1 presentation tool.
+- Added one presentation repair followed by non-blocking `selection` fallback with an E8
+  `systemDecision`, structural path/selection gates and route previews in the checkpoint widget.
+- Added a reduced run 38 fixture covering Project path identity plus assignee/material selections,
+  handoff and invalid-L1/default regressions, and the many-cardinality path blocker.
+
 ## 2026-08-12 — run 37 cold-start creation gate
 
 - Restrict `NS4_E8_DECISION_WITHOUT_CONTEXT` to reviews, unknown form contracts and commands that

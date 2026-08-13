@@ -10,12 +10,16 @@ import {
   createNs4E6Step,
   createNs4E7Step,
   createNs4E8Step,
+  createNs4E9Step,
+  createNs4E10Step,
   isNs4Pipeline,
   markNs4E3Approved,
   markNs4E4Approved,
   markNs4E5Approved,
   markNs4E6Approved,
   markNs4E7Approved,
+  markNs4E9Approved,
+  markNs4E10Approved,
   normalizeNs4RootPlan,
   Ns4RootPlan,
   parseNs4Invocation,
@@ -32,6 +36,8 @@ import {
   ns4RulesFile,
   ns4CompositionFile,
   ns4UseCaseIndexFile,
+  ns4NavigationIndexFile,
+  ns4ProcessFile,
   readNs4AgentText,
   readNs4Module,
   readNs4Pipeline,
@@ -78,6 +84,15 @@ import {
   beforeNs4E8ClarificationStep,
   beforeNs4E8PromptStep,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/agentNs4E8.js';
+import {
+  afterNs4E9PromptStep,
+  beforeNs4E9PromptStep,
+} from '/_102020_/l2/agentNewSolution4/steps/e9/agentNs4E9.js';
+import {
+  afterNs4E10PromptStep,
+  beforeNs4E10ClarificationStep,
+  beforeNs4E10PromptStep,
+} from '/_102020_/l2/agentNewSolution4/steps/e10/agentNs4E10.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -93,7 +108,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-50 (2026-08-12) E8 prerequisite context edges';
+export const NS4_AGENT_BUILD = 'build-54 (2026-08-13) deterministic E10 validation and L5 delivery';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -126,6 +141,10 @@ async function beforePromptImplicit(
         .find(completed => completed.stepId === 'e6-behaviors' && completed.status === 'approved');
       const approvedE7 = moduleArtifact?.specStatus.completedSteps
         .find(completed => completed.stepId === 'e7-realization' && completed.status === 'approved');
+      const approvedE9 = moduleArtifact?.specStatus.completedSteps
+        .find(completed => completed.stepId === 'e9-navigation-compiler' && completed.status === 'approved');
+      const approvedE10 = moduleArtifact?.specStatus.completedSteps
+        .find(completed => completed.stepId === 'e10-validation' && completed.status === 'approved');
       if (pipeline.steps.e3?.status !== 'approved' && approvedE3 && ns4FileExists(ns4AccessMatrixFile(existingModule))) {
         pipeline = markNs4E3Approved(
           pipeline,
@@ -165,6 +184,12 @@ async function beforePromptImplicit(
           approvedE7.approvedAt,
         );
       }
+      if (pipeline.steps.e9?.status !== 'approved' && approvedE9 && ns4FileExists(ns4NavigationIndexFile(existingModule))) {
+        pipeline = markNs4E9Approved(pipeline, [`l4/${existingModule}/navigation/index.defs.ts`], approvedE9.approvedAt);
+      }
+      if (pipeline.steps.e10?.status !== 'approved' && approvedE10 && ns4FileExists(ns4ProcessFile(existingModule))) {
+        pipeline = markNs4E10Approved(pipeline, approvedE10.approvedBy, approvedE10.approvedAt);
+      }
       await writeNs4Pipeline(pipeline);
     }
     const action = resolveNs4ExistingAction(true, pipeline, ns4FileExists(ns4ModuleFile(existingModule)));
@@ -177,16 +202,16 @@ async function beforePromptImplicit(
         true,
       )];
     }
-    if (action === 'resume-next' && pipeline?.steps.e8?.status === 'approved') {
+    if (action === 'resume-next' && pipeline?.steps.e10?.status === 'approved') {
       return [await statusTask(
         agent,
         context,
-        `Módulo "${existingModule}": E8 está concluído. O próximo passo é e9-navigation-compiler, ainda não implementado.`,
+        `Módulo "${existingModule}": especificação completa aprovada e pipeline encerrado.`,
         `plan ${existingModule}`,
       )];
     }
     resumeModule = existingModule;
-    resumeTarget = action === 'resume-e1' ? 'e1' : action === 'resume-e8' ? 'e8' : action === 'resume-e7' ? 'e7' : action === 'resume-e6' ? 'e6' : action === 'resume-e5' ? 'e5' : action === 'resume-e4' ? 'e4' : action === 'resume-e3' ? 'e3' : 'e2';
+    resumeTarget = action === 'resume-e1' ? 'e1' : action === 'resume-e10' ? 'e10' : action === 'resume-e9' ? 'e9' : action === 'resume-e8' ? 'e8' : action === 'resume-e7' ? 'e7' : action === 'resume-e6' ? 'e6' : action === 'resume-e5' ? 'e5' : action === 'resume-e4' ? 'e4' : action === 'resume-e3' ? 'e3' : 'e2';
     resumeRound = resumeTarget === 'e7' ? '' : resumeTarget === 'e8' ? String(Math.max(1, pipeline?.steps.e8?.reviewRound || 1)) : resumeTarget === 'e6'
       ? String(Math.max(1, pipeline?.steps.e6?.reviewRound || 1))
       : resumeTarget === 'e5'
@@ -263,6 +288,8 @@ async function beforePromptStep(
   if (planId.startsWith('e8-workspaces-round-') || planId.startsWith('e8-workspaces-finalize-')) {
     return beforeNs4E8PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
+  if (planId === 'e9-navigation-compiler') return beforeNs4E9PromptStep(agent, context, parentStep, step, hookSequential, args);
+  if (planId === 'e10-validation') return beforeNs4E10PromptStep(agent, context, parentStep, step, hookSequential, args);
   return [rootStatus(context, parentStep, step, hookSequential, 'failed', `Unsupported implemented step: ${planId || '(missing)'}`)];
 }
 
@@ -303,6 +330,8 @@ async function afterPromptStep(
   if (planId.startsWith('e8-workspaces-round-') || planId.startsWith('e8-workspaces-finalize-')) {
     return afterNs4E8PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
+  if (planId === 'e9-navigation-compiler') return afterNs4E9PromptStep(agent, context, parentStep, step, hookSequential);
+  if (planId === 'e10-validation') return afterNs4E10PromptStep(agent, context, parentStep, step, hookSequential);
   if (memoryString(context, 'statusOnly') === 'true') {
     const failed = memoryString(context, 'statusOutcome') === 'error';
     return [rootStatus(context, parentStep, step, hookSequential, failed ? 'failed' : 'completed', 'Status task completed.')];
@@ -314,7 +343,7 @@ async function afterPromptStep(
     }
     const resumeModule = memoryString(context, 'resumeModule');
     const resumeTarget = memoryString(context, 'resumeTarget');
-    const planned = resumeModule && (resumeTarget === 'e2' || resumeTarget === 'e3' || resumeTarget === 'e4' || resumeTarget === 'e5' || resumeTarget === 'e6' || resumeTarget === 'e7' || resumeTarget === 'e8')
+    const planned = resumeModule && (resumeTarget === 'e2' || resumeTarget === 'e3' || resumeTarget === 'e4' || resumeTarget === 'e5' || resumeTarget === 'e6' || resumeTarget === 'e7' || resumeTarget === 'e8' || resumeTarget === 'e9' || resumeTarget === 'e10')
       ? buildNs4ResumeSteps(plan, resumeModule, resumeTarget, normalizeResumeRound(memoryString(context, 'resumeRound')))
       : buildNs4PlannedSteps(plan);
     return planned.map(plannedStep => ({
@@ -360,6 +389,9 @@ async function beforeClarificationStep(
   if (parsed?.planId === 'e8-skeleton-review') {
     return beforeNs4E8ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);
   }
+  if (parsed?.planId === 'e10-final-review') {
+    return beforeNs4E10ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);
+  }
   return beforeNs4E1ClarificationStep(agent, context, parentStep, step, hookSequential, json);
 }
 
@@ -371,7 +403,7 @@ export function getNs4RootPlan(context: mls.msg.ExecutionContext, rootHint?: mls
 function buildNs4ResumeSteps(
   plan: Ns4RootPlan,
   moduleName: string,
-  target: 'e2' | 'e3' | 'e4' | 'e5' | 'e6' | 'e7' | 'e8',
+  target: 'e2' | 'e3' | 'e4' | 'e5' | 'e6' | 'e7' | 'e8' | 'e9' | 'e10',
   reviewRound: number,
 ): mls.msg.AIAgentStep[] {
   const all = buildNs4PlannedSteps(plan);
@@ -386,6 +418,15 @@ function buildNs4ResumeSteps(
       createNs4E8Step(moduleName, reviewRound, '', [], plan.presentation.stepTitles['e8-workspaces']),
       ...all.slice(9),
     ];
+  }
+  if (target === 'e9') {
+    return [
+      createNs4E9Step(moduleName, [], plan.presentation.stepTitles['e9-navigation-compiler']),
+      ...all.slice(10),
+    ];
+  }
+  if (target === 'e10') {
+    return [createNs4E10Step(moduleName, [], plan.presentation.stepTitles['e10-validation'])];
   }
   if (target === 'e6') {
     return [

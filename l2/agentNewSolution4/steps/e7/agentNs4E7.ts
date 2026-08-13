@@ -36,6 +36,9 @@ import {
 } from '/_102020_/l2/agentNewSolution4/steps/e7/gate.js';
 import { createNs4E7LifecycleResolutionReview } from '/_102020_/l2/agentNewSolution4/steps/e7/lifecycleResolution.js';
 import type { Ns4E7LifecycleResolutionEvent, Ns4E7LifecycleResolutionReview } from '/_102020_/l2/agentNewSolution4/steps/e7/lifecycleResolution.js';
+import {
+  isNs4E7ValidationReport, mergeNs4E7ValidationAttempts, NS4_E7_VALIDATION_REPORT_VERSION,
+} from '/_102020_/l2/agentNewSolution4/steps/e7/validationReport.js';
 
 interface Ns4E7Args {
   planId: 'e7-realization';
@@ -57,7 +60,7 @@ interface Ns4E7Bundle extends Ns4E7Sources {
 const MAX_REPAIR_ROUNDS = 1;
 
 interface Ns4E7ValidationReport {
-  schemaVersion: '2026-08-12-ns4-e7-validation-report-v4';
+  schemaVersion: typeof NS4_E7_VALIDATION_REPORT_VERSION;
   moduleName: string;
   attempts: Array<{ round: number; checkedAt: string; valid: number; invalid: number;
     results: Array<{ useCaseId: string; status: 'valid' | 'invalid' | 'missing'; issues: Ns4E7GateIssue[] }>;
@@ -510,17 +513,15 @@ async function updateValidationReport(
   const previous = round > 0 ? await readValidationReport(moduleName) : null;
   const attempt = { round, checkedAt: now, valid: results.filter(result => result.status === 'valid').length,
     invalid: results.filter(result => result.status !== 'valid').length, results, lifecycleIssues };
-  const attempts = [...(previous?.attempts || []).filter(item => item.round !== round), attempt]
-    .sort((left, right) => left.round - right.round);
+  const attempts = mergeNs4E7ValidationAttempts(previous?.attempts || [], attempt);
   await writeNs4E7ValidationReport(moduleName, {
-    schemaVersion: '2026-08-12-ns4-e7-validation-report-v4', moduleName, attempts, finalStatus, updatedAt: now,
+    schemaVersion: NS4_E7_VALIDATION_REPORT_VERSION, moduleName, attempts, finalStatus, updatedAt: now,
   } satisfies Ns4E7ValidationReport);
 }
 
 async function readValidationReport(moduleName: string): Promise<Ns4E7ValidationReport | null> {
   const parsed = parse(await readNs4Text(ns4E7ValidationReportFile(moduleName), false));
-  if (!isRecord(parsed) || parsed.schemaVersion !== '2026-08-12-ns4-e7-validation-report-v3'
-    || parsed.moduleName !== moduleName || !Array.isArray(parsed.attempts)) return null;
+  if (!isNs4E7ValidationReport(parsed, moduleName)) return null;
   return parsed as unknown as Ns4E7ValidationReport;
 }
 

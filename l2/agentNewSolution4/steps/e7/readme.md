@@ -4,6 +4,8 @@ E7 is an automated compiler after the sixth and final product-design clarificati
 ids into stable N→1 use cases, details each use case with a `parallel_dynamic` reasoning worker, runs a
 deterministic targeted repair for invalid drafts, derives lifecycle workflows and emits permanent typed
 L4 contracts.
+The versioned validation report is append-by-round: a targeted repair preserves every earlier finding
+for audit, while replaying the same round replaces only that round instead of duplicating it.
 Each worker uses the strict internal `{type:"flexible",result:{…}}` envelope, avoiding a temporary
 failure state when its artifact is healthy.
 

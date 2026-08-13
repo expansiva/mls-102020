@@ -45,11 +45,12 @@ export function validateNs4E2CoveragePatch(
   patch: Ns4E2CoveragePatch,
   expectedModule: string,
   expectedRound: number,
+  allowNoOp = false,
 ): Ns4E2CoveragePatchValidation {
   const errors: string[] = [];
   if (patch.moduleName !== expectedModule) errors.push(`moduleName must be ${expectedModule}.`);
   if (patch.reviewRound !== expectedRound) errors.push(`reviewRound must be ${expectedRound}.`);
-  if (!patch.journeyUpserts.length && !patch.featureUpserts.length) {
+  if (!allowNoOp && !patch.journeyUpserts.length && !patch.featureUpserts.length) {
     errors.push('At least one journeyUpsert or featureUpsert is required.');
   }
   checkUniqueIds(patch.journeyUpserts.map(item => item.journeyId), 'journeyUpserts', errors);

@@ -1,5 +1,10 @@
 # E2 changelog
 
+- 2026-08-13: Added the evidence-backed whole-module `moduleWithoutDecide` coverage signal. Code
+  records the complete step-kind histogram, sends S1 plus the original request to the existing judge,
+  reuses the single semantic repair, and turns a surviving choice into a visible journey
+  `policyDecision`. A failed decision-coverage judgment records a system decision and continues.
+
 - 2026-08-12: Restored the documented `/fast` behavior after the coverage judge: E2 persists the
   gated draft and its generated policy choices as an automatic approval instead of unconditionally
   opening the journey clarification. The judge and both repair budgets remain unchanged.

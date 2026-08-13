@@ -11,6 +11,7 @@ import {
   normalizeNs4E2CoverageVerdict,
   validateNs4E2CoverageVerdict,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageJudge.js';
+import { analyzeNs4E2MechanicalCoverage } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageSignals.js';
 
 interface CliArgs {
   project: number;
@@ -188,6 +189,9 @@ async function judgeExistingDraft(
   promptTemplate: string,
 ): Promise<void> {
   const draft = JSON.parse(await readFile(path.join(moduleDir, 'pipeline/e2-journeys.draft.json'), 'utf8'));
+  const normalizedDraft = normalizeNs4E2Review(draft, args.moduleName);
+  const mechanicalCoverage = analyzeNs4E2MechanicalCoverage(normalizedDraft);
+  const pipeline = JSON.parse(await readFile(path.join(moduleDir, 'pipeline/pipeline.json'), 'utf8')) as { sourcePrompt?: unknown };
   const model = parseModelType(promptTemplate);
   const config = await loadLlmConfig();
   const response = await callCollabLlm(config, {
@@ -197,8 +201,14 @@ async function judgeExistingDraft(
       '## Approved E1 product contract',
       JSON.stringify(moduleArtifact, null, 2),
       '',
+      '## Original module request',
+      typeof pipeline.sourcePrompt === 'string' ? pipeline.sourcePrompt : '',
+      '',
       '## Complete E2 journey draft to judge',
-      JSON.stringify(draft, null, 2),
+      JSON.stringify(normalizedDraft, null, 2),
+      '',
+      '## Mechanical whole-module coverage report',
+      JSON.stringify(mechanicalCoverage, null, 2),
       '',
       `## Required review round\n${draft.reviewRound || 1}`,
     ].join('\n'),
@@ -206,7 +216,9 @@ async function judgeExistingDraft(
   const parsed = parseJsonContent(response.choices?.[0]?.message?.content);
   const payload = isRecord(parsed) && parsed.type === 'flexible' ? parseJsonContent(parsed.result) : parsed;
   const verdict = normalizeNs4E2CoverageVerdict(payload, args.moduleName, draft.reviewRound || 1);
-  const validation = validateNs4E2CoverageVerdict(verdict, args.moduleName, draft.reviewRound || 1);
+  const validation = validateNs4E2CoverageVerdict(
+    verdict, args.moduleName, draft.reviewRound || 1, mechanicalCoverage, normalizedDraft,
+  );
   if (!validation.ok) throw new Error(`Invalid coverage verdict: ${validation.errors.join(' ')}`);
   process.stdout.write(`${JSON.stringify({
     ok: true,

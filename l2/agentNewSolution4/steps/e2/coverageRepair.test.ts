@@ -42,6 +42,7 @@ test('E2 coverage patch replaces named contracts, appends new contracts and pres
 test('E2 coverage patch rejects empty and duplicate upserts', () => {
   const empty = normalizeNs4E2CoveragePatch({}, 'buildFlowFsm', 1);
   assert.equal(validateNs4E2CoveragePatch(empty, 'buildFlowFsm', 1).ok, false);
+  assert.equal(validateNs4E2CoveragePatch(empty, 'buildFlowFsm', 1, true).ok, true);
 
   const duplicate = normalizeNs4E2CoveragePatch({
     moduleName: 'buildFlowFsm', reviewRound: 1,

@@ -1,5 +1,9 @@
 # Changelog
 
+- 2026-08-13: Run 38 fixes the E7 validation-report reader/writer schema mismatch (`v3` reader versus
+  `v4` writer). Both now use one constant, and round merge preserves prior findings while replacing
+  only a replay of the same round; reduced two-round fixture and regression tests added.
+
 - 2026-08-12: Run 36 aligns lifecycle shrink and gate on one reachability function. Shrink now reaches
   a fixed point, records cascading state and dormant-predicate decisions, and omits transitionless
   workflows with explicit evidence while retaining the post-resolution invariant throw.

@@ -1,8 +1,8 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-12-ns4-flow-v30",
-  "status": "e1-e8",
-  "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
+  "schemaVersion": "2026-08-13-ns4-flow-v32",
+  "status": "e1-e10",
+  "description": "Localized, dependency-driven compiler for permanent L4 product contracts and deterministic L5 delivery contracts.",
   "canonicalReferences": [
     "mls-base/skills/collab_messages.md",
     "mls-base/skills/agentsBestPractices.md",
@@ -26,6 +26,7 @@
     "A human policy selection different from the generated choice always starts a complete next-round E2 rewrite. A deterministic honor gate rejects a rewritten draft that does not make each selected choice its chosen value.",
     "E2 linear steps cannot combine creation and maintenance when their context preconditions differ; the judge requires separate outcome journeys and repair instructions are placed after the complete draft.",
     "E2 semantic coverage receives at most one focused patch repair. Remaining coverage bifurcations become recorded system decisions using the behavior already implicit in the generated draft, and the human review opens without failing the task.",
+    "After the E2 structural gate passes, code computes the complete module step-kind histogram. The evidence-backed moduleWithoutDecide signal is sent to the existing coverage judge, may consume the same single semantic repair, and never becomes a blocking gate; a surviving signal becomes a visible journey policy decision.",
     "E1 preserves its full reviewed contract, supports repeated prompt-driven revisions and only unlocks compilation after the rich deterministic gate passes.",
     "E2 through E6 approval callbacks persist their already-gated permanent review artifacts before adding the result anchor; E7 is an automated compiler after the sixth checkpoint.",
     "Every implemented compile step writes a permanent L4 artifact and a stable result anchor.",
@@ -53,14 +54,24 @@
         "E7 compiles only lifecycle states reachable through approved journey transitions. Build and gate share one reachability definition; shrink iterates to a fixed point, removes transitions whose sources disappear, records every removed state and newly dormant predicate as a system decision with an operateState alternative, omits workflows with no remaining transition, and never mutates the approved E4 ontology.",
     "Use cases do not copy E3 actors, authorities or scopes and do not prescribe ports, repositories, storage routing or backend architecture. E3 owns authorization and E8 owns channel integration.",
     "E8 derives workspace partition, page context, slices, invalidations, hub candidacy and navigation candidates from approved L4 contracts; its LLM calls may only localize presentation and select a closed surface catalog.",
+    "E8 classifies every exposed context as URL path identity or local screen selection. Hub anchors and external handoff/event inputs are mechanical path contexts; local picker/slice contexts are mechanical selections; only viable focused-scenario ambiguities are decided by the existing presentation call, with selection as the recorded fallback.",
     "E8 has one human checkpoint for the frozen skeleton. Its workspace-detail fan-out is bounded to 20 workers, validates each worker independently, and writes permanent typed workspace artifacts plus a workspace index.",
-    "An E8 review submission becomes locally read-only before dispatch, and approval is idempotent by the stable workspace-detail planId; a repeated or late callback cannot enqueue a second fan-out or finalizer for the same review round."
+    "An E8 review submission becomes locally read-only before dispatch, and approval is idempotent by the stable workspace-detail planId; a repeated or late callback cannot enqueue a second fan-out or finalizer for the same review round.",
+    "E9 is a zero-LLM deterministic compiler. It reads only approved E2-E8 permanent artifacts, validates navigation reachability and context provenance, and emits typed BFF contracts, route/store/notification contracts plus realized operation authorities without a checkpoint.",
+    "E9 compiles URL segments only from E8 urlRole=path contexts. Workspace page context owns place identity, focused scenario path context owns the optional item segment, and selection contexts never enter a route.",
+    "Every E9 structural finding is Type A. A failed compile persists the pipeline error and returns repair ownership to E8; E9 never weakens navigation, field or workflow gates and never emits a partial approval anchor.",
+    "E9 emissions are canonical and timestamp-free. Identical approved E8/E7/E4/E3 inputs produce byte-identical typed defs on every run.",
+    "E10 first validates the complete saved L4 graph and emits no L5 delivery when a blocking check fails. Resolution, journey reachability, decision coherence, compiled workflow health and source-hash staleness are deterministic errors with an explicit owning repair step.",
+    "E10 disclosure and dormant-command checks are registrars. Disclosure never compares E3 prose with field ids; dormant commands remain visible and produce an auditable system decision naming their missing compiled transition evidence.",
+    "E10 writes an additive l5/config.json module-navigation seed, frontend/backend owner queues and a stable process record only after validate-all passes. Existing unrelated config keys, projects and modules are preserved.",
+    "The E10 final checkpoint is read-only: it previews validation, menu, counts and the consolidated decisions from E2, E7, E8 and E10. Human approval is the only transition that marks the module artifact complete and pipeline status complete.",
+    "A final rejection records the selected owning repair step, marks that step and every downstream compiled step stale, and leaves the permanent validation report and L5 delivery available for audit."
   ],
   "invocation": {
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v24-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
+    "resumeRule": "A v32-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",
@@ -94,7 +105,17 @@
     "workspaceDetailDraft": "l4/{module}/pipeline/e8-workspaces/{workspaceId}.draft.json",
     "workspaceValidationReport": "l4/{module}/pipeline/e8-validation-report.json",
     "workspace": "l4/{module}/workspaces/{workspaceId}.defs.ts",
-    "workspaceIndex": "l4/{module}/workspaces/index.defs.ts"
+    "workspaceIndex": "l4/{module}/workspaces/index.defs.ts",
+    "navigationIndex": "l4/{module}/navigation/index.defs.ts",
+    "navigationStore": "l4/{module}/navigation/store.defs.ts",
+    "notifications": "l4/{module}/navigation/notifications.defs.ts",
+    "workspaceContract": "l4/{module}/contracts/{workspaceId}.{function}.defs.ts",
+    "realizedAccessMatrix": "l4/{module}/access/access-matrix.defs.ts",
+    "finalValidationReport": "l4/{module}/pipeline/e10-validation-report.json",
+    "l5Config": "l5/config.json",
+    "todoFrontend": "l5/{module}/todoFrontend.defs.ts",
+    "todoBackend": "l5/{module}/todoBackend.defs.ts",
+    "process": "l5/{module}/process.defs.ts"
   },
   "orchestration": {
     "rootOutput": ["validPrompt", "userPrompt", "presentation.userLanguage", "presentation.stepTitles", "clarification"],
@@ -118,13 +139,15 @@
       "e7-realization",
       "e7-result",
       "e8-workspaces",
-      "e8-result"
-    ],
-    "roadmap": [
+      "e8-result",
       "e9-navigation-compiler",
-      "e10-validation"
+      "e9-result",
+      "e10-validation",
+      "e10-final-review",
+      "e10-result"
     ],
-    "roadmapExecution": "E9 and later steps remain visible waiting_dependency/manual_later nodes until their implementations are delivered."
+    "roadmap": [],
+    "roadmapExecution": "E1 through E10 are implemented. A successful E10 compile opens the final human checkpoint; approval completes the pipeline."
   },
   "steps": [
     {
@@ -156,6 +179,7 @@
       "goal": "Generate, adjust and approve permanent connected business journeys.",
       "output": [
         "l4/{module}/pipeline/e2-journeys.draft.json",
+        "l4/{module}/pipeline/e2-impact-report.json",
         "l4/{module}/journeys/{journeyId}.defs.ts",
         "l4/{module}/journeys/index.defs.ts"
       ],
@@ -169,12 +193,15 @@
         "A structurally valid draft is not shown immediately: an independent reasoning-model judge compares all E1 actors, capabilities, screen intents and outcomes with E2.",
         "The generated candidate uses an internal flexible payload so it cannot flash as a human clarification before gate and judge approval.",
         "The coverage judge rejects missing recipient journeys, orphan user outcomes, raw-id risks and human-selectable references without named context acquisition or a credible lookup source.",
+        "The runtime sends the original sourcePrompt plus a mechanical whole-module step-kind histogram to the judge. Only moduleWithoutDecide is active: decide=0 requires one business-language coverage issue; decide>=1 suppresses that signal.",
         "One complete-draft semantic repair is allowed independently of structural repair. After that single attempt, remaining semantic coverage findings become system decisions whose defaultChoice is the behavior already implicit in the generated draft.",
+        "A surviving moduleWithoutDecide issue is recorded on the judge-selected existing journey as a policyDecision whose chosen value preserves the current no-decision behavior and whose alternatives remain selectable in the existing checkpoint. It is excluded from systemDecision conversion.",
+        "If the judge is unavailable, omits an active moduleWithoutDecide signal or returns another invalid response, one retry remains allowed; exhaustion records a localized systemDecision that decision coverage was not evaluated and continues to the normal checkpoint instead of failing the task.",
         "An invalid judge envelope is retried once. Compact judge results remain in the task trace after large LLM interactions are cleaned.",
         "Every structurally valid draft opens the 👤 widget after the judge round unless /fast is active. Judged-complete is not a prerequisite; assumed decisions are shown read-only in a collapsed Decisões assumidas section. In /fast, the same generated choices and system decisions are persisted automatically after gate and judge without creating the clarification widget.",
         "Generation declares journey policy decisions before journeys and never supplies impact; the independent judge is the only stage that may add decision impact and related journeys.",
         "Selecting an alternative or requesting free-text changes preserves the current versioned draft, starts a full replacement round, and passes the deterministic selected-choice honor gate before the widget can reopen.",
-        "Approval persists every decision selection, including unchanged generated choices, in the journey index. A deterministic E2 impact report records downstream E3-E7 contracts made stale by changed, added or removed journeys.",
+        "Approval persists every decision selection, including unchanged generated choices, in the journey index. A deterministic E2 impact report records the full step-kind histogram and downstream E3-E7 contracts made stale by changed, added or removed journeys.",
         "Prerequisite handoffs use stable context ids exported by the referenced journey.",
         "contextRequired, contextOrLookup and eventDriven declare at least one required entry context; coldStart declares no required entry context.",
         "contextOrLookup includes an explicit locate fallback for every required carried context; optional handoffs may enrich the journey but cannot be an unconditional requiresContext unless an earlier step produces them.",
@@ -325,6 +352,7 @@
         "The gate validates descriptions, exact E2 contexts, E4 entity refs, existing E5 ids and valid lifecycle transitions; field selection and persistence are not part of the use-case contract.",
         "Actors, authorities and scopes remain in E3; inputs, outputs, errors, pagination, selection, projections and route binding remain in E8 or downstream generation; ports, transactions and adapters are implementation choices.",
         "A deterministic finalizer records every gate issue in e7-validation-report.json, repairs only invalid or missing use cases once, derives workflows, writes typed permanent artifacts and advances to E8.",
+        "The E7 validation report reader and writer share one schema-version constant. Every finalizer merges its round by round number, preserving earlier findings and replacing only a replay of the same round, so bounded repairs remain auditable.",
         "Workflow finalization requires a workflow only for lifecycles with an intermediate state outside initialState and terminalStates; binary inactivation or reversal flags remain valid without one.",
         "A missing workflow suppresses same-entity unreachable and predicate findings. Predicate reachability includes initialState and transition targets.",
         "Lifecycle findings default to shrinkLifecycle in workflow compilation only and are persisted with operateState as an alternative. Fixed-point cascade decisions and evidence-backed workflow omission are passed to the unchanged post-resolution gate; a gate failure after resolution remains a terminal Type A invariant assertion. These findings never trigger an LLM retry or a mandatory human checkpoint.",
@@ -350,15 +378,80 @@
       "gate": "steps/e8/gate.ts",
       "runtimeNotes": [
         "Code derives the complete workspace partition, context catalog, hub ranking, candidate edges, hosted use cases and scenario ids from approved E2 through E7 artifacts. Candidate edges include both adjacent steps within one journey and exact cross-journey handoffs declared by E2 prerequisites[].providesContext; no context edge is inferred from labels or entity names.",
-        "One small reasoning call may localize labels, group already-derived workspaces under existing E2 features, order menu items and select only queueAction, contextualModal or batchAction surfaces; it cannot create, remove or rename structural ids.",
-        "The skeleton gate requires total use-case coverage, non-empty workspaces, resolvable declared page context, collection and record scenarios for a hub, reachable FSM evidence for queues and at most seven menu items per section. A review or a form whose command declares contexts.requires must have a frozen slice or page context; a recognized context-free command with contexts.requires=[], including a cold-start creation, may collect new values without a pre-existing record. Empty menu sections are corrected by the mechanical grouping phase and remain visible as NS4_E8_MENU_EMPTY recorder warnings if encountered.",
-        "The human checkpoint reviews the map: header links, feature menu, workspaces, scenarios, profiles and context-carrying candidate edges. A requested change starts the next skeleton round.",
+        "One strict-tool reasoning call may localize labels, group already-derived workspaces under existing E2 features, order menu items, select only queueAction, contextualModal or batchAction surfaces, and classify only the mechanically declared ambiguous scenario contexts as path or selection. It cannot create, remove or rename structural ids or contexts.",
+        "An invalid presentation or missing ambiguous urlRole receives one bounded repair. If it remains invalid, E8 applies the mechanical selection default, records one E8 systemDecision per unresolved classification and continues to the checkpoint; presentation variance never fails the run.",
+        "Workspace pageContext contains only path-role place identity: the hub anchor plus externally carried handoff, notification or event context. Scenario selectionContexts retain focused-record context at scenario scope; selection-role contexts require a local picker slice or declared form input, while path-role focused context becomes the future scenario item segment.",
+        "The skeleton gate requires total use-case coverage, non-empty workspaces, resolvable path id fields with cardinality one, locally resolvable selections, collection and record scenarios for a hub, reachable FSM evidence for queues and at most seven menu items per section. A review or a form whose command declares contexts.requires must have a frozen slice, scenario context or workspace page context; a recognized context-free command with contexts.requires=[], including a cold-start creation, may collect new values without a pre-existing record. Empty menu sections are corrected by the mechanical grouping phase and remain visible as NS4_E8_MENU_EMPTY recorder warnings if encountered.",
+        "The human checkpoint reviews the map: URL previews, urlRole choices with business justifications, header links, feature menu, workspaces, scenarios, profiles and context-carrying candidate edges. A requested change starts the next skeleton round.",
         "The review widget disables all submission controls synchronously. Before an approved skeleton dispatches workers, the hook also checks the task tree for the stable e8-workspaces-round-{reviewRound}-details-0 planId; if it already exists, the callback only reconciles the clarification status and does not add another fan-out or finalizer.",
         "After approval, one dynamic worker per workspace returns organisms, ontology field projections and command inputs. Each worker is isolated and receives at most one targeted repair round; maxParallel is 20.",
         "Workers cannot change the frozen skeleton. The deterministic detail gate rejects unknown fields, slice/entity drift and unresolved pageContext or selection input. A fieldsOnly projection is recorded once per workspace and authority as a Type B system decision because E3 allowedInformation is prose; the backend continues enforcing the approved E3 projection and no text-to-field heuristic is attempted.",
         "Every finalizer round persists the complete per-workspace findings, including passing results, in e8-validation-report.json. After the bounded worker repair, remaining findings pass through helpers/ns4Resolve.ts: deterministic Type C patches and Type B decisions continue, while only irrecoverable Type A findings fail after the report is durable.",
         "Hub ranking excludes platform-owned external entities by ontology ownership/storage markers rather than by entity name.",
         "The finalizer stamps picker use, derives command invalidations from command/slice entity intersections and writes typed workspace defs plus index with durable system decisions. E9 owns route and global navigation compilation."
+      ]
+    },
+    {
+      "planId": "e9-navigation-compiler",
+      "type": "deterministic-compiler",
+      "dependsOn": ["e8-result"],
+      "goal": "Type-check the approved workspace graph and emit canonical navigation, notification, BFF and access-realization contracts.",
+      "input": [
+        "approved l4/{module}/workspaces/index.defs.ts and workspace defs",
+        "approved journeys, access, ontology, use cases and compiled workflows"
+      ],
+      "output": [
+        "l4/{module}/contracts/{workspaceId}.{function}.defs.ts",
+        "l4/{module}/navigation/index.defs.ts",
+        "l4/{module}/navigation/store.defs.ts",
+        "l4/{module}/navigation/notifications.defs.ts",
+        "realized l4/{module}/access/access-matrix.defs.ts"
+      ],
+      "outputAnchor": "e9-result",
+      "gate": "steps/e9/gate.ts",
+      "runtimeNotes": [
+        "beforePromptStep performs the entire compile and returns completed or failed status; E9 never emits prompt_ready and afterPromptStep is an invariant failure path.",
+        "The compiler validates path and selection provenance, actor-compatible edges, real carried-context providers, actor journey reachability and queue evidence against compiled E7 workflows.",
+        "Hub collection and record routes, nested place routes, focused scenario routes and standalone routes are derived from stable workspace/scenario ids and E8 urlRole decisions. URL path ids hydrate first; the per-tab store is only a cache.",
+        "Handoff and eventDriven delivery is compiled into notifications with receiver profile, carried context and a route-backed deep link. Notification delivery is not kept as a navigation edge.",
+        "One view contract per workspace plus one command contract per hosted command records exact typed inputs, projected outputs, business errors, source metadata, routePattern, skeletonHash and workspaceHash. Missing ontology field refs are terminal; json fields become unknown with a warning.",
+        "Empty organism labels resolve from the approved E4 field title. A missing title records a non-blocking warning without inventing localized text.",
+        "Access realization maps every emitted operation route to its exact E3 authority refs through frozen scenario step/use-case ownership.",
+        "All emitted arrays and file order are stable, hashes are source hashes only, and no generated timestamp is written, making a no-change rerun byte-identical.",
+        "Any gate failure marks pipeline.steps.e9 failed with repairStep=e8-workspaces and does not add e9-result. A successful compile atomically advances module/pipeline ownership to E10."
+      ]
+    },
+    {
+      "planId": "e10-validation",
+      "type": "deterministic-validate-deliver-human-checkpoint",
+      "dependsOn": ["e9-result"],
+      "goal": "Validate the complete approved L4 graph, emit additive L5 delivery contracts and obtain final human approval.",
+      "input": [
+        "approved E2 through E9 permanent L4 artifacts",
+        "current l5/config.json when present"
+      ],
+      "output": [
+        "l4/{module}/pipeline/e10-validation-report.json",
+        "l5/config.json",
+        "l5/{module}/todoFrontend.defs.ts",
+        "l5/{module}/todoBackend.defs.ts",
+        "l5/{module}/process.defs.ts"
+      ],
+      "outputAnchor": "e10-result",
+      "gate": "steps/e10/gate.ts",
+      "runtimeNotes": [
+        "beforePromptStep performs validate-all and L5 compilation without an LLM. afterPromptStep is an invariant failure path.",
+        "The validate-all gate recompiles E9 in memory from current approved sources, runs the E9 structural gate, compares saved E9 outputs and verifies every cited business, ontology, rules, access, skeleton and workspace hash.",
+        "Decision coherence relates approved policy selections and system decisions to their named journeys. A confidently classified no-approval choice cannot coexist with a decide/review realization; an approval-required choice must have one.",
+        "Compiled workflows must contain only states reachable from initialState. Queue evidence is checked only against those workflows, never raw E4 lifecycle states.",
+        "A fieldsOnly disclosure is reported with its E8 system decision when present and as a non-blocking registrar gap when absent. No prose-to-field comparison exists.",
+        "A command whose E7 transitionRefs are absent from the compiled workflow set emits one deterministic E10 systemDecision and remains in the workspace contract.",
+        "Only orphan slices, json/unknown projections and menu sections exactly at the configured limit are warnings. A missing E4 field title is carried as a non-blocking registrar to preserve the E9 contract.",
+        "Blocking validation persists the report, marks its earliest owning step stale and does not write or update L5 files.",
+        "The L5 config merger updates only the current module navigation/headerLinks in an existing client project or top-level module seed. Unrelated keys and modules are preserved; identical inputs produce byte-identical config JSON.",
+        "Frontend owners are stable workspace and contract ids with statusFrontend=toCreate. Backend owners are stable E7 use-case ids with statusBackend=toCreate. The process record carries source hashes, counts and report summary without a wall-clock timestamp.",
+        "A passed compile opens the e10-final-review clarification with only a small disk-backed handoff. The widget reads the permanent report, previews general versus hub navigation by profile and shows every consolidated decision read-only.",
+        "Approval adds e10-result before completing the clarification and marks module/pipeline complete. Rejection records a chosen E2-E9 repair owner and marks that owner plus downstream stages stale for a later resume."
       ]
     }
   ]

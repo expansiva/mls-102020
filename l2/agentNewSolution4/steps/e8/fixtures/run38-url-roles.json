@@ -1,0 +1,43 @@
+{
+  "moduleName": "buildFlowFsm38",
+  "journeys": [
+    {
+      "journeyId": "locateAssignees",
+      "business": {"actorRef": "manager", "entry": {"mode": "coldStart", "carries": []}, "steps": [{"stepId": "locateAssignee", "kind": "locate", "intent": "Localizar responsável.", "requiresContext": [], "providesContext": [{"contextId": "selectedAssignee", "businessObject": "Worker", "cardinality": "one", "required": true}], "featureRefs": ["projects"]}]}
+    },
+    {
+      "journeyId": "createAssignedTask",
+      "business": {"actorRef": "manager", "entry": {"mode": "contextRequired", "carries": [{"contextId": "selectedProject", "businessObject": "Project", "cardinality": "one", "required": true}, {"contextId": "selectedAssignee", "businessObject": "Worker", "cardinality": "one", "required": true}]}, "steps": [{"stepId": "createAssignedTask", "kind": "act", "intent": "Criar tarefa atribuída.", "requiresContext": ["selectedProject", "selectedAssignee"], "providesContext": [], "featureRefs": ["projects"]}]}
+    },
+    {
+      "journeyId": "locateMaterials",
+      "business": {"actorRef": "manager", "entry": {"mode": "coldStart", "carries": []}, "steps": [{"stepId": "locateMaterial", "kind": "locate", "intent": "Localizar material.", "requiresContext": [], "providesContext": [{"contextId": "selectedMaterial", "businessObject": "Material", "cardinality": "one", "required": true}], "featureRefs": ["projects"]}]}
+    },
+    {
+      "journeyId": "recordMaterialUsage",
+      "business": {"actorRef": "manager", "entry": {"mode": "contextRequired", "carries": [{"contextId": "selectedProject", "businessObject": "Project", "cardinality": "one", "required": true}, {"contextId": "selectedMaterial", "businessObject": "Material", "cardinality": "one", "required": true}]}, "steps": [{"stepId": "recordMaterialUsage", "kind": "act", "intent": "Registrar uso de material.", "requiresContext": ["selectedProject", "selectedMaterial"], "providesContext": [], "featureRefs": ["projects"]}]}
+    }
+  ],
+  "entities": [
+    {"entityId": "Worker", "title": "Responsável", "description": "Pessoa responsável.", "kind": "core", "sourceRefs": {"journeyIds": ["locateAssignees"]}, "fields": [{"fieldId": "workerId"}], "lifecycleStates": [], "lifecyclePredicates": []},
+    {"entityId": "Material", "title": "Material", "description": "Material do projeto.", "kind": "core", "sourceRefs": {"journeyIds": ["locateMaterials"]}, "fields": [{"fieldId": "materialId"}], "lifecycleStates": [], "lifecyclePredicates": []}
+  ],
+  "authorities": [
+    {"authorityRef": "construction:assignee-read", "journeyStepRefs": ["locateAssignees.locateAssignee"]},
+    {"authorityRef": "construction:task-create", "journeyStepRefs": ["createAssignedTask.createAssignedTask"]},
+    {"authorityRef": "construction:material-read", "journeyStepRefs": ["locateMaterials.locateMaterial"]},
+    {"authorityRef": "construction:usage-create", "journeyStepRefs": ["recordMaterialUsage.recordMaterialUsage"]}
+  ],
+  "useCases": [
+    {"useCaseId": "locateAssignee", "kind": "query", "compiledFrom": ["locateAssignees.locateAssignee"], "entityRefs": ["Worker"], "contexts": {"requires": [], "provides": ["selectedAssignee"]}},
+    {"useCaseId": "createAssignedTask", "kind": "command", "compiledFrom": ["createAssignedTask.createAssignedTask"], "entityRefs": ["Project", "Worker"], "contexts": {"requires": ["selectedProject", "selectedAssignee"], "provides": []}},
+    {"useCaseId": "locateMaterial", "kind": "query", "compiledFrom": ["locateMaterials.locateMaterial"], "entityRefs": ["Material"], "contexts": {"requires": [], "provides": ["selectedMaterial"]}},
+    {"useCaseId": "recordMaterialUsage", "kind": "command", "compiledFrom": ["recordMaterialUsage.recordMaterialUsage"], "entityRefs": ["Project", "Material"], "contexts": {"requires": ["selectedProject", "selectedMaterial"], "provides": []}}
+  ],
+  "expected": {
+    "workspaceId": "projectWorkspace",
+    "pageContext": ["selectedProject"],
+    "selectionContexts": ["selectedAssignee", "selectedMaterial"],
+    "recordUrl": "/buildFlowFsm38/projects/:projectId"
+  }
+}

@@ -17,6 +17,9 @@ import {
 import { createNs4E7LifecycleResolutionReview } from '/_102020_/l2/agentNewSolution4/steps/e7/lifecycleResolution.js';
 import { validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows } from '/_102020_/l2/agentNewSolution4/steps/e7/gate.js';
 import { shrinkNs4WorkflowToReachable } from '/_102020_/l2/agentNewSolution4/steps/e7/reachability.js';
+import {
+  isNs4E7ValidationReport, mergeNs4E7ValidationAttempts, NS4_E7_VALIDATION_REPORT_VERSION,
+} from '/_102020_/l2/agentNewSolution4/steps/e7/validationReport.js';
 
 const lifecycleFixture = JSON.parse(readFileSync(new URL('fixtures/a2_1-lifecycle-gate.json', import.meta.url), 'utf8')) as {
   binaryFlag: { states: string[]; initialState: string; terminalStates: string[]; predicateState: string };
@@ -24,6 +27,10 @@ const lifecycleFixture = JSON.parse(readFileSync(new URL('fixtures/a2_1-lifecycl
   expectedSystemDecisions: string[];
   fixedPoint: { entityId: string; states: string[]; initialState: string; terminalStates: string[]; transitions: any[]; expectedRemovedStates: string[] };
   run36: { entityId: string; states: string[]; initialState: string; terminalStates: string[]; predicate: { predicateId: string; stateIds: string[] }; transition: any };
+};
+const run38ValidationFixture = JSON.parse(readFileSync(new URL('fixtures/run38-validation-report-rounds.json', import.meta.url), 'utf8')) as {
+  previous: { schemaVersion: string; moduleName: string; attempts: Array<{ round: number; invalid: number }> };
+  nextAttempt: { round: number; invalid: number };
 };
 
 const journeys = normalizeNs4E2Review({ moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', reviewRound: 1,
@@ -314,4 +321,22 @@ test('E7 reasoning prompt keeps use cases channel-neutral', () => {
   assert.match(prompt, /Never include actors, profiles, authorities or data scopes/i);
   assert.match(prompt, /Never include repositories, ports, adapters, MDM routing/i);
   assert.match(prompt, /<!--\s*modelType:\s*reasoning\s*-->/);
+});
+
+test('run 38 preserves the initial E7 finding when the repair round passes', () => {
+  assert.equal(run38ValidationFixture.previous.schemaVersion, NS4_E7_VALIDATION_REPORT_VERSION);
+  assert.equal(isNs4E7ValidationReport(run38ValidationFixture.previous, 'buildFlowFsm38'), true);
+  const attempts = mergeNs4E7ValidationAttempts(run38ValidationFixture.previous.attempts, run38ValidationFixture.nextAttempt);
+  assert.deepEqual(attempts.map(attempt => attempt.round), [0, 1]);
+  assert.equal(attempts[0].invalid, 1);
+  assert.equal(attempts[1].invalid, 0);
+});
+
+test('E7 validation report replay replaces only the matching round', () => {
+  const attempts = mergeNs4E7ValidationAttempts(
+    [...run38ValidationFixture.previous.attempts, run38ValidationFixture.nextAttempt],
+    { ...run38ValidationFixture.nextAttempt, invalid: 1 },
+  );
+  assert.deepEqual(attempts.map(attempt => attempt.round), [0, 1]);
+  assert.equal(attempts[1].invalid, 1);
 });

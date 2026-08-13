@@ -55,6 +55,20 @@ user outcomes.
   dependency without a provider, or causes an irreversible loss. Pure preference or naming choices
   have no impact entry: the warning icon must remain a useful signal, not a decoration on every decision.
 
+## Mechanical whole-module signals
+
+- The runtime supplies a computed `stepKindHistogram` and `findings`. Treat these as facts; do not
+  recalculate or invent another mechanical signal.
+- When `findings` contains `moduleWithoutDecide`, emit exactly one blocking issue whose `issueId` and
+  `category` are both `moduleWithoutDecide`. Phrase its question and choices in business language,
+  using the original module request and the journeys to identify whether an approval, rejection,
+  acceptance or other decision outcome is material. Set `relatedJourneyIds` to at least one existing
+  journey where that decision would belong. The default choice must describe the current draft's
+  no-decision behavior; the repair instruction may ask the generator to add a `decide` step where
+  justified or sustain that current choice.
+- When the histogram has `decide >= 1` and that finding is absent, do not emit a
+  `moduleWithoutDecide` issue.
+
 Return JSON only with this exact envelope:
 
 ```json
@@ -92,6 +106,7 @@ Return JSON only with this exact envelope:
 ```
 
 Allowed categories: `missingJourney`, `missingActorJourney`, `missingRecipientJourney`,
-`missingContextAcquisition`, `missingLookupSource`, `missingOutcomeCoverage`, `contradictoryScope`.
+`missingContextAcquisition`, `missingLookupSource`, `missingOutcomeCoverage`,
+`moduleWithoutDecide`, `contradictoryScope`.
 Use the user's communication language for summary, evidence, findings and repair instructions. Do not
 include Markdown fences or prose outside the JSON.

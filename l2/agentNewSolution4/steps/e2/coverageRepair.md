@@ -14,6 +14,9 @@ numbered issue. Do not rewrite the complete draft.
 - `journeyUpserts` contains each complete new journey or complete replacement journey. An existing
   `journeyId` replaces that journey; a new id appends it. Omitted journeys remain unchanged.
 - `featureUpserts` contains each complete new or replacement feature affected by the journey changes.
+- For `moduleWithoutDecide`, either add a justified `decide` step with complete context contracts or
+  sustain the current no-decision policy by returning both upsert arrays empty. This consumes the
+  same single semantic repair budget; never invent an approval merely to satisfy the signal.
   An existing `featureId` replaces that feature; omitted features remain unchanged.
 - There are no deletions. Preserve all unaffected scope.
 - Resolve every numbered blocker, not only the first one.

@@ -4,6 +4,7 @@ import { sha256Ns4 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js'
 
 export const NS4_ACCESS_MATRIX_SCHEMA_VERSION = '2026-08-09-ns4-access-matrix-v2' as const;
 export const NS4_REALIZED_ACCESS_MATRIX_SCHEMA_VERSION = '2026-08-10-ns4-access-matrix-v3' as const;
+export const NS4_NAVIGATION_REALIZED_ACCESS_MATRIX_SCHEMA_VERSION = '2026-08-13-ns4-access-matrix-v4' as const;
 
 export type Ns4AccessProfileKind = 'internal' | 'external';
 export type Ns4AccessScopeMode = 'organization' | 'assigned' | 'own' | 'related' | 'public' | 'custom';
@@ -96,13 +97,33 @@ export interface Ns4AccessMatrixArtifactV3 extends Omit<Ns4AccessMatrixArtifactV
   };
 }
 
+export interface Ns4AccessOperationAuthorityRef {
+  operationRef: string;
+  route: string;
+  workspaceId: string;
+  functionId: string;
+  useCaseId?: string;
+  authorityRefs: string[];
+}
+
+export interface Ns4AccessMatrixArtifactV4 extends Omit<Ns4AccessMatrixArtifactV2, 'schemaVersion' | 'realization'> {
+  schemaVersion: typeof NS4_NAVIGATION_REALIZED_ACCESS_MATRIX_SCHEMA_VERSION;
+  realization: {
+    status: 'navigationCompiled';
+    compiledFromAccessHash: string;
+    useCaseAuthorityRefs: Ns4AccessUseCaseAuthorityRef[];
+    operationAuthorityRefs: Ns4AccessOperationAuthorityRef[];
+    realizationHash: string;
+  };
+}
+
 /** Compile-only compatibility for already generated v1 L4 artifacts. */
 export interface Ns4AccessMatrixArtifactV1 extends Omit<Ns4AccessMatrixArtifactV2, 'schemaVersion' | 'grants'> {
   schemaVersion: '2026-08-05-ns4-access-matrix-v1';
   grants: Array<Omit<Ns4AccessGrant, 'useRules'> & { constraints: string[] }>;
 }
 
-export type Ns4AccessMatrixArtifact = Ns4AccessMatrixArtifactV3 | Ns4AccessMatrixArtifactV2 | Ns4AccessMatrixArtifactV1;
+export type Ns4AccessMatrixArtifact = Ns4AccessMatrixArtifactV4 | Ns4AccessMatrixArtifactV3 | Ns4AccessMatrixArtifactV2 | Ns4AccessMatrixArtifactV1;
 
 export function normalizeNs4E3Review(value: unknown, fallbackModule = ''): Ns4E3Review {
   const root = record(value);
