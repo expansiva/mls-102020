@@ -20,6 +20,9 @@ const run38UrlRolesFixture = JSON.parse(readFileSync(new URL('fixtures/run38-url
 const run39PresentationRepairFixture = JSON.parse(readFileSync(new URL('fixtures/run39-presentation-repair.json', import.meta.url), 'utf8')) as {
   observedPlanId: string; malformedPlanIds: string[];
 };
+const run40SelectionFixture = JSON.parse(readFileSync(new URL('fixtures/run40-selection-source.json', import.meta.url), 'utf8')) as {
+  invalidSourceRef: string; compatibleSliceId: string; entityId: string; fieldId: string;
+};
 
 const sources: any = {
   journeys: { moduleName: 'construction', userLanguage: 'pt-BR', journeys: [
@@ -69,6 +72,30 @@ test('E8 rejects a worker that renames a frozen scenario or references an unknow
   const result = validateNs4WorkspaceDetail(detail, skeleton, sources);
   assert.ok(result.issues.some(issue => issue.code === 'NS4_E8_DETAIL_SCENARIO'));
   assert.ok(result.issues.some(issue => issue.code === 'NS4_E8_SLICE'));
+});
+
+test('run 40 retargets an invalid selection source only when one frozen slice is compatible', async () => {
+  const skeleton = deriveNs4E8Skeleton(sources); skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
+  const replaySources = structuredClone(sources); replaySources.ontology.entities.push({ entityId: run40SelectionFixture.entityId, fields: [{ fieldId: run40SelectionFixture.fieldId }] });
+  const workspace = skeleton.workspaces[0]; workspace.slices[0] = { ...workspace.slices[0], sliceId: run40SelectionFixture.compatibleSliceId, entityRefs: [run40SelectionFixture.entityId] };
+  const target = workspace.scenarios.find(scenario => scenario.scenarioId === 'reviewDecideChangeOrder')!;
+  const detail = normalizeNs4WorkspaceDetail({ moduleName: 'construction', workspaceId: workspace.workspaceId, skeletonHash: skeleton.skeletonHash,
+    scenarios: workspace.scenarios.map(scenario => ({ scenarioId: scenario.scenarioId, organisms: [], commandInputs: scenario.scenarioId === target.scenarioId ? [{ useCaseId: 'decideChangeOrder', inputs: [{ inputId: run40SelectionFixture.invalidSourceRef,
+      source: 'selection', sourceRef: run40SelectionFixture.invalidSourceRef, fieldRef: { entityId: run40SelectionFixture.entityId, fieldId: run40SelectionFixture.fieldId, label: '' } }] }] : [] })) });
+  const gate = validateNs4WorkspaceDetail(detail, skeleton, replaySources);
+  const finding = gate.issues.find(issue => issue.code === 'NS4_E8_INPUT_SELECTION');
+  assert.equal(gate.ok, true);
+  assert.equal(finding?.severity, 'warning');
+  const resolved = resolveNs4WorkspaceDetailFindings(detail, gate.issues);
+  const input = resolved.artifact.scenarios.find(scenario => scenario.scenarioId === target.scenarioId)!.commandInputs[0].inputs[0];
+  assert.equal(input.sourceRef, run40SelectionFixture.compatibleSliceId);
+  assert.equal(validateNs4WorkspaceDetail(resolved.artifact, skeleton, replaySources).ok, true);
+  assert.ok(resolved.systemDecisions.some(decision => decision.chosen === 'retargetUniqueSelectionSlice'));
+
+  workspace.slices.push({ ...workspace.slices[0], sliceId: `${run40SelectionFixture.compatibleSliceId}Alternative` });
+  const ambiguous = validateNs4WorkspaceDetail(detail, skeleton, replaySources);
+  assert.equal(ambiguous.ok, false);
+  assert.equal(ambiguous.issues.find(issue => issue.code === 'NS4_E8_INPUT_SELECTION')?.severity, undefined);
 });
 
 test('E8 accepts a module with no lifecycle and emits no queue scenario', async () => {

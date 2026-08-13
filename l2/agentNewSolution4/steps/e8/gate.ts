@@ -5,7 +5,8 @@ import type { Ns4ResolutionFinding, Ns4ResolutionResult } from '/_102020_/l2/age
 type Ns4E8IssueResolution =
   | { kind: 'disclosureReview'; workspaceId: string; authorityRef: string; profileRef: string; scenarioId: string; screenTitle: string }
   | { kind: 'removeOrganismFieldRef'; scenarioId: string; organismIndex: number; entityId: string; fieldId: string }
-  | { kind: 'removeCommandInputFieldRef'; scenarioId: string; commandIndex: number; inputIndex: number; entityId: string; fieldId: string };
+  | { kind: 'removeCommandInputFieldRef'; scenarioId: string; commandIndex: number; inputIndex: number; entityId: string; fieldId: string }
+  | { kind: 'retargetCommandSelectionSlice'; scenarioId: string; commandIndex: number; inputIndex: number; sourceRef: string };
 
 export interface Ns4E8GateIssue { code: string; path: string; message: string; severity?: 'warning'; resolution?: Ns4E8IssueResolution; }
 export interface Ns4E8GateResult { ok: boolean; issues: Ns4E8GateIssue[]; }
@@ -188,7 +189,15 @@ export function validateNs4WorkspaceDetail(detail: Ns4WorkspaceDetailDraft, skel
       if (input.fieldRef && !fields.has(`${input.fieldRef.entityId}.${input.fieldRef.fieldId}`)) add('NS4_E8_INPUT_FIELD', path, `Unknown ontology input field ${input.fieldRef.entityId}.${input.fieldRef.fieldId}.`, undefined,
         { kind: 'removeCommandInputFieldRef', scenarioId: scenario.scenarioId, commandIndex, inputIndex, entityId: input.fieldRef.entityId, fieldId: input.fieldRef.fieldId });
       if (input.source === 'pageContext' && (!input.sourceRef || !workspace.pageContext.some(context => context.contextId === input.sourceRef))) add('NS4_E8_INPUT_PAGE_CONTEXT', path, 'pageContext input must reference workspace pageContext.');
-      if (input.source === 'selection' && (!input.sourceRef || !workspace.slices.some(slice => slice.sliceId === input.sourceRef))) add('NS4_E8_INPUT_SELECTION', path, 'selection input must reference a frozen slice.');
+      if (input.source === 'selection' && (!input.sourceRef || !workspace.slices.some(slice => slice.sliceId === input.sourceRef))) {
+        const selectedEntity = input.fieldRef?.entityId;
+        const compatibleSlices = selectedEntity ? workspace.slices.filter(slice => slice.entityRefs.includes(selectedEntity)) : [];
+        const uniqueSlice = compatibleSlices.length === 1 ? compatibleSlices[0] : null;
+        add('NS4_E8_INPUT_SELECTION', path, uniqueSlice
+          ? `Selection source ${input.sourceRef || '(missing)'} is not a frozen slice; the only compatible slice is ${uniqueSlice.sliceId}.`
+          : `Selection input must reference one frozen slice; found ${compatibleSlices.length} compatible candidates.`, uniqueSlice ? 'warning' : undefined,
+        uniqueSlice ? { kind: 'retargetCommandSelectionSlice', scenarioId: scenario.scenarioId, commandIndex, inputIndex, sourceRef: uniqueSlice.sliceId } : undefined);
+      }
     }));
   });
   return { ok: issues.every(issue => issue.severity === 'warning'), issues };
@@ -224,6 +233,14 @@ export function resolveNs4WorkspaceDetailFindings(detail: Ns4WorkspaceDetailDraf
       deterministicChoice: 'removeInvalidFieldRef', alternatives: ['repairWorkspaceDraftManually'], changeHint: `Revisar as entradas do cenário ${resolution.scenarioId}.`,
       apply: artifact => removeCommandInputFieldRef(artifact, resolution),
     }];
+    if (resolution?.kind === 'retargetCommandSelectionSlice') return [{
+      classification: 'C', decisionId: decisionId('e8RetargetSelectionSlice', detail.workspaceId, resolution.scenarioId, resolution.sourceRef),
+      findingRef: `${issue.code}:${detail.workspaceId}:${resolution.scenarioId}:${resolution.commandIndex}:${resolution.inputIndex}`, stage: 'e8-workspaces',
+      question: `A entrada de seleção em ${detail.workspaceId} não referencia uma slice congelada; usar a única slice compatível ${resolution.sourceRef}?`,
+      deterministicChoice: 'retargetUniqueSelectionSlice', alternatives: ['repairWorkspaceDraftManually'],
+      changeHint: `Revisar a origem da entrada no cenário ${resolution.scenarioId}.`,
+      apply: artifact => retargetCommandSelectionSlice(artifact, resolution),
+    }];
     return [{ classification: 'A', findingRef: `${issue.code}:${detail.workspaceId}:${issue.path}`, stage: 'e8-workspaces',
       question: issue.message, alternatives: [], changeHint: `Corrigir ${issue.path} no draft do workspace ${detail.workspaceId}.` }];
   });
@@ -240,6 +257,12 @@ function removeCommandInputFieldRef(detail: Ns4WorkspaceDetailDraft, target: Ext
   return { ...detail, scenarios: detail.scenarios.map(scenario => scenario.scenarioId !== target.scenarioId ? scenario : { ...scenario,
     commandInputs: scenario.commandInputs.map((command, commandIndex) => commandIndex !== target.commandIndex ? command : { ...command,
       inputs: command.inputs.map((input, inputIndex) => inputIndex !== target.inputIndex ? input : { ...input, fieldRef: undefined }) }) }) };
+}
+
+function retargetCommandSelectionSlice(detail: Ns4WorkspaceDetailDraft, target: Extract<Ns4E8IssueResolution, { kind: 'retargetCommandSelectionSlice' }>): Ns4WorkspaceDetailDraft {
+  return { ...detail, scenarios: detail.scenarios.map(scenario => scenario.scenarioId !== target.scenarioId ? scenario : { ...scenario,
+    commandInputs: scenario.commandInputs.map((command, commandIndex) => commandIndex !== target.commandIndex ? command : { ...command,
+      inputs: command.inputs.map((input, inputIndex) => inputIndex !== target.inputIndex ? input : { ...input, sourceRef: target.sourceRef }) }) }) };
 }
 
 function decisionId(prefix: string, ...parts: string[]): string {

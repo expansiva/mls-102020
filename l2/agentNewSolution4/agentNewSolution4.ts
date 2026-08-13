@@ -109,7 +109,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-55 (2026-08-13) symmetric E8 presentation-repair routing';
+export const NS4_AGENT_BUILD = 'build-56 (2026-08-13) bounded E8 selection-source repair';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
