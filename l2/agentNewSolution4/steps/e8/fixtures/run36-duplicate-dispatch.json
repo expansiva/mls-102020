@@ -1,0 +1,14 @@
+{
+  "reviewRound": 1,
+  "observedFanoutCount": 4,
+  "steps": [
+    { "planning": { "planId": "e8-workspaces-round-1-details-0" } },
+    { "planning": { "planId": "e8-workspaces-finalize-0" } },
+    { "planning": { "planId": "e8-workspaces-round-1-details-0" } },
+    { "planning": { "planId": "e8-workspaces-finalize-0" } },
+    { "planning": { "planId": "e8-workspaces-round-1-details-0" } },
+    { "planning": { "planId": "e8-workspaces-finalize-0" } },
+    { "planning": { "planId": "e8-workspaces-round-1-details-0" } },
+    { "planning": { "planId": "e8-workspaces-finalize-0" } }
+  ]
+}

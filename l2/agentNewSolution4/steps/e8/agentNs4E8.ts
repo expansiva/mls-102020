@@ -22,6 +22,7 @@ import {
   buildNs4WorkspaceArtifacts, deriveNs4E8Skeleton, hashNs4E8Skeleton, normalizeNs4E8Skeleton,
   normalizeNs4WorkspaceDetail, overlayNs4E8Presentation, Ns4E8SkeletonReview, Ns4E8Sources, Ns4E8ReviewEvent, Ns4WorkspaceDetailDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
+import { hasNs4E8DetailsDispatch, ns4E8DetailsPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
 import { resolveNs4WorkspaceDetailFindings, validateNs4E8Skeleton, validateNs4WorkspaceDetail } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
 import type { Ns4E8GateIssue } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
 
@@ -79,8 +80,8 @@ export async function afterNs4E8PromptStep(agent: IAgentMeta, context: mls.msg.E
 export async function beforeNs4E8ClarificationStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIClarificationStep, hookSequential: number, json: unknown): Promise<HTMLElement> {
   const skeleton = normalizeNs4E8Skeleton(parse(json)); const gate = validateNs4E8Skeleton(skeleton, await loadSources(skeleton.moduleName)); if (!gate.ok) throw new Error(formatGate(gate.issues));
   await import('/_102020_/l2/agentNewSolution4/widgets/widgetNs4Workspaces.js'); const element = document.createElement('widget-ns4-workspaces-102020');
-  (element as unknown as { value: Ns4E8SkeletonReview }).value = skeleton;
-  element.addEventListener('ns4-workspaces-review', (event: Event) => { void applyReview(context, parent, step, hookSequential, (event as CustomEvent<Ns4E8ReviewEvent>).detail).catch(error => { showNs4ClarificationError(element, error); console.error(`[${agent.agentName}] ${errorMessage(error)}`); }); });
+  const widget = element as unknown as { value: Ns4E8SkeletonReview; setSubmitting(value: boolean): void }; widget.value = skeleton;
+  element.addEventListener('ns4-workspaces-review', (event: Event) => { void applyReview(context, parent, step, hookSequential, (event as CustomEvent<Ns4E8ReviewEvent>).detail).catch(error => { widget.setSubmitting(false); showNs4ClarificationError(element, error); console.error(`[${agent.agentName}] ${errorMessage(error)}`); }); });
   return element;
 }
 
@@ -115,9 +116,13 @@ async function workerPrompt(context: mls.msg.ExecutionContext, parent: mls.msg.A
 
 async function applyReview(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIClarificationStep, hookSequential: number, event: Ns4E8ReviewEvent): Promise<void> {
   if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; a revisão foi mantida aberta.');
-  const sources = await loadSources(event.review.moduleName); const skeleton = normalizeNs4E8Skeleton(event.review, event.review.moduleName); skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
+  const skeleton = normalizeNs4E8Skeleton(event.review, event.review.moduleName); const mutationParent = findParent(context, parent);
+  if (event.action === 'approve' && hasNs4E8DetailsDispatch(getAllSteps(context.task?.iaCompressed?.nextSteps), skeleton.reviewRound)) {
+    await applyIntents(context, [status(context, mutationParent, step, hookSequential, 'completed', `E8 workspace detailing for review round ${skeleton.reviewRound} was already dispatched; duplicate approval ignored.`, 'input_output')]);
+    await continuePoolingTask(context); return;
+  }
+  const sources = await loadSources(event.review.moduleName); skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
   const gate = validateNs4E8Skeleton(skeleton, sources); if (!gate.ok) throw new Error(formatGate(gate.issues)); await writeNs4E8SkeletonDraft(skeleton.moduleName, skeleton);
-  const mutationParent = findParent(context, parent);
   if (event.action === 'requestChanges') {
     if (!event.adjustment.trim()) throw new Error('Descreva a alteração desejada antes de enviar.'); const pipeline = await requirePipeline(skeleton.moduleName);
     await writeNs4Pipeline(markNs4E8Running(pipeline, skeleton.reviewRound + 1));
@@ -183,7 +188,7 @@ async function readValidationReport(moduleName: string): Promise<Ns4E8Validation
 }
 
 function workerStep(context: mls.msg.ExecutionContext, host: mls.msg.AIPayload, skeleton: Ns4E8SkeletonReview, repairRound: number, workspaceIds = skeleton.workspaces.map(workspace => workspace.workspaceId)): mls.msg.AgentIntentAddStep {
-  const planId = `e8-workspaces-round-${skeleton.reviewRound}-details-${repairRound}`;
+  const planId = ns4E8DetailsPlanId(skeleton.reviewRound, repairRound);
   return { type: 'add-step', messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: host.stepId, step: { type: 'agent', stepId: 0, interaction: { input: [{ type: 'system', content: '<!-- modelType: reasoning -->' }], cost: 0, trace: [`queued ${workspaceIds.length} E8 workspaces with maxParallel=${NS4_E8_MAX_PARALLEL}`], payload: null }, stepTitle: 'Detailing {{completed}}/{{total}} workspaces, failed {{failed}}', status: 'in_progress', nextSteps: [], agentName: 'agentNewSolution4', onFailure: 'wait_after_prompt', prompt: JSON.stringify({ planId: 'e8-workspaces' }), rags: [], planning: { planId, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' } } as mls.msg.AIAgentStep, executionMode: { type: 'parallel', args: workspaceIds.map(id => `workspace:${id}`), maxParallel: NS4_E8_MAX_PARALLEL } };
 }
 function createFinalize(moduleName: string, approvedBy: Ns4ApprovedBy, repairRound: number, dependsOn: string[]): mls.msg.AIAgentStep { return { type: 'agent', stepId: 0, interaction: null, stepTitle: `Finalize E8 workspace details${repairRound ? ` · R${repairRound}` : ''}`, status: 'waiting_dependency', nextSteps: [], agentName: 'agentNewSolution4', prompt: JSON.stringify({ planId: 'e8-workspaces', moduleName, stage: 'finalize', approvedBy, repairRound }), rags: [], planning: { planId: `e8-workspaces-finalize-${repairRound}`, dependsOn, executionMode: 'sequential', executionHost: 'client' } }; }

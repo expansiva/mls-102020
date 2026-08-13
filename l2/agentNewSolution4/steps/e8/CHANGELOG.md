@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-12 — run 36 duplicate approval dispatch
+
+- Disable the E8 review controls synchronously on submit and re-enable them only when application
+  fails.
+- Treat an existing stable workspace-detail `planId` as an already dispatched approval, preventing
+  a late or repeated callback from adding another fan-out and finalizer for the same review round.
+- Added the reduced four-dispatch run 36 fixture and regression coverage.
+
 ## 2026-08-12 — run 36 cross-journey context edge
 
 - Derive E8 candidate edges for exact E2 prerequisite handoffs when the prerequisite explicitly

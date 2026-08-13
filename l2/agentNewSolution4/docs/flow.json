@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-12-ns4-flow-v30",
+  "schemaVersion": "2026-08-12-ns4-flow-v31",
   "status": "e1-e8",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -53,7 +53,8 @@
         "E7 compiles only lifecycle states reachable through approved journey transitions. Build and gate share one reachability definition; shrink iterates to a fixed point, removes transitions whose sources disappear, records every removed state and newly dormant predicate as a system decision with an operateState alternative, omits workflows with no remaining transition, and never mutates the approved E4 ontology.",
     "Use cases do not copy E3 actors, authorities or scopes and do not prescribe ports, repositories, storage routing or backend architecture. E3 owns authorization and E8 owns channel integration.",
     "E8 derives workspace partition, page context, slices, invalidations, hub candidacy and navigation candidates from approved L4 contracts; its LLM calls may only localize presentation and select a closed surface catalog.",
-    "E8 has one human checkpoint for the frozen skeleton. Its workspace-detail fan-out is bounded to 20 workers, validates each worker independently, and writes permanent typed workspace artifacts plus a workspace index."
+    "E8 has one human checkpoint for the frozen skeleton. Its workspace-detail fan-out is bounded to 20 workers, validates each worker independently, and writes permanent typed workspace artifacts plus a workspace index.",
+    "An E8 review submission becomes locally read-only before dispatch, and approval is idempotent by the stable workspace-detail planId; a repeated or late callback cannot enqueue a second fan-out or finalizer for the same review round."
   ],
   "invocation": {
     "new": "@@newSolution4 <description-or-moduleName>",
@@ -352,6 +353,7 @@
         "One small reasoning call may localize labels, group already-derived workspaces under existing E2 features, order menu items and select only queueAction, contextualModal or batchAction surfaces; it cannot create, remove or rename structural ids.",
         "The skeleton gate requires total use-case coverage, non-empty workspaces, resolvable page context, collection and record scenarios for a hub, reachable FSM evidence for queues and at most seven menu items per section. Empty menu sections are corrected by the mechanical grouping phase and remain visible as NS4_E8_MENU_EMPTY recorder warnings if encountered.",
         "The human checkpoint reviews the map: header links, feature menu, workspaces, scenarios, profiles and context-carrying candidate edges. A requested change starts the next skeleton round.",
+        "The review widget disables all submission controls synchronously. Before an approved skeleton dispatches workers, the hook also checks the task tree for the stable e8-workspaces-round-{reviewRound}-details-0 planId; if it already exists, the callback only reconciles the clarification status and does not add another fan-out or finalizer.",
         "After approval, one dynamic worker per workspace returns organisms, ontology field projections and command inputs. Each worker is isolated and receives at most one targeted repair round; maxParallel is 20.",
         "Workers cannot change the frozen skeleton. The deterministic detail gate rejects unknown fields, slice/entity drift and unresolved pageContext or selection input. A fieldsOnly projection is recorded once per workspace and authority as a Type B system decision because E3 allowedInformation is prose; the backend continues enforcing the approved E3 projection and no text-to-field heuristic is attempted.",
         "Every finalizer round persists the complete per-workspace findings, including passing results, in e8-validation-report.json. After the bounded worker repair, remaining findings pass through helpers/ns4Resolve.ts: deterministic Type C patches and Type B decisions continue, while only irrecoverable Type A findings fail after the report is durable.",

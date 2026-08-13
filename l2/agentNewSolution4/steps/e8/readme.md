@@ -8,6 +8,9 @@ Candidate context edges come from adjacent steps and exact E2 prerequisite hando
 `providesContext` matches a provider step and a consuming target step.
 Workspace-detail workers submit the strict internal `{type:"flexible",result:{…}}` envelope to avoid
 provisional failed status for healthy artifacts.
+The review widget becomes non-interactive before emitting its event. The approval hook also checks
+the flattened task tree for the stable detail `planId`, so a re-mounted widget or late callback
+cannot enqueue another fan-out/finalizer pair for the same review round.
 
 The gate rejects unhosted use cases, empty workspaces, unresolved page context, unbounded menu
 sections, invalid queues, skeleton drift and invented fields. Until E3 binds its business-language

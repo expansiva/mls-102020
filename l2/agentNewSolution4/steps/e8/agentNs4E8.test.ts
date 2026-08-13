@@ -5,10 +5,14 @@ import test from 'node:test';
 import {
   buildNs4WorkspaceArtifacts, deriveE8HubScore, deriveNs4E8Skeleton, hashNs4E8Skeleton, normalizeNs4WorkspaceDetail,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
+import { hasNs4E8DetailsDispatch, ns4E8DetailsPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
 import { resolveNs4WorkspaceDetailFindings, validateNs4E8Skeleton, validateNs4WorkspaceDetail } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
 
 const run35Fixture = JSON.parse(readFileSync(new URL('fixtures/run35-disclosure-platform.json', import.meta.url), 'utf8')) as {
   platformEntity: any; fieldsOnly: any; invalidFieldRef: { entityId: string; fieldId: string; label: string };
+};
+const run36DuplicateFixture = JSON.parse(readFileSync(new URL('fixtures/run36-duplicate-dispatch.json', import.meta.url), 'utf8')) as {
+  reviewRound: number; observedFanoutCount: number; steps: Array<{ planning: { planId: string } }>;
 };
 
 const sources: any = {
@@ -174,4 +178,12 @@ test('run 36 derives an exact cross-journey edge from prerequisite providesConte
   assert.ok(skeleton.edges.some(edge => edge.from === source.workspaceId && edge.to === target.workspaceId
     && edge.carries.includes('sharedStatusReport') && edge.preferredFromJourneyRef === 'shareProjectStatusReport.shareStatusReport'));
   assert.equal(validateNs4E8Skeleton(skeleton, handoffSources).ok, true);
+});
+
+test('run 36 duplicate approval is recognized by the stable E8 detail plan id', () => {
+  const planId = ns4E8DetailsPlanId(run36DuplicateFixture.reviewRound);
+  assert.equal(planId, 'e8-workspaces-round-1-details-0');
+  assert.equal(run36DuplicateFixture.steps.filter(step => step.planning.planId === planId).length, run36DuplicateFixture.observedFanoutCount);
+  assert.equal(hasNs4E8DetailsDispatch(run36DuplicateFixture.steps, run36DuplicateFixture.reviewRound), true);
+  assert.equal(hasNs4E8DetailsDispatch([{ planning: { planId: 'e8-workspaces-round-2-details-0' } }], run36DuplicateFixture.reviewRound), false);
 });
