@@ -10,3 +10,7 @@ export function hasNs4E8DetailsDispatch(steps: Ns4PlannedStepLike[], reviewRound
   const planId = ns4E8DetailsPlanId(reviewRound, repairRound);
   return steps.some(step => step.planning?.planId === planId);
 }
+
+export function isNs4E8PresentationRepairPlanId(planId: string): boolean {
+  return /^e8-workspaces-presentation-repair-[1-9]\d*-[1-9]\d*$/.test(planId);
+}

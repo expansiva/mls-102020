@@ -6,7 +6,7 @@ import {
   buildNs4WorkspaceArtifacts, deriveE8HubScore, deriveNs4E8Skeleton, hashNs4E8Skeleton, normalizeNs4E8PresentationProposal,
   normalizeNs4WorkspaceDetail, overlayNs4E8Presentation, previewNs4E8Routes, resolveNs4E8PresentationDefaults,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
-import { hasNs4E8DetailsDispatch, ns4E8DetailsPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
+import { hasNs4E8DetailsDispatch, isNs4E8PresentationRepairPlanId, ns4E8DetailsPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
 import { resolveNs4WorkspaceDetailFindings, validateNs4E8PresentationProposal, validateNs4E8Skeleton, validateNs4WorkspaceDetail } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
 
 const run35Fixture = JSON.parse(readFileSync(new URL('fixtures/run35-disclosure-platform.json', import.meta.url), 'utf8')) as {
@@ -17,6 +17,9 @@ const run36DuplicateFixture = JSON.parse(readFileSync(new URL('fixtures/run36-du
 };
 const run37ColdStartFixture = JSON.parse(readFileSync(new URL('fixtures/run37-cold-start-command.json', import.meta.url), 'utf8')) as any;
 const run38UrlRolesFixture = JSON.parse(readFileSync(new URL('fixtures/run38-url-roles.json', import.meta.url), 'utf8')) as any;
+const run39PresentationRepairFixture = JSON.parse(readFileSync(new URL('fixtures/run39-presentation-repair.json', import.meta.url), 'utf8')) as {
+  observedPlanId: string; malformedPlanIds: string[];
+};
 
 const sources: any = {
   journeys: { moduleName: 'construction', userLanguage: 'pt-BR', journeys: [
@@ -189,6 +192,11 @@ test('run 36 duplicate approval is recognized by the stable E8 detail plan id', 
   assert.equal(run36DuplicateFixture.steps.filter(step => step.planning.planId === planId).length, run36DuplicateFixture.observedFanoutCount);
   assert.equal(hasNs4E8DetailsDispatch(run36DuplicateFixture.steps, run36DuplicateFixture.reviewRound), true);
   assert.equal(hasNs4E8DetailsDispatch([{ planning: { planId: 'e8-workspaces-round-2-details-0' } }], run36DuplicateFixture.reviewRound), false);
+});
+
+test('run 39 constrained presentation repair uses an exact routable E8 plan id', () => {
+  assert.equal(isNs4E8PresentationRepairPlanId(run39PresentationRepairFixture.observedPlanId), true);
+  run39PresentationRepairFixture.malformedPlanIds.forEach(planId => assert.equal(isNs4E8PresentationRepairPlanId(planId), false));
 });
 
 test('run 37 accepts a cold-start creation form without invented record context', async () => {
