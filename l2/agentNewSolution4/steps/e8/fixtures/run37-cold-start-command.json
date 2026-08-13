@@ -1,0 +1,103 @@
+{
+  "feature": {
+    "featureId": "materialTracking",
+    "title": "Material tracking",
+    "priority": "now"
+  },
+  "profile": {
+    "profileId": "officeBillingStaff",
+    "landingIntent": "Maintain material inventory."
+  },
+  "authority": {
+    "authorityRef": "materials:manage",
+    "journeyStepRefs": [
+      "registerMaterialInventory.captureMaterialInventory"
+    ]
+  },
+  "grant": {
+    "profileRef": "officeBillingStaff",
+    "authorityRef": "materials:manage",
+    "disclosure": {
+      "mode": "fullRecord",
+      "allowedInformation": []
+    }
+  },
+  "journey": {
+    "journeyId": "registerMaterialInventory",
+    "business": {
+      "actorRef": "officeBillingStaff",
+      "entry": {
+        "mode": "coldStart",
+        "carries": []
+      },
+      "steps": [
+        {
+          "stepId": "captureMaterialInventory",
+          "kind": "act",
+          "intent": "Record the material and its available inventory information.",
+          "requiresContext": [],
+          "providesContext": [
+            {
+              "contextId": "selectedMaterialInventory",
+              "businessObject": "MaterialInventory",
+              "cardinality": "one",
+              "required": true
+            }
+          ],
+          "featureRefs": [
+            "materialTracking"
+          ]
+        }
+      ]
+    }
+  },
+  "entity": {
+    "entityId": "MaterialInventory",
+    "title": "Material inventory",
+    "description": "Available material inventory created by the module.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+      "journeyIds": [
+        "registerMaterialInventory"
+      ],
+      "featureIds": [
+        "materialTracking"
+      ],
+      "authorityRefs": [
+        "materials:manage"
+      ]
+    },
+    "fields": [
+      {
+        "fieldId": "materialInventoryId"
+      }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+      "target": "moduleDatabase",
+      "scope": "module",
+      "idField": "materialInventoryId"
+    }
+  },
+  "useCase": {
+    "useCaseId": "captureMaterialInventory",
+    "title": "Record material inventory",
+    "kind": "command",
+    "compiledFrom": [
+      "registerMaterialInventory.captureMaterialInventory"
+    ],
+    "contexts": {
+      "requires": [],
+      "provides": [
+        "selectedMaterialInventory"
+      ]
+    },
+    "entityRefs": [
+      "MaterialInventory"
+    ],
+    "useRules": [],
+    "transitionRefs": []
+  }
+}

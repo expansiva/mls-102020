@@ -14,6 +14,7 @@ const run35Fixture = JSON.parse(readFileSync(new URL('fixtures/run35-disclosure-
 const run36DuplicateFixture = JSON.parse(readFileSync(new URL('fixtures/run36-duplicate-dispatch.json', import.meta.url), 'utf8')) as {
   reviewRound: number; observedFanoutCount: number; steps: Array<{ planning: { planId: string } }>;
 };
+const run37ColdStartFixture = JSON.parse(readFileSync(new URL('fixtures/run37-cold-start-command.json', import.meta.url), 'utf8')) as any;
 
 const sources: any = {
   journeys: { moduleName: 'construction', userLanguage: 'pt-BR', journeys: [
@@ -186,4 +187,38 @@ test('run 36 duplicate approval is recognized by the stable E8 detail plan id', 
   assert.equal(run36DuplicateFixture.steps.filter(step => step.planning.planId === planId).length, run36DuplicateFixture.observedFanoutCount);
   assert.equal(hasNs4E8DetailsDispatch(run36DuplicateFixture.steps, run36DuplicateFixture.reviewRound), true);
   assert.equal(hasNs4E8DetailsDispatch([{ planning: { planId: 'e8-workspaces-round-2-details-0' } }], run36DuplicateFixture.reviewRound), false);
+});
+
+test('run 37 accepts a cold-start creation form without invented record context', async () => {
+  const coldStartSources: any = structuredClone(sources);
+  coldStartSources.journeys.features.push(run37ColdStartFixture.feature);
+  coldStartSources.journeys.journeys.push(run37ColdStartFixture.journey);
+  coldStartSources.access.profiles.push(run37ColdStartFixture.profile);
+  coldStartSources.access.authorities.push(run37ColdStartFixture.authority);
+  coldStartSources.access.grants.push(run37ColdStartFixture.grant);
+  coldStartSources.ontology.entities.push(run37ColdStartFixture.entity);
+  coldStartSources.useCases.push(run37ColdStartFixture.useCase);
+  const skeleton = deriveNs4E8Skeleton(coldStartSources); skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
+  const workspace = skeleton.workspaces.find(item => item.workspaceId === 'materialInventoryWorkspace')!;
+  assert.ok(workspace.scenarios.some(scenario => scenario.kind === 'form'));
+  assert.deepEqual(workspace.pageContext, []);
+  assert.deepEqual(workspace.slices, []);
+  const gate = validateNs4E8Skeleton(skeleton, coldStartSources);
+  assert.equal(gate.issues.some(issue => issue.code === 'NS4_E8_DECISION_WITHOUT_CONTEXT'), false);
+  assert.equal(gate.ok, true);
+});
+
+test('E8 still rejects a context-dependent form when its frozen subject is unavailable', async () => {
+  const coldStartSources: any = structuredClone(sources);
+  coldStartSources.journeys.features.push(run37ColdStartFixture.feature);
+  coldStartSources.journeys.journeys.push(run37ColdStartFixture.journey);
+  coldStartSources.access.profiles.push(run37ColdStartFixture.profile);
+  coldStartSources.access.authorities.push(run37ColdStartFixture.authority);
+  coldStartSources.access.grants.push(run37ColdStartFixture.grant);
+  coldStartSources.ontology.entities.push(run37ColdStartFixture.entity);
+  coldStartSources.useCases.push({ ...run37ColdStartFixture.useCase, contexts: { requires: ['selectedMaterialInventory'], provides: [] } });
+  const skeleton = deriveNs4E8Skeleton(coldStartSources); skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
+  const gate = validateNs4E8Skeleton(skeleton, coldStartSources);
+  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E8_DECISION_WITHOUT_CONTEXT'));
+  assert.equal(gate.ok, false);
 });

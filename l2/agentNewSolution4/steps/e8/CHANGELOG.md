@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-12 — run 37 cold-start creation gate
+
+- Restrict `NS4_E8_DECISION_WITHOUT_CONTEXT` to reviews, unknown form contracts and commands that
+  explicitly declare `contexts.requires`.
+- Allow a known context-free command, including the run's cold-start creation, to collect new values
+  without inventing a record slice or page context, while preserving the blocker for context-dependent commands.
+- Added the reduced run 37 fixture and positive/negative regression coverage.
+- Reconciled `docs/flow.json` with the runtime v30 checkpoint so this compatible gate fix does not
+  invalidate the failed run's resume authority.
+
 ## 2026-08-12 — run 36 duplicate approval dispatch
 
 - Disable the E8 review controls synchronously on submit and re-enable them only when application

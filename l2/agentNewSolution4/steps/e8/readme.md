@@ -16,3 +16,6 @@ The gate rejects unhosted use cases, empty workspaces, unresolved page context, 
 sections, invalid queues, skeleton drift and invented fields. Until E3 binds its business-language
 `allowedInformation` to ontology field refs, `fieldsOnly` projections are recorder warnings and
 durable system decisions; the backend remains responsible for enforcing the E3 projection.
+A review or a form backed by a command with declared `contexts.requires` still needs a frozen slice
+or page context. A recognized context-free command, including a cold-start creation, may render a
+form from user-entered values; E8 does not invent a pre-existing record solely to satisfy the gate.

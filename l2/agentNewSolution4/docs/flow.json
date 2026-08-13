@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-12-ns4-flow-v31",
+  "schemaVersion": "2026-08-12-ns4-flow-v30",
   "status": "e1-e8",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts.",
   "canonicalReferences": [
@@ -351,7 +351,7 @@
       "runtimeNotes": [
         "Code derives the complete workspace partition, context catalog, hub ranking, candidate edges, hosted use cases and scenario ids from approved E2 through E7 artifacts. Candidate edges include both adjacent steps within one journey and exact cross-journey handoffs declared by E2 prerequisites[].providesContext; no context edge is inferred from labels or entity names.",
         "One small reasoning call may localize labels, group already-derived workspaces under existing E2 features, order menu items and select only queueAction, contextualModal or batchAction surfaces; it cannot create, remove or rename structural ids.",
-        "The skeleton gate requires total use-case coverage, non-empty workspaces, resolvable page context, collection and record scenarios for a hub, reachable FSM evidence for queues and at most seven menu items per section. Empty menu sections are corrected by the mechanical grouping phase and remain visible as NS4_E8_MENU_EMPTY recorder warnings if encountered.",
+        "The skeleton gate requires total use-case coverage, non-empty workspaces, resolvable declared page context, collection and record scenarios for a hub, reachable FSM evidence for queues and at most seven menu items per section. A review or a form whose command declares contexts.requires must have a frozen slice or page context; a recognized context-free command with contexts.requires=[], including a cold-start creation, may collect new values without a pre-existing record. Empty menu sections are corrected by the mechanical grouping phase and remain visible as NS4_E8_MENU_EMPTY recorder warnings if encountered.",
         "The human checkpoint reviews the map: header links, feature menu, workspaces, scenarios, profiles and context-carrying candidate edges. A requested change starts the next skeleton round.",
         "The review widget disables all submission controls synchronously. Before an approved skeleton dispatches workers, the hook also checks the task tree for the stable e8-workspaces-round-{reviewRound}-details-0 planId; if it already exists, the callback only reconciles the clarification status and does not add another fan-out or finalizer.",
         "After approval, one dynamic worker per workspace returns organisms, ontology field projections and command inputs. Each worker is isolated and receives at most one targeted repair round; maxParallel is 20.",

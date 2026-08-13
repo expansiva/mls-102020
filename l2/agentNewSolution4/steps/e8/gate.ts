@@ -19,6 +19,7 @@ export function validateNs4E8Skeleton(skeleton: Ns4E8SkeletonReview, sources: Ns
   if (skeleton.moduleName !== sources.journeys.moduleName || skeleton.moduleName !== sources.access.moduleName || skeleton.moduleName !== sources.ontology.moduleName) add('NS4_E8_MODULE', 'moduleName', 'All approved sources and the skeleton must belong to the same module.');
   const workspaceIds = new Set<string>(); const stepRefs = new Set<string>(); const useCaseRefs = new Set<string>();
   const sourceUseCases = new Set(sources.useCases.map(item => item.useCaseId));
+  const useCasesById = new Map(sources.useCases.map(item => [item.useCaseId, item]));
   const sourceSteps = new Set(sources.journeys.journeys.flatMap(journey => journey.business.steps.map(step => `${journey.journeyId}.${step.stepId}`)));
   const profileIds = new Set(sources.access.profiles.map(profile => profile.profileId));
   const entityIds = new Set(sources.ontology.entities.map(entity => entity.entityId));
@@ -54,7 +55,13 @@ export function validateNs4E8Skeleton(skeleton: Ns4E8SkeletonReview, sources: Ns
       if (!workspace.anchorEntity) add('NS4_E8_HUB_ANCHOR', path, 'Hub requires an anchor entity.');
       if (!workspace.scenarios.some(scenario => scenario.kind === 'collection') || !workspace.scenarios.some(scenario => scenario.kind === 'record')) add('NS4_E8_HUB_SCENARIOS', `${path}.scenarios`, 'Hub requires collection and record scenarios.');
     }
-    if (workspace.scenarios.some(scenario => ['form', 'review'].includes(scenario.kind)) && !workspace.slices.length && !workspace.pageContext.length) add('NS4_E8_DECISION_WITHOUT_CONTEXT', path, 'A command workspace must host an entity slice or receive page context.');
+    const requiresExistingSubject = workspace.scenarios.some(scenario => {
+      if (scenario.kind === 'review') return true;
+      if (scenario.kind !== 'form') return false;
+      const commands = scenario.useCaseIds.map(id => useCasesById.get(id)).filter(useCase => useCase?.kind === 'command');
+      return !commands.length || commands.some(useCase => useCase!.contexts.requires.length > 0);
+    });
+    if (requiresExistingSubject && !workspace.slices.length && !workspace.pageContext.length) add('NS4_E8_DECISION_WITHOUT_CONTEXT', path, 'A review or context-dependent command must host an entity slice or receive page context.');
   });
   sourceSteps.forEach(ref => { if (!stepRefs.has(ref)) add('NS4_E8_STEP_UNHOSTED', 'workspaces', `Journey step ${ref} is not hosted by a workspace.`); });
   sourceUseCases.forEach(id => { if (!useCaseRefs.has(id)) add('NS4_E8_USECASE_UNHOSTED', 'workspaces', `Use case ${id} is not hosted by a workspace.`); });
