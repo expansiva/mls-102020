@@ -132,3 +132,46 @@ test('E8 reports an empty menu section as a non-blocking recorder warning', () =
   assert.equal(gate.ok, true);
   assert.ok(gate.issues.some(issue => issue.code === 'NS4_E8_MENU_EMPTY' && issue.severity === 'warning'));
 });
+
+test('run 36 derives an exact cross-journey edge from prerequisite providesContext', async () => {
+  const handoffSources: any = structuredClone(sources);
+  handoffSources.journeys.journeys = [
+    {
+      journeyId: 'shareProjectStatusReport',
+      business: { actorRef: 'manager', prerequisites: [], entry: { carries: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true }] }, steps: [{
+        stepId: 'shareStatusReport', kind: 'handoff', intent: 'Compartilhar relatório.', requiresContext: ['selectedProject'],
+        providesContext: [{ contextId: 'sharedStatusReport', businessObject: 'ProjectStatusReport', cardinality: 'one', required: true }], featureRefs: ['projects'],
+      }] },
+    },
+    {
+      journeyId: 'viewSharedProjectStatus',
+      business: { actorRef: 'client', prerequisites: [{ journeyRef: 'shareProjectStatusReport', required: true, providesContext: ['sharedStatusReport'] }],
+        entry: { carries: [{ contextId: 'sharedStatusReport', businessObject: 'ProjectStatusReport', cardinality: 'one', required: true }] }, steps: [{
+          stepId: 'inspectSharedStatusReport', kind: 'inspect', intent: 'Ver relatório compartilhado.', requiresContext: ['sharedStatusReport'],
+          providesContext: [], featureRefs: ['projects'],
+        }] },
+    },
+  ];
+  handoffSources.journeys.features = [{ featureId: 'projects', title: 'Projetos', priority: 'now' }];
+  handoffSources.ontology.entities.push({ entityId: 'ProjectStatusReport', title: 'Relatório', description: 'Relatório.', kind: 'core', ownership: 'moduleOwned',
+    sourceRefs: { journeyIds: ['shareProjectStatusReport', 'viewSharedProjectStatus'], featureIds: ['projects'], authorityRefs: [] },
+    fields: [{ fieldId: 'projectStatusReportId' }], lifecycleStates: [], lifecyclePredicates: [], useRules: [], storage: { target: 'moduleDatabase', scope: 'module', notes: '' } });
+  handoffSources.access.authorities = [
+    { authorityRef: 'construction:report-share', journeyStepRefs: ['shareProjectStatusReport.shareStatusReport'] },
+    { authorityRef: 'construction:report-read', journeyStepRefs: ['viewSharedProjectStatus.inspectSharedStatusReport'] },
+  ];
+  handoffSources.access.grants = [
+    { profileRef: 'manager', authorityRef: 'construction:report-share', disclosure: { mode: 'fullRecord', allowedInformation: [] } },
+    { profileRef: 'manager', authorityRef: 'construction:report-read', disclosure: { mode: 'fullRecord', allowedInformation: [] } },
+  ];
+  handoffSources.useCases = [
+    { useCaseId: 'shareStatusReport', kind: 'command', compiledFrom: ['shareProjectStatusReport.shareStatusReport'], entityRefs: ['Project', 'ProjectStatusReport'] },
+    { useCaseId: 'inspectSharedStatusReport', kind: 'query', compiledFrom: ['viewSharedProjectStatus.inspectSharedStatusReport'], entityRefs: ['ProjectStatusReport'] },
+  ];
+  const skeleton = deriveNs4E8Skeleton(handoffSources); skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
+  const target = skeleton.workspaces.find(workspace => workspace.hostedStepRefs.includes('viewSharedProjectStatus.inspectSharedStatusReport'))!;
+  const source = skeleton.workspaces.find(workspace => workspace.hostedStepRefs.includes('shareProjectStatusReport.shareStatusReport'))!;
+  assert.ok(skeleton.edges.some(edge => edge.from === source.workspaceId && edge.to === target.workspaceId
+    && edge.carries.includes('sharedStatusReport') && edge.preferredFromJourneyRef === 'shareProjectStatusReport.shareStatusReport'));
+  assert.equal(validateNs4E8Skeleton(skeleton, handoffSources).ok, true);
+});

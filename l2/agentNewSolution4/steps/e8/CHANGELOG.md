@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-12 — run 36 cross-journey context edge
+
+- Derive E8 candidate edges for exact E2 prerequisite handoffs when the prerequisite explicitly
+  names `providesContext` and a provider step emits the same context consumed by the target step.
+  Same-journey adjacency remains unchanged and no label/entity heuristic is used.
+
 ## 2026-08-12 — run 35 finalizer doctrine
 
 - Changed `fieldsOnly` field projection from an unsatisfiable text-to-field blocker into one

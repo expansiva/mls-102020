@@ -348,7 +348,7 @@
       "outputAnchor": "e8-result",
       "gate": "steps/e8/gate.ts",
       "runtimeNotes": [
-        "Code derives the complete workspace partition, context catalog, hub ranking, candidate edges, hosted use cases and scenario ids from approved E2 through E7 artifacts.",
+        "Code derives the complete workspace partition, context catalog, hub ranking, candidate edges, hosted use cases and scenario ids from approved E2 through E7 artifacts. Candidate edges include both adjacent steps within one journey and exact cross-journey handoffs declared by E2 prerequisites[].providesContext; no context edge is inferred from labels or entity names.",
         "One small reasoning call may localize labels, group already-derived workspaces under existing E2 features, order menu items and select only queueAction, contextualModal or batchAction surfaces; it cannot create, remove or rename structural ids.",
         "The skeleton gate requires total use-case coverage, non-empty workspaces, resolvable page context, collection and record scenarios for a hub, reachable FSM evidence for queues and at most seven menu items per section. Empty menu sections are corrected by the mechanical grouping phase and remain visible as NS4_E8_MENU_EMPTY recorder warnings if encountered.",
         "The human checkpoint reviews the map: header links, feature menu, workspaces, scenarios, profiles and context-carrying candidate edges. A requested change starts the next skeleton round.",

@@ -384,14 +384,33 @@ function deriveScenarios(entries: ReturnType<typeof collectSteps>, isHub: boolea
 }
 function deriveEdges(sources: Ns4E8Sources, entries: ReturnType<typeof collectSteps>, byStep: Map<string, string>): Ns4E8Edge[] {
   const edges = new Map<string, Ns4E8Edge>();
+  const addEdge = (fromRef: string, toRef: string, contextIds: string[]) => {
+    const from = byStep.get(fromRef); const to = byStep.get(toRef); const carries = unique(contextIds);
+    if (!from || !to || from === to || !carries.length) return;
+    const key = `${from}:${to}:${carries.join(',')}`;
+    edges.set(key, { from, to, carries, preferredFromJourneyRef: fromRef });
+  };
   for (const journey of sources.journeys.journeys) {
     const steps = journey.business.steps;
     for (let index = 1; index < steps.length; index += 1) {
       const previousRef = `${journey.journeyId}.${steps[index - 1].stepId}`; const nextRef = `${journey.journeyId}.${steps[index].stepId}`;
-      const from = byStep.get(previousRef); const to = byStep.get(nextRef); if (!from || !to || from === to) continue;
       const previous = entries.find(entry => entry.stepRef === previousRef); const next = entries.find(entry => entry.stepRef === nextRef); const carries = next?.requires.filter(context => previous?.provides.some(provided => provided.contextId === context.contextId)).map(context => context.contextId) || [];
-      if (!carries.length) continue; const key = `${from}:${to}:${carries.sort().join(',')}`;
-      edges.set(key, { from, to, carries, preferredFromJourneyRef: previousRef });
+      addEdge(previousRef, nextRef, carries);
+    }
+    for (const prerequisite of journey.business.prerequisites || []) {
+      const declaredContexts = new Set(prerequisite.providesContext);
+      if (!declaredContexts.size) continue;
+      const providerJourney = sources.journeys.journeys.find(candidate => candidate.journeyId === prerequisite.journeyRef);
+      if (!providerJourney) continue;
+      for (const targetStep of steps) {
+        const carriedToTarget = targetStep.requiresContext.filter(contextId => declaredContexts.has(contextId));
+        if (!carriedToTarget.length) continue;
+        const targetRef = `${journey.journeyId}.${targetStep.stepId}`;
+        for (const providerStep of providerJourney.business.steps) {
+          const produced = providerStep.providesContext.map(context => context.contextId).filter(contextId => carriedToTarget.includes(contextId));
+          if (produced.length) addEdge(`${providerJourney.journeyId}.${providerStep.stepId}`, targetRef, produced);
+        }
+      }
     }
   }
   return [...edges.values()].sort((left, right) => `${left.from}:${left.to}`.localeCompare(`${right.from}:${right.to}`));

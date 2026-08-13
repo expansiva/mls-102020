@@ -93,7 +93,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-49 (2026-08-12) E7 fixed-point reachability';
+export const NS4_AGENT_BUILD = 'build-50 (2026-08-12) E8 prerequisite context edges';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
