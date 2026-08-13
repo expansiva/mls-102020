@@ -9,6 +9,13 @@
 // on a molecule that is not a shell, route A with nothing named as changing, an artifact list that
 // contradicts the route. Every check below is of that second kind; none of them second-guesses the
 // model's reasoning.
+//
+// ⚠️ 2026-08-13: a defect the contract DESCRIBED as intended was routed to A, which is not built, so
+// the run died on a request that was one line of code plus one sentence of the contract. No gate here
+// could have caught it — "would existing markup have to be rewritten?" is not decidable from this
+// payload. What was fixable was the vocabulary: the schema said "or changes meaning" and this file's
+// own retry message repeated it. Both now say what the criterion actually is. The taxonomy was the
+// defect, not the model's care (CHANGELOG 2026-08-13).
 
 import {
   IM_CREATABLE_ARTIFACTS,
@@ -89,7 +96,7 @@ export function runImTriageGate(inputs: ImTriageInputs): ImGateResult {
     errors.push(
       issue(
         'route_a_no_elements',
-        'route A means the public definition changes, and nothing was named — list the slots, properties or events that are added, removed or change meaning; if none do, this is route B',
+        'route A means the public definition changes, and nothing was named — list the slots, properties or events whose change forces existing markup to be rewritten. If no page that uses this molecule would have to be written differently, this is route B, and that includes correcting a contract sentence that described the defect',
       ),
     );
   }

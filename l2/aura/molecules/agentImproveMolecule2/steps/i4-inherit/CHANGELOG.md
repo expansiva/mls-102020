@@ -30,6 +30,14 @@ Three changes, and the split between them is the point — what code can decide,
   a member of the parent class"), which is **false** — the member exists — and sent the retry hunting
   for a typo. It binds the human's confirmation too: a private override does not compile for anyone.
 
+**The widget got the same list.** Found while testing the change: with the suggestion no longer arriving
+as an override, the member field starts empty and Confirm is blocked until the human picks one
+(`no_member`, unchanged since 2026-08-06). That is the right behaviour — an override should be a
+deliberate pick — but it moves the choice to the human, who was seeing the same two-name list with the
+same silence about why it is short. `unreachableForDisplay` renders them under the picker, struck
+through, capped at 6 with "and N more", plus the line that says what follows: if the change lives in
+one of those, no override here solves it.
+
 **Deliberately NOT done: forcing `parent` in code when no narrow member exists.** Whether a member can
 carry a given change is semantic, and a gate that decided it would forbid the legitimate
 override-`render` case (a markup variation on a shell). Code supplies the facts and the ordering; the

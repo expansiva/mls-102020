@@ -10,6 +10,7 @@ import {
   inheritBlockingIssues,
   isExpensiveOverride,
   offerableMembers,
+  unreachableForDisplay,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i4-inherit/widgetInheritChoiceLogic.js';
 
 const MEMBERS = [
@@ -80,4 +81,16 @@ test('a member the shell already overrides is marked, not hidden', () => {
   assert.equal(offered.length, 3);
   assert.equal(offered.find(m => m.name === 'portalWidgetName')?.alreadyOverridden, true);
   assert.equal(offered.find(m => m.name === 'render')?.alreadyOverridden, false);
+});
+
+test('the unreachable members are shown to the HUMAN too, capped and honest about the cap', () => {
+  // The human is the one picking a member now that the suggestion no longer arrives as an override.
+  // A two-name list with no explanation reads as "nothing here is worth overriding".
+  const many = Array.from({ length: 9 }, (_, i) => ({ name: `secret${i}`, why: 'private' as const }));
+  const capped = unreachableForDisplay({ unreachableMembers: many }, 6);
+  assert.equal(capped.shown.length, 6);
+  assert.equal(capped.hiddenCount, 3);
+
+  // A run whose context.json predates the field must not crash the widget.
+  assert.deepEqual(unreachableForDisplay({ unreachableMembers: undefined }), { shown: [], hiddenCount: 0 });
 });

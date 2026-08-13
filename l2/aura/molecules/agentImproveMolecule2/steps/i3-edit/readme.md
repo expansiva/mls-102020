@@ -65,6 +65,11 @@ Retry 1 with the gate errors; a 2nd failure fails the step, molecule untouched.
 
 ## Tests
 
-`applyEdits.test.ts` (12) and `gate.test.ts` (14), both pure. The two that carry the design are
-"a `find` that matches twice is REJECTED" and "a colour the file ALREADY hardcoded does not block
-an unrelated fix".
+`applyEdits.test.ts` (25) and `gate.test.ts` (14), both pure. The three that carry the design are
+"a `find` that matches twice is REJECTED", "a colour the file ALREADY hardcoded does not block
+an unrelated fix" and "THE 13/08 DEFECT: um bloco que chega rente à margem é alinhado à âncora".
+
+**Indentation is the file's, not the model's** (CHANGELOG 2026-08-13). `alignReplacement` places the
+written block at the depth of the text it replaces and shifts the rest of the block by the same amount.
+It is idempotent for well-formed content, preserves relative structure without inventing it, and leaves
+mid-line matches alone.

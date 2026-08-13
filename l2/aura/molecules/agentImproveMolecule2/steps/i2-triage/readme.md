@@ -20,10 +20,16 @@ surface is 20, and the other 280 cannot answer the routing question.
 
 ## The decision
 
-**Does a consumer have to change what they write, or observe something different through the
-public surface?** Yes → A. No → B. The public surface is exactly slots, attributes and events.
+**Would a page that uses this molecule today have to be WRITTEN DIFFERENTLY?** Yes → A. No → B. The
+public surface is exactly slots, attributes and events.
 
-Size is not the criterion, and the prompt says so twice: adding one slot is three lines and is a
+⚠️ The question used to have a second half — *"or observe something different"* — and it was dropped on
+2026-08-13, because it cannot discriminate: fixing any defect changes what you observe, and that is what
+fixing is. It had cost a run (CHANGELOG). Two readings are explicitly NOT route A: a repaired defect,
+and a **corrected description** — a contract sentence that described the defect as if it were intended,
+which is the normal case, since NM2 writes the contract and the component in the same run.
+
+Size is not the criterion either, and the prompt says so twice: adding one slot is three lines and is a
 rebuild; rewriting a whole render to fix a layout bug is an edit.
 
 | route | when |
@@ -66,6 +72,8 @@ Retry 1 with the gate errors in the prompt; a 2nd failure fails the step.
 
 ## Tests
 
-`gate.test.ts` (14) and `surface.test.ts` (6), both pure. The surface tests exist because the
+`gate.test.ts` (16) and `surface.test.ts` (6), both pure. Two of the gate tests pin a shape the gate
+must keep **accepting** — route B with `defs` + `ts` and no definition elements — so the 13/08 confusion
+is not "fixed" later by refusing it. The surface tests exist because the
 default attribute of a Lit property is the name **lowercased**, not kebab-cased — reporting
 `my-value` for `myValue` would have the model reason about markup that does nothing.

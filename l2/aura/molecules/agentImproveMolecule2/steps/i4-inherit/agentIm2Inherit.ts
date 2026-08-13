@@ -215,6 +215,7 @@ async function beforeClarificationStep(
     parentReference: inh.parentReference || '',
     ownMembers: inh.ownMembers,
     overridableMembers: inh.overridableMembers,
+    unreachableMembers: inh.unreachableMembers || [],
     hasLess: hasLess(ctx),
     suggested: {
       where: ((suggestion?.where || 'less') as InheritWhere),

@@ -192,3 +192,105 @@ test('find e content iguais a menos de espaçamento é erro, não substituição
   ]);
   assert.match(result.errors[0], /identical/);
 });
+
+// ---- 2026-08-13: indentation is the FILE's, not the model's ----
+
+// The real shape, from ml-copy-button after the run that broke it.
+const METHOD = `/// <mls fileReference="_102040_/l2/molecules/grouptriggeraction/ml-copy-button.ts" enhancement="_102027_/l2/enhancementAura"/>
+
+export class MlCopyButtonMolecule extends MoleculeAuraElement {
+  private async runCopyAction() {
+    const text = this.getCopyText();
+    const copied = await this.writeClipboard(text);
+    if (!copied) return;
+  }
+}
+`;
+
+test('THE 13/08 DEFECT: um bloco que chega rente à margem é alinhado à âncora', () => {
+  // What the model sent, flush left — twice in one molecule, the second time with "keep the
+  // indentation" written in the request. Prose asks; code imposes.
+  const result = applyEdits(files({ ts: { present: true, source: METHOD } }), [
+    edit({
+      artifact: 'ts',
+      find: 'const text = this.getCopyText();',
+      content: 'const text = this.getCopyText();\nif (!text) return;\nconst copied = await this.writeClipboard(text);',
+    }),
+  ]);
+  assert.equal(result.errors.length, 0);
+  const after = result.changed.get('ts')!;
+  assert.ok(after.includes('    const text = this.getCopyText();\n    if (!text) return;\n    const copied = await this.writeClipboard(text);'));
+  // and nothing landed at column 0
+  assert.equal(/^if \(!text\)/m.test(after), false);
+});
+
+test('um find que cita a própria indentação não desloca o bloco para a coluna 0', () => {
+  // My own bug while writing this: the base was read from the gap BEFORE the match, and a find that
+  // quotes its leading spaces starts at the line break, leaving that gap empty. The base is the
+  // anchor LINE's indentation, read from the file.
+  const result = applyEdits(files({ ts: { present: true, source: METHOD } }), [
+    edit({
+      artifact: 'ts',
+      find: '    if (!copied) return;',
+      content: '    if (!copied) return;\n    this.done = true;',
+    }),
+  ]);
+  assert.equal(result.errors.length, 0);
+  assert.ok(result.changed.get('ts')!.includes('    if (!copied) return;\n    this.done = true;'));
+});
+
+test('um bloco já bem indentado é escrito sem alteração — a função é idempotente', () => {
+  const wellFormed = `  private async runCopyAction() {
+    const text = this.getCopyText();
+    if (!text) return;
+  }`;
+  const result = applyEdits(files({ ts: { present: true, source: METHOD } }), [
+    edit({
+      artifact: 'ts',
+      find: '  private async runCopyAction() {\n    const text = this.getCopyText();\n    const copied = await this.writeClipboard(text);\n    if (!copied) return;\n  }',
+      content: wellFormed,
+    }),
+  ]);
+  assert.equal(result.errors.length, 0);
+  assert.ok(result.changed.get('ts')!.includes(wellFormed));
+});
+
+test('a estrutura RELATIVA do bloco é preservada, não reinventada', () => {
+  // A flush block stays flat, at the anchor's depth: consistent, and no longer poisoning the next
+  // run's exact match. Guessing one level deeper would be a formatter's job.
+  const result = applyEdits(files({ ts: { present: true, source: METHOD } }), [
+    edit({
+      artifact: 'ts',
+      find: 'if (!copied) return;',
+      content: 'if (!copied) {\nreturn;\n}',
+    }),
+  ]);
+  assert.ok(result.changed.get('ts')!.includes('    if (!copied) {\n    return;\n    }'));
+});
+
+test('um casamento no MEIO da linha não é reindentado — ali o espaçamento não é nosso', () => {
+  const source = 'const x = compute(oldValue);\n';
+  const result = applyEdits(files({ ts: { present: true, source } }), [
+    edit({ artifact: 'ts', find: 'oldValue', content: 'newValue,\nsecond' }),
+  ]);
+  assert.equal(result.changed.get('ts')!, 'const x = compute(newValue,\nsecond);\n');
+});
+
+test('o caminho tolerante a espaçamento também alinha', () => {
+  // COLAPSADO has every nested line at a single space: the tolerant match is the normal case there.
+  const result = applyEdits(files({ ts: { present: true, source: COLAPSADO } }), [
+    edit({
+      artifact: 'ts',
+      find: 'this.nodeIdCounter = 0;',
+      content: 'this.nodeIdCounter = 0;\nthis.expanded = new Set();',
+    }),
+  ]);
+  assert.equal(result.errors.length, 0);
+  const after = result.changed.get('ts')!;
+  const line = after.split('\n').find(l => l.includes('this.expanded'))!;
+  assert.equal(leading(line), leading(after.split('\n').find(l => l.includes('this.nodeIdCounter'))!));
+});
+
+function leading(line: string): string {
+  return (line.match(/^[ \t]*/) || [''])[0];
+}

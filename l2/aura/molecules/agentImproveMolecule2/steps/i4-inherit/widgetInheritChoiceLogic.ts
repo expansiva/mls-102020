@@ -19,7 +19,7 @@
 //              writes nothing. It is offered because it is often the RIGHT answer, and hiding it
 //              would push the user into an override that is merely the reachable one.
 
-import { ImOverridable } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
+import { ImOverridable, ImUnreachable } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 
 export type InheritWhere = 'less' | 'override' | 'parent';
 export type InheritAction = 'continue' | 'cancel';
@@ -35,6 +35,12 @@ export interface InheritChoiceValue {
   ownMembers: string[];
   /** Cheapest first, from imInherit. Empty when the parent is unreadable from here. */
   overridableMembers: ImOverridable[];
+  /**
+   * What the parent has and no subclass can reach. The human picking a member needs the same facts
+   * the model got: without them a two-name list looks like the parent has nothing worth overriding.
+   * Optional — a run whose context.json predates 2026-08-13 carries none.
+   */
+  unreachableMembers?: ImUnreachable[];
   /** Whether the molecule has a .less at all; 'less' is not offered when it cannot be created. */
   hasLess: boolean;
   /** The model's suggestion, pre-selected. The human is free to ignore it. */
@@ -115,4 +121,19 @@ export function offerableMembers(value: Pick<InheritChoiceValue, 'overridableMem
     ...member,
     alreadyOverridden: value.ownMembers.includes(member.name),
   }));
+}
+
+/**
+ * The unreachable members, capped for display.
+ *
+ * Capped because a parent with an i18n block declares several module constants and the list would
+ * bury the picker; the first names are the ones a request is usually about. `hiddenCount` is shown
+ * rather than dropped — "and 4 more" keeps the list honest about being partial.
+ */
+export function unreachableForDisplay(
+  value: Pick<InheritChoiceValue, 'unreachableMembers'>,
+  limit = 6,
+): { shown: ImUnreachable[]; hiddenCount: number } {
+  const all = value.unreachableMembers || [];
+  return { shown: all.slice(0, limit), hiddenCount: Math.max(0, all.length - limit) };
 }

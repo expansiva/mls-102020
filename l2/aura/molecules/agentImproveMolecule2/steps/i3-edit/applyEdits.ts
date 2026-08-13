@@ -98,6 +98,76 @@ interface FlexibleMatch {
   end: number;
 }
 
+export interface ImAlignedSpan {
+  /** Where the replacement starts — the beginning of the anchor's LINE, not of the match. */
+  start: number;
+  text: string;
+}
+
+function lineStartOf(text: string, index: number): number {
+  const newline = text.lastIndexOf('\n', Math.max(0, index - 1));
+  return newline === -1 ? 0 : newline + 1;
+}
+
+function leadingWhitespaceOf(line: string): string {
+  return (line.match(/^[ \t]*/) || [''])[0];
+}
+
+/**
+ * INDENTATION IS THE FILE'S, NOT THE MODEL'S.
+ *
+ * ⚠️ MEASURED 2026-08-13, twice in the same molecule. The written block came out flush left:
+ *
+ *     private getCopyText(): string {
+ *   return this.getLabelText();      // ← column 0
+ *   }                                // ← column 0
+ *
+ * The mechanism: a match starts at the first non-whitespace character, so the anchor line's
+ * indentation is never part of the span — it stays in the file and the first line looks right. Lines
+ * 2..n came from the model verbatim, and the model sent them flush.
+ *
+ * The model was not being careless. `prompt.md` told it "indentation does not have to match", meaning
+ * the `find`, and it generalised to the `content`. The second occurrence happened with "keep the
+ * file's indentation" written in the user's own request — which is the week's lesson again: prose
+ * asks, code imposes.
+ *
+ * So code imposes. The span is expanded to the start of the anchor's line, the first line of the
+ * content is placed at the anchor's own indentation, and every line after it is shifted by the same
+ * amount, keeping the block's RELATIVE structure exactly as the model sent it.
+ *
+ * What this deliberately does NOT do is invent structure. A block that arrives flush comes out
+ * uniformly at the anchor's depth — consistent, no longer breaking the next run's exact match, and
+ * not reformatted by guesswork. Reindenting a body one level deeper would be a formatter's job, and
+ * this is a text writer.
+ *
+ * Returns null when there is nothing to align: single-line content (its own line prefix is already
+ * the file's), or a match that begins mid-line, where the indentation is not ours to touch.
+ */
+export function alignReplacement(current: string, matchStart: number, content: string): ImAlignedSpan | null {
+  if (!content.includes('\n')) return null;
+
+  const start = lineStartOf(current, matchStart);
+  // Anything other than whitespace before the match means it starts mid-line: `foo(bar)` where only
+  // `bar` was quoted. Re-indenting there would eat real code.
+  if (!/^[ \t]*$/.test(current.slice(start, matchStart))) return null;
+
+  // The base is the ANCHOR LINE's own indentation, read from the file — not the gap before the match.
+  // A `find` that quotes its own leading spaces starts AT the line break, leaving that gap empty, and
+  // taking the gap as the base would shift the whole block to column 0.
+  const lineEnd = current.indexOf('\n', start);
+  const base = leadingWhitespaceOf(current.slice(start, lineEnd === -1 ? current.length : lineEnd));
+
+  const lines = content.split('\n');
+  const rest = lines.slice(1);
+  const nonBlank = rest.filter(line => line.trim());
+  const common = nonBlank.length
+    ? Math.min(...nonBlank.map(line => leadingWhitespaceOf(line).length))
+    : 0;
+
+  const body = rest.map(line => (line.trim() ? base + line.slice(common) : ''));
+  return { start, text: [base + lines[0].trimStart(), ...body].join('\n') };
+}
+
 function findFlexible(haystack: string, find: string): FlexibleMatch {
   const matches = [...haystack.matchAll(flexiblePattern(find))];
   const first = matches[0];
@@ -180,7 +250,14 @@ export function applyEdits(
 
     const exact = countOccurrences(current, find);
     if (exact === 1) {
-      working.set(edit.artifact, current.replace(find, () => edit.content));
+      const at = current.indexOf(find);
+      const aligned = alignReplacement(current, at, edit.content);
+      working.set(
+        edit.artifact,
+        aligned
+          ? current.slice(0, aligned.start) + aligned.text + current.slice(at + find.length)
+          : current.replace(find, () => edit.content),
+      );
       touched.add(edit.artifact);
       applied.push(`${edit.artifact}: ${edit.why.trim() || 'replaced a block'}`);
       return;
@@ -213,10 +290,14 @@ export function applyEdits(
     }
 
     // Only the span really found is replaced, so everything around it keeps its own bytes — the
-    // file's indentation is left exactly as odd as it was.
+    // file's indentation is left exactly as odd as it was. The block being written is aligned to the
+    // anchor's line, which is where flush-left content used to land (see alignReplacement).
+    const alignedLoose = alignReplacement(current, loose.start, edit.content);
     working.set(
       edit.artifact,
-      current.slice(0, loose.start) + edit.content.trim() + current.slice(loose.end),
+      alignedLoose
+        ? current.slice(0, alignedLoose.start) + alignedLoose.text + current.slice(loose.end)
+        : current.slice(0, loose.start) + edit.content.trim() + current.slice(loose.end),
     );
     touched.add(edit.artifact);
     applied.push(`${edit.artifact}: ${edit.why.trim() || 'replaced a block'} (whitespace-tolerant match)`);
