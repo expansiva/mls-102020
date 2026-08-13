@@ -21,6 +21,7 @@ const NOT_A_SHELL: ImInheritance = {
   parentClassName: null,
   ownMembers: [],
   overridableMembers: [],
+  unreachableMembers: [],
 };
 
 function artifacts(over: Partial<Record<ImArtifact['kind'], Partial<ImArtifact>>> = {}): ImArtifact[] {
@@ -112,6 +113,7 @@ test('a shell whose parent is in the SAME project is rejected — that is a loca
         parentClassName: 'MlDataTableMolecule',
         ownMembers: [],
         overridableMembers: [],
+        unreachableMembers: [],
       },
     }),
   );
@@ -130,6 +132,7 @@ test('a shell whose parent is in another project passes', () => {
         parentClassName: 'RangeSliderMolecule',
         ownMembers: [],
         overridableMembers: [],
+        unreachableMembers: [],
       },
     }),
   );
@@ -171,6 +174,7 @@ const SHELL_SEM_DEFS: ImInheritance = {
   parentClassName: 'RangeSliderMolecule',
   ownMembers: [],
   overridableMembers: [],
+  unreachableMembers: [],
 };
 
 test('THE T4 DEFECT: uma casca sem .defs.ts próprio PASSA, se o contrato do pai foi lido', () => {

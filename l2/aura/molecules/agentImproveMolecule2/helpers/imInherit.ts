@@ -14,7 +14,7 @@
 // parent — a later fix in the base no longer reaches it. The clarification of route C uses this
 // ordering to steer the user to the smallest member that solves the problem.
 
-import { ImInheritance, ImOverridable } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
+import { ImInheritance, ImOverridable, ImUnreachable } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 
 const NOT_A_SHELL: ImInheritance = {
   isShell: false,
@@ -23,7 +23,29 @@ const NOT_A_SHELL: ImInheritance = {
   parentClassName: null,
   ownMembers: [],
   overridableMembers: [],
+  unreachableMembers: [],
 };
+
+/**
+ * Custom-element and Lit lifecycle hooks. They REMAIN overridable — a shell may legitimately
+ * intercept one — but they are not where a parent implements a behaviour, so they must never head a
+ * list ordered "cheapest first".
+ *
+ * Measured on 2026-08-13: `disconnectedCallback` sat at cost 20, led the list of a parent whose every
+ * other method is private, and was suggested as the place to change a timer duration held in a module
+ * constant. Ranking it just under render() is the code-side half of that fix; the other half is
+ * `unreachableMembersOf` below.
+ */
+export const IM_LIFECYCLE_HOOKS = [
+  'connectedCallback',
+  'disconnectedCallback',
+  'attributeChangedCallback',
+  'adoptedCallback',
+  'willUpdate',
+  'update',
+  'firstUpdated',
+  'updated',
+];
 
 /**
  * The molecule base class every molecule extends. Extending IT is not inheritance in the sense
@@ -66,9 +88,39 @@ function collectOwnMembers(classBody: string): string[] {
  */
 function costOf(name: string, kind: 'property' | 'method'): number {
   if (name === 'render') return 100;
+  if (IM_LIFECYCLE_HOOKS.includes(name)) return 90;
   if (kind === 'property') return 1;
   if (/^get[A-Z]/.test(name) || /Template$/.test(name)) return 10;
   return 20;
+}
+
+/**
+ * Members of the PARENT no subclass can reach: `private` members and module-scope constants.
+ *
+ * They are the evidence the suggestion needs in order to answer `parent`. Without them the model sees
+ * a short list of overridable members and no reason why it is short — see ImUnreachable for the run
+ * that measured it.
+ *
+ * Deliberately textual, like everything else here: this feeds a human decision, not a compiler.
+ */
+export function unreachableMembersOf(parentSource: string): ImUnreachable[] {
+  const out: ImUnreachable[] = [];
+  const seen = new Set<string>();
+
+  // `private foo(`, `private async foo(`, `private foo =`, `private foo: number = 0`
+  for (const m of parentSource.matchAll(/^\s*private\s+(?:readonly\s+)?(?:async\s+)?(\w+)\s*[:(=]/gm)) {
+    if (seen.has(m[1])) continue;
+    seen.add(m[1]);
+    out.push({ name: m[1], why: 'private' });
+  }
+  // Module scope only — no indentation. `const X = …` and `export const X = …`.
+  for (const m of parentSource.matchAll(/^(?:export\s+)?const\s+(\w+)\s*[:=]/gm)) {
+    if (seen.has(m[1])) continue;
+    seen.add(m[1]);
+    out.push({ name: m[1], why: 'module-constant' });
+  }
+
+  return out;
 }
 
 /** Members of the PARENT a shell could override, ordered cheapest first. */
@@ -98,8 +150,9 @@ export function overridableMembersOf(parentSource: string): ImOverridable[] {
  * Detects the shell from the molecule's own source.
  *
  * `parentSource` is optional: when absent (the parent lives in another project and may not be
- * readable from here), the shell is still detected and `overridableMembers` comes back empty —
- * the clarification then offers `.less` and "change the parent", but cannot propose a member.
+ * readable from here), the shell is still detected and `overridableMembers`/`unreachableMembers` come
+ * back empty — the clarification then offers `.less` and "change the parent", but cannot propose a
+ * member.
  */
 export function detectInheritance(source: string, parentSource = ''): ImInheritance {
   const m = source.match(EXTENDS_RE);
@@ -121,6 +174,7 @@ export function detectInheritance(source: string, parentSource = ''): ImInherita
     parentClassName,
     ownMembers: collectOwnMembers(classBody),
     overridableMembers: parentSource ? overridableMembersOf(parentSource) : [],
+    unreachableMembers: parentSource ? unreachableMembersOf(parentSource) : [],
   };
 }
 

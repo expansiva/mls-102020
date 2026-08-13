@@ -18,6 +18,7 @@
 import {
   ImGateResult,
   ImOverridable,
+  ImUnreachable,
   imGateFail,
   imGateOk,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
@@ -36,12 +37,22 @@ export interface ImInheritGateInputs {
   /** Measured by imInherit — the model is told, the gate checks. */
   isShell: boolean;
   overridableMembers: ImOverridable[];
+  /**
+   * Measured by imInherit too. Optional because a context.json written before 2026-08-13 has no such
+   * field; absent means "not measured", never "there are none".
+   */
+  unreachableMembers?: ImUnreachable[];
   hasLess: boolean;
   /** True when validating the model's proposal, false for the human's confirmation. */
   fromModel: boolean;
 }
 
 const WHERE = ['less', 'override', 'parent'];
+
+const WHY_UNREACHABLE: Record<ImUnreachable['why'], string> = {
+  'private': 'it is private in the parent, and a private member does not compile as an override',
+  'module-constant': 'it is a module-scope constant, not a class member — no subclass can reach it',
+};
 
 function issue(code: string, message: string): string {
   return `${code}: ${message}`;
@@ -68,8 +79,19 @@ export function runImInheritGate(inputs: ImInheritGateInputs): ImGateResult {
 
   if (where === 'override') {
     const member = (answer.member || '').trim();
+    const unreachable = (inputs.unreachableMembers || []).find(m => m.name === member);
     if (!member) {
       errors.push(issue('member_missing', 'an override needs the member to override — a property or a narrow method before render()'));
+    } else if (unreachable) {
+      // A member that CANNOT carry the change is a wrong answer, not a cheap one. Saying only
+      // "unknown member" here would be false — it exists — and would send the retry looking for a
+      // typo instead of drawing the conclusion that follows: nothing in this shell can express it.
+      errors.push(
+        issue(
+          'member_unreachable',
+          `'${member}' exists in the parent and cannot be overridden: ${WHY_UNREACHABLE[unreachable.why]}. If that is where the change has to happen, no override in this shell can express it — the answer is 'parent', the fix belongs to the base component`,
+        ),
+      );
     } else if (inputs.overridableMembers.length && !inputs.overridableMembers.some(m => m.name === member)) {
       // Only checked when the map is populated: when the parent lives in a project this run cannot
       // read, imInherit returns an empty map and any name has to be accepted. Refusing everything

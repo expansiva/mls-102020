@@ -1,5 +1,40 @@
 # CHANGELOG — i4-inherit
 
+## 2026-08-13 — the suggestion was picking an incapable member
+
+Measured in the Studio on `mls-102055/.../ml-copy-button-glass`. Asked to make the copy confirmation
+last 3 seconds, the suggestion came back `override disconnectedCallback` — a teardown hook that cannot
+change a duration held in `const COPY_CONFIRM_MS = 2000`, a module constant. The reason field read
+plausibly ("sobrescrever o método estreito que controla esse ciclo") over a wrong member.
+
+**The cause was a silent filter.** `overridableMembersOf` drops private members — correctly, they do
+not compile as overrides — but it dropped them *without telling anyone*. Every method of the
+confirmation cycle in that parent is private, so the model was handed a two-item list (`render`,
+`disconnectedCallback`), told to pick the cheapest that solves the problem, and had no way to learn
+that the members which DO implement the behaviour exist and are out of reach. It picked the cheapest of
+what was left. `render` at cost 100 was correctly rejected as expensive; `disconnectedCallback` at
+cost 20 *led* the list.
+
+Three changes, and the split between them is the point — what code can decide, code decides:
+
+- **`unreachableMembersOf` (new, in `imInherit`)** — private members and module-scope constants of the
+  parent, each with the reason, carried on `ImInheritance.unreachableMembers` and rendered into the
+  prompt as its own section. This is the evidence that makes `parent` derivable instead of a
+  guess: "the duration is a module constant" is a fact, and what follows from it is not a judgement
+  call;
+- **lifecycle hooks cost 90** — just under `render`. They stay overridable, because a shell may
+  legitimately intercept one, but they can no longer *head* a list ordered cheapest-first. A narrow
+  method still beats them;
+- **`member_unreachable` (new gate code)** — naming a private member or a module constant fails with
+  the reason and with the conclusion spelled out. Before, it fell through to `member_unknown` ("is not
+  a member of the parent class"), which is **false** — the member exists — and sent the retry hunting
+  for a typo. It binds the human's confirmation too: a private override does not compile for anyone.
+
+**Deliberately NOT done: forcing `parent` in code when no narrow member exists.** Whether a member can
+carry a given change is semantic, and a gate that decided it would forbid the legitimate
+override-`render` case (a markup variation on a shell). Code supplies the facts and the ordering; the
+choice stays with the model and the human.
+
 ## 2026-08-06 — first version
 
 - **Built with a tool call first, and that was wrong.** A tool result is not a

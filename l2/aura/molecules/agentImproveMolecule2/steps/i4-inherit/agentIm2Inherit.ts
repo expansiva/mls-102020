@@ -10,7 +10,8 @@
 // THE DECISION THAT DEFINES THIS STEP: 'parent' is a valid answer and is NOT executable. The user
 // is allowed to conclude the base molecule is wrong, and this agent still will not touch it
 // (flow.json.principles, "NEVER touch the parent"). The run ends with the instruction and writes
-// nothing — no i4-done anchor, so i3-edit never starts.
+// nothing — the i4-done anchor IS emitted, carrying where:'parent', and i3-edit completes as a
+// declared no-op. See the ⚠️ at applyChoice: "no anchor" was the 2026-08-10 defect that hung the run.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
@@ -36,6 +37,7 @@ import {
   ImContext,
   ImInheritChoice,
   ImTriage,
+  ImUnreachable,
   imDoneAnchor,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import {
@@ -47,6 +49,7 @@ import {
   readImAgentText,
   sourceOf,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
+import { IM_LIFECYCLE_HOOKS } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 import { getImRunKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imRootPlan.js';
 import { readSurface, renderSurface } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
 import { ImInheritAnswer, runImInheritGate } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i4-inherit/gate.js';
@@ -89,8 +92,9 @@ async function beforePromptStep(
 
   const inh = ctx.inheritance;
   const members = inh.overridableMembers.length
-    ? inh.overridableMembers.map(m => `- \`${m.name}\` (${m.kind})`).join('\n')
+    ? inh.overridableMembers.map(m => `- \`${m.name}\` (${m.kind}${IM_LIFECYCLE_HOOKS.includes(m.name) ? ', lifecycle hook — it runs around the parent\'s behaviour, it is not where the behaviour is implemented' : ''})`).join('\n')
     : '- (the parent source is not readable from here — you may still name a member, but you cannot verify it exists)';
+  const unreachable = renderUnreachable(inh.unreachableMembers);
 
   const systemPrompt = promptMd
     .split('{{tag}}').join(ctx.target.tag)
@@ -99,6 +103,7 @@ async function beforePromptStep(
     .split('{{hasLess}}').join(hasLess(ctx) ? 'yes' : 'no — choosing `less` makes the agent create one')
     .split('{{ownMembers}}').join(inh.ownMembers.length ? inh.ownMembers.join(', ') : 'none — the body is empty')
     .split('{{overridableMembers}}').join(members)
+    .split('{{unreachableMembers}}').join(unreachable)
     .split('{{surface}}').join(renderSurface(readSurface(sourceOf(ctx.artifacts, 'ts'))))
     .split('{{userPrompt}}').join(ctx.userPrompt)
     .split('{{triage}}').join(triage.rationale)
@@ -146,6 +151,7 @@ async function afterPromptStep(
       answer,
       isShell: ctx.inheritance.isShell,
       overridableMembers: ctx.inheritance.overridableMembers,
+      unreachableMembers: ctx.inheritance.unreachableMembers,
       hasLess: hasLess(ctx),
       fromModel: true,
     })
@@ -252,6 +258,7 @@ async function applyChoice(
     answer: { where: confirmed.where, member: confirmed.member },
     isShell: ctx.inheritance.isShell,
     overridableMembers: ctx.inheritance.overridableMembers,
+    unreachableMembers: ctx.inheritance.unreachableMembers,
     hasLess: hasLess(ctx),
     fromModel: false,
   });
@@ -312,6 +319,20 @@ async function readRun(runKey: string): Promise<{ ctx: ImContext; triage: ImTria
 
 function hasLess(ctx: ImContext): boolean {
   return !!artifactOf(ctx.artifacts, 'less')?.present;
+}
+
+/**
+ * What the shell cannot reach, for the prompt. Capped: on a molecule with an i18n block this list runs
+ * long, and the first names are the ones the request is about.
+ */
+function renderUnreachable(members: ImUnreachable[] | undefined): string {
+  const list = members || [];
+  if (!list.length) return '- (none detected — every member of the parent is reachable, or its source could not be read)';
+  const shown = list.slice(0, 12).map(m => m.why === 'private'
+    ? `- \`${m.name}\` — private: an override does not compile`
+    : `- \`${m.name}\` — module-scope constant: not a class member, no subclass can change it`);
+  if (list.length > shown.length) shown.push(`- (and ${list.length - shown.length} more)`);
+  return shown.join('\n');
 }
 
 /** The suggestion out of the clarification envelope. Everything is defaulted; the gate rejects. */
