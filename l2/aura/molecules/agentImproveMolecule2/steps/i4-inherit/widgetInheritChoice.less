@@ -64,6 +64,28 @@ widget-inherit-choice-102020 {
       border-color: var(--collab-primary, #3b82f6);
       background: var(--collab-surface-2, rgba(59, 130, 246, 0.06));
     }
+
+    // Shown and not offered: the parent exposes nothing that could carry the change. Kept visible
+    // so the absence is explained instead of the option merely missing.
+    &.is-unavailable {
+      cursor: not-allowed;
+      opacity: 0.55;
+
+      &:hover {
+        border-color: var(--collab-border, rgba(127, 127, 127, 0.35));
+      }
+
+      .ihc-radio {
+        opacity: 0.4;
+      }
+    }
+  }
+
+  .ihc-unavailable {
+    margin: 0.4rem 0 0;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    color: var(--collab-text-muted, rgba(127, 127, 127, 0.95));
   }
 
   // `parent` is the choice that writes nothing. Muted, and never mistaken for the default.

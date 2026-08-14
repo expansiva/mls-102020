@@ -30,6 +30,10 @@ It is often the right answer, and you must not avoid it. A defect in the base is
 
 ### Members of the parent you could override, cheapest first
 
+This list is already filtered to members that **can carry a change**. A member whose body depends on the parent's `private` helpers is not listed, however cheap it looks: a subclass cannot call those, so an override would have to reimplement the behaviour — and copying the parent's implementation across is exactly what a shell must not do.
+
+**If the list below says NONE, the answer is `parent`.** Nothing about the request can change that: it is a fact about the parent.
+
 {{overridableMembers}}
 
 ### Members of the parent you CANNOT reach

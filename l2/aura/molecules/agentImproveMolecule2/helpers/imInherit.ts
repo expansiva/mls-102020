@@ -193,6 +193,43 @@ export function unreachableMembersOf(parentSource: string): ImUnreachable[] {
   return [...constants, ...privates];
 }
 
+/** The body of a member function, by brace counting from its signature. '' when not found. */
+function methodBodyOf(source: string, name: string): string {
+  const signature = new RegExp(
+    `^\\s*(?:protected|public)?\\s*(?:async\\s+)?${name}\\s*\\([^)]*\\)\\s*(?::[^{]+)?\\{`,
+    'm',
+  ).exec(source);
+  if (!signature) return '';
+  let depth = 0;
+  const start = source.indexOf('{', signature.index + signature[0].length - 1);
+  for (let i = start; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}' && --depth === 0) return source.slice(start + 1, i);
+  }
+  return '';
+}
+
+/**
+ * Can an override of this member carry a change, or would it only compile?
+ *
+ * The rule is one line and it is strict on purpose: **a method whose body touches any `private`
+ * member of the parent cannot be overridden without reimplementing it.** The subclass cannot call
+ * those members, so every part of the behaviour that runs through them is out of reach — and
+ * copying the parent's implementation across is exactly what a shell must not do (i3-edit prompt).
+ *
+ * Properties are always capable: an override assigns a value and nothing else is needed.
+ *
+ * Measured across the whole library on 2026-08-14 — see ImOverridable.capable for what it found.
+ */
+function isCapable(parentSource: string, name: string, kind: 'property' | 'method'): boolean {
+  if (kind === 'property') return true;
+  const body = methodBodyOf(parentSource, name);
+  if (!body.trim()) return true;
+  const privates = new Set(unreachableMembersOf(parentSource).filter(m => m.why === 'private').map(m => m.name));
+  const touched = [...body.matchAll(/this\.(\w+)/g)].map(m => m[1]);
+  return !touched.some(member => privates.has(member));
+}
+
 /** Members of the PARENT a shell could override, ordered cheapest first. */
 export function overridableMembersOf(parentSource: string): ImOverridable[] {
   const out: ImOverridable[] = [];
@@ -201,7 +238,7 @@ export function overridableMembersOf(parentSource: string): ImOverridable[] {
   for (const m of parentSource.matchAll(/^\s*(?:protected|public)\s+(\w+)\s*=/gm)) {
     if (seen.has(m[1])) continue;
     seen.add(m[1]);
-    out.push({ name: m[1], kind: 'property', cost: costOf(m[1], 'property') });
+    out.push({ name: m[1], kind: 'property', cost: costOf(m[1], 'property'), capable: true });
   }
   for (const m of parentSource.matchAll(/^\s*(?:protected|public)?\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*(?::[^{]+)?\{/gm)) {
     const name = m[1];
@@ -210,10 +247,27 @@ export function overridableMembersOf(parentSource: string): ImOverridable[] {
     // private members cannot be overridden from a subclass
     if (new RegExp(`private\\s+(?:async\\s+)?${name}\\s*\\(`).test(parentSource)) continue;
     seen.add(name);
-    out.push({ name, kind: 'method', cost: costOf(name, 'method') });
+    out.push({ name, kind: 'method', cost: costOf(name, 'method'), capable: isCapable(parentSource, name, 'method') });
   }
 
   return out.sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+}
+
+/**
+ * Can an override be built on this member?
+ *
+ * `capable` absent means **not measured** — a `context.json` from before 2026-08-14, or a parent that
+ * could not be read. Treating that as "no" would silently disable the override choice on every older
+ * run, so the unmeasured case reads as capable, exactly like `unreachableMembers` being absent does
+ * not mean "there are none".
+ */
+export function isCapableMember(member: ImOverridable): boolean {
+  return member.capable !== false;
+}
+
+/** The members an override could actually be built on. Empty means the answer is `parent`. */
+export function capableOverridesOf(members: ImOverridable[]): ImOverridable[] {
+  return members.filter(isCapableMember);
 }
 
 /**

@@ -40,6 +40,7 @@ import {
   readImAgentText,
   sourceOf,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
+import { capableOverridesOf } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 import { getImRunKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imRootPlan.js';
 import { readSurface, renderSurface } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
 import {
@@ -257,9 +258,14 @@ function renderInheritance(ctx: ImContext): string {
   if (!inh.isShell) {
     return '### Inheritance\n\nThis molecule is **not a shell** — it does not extend a molecule from another project. Route C is not available for it.';
   }
-  const members = inh.overridableMembers.length
-    ? inh.overridableMembers.slice(0, 12).map(m => `- \`${m.name}\` (${m.kind})`).join('\n')
-    : '- (the parent source is not readable from here)';
+  // Filtered to what could carry a change, same as i4-inherit: a member that compiles as an override
+  // and cannot do anything is not an argument for route B.
+  const capable = capableOverridesOf(inh.overridableMembers);
+  const members = !inh.overridableMembers.length
+    ? '- (the parent source is not readable from here)'
+    : capable.length
+      ? capable.slice(0, 12).map(m => `- \`${m.name}\` (${m.kind})`).join('\n')
+      : '- **NONE** — every member the parent exposes composes private ones, so no override in this shell could carry a change';
   const own = inh.ownMembers.length ? inh.ownMembers.join(', ') : 'nothing — the body is empty';
   return [
     '### Inheritance',

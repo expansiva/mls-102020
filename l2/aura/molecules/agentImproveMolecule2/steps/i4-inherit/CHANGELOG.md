@@ -1,5 +1,49 @@
 # CHANGELOG — i4-inherit
 
+## 2026-08-14 — `override` deixa de ser oferecido quando nada pode carregá-lo
+
+O conserto de 13/08 mostrou ao modelo **o que a casca não alcança**. Faltava a outra metade: entre o que
+ela *alcança*, quase nada **serve**. Um membro `protected` cujo corpo só compõe membros `private` do pai
+compila como override e não consegue reproduzir comportamento nenhum — a subclasse não pode chamar
+aquilo, e copiar a implementação do pai é o que a casca está proibida de fazer.
+
+**A medição, 14/08, nas 154 moléculas base e nas 84 cascas.** O `agentNewMolecule2` declara **todo**
+helper de render como `private`. Consequência: `getPortalTemplate` compõe `renderItems`/`renderSearchInput`
+privados; `render` compõe `renderLabel`/`renderTrigger`/`renderFeedback` privados; `disconnectedCallback`
+chama um helper privado de timer. Nenhuma casca da biblioteca tem hoje um membro capaz **e** relevante
+para um pedido de usuário. Não é "raro" — é nenhum.
+
+Isso relê a medição de 06/08 que já estava neste passo: 70 de 84 cascas com corpo vazio e **zero**
+sobrescrevendo `render` nunca foi preferência dos autores. Era a única coisa possível.
+
+**A regra, em uma linha e estrita de propósito** (`ImOverridable.capable`, calculado em `imInherit`):
+uma propriedade sempre pode — o override atribui um valor; um método só pode quando seu corpo **não
+toca nenhum membro `private` do pai**.
+
+O que mudou com ela:
+
+- **o widget não oferece `override`** quando nada é capaz. A opção aparece cinza, não clicável, com o
+  motivo e a lista de inalcançáveis embaixo — `isOverrideAvailable`. Esconder faria o usuário se
+  perguntar se um override chegou a ser considerado; oferecer é oferecer uma armadilha;
+- **o picker deixa de listar membros incapazes.** Eles não são a opção mais barata, são a errada, e uma
+  lista que os inclui transforma "nada aqui resolve" num dar de ombros: o usuário escolhe o nome menos
+  implausível e o run produz um override que não faz nada;
+- **dois códigos novos no gate**, para a sugestão do modelo, que o widget não filtra: `no_capable_member`
+  e `member_incapable`, ambos terminando em "a resposta é `parent`";
+- **i2-triage e i4 mostram a lista já filtrada.** Um membro que compila e não faz nada não é argumento
+  para rota B, e no i4 a lista vazia é ela própria a resposta: `parent`, sem precisar do pedido.
+
+**`capable` é opcional, e ausente significa NÃO MEDIDO** — nunca "incapaz". Um `context.json` anterior a
+hoje não o carrega, e lê-lo como "não" desabilitaria o override retroativamente em todo run antigo.
+Todo consumidor passa por `isCapableMember`. É a mesma regra que `unreachableMembers` já seguia.
+
+**Resíduo medido e deixado de propósito:** em 28 das 82 cascas o override continua sendo oferecido,
+porque sobra um membro capaz — quase sempre `portalWidgetName` (que a casca **já** sobrescreve) ou
+infraestrutura (`usesLiveSlots`, `createRenderRoot`). Capacidade é estrutural e o código decide;
+**relevância é julgamento e o prompt decide** ("smallest among the members that work, never smallest
+among what is left"). Uma lista de nomes proibidos seria uma terceira camada de heurística, frágil, e
+responde à mesma pergunta que a política de visibilidade do NM2 — que é decisão de design system.
+
 ## 2026-08-13 — the suggestion was picking an incapable member
 
 Measured in the Studio on `mls-102055/.../ml-copy-button-glass`. Asked to make the copy confirmation

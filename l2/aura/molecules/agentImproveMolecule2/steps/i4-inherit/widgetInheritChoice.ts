@@ -24,6 +24,7 @@ import {
   canConfirmInherit,
   inheritBlockingIssues,
   isExpensiveOverride,
+  isOverrideAvailable,
   offerableMembers,
   unreachableForDisplay,
   type InheritChoiceData,
@@ -57,6 +58,7 @@ const message_pt = {
   whyPrivate: 'privado: override não compila',
   whyModuleConst: 'constante de módulo: não é membro de classe',
   unreachableHint: 'Se o que precisa mudar está num destes, nenhuma sobrescrita aqui resolve — a correção é do componente base.',
+  overrideUnavailable: 'Indisponível: nenhum membro do pai pode carregar esta mudança. Os que existem ou são privados, ou são constantes de módulo, ou só compõem membros privados — sobrescrever qualquer um compilaria sem mudar nada.',
   cancel: 'Cancelar',
   confirm: 'Confirmar',
 };
@@ -86,6 +88,7 @@ const message_en = {
   whyPrivate: 'private: an override does not compile',
   whyModuleConst: 'module-scope constant: not a class member',
   unreachableHint: 'If what has to change lives in one of these, no override here solves it — the fix belongs to the base component.',
+  overrideUnavailable: 'Unavailable: no member of the parent can carry this change. The ones that exist are private, module-scope constants, or methods that only compose private members — overriding any of them would compile and change nothing.',
   cancel: 'Cancel',
   confirm: 'Confirm',
 };
@@ -126,17 +129,32 @@ export class WidgetInheritChoice102020 extends StateLitElement {
     }));
   }
 
-  private renderOption(where: InheritWhere, title: string, body: string, extra: TemplateResult | typeof nothing = nothing): TemplateResult {
-    const selected = this.data.where === where;
+  /**
+   * `unavailable` is not the same as "not selected": the option is shown, greyed and unclickable,
+   * with the reason under it. Hiding it would leave the user wondering whether an override was
+   * considered; offering it would let them choose something that cannot work (2026-08-14).
+   */
+  private renderOption(
+    where: InheritWhere,
+    title: string,
+    body: string,
+    extra: TemplateResult | typeof nothing = nothing,
+    unavailable = false,
+  ): TemplateResult {
+    const selected = !unavailable && this.data.where === where;
     return html`
-      <div class="ihc-option ${selected ? 'is-selected' : ''} ihc-option-${where}" @click=${() => this.choose(where)}>
+      <div
+        class="ihc-option ${selected ? 'is-selected' : ''} ${unavailable ? 'is-unavailable' : ''} ihc-option-${where}"
+        @click=${() => { if (!unavailable) this.choose(where); }}>
         <div class="ihc-option-head">
           <span class="ihc-radio ${selected ? 'is-on' : ''}"></span>
           <span class="ihc-option-title">${title}</span>
-          ${this.value?.suggested.where === where ? html`<span class="ihc-badge">${this.msg.suggestion}</span>` : nothing}
+          ${!unavailable && this.value?.suggested.where === where ? html`<span class="ihc-badge">${this.msg.suggestion}</span>` : nothing}
         </div>
         <p class="ihc-option-body">${body}</p>
-        ${selected ? extra : nothing}
+        ${unavailable
+          ? html`<p class="ihc-unavailable">${this.msg.overrideUnavailable}</p>${this.renderUnreachable()}`
+          : (selected ? extra : nothing)}
       </div>
     `;
   }
@@ -232,7 +250,8 @@ export class WidgetInheritChoice102020 extends StateLitElement {
         <div class="ihc-options">
           ${this.renderOption('less', this.msg.lessTitle, this.msg.lessBody,
             value.hasLess ? nothing : html`<p class="ihc-hint">${this.msg.noLess}</p>`)}
-          ${this.renderOption('override', this.msg.overrideTitle, this.msg.overrideBody, this.renderMemberPicker())}
+          ${this.renderOption('override', this.msg.overrideTitle, this.msg.overrideBody,
+            this.renderMemberPicker(), !isOverrideAvailable(value) && value.overridableMembers.length > 0)}
           ${this.renderOption('parent', this.msg.parentTitle, this.msg.parentBody)}
         </div>
 

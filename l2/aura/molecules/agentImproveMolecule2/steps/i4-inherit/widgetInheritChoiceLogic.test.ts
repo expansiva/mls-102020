@@ -9,14 +9,21 @@ import {
   canConfirmInherit,
   inheritBlockingIssues,
   isExpensiveOverride,
+  isOverrideAvailable,
   offerableMembers,
   unreachableForDisplay,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i4-inherit/widgetInheritChoiceLogic.js';
 
 const MEMBERS = [
-  { name: 'portalWidgetName', kind: 'property' as const, cost: 1 },
-  { name: 'getTriggerTemplate', kind: 'method' as const, cost: 10 },
-  { name: 'render', kind: 'method' as const, cost: 100 },
+  { name: 'portalWidgetName', kind: 'property' as const, cost: 1, capable: true },
+  { name: 'getTriggerTemplate', kind: 'method' as const, cost: 10, capable: true },
+  { name: 'render', kind: 'method' as const, cost: 100, capable: true },
+];
+
+/** The real shape of every shell in the library, measured 2026-08-14: nothing can carry a change. */
+const NONE_CAPABLE = [
+  { name: 'disconnectedCallback', kind: 'method' as const, cost: 90, capable: false },
+  { name: 'render', kind: 'method' as const, cost: 100, capable: false },
 ];
 
 const VALUE = { overridableMembers: MEMBERS, hasLess: true, ownMembers: ['portalWidgetName'] };
@@ -50,6 +57,27 @@ test('when the parent is unreadable, any member name is accepted', () => {
   // would leave the user with no way to answer a question they were still asked.
   const blind = { overridableMembers: [], hasLess: true };
   assert.deepEqual(inheritBlockingIssues({ where: 'override', member: 'whatever' }, blind), []);
+});
+
+test('when NOTHING can carry the change, override is not available at all', () => {
+  // Measured 2026-08-14 across the whole library: every shell is in this state, because every render
+  // helper of the parent is private. Offering the choice is offering a trap — the user picks the
+  // least implausible name and gets a member that compiles and does nothing.
+  const value = { overridableMembers: NONE_CAPABLE, hasLess: true, ownMembers: [] };
+  assert.equal(isOverrideAvailable(value), false);
+  assert.deepEqual(offerableMembers(value), []);
+  assert.deepEqual(inheritBlockingIssues({ where: 'override', member: 'render' }, value), ['no_capable_member']);
+  // and the two answers that remain are still confirmable
+  assert.equal(canConfirmInherit({ where: 'parent', member: '' }, value), true);
+  assert.equal(canConfirmInherit({ where: 'less', member: '' }, value), true);
+});
+
+test('a member that compiles but cannot carry the change is not offered', () => {
+  const mixed = [...MEMBERS, { name: 'disconnectedCallback', kind: 'method' as const, cost: 90, capable: false }];
+  const value = { overridableMembers: mixed, hasLess: true, ownMembers: [] };
+  assert.equal(isOverrideAvailable(value), true);
+  assert.equal(offerableMembers(value).some(m => m.name === 'disconnectedCallback'), false);
+  assert.deepEqual(inheritBlockingIssues({ where: 'override', member: 'disconnectedCallback' }, value), ['unknown_member']);
 });
 
 test('less is not offered when the molecule has no stylesheet', () => {

@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  capableOverridesOf,
   deadShellMembers,
   detectInheritance,
   offendingForeignWrite,
@@ -144,6 +145,73 @@ test('private members and module constants are reported as UNREACHABLE, not hidd
   // and what IS reachable is not in there
   assert.equal(byName.has('render'), false);
   assert.equal(byName.has('disconnectedCallback'), false);
+});
+
+// ---- 2026-08-14: capaz de carregar a mudança, não só de compilar ----
+
+test('a method whose body touches a private member is NOT capable', () => {
+  // `disconnectedCallback` compiles as an override and cannot change a thing: the timer it clears
+  // is private. It was the suggestion of 13/08, and now it is excluded in code.
+  const members = overridableMembersOf(PARENT_ALL_PRIVATE);
+  assert.equal(members.find(m => m.name === 'disconnectedCallback')?.capable, false);
+  // …and `render` in this fixture returns a literal, so it IS capable. The rule is about the body,
+  // never about the name — the real ml-copy-button render composes private helpers and fails it.
+  assert.deepEqual(capableOverridesOf(members).map(m => m.name), ['render']);
+});
+
+test('a render that composes private sections is not capable either', () => {
+  const parent = `
+export class X {
+  private renderLabel() { return 1; }
+  render() { return html\`<div>\${this.renderLabel()}</div>\`; }
+}
+`;
+  assert.equal(overridableMembersOf(parent).find(m => m.name === 'render')?.capable, false);
+  assert.deepEqual(capableOverridesOf(overridableMembersOf(parent)), []);
+});
+
+test('an unmeasured `capable` counts as capable — old context.json must not lose the choice', () => {
+  // Absent means NOT MEASURED, exactly like unreachableMembers being absent. Reading it as "no"
+  // would retro-actively disable the override choice on every run written before 2026-08-14.
+  assert.deepEqual(
+    capableOverridesOf([{ name: 'portalWidgetName', kind: 'property', cost: 1 }]).map(m => m.name),
+    ['portalWidgetName'],
+  );
+});
+
+test('a property is always capable — an override just assigns a value', () => {
+  const parent = 'export class X {\n  protected portalWidgetName = \'a\';\n}';
+  const members = overridableMembersOf(parent);
+  assert.equal(members[0].capable, true);
+  assert.equal(capableOverridesOf(members).length, 1);
+});
+
+test('a method that touches nothing private IS capable', () => {
+  const parent = `
+export class X {
+  protected label = 'a';
+  protected getTitle() { return this.label; }
+  private hidden() { return 1; }
+}
+`;
+  const capable = capableOverridesOf(overridableMembersOf(parent)).map(m => m.name);
+  assert.ok(capable.includes('getTitle'));
+});
+
+test('THE MEASUREMENT: a portal template composed of private renderers is not capable', () => {
+  // The real shape of ml-select-dropdown, and of every portal molecule in the library: the method
+  // is `protected`, so it looked overridable, but everything that produces content is private.
+  const parent = `
+export class X {
+  protected getPortalTemplate() {
+    return html\`<div class="\${this.getDropdownClasses()}">\${this.renderItems()}</div>\`;
+  }
+  private getDropdownClasses() { return 'a'; }
+  private renderItems() { return 'b'; }
+}
+`;
+  const member = overridableMembersOf(parent).find(m => m.name === 'getPortalTemplate');
+  assert.equal(member?.capable, false);
 });
 
 test('module constants come FIRST — every consumer caps the list at 12', () => {
