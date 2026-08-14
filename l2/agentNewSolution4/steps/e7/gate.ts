@@ -11,6 +11,7 @@ import type {
   Ns4E7PlanDraft, Ns4E7SourceHashes, Ns4UseCaseDraft, Ns4WorkflowArtifactV2,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
+import { deriveNs4Contexts, type Ns4DerivedStepContexts } from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
 import { collectNs4ReachableWorkflowStates } from '/_102020_/l2/agentNewSolution4/steps/e7/reachability.js';
 
 export interface Ns4E7LifecycleRepairOption {
@@ -49,7 +50,7 @@ export function validateNs4E7Plan(plan: Ns4E7PlanDraft, sources: Ns4E7Sources): 
   if (sources.sourceHashes && JSON.stringify(plan.sourceHashes) !== JSON.stringify(sources.sourceHashes)) {
     add('NS4_E7_SOURCE_DRIFT', 'sourceHashes', 'The E7 plan is stale relative to approved journey, ontology or rule hashes.');
   }
-  const validSteps = collectSteps(sources.journeys);
+  const validSteps = collectSteps(sources);
   const covered = new Set<string>();
   const ids = new Set<string>();
   plan.useCases.forEach((useCase, index) => {
@@ -66,8 +67,8 @@ export function validateNs4E7Plan(plan: Ns4E7PlanDraft, sources: Ns4E7Sources): 
       else {
         covered.add(ref);
         const kind = validSteps.get(ref)?.kind;
-        validSteps.get(ref)?.requiresContext.forEach(contextId => expectedRequires.add(contextId));
-        validSteps.get(ref)?.providesContext.forEach(context => expectedProvides.add(context.contextId));
+        validSteps.get(ref)?.requires.forEach(context => expectedRequires.add(context.contextId));
+        validSteps.get(ref)?.provides.forEach(context => expectedProvides.add(context.contextId));
         if ((kind === 'locate' || kind === 'inspect') !== (useCase.kind === 'query')) {
           add('NS4_E7_KIND', `${path}.kind`, `${ref} requires ${kind === 'locate' || kind === 'inspect' ? 'query' : 'command'}.`);
         }
@@ -96,10 +97,10 @@ export function validateNs4UseCaseDraft(
   if (!draft.title) add('NS4_E7_TITLE', 'title', 'A title is required.');
   if (!draft.description) add('NS4_E7_DESCRIPTION', 'description', 'A channel- and architecture-neutral behavior description is required.');
 
-  const stepMap = collectSteps(sources.journeys);
-  const sourceSteps = target.compiledFrom.map(ref => stepMap.get(ref)).filter((value): value is SourceStep => !!value);
-  const expectedRequires = [...new Set(sourceSteps.flatMap(step => step.requiresContext))].sort();
-  const expectedProvides = [...new Set(sourceSteps.flatMap(step => step.providesContext.map(context => context.contextId)))].sort();
+  const stepMap = collectSteps(sources);
+  const sourceSteps = target.compiledFrom.map(ref => stepMap.get(ref)).filter((value): value is Ns4DerivedStepContexts => !!value);
+  const expectedRequires = [...new Set(sourceSteps.flatMap(step => step.requires.map(context => context.contextId)))].sort();
+  const expectedProvides = [...new Set(sourceSteps.flatMap(step => step.provides.map(context => context.contextId)))].sort();
   if (!sameSet(draft.contexts.requires, expectedRequires)) {
     add('NS4_E7_CONTEXT_REQUIRED', 'contexts.requires', `Must reference exactly: ${expectedRequires.join(', ') || '(none)'}.`);
   }
@@ -223,18 +224,8 @@ export function validateNs4Workflows(
   return { ok: issues.every(issue => issue.severity === 'warning'), issues };
 }
 
-interface SourceStep {
-  kind: 'locate' | 'inspect' | 'act' | 'decide' | 'handoff';
-  requiresContext: string[];
-  providesContext: Array<{ contextId: string }>;
-}
-
-function collectSteps(journeys: Ns4E2Review): Map<string, SourceStep> {
-  const result = new Map<string, SourceStep>();
-  for (const journey of journeys.journeys) for (const step of journey.business.steps) result.set(`${journey.journeyId}.${step.stepId}`, {
-    kind: step.kind, requiresContext: step.requiresContext, providesContext: step.providesContext,
-  });
-  return result;
+function collectSteps(sources: Ns4E7Sources): Map<string, Ns4DerivedStepContexts> {
+  return deriveNs4Contexts(sources).byStepRef;
 }
 
 function addLifecycleIssue(

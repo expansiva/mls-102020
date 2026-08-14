@@ -1,21 +1,55 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e2/contracts.ts" enhancement="_blank"/>
 
 import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
+import { collectNs4JourneyEntities, type Ns4DerivedContext } from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
 import {
   analyzeNs4E2MechanicalCoverage,
   Ns4E2StepKindHistogram,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageSignals.js';
 
-export const NS4_JOURNEY_SCHEMA_VERSION = '2026-08-10-ns4-journey-v4' as const;
-export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-12-ns4-journey-index-v5' as const;
-export const NS4_REALIZED_JOURNEY_SCHEMA_VERSION = '2026-08-10-ns4-journey-v3' as const;
+export const NS4_JOURNEY_SCHEMA_VERSION = '2026-08-14-ns4-journey-v5' as const;
+export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-14-ns4-journey-index-v6' as const;
+export const NS4_REALIZED_JOURNEY_SCHEMA_VERSION = '2026-08-14-ns4-journey-realized-v5' as const;
 export const NS4_E2_IMPACT_REPORT_SCHEMA_VERSION = '2026-08-13-ns4-e2-impact-report-v2' as const;
 
 export type Ns4JourneyEntryMode = 'coldStart' | 'contextRequired' | 'contextOrLookup' | 'eventDriven';
 export type Ns4JourneyStepKind = 'locate' | 'inspect' | 'act' | 'decide' | 'handoff';
 export type Ns4FeaturePriority = 'now' | 'next' | 'later';
 
-export interface Ns4JourneyContext {
+/**
+ * A step names what it does and to which business record. Everything about context — who provides
+ * it, what it carries, how many — is derived by helpers/ns4Context.ts from this entity, the step
+ * kind, the journey sequence and the approved ontology.
+ */
+export interface Ns4JourneyStep {
+  stepId: string;
+  kind: Ns4JourneyStepKind;
+  entity: string;
+  title: string;
+  description: string;
+  featureRefs: string[];
+  /** Only a handoff names the receiving E3 profile; it is the routing fact E9 compiles. */
+  targetProfile?: string;
+}
+
+export interface Ns4JourneyBusiness {
+  actorRef: string;
+  title: string;
+  goal: string;
+  entry: {
+    mode: Ns4JourneyEntryMode;
+    preferredFromJourneyRef?: string;
+  };
+  steps: Ns4JourneyStep[];
+  outcome: {
+    statement: string;
+    evidence: string[];
+  };
+  useRules: string[];
+}
+
+/** Frozen shape of journeys written by flow versions before the context graph became derived. */
+export interface Ns4LegacyJourneyContext {
   contextId: string;
   businessObject: string;
   cardinality: 'one' | 'many';
@@ -24,38 +58,26 @@ export interface Ns4JourneyContext {
   stateRequirement?: string;
 }
 
-export interface Ns4JourneyPrerequisite {
-  journeyRef: string;
-  reason: string;
-  required: boolean;
-  providesContext: string[];
-}
-
-export interface Ns4JourneyStep {
-  stepId: string;
-  kind: Ns4JourneyStepKind;
-  intent: string;
-  requiresContext: string[];
-  providesContext: Ns4JourneyContext[];
-  result: string;
-  featureRefs: string[];
-}
-
-export interface Ns4JourneyBusiness {
+export interface Ns4LegacyJourneyBusiness {
   actorRef: string;
   title: string;
   goal: string;
-  prerequisites: Ns4JourneyPrerequisite[];
+  prerequisites: Array<{ journeyRef: string; reason: string; required: boolean; providesContext: string[] }>;
   entry: {
     mode: Ns4JourneyEntryMode;
     preferredFromJourneyRef?: string;
-    carries: Ns4JourneyContext[];
+    carries: Ns4LegacyJourneyContext[];
   };
-  steps: Ns4JourneyStep[];
-  outcome: {
-    statement: string;
-    evidence: string[];
-  };
+  steps: Array<{
+    stepId: string;
+    kind: Ns4JourneyStepKind;
+    intent: string;
+    requiresContext: string[];
+    providesContext: Ns4LegacyJourneyContext[];
+    result: string;
+    featureRefs: string[];
+  }>;
+  outcome: { statement: string; evidence: string[] };
   useRules: string[];
 }
 
@@ -103,7 +125,7 @@ export interface Ns4E2Review {
   systemDecisions: Ns4SystemDecision[];
 }
 
-export interface Ns4JourneyArtifactV4 extends Ns4JourneyProposal {
+export interface Ns4JourneyArtifactV5 extends Ns4JourneyProposal {
   schemaVersion: typeof NS4_JOURNEY_SCHEMA_VERSION;
   revision: number;
   businessHash: string;
@@ -119,7 +141,8 @@ export interface Ns4JourneyArtifactV4 extends Ns4JourneyProposal {
   };
 }
 
-export interface Ns4JourneyResolvedContext extends Ns4JourneyContext {
+/** The derived context, plus the structural provenance E7 records for the compiled journey. */
+export interface Ns4JourneyResolvedContext extends Ns4DerivedContext {
   sourceRefs: string[];
   consumerStepRefs: string[];
 }
@@ -129,7 +152,7 @@ export interface Ns4JourneyStepRealization {
   useCaseRefs: string[];
 }
 
-export interface Ns4JourneyArtifactV3 extends Omit<Ns4JourneyProposal, 'policyDecisions'> {
+export interface Ns4JourneyArtifactV5Realized extends Omit<Ns4JourneyProposal, 'policyDecisions'> {
   schemaVersion: typeof NS4_REALIZED_JOURNEY_SCHEMA_VERSION;
   revision: number;
   businessHash: string;
@@ -146,31 +169,38 @@ export interface Ns4JourneyArtifactV3 extends Omit<Ns4JourneyProposal, 'policyDe
   };
 }
 
-/** Compile-only compatibility for permanent artifacts created before rule descriptions moved to E5. */
-export interface Ns4JourneyArtifactV1 extends Omit<Ns4JourneyProposal, 'business' | 'policyDecisions'> {
-  schemaVersion: '2026-08-04-ns4-journey-v1';
+/**
+ * Compile-only compatibility for permanent artifacts written by previous flow versions. They are
+ * never resumed or migrated; the union only keeps already-generated L4 modules type-safe.
+ */
+export interface Ns4LegacyJourneyArtifact {
+  schemaVersion: '2026-08-04-ns4-journey-v1' | '2026-08-09-ns4-journey-v2' | '2026-08-10-ns4-journey-v3' | '2026-08-10-ns4-journey-v4';
+  journeyId: string;
   revision: number;
-  business: Omit<Ns4JourneyBusiness, 'useRules'> & {
+  business: Ns4LegacyJourneyBusiness | (Omit<Ns4LegacyJourneyBusiness, 'useRules'> & {
     businessRules: Array<{ journeyRuleId: string; statement: string }>;
-  };
+  });
+  policyDecisions?: Ns4PolicyDecision[];
   businessHash: string;
-  resolution: { status: 'pending'; contexts: Record<string, never> };
-  realization: { status: 'pending'; compiledFromBusinessHash: string; steps: never[]; transitionRefs: never[] };
+  resolution: { status: 'pending' | 'compiled'; contexts: Record<string, unknown> };
+  realization: {
+    status: 'pending' | 'compiled';
+    compiledFromBusinessHash: string;
+    steps: Array<{ stepId: string; useCaseRefs: string[] }>;
+    transitionRefs: string[];
+    realizationHash?: string;
+  };
 }
 
-export type Ns4JourneyArtifact = Ns4JourneyArtifactV3 | Ns4JourneyArtifactV4 | Ns4JourneyArtifactV2 | Ns4JourneyArtifactV1;
+export type Ns4JourneyArtifact = Ns4JourneyArtifactV5 | Ns4JourneyArtifactV5Realized | Ns4LegacyJourneyArtifact;
 
-/** Compatibility for artifacts created by flow versions before policy decisions were persisted. */
-export interface Ns4JourneyArtifactV2 extends Omit<Ns4JourneyProposal, 'policyDecisions'> {
-  schemaVersion: '2026-08-09-ns4-journey-v2';
-  revision: number;
-  businessHash: string;
-  resolution: { status: 'pending'; contexts: Record<string, never> };
-  realization: { status: 'pending'; compiledFromBusinessHash: string; steps: never[]; transitionRefs: never[] };
+/** A journey written by a previous flow version still declares its context graph; it is never compiled. */
+export function isNs4CurrentJourneyBusiness(value: Ns4JourneyArtifact['business']): value is Ns4JourneyBusiness {
+  return !('prerequisites' in value) && !('carries' in value.entry);
 }
 
 export interface Ns4JourneyIndex {
-  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION | '2026-08-10-ns4-journey-index-v4' | '2026-08-04-ns4-journey-index-v1' | '2026-08-10-ns4-journey-index-v3' | '2026-08-09-ns4-journey-index-v2';
+  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION | '2026-08-12-ns4-journey-index-v5' | '2026-08-10-ns4-journey-index-v4' | '2026-08-04-ns4-journey-index-v1' | '2026-08-10-ns4-journey-index-v3' | '2026-08-09-ns4-journey-index-v2';
   moduleName: string;
   approvedAt: string;
   approvedBy: 'human' | 'auto';
@@ -230,7 +260,7 @@ export function normalizeNs4E2Review(value: unknown, fallbackModule = ''): Ns4E2
   };
 }
 
-export async function buildNs4JourneyArtifacts(review: Ns4E2Review): Promise<Ns4JourneyArtifactV4[]> {
+export async function buildNs4JourneyArtifacts(review: Ns4E2Review): Promise<Ns4JourneyArtifactV5[]> {
   return Promise.all(review.journeys.map(async journey => {
     const businessHash = await sha256Ns4(journey.business);
     return {
@@ -242,14 +272,14 @@ export async function buildNs4JourneyArtifacts(review: Ns4E2Review): Promise<Ns4
       businessHash,
       resolution: { status: 'pending', contexts: {} },
       realization: { status: 'pending', compiledFromBusinessHash: businessHash, steps: [] as never[], transitionRefs: [] as never[] },
-    } satisfies Ns4JourneyArtifactV4;
+    } satisfies Ns4JourneyArtifactV5;
   }));
 }
 
 export function buildNs4JourneyIndex(
   moduleName: string,
   review: Ns4E2Review,
-  artifacts: Ns4JourneyArtifactV4[],
+  artifacts: Ns4JourneyArtifactV5[],
   artifactPaths: string[],
   approvedBy: 'human' | 'auto',
   approvedAt: string,
@@ -305,7 +335,7 @@ export function buildNs4PolicyDecisionSelections(
 export function buildNs4E2ImpactReport(
   moduleName: string,
   previousIndex: Ns4JourneyIndex | null,
-  artifacts: Array<Pick<Ns4JourneyArtifactV4, 'journeyId' | 'businessHash'>>,
+  artifacts: Array<Pick<Ns4JourneyArtifactV5, 'journeyId' | 'businessHash'>>,
   generatedAt: string,
   review: Pick<Ns4E2Review, 'journeys'>,
 ): Ns4E2ImpactReport {
@@ -368,30 +398,21 @@ function normalizeJourney(value: unknown): Ns4JourneyProposal {
       actorRef: text(business.actorRef),
       title: text(business.title),
       goal: text(business.goal),
-      prerequisites: array(business.prerequisites).map(item => {
-        const prerequisite = record(item);
-        return {
-          journeyRef: text(prerequisite.journeyRef),
-          reason: text(prerequisite.reason),
-          required: boolean(prerequisite.required, true),
-          providesContext: strings(prerequisite.providesContext),
-        };
-      }),
       entry: {
         mode: entryMode(entry.mode),
         ...(text(entry.preferredFromJourneyRef) ? { preferredFromJourneyRef: text(entry.preferredFromJourneyRef) } : {}),
-        carries: array(entry.carries).map(normalizeContext),
       },
       steps: array(business.steps).map(item => {
         const step = record(item);
+        const targetProfile = text(step.targetProfile);
         return {
           stepId: text(step.stepId),
           kind: stepKind(step.kind),
-          intent: text(step.intent),
-          requiresContext: strings(step.requiresContext),
-          providesContext: array(step.providesContext).map(normalizeContext),
-          result: text(step.result),
+          entity: normalizeNs4BusinessObjectId(step.entity),
+          title: text(step.title),
+          description: text(step.description),
           featureRefs: strings(step.featureRefs),
+          ...(targetProfile ? { targetProfile } : {}),
         };
       }),
       outcome: {
@@ -400,18 +421,6 @@ function normalizeJourney(value: unknown): Ns4JourneyProposal {
       },
       useRules: strings(business.useRules),
     },
-  };
-}
-
-function normalizeContext(value: unknown): Ns4JourneyContext {
-  const source = record(value);
-  return {
-    contextId: text(source.contextId),
-    businessObject: normalizeNs4BusinessObjectId(source.businessObject),
-    cardinality: source.cardinality === 'many' ? 'many' : 'one',
-    required: boolean(source.required, true),
-    description: text(source.description),
-    ...(text(source.stateRequirement) ? { stateRequirement: text(source.stateRequirement) } : {}),
   };
 }
 
@@ -433,17 +442,9 @@ export function normalizeNs4BusinessObjectId(value: unknown): string {
   }).join('');
 }
 
-/** One source of truth for the journey contexts that are guaranteed to exist at runtime. */
-export function requiredNs4JourneyContexts(contexts: Ns4JourneyContext[]): Ns4JourneyContext[] {
-  return contexts.filter(context => context.required);
-}
-
 /** Business objects that later ontology compilation must realize as entities or projections. */
 export function collectNs4RequiredJourneyBusinessObjects(review: Ns4E2Review): string[] {
-  return [...new Set(review.journeys.flatMap(journey => [
-    ...requiredNs4JourneyContexts(journey.business.entry.carries),
-    ...journey.business.steps.flatMap(step => requiredNs4JourneyContexts(step.providesContext)),
-  ]).map(context => context.businessObject).filter(Boolean))];
+  return collectNs4JourneyEntities(review);
 }
 
 function entryMode(value: unknown): Ns4JourneyEntryMode {

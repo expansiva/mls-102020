@@ -1,44 +1,76 @@
 {
-  "dormantCommand": {
-    "useCase": {
-      "schemaVersion": "2026-08-10-ns4-usecase-v3",
-      "moduleName": "buildFlowFsm38",
-      "useCaseId": "shareStatusReportWithClient",
-      "title": "Share status report with client",
-      "kind": "command",
-      "compiledFrom": ["assignTask.createTask"],
-      "description": "Share the reviewed status report.",
-      "contexts": { "requires": ["selectedProject"], "provides": [] },
-      "entityRefs": ["Project"],
-      "useRules": [],
-      "transitionRefs": ["shareStatusReportWithClient:reviewed:shared"],
-      "useCaseHash": "uc-share-status-report"
-    },
-    "scenario": {
-      "scenarioId": "formShareStatusReportWithClient",
-      "kind": "form",
-      "title": "Share status report with client",
-      "description": "Share the reviewed report.",
-      "stepRefs": ["assignTask.createTask"],
-      "useCaseIds": ["shareStatusReportWithClient"],
-      "authorityRefs": ["build:task-create"],
-      "selectionContexts": [],
-      "organisms": [],
-      "commandInputs": [{
-        "useCaseId": "shareStatusReportWithClient",
-        "inputs": [{ "inputId": "selectedProject", "source": "pageContext", "sourceRef": "selectedProject" }]
-      }]
+ "dormantCommand": {
+  "useCase": {
+   "schemaVersion": "2026-08-10-ns4-usecase-v3",
+   "moduleName": "buildFlowFsm38",
+   "useCaseId": "shareStatusReportWithClient",
+   "title": "Share status report with client",
+   "kind": "command",
+   "compiledFrom": [
+    "assignTask.createTask"
+   ],
+   "description": "Share the reviewed status report.",
+   "contexts": {
+    "requires": [
+     "selectedProject"
+    ],
+    "provides": []
+   },
+   "entityRefs": [
+    "Project"
+   ],
+   "useRules": [],
+   "transitionRefs": [
+    "shareStatusReportWithClient:reviewed:shared"
+   ],
+   "useCaseHash": "uc-share-status-report"
+  },
+  "scenario": {
+   "scenarioId": "formShareStatusReportWithClient",
+   "kind": "form",
+   "title": "Share status report with client",
+   "description": "Share the reviewed report.",
+   "stepRefs": [
+    "assignTask.createTask"
+   ],
+   "useCaseIds": [
+    "shareStatusReportWithClient"
+   ],
+   "authorityRefs": [
+    "build:task-create"
+   ],
+   "selectionContexts": [],
+   "organisms": [],
+   "commandInputs": [
+    {
+     "useCaseId": "shareStatusReportWithClient",
+     "inputs": [
+      {
+       "inputId": "selectedProject",
+       "source": "pageContext",
+       "sourceRef": "selectedProject"
+      }
+     ]
     }
-  },
-  "nestedWorker": {
-    "contextId": "selectedProject",
-    "edge": { "from": "projectWorkspace", "to": "workerWorkspace", "carries": ["selectedProject"], "preferredFromJourneyRef": "viewProject.locateProject" },
-    "hub": "Project"
-  },
-  "expected": {
-    "projectRecordHref": "/buildFlowFsm38/projects/:projectId",
-    "dormantUseCaseId": "shareStatusReportWithClient",
-    "hub": "project",
-    "workerHref": "/buildFlowFsm38/projects/:projectId/workers/locateAssignee"
+   ]
   }
+ },
+ "nestedWorker": {
+  "contextId": "selectedProject",
+  "edge": {
+   "from": "projectWorkspace",
+   "to": "workerWorkspace",
+   "carries": [
+    "selectedProject"
+   ],
+   "preferredFromJourneyRef": "viewProject.locateProject"
+  },
+  "hub": "Project"
+ },
+ "expected": {
+  "projectRecordHref": "/buildFlowFsm38/projects/:projectId",
+  "dormantUseCaseId": "shareStatusReportWithClient",
+  "hub": "project",
+  "workerHref": "/buildFlowFsm38/projects/:projectId/workers/locateAssignee"
+ }
 }

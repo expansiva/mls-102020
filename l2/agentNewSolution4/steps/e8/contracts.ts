@@ -1,5 +1,9 @@
 import { sha256Ns4 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
-import type { Ns4E2Review, Ns4JourneyContext, Ns4JourneyStepKind, Ns4PolicyDecisionSelection } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import type { Ns4E2Review, Ns4JourneyStepKind, Ns4PolicyDecisionSelection } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import {
+  deriveNs4Contexts, isNs4PlatformOwnedEntity, ns4ContextIdOf,
+  type Ns4DerivedContext, type Ns4DerivedContextGraph, type Ns4DerivedStepContexts,
+} from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
 import type { Ns4E3Review } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import type { Ns4E4Review } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import type { Ns4UseCaseArtifactV3, Ns4WorkflowArtifactV2 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
@@ -25,13 +29,8 @@ export interface Ns4E8HubScore {
   locateUseCaseCount: number;
 }
 
-export interface Ns4WorkspaceContext {
-  contextId: string;
-  businessObject: string;
-  cardinality: 'one' | 'many';
-  required: boolean;
-  idFieldRef?: string;
-}
+/** A workspace context is exactly the derived journey context; E8 never invents another shape. */
+export type Ns4WorkspaceContext = Ns4DerivedContext;
 
 export interface Ns4WorkspaceSlice {
   sliceId: string;
@@ -199,25 +198,22 @@ export interface Ns4E8Sources {
   policyDecisionSelections?: Ns4PolicyDecisionSelection[];
 }
 
-export function deriveE8HubScore(sources: Ns4E8Sources): Ns4E8HubScore[] {
-  const contexts = collectContexts(sources.journeys);
+export function deriveE8HubScore(sources: Ns4E8Sources, derived = deriveNs4Contexts(sources)): Ns4E8HubScore[] {
+  const journeysByEntity = new Map<string, Set<string>>();
+  for (const step of derived.steps) {
+    if (!step.entity) continue;
+    journeysByEntity.set(step.entity, new Set([...(journeysByEntity.get(step.entity) || []), step.journeyId]));
+  }
   const results = sources.ontology.entities
     .filter(entity => !isPlatformOwnedEntity(entity))
     .map(entity => {
-      const selected = `selected${entity.entityId}`;
-      const anchoredJourneyIds = new Set<string>();
-      for (const journey of sources.journeys.journeys) {
-        const all = [...journey.business.entry.carries, ...journey.business.steps.flatMap(step => step.providesContext)];
-        if (all.some(context => context.contextId === selected)) anchoredJourneyIds.add(journey.journeyId);
-      }
+      const anchoredJourneyIds = journeysByEntity.get(entity.entityId) || new Set<string>();
       const requiredRelationshipCount = sources.ontology.relationships
         .filter(relationship => relationship.required && relationship.toEntity === entity.entityId).length;
       const projectionCount = sources.ontology.entities.filter(candidate => candidate.kind === 'projection'
         && candidate.sourceRefs.journeyIds.some(id => anchoredJourneyIds.has(id))).length;
-      const locateUseCaseCount = sources.useCases.filter(useCase => useCase.kind === 'query'
-        && useCase.compiledFrom.some(ref => ref.endsWith('.locate' + entity.entityId) || ref.toLowerCase().includes(`locate${entity.entityId}`.toLowerCase())))
-        .reduce((total, useCase) => total + useCase.compiledFrom.length, 0);
-      const anchoredJourneyCount = [...contexts.values()].filter(context => context.contextId === selected).length ? anchoredJourneyIds.size : 0;
+      const locateUseCaseCount = derived.steps.filter(step => step.kind === 'locate' && step.entity === entity.entityId).length;
+      const anchoredJourneyCount = anchoredJourneyIds.size;
       return { entityRef: entity.entityId, anchoredJourneyCount, requiredRelationshipCount, projectionCount, locateUseCaseCount,
         score: anchoredJourneyCount + requiredRelationshipCount + projectionCount + locateUseCaseCount };
     })
@@ -226,35 +222,54 @@ export function deriveE8HubScore(sources: Ns4E8Sources): Ns4E8HubScore[] {
   return results;
 }
 
-export function deriveNs4E8Skeleton(sources: Ns4E8Sources, reviewRound = 1): Ns4E8SkeletonReview {
-  const contexts = collectContexts(sources.journeys);
-  const entitiesById = new Map(sources.ontology.entities.map(entity => [entity.entityId, entity]));
-  for (const [contextId, context] of contexts) {
-    const entity = entitiesById.get(context.businessObject);
-    const idFieldRef = entity?.storage?.idField || entity?.fields.find(field => /id$/i.test(field.fieldId))?.fieldId;
-    contexts.set(contextId, { ...context, ...(idFieldRef ? { idFieldRef } : {}) });
-  }
-  const stepInfo = collectSteps(sources, contexts);
-  const ranking = deriveE8HubScore(sources);
+/**
+ * The hub is the entity the module structurally revolves around. A clear score dominance decides it;
+ * when derived scores are too flat to separate, the strict maximum of incoming required relationships
+ * still names one anchor, because a module without a hub degenerates into single-scenario workspaces.
+ */
+function selectHubEntity(ranking: Ns4E8HubScore[]): string {
+  const first = ranking[0];
+  if (!first || first.score <= 0) return '';
   const secondScore = ranking[1]?.score || 0;
-  const hubEntity = ranking[0] && ranking[0].score > 0 && (secondScore === 0 || ranking[0].score >= secondScore * 2)
-    ? ranking[0].entityRef : '';
+  if (secondScore === 0 || first.score >= secondScore * 2) return first.entityRef;
+  const byRelationship = [...ranking].sort((left, right) => right.requiredRelationshipCount - left.requiredRelationshipCount
+    || right.score - left.score || left.entityRef.localeCompare(right.entityRef));
+  const [best, runnerUp] = byRelationship;
+  return best.requiredRelationshipCount > 0 && best.requiredRelationshipCount > (runnerUp?.requiredRelationshipCount || 0)
+    ? best.entityRef : '';
+}
+
+export function deriveNs4E8Skeleton(sources: Ns4E8Sources, reviewRound = 1): Ns4E8SkeletonReview {
+  const derived = deriveNs4Contexts(sources);
+  const contexts = new Map(derived.catalog.map(context => [context.contextId, context]));
+  const entitiesById = new Map(sources.ontology.entities.map(entity => [entity.entityId, entity]));
+  const stepInfo = collectSteps(sources, derived);
+  const ranking = deriveE8HubScore(sources, derived);
+  const hubEntity = selectHubEntity(ranking);
   const entityById = entitiesById;
   const absorbedBy = new Map<string, string>();
   if (hubEntity) for (const relationship of sources.ontology.relationships) {
     if (relationship.required && relationship.toEntity === hubEntity) absorbedBy.set(relationship.fromEntity, hubEntity);
   }
+  // A notified screen belongs to the actor the notification reaches, so an event-driven journey keeps
+  // its own workspace even when it operates an entity that navigable journeys already host.
+  const notifiedActorByJourney = new Map(sources.journeys.journeys
+    .filter(journey => journey.business.entry.mode === 'eventDriven')
+    .map(journey => [journey.journeyId, journey.business.actorRef]));
   const clusters = new Map<string, typeof stepInfo>();
   for (const info of stepInfo) {
     const anchor = info.anchorEntity && absorbedBy.has(info.anchorEntity) && info.requires.some(context => context.businessObject === hubEntity)
       ? hubEntity : info.anchorEntity;
-    const key = anchor || info.primaryEntity || info.journeyId;
+    const entityKey = anchor || info.primaryEntity || info.journeyId;
+    const notifiedActor = notifiedActorByJourney.get(info.journeyId) || '';
+    const key = notifiedActor ? `${entityKey}\u0000${notifiedActor}` : entityKey;
     const entries = clusters.get(key) || []; entries.push({ ...info, anchorEntity: anchor }); clusters.set(key, entries);
   }
   const workspaces = [...clusters.entries()].map(([key, entries]) => {
-    const isHub = key === hubEntity;
-    const entity = entityById.get(key);
-    const workspaceId = `${lowerCamel(key)}Workspace`;
+    const [entityKey, notifiedActor] = key.split('\u0000');
+    const isHub = !notifiedActor && entityKey === hubEntity;
+    const entity = entityById.get(entityKey);
+    const workspaceId = `${lowerCamel(entityKey)}${notifiedActor ? upperCamel(notifiedActor) : ''}Workspace`;
     const hostedStepRefs = unique(entries.map(entry => entry.stepRef));
     const useCaseIds = unique(entries.map(entry => entry.useCaseId).filter(Boolean));
     const slices = unique(useCaseIds.filter(id => sources.useCases.find(useCase => useCase.useCaseId === id)?.kind === 'query')).map(useCaseId => ({
@@ -265,15 +280,15 @@ export function deriveNs4E8Skeleton(sources: Ns4E8Sources, reviewRound = 1): Ns4
     const scenarios = deriveScenarios(entries, isHub, sources);
     return {
       workspaceId, kind: isHub ? 'hub' as const : 'place' as const,
-      title: entity?.title || humanize(key), description: entity?.description || `Workspace for ${humanize(key)}.`,
-      ...(key && entity ? { anchorEntity: key } : {}), profileRefs, featureRefs, hostedStepRefs, useCaseIds,
+      title: entity?.title || humanize(entityKey), description: entity?.description || `Workspace for ${humanize(entityKey)}.`,
+      ...(entityKey && entity ? { anchorEntity: entityKey } : {}), profileRefs, featureRefs, hostedStepRefs, useCaseIds,
       commandEntityRefs: useCaseIds.map(useCaseId => sources.useCases.find(useCase => useCase.useCaseId === useCaseId)).filter((useCase): useCase is Ns4UseCaseArtifactV3 => !!useCase && useCase.kind === 'command').map(useCase => ({ useCaseId: useCase.useCaseId, entityRefs: useCase.entityRefs })),
       pageContext: [] as Ns4WorkspaceContext[], slices, scenarios,
     };
   }).sort((left, right) => left.workspaceId.localeCompare(right.workspaceId));
   const byStep = new Map(workspaces.flatMap(workspace => workspace.hostedStepRefs.map(ref => [ref, workspace.workspaceId] as const)));
-  const edges = deriveEdges(sources, stepInfo, byStep);
-  const routedWorkspaces = deriveNs4E8Contexts(workspaces, edges, stepInfo, contexts, sources);
+  const edges = deriveEdges(sources, stepInfo, byStep, derived);
+  const routedWorkspaces = deriveNs4E8Contexts(workspaces, edges, stepInfo, contexts, sources, derived);
   const routeDecisions = routedWorkspaces.flatMap(workspace => workspace.scenarios.flatMap(scenario => routeOf(
     sources.journeys.moduleName, workspace, scenario, { workspaces: routedWorkspaces, edges, useCases: sources.useCases },
   ).systemDecisions));
@@ -392,34 +407,31 @@ export async function buildNs4WorkspaceArtifacts(skeleton: Ns4E8SkeletonReview, 
 }
 
 export function isPlatformOwnedEntity(entity: Ns4E4Review['entities'][number]): boolean {
-  return entity.ownership === 'external' && entity.storage?.target === 'external' && entity.storage.scope === 'platform';
+  return isNs4PlatformOwnedEntity(entity);
 }
 
-function collectContexts(journeys: Ns4E2Review): Map<string, Ns4WorkspaceContext> {
-  const result = new Map<string, Ns4WorkspaceContext>();
-  for (const journey of journeys.journeys) for (const context of [...journey.business.entry.carries, ...journey.business.steps.flatMap(step => step.providesContext)]) {
-    if (!result.has(context.contextId)) result.set(context.contextId, context);
-  }
-  return result;
-}
-function collectSteps(sources: Ns4E8Sources, contexts: Map<string, Ns4WorkspaceContext>) {
+function collectSteps(sources: Ns4E8Sources, derived: Ns4DerivedContextGraph) {
   const byStep = new Map(sources.useCases.flatMap(useCase => useCase.compiledFrom.map(ref => [ref, useCase] as const)));
   const authorityByStep = new Map<string, string[]>();
   for (const authority of sources.access.authorities) for (const ref of authority.journeyStepRefs) authorityByStep.set(ref, [...(authorityByStep.get(ref) || []), authority.authorityRef]);
   const profilesByAuthority = new Map<string, string[]>();
   for (const grant of sources.access.grants) profilesByAuthority.set(grant.authorityRef, [...(profilesByAuthority.get(grant.authorityRef) || []), grant.profileRef]);
   return sources.journeys.journeys.flatMap(journey => journey.business.steps.map(step => {
-    const stepRef = `${journey.journeyId}.${step.stepId}`; const requires = step.requiresContext.map(id => contexts.get(id)).filter((item): item is Ns4WorkspaceContext => !!item);
-    const provides = step.providesContext; const anchor = requires.find(context => context.required)?.businessObject || (step.kind === 'locate' ? provides[0]?.businessObject : '');
+    const stepRef = `${journey.journeyId}.${step.stepId}`;
+    const contexts = derived.byStepRef.get(stepRef);
     const authorities = authorityByStep.get(stepRef) || [];
-    return { journeyId: journey.journeyId, stepRef, step, requires, provides, anchorEntity: anchor, primaryEntity: anchor || provides[0]?.businessObject || '', useCaseId: byStep.get(stepRef)?.useCaseId || '', featureRefs: step.featureRefs, authorityRefs: authorities, profileRefs: unique(authorities.flatMap(authority => profilesByAuthority.get(authority) || [])) };
+    // The entity a step operates on is its anchor; the derived requires only decide affinity later.
+    return { journeyId: journey.journeyId, stepRef, step, requires: contexts?.requires || [], provides: contexts?.provides || [],
+      anchorEntity: step.entity, primaryEntity: step.entity, useCaseId: byStep.get(stepRef)?.useCaseId || '',
+      featureRefs: step.featureRefs, authorityRefs: authorities,
+      profileRefs: unique(authorities.flatMap(authority => profilesByAuthority.get(authority) || [])) };
   }));
 }
 function deriveScenarios(entries: ReturnType<typeof collectSteps>, isHub: boolean, sources: Ns4E8Sources): Ns4WorkspaceScenario[] {
   const kindByStep: Record<Ns4JourneyStepKind, Ns4WorkspaceScenarioKind> = { locate: 'list', inspect: 'detail', act: 'form', decide: 'review', handoff: 'detail' };
   const grouped = new Map<string, typeof entries>();
   for (const entry of entries) { const kind = kindByStep[entry.step.kind]; const key = `${kind}:${entry.useCaseId || entry.step.stepId}`; const values = grouped.get(key) || []; values.push(entry); grouped.set(key, values); }
-  const scenarios = [...grouped.entries()].map(([key, values]) => { const [kind, id] = key.split(':'); return { scenarioId: `${kind}${upperCamel(id)}`, kind: kind as Ns4WorkspaceScenarioKind, title: humanize(id), description: values[0].step.intent, stepRefs: unique(values.map(value => value.stepRef)), useCaseIds: unique(values.map(value => value.useCaseId).filter(Boolean)), authorityRefs: unique(values.flatMap(value => value.authorityRefs)), selectionContexts: [] as Ns4WorkspaceContext[] }; });
+  const scenarios = [...grouped.entries()].map(([key, values]) => { const [kind, id] = key.split(':'); return { scenarioId: `${kind}${upperCamel(id)}`, kind: kind as Ns4WorkspaceScenarioKind, title: humanize(id), description: values[0].step.title, stepRefs: unique(values.map(value => value.stepRef)), useCaseIds: unique(values.map(value => value.useCaseId).filter(Boolean)), authorityRefs: unique(values.flatMap(value => value.authorityRefs)), selectionContexts: [] as Ns4WorkspaceContext[] }; });
   if (isHub) {
     const query = entries.find(entry => entry.step.kind === 'locate');
     scenarios.unshift({ scenarioId: 'collection', kind: 'collection', title: 'Collection', description: 'Portfolio collection and selection.', stepRefs: query ? [query.stepRef] : [], useCaseIds: query?.useCaseId ? [query.useCaseId] : [], authorityRefs: query?.authorityRefs || [], selectionContexts: [] });
@@ -432,7 +444,7 @@ function deriveScenarios(entries: ReturnType<typeof collectSteps>, isHub: boolea
   }
   return scenarios;
 }
-function deriveEdges(sources: Ns4E8Sources, entries: ReturnType<typeof collectSteps>, byStep: Map<string, string>): Ns4E8Edge[] {
+function deriveEdges(sources: Ns4E8Sources, entries: ReturnType<typeof collectSteps>, byStep: Map<string, string>, _derived: Ns4DerivedContextGraph): Ns4E8Edge[] {
   const edges = new Map<string, Ns4E8Edge>();
   const addEdge = (fromRef: string, toRef: string, contextIds: string[]) => {
     const from = byStep.get(fromRef); const to = byStep.get(toRef); const carries = unique(contextIds);
@@ -447,27 +459,42 @@ function deriveEdges(sources: Ns4E8Sources, entries: ReturnType<typeof collectSt
       const previous = entries.find(entry => entry.stepRef === previousRef); const next = entries.find(entry => entry.stepRef === nextRef); const carries = next?.requires.filter(context => previous?.provides.some(provided => provided.contextId === context.contextId)).map(context => context.contextId) || [];
       addEdge(previousRef, nextRef, carries);
     }
-    for (const prerequisite of journey.business.prerequisites || []) {
-      const declaredContexts = new Set(prerequisite.providesContext);
-      if (!declaredContexts.size) continue;
-      const providerJourney = sources.journeys.journeys.find(candidate => candidate.journeyId === prerequisite.journeyRef);
-      if (!providerJourney) continue;
-      for (const targetStep of steps) {
-        const carriedToTarget = targetStep.requiresContext.filter(contextId => declaredContexts.has(contextId));
-        if (!carriedToTarget.length) continue;
-        const targetRef = `${journey.journeyId}.${targetStep.stepId}`;
-        for (const providerStep of providerJourney.business.steps) {
-          const produced = providerStep.providesContext.map(context => context.contextId).filter(contextId => carriedToTarget.includes(contextId));
-          if (produced.length) addEdge(`${providerJourney.journeyId}.${providerStep.stepId}`, targetRef, produced);
-        }
+    // A cross-journey edge replaces the removed prerequisite declaration: the preferred origin
+    // journey provides an entity this journey needs, matched by entity and never by a declared name.
+    const preferredRef = journey.business.entry.preferredFromJourneyRef;
+    const providerJourney = preferredRef ? sources.journeys.journeys.find(candidate => candidate.journeyId === preferredRef) : undefined;
+    if (providerJourney) for (const targetStep of steps) {
+      const targetRef = `${journey.journeyId}.${targetStep.stepId}`;
+      const needed = entries.find(entry => entry.stepRef === targetRef)?.requires.map(context => context.contextId) || [];
+      if (!needed.length) continue;
+      for (const providerStep of providerJourney.business.steps) {
+        const providerRef = `${providerJourney.journeyId}.${providerStep.stepId}`;
+        const produced = (entries.find(entry => entry.stepRef === providerRef)?.provides || [])
+          .map(context => context.contextId).filter(contextId => needed.includes(contextId));
+        if (produced.length) addEdge(providerRef, targetRef, produced);
       }
+    }
+  }
+  // A handoff delivers its own entity to the event-driven journey whose actor owns the target profile.
+  const profilesByActor = new Map<string, string[]>();
+  for (const profile of sources.access.profiles) for (const actor of profile.actorRefs || []) {
+    profilesByActor.set(actor, [...(profilesByActor.get(actor) || []), profile.profileId]);
+  }
+  for (const journey of sources.journeys.journeys) for (const step of journey.business.steps) {
+    if (step.kind !== 'handoff' || !step.targetProfile || !step.entity) continue;
+    const carried = ns4ContextIdOf(step.entity);
+    for (const target of sources.journeys.journeys) {
+      if (target.journeyId === journey.journeyId || target.business.entry.mode !== 'eventDriven') continue;
+      if (!(profilesByActor.get(target.business.actorRef) || []).includes(step.targetProfile)) continue;
+      const first = target.business.steps[0];
+      if (first) addEdge(`${journey.journeyId}.${step.stepId}`, `${target.journeyId}.${first.stepId}`, [carried]);
     }
   }
   return [...edges.values()].sort((left, right) => `${left.from}:${left.to}`.localeCompare(`${right.from}:${right.to}`));
 }
 function deriveNs4E8Contexts(
   sourceWorkspaces: Ns4E8SkeletonWorkspace[], edges: Ns4E8Edge[], entries: ReturnType<typeof collectSteps>,
-  contexts: Map<string, Ns4WorkspaceContext>, sources: Ns4E8Sources,
+  contexts: Map<string, Ns4WorkspaceContext>, sources: Ns4E8Sources, derived: Ns4DerivedContextGraph,
 ): Ns4E8SkeletonWorkspace[] {
   const entriesByRef = new Map(entries.map(entry => [entry.stepRef, entry]));
   const journeysById = new Map(sources.journeys.journeys.map(journey => [journey.journeyId, journey]));
@@ -484,10 +511,8 @@ function deriveNs4E8Contexts(
   const workspaces = sourceWorkspaces.map(sourceWorkspace => {
     const workspace: Ns4E8SkeletonWorkspace = { ...sourceWorkspace, pageContext: [], slices: sourceWorkspace.slices.map(slice => ({ ...slice })),
       scenarios: sourceWorkspace.scenarios.map(scenario => ({ ...scenario, selectionContexts: [] })) };
-    const anchorContext = workspace.kind === 'hub' && workspace.anchorEntity ? [...contexts.values()]
-      .filter(context => context.businessObject === workspace.anchorEntity)
-      .sort((left, right) => Number(right.contextId === `selected${workspace.anchorEntity}`) - Number(left.contextId === `selected${workspace.anchorEntity}`)
-        || Number(right.required) - Number(left.required) || left.contextId.localeCompare(right.contextId))[0] : undefined;
+    const anchorContext = workspace.kind === 'hub' && workspace.anchorEntity
+      ? contexts.get(ns4ContextIdOf(workspace.anchorEntity)) : undefined;
     if (anchorContext) workspace.pageContext.push({ ...anchorContext });
     for (const contextId of externalByWorkspace.get(workspace.workspaceId) || []) {
       const context = contexts.get(contextId);
@@ -499,8 +524,11 @@ function deriveNs4E8Contexts(
       for (const contextId of required) {
         const context = contexts.get(contextId);
         if (!context || workspace.pageContext.some(item => item.contextId === contextId)) continue;
+        // The picker is the query that reads the same entity: the locate step that precedes in the
+        // journey is the primary signal, and any query over that entity is the structural fallback.
         const provider = entries.find(entry => entry.step.kind === 'locate' && entry.provides.some(item => item.contextId === contextId));
-        const providerUseCase = provider?.useCaseId ? useCasesById.get(provider.useCaseId) : undefined;
+        const providerUseCase = (provider?.useCaseId ? useCasesById.get(provider.useCaseId) : undefined)
+          || [...useCasesById.values()].find(useCase => useCase.kind === 'query' && useCase.entityRefs.includes(context.businessObject));
         if (providerUseCase?.kind === 'query' && !workspace.slices.some(slice => slice.sliceId === providerUseCase.useCaseId)) {
           workspace.slices.push({ sliceId: providerUseCase.useCaseId, useCaseId: providerUseCase.useCaseId, entityRefs: providerUseCase.entityRefs, optional: true });
         }

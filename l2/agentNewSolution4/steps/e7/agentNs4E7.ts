@@ -34,6 +34,7 @@ import {
 import {
   Ns4E7GateIssue, Ns4E7Sources, validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/gate.js';
+import { deriveNs4Contexts } from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
 import { createNs4E7LifecycleResolutionReview } from '/_102020_/l2/agentNewSolution4/steps/e7/lifecycleResolution.js';
 import type { Ns4E7LifecycleResolutionEvent, Ns4E7LifecycleResolutionReview } from '/_102020_/l2/agentNewSolution4/steps/e7/lifecycleResolution.js';
 import {
@@ -138,7 +139,7 @@ async function startE7(
 ): Promise<mls.msg.AgentIntent[]> {
   const bundle = await loadBundle(moduleName);
   if (bundle.pipeline.steps.e6?.status !== 'approved') throw new Error(`E6 approved pipeline not found for ${moduleName}.`);
-  const plan = buildNs4E7Plan(moduleName, bundle.module.presentation.userLanguage, bundle.journeys, bundle.sourceHashes);
+  const plan = buildNs4E7Plan(moduleName, bundle.module.presentation.userLanguage, bundle.journeys, bundle.sourceHashes, deriveNs4Contexts(bundle));
   const gate = validateNs4E7Plan(plan, bundle);
   if (!gate.ok) throw new Error(formatGate(gate.issues));
   const planPath = await writeNs4E7PlanDraft(moduleName, plan);
@@ -179,18 +180,18 @@ async function buildUseCasePrompt(
   if (!target) throw new Error(`Use case ${useCaseId} is not present in the E7 plan.`);
   const sourceRefs = new Set(target.compiledFrom);
   const journeyIds = new Set(target.compiledFrom.map(ref => ref.split('.')[0]));
+  const derived = deriveNs4Contexts(bundle);
   const journeys = bundle.journeys.journeys.filter(journey => journeyIds.has(journey.journeyId)).map(journey => {
     const compiledSteps = journey.business.steps.filter(step => sourceRefs.has(`${journey.journeyId}.${step.stepId}`));
-    const requiredContexts = new Set(compiledSteps.flatMap(step => step.requiresContext));
-    const producerSteps = journey.business.steps.filter(step => step.providesContext.some(context => requiredContexts.has(context.contextId)));
+    const requiredContexts = new Set(compiledSteps.flatMap(step => derived.byStepRef.get(`${journey.journeyId}.${step.stepId}`)?.requires.map(context => context.contextId) || []));
+    const producerSteps = journey.business.steps.filter(step => (derived.byStepRef.get(`${journey.journeyId}.${step.stepId}`)?.provides || [])
+      .some(context => requiredContexts.has(context.contextId)));
     const relevantStepIds = new Set([...compiledSteps, ...producerSteps].map(step => step.stepId));
     return { journeyId: journey.journeyId, entry: journey.business.entry, useRules: journey.business.useRules,
-      steps: journey.business.steps.filter(step => relevantStepIds.has(step.stepId)) };
+      steps: journey.business.steps.filter(step => relevantStepIds.has(step.stepId)).map(step => ({
+        ...step, contexts: derived.byStepRef.get(`${journey.journeyId}.${step.stepId}`) })) };
   });
-  const businessObjects = new Set(journeys.flatMap(journey => [
-    ...journey.entry.carries.map(context => context.businessObject),
-    ...journey.steps.flatMap(step => step.providesContext.map(context => context.businessObject)),
-  ]));
+  const businessObjects = new Set(journeys.flatMap(journey => journey.steps.map(step => step.entity)).filter(Boolean));
   const relationships = bundle.ontology.relationships.filter(rel =>
     businessObjects.has(rel.fromEntity) || businessObjects.has(rel.toEntity));
   const entityIds = new Set([
@@ -287,7 +288,8 @@ async function finalizeE7(
   for (const workflow of workflows) artifactPaths.push(await writeNs4Workflow(args.moduleName, workflow.workflowId, workflow));
   artifactPaths.push(await writeNs4WorkflowIndex(args.moduleName, workflowIndex));
 
-  const realizedJourneys = await Promise.all(bundle.journeyArtifacts.map(journey => buildNs4RealizedJourneyArtifact(journey, useCases)));
+  const derivedContexts = deriveNs4Contexts(bundle);
+  const realizedJourneys = await Promise.all(bundle.journeyArtifacts.map(journey => buildNs4RealizedJourneyArtifact(journey, useCases, derivedContexts)));
   for (const journey of realizedJourneys) artifactPaths.push(await writeNs4Journey(args.moduleName, journey.journeyId, journey));
   artifactPaths.push(await writeNs4JourneyIndex(args.moduleName, await buildNs4RealizedJourneyIndex(bundle.journeyIndex, realizedJourneys)));
   artifactPaths.push(await writeNs4AccessMatrix(args.moduleName, await buildNs4RealizedAccessArtifact(bundle.accessArtifact, useCases)));

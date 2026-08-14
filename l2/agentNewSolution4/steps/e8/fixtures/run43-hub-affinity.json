@@ -1,0 +1,3031 @@
+{
+ "journeys": {
+  "planId": "e2-review",
+  "moduleName": "buildFlowFsm43",
+  "userLanguage": "en",
+  "title": "Review business journeys",
+  "reviewRound": 1,
+  "features": [
+   {
+    "featureId": "operationsDashboard",
+    "title": "Operations dashboard",
+    "priority": "now",
+    "journeyStepRefs": [
+     "viewOperationsDashboard.inspectOperationsDashboard"
+    ]
+   },
+   {
+    "featureId": "projectPlanning",
+    "title": "Project planning",
+    "priority": "now",
+    "journeyStepRefs": [
+     "createProject.locateClient",
+     "createProject.captureProjectPlan"
+    ]
+   },
+   {
+    "featureId": "projectDetails",
+    "title": "Project details and timeline",
+    "priority": "now",
+    "journeyStepRefs": [
+     "inspectProjectDetails.locateProject",
+     "inspectProjectDetails.inspectProjectProgress"
+    ]
+   },
+   {
+    "featureId": "jobCostTracking",
+    "title": "Job cost tracking",
+    "priority": "now",
+    "journeyStepRefs": [
+     "inspectProjectDetails.inspectProjectProgress",
+     "maintainProjectBudget.locateProject",
+     "maintainProjectBudget.inspectCostComparison",
+     "maintainProjectBudget.reviseProjectBudget",
+     "recordDailyWork.recordTimeLog",
+     "recordProjectMaterialUsage.recordMaterialUsage"
+    ]
+   },
+   {
+    "featureId": "fieldTaskCoordination",
+    "title": "Field task coordination",
+    "priority": "now",
+    "journeyStepRefs": [
+     "assignProjectTask.locateProject",
+     "assignProjectTask.locateWorker",
+     "assignProjectTask.createAssignedTask"
+    ]
+   },
+   {
+    "featureId": "dailyFieldLogs",
+    "title": "Daily field logs",
+    "priority": "now",
+    "journeyStepRefs": [
+     "recordDailyWork.locateAssignedTask",
+     "recordDailyWork.inspectAssignedTask",
+     "recordDailyWork.recordTaskProgress",
+     "recordDailyWork.recordTimeLog"
+    ]
+   },
+   {
+    "featureId": "materialTracking",
+    "title": "Project material tracking",
+    "priority": "now",
+    "journeyStepRefs": [
+     "recordProjectMaterialUsage.locateProject",
+     "recordProjectMaterialUsage.locateMaterial",
+     "recordProjectMaterialUsage.recordMaterialUsage"
+    ]
+   },
+   {
+    "featureId": "changeOrderManagement",
+    "title": "Change order management",
+    "priority": "now",
+    "journeyStepRefs": [
+     "manageChangeOrder.locateProject",
+     "manageChangeOrder.createChangeOrder",
+     "manageChangeOrder.approveChangeOrder"
+    ]
+   },
+   {
+    "featureId": "aiProjectReporting",
+    "title": "AI project status reporting",
+    "priority": "now",
+    "journeyStepRefs": [
+     "generateProjectStatusReport.locateProject",
+     "generateProjectStatusReport.inspectProjectReportingEvidence",
+     "generateProjectStatusReport.generateStatusReport"
+    ]
+   },
+   {
+    "featureId": "clientBilling",
+    "title": "Client billing summaries",
+    "priority": "now",
+    "journeyStepRefs": [
+     "issueProjectInvoice.locateProject",
+     "issueProjectInvoice.inspectApprovedBillables",
+     "issueProjectInvoice.issueInvoice",
+     "viewClientBillingSummary.inspectClientBillingSummary"
+    ]
+   },
+   {
+    "featureId": "clientProjectCommunication",
+    "title": "Client project communication",
+    "priority": "now",
+    "journeyStepRefs": [
+     "viewClientProjectUpdates.inspectClientProjectPortfolio",
+     "viewClientProjectUpdates.decideProjectToView",
+     "viewClientProjectUpdates.inspectClientProjectUpdates"
+    ]
+   }
+  ],
+  "journeys": [
+   {
+    "journeyId": "viewOperationsDashboard",
+    "policyDecisions": [],
+    "business": {
+     "actorRef": "companyOwner",
+     "title": "Monitor construction operations",
+     "goal": "See active jobs, cost performance, upcoming work, and profitability indicators at a glance.",
+     "entry": {
+      "mode": "coldStart"
+     },
+     "steps": [
+      {
+       "stepId": "inspectOperationsDashboard",
+       "kind": "inspect",
+       "entity": "OperationsDashboard",
+       "title": "Review active projects, budget versus actual cost, upcoming tasks, and overall profitability indicators.",
+       "description": "The owner has a current operational overview for prioritizing attention.",
+       "featureRefs": [
+        "operationsDashboard"
+       ]
+      }
+     ],
+     "outcome": {
+      "statement": "The owner can identify jobs requiring operational or financial attention.",
+      "evidence": [
+       "Active projects and upcoming tasks are visible.",
+       "Budget versus actual cost and profitability indicators are visible."
+      ]
+     },
+     "useRules": []
+    }
+   },
+   {
+    "journeyId": "createProject",
+    "policyDecisions": [],
+    "business": {
+     "actorRef": "projectManager",
+     "title": "Create a project",
+     "goal": "Set up a construction, remodeling, or field service project with its client, location, plan, and budget.",
+     "entry": {
+      "mode": "coldStart"
+     },
+     "steps": [
+      {
+       "stepId": "locateClient",
+       "kind": "locate",
+       "entity": "Client",
+       "title": "Locate the client from the shared customer catalog.",
+       "description": "A client is selected for the project.",
+       "featureRefs": [
+        "projectPlanning"
+       ]
+      },
+      {
+       "stepId": "captureProjectPlan",
+       "kind": "act",
+       "entity": "Project",
+       "title": "Create the project with its name, service address, initial status, budget, and planned start and end dates.",
+       "description": "A planned project is available for task coordination and cost tracking.",
+       "featureRefs": [
+        "projectPlanning"
+       ]
+      }
+     ],
+     "outcome": {
+      "statement": "A project is established with the information required to run the job.",
+      "evidence": [
+       "The project is linked to its client and service address.",
+       "The project has a status, budget, and planned dates."
+      ]
+     },
+     "useRules": [
+      "projectDatesValid",
+      "projectBudgetNonnegative"
+     ]
+    }
+   },
+   {
+    "journeyId": "inspectProjectDetails",
+    "policyDecisions": [],
+    "business": {
+     "actorRef": "projectManager",
+     "title": "Inspect project details and progress",
+     "goal": "Review a project's plan, tasks, costs, materials, and current delivery progress.",
+     "entry": {
+      "mode": "contextOrLookup",
+      "preferredFromJourneyRef": "createProject"
+     },
+     "steps": [
+      {
+       "stepId": "locateProject",
+       "kind": "locate",
+       "entity": "Project",
+       "title": "Keep the received project or locate a project from the organization project portfolio.",
+       "description": "A project is selected.",
+       "featureRefs": [
+        "projectDetails"
+       ]
+      },
+      {
+       "stepId": "inspectProjectProgress",
+       "kind": "inspect",
+       "entity": "ProjectProgressAssessment",
+       "title": "Review project information, task-list and timeline progress, budget versus actual cost, labor, materials, and change-order status.",
+       "description": "The project team has a current view of delivery progress and job cost performance.",
+       "featureRefs": [
+        "projectDetails",
+        "jobCostTracking"
+       ]
+      }
+     ],
+     "outcome": {
+      "statement": "Project leaders can follow planned work and actual job performance from one project context.",
+      "evidence": [
+       "Task and timeline progress are observable.",
+       "Budget, labor, material, and change-order cost information is observable."
+      ]
+     },
+     "useRules": []
+    }
+   },
+   {
+    "journeyId": "maintainProjectBudget",
+    "policyDecisions": [],
+    "business": {
+     "actorRef": "estimator",
+     "title": "Maintain project budget",
+     "goal": "Set or revise the planned project budget and compare it with actual labor and material cost.",
+     "entry": {
+      "mode": "contextOrLookup",
+      "preferredFromJourneyRef": "inspectProjectDetails"
+     },
+     "steps": [
+      {
+       "stepId": "locateProject",
+       "kind": "locate",
+       "entity": "Project",
+       "title": "Keep the received project or locate a project from the organization project portfolio.",
+       "description": "A project is selected for budget maintenance.",
+       "featureRefs": [
+        "jobCostTracking"
+       ]
+      },
+      {
+       "stepId": "inspectCostComparison",
+       "kind": "inspect",
+       "entity": "ProjectCostComparison",
+       "title": "Review planned budget and current actual labor and material cost for the selected project.",
+       "description": "The estimator has the current cost comparison.",
+       "featureRefs": [
+        "jobCostTracking"
+       ]
+      },
+      {
+       "stepId": "reviseProjectBudget",
+       "kind": "act",
+       "entity": "Project",
+       "title": "Set or revise the planned budget for the selected project.",
+       "description": "The project budget is current and can be compared with actual cost.",
+       "featureRefs": [
+        "jobCostTracking"
+       ]
+      }
+     ],
+     "outcome": {
+      "statement": "The estimator maintains an actionable planned-versus-actual job cost baseline.",
+      "evidence": [
+       "The maintained project budget is recorded.",
+       "Current actual labor and material cost remains comparable to the budget."
+      ]
+     },
+     "useRules": [
+      "projectBudgetNonnegative"
+     ]
+    }
+   },
+   {
+    "journeyId": "assignProjectTask",
+    "policyDecisions": [],
+    "business": {
+     "actorRef": "fieldSupervisor",
+     "title": "Assign project work",
+     "goal": "Create and assign a scheduled work task to a field worker on a selected project.",
+     "entry": {
+      "mode": "contextOrLookup",
+      "preferredFromJourneyRef": "inspectProjectDetails"
+     },
+     "steps": [
+      {
+       "stepId": "locateProject",
+       "kind": "locate",
+       "entity": "Project",
+       "title": "Keep the received project or locate a project from the organization project portfolio.",
+       "description": "A project is selected for task assignment.",
+       "featureRefs": [
+        "fieldTaskCoordination"
+       ]
+      },
+      {
+       "stepId": "locateWorker",
+       "kind": "locate",
+       "entity": "FieldWorker",
+       "title": "Locate an available field worker from the organization worker directory.",
+       "description": "A field worker is selected.",
+       "featureRefs": [
+        "fieldTaskCoordination"
+       ]
+      },
+      {
+       "stepId": "createAssignedTask",
+       "kind": "act",
+       "entity": "WorkTask",
+       "title": "Create a work task with its description, assigned worker, status, and due date.",
+       "description": "The worker has an accountable scheduled task on the project.",
+       "featureRefs": [
+        "fieldTaskCoordination"
+       ]
+      }
+     ],
+     "outcome": {
+      "statement": "Project work is clearly assigned for field execution.",
+      "evidence": [
+       "The task is linked to the project and assigned worker.",
+       "The task has a status and due date."
+      ]
+     },
+     "useRules": [
+      "taskAssignmentValid"
+     ]
+    }
+   },
+   {
+    "journeyId": "recordDailyWork",
+    "policyDecisions": [],
+    "business": {
+     "actorRef": "fieldWorker",
+     "title": "Record daily work",
+     "goal": "Update assigned task progress and record hours worked on site.",
+     "entry": {
+      "mode": "contextOrLookup",
+      "preferredFromJourneyRef": "assignProjectTask"
+     },
+     "steps": [
+      {
+       "stepId": "locateAssignedTask",
+       "kind": "locate",
+       "entity": "WorkTask",
+       "title": "Keep the received task or locate a task assigned to the current field worker.",
+       "description": "An assigned task is selected.",
+       "featureRefs": [
+        "dailyFieldLogs"
+       ]
+      },
+      {
+       "stepId": "inspectAssignedTask",
+       "kind": "inspect",
+       "entity": "DailyWorkContext",
+       "title": "Review the task's project, current status, due date, and prior recorded work.",
+       "description": "The worker has the current task context before recording work.",
+       "featureRefs": [
+        "dailyFieldLogs"
+       ]
+      },
+      {
+       "stepId": "recordTaskProgress",
+       "kind": "act",
+       "entity": "WorkTask",
+       "title": "Record the task's current progress and status for the day.",
+       "description": "Task progress is current for project coordination.",
+       "featureRefs": [
+        "dailyFieldLogs"
+       ]
+      },
+      {
+       "stepId": "recordTimeLog",
+       "kind": "act",
+       "entity": "TimeLog",
+       "title": "Record the field worker's hours worked against the assigned task.",
+       "description": "Labor hours are available for project cost tracking.",
+       "featureRefs": [
+        "dailyFieldLogs",
+        "jobCostTracking"
+       ]
+      }
+     ],
+     "outcome": {
+      "statement": "Field work and labor are recorded against the correct task and project.",
+      "evidence": [
+       "The task has an updated progress status.",
+       "A time log links the worker, task, and recorded hours."
+      ]
+     },
+     "useRules": [
+      "timeLogHoursPositive"
+     ]
+    }
+   },
+   {
+    "journeyId": "recordProjectMaterialUsage",
+    "policyDecisions": [],
+    "business": {
+     "actorRef": "fieldSupervisor",
+     "title": "Record project material usage",
+     "goal": "Record materials consumed on a project so inventory and actual job cost remain current.",
+     "entry": {
+      "mode": "contextOrLookup",
+      "preferredFromJourneyRef": "inspectProjectDetails"
+     },
+     "steps": [
+      {
+       "stepId": "locateProject",
+       "kind": "locate",
+       "entity": "Project",
+       "title": "Keep the received project or locate a project from the organization project portfolio.",
+       "description": "A project is selected for material usage.",
+       "featureRefs": [
+        "materialTracking"
+       ]
+      },
+      {
+       "stepId": "locateMaterial",
+       "kind": "locate",
+       "entity": "Material",
+       "title": "Locate the consumed material in the shared inventory catalog.",
+       "description": "A material is selected from inventory.",
+       "featureRefs": [
+        "materialTracking"
+       ]
+      },
+      {
+       "stepId": "recordMaterialUsage",
+       "kind": "act",
+       "entity": "MaterialUsage",
+       "title": "Record the quantity of the selected material used by the selected project.",
+       "description": "Material usage contributes to inventory tracking and actual project cost.",
+       "featureRefs": [
+        "materialTracking",
+        "jobCostTracking"
+       ]
+      }
+     ],
+     "outcome": {
+      "statement": "Material consumption is attributable to the project that used it.",
+      "evidence": [
+       "The usage record links the project and material.",
+       "The recorded quantity is available for inventory and actual-cost tracking."
+      ]
+     },
+     "useRules": [
+      "materialUsageAvailability"
+     ]
+    }
+   },
+   {
+    "journeyId": "manageChangeOrder",
+    "policyDecisions": [],
+    "business": {
+     "actorRef": "projectManager",
+     "title": "Create and approve a change order",
+     "goal": "Document a project scope or cost change and approve it for controlled delivery and billing.",
+     "entry": {
+      "mode": "contextOrLookup",
+      "preferredFromJourneyRef": "inspectProjectDetails"
+     },
+     "steps": [
+      {
+       "stepId": "locateProject",
+       "kind": "locate",
+       "entity": "Project",
+       "title": "Keep the received project or locate a project from the organization project portfolio.",
+       "description": "A project is selected for the change order.",
+       "featureRefs": [
+        "changeOrderManagement"
+       ]
+      },
+      {
+       "stepId": "createChangeOrder",
+       "kind": "act",
+       "entity": "ChangeOrder",
+       "title": "Create a draft change order describing the scope, schedule, and cost impact on the selected project.",
+       "description": "A documented draft change order is available for decision.",
+       "featureRefs": [
+        "changeOrderManagement"
+       ]
+      },
+      {
+       "stepId": "approveChangeOrder",
+       "kind": "decide",
+       "entity": "ChangeOrder",
+       "title": "Approve the documented change order for controlled project work and billing.",
+       "description": "The change order is approved and its decision is traceable.",
+       "featureRefs": [
+        "changeOrderManagement"
+       ]
+      }
+     ],
+     "outcome": {
+      "statement": "Project changes are documented and approved before they affect billable work.",
+      "evidence": [
+       "The change order remains linked to its project.",
+       "The approval decision and approved status are observable."
+      ]
+     },
+     "useRules": [
+      "changeOrderApprovalRequired"
+     ]
+    }
+   },
+   {
+    "journeyId": "generateProjectStatusReport",
+    "policyDecisions": [],
+    "business": {
+     "actorRef": "projectManager",
+     "title": "Generate a project status report",
+     "goal": "Produce a professional client-ready status summary and identify tasks at risk of delay.",
+     "entry": {
+      "mode": "contextOrLookup",
+      "preferredFromJourneyRef": "inspectProjectDetails"
+     },
+     "steps": [
+      {
+       "stepId": "locateProject",
+       "kind": "locate",
+       "entity": "Project",
+       "title": "Keep the received project or locate a project from the organization project portfolio.",
+       "description": "A project is selected for status reporting.",
+       "featureRefs": [
+        "aiProjectReporting"
+       ]
+      },
+      {
+       "stepId": "inspectProjectReportingEvidence",
+       "kind": "inspect",
+       "entity": "ProjectReportingEvidence",
+       "title": "Review the project's tasks, time logs, material usage, and change orders as report evidence.",
+       "description": "Current project evidence is ready for report generation.",
+       "featureRefs": [
+        "aiProjectReporting"
+       ]
+      },
+      {
+       "stepId": "generateStatusReport",
+       "kind": "act",
+       "entity": "StatusReport",
+       "title": "Generate a professional project status report and an assessment of tasks at risk of delay.",
+       "description": "A client-ready status report and delay-risk assessment are available.",
+       "featureRefs": [
+        "aiProjectReporting"
+       ]
+      }
+     ],
+     "outcome": {
+      "statement": "The project team can communicate current job status and emerging schedule risk clearly.",
+      "evidence": [
+       "The generated report is linked to the project evidence.",
+       "Tasks at risk of delay are identified in a traceable assessment."
+      ]
+     },
+     "useRules": []
+    }
+   },
+   {
+    "journeyId": "issueProjectInvoice",
+    "policyDecisions": [],
+    "business": {
+     "actorRef": "billingStaff",
+     "title": "Issue a project invoice",
+     "goal": "Create a client invoice from approved project work and approved change orders.",
+     "entry": {
+      "mode": "contextOrLookup",
+      "preferredFromJourneyRef": "inspectProjectDetails"
+     },
+     "steps": [
+      {
+       "stepId": "locateProject",
+       "kind": "locate",
+       "entity": "Project",
+       "title": "Keep the received project or locate a project from the organization project portfolio.",
+       "description": "A project is selected for billing.",
+       "featureRefs": [
+        "clientBilling"
+       ]
+      },
+      {
+       "stepId": "inspectApprovedBillables",
+       "kind": "inspect",
+       "entity": "ApprovedBillableWorkSummary",
+       "title": "Review approved project work, actual usage, and approved change orders available for billing.",
+       "description": "The billing staff has an approved billable-work summary.",
+       "featureRefs": [
+        "clientBilling"
+       ]
+      },
+      {
+       "stepId": "issueInvoice",
+       "kind": "act",
+       "entity": "Invoice",
+       "title": "Issue a client invoice from the approved billable-work summary.",
+       "description": "An invoice is issued for client billing communication.",
+       "featureRefs": [
+        "clientBilling"
+       ]
+      }
+     ],
+     "outcome": {
+      "statement": "Approved work is converted into a traceable client invoice.",
+      "evidence": [
+       "The invoice is linked to its project and billable-work summary.",
+       "Issued invoice details are available for the client billing summary."
+      ]
+     },
+     "useRules": [
+      "invoiceRequiresApprovedBillables"
+     ]
+    }
+   },
+   {
+    "journeyId": "viewClientProjectUpdates",
+    "policyDecisions": [],
+    "business": {
+     "actorRef": "client",
+     "title": "View project updates",
+     "goal": "Review clear status communication, approved changes, and schedule-risk information for own projects.",
+     "entry": {
+      "mode": "eventDriven"
+     },
+     "steps": [
+      {
+       "stepId": "inspectClientProjectPortfolio",
+       "kind": "inspect",
+       "entity": "ClientProjectPortfolio",
+       "title": "Review projects available to the authenticated client.",
+       "description": "The client has a portfolio of own projects to review.",
+       "featureRefs": [
+        "clientProjectCommunication"
+       ]
+      },
+      {
+       "stepId": "decideProjectToView",
+       "kind": "decide",
+       "entity": "Project",
+       "title": "Select one project from the client's available project portfolio for update review.",
+       "description": "A client project is selected.",
+       "featureRefs": [
+        "clientProjectCommunication"
+       ]
+      },
+      {
+       "stepId": "inspectClientProjectUpdates",
+       "kind": "inspect",
+       "entity": "ClientProjectUpdate",
+       "title": "Review the selected project's professional status reports, approved change orders, schedule-risk communication, and current summary.",
+       "description": "The client has clear, current communication about the selected project.",
+       "featureRefs": [
+        "clientProjectCommunication"
+       ]
+      }
+     ],
+     "outcome": {
+      "statement": "Clients can understand the current state and approved changes of their own projects.",
+      "evidence": [
+       "Client-facing project status reports are available.",
+       "Approved change orders and schedule-risk communication are visible only for the client's projects."
+      ]
+     },
+     "useRules": [
+      "clientDataAccessRestricted"
+     ]
+    }
+   },
+   {
+    "journeyId": "viewClientBillingSummary",
+    "policyDecisions": [],
+    "business": {
+     "actorRef": "client",
+     "title": "View billing summary",
+     "goal": "Review issued invoices and a clear billing summary for own projects.",
+     "entry": {
+      "mode": "eventDriven"
+     },
+     "steps": [
+      {
+       "stepId": "inspectClientBillingSummary",
+       "kind": "inspect",
+       "entity": "ClientBillingSummary",
+       "title": "Review issued invoices and approved billable-work summaries for the authenticated client's projects.",
+       "description": "The client has a current understandable summary of project billing.",
+       "featureRefs": [
+        "clientBilling"
+       ]
+      }
+     ],
+     "outcome": {
+      "statement": "Clients can review billing communication for their own projects without requiring external payment processing.",
+      "evidence": [
+       "Issued invoices are listed in the client billing summary.",
+       "The summary is limited to projects belonging to the authenticated client."
+      ]
+     },
+     "useRules": [
+      "clientDataAccessRestricted"
+     ]
+    }
+   }
+  ]
+ },
+ "access": {
+  "moduleName": "buildFlowFsm43",
+  "profiles": [
+   {
+    "profileId": "companyOwner",
+    "actorRefs": [
+     "companyOwner"
+    ],
+    "landingIntent": "Review the organization-wide operational picture and identify projects requiring attention."
+   },
+   {
+    "profileId": "projectManager",
+    "actorRefs": [
+     "projectManager"
+    ],
+    "landingIntent": "Continue managing a project, its progress, changes, and stakeholder communication."
+   },
+   {
+    "profileId": "fieldSupervisor",
+    "actorRefs": [
+     "fieldSupervisor"
+    ],
+    "landingIntent": "Coordinate field work, assign tasks, and keep material usage current."
+   },
+   {
+    "profileId": "fieldWorker",
+    "actorRefs": [
+     "fieldWorker"
+    ],
+    "landingIntent": "Review assigned work and submit today's field progress, labor, and material usage."
+   },
+   {
+    "profileId": "estimator",
+    "actorRefs": [
+     "estimator"
+    ],
+    "landingIntent": "Review project cost comparisons and maintain the planned budget."
+   },
+   {
+    "profileId": "billingStaff",
+    "actorRefs": [
+     "billingStaff"
+    ],
+    "landingIntent": "Review approved billables and prepare project invoices."
+   },
+   {
+    "profileId": "client",
+    "actorRefs": [
+     "client"
+    ],
+    "landingIntent": "Review published updates and billing summaries for own projects only."
+   }
+  ],
+  "authorities": [
+   {
+    "authorityRef": "buildflow:ops",
+    "journeyStepRefs": [
+     "viewOperationsDashboard.inspectOperationsDashboard"
+    ]
+   },
+   {
+    "authorityRef": "buildflow:prj",
+    "journeyStepRefs": [
+     "createProject.locateClient",
+     "createProject.captureProjectPlan",
+     "inspectProjectDetails.locateProject",
+     "inspectProjectDetails.inspectProjectProgress"
+    ]
+   },
+   {
+    "authorityRef": "buildflow:chg",
+    "journeyStepRefs": [
+     "manageChangeOrder.locateProject",
+     "manageChangeOrder.createChangeOrder",
+     "manageChangeOrder.approveChangeOrder"
+    ]
+   },
+   {
+    "authorityRef": "buildflow:rpt",
+    "journeyStepRefs": [
+     "generateProjectStatusReport.locateProject",
+     "generateProjectStatusReport.inspectProjectReportingEvidence",
+     "generateProjectStatusReport.generateStatusReport"
+    ]
+   },
+   {
+    "authorityRef": "buildflow:bud",
+    "journeyStepRefs": [
+     "maintainProjectBudget.locateProject",
+     "maintainProjectBudget.inspectCostComparison",
+     "maintainProjectBudget.reviseProjectBudget"
+    ]
+   },
+   {
+    "authorityRef": "buildflow:tsk",
+    "journeyStepRefs": [
+     "assignProjectTask.locateProject",
+     "assignProjectTask.locateWorker",
+     "assignProjectTask.createAssignedTask"
+    ]
+   },
+   {
+    "authorityRef": "buildflow:day",
+    "journeyStepRefs": [
+     "recordDailyWork.locateAssignedTask",
+     "recordDailyWork.inspectAssignedTask",
+     "recordDailyWork.recordTaskProgress",
+     "recordDailyWork.recordTimeLog"
+    ]
+   },
+   {
+    "authorityRef": "buildflow:mat",
+    "journeyStepRefs": [
+     "recordProjectMaterialUsage.locateProject",
+     "recordProjectMaterialUsage.locateMaterial",
+     "recordProjectMaterialUsage.recordMaterialUsage"
+    ]
+   },
+   {
+    "authorityRef": "buildflow:inv",
+    "journeyStepRefs": [
+     "issueProjectInvoice.locateProject",
+     "issueProjectInvoice.inspectApprovedBillables",
+     "issueProjectInvoice.issueInvoice"
+    ]
+   },
+   {
+    "authorityRef": "buildflow:cup",
+    "journeyStepRefs": [
+     "viewClientProjectUpdates.inspectClientProjectPortfolio",
+     "viewClientProjectUpdates.decideProjectToView",
+     "viewClientProjectUpdates.inspectClientProjectUpdates"
+    ]
+   },
+   {
+    "authorityRef": "buildflow:cbill",
+    "journeyStepRefs": [
+     "viewClientBillingSummary.inspectClientBillingSummary"
+    ]
+   }
+  ],
+  "grants": [
+   {
+    "profileRef": "companyOwner",
+    "authorityRef": "buildflow:ops",
+    "dataScope": {
+     "mode": "organization",
+     "description": "All operational dashboard information for the active organization."
+    },
+    "disclosure": {
+     "mode": "aggregateOnly",
+     "allowedInformation": []
+    }
+   },
+   {
+    "profileRef": "projectManager",
+    "authorityRef": "buildflow:prj",
+    "dataScope": {
+     "mode": "organization",
+     "description": "Projects and shared client catalog records within the active organization."
+    },
+    "disclosure": {
+     "mode": "fullRecord",
+     "allowedInformation": []
+    }
+   },
+   {
+    "profileRef": "projectManager",
+    "authorityRef": "buildflow:chg",
+    "dataScope": {
+     "mode": "organization",
+     "description": "Projects and change orders within the active organization."
+    },
+    "disclosure": {
+     "mode": "fullRecord",
+     "allowedInformation": []
+    }
+   },
+   {
+    "profileRef": "projectManager",
+    "authorityRef": "buildflow:rpt",
+    "dataScope": {
+     "mode": "organization",
+     "description": "Project reporting evidence for projects in the active organization."
+    },
+    "disclosure": {
+     "mode": "fullRecord",
+     "allowedInformation": []
+    }
+   },
+   {
+    "profileRef": "estimator",
+    "authorityRef": "buildflow:bud",
+    "dataScope": {
+     "mode": "organization",
+     "description": "Projects and their planned-versus-actual labor and material cost information within the active organization."
+    },
+    "disclosure": {
+     "mode": "fullRecord",
+     "allowedInformation": []
+    }
+   },
+   {
+    "profileRef": "fieldSupervisor",
+    "authorityRef": "buildflow:tsk",
+    "dataScope": {
+     "mode": "organization",
+     "description": "Projects and field workers within the active organization that are available for field-work coordination."
+    },
+    "disclosure": {
+     "mode": "fullRecord",
+     "allowedInformation": []
+    }
+   },
+   {
+    "profileRef": "fieldSupervisor",
+    "authorityRef": "buildflow:mat",
+    "dataScope": {
+     "mode": "organization",
+     "description": "Projects and shared inventory materials within the active organization."
+    },
+    "disclosure": {
+     "mode": "fullRecord",
+     "allowedInformation": []
+    }
+   },
+   {
+    "profileRef": "fieldWorker",
+    "authorityRef": "buildflow:day",
+    "dataScope": {
+     "mode": "assigned",
+     "description": "Only work tasks currently assigned to the authenticated field worker, with their directly related project context and the worker's own time logs."
+    },
+    "disclosure": {
+     "mode": "fieldsOnly",
+     "allowedInformation": []
+    }
+   },
+   {
+    "profileRef": "fieldWorker",
+    "authorityRef": "buildflow:mat",
+    "dataScope": {
+     "mode": "related",
+     "description": "Only projects related to the authenticated worker's currently assigned tasks and materials selected for that assigned work."
+    },
+    "disclosure": {
+     "mode": "fieldsOnly",
+     "allowedInformation": []
+    }
+   },
+   {
+    "profileRef": "billingStaff",
+    "authorityRef": "buildflow:inv",
+    "dataScope": {
+     "mode": "organization",
+     "description": "Projects, approved billable-work summaries, approved change orders, and invoices within the active organization."
+    },
+    "disclosure": {
+     "mode": "fullRecord",
+     "allowedInformation": []
+    }
+   },
+   {
+    "profileRef": "client",
+    "authorityRef": "buildflow:cup",
+    "dataScope": {
+     "mode": "related",
+     "description": "Only projects associated with the authenticated client."
+    },
+    "disclosure": {
+     "mode": "fieldsOnly",
+     "allowedInformation": []
+    }
+   },
+   {
+    "profileRef": "client",
+    "authorityRef": "buildflow:cbill",
+    "dataScope": {
+     "mode": "related",
+     "description": "Only issued invoices and approved billable-work summaries associated with projects belonging to the authenticated client."
+    },
+    "disclosure": {
+     "mode": "summaryOnly",
+     "allowedInformation": []
+    }
+   }
+  ]
+ },
+ "ontology": {
+  "moduleName": "buildFlowFsm43",
+  "entities": [
+   {
+    "entityId": "PlatformUser",
+    "title": "Platform user",
+    "description": "An external platform identity used to authenticate and associate client and field-worker business records with authorized users.",
+    "kind": "core",
+    "ownership": "external",
+    "sourceRefs": {
+     "journeyIds": [
+      "recordDailyWork",
+      "recordProjectMaterialUsage",
+      "viewClientProjectUpdates",
+      "viewClientBillingSummary"
+     ],
+     "featureIds": [
+      "dailyFieldLogs",
+      "materialTracking",
+      "clientProjectCommunication",
+      "clientBilling"
+     ],
+     "authorityRefs": [
+      "buildflow:day",
+      "buildflow:mat",
+      "buildflow:cup",
+      "buildflow:cbill"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "platformUserId"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "external",
+     "scope": "platform",
+     "notes": "References the platform-managed user identity. Authentication, sessions, and user administration remain platform capabilities."
+    }
+   },
+   {
+    "entityId": "Client",
+    "title": "Client",
+    "description": "An organization client for whom projects are performed and client-facing updates and billing summaries are prepared.",
+    "kind": "mdm",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "createProject",
+      "viewClientProjectUpdates",
+      "viewClientBillingSummary"
+     ],
+     "featureIds": [
+      "projectPlanning",
+      "clientProjectCommunication",
+      "clientBilling"
+     ],
+     "authorityRefs": [
+      "buildflow:prj",
+      "buildflow:cup",
+      "buildflow:cbill"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "clientId"
+     },
+     {
+      "fieldId": "clientName"
+     },
+     {
+      "fieldId": "platformUserRef"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "mdm",
+     "scope": "organization",
+     "idField": "clientId",
+     "mdmType": "buildFlowFsm43.Client",
+     "notes": "Stable organization client registration reused by projects, client communication, and billing."
+    }
+   },
+   {
+    "entityId": "FieldWorker",
+    "title": "Field worker",
+    "description": "An organization field-team member who can be assigned accountable work and record daily field activity.",
+    "kind": "mdm",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "assignProjectTask",
+      "recordDailyWork",
+      "recordProjectMaterialUsage"
+     ],
+     "featureIds": [
+      "fieldTaskCoordination",
+      "dailyFieldLogs",
+      "materialTracking"
+     ],
+     "authorityRefs": [
+      "buildflow:tsk",
+      "buildflow:day",
+      "buildflow:mat"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "fieldWorkerId"
+     },
+     {
+      "fieldId": "platformUserId"
+     },
+     {
+      "fieldId": "displayName"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "mdm",
+     "scope": "organization",
+     "idField": "fieldWorkerId",
+     "mdmType": "buildFlowFsm43.FieldWorker",
+     "notes": "Stable organization worker-directory record reused by task assignment, time recording, and assigned-work authorization."
+    }
+   },
+   {
+    "entityId": "ServiceAddress",
+    "title": "Service address",
+    "description": "The physical job-site address at which project work is performed.",
+    "kind": "valueObject",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "createProject",
+      "inspectProjectDetails",
+      "recordDailyWork",
+      "viewClientProjectUpdates"
+     ],
+     "featureIds": [
+      "projectPlanning",
+      "projectDetails",
+      "dailyFieldLogs",
+      "clientProjectCommunication"
+     ],
+     "authorityRefs": [
+      "buildflow:prj",
+      "buildflow:day",
+      "buildflow:cup"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "addressLine1"
+     },
+     {
+      "fieldId": "addressLine2"
+     },
+     {
+      "fieldId": "city"
+     },
+     {
+      "fieldId": "state"
+     },
+     {
+      "fieldId": "postalCode"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "embedded",
+     "scope": "none",
+     "notes": "Embedded as part of a project because the service location has no independent lifecycle in the current scope."
+    }
+   },
+   {
+    "entityId": "Project",
+    "title": "Project",
+    "description": "A client job carrying its service location, planned schedule, budget, delivery context, and associated operational records.",
+    "kind": "mdm",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "viewOperationsDashboard",
+      "createProject",
+      "inspectProjectDetails",
+      "maintainProjectBudget",
+      "assignProjectTask",
+      "recordProjectMaterialUsage",
+      "manageChangeOrder",
+      "generateProjectStatusReport",
+      "issueProjectInvoice",
+      "viewClientProjectUpdates",
+      "viewClientBillingSummary"
+     ],
+     "featureIds": [
+      "operationsDashboard",
+      "projectPlanning",
+      "projectDetails",
+      "jobCostTracking",
+      "fieldTaskCoordination",
+      "materialTracking",
+      "changeOrderManagement",
+      "aiProjectReporting",
+      "clientBilling",
+      "clientProjectCommunication"
+     ],
+     "authorityRefs": [
+      "buildflow:ops",
+      "buildflow:prj",
+      "buildflow:chg",
+      "buildflow:rpt",
+      "buildflow:bud",
+      "buildflow:tsk",
+      "buildflow:mat",
+      "buildflow:inv",
+      "buildflow:cup",
+      "buildflow:cbill"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "projectId"
+     },
+     {
+      "fieldId": "name"
+     },
+     {
+      "fieldId": "clientId"
+     },
+     {
+      "fieldId": "serviceAddress"
+     },
+     {
+      "fieldId": "status"
+     },
+     {
+      "fieldId": "budget"
+     },
+     {
+      "fieldId": "plannedStartDate"
+     },
+     {
+      "fieldId": "plannedEndDate"
+     }
+    ],
+    "lifecycleStates": [
+     "planned",
+     "active",
+     "completed",
+     "cancelled"
+    ],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "mdm",
+     "scope": "organization",
+     "idField": "projectId",
+     "mdmType": "buildFlowFsm43.Project",
+     "notes": "Stable organization project registration reused by transactions, cost reporting, client communication, and billing."
+    }
+   },
+   {
+    "entityId": "Material",
+    "title": "Material",
+    "description": "A catalog material that can be selected for project consumption and costed using its organization-maintained catalog information.",
+    "kind": "mdm",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "recordProjectMaterialUsage",
+      "inspectProjectDetails",
+      "generateProjectStatusReport"
+     ],
+     "featureIds": [
+      "materialTracking",
+      "jobCostTracking",
+      "projectDetails",
+      "aiProjectReporting"
+     ],
+     "authorityRefs": [
+      "buildflow:mat",
+      "buildflow:prj",
+      "buildflow:rpt"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "materialId"
+     },
+     {
+      "fieldId": "name"
+     },
+     {
+      "fieldId": "materialCode"
+     },
+     {
+      "fieldId": "unit"
+     },
+     {
+      "fieldId": "unitCost"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "mdm",
+     "scope": "organization",
+     "idField": "materialId",
+     "mdmType": "buildFlowFsm43.Material",
+     "notes": "Stable organization material catalog registration reused by inventory positions, usage records, and job-cost reporting."
+    }
+   },
+   {
+    "entityId": "InventoryStock",
+    "title": "Inventory stock",
+    "description": "The operational available-stock position for a catalog material used to validate and track project material consumption.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "recordProjectMaterialUsage"
+     ],
+     "featureIds": [
+      "materialTracking"
+     ],
+     "authorityRefs": [
+      "buildflow:mat"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "inventoryStockId"
+     },
+     {
+      "fieldId": "materialId"
+     },
+     {
+      "fieldId": "availableQuantity"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "moduleDatabase",
+     "scope": "module",
+     "idField": "inventoryStockId",
+     "notes": "Operational inventory position kept outside MDM because available quantities change through usage and operational reconciliation."
+    }
+   },
+   {
+    "entityId": "WorkTask",
+    "title": "Work task",
+    "description": "An accountable unit of project work assigned to one field worker with a due date, current progress, and execution status.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "viewOperationsDashboard",
+      "inspectProjectDetails",
+      "assignProjectTask",
+      "recordDailyWork",
+      "generateProjectStatusReport"
+     ],
+     "featureIds": [
+      "operationsDashboard",
+      "projectDetails",
+      "fieldTaskCoordination",
+      "dailyFieldLogs",
+      "aiProjectReporting"
+     ],
+     "authorityRefs": [
+      "buildflow:ops",
+      "buildflow:prj",
+      "buildflow:tsk",
+      "buildflow:day",
+      "buildflow:rpt"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "workTaskId"
+     },
+     {
+      "fieldId": "projectId"
+     },
+     {
+      "fieldId": "fieldWorkerId"
+     },
+     {
+      "fieldId": "description"
+     },
+     {
+      "fieldId": "dueDate"
+     },
+     {
+      "fieldId": "currentProgress"
+     },
+     {
+      "fieldId": "status"
+     }
+    ],
+    "lifecycleStates": [
+     "assigned",
+     "inProgress",
+     "completed",
+     "cancelled"
+    ],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "moduleDatabase",
+     "scope": "module",
+     "idField": "workTaskId",
+     "notes": "Operational project-work record because assignment and progress change during delivery."
+    }
+   },
+   {
+    "entityId": "TimeLog",
+    "title": "Time log",
+    "description": "A daily labor record of a field worker's hours on a task, preserving the labor-cost input used in job-cost calculation.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "recordDailyWork",
+      "inspectProjectDetails",
+      "maintainProjectBudget",
+      "generateProjectStatusReport",
+      "issueProjectInvoice"
+     ],
+     "featureIds": [
+      "dailyFieldLogs",
+      "projectDetails",
+      "jobCostTracking",
+      "aiProjectReporting",
+      "clientBilling"
+     ],
+     "authorityRefs": [
+      "buildflow:day",
+      "buildflow:prj",
+      "buildflow:bud",
+      "buildflow:rpt",
+      "buildflow:inv"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "timeLogId"
+     },
+     {
+      "fieldId": "status"
+     },
+     {
+      "fieldId": "workTaskId"
+     },
+     {
+      "fieldId": "projectId"
+     },
+     {
+      "fieldId": "fieldWorkerId"
+     },
+     {
+      "fieldId": "workDate"
+     },
+     {
+      "fieldId": "hours"
+     },
+     {
+      "fieldId": "hourlyLaborCost"
+     }
+    ],
+    "lifecycleStates": [
+     "recorded",
+     "voided"
+    ],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "moduleDatabase",
+     "scope": "module",
+     "idField": "timeLogId",
+     "notes": "Transactional daily labor evidence with an applicable labor-cost snapshot for reproducible actual-cost calculations."
+    }
+   },
+   {
+    "entityId": "MaterialUsage",
+    "title": "Material usage",
+    "description": "A recorded quantity of a catalog material consumed by a project, with the cost input used for inventory and actual job-cost calculation.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "recordProjectMaterialUsage",
+      "inspectProjectDetails",
+      "maintainProjectBudget",
+      "generateProjectStatusReport",
+      "issueProjectInvoice"
+     ],
+     "featureIds": [
+      "materialTracking",
+      "projectDetails",
+      "jobCostTracking",
+      "aiProjectReporting",
+      "clientBilling"
+     ],
+     "authorityRefs": [
+      "buildflow:mat",
+      "buildflow:prj",
+      "buildflow:bud",
+      "buildflow:rpt",
+      "buildflow:inv"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "materialUsageId"
+     },
+     {
+      "fieldId": "status"
+     },
+     {
+      "fieldId": "projectId"
+     },
+     {
+      "fieldId": "materialId"
+     },
+     {
+      "fieldId": "inventoryStockId"
+     },
+     {
+      "fieldId": "workTaskId"
+     },
+     {
+      "fieldId": "recordedByPlatformUserId"
+     },
+     {
+      "fieldId": "quantity"
+     },
+     {
+      "fieldId": "unitCost"
+     }
+    ],
+    "lifecycleStates": [
+     "recorded",
+     "voided"
+    ],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "moduleDatabase",
+     "scope": "module",
+     "idField": "materialUsageId",
+     "notes": "Transactional consumption evidence with a unit-cost snapshot and inventory-stock effect; it is not stored as master data."
+    }
+   },
+   {
+    "entityId": "ChangeOrder",
+    "title": "Change order",
+    "description": "A documented project scope, schedule, and cost change that must be approved before it becomes controlled billable work.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "inspectProjectDetails",
+      "manageChangeOrder",
+      "generateProjectStatusReport",
+      "issueProjectInvoice",
+      "viewClientProjectUpdates"
+     ],
+     "featureIds": [
+      "projectDetails",
+      "changeOrderManagement",
+      "aiProjectReporting",
+      "clientBilling",
+      "clientProjectCommunication"
+     ],
+     "authorityRefs": [
+      "buildflow:prj",
+      "buildflow:chg",
+      "buildflow:rpt",
+      "buildflow:inv",
+      "buildflow:cup"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "changeOrderId"
+     },
+     {
+      "fieldId": "projectId"
+     },
+     {
+      "fieldId": "description"
+     },
+     {
+      "fieldId": "scheduleImpact"
+     },
+     {
+      "fieldId": "costImpact"
+     },
+     {
+      "fieldId": "status"
+     }
+    ],
+    "lifecycleStates": [
+     "draft",
+     "approved",
+     "rejected",
+     "cancelled"
+    ],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "moduleDatabase",
+     "scope": "module",
+     "idField": "changeOrderId",
+     "notes": "Transactional controlled-change record because its decision and project impacts are operational history."
+    }
+   },
+   {
+    "entityId": "ChangeOrderApproval",
+    "title": "Change order approval",
+    "description": "The traceable approval decision that records which authorized user approved a change order for delivery and billing.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "manageChangeOrder",
+      "issueProjectInvoice",
+      "viewClientProjectUpdates"
+     ],
+     "featureIds": [
+      "changeOrderManagement",
+      "clientBilling",
+      "clientProjectCommunication"
+     ],
+     "authorityRefs": [
+      "buildflow:chg",
+      "buildflow:inv",
+      "buildflow:cup"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "changeOrderApprovalId"
+     },
+     {
+      "fieldId": "changeOrder"
+     },
+     {
+      "fieldId": "approvedByPlatformUser"
+     },
+     {
+      "fieldId": "approvedAt"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "moduleDatabase",
+     "scope": "module",
+     "idField": "changeOrderApprovalId",
+     "notes": "Durable authorization record retained to make approved change-order decisions auditable."
+    }
+   },
+   {
+    "entityId": "BillableWorkItem",
+    "title": "Billable work item",
+    "description": "A controlled billable representation of approved project work, material usage, or an approved change order before allocation to an invoice.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "inspectProjectDetails",
+      "manageChangeOrder",
+      "issueProjectInvoice",
+      "viewClientBillingSummary"
+     ],
+     "featureIds": [
+      "projectDetails",
+      "changeOrderManagement",
+      "clientBilling"
+     ],
+     "authorityRefs": [
+      "buildflow:prj",
+      "buildflow:chg",
+      "buildflow:inv",
+      "buildflow:cbill"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "billableWorkItemId"
+     },
+     {
+      "fieldId": "projectId"
+     },
+     {
+      "fieldId": "timeLogId"
+     },
+     {
+      "fieldId": "materialUsageId"
+     },
+     {
+      "fieldId": "changeOrderId"
+     },
+     {
+      "fieldId": "description"
+     },
+     {
+      "fieldId": "amount"
+     },
+     {
+      "fieldId": "status"
+     }
+    ],
+    "lifecycleStates": [
+     "pendingApproval",
+     "approved",
+     "invoiced",
+     "voided"
+    ],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "moduleDatabase",
+     "scope": "module",
+     "idField": "billableWorkItemId",
+     "notes": "Transactional billing-control record that preserves approval state and the durable source allocation for billable work."
+    }
+   },
+   {
+    "entityId": "BillableWorkApproval",
+    "title": "Billable work approval",
+    "description": "The durable authorization decision that approves a billable work item before it can be included in an invoice.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "issueProjectInvoice"
+     ],
+     "featureIds": [
+      "clientBilling"
+     ],
+     "authorityRefs": [
+      "buildflow:inv"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "billableWorkApprovalId"
+     },
+     {
+      "fieldId": "billableWorkItem"
+     },
+     {
+      "fieldId": "approvedByPlatformUser"
+     },
+     {
+      "fieldId": "approvedAt"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "moduleDatabase",
+     "scope": "module",
+     "idField": "billableWorkApprovalId",
+     "notes": "Durable approval record supporting the requirement that invoices use approved billable work only."
+    }
+   },
+   {
+    "entityId": "Invoice",
+    "title": "Invoice",
+    "description": "An issued client billing document for approved work and approved change orders associated with one project.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "issueProjectInvoice",
+      "viewClientBillingSummary"
+     ],
+     "featureIds": [
+      "clientBilling"
+     ],
+     "authorityRefs": [
+      "buildflow:inv",
+      "buildflow:cbill"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "invoiceId"
+     },
+     {
+      "fieldId": "status"
+     },
+     {
+      "fieldId": "projectRef"
+     },
+     {
+      "fieldId": "issuedByPlatformUserRef"
+     },
+     {
+      "fieldId": "invoiceNumber"
+     },
+     {
+      "fieldId": "issueDate"
+     },
+     {
+      "fieldId": "dueDate"
+     },
+     {
+      "fieldId": "totalAmount"
+     }
+    ],
+    "lifecycleStates": [
+     "issued",
+     "voided"
+    ],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "moduleDatabase",
+     "scope": "module",
+     "idField": "invoiceId",
+     "notes": "Transactional billing record. Payment collection and external payment processing are outside this module's scope."
+    }
+   },
+   {
+    "entityId": "InvoiceLine",
+    "title": "Invoice line",
+    "description": "A durable invoice allocation that identifies the approved billable work item contributing to an issued invoice amount.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "issueProjectInvoice",
+      "viewClientBillingSummary"
+     ],
+     "featureIds": [
+      "clientBilling"
+     ],
+     "authorityRefs": [
+      "buildflow:inv",
+      "buildflow:cbill"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "invoiceLineId"
+     },
+     {
+      "fieldId": "invoiceId"
+     },
+     {
+      "fieldId": "billableWorkItemId"
+     },
+     {
+      "fieldId": "allocatedAmount"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "moduleDatabase",
+     "scope": "module",
+     "idField": "invoiceLineId",
+     "notes": "Transactional allocation record preserving the source-to-invoice audit trail and preventing implementation from inferring billable sources."
+    }
+   },
+   {
+    "entityId": "StatusReport",
+    "title": "Status report",
+    "description": "A generated professional project status summary based on current project evidence and prepared for controlled stakeholder communication.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "generateProjectStatusReport",
+      "viewClientProjectUpdates"
+     ],
+     "featureIds": [
+      "aiProjectReporting",
+      "clientProjectCommunication"
+     ],
+     "authorityRefs": [
+      "buildflow:rpt",
+      "buildflow:cup"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "statusReportId"
+     },
+     {
+      "fieldId": "projectId"
+     },
+     {
+      "fieldId": "generatedByPlatformUserId"
+     },
+     {
+      "fieldId": "status"
+     },
+     {
+      "fieldId": "reportContent"
+     },
+     {
+      "fieldId": "generatedAt"
+     },
+     {
+      "fieldId": "workTaskReferences"
+     },
+     {
+      "fieldId": "timeLogReferences"
+     },
+     {
+      "fieldId": "materialUsageReferences"
+     },
+     {
+      "fieldId": "changeOrderReferences"
+     },
+     {
+      "fieldId": "taskDelayRiskAssessmentId"
+     }
+    ],
+    "lifecycleStates": [
+     "generated",
+     "published",
+     "superseded"
+    ],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "moduleDatabase",
+     "scope": "module",
+     "idField": "statusReportId",
+     "notes": "Generated communication is retained as a transactional project artifact so published client communication is traceable."
+    }
+   },
+   {
+    "entityId": "TaskDelayRiskAssessment",
+    "title": "Task delay risk assessment",
+    "description": "A generated project schedule-risk assessment that identifies tasks likely to miss their due dates using current task and project evidence.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "generateProjectStatusReport",
+      "viewClientProjectUpdates"
+     ],
+     "featureIds": [
+      "aiProjectReporting",
+      "clientProjectCommunication"
+     ],
+     "authorityRefs": [
+      "buildflow:rpt",
+      "buildflow:cup"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "taskDelayRiskAssessmentId"
+     },
+     {
+      "fieldId": "projectId"
+     },
+     {
+      "fieldId": "status"
+     },
+     {
+      "fieldId": "assessmentSummary"
+     },
+     {
+      "fieldId": "generatedAt"
+     }
+    ],
+    "lifecycleStates": [
+     "generated",
+     "published",
+     "superseded"
+    ],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "moduleDatabase",
+     "scope": "module",
+     "idField": "taskDelayRiskAssessmentId",
+     "notes": "Transactional generated assessment retained with its report context and task-level risk findings."
+    }
+   },
+   {
+    "entityId": "TaskDelayRiskItem",
+    "title": "Task delay risk item",
+    "description": "A traceable task-level finding within a delay-risk assessment.",
+    "kind": "core",
+    "ownership": "moduleOwned",
+    "sourceRefs": {
+     "journeyIds": [
+      "generateProjectStatusReport",
+      "viewClientProjectUpdates"
+     ],
+     "featureIds": [
+      "aiProjectReporting",
+      "clientProjectCommunication"
+     ],
+     "authorityRefs": [
+      "buildflow:rpt",
+      "buildflow:cup"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "taskDelayRiskItemId"
+     },
+     {
+      "fieldId": "taskDelayRiskAssessmentId"
+     },
+     {
+      "fieldId": "workTaskId"
+     },
+     {
+      "fieldId": "riskExplanation"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "moduleDatabase",
+     "scope": "module",
+     "idField": "taskDelayRiskItemId",
+     "notes": "Durable task-level assessment item so identified delay risk is not reduced to untraceable report text."
+    }
+   },
+   {
+    "entityId": "OperationsDashboard",
+    "title": "Operations dashboard",
+    "description": "An organization-wide operational projection of active projects, budget-versus-actual performance, upcoming tasks, and profitability indicators.",
+    "kind": "projection",
+    "ownership": "derived",
+    "sourceRefs": {
+     "journeyIds": [
+      "viewOperationsDashboard"
+     ],
+     "featureIds": [
+      "operationsDashboard"
+     ],
+     "authorityRefs": [
+      "buildflow:ops"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "asOf"
+     },
+     {
+      "fieldId": "activeProjectCount"
+     },
+     {
+      "fieldId": "activeProjectSummaries"
+     },
+     {
+      "fieldId": "totalProjectBudget"
+     },
+     {
+      "fieldId": "totalActualCost"
+     },
+     {
+      "fieldId": "profitabilityIndicators"
+     },
+     {
+      "fieldId": "upcomingTaskCount"
+     },
+     {
+      "fieldId": "upcomingTaskSummaries"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "derived",
+     "scope": "none",
+     "notes": "Derived organization projection; it does not duplicate project, task, time, material, or invoice transactions."
+    }
+   },
+   {
+    "entityId": "ProjectProgressAssessment",
+    "title": "Project progress assessment",
+    "description": "A consolidated project projection of schedule, tasks, labor, material usage, change-order status, and current job-cost progress.",
+    "kind": "projection",
+    "ownership": "derived",
+    "sourceRefs": {
+     "journeyIds": [
+      "inspectProjectDetails"
+     ],
+     "featureIds": [
+      "projectDetails",
+      "jobCostTracking"
+     ],
+     "authorityRefs": [
+      "buildflow:prj"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "projectId"
+     },
+     {
+      "fieldId": "projectName"
+     },
+     {
+      "fieldId": "scheduleProgress"
+     },
+     {
+      "fieldId": "taskProgress"
+     },
+     {
+      "fieldId": "laborSummary"
+     },
+     {
+      "fieldId": "materialUsageSummary"
+     },
+     {
+      "fieldId": "changeOrderSummary"
+     },
+     {
+      "fieldId": "jobCostProgress"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "derived",
+     "scope": "none",
+     "notes": "Derived selected-project assessment assembled from authoritative project and operational records."
+    }
+   },
+   {
+    "entityId": "ProjectCostComparison",
+    "title": "Project cost comparison",
+    "description": "A selected-project comparison of planned budget against actual labor cost, actual material cost, and applicable approved change impacts.",
+    "kind": "projection",
+    "ownership": "derived",
+    "sourceRefs": {
+     "journeyIds": [
+      "maintainProjectBudget",
+      "inspectProjectDetails"
+     ],
+     "featureIds": [
+      "jobCostTracking",
+      "projectDetails"
+     ],
+     "authorityRefs": [
+      "buildflow:bud",
+      "buildflow:prj"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "projectId"
+     },
+     {
+      "fieldId": "plannedBudget"
+     },
+     {
+      "fieldId": "actualLaborCost"
+     },
+     {
+      "fieldId": "actualMaterialCost"
+     },
+     {
+      "fieldId": "approvedChangeImpact"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "derived",
+     "scope": "none",
+     "notes": "Derived cost projection calculated from project budget and cost inputs retained in time logs, material usage, and approved changes."
+    }
+   },
+   {
+    "entityId": "DailyWorkContext",
+    "title": "Daily work context",
+    "description": "A limited task-and-project projection providing a field worker the authorized context needed to record daily progress and labor.",
+    "kind": "projection",
+    "ownership": "derived",
+    "sourceRefs": {
+     "journeyIds": [
+      "recordDailyWork"
+     ],
+     "featureIds": [
+      "dailyFieldLogs"
+     ],
+     "authorityRefs": [
+      "buildflow:day"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "workTaskId"
+     },
+     {
+      "fieldId": "fieldWorkerId"
+     },
+     {
+      "fieldId": "taskDescription"
+     },
+     {
+      "fieldId": "taskStatus"
+     },
+     {
+      "fieldId": "currentProgress"
+     },
+     {
+      "fieldId": "dueDate"
+     },
+     {
+      "fieldId": "projectName"
+     },
+     {
+      "fieldId": "serviceAddress"
+     },
+     {
+      "fieldId": "priorWorkerTimeLogs"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "derived",
+     "scope": "none",
+     "notes": "Derived assigned-work projection that limits disclosure to the task, direct project context, and the worker's own prior labor records."
+    }
+   },
+   {
+    "entityId": "ProjectReportingEvidence",
+    "title": "Project reporting evidence",
+    "description": "A consolidated selected-project projection of tasks, time logs, material usage, and change orders used to generate a status report.",
+    "kind": "projection",
+    "ownership": "derived",
+    "sourceRefs": {
+     "journeyIds": [
+      "generateProjectStatusReport"
+     ],
+     "featureIds": [
+      "aiProjectReporting"
+     ],
+     "authorityRefs": [
+      "buildflow:rpt"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "projectId"
+     },
+     {
+      "fieldId": "workTaskEvidence"
+     },
+     {
+      "fieldId": "timeLogEvidence"
+     },
+     {
+      "fieldId": "materialUsageEvidence"
+     },
+     {
+      "fieldId": "changeOrderEvidence"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "derived",
+     "scope": "none",
+     "notes": "Derived reporting input projection; generated reports retain durable source relationships for traceability."
+    }
+   },
+   {
+    "entityId": "ApprovedBillableWorkSummary",
+    "title": "Approved billable work summary",
+    "description": "A selected-project projection of approved uninvoiced billable work items and approved change-order amounts available for invoicing.",
+    "kind": "projection",
+    "ownership": "derived",
+    "sourceRefs": {
+     "journeyIds": [
+      "issueProjectInvoice",
+      "viewClientBillingSummary"
+     ],
+     "featureIds": [
+      "clientBilling"
+     ],
+     "authorityRefs": [
+      "buildflow:inv",
+      "buildflow:cbill"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "projectId"
+     },
+     {
+      "fieldId": "billableWorkItemRefs"
+     },
+     {
+      "fieldId": "summaryDescription"
+     },
+     {
+      "fieldId": "approvedBillableWorkAmount"
+     },
+     {
+      "fieldId": "approvedChangeOrderAmount"
+     },
+     {
+      "fieldId": "approvedAmount"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "derived",
+     "scope": "none",
+     "notes": "Derived billing projection based only on approved billable work and approved change orders, excluding internal cost composition from client access."
+    }
+   },
+   {
+    "entityId": "ClientProjectPortfolio",
+    "title": "Client project portfolio",
+    "description": "The authorized set of projects associated with an authenticated client.",
+    "kind": "projection",
+    "ownership": "derived",
+    "sourceRefs": {
+     "journeyIds": [
+      "viewClientProjectUpdates"
+     ],
+     "featureIds": [
+      "clientProjectCommunication"
+     ],
+     "authorityRefs": [
+      "buildflow:cup"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "clientId"
+     },
+     {
+      "fieldId": "projectIds"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "derived",
+     "scope": "none",
+     "notes": "Derived related-client projection enforcing that a client can select only own projects."
+    }
+   },
+   {
+    "entityId": "ClientProjectUpdate",
+    "title": "Client project update",
+    "description": "A client-facing selected-project projection containing the current project summary, published reports, approved changes, and published schedule-risk communication.",
+    "kind": "projection",
+    "ownership": "derived",
+    "sourceRefs": {
+     "journeyIds": [
+      "viewClientProjectUpdates"
+     ],
+     "featureIds": [
+      "clientProjectCommunication"
+     ],
+     "authorityRefs": [
+      "buildflow:cup"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "projectId"
+     },
+     {
+      "fieldId": "projectName"
+     },
+     {
+      "fieldId": "serviceAddress"
+     },
+     {
+      "fieldId": "projectStatus"
+     },
+     {
+      "fieldId": "plannedStartDate"
+     },
+     {
+      "fieldId": "plannedEndDate"
+     },
+     {
+      "fieldId": "currentProjectSummary"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "derived",
+     "scope": "none",
+     "notes": "Derived limited-disclosure projection that excludes internal task assignments, labor, material, budgets, actual cost, margins, and draft changes."
+    }
+   },
+   {
+    "entityId": "ClientBillingSummary",
+    "title": "Client billing summary",
+    "description": "A client-facing summary of issued invoices and approved billable-work summaries across the client's own projects.",
+    "kind": "projection",
+    "ownership": "derived",
+    "sourceRefs": {
+     "journeyIds": [
+      "viewClientBillingSummary"
+     ],
+     "featureIds": [
+      "clientBilling"
+     ],
+     "authorityRefs": [
+      "buildflow:cbill"
+     ]
+    },
+    "fields": [
+     {
+      "fieldId": "clientId"
+     },
+     {
+      "fieldId": "issuedInvoices"
+     },
+     {
+      "fieldId": "approvedBillableWorkSummaries"
+     },
+     {
+      "fieldId": "projectBillingTotals"
+     }
+    ],
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "storage": {
+     "target": "derived",
+     "scope": "none",
+     "notes": "Derived limited-disclosure projection of issued billing communication; it excludes payment processing and internal cost details."
+    }
+   }
+  ],
+  "relationships": [
+   {
+    "fromEntity": "Client",
+    "toEntity": "PlatformUser",
+    "type": "oneToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "FieldWorker",
+    "toEntity": "PlatformUser",
+    "type": "oneToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "Project",
+    "toEntity": "Client",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "Project",
+    "toEntity": "ServiceAddress",
+    "type": "oneToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "InventoryStock",
+    "toEntity": "Material",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "WorkTask",
+    "toEntity": "Project",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "WorkTask",
+    "toEntity": "FieldWorker",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "TimeLog",
+    "toEntity": "WorkTask",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "TimeLog",
+    "toEntity": "Project",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "TimeLog",
+    "toEntity": "FieldWorker",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "MaterialUsage",
+    "toEntity": "Project",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "MaterialUsage",
+    "toEntity": "Material",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "MaterialUsage",
+    "toEntity": "InventoryStock",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "MaterialUsage",
+    "toEntity": "WorkTask",
+    "type": "manyToOne",
+    "required": false
+   },
+   {
+    "fromEntity": "MaterialUsage",
+    "toEntity": "PlatformUser",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "ChangeOrder",
+    "toEntity": "Project",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "ChangeOrderApproval",
+    "toEntity": "ChangeOrder",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "ChangeOrderApproval",
+    "toEntity": "PlatformUser",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "BillableWorkItem",
+    "toEntity": "Project",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "BillableWorkItem",
+    "toEntity": "TimeLog",
+    "type": "manyToOne",
+    "required": false
+   },
+   {
+    "fromEntity": "BillableWorkItem",
+    "toEntity": "MaterialUsage",
+    "type": "manyToOne",
+    "required": false
+   },
+   {
+    "fromEntity": "BillableWorkItem",
+    "toEntity": "ChangeOrder",
+    "type": "manyToOne",
+    "required": false
+   },
+   {
+    "fromEntity": "BillableWorkApproval",
+    "toEntity": "BillableWorkItem",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "BillableWorkApproval",
+    "toEntity": "PlatformUser",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "Invoice",
+    "toEntity": "Project",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "Invoice",
+    "toEntity": "PlatformUser",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "InvoiceLine",
+    "toEntity": "Invoice",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "InvoiceLine",
+    "toEntity": "BillableWorkItem",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "StatusReport",
+    "toEntity": "Project",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "StatusReport",
+    "toEntity": "PlatformUser",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "StatusReport",
+    "toEntity": "WorkTask",
+    "type": "manyToMany",
+    "required": true
+   },
+   {
+    "fromEntity": "StatusReport",
+    "toEntity": "TimeLog",
+    "type": "manyToMany",
+    "required": true
+   },
+   {
+    "fromEntity": "StatusReport",
+    "toEntity": "MaterialUsage",
+    "type": "manyToMany",
+    "required": true
+   },
+   {
+    "fromEntity": "StatusReport",
+    "toEntity": "ChangeOrder",
+    "type": "manyToMany",
+    "required": true
+   },
+   {
+    "fromEntity": "TaskDelayRiskAssessment",
+    "toEntity": "Project",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "StatusReport",
+    "toEntity": "TaskDelayRiskAssessment",
+    "type": "oneToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "TaskDelayRiskItem",
+    "toEntity": "TaskDelayRiskAssessment",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "TaskDelayRiskItem",
+    "toEntity": "WorkTask",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "OperationsDashboard",
+    "toEntity": "Project",
+    "type": "oneToMany",
+    "required": true
+   },
+   {
+    "fromEntity": "OperationsDashboard",
+    "toEntity": "WorkTask",
+    "type": "oneToMany",
+    "required": true
+   },
+   {
+    "fromEntity": "ProjectProgressAssessment",
+    "toEntity": "Project",
+    "type": "oneToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "ProjectCostComparison",
+    "toEntity": "Project",
+    "type": "oneToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "DailyWorkContext",
+    "toEntity": "WorkTask",
+    "type": "oneToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "ProjectReportingEvidence",
+    "toEntity": "Project",
+    "type": "oneToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "ApprovedBillableWorkSummary",
+    "toEntity": "Project",
+    "type": "oneToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "ApprovedBillableWorkSummary",
+    "toEntity": "BillableWorkItem",
+    "type": "oneToMany",
+    "required": true
+   },
+   {
+    "fromEntity": "ClientProjectPortfolio",
+    "toEntity": "Client",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "ClientProjectPortfolio",
+    "toEntity": "Project",
+    "type": "oneToMany",
+    "required": true
+   },
+   {
+    "fromEntity": "ClientProjectUpdate",
+    "toEntity": "Project",
+    "type": "oneToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "ClientProjectUpdate",
+    "toEntity": "StatusReport",
+    "type": "oneToMany",
+    "required": false
+   },
+   {
+    "fromEntity": "ClientProjectUpdate",
+    "toEntity": "ChangeOrder",
+    "type": "oneToMany",
+    "required": false
+   },
+   {
+    "fromEntity": "ClientProjectUpdate",
+    "toEntity": "TaskDelayRiskAssessment",
+    "type": "oneToMany",
+    "required": false
+   },
+   {
+    "fromEntity": "ClientBillingSummary",
+    "toEntity": "Client",
+    "type": "manyToOne",
+    "required": true
+   },
+   {
+    "fromEntity": "ClientBillingSummary",
+    "toEntity": "Invoice",
+    "type": "oneToMany",
+    "required": true
+   },
+   {
+    "fromEntity": "ClientBillingSummary",
+    "toEntity": "ApprovedBillableWorkSummary",
+    "type": "oneToMany",
+    "required": true
+   }
+  ]
+ },
+ "useCases": [
+  {
+   "useCaseId": "approveChangeOrder",
+   "kind": "command",
+   "compiledFrom": [
+    "manageChangeOrder.approveChangeOrder"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "captureProjectPlan",
+   "kind": "command",
+   "compiledFrom": [
+    "createProject.captureProjectPlan"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "createAssignedTask",
+   "kind": "command",
+   "compiledFrom": [
+    "assignProjectTask.createAssignedTask"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "createChangeOrder",
+   "kind": "command",
+   "compiledFrom": [
+    "manageChangeOrder.createChangeOrder"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "decideProjectToView",
+   "kind": "command",
+   "compiledFrom": [
+    "viewClientProjectUpdates.decideProjectToView"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "generateStatusReport",
+   "kind": "command",
+   "compiledFrom": [
+    "generateProjectStatusReport.generateStatusReport"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "inspectApprovedBillables",
+   "kind": "query",
+   "compiledFrom": [
+    "issueProjectInvoice.inspectApprovedBillables"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "inspectAssignedTask",
+   "kind": "query",
+   "compiledFrom": [
+    "recordDailyWork.inspectAssignedTask"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "inspectClientBillingSummary",
+   "kind": "query",
+   "compiledFrom": [
+    "viewClientBillingSummary.inspectClientBillingSummary"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "inspectClientProjectPortfolio",
+   "kind": "query",
+   "compiledFrom": [
+    "viewClientProjectUpdates.inspectClientProjectPortfolio"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "inspectClientProjectUpdates",
+   "kind": "query",
+   "compiledFrom": [
+    "viewClientProjectUpdates.inspectClientProjectUpdates"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "inspectCostComparison",
+   "kind": "query",
+   "compiledFrom": [
+    "maintainProjectBudget.inspectCostComparison"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "inspectOperationsDashboard",
+   "kind": "query",
+   "compiledFrom": [
+    "viewOperationsDashboard.inspectOperationsDashboard"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "inspectProjectProgress",
+   "kind": "query",
+   "compiledFrom": [
+    "inspectProjectDetails.inspectProjectProgress"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "inspectProjectReportingEvidence",
+   "kind": "query",
+   "compiledFrom": [
+    "generateProjectStatusReport.inspectProjectReportingEvidence"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "issueInvoice",
+   "kind": "command",
+   "compiledFrom": [
+    "issueProjectInvoice.issueInvoice"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "locateAssignedTask",
+   "kind": "query",
+   "compiledFrom": [
+    "recordDailyWork.locateAssignedTask"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "locateClient",
+   "kind": "query",
+   "compiledFrom": [
+    "createProject.locateClient"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "locateMaterial",
+   "kind": "query",
+   "compiledFrom": [
+    "recordProjectMaterialUsage.locateMaterial"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "locateProject",
+   "kind": "query",
+   "compiledFrom": [
+    "assignProjectTask.locateProject",
+    "generateProjectStatusReport.locateProject",
+    "inspectProjectDetails.locateProject",
+    "issueProjectInvoice.locateProject",
+    "maintainProjectBudget.locateProject",
+    "manageChangeOrder.locateProject",
+    "recordProjectMaterialUsage.locateProject"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "locateWorker",
+   "kind": "query",
+   "compiledFrom": [
+    "assignProjectTask.locateWorker"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "recordMaterialUsage",
+   "kind": "command",
+   "compiledFrom": [
+    "recordProjectMaterialUsage.recordMaterialUsage"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "recordTaskProgress",
+   "kind": "command",
+   "compiledFrom": [
+    "recordDailyWork.recordTaskProgress"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "recordTimeLog",
+   "kind": "command",
+   "compiledFrom": [
+    "recordDailyWork.recordTimeLog"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  },
+  {
+   "useCaseId": "reviseProjectBudget",
+   "kind": "command",
+   "compiledFrom": [
+    "maintainProjectBudget.reviseProjectBudget"
+   ],
+   "entityRefs": [],
+   "transitionRefs": []
+  }
+ ],
+ "workflows": [],
+ "expected": {
+  "hubEntity": "Project",
+  "changeOrderHost": "projectWorkspace",
+  "blockingIssues": 0
+ }
+}

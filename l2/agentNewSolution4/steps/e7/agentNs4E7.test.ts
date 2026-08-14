@@ -14,6 +14,7 @@ import {
   buildNs4E7Plan, buildNs4RealizedAccessArtifact, buildNs4RealizedJourneyArtifact,
   buildNs4UseCaseArtifacts, buildNs4WorkflowArtifacts, normalizeNs4UseCaseDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
+import { deriveNs4Contexts } from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
 import { createNs4E7LifecycleResolutionReview } from '/_102020_/l2/agentNewSolution4/steps/e7/lifecycleResolution.js';
 import { validateNs4E7Plan, validateNs4UseCaseDraft, validateNs4Workflows } from '/_102020_/l2/agentNewSolution4/steps/e7/gate.js';
 import { shrinkNs4WorkflowToReachable } from '/_102020_/l2/agentNewSolution4/steps/e7/reachability.js';
@@ -35,18 +36,12 @@ const run38ValidationFixture = JSON.parse(readFileSync(new URL('fixtures/run38-v
 
 const journeys = normalizeNs4E2Review({ moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', reviewRound: 1,
   journeys: [
-    { journeyId: 'manageProjects', business: { actorRef: 'projectManager', title: 'Projetos', goal: 'Selecionar projeto.', prerequisites: [],
-      entry: { mode: 'coldStart', carries: [] }, useRules: [],
-      steps: [{ stepId: 'locateProject', kind: 'locate', intent: 'Localizar projeto.', requiresContext: [],
-        providesContext: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true, description: 'Projeto selecionado.' }],
-        result: 'Projeto selecionado.', featureRefs: ['projects'] }], outcome: { statement: 'Projeto selecionado.', evidence: [] } } },
-    { journeyId: 'createTask', business: { actorRef: 'projectManager', title: 'Tarefa', goal: 'Criar tarefa.', prerequisites: [],
-      entry: { mode: 'contextOrLookup', carries: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true, description: 'Projeto selecionado.' }] }, useRules: [],
+    { journeyId: 'manageProjects', business: { actorRef: 'projectManager', title: 'Projetos', goal: 'Selecionar projeto.', entry: { mode: 'coldStart' }, useRules: [],
+      steps: [{ stepId: 'locateProject', kind: 'locate', entity: 'Project', title: 'Localizar projeto.', description: 'Projeto selecionado.', featureRefs: ['projects'] }], outcome: { statement: 'Projeto selecionado.', evidence: [] } } },
+    { journeyId: 'createTask', business: { actorRef: 'projectManager', title: 'Tarefa', goal: 'Criar tarefa.', entry: { mode: 'contextOrLookup' }, useRules: [],
       steps: [
-        { stepId: 'locateProject', kind: 'locate', intent: 'Manter ou localizar projeto.', requiresContext: [],
-          providesContext: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true, description: 'Projeto selecionado.' }], result: 'Projeto selecionado.', featureRefs: ['projects'] },
-        { stepId: 'createWorkTask', kind: 'act', intent: 'Criar tarefa.', requiresContext: ['selectedProject'],
-          providesContext: [{ contextId: 'createdTask', businessObject: 'WorkTask', cardinality: 'one', required: true, description: 'Tarefa criada.' }], result: 'Tarefa criada.', featureRefs: ['tasks'] },
+        { stepId: 'locateProject', kind: 'locate', entity: 'Project', title: 'Manter ou localizar projeto.', description: 'Projeto selecionado.', featureRefs: ['projects'] },
+        { stepId: 'createWorkTask', kind: 'act', entity: 'WorkTask', title: 'Criar tarefa.', description: 'Tarefa criada.', featureRefs: ['tasks'] },
       ], outcome: { statement: 'Tarefa criada.', evidence: [] } } },
   ], features: [
     { featureId: 'projects', title: 'Projetos', priority: 'now', journeyStepRefs: ['manageProjects.locateProject', 'createTask.locateProject'] },
@@ -74,9 +69,10 @@ const ontology = normalizeNs4E4Review({ moduleName: 'buildFlowFsm', userLanguage
 const rules: Ns4RulesArtifact = { schemaVersion: '2026-08-09-ns4-rules-v2', moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', rules: [{ id: 'projectCandidateRule', description: 'Regra candidata aplicada somente quando o comportamento exigir.' }], rulesHash: 'sha256:rules', approvedBy: 'auto', approvedAt: '2026-08-10T00:00:00.000Z', realization: { status: 'pending', compiledFromRulesHash: 'sha256:rules' } };
 const sourceHashes = { journeys: journeys.journeys.map(journey => ({ journeyId: journey.journeyId, businessHash: `sha256:${journey.journeyId}` })), ontologyHash: 'sha256:ontology', rulesHash: rules.rulesHash };
 const sources = { journeys, access, ontology, rules };
+const derivedContexts = deriveNs4Contexts(sources);
 
 test('E7 mechanically deduplicates repeated journey step ids and covers every source step', () => {
-  const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', journeys, sourceHashes);
+  const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', journeys, sourceHashes, derivedContexts);
   assert.equal(plan.useCases.length, 2);
   assert.deepEqual(plan.useCases.find(item => item.useCaseId === 'locateProject')?.compiledFrom,
     ['createTask.locateProject', 'manageProjects.locateProject']);
@@ -96,7 +92,7 @@ test('E7 is dependency-bound after E6 and advances a resumed module to E8', () =
 });
 
 test('E7 validates a minimal behavior contract without backend field instructions', () => {
-  const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', journeys, sourceHashes);
+  const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', journeys, sourceHashes, derivedContexts);
   const draft = normalizeNs4UseCaseDraft({ title: 'Localizar projeto', description: 'Localiza projetos.',
     contexts: { requires: [], provides: ['selectedProject'] }, entityRefs: ['Project'],
     useRules: [], transitions: [] }, plan, 'locateProject');
@@ -115,9 +111,8 @@ test('E7 validates a minimal behavior contract without backend field instruction
 
 test('E7 warns when an inspection ignores lifecycle eligibility rules of its principal entity', () => {
   const inspectionJourneys = normalizeNs4E2Review({ moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', reviewRound: 1,
-    journeys: [{ journeyId: 'inspectProjects', business: { actorRef: 'projectManager', title: 'Projetos', goal: 'Inspecionar projeto.', prerequisites: [],
-      entry: { mode: 'coldStart', carries: [] }, useRules: [],
-      steps: [{ stepId: 'inspectProject', kind: 'inspect', intent: 'Inspecionar projeto.', requiresContext: [], providesContext: [], result: 'Projeto inspecionado.', featureRefs: ['projects'] }],
+    journeys: [{ journeyId: 'inspectProjects', business: { actorRef: 'projectManager', title: 'Projetos', goal: 'Inspecionar projeto.', entry: { mode: 'coldStart' }, useRules: [],
+      steps: [{ stepId: 'inspectProject', kind: 'inspect', title: 'Inspecionar projeto.', description: 'Projeto inspecionado.', featureRefs: ['projects'] }],
       outcome: { statement: 'Projeto inspecionado.', evidence: [] } } }],
     features: [{ featureId: 'projects', title: 'Projetos', priority: 'now', journeyStepRefs: ['inspectProjects.inspectProject'] }],
   });
@@ -125,7 +120,7 @@ test('E7 warns when an inspection ignores lifecycle eligibility rules of its pri
     ? { ...entity, lifecyclePredicates: ['projectMustBeActive'] }
     : entity) });
   const inspectionSources = { ...sources, journeys: inspectionJourneys, ontology: inspectionOntology };
-  const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', inspectionJourneys, { journeys: [], ontologyHash: 'sha256:ontology', rulesHash: rules.rulesHash });
+  const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', inspectionJourneys, { journeys: [], ontologyHash: 'sha256:ontology', rulesHash: rules.rulesHash }, deriveNs4Contexts(inspectionSources));
   const draft = normalizeNs4UseCaseDraft({ title: 'Inspecionar projeto', description: 'Consulta projeto elegível.', contexts: { requires: [], provides: [] },
     entityRefs: ['Project'], useRules: [], transitions: [] }, plan, 'inspectProject');
 
@@ -136,7 +131,7 @@ test('E7 warns when an inspection ignores lifecycle eligibility rules of its pri
 });
 
 test('E7 emits typed use cases, workflows and realization metadata without changing business hashes', async () => {
-  const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', journeys, sourceHashes);
+  const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', journeys, sourceHashes, derivedContexts);
   const drafts = plan.useCases.map(target => normalizeNs4UseCaseDraft(target.kind === 'query' ? {
     title: target.title, description: 'Localiza projetos.', contexts: { requires: [], provides: ['selectedProject'] },
     entityRefs: ['Project'], useRules: [], transitions: [] } : {
@@ -157,7 +152,7 @@ test('E7 emits typed use cases, workflows and realization metadata without chang
   assert.equal('transitions' in createTask, false);
   assert.deepEqual(createTask.transitionRefs, ['completeTask']);
   const sourceJourneys = await buildNs4JourneyArtifacts(journeys);
-  const realized = await buildNs4RealizedJourneyArtifact(sourceJourneys[1], built.artifacts);
+  const realized = await buildNs4RealizedJourneyArtifact(sourceJourneys[1], built.artifacts, derivedContexts);
   assert.equal(realized.businessHash, sourceJourneys[1].businessHash);
   assert.equal(realized.realization.status, 'compiled');
   const accessArtifact = await buildNs4AccessMatrixArtifact(access, 'auto', generatedAt);
@@ -261,7 +256,7 @@ test('run 32 omits transitionless workflows and records every fixed-point lifecy
   };
   const plan = buildNs4E7Plan('buildFlowFsm', 'pt-BR', normalizeNs4E2Review({ moduleName: 'buildFlowFsm', journeys: [], features: [] }), {
     journeys: [], ontologyHash: 'sha256:ontology', rulesHash: 'sha256:rules',
-  });
+  }, deriveNs4Contexts({ journeys: { journeys: [] }, ontology: { entities: [], relationships: [] } }));
   const built = await buildNs4WorkflowArtifacts(plan, [], new Map(run32Sources.ontology.entities.map(entity => [entity.entityId, {
     states: entity.lifecycleStates, initialState: entity.initialState, terminalStates: entity.terminalStates,
     lifecyclePredicates: entity.lifecyclePredicates.map(predicate => ({ predicateId: predicate.predicateId, stateIds: predicate.stateIds })),
@@ -285,7 +280,7 @@ test('run 36 shrinks source-only reviewed, cascades shared, records the dormant 
   const fixture = lifecycleFixture.run36;
   const plan = buildNs4E7Plan('buildFlowFsm36', 'en', normalizeNs4E2Review({ moduleName: 'buildFlowFsm36', journeys: [], features: [] }), {
     journeys: [], ontologyHash: 'sha256:ontology', rulesHash: 'sha256:rules',
-  });
+  }, deriveNs4Contexts({ journeys: { journeys: [] }, ontology: { entities: [], relationships: [] } }));
   const draft = normalizeNs4UseCaseDraft({ moduleName: 'buildFlowFsm36', useCaseId: 'shareStatusReport', description: 'Share report.', entityRefs: [fixture.entityId], useRules: [], transitions: [fixture.transition] },
     { ...plan, useCases: [{ useCaseId: 'shareStatusReport', title: 'Share report', kind: 'command', compiledFrom: ['shareProjectStatusReport.shareStatusReport'], contexts: { requires: [], provides: [] } }] }, 'shareStatusReport');
   const built = await buildNs4WorkflowArtifacts(plan, [draft], new Map([[fixture.entityId, {

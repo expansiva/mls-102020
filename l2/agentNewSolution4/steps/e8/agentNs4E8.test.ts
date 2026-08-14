@@ -25,19 +25,20 @@ const run40SelectionFixture = JSON.parse(readFileSync(new URL('fixtures/run40-se
   invalidSourceRef: string; compatibleSliceId: string; entityId: string; fieldId: string;
 };
 const run41ContextFixture = JSON.parse(readFileSync(new URL('fixtures/run41-provided-session-contexts.json', import.meta.url), 'utf8')) as any;
+const run43AffinityFixture = JSON.parse(readFileSync(new URL('fixtures/run43-hub-affinity.json', import.meta.url), 'utf8')) as any;
 
 const sources: any = {
   journeys: { moduleName: 'construction', userLanguage: 'pt-BR', journeys: [
-    { journeyId: 'locateProjects', business: { actorRef: 'manager', entry: { carries: [] }, steps: [{ stepId: 'locateProject', kind: 'locate', intent: 'Localizar projetos.', requiresContext: [], providesContext: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true }], featureRefs: ['projects'] }] } },
-    { journeyId: 'manageChangeOrders', business: { actorRef: 'manager', entry: { carries: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true }] }, steps: [{ stepId: 'decideChangeOrder', kind: 'decide', intent: 'Decidir alteração.', requiresContext: ['selectedProject'], providesContext: [], featureRefs: ['changes'] }] } },
+    { journeyId: 'locateProjects', business: { actorRef: 'manager', entry: {  }, steps: [{ stepId: 'locateProject', kind: 'locate', entity: 'Project', title: 'Localizar projetos.', featureRefs: ['projects'] }] } },
+    { journeyId: 'manageChangeOrders', business: { actorRef: 'manager', entry: {  }, steps: [{ stepId: 'decideChangeOrder', kind: 'decide', entity: 'ChangeOrder', title: 'Decidir alteração.', featureRefs: ['changes'] }] } },
   ], features: [{ featureId: 'projects', title: 'Projetos', priority: 'now' }, { featureId: 'changes', title: 'Alterações', priority: 'now' }] },
-  access: { moduleName: 'construction', profiles: [{ profileId: 'manager', landingIntent: 'Gerenciar projetos.' }], authorities: [
+  access: { moduleName: 'construction', profiles: [{ profileId: 'manager', actorRefs: ['manager'], landingIntent: 'Gerenciar projetos.' }], authorities: [
     { authorityRef: 'construction:project-read', journeyStepRefs: ['locateProjects.locateProject'] }, { authorityRef: 'construction:change-decide', journeyStepRefs: ['manageChangeOrders.decideChangeOrder'] },
   ], grants: [{ profileRef: 'manager', authorityRef: 'construction:project-read', disclosure: { mode: 'fullRecord', allowedInformation: [] } }, { profileRef: 'manager', authorityRef: 'construction:change-decide', disclosure: { mode: 'fullRecord', allowedInformation: [] } }] },
   ontology: { moduleName: 'construction', entities: [
     { entityId: 'Project', title: 'Projeto', description: 'Projeto.', kind: 'mdm', sourceRefs: { journeyIds: ['locateProjects'] }, fields: [{ fieldId: 'projectId' }], lifecycleStates: [], lifecyclePredicates: [] },
     { entityId: 'ChangeOrder', title: 'Alteração', description: 'Alteração.', kind: 'core', sourceRefs: { journeyIds: ['manageChangeOrders'] }, fields: [{ fieldId: 'changeOrderId' }], lifecycleStates: ['proposed', 'approved'], initialState: 'proposed', terminalStates: ['approved'], lifecyclePredicates: [] },
-  ], relationships: [{ fromEntity: 'ChangeOrder', toEntity: 'Project', required: true }] },
+  ], relationships: [{ fromEntity: 'ChangeOrder', toEntity: 'Project', type: 'manyToOne', required: true }] },
   useCases: [
     { useCaseId: 'locateProject', kind: 'query', compiledFrom: ['locateProjects.locateProject'], entityRefs: ['Project'] },
     { useCaseId: 'decideChangeOrder', kind: 'command', compiledFrom: ['manageChangeOrders.decideChangeOrder'], entityRefs: ['Project', 'ChangeOrder'] },
@@ -56,10 +57,21 @@ test('E8 derives a dominant Project hub, absorbs the required satellite and crea
   assert.equal(validateNs4E8Skeleton(skeleton, sources).ok, true);
 });
 
+test('run 43 class: a satellite decision cannot land alone in a workspace with zero slices', async () => {
+  const skeleton = deriveNs4E8Skeleton(sources);
+  const hosting = skeleton.workspaces.find(workspace => workspace.hostedStepRefs.includes('manageChangeOrders.decideChangeOrder'))!;
+  assert.equal(hosting.workspaceId, 'projectWorkspace');
+  assert.equal(hosting.kind, 'hub');
+  assert.ok(hosting.slices.length);
+  assert.ok(skeleton.workspaces.every(workspace => workspace.slices.length || workspace.pageContext.length
+    || workspace.scenarios.some(scenario => scenario.selectionContexts.length)));
+});
+
 test('E8 rejects a section over the menu cap and a workspace command with neither slice nor context', async () => {
   const skeleton = deriveNs4E8Skeleton(sources); skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
   skeleton.menu.sections[0].workspaceIds = Array.from({ length: 8 }, () => skeleton.workspaces[0].workspaceId);
   skeleton.workspaces[0].slices = []; skeleton.workspaces[0].pageContext = [];
+  skeleton.workspaces[0].scenarios = skeleton.workspaces[0].scenarios.map(scenario => ({ ...scenario, selectionContexts: [] }));
   const result = validateNs4E8Skeleton(skeleton, sources);
   assert.ok(result.issues.some(issue => issue.code === 'NS4_E8_MENU_CAP'));
   assert.ok(result.issues.some(issue => issue.code === 'NS4_E8_DECISION_WITHOUT_CONTEXT'));
@@ -120,7 +132,7 @@ test('E8 finalization writes one composed view and stamps command invalidations 
 test('E8 degrades to a flat menu when no anchor dominates', () => {
   const flatSources = {
     ...sources,
-    journeys: { ...sources.journeys, journeys: [...sources.journeys.journeys, { journeyId: 'locateClients', business: { actorRef: 'manager', entry: { carries: [] }, steps: [{ stepId: 'locateClient', kind: 'locate', intent: 'Localizar clientes.', requiresContext: [], providesContext: [{ contextId: 'selectedClient', businessObject: 'Client', cardinality: 'one', required: true }], featureRefs: ['clients'] }] } }], features: [...sources.journeys.features, { featureId: 'clients', title: 'Clientes', priority: 'now' }] },
+    journeys: { ...sources.journeys, journeys: [...sources.journeys.journeys, { journeyId: 'locateClients', business: { actorRef: 'manager', entry: {  }, steps: [{ stepId: 'locateClient', kind: 'locate', entity: 'Client', title: 'Localizar clientes.', featureRefs: ['clients'] }] } }], features: [...sources.journeys.features, { featureId: 'clients', title: 'Clientes', priority: 'now' }] },
     ontology: { ...sources.ontology, relationships: [], entities: [...sources.ontology.entities, { entityId: 'Client', title: 'Cliente', description: 'Cliente.', kind: 'mdm', sourceRefs: { journeyIds: ['locateClients'] }, fields: [{ fieldId: 'clientId' }], lifecycleStates: [], lifecyclePredicates: [] }] },
     useCases: [...sources.useCases, { useCaseId: 'locateClient', kind: 'query', compiledFrom: ['locateClients.locateClient'], entityRefs: ['Client'] }],
   };
@@ -175,22 +187,21 @@ test('E8 reports an empty menu section as a non-blocking recorder warning', () =
   assert.ok(resolved.systemDecisions.some(decision => decision.findingRef.includes('NS4_E8_MENU_EMPTY')));
 });
 
-test('run 36 derives an exact cross-journey edge from prerequisite providesContext', async () => {
+test('run 36 derives a cross-workspace delivery edge from the handoff entity and its target profile', async () => {
   const handoffSources: any = structuredClone(sources);
   handoffSources.journeys.journeys = [
     {
       journeyId: 'shareProjectStatusReport',
-      business: { actorRef: 'manager', prerequisites: [], entry: { carries: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true }] }, steps: [{
-        stepId: 'shareStatusReport', kind: 'handoff', intent: 'Compartilhar relatório.', requiresContext: ['selectedProject'],
-        providesContext: [{ contextId: 'sharedStatusReport', businessObject: 'ProjectStatusReport', cardinality: 'one', required: true }], featureRefs: ['projects'],
+      business: { actorRef: 'manager', entry: { mode: 'coldStart' }, steps: [{
+        stepId: 'shareStatusReport', kind: 'handoff', entity: 'ProjectStatusReport', targetProfile: 'client',
+        title: 'Compartilhar relatório.', featureRefs: ['projects'],
       }] },
     },
     {
       journeyId: 'viewSharedProjectStatus',
-      business: { actorRef: 'client', prerequisites: [{ journeyRef: 'shareProjectStatusReport', required: true, providesContext: ['sharedStatusReport'] }],
-        entry: { carries: [{ contextId: 'sharedStatusReport', businessObject: 'ProjectStatusReport', cardinality: 'one', required: true }] }, steps: [{
-          stepId: 'inspectSharedStatusReport', kind: 'inspect', intent: 'Ver relatório compartilhado.', requiresContext: ['sharedStatusReport'],
-          providesContext: [], featureRefs: ['projects'],
+      business: { actorRef: 'client', entry: { mode: 'eventDriven' }, steps: [{
+          stepId: 'inspectSharedStatusReport', kind: 'inspect', entity: 'SharedStatusReport',
+          title: 'Ver relatório compartilhado.', featureRefs: ['projects'],
         }] },
     },
   ];
@@ -198,23 +209,30 @@ test('run 36 derives an exact cross-journey edge from prerequisite providesConte
   handoffSources.ontology.entities.push({ entityId: 'ProjectStatusReport', title: 'Relatório', description: 'Relatório.', kind: 'core', ownership: 'moduleOwned',
     sourceRefs: { journeyIds: ['shareProjectStatusReport', 'viewSharedProjectStatus'], featureIds: ['projects'], authorityRefs: [] },
     fields: [{ fieldId: 'projectStatusReportId' }], lifecycleStates: [], lifecyclePredicates: [], useRules: [], storage: { target: 'moduleDatabase', scope: 'module', notes: '' } });
+  handoffSources.ontology.entities.push({ entityId: 'SharedStatusReport', title: 'Relatório compartilhado', description: 'Relatório publicado ao cliente.', kind: 'projection', ownership: 'derived',
+    sourceRefs: { journeyIds: ['viewSharedProjectStatus'], featureIds: ['projects'], authorityRefs: [] },
+    fields: [{ fieldId: 'sharedStatusReportId' }], lifecycleStates: [], lifecyclePredicates: [], useRules: [], storage: { target: 'derived', scope: 'module', notes: '' } });
+  handoffSources.access.profiles = [
+    { profileId: 'manager', actorRefs: ['manager'], landingIntent: 'Gerenciar projetos.' },
+    { profileId: 'client', actorRefs: ['client'], landingIntent: 'Consultar relatórios.' },
+  ];
   handoffSources.access.authorities = [
     { authorityRef: 'construction:report-share', journeyStepRefs: ['shareProjectStatusReport.shareStatusReport'] },
     { authorityRef: 'construction:report-read', journeyStepRefs: ['viewSharedProjectStatus.inspectSharedStatusReport'] },
   ];
   handoffSources.access.grants = [
     { profileRef: 'manager', authorityRef: 'construction:report-share', disclosure: { mode: 'fullRecord', allowedInformation: [] } },
-    { profileRef: 'manager', authorityRef: 'construction:report-read', disclosure: { mode: 'fullRecord', allowedInformation: [] } },
+    { profileRef: 'client', authorityRef: 'construction:report-read', disclosure: { mode: 'fullRecord', allowedInformation: [] } },
   ];
   handoffSources.useCases = [
-    { useCaseId: 'shareStatusReport', kind: 'command', compiledFrom: ['shareProjectStatusReport.shareStatusReport'], entityRefs: ['Project', 'ProjectStatusReport'] },
-    { useCaseId: 'inspectSharedStatusReport', kind: 'query', compiledFrom: ['viewSharedProjectStatus.inspectSharedStatusReport'], entityRefs: ['ProjectStatusReport'] },
+    { useCaseId: 'shareStatusReport', kind: 'command', compiledFrom: ['shareProjectStatusReport.shareStatusReport'], entityRefs: ['ProjectStatusReport'] },
+    { useCaseId: 'inspectSharedStatusReport', kind: 'query', compiledFrom: ['viewSharedProjectStatus.inspectSharedStatusReport'], entityRefs: ['SharedStatusReport'] },
   ];
   const skeleton = deriveNs4E8Skeleton(handoffSources); skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
   const target = skeleton.workspaces.find(workspace => workspace.hostedStepRefs.includes('viewSharedProjectStatus.inspectSharedStatusReport'))!;
   const source = skeleton.workspaces.find(workspace => workspace.hostedStepRefs.includes('shareProjectStatusReport.shareStatusReport'))!;
   assert.ok(skeleton.edges.some(edge => edge.from === source.workspaceId && edge.to === target.workspaceId
-    && edge.carries.includes('sharedStatusReport') && edge.preferredFromJourneyRef === 'shareProjectStatusReport.shareStatusReport'));
+    && edge.carries.includes('selectedProjectStatusReport') && edge.preferredFromJourneyRef === 'shareProjectStatusReport.shareStatusReport'));
   assert.equal(validateNs4E8Skeleton(skeleton, handoffSources).ok, true);
 });
 
@@ -279,6 +297,7 @@ function run38UrlRoleSources(): any {
   value.access.authorities.push(...run38UrlRolesFixture.authorities);
   value.access.grants.push(...run38UrlRolesFixture.authorities.map((authority: any) => ({ profileRef: 'manager', authorityRef: authority.authorityRef, disclosure: { mode: 'fullRecord', allowedInformation: [] } })));
   value.ontology.entities.push(...run38UrlRolesFixture.entities);
+  value.ontology.relationships.push(...run38UrlRolesFixture.relationships);
   value.useCases.push(...run38UrlRolesFixture.useCases);
   return value;
 }
@@ -300,12 +319,12 @@ test('E8 keeps local picker context scenario-local and promotes only a real hand
   const replaySources = run38UrlRoleSources();
   const skeleton = deriveNs4E8Skeleton(replaySources);
   const project = skeleton.workspaces.find(workspace => workspace.workspaceId === 'projectWorkspace')!;
-  const assignee = project.scenarios.flatMap(scenario => scenario.selectionContexts).find(context => context.contextId === 'selectedAssignee')!;
+  const assignee = project.scenarios.flatMap(scenario => scenario.selectionContexts).find(context => context.contextId === 'selectedWorker')!;
   assert.equal(project.pageContext.some(context => context.contextId === assignee.contextId), false);
 
   const handoffSources: any = structuredClone(replaySources);
-  handoffSources.journeys.journeys.push({ journeyId: 'notifyInspection', business: { actorRef: 'manager', prerequisites: [], entry: { mode: 'coldStart', carries: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true }] }, steps: [{ stepId: 'handoffInspection', kind: 'handoff', intent: 'Notificar inspeção.', requiresContext: ['selectedProject'], providesContext: [{ contextId: 'selectedInspection', businessObject: 'Inspection', cardinality: 'one', required: true }], featureRefs: ['projects'] }] } });
-  handoffSources.journeys.journeys.push({ journeyId: 'decideInspection', business: { actorRef: 'manager', prerequisites: [{ journeyRef: 'notifyInspection', required: true, providesContext: ['selectedInspection'] }], entry: { mode: 'eventDriven', carries: [{ contextId: 'selectedInspection', businessObject: 'Inspection', cardinality: 'one', required: true }] }, steps: [{ stepId: 'decideInspection', kind: 'decide', intent: 'Decidir inspeção.', requiresContext: ['selectedInspection'], providesContext: [], featureRefs: ['projects'] }] } });
+  handoffSources.journeys.journeys.push({ journeyId: 'notifyInspection', business: { actorRef: 'manager', entry: { mode: 'coldStart' }, steps: [{ stepId: 'handoffInspection', kind: 'handoff', entity: 'Inspection', targetProfile: 'manager', title: 'Notificar inspeção.', featureRefs: ['projects'] }] } });
+  handoffSources.journeys.journeys.push({ journeyId: 'decideInspection', business: { actorRef: 'manager', entry: { mode: 'eventDriven' }, steps: [{ stepId: 'decideInspection', kind: 'decide', entity: 'Inspection', title: 'Decidir inspeção.', featureRefs: ['projects'] }] } });
   handoffSources.ontology.entities.push({ entityId: 'Inspection', title: 'Inspeção', description: 'Inspeção.', kind: 'core', sourceRefs: { journeyIds: ['notifyInspection', 'decideInspection'] }, fields: [{ fieldId: 'inspectionId' }], lifecycleStates: [], lifecyclePredicates: [] });
   handoffSources.access.authorities.push({ authorityRef: 'construction:inspection', journeyStepRefs: ['notifyInspection.handoffInspection', 'decideInspection.decideInspection'] });
   handoffSources.access.grants.push({ profileRef: 'manager', authorityRef: 'construction:inspection', disclosure: { mode: 'fullRecord', allowedInformation: [] } });
@@ -358,13 +377,9 @@ test('run 41 keeps event-driven session and provided slice contexts out of pageC
   const replay: any = structuredClone(sources);
   replay.journeys.journeys = [{
     journeyId: run41ContextFixture.journeyId,
-    business: { actorRef: 'client', prerequisites: [], entry: { mode: 'eventDriven', carries: [
-      { contextId: run41ContextFixture.sessionContext, businessObject: 'Client', cardinality: 'one', required: true },
-    ] }, steps: [
-      { stepId: 'inspectClientProjects', kind: 'inspect', intent: 'View projects.', requiresContext: [run41ContextFixture.sessionContext], providesContext: [
-        { contextId: run41ContextFixture.providedContext, businessObject: 'ClientProjectSummary', cardinality: 'many', required: true },
-      ], featureRefs: ['projects'] },
-      { stepId: 'inspectProjectSummary', kind: 'inspect', intent: 'View summary.', requiresContext: [run41ContextFixture.providedContext], providesContext: [], featureRefs: ['projects'] },
+    business: { actorRef: 'client', entry: { mode: 'eventDriven' }, steps: [
+      { stepId: 'inspectClientProjects', kind: 'inspect', entity: 'ClientProjectSummary', title: 'View projects.', featureRefs: ['projects'] },
+      { stepId: 'inspectProjectSummary', kind: 'inspect', entity: 'ClientProjectSummary', title: 'View summary.', featureRefs: ['projects'] },
     ] },
   }];
   replay.journeys.features = [{ featureId: 'projects', title: 'Projects', priority: 'now' }];
@@ -376,17 +391,17 @@ test('run 41 keeps event-driven session and provided slice contexts out of pageC
     { entityId: 'ClientProjectSummary', title: 'Summary', description: 'Summary.', kind: 'projection', sourceRefs: { journeyIds: [run41ContextFixture.journeyId] }, fields: [{ fieldId: 'clientProjectSummaryId' }], lifecycleStates: [], lifecyclePredicates: [] },
     { entityId: 'Project', title: 'Project', description: 'Project.', kind: 'core', sourceRefs: { journeyIds: [] }, fields: [{ fieldId: 'projectId' }], lifecycleStates: [], lifecyclePredicates: [] },
   ];
-  replay.ontology.relationships = [{ fromEntity: 'WorkTask', toEntity: 'Project', required: true }, { fromEntity: 'Invoice', toEntity: 'Project', required: true }];
+  replay.ontology.relationships = [{ fromEntity: 'WorkTask', toEntity: 'Project', type: 'manyToOne', required: true }, { fromEntity: 'Invoice', toEntity: 'Project', type: 'manyToOne', required: true }];
   replay.useCases = [
-    { useCaseId: 'inspectClientProjects', kind: 'query', compiledFrom: ['viewClientProjectSummary.inspectClientProjects'], entityRefs: ['ClientProjectSummary'], contexts: { requires: [run41ContextFixture.sessionContext], provides: [run41ContextFixture.providedContext] } },
-    { useCaseId: 'inspectProjectSummary', kind: 'query', compiledFrom: ['viewClientProjectSummary.inspectProjectSummary'], entityRefs: ['ClientProjectSummary'], contexts: { requires: [run41ContextFixture.providedContext], provides: [] } },
+    { useCaseId: 'inspectClientProjects', kind: 'query', compiledFrom: ['viewClientProjectSummary.inspectClientProjects'], entityRefs: ['ClientProjectSummary'], contexts: { requires: [], provides: ['selectedClientProjectSummary'] } },
+    { useCaseId: 'inspectProjectSummary', kind: 'query', compiledFrom: ['viewClientProjectSummary.inspectProjectSummary'], entityRefs: ['ClientProjectSummary'], contexts: { requires: ['selectedClientProjectSummary'], provides: [] } },
   ];
   replay.workflows = [];
   const skeleton = deriveNs4E8Skeleton(replay);
   assert.deepEqual(skeleton.workspaces.flatMap(workspace => workspace.pageContext.map(context => context.contextId)), run41ContextFixture.expectedPageContexts);
   const provided = skeleton.workspaces.flatMap(workspace => workspace.scenarios.flatMap(scenario => scenario.selectionContexts))
-    .find(context => context.contextId === run41ContextFixture.providedContext);
-  assert.equal(provided?.cardinality, run41ContextFixture.expectedProvidedCardinality);
+    .find(context => context.contextId === run41ContextFixture.expectedSelectionContext);
+  assert.equal(provided?.businessObject, run41ContextFixture.providedEntity);
   assert.equal(validateNs4E8Skeleton(skeleton, replay).ok, true);
 });
 
@@ -396,4 +411,28 @@ test('E8 presentation schema is strict, versioned and contains no URL role taxon
   assert.equal(schema.properties.schemaVersion.const, '2026-08-14-ns4-e8-presentation-v3');
   assert.deepEqual(Object.keys(schema.$defs.context.properties), ['contextId', 'businessObject', 'cardinality', 'required', 'idFieldRef']);
   assert.equal(schema.properties.workspaces.items.properties.scenarios.items.properties.selectionContexts.items.$ref, '#/$defs/context');
+});
+
+test('run 43 replay on the approved module: the hub holds, the satellite decision is hosted and nothing blocks', () => {
+  const replaySources: any = {
+    journeys: run43AffinityFixture.journeys, access: run43AffinityFixture.access,
+    ontology: run43AffinityFixture.ontology, useCases: run43AffinityFixture.useCases, workflows: run43AffinityFixture.workflows,
+  };
+  assert.equal(deriveE8HubScore(replaySources)[0].entityRef, run43AffinityFixture.expected.hubEntity);
+  const skeleton = deriveNs4E8Skeleton(replaySources);
+  const hub = skeleton.workspaces.find(workspace => workspace.kind === 'hub')!;
+  assert.equal(hub.anchorEntity, run43AffinityFixture.expected.hubEntity);
+
+  const hosting = skeleton.workspaces.filter(workspace => workspace.hostedStepRefs.some(ref => /changeOrder/i.test(ref)));
+  assert.deepEqual(hosting.map(workspace => workspace.workspaceId), [run43AffinityFixture.expected.changeOrderHost]);
+  assert.ok(hosting[0].slices.length);
+
+  // The run 43 defect was a workspace that rendered nothing; no workspace may be empty of every source.
+  assert.ok(skeleton.workspaces.every(workspace => workspace.slices.length || workspace.pageContext.length
+    || workspace.scenarios.some(scenario => scenario.selectionContexts.length)));
+
+  const gate = validateNs4E8Skeleton(skeleton, replaySources);
+  assert.equal(gate.issues.filter(issue => issue.severity !== 'warning').length, run43AffinityFixture.expected.blockingIssues);
+  assert.equal(gate.ok, true);
+  assert.deepEqual(resolveNs4E8SkeletonFindings(skeleton, gate.issues).unresolved, []);
 });

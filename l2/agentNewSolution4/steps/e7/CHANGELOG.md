@@ -1,4 +1,11 @@
-# Changelog
+# E7 changelog
+
+## 2026-08-14 — contexts come from the derivation
+
+- `buildNs4E7Plan` and the plan/draft gates read `helpers/ns4Context.ts` instead of copying declared
+  context names from E2; `buildNs4RealizedJourneyArtifact` compiles `resolution.contexts` from the
+  same derivation. A journey written by a previous flow version is rejected, never migrated.
+
 
 - 2026-08-13: Run 38 fixes the E7 validation-report reader/writer schema mismatch (`v3` reader versus
   `v4` writer). Both now use one constant, and round merge preserves prior findings while replacing

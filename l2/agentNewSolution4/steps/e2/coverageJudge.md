@@ -15,12 +15,12 @@ user outcomes.
 2. Every in-scope actor or persona must have a journey that lets that actor achieve its promised
    outcome. A handoff to an actor who is expected to use this system also requires a recipient journey;
    a producer handoff alone is insufficient.
-3. When an `act` or `decide` step needs an existing business record chosen by a person, the journey
-   must first carry, locate, select or create named business context. Examples include a client for a
+3. When an `act` or `decide` step needs an existing business record chosen by a person, an earlier
+   step of the journey must locate, select or create that record. Examples include a client for a
    project, a material for usage, a worker for assignment and a project for a change order.
    A linear step that says "create or update" is blocking when only the update outcome needs an
-   existing record: it hides two different context preconditions and can compile into a raw-id or
-   unbound update form.
+   existing record: it hides two different preconditions and can compile into a raw-id or unbound
+   update form.
 4. A human-selectable reference must have a credible business lookup source. It may come from another
    journey, an explicitly named shared catalog or an explicitly named platform/horizontal capability.
    A UUID field or an unnamed selector is not a source.
@@ -37,16 +37,16 @@ user outcomes.
 - Use `blocking` only when omission can produce an unusable/unreachable capability or a raw-id/empty
   selector. Use `advisory` for non-blocking quality observations.
 - `complete` is true only when there are no blocking issues.
-- Each blocking repair instruction must tell the repair model exactly which complete journey or named
-  context acquisition is missing while preserving unaffected content.
+- Each blocking repair instruction must tell the repair model exactly which complete journey or which
+  missing locate step is absent, while preserving unaffected content.
 - For every issue, phrase one business-language `question`, list at least two `alternatives`, and set
   `defaultChoice` to the behavior already implicit in the generated E2 draft. This is evidence about
   the draft, never the judge's preference. After the bounded repair, the runtime may record that
   default as a non-blocking system decision.
 - The E2 contract is linear and has no conditional branches. For a combined create/update finding,
   instruct the repair model to split creation and maintenance into separate outcome-oriented journeys:
-  creation produces the new record; maintenance locates or carries the existing record before acting.
-  Never request context "only on the update path" inside one combined step, because that path cannot
+  creation produces the new record; maintenance locates the existing record before acting.
+  Never request a record "only on the update path" inside one combined step, because that path cannot
   be represented by this contract.
 - For each existing policy decision with a material consequence, return its `decisionId`, concise
   `impact` and affected existing `relatedJourneyIds` in `policyDecisionImpacts`. Do not invent a

@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-14 — derived contexts, entity clustering and satellite affinity
+
+- Contexts, the catalog, page contexts and selection contexts all come from
+  `helpers/ns4Context.ts`; a contextId is a pure function of its entity.
+- Clustering anchors on the step entity. An act/decide scenario of a satellite entity with a required
+  `manyToOne` relationship to the hub is hosted by the hub workspace, so a scenario can no longer end
+  up alone in a workspace with zero slices. A journey entered by notification keeps its own workspace
+  for the actor it reaches.
+- Hub selection keeps its dominance rule and falls back to the strict maximum of incoming required
+  relationships, because entity-keyed contexts make raw scores flatter than declared ones were.
+- Cross-journey edges come from `preferredFromJourneyRef` and from a handoff reaching the event-driven
+  journey of its `targetProfile`, replacing the removed prerequisite declarations.
+- `NS4_E8_SELECTION_SOURCE` became a recorder: derived provenance is evidence about the journeys, so
+  it is resolved through `ns4Resolve` and never fails a run on content.
+
 ## 2026-08-13 — run 40 bounded selection repair
 
 - Retarget an invalid selection source deterministically only when its ontology field identifies

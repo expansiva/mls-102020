@@ -17,9 +17,10 @@ text in the user's language. This run is `solutionMode: new`; never claim discov
   entity `sourceRefs`. References must use exact E2/E3 ids.
 - Model durable business nouns and useful read projections, never pages, forms, menus, commands or
   journey actions.
-- Every required E2 `entry.carries[].businessObject` and `steps[].providesContext[].businessObject`
-  must have an entity or projection with that exact `entityId`; these named journey handoffs are L4
-  contracts, not optional examples.
+- Every E2 `steps[].entity` must have an entity or projection with that exact `entityId`; the journey
+  step entities are L4 contracts, not optional examples.
+- Relationships are how coordination is compiled: a step that operates a record additionally requires
+  every parent reached by a `required` `manyToOne`/`oneToOne` relationship, so declare those exactly.
 - Freeze every entity id, kind, ownership, lifecycle, source references and persistence decision here.
 - For every entity with lifecycle states, declare the single state in which a record is born as `initialState` and every state that ends its lifecycle as `terminalStates`; use only declared lifecycle state ids and never infer either meaning from the order of the list or from missing transitions.
 - Freeze every relationship here. Relationships must carry journey context: when a journey selects a

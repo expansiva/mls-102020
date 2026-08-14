@@ -1,7 +1,7 @@
 {
   "journeyId": "viewClientProjectSummary",
-  "sessionContext": "selectedClient",
-  "providedContext": "clientProjectSummaries",
+  "sessionEntity": "Client",
+  "providedEntity": "ClientProjectSummary",
   "expectedPageContexts": [],
-  "expectedProvidedCardinality": "many"
+  "expectedSelectionContext": "selectedClientProjectSummary"
 }

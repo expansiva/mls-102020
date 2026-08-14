@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-14-ns4-flow-v35",
+  "schemaVersion": "2026-08-14-ns4-flow-v36",
   "status": "e1-e10",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts and deterministic L5 delivery contracts.",
   "canonicalReferences": [
@@ -17,8 +17,11 @@
     "E4, E7 and E8 readers accept the platform tool-call transport (`flexible.result.arguments`) as well as direct flexible and legacy raw artifacts before applying their deterministic gate.",
     "Nested artifact schemas used by a worker tool hoist $defs to the function-parameters root and omit the embedded $id; strict providers resolve root-relative refs from that root.",
     "Dynamic E4 dispatch is symmetric: before-prompt prefers hook args, while after-prompt falls back to the selector retained in step.prompt when collab-messages omits callback args.",
-    "E2 normalizes every journey businessObject to one stable PascalCase identifier; E4 consumes that exact id for its entity or projection instead of comparing a localized display label.",
-    "E2 treats required as an executable contract: only required entry contexts must be available or located, optional handoffs never become unconditional step prerequisites, and E4 requires ontology coverage only for required contexts.",
+    "E2 normalizes every journey step entity to one stable PascalCase identifier; E4 consumes that exact id for its entity or projection instead of comparing a localized display label.",
+    "The journey context graph is derived, never declared. E2 owns narrative, step sequence, step kind and step entity; helpers/ns4Context.ts is the single place that derives every context from (entity, cardinality, origin) for E7, E8 and E9. requiresContext, providesContext and entry.carries do not exist in any artifact.",
+    "A derived contextId is a pure function of its entity, so contexts are keyed by entity across the catalog, the E9 store and every route: one cardinality comes from the step kind (locate resolves many into one; inspect, act, decide and handoff operate on one).",
+    "Coordination comes from the approved ontology plus the journey sequence, not from a declared name: an act or decide step additionally requires every required manyToOne parent of its entity, and a step requires its own entity only when an earlier step of the same journey already provides it, which is what separates maintenance from creation.",
+    "A context origin is structural and resolved in this order: hub anchor through routeOf, picker slice of the same entity located earlier in the journey, actor session through the E3 profile data scope, and the sending step entity of a handoff. An event-driven journey with no internal sender carries the entity of its first step.",
     "Findings are classified before task status changes: broken contracts, references, envelopes or infrastructure are terminal Type A failures; business bifurcations are Type B system decisions; deterministic repairs are Type C resolutions. Type B and resolvable Type C findings are recorded and never fail the task.",
     "All semantic gates use helpers/ns4Resolve.ts. It applies the generator's implicit Type B choice or an explicit Type C patch, returns the resolved artifact plus durable systemDecisions, and leaves Type A or mechanically unresolved findings for terminal handling.",
     "E2 proposals pass a deterministic structural gate before an independent 🔎 semantic coverage judge; the structural repair budget is separate from the single semantic complete-draft repair budget.",
@@ -50,11 +53,11 @@
     "The historical e6-behaviors runtime plan id remains a stable internal identifier; the permanent artifact uses composition terminology and previous flow versions are rejected rather than migrated.",
     "Future pages, use cases, tables and maintenance operations scan the complete L4 and attach only useRules ids; changing a rule description never requires copying text into its consumers.",
     "E7 mechanically groups identical journey step ids into stable N-to-one channel-neutral use cases, details them with a maxParallel 20 fan-out and runs one targeted repair round for invalid drafts.",
-    "E7 preserves every journey businessHash and compiles small reusable behaviors with exact context ids, ontology entity refs, behavior-owned rule ids and references to valid lifecycle transitions.",
+    "E7 preserves every journey businessHash and compiles small reusable behaviors with derived context ids, ontology entity refs, behavior-owned rule ids and references to valid lifecycle transitions.",
         "E7 compiles only lifecycle states reachable through approved journey transitions. Build and gate share one reachability definition; shrink iterates to a fixed point, removes transitions whose sources disappear, records every removed state and newly dormant predicate as a system decision with an operateState alternative, omits workflows with no remaining transition, and never mutates the approved E4 ontology.",
     "Use cases do not copy E3 actors, authorities or scopes and do not prescribe ports, repositories, storage routing or backend architecture. E3 owns authorization and E8 owns channel integration.",
     "E8 derives workspace partition, page context, slices, invalidations, hub candidacy and navigation candidates from approved L4 contracts; its LLM calls may only localize presentation and select a closed surface catalog.",
-    "E8 keeps pageContext only for the hub anchor and contexts carried by a real notification or handoff edge. Other required contexts remain scenario-local selections resolved by a slice, form input or actor session; no context carries URL classification metadata.",
+    "E8 hosts an act or decide scenario of a satellite entity in the workspace of the anchor it points at through a required manyToOne relationship, so a scenario is never isolated in a workspace without slices. E8 keeps pageContext only for the hub anchor and contexts carried by a real notification or handoff edge. Other required contexts remain scenario-local selections resolved by a slice, form input or actor session; no context carries URL classification metadata.",
     "E8 freezes its mechanically derived and strictly gated skeleton automatically. Its workspace-detail fan-out is bounded to 20 workers, validates each worker independently, and writes permanent typed workspace artifacts plus a workspace index without opening a clarification.",
     "Every constrained E8 presentation-repair step created by the runtime has one exact dynamic plan-id contract and is routed symmetrically through the E8 before/after hooks; malformed lookalike ids remain unsupported.",
     "An E8 selection input with an invalid sourceRef is repaired without another LLM call only when its fieldRef identifies exactly one compatible frozen slice; zero or multiple candidates remain Type A failures.",
@@ -205,10 +208,10 @@
         "Generation declares journey policy decisions before journeys and never supplies impact; the independent judge is the only stage that may add decision impact and related journeys.",
         "Selecting an alternative or requesting free-text changes preserves the current versioned draft, starts a full replacement round, and passes the deterministic selected-choice honor gate before the widget can reopen.",
         "Approval persists every decision selection, including unchanged generated choices, in the journey index. A deterministic E2 impact report records the full step-kind histogram and downstream E3-E7 contracts made stale by changed, added or removed journeys.",
-        "Prerequisite handoffs use stable context ids exported by the referenced journey.",
-        "contextRequired, contextOrLookup and eventDriven declare at least one required entry context; coldStart declares no required entry context.",
-        "contextOrLookup includes an explicit locate fallback for every required carried context; optional handoffs may enrich the journey but cannot be an unconditional requiresContext unless an earlier step produces them.",
-        "E2 and E4 consume the same shared required-context semantics so an optional handoff cannot become an accidental ontology requirement."
+        "A step declares stepId, kind, entity, title, description and featureRefs. It never declares a context: requiresContext, providesContext and entry.carries do not exist and cannot be reintroduced as optional hints.",
+        "entry declares only its mode and an optional preferredFromJourneyRef; the entry context of an event-driven journey is derived from the sending handoff step, or from its own first step when no internal sender exists.",
+        "A handoff step names the receiving E3 profile in targetProfile, which is the only routing fact E9 needs to compile its notification.",
+        "The E2 structural gate checks step identity, kind, entity shape, sequence and feature references. Context provenance is not an E2 concern because there is no declared context left to check."
         ,"Journey rule references are stored only in business.useRules as lower-camel ids; E2 never copies rule descriptions."
       ]
     },
@@ -380,7 +383,7 @@
       "outputAnchor": "e8-result",
       "gate": "steps/e8/gate.ts",
       "runtimeNotes": [
-        "Code derives the complete workspace partition, context catalog, hub ranking, candidate edges, hosted use cases and scenario ids from approved E2 through E7 artifacts. Candidate edges include both adjacent steps within one journey and exact cross-journey handoffs declared by E2 prerequisites[].providesContext; no context edge is inferred from labels or entity names.",
+        "Code derives the complete workspace partition, context catalog, hub ranking, candidate edges, hosted use cases and scenario ids from approved E2 through E7 artifacts. Candidate edges include adjacent steps within one journey, the preferredFromJourneyRef entry of a journey and handoff steps reaching an event-driven journey; every edge carries derived entity contexts, never a declared name.",
         "One strict-tool reasoning call may localize labels, group already-derived workspaces under existing E2 features, order menu items and select only queueAction, contextualModal or batchAction surfaces. It cannot create, remove or rename structural ids or contexts and has no URL responsibility.",
         "An invalid presentation receives one bounded repair. If it remains invalid, E8 keeps the mechanically derived presentation and continues; presentation variance never fails the run.",
         "Workspace pageContext contains only the hub anchor plus contexts carried by a real cross-workspace notification or handoff edge. Scenario selectionContexts retain all other required contexts and resolve through a local slice, form input or actor session.",
@@ -415,7 +418,7 @@
         "beforePromptStep performs the entire compile and returns completed or failed status; E9 never emits prompt_ready and afterPromptStep is an invariant failure path.",
         "The compiler validates context provenance, actor-compatible edges, real carried-context providers, actor journey reachability and queue evidence against compiled E7 workflows. Route membership is derived structurally; shared identifier field names such as projectId are never membership evidence.",
         "Hub collection and record routes, nested place routes, focused scenario routes and standalone routes are derived by the shared total routeOf helper from stable workspace/scenario ids and unique primary use-case targets. Ambiguous targets omit the optional item id and emit a system decision. URL path ids hydrate first; the per-tab store is only a cache.",
-        "Handoff and eventDriven delivery is compiled into notifications with receiver profile, carried context and a route-backed deep link. Notification delivery is not kept as a navigation edge.",
+        "Handoff and eventDriven delivery is compiled into notifications from the handoff targetProfile and the sending step entity, with a route-backed deep link. Notification delivery is not kept as a navigation edge.",
         "One view contract per workspace plus one command contract per hosted command records exact typed inputs, projected outputs, business errors, source metadata, routePattern, skeletonHash and workspaceHash. Data inputs require ontology field refs, even when their interaction source is userDecision. Verb decisions are identified by policy sourceRef plus absent fieldRef, carry E7 transitionIds as literalUnion metadata and never fabricate a fieldRef. JSON fields and decisions without transitions become unknown with a warning.",
         "Empty organism labels resolve from the approved E4 field title. A missing title records a non-blocking warning without inventing localized text.",
         "Access realization maps every emitted operation route to its exact E3 authority refs through frozen scenario step/use-case ownership.",

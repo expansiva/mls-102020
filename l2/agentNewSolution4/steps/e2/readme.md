@@ -44,16 +44,14 @@ Every journey freezes its `business` block with a stable SHA-256 hash. `resoluti
 start pending so later steps can add ontology and implementation bindings without rewriting the
 human-approved business intent.
 
-The gate treats business context as a first-class contract. A command journey must carry, locate or
-receive a named record such as `selectedProject`; it must never make a future page ask for a raw id.
-Every `businessObject` is normalized once into a stable PascalCase identifier and that exact id is
-consumed by the E4 entity/projection contract; localized display text stays in descriptions and titles.
-The `required` flag has one shared meaning across E2 and E4: required entry contexts are guaranteed,
-must have a direct-entry lookup when applicable and require ontology realization; optional handoffs
-may enrich a flow but are not unconditional prerequisites and do not force an otherwise unused entity.
-Cross-journey handoffs are also checked: a prerequisite may only provide a context actually exported
-by the referenced journey, using the same stable `contextId`. Every `contextOrLookup` journey must
-materialize its direct-entry fallback through a `locate` step.
+E2 declares no context graph. A step is `{stepId, kind, entity, title, description, featureRefs}`
+plus `targetProfile` on a handoff, and every context is derived downstream by
+`helpers/ns4Context.ts` from that entity, the step kind, the order of the steps and the approved
+ontology. The gate is therefore structural only: identity, kind, a stable PascalCase `entity`,
+business-facing text that never asks for a raw id, feature references, the ordering of a preferred
+origin journey and the `locate` fallback of a `contextOrLookup` journey. Every `entity` is
+normalized once into a stable PascalCase identifier and that exact id is consumed by the E4
+entity/projection contract; localized display text stays in titles and descriptions.
 
 The first deterministic gate failure in each proposal cycle does not immediately terminate the task.
 E2 stores the rejected draft and creates one bounded structural repair carrying the exact gate

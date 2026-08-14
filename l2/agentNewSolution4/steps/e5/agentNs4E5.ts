@@ -200,7 +200,7 @@ function compactSources(sources: Ns4E5Sources): unknown {
     module: { purpose: sources.module.module.purpose, businessScope: sources.module.businessScope, declaredConstraints: sources.module.declaredConstraints },
     journeys: sources.journeys.journeys.map(journey => ({
       journeyId: journey.journeyId, actorRef: journey.business.actorRef, goal: journey.business.goal,
-      steps: journey.business.steps.map(step => ({ stepId: step.stepId, intent: step.intent, result: step.result })),
+      steps: journey.business.steps.map(step => ({ stepId: step.stepId, entity: step.entity, title: step.title, description: step.description })),
       outcome: journey.business.outcome, useRules: journey.business.useRules,
     })),
     access: {

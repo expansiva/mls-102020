@@ -13,44 +13,36 @@ Write in the user's language. Do not design pages, routes, database keys, APIs o
 - The approved `business` block of every journey is permanent. Later phases may resolve ontology and
   compile operations/workspaces/navigation, but may not rewrite E2 intent.
 - Use stable lower-camel ids.
-- Describe business records as named context, such as `selectedProject`, never as a text field asking
-  the user for `projectId`.
+- Name business records by their business noun, never as a text field asking the user for `projectId`.
 - A journey that can be opened both from a parent record and directly normally uses
-  `contextOrLookup`: it prefers carried context and requires a future human-friendly lookup fallback.
+  `contextOrLookup`: it prefers the record it receives and includes a human-friendly lookup fallback.
 - `contextRequired` is valid only when direct/menu entry is not allowed.
-- `coldStart` must work without prior context. `eventDriven` starts from an event/handoff.
+- `coldStart` must work without a prior record. `eventDriven` starts from an event/handoff.
 
-## Context rules
+## Step rules
 
-1. `entry.carries` declares the business context available when a journey starts. Each item names a
-   stable lowerCamel `contextId`, a stable PascalCase `businessObject`, cardinality, requirement and
-   human description. `businessObject` is the exact future ontology entity/projection id: use
-   `ProjectPortfolio`, never a display label such as `Project portfolio`. Titles and descriptions
-   remain in the user's language.
-2. `prerequisites[].providesContext` references ids declared in `entry.carries` and actually exported
-   by the referenced journey. Keep the same `contextId` across the handoff; do not rename
-   `createdProject` to `selectedProject` between journeys.
-3. Each step lists `requiresContext` and declares new `providesContext` objects.
-   A later step may provide the same stable `contextId` again only for the same `businessObject`
-   (for example, both locating and creating a project may yield `selectedProject`).
-4. A context must be carried or produced by an earlier step before it is required.
-5. `act`/`decide` steps operating on an existing business record must require that record's context.
-   A portfolio, queue, dashboard or aggregate decision follows the same rule: an earlier `inspect` or
-   `locate` step must provide a named collection/assessment context, and the `decide` step must require it.
-6. For `contextOrLookup`, include an explicit `locate` step whose `providesContext` contains every
-   required carried context. This represents the direct-entry fallback even when a previous journey
-   can carry the same context.
-7. `contextRequired`, `contextOrLookup` and `eventDriven` must declare at least one required carried
-   context. `coldStart` cannot depend on a required carried context. An optional carried context may
-   enrich the journey when present, but a step cannot list it in `requiresContext` unless an earlier
-   step produces it unconditionally.
-8. Never solve missing context by asking for a raw technical id.
-9. Every `act` or `decide` step has one unconditional context contract. Never combine creation and
-   maintenance in wording such as "create or update" when updating requires selecting an existing
-   record but creation does not. If both outcomes are in scope, model separate outcome-oriented
-   journeys: creation produces the new record context; maintenance first carries or locates the
-   existing record context and then requires it. Do not simulate a conditional branch inside one
-   linear step.
+**You never declare context.** Which record a screen needs, where it comes from, and what a link
+carries are derived by code from the step `entity`, the step `kind`, the order of the steps and the
+approved ontology. Your job is the narrative and the right entity — nothing about plumbing.
+
+1. Every step declares `entity`: the exact future ontology entity or projection id, in stable
+   PascalCase (`ProjectPortfolio`, never the display label `Project portfolio`). `title` and
+   `description` stay in the user's language; `description` states the observable result.
+2. Step `kind` is exactly one of `locate`, `inspect`, `act`, `decide` or `handoff`. Use `inspect`
+   for reviewing information; never invent synonyms such as `review`.
+3. Order matters and is the only sequencing you declare: put the `locate` of a record before the
+   step that operates on it. An `act` step whose entity no earlier step located is a creation; an
+   `act` step after a `locate` of the same entity is a maintenance.
+4. A step needing a related record does not say so: the required relationship in the approved
+   ontology is what makes the coordination. Model the natural business order and nothing else.
+5. For `contextOrLookup`, include an explicit `locate` step for the journey's own subject. It is the
+   direct-entry fallback even when a previous journey can hand the record over.
+6. A `handoff` step declares `targetProfile`: the receiving profile id. It delivers its own `entity`.
+7. Never solve a missing record by asking for a raw technical id.
+8. Every `act` or `decide` step is one unconditional operation. Never combine creation and
+   maintenance in wording such as "create or update". If both outcomes are in scope, model separate
+   outcome-oriented journeys: one creates the record, the other locates it first and then operates
+   on it. Do not simulate a conditional branch inside one linear step.
 
 ## Journey quality
 
@@ -75,16 +67,14 @@ one option. Then write journeys consistent with those selected choices. Attach t
 - Before returning the proposal, perform a silent coverage pass over E1. In particular, verify that
   external users can consume information promised to them, not merely that an internal actor can
   publish or hand it off.
-- Every human-selectable business reference used by an `act` or `decide` step must be acquired as
-  named context first. Carry, locate, select or create the client, material, worker, project or other
-  referenced record; never leave a later compiler to invent a UUID input or an unbound selector.
+- Every human-selectable business reference used by an `act` or `decide` step must exist as a step of
+  its own. Locate, select or create the client, material, worker, project or other referenced record
+  in the journey; never leave a later compiler to invent a UUID input or an unbound selector.
 - Name the credible business source for lookups in the journey: another journey, a shared catalog or
   a platform/horizontal capability. Do not invent a CRUD journey for every noun, but do not assume
   that required lookup data exists without an owner or source.
-- Step `kind` must be exactly one of `locate`, `inspect`, `act`, `decide` or `handoff`. Use `inspect`
-  for reviewing information; never invent synonyms such as `review`.
-- Prerequisite journeys must appear earlier in the array.
-- Each step has one clear intent and observable result.
+- A journey named in `entry.preferredFromJourneyRef` must appear earlier in the array.
+- Each step has one clear title and an observable result in its description.
 - Every journey has observable outcome evidence.
 - `useRules` contains only stable lower-camel rule ids. Never repeat a rule description inside a journey;
   E5 is the single owner of every rule description.
@@ -95,20 +85,19 @@ one option. Then write journeys consistent with those selected choices. Attach t
 ## Adjustment round
 
 If an adjustment request and previous draft are provided, return a complete replacement proposal.
-Apply the requested change without dropping unaffected journeys, prerequisites, context, rules,
-features or outcome evidence.
+Apply the requested change without dropping unaffected journeys, steps, rules, features or outcome
+evidence.
 
 If deterministic gate feedback is provided, repair every reported issue in the complete replacement.
 Preserve unaffected content. Gate repair is not a request to weaken, omit or reinterpret the invariant.
-Coverage-judge feedback is equally binding: add the missing journey or context acquisition described
-by every blocking issue, update features/prerequisites/handoffs consistently, and return the complete
-replacement proposal without dropping unaffected content.
+Coverage-judge feedback is equally binding: add the missing journey or the missing locate step
+described by every blocking issue, update features and handoffs consistently, and return the
+complete replacement proposal without dropping unaffected content.
 
 For a coverage repair, process every blocking issue as a checklist after reading the previous draft.
 When an issue concerns a combined create/update operation, split the outcomes into separate journeys;
-do not merely reword the same combined step or make existing-record context mandatory for creation.
-Before returning, verify that each issue's named context is carried or produced before the affected
-`act`/`decide` step requires it.
+do not merely reword the same combined step. Before returning, verify that each issue's named record
+is located by an earlier step of the same journey.
 
 ## Output
 
@@ -137,61 +126,25 @@ Return exactly one JSON object (no markdown):
           "actorRef": "projectManager",
           "title": "Criar e decidir ordem de mudança",
           "goal": "Registrar e decidir uma mudança em um projeto ativo.",
-          "prerequisites": [
-            {
-              "journeyRef": "manageProjects",
-              "reason": "A mudança pertence a um projeto existente.",
-              "required": false,
-              "providesContext": ["selectedProject"]
-            }
-          ],
           "entry": {
             "mode": "contextOrLookup",
-            "preferredFromJourneyRef": "manageProjects",
-            "carries": [
-              {
-                "contextId": "selectedProject",
-                "businessObject": "Project",
-                "cardinality": "one",
-                "required": true,
-                "description": "Projeto no qual a mudança será registrada.",
-                "stateRequirement": "active"
-              }
-            ]
+            "preferredFromJourneyRef": "manageProjects"
           },
           "steps": [
             {
               "stepId": "locateProject",
               "kind": "locate",
-              "intent": "Manter o projeto recebido ou localizar um projeto ativo.",
-              "requiresContext": [],
-              "providesContext": [
-                {
-                  "contextId": "selectedProject",
-                  "businessObject": "Project",
-                  "cardinality": "one",
-                  "required": true,
-                  "description": "Projeto ativo recebido ou localizado para a mudança."
-                }
-              ],
-              "result": "Um projeto ativo está selecionado.",
+              "entity": "Project",
+              "title": "Localizar o projeto ativo",
+              "description": "Um projeto ativo está selecionado.",
               "featureRefs": ["changeOrderManagement"]
             },
             {
               "stepId": "captureChangeOrder",
               "kind": "act",
-              "intent": "Informar a mudança e seus impactos.",
-              "requiresContext": ["selectedProject"],
-              "providesContext": [
-                {
-                  "contextId": "createdChangeOrder",
-                  "businessObject": "ChangeOrder",
-                  "cardinality": "one",
-                  "required": true,
-                  "description": "Ordem de mudança criada em rascunho."
-                }
-              ],
-              "result": "A ordem está vinculada ao projeto selecionado.",
+              "entity": "ChangeOrder",
+              "title": "Informar a mudança e seus impactos",
+              "description": "A ordem de mudança fica registrada em rascunho.",
               "featureRefs": ["changeOrderManagement"]
             }
           ],
