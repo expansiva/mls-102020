@@ -1,5 +1,16 @@
 # CHANGELOG — i4-inherit
 
+## 2026-08-14 — a moldura do widget falava inglês
+
+Medido no aceite do filtro de capacidade: com `userLanguage: 'pt'` no payload, os três cartões saíram em
+inglês — *"Style only, in this molecule's .less"* — ao lado de um título e de uma justificativa em
+português. **O texto do modelo obedecia ao run; o da tela, não.**
+
+`getMessageKey` lê `document.documentElement.lang` e, com ele vazio, devolve a **primeira chave do mapa**
+— que é `en`. O idioma medido no `i0-classify` viaja em `value.userLanguage` desde sempre e ninguém o
+usava. `inheritMessageKey` (puro, em `widgetInheritChoiceLogic`, 5 asserções) prefere o do run, normaliza
+`pt-BR` → `pt` e cai no documento quando o run não registrou nada.
+
 ## 2026-08-14 — `override` deixa de ser oferecido quando nada pode carregá-lo
 
 O conserto de 13/08 mostrou ao modelo **o que a casca não alcança**. Faltava a outra metade: entre o que

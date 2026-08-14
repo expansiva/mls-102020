@@ -85,6 +85,22 @@ export function isExpensiveOverride(member: string): boolean {
 }
 
 /**
+ * Which message set the widget's own chrome uses.
+ *
+ * ⚠️ Measured 2026-08-14: with `userLanguage: 'pt'` in the payload, the cards rendered in English
+ * beside a title and a reason in Portuguese — the model's text obeyed the run and the widget's did
+ * not. The base `getMessageKey` reads `document.documentElement.lang`, and with it unset returns the
+ * FIRST key of the map, which is `en`. The run measured the language back at i0-classify and carries
+ * it in the payload; preferring it is the whole fix.
+ *
+ * `fallback` is what the document says, kept for the case where the run recorded nothing.
+ */
+export function inheritMessageKey(userLanguage: string | undefined, available: string[], fallback: string): string {
+  const tag = (userLanguage || '').toLowerCase().split('-')[0];
+  return available.includes(tag) ? tag : fallback;
+}
+
+/**
  * Is `override` available at all for this molecule?
  *
  * False when the parent exposes nothing that could carry a change — every member is private, a

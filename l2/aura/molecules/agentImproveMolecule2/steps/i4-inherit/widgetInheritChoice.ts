@@ -23,6 +23,7 @@ import {
   buildInheritResult,
   canConfirmInherit,
   inheritBlockingIssues,
+  inheritMessageKey,
   isExpensiveOverride,
   isOverrideAvailable,
   offerableMembers,
@@ -221,8 +222,10 @@ export class WidgetInheritChoice102020 extends StateLitElement {
   }
 
   protected render(): TemplateResult {
-    this.msg = messages[this.getMessageKey(messages)];
     const value = this.value;
+    // The chrome follows the USER's language, which the run measured — not the document's. See
+    // inheritMessageKey for the run that came out half in English.
+    this.msg = messages[inheritMessageKey(value?.userLanguage, Object.keys(messages), this.getMessageKey(messages))];
     if (!value) return html`<div class="ihc-empty">No clarification.</div>`;
 
     // The model's suggestion is the starting point, not the answer. It is applied once, so a

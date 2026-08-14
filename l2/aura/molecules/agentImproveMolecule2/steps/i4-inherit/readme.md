@@ -81,7 +81,7 @@ styled alike.
 
 ## Tests
 
-`gate.test.ts` (13) and `widgetInheritChoiceLogic.test.ts` (12), both pure, no DOM. The member map, the
+`gate.test.ts` (13) and `widgetInheritChoiceLogic.test.ts` (13), both pure, no DOM. The member map, the
 unreachable map and the **capability** rule are tested in `helpers/imInherit.test.ts`. The two that carry
 the design are "'parent' is a VALID answer and NOT an executable one" and "when NOTHING can carry the
 change, override is not available at all".

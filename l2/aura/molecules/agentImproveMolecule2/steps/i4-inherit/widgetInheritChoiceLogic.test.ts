@@ -8,6 +8,7 @@ import {
   buildInheritResult,
   canConfirmInherit,
   inheritBlockingIssues,
+  inheritMessageKey,
   isExpensiveOverride,
   isOverrideAvailable,
   offerableMembers,
@@ -78,6 +79,18 @@ test('a member that compiles but cannot carry the change is not offered', () => 
   assert.equal(isOverrideAvailable(value), true);
   assert.equal(offerableMembers(value).some(m => m.name === 'disconnectedCallback'), false);
   assert.deepEqual(inheritBlockingIssues({ where: 'override', member: 'disconnectedCallback' }, value), ['unknown_member']);
+});
+
+test("the chrome follows the RUN's language, not the document's", () => {
+  // Measured 2026-08-14: userLanguage 'pt' in the payload, cards in English next to a Portuguese
+  // title. getMessageKey reads document.documentElement.lang and, unset, returns the map's first
+  // key — 'en'. The run already knows the answer.
+  assert.equal(inheritMessageKey('pt', ['en', 'pt'], 'en'), 'pt');
+  assert.equal(inheritMessageKey('pt-BR', ['en', 'pt'], 'en'), 'pt');
+  // a language the widget has no messages for falls back to the document, never to a missing key
+  assert.equal(inheritMessageKey('de', ['en', 'pt'], 'en'), 'en');
+  assert.equal(inheritMessageKey('', ['en', 'pt'], 'pt'), 'pt');
+  assert.equal(inheritMessageKey(undefined, ['en', 'pt'], 'en'), 'en');
 });
 
 test('less is not offered when the molecule has no stylesheet', () => {
