@@ -158,8 +158,13 @@ function validateRoutesAndNotifications(
     if (patterns.has(route.routePattern)) add('NS4_E9_ROUTE_DUPLICATE', route.routeId, `Duplicate route pattern ${route.routePattern}.`); patterns.add(route.routePattern);
     const requiredPath = [...(workspace?.pageContext || []), ...(scenario?.selectionContexts || [])].filter(context => context.urlRole === 'path').map(context => context.contextId);
     requiredPath.forEach(contextId => { if (!route.pathContextIds.includes(contextId)) add('NS4_E9_ROUTE_PATH', route.routeId, `Route omits path context ${contextId}.`); });
+    const routedPathFieldRefs = new Set(sources.workspaces.flatMap(item => [
+      ...item.pageContext,
+      ...item.scenarios.flatMap(candidate => candidate.selectionContexts),
+    ]).filter(context => route.pathContextIds.includes(context.contextId)).map(context => context.idFieldRef));
     (scenario?.selectionContexts || []).filter(context => context.urlRole === 'selection').forEach(context => {
-      if (route.pathContextIds.includes(context.contextId) || route.routePattern.includes(`:${context.idFieldRef}`)) add('NS4_E9_ROUTE_SELECTION', route.routeId, `Selection ${context.contextId} leaked into route ${route.routePattern}.`);
+      const hasUnownedFieldSegment = route.routePattern.includes(`:${context.idFieldRef}`) && !routedPathFieldRefs.has(context.idFieldRef);
+      if (route.pathContextIds.includes(context.contextId) || hasUnownedFieldSegment) add('NS4_E9_ROUTE_SELECTION', route.routeId, `Selection ${context.contextId} leaked into route ${route.routePattern}.`);
     });
   });
   compilation.notifications.entries.forEach(entry => {

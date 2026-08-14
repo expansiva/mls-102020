@@ -146,13 +146,6 @@ export interface Ns4E10Delivery {
   process: Ns4L5ProcessArtifact;
 }
 
-export interface Ns4E10ReviewEvent {
-  action: 'approve' | 'requestChanges';
-  moduleName: string;
-  repairStep?: Ns4E10RepairStep;
-  adjustment: string;
-}
-
 export function compileNs4L5ModuleNavigation(sources: Ns4E10Sources): Ns4L5ModuleNavigation {
   const workspaceById = new Map(sources.workspaces.map(workspace => [workspace.workspaceId, workspace]));
   const routes = new Map(sources.navigation.routes.map(route => [`${route.workspaceId}\u0000${route.scenarioId}`, route]));

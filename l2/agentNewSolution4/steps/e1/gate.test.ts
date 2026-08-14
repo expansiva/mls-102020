@@ -133,7 +133,11 @@ test('root plan localizes and creates the complete visible roadmap before E1 sta
   assert.equal(steps[6].planning?.executionMode, 'sequential');
   assert.equal(steps[6].onFailure, 'wait_after_prompt');
   assert.equal(steps[6].stepTitle, `👤 ${titles['e6-behaviors']}`);
-  assert.equal(steps.filter(step => String(step.stepTitle || '').startsWith('👤 ')).length, 8);
+  assert.equal(steps[7].stepTitle, titles['e7-realization']);
+  assert.equal(steps[8].stepTitle, titles['e8-workspaces']);
+  assert.equal(steps[9].stepTitle, titles['e9-navigation-compiler']);
+  assert.equal(steps[10].stepTitle, titles['e10-validation']);
+  assert.equal(steps.filter(step => String(step.stepTitle || '').startsWith('👤 ')).length, 6);
   const artifact = buildNs4ModuleArtifact(plan.userPrompt, clarification, 'human', '2026-08-05T10:00:00.000Z', plan.presentation);
   const pipeline = createNs4Pipeline('petShop', plan.userPrompt, '2026-08-05T10:00:00.000Z', plan.presentation);
   assert.equal(artifact.presentation.userLanguage, 'pt-BR');
@@ -145,7 +149,8 @@ test('human checkpoint icon is deterministic and never duplicated', () => {
   assert.equal(formatNs4VisibleStepTitle('e2-journeys', 'Revisar jornadas'), '👤 Revisar jornadas');
   assert.equal(formatNs4VisibleStepTitle('e2-journeys', '👤 Revisar jornadas'), '👤 Revisar jornadas');
   assert.equal(formatNs4VisibleStepTitle('e6-behaviors', 'Definir comportamentos'), '👤 Definir comportamentos');
-  assert.equal(formatNs4VisibleStepTitle('e8-workspaces', 'Desenhar áreas'), '👤 Desenhar áreas');
+  assert.equal(formatNs4VisibleStepTitle('e8-workspaces', 'Desenhar áreas'), 'Desenhar áreas');
+  assert.equal(formatNs4VisibleStepTitle('e10-validation', 'Validar especificação'), 'Validar especificação');
   assert.equal(formatNs4VisibleStepTitle('e1-compile', 'Compilar contrato'), 'Compilar contrato');
   assert.equal(plainNs4StepTitle('👤 Revisar jornadas · G1'), 'Revisar jornadas · G1');
 });
@@ -192,7 +197,7 @@ test('root plan rejects an incomplete localized-title contract instead of silent
 test('new artifacts expose the current E1-to-E10 lifecycle flow version', () => {
   const artifact = buildNs4ModuleArtifact('petShop', clarification, 'human', '2026-08-05T10:00:00.000Z');
   const pipeline = createNs4Pipeline('petShop', 'petShop', '2026-08-05T10:00:00.000Z');
-  assert.equal(NS4_FLOW_VERSION, '2026-08-13-ns4-flow-v32');
+  assert.equal(NS4_FLOW_VERSION, '2026-08-13-ns4-flow-v33');
   assert.equal(artifact.specStatus.flowVersion, NS4_FLOW_VERSION);
   assert.equal(NS4_PIPELINE_SCHEMA_VERSION, '2026-08-06-ns4-pipeline-v5');
   assert.equal(pipeline.schemaVersion, NS4_PIPELINE_SCHEMA_VERSION);

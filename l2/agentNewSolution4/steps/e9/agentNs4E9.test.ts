@@ -28,6 +28,29 @@ test('run 38 navigation compiles a clean Project URL, typed contracts and ontolo
   assert.ok(compilation.access.realization.operationAuthorityRefs.some(operation => operation.operationRef === command.operationRef && operation.authorityRefs.includes('build:task-create')));
 });
 
+test('E9 does not mistake a selection for a route segment when it shares the path context field name', async () => {
+  const input = sources();
+  const project = input.workspaces.find(item => item.workspaceId === 'projectWorkspace')!;
+  const scenario = project.scenarios.find(item => item.scenarioId === 'formCreateTask')!;
+  const context = {
+    contextId: 'projectBillingAssessment', businessObject: 'ProjectBillingAssessment', cardinality: 'one' as const,
+    required: true, idFieldRef: 'projectId', urlRole: 'selection' as const, urlRoleSource: 'localSelection' as const,
+    urlRoleJustification: 'Selected inside the project page.',
+  };
+  scenario.selectionContexts.push(context);
+  input.workspaceIndex.menu.contextCatalog.push(context);
+  const assessment = structuredClone(input.ontology.entities.find(entity => entity.entityId === 'Project')!);
+  assessment.entityId = 'ProjectBillingAssessment'; assessment.fields = assessment.fields.filter(field => field.fieldId === 'projectId');
+  input.ontology.entities.push(assessment);
+
+  const compilation = await compileNs4E9(input); const gate = validateNs4E9(input, compilation);
+  const route = compilation.navigation.routes.find(item => item.routeId === 'projectWorkspace.formCreateTask')!;
+  assert.equal(route.routePattern, '/buildFlowFsm38/projects/:projectId/createTask');
+  assert.equal(route.pathContextIds.includes(context.contextId), false);
+  assert.equal(route.selectionContextIds.includes(context.contextId), true);
+  assert.equal(gate.issues.some(issue => issue.code === 'NS4_E9_ROUTE_SELECTION'), false);
+});
+
 test('E9 rejects an orphan workspace path context and names its candidate incoming edges', async () => {
   const input = sources(); const workspace = input.workspaces.find(item => item.workspaceId === 'projectWorkspace')!;
   const orphan = { contextId: 'orphanWorker', businessObject: 'Worker', cardinality: 'one' as const, required: true, idFieldRef: 'workerId', urlRole: 'path' as const, urlRoleSource: 'externalEntry' as const };

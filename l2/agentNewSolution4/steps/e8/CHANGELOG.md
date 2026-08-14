@@ -27,6 +27,13 @@
 - Reconciled `docs/flow.json` with the runtime v30 checkpoint so this compatible gate fix does not
   invalidate the failed run's resume authority.
 
+## 2026-08-13 — automatic E8 compilation
+
+- Removed the E8 clarification hook and workspace-review widget/CSS.
+- Dispatch the gated skeleton directly to the existing bounded workspace-detail fan-out with
+  `approvedBy=auto` in normal and `/fast` runs.
+- Preserve duplicate-dispatch protection through the stable workspace-detail plan id.
+
 ## 2026-08-12 — run 36 duplicate approval dispatch
 
 - Disable the E8 review controls synchronously on submit and re-enable them only when application

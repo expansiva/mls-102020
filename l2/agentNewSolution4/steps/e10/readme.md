@@ -1,4 +1,4 @@
-# E10 — validate-all, L5 delivery and final approval
+# E10 — validate-all, L5 delivery and automatic completion
 
 E10 is the final NS4 stage. Its compile phase is fully deterministic and consumes only approved permanent E2–E9 artifacts. It does not call an LLM.
 
@@ -24,6 +24,9 @@ After a green report E10 writes:
 
 The config merger preserves unrelated keys, projects and modules. With no existing config it creates only a module seed; publication, masters and deploy settings remain out of scope. Output ordering is stable, so unchanged inputs produce byte-identical config JSON.
 
-## Final checkpoint
+## Completion
 
-The disk-backed `e10-final-review` widget previews the gate, general/hub navigation, header links, counts and every consolidated policy/system decision. Approval writes `e10-result`, marks the module complete and closes the pipeline. Rejection records one selected repair owner, marks it and downstream stages stale, and leaves the task ready for a later module resume.
+After successful validation and delivery, the same deterministic hook records `approvedBy=auto`, writes
+`e10-result`, marks the module complete and closes the pipeline. E10 has no clarification or CSS widget.
+A blocking report still records the earliest owning repair step and leaves the durable report available
+for audit and a later module resume.

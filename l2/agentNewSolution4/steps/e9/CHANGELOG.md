@@ -1,5 +1,13 @@
 # Changelog — E9
 
+## 2026-08-13 — run 40 shared identifier field
+
+- Route-selection validation now uses context identity as its authority.
+- A selection context may share an `idFieldRef` such as `projectId` with a legitimate routed page
+  context without being falsely reported as part of the URL.
+- Unique, unowned selection-field segments and selection context ids in `pathContextIds` remain
+  blocking findings.
+
 ## 2026-08-13
 
 - Added the deterministic E9 navigation compiler and structural gate.

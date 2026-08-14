@@ -141,6 +141,11 @@ The journey `business` block and its hash remain unchanged. Use cases describe r
 behavior and exact ontology/rule references. They do not prescribe actors, authorization, pages, routes,
 ports, repositories or a backend architecture; E3 and E8 retain those separate responsibilities.
 
+E8 through E10 are automatic. E8 freezes the gated workspace skeleton and dispatches the bounded
+workspace-detail fan-out without a clarification. E9 compiles navigation and page context, and E10
+validates the complete L4 graph, writes the additive L5 delivery contracts and records `e10-result`.
+There is no E8 workspace-review widget or E10 final-approval widget.
+
 A limited E3 grant such as “client may see the published budget summary without seeing the Project
 record” must be represented by an E4 projection or traceable information entity. Relationships preserve
 selected journey context so later screens do not ask humans to type foreign-key ids.
@@ -155,7 +160,7 @@ The flow contract lives in `docs/flow.json`. Canonical agent-engine guidance liv
 `mls-base/skills/collab_messages.md`, `agentsBestPractices.md` and `modelTypes.md`.
 
 Terminal failures always carry a `traceMsg` in the task. Once a module pipeline exists, the same
-failure is also stored as `status: failed`, `error` and `failedAt` in the corresponding E1–E7 state.
+failure is also stored as `status: failed`, `error` and `failedAt` in the corresponding E1–E10 state.
 Errors returned by clarification callbacks remain recoverable and visible in the open widget; they do
 not convert the review into a terminal failed step. Terminal cancellation remains unavailable until
 `collab-messages` exposes an explicit cancelled/aborted lifecycle state.

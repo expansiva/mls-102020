@@ -81,7 +81,6 @@ import {
 } from '/_102020_/l2/agentNewSolution4/steps/e7/agentNs4E7.js';
 import {
   afterNs4E8PromptStep,
-  beforeNs4E8ClarificationStep,
   beforeNs4E8PromptStep,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/agentNs4E8.js';
 import { isNs4E8PresentationRepairPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
@@ -91,7 +90,6 @@ import {
 } from '/_102020_/l2/agentNewSolution4/steps/e9/agentNs4E9.js';
 import {
   afterNs4E10PromptStep,
-  beforeNs4E10ClarificationStep,
   beforeNs4E10PromptStep,
 } from '/_102020_/l2/agentNewSolution4/steps/e10/agentNs4E10.js';
 
@@ -386,12 +384,6 @@ async function beforeClarificationStep(
   }
   if (parsed?.planId === 'e7-lifecycle-resolution') {
     return beforeNs4E7ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);
-  }
-  if (parsed?.planId === 'e8-skeleton-review') {
-    return beforeNs4E8ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);
-  }
-  if (parsed?.planId === 'e10-final-review') {
-    return beforeNs4E10ClarificationStep(agent, context, parentStep, step, hookSequential, parsed);
   }
   return beforeNs4E1ClarificationStep(agent, context, parentStep, step, hookSequential, json);
 }

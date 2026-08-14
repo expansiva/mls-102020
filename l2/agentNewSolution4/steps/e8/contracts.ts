@@ -144,12 +144,6 @@ export interface Ns4E8PresentationProposal {
   changeSummary: string[];
 }
 
-export interface Ns4E8ReviewEvent {
-  action: 'approve' | 'requestChanges' | 'cancel';
-  adjustment: string;
-  review: Ns4E8SkeletonReview;
-}
-
 export interface Ns4WorkspaceFieldRef { entityId: string; fieldId: string; label: string; }
 export interface Ns4WorkspaceOrganism {
   role: string;

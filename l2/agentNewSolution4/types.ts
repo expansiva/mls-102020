@@ -189,7 +189,6 @@ export type {
   Ns4E10Delivery,
   Ns4E10Issue,
   Ns4E10RepairStep,
-  Ns4E10ReviewEvent,
   Ns4E10ValidationReport,
   Ns4L5BackendOwner,
   Ns4L5FrontendOwner,

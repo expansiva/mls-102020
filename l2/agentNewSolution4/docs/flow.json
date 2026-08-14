@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-13-ns4-flow-v32",
+  "schemaVersion": "2026-08-13-ns4-flow-v33",
   "status": "e1-e10",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts and deterministic L5 delivery contracts.",
   "canonicalReferences": [
@@ -11,7 +11,7 @@
   ],
   "principles": [
     "The root LLM detects the communication language, translates friendly step titles and creates the visible roadmap before clarification begins.",
-    "The runtime prefixes E1-through-E6 and the E8 skeleton checkpoint with the deterministic 👤 marker; dynamically appended technical nodes do not duplicate it, and persisted localized titles remain plain reusable text.",
+    "The runtime prefixes exactly the six E1-through-E6 human checkpoints with the deterministic 👤 marker; E7-through-E10 and dynamically appended technical nodes remain automated, and persisted localized titles remain plain reusable text.",
     "E4 parallel children are dispatched by stable entity: selectors and reconstruct their base invocation when collab-messages omits planning or prompt metadata on materialized fan-out children.",
     "Every E4, E7 and E8 parallel artifact worker submits a strict-tool flexible envelope. The envelope is a valid collab-messages payload, so healthy workers never transiently enter the failed state before their deterministic after-prompt gate runs.",
     "E4, E7 and E8 readers accept the platform tool-call transport (`flexible.result.arguments`) as well as direct flexible and legacy raw artifacts before applying their deterministic gate.",
@@ -55,26 +55,26 @@
     "Use cases do not copy E3 actors, authorities or scopes and do not prescribe ports, repositories, storage routing or backend architecture. E3 owns authorization and E8 owns channel integration.",
     "E8 derives workspace partition, page context, slices, invalidations, hub candidacy and navigation candidates from approved L4 contracts; its LLM calls may only localize presentation and select a closed surface catalog.",
     "E8 classifies every exposed context as URL path identity or local screen selection. Hub anchors and external handoff/event inputs are mechanical path contexts; local picker/slice contexts are mechanical selections; only viable focused-scenario ambiguities are decided by the existing presentation call, with selection as the recorded fallback.",
-    "E8 has one human checkpoint for the frozen skeleton. Its workspace-detail fan-out is bounded to 20 workers, validates each worker independently, and writes permanent typed workspace artifacts plus a workspace index.",
+    "E8 freezes its mechanically derived and strictly gated skeleton automatically. Its workspace-detail fan-out is bounded to 20 workers, validates each worker independently, and writes permanent typed workspace artifacts plus a workspace index without opening a clarification.",
     "Every constrained E8 presentation-repair step created by the runtime has one exact dynamic plan-id contract and is routed symmetrically through the E8 before/after hooks; malformed lookalike ids remain unsupported.",
     "An E8 selection input with an invalid sourceRef is repaired without another LLM call only when its fieldRef identifies exactly one compatible frozen slice; zero or multiple candidates remain Type A failures.",
     "E8 awaits its deterministic finalizer inside the local failure boundary so an irrecoverable detail persists failed pipeline state instead of leaving E8 marked running.",
-    "An E8 review submission becomes locally read-only before dispatch, and approval is idempotent by the stable workspace-detail planId; a repeated or late callback cannot enqueue a second fan-out or finalizer for the same review round.",
+    "E8 dispatch is idempotent by the stable workspace-detail planId; a repeated or late after-prompt callback cannot enqueue a second fan-out or finalizer for the same compilation round.",
     "E9 is a zero-LLM deterministic compiler. It reads only approved E2-E8 permanent artifacts, validates navigation reachability and context provenance, and emits typed BFF contracts, route/store/notification contracts plus realized operation authorities without a checkpoint.",
     "E9 compiles URL segments only from E8 urlRole=path contexts. Workspace page context owns place identity, focused scenario path context owns the optional item segment, and selection contexts never enter a route.",
+    "E9 validates route membership by contextId, not by idFieldRef text: a local selection may legitimately use the same field name as an existing page-path context without being part of the URL.",
     "Every E9 structural finding is Type A. A failed compile persists the pipeline error and returns repair ownership to E8; E9 never weakens navigation, field or workflow gates and never emits a partial approval anchor.",
     "E9 emissions are canonical and timestamp-free. Identical approved E8/E7/E4/E3 inputs produce byte-identical typed defs on every run.",
     "E10 first validates the complete saved L4 graph and emits no L5 delivery when a blocking check fails. Resolution, journey reachability, decision coherence, compiled workflow health and source-hash staleness are deterministic errors with an explicit owning repair step.",
     "E10 disclosure and dormant-command checks are registrars. Disclosure never compares E3 prose with field ids; dormant commands remain visible and produce an auditable system decision naming their missing compiled transition evidence.",
     "E10 writes an additive l5/config.json module-navigation seed, frontend/backend owner queues and a stable process record only after validate-all passes. Existing unrelated config keys, projects and modules are preserved.",
-    "The E10 final checkpoint is read-only: it previews validation, menu, counts and the consolidated decisions from E2, E7, E8 and E10. Human approval is the only transition that marks the module artifact complete and pipeline status complete.",
-    "A final rejection records the selected owning repair step, marks that step and every downstream compiled step stale, and leaves the permanent validation report and L5 delivery available for audit."
+    "After validate-all and L5 delivery succeed, E10 deterministically records automatic approval, adds e10-result and marks the module artifact and pipeline complete without opening a clarification."
   ],
   "invocation": {
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v32-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
+    "resumeRule": "A v33-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",
@@ -146,11 +146,10 @@
       "e9-navigation-compiler",
       "e9-result",
       "e10-validation",
-      "e10-final-review",
       "e10-result"
     ],
     "roadmap": [],
-    "roadmapExecution": "E1 through E10 are implemented. A successful E10 compile opens the final human checkpoint; approval completes the pipeline."
+    "roadmapExecution": "E1 through E10 are implemented. E1 through E6 are the six human checkpoints; E7 through E10 run automatically, and a successful E10 compile completes the pipeline."
   },
   "steps": [
     {
@@ -367,9 +366,9 @@
     {
       "planId": "e8-workspaces",
       "runtimePlanIdPattern": "e8-workspaces-round-{reviewRound}",
-      "type": "agent-human-skeleton-then-parallel-compiler",
+      "type": "agent-automatic-skeleton-then-parallel-compiler",
       "dependsOn": ["e7-result"],
-      "goal": "Derive, review and compile access-aware workspaces with one composed view call per workspace.",
+      "goal": "Derive and compile access-aware workspaces with one composed view call per workspace.",
       "output": [
         "l4/{module}/pipeline/e8-skeleton.draft.json",
         "l4/{module}/pipeline/e8-workspaces/{workspaceId}.draft.json",
@@ -385,8 +384,7 @@
         "An invalid presentation or missing ambiguous urlRole receives one bounded repair. If it remains invalid, E8 applies the mechanical selection default, records one E8 systemDecision per unresolved classification and continues to the checkpoint; presentation variance never fails the run.",
         "Workspace pageContext contains only path-role place identity: the hub anchor plus externally carried handoff, notification or event context. Scenario selectionContexts retain focused-record context at scenario scope; selection-role contexts require a local picker slice or declared form input, while path-role focused context becomes the future scenario item segment.",
         "The skeleton gate requires total use-case coverage, non-empty workspaces, resolvable path id fields with cardinality one, locally resolvable selections, collection and record scenarios for a hub, reachable FSM evidence for queues and at most seven menu items per section. A review or a form whose command declares contexts.requires must have a frozen slice, scenario context or workspace page context; a recognized context-free command with contexts.requires=[], including a cold-start creation, may collect new values without a pre-existing record. Empty menu sections are corrected by the mechanical grouping phase and remain visible as NS4_E8_MENU_EMPTY recorder warnings if encountered.",
-        "The human checkpoint reviews the map: URL previews, urlRole choices with business justifications, header links, feature menu, workspaces, scenarios, profiles and context-carrying candidate edges. A requested change starts the next skeleton round.",
-        "The review widget disables all submission controls synchronously. Before an approved skeleton dispatches workers, the hook also checks the task tree for the stable e8-workspaces-round-{reviewRound}-details-0 planId; if it already exists, the callback only reconciles the clarification status and does not add another fan-out or finalizer.",
+        "After the skeleton and presentation gates pass, E8 immediately dispatches workers with approvedBy=auto. The stable e8-workspaces-round-{reviewRound}-details-0 planId prevents a duplicate callback from adding another fan-out or finalizer.",
         "After approval, one dynamic worker per workspace returns organisms, ontology field projections and command inputs. Each worker is isolated and receives at most one targeted repair round; maxParallel is 20.",
         "Workers cannot change the frozen skeleton. The deterministic detail gate rejects unknown fields, slice/entity drift and unresolved pageContext or selection input. A fieldsOnly projection is recorded once per workspace and authority as a Type B system decision because E3 allowedInformation is prose; the backend continues enforcing the approved E3 projection and no text-to-field heuristic is attempted.",
         "Every finalizer round persists the complete per-workspace findings, including passing results, in e8-validation-report.json. After the bounded worker repair, remaining findings pass through helpers/ns4Resolve.ts: deterministic Type C patches and Type B decisions continue, while only irrecoverable Type A findings fail after the report is durable.",
@@ -414,7 +412,7 @@
       "gate": "steps/e9/gate.ts",
       "runtimeNotes": [
         "beforePromptStep performs the entire compile and returns completed or failed status; E9 never emits prompt_ready and afterPromptStep is an invariant failure path.",
-        "The compiler validates path and selection provenance, actor-compatible edges, real carried-context providers, actor journey reachability and queue evidence against compiled E7 workflows.",
+        "The compiler validates path and selection provenance, actor-compatible edges, real carried-context providers, actor journey reachability and queue evidence against compiled E7 workflows. Selection exclusion is proven through route.pathContextIds; shared identifier field names such as projectId are not route-membership evidence.",
         "Hub collection and record routes, nested place routes, focused scenario routes and standalone routes are derived from stable workspace/scenario ids and E8 urlRole decisions. URL path ids hydrate first; the per-tab store is only a cache.",
         "Handoff and eventDriven delivery is compiled into notifications with receiver profile, carried context and a route-backed deep link. Notification delivery is not kept as a navigation edge.",
         "One view contract per workspace plus one command contract per hosted command records exact typed inputs, projected outputs, business errors, source metadata, routePattern, skeletonHash and workspaceHash. Missing ontology field refs are terminal; json fields become unknown with a warning.",
@@ -426,9 +424,9 @@
     },
     {
       "planId": "e10-validation",
-      "type": "deterministic-validate-deliver-human-checkpoint",
+      "type": "deterministic-validate-deliver-finalize",
       "dependsOn": ["e9-result"],
-      "goal": "Validate the complete approved L4 graph, emit additive L5 delivery contracts and obtain final human approval.",
+      "goal": "Validate the complete approved L4 graph, emit additive L5 delivery contracts and complete the pipeline automatically.",
       "input": [
         "approved E2 through E9 permanent L4 artifacts",
         "current l5/config.json when present"
@@ -453,8 +451,7 @@
         "Blocking validation persists the report, marks its earliest owning step stale and does not write or update L5 files.",
         "The L5 config merger updates only the current module navigation/headerLinks in an existing client project or top-level module seed. Unrelated keys and modules are preserved; identical inputs produce byte-identical config JSON.",
         "Frontend owners are stable workspace and contract ids with statusFrontend=toCreate. Backend owners are stable E7 use-case ids with statusBackend=toCreate. The process record carries source hashes, counts and report summary without a wall-clock timestamp.",
-        "A passed compile opens the e10-final-review clarification with only a small disk-backed handoff. The widget reads the permanent report, previews general versus hub navigation by profile and shows every consolidated decision read-only.",
-        "Approval adds e10-result before completing the clarification and marks module/pipeline complete. Rejection records a chosen E2-E9 repair owner and marks that owner plus downstream stages stale for a later resume."
+        "A passed compile marks module and pipeline approvedBy=auto, adds e10-result and completes the E10 step in the same deterministic hook. No clarification or CSS widget participates in finalization."
       ]
     }
   ]

@@ -1,13 +1,10 @@
 import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
-import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
 import { createNs4FlexibleWorkerTool, unwrapNs4FlexibleWorkerPayload } from '/_102020_/l2/agentNewSolution4/helpers/ns4WorkerTools.js';
-import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution4/helpers/ns4Clarification.js';
 import {
-  createNs4E8PresentationRepairStep, createNs4E8Step, isNs4Pipeline, markNs4E8Approved, markNs4E8Failed, markNs4E8Running,
-  markNs4E8WaitingHuman, markNs4ModuleE8Approved, NS4_E8_MAX_PARALLEL, Ns4ApprovedBy, Ns4PipelineState,
+  createNs4E8PresentationRepairStep, isNs4Pipeline, markNs4E8Approved, markNs4E8Failed, markNs4E8Running,
+  markNs4ModuleE8Approved, NS4_E8_MAX_PARALLEL, Ns4ApprovedBy, Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { readNs4ApprovedAccess, readNs4ApprovedJourneys, readNs4ApprovedOntology } from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
 import {
@@ -20,7 +17,7 @@ import type { Ns4JourneyIndex } from '/_102020_/l2/agentNewSolution4/steps/e2/co
 import type { Ns4UseCaseArtifactV3, Ns4UseCaseIndexArtifactV3, Ns4WorkflowArtifactV2, Ns4WorkflowIndexArtifactV2, Ns4WorkflowIndexArtifactV3 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 import {
   buildNs4WorkspaceArtifacts, deriveNs4E8Skeleton, hashNs4E8Skeleton, normalizeNs4E8PresentationProposal, normalizeNs4E8Skeleton,
-  normalizeNs4WorkspaceDetail, overlayNs4E8Presentation, resolveNs4E8PresentationDefaults, Ns4E8SkeletonReview, Ns4E8Sources, Ns4E8ReviewEvent, Ns4WorkspaceDetailDraft,
+  normalizeNs4WorkspaceDetail, overlayNs4E8Presentation, resolveNs4E8PresentationDefaults, Ns4E8SkeletonReview, Ns4E8Sources, Ns4WorkspaceDetailDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
 import { hasNs4E8DetailsDispatch, ns4E8DetailsPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
 import { resolveNs4WorkspaceDetailFindings, validateNs4E8PresentationProposal, validateNs4E8Skeleton, validateNs4WorkspaceDetail } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
@@ -39,7 +36,7 @@ interface Ns4E8ValidationReport {
 }
 const MAX_WORKER_REPAIRS = 1;
 
-export async function beforeNs4E8PromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
+export async function beforeNs4E8PromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   const selector = workspaceSelector(args) || workspaceSelector(step.prompt); let moduleName = '';
   try {
     const parsed = resolveArgs(context, selector ? { planId: 'e8-workspaces', stage: 'finalize' } : args || step.prompt); moduleName = parsed.moduleName;
@@ -52,7 +49,7 @@ export async function beforeNs4E8PromptStep(agent: IAgentMeta, context: mls.msg.
   }
 }
 
-export async function afterNs4E8PromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
+export async function afterNs4E8PromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   const selector = workspaceSelector(args) || workspaceSelector(step.prompt); let moduleName = '';
   try {
     if (selector) {
@@ -79,21 +76,11 @@ export async function afterNs4E8PromptStep(agent: IAgentMeta, context: mls.msg.E
     }
     skeleton = presentationGate.ok ? overlayNs4E8Presentation(derived, proposal) : resolveNs4E8PresentationDefaults(derived, formatGate(presentationGate.issues));
     skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
-    const gate = validateNs4E8Skeleton(skeleton, sources); const skeletonPath = await writeNs4E8SkeletonDraft(moduleName, skeleton);
+    const gate = validateNs4E8Skeleton(skeleton, sources); await writeNs4E8SkeletonDraft(moduleName, skeleton);
     if (!gate.ok) throw new Error(formatGate(gate.issues));
-    await writeNs4Pipeline(markNs4E8WaitingHuman(await requirePipeline(moduleName), round, skeletonPath));
     const mutationParent = findParent(context, parent, step);
-    if (fast(context)) return beginWorkers(context, mutationParent, step, hookSequential, skeleton, 'auto');
-    return [clarification(context, mutationParent, skeleton, pipeline.presentation.stepTitles['e8-workspaces']), status(context, mutationParent, step, hookSequential, 'completed', 'E8 workspace map ready for human approval.', 'input_output')];
+    return beginWorkers(context, mutationParent, step, hookSequential, skeleton, 'auto');
   } catch (error) { const message = errorMessage(error); await fail(moduleName, message); return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')]; }
-}
-
-export async function beforeNs4E8ClarificationStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIClarificationStep, hookSequential: number, json: unknown): Promise<HTMLElement> {
-  const skeleton = normalizeNs4E8Skeleton(parse(json)); const gate = validateNs4E8Skeleton(skeleton, await loadSources(skeleton.moduleName)); if (!gate.ok) throw new Error(formatGate(gate.issues));
-  await import('/_102020_/l2/agentNewSolution4/widgets/widgetNs4Workspaces.js'); const element = document.createElement('widget-ns4-workspaces-102020');
-  const widget = element as unknown as { value: Ns4E8SkeletonReview; setSubmitting(value: boolean): void }; widget.value = skeleton;
-  element.addEventListener('ns4-workspaces-review', (event: Event) => { void applyReview(context, parent, step, hookSequential, (event as CustomEvent<Ns4E8ReviewEvent>).detail).catch(error => { widget.setSubmitting(false); showNs4ClarificationError(element, error); console.error(`[${agent.agentName}] ${errorMessage(error)}`); }); });
-  return element;
 }
 
 async function skeletonPrompt(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, hookSequential: number, hookArgs: string, args: Ns4E8Args & { moduleName: string }): Promise<mls.msg.AgentIntentPromptReady> {
@@ -126,24 +113,10 @@ async function workerPrompt(context: mls.msg.ExecutionContext, parent: mls.msg.A
   ].filter(Boolean).join('\n\n'), tool);
 }
 
-async function applyReview(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIClarificationStep, hookSequential: number, event: Ns4E8ReviewEvent): Promise<void> {
-  if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; a revisão foi mantida aberta.');
-  const skeleton = normalizeNs4E8Skeleton(event.review, event.review.moduleName); const mutationParent = findParent(context, parent);
-  if (event.action === 'approve' && hasNs4E8DetailsDispatch(getAllSteps(context.task?.iaCompressed?.nextSteps), skeleton.reviewRound)) {
-    await applyIntents(context, [status(context, mutationParent, step, hookSequential, 'completed', `E8 workspace detailing for review round ${skeleton.reviewRound} was already dispatched; duplicate approval ignored.`, 'input_output')]);
-    await continuePoolingTask(context); return;
-  }
-  const sources = await loadSources(event.review.moduleName); skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
-  const gate = validateNs4E8Skeleton(skeleton, sources); if (!gate.ok) throw new Error(formatGate(gate.issues)); await writeNs4E8SkeletonDraft(skeleton.moduleName, skeleton);
-  if (event.action === 'requestChanges') {
-    if (!event.adjustment.trim()) throw new Error('Descreva a alteração desejada antes de enviar.'); const pipeline = await requirePipeline(skeleton.moduleName);
-    await writeNs4Pipeline(markNs4E8Running(pipeline, skeleton.reviewRound + 1));
-    await applyIntents(context, [addStep(context, mutationParent, createNs4E8Step(skeleton.moduleName, skeleton.reviewRound + 1, event.adjustment, [], pipeline.presentation.stepTitles['e8-workspaces'])), status(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output')]);
-  } else await applyIntents(context, await beginWorkers(context, mutationParent, step, hookSequential, skeleton, 'human'));
-  await continuePoolingTask(context);
-}
-
 async function beginWorkers(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, host: mls.msg.AIPayload, hookSequential: number, skeleton: Ns4E8SkeletonReview, approvedBy: Ns4ApprovedBy): Promise<mls.msg.AgentIntent[]> {
+  if (hasNs4E8DetailsDispatch(getAllSteps(context.task?.iaCompressed?.nextSteps), skeleton.reviewRound)) {
+    return [status(context, parent, host, hookSequential, 'completed', `E8 workspace detailing for compilation round ${skeleton.reviewRound} was already dispatched; duplicate callback ignored.`, 'input_output')];
+  }
   const pipeline = await requirePipeline(skeleton.moduleName); await writeNs4Pipeline(markNs4E8Running(pipeline, skeleton.reviewRound, `l4/${skeleton.moduleName}/pipeline/e8-skeleton.draft.json`));
   const parallel = workerStep(context, host, skeleton, 0); const finalizeStep = createFinalize(skeleton.moduleName, approvedBy, 0, [String(parallel.step.planning?.planId || '')]);
   return [parallel, addStep(context, parent, finalizeStep), status(context, parent, host, hookSequential, 'completed', `E8 skeleton approved; detailing ${skeleton.workspaces.length} workspaces with maxParallel=${NS4_E8_MAX_PARALLEL}.`, 'input_output')];
@@ -161,7 +134,7 @@ async function finalize(context: mls.msg.ExecutionContext, parent: mls.msg.AIAge
   const repairRound = args.repairRound || 0; const mutationParent = findParent(context, parent, step);
   if (invalid.length && repairRound < MAX_WORKER_REPAIRS) {
     await updateValidationReport(args.moduleName, repairRound, evaluations.map(item => ({ workspaceId: item.workspaceId, status: item.detail ? item.ok ? 'valid' : 'invalid' : 'missing', issues: item.issues })), [], 'repairing');
-    const parallel = workerStep(context, step, skeleton, repairRound + 1, invalid); return [parallel, addStep(context, mutationParent, createFinalize(args.moduleName, args.approvedBy || 'human', repairRound + 1, [String(parallel.step.planning?.planId || '')])), status(context, mutationParent, step, hookSequential, 'completed', `E8 repairing ${invalid.length} invalid workspace detail(s): ${invalid.join(', ')}.`, 'input_output')];
+    const parallel = workerStep(context, step, skeleton, repairRound + 1, invalid); return [parallel, addStep(context, mutationParent, createFinalize(args.moduleName, args.approvedBy || 'auto', repairRound + 1, [String(parallel.step.planning?.planId || '')])), status(context, mutationParent, step, hookSequential, 'completed', `E8 repairing ${invalid.length} invalid workspace detail(s): ${invalid.join(', ')}.`, 'input_output')];
   }
   const details: Ns4WorkspaceDetailDraft[] = []; const decisions: Ns4SystemDecision[] = [...skeleton.systemDecisions];
   const results: Ns4E8ValidationReport['attempts'][number]['results'] = [];
@@ -178,10 +151,10 @@ async function finalize(context: mls.msg.ExecutionContext, parent: mls.msg.AIAge
   const uniqueDecisions = [...new Map(decisions.map(decision => [decision.findingRef, decision])).values()];
   const reportPath = await updateValidationReport(args.moduleName, repairRound, results, uniqueDecisions, unresolved.length ? 'failed' : 'passed');
   if (unresolved.length) throw new Error(`E8 workspace details remain irrecoverable after repair: ${unresolved.join(', ')}. See ${reportPath}.`);
-  const approvedAt = new Date().toISOString(); const built = await buildNs4WorkspaceArtifacts(skeleton, details, args.approvedBy || 'human', approvedAt, uniqueDecisions); const artifactPaths: string[] = [reportPath];
+  const approvedAt = new Date().toISOString(); const built = await buildNs4WorkspaceArtifacts(skeleton, details, args.approvedBy || 'auto', approvedAt, uniqueDecisions); const artifactPaths: string[] = [reportPath];
   for (const artifact of built.artifacts) artifactPaths.push(await writeNs4Workspace(args.moduleName, artifact.workspaceId, artifact)); artifactPaths.push(await writeNs4WorkspaceIndex(args.moduleName, built.index));
   const module = await readNs4Module(args.moduleName); if (!module) throw new Error(`Module artifact not found for ${args.moduleName}.`);
-  await writeNs4Module(args.moduleName, markNs4ModuleE8Approved(module, args.approvedBy || 'human', approvedAt)); await writeNs4Pipeline(markNs4E8Approved(await requirePipeline(args.moduleName), args.approvedBy || 'human', artifactPaths, approvedAt));
+  await writeNs4Module(args.moduleName, markNs4ModuleE8Approved(module, args.approvedBy || 'auto', approvedAt)); await writeNs4Pipeline(markNs4E8Approved(await requirePipeline(args.moduleName), args.approvedBy || 'auto', artifactPaths, approvedAt));
   return [result(context, mutationParent, { moduleName: args.moduleName, workspaceCount: built.artifacts.length, artifactPaths }, 'E8 workspaces approved'), status(context, mutationParent, step, hookSequential, 'completed', `E8 compiled ${built.artifacts.length} workspaces.`, 'input_output')];
 }
 
@@ -211,13 +184,11 @@ function resolveArgs(context: mls.msg.ExecutionContext, value: unknown): Ns4E8Ar
 function findE7Module(context: mls.msg.ExecutionContext): string { const item = getAllSteps(context.task?.iaCompressed?.nextSteps).find(step => step.planning?.planId === 'e7-result'); const parsed = item?.type === 'result' ? parse(item.result) : null; return isRecord(parsed) ? text(parsed.moduleName) : ''; }
 async function requirePipeline(moduleName: string): Promise<Ns4PipelineState> { const pipeline = await readNs4Pipeline(moduleName); if (!isNs4Pipeline(pipeline)) throw new Error(`agentNewSolution4 pipeline not found for ${moduleName}.`); return pipeline; }
 async function fail(moduleName: string, message: string): Promise<void> { if (!moduleName) return; try { const pipeline = await readNs4Pipeline(moduleName); if (isNs4Pipeline(pipeline)) await writeNs4Pipeline(markNs4E8Failed(pipeline, message)); } catch { /* trace is the fallback */ } }
-function clarification(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, skeleton: Ns4E8SkeletonReview, title: string): mls.msg.AgentIntentAddStep { return addStep(context, parent, { type: 'clarification', stepId: 0, interaction: null, stepTitle: title.trim().replace(/^[👤🔎]\s*/u, ''), status: 'pending', nextSteps: [], json: JSON.stringify(skeleton), planning: { planId: `e8-skeleton-review-round-${skeleton.reviewRound}`, dependsOn: [], executionMode: 'sequential', executionHost: 'client' } } as mls.msg.AIClarificationStep); }
 function result(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, saved: PersistedE8, title: string): mls.msg.AgentIntentAddStep { return addStep(context, parent, { type: 'result', stepId: 0, interaction: null, stepTitle: title, status: 'completed', nextSteps: [], result: JSON.stringify({ ...saved, completedStep: 'e8-workspaces', nextStep: 'e9-navigation-compiler' }, null, 2), planning: { planId: 'e8-result', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' } } as mls.msg.AIResultStep); }
 function findParent(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step?: mls.msg.AIAgentStep): mls.msg.AIAgentStep { return resolveNs4MutableParent(getAllSteps(context.task?.iaCompressed?.nextSteps), parent, step); }
 function promptReady(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, hookSequential: number, args: string, systemPrompt: string, humanPrompt: string, tool?: mls.msg.LLMTool): mls.msg.AgentIntentPromptReady { return { type: 'prompt_ready', args, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', hookSequential, parentStepId: parent.stepId, systemPrompt, humanPrompt, ...(tool ? { tools: [tool], toolChoice: { type: 'function', function: { name: tool.function.name } } } : {}) }; }
 function addStep(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIPayload): mls.msg.AgentIntentAddStep { return { type: 'add-step', messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parent.stepId, step }; }
 function status(context: mls.msg.ExecutionContext, parent: mls.msg.AIPayload, step: mls.msg.AIPayload, hookSequential: number, state: mls.msg.AIStepStatus, traceMsg?: string, cleaner?: 'input' | 'input_output'): mls.msg.AgentIntentUpdateStatus { return { type: 'update-status', hookSequential, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parent.stepId, stepId: step.stepId, status: state, ...(traceMsg ? { traceMsg } : {}), ...(cleaner ? { cleaner } : {}) }; }
-async function applyIntents(context: mls.msg.ExecutionContext, intents: mls.msg.AgentIntent[]): Promise<void> { const response = await msgApplyIntents({ userId: context.message.senderId, intents }); if (!response || response.statusCode !== 200) throw new Error((response as mls.msg.ResponseBase | undefined)?.msg || 'Error applying E8 intents.'); const applied = response as mls.msg.ResponseApplyIntents; context.task = applied.task; if (applied.message) context.message = applied.message; }
 function workspaceSelector(value: unknown): string { return typeof value === 'string' ? /^workspace:([a-z][A-Za-z0-9]*)$/.exec(value.trim())?.[1] || '' : ''; }
 async function readNs4WorkspaceWorkerTool(): Promise<mls.msg.LLMTool> { const raw = await readNs4Text(ns4AgentFile('schemas', 'e8-workspace-detail-worker.schema', '.json'), true); const schema = parse(raw); if (!isRecord(schema)) throw new Error('Invalid E8 workspace worker tool schema.'); return createNs4FlexibleWorkerTool('submitNs4E8WorkspaceDetail', 'Submit one E8 workspace detail.', schema); }
 async function readNs4E8PresentationTool(): Promise<mls.msg.LLMTool> { const raw = await readNs4Text(ns4AgentFile('schemas', 'e8-workspace.schema', '.json'), true); const schema = parse(raw); if (!isRecord(schema)) throw new Error('Invalid E8 presentation tool schema.'); const parameters = { ...schema }; delete parameters.$id; delete parameters.$schema; return { type: 'function', function: { name: 'submitNs4E8Presentation', description: 'Submit the E8 presentation and ambiguous URL-role decisions.', parameters } }; }
@@ -227,6 +198,5 @@ function isRecord(value: unknown): value is Record<string, unknown> { return !!v
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
 function integer(value: unknown): number { return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : 0; }
 function memory(context: mls.msg.ExecutionContext, key: string): string { const value = context.task?.iaCompressed?.longMemory?.[key]; return typeof value === 'string' ? value.trim() : ''; }
-function fast(context: mls.msg.ExecutionContext): boolean { return memory(context, 'fastMode') === 'true'; }
 function formatGate(issues: Array<{ code: string; path: string; message: string }>): string { return issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n'); }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }

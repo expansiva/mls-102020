@@ -134,7 +134,7 @@ test('A4 reports a missing fieldsOnly disclosure decision without rejecting vali
   assert.equal(report.errors.some(issue => /DISCLOSURE/.test(issue.code)), false);
 });
 
-test('E10 completion closes the pipeline and rejection stales the selected owner plus downstream stages', () => {
+test('E10 automatic completion closes the pipeline and a blocking gate stales its selected owner plus downstream stages', () => {
   const e7 = markNs4E7Approved(createNs4Pipeline('buildFlowFsm38', 'Build flow'), ['usecases/index']);
   const e8 = markNs4E8Approved(e7, 'auto', ['workspaces/index']);
   const e9 = markNs4E9Approved(e8, ['navigation/index']);
@@ -144,8 +144,17 @@ test('E10 completion closes the pipeline and rejection stales the selected owner
   assert.equal(rejected.steps.e8?.status, 'stale');
   assert.equal(rejected.steps.e9?.status, 'stale');
   assert.equal(rejected.steps.e10?.repairStep, 'e7-realization');
-  const approved = markNs4E10Approved(e9, 'human');
+  const approved = markNs4E10Approved(
+    e9,
+    'auto',
+    '2026-08-13T00:00:00.000Z',
+    'l4/buildFlowFsm38/pipeline/e10-validation-report.json',
+    ['l5/buildFlowFsm38/process.defs.ts'],
+  );
   assert.equal(approved.status, 'complete');
   assert.equal(approved.nextStep, 'complete');
   assert.equal(approved.steps.e10?.status, 'approved');
+  assert.equal(approved.steps.e10?.approvedBy, 'auto');
+  assert.equal(approved.steps.e10?.reportPath, 'l4/buildFlowFsm38/pipeline/e10-validation-report.json');
+  assert.deepEqual(approved.steps.e10?.artifactPaths, ['l5/buildFlowFsm38/process.defs.ts']);
 });
