@@ -234,6 +234,10 @@ export class WidgetInheritChoice102020 extends StateLitElement {
 
     const blocking = inheritBlockingIssues(this.data, value);
     const canConfirm = canConfirmInherit(this.data, value);
+    // Unavailable only when the parent WAS read and nothing in it can carry a change. An unreadable
+    // parent leaves the choice open with free text — refusing everything would leave the user unable
+    // to answer a question they were still asked.
+    const overrideUnavailable = value.overridableMembers.length > 0 && !isOverrideAvailable(value);
 
     return html`
       <div class="ihc">
@@ -251,7 +255,7 @@ export class WidgetInheritChoice102020 extends StateLitElement {
           ${this.renderOption('less', this.msg.lessTitle, this.msg.lessBody,
             value.hasLess ? nothing : html`<p class="ihc-hint">${this.msg.noLess}</p>`)}
           ${this.renderOption('override', this.msg.overrideTitle, this.msg.overrideBody,
-            this.renderMemberPicker(), !isOverrideAvailable(value) && value.overridableMembers.length > 0)}
+            overrideUnavailable ? nothing : this.renderMemberPicker(), overrideUnavailable)}
           ${this.renderOption('parent', this.msg.parentTitle, this.msg.parentBody)}
         </div>
 
