@@ -23,9 +23,17 @@ export interface ImRunFacts {
   playgroundChanged: boolean;
   addedSlots: string[];
   indexUpdated: boolean;
-  /** Route C only. */
+  /** Route C only: 'less', 'override' or 'parent'. */
   inheritWhere: string;
   inheritMember: string;
+  /**
+   * The shell's parent, `_102040_/l2/molecules/<group>/<name>.ts`.
+   *
+   * Required by the 'parent' outcome and by nothing else: that outcome writes no file, so the file
+   * to open IS the entire answer the user gets. It was missing until 2026-08-14 and the summary had
+   * nothing actionable to say — see the CHANGELOG.
+   */
+  parentReference: string;
   findings: ImCoherenceFinding[];
 }
 
@@ -33,7 +41,7 @@ export function emptyRunFacts(): ImRunFacts {
   return {
     tag: '', groupCanonical: '', route: '', rationale: '', request: '',
     touched: [], why: [], playgroundChanged: false, addedSlots: [],
-    indexUpdated: false, inheritWhere: '', inheritMember: '', findings: [],
+    indexUpdated: false, inheritWhere: '', inheritMember: '', parentReference: '', findings: [],
   };
 }
 
@@ -67,14 +75,26 @@ export function renderRunFacts(facts: ImRunFacts): string {
     lines.push('', '**What was done, as the edits themselves recorded it**', ...facts.why.map(w => `- ${w}`));
   }
 
+  // THREE outcomes, and there must be three branches. Until 2026-08-14 this was an if/else, so
+  // 'parent' — the one outcome that writes nothing — rendered as "by overriding `` locally", naming
+  // an empty member and describing the opposite of what happened.
   if (facts.inheritWhere) {
-    lines.push(
-      '',
-      '**This molecule inherits from another, and the user chose where the fix goes**',
-      facts.inheritWhere === 'less'
-        ? '- in this molecule\'s own stylesheet, so it keeps inheriting everything else'
-        : `- by overriding \`${facts.inheritMember}\` locally, so this molecule no longer inherits that member`,
-    );
+    lines.push('', '**This molecule inherits from another, and the user chose where the fix goes**');
+    if (facts.inheritWhere === 'less') {
+      lines.push('- in this molecule\'s own stylesheet, so it keeps inheriting everything else');
+    } else if (facts.inheritWhere === 'override') {
+      lines.push(`- by overriding \`${facts.inheritMember}\` locally, so this molecule no longer inherits that member`);
+    } else {
+      // The instruction IS the deliverable here: nothing was written, on purpose, and this agent
+      // never crosses into the base project. A summary that omits the file leaves the user with
+      // "nothing was changed" and no way to act on it.
+      lines.push(
+        '- **in the BASE component, which lives in another project — so nothing was changed here, and that is the correct outcome.**',
+        facts.parentReference
+          ? `- The fix belongs in \`${facts.parentReference}\`. Tell the user to open that file, in that project, and say that fixing it there reaches every molecule that inherits from it — which is why it was not patched into this one.`
+          : '- The base component could not be named from the run artifacts; say plainly that the fix belongs to the base molecule this one extends.',
+      );
+    }
   }
 
   lines.push(

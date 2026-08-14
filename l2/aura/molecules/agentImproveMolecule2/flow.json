@@ -2,11 +2,11 @@
   "flowId": "agentImproveMolecule2",
   "schemaVersion": "2026-08-06-improvemolecule2-v1",
   "specFirst": "Written BEFORE the code, per skills/agentsBestPractices.md §1. The design decisions this flow implements are closed in todo/analise-improve-molecule-2.md (§6 architecture, §7 open questions, §8 the two last calls). When behavior must change, change this spec first, then the code.",
-  "description": "Changes an EXISTING molecule. Triages the request into one of four routes: (A) definition change -> rebuild through the agentNewMolecule2 pipeline; (B) minor change -> edit, save, regenerate the playground when affected, and then the group index; (C) inherited shell whose fix needs parent code -> its own clarification, the user decides between .less and a local override; (D) out of scope -> readable failure. Replaces agentsManageMolecules/agentImproveMolecule{,Defs,Materialize}.ts, which stay in place until this one is accepted.",
+  "description": "Changes an EXISTING molecule. Triages the request into one of four routes: (A) definition change -> confirm the delta with the human, then edit the contract and the code in place; (B) minor change -> edit, save, regenerate the playground when affected, and then the group index; (C) inherited shell whose fix needs parent code -> its own clarification, the user decides between .less and a local override; (D) out of scope -> readable failure. Replaces agentsManageMolecules/agentImproveMolecule{,Defs,Materialize}.ts, which stay in place until this one is accepted.",
   "principles": [
     "REUSE THE HELPERS, NOT THE STEPS. agentNewMolecule2 generates the same five artifacts, and its generation lives in helpers/nmTemplates.ts + helpers/nmFs.ts, not in the step agents. This flow imports those and brings its own steps and gates. Measured reason: nmFs.ts:75 states 'a new molecule must not overwrite an existing one' — the NM2 gate REFUSES an existing file, which is the exact inverse of this agent's precondition. Making the same step serve both would need a create/update mode field inside it, the 'multi-role agent switched by a mode field' that agentsBestPractices forbids.",
     "CREATE vs UPDATE is the whole difference. Every step here reads the current artifact first and writes a delta. A step that cannot read what exists must not write.",
-    "Deterministic first. Which artifacts a change touches, whether the playground is affected, whether the index must follow, the tag, the paths — all derived in code. LLM calls are spent on judgment only: triage, the rebuild plan, the code edit, the stylesheet edit.",
+    "Deterministic first. Which artifacts a change touches, whether the playground is affected, whether the index must follow, the tag, the paths — all derived in code. LLM calls are spent on judgment only: triage, the definition delta, the code edit, the stylesheet edit.",
     "NEVER touch the parent. An inherited shell is fixed in its own file (.less first, local override second). Changing the base molecule is out of this agent's scope; it is a request the user opens in the base project.",
     "Coherence over speed. The value of this agent is not editing faster — it is keeping the four artifacts saying the same thing: defs, molecule, playground and group index. Their divergence is what produced 13 defects found by accident in the week of 2026-08-05.",
     "The gates REPORT, they do not block. This is an improve run: a coherence problem found here is an opportunity to fix it now, not a barrier. Blocking on pre-existing debt would freeze the agent on molecules nobody asked to repair."
@@ -45,9 +45,13 @@
         "i0-classify",
         "i1-locate",
         "i2-triage",
-        "i2a-rebuild-handoff"
+        "i2a-definition",
+        "i3-edit",
+        "i5-playground",
+        "i6-index",
+        "i7-summary"
       ],
-      "then": "the agentNewMolecule2 pipeline owns the rest; i7-summary is NOT planted here — NM2 has its own summary"
+      "then": "the same steps as route B, after the checkpoint: the definition change is an EDIT. Route A is for an INTENTIONAL change of what the molecule promises. NOTE (corrected 2026-08-14): it is NOT the only way to reach the active branch of i5-playground and i6-index — the group contract in skills/<group>/creation.ts enumerates the surface, and 27 molecules are missing a slot their group requires, so fixing one is route B and still moves the surface. Note also that the group contract fixing the surface means a legitimate route A usually implies the group contract moving first."
     },
     "B": {
       "steps": [
@@ -160,7 +164,7 @@
         "checks": [
           "route is one of A|B|C|D — reported alone, since every other message is about a decision that was never made",
           "route C requires context.inheritance.isShell — a non-shell can never take it (the measured half of the C condition; the other half, \"the behaviour lives in the parent\", is judgement and the gate says nothing about it)",
-          "route A requires at least one entry in definitionElements — that field was added to the schema so this check is implementable, and it pre-fills the rebuild clarification",
+          "route A requires at least one entry in definitionElements — that field was added to the schema so this check is implementable, and it pre-fills the definition checkpoint",
           "definitionElements is empty on B, C and D — naming one there contradicts the route",
           "expectedArtifacts is empty on A and D, non-empty on B and C",
           "expectedArtifacts names only known artifact kinds, and an ABSENT one only when a later step creates it (less, html, groupIndex); .ts and .defs.ts are guaranteed by i1-locate",
@@ -173,32 +177,37 @@
       "doneAnchor": "i2-done"
     },
     {
-      "planId": "i2a-rebuild-handoff",
-      "agentName": "agentIm2RebuildHandoff",
-      "type": "deterministic",
-      "model": "none",
+      "planId": "i2a-definition",
+      "agentName": "agentIm2Definition",
+      "type": "clarification",
+      "model": "reasoning",
       "dependsOn": [
         "i2-done"
       ],
-      "goal": "ROUTE A ONLY. A definition change is not an edit, it is a rebuild: hand the run over to the agentNewMolecule2 pipeline (n2-plan onward) carrying the EXISTING artifacts as the starting point, so its clarification opens pre-filled instead of empty. This step exists so the handoff is a declared boundary and not a hidden call.",
+      "goal": "ROUTE A ONLY. The molecule's PUBLIC DEFINITION moves, and this is the only checkpoint in the agent where a promise changes. The model proposes the delta — which slots, properties or events are added, removed or renamed, and what each is for — and a human confirms it line by line, dropping any line before it runs. i3-edit is then instructed by what was confirmed, and writes the .defs.ts and the .ts together.",
       "input": [
         "context.json",
         "triage.json"
       ],
       "output": {
-        "result": "{ handedOff: true, nmRunKey }"
+        "artifact": "l4/agentImproveMolecule2/<runKey>/definition.json",
+        "result": "{ changes: [{ kind, op, name, previousName?, purpose }] }"
       },
       "gate": {
-        "file": "steps/i2a-rebuild-handoff/gate.ts",
+        "file": "steps/i2a-definition/gate.ts",
         "checks": [
-          "route == A",
-          "the NM2 run receives the existing artifacts (a rebuild must never start from a blank plan)",
-          "the NM2 collision check is satisfied by the update contract, not bypassed silently"
+          "at least one change — a definition change that names nothing is a route B edit",
+          "kind is slot|property|event: those three ARE the public surface",
+          "add: the element must NOT already be declared (if it exists and does not work, that is a defect, and defects are route B)",
+          "remove/rename: the element MUST be declared today, checked against the measured surface",
+          "rename carries a previous name, and it differs from the new one",
+          "every change says what it is for — the human reads it and i3-edit writes the contract from it",
+          "the MODEL's proposal carries a reason; the HUMAN's confirmation need not"
         ],
-        "onFail": "NO retry: readable failure"
+        "onFail": "retry 1 with the errors; a 2nd failure fails the step"
       },
       "doneAnchor": "i2a-done",
-      "openQuestion": "How the NM2 collision gate is satisfied on a rebuild is the one mechanical detail left: either NM2 gains an explicit 'update' entry contract, or the handoff writes into a staging path. Decide when writing steps/i2a; do NOT solve it with a mode flag inside the NM2 steps."
+      "decision": "ROUTE A IS AN EDIT, NOT A REBUILD (2026-08-14). The step was specced as a handoff to agentNewMolecule2 from n2-plan onward, and that blocked the route from 2026-08-06: NM2 refuses to overwrite an existing molecule and route A acts on one by definition. It also meant regenerating a contract that was approved and an implementation that works, to add one slot. Editing in place removes both problems and reuses steps that already exist: i3-edit writes .defs.ts and .ts, i5-playground regenerates the playground because the surface moved, i6-index follows. NM2 is not involved, and the collision gate never comes up. CORRECTED 2026-08-14: this route is NOT the only one that reaches the active branch of i5 and i6. The sweep behind that claim compared each molecule's own .defs.ts prose against its code; the GROUP contract is what enumerates the surface, and 27 molecules are missing a slot their group requires — fixing one is route B and moves the surface."
     },
     {
       "planId": "i4-inherit",
@@ -405,7 +414,6 @@
     "whyTheRoot": "The router is a hook on the root and not a step agent because it holds no logic of its own — it IS the routing table, and the table belongs where the tree is planted. Putting successors in each step's after-hook is the pattern agentsBestPractices §6 names as the reason reordering agentChangeBackend meant editing ~20 files."
   },
   "notBuilt": {
-    "i2a-rebuild-handoff": "NOT IMPLEMENTED. Route A cannot run and fails readably at the router. Blocked on the openQuestion: how the NM2 collision gate is satisfied on a rebuild.",
-    "policy": "A declared-but-absent step is SKIPPED, never planted: planting it puts a node in the tree whose agent does not resolve, which reads to the user as a crash rather than as \"this part is not built\". The router names every skipped step in its completion message — no silent truncation. As of 2026-08-06 only i2a-rebuild-handoff is absent."
+    "policy": "A declared-but-absent step is SKIPPED, never planted: planting it puts a node in the tree whose agent does not resolve, which reads to the user as a crash rather than as \"this part is not built\". The router names every skipped step in its completion message — no silent truncation. EMPTY since 2026-08-14, when route A was built as an in-place definition change (i2a-definition) instead of a handoff to agentNewMolecule2. The mechanism stays for the next route that is declared before it is built."
   }
 }

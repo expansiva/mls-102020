@@ -71,12 +71,17 @@ styled alike.
 - an override never names a member that **cannot** be overridden — a private member or a module-scope
   constant. The refusal says which of the two and that the answer is therefore `parent`, because
   "unknown member" about something that exists sends the retry looking for a typo;
+- an override never names a member that **can be overridden and cannot carry a change**: a method
+  whose body only composes the parent's `private` helpers. `override` is not offered at all when no
+  member is capable — the option is shown greyed with the reason, and the two remaining answers stand
+  (`no_capable_member` / `member_incapable`, CHANGELOG 2026-08-14);
 - a member named on a choice that does not target one is refused;
 - the **model's** suggestion must carry a reason; the human's answer need not;
 - Cancel stops the run with nothing written.
 
 ## Tests
 
-`gate.test.ts` (13) and `widgetInheritChoiceLogic.test.ts` (10), both pure, no DOM. The member map and
-the unreachable map are tested in `helpers/imInherit.test.ts`. The one that carries the design is
-"'parent' is a VALID answer and NOT an executable one".
+`gate.test.ts` (13) and `widgetInheritChoiceLogic.test.ts` (13), both pure, no DOM. The member map, the
+unreachable map and the **capability** rule are tested in `helpers/imInherit.test.ts`. The two that carry
+the design are "'parent' is a VALID answer and NOT an executable one" and "when NOTHING can carry the
+change, override is not available at all".

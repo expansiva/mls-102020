@@ -43,6 +43,25 @@ test('the route C choice is spelled out with its consequence', () => {
   assert.match(asOverride, /getTriggerTemplate/);
 });
 
+test("THE THIRD OUTCOME: 'parent' names the file to open, and is never described as an override", () => {
+  // Measured 2026-08-14: an if/else for a three-way choice sent 'parent' down the override branch,
+  // so a run that wrote nothing reported "the fix went in a local override" with an empty member.
+  const md = renderRunFacts({
+    ...emptyRunFacts(),
+    inheritWhere: 'parent',
+    parentReference: '_102040_/l2/molecules/grouptriggeraction/ml-copy-button.ts',
+  });
+  assert.match(md, /_102040_\/l2\/molecules\/grouptriggeraction\/ml-copy-button\.ts/);
+  assert.match(md, /BASE component/);
+  assert.doesNotMatch(md, /overriding/);
+});
+
+test("'parent' without a readable parent still says where the fix belongs", () => {
+  const md = renderRunFacts({ ...emptyRunFacts(), inheritWhere: 'parent' });
+  assert.match(md, /belongs to the base molecule this one extends/);
+  assert.doesNotMatch(md, /overriding/);
+});
+
 test('findings are numbered and separate what this run CAUSED from what it noticed', () => {
   const md = renderFindings(FINDINGS);
   assert.match(md, /^1\. \[ALREADY THERE\]/m);

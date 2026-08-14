@@ -20,8 +20,22 @@ surface is 20, and the other 280 cannot answer the routing question.
 
 ## The decision
 
-**Would a page that uses this molecule today have to be WRITTEN DIFFERENTLY?** Yes → A. No → B. The
-public surface is exactly slots, attributes and events.
+Three ordered questions, and the third is the one that was missing until 2026-08-14.
+
+1. **Does the contract already promise this?** Yes, or it describes the wrong behaviour → a **defect**,
+   which is never route A. No, it is silent → a new responsibility.
+2. **Would a page that uses this molecule today have to be WRITTEN DIFFERENTLY?** Yes → A. No → not A.
+   The public surface is exactly slots, attributes and events. On anything that is not a shell, this
+   settles it: B.
+3. **Only on a shell: where does the code that would have to change LIVE?** This molecule's own files
+   can carry it — its `.less`, or an override of a member the parent declares and a subclass can
+   reach → **B**. Implemented in the parent, out of reach → **C**.
+
+⚠️ Questions 1 and 2 both ask *what changes*. Question 3 asks *which file someone opens*, and it is
+orthogonal to both — **a defect can be a C**. Answering question 1 confidently is exactly what made
+question 3 easy to skip: the first section used to read "defects are route B", and a shell whose timer
+duration lived in a module constant of the parent went to B, where the edit step wrote an override that
+overrode nothing (CHANGELOG 2026-08-14).
 
 ⚠️ The question used to have a second half — *"or observe something different"* — and it was dropped on
 2026-08-13, because it cannot discriminate: fixing any defect changes what you observe, and that is what
@@ -36,7 +50,7 @@ rebuild; rewriting a whole render to fix a layout bug is an edit.
 |---|---|
 | A | the definition changes — rebuild through `agentNewMolecule2` |
 | B | appearance, a code defect, wording — edit in place |
-| C | shell **and** the behaviour to change lives in the parent |
+| C | shell **and** the code that would change is in the parent, out of the shell's reach |
 | D | not a request to change this molecule; the rationale is the whole answer |
 
 ## Invariants
@@ -45,8 +59,17 @@ rebuild; rewriting a whole render to fix a layout bug is an edit.
 what the prompt is for. It refuses only the mechanically impossible: route C on a molecule that is
 not a shell, route A naming nothing that changes, an artifact list that contradicts the route.
 
+**And it cannot tell B from C either**, for the same reason. The tempting gate — *on a shell, route B
+may not name `ts`* — is wrong: 14 of the 84 shells legitimately override a member of the parent. What
+this payload holds is a route and a list, never "is the code that implements this behaviour reachable
+from the shell". The code half of that defect lives in i3-edit's `dead_member`, one step later.
+
 **Route C is not "this is a shell".** Most shells are fixed entirely in their own `.less`. The
 measured half of the condition is enforced; the other half is judgement.
+
+**What the shell CANNOT reach is shown, not just what it can.** Private members and module-scope
+constants of the parent are rendered next to the overridable ones, constants first — the list is capped
+at 12, and emitted in source order the deciding constant came 33rd on a real molecule.
 
 **Never propose changing the parent.** Not a route, not an outcome. If the model concludes the base
 should be fixed, the route is still C and the user decides in i4.

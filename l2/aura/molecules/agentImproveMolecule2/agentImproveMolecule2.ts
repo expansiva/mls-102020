@@ -50,17 +50,38 @@ const ROUTER_PLAN_ID = 'i2r-route';
 const STEP_AGENTS: Partial<Record<ImPlanId, string>> = {
   'i1-locate': 'agentIm2Locate',
   'i2-triage': 'agentIm2Triage',
+  'i2a-definition': 'agentIm2Definition',
   'i3-edit': 'agentIm2Edit',
   'i4-inherit': 'agentIm2Inherit',
   'i5-playground': 'agentIm2Playground',
   'i6-index': 'agentIm2Index',
   'i7-summary': 'agentIm2Summary',
-  // 'i2a-rebuild-handoff' is not built yet — see NOT_BUILT below.
 };
 
-/** flow.json.routes, as data. Phase 1 is common to every route and is not listed here. */
+/**
+ * flow.json.routes, as data. Phase 1 is common to every route and is not listed here.
+ *
+ * ⚠️ ROUTE A IS AN EDIT, NOT A REBUILD (2026-08-14). It was specced as a handoff to
+ * agentNewMolecule2 and blocked for that reason since 2026-08-06: NM2 refuses to overwrite an
+ * existing molecule, and route A acts on one by definition. Editing in place dissolves the problem
+ * and reuses steps that already exist — i3 writes `.defs.ts` and `.ts`, i5 regenerates the
+ * playground because the surface moved, i6 follows. Only the checkpoint was missing.
+ *
+ * ⚠️ IT IS NOT the only route that reaches the active branch of i5 and i6, and the first version of
+ * this comment said it was. The sweep behind that claim compared each molecule's own `.defs.ts`
+ * PROSE against its code and found no route B change that moves the surface. Re-measured on
+ * 2026-08-14 against the source that actually governs — the GROUP contract in
+ * `skills/<group>/creation.ts`, which enumerates the slots, properties and events in tables — **27
+ * molecules are missing a slot their group requires**, `ml-currency-input` declaring no `slotTags`
+ * at all where the group requires `Label` and `Helper`. Adding it is a DEFECT fix, so route B, and
+ * it moves the measured surface. i5 and i6 are reachable without route A.
+ *
+ * What route A is for, then, is what it always said: an INTENTIONAL change of what the molecule
+ * promises. Note that the group contract fixes that surface, so a legitimate route A on this library
+ * usually implies the group contract moving first.
+ */
 const ROUTE_STEPS: Record<ImRoute, ImPlanId[]> = {
-  A: ['i2a-rebuild-handoff'],
+  A: ['i2a-definition', 'i3-edit', 'i5-playground', 'i6-index', 'i7-summary'],
   B: ['i3-edit', 'i5-playground', 'i6-index', 'i7-summary'],
   C: ['i4-inherit', 'i3-edit', 'i5-playground', 'i6-index', 'i7-summary'],
   D: [],
@@ -73,12 +94,10 @@ const ROUTE_STEPS: Record<ImRoute, ImPlanId[]> = {
  * puts a node in the tree whose agent does not resolve, which reads to the user as a crash rather
  * than as "this part is not built".
  *
- * i2a-rebuild-handoff: route A cannot run at all, and fails readably (flow.json openQuestion — how
- * the NM2 collision gate is satisfied on a rebuild is undecided).
+ * Empty since 2026-08-14, when route A was built. The mechanism stays: it is what keeps a
+ * half-declared route from reading as a crash, and the next route added will want it.
  */
-const NOT_BUILT: Partial<Record<ImPlanId, string>> = {
-  'i2a-rebuild-handoff': 'route A (rebuilding a molecule whose definition changed) is not implemented yet — the handoff to agentNewMolecule2 is still an open decision. For now, change the definition by hand or create a new molecule with @@agentNewMolecule2.',
-};
+const NOT_BUILT: Partial<Record<ImPlanId, string>> = {};
 
 interface IDataPrompt {
   prompt?: string;
@@ -223,11 +242,13 @@ async function beforePromptStep(
     return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', decision.rationale || `route ${route}: nothing to do`, 'input_output')];
   }
 
-  // A route whose FIRST step is missing cannot start at all — that is route A today.
+  // A route whose FIRST step is missing cannot start at all. No route is in that state since route A
+  // was built (2026-08-14), and the branch stays because it is the one that keeps a half-declared
+  // route from reading as a crash.
   //
-  // The message carries WHY this route was chosen, and it must. Without it the user is told "route A
-  // is not built" and has no way to tell a correct classification from a mis-routing — which is the
-  // first thing they need to know, because one of the two is a missing feature and the other is a
+  // The message carries WHY this route was chosen, and it must. Without it the user is told "the
+  // route is not built" and has no way to tell a correct classification from a mis-routing — which is
+  // the first thing they need to know, because one of the two is a missing feature and the other is a
   // defect in the triage prompt.
   const firstMissing = NOT_BUILT[planned[0]];
   if (firstMissing) {

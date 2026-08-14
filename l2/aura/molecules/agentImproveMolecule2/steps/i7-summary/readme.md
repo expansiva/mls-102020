@@ -24,6 +24,16 @@ added, what the human chose at the route C checkpoint. It is **never asked to re
 pipeline**: a model asked what happened invents the parts it did not see. Its only job is the
 user's language.
 
+## The route C checkpoint has THREE outcomes
+
+`less`, `override` and `parent` — and `parent` is the one that writes nothing, on purpose. There the
+**instruction is the deliverable**: the summary must name the file in the base project, because that
+is the entire answer the user receives. `ImRunFacts.parentReference` carries it.
+
+⚠️ Until 2026-08-14 this was an `if/else`, so `parent` rendered as "by overriding `` locally" — the
+opposite of what happened, with an empty member, and no instruction (CHANGELOG). It shipped from the
+first version because T4 was accepted on "the run wrote zero files", which was true and insufficient.
+
 ## The one check
 
 `flow.json` said this step had no gate. It has exactly one, and it earns its place: **every finding
@@ -44,5 +54,6 @@ The findings are emitted verbatim in English instead, with the reason stated.
 
 ## Tests
 
-`gather.test.ts` (8), pure. The one that carries the design is "THE ONE CHECK: a summary that drops
-findings is caught".
+`gather.test.ts` (10), pure. The two that carry the design are "THE ONE CHECK: a summary that drops
+findings is caught" and "THE THIRD OUTCOME: `parent` names the file to open, and is never described as
+an override".

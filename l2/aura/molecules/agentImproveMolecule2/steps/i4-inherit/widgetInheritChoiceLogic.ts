@@ -19,7 +19,8 @@
 //              writes nothing. It is offered because it is often the RIGHT answer, and hiding it
 //              would push the user into an override that is merely the reachable one.
 
-import { ImOverridable, ImUnreachable } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
+import { ImOverridable, ImUnreachable, imMessageKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
+import { isCapableMember } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 
 export type InheritWhere = 'less' | 'override' | 'parent';
 export type InheritAction = 'continue' | 'cancel';
@@ -83,6 +84,26 @@ export function isExpensiveOverride(member: string): boolean {
   return member === 'render';
 }
 
+/** @deprecated thin alias — the rule lives in helpers/imTypes so every widget of this agent shares it. */
+export function inheritMessageKey(userLanguage: string | undefined, available: string[], fallback: string): string {
+  return imMessageKey(userLanguage, available, fallback);
+}
+
+/**
+ * Is `override` available at all for this molecule?
+ *
+ * False when the parent exposes nothing that could carry a change — every member is private, a
+ * module constant, or a method that only composes private ones. Measured 2026-08-14: that is the
+ * case for **every** shell in this library today. Offering the choice anyway is offering a trap,
+ * and the user who takes it gets a member that compiles and does nothing.
+ *
+ * This is a fact about the PARENT, not about the request, so the widget can state it before the
+ * user chooses rather than after.
+ */
+export function isOverrideAvailable(value: Pick<InheritChoiceValue, 'overridableMembers'>): boolean {
+  return value.overridableMembers.some(isCapableMember);
+}
+
 /** Reasons the human cannot confirm yet, in the widget's own words. */
 export function inheritBlockingIssues(data: InheritChoiceData, value: Pick<InheritChoiceValue, 'overridableMembers' | 'hasLess'>): string[] {
   const issues: string[] = [];
@@ -90,8 +111,9 @@ export function inheritBlockingIssues(data: InheritChoiceData, value: Pick<Inher
     issues.push('no_less');
   }
   if (data.where === 'override') {
-    if (!data.member.trim()) issues.push('no_member');
-    else if (value.overridableMembers.length && !value.overridableMembers.some(m => m.name === data.member)) {
+    if (!isOverrideAvailable(value) && value.overridableMembers.length) issues.push('no_capable_member');
+    else if (!data.member.trim()) issues.push('no_member');
+    else if (value.overridableMembers.length && !value.overridableMembers.some(m => isCapableMember(m) && m.name === data.member)) {
       issues.push('unknown_member');
     }
   }
@@ -113,14 +135,23 @@ export function buildInheritResult(data: InheritChoiceData, action: InheritActio
 /**
  * Members offered for override, with the ones the shell already declares marked.
  *
- * They are not removed: seeing that `portalWidgetName` is already overridden is what tells the
- * user the shell has a local answer to a related question, and re-choosing it is legitimate.
+ * Already-overridden members are not removed: seeing that `portalWidgetName` is already overridden
+ * is what tells the user the shell has a local answer to a related question, and re-choosing it is
+ * legitimate.
+ *
+ * **Members that cannot carry a change ARE removed** (2026-08-14). They are not a cheaper option,
+ * they are a wrong one, and a picker that lists them turns "nothing here can do this" into a shrug
+ * — the user picks the least implausible name and the run produces an override that does nothing.
+ * The list of what the shell cannot reach is shown separately, so the absence is explained rather
+ * than silent.
  */
 export function offerableMembers(value: Pick<InheritChoiceValue, 'overridableMembers' | 'ownMembers'>): Array<ImOverridable & { alreadyOverridden: boolean }> {
-  return value.overridableMembers.map(member => ({
-    ...member,
-    alreadyOverridden: value.ownMembers.includes(member.name),
-  }));
+  return value.overridableMembers
+    .filter(isCapableMember)
+    .map(member => ({
+      ...member,
+      alreadyOverridden: value.ownMembers.includes(member.name),
+    }));
 }
 
 /**

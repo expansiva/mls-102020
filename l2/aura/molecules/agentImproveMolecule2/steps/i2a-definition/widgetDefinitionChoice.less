@@ -1,0 +1,214 @@
+/// <mls fileReference="_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i2a-definition/widgetDefinitionChoice.less" enhancement="enhancementStyle"/>
+
+// A change that BREAKS pages is not styled like a change that adds one, and that is the whole point
+// of this screen: an addition is safe for every page already written, a removal or a rename is not.
+// Two neutral rows for two different consequences would be a lie told with CSS.
+
+widget-definition-choice-102020 {
+  display: block;
+
+  .dfc {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    padding: 0.9rem 1rem;
+    font-size: 0.9rem;
+  }
+
+  .dfc-title {
+    margin: 0 0 0.3rem;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .dfc-intro {
+    margin: 0 0 0.4rem;
+    line-height: 1.4;
+    color: var(--collab-text-muted, rgba(127, 127, 127, 0.95));
+  }
+
+  .dfc-tag {
+    margin: 0 0 0.3rem;
+    font-family: monospace;
+    font-size: 0.85rem;
+  }
+
+  .dfc-request,
+  .dfc-reason {
+    margin: 0.25rem 0 0;
+    line-height: 1.4;
+  }
+
+  .dfc-reason {
+    padding-left: 0.6rem;
+    border-left: 2px solid var(--collab-primary, #3b82f6);
+    color: var(--collab-text-muted, rgba(127, 127, 127, 0.95));
+  }
+
+  .dfc-label {
+    display: block;
+    margin: 0 0 0.35rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--collab-text-muted, rgba(127, 127, 127, 0.95));
+  }
+
+  .dfc-today {
+    margin: 0;
+    padding: 0.5rem 0.7rem;
+    list-style: none;
+    border: 1px solid var(--collab-border, rgba(127, 127, 127, 0.35));
+    border-radius: 0.5rem;
+
+    li {
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.15rem 0;
+    }
+  }
+
+  .dfc-today-kind {
+    min-width: 7rem;
+    font-weight: 600;
+  }
+
+  .dfc-today-names {
+    font-family: monospace;
+    color: var(--collab-text-muted, rgba(127, 127, 127, 0.95));
+  }
+
+  .dfc-changes {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .dfc-change {
+    display: flex;
+    gap: 0.6rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--collab-border, rgba(127, 127, 127, 0.35));
+    border-radius: 0.5rem;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--collab-primary, #3b82f6);
+    }
+
+    &.is-on {
+      border-color: var(--collab-primary, #3b82f6);
+      background: var(--collab-surface-2, rgba(59, 130, 246, 0.06));
+    }
+
+    // Dropped: still readable, visibly out.
+    &:not(.is-on) {
+      opacity: 0.55;
+    }
+
+    // Removing or renaming breaks a page someone already wrote. Dashed, like the `parent` card of
+    // the inheritance checkpoint — the shape this agent uses for "this one has a cost".
+    &.is-breaking {
+      border-style: dashed;
+      border-color: var(--collab-warning, #f59e0b);
+    }
+  }
+
+  .dfc-check {
+    flex: 0 0 auto;
+    width: 0.95rem;
+    height: 0.95rem;
+    margin-top: 0.15rem;
+    border: 1px solid var(--collab-border, rgba(127, 127, 127, 0.55));
+    border-radius: 0.25rem;
+
+    &.is-on {
+      border-color: var(--collab-primary, #3b82f6);
+      background: var(--collab-primary, #3b82f6);
+    }
+  }
+
+  .dfc-change-body {
+    flex: 1 1 auto;
+  }
+
+  .dfc-change-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.45rem;
+    margin: 0;
+  }
+
+  .dfc-change-name {
+    font-family: monospace;
+    font-weight: 600;
+  }
+
+  .dfc-change-kind,
+  .dfc-change-was {
+    font-size: 0.8rem;
+    color: var(--collab-text-muted, rgba(127, 127, 127, 0.95));
+  }
+
+  .dfc-breaking {
+    padding: 0.05rem 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-radius: 0.25rem;
+    color: var(--collab-warning, #f59e0b);
+    border: 1px solid var(--collab-warning, #f59e0b);
+  }
+
+  .dfc-change-purpose {
+    margin: 0.25rem 0 0;
+    line-height: 1.35;
+  }
+
+  .dfc-hint,
+  .dfc-blocking {
+    margin: 0.4rem 0 0;
+    font-size: 0.82rem;
+    color: var(--collab-text-muted, rgba(127, 127, 127, 0.95));
+  }
+
+  .dfc-blocking {
+    color: var(--collab-warning, #f59e0b);
+  }
+
+  .dfc-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
+  .dfc-btn {
+    padding: 0.4rem 0.9rem;
+    border-radius: 0.4rem;
+    border: 1px solid var(--collab-border, rgba(127, 127, 127, 0.35));
+    cursor: pointer;
+    font-size: 0.85rem;
+
+    &[disabled] {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .dfc-confirm {
+    border-color: var(--collab-primary, #3b82f6);
+    background: var(--collab-primary, #3b82f6);
+    color: #fff;
+  }
+
+  .dfc-empty {
+    padding: 0.8rem;
+    color: var(--collab-text-muted, rgba(127, 127, 127, 0.95));
+  }
+}

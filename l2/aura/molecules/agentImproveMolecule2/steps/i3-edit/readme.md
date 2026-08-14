@@ -61,13 +61,26 @@ Retry 1 with the gate errors; a 2nd failure fails the step, molecule untouched.
 | `header` | the mls header changed or a created file lacks one |
 | `appearance_class` / `appearance_style` | the edit introduced a hardcoded colour |
 | `render_side_effect`, `helper_outside_class`, `base_internals`, `selector_duplicate` | traps the library has actually shipped |
+| `dead_member` | on a shell: the edit declared or assigned a member the parent does not have and nobody reads |
 | `compile` | an error the edit added |
+
+## On a shell, the parent is always shown
+
+The parent's source is printed read-only on every shell — route B included — together with the list of
+members the shell cannot reach. Until 2026-08-14 it arrived only with the route-C choice `override`,
+while the prompt still asked for "a local override of a parent member": the step was ordered to override
+a parent it could not see, and wrote a member that does not exist. `dead_member` is the code half of
+that fix, and the CHANGELOG entry has the measurement.
+
+The one shell where the parent stays hidden is the choice `less` — that decision is about the
+stylesheet, and the `.ts` is not offered to `applyEdits` at all.
 
 ## Tests
 
-`applyEdits.test.ts` (25) and `gate.test.ts` (14), both pure. The three that carry the design are
+`applyEdits.test.ts` (25) and `gate.test.ts` (19), both pure. The four that carry the design are
 "a `find` that matches twice is REJECTED", "a colour the file ALREADY hardcoded does not block
-an unrelated fix" and "THE 13/08 DEFECT: um bloco que chega rente à margem é alinhado à âncora".
+an unrelated fix", "THE 13/08 DEFECT: um bloco que chega rente à margem é alinhado à âncora" and
+"assigning a dead member is refused too — it is what the SECOND run did".
 
 **Indentation is the file's, not the model's** (CHANGELOG 2026-08-13). `alignReplacement` places the
 written block at the depth of the text it replaces and shifts the rest of the block by the same amount.

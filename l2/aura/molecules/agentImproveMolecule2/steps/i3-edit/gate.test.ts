@@ -26,10 +26,39 @@ function inputs(over: Partial<ImEditGateInputs> = {}): ImEditGateInputs {
     files: [file()],
     currentProject: 102054,
     parentReference: null,
+    parentSource: '',
     compileErrors: [],
     compileErrorsBefore: [],
     ...over,
   };
+}
+
+// ---- the shell of 2026-08-14 ----
+const PARENT_SOURCE = [
+  'const COPY_CONFIRM_MS = 2000;',
+  'export class MlCopyButtonMolecule extends MoleculeAuraElement {',
+  '  protected portalWidgetName = \'a\';',
+  '  private beginCopiedState() { return COPY_CONFIRM_MS; }',
+  '  render() { return this.portalWidgetName; }',
+  '}',
+].join('\n');
+
+function shell(body: string): string {
+  return [
+    HEADER,
+    "import { MlCopyButtonMolecule } from '/_102040_/l2/molecules/grouptriggeraction/ml-copy-button.js';",
+    'export class G extends MlCopyButtonMolecule {',
+    body,
+    '}',
+  ].join('\n');
+}
+
+function shellInputs(before: string, after: string): ImEditGateInputs {
+  return inputs({
+    parentReference: '_102040_/l2/molecules/grouptriggeraction/ml-copy-button.ts',
+    parentSource: PARENT_SOURCE,
+    files: [file({ before, after })],
+  });
 }
 
 test('a clean edit passes', () => {
@@ -117,6 +146,38 @@ test('a compile error the edit introduced is refused', () => {
   );
   assert.equal(result.ok, false);
   assert.match(result.errors[0], /^compile: line 9/);
+});
+
+// ---- dead member: the override that overrides nothing (2026-08-14) ----
+
+test('a member the edit declares that the parent does not have and nobody reads is refused', () => {
+  const result = runImEditGate(shellInputs(shell(''), shell('  protected copiedDurationMs = 3000;')));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(e => /^dead_member: /.test(e)));
+  assert.match(result.errors.join('\n'), /copiedDurationMs/);
+});
+
+test('assigning a dead member is refused too — it is what the SECOND run did', () => {
+  // The field already existed; the whole edit was a constructor writing the same value into it.
+  const before = shell('  protected copiedDurationMs = 3000;');
+  const after = shell('  protected copiedDurationMs = 3000;\n  constructor() {\n    super();\n    this.copiedDurationMs = 3000;\n  }');
+  assert.ok(runImEditGate(shellInputs(before, after)).errors.some(e => /^dead_member: /.test(e)));
+});
+
+test('THE DELTA RULE: a dead member the edit did not touch does not block an unrelated fix', () => {
+  const before = shell('  protected copiedDurationMs = 3000;\n  protected portalWidgetName = \'a\';');
+  const after = shell('  protected copiedDurationMs = 3000;\n  protected portalWidgetName = \'b\';');
+  assert.equal(runImEditGate(shellInputs(before, after)).ok, true);
+});
+
+test('a REAL override passes — the parent declares it', () => {
+  const result = runImEditGate(shellInputs(shell(''), shell('  protected portalWidgetName = \'b\';')));
+  assert.equal(result.ok, true);
+});
+
+test('without the parent source the check does not run — every member would look invented', () => {
+  const after = shell('  protected copiedDurationMs = 3000;');
+  assert.equal(runImEditGate(inputs({ files: [file({ before: shell(''), after })] })).ok, true);
 });
 
 test('writing nothing is a failure', () => {

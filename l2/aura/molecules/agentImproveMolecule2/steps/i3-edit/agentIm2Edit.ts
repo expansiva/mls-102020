@@ -38,8 +38,10 @@ import {
   ImArtifact,
   ImArtifactKind,
   ImContext,
+  ImDefinitionDecision,
   ImInheritChoice,
   ImTriage,
+  ImUnreachable,
   imDoneAnchor,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import {
@@ -112,17 +114,29 @@ async function beforePromptStep(
   const schema = parseMaybeJson(schemaRaw);
   if (!isRecord(schema)) throw new Error(`[${AGENT_NAME}] invalid i3-edit schema`);
 
+  // ROUTE A: the definition change a human confirmed at the checkpoint. It is an instruction, not a
+  // suggestion — they saw each line and dropped the ones they did not want.
+  const definition = await readJsonArtifact<ImDefinitionDecision>(imWorkFile(runKey, 'definition'), false);
+
+  // THE PARENT IS SHOWN ON EVERY SHELL, not only on route C. Until 2026-08-14 it arrived only with
+  // the choice 'override', so a route-B edit on a shell was told "a local override of a parent
+  // member" with the parent invisible — and the model wrote a member the parent does not have. The
+  // one shell where it stays hidden is the choice 'less': that decision is about the stylesheet, and
+  // the .ts is not even offered to applyEdits.
+  const parentSource = await readParentSourceFor(ctx, choice);
+
   const systemPrompt = promptMd
     .split('{{tag}}').join(ctx.target.tag)
     .split('{{groupCanonical}}').join(ctx.target.groupCanonical)
     .split('{{userPrompt}}').join(ctx.userPrompt)
     .split('{{userLanguage}}').join(ctx.userLanguage || 'the language of the request')
     .split('{{triage}}').join(renderTriage(triage))
+    .split('{{definitionChanges}}').join(renderDefinitionChanges(definition))
     .split('{{inheritance}}').join(renderInheritance(ctx, choice))
     .split('{{files}}').join(renderFiles(ctx, triage, choice))
     .split('{{parentSource}}').join(
-      choice?.where === 'override' && ctx.inheritance.parentReference
-        ? `----- FILE: the PARENT, read-only (${ctx.inheritance.parentReference}) -----\n${await readParentTs(ctx.inheritance.parentReference)}\n----- END FILE -----`
+      parentSource
+        ? `----- FILE: the PARENT, read-only (${ctx.inheritance.parentReference}) -----\n${parentSource}\n----- END FILE -----`
         : '',
     )
     .split('{{contract}}').join(ctx.contract.source.trim()
@@ -210,6 +224,7 @@ async function afterPromptStep(
     files: written,
     currentProject: ctx.target.project,
     parentReference: ctx.inheritance.parentReference,
+    parentSource: await readParentSourceFor(ctx, choice),
     compileErrors,
     compileErrorsBefore,
   });
@@ -319,7 +334,12 @@ function renderFiles(ctx: ImContext, triage: ImTriage, choice: ImInheritChoice |
       ? `----- FILE: less (${less.reference}) -----\n${less.source}\n----- END FILE: less -----`
       : '----- FILE: less — DOES NOT EXIST YET, use op "create" -----';
   }
-  const wanted = EDITABLE.filter(kind => triage.expectedArtifacts.includes(kind));
+  // ROUTE A names no artifacts — the i2 gate forbids it, because on a rebuild the plan decided what
+  // to write. Here the confirmed definition change decides, and it always lands in the same two
+  // files: the contract that states the promise and the code that keeps it.
+  const wanted = triage.route === 'A'
+    ? (['defs', 'ts'] as ImArtifactKind[])
+    : EDITABLE.filter(kind => triage.expectedArtifacts.includes(kind));
   // The .ts is always shown: it is what the .less styles and what the .defs.ts describes, so an
   // edit to either is decided by reading it.
   if (!wanted.includes('ts')) wanted.unshift('ts');
@@ -362,11 +382,30 @@ function renderInheritance(ctx: ImContext, choice: ImInheritChoice | null): stri
     '**You cannot edit the parent, and you must not try.**',
   ];
 
+  // ROUTE B ON A SHELL — no human checkpoint happened, so this text is the only thing standing
+  // between the model and an invented member. Until 2026-08-14 it said "a local override of a parent
+  // member" and stopped there, with the parent's source not even in the prompt.
   if (!choice) {
     lines.push(
       '',
-      'The fix goes in this molecule\'s own files: the `.less` first, and a local override of a parent',
-      'member second. Anything you cannot solve that way is not this step\'s to solve.',
+      'The fix goes in this molecule\'s own files: the `.less` first. An override in the `.ts` only when',
+      'the member you need is one the parent **actually declares** and a subclass can reach — the',
+      'parent\'s source is printed further down, read-only, so you can check instead of assuming.',
+      '',
+      '### Members of the parent this shell CANNOT reach',
+      '',
+      renderUnreachable(inh.unreachableMembers),
+      '',
+      'Measured from the parent\'s source, not guessed.',
+      '',
+      '**A name the parent does not declare is not an override.** It is a new field of this class, and',
+      'since every line of behaviour still runs in the parent, nothing will ever read it: the molecule',
+      'keeps doing exactly what it did, and the run reports a change that did not happen. This has',
+      'shipped — a duration held in a module constant, "changed" by declaring a property beside it.',
+      '',
+      'So if what has to change lives in one of the members above, **no edit in this shell can express',
+      'it**. Report the failure with that as the reason and write nothing. That answer is correct and',
+      'useful; an edit that compiles and changes no behaviour is neither.',
     );
     return lines.join('\n');
   }
@@ -392,6 +431,70 @@ function renderInheritance(ctx: ImContext, choice: ImInheritChoice | null): stri
     lines.push('- call `super.<member>(...)` when the parent\'s behaviour should still happen first.');
   }
   return lines.join('\n');
+}
+
+/**
+ * The parent's source, on every shell except the route-C choice 'less'.
+ *
+ * Both consumers need it for the same reason: without the parent, an invented member and a real
+ * override are indistinguishable — to the model writing one, and to the gate judging it.
+ */
+async function readParentSourceFor(ctx: ImContext, choice: ImInheritChoice | null): Promise<string> {
+  if (!ctx.inheritance.isShell || !ctx.inheritance.parentReference) return '';
+  if (choice?.where === 'less') return '';
+  return readParentTs(ctx.inheritance.parentReference);
+}
+
+/**
+ * What the shell cannot reach. Capped like i4-inherit's copy of this: on a molecule with an i18n
+ * block the list runs long, and the first names are the ones the request is about.
+ */
+function renderUnreachable(members: ImUnreachable[] | undefined): string {
+  const list = members || [];
+  if (!list.length) return '- (none detected — every member of the parent is reachable, or its source could not be read)';
+  const shown = list.slice(0, 12).map(m => m.why === 'private'
+    ? `- \`${m.name}\` — private: an override does not compile`
+    : `- \`${m.name}\` — module-scope constant: not a class member, no subclass can change it`);
+  if (list.length > shown.length) shown.push(`- (and ${list.length - shown.length} more)`);
+  return shown.join('\n');
+}
+
+/**
+ * ROUTE A — the confirmed definition change, as an instruction.
+ *
+ * Empty on every other route, and that is what makes the section conditional in the prompt: on B and
+ * C the contract may only be corrected for wording, and on A it is the thing being changed.
+ */
+function renderDefinitionChanges(definition: ImDefinitionDecision | null): string {
+  if (!definition?.changes?.length) return '';
+  const lines = definition.changes.map(change => {
+    const what = change.op === 'rename'
+      ? `RENAME ${change.kind} \`${change.previousName}\` to \`${change.name}\``
+      : `${change.op.toUpperCase()} ${change.kind} \`${change.name}\``;
+    return `- **${what}** — ${change.purpose}`;
+  });
+  return [
+    '## The definition change a HUMAN confirmed',
+    '',
+    'This is route A: the molecule\'s public surface moves, and these are the movements that were',
+    'confirmed at a checkpoint. They are an instruction, not a suggestion — every line was shown and',
+    'the ones the user did not want were dropped before you were called.',
+    '',
+    ...lines,
+    '',
+    '**Do exactly these and nothing more.** Two files change together and neither may lag the other:',
+    '',
+    '- the **`.defs.ts`** — the sentence that states the promise. Write it in the contract\'s own',
+    '  voice, next to the sentences already there; do not restate the whole contract and do not',
+    '  reformat what you are not changing;',
+    '- the **`.ts`** — the code that keeps it: `slotTags` for a slot, an `@propertyDataSource`',
+    '  declaration for a property, a `new CustomEvent` dispatch for an event, plus the render that',
+    '  actually uses it. A slot declared and never read is the defect this library already has 9 of.',
+    '',
+    'A later step regenerates the playground from the surface you leave behind, so the surface has to',
+    'be real: a promise in the contract with no code behind it produces a demo of something that does',
+    'not work.',
+  ].join('\n');
 }
 
 function retryOrFail(

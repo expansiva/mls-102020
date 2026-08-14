@@ -49,7 +49,7 @@ import {
   readImAgentText,
   sourceOf,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
-import { IM_LIFECYCLE_HOOKS } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
+import { IM_LIFECYCLE_HOOKS, capableOverridesOf } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 import { getImRunKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imRootPlan.js';
 import { readSurface, renderSurface } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
 import { ImInheritAnswer, runImInheritGate } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i4-inherit/gate.js';
@@ -91,9 +91,15 @@ async function beforePromptStep(
   const promptMd = await readImAgentText('steps/i4-inherit', 'prompt', '.md', true);
 
   const inh = ctx.inheritance;
-  const members = inh.overridableMembers.length
-    ? inh.overridableMembers.map(m => `- \`${m.name}\` (${m.kind}${IM_LIFECYCLE_HOOKS.includes(m.name) ? ', lifecycle hook — it runs around the parent\'s behaviour, it is not where the behaviour is implemented' : ''})`).join('\n')
-    : '- (the parent source is not readable from here — you may still name a member, but you cannot verify it exists)';
+  // Only the members an override could be BUILT ON. One that compiles and cannot carry the change is
+  // a wrong answer, not a cheap one, and listing it is what produced the 13/08 suggestion — see
+  // ImOverridable.capable. When the filter empties the list, that is itself the answer: `parent`.
+  const capable = capableOverridesOf(inh.overridableMembers);
+  const members = !inh.overridableMembers.length
+    ? '- (the parent source is not readable from here — you may still name a member, but you cannot verify it exists)'
+    : capable.length
+      ? capable.map(m => `- \`${m.name}\` (${m.kind}${IM_LIFECYCLE_HOOKS.includes(m.name) ? ', lifecycle hook — it runs around the parent\'s behaviour, it is not where the behaviour is implemented' : ''})`).join('\n')
+      : '- **NONE.** Every member the parent exposes either is a lifecycle hook with a private body, or composes private members, so no override could carry a change. **This alone makes the answer `parent`** — you do not need the request to decide it.';
   const unreachable = renderUnreachable(inh.unreachableMembers);
 
   const systemPrompt = promptMd

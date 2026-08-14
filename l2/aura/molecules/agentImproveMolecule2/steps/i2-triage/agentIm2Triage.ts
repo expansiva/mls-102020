@@ -30,6 +30,7 @@ import {
   ImContext,
   ImRoute,
   ImTriage,
+  ImUnreachable,
   imDoneAnchor,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import {
@@ -39,6 +40,7 @@ import {
   readImAgentText,
   sourceOf,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
+import { capableOverridesOf } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 import { getImRunKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imRootPlan.js';
 import { readSurface, renderSurface } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
 import {
@@ -243,15 +245,27 @@ function renderContract(ctx: ImContext): string {
 /**
  * The inheritance block of the prompt. When the molecule is not a shell the section still exists
  * and says so: route C has to be visibly unavailable, not merely unmentioned.
+ *
+ * ⚠️ THE UNREACHABLE LIST IS THE EVIDENCE FOR THE THIRD QUESTION (2026-08-14). Until then this block
+ * showed only what the shell COULD override, so "the code lives in the parent, out of reach" — the
+ * whole of route C — had to be inferred from a short list with no explanation for why it was short.
+ * That is the same silent filter that made i4-inherit suggest a teardown hook for a timer duration on
+ * 2026-08-13, one step later and with the same cause. Measured, not judged: the model is not being
+ * asked to guess what it cannot see.
  */
 function renderInheritance(ctx: ImContext): string {
   const inh = ctx.inheritance;
   if (!inh.isShell) {
     return '### Inheritance\n\nThis molecule is **not a shell** — it does not extend a molecule from another project. Route C is not available for it.';
   }
-  const members = inh.overridableMembers.length
-    ? inh.overridableMembers.slice(0, 12).map(m => `- \`${m.name}\` (${m.kind})`).join('\n')
-    : '- (the parent source is not readable from here)';
+  // Filtered to what could carry a change, same as i4-inherit: a member that compiles as an override
+  // and cannot do anything is not an argument for route B.
+  const capable = capableOverridesOf(inh.overridableMembers);
+  const members = !inh.overridableMembers.length
+    ? '- (the parent source is not readable from here)'
+    : capable.length
+      ? capable.slice(0, 12).map(m => `- \`${m.name}\` (${m.kind})`).join('\n')
+      : '- **NONE** — every member the parent exposes composes private ones, so no override in this shell could carry a change';
   const own = inh.ownMembers.length ? inh.ownMembers.join(', ') : 'nothing — the body is empty';
   return [
     '### Inheritance',
@@ -261,5 +275,19 @@ function renderInheritance(ctx: ImContext): string {
     '',
     'Members of the parent it could override, cheapest first:',
     members,
+    '',
+    'Members of the parent NO subclass can reach — if what has to change is one of these, the fix is not in this file:',
+    renderUnreachable(inh.unreachableMembers),
   ].join('\n');
+}
+
+/** Capped: on a molecule with an i18n block the list runs long, and the first names are the ones the request is about. */
+function renderUnreachable(members: ImUnreachable[] | undefined): string {
+  const list = members || [];
+  if (!list.length) return '- (none detected — every member of the parent is reachable, or its source could not be read)';
+  const shown = list.slice(0, 12).map(m => m.why === 'private'
+    ? `- \`${m.name}\` — private`
+    : `- \`${m.name}\` — module-scope constant, not a class member`);
+  if (list.length > shown.length) shown.push(`- (and ${list.length - shown.length} more)`);
+  return shown.join('\n');
 }

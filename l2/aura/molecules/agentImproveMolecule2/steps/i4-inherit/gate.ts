@@ -15,6 +15,7 @@
 // user is allowed to conclude the base molecule is wrong, and this agent still will not touch it
 // (flow.json.principles, "NEVER touch the parent"). The run ends with the instruction.
 
+import { isCapableMember } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 import {
   ImGateResult,
   ImOverridable,
@@ -90,6 +91,24 @@ export function runImInheritGate(inputs: ImInheritGateInputs): ImGateResult {
         issue(
           'member_unreachable',
           `'${member}' exists in the parent and cannot be overridden: ${WHY_UNREACHABLE[unreachable.why]}. If that is where the change has to happen, no override in this shell can express it — the answer is 'parent', the fix belongs to the base component`,
+        ),
+      );
+    } else if (inputs.overridableMembers.length && !inputs.overridableMembers.some(isCapableMember)) {
+      // Nothing in the parent can carry a change. Measured 2026-08-14: this is the case for every
+      // shell in the library today, because agentNewMolecule2 declares every render helper private.
+      // The widget does not offer the choice at all; this is the backstop for the model's suggestion.
+      errors.push(
+        issue(
+          'no_capable_member',
+          `no member of the parent can carry this change — every one is private, a module-scope constant, or a method that only composes private members, so an override would compile and do nothing. The answer is 'parent': the fix belongs to the base component`,
+        ),
+      );
+    } else if (inputs.overridableMembers.some(m => m.name === member && !isCapableMember(m))) {
+      const found = inputs.overridableMembers.find(m => m.name === member);
+      errors.push(
+        issue(
+          'member_incapable',
+          `'${member}' can be overridden and cannot carry this change: its body depends on ${found?.kind === 'method' ? 'private members of the parent' : 'nothing a subclass can set'}, so reproducing the behaviour would mean reimplementing it — which a shell must not do. Pick a member that can, or answer 'parent'`,
         ),
       );
     } else if (inputs.overridableMembers.length && !inputs.overridableMembers.some(m => m.name === member)) {
