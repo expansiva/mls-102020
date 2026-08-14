@@ -76,11 +76,14 @@ test('route C on a real shell passes', () => {
   assert.equal(runImTriageGate(inputs({ isShell: true, output: { route: 'C', expectedArtifacts: ['ts'] } })).ok, true);
 });
 
-test('route A with nothing named as changing is rejected, and the message offers route B', () => {
+test('route A with nothing named as changing is rejected, and the message offers the alternatives', () => {
   const result = runImTriageGate(inputs({ output: { route: 'A', expectedArtifacts: [], definitionElements: [] } }));
   assert.equal(result.ok, false);
   assert.match(result.errors[0], /^route_a_no_elements: /);
-  assert.match(result.errors[0], /this is route B/);
+  // Both, since 2026-08-14: on a shell the alternative to A can be C, and a message that offers only
+  // B pushes the retry into the very mis-route the third question exists to prevent.
+  assert.match(result.errors[0], /it is B/);
+  assert.match(result.errors[0], /or C when the molecule is a shell/);
 });
 
 test('route A naming what changes passes, and names no artifacts', () => {

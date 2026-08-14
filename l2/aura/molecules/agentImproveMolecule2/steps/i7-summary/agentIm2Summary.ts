@@ -248,6 +248,9 @@ async function gatherFacts(runKey: string): Promise<ImRunFacts> {
   if (inherit) {
     facts.inheritWhere = inherit.where;
     facts.inheritMember = inherit.member || '';
+    // On the 'parent' outcome this is the whole answer the user gets: the run wrote nothing, by
+    // design, so the summary has to name the file to open in the base project.
+    facts.parentReference = ctx.inheritance.parentReference || '';
   }
 
   facts.findings = (await coherence(ctx)).findings;

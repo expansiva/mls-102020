@@ -11,12 +11,13 @@ Write in **{{userLanguage}}**.
 
 A few lines of markdown. What changed, in which files, and anything the user has to know to judge it. Short: they can see the tree.
 
-Two things worth stating plainly when they happened, because they are decisions and not side effects:
+Three things worth stating plainly when they happened, because they are decisions and not side effects:
 
 - **the playground was not touched** — the molecule's public surface did not change, so the demo was already correct;
-- **the fix went in a local override** — that molecule no longer inherits that member from its base.
+- **the fix went in a local override** — that molecule no longer inherits that member from its base;
+- **the fix belongs to the BASE component** — nothing was changed here, on purpose. This one is not a footnote: it is the whole answer. Name the file the facts give you, say it lives in another project, and say that fixing it there reaches every molecule that inherits from it. A user told only "nothing was changed" has been told nothing.
 
-Never claim work that is not listed. A run that changed one stylesheet changed one stylesheet.
+Never claim work that is not listed. A run that changed one stylesheet changed one stylesheet, and **a run that changed nothing says so without dressing it up as a change** — do not describe an override, or any edit, that the facts below do not record.
 
 ## The coherence findings
 
