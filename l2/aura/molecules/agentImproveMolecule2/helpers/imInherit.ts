@@ -77,9 +77,72 @@ function collectOwnMembers(classBody: string): string[] {
   const members = new Set<string>();
   for (const m of classBody.matchAll(/^\s*(?:protected|private|public)?\s*(?:async\s+)?(\w+)\s*[(=]/gm)) {
     const name = m[1];
-    if (name && !['if', 'for', 'while', 'switch', 'return', 'constructor'].includes(name)) members.add(name);
+    if (name && !NOT_A_MEMBER.includes(name)) members.add(name);
   }
   return [...members];
+}
+
+/**
+ * Keywords the member regex above can match at the start of a line. `super` joined the list on
+ * 2026-08-14: a shell whose constructor calls `super()` reported `super` as one of its own members,
+ * which was harmless for the clarification but not for `deadShellMembers`, which judges this list.
+ */
+const NOT_A_MEMBER = ['if', 'for', 'while', 'switch', 'return', 'constructor', 'super'];
+
+/** The text inside the class braces — where a member declaration can appear. */
+function classBodyOf(source: string): string {
+  const m = source.match(EXTENDS_RE);
+  if (!m) return '';
+  const bodyStart = source.indexOf('{', source.indexOf(m[0]));
+  return bodyStart >= 0 ? source.slice(bodyStart + 1) : '';
+}
+
+/**
+ * Is `name` READ anywhere in the shell? A declaration is not a read, and neither is an assignment:
+ * `protected foo = 3000` followed by `this.foo = 3000` is two writes to something nobody consults.
+ */
+function isReadInShell(name: string, shellSource: string): boolean {
+  const word = new RegExp(`\\b${name}\\b`);
+  const declaration = new RegExp(
+    `^\\s*(?:public|private|protected)?\\s*(?:static\\s+)?(?:readonly\\s+)?(?:async\\s+)?${name}\\s*[(:=;]`,
+  );
+  const assignment = new RegExp(`this\\.${name}\\s*=[^=]`);
+  for (const line of shellSource.split('\n')) {
+    if (!word.test(line)) continue;
+    if (declaration.test(line)) continue;
+    if (assignment.test(line)) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Members the SHELL declares that CANNOT be doing anything: absent from the parent, and never read —
+ * not in the shell, not in the parent.
+ *
+ * ⚠️ WHY THIS EXISTS — 2026-08-14, measured in the Studio. Asked to make a copy confirmation last 3
+ * seconds, the model wrote `protected copiedDurationMs = 3000` into the shell. The parent holds that
+ * duration in a module-scope `const` and has no such member, so nothing read the field and the button
+ * went on confirming for 2000ms. It compiled, so no gate saw it; the run reported success; and the run
+ * AFTER it read the contract the first one had edited and agreed there was a defect to fix.
+ *
+ * An override that overrides nothing is the shape a model reaches for when it is asked to override a
+ * parent it cannot see. Fixing the prompt (i3-edit shows the parent on every shell now) removes the
+ * reason; this removes the possibility.
+ *
+ * Textual, like everything else in this file. A name the parent so much as mentions is left alone:
+ * the question here is "did this come out of nowhere", not "is it a valid override".
+ */
+export function deadShellMembers(shellSource: string, parentSource: string): string[] {
+  // Shells only. Every molecule extends the base class and declares members of its own — judging
+  // those against "the parent" would call `slotTags` invented on any molecule in the library.
+  const extended = shellSource.match(EXTENDS_RE);
+  if (!extended || extended[2] === BASE_CLASS) return [];
+
+  const body = classBodyOf(shellSource);
+  if (!body) return [];
+  return collectOwnMembers(body).filter(name =>
+    !new RegExp(`\\b${name}\\b`).test(parentSource) && !isReadInShell(name, shellSource));
 }
 
 /**
@@ -104,23 +167,30 @@ function costOf(name: string, kind: 'property' | 'method'): number {
  * Deliberately textual, like everything else here: this feeds a human decision, not a compiler.
  */
 export function unreachableMembersOf(parentSource: string): ImUnreachable[] {
-  const out: ImUnreachable[] = [];
+  const privates: ImUnreachable[] = [];
+  const constants: ImUnreachable[] = [];
   const seen = new Set<string>();
 
   // `private foo(`, `private async foo(`, `private foo =`, `private foo: number = 0`
   for (const m of parentSource.matchAll(/^\s*private\s+(?:readonly\s+)?(?:async\s+)?(\w+)\s*[:(=]/gm)) {
     if (seen.has(m[1])) continue;
     seen.add(m[1]);
-    out.push({ name: m[1], why: 'private' });
+    privates.push({ name: m[1], why: 'private' });
   }
   // Module scope only — no indentation. `const X = …` and `export const X = …`.
   for (const m of parentSource.matchAll(/^(?:export\s+)?const\s+(\w+)\s*[:=]/gm)) {
     if (seen.has(m[1])) continue;
     seen.add(m[1]);
-    out.push({ name: m[1], why: 'module-constant' });
+    constants.push({ name: m[1], why: 'module-constant' });
   }
 
-  return out;
+  // MODULE CONSTANTS FIRST, and this ordering is load-bearing. Every consumer caps the list — 12 in
+  // i2-triage and in i4-inherit — on the assumption that the first names are the ones the request is
+  // about. Emitted in source order that assumption fails exactly where it matters: measured on
+  // `ml-copy-button`, 2026-08-14, COPY_CONFIRM_MS came 33rd of 34 behind 30 private methods, so the
+  // one member that decides the case was the one the cap threw away. Constants are also the rarer
+  // kind (4 of 34 there), so putting them first costs the privates almost nothing.
+  return [...constants, ...privates];
 }
 
 /** Members of the PARENT a shell could override, ordered cheapest first. */
@@ -164,15 +234,12 @@ export function detectInheritance(source: string, parentSource = ''): ImInherita
   const parentImport = findImportOf(source, parentClassName);
   if (!parentImport) return NOT_A_SHELL;
 
-  const bodyStart = source.indexOf('{', source.indexOf(m[0]));
-  const classBody = bodyStart >= 0 ? source.slice(bodyStart + 1) : '';
-
   return {
     isShell: true,
     parentReference: parentImport.reference,
     parentProject: parentImport.project,
     parentClassName,
-    ownMembers: collectOwnMembers(classBody),
+    ownMembers: collectOwnMembers(classBodyOf(source)),
     overridableMembers: parentSource ? overridableMembersOf(parentSource) : [],
     unreachableMembers: parentSource ? unreachableMembersOf(parentSource) : [],
   };

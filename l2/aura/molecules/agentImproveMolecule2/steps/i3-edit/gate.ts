@@ -18,7 +18,7 @@ import {
   imGateFail,
   imGateOk,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
-import { offendingForeignWrite } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
+import { deadShellMembers, offendingForeignWrite } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 import { mlsHeaderOf } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/applyEdits.js';
 import {
   findBaseInternals,
@@ -41,8 +41,14 @@ export interface ImEditedFile {
 export interface ImEditGateInputs {
   files: ImEditedFile[];
   currentProject: number;
-  /** Route C only: the shell's parent, which must never be written. */
+  /** On a shell: the parent, which must never be written. Null when the molecule is not a shell. */
   parentReference: string | null;
+  /**
+   * On a shell: the parent's source, read-only, so the gate can tell an override from an invention.
+   * Empty when the molecule is not a shell or the parent could not be read — the dead-member check
+   * then does not run, because without the parent every member of the shell looks invented.
+   */
+  parentSource: string;
   /** From compileStorTs / compileStorLess on the AFTER content. */
   compileErrors: string[];
   /** The same compilers on the BEFORE content — read lazily, only when `compileErrors` is non-empty. */
@@ -57,6 +63,29 @@ function issue(code: string, message: string): string {
 function introduced(detector: (source: string) => string[], file: ImEditedFile): string[] {
   const before = new Set(file.created ? [] : detector(file.before));
   return detector(file.after).filter(found => !before.has(found));
+}
+
+/**
+ * The delta rule at line granularity: the lines this edit put in the file.
+ *
+ * The dead-member check needs it because deadness is a property of the FILE, not of the edit. A
+ * shell that already carried a dead member must not block an unrelated fix — but an edit that
+ * declares one, or that writes to one, is building on sand and has to be told so.
+ */
+function introducedLines(file: ImEditedFile): string[] {
+  if (file.created) return file.after.split('\n');
+  const before = new Map<string, number>();
+  for (const line of file.before.split('\n')) {
+    const key = line.trim();
+    before.set(key, (before.get(key) || 0) + 1);
+  }
+  const out: string[] = [];
+  for (const line of file.after.split('\n')) {
+    const left = before.get(line.trim()) || 0;
+    if (left > 0) before.set(line.trim(), left - 1);
+    else out.push(line);
+  }
+  return out;
 }
 
 export function runImEditGate(inputs: ImEditGateInputs): ImGateResult {
@@ -123,6 +152,23 @@ export function runImEditGate(inputs: ImEditGateInputs): ImGateResult {
       for (const member of introduced(findBaseInternals, file)) {
         errors.push(issue('base_internals', `'${member}' is internal plumbing of the base class — do not drive it from the molecule`));
       }
+      // AN OVERRIDE THAT OVERRIDES NOTHING. Only on a shell, and only for what this edit touched:
+      // the member has to be absent from the parent AND read by no one. See deadShellMembers for the
+      // run that produced `protected copiedDurationMs = 3000` against a parent holding the duration
+      // in a module constant — it compiled, so nothing else here could have caught it.
+      if (inputs.parentSource) {
+        const touchedLines = introducedLines(file);
+        for (const member of deadShellMembers(file.after, inputs.parentSource)) {
+          if (!touchedLines.some(line => new RegExp(`\\b${member}\\b`).test(line))) continue;
+          errors.push(
+            issue(
+              'dead_member',
+              `'${member}' does not exist in the parent and nothing reads it — declaring or assigning it changes no behaviour. Override a member the parent actually declares, or report that the change cannot be made from this shell`,
+            ),
+          );
+        }
+      }
+
       for (const helper of introduced(findTopLevelFunctions, file)) {
         errors.push(
           issue(

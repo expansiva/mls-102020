@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  deadShellMembers,
   detectInheritance,
   offendingForeignWrite,
   overridableMembersOf,
@@ -145,6 +146,22 @@ test('private members and module constants are reported as UNREACHABLE, not hidd
   assert.equal(byName.has('disconnectedCallback'), false);
 });
 
+test('module constants come FIRST — every consumer caps the list at 12', () => {
+  // Measured on ml-copy-button, 2026-08-14: emitted in source order, COPY_CONFIRM_MS was 33rd of 34
+  // behind 30 private methods. Both prompts that show this list cut it at 12, so the member that
+  // decided the case — a duration in a module constant — was the one thrown away.
+  const parent = `
+const COPY_CONFIRM_MS = 2000;
+export class X {
+${Array.from({ length: 20 }, (_, i) => `  private helper${i}() { return ${i}; }`).join('\n')}
+}
+`;
+  const unreachable = unreachableMembersOf(parent);
+  assert.equal(unreachable[0].name, 'COPY_CONFIRM_MS');
+  assert.ok(unreachable.slice(0, 12).some(m => m.why === 'module-constant'));
+  assert.equal(unreachable.length, 21);
+});
+
 test('an indented const is a class field, not a module constant', () => {
   const parent = `
 const AT_MODULE_SCOPE = 1;
@@ -156,6 +173,69 @@ export class X {
 }
 `;
   assert.deepEqual(unreachableMembersOf(parent).map(m => m.name), ['AT_MODULE_SCOPE']);
+});
+
+// ---- 2026-08-14: the member that overrode nothing ----
+//
+// Measured in the Studio. Asked for a 3-second confirmation, the model wrote `copiedDurationMs` into
+// the shell of ml-copy-button. The parent keeps that duration in a module constant and declares no
+// such member, so nothing read it and the button went on confirming for 2000ms — compiling, and
+// reported as done.
+const SHELL_DEAD_MEMBER = `
+import { customElement } from 'lit/decorators.js';
+import { MlCopyButtonMolecule } from '/_102040_/l2/molecules/grouptriggeraction/ml-copy-button.js';
+
+@customElement('grouptriggeraction--ml-copy-button-glass')
+export class MlCopyButtonMoleculeGlass extends MlCopyButtonMolecule {
+  protected copiedDurationMs = 3000;
+}
+`;
+
+test('a member the parent does not have and nobody reads is DEAD', () => {
+  assert.deepEqual(deadShellMembers(SHELL_DEAD_MEMBER, PARENT_ALL_PRIVATE), ['copiedDurationMs']);
+});
+
+test('assigning it in a constructor does not make it read — two writes, no reader', () => {
+  // The second run's whole contribution: `constructor() { super(); this.copiedDurationMs = 3000; }`.
+  const shell = SHELL_DEAD_MEMBER.replace(
+    'protected copiedDurationMs = 3000;',
+    'protected copiedDurationMs = 3000;\n\n  constructor() {\n    super();\n    this.copiedDurationMs = 3000;\n  }',
+  );
+  assert.deepEqual(deadShellMembers(shell, PARENT_ALL_PRIVATE), ['copiedDurationMs']);
+});
+
+test('a real override is NOT dead — the parent declares it', () => {
+  // The 14 shells that override one property. `portalWidgetName` exists in the parent; nothing in
+  // the shell reads it either, and that is exactly right: the PARENT reads it.
+  const parent = 'export class X extends MoleculeAuraElement {\n  protected portalWidgetName = \'a\';\n  render() { return this.portalWidgetName; }\n}';
+  assert.deepEqual(deadShellMembers(SHELL_ONE_PROP, parent), []);
+});
+
+test('a member the shell itself reads is not dead', () => {
+  const shell = `
+import { MlCopyButtonMolecule } from '/_102040_/l2/molecules/grouptriggeraction/ml-copy-button.js';
+export class G extends MlCopyButtonMolecule {
+  private label = 'x';
+  render() { return this.label; }
+}
+`;
+  assert.deepEqual(deadShellMembers(shell, PARENT_ALL_PRIVATE), []);
+});
+
+test('an empty shell has nothing to report, and a non-shell is not judged', () => {
+  assert.deepEqual(deadShellMembers(SHELL_EMPTY, PARENT_ALL_PRIVATE), []);
+  assert.deepEqual(deadShellMembers(PLAIN, PARENT_ALL_PRIVATE), []);
+});
+
+test('`super()` in a constructor is not a member of the shell', () => {
+  // It matched the member regex, so it reached ownMembers — harmless for the clarification, and a
+  // false 'dead member' the moment a gate started judging that list.
+  const shell = SHELL_DEAD_MEMBER.replace(
+    'protected copiedDurationMs = 3000;',
+    'constructor() {\n    super();\n  }',
+  );
+  assert.equal(detectInheritance(shell).ownMembers.includes('super'), false);
+  assert.deepEqual(deadShellMembers(shell, 'export class P {}'), []);
 });
 
 test('a write outside the current project is caught — the hard invariant of the agent', () => {

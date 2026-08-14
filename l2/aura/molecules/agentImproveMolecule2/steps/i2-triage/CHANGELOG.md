@@ -1,5 +1,44 @@
 # CHANGELOG — i2-triage
 
+## 2026-08-14 — "it is a defect" was answering a question it does not answer
+
+`ml-copy-button-glass`, a shell. The request: make the copy confirmation last three seconds. The
+contract promised three seconds, the code did two, so the first question answered **DEFECT** — and the
+routing stopped there, at **B**. The duration lives in `const COPY_CONFIRM_MS = 2000` in the **parent**,
+module scope, unreachable from any subclass. It was route **C**, desfecho `parent`.
+
+**The prompt was not wrong; it was ordered wrong.** It asked two questions — *is this a defect or a new
+responsibility*, and *would existing markup have to be rewritten* — and both are about **what changes**.
+Neither is about **where the code that changes it lives**, which is the whole of B against C. Route C
+existed only as a definition in the route list, never as a step anyone walks through, so the model
+reached a confident B and had no reason to look further. The first section even said it outright:
+*"defects are route B"*.
+
+That sentence is now *"a defect is never route A"*, and there is a **third ordered question**, asked
+only on a shell: can this molecule's own files carry the change — its `.less`, or an override of a
+member the parent declares **and** a subclass can reach — or is the code out of reach? A defect answers
+it exactly like a wish does.
+
+**The evidence half.** The inheritance block showed only what the shell COULD override. On this parent
+that is `disconnectedCallback` and `render`, and nothing said why the list was so short. Same silent
+filter that made i4-inherit suggest a teardown hook for a timer duration on 13/08, one step later and
+from the same cause. The block now renders `unreachableMembers` too — measured, not guessed.
+
+**A bug in the 13/08 fix, found while verifying this one.** `unreachableMembersOf` emitted privates
+first and module constants last, and every consumer caps the list at 12. On `ml-copy-button` that put
+`COPY_CONFIRM_MS` **33rd of 34**: the one member that decides the case was the one the cap threw away —
+in this prompt and in i4-inherit's, which has been shipping that way since 13/08. Constants now come
+first. They are the rarer kind (4 of 34 here), so the privates lose almost nothing, and the name that
+answers "where does this value live" is never the one cut.
+
+**No new gate, deliberately.** The tempting one is *"on a shell, route B may not name `ts`"*, and it is
+wrong: 14 of the 84 shells legitimately override a member of the parent, and that edit is a route-B
+`ts` edit. A gate that refuses a correct answer costs the whole run — `IM_MAX_ATTEMPTS` is 2 — and
+teaches the model to misreport its artifacts. B against C is judgement, exactly like A against B: this
+payload holds a route and a list, never "is the code that implements this behaviour reachable from the
+shell". The code-side half of the defect lives one step later, in i3-edit's `dead_member`, which refuses
+the invented override a wrong B produces. Better than nothing, and worse than routing to C.
+
 ## 2026-08-13 — a documented defect was routed to A, and the taxonomy was why
 
 `ml-copy-button`: with nothing in the `Label` slot the click copied the component's own translated word

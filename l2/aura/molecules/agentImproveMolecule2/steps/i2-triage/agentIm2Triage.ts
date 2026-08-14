@@ -30,6 +30,7 @@ import {
   ImContext,
   ImRoute,
   ImTriage,
+  ImUnreachable,
   imDoneAnchor,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import {
@@ -243,6 +244,13 @@ function renderContract(ctx: ImContext): string {
 /**
  * The inheritance block of the prompt. When the molecule is not a shell the section still exists
  * and says so: route C has to be visibly unavailable, not merely unmentioned.
+ *
+ * ⚠️ THE UNREACHABLE LIST IS THE EVIDENCE FOR THE THIRD QUESTION (2026-08-14). Until then this block
+ * showed only what the shell COULD override, so "the code lives in the parent, out of reach" — the
+ * whole of route C — had to be inferred from a short list with no explanation for why it was short.
+ * That is the same silent filter that made i4-inherit suggest a teardown hook for a timer duration on
+ * 2026-08-13, one step later and with the same cause. Measured, not judged: the model is not being
+ * asked to guess what it cannot see.
  */
 function renderInheritance(ctx: ImContext): string {
   const inh = ctx.inheritance;
@@ -261,5 +269,19 @@ function renderInheritance(ctx: ImContext): string {
     '',
     'Members of the parent it could override, cheapest first:',
     members,
+    '',
+    'Members of the parent NO subclass can reach — if what has to change is one of these, the fix is not in this file:',
+    renderUnreachable(inh.unreachableMembers),
   ].join('\n');
+}
+
+/** Capped: on a molecule with an i18n block the list runs long, and the first names are the ones the request is about. */
+function renderUnreachable(members: ImUnreachable[] | undefined): string {
+  const list = members || [];
+  if (!list.length) return '- (none detected — every member of the parent is reachable, or its source could not be read)';
+  const shown = list.slice(0, 12).map(m => m.why === 'private'
+    ? `- \`${m.name}\` — private`
+    : `- \`${m.name}\` — module-scope constant, not a class member`);
+  if (list.length > shown.length) shown.push(`- (and ${list.length - shown.length} more)`);
+  return shown.join('\n');
 }

@@ -16,6 +16,19 @@
 // payload. What was fixable was the vocabulary: the schema said "or changes meaning" and this file's
 // own retry message repeated it. Both now say what the criterion actually is. The taxonomy was the
 // defect, not the model's care (CHANGELOG 2026-08-13).
+//
+// ⚠️ 2026-08-14, AND THE SAME CONCLUSION FOR B AGAINST C. A defect on a shell whose code lives in the
+// parent was routed B. The tempting gate is "on a shell, route B may not name `ts`" — and it is WRONG:
+// 14 of the 84 shells legitimately override a member of the parent, and that edit is a route-B `ts`
+// edit. A gate that refuses a correct answer costs the whole run (IM_MAX_ATTEMPTS is 2) and teaches
+// the model to lie about its artifacts. B against C is judgement, exactly like A against B: what the
+// payload holds is a route and a list, never "is the code that implements this behaviour reachable
+// from the shell". The fix therefore went where it could work — the third ordered question in
+// prompt.md, and the unreachable-member list rendered next to it as measured evidence.
+//
+// The code-side half of that defect exists, one step later: i3-edit's `dead_member` refuses the
+// invented override that a wrong B produces, so the run now fails legibly instead of reporting a
+// change that did not happen. Better than nothing and worse than routing to C — see the CHANGELOG.
 
 import {
   IM_CREATABLE_ARTIFACTS,
@@ -96,7 +109,7 @@ export function runImTriageGate(inputs: ImTriageInputs): ImGateResult {
     errors.push(
       issue(
         'route_a_no_elements',
-        'route A means the public definition changes, and nothing was named — list the slots, properties or events whose change forces existing markup to be rewritten. If no page that uses this molecule would have to be written differently, this is route B, and that includes correcting a contract sentence that described the defect',
+        'route A means the public definition changes, and nothing was named — list the slots, properties or events whose change forces existing markup to be rewritten. If no page that uses this molecule would have to be written differently, this is not route A: it is B, or C when the molecule is a shell whose parent holds the code that has to change. That includes correcting a contract sentence that described the defect',
       ),
     );
   }

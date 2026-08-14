@@ -1,5 +1,64 @@
 # CHANGELOG — i3-edit
 
+## 2026-08-14 — the override that overrode nothing
+
+Measured in the Studio, `ml-copy-button-glass` (102055), runKey `copy-confirmation-delay`. Asked for a
+3-second copy confirmation, this step wrote into the shell:
+
+```ts
+export class MlCopyButtonMoleculeGlass extends MlCopyButtonMolecule {
+  protected copiedDurationMs = 3000;
+}
+```
+
+The parent holds that duration in `const COPY_CONFIRM_MS = 2000` — module scope — and declares no such
+member. **Nothing read the field.** The button went on confirming for 2000ms, the file compiled, every
+detector here was silent, and the run reported success.
+
+**Why the model wrote it, and this is the part that matters.** The parent's source reached the prompt
+under one condition: `choice?.where === 'override'` — route C only. On route B the shell's inheritance
+block said, with the parent nowhere in the prompt:
+
+> The fix goes in this molecule's own files: the `.less` first, and **a local override of a parent
+> member** second.
+
+The step was ordered to override a parent it could not see. A member that would have to exist is the
+only thing a model can produce from that. It is the week's pattern in a new place — not prose losing an
+argument to code this time, but **an instruction whose precondition was never supplied**.
+
+**What this cost beyond one wrong file.** The same run also edited the shell's `.defs.ts` to promise
+three seconds. The NEXT run read that contract, found the code doing 2000ms, and concluded — correctly,
+from what it was shown — that there was an implementation defect to fix. The agent had written the
+premise that then absolved it. A dead member is not only inert; it is evidence for the next run.
+
+Two changes, and they are deliberately of different kinds:
+
+- **the prompt now has the precondition.** `readParentSourceFor` prints the parent on EVERY shell
+  (`less` excepted — that decision is about the stylesheet, and the `.ts` is not even offered to
+  `applyEdits`), and the route-B inheritance block now carries the unreachable-member list plus the
+  conclusion that follows from it: a name the parent does not declare is not an override, and when the
+  change lives in an unreachable member the correct answer is to report the failure and write nothing;
+- **`dead_member` in the gate**, because the prompt is the half that can lose an argument. A member the
+  shell declares that is absent from the parent AND read by no one — not in the shell, not in the
+  parent — is refused, which rolls the edit back.
+
+`deadShellMembers` is pure and lives in `helpers/imInherit.ts`, next to the facts it needs. A name the
+parent so much as mentions is left alone: the question is "did this come out of nowhere", not "is this a
+valid override" — the compiler already answers the second.
+
+**The delta rule applies, at line granularity.** A shell that already carried a dead member does not
+block an unrelated fix; an edit that DECLARES one, or that writes to one, is refused. Both halves are
+needed, and the second is not hypothetical: the run of 14/08 added only
+`constructor() { super(); this.copiedDurationMs = 3000; }` over a field that already existed. Judged by
+declaration alone it would have passed a second time.
+
+**A member-list bug this uncovered:** `collectOwnMembers` reported `super` as a member of any shell
+whose constructor calls it. Harmless while the list only fed a clarification; a false `dead_member` the
+moment a gate started judging it.
+
+Verified against the real files in `mls-102040-temp` / `mls-102055-temp`: `copiedDurationMs` is reported
+dead in both the state 13/08 left and the state 14/08 left.
+
 ## 2026-08-13 — the written block came out flush left
 
 Measured twice in one molecule (`ml-copy-button`, runs of 18:56 and 19:06):
