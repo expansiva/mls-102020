@@ -1,5 +1,5 @@
 import type { Ns4E9Compilation, Ns4E9IssueOrigin, Ns4E9Sources } from '/_102020_/l2/agentNewSolution4/steps/e9/contracts.js';
-import type { Ns4JourneyStep } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import { deriveNs4Contexts } from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
 import type { Ns4WorkspaceArtifact } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
 import { routeOf } from '/_102020_/l2/agentNewSolution4/helpers/routeOf.js';
 
@@ -66,7 +66,7 @@ function validateEdges(
   workspaces: Map<string, Ns4WorkspaceArtifact>, add: (code: string, path: string, message: string) => void,
 ): void {
   const useCaseById = new Map(sources.useCases.map(useCase => [useCase.useCaseId, useCase]));
-  const journeySteps = new Map<string, Ns4JourneyStep>(sources.journeys.journeys.flatMap(journey => journey.business.steps.map(step => [`${journey.journeyId}.${step.stepId}`, step] as const)));
+  const derived = deriveNs4Contexts(sources);
   compilation.navigation.edges.forEach((edge, index) => {
     const from = workspaces.get(edge.from); const to = workspaces.get(edge.to); const path = `edges[${index}]`;
     if (!from || !to) { add('NS4_E9_EDGE_ENDPOINT', path, `Navigation edge ${edge.from} → ${edge.to} has an unknown endpoint.`); return; }
@@ -77,7 +77,8 @@ function validateEdges(
       const bySlice = !!context && from.viewCall.uses.some(slice => slice.entityRefs.includes(context.businessObject));
       const bySelection = from.scenarios.some(scenario => scenario.selectionContexts.some(item => item.contextId === contextId));
       const byUseCase = from.scenarios.flatMap(scenario => scenario.useCaseIds).some(useCaseId => useCaseById.get(useCaseId)?.contexts.provides.includes(contextId));
-      const byPreferredStep = !!edge.preferredFromJourneyRef && journeySteps.get(edge.preferredFromJourneyRef)?.providesContext.some(item => item.contextId === contextId);
+      const byPreferredStep = !!edge.preferredFromJourneyRef
+        && derived.byStepRef.get(edge.preferredFromJourneyRef)?.provides.some(item => item.contextId === contextId);
       if (!context || (!bySlice && !bySelection && !byUseCase && !byPreferredStep)) add('NS4_E9_EDGE_PROVIDER', `${path}.carries.${contextId}`, `Source workspace ${edge.from} does not produce carried context ${contextId}.`);
     });
   });
@@ -87,6 +88,7 @@ function validateJourneyReachability(
   sources: Ns4E9Sources, compilation: Ns4E9Compilation, workspaces: Map<string, Ns4WorkspaceArtifact>,
   add: (code: string, path: string, message: string) => void,
 ): void {
+  const derived = deriveNs4Contexts(sources);
   const locations = new Map<string, { workspaceId: string; scenarioId: string; authorityRefs: string[] }>();
   sources.workspaces.forEach(workspace => workspace.scenarios.forEach(scenario => scenario.stepRefs.forEach(stepRef => locations.set(stepRef, {
     workspaceId: workspace.workspaceId, scenarioId: scenario.scenarioId, authorityRefs: scenario.authorityRefs,
@@ -116,7 +118,7 @@ function validateJourneyReachability(
         const starts = actorProfiles.some(profile => startsByProfile.get(profile)?.has(location.workspaceId));
         if (!starts) add('NS4_E9_JOURNEY_START', stepRef, `Journey ${journey.journeyId} cannot start at ${location.workspaceId} from an actor landing, header or notification.`);
       } else if (previous.workspaceId !== location.workspaceId) {
-        const independentLocate = step.kind === 'locate' && step.requiresContext.length === 0
+        const independentLocate = step.kind === 'locate' && !(derived.byStepRef.get(stepRef)?.requires.length)
           && actorProfiles.some(profile => startsByProfile.get(profile)?.has(location.workspaceId));
         const traversable = compilation.navigation.edges.some(edge => edge.from === previous!.workspaceId && edge.to === location.workspaceId
           && actorProfiles.some(profile => workspaces.get(edge.from)?.profileRefs.includes(profile) && workspaces.get(edge.to)?.profileRefs.includes(profile)));
@@ -167,8 +169,10 @@ function validateRoutesAndNotifications(
 function hasActorSessionSource(workspace: Ns4WorkspaceArtifact, stepRefs: string[], contextId: string, sources: Ns4E9Sources): boolean {
   const scoped = sources.access.grants.some(grant => workspace.profileRefs.includes(grant.profileRef)
     && (grant.dataScope?.mode === 'own' || grant.dataScope?.mode === 'assigned' || grant.dataScope?.mode === 'related'));
-  return scoped && sources.journeys.journeys.some(journey => journey.business.entry.mode === 'eventDriven'
-    && journey.business.entry.carries.some(context => context.contextId === contextId)
+  if (!scoped) return false;
+  const entryContexts = deriveNs4Contexts(sources).entryByJourneyId;
+  return sources.journeys.journeys.some(journey => journey.business.entry.mode === 'eventDriven'
+    && (entryContexts.get(journey.journeyId) || []).some(context => context.contextId === contextId)
     && stepRefs.some(stepRef => stepRef.startsWith(`${journey.journeyId}.`)));
 }
 

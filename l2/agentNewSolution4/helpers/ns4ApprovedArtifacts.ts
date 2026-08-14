@@ -6,7 +6,7 @@ import {
   ns4OntologyIndexFile, Ns4FileInfo, readNs4DefsJson, readNs4Module, readNs4Pipeline,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
 import {
-  normalizeNs4E2Review, Ns4E2Review, Ns4JourneyArtifact, Ns4JourneyIndex,
+  isNs4CurrentJourneyBusiness, normalizeNs4E2Review, Ns4E2Review, Ns4JourneyArtifact, Ns4JourneyIndex,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import {
   normalizeNs4E3Review, Ns4AccessMatrixArtifact, Ns4E3Review,
@@ -31,6 +31,11 @@ export async function readNs4ApprovedJourneys(moduleName: string): Promise<Ns4E2
     const artifact = byId.get(entry.journeyId);
     if (!artifact || artifact.businessHash !== entry.businessHash) {
       throw new Error(`Approved journey artifact mismatch: ${entry.journeyId}.`);
+    }
+    // A journey of a previous flow version still declares its context graph. Nothing derives from it,
+    // so resuming on it would silently produce a contextless skeleton instead of failing.
+    if (!isNs4CurrentJourneyBusiness(artifact.business)) {
+      throw new Error(`Approved journey ${entry.journeyId} belongs to a previous flow version and is never migrated.`);
     }
     return artifact;
   });

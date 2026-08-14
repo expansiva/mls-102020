@@ -1,5 +1,6 @@
 import type { Ns4E8PresentationProposal, Ns4E8SkeletonReview, Ns4E8Sources, Ns4WorkspaceContext, Ns4WorkspaceDetailDraft } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
 import { routeOf } from '/_102020_/l2/agentNewSolution4/helpers/routeOf.js';
+import { deriveNs4Contexts } from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
 import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 import type { Ns4ResolutionFinding, Ns4ResolutionResult } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 
@@ -87,7 +88,9 @@ export function validateNs4E8Skeleton(skeleton: Ns4E8SkeletonReview, sources: Ns
         const localFormInput = scenario.kind === 'form' && scenario.useCaseIds.some(id => useCasesById.get(id)?.contexts?.requires?.includes(context.contextId));
         const actorSession = hasActorSessionSource(workspace.profileRefs, scenario.stepRefs, context.contextId, sources);
         const routeTarget = routeOf(skeleton.moduleName, workspace, scenario, { workspaces: skeleton.workspaces, edges: skeleton.edges, useCases: sources.useCases }).pathContextIds.includes(context.contextId);
-        if (context.required && !localSlice && !localFormInput && !actorSession && !routeTarget) add('NS4_E8_SELECTION_SOURCE', `${scenarioPath}.selectionContexts.${context.contextId}`, `Required context ${context.contextId} in scenario ${scenario.scenarioId} has no slice, picker/form input, actor session, hub anchor or unique scenario target.`);
+        // Provenance is derived, so a missing source is evidence about the journeys, not a broken
+        // contract: it is recorded through ns4Resolve and never fails the run on content.
+        if (context.required && !localSlice && !localFormInput && !actorSession && !routeTarget) add('NS4_E8_SELECTION_SOURCE', `${scenarioPath}.selectionContexts.${context.contextId}`, `A tela ${scenario.title} opera ${context.businessObject} sem uma origem visível do registro; nesta versão ele é escolhido no próprio fluxo. Revisar?`, 'warning');
       });
       if (scenario.surface === 'batchAction') {
         if (![...workspace.pageContext, ...scenario.selectionContexts].some(context => context.cardinality === 'many')) add('NS4_E8_BATCH_CARDINALITY', scenarioPath, 'batchAction requires a many-cardinality context.');
@@ -282,8 +285,10 @@ function sameMechanicalContext(expected: Ns4WorkspaceContext, actual: Ns4Workspa
 function hasActorSessionSource(profileRefs: string[], stepRefs: string[], contextId: string, sources: Ns4E8Sources): boolean {
   const scoped = sources.access.grants.some(grant => profileRefs.includes(grant.profileRef)
     && (grant.dataScope?.mode === 'own' || grant.dataScope?.mode === 'assigned' || grant.dataScope?.mode === 'related'));
-  return scoped && sources.journeys.journeys.some(journey => journey.business.entry.mode === 'eventDriven'
-    && journey.business.entry.carries.some(context => context.contextId === contextId)
+  if (!scoped) return false;
+  const entryContexts = deriveNs4Contexts(sources).entryByJourneyId;
+  return sources.journeys.journeys.some(journey => journey.business.entry.mode === 'eventDriven'
+    && (entryContexts.get(journey.journeyId) || []).some(context => context.contextId === contextId)
     && stepRefs.some(stepRef => stepRef.startsWith(`${journey.journeyId}.`)));
 }
 

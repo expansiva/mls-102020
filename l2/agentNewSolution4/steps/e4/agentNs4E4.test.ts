@@ -46,12 +46,9 @@ const journeys = normalizeNs4E2Review({
   moduleName: 'buildFlowFsm', userLanguage: 'en', reviewRound: 1,
   journeys: [{
     journeyId: 'manageProjects', business: {
-      actorRef: 'projectManager', title: 'Manage projects', goal: 'Manage a selected project.', prerequisites: [],
-      entry: { mode: 'coldStart', carries: [] }, useRules: [],
+      actorRef: 'projectManager', title: 'Manage projects', goal: 'Manage a selected project.', entry: { mode: 'coldStart' }, useRules: [],
       steps: [{
-        stepId: 'selectProject', kind: 'locate', intent: 'Select a project.', requiresContext: [],
-        providesContext: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true, description: 'Selected project.' }],
-        result: 'Project selected.', featureRefs: ['projectManagement'],
+        stepId: 'selectProject', kind: 'locate', entity: 'Project', title: 'Select a project.', description: 'Project selected.', featureRefs: ['projectManagement'],
       }], outcome: { statement: 'Project available.', evidence: ['Project selected.'] },
     },
   }],
@@ -174,12 +171,9 @@ test('E2 and E4 share canonical PascalCase business object ids', () => {
   assert.equal(normalizeNs4BusinessObjectId('WorkTask'), 'WorkTask');
 
   const spacedJourneys = structuredClone(journeys) as any;
-  spacedJourneys.journeys[0].business.steps[0].providesContext[0].businessObject = 'Project portfolio';
+  spacedJourneys.journeys[0].business.steps[0].entity = 'Project portfolio';
   const normalizedJourneys = normalizeNs4E2Review(spacedJourneys);
-  assert.equal(
-    normalizedJourneys.journeys[0].business.steps[0].providesContext[0].businessObject,
-    'ProjectPortfolio',
-  );
+  assert.equal(normalizedJourneys.journeys[0].business.steps[0].entity, 'ProjectPortfolio');
 
   const matchingPlan = structuredClone(reviewInput) as any;
   matchingPlan.entities[0].entityId = 'ProjectPortfolio';
@@ -304,25 +298,14 @@ test('E4 rejects an access information need omitted from ontology traceability',
 
 test('E4 rejects a required journey business object omitted from the ontology overview', () => {
   const missingObjectJourneys = structuredClone(journeys);
-  missingObjectJourneys.journeys[0].business.steps[0].providesContext.push({
-    contextId: 'publishedClientStatus', businessObject: 'PublishedClientStatus', cardinality: 'one',
-    required: true, description: 'Status package published to the client.',
+  missingObjectJourneys.journeys[0].business.steps.push({
+    stepId: 'publishClientStatus', kind: 'act', entity: 'PublishedClientStatus',
+    title: 'Publish the client status package.', description: 'The client status package is published.',
+    featureRefs: [],
   });
   const gate = validateNs4E4Plan(normalizeNs4E4PlanDraft(reviewInput), missingObjectJourneys, access);
   assert.ok(gate.issues.some(issue => issue.code === 'NS4_E4_REQUIRED_CONTEXT_OBJECT'
     && issue.message.includes('PublishedClientStatus')));
-});
-
-test('E4 does not require an entity for an optional journey handoff', () => {
-  const optionalObjectJourneys = structuredClone(journeys);
-  optionalObjectJourneys.journeys[0].business.steps[0].providesContext.push({
-    contextId: 'publishedClientStatus', businessObject: 'PublishedClientStatus', cardinality: 'one',
-    required: false, description: 'Optional status package when one has already been published.',
-  });
-  assert.deepEqual(
-    validateNs4E4Plan(normalizeNs4E4PlanDraft(reviewInput), optionalObjectJourneys, access),
-    { ok: true, issues: [] },
-  );
 });
 
 test('E4 rejects disconnected business entities', () => {

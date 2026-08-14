@@ -258,8 +258,8 @@ export function formatNs4E2CoverageRepairFeedback(verdict: Ns4E2CoverageVerdict)
         `Required repair: ${issue.repairInstruction}`,
         issue.relatedJourneyIds.length ? `Related journeys: ${issue.relatedJourneyIds.join(', ')}` : '',
       ].filter(Boolean).join(' | ')),
-    'Linear-contract rule: never retain one act/decide step that combines creation with maintenance when maintenance needs an existing record. Split those outcomes into separate journeys; creation produces the record context, while maintenance locates or carries it before acting.',
-    'Final self-check: each numbered blocker is absent from the complete replacement draft and every affected feature/prerequisite/handoff points to valid replacement journey steps.',
+    'Linear-contract rule: never retain one act/decide step that combines creation with maintenance when maintenance needs an existing record. Split those outcomes into separate journeys; creation produces the record, while maintenance locates it in an earlier step before acting.',
+    'Final self-check: each numbered blocker is absent from the complete replacement draft and every affected feature and handoff points to valid replacement journey steps.',
   ].join('\n');
 }
 

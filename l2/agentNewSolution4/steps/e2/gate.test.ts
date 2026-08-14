@@ -28,12 +28,12 @@ const reviewInput = {
     {
       journeyId: 'manageProjects',
       business: {
-        actorRef: 'projectManager', title: 'Gerenciar projetos', goal: 'Localizar e acompanhar projetos.', prerequisites: [],
-        entry: { mode: 'coldStart', carries: [] },
+        actorRef: 'projectManager', title: 'Gerenciar projetos', goal: 'Localizar e acompanhar projetos.',
+        entry: { mode: 'coldStart' },
         steps: [{
-          stepId: 'selectProject', kind: 'locate', intent: 'Localizar um projeto pelo nome ou endereço.', requiresContext: [],
-          providesContext: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true, description: 'Projeto selecionado.' }],
-          result: 'Um projeto está selecionado.', featureRefs: ['projectManagement'],
+          stepId: 'selectProject', kind: 'locate', entity: 'Project',
+          title: 'Localizar um projeto pelo nome ou endereço.',
+          description: 'Um projeto está selecionado.', featureRefs: ['projectManagement'],
         }],
         outcome: { statement: 'O projeto correto fica disponível para trabalho.', evidence: ['O projeto é mostrado pelo nome e endereço.'] },
         useRules: [], policyDecisions: [],
@@ -43,21 +43,17 @@ const reviewInput = {
       journeyId: 'manageProjectChangeOrder',
       business: {
         actorRef: 'projectManager', title: 'Criar ordem de mudança', goal: 'Registrar uma mudança no projeto.',
-        prerequisites: [{ journeyRef: 'manageProjects', reason: 'A ordem pertence a um projeto.', required: false, providesContext: ['selectedProject'] }],
-        entry: {
-          mode: 'contextOrLookup', preferredFromJourneyRef: 'manageProjects',
-          carries: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true, description: 'Projeto da mudança.', stateRequirement: 'active' }],
-        },
+        entry: { mode: 'contextOrLookup', preferredFromJourneyRef: 'manageProjects' },
         steps: [
           {
-            stepId: 'locateProject', kind: 'locate', intent: 'Manter ou localizar o projeto ativo.', requiresContext: [],
-            providesContext: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true, description: 'Projeto recebido ou localizado.' }],
-            result: 'Um projeto ativo está selecionado.', featureRefs: ['changeOrderManagement'],
+            stepId: 'locateProject', kind: 'locate', entity: 'Project',
+            title: 'Manter ou localizar o projeto ativo.',
+            description: 'Um projeto ativo está selecionado.', featureRefs: ['changeOrderManagement'],
           },
           {
-            stepId: 'captureChangeOrder', kind: 'act', intent: 'Informar a mudança.', requiresContext: ['selectedProject'],
-            providesContext: [{ contextId: 'createdChangeOrder', businessObject: 'ChangeOrder', cardinality: 'one', required: true, description: 'Ordem criada.' }],
-            result: 'A ordem fica vinculada ao projeto.', featureRefs: ['changeOrderManagement'],
+            stepId: 'captureChangeOrder', kind: 'act', entity: 'ChangeOrder',
+            title: 'Informar a mudança.',
+            description: 'A ordem fica vinculada ao projeto.', featureRefs: ['changeOrderManagement'],
           },
         ],
         outcome: { statement: 'A mudança fica registrada no projeto correto.', evidence: ['A ordem exibe o projeto selecionado.'] },
@@ -80,14 +76,6 @@ test('E2 preserves the exact hook args used to match prompt_ready', () => {
 test('E2 accepts connected contextOrLookup journeys', () => {
   const review = normalizeNs4E2Review(reviewInput);
   assert.deepEqual(validateNs4E2Review(review), { ok: true, issues: [] });
-});
-
-test('E2 rejects a context consumed before it is carried or produced', () => {
-  const broken = structuredClone(reviewInput);
-  broken.journeys[1].business.steps[1].requiresContext = ['missingProject'];
-  const result = validateNs4E2Review(normalizeNs4E2Review(broken));
-  assert.equal(result.ok, false);
-  assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_CONTEXT_ORDER'));
 });
 
 test('E2 rejects invented step kinds instead of silently normalizing them', () => {
@@ -118,69 +106,52 @@ test('E2 preserves policy selections when the honor gate requests its bounded re
 
 test('E2 rejects business text that asks for a raw technical id', () => {
   const broken = structuredClone(reviewInput);
-  broken.journeys[1].business.steps[1].intent = 'Pedir o project id e registrar a mudança.';
+  broken.journeys[1].business.steps[1].title = 'Pedir o project id e registrar a mudança.';
   const result = validateNs4E2Review(normalizeNs4E2Review(broken));
   assert.equal(result.ok, false);
   assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_RAW_TECHNICAL_ID'));
 });
 
-test('E2 rejects a prerequisite that renames context across the journey handoff', () => {
-  const broken = structuredClone(reviewInput);
-  broken.journeys[0].business.steps[0].providesContext[0].contextId = 'createdProject';
-  const result = validateNs4E2Review(normalizeNs4E2Review(broken));
-  assert.equal(result.ok, false);
-  assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_PREREQUISITE_HANDOFF'));
+test('E2 requires a stable PascalCase entity on every step', () => {
+  const missing = structuredClone(reviewInput);
+  (missing.journeys[0].business.steps[0] as { entity: string }).entity = '';
+  assert.ok(validateNs4E2Review(normalizeNs4E2Review(missing)).issues.some(issue => issue.code === 'NS4_E2_STEP_ENTITY'));
+
+  const label = structuredClone(reviewInput);
+  label.journeys[0].business.steps[0].entity = 'projeto ativo';
+  const normalized = normalizeNs4E2Review(label);
+  assert.equal(normalized.journeys[0].business.steps[0].entity, 'ProjetoAtivo');
 });
 
-test('E2 contextOrLookup requires an explicit fallback locate output', () => {
+test('E2 contextOrLookup requires an explicit locate fallback step', () => {
   const broken = structuredClone(reviewInput);
-  broken.journeys[1].business.steps[0].providesContext = [];
+  broken.journeys[1].business.steps[0].kind = 'inspect';
   const result = validateNs4E2Review(normalizeNs4E2Review(broken));
   assert.equal(result.ok, false);
   assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_LOOKUP_FALLBACK'));
 });
 
-test('E2 contextOrLookup does not turn an optional handoff into a mandatory lookup', () => {
-  const optional = normalizeNs4E2Review(structuredClone(reviewInput));
-  optional.journeys[1].business.entry.carries.push({
-    contextId: 'taskRiskAssessment', businessObject: 'TaskRiskAssessment', cardinality: 'one' as const,
-    required: false, description: 'Avaliação de risco disponível quando já tiver sido gerada.',
-  });
-  const accepted = validateNs4E2Review(normalizeNs4E2Review(optional));
-  assert.deepEqual(accepted, { ok: true, issues: [] });
+test('E2 accepts a handoff that names its receiving profile and rejects it elsewhere', () => {
+  const handoff: any = structuredClone(reviewInput);
+  handoff.journeys[1].business.steps[1] = {
+    stepId: 'notifyClient', kind: 'handoff', entity: 'ChangeOrder', targetProfile: 'clientPortal',
+    title: 'Avisar o cliente sobre a mudança.', description: 'O cliente recebe o aviso da mudança.',
+    featureRefs: ['changeOrderManagement'],
+  };
+  handoff.features[1].journeyStepRefs = ['manageProjectChangeOrder.notifyClient'];
+  assert.deepEqual(validateNs4E2Review(normalizeNs4E2Review(handoff)), { ok: true, issues: [] });
 
-  optional.journeys[1].business.steps[1].requiresContext.push('taskRiskAssessment');
-  const unconditional = validateNs4E2Review(normalizeNs4E2Review(optional));
-  assert.ok(unconditional.issues.some(issue => issue.code === 'NS4_E2_CONTEXT_ORDER'));
+  handoff.journeys[1].business.steps[1].kind = 'act';
+  assert.ok(validateNs4E2Review(normalizeNs4E2Review(handoff)).issues
+    .some(issue => issue.code === 'NS4_E2_STEP_TARGET_PROFILE'));
 });
 
-test('E2 entry modes agree with their required context contract', () => {
-  const coldStart = normalizeNs4E2Review(structuredClone(reviewInput));
-  coldStart.journeys[0].business.entry.carries.push({
-    contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one' as const,
-    required: true, description: 'Projeto obrigatório.',
-  });
-  assert.ok(validateNs4E2Review(normalizeNs4E2Review(coldStart)).issues
-    .some(issue => issue.code === 'NS4_E2_COLD_START_CONTEXT'));
-
-  const eventDriven = structuredClone(reviewInput);
-  eventDriven.journeys[0].business.entry.mode = 'eventDriven';
-  assert.ok(validateNs4E2Review(normalizeNs4E2Review(eventDriven)).issues
-    .some(issue => issue.code === 'NS4_E2_ENTRY_CONTEXT'));
-});
-
-test('E2 allows a stable context to be refreshed but rejects a different business object', () => {
-  const refreshed = structuredClone(reviewInput);
-  refreshed.journeys[1].business.steps[1].providesContext.push({
-    contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one' as const,
-    required: true, description: 'Projeto mantido após registrar a ordem.',
-  });
-  assert.equal(validateNs4E2Review(normalizeNs4E2Review(refreshed)).ok, true);
-
-  refreshed.journeys[1].business.steps[1].providesContext[1].businessObject = 'Client';
-  const result = validateNs4E2Review(normalizeNs4E2Review(refreshed));
+test('E2 keeps a preferred origin journey earlier than the journey that names it', () => {
+  const broken = structuredClone(reviewInput);
+  broken.journeys[0].business.entry.preferredFromJourneyRef = 'manageProjectChangeOrder';
+  const result = validateNs4E2Review(normalizeNs4E2Review(broken));
   assert.equal(result.ok, false);
-  assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_CONTEXT_OBJECT_CONFLICT'));
+  assert.ok(result.issues.some(issue => issue.code === 'NS4_E2_PREFERRED_ORDER'));
 });
 
 test('business hash is stable across object key order', async () => {

@@ -14,19 +14,19 @@ numbered issue. Do not rewrite the complete draft.
 - `journeyUpserts` contains each complete new journey or complete replacement journey. An existing
   `journeyId` replaces that journey; a new id appends it. Omitted journeys remain unchanged.
 - `featureUpserts` contains each complete new or replacement feature affected by the journey changes.
-- For `moduleWithoutDecide`, either add a justified `decide` step with complete context contracts or
+- For `moduleWithoutDecide`, either add a justified `decide` step naming its entity or
   sustain the current no-decision policy by returning both upsert arrays empty. This consumes the
   same single semantic repair budget; never invent an approval merely to satisfy the signal.
   An existing `featureId` replaces that feature; omitted features remain unchanged.
 - There are no deletions. Preserve all unaffected scope.
 - Resolve every numbered blocker, not only the first one.
-- Keep prerequisite journeys earlier than their consumers. A newly appended journey may depend on an
-  existing journey, but an existing journey cannot depend on a newly appended journey unless that
-  existing journey is also replaced and ordering remains valid.
+- Keep a journey named in `entry.preferredFromJourneyRef` earlier than the journey that names it. A
+  newly appended journey may prefer an existing journey, but an existing journey cannot prefer a newly
+  appended journey unless that existing journey is also replaced and ordering remains valid.
 - Every step feature ref must resolve, and every affected feature's `journeyStepRefs` must name valid
   complete `<journeyId>.<stepId>` refs.
-- Use the E2 context rules: never request a technical id; locate/carry named existing records before
-  acting; never combine creation and maintenance when their context preconditions differ.
+- Use the E2 step rules: never request a technical id; locate an existing record in an earlier step
+  before acting on it; never combine creation and maintenance in one step.
 - Use the user's language and preserve stable lower-camel ids.
 
 ## Output

@@ -193,7 +193,7 @@ async function readCompactSource(moduleName: string): Promise<Record<string, unk
     },
     journeys: journeys.journeys.map(journey => ({
       journeyId: journey.journeyId, actorRef: journey.business.actorRef, goal: journey.business.goal,
-      steps: journey.business.steps.map(step => ({ intent: step.intent, result: step.result })),
+      steps: journey.business.steps.map(step => ({ entity: step.entity, title: step.title, description: step.description })),
       outcome: journey.business.outcome.statement,
     })),
     ontology: ontology.entities.map(entity => ({

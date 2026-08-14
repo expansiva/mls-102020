@@ -163,7 +163,7 @@ test('E2 coverage judge is the only stage that adds policy impacts', () => {
     moduleName: 'buildFlowFsm', journeys: [{
       journeyId: 'manageChanges', policyDecisions: [{
         decisionId: 'changeDecisionMode', question: 'Como decidir?', chosen: 'Diretamente.', alternatives: ['Com aprovação.'],
-      }], business: { actorRef: 'manager', title: 'Mudanças', goal: 'Decidir mudanças.', prerequisites: [], entry: { mode: 'coldStart', carries: [] }, steps: [], outcome: { statement: 'Decisão registrada.', evidence: ['Decisão visível.'] }, useRules: [] },
+      }], business: { actorRef: 'manager', title: 'Mudanças', goal: 'Decidir mudanças.', entry: { mode: 'coldStart' }, steps: [], outcome: { statement: 'Decisão registrada.', evidence: ['Decisão visível.'] }, useRules: [] },
     }], features: [],
   });
   const verdict = normalizeNs4E2CoverageVerdict({
@@ -180,9 +180,8 @@ test('S1 requires one business issue and becomes a visible policy choice after t
     moduleName: 'buildFlowFsm38', userLanguage: 'pt-BR', journeys: [{
       journeyId: 'manageProjectChangeOrder', policyDecisions: [],
       business: {
-        actorRef: 'manager', title: 'Gerenciar mudança', goal: 'Registrar mudança.', prerequisites: [],
-        entry: { mode: 'coldStart', carries: [] },
-        steps: [{ stepId: 'recordChangeOrder', kind: 'act', intent: 'Registrar mudança.', requiresContext: [], providesContext: [], result: 'Mudança registrada.', featureRefs: [] }],
+        actorRef: 'manager', title: 'Gerenciar mudança', goal: 'Registrar mudança.', entry: { mode: 'coldStart' },
+        steps: [{ stepId: 'recordChangeOrder', kind: 'act', title: 'Registrar mudança.', description: 'Mudança registrada.', featureRefs: [] }],
         outcome: { statement: 'Mudança registrada.', evidence: ['Registro visível.'] }, useRules: [],
       },
     }], features: [],
@@ -221,8 +220,8 @@ test('S1 cannot be omitted by the judge or invented for a module that already de
 
   const healthy = normalizeNs4E2Review({
     moduleName: 'buildFlowFsm', journeys: [{ journeyId: 'approveOrder', policyDecisions: [], business: {
-      actorRef: 'manager', title: 'Aprovar', goal: 'Decidir.', prerequisites: [], entry: { mode: 'coldStart', carries: [] },
-      steps: [{ stepId: 'decideOrder', kind: 'decide', intent: 'Decidir.', requiresContext: [], providesContext: [], result: 'Decidido.', featureRefs: [] }],
+      actorRef: 'manager', title: 'Aprovar', goal: 'Decidir.', entry: { mode: 'coldStart' },
+      steps: [{ stepId: 'decideOrder', kind: 'decide', title: 'Decidir.', description: 'Decidido.', featureRefs: [] }],
       outcome: { statement: 'Decidido.', evidence: ['Estado visível.'] }, useRules: [],
     } }], features: [],
   });

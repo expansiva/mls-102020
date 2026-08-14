@@ -1,5 +1,13 @@
 # E2 changelog
 
+- 2026-08-14: The declared context graph is gone. A step is now
+  `{stepId, kind, entity, title, description, featureRefs}` plus `targetProfile` on a handoff;
+  `requiresContext`, `providesContext`, `entry.carries` and `prerequisites` no longer exist and the
+  gate lost every context check. Contexts are derived by `helpers/ns4Context.ts` from the entity, the
+  step kind, the journey order and the approved ontology. Journey schema v5, index v6, review schema
+  `2026-08-14-v5`; artifacts of previous flow versions stay compile-only through
+  `Ns4LegacyJourneyArtifact` and are never migrated.
+
 - 2026-08-13: Added the evidence-backed whole-module `moduleWithoutDecide` coverage signal. Code
   records the complete step-kind histogram, sends S1 plus the original request to the existing judge,
   reuses the single semantic repair, and turns a surviving choice into a visible journey

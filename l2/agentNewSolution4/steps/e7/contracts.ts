@@ -1,8 +1,8 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/steps/e7/contracts.ts" enhancement="_blank"/>
 
-import { sha256Ns4 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import { isNs4CurrentJourneyBusiness, sha256Ns4 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import type {
-  Ns4E2Review, Ns4JourneyArtifact, Ns4JourneyArtifactV3, Ns4JourneyIndex, Ns4JourneyStepKind,
+  Ns4E2Review, Ns4JourneyArtifact, Ns4JourneyArtifactV5Realized, Ns4JourneyIndex, Ns4JourneyStepKind,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import { NS4_JOURNEY_INDEX_SCHEMA_VERSION, NS4_REALIZED_JOURNEY_SCHEMA_VERSION } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import type {
@@ -11,6 +11,7 @@ import type {
 import { NS4_REALIZED_ACCESS_MATRIX_SCHEMA_VERSION } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import type { Ns4OntologyField } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import { resolveNs4Findings, type Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
+import type { Ns4DerivedContextGraph } from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
 import { shrinkNs4WorkflowToReachable } from '/_102020_/l2/agentNewSolution4/steps/e7/reachability.js';
 
 export const NS4_USE_CASE_DRAFT_VERSION = '2026-08-10-ns4-usecase-draft-minimal-v3' as const;
@@ -221,29 +222,32 @@ export interface Ns4WorkflowIndexArtifact {
   generatedAt: string;
 }
 
+/** Contexts come from the derivation, never from the journey text: E7 copies no declared name. */
 export function buildNs4E7Plan(
   moduleName: string,
   userLanguage: string,
   journeys: Ns4E2Review,
   sourceHashes: Ns4E7SourceHashes,
+  contexts: Ns4DerivedContextGraph,
 ): Ns4E7PlanDraft {
-  const grouped = new Map<string, { kinds: Set<Ns4JourneyStepKind>; refs: string[]; intents: string[];
+  const grouped = new Map<string, { kinds: Set<Ns4JourneyStepKind>; refs: string[]; titles: string[];
     requires: Set<string>; provides: Set<string> }>();
   for (const journey of journeys.journeys) {
     for (const step of journey.business.steps) {
-      const current = grouped.get(step.stepId) || { kinds: new Set<Ns4JourneyStepKind>(), refs: [], intents: [],
+      const current = grouped.get(step.stepId) || { kinds: new Set<Ns4JourneyStepKind>(), refs: [], titles: [],
         requires: new Set<string>(), provides: new Set<string>() };
+      const stepRef = `${journey.journeyId}.${step.stepId}`;
       current.kinds.add(step.kind);
-      current.refs.push(`${journey.journeyId}.${step.stepId}`);
-      current.intents.push(step.intent);
-      step.requiresContext.forEach(contextId => current.requires.add(contextId));
-      step.providesContext.forEach(context => current.provides.add(context.contextId));
+      current.refs.push(stepRef);
+      current.titles.push(step.title);
+      contexts.byStepRef.get(stepRef)?.requires.forEach(context => current.requires.add(context.contextId));
+      contexts.byStepRef.get(stepRef)?.provides.forEach(context => current.provides.add(context.contextId));
       grouped.set(step.stepId, current);
     }
   }
   const useCases = [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([useCaseId, group]) => ({
     useCaseId,
-    title: group.intents[0] || useCaseId,
+    title: group.titles[0] || useCaseId,
     kind: [...group.kinds].every(kind => kind === 'locate' || kind === 'inspect') ? 'query' as const : 'command' as const,
     compiledFrom: [...new Set(group.refs)].sort(),
     contexts: { requires: [...group.requires].sort(), provides: [...group.provides].sort() },
@@ -404,24 +408,25 @@ export async function buildNs4WorkflowArtifacts(
 export async function buildNs4RealizedJourneyArtifact(
   source: Ns4JourneyArtifact,
   useCases: Ns4UseCaseArtifactV3[],
-): Promise<Ns4JourneyArtifactV3> {
-  if (!('useRules' in source.business)) throw new Error(`E7 does not migrate legacy journey ${source.journeyId}.`);
+  derived: Ns4DerivedContextGraph,
+): Promise<Ns4JourneyArtifactV5Realized> {
+  if (!isNs4CurrentJourneyBusiness(source.business)) throw new Error(`E7 does not migrate legacy journey ${source.journeyId}.`);
   const business = source.business;
   const journeyUseCases = useCases.filter(useCase => useCase.compiledFrom.some(ref => ref.startsWith(`${source.journeyId}.`)));
-  const contexts = new Map<string, { value: Ns4JourneyArtifactV3['resolution']['contexts'][string]; sources: Set<string>; consumers: Set<string> }>();
-  const addContext = (context: Ns4JourneyArtifactV3['resolution']['contexts'][string], sourceRef: string, consumers: string[]) => {
+  const contexts = new Map<string, { value: Ns4JourneyArtifactV5Realized['resolution']['contexts'][string]; sources: Set<string>; consumers: Set<string> }>();
+  const addContext = (context: Ns4JourneyArtifactV5Realized['resolution']['contexts'][string], sourceRef: string, consumers: string[]) => {
     const current = contexts.get(context.contextId) || { value: context, sources: new Set<string>(), consumers: new Set<string>() };
     current.sources.add(sourceRef); consumers.forEach(ref => current.consumers.add(ref)); contexts.set(context.contextId, current);
   };
-  for (const context of business.entry.carries) {
-    const consumers = business.steps.filter(step => step.requiresContext.includes(context.contextId))
-      .map(step => `${source.journeyId}.${step.stepId}`);
-    addContext({ ...context, sourceRefs: [], consumerStepRefs: [] }, `${source.journeyId}.entry`, consumers);
+  const journeySteps = business.steps.map(step => derived.byStepRef.get(`${source.journeyId}.${step.stepId}`))
+    .filter((step): step is NonNullable<typeof step> => !!step);
+  const consumersOf = (contextId: string) => journeySteps
+    .filter(step => step.requires.some(context => context.contextId === contextId)).map(step => step.stepRef);
+  for (const context of derived.entryByJourneyId.get(source.journeyId) || []) {
+    addContext({ ...context, sourceRefs: [], consumerStepRefs: [] }, `${source.journeyId}.entry`, consumersOf(context.contextId));
   }
-  for (const step of business.steps) for (const context of step.providesContext) {
-    const consumers = business.steps.filter(candidate => candidate.requiresContext.includes(context.contextId))
-      .map(candidate => `${source.journeyId}.${candidate.stepId}`);
-    addContext({ ...context, sourceRefs: [], consumerStepRefs: [] }, `${source.journeyId}.${step.stepId}`, consumers);
+  for (const step of journeySteps) for (const context of step.provides) {
+    addContext({ ...context, sourceRefs: [], consumerStepRefs: [] }, step.stepRef, consumersOf(context.contextId));
   }
   const resolvedContexts = Object.fromEntries([...contexts.entries()].map(([contextId, entry]) => [contextId, {
     ...entry.value, sourceRefs: [...entry.sources].sort(), consumerStepRefs: [...entry.consumers].sort(),
@@ -442,7 +447,7 @@ export async function buildNs4RealizedJourneyArtifact(
 
 export async function buildNs4RealizedJourneyIndex(
   source: Ns4JourneyIndex,
-  journeys: Ns4JourneyArtifactV3[],
+  journeys: Ns4JourneyArtifactV5Realized[],
 ): Promise<Ns4JourneyIndex> {
   const byId = new Map(journeys.map(journey => [journey.journeyId, journey]));
   const entries = source.journeys.map(entry => ({ ...entry,

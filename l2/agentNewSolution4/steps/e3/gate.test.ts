@@ -29,12 +29,9 @@ const journeys = normalizeNs4E2Review({
   journeys: [{
     journeyId: 'manageProjects',
     business: {
-      actorRef: 'projectManager', title: 'Gerenciar projetos', goal: 'Acompanhar projetos.', prerequisites: [],
-      entry: { mode: 'coldStart', carries: [] },
+      actorRef: 'projectManager', title: 'Gerenciar projetos', goal: 'Acompanhar projetos.', entry: { mode: 'coldStart' },
       steps: [{
-        stepId: 'selectProject', kind: 'locate', intent: 'Selecionar projeto.', requiresContext: [],
-        providesContext: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true, description: 'Projeto selecionado.' }],
-        result: 'Projeto selecionado.', featureRefs: ['projectManagement'],
+        stepId: 'selectProject', kind: 'locate', entity: 'Project', title: 'Selecionar projeto.', description: 'Projeto selecionado.', featureRefs: ['projectManagement'],
       }],
       outcome: { statement: 'Projeto disponível.', evidence: ['Projeto identificado.'] }, useRules: [],
     },

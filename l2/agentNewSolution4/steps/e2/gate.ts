@@ -3,7 +3,6 @@
 import {
   Ns4E2Review,
   Ns4PolicyDecisionSelection,
-  requiredNs4JourneyContexts,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 
 export interface Ns4E2GateIssue {
@@ -18,10 +17,15 @@ export interface Ns4E2GateResult {
 }
 
 const ID_PATTERN = /^[a-z][A-Za-z0-9]*$/;
-const BUSINESS_OBJECT_PATTERN = /^[A-Z][A-Za-z0-9]*$/;
+const ENTITY_PATTERN = /^[A-Z][A-Za-z0-9]*$/;
 const RAW_TECHNICAL_ID_PATTERN = /\b(?:[a-z][A-Za-z0-9]*Id|[a-z][a-z0-9]*_id|[A-Za-z][A-Za-z0-9]*\s+(?:id|ID))\b/;
 const STEP_KINDS = new Set(['locate', 'inspect', 'act', 'decide', 'handoff']);
 
+/**
+ * The E2 gate is structural only. There is no declared context graph left to validate: contexts are
+ * derived downstream by helpers/ns4Context.ts from the step entity, the step kind, the journey
+ * sequence and the approved ontology.
+ */
 export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
   const issues: Ns4E2GateIssue[] = [];
   const add = (code: string, path: string, message: string) => issues.push({ code, path, message });
@@ -31,14 +35,9 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
 
   const journeyIds = new Set<string>();
   const journeyIndex = new Map<string, number>();
-  const exportedContexts = new Map<string, Map<string, string>>();
   review.journeys.forEach((journey, index) => {
     checkId(journey.journeyId, `journeys[${index}].journeyId`, 'journey', journeyIds, add);
     journeyIndex.set(journey.journeyId, index);
-    const exported = new Map<string, string>();
-    journey.business.entry.carries.forEach(context => exported.set(context.contextId, context.businessObject));
-    journey.business.steps.forEach(step => step.providesContext.forEach(context => exported.set(context.contextId, context.businessObject)));
-    exportedContexts.set(journey.journeyId, exported);
   });
 
   const policyDecisionIds = new Set<string>();
@@ -76,37 +75,9 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
       add('NS4_E2_EVIDENCE', `${base}.business.outcome.evidence`, 'Outcome needs observable evidence.');
     }
 
-    const entryContexts = new Set<string>();
-    business.entry.carries.forEach((context, index) => {
-      checkContext(context.contextId, context.businessObject, `${base}.business.entry.carries[${index}]`, entryContexts, add);
-      checkBusinessText(context.description, `${base}.business.entry.carries[${index}].description`, add);
-    });
-    const requiredEntryContexts = requiredNs4JourneyContexts(business.entry.carries);
-    if ((business.entry.mode === 'contextRequired' || business.entry.mode === 'contextOrLookup' || business.entry.mode === 'eventDriven')
-      && !requiredEntryContexts.length) {
-      add('NS4_E2_ENTRY_CONTEXT', `${base}.business.entry.carries`, `${business.entry.mode} requires at least one required carried business context.`);
-    }
-    if (business.entry.mode === 'coldStart' && requiredEntryContexts.length) {
-      add('NS4_E2_COLD_START_CONTEXT', `${base}.business.entry.carries`, 'coldStart cannot depend on a required carried context. Use contextRequired or contextOrLookup.');
-    }
-
     const preferredRef = business.entry.preferredFromJourneyRef;
     if (preferredRef) checkEarlierJourneyRef(preferredRef, journey.journeyId, journeyPosition, journeyIndex, `${base}.business.entry.preferredFromJourneyRef`, add);
-    business.prerequisites.forEach((prerequisite, index) => {
-      const path = `${base}.business.prerequisites[${index}]`;
-      checkEarlierJourneyRef(prerequisite.journeyRef, journey.journeyId, journeyPosition, journeyIndex, `${path}.journeyRef`, add);
-      if (!prerequisite.reason) add('NS4_E2_PREREQUISITE_REASON', `${path}.reason`, 'Prerequisite reason is required.');
-      prerequisite.providesContext.forEach(contextId => {
-        if (!entryContexts.has(contextId)) add('NS4_E2_PREREQUISITE_CONTEXT', `${path}.providesContext`, `Prerequisite provides undeclared entry context ${contextId}.`);
-        const exported = exportedContexts.get(prerequisite.journeyRef);
-        if (exported && !exported.has(contextId)) {
-          add('NS4_E2_PREREQUISITE_HANDOFF', `${path}.providesContext`, `Journey ${prerequisite.journeyRef} does not export context ${contextId}. Use one stable contextId across the handoff.`);
-        }
-      });
-    });
 
-    const availableContexts = new Set(requiredEntryContexts.map(context => context.contextId));
-    const contextObjects = new Map(business.entry.carries.map(context => [context.contextId, context.businessObject]));
     const stepIds = new Set<string>();
     business.steps.forEach((step, stepPosition) => {
       const path = `${base}.business.steps[${stepPosition}]`;
@@ -115,44 +86,27 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
       if (!STEP_KINDS.has(step.kind)) {
         add('NS4_E2_STEP_KIND', `${path}.kind`, `Unknown step kind ${step.kind || '(empty)'}. Use locate, inspect, act, decide or handoff.`);
       }
-      if (!step.intent) add('NS4_E2_STEP_INTENT', `${path}.intent`, 'Step intent is required.');
-      if (!step.result) add('NS4_E2_STEP_RESULT', `${path}.result`, 'Step result must be observable.');
-      checkBusinessText(step.intent, `${path}.intent`, add);
-      checkBusinessText(step.result, `${path}.result`, add);
-      if (step.kind === 'decide' && !step.requiresContext.length) {
-        add('NS4_E2_DECISION_CONTEXT', `${path}.requiresContext`, 'A decide step must identify the record/context being decided.');
+      if (!step.entity) add('NS4_E2_STEP_ENTITY', `${path}.entity`, 'Every step names the business record it operates on.');
+      else if (!ENTITY_PATTERN.test(step.entity)) {
+        add('NS4_E2_STEP_ENTITY_ID', `${path}.entity`, 'Step entity must be a stable PascalCase identifier, not a display label.');
       }
-      step.requiresContext.forEach(contextId => {
-        if (!availableContexts.has(contextId)) {
-          add('NS4_E2_CONTEXT_ORDER', `${path}.requiresContext`, `Context ${contextId} is not carried or produced by an earlier step.`);
-        }
-      });
-      step.providesContext.forEach((context, contextPosition) => {
-        const contextPath = `${path}.providesContext[${contextPosition}]`;
-        checkContextShape(context.contextId, context.businessObject, contextPath, add);
-        const previousObject = contextObjects.get(context.contextId);
-        if (previousObject && previousObject !== context.businessObject) {
-          add('NS4_E2_CONTEXT_OBJECT_CONFLICT', `${contextPath}.businessObject`, `Context ${context.contextId} must keep businessObject ${previousObject}, not ${context.businessObject}.`);
-        }
-        if (context.contextId) contextObjects.set(context.contextId, context.businessObject);
-        checkBusinessText(context.description, `${contextPath}.description`, add);
-        availableContexts.add(context.contextId);
-      });
+      if (!step.title) add('NS4_E2_STEP_TITLE', `${path}.title`, 'Step title is required.');
+      if (!step.description) add('NS4_E2_STEP_DESCRIPTION', `${path}.description`, 'Step description must state an observable result.');
+      checkBusinessText(step.title, `${path}.title`, add);
+      checkBusinessText(step.description, `${path}.description`, add);
+      if (step.targetProfile && !ID_PATTERN.test(step.targetProfile)) {
+        add('NS4_E2_STEP_TARGET_PROFILE_ID', `${path}.targetProfile`, 'targetProfile must be a lower-camel profile id.');
+      }
+      if (step.kind !== 'handoff' && step.targetProfile) {
+        add('NS4_E2_STEP_TARGET_PROFILE', `${path}.targetProfile`, 'Only a handoff step names a receiving profile.');
+      }
       step.featureRefs.forEach(featureRef => {
         if (!featureIds.has(featureRef)) add('NS4_E2_FEATURE_REF', `${path}.featureRefs`, `Unknown featureRef ${featureRef}.`);
       });
     });
 
-    if (business.entry.mode === 'contextOrLookup') {
-      const located = new Set(
-        business.steps.filter(step => step.kind === 'locate').flatMap(step => step.providesContext.map(context => context.contextId)),
-      );
-      requiredEntryContexts.forEach(context => {
-        const contextId = context.contextId;
-        if (!located.has(contextId)) {
-          add('NS4_E2_LOOKUP_FALLBACK', `${base}.business.steps`, `contextOrLookup must include a locate step that provides fallback context ${contextId}.`);
-        }
-      });
+    if (business.entry.mode === 'contextOrLookup' && !business.steps.some(step => step.kind === 'locate')) {
+      add('NS4_E2_LOOKUP_FALLBACK', `${base}.business.steps`, 'contextOrLookup must include a locate step as the direct-entry fallback.');
     }
 
     const ruleIds = new Set<string>();
@@ -212,22 +166,6 @@ function checkId(value: string, path: string, label: string, ids: Set<string>, a
   if (value) ids.add(value);
 }
 
-function checkContext(contextId: string, businessObject: string, path: string, ids: Set<string>, add: AddIssue): void {
-  checkId(contextId, `${path}.contextId`, 'context', ids, add);
-  if (!businessObject) add('NS4_E2_CONTEXT_OBJECT', `${path}.businessObject`, 'Context businessObject is required.');
-  else if (!BUSINESS_OBJECT_PATTERN.test(businessObject)) {
-    add('NS4_E2_CONTEXT_OBJECT_ID', `${path}.businessObject`, 'Context businessObject must be a stable PascalCase identifier.');
-  }
-}
-
-function checkContextShape(contextId: string, businessObject: string, path: string, add: AddIssue): void {
-  if (!ID_PATTERN.test(contextId)) add('NS4_E2_ID', `${path}.contextId`, 'context id must be a lower-camel identifier.');
-  if (!businessObject) add('NS4_E2_CONTEXT_OBJECT', `${path}.businessObject`, 'Context businessObject is required.');
-  else if (!BUSINESS_OBJECT_PATTERN.test(businessObject)) {
-    add('NS4_E2_CONTEXT_OBJECT_ID', `${path}.businessObject`, 'Context businessObject must be a stable PascalCase identifier.');
-  }
-}
-
 function checkBusinessText(value: string, path: string, add: AddIssue): void {
   if (RAW_TECHNICAL_ID_PATTERN.test(value)) {
     add('NS4_E2_RAW_TECHNICAL_ID', path, 'Business-facing journey text must name the business record, not ask for a technical id.');
@@ -243,11 +181,11 @@ function checkEarlierJourneyRef(
   add: AddIssue,
 ): void {
   if (!journeyRef || !indexes.has(journeyRef)) {
-    add('NS4_E2_PREREQUISITE_REF', path, `Unknown prerequisite journey ${journeyRef || '(empty)'}.`);
+    add('NS4_E2_PREFERRED_REF', path, `Unknown preferred origin journey ${journeyRef || '(empty)'}.`);
     return;
   }
-  if (journeyRef === currentJourneyId) add('NS4_E2_PREREQUISITE_SELF', path, 'A journey cannot require itself.');
+  if (journeyRef === currentJourneyId) add('NS4_E2_PREFERRED_SELF', path, 'A journey cannot be its own preferred origin.');
   if ((indexes.get(journeyRef) ?? currentPosition) >= currentPosition) {
-    add('NS4_E2_PREREQUISITE_ORDER', path, `Prerequisite ${journeyRef} must appear before ${currentJourneyId}.`);
+    add('NS4_E2_PREFERRED_ORDER', path, `Preferred origin ${journeyRef} must appear before ${currentJourneyId}.`);
   }
 }

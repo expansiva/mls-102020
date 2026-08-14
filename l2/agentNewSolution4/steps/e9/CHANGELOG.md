@@ -1,4 +1,11 @@
-# Changelog — E9
+# E9 changelog
+
+## 2026-08-14 — notifications compile from the handoff itself
+
+- A notification is compiled from the handoff `targetProfile` and the sending step entity instead of
+  matching declared context names between an event-driven journey and its provider. Delivery remains
+  a notification and never a navigation edge; deep links are still validated through `routeOf`.
+
 
 ## 2026-08-13 — run 40 shared identifier field
 

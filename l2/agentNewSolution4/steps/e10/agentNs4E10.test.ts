@@ -75,7 +75,7 @@ test('A3 rejects a no-approval choice that coexists with a decide/review realiza
   const input: any = await sources(false); const journey = input.journeys.journeys[0];
   journey.policyDecisions = [{ decisionId: 'approvalPolicy', question: 'Is approval required?', chosen: 'No approval is required', alternatives: ['Approval is required'], relatedJourneyIds: [journey.journeyId] }];
   input.journeyIndex.policyDecisionSelections = [{ decisionId: 'approvalPolicy', generatedChoice: 'No approval is required', selectedChoice: 'No approval is required', selectedBy: 'human', selectedAt: '2026-08-13T00:00:00.000Z' }];
-  const step = { stepId: 'approveProject', kind: 'decide', intent: 'Approve.', requiresContext: ['selectedProject'], providesContext: [], result: 'Approved.', featureRefs: ['projects'] };
+  const step = { stepId: 'approveProject', kind: 'decide', entity: 'Project', title: 'Approve.', description: 'Approved.', featureRefs: ['projects'] };
   journey.business.steps.push(step); const workspace = input.workspaces.find((item: any) => item.workspaceId === 'projectWorkspace');
   workspace.scenarios.push({ scenarioId: 'reviewApproveProject', kind: 'review', title: 'Approve', description: 'Approve.', stepRefs: [`${journey.journeyId}.${step.stepId}`], useCaseIds: [], authorityRefs: ['build:project-read'], selectionContexts: [], organisms: [], commandInputs: [] });
   input.workspaceIndex.workspaces.find((item: any) => item.workspaceId === 'projectWorkspace').scenarioIds.push('reviewApproveProject');
@@ -87,7 +87,7 @@ test('A3 rejects a no-approval choice that coexists with a decide/review realiza
 
 test('A3 applies the same contradiction gate to an assumed system decision', async () => {
   const input: any = await sources(false); const journey = input.journeys.journeys[0];
-  const step = { stepId: 'approveProject', kind: 'decide', intent: 'Approve.', requiresContext: ['selectedProject'], providesContext: [], result: 'Approved.', featureRefs: ['projects'] };
+  const step = { stepId: 'approveProject', kind: 'decide', entity: 'Project', title: 'Approve.', description: 'Approved.', featureRefs: ['projects'] };
   journey.business.steps.push(step); input.journeyIndex.systemDecisions.push({ decisionId: 'systemNoApproval', stage: 'e2-journeys', question: 'Is approval required?',
     chosen: 'No approval is required', alternatives: ['Approval is required'], decidedBy: 'system', findingRef: `${journey.journeyId}.approval`, changeHint: `Change ${journey.journeyId}.` });
   const workspace = input.workspaces.find((item: any) => item.workspaceId === 'projectWorkspace');

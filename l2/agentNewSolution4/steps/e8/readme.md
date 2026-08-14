@@ -4,8 +4,9 @@ E8 derives the workspace skeleton mechanically from approved E2–E7 artifacts. 
 and skeleton gates pass, the compiler dispatches the parallel workers automatically; workers only add
 field-level organisms and command input sources. Permanent output is `workspaces/<workspaceId>.defs.ts` and `workspaces/index.defs.ts`; every
 finalizer round also writes the diagnostic history to `pipeline/e8-validation-report.json`.
-Candidate context edges come from adjacent steps and exact E2 prerequisite handoffs whose
-`providesContext` matches a provider step and a consuming target step.
+Candidate context edges come from adjacent steps of one journey, from the `preferredFromJourneyRef`
+origin of a journey and from a handoff reaching the event-driven journey of its `targetProfile`.
+Every edge carries derived entity contexts, so no edge depends on a name the generator chose.
 Workspace-detail workers submit the strict internal `{type:"flexible",result:{…}}` envelope to avoid
 provisional failed status for healthy artifacts.
 Before dispatch, the hook checks the flattened task tree for the stable detail `planId`, so a repeated

@@ -1,5 +1,6 @@
 import { sha256Ns4 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
-import type { Ns4E2Review, Ns4JourneyContext, Ns4JourneyStep } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import type { Ns4E2Review, Ns4JourneyStep } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import { deriveNs4Contexts, ns4ContextIdOf } from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
 import {
   NS4_NAVIGATION_REALIZED_ACCESS_MATRIX_SCHEMA_VERSION,
   type Ns4AccessGrant, type Ns4AccessMatrixArtifact, type Ns4AccessMatrixArtifactV4, type Ns4AccessOperationAuthorityRef,
@@ -175,7 +176,7 @@ export async function compileNs4E9(sources: Ns4E9Sources): Promise<Ns4E9Compilat
   const steps = collectJourneySteps(sources.journeys);
   const stepLocations = collectStepLocations(workspaces);
   const notificationDraft = compileNotifications(sources, steps, stepLocations, contexts, diagnostics);
-  const notificationEdgeKeys = sources.workspaceIndex.menu.edges.filter(edge => isNotificationEdge(edge, steps, stepLocations, sources.journeys)).map(edgeKey);
+  const notificationEdgeKeys = sources.workspaceIndex.menu.edges.filter(edge => isNotificationEdge(edge, steps)).map(edgeKey);
   const navigationEdges = sources.workspaceIndex.menu.edges.filter(edge => !notificationEdgeKeys.includes(edgeKey(edge)))
     .map(edge => ({ ...edge, carries: [...edge.carries].sort() })).sort((left, right) => edgeKey(left).localeCompare(edgeKey(right)));
   const compiledRoutes = compileRoutes(sources, workspaces);
@@ -374,29 +375,30 @@ function compileNotifications(
   sources.access.profiles.forEach(profile => profile.actorRefs.forEach(actor => profilesByActor.set(actor, unique([...(profilesByActor.get(actor) || []), profile.profileId]))));
   const handoffs = [...steps.values()].filter(info => info.step.kind === 'handoff');
   const eventJourneys = sources.journeys.journeys.filter(journey => journey.business.entry.mode === 'eventDriven');
-  for (const targetJourney of eventJourneys) {
-    const declared = new Set([...targetJourney.business.entry.carries.map(context => context.contextId), ...(targetJourney.business.prerequisites || []).flatMap(item => item.providesContext)]);
-    for (const targetStep of targetJourney.business.steps) for (const contextId of targetStep.requiresContext.filter(id => declared.has(id))) {
-      const prerequisiteIds = new Set((targetJourney.business.prerequisites || []).map(item => item.journeyRef));
-      const providers = handoffs.filter(provider => provider.step.providesContext.some(context => context.contextId === contextId)
-        && (!prerequisiteIds.size || prerequisiteIds.has(provider.journeyId)));
-      const targetRef = `${targetJourney.journeyId}.${targetStep.stepId}`; const location = locations.get(targetRef);
-      if (!location) { diagnostics.push({ code: 'NS4_E9_NOTIFICATION_TARGET', path: targetRef, message: `Event-driven step ${targetRef} is not hosted by an E8 scenario.`, origin: 'skeleton' }); continue; }
-      const targetProfiles = (profilesByActor.get(targetJourney.business.actorRef) || []).filter(profile => location.profileRefs.includes(profile));
-      if (!providers.length || !targetProfiles.length || !contexts.has(contextId)) {
-        diagnostics.push({ code: 'NS4_E9_NOTIFICATION_TARGET', path: targetRef, message: `Event-driven context ${contextId} needs a handoff provider, target profile and catalog entry.`, origin: 'skeleton' });
-        continue;
-      }
-      for (const provider of providers) for (const targetProfileRef of targetProfiles) entries.push({
+  // A handoff declares its receiving profile and operates one entity; both facts are all a
+  // notification needs. The receiver is the event-driven journey whose actor owns that profile.
+  for (const provider of handoffs) {
+    const targetProfileRef = provider.step.targetProfile || '';
+    const contextId = ns4ContextIdOf(provider.step.entity);
+    const receivers = eventJourneys.filter(journey => journey.journeyId !== provider.journeyId
+      && (profilesByActor.get(journey.business.actorRef) || []).includes(targetProfileRef));
+    if (!targetProfileRef || !receivers.length || !contexts.has(contextId)) {
+      diagnostics.push({ code: 'NS4_E9_NOTIFICATION_TARGET', path: provider.stepRef, message: `Handoff ${provider.stepRef} needs a targetProfile owned by an event-driven receiver and a catalog entry for ${contextId || '(no entity)'}.`, origin: 'skeleton' });
+      continue;
+    }
+    for (const receiver of receivers) {
+      const targetStep = receiver.business.steps[0];
+      const targetRef = targetStep ? `${receiver.journeyId}.${targetStep.stepId}` : '';
+      const location = targetRef ? locations.get(targetRef) : undefined;
+      if (!location) { diagnostics.push({ code: 'NS4_E9_NOTIFICATION_TARGET', path: targetRef || receiver.journeyId, message: `Event-driven step ${targetRef || receiver.journeyId} is not hosted by an E8 scenario.`, origin: 'skeleton' }); continue; }
+      if (!location.profileRefs.includes(targetProfileRef)) { diagnostics.push({ code: 'NS4_E9_NOTIFICATION_TARGET', path: targetRef, message: `Workspace ${location.workspaceId} does not grant ${targetProfileRef} the notified screen.`, origin: 'skeleton' }); continue; }
+      entries.push({
         notificationId: `${provider.stepRef}.${targetProfileRef}.${contextId}`,
         sourceStepRef: provider.stepRef, targetProfileRef, contextCarried: contextId,
         targetWorkspaceId: location.workspaceId, targetScenarioId: location.scenarioId,
       });
     }
   }
-  for (const handoff of handoffs) if (!entries.some(entry => entry.sourceStepRef === handoff.stepRef)) diagnostics.push({
-    code: 'NS4_E9_NOTIFICATION_TARGET', path: handoff.stepRef, message: `Handoff ${handoff.stepRef} has no event-driven receiver and cannot produce a notification contract.`, origin: 'skeleton',
-  });
   return uniqueBy(entries, entry => entry.notificationId);
 }
 
@@ -414,12 +416,9 @@ function collectStepLocations(workspaces: Ns4WorkspaceArtifact[]): Map<string, S
   }))));
   return result;
 }
-function isNotificationEdge(edge: Ns4E8Edge, steps: Map<string, JourneyStepInfo>, locations: Map<string, StepLocation>, journeys: Ns4E2Review): boolean {
-  const provider = edge.preferredFromJourneyRef ? steps.get(edge.preferredFromJourneyRef) : undefined;
-  if (provider?.step.kind === 'handoff') return true;
-  return [...steps.values()].some(target => locations.get(target.stepRef)?.workspaceId === edge.to
-    && journeys.journeys.find(journey => journey.journeyId === target.journeyId)?.business.entry.mode === 'eventDriven'
-    && target.step.requiresContext.some(contextId => edge.carries.includes(contextId)));
+/** Delivery is a notification, never a navigation edge: only a handoff origin produces one. */
+function isNotificationEdge(edge: Ns4E8Edge, steps: Map<string, JourneyStepInfo>): boolean {
+  return (edge.preferredFromJourneyRef ? steps.get(edge.preferredFromJourneyRef) : undefined)?.step.kind === 'handoff';
 }
 function edgeKey(edge: Ns4E8Edge): string { return `${edge.from}:${edge.to}:${[...edge.carries].sort().join(',')}`; }
 function unique(values: string[]): string[] { return [...new Set(values.filter(Boolean))].sort(); }

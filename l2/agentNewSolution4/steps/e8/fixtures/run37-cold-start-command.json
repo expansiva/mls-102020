@@ -27,23 +27,15 @@
     "business": {
       "actorRef": "officeBillingStaff",
       "entry": {
-        "mode": "coldStart",
-        "carries": []
+        "mode": "coldStart"
       },
       "steps": [
         {
           "stepId": "captureMaterialInventory",
           "kind": "act",
-          "intent": "Record the material and its available inventory information.",
-          "requiresContext": [],
-          "providesContext": [
-            {
-              "contextId": "selectedMaterialInventory",
-              "businessObject": "MaterialInventory",
-              "cardinality": "one",
-              "required": true
-            }
-          ],
+          "entity": "MaterialInventory",
+          "title": "Record the material and its available inventory information.",
+          "description": "The material inventory record exists with its available quantity.",
           "featureRefs": [
             "materialTracking"
           ]
