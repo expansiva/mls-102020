@@ -38,15 +38,19 @@ The collision gate never comes up, because nothing hands anything to NM2.
 
 ## Why the route was worth building
 
-`i5` and `i6` decide their branch by **measuring** the surface before and after the edit. Every
-movement of the surface is route A, so until this step existed both were structurally stuck in their
-no-op branch — half the pipeline, and the agent's central promise (playground and index following the
-molecule), with no end-to-end verification.
+An **intentional** change of what the molecule promises has no other path. That is what the tables
+consolidation the diretoria asked for needs, and until this step existed the router failed on it.
 
-That was a deduction until 2026-08-14, when it was measured: a sweep of the 154 base molecules found
-**no** case where a route B fix would move the surface — no contract-promised event, slot or property
-missing from the code. The 14 candidates the scan surfaced were all negative clauses ("producing no
-events", "does not declare the Detail content area").
+⚠️ **A stronger claim was made here first, and it was wrong.** This section said route A was the only
+way to reach the active branch of `i5-playground` and `i6-index`, on a sweep that compared each
+molecule's own `.defs.ts` prose against its code and found nothing. That sweep used the wrong source.
+The **group contract** (`skills/<group>/creation.ts`) is what enumerates the surface, in tables, and
+against it **27 molecules are missing a slot their group requires** — `ml-currency-input` declares no
+`slotTags` at all where the group requires `Label` and `Helper`. Adding it is a defect fix, so route
+B, and it moves the measured surface. **i5 and i6 are reachable without this route.**
+
+Worth knowing before using this step: the group contract fixing the surface means a legitimate route A
+on this library usually implies the group contract moving first.
 
 ## The checkpoint is a list, not a yes/no
 

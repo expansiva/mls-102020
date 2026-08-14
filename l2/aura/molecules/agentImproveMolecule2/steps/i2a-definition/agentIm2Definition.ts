@@ -18,11 +18,17 @@
 // only this: a human saying "yes, it will start promising that". NM2 is not involved, and the
 // collision gate never comes up.
 //
-// SECOND CONSEQUENCE, and it is the reason the route was worth building at all: i5 and i6 decide
-// their branch by MEASURING the surface before and after. Every surface movement is route A, so
-// until this step existed both were structurally unreachable in their active branch — half the
-// pipeline, and the agent's central promise, with no end-to-end verification. Measured 2026-08-14
-// across the 154 base molecules: no route B change moves the surface, so this was not a theory.
+// ⚠️ A CORRECTION TO WHY THIS WAS BUILT, made the same day. The first version of this comment said
+// route A was the ONLY way to reach the active branch of i5-playground and i6-index, on a sweep that
+// compared each molecule's own `.defs.ts` prose against its code. That sweep used the wrong source.
+// The GROUP contract (`skills/<group>/creation.ts`) is what enumerates the surface, and against it
+// **27 molecules are missing a slot their group requires** — `ml-currency-input` declares no
+// `slotTags` at all where the group requires `Label` and `Helper`. Adding one is a defect fix, so
+// route B, and it moves the measured surface. i5 and i6 are reachable without this step.
+//
+// This route is still the only one for an INTENTIONAL change of what the molecule promises, which is
+// what the tables consolidation needs. But note the consequence of the group contract enumerating the
+// surface: a legitimate route A on this library usually implies the group contract moving first.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {

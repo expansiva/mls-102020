@@ -51,7 +51,7 @@
         "i6-index",
         "i7-summary"
       ],
-      "then": "the same steps as route B, after the checkpoint: the definition change is an EDIT. Route A is also the only route that reaches the ACTIVE branch of i5-playground and i6-index — they decide by measuring the public surface, and every movement of it is route A."
+      "then": "the same steps as route B, after the checkpoint: the definition change is an EDIT. Route A is for an INTENTIONAL change of what the molecule promises. NOTE (corrected 2026-08-14): it is NOT the only way to reach the active branch of i5-playground and i6-index — the group contract in skills/<group>/creation.ts enumerates the surface, and 27 molecules are missing a slot their group requires, so fixing one is route B and still moves the surface. Note also that the group contract fixing the surface means a legitimate route A usually implies the group contract moving first."
     },
     "B": {
       "steps": [
@@ -207,7 +207,7 @@
         "onFail": "retry 1 with the errors; a 2nd failure fails the step"
       },
       "doneAnchor": "i2a-done",
-      "decision": "ROUTE A IS AN EDIT, NOT A REBUILD (2026-08-14). The step was specced as a handoff to agentNewMolecule2 from n2-plan onward, and that blocked the route from 2026-08-06: NM2 refuses to overwrite an existing molecule and route A acts on one by definition. It also meant regenerating a contract that was approved and an implementation that works, to add one slot. Editing in place removes both problems and reuses steps that already exist: i3-edit writes .defs.ts and .ts, i5-playground regenerates the playground because the surface moved, i6-index follows. NM2 is not involved, and the collision gate never comes up. This route is also the ONLY one that reaches the active branch of i5 and i6 — they decide by measuring the surface, every surface movement is route A, and a sweep of the 154 base molecules on 2026-08-14 found no route B change that moves it."
+      "decision": "ROUTE A IS AN EDIT, NOT A REBUILD (2026-08-14). The step was specced as a handoff to agentNewMolecule2 from n2-plan onward, and that blocked the route from 2026-08-06: NM2 refuses to overwrite an existing molecule and route A acts on one by definition. It also meant regenerating a contract that was approved and an implementation that works, to add one slot. Editing in place removes both problems and reuses steps that already exist: i3-edit writes .defs.ts and .ts, i5-playground regenerates the playground because the surface moved, i6-index follows. NM2 is not involved, and the collision gate never comes up. CORRECTED 2026-08-14: this route is NOT the only one that reaches the active branch of i5 and i6. The sweep behind that claim compared each molecule's own .defs.ts prose against its code; the GROUP contract is what enumerates the surface, and 27 molecules are missing a slot their group requires — fixing one is route B and moves the surface."
     },
     {
       "planId": "i4-inherit",

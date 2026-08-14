@@ -67,10 +67,18 @@ const STEP_AGENTS: Partial<Record<ImPlanId, string>> = {
  * and reuses steps that already exist — i3 writes `.defs.ts` and `.ts`, i5 regenerates the
  * playground because the surface moved, i6 follows. Only the checkpoint was missing.
  *
- * It is also the only route that reaches the ACTIVE branch of i5 and i6: they decide by measuring
- * the surface, every surface movement is route A, and a sweep of the 154 base molecules on
- * 2026-08-14 found no route B change that moves it. Until this route ran, half the pipeline had
- * never executed.
+ * ⚠️ IT IS NOT the only route that reaches the active branch of i5 and i6, and the first version of
+ * this comment said it was. The sweep behind that claim compared each molecule's own `.defs.ts`
+ * PROSE against its code and found no route B change that moves the surface. Re-measured on
+ * 2026-08-14 against the source that actually governs — the GROUP contract in
+ * `skills/<group>/creation.ts`, which enumerates the slots, properties and events in tables — **27
+ * molecules are missing a slot their group requires**, `ml-currency-input` declaring no `slotTags`
+ * at all where the group requires `Label` and `Helper`. Adding it is a DEFECT fix, so route B, and
+ * it moves the measured surface. i5 and i6 are reachable without route A.
+ *
+ * What route A is for, then, is what it always said: an INTENTIONAL change of what the molecule
+ * promises. Note that the group contract fixes that surface, so a legitimate route A on this library
+ * usually implies the group contract moving first.
  */
 const ROUTE_STEPS: Record<ImRoute, ImPlanId[]> = {
   A: ['i2a-definition', 'i3-edit', 'i5-playground', 'i6-index', 'i7-summary'],

@@ -40,14 +40,25 @@ isso".** O NM2 não participa, e o gate de colisão nunca aparece.
 
 ### Por que valia a pena construir
 
-O `i5` e o `i6` decidem o ramo **medindo** a superfície antes e depois. Toda movimentação de superfície
-é rota A, então até este passo existir os dois estavam estruturalmente presos no no-op — metade do
-pipeline, e a promessa central do agente, sem nenhuma verificação de ponta a ponta.
+Uma mudança **intencional** do que a molécula promete não tem outro caminho, e é o que a consolidação
+de tabelas pedida pela diretoria exige. Até este passo existir, o roteador falhava nesse pedido.
 
-Isso era dedução até 14/08, quando foi medido: varrendo as 154 moléculas base, **nenhum** conserto de
-rota B moveria a superfície — nenhum evento, slot ou propriedade prometido no contrato falta no código.
-Os 14 candidatos que a varredura levantou eram todos cláusulas negativas ("producing no events", "does
-not declare the Detail content area").
+### ⚠️ Uma correção, no mesmo dia, a uma afirmação mais forte que eu tinha escrito aqui
+
+Este bloco dizia que a rota A era **a única** forma de alcançar o ramo ativo do `i5` e do `i6`. A
+varredura que sustentava isso comparava a prosa do `.defs.ts` de cada molécula com o próprio código, e
+não achava nada. **Ela usava a fonte errada.**
+
+Quem enumera a superfície é o **contrato do grupo** (`skills/<grupo>/creation.ts`), em tabelas de
+slots, propriedades e eventos. Medido contra ele: **27 moléculas não declaram um slot que o grupo
+exige** — a `ml-currency-input` não tem `slotTags` nenhum onde o grupo exige `Label` e `Helper`.
+Acrescentá-lo é conserto de **defeito**, portanto rota B, e **move a superfície medida**. Ou seja: o
+`i5` e o `i6` são alcançáveis sem esta rota, e o teste que os exercita ficou mais barato e mais seguro
+do que mexer na definição de uma molécula da biblioteca compartilhada.
+
+Vale registrar a consequência maior: como o contrato do grupo fixa a superfície, uma rota A legítima
+nesta biblioteca normalmente implica o **contrato do grupo mudar primeiro** — o que é outro artefato,
+fora deste agente.
 
 ### O desenho do checkpoint
 
