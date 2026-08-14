@@ -1,5 +1,49 @@
 # CHANGELOG — i3-edit
 
+## 2026-08-13 — the written block came out flush left
+
+Measured twice in one molecule (`ml-copy-button`, runs of 18:56 and 19:06):
+
+```ts
+  private getCopyText(): string {
+return this.getLabelText();      // ← column 0
+}                                // ← column 0
+```
+
+**The mechanism.** A match starts at the first non-whitespace character, so the anchor line's own
+indentation is never inside the matched span: it stays in the file, and line 1 of the result looks
+correct. Lines 2..n were written exactly as the model sent them — flush.
+
+**Why the model sent them flush, and this is the part worth remembering.** `prompt.md` said
+"indentation does not have to match". True, and about `find` — whitespace runs are matched flexibly
+because 32 of 153 molecules have collapsed indentation. The model generalised it to `content`, which
+is a fair reading of what was written. The second occurrence happened with *"keep the file's
+indentation"* in the user's own request, so this is the week's pattern once more: **prose asks, code
+imposes.**
+
+**`alignReplacement` (new, pure, in `applyEdits`).** The replaced span is expanded to the start of the
+anchor's line; line 1 of the content is placed at that line's indentation, read from the FILE; every
+line after it shifts by the same amount, so the block's relative structure arrives untouched. Both
+paths use it — the exact match and the whitespace-tolerant one.
+
+Three boundaries, each with a test:
+
+- **idempotent for well-formed content** — a block that already carries its indentation is written
+  byte-identical. This is the common case and must not be disturbed;
+- **relative structure is preserved, never invented** — a flush block comes out uniformly at the
+  anchor's depth. Consistent, and it no longer poisons the next run's exact match. Guessing one level
+  deeper for a method body is a formatter's job, and this is a text writer;
+- **a mid-line match is left alone** — `compute(oldValue)` with only `oldValue` quoted. There the
+  surrounding whitespace is code, not indentation.
+
+**A bug of my own, caught by the idempotence test and kept as a test:** the base indentation was first
+read from the gap *before* the match. A `find` that quotes its own leading spaces starts at the line
+break, that gap is empty, and the whole block would have been shifted to column 0 — the very defect,
+reintroduced by the fix. The base is the anchor LINE's indentation.
+
+**No gate.** The invariant holds by construction, so there is nothing left to check: a gate here would
+be unreachable code with a test that proves only itself.
+
 ## 2026-08-06 — first version
 
 - **Targeted edits instead of rewritten files.** The first design followed `n4-render` and asked

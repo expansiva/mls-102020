@@ -8,7 +8,7 @@
     "route": {
       "type": "string",
       "enum": ["A", "B", "C", "D"],
-      "description": "A = the public definition changes (a slot, property or event is added, removed or changes meaning) and the molecule must be rebuilt. B = a minor change: appearance, a code defect, wording. C = the molecule is a shell AND the behaviour to change lives in its parent. D = the request is not about changing this molecule."
+      "description": "A = the public definition changes and the molecule must be rebuilt: a slot, property or event is added, removed, renamed, or keeps its name and takes different content, a different type or a different purpose — the test is that EXISTING MARKUP HAS TO BE REWRITTEN. B = a minor change: appearance, wording, or a defect — including a defect the contract described as if it were intended, where correcting that sentence is part of the edit. C = the molecule is a shell AND the behaviour to change lives in its parent. D = the request is not about changing this molecule."
     },
     "rationale": {
       "type": "string",
@@ -18,12 +18,12 @@
     "expectedArtifacts": {
       "type": "array",
       "items": { "type": "string", "enum": ["defs", "ts", "less", "html", "groupIndex"] },
-      "description": "Which artifacts the change is expected to touch. EMPTY on routes A and D — A hands the work over to a rebuild and D writes nothing. At least one on routes B and C."
+      "description": "Which artifacts the change is expected to touch. EMPTY on routes A and D — A hands the work over to a rebuild and D writes nothing. At least one on routes B and C; on C the list is CONDITIONAL — what would be touched if the fix lands in this project, since one of C's legal outcomes ('the base component is where this belongs') writes nothing at all."
     },
     "definitionElements": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Only on route A: the named slots, properties or events that are added, removed or change meaning, e.g. 'slot Detail', 'property pageSize', 'event rowClick'. Empty on every other route. This list is what pre-fills the rebuild clarification, so a vague entry costs the user a round trip."
+      "description": "Only on route A: the named slots, properties or events whose change forces EXISTING MARKUP to be rewritten — added, removed, renamed, or taking different content, a different type or a different purpose. E.g. 'slot Detail', 'property pageSize', 'event rowClick'. A corrected sentence in the contract is NOT one of these. Empty on every other route. This list is what pre-fills the rebuild clarification, so a vague entry costs the user a round trip."
     }
   }
 }

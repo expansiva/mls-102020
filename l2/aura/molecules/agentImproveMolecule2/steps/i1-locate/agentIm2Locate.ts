@@ -82,7 +82,7 @@ async function beforePromptStep(
   const artifacts: ImArtifact[] = target ? await readArtifacts(target) : [];
   const inheritance: ImInheritance = target
     ? await readInheritance(sourceOf(artifacts, 'ts'))
-    : { isShell: false, parentReference: null, parentProject: null, parentClassName: null, ownMembers: [], overridableMembers: [] };
+    : { isShell: false, parentReference: null, parentProject: null, parentClassName: null, ownMembers: [], overridableMembers: [], unreachableMembers: [] };
 
   // A shell's contract lives in its parent. Read it whenever the shell has none of its own — the
   // triage's first question is "does the contract already promise this?", and for 42 of the 84

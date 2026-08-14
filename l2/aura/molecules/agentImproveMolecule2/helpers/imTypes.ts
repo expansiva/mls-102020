@@ -78,9 +78,15 @@ export interface ImInheritance {
   ownMembers: string[];
   /**
    * Members of the parent the shell COULD override, cheapest first: properties before narrow
-   * methods before render(). The clarification uses this order to steer away from render().
+   * methods before lifecycle hooks before render(). The clarification uses this order to steer away
+   * from render().
    */
   overridableMembers: ImOverridable[];
+  /**
+   * What the shell CANNOT reach, and why. Reads `[]` when the parent source is not readable from
+   * here (and on a context.json written before 2026-08-13).
+   */
+  unreachableMembers: ImUnreachable[];
 }
 
 export interface ImOverridable {
@@ -88,6 +94,24 @@ export interface ImOverridable {
   kind: 'property' | 'method';
   /** Lower is cheaper to override. render() is always the most expensive. */
   cost: number;
+}
+
+/**
+ * A member of the parent that exists and that no subclass can override, with the reason.
+ *
+ * ⚠️ WHY THIS LIST EXISTS — 2026-08-13, measured in the Studio. On `ml-copy-button` every method of
+ * the copy-confirmation cycle is `private` and the duration is a module-scope `const`, so
+ * `overridableMembers` came back with `render` and `disconnectedCallback` only. Asked to make the
+ * confirmation last 3 seconds, the model suggested overriding `disconnectedCallback` — a teardown
+ * hook that cannot change a duration — because it was the cheapest of what it had been shown.
+ *
+ * The filter was SILENT: nothing told the model that the members which DO implement the behaviour
+ * exist and are out of reach, so it could not draw the conclusion that follows from it — that no
+ * override in the shell can express the change, and the fix belongs to the base.
+ */
+export interface ImUnreachable {
+  name: string;
+  why: 'private' | 'module-constant';
 }
 
 export interface ImContext {

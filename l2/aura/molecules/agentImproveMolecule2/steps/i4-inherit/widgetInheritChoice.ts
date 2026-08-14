@@ -25,6 +25,7 @@ import {
   inheritBlockingIssues,
   isExpensiveOverride,
   offerableMembers,
+  unreachableForDisplay,
   type InheritChoiceData,
   type InheritChoiceValue,
   type InheritWhere,
@@ -51,6 +52,11 @@ const message_pt = {
   parentUnreadable: 'O código do pai não pôde ser lido daqui; digite o nome do membro.',
   noLess: 'Esta molécula ainda não tem .less. Escolher esta opção faz o agente criar um.',
   needMember: 'Escolha o membro a sobrescrever.',
+  unreachableLabel: 'O pai também tem estes, e nenhuma subclasse alcança:',
+  unreachableMore: 'e mais',
+  whyPrivate: 'privado: override não compila',
+  whyModuleConst: 'constante de módulo: não é membro de classe',
+  unreachableHint: 'Se o que precisa mudar está num destes, nenhuma sobrescrita aqui resolve — a correção é do componente base.',
   cancel: 'Cancelar',
   confirm: 'Confirmar',
 };
@@ -75,6 +81,11 @@ const message_en = {
   parentUnreadable: 'The parent source could not be read from here; type the member name.',
   noLess: 'This molecule has no .less yet. Choosing this makes the agent create one.',
   needMember: 'Choose the member to override.',
+  unreachableLabel: 'The parent also has these, and no subclass can reach them:',
+  unreachableMore: 'and',
+  whyPrivate: 'private: an override does not compile',
+  whyModuleConst: 'module-scope constant: not a class member',
+  unreachableHint: 'If what has to change lives in one of these, no override here solves it — the fix belongs to the base component.',
   cancel: 'Cancel',
   confirm: 'Confirm',
 };
@@ -160,6 +171,33 @@ export class WidgetInheritChoice102020 extends StateLitElement {
             @input=${(event: Event) => this.pickMember((event.target as HTMLInputElement).value)}>
         `}
         ${expensive ? html`<p class="ihc-warning">${this.msg.overrideExpensive}</p>` : nothing}
+        ${this.renderUnreachable()}
+      </div>
+    `;
+  }
+
+  /**
+   * What the parent has and cannot be overridden. The human is the one choosing a member now, and a
+   * two-name list with no explanation reads as "the parent has nothing worth overriding" when the
+   * truth is that the interesting members are private. Same facts the model gets — see the step's
+   * CHANGELOG, 2026-08-13.
+   */
+  private renderUnreachable(): TemplateResult | typeof nothing {
+    const { shown, hiddenCount } = unreachableForDisplay(this.value!);
+    if (!shown.length) return nothing;
+    return html`
+      <div class="ihc-unreachable">
+        <p class="ihc-unreachable-label">${this.msg.unreachableLabel}</p>
+        <ul class="ihc-unreachable-list">
+          ${shown.map(member => html`
+            <li>
+              <code>${member.name}</code>
+              <span class="ihc-unreachable-why">${member.why === 'private' ? this.msg.whyPrivate : this.msg.whyModuleConst}</span>
+            </li>
+          `)}
+          ${hiddenCount ? html`<li class="ihc-unreachable-more">${this.msg.unreachableMore} ${hiddenCount}</li>` : nothing}
+        </ul>
+        <p class="ihc-hint">${this.msg.unreachableHint}</p>
       </div>
     `;
   }

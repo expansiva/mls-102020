@@ -30,6 +30,32 @@ test('a well-formed route B passes', () => {
   assert.deepEqual(runImTriageGate(inputs()), { ok: true, errors: [] });
 });
 
+test('THE 13/08 CASE: um defeito com o defs corrigido junto é rota B com defs+ts, e passa', () => {
+  // A defect the contract DESCRIBED as intended. It was routed A — not built — and the run died on a
+  // one-line fix. The gate never blocked this shape; what pointed the model at A was the vocabulary
+  // ("or changes meaning") in the schema and in this gate's own retry message. Pinned here so the
+  // shape is not mistaken for something the gate ought to refuse.
+  const result = runImTriageGate(inputs({
+    output: {
+      route: 'B',
+      rationale: 'sem conteúdo no slot Label o clique copia o próprio rótulo padrão: é defeito de código, e o contrato descrevia esse comportamento errado',
+      expectedArtifacts: ['ts', 'defs'],
+      definitionElements: [],
+    },
+  }));
+  assert.deepEqual(result, { ok: true, errors: [] });
+});
+
+test('nomear elementos de definição fora da rota A continua sendo erro', () => {
+  // The other direction of the same confusion: a corrected contract sentence is not a definition
+  // element, so a route B that lists one is contradicting itself.
+  const result = runImTriageGate(inputs({
+    output: { route: 'B', expectedArtifacts: ['ts', 'defs'], definitionElements: ['slot Label'] },
+  }));
+  assert.equal(result.ok, false);
+  assert.match(result.errors[0], /^definition_elements_off_route: /);
+});
+
 test('an invalid route is reported ALONE — every other message would be misleading', () => {
   const result = runImTriageGate(inputs({ output: { route: 'E' } }));
   assert.equal(result.errors.length, 1);

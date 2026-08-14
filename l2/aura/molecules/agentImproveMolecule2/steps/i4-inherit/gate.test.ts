@@ -44,6 +44,42 @@ test('an override names a real member of the parent', () => {
   assert.match(invented.errors[0], /getTriggerTemplate/);
 });
 
+test('a member that EXISTS and cannot be overridden is refused with the reason, not as unknown', () => {
+  // 2026-08-13: the suggestion named disconnectedCallback to change a duration held in a module
+  // constant. Saying "unknown member" about something that exists sends the retry hunting a typo;
+  // what the retry needs is the conclusion — no override here can express it.
+  const privateMember = runImInheritGate(inputs({
+    unreachableMembers: [{ name: 'beginCopiedState', why: 'private' }],
+    answer: { where: 'override', member: 'beginCopiedState' },
+  }));
+  assert.equal(privateMember.ok, false);
+  assert.match(privateMember.errors[0], /^member_unreachable: /);
+  assert.match(privateMember.errors[0], /private/);
+  assert.match(privateMember.errors[0], /'parent'/);
+
+  const moduleConst = runImInheritGate(inputs({
+    unreachableMembers: [{ name: 'COPY_CONFIRM_MS', why: 'module-constant' }],
+    answer: { where: 'override', member: 'COPY_CONFIRM_MS' },
+  }));
+  assert.match(moduleConst.errors[0], /^member_unreachable: /);
+  assert.match(moduleConst.errors[0], /module-scope constant/);
+});
+
+test('the unreachable check binds the HUMAN too — a private override does not compile for anyone', () => {
+  const confirmed = runImInheritGate(inputs({
+    fromModel: false,
+    unreachableMembers: [{ name: 'clearCopiedTimer', why: 'private' }],
+    answer: { where: 'override', member: 'clearCopiedTimer' },
+  }));
+  assert.equal(confirmed.ok, false);
+  assert.match(confirmed.errors[0], /^member_unreachable: /);
+});
+
+test('an unmeasured unreachable list does not turn a valid override into an error', () => {
+  // A context.json written before 2026-08-13 has no such field. Absent means "not measured".
+  assert.equal(runImInheritGate(inputs({ answer: { where: 'override', member: 'getTriggerTemplate' } })).ok, true);
+});
+
 test('an override with no member is refused', () => {
   assert.match(runImInheritGate(inputs({ answer: { where: 'override', member: '' } })).errors[0], /^member_missing: /);
 });

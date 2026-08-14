@@ -8,7 +8,9 @@ You are **suggesting** where the fix should go. A human decides — your answer 
 
 **`less` — the shell's own stylesheet.** Costs nothing and keeps the shell inheriting everything. If the request is visual at all — spacing, colour, size, weight, borders, a state's appearance — this is the answer, even when the parent also has an opinion about it.
 
-**`override` — a local override in the shell.** Solves anything. In exchange the shell **stops inheriting that member**: a fix made in the base six months from now no longer reaches this molecule. So pick the **smallest member** that solves the problem — a property before a narrow method, a narrow method before `render()`.
+**`override` — a local override in the shell.** In exchange the shell **stops inheriting that member**: a fix made in the base six months from now no longer reaches this molecule. So pick the smallest member that **can** solve the problem — a property before a narrow method, a narrow method before `render()`.
+
+Smallest among the members that work, never smallest among what is left. A member that cannot carry the change is a **wrong** answer, not a cheap one: overriding a teardown hook does not change how long something lasts, and overriding markup does not change a value the parent computes.
 
 Overriding `render()` gives up all of the parent's markup at once. Of the 84 shells in this library, **zero** do it. If your answer is `render`, be sure nothing narrower works, and say why in the reason.
 
@@ -29,6 +31,12 @@ It is often the right answer, and you must not avoid it. A defect in the base is
 ### Members of the parent you could override, cheapest first
 
 {{overridableMembers}}
+
+### Members of the parent you CANNOT reach
+
+{{unreachableMembers}}
+
+This list is measured from the parent's source, not guessed. **If what has to change lives in one of these, no override in this shell can express it, and the answer is `parent`.** That is the common case when the list of overridable members above is short: the members that implement the behaviour are private, and the value being asked about is a module constant.
 
 ### Its public surface
 
