@@ -14,3 +14,9 @@ export function hasNs4E8DetailsDispatch(steps: Ns4PlannedStepLike[], reviewRound
 export function isNs4E8PresentationRepairPlanId(planId: string): boolean {
   return /^e8-workspaces-presentation-repair-[1-9]\d*-[1-9]\d*$/.test(planId);
 }
+
+export function isNs4E8ImplementedPlanId(planId: string): boolean {
+  return planId.startsWith('e8-workspaces-round-')
+    || planId.startsWith('e8-workspaces-finalize-')
+    || isNs4E8PresentationRepairPlanId(planId);
+}

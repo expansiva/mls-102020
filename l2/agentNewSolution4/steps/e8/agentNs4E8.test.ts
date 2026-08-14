@@ -6,8 +6,9 @@ import {
   buildNs4WorkspaceArtifacts, deriveE8HubScore, deriveNs4E8Skeleton, hashNs4E8Skeleton, normalizeNs4E8PresentationProposal,
   normalizeNs4WorkspaceDetail, overlayNs4E8Presentation, previewNs4E8Routes, resolveNs4E8PresentationDefaults,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
-import { hasNs4E8DetailsDispatch, isNs4E8PresentationRepairPlanId, ns4E8DetailsPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
-import { resolveNs4WorkspaceDetailFindings, validateNs4E8PresentationProposal, validateNs4E8Skeleton, validateNs4WorkspaceDetail } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
+import { hasNs4E8DetailsDispatch, isNs4E8ImplementedPlanId, isNs4E8PresentationRepairPlanId, ns4E8DetailsPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
+import { resolveNs4E8SkeletonFindings, resolveNs4WorkspaceDetailFindings, validateNs4E8PresentationProposal, validateNs4E8Skeleton, validateNs4WorkspaceDetail } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
+import { createNs4E8PresentationRepairStep } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 
 const run35Fixture = JSON.parse(readFileSync(new URL('fixtures/run35-disclosure-platform.json', import.meta.url), 'utf8')) as {
   platformEntity: any; fieldsOnly: any; invalidFieldRef: { entityId: string; fieldId: string; label: string };
@@ -23,6 +24,7 @@ const run39PresentationRepairFixture = JSON.parse(readFileSync(new URL('fixtures
 const run40SelectionFixture = JSON.parse(readFileSync(new URL('fixtures/run40-selection-source.json', import.meta.url), 'utf8')) as {
   invalidSourceRef: string; compatibleSliceId: string; entityId: string; fieldId: string;
 };
+const run41ContextFixture = JSON.parse(readFileSync(new URL('fixtures/run41-provided-session-contexts.json', import.meta.url), 'utf8')) as any;
 
 const sources: any = {
   journeys: { moduleName: 'construction', userLanguage: 'pt-BR', journeys: [
@@ -168,6 +170,9 @@ test('E8 reports an empty menu section as a non-blocking recorder warning', () =
   const gate = validateNs4E8Skeleton(skeleton, sources);
   assert.equal(gate.ok, true);
   assert.ok(gate.issues.some(issue => issue.code === 'NS4_E8_MENU_EMPTY' && issue.severity === 'warning'));
+  const resolved = resolveNs4E8SkeletonFindings(skeleton, gate.issues);
+  assert.deepEqual(resolved.unresolved, []);
+  assert.ok(resolved.systemDecisions.some(decision => decision.findingRef.includes('NS4_E8_MENU_EMPTY')));
 });
 
 test('run 36 derives an exact cross-journey edge from prerequisite providesContext', async () => {
@@ -222,7 +227,12 @@ test('run 36 duplicate approval is recognized by the stable E8 detail plan id', 
 });
 
 test('run 39 constrained presentation repair uses an exact routable E8 plan id', () => {
+  const repair = createNs4E8PresentationRepairStep('buildFlowFsm39', 1, 1, 'invalid presentation');
+  assert.equal(repair.planning?.planId, run39PresentationRepairFixture.observedPlanId);
+  assert.equal(repair.status, 'waiting_human_input');
   assert.equal(isNs4E8PresentationRepairPlanId(run39PresentationRepairFixture.observedPlanId), true);
+  assert.equal(isNs4E8ImplementedPlanId(run39PresentationRepairFixture.observedPlanId), true);
+  assert.equal(isNs4E8ImplementedPlanId('e8-workspaces-finalize-1'), true);
   run39PresentationRepairFixture.malformedPlanIds.forEach(planId => assert.equal(isNs4E8PresentationRepairPlanId(planId), false));
 });
 
@@ -278,94 +288,112 @@ test('run 38 keeps only the Project anchor in workspace path and resolves assign
   const skeleton = deriveNs4E8Skeleton(replaySources);
   const workspace = skeleton.workspaces.find(item => item.workspaceId === run38UrlRolesFixture.expected.workspaceId)!;
   assert.deepEqual(workspace.pageContext.map(context => context.contextId), run38UrlRolesFixture.expected.pageContext);
-  assert.ok(workspace.pageContext.every(context => context.urlRole === 'path'));
   const scenarioContexts = workspace.scenarios.flatMap(scenario => scenario.selectionContexts);
   assert.deepEqual([...new Set(scenarioContexts.map(context => context.contextId))].sort(), [...run38UrlRolesFixture.expected.selectionContexts].sort());
-  assert.ok(scenarioContexts.every(context => context.urlRole === 'selection' && context.urlRoleSource === 'localSelection'));
   assert.ok(workspace.slices.some(slice => slice.sliceId === 'locateAssignee'));
   assert.ok(workspace.slices.some(slice => slice.sliceId === 'locateMaterial'));
   assert.equal(previewNs4E8Routes(skeleton, workspace).find(route => route.label === 'Record')?.url, run38UrlRolesFixture.expected.recordUrl);
   assert.equal(validateNs4E8Skeleton(skeleton, replaySources).ok, true);
 });
 
-test('E8 classifies incoming handoff context as path and local picker context as selection without L1', () => {
+test('E8 keeps local picker context scenario-local and promotes only a real handoff edge', () => {
   const replaySources = run38UrlRoleSources();
   const skeleton = deriveNs4E8Skeleton(replaySources);
   const project = skeleton.workspaces.find(workspace => workspace.workspaceId === 'projectWorkspace')!;
   const assignee = project.scenarios.flatMap(scenario => scenario.selectionContexts).find(context => context.contextId === 'selectedAssignee')!;
-  assert.equal(assignee.urlRole, 'selection');
-  assert.equal(skeleton.urlRoleDecisions.some(decision => decision.contextId === assignee.contextId), false);
+  assert.equal(project.pageContext.some(context => context.contextId === assignee.contextId), false);
 
   const handoffSources: any = structuredClone(replaySources);
-  handoffSources.journeys.journeys.push({ journeyId: 'notifyInspection', business: { actorRef: 'manager', prerequisites: [], entry: { mode: 'coldStart', carries: [] }, steps: [{ stepId: 'handoffInspection', kind: 'handoff', intent: 'Notificar inspeção.', requiresContext: [], providesContext: [{ contextId: 'selectedInspection', businessObject: 'Inspection', cardinality: 'one', required: true }], featureRefs: ['projects'] }] } });
+  handoffSources.journeys.journeys.push({ journeyId: 'notifyInspection', business: { actorRef: 'manager', prerequisites: [], entry: { mode: 'coldStart', carries: [{ contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one', required: true }] }, steps: [{ stepId: 'handoffInspection', kind: 'handoff', intent: 'Notificar inspeção.', requiresContext: ['selectedProject'], providesContext: [{ contextId: 'selectedInspection', businessObject: 'Inspection', cardinality: 'one', required: true }], featureRefs: ['projects'] }] } });
   handoffSources.journeys.journeys.push({ journeyId: 'decideInspection', business: { actorRef: 'manager', prerequisites: [{ journeyRef: 'notifyInspection', required: true, providesContext: ['selectedInspection'] }], entry: { mode: 'eventDriven', carries: [{ contextId: 'selectedInspection', businessObject: 'Inspection', cardinality: 'one', required: true }] }, steps: [{ stepId: 'decideInspection', kind: 'decide', intent: 'Decidir inspeção.', requiresContext: ['selectedInspection'], providesContext: [], featureRefs: ['projects'] }] } });
   handoffSources.ontology.entities.push({ entityId: 'Inspection', title: 'Inspeção', description: 'Inspeção.', kind: 'core', sourceRefs: { journeyIds: ['notifyInspection', 'decideInspection'] }, fields: [{ fieldId: 'inspectionId' }], lifecycleStates: [], lifecyclePredicates: [] });
   handoffSources.access.authorities.push({ authorityRef: 'construction:inspection', journeyStepRefs: ['notifyInspection.handoffInspection', 'decideInspection.decideInspection'] });
   handoffSources.access.grants.push({ profileRef: 'manager', authorityRef: 'construction:inspection', disclosure: { mode: 'fullRecord', allowedInformation: [] } });
-  handoffSources.useCases.push({ useCaseId: 'handoffInspection', kind: 'command', compiledFrom: ['notifyInspection.handoffInspection'], entityRefs: ['Inspection'], contexts: { requires: [], provides: ['selectedInspection'] } }, { useCaseId: 'decideInspection', kind: 'command', compiledFrom: ['decideInspection.decideInspection'], entityRefs: ['Inspection'], contexts: { requires: ['selectedInspection'], provides: [] } });
+  handoffSources.useCases.push({ useCaseId: 'handoffInspection', kind: 'command', compiledFrom: ['notifyInspection.handoffInspection'], entityRefs: ['Project', 'Inspection'], contexts: { requires: ['selectedProject'], provides: ['selectedInspection'] } }, { useCaseId: 'decideInspection', kind: 'command', compiledFrom: ['decideInspection.decideInspection'], entityRefs: ['Inspection'], contexts: { requires: ['selectedInspection'], provides: [] } });
   const handoffSkeleton = deriveNs4E8Skeleton(handoffSources);
   const target = handoffSkeleton.workspaces.find(workspace => workspace.hostedStepRefs.includes('decideInspection.decideInspection'))!;
-  assert.equal(target.pageContext.find(context => context.contextId === 'selectedInspection')?.urlRole, 'path');
-  assert.equal(handoffSkeleton.urlRoleDecisions.some(decision => decision.contextId === 'selectedInspection'), false);
+  assert.ok(target.pageContext.some(context => context.contextId === 'selectedInspection'));
 });
 
-test('two invalid E8 presentation rounds apply selection default and record a non-blocking system decision', () => {
+test('second invalid E8 presentation keeps mechanical defaults without URL decisions', () => {
   const replaySources = run38UrlRoleSources();
   const derived = deriveNs4E8Skeleton(replaySources);
-  const workspace = derived.workspaces.find(item => item.workspaceId === 'projectWorkspace')!;
-  const scenario = workspace.scenarios.find(item => item.selectionContexts.some(context => context.contextId === 'selectedAssignee'))!;
-  const context = scenario.selectionContexts.find(item => item.contextId === 'selectedAssignee')!;
-  context.urlRoleSource = 'ambiguous';
-  derived.urlRoleDecisions.push({ workspaceId: workspace.workspaceId, scenarioId: scenario.scenarioId, contextId: context.contextId, defaultUrlRole: 'selection', urlRole: 'selection', justification: '', decidedBy: 'pending' });
   const invalid = normalizeNs4E8PresentationProposal({}, derived.moduleName);
   assert.equal(validateNs4E8PresentationProposal(derived, invalid).ok, false);
-  assert.equal(validateNs4E8PresentationProposal(derived, invalid).ok, false);
   const fallback = resolveNs4E8PresentationDefaults(derived, 'second invalid response');
-  assert.equal(fallback.urlRoleDecisions.at(-1)?.decidedBy, 'system');
-  assert.equal(fallback.systemDecisions.at(-1)?.stage, 'e8');
-  assert.equal(fallback.systemDecisions.at(-1)?.chosen, 'selection');
+  assert.deepEqual(fallback, derived);
   assert.equal(validateNs4E8Skeleton(fallback, replaySources).ok, true);
 });
 
-test('valid L1 presentation can classify only an ambiguous focused context with justification', () => {
+test('valid L1 presentation changes labels but cannot change contexts', () => {
   const replaySources = run38UrlRoleSources();
   const derived = deriveNs4E8Skeleton(replaySources);
-  const workspace = derived.workspaces.find(item => item.workspaceId === 'projectWorkspace')!;
-  const scenario = workspace.scenarios.find(item => item.selectionContexts.some(context => context.contextId === 'selectedAssignee'))!;
-  const context = scenario.selectionContexts.find(item => item.contextId === 'selectedAssignee')!;
-  context.urlRoleSource = 'ambiguous';
-  derived.urlRoleDecisions.push({ workspaceId: workspace.workspaceId, scenarioId: scenario.scenarioId, contextId: context.contextId, defaultUrlRole: 'selection', urlRole: 'selection', justification: '', decidedBy: 'pending' });
   const proposal = normalizeNs4E8PresentationProposal({
-    planId: 'e8-skeleton-presentation', schemaVersion: '2026-08-13-ns4-e8-presentation-v2', moduleName: derived.moduleName,
+    planId: 'e8-skeleton-presentation', schemaVersion: '2026-08-14-ns4-e8-presentation-v3', moduleName: derived.moduleName,
     userLanguage: derived.userLanguage, reviewRound: derived.reviewRound, title: 'Workspaces', changeSummary: [],
     menuSections: derived.menu.sections.map(section => ({ featureRef: section.featureRef, label: section.label })),
     workspaces: derived.workspaces.map(item => ({ workspaceId: item.workspaceId, title: item.title, description: item.description,
-      pageContext: item.pageContext.map(value => ({ ...value, urlRoleJustification: value.urlRoleJustification || '' })),
+      pageContext: item.pageContext,
       scenarios: item.scenarios.map(value => ({ scenarioId: value.scenarioId, title: value.title, description: value.description,
-        selectionContexts: value.selectionContexts.map(selected => selected.contextId === context.contextId
-          ? { ...selected, urlRole: 'path', urlRoleSource: 'llm', urlRoleJustification: 'A tarefa focada precisa de link direto.' }
-          : { ...selected, urlRoleJustification: selected.urlRoleJustification || '' }) })) })),
+        selectionContexts: value.selectionContexts })) })),
   }, derived.moduleName);
   assert.equal(validateNs4E8PresentationProposal(derived, proposal).ok, true);
   const overlaid = overlayNs4E8Presentation(derived, proposal);
-  assert.equal(overlaid.urlRoleDecisions.at(-1)?.decidedBy, 'llm');
-  assert.equal(overlaid.urlRoleDecisions.at(-1)?.urlRole, 'path');
+  assert.deepEqual(overlaid.workspaces.flatMap(item => item.scenarios.flatMap(scenario => scenario.selectionContexts)),
+    derived.workspaces.flatMap(item => item.scenarios.flatMap(scenario => scenario.selectionContexts)));
   assert.equal(validateNs4E8Skeleton(overlaid, replaySources).ok, true);
 });
 
-test('E8 gate rejects a many-cardinality path context as a structural Type A issue', () => {
+test('run 41 accepts a many-cardinality provided slice without URL cardinality checks', () => {
   const replaySources = run38UrlRoleSources();
   const skeleton = deriveNs4E8Skeleton(replaySources);
-  skeleton.workspaces.find(workspace => workspace.workspaceId === 'projectWorkspace')!.pageContext[0].cardinality = 'many';
+  const workspace = skeleton.workspaces.find(item => item.workspaceId === 'projectWorkspace')!;
+  const scenario = workspace.scenarios.find(item => item.selectionContexts.length)!;
+  scenario.selectionContexts[0].cardinality = 'many';
   const gate = validateNs4E8Skeleton(skeleton, replaySources);
-  assert.equal(gate.ok, false);
-  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E8_PATH_CARDINALITY'));
+  assert.equal(gate.ok, true);
 });
 
-test('E8 presentation schema is strict and versions urlRole plus scenario selectionContexts together', () => {
+test('run 41 keeps event-driven session and provided slice contexts out of pageContext', () => {
+  const replay: any = structuredClone(sources);
+  replay.journeys.journeys = [{
+    journeyId: run41ContextFixture.journeyId,
+    business: { actorRef: 'client', prerequisites: [], entry: { mode: 'eventDriven', carries: [
+      { contextId: run41ContextFixture.sessionContext, businessObject: 'Client', cardinality: 'one', required: true },
+    ] }, steps: [
+      { stepId: 'inspectClientProjects', kind: 'inspect', intent: 'View projects.', requiresContext: [run41ContextFixture.sessionContext], providesContext: [
+        { contextId: run41ContextFixture.providedContext, businessObject: 'ClientProjectSummary', cardinality: 'many', required: true },
+      ], featureRefs: ['projects'] },
+      { stepId: 'inspectProjectSummary', kind: 'inspect', intent: 'View summary.', requiresContext: [run41ContextFixture.providedContext], providesContext: [], featureRefs: ['projects'] },
+    ] },
+  }];
+  replay.journeys.features = [{ featureId: 'projects', title: 'Projects', priority: 'now' }];
+  replay.access.profiles = [{ profileId: 'client', actorRefs: ['client'], landingIntent: 'View projects.' }];
+  replay.access.authorities = [{ authorityRef: 'construction:client-read', journeyStepRefs: ['viewClientProjectSummary.inspectClientProjects', 'viewClientProjectSummary.inspectProjectSummary'] }];
+  replay.access.grants = [{ profileRef: 'client', authorityRef: 'construction:client-read', dataScope: { mode: 'own', description: 'Own client.' }, disclosure: { mode: 'fullRecord', allowedInformation: [] } }];
+  replay.ontology.entities = [
+    { entityId: 'Client', title: 'Client', description: 'Client.', kind: 'mdm', sourceRefs: { journeyIds: [run41ContextFixture.journeyId] }, fields: [{ fieldId: 'clientId' }], lifecycleStates: [], lifecyclePredicates: [] },
+    { entityId: 'ClientProjectSummary', title: 'Summary', description: 'Summary.', kind: 'projection', sourceRefs: { journeyIds: [run41ContextFixture.journeyId] }, fields: [{ fieldId: 'clientProjectSummaryId' }], lifecycleStates: [], lifecyclePredicates: [] },
+    { entityId: 'Project', title: 'Project', description: 'Project.', kind: 'core', sourceRefs: { journeyIds: [] }, fields: [{ fieldId: 'projectId' }], lifecycleStates: [], lifecyclePredicates: [] },
+  ];
+  replay.ontology.relationships = [{ fromEntity: 'WorkTask', toEntity: 'Project', required: true }, { fromEntity: 'Invoice', toEntity: 'Project', required: true }];
+  replay.useCases = [
+    { useCaseId: 'inspectClientProjects', kind: 'query', compiledFrom: ['viewClientProjectSummary.inspectClientProjects'], entityRefs: ['ClientProjectSummary'], contexts: { requires: [run41ContextFixture.sessionContext], provides: [run41ContextFixture.providedContext] } },
+    { useCaseId: 'inspectProjectSummary', kind: 'query', compiledFrom: ['viewClientProjectSummary.inspectProjectSummary'], entityRefs: ['ClientProjectSummary'], contexts: { requires: [run41ContextFixture.providedContext], provides: [] } },
+  ];
+  replay.workflows = [];
+  const skeleton = deriveNs4E8Skeleton(replay);
+  assert.deepEqual(skeleton.workspaces.flatMap(workspace => workspace.pageContext.map(context => context.contextId)), run41ContextFixture.expectedPageContexts);
+  const provided = skeleton.workspaces.flatMap(workspace => workspace.scenarios.flatMap(scenario => scenario.selectionContexts))
+    .find(context => context.contextId === run41ContextFixture.providedContext);
+  assert.equal(provided?.cardinality, run41ContextFixture.expectedProvidedCardinality);
+  assert.equal(validateNs4E8Skeleton(skeleton, replay).ok, true);
+});
+
+test('E8 presentation schema is strict, versioned and contains no URL role taxonomy', () => {
   const schema = JSON.parse(readFileSync(new URL('../../schemas/e8-workspace.schema.json', import.meta.url), 'utf8')) as any;
   assert.equal(schema.additionalProperties, false);
-  assert.equal(schema.properties.schemaVersion.const, '2026-08-13-ns4-e8-presentation-v2');
-  assert.deepEqual(schema.$defs.routedContext.properties.urlRole.enum, ['path', 'selection']);
-  assert.equal(schema.properties.workspaces.items.properties.scenarios.items.properties.selectionContexts.items.$ref, '#/$defs/routedContext');
+  assert.equal(schema.properties.schemaVersion.const, '2026-08-14-ns4-e8-presentation-v3');
+  assert.deepEqual(Object.keys(schema.$defs.context.properties), ['contextId', 'businessObject', 'cardinality', 'required', 'idFieldRef']);
+  assert.equal(schema.properties.workspaces.items.properties.scenarios.items.properties.selectionContexts.items.$ref, '#/$defs/context');
 });

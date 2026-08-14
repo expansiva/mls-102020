@@ -1,4 +1,5 @@
-import type { Ns4E8PresentationProposal, Ns4E8SkeletonReview, Ns4E8Sources, Ns4WorkspaceDetailDraft, Ns4WorkspaceRoutedContext } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
+import type { Ns4E8PresentationProposal, Ns4E8SkeletonReview, Ns4E8Sources, Ns4WorkspaceContext, Ns4WorkspaceDetailDraft } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
+import { routeOf } from '/_102020_/l2/agentNewSolution4/helpers/routeOf.js';
 import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 import type { Ns4ResolutionFinding, Ns4ResolutionResult } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 
@@ -27,7 +28,7 @@ export function validateNs4E8PresentationProposal(derived: Ns4E8SkeletonReview, 
     if (!candidate) return;
     if (!candidate.title || !candidate.description) add('NS4_E8_PRESENTATION_LABEL', workspace.workspaceId, 'Workspace title and description are required.');
     if (workspace.pageContext.map(context => context.contextId).sort().join('\u0000') !== candidate.pageContext.map(context => context.contextId).sort().join('\u0000')) add('NS4_E8_PRESENTATION_PAGE_CONTEXT', `${workspace.workspaceId}.pageContext`, 'Presentation must preserve mechanical page contexts.');
-    workspace.pageContext.forEach(context => { const proposed = candidate.pageContext.find(item => item.contextId === context.contextId); if (!sameMechanicalContext(context, proposed) || proposed?.urlRole !== context.urlRole || proposed?.urlRoleSource !== context.urlRoleSource) add('NS4_E8_PRESENTATION_MECHANICAL_ROLE', `${workspace.workspaceId}.pageContext.${context.contextId}`, 'Mechanical context attributes, URL roles and sources cannot be changed by L1.'); });
+    workspace.pageContext.forEach(context => { const proposed = candidate.pageContext.find(item => item.contextId === context.contextId); if (!sameMechanicalContext(context, proposed)) add('NS4_E8_PRESENTATION_MECHANICAL_CONTEXT', `${workspace.workspaceId}.pageContext.${context.contextId}`, 'Mechanical context attributes cannot be changed by L1.'); });
     if (workspace.scenarios.map(scenario => scenario.scenarioId).sort().join('\u0000') !== candidate.scenarios.map(scenario => scenario.scenarioId).sort().join('\u0000')) add('NS4_E8_PRESENTATION_SCENARIOS', `${workspace.workspaceId}.scenarios`, 'Presentation must preserve every scenario id exactly once.');
     workspace.scenarios.forEach(scenario => {
       const proposedScenario = candidate.scenarios.find(item => item.scenarioId === scenario.scenarioId); if (!proposedScenario) return;
@@ -35,9 +36,7 @@ export function validateNs4E8PresentationProposal(derived: Ns4E8SkeletonReview, 
       if (scenario.selectionContexts.map(context => context.contextId).sort().join('\u0000') !== proposedScenario.selectionContexts.map(context => context.contextId).sort().join('\u0000')) add('NS4_E8_PRESENTATION_SELECTION_CONTEXT', `${workspace.workspaceId}.${scenario.scenarioId}.selectionContexts`, 'Presentation must preserve scenario contexts.');
       scenario.selectionContexts.forEach(context => {
         const proposed = proposedScenario.selectionContexts.find(item => item.contextId === context.contextId);
-        const ambiguous = derived.urlRoleDecisions.some(decision => decision.workspaceId === workspace.workspaceId && decision.scenarioId === scenario.scenarioId && decision.contextId === context.contextId);
-        if (!sameMechanicalContext(context, proposed) || (!ambiguous && (proposed?.urlRole !== context.urlRole || proposed?.urlRoleSource !== context.urlRoleSource))) add('NS4_E8_PRESENTATION_MECHANICAL_ROLE', `${workspace.workspaceId}.${scenario.scenarioId}.${context.contextId}`, 'Only ambiguous URL roles may be classified by L1; all mechanical context attributes are frozen.');
-        if (ambiguous && (!proposed || proposed.urlRoleSource !== 'llm' || !proposed.urlRoleJustification?.trim())) add('NS4_E8_PRESENTATION_JUSTIFICATION', `${workspace.workspaceId}.${scenario.scenarioId}.${context.contextId}`, 'An ambiguous URL role requires L1 source and a one-line business justification.');
+        if (!sameMechanicalContext(context, proposed)) add('NS4_E8_PRESENTATION_MECHANICAL_CONTEXT', `${workspace.workspaceId}.${scenario.scenarioId}.${context.contextId}`, 'Mechanical context attributes cannot be changed by L1.');
       });
       if (proposedScenario.surface && !proposedScenario.surfaceJustification?.trim()) add('NS4_E8_PRESENTATION_SURFACE', `${workspace.workspaceId}.${scenario.scenarioId}.surface`, 'A chosen surface requires a one-line justification.');
       if (proposedScenario.surface === 'batchAction' && (scenario.kind === 'review' || ![...workspace.pageContext, ...scenario.selectionContexts].some(context => context.cardinality === 'many'))) add('NS4_E8_PRESENTATION_SURFACE', `${workspace.workspaceId}.${scenario.scenarioId}.surface`, 'batchAction is not structurally valid for this scenario.');
@@ -60,7 +59,6 @@ export function validateNs4E8Skeleton(skeleton: Ns4E8SkeletonReview, sources: Ns
   const profileIds = new Set(sources.access.profiles.map(profile => profile.profileId));
   const entityIds = new Set(sources.ontology.entities.map(entity => entity.entityId));
   const contexts = new Set(skeleton.contextCatalog.map(context => context.contextId));
-  const fields = new Set(sources.ontology.entities.flatMap(entity => entity.fields.map(field => `${entity.entityId}.${field.fieldId}`)));
   skeleton.workspaces.forEach((workspace, index) => {
     const path = `workspaces[${index}]`;
     if (!MEMBER_ID.test(workspace.workspaceId)) add('NS4_E8_WORKSPACE_ID', `${path}.workspaceId`, 'Workspace id must be lower-camel.');
@@ -74,8 +72,6 @@ export function validateNs4E8Skeleton(skeleton: Ns4E8SkeletonReview, sources: Ns
     workspace.useCaseIds.forEach(id => { if (!sourceUseCases.has(id)) add('NS4_E8_USECASE', `${path}.useCaseIds`, `Unknown compiled use case ${id}.`); useCaseRefs.add(id); });
     workspace.pageContext.forEach(context => {
       if (!contexts.has(context.contextId)) add('NS4_E8_CONTEXT', `${path}.pageContext`, `Unknown context ${context.contextId}.`);
-      if (context.urlRole !== 'path') add('NS4_E8_PAGE_URL_ROLE', `${path}.pageContext`, `Workspace page context ${context.contextId} must be path identity.`);
-      validatePathContext(context, `${path}.pageContext`, fields, add);
     });
     const scenarioIds = new Set<string>();
     workspace.scenarios.forEach((scenario, scenarioIndex) => {
@@ -87,13 +83,11 @@ export function validateNs4E8Skeleton(skeleton: Ns4E8SkeletonReview, sources: Ns
       scenario.useCaseIds.forEach(id => { if (!workspace.useCaseIds.includes(id)) add('NS4_E8_SCENARIO_USECASE', `${scenarioPath}.useCaseIds`, `Scenario references non-hosted use case ${id}.`); });
       scenario.selectionContexts.forEach(context => {
         if (!contexts.has(context.contextId)) add('NS4_E8_CONTEXT', `${scenarioPath}.selectionContexts`, `Unknown context ${context.contextId}.`);
-        if (context.urlRole === 'path') validatePathContext(context, `${scenarioPath}.selectionContexts`, fields, add);
-        else {
-          const localSlice = workspace.slices.some(slice => slice.entityRefs.includes(context.businessObject));
-          const localFormInput = scenario.kind === 'form' && scenario.useCaseIds.some(id => useCasesById.get(id)?.contexts?.requires?.includes(context.contextId));
-          if (!localSlice && !localFormInput) add('NS4_E8_SELECTION_SOURCE', `${scenarioPath}.selectionContexts`, `Selection context ${context.contextId} requires a local picker, slice or form input.`);
-        }
-        if (context.urlRoleSource === 'ambiguous') add('NS4_E8_URL_ROLE_UNCLASSIFIED', `${scenarioPath}.selectionContexts`, `Ambiguous context ${context.contextId} must be classified before checkpoint.`);
+        const localSlice = workspace.slices.some(slice => slice.entityRefs.includes(context.businessObject));
+        const localFormInput = scenario.kind === 'form' && scenario.useCaseIds.some(id => useCasesById.get(id)?.contexts?.requires?.includes(context.contextId));
+        const actorSession = hasActorSessionSource(workspace.profileRefs, scenario.stepRefs, context.contextId, sources);
+        const routeTarget = routeOf(skeleton.moduleName, workspace, scenario, { workspaces: skeleton.workspaces, edges: skeleton.edges, useCases: sources.useCases }).pathContextIds.includes(context.contextId);
+        if (context.required && !localSlice && !localFormInput && !actorSession && !routeTarget) add('NS4_E8_SELECTION_SOURCE', `${scenarioPath}.selectionContexts.${context.contextId}`, `Required context ${context.contextId} in scenario ${scenario.scenarioId} has no slice, picker/form input, actor session, hub anchor or unique scenario target.`);
       });
       if (scenario.surface === 'batchAction') {
         if (![...workspace.pageContext, ...scenario.selectionContexts].some(context => context.cardinality === 'many')) add('NS4_E8_BATCH_CARDINALITY', scenarioPath, 'batchAction requires a many-cardinality context.');
@@ -114,7 +108,6 @@ export function validateNs4E8Skeleton(skeleton: Ns4E8SkeletonReview, sources: Ns
     });
     if (requiresExistingSubject && !workspace.slices.length && !workspace.pageContext.length && !workspace.scenarios.some(scenario => scenario.selectionContexts.length)) add('NS4_E8_DECISION_WITHOUT_CONTEXT', path, 'A review or context-dependent command must host an entity slice or receive page/scenario context.');
   });
-  skeleton.urlRoleDecisions.filter(decision => decision.decidedBy === 'pending').forEach(decision => add('NS4_E8_URL_ROLE_UNCLASSIFIED', 'urlRoleDecisions', `URL role for ${decision.workspaceId}.${decision.scenarioId}.${decision.contextId} is still pending.`));
   sourceSteps.forEach(ref => { if (!stepRefs.has(ref)) add('NS4_E8_STEP_UNHOSTED', 'workspaces', `Journey step ${ref} is not hosted by a workspace.`); });
   sourceUseCases.forEach(id => { if (!useCaseRefs.has(id)) add('NS4_E8_USECASE_UNHOSTED', 'workspaces', `Use case ${id} is not hosted by a workspace.`); });
   skeleton.menu.headerLinks.forEach(id => { if (!workspaceIds.has(id)) add('NS4_E8_HEADER_LINK', 'menu.headerLinks', `Unknown workspace ${id}.`); });
@@ -129,20 +122,31 @@ export function validateNs4E8Skeleton(skeleton: Ns4E8SkeletonReview, sources: Ns
     if (!profileIds.has(landing.profileRef) || !workspace || !workspace.scenarios.some(scenario => scenario.scenarioId === landing.scenarioId)) add('NS4_E8_LANDING', `menu.landings[${index}]`, 'Landing must resolve to an existing profile, workspace and scenario.');
     if (workspace?.pageContext.length && workspace.kind !== 'hub') add('NS4_E8_LANDING_CONTEXT', `menu.landings[${index}]`, 'A landing cannot require unresolved page context.');
   });
-  const edgesByTarget = new Map<string, string[]>();
   skeleton.edges.forEach((edge, index) => {
     if (!workspaceIds.has(edge.from) || !workspaceIds.has(edge.to) || !edge.carries.length) add('NS4_E8_EDGE', `edges[${index}]`, 'Edge requires existing endpoints and carried context ids.');
     edge.carries.forEach(context => { if (!contexts.has(context)) add('NS4_E8_EDGE_CONTEXT', `edges[${index}].carries`, `Unknown carried context ${context}.`); });
-    edgesByTarget.set(edge.to, [...(edgesByTarget.get(edge.to) || []), ...edge.carries]);
-  });
-  skeleton.workspaces.filter(workspace => workspace.pageContext.length && workspace.kind !== 'hub').forEach(workspace => {
-    const carried = new Set(edgesByTarget.get(workspace.workspaceId) || []);
-    const isLanding = skeleton.menu.landings.some(landing => landing.workspaceId === workspace.workspaceId);
-    workspace.pageContext.filter(context => context.required && !carried.has(context.contextId)).forEach(context => {
-      if (!isLanding) add('NS4_E8_PAGE_CONTEXT_COVERAGE', workspace.workspaceId, `Required page context ${context.contextId} has no candidate incoming edge.`);
-    });
   });
   return { ok: issues.every(issue => issue.severity === 'warning'), issues };
+}
+
+export function resolveNs4E8SkeletonFindings(skeleton: Ns4E8SkeletonReview, issues: Ns4E8GateIssue[]): Ns4ResolutionResult<Ns4E8SkeletonReview> {
+  return resolveNs4Findings(skeleton, issues.map(issue => issue.severity === 'warning' ? {
+    classification: 'B' as const,
+    decisionId: decisionId('e8Recorder', issue.code, issue.path),
+    findingRef: `${issue.code}:${issue.path}`,
+    stage: 'e8-workspaces',
+    question: issue.message,
+    defaultChoice: 'keepMechanicalSkeleton',
+    alternatives: ['reviewWorkspaceStructure'],
+    changeHint: `Revisar ${issue.path} no esqueleto E8.`,
+  } : {
+    classification: 'A' as const,
+    findingRef: `${issue.code}:${issue.path}`,
+    stage: 'e8-workspaces',
+    question: issue.message,
+    alternatives: [],
+    changeHint: `Corrigir ${issue.path} no esqueleto E8.`,
+  }));
 }
 
 export function validateNs4WorkspaceDetail(detail: Ns4WorkspaceDetailDraft, skeleton: Ns4E8SkeletonReview, sources: Ns4E8Sources): Ns4E8GateResult {
@@ -269,15 +273,18 @@ function decisionId(prefix: string, ...parts: string[]): string {
   return prefix + parts.map(part => part.replace(/[^A-Za-z0-9]+(.)?/g, (_match, next: string | undefined) => next ? next.toUpperCase() : '')).map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
 }
 
-function validatePathContext(context: Ns4WorkspaceRoutedContext, path: string, fields: Set<string>, add: (code: string, path: string, message: string) => void): void {
-  if (context.cardinality !== 'one') add('NS4_E8_PATH_CARDINALITY', path, `Path context ${context.contextId} must have cardinality one.`);
-  if (!context.idFieldRef || !fields.has(`${context.businessObject}.${context.idFieldRef}`)) add('NS4_E8_PATH_ID_FIELD', path, `Path context ${context.contextId} requires a resolvable ontology idFieldRef.`);
-}
-
-function sameMechanicalContext(expected: Ns4WorkspaceRoutedContext, actual: Ns4WorkspaceRoutedContext | undefined): boolean {
+function sameMechanicalContext(expected: Ns4WorkspaceContext, actual: Ns4WorkspaceContext | undefined): boolean {
   return !!actual && expected.contextId === actual.contextId && expected.businessObject === actual.businessObject
     && expected.cardinality === actual.cardinality && expected.required === actual.required
     && (expected.idFieldRef || '') === (actual.idFieldRef || '');
+}
+
+function hasActorSessionSource(profileRefs: string[], stepRefs: string[], contextId: string, sources: Ns4E8Sources): boolean {
+  const scoped = sources.access.grants.some(grant => profileRefs.includes(grant.profileRef)
+    && (grant.dataScope?.mode === 'own' || grant.dataScope?.mode === 'assigned' || grant.dataScope?.mode === 'related'));
+  return scoped && sources.journeys.journeys.some(journey => journey.business.entry.mode === 'eventDriven'
+    && journey.business.entry.carries.some(context => context.contextId === contextId)
+    && stepRefs.some(stepRef => stepRef.startsWith(`${journey.journeyId}.`)));
 }
 
 function validateQueue(path: string, workspaceUseCases: string[], sources: Ns4E8Sources, add: (code: string, path: string, message: string) => void): void {

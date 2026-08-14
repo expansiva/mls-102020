@@ -7,10 +7,12 @@ import {
 import type { Ns4E4Review, Ns4OntologyField } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import type { Ns4UseCaseArtifactV3, Ns4WorkflowArtifactV2 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 import type {
-  Ns4E8Edge, Ns4WorkspaceArtifact, Ns4WorkspaceContext, Ns4WorkspaceIndex, Ns4WorkspaceRoutedContext,
+  Ns4E8Edge, Ns4WorkspaceArtifact, Ns4WorkspaceContext, Ns4WorkspaceIndex,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
+import { routeOf } from '/_102020_/l2/agentNewSolution4/helpers/routeOf.js';
+import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 
-export const NS4_NAVIGATION_INDEX_SCHEMA_VERSION = '2026-08-13-ns4-navigation-index-v1' as const;
+export const NS4_NAVIGATION_INDEX_SCHEMA_VERSION = '2026-08-14-ns4-navigation-index-v2' as const;
 export const NS4_NAVIGATION_STORE_SCHEMA_VERSION = '2026-08-13-ns4-navigation-store-v1' as const;
 export const NS4_NOTIFICATION_CATALOG_SCHEMA_VERSION = '2026-08-13-ns4-notifications-v1' as const;
 export const NS4_BFF_CONTRACT_SCHEMA_VERSION = '2026-08-13-ns4-bff-contract-v1' as const;
@@ -44,6 +46,7 @@ export interface Ns4NavigationIndexArtifact {
   routes: Ns4NavigationRoute[];
   edges: Ns4E8Edge[];
   warnings: Ns4E9Warning[];
+  systemDecisions: Ns4SystemDecision[];
   navigationHash: string;
 }
 
@@ -160,7 +163,8 @@ export async function compileNs4E9(sources: Ns4E9Sources): Promise<Ns4E9Compilat
   const notificationEdgeKeys = sources.workspaceIndex.menu.edges.filter(edge => isNotificationEdge(edge, steps, stepLocations, sources.journeys)).map(edgeKey);
   const navigationEdges = sources.workspaceIndex.menu.edges.filter(edge => !notificationEdgeKeys.includes(edgeKey(edge)))
     .map(edge => ({ ...edge, carries: [...edge.carries].sort() })).sort((left, right) => edgeKey(left).localeCompare(edgeKey(right)));
-  const routes = compileRoutes(sources, workspaces, navigationEdges);
+  const compiledRoutes = compileRoutes(sources, workspaces);
+  const routes = compiledRoutes.routes;
   const routeByScenario = new Map(routes.map(route => [`${route.workspaceId}\u0000${route.scenarioId}`, route]));
   const notificationEntries = notificationDraft.map(entry => {
     const route = routeByScenario.get(`${entry.targetWorkspaceId}\u0000${entry.targetScenarioId}`);
@@ -197,7 +201,7 @@ export async function compileNs4E9(sources: Ns4E9Sources): Promise<Ns4E9Compilat
   const navigationValue = {
     schemaVersion: NS4_NAVIGATION_INDEX_SCHEMA_VERSION, moduleName: sources.workspaceIndex.moduleName,
     userLanguage: sources.workspaceIndex.userLanguage, skeletonHash: sources.workspaceIndex.skeletonHash,
-    routes, edges: navigationEdges, warnings: stableWarnings,
+    routes, edges: navigationEdges, warnings: stableWarnings, systemDecisions: compiledRoutes.systemDecisions,
   };
   const navigation: Ns4NavigationIndexArtifact = { ...navigationValue, navigationHash: await sha256Ns4(navigationValue) };
   const storeContexts = [...contexts.values()].sort((left, right) => left.contextId.localeCompare(right.contextId)).map(context => {
@@ -219,37 +223,23 @@ export async function compileNs4E9(sources: Ns4E9Sources): Promise<Ns4E9Compilat
   return { navigation, store, notifications, contracts, access, notificationEdgeKeys, diagnostics };
 }
 
-function compileRoutes(sources: Ns4E9Sources, workspaces: Ns4WorkspaceArtifact[], edges: Ns4E8Edge[]): Ns4NavigationRoute[] {
-  const moduleRoot = `/${lowerCamel(sources.workspaceIndex.moduleName)}`;
-  const hubs = workspaces.filter(workspace => workspace.kind === 'hub').sort((left, right) => left.workspaceId.localeCompare(right.workspaceId));
-  const hubBases = new Map(hubs.map(hub => [hub.workspaceId, `${moduleRoot}/${pluralize(lowerCamel(hub.anchorEntity || stripWorkspace(hub.workspaceId)))}`]));
-  const workspaceBases = new Map<string, { base: string; inherited: Ns4WorkspaceRoutedContext[] }>();
-  for (const workspace of workspaces) {
-    if (workspace.kind === 'hub') { workspaceBases.set(workspace.workspaceId, { base: hubBases.get(workspace.workspaceId)!, inherited: [] }); continue; }
-    const parentHub = hubs.find(hub => edges.some(edge => edge.from === hub.workspaceId && edge.to === workspace.workspaceId
-      && edge.carries.some(contextId => hub.pageContext.some(context => context.contextId === contextId))));
-    if (parentHub) {
-      const inherited = parentHub.pageContext.filter(context => context.urlRole === 'path');
-      workspaceBases.set(workspace.workspaceId, { base: `${hubBases.get(parentHub.workspaceId)}${contextSegments(inherited, false)}/${pluralize(lowerCamel(stripWorkspace(workspace.workspaceId)))}`, inherited });
-    } else workspaceBases.set(workspace.workspaceId, { base: `${moduleRoot}/${pluralize(lowerCamel(stripWorkspace(workspace.workspaceId)))}`, inherited: [] });
-  }
+function compileRoutes(sources: Ns4E9Sources, workspaces: Ns4WorkspaceArtifact[]): { routes: Ns4NavigationRoute[]; systemDecisions: Ns4SystemDecision[] } {
   const routes: Ns4NavigationRoute[] = [];
+  const systemDecisions: Ns4SystemDecision[] = [];
   for (const workspace of workspaces) {
-    const location = workspaceBases.get(workspace.workspaceId)!;
-    const workspacePath = workspace.pageContext.filter(context => context.urlRole === 'path' && !location.inherited.some(item => item.contextId === context.contextId));
     for (const scenario of workspace.scenarios) {
-      let routePattern = `${location.base}${contextSegments(workspacePath, false)}`;
-      if (workspace.kind === 'hub' && scenario.kind === 'collection') routePattern = location.base;
-      else if (workspace.kind === 'hub' && scenario.kind === 'record') routePattern = `${location.base}${contextSegments(workspace.pageContext.filter(context => context.urlRole === 'path'), false)}`;
-      else if (scenario.kind !== 'collection' && scenario.kind !== 'record') routePattern += `/${scenarioSlug(scenario.scenarioId, scenario.kind)}${contextSegments(scenario.selectionContexts.filter(context => context.urlRole === 'path'), true)}`;
+      const projected = routeOf(sources.workspaceIndex.moduleName, workspace, scenario, {
+        workspaces, edges: sources.workspaceIndex.menu.edges, useCases: sources.useCases,
+      });
+      systemDecisions.push(...projected.systemDecisions);
       routes.push({ routeId: `${workspace.workspaceId}.${scenario.scenarioId}`, workspaceId: workspace.workspaceId, scenarioId: scenario.scenarioId,
-        routePattern, pathContextIds: unique([...location.inherited.map(context => context.contextId), ...workspacePath.map(context => context.contextId),
-          ...scenario.selectionContexts.filter(context => context.urlRole === 'path').map(context => context.contextId)]),
-        selectionContextIds: scenario.selectionContexts.filter(context => context.urlRole === 'selection').map(context => context.contextId).sort(),
+        routePattern: projected.routePattern, pathContextIds: projected.pathContextIds,
+        selectionContextIds: projected.selectionContextIds,
         profileRefs: [...workspace.profileRefs].sort(), authorityRefs: [...scenario.authorityRefs].sort(), workspaceHash: workspace.workspaceHash });
     }
   }
-  return routes.sort((left, right) => left.routeId.localeCompare(right.routeId));
+  return { routes: routes.sort((left, right) => left.routeId.localeCompare(right.routeId)),
+    systemDecisions: uniqueBy(systemDecisions, decision => decision.decisionId) };
 }
 
 async function compileViewContract(
@@ -395,12 +385,6 @@ function isNotificationEdge(edge: Ns4E8Edge, steps: Map<string, JourneyStepInfo>
     && journeys.journeys.find(journey => journey.journeyId === target.journeyId)?.business.entry.mode === 'eventDriven'
     && target.step.requiresContext.some(contextId => edge.carries.includes(contextId)));
 }
-function contextSegments(contexts: Ns4WorkspaceRoutedContext[], optional: boolean): string {
-  return contexts.map(context => `/:${context.idFieldRef || `${lowerCamel(context.businessObject)}Id`}${optional ? '?' : ''}`).join('');
-}
-function scenarioSlug(scenarioId: string, kind: string): string { const stripped = scenarioId.replace(new RegExp(`^${kind}`, 'i'), ''); return lowerCamel(stripped || scenarioId); }
-function stripWorkspace(value: string): string { return value.replace(/Workspace$/, '') || value; }
-function pluralize(value: string): string { if (/s$/i.test(value)) return value; if (/[^aeiou]y$/i.test(value)) return value.slice(0, -1) + 'ies'; return value + 's'; }
 function edgeKey(edge: Ns4E8Edge): string { return `${edge.from}:${edge.to}:${[...edge.carries].sort().join(',')}`; }
 function unique(values: string[]): string[] { return [...new Set(values.filter(Boolean))].sort(); }
 function uniqueBy<T>(values: T[], key: (value: T) => string): T[] { return [...new Map(values.map(value => [key(value), value])).values()].sort((left, right) => key(left).localeCompare(key(right))); }

@@ -1,6 +1,7 @@
 import type { Ns4E9Compilation, Ns4E9Sources } from '/_102020_/l2/agentNewSolution4/steps/e9/contracts.js';
 import type { Ns4JourneyStep } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
-import type { Ns4WorkspaceArtifact, Ns4WorkspaceRoutedContext } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
+import type { Ns4WorkspaceArtifact } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
+import { routeOf } from '/_102020_/l2/agentNewSolution4/helpers/routeOf.js';
 
 export interface Ns4E9GateIssue { code: string; path: string; message: string; }
 export interface Ns4E9GateResult { ok: boolean; issues: Ns4E9GateIssue[]; }
@@ -20,11 +21,10 @@ export function validateNs4E9(sources: Ns4E9Sources, compilation: Ns4E9Compilati
     if (!workspace || workspace.workspaceHash !== indexed.workspaceHash || workspace.skeletonHash !== sources.workspaceIndex.skeletonHash) add('NS4_E9_WORKSPACE_HASH', workspaceId, `Workspace ${workspaceId} does not match the approved index hashes.`);
   }
   const contextById = new Map(sources.workspaceIndex.menu.contextCatalog.map(context => [context.contextId, context]));
-  const entityFields = new Set<string>(sources.ontology.entities.flatMap(entity => entity.fields.map(field => `${entity.entityId}.${field.fieldId}`)));
   const notificationTargets = new Map<string, Set<string>>();
   compilation.notifications.entries.forEach(entry => notificationTargets.set(entry.targetWorkspaceId,
     new Set([...(notificationTargets.get(entry.targetWorkspaceId) || []), entry.contextCarried])));
-  for (const workspace of sources.workspaces) validateWorkspaceContexts(workspace, sources, compilation, contextById, entityFields, notificationTargets, add);
+  for (const workspace of sources.workspaces) validateWorkspaceContexts(workspace, sources, compilation, contextById, notificationTargets, add);
   validateEdges(sources, compilation, contextById, workspaceById, add);
   validateJourneyReachability(sources, compilation, workspaceById, add);
   validateQueues(sources, add);
@@ -35,14 +35,14 @@ export function validateNs4E9(sources: Ns4E9Sources, compilation: Ns4E9Compilati
 
 function validateWorkspaceContexts(
   workspace: Ns4WorkspaceArtifact, sources: Ns4E9Sources, compilation: Ns4E9Compilation,
-  contexts: Map<string, { contextId: string; businessObject: string; idFieldRef?: string }>, fields: Set<string>,
+  contexts: Map<string, { contextId: string; businessObject: string; idFieldRef?: string }>,
   notificationTargets: Map<string, Set<string>>, add: (code: string, path: string, message: string) => void,
 ): void {
   const incoming = compilation.navigation.edges.filter(edge => edge.to === workspace.workspaceId);
   const candidates = incoming.map(edge => `${edge.from}[${edge.carries.join(',')}]`).sort();
   workspace.pageContext.forEach(context => {
     const path = `${workspace.workspaceId}.pageContext.${context.contextId}`;
-    validatePath(context, path, contexts, fields, add);
+    if (!contexts.has(context.contextId)) add('NS4_E9_CONTEXT_UNKNOWN', path, `Context ${context.contextId} is absent from the E8 catalog.`);
     const isHubAnchor = workspace.kind === 'hub' && context.businessObject === workspace.anchorEntity;
     const fromEdge = incoming.some(edge => edge.carries.includes(context.contextId));
     const fromNotification = notificationTargets.get(workspace.workspaceId)?.has(context.contextId) === true;
@@ -52,22 +52,12 @@ function validateWorkspaceContexts(
   workspace.scenarios.forEach(scenario => scenario.selectionContexts.forEach(context => {
     const path = `${workspace.workspaceId}.${scenario.scenarioId}.selectionContexts.${context.contextId}`;
     if (!contexts.has(context.contextId)) add('NS4_E9_CONTEXT_UNKNOWN', path, `Context ${context.contextId} is absent from the E8 catalog.`);
-    if (context.urlRole === 'path') validatePath(context, path, contexts, fields, add);
-    else {
-      const slice = workspace.viewCall.uses.some(item => item.entityRefs.includes(context.businessObject));
-      const formInput = scenario.kind === 'form' && scenario.commandInputs.some(command => command.inputs.some(input => input.inputId === context.contextId || input.sourceRef === context.contextId));
-      if (!slice && !formInput) add('NS4_E9_SELECTION_ORPHAN', path, `Selection ${context.contextId} has no local picker, slice or declared form input.`);
-    }
+    const slice = workspace.viewCall.uses.some(item => item.entityRefs.includes(context.businessObject));
+    const formInput = scenario.kind === 'form' && scenario.commandInputs.some(command => command.inputs.some(input => input.inputId === context.contextId || input.sourceRef === context.contextId));
+    const actorSession = hasActorSessionSource(workspace, scenario.stepRefs, context.contextId, sources);
+    const routeTarget = compilation.navigation.routes.find(route => route.workspaceId === workspace.workspaceId && route.scenarioId === scenario.scenarioId)?.pathContextIds.includes(context.contextId);
+    if (context.required && !slice && !formInput && !actorSession && !routeTarget) add('NS4_E9_SELECTION_ORPHAN', path, `Required context ${context.contextId} in scenario ${scenario.scenarioId} has no slice, picker/form input, actor session or unique route target.`);
   }));
-}
-
-function validatePath(
-  context: Ns4WorkspaceRoutedContext, path: string, contexts: Map<string, { contextId: string; businessObject: string; idFieldRef?: string }>,
-  fields: Set<string>, add: (code: string, path: string, message: string) => void,
-): void {
-  if (context.urlRole !== 'path') add('NS4_E9_PATH_ROLE', path, `Workspace path context ${context.contextId} must retain E8 urlRole=path.`);
-  if (context.cardinality !== 'one') add('NS4_E9_PATH_CARDINALITY', path, `Path context ${context.contextId} must have cardinality one.`);
-  if (!contexts.has(context.contextId) || !context.idFieldRef || !fields.has(`${context.businessObject}.${context.idFieldRef}`)) add('NS4_E9_PATH_FIELD', path, `Path context ${context.contextId} has no resolvable ontology id field.`);
 }
 
 function validateEdges(
@@ -156,16 +146,14 @@ function validateRoutesAndNotifications(
     const workspace = workspaces.get(route.workspaceId); const scenario = workspace?.scenarios.find(item => item.scenarioId === route.scenarioId);
     if (!workspace || !scenario || !route.routePattern.startsWith(`/${sources.workspaceIndex.moduleName}/`)) add('NS4_E9_ROUTE', route.routeId, `Route ${route.routeId} does not match an approved workspace/scenario or module root.`);
     if (patterns.has(route.routePattern)) add('NS4_E9_ROUTE_DUPLICATE', route.routeId, `Duplicate route pattern ${route.routePattern}.`); patterns.add(route.routePattern);
-    const requiredPath = [...(workspace?.pageContext || []), ...(scenario?.selectionContexts || [])].filter(context => context.urlRole === 'path').map(context => context.contextId);
-    requiredPath.forEach(contextId => { if (!route.pathContextIds.includes(contextId)) add('NS4_E9_ROUTE_PATH', route.routeId, `Route omits path context ${contextId}.`); });
-    const routedPathFieldRefs = new Set(sources.workspaces.flatMap(item => [
-      ...item.pageContext,
-      ...item.scenarios.flatMap(candidate => candidate.selectionContexts),
-    ]).filter(context => route.pathContextIds.includes(context.contextId)).map(context => context.idFieldRef));
-    (scenario?.selectionContexts || []).filter(context => context.urlRole === 'selection').forEach(context => {
-      const hasUnownedFieldSegment = route.routePattern.includes(`:${context.idFieldRef}`) && !routedPathFieldRefs.has(context.idFieldRef);
-      if (route.pathContextIds.includes(context.contextId) || hasUnownedFieldSegment) add('NS4_E9_ROUTE_SELECTION', route.routeId, `Selection ${context.contextId} leaked into route ${route.routePattern}.`);
-    });
+    if (workspace && scenario) {
+      const projected = routeOf(sources.workspaceIndex.moduleName, workspace, scenario, {
+        workspaces: sources.workspaces, edges: sources.workspaceIndex.menu.edges, useCases: sources.useCases,
+      });
+      if (route.routePattern !== projected.routePattern || route.pathContextIds.join('\u0000') !== projected.pathContextIds.join('\u0000')) {
+        add('NS4_E9_ROUTE_PROJECTION', route.routeId, `Route ${route.routePattern} differs from the shared structural projection ${projected.routePattern}.`);
+      }
+    }
   });
   compilation.notifications.entries.forEach(entry => {
     const route = compilation.navigation.routes.find(item => item.workspaceId === entry.targetWorkspaceId && item.scenarioId === entry.targetScenarioId);
@@ -173,6 +161,14 @@ function validateRoutesAndNotifications(
   });
   const emittedEdges = new Set(compilation.navigation.edges.map(edge => `${edge.from}:${edge.to}:${[...edge.carries].sort().join(',')}`));
   compilation.notificationEdgeKeys.forEach(key => { if (emittedEdges.has(key)) add('NS4_E9_NOTIFICATION_EDGE', key, 'Handoff/event delivery must be emitted as a notification, not a navigation edge.'); });
+}
+
+function hasActorSessionSource(workspace: Ns4WorkspaceArtifact, stepRefs: string[], contextId: string, sources: Ns4E9Sources): boolean {
+  const scoped = sources.access.grants.some(grant => workspace.profileRefs.includes(grant.profileRef)
+    && (grant.dataScope?.mode === 'own' || grant.dataScope?.mode === 'assigned' || grant.dataScope?.mode === 'related'));
+  return scoped && sources.journeys.journeys.some(journey => journey.business.entry.mode === 'eventDriven'
+    && journey.business.entry.carries.some(context => context.contextId === contextId)
+    && stepRefs.some(stepRef => stepRef.startsWith(`${journey.journeyId}.`)));
 }
 
 function validateContractsAndAccess(sources: Ns4E9Sources, compilation: Ns4E9Compilation, add: (code: string, path: string, message: string) => void): void {

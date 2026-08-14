@@ -76,7 +76,7 @@
   ],
   "workflows": [],
   "workspaceIndex": {
-    "schemaVersion": "2026-08-13-ns4-workspace-index-v3",
+    "schemaVersion": "2026-08-14-ns4-workspace-index-v4",
     "moduleName": "buildFlowFsm38",
     "userLanguage": "en",
     "workspaces": [
@@ -102,13 +102,13 @@
   },
   "workspaces": [
     {
-      "schemaVersion": "2026-08-13-ns4-workspace-v2", "moduleName": "buildFlowFsm38", "workspaceId": "projectWorkspace", "kind": "hub", "title": "Projects", "description": "Projects.", "anchorEntity": "Project", "profileRefs": ["supervisor"],
-      "pageContext": [{"contextId": "selectedProject", "businessObject": "Project", "cardinality": "one", "required": true, "idFieldRef": "projectId", "urlRole": "path", "urlRoleSource": "hubAnchor", "urlRoleJustification": "Hub identity."}],
+      "schemaVersion": "2026-08-14-ns4-workspace-v3", "moduleName": "buildFlowFsm38", "workspaceId": "projectWorkspace", "kind": "hub", "title": "Projects", "description": "Projects.", "anchorEntity": "Project", "profileRefs": ["supervisor"],
+      "pageContext": [{"contextId": "selectedProject", "businessObject": "Project", "cardinality": "one", "required": true, "idFieldRef": "projectId"}],
       "scenarios": [
         {"scenarioId": "collection", "kind": "collection", "title": "Projects", "description": "List.", "stepRefs": ["viewProject.locateProject"], "useCaseIds": ["locateProject"], "authorityRefs": ["build:project-read"], "selectionContexts": [], "organisms": [{"role": "list", "fragmentRef": "Project", "sliceId": "locateProject", "fieldRefs": [{"entityId": "Project", "fieldId": "projectId", "label": ""}, {"entityId": "Project", "fieldId": "name", "label": ""}], "intent": "List."}], "commandInputs": []},
         {"scenarioId": "record", "kind": "record", "title": "Project", "description": "Record.", "stepRefs": [], "useCaseIds": [], "authorityRefs": [], "selectionContexts": [], "organisms": [], "commandInputs": []},
         {"scenarioId": "detailInspectProject", "kind": "detail", "title": "Project details", "description": "Inspect.", "stepRefs": ["viewProject.inspectProject"], "useCaseIds": ["inspectProject"], "authorityRefs": ["build:project-read"], "selectionContexts": [], "organisms": [{"role": "detail", "fragmentRef": "Project", "sliceId": "inspectProject", "fieldRefs": [{"entityId": "Project", "fieldId": "name", "label": ""}], "intent": "Inspect."}], "commandInputs": []},
-        {"scenarioId": "formCreateTask", "kind": "form", "title": "Create task", "description": "Create.", "stepRefs": ["assignTask.createTask"], "useCaseIds": ["createTask"], "authorityRefs": ["build:task-create"], "selectionContexts": [{"contextId": "selectedAssignee", "businessObject": "Worker", "cardinality": "one", "required": true, "idFieldRef": "workerId", "urlRole": "selection", "urlRoleSource": "localSelection", "urlRoleJustification": "Picker."}], "organisms": [{"role": "form", "fragmentRef": "WorkTask", "fieldRefs": [{"entityId": "WorkTask", "fieldId": "description", "label": ""}], "intent": "Create."}], "commandInputs": [{"useCaseId": "createTask", "inputs": [
+        {"scenarioId": "formCreateTask", "kind": "form", "title": "Create task", "description": "Create.", "stepRefs": ["assignTask.createTask"], "useCaseIds": ["createTask"], "authorityRefs": ["build:task-create"], "selectionContexts": [{"contextId": "selectedAssignee", "businessObject": "Worker", "cardinality": "one", "required": true, "idFieldRef": "workerId"}], "organisms": [{"role": "form", "fragmentRef": "WorkTask", "fieldRefs": [{"entityId": "WorkTask", "fieldId": "description", "label": ""}], "intent": "Create."}], "commandInputs": [{"useCaseId": "createTask", "inputs": [
           {"inputId": "selectedProject", "fieldRef": {"entityId": "Project", "fieldId": "projectId", "label": ""}, "source": "pageContext", "sourceRef": "selectedProject"},
           {"inputId": "selectedAssignee", "fieldRef": {"entityId": "Worker", "fieldId": "workerId", "label": ""}, "source": "selection", "sourceRef": "locateAssignee"},
           {"inputId": "description", "fieldRef": {"entityId": "WorkTask", "fieldId": "description", "label": ""}, "source": "userDecision"}
@@ -118,7 +118,7 @@
       "commands": ["createTask"], "invalidations": [{"useCaseId": "createTask", "sliceIds": ["locateProject", "inspectProject", "locateAssignee"]}], "skeletonHash": "skeleton-hash", "workspaceHash": "project-workspace-hash"
     },
     {
-      "schemaVersion": "2026-08-13-ns4-workspace-v2", "moduleName": "buildFlowFsm38", "workspaceId": "workerWorkspace", "kind": "place", "title": "Workers", "description": "Workers.", "anchorEntity": "Worker", "profileRefs": ["supervisor"], "pageContext": [],
+      "schemaVersion": "2026-08-14-ns4-workspace-v3", "moduleName": "buildFlowFsm38", "workspaceId": "workerWorkspace", "kind": "place", "title": "Workers", "description": "Workers.", "anchorEntity": "Worker", "profileRefs": ["supervisor"], "pageContext": [],
       "scenarios": [{"scenarioId": "listLocateAssignee", "kind": "list", "title": "Workers", "description": "List.", "stepRefs": ["assignTask.locateAssignee"], "useCaseIds": ["locateAssignee"], "authorityRefs": ["build:task-create"], "selectionContexts": [], "organisms": [{"role": "list", "fragmentRef": "Worker", "sliceId": "locateAssignee", "fieldRefs": [{"entityId": "Worker", "fieldId": "workerId", "label": ""}, {"entityId": "Worker", "fieldId": "name", "label": ""}], "intent": "List."}], "commandInputs": []}],
       "viewCall": {"uses": [{"sliceId": "locateAssignee", "useCaseId": "locateAssignee", "entityRefs": ["Worker"]}]}, "commands": [], "invalidations": [], "skeletonHash": "skeleton-hash", "workspaceHash": "worker-workspace-hash"
     }

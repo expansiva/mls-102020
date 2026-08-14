@@ -83,7 +83,7 @@ import {
   afterNs4E8PromptStep,
   beforeNs4E8PromptStep,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/agentNs4E8.js';
-import { isNs4E8PresentationRepairPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
+import { isNs4E8ImplementedPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
 import {
   afterNs4E9PromptStep,
   beforeNs4E9PromptStep,
@@ -107,7 +107,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-56 (2026-08-13) bounded E8 selection-source repair';
+export const NS4_AGENT_BUILD = 'build-57 (2026-08-14) structural E8/E9 routes';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -284,7 +284,7 @@ async function beforePromptStep(
   if (planId === 'e7-realization' || planId.startsWith('e7-realization-finalize-')) {
     return beforeNs4E7PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
-  if (planId.startsWith('e8-workspaces-round-') || planId.startsWith('e8-workspaces-finalize-') || isNs4E8PresentationRepairPlanId(planId)) {
+  if (isNs4E8ImplementedPlanId(planId)) {
     return beforeNs4E8PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
   if (planId === 'e9-navigation-compiler') return beforeNs4E9PromptStep(agent, context, parentStep, step, hookSequential, args);
@@ -326,7 +326,7 @@ async function afterPromptStep(
   if (planId === 'e7-realization' || planId.startsWith('e7-realization-finalize-')) {
     return afterNs4E7PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
-  if (planId.startsWith('e8-workspaces-round-') || planId.startsWith('e8-workspaces-finalize-') || isNs4E8PresentationRepairPlanId(planId)) {
+  if (isNs4E8ImplementedPlanId(planId)) {
     return afterNs4E8PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
   if (planId === 'e9-navigation-compiler') return afterNs4E9PromptStep(agent, context, parentStep, step, hookSequential);

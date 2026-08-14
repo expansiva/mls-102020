@@ -11,12 +11,11 @@ provisional failed status for healthy artifacts.
 Before dispatch, the hook checks the flattened task tree for the stable detail `planId`, so a repeated
 or late after-prompt callback cannot enqueue another fan-out/finalizer pair for the same round.
 
-Every exposed context now carries `urlRole: path|selection`. Hub anchors and external handoff/event
-entries are deterministic path identities; local locate slices and form pickers stay inside their
-scenario as selections. Only structurally viable middle cases reach the strict L1 presentation
-tool. An invalid presentation gets one constrained repair and then falls back to `selection` with a
-durable E8 system decision, so presentation variance never blocks the run. The resulting route choices
-and justifications remain available in the skeleton and validation artifacts for audit.
+Workspace `pageContext` contains only the hub anchor and contexts carried by a real notification or
+handoff edge. Other required contexts stay in `scenario.selectionContexts` and resolve through a slice,
+form input, actor session or the unique scenario target. The strict L1 call is presentation-only. An
+invalid presentation gets one constrained repair and then keeps the mechanical defaults, so presentation
+variance never blocks the run. E8 preview and E9 compilation both use the total `helpers/routeOf.ts`.
 
 The gate rejects unhosted use cases, empty workspaces, unresolved page context, unbounded menu
 sections, invalid queues, skeleton drift and invented fields. Until E3 binds its business-language

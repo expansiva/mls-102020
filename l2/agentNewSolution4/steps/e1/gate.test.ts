@@ -197,7 +197,7 @@ test('root plan rejects an incomplete localized-title contract instead of silent
 test('new artifacts expose the current E1-to-E10 lifecycle flow version', () => {
   const artifact = buildNs4ModuleArtifact('petShop', clarification, 'human', '2026-08-05T10:00:00.000Z');
   const pipeline = createNs4Pipeline('petShop', 'petShop', '2026-08-05T10:00:00.000Z');
-  assert.equal(NS4_FLOW_VERSION, '2026-08-13-ns4-flow-v33');
+  assert.equal(NS4_FLOW_VERSION, '2026-08-14-ns4-flow-v34');
   assert.equal(artifact.specStatus.flowVersion, NS4_FLOW_VERSION);
   assert.equal(NS4_PIPELINE_SCHEMA_VERSION, '2026-08-06-ns4-pipeline-v5');
   assert.equal(pipeline.schemaVersion, NS4_PIPELINE_SCHEMA_VERSION);

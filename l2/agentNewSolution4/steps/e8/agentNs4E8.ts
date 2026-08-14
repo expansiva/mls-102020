@@ -20,7 +20,7 @@ import {
   normalizeNs4WorkspaceDetail, overlayNs4E8Presentation, resolveNs4E8PresentationDefaults, Ns4E8SkeletonReview, Ns4E8Sources, Ns4WorkspaceDetailDraft,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
 import { hasNs4E8DetailsDispatch, ns4E8DetailsPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
-import { resolveNs4WorkspaceDetailFindings, validateNs4E8PresentationProposal, validateNs4E8Skeleton, validateNs4WorkspaceDetail } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
+import { resolveNs4E8SkeletonFindings, resolveNs4WorkspaceDetailFindings, validateNs4E8PresentationProposal, validateNs4E8Skeleton, validateNs4WorkspaceDetail } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
 import type { Ns4E8GateIssue } from '/_102020_/l2/agentNewSolution4/steps/e8/gate.js';
 
 interface Ns4E8Args { planId: 'e8-workspaces'; moduleName?: string; reviewRound?: number; adjustment?: string; stage?: 'skeleton' | 'finalize'; repairRound?: number; approvedBy?: Ns4ApprovedBy; presentationAttempt?: number; gateFeedback?: string; }
@@ -75,9 +75,13 @@ export async function afterNs4E8PromptStep(_agent: IAgentMeta, context: mls.msg.
         status(context, mutationParent, step, hookSequential, 'completed', alreadyScheduled ? 'E8 presentation repair was already scheduled; duplicate response ignored.' : 'E8 presentation response was invalid; one constrained repair was scheduled.', 'input_output')];
     }
     skeleton = presentationGate.ok ? overlayNs4E8Presentation(derived, proposal) : resolveNs4E8PresentationDefaults(derived, formatGate(presentationGate.issues));
+    const gate = validateNs4E8Skeleton(skeleton, sources);
+    const resolved = resolveNs4E8SkeletonFindings(skeleton, gate.issues);
+    skeleton = { ...resolved.artifact, systemDecisions: [...resolved.artifact.systemDecisions, ...resolved.systemDecisions] };
     skeleton.skeletonHash = await hashNs4E8Skeleton(skeleton);
-    const gate = validateNs4E8Skeleton(skeleton, sources); await writeNs4E8SkeletonDraft(moduleName, skeleton);
-    if (!gate.ok) throw new Error(formatGate(gate.issues));
+    await writeNs4E8SkeletonDraft(moduleName, skeleton);
+    const postResolution = validateNs4E8Skeleton(skeleton, sources);
+    if (resolved.unresolved.length || !postResolution.ok) throw new Error(formatGate(postResolution.issues.filter(issue => issue.severity !== 'warning')) || resolved.unresolved.map(item => item.question).join('\n'));
     const mutationParent = findParent(context, parent, step);
     return beginWorkers(context, mutationParent, step, hookSequential, skeleton, 'auto');
   } catch (error) { const message = errorMessage(error); await fail(moduleName, message); return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')]; }

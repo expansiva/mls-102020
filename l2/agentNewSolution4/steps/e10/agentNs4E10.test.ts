@@ -16,7 +16,7 @@ async function sources(includeDormant = true): Promise<Ns4E10Sources> {
   const { expected: _expected, notificationPatch: _notification, ...base } = structuredClone(e9Fixture);
   base.journeys.features[0].journeyStepRefs = base.journeys.journeys.flatMap((journey: any) => journey.business.steps.map((step: any) => `${journey.journeyId}.${step.stepId}`));
   const nestedContext = base.workspaceIndex.menu.contextCatalog.find((context: any) => context.contextId === finalFixture.nestedWorker.contextId);
-  base.workspaces.find((item: any) => item.workspaceId === 'workerWorkspace').pageContext.push({ ...nestedContext, urlRole: 'path', urlRoleSource: 'externalEntry', urlRoleJustification: 'Project hub identity.' });
+  base.workspaces.find((item: any) => item.workspaceId === 'workerWorkspace').pageContext.push({ ...nestedContext });
   base.workspaceIndex.menu.edges.push(finalFixture.nestedWorker.edge);
   base.workspaceIndex.menu.sections[0].items.find((item: any) => item.workspaceId === 'workerWorkspace').hub = finalFixture.nestedWorker.hub;
   if (includeDormant) {
