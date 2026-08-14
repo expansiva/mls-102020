@@ -19,7 +19,7 @@
 //              writes nothing. It is offered because it is often the RIGHT answer, and hiding it
 //              would push the user into an override that is merely the reachable one.
 
-import { ImOverridable, ImUnreachable } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
+import { ImOverridable, ImUnreachable, imMessageKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import { isCapableMember } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 
 export type InheritWhere = 'less' | 'override' | 'parent';
@@ -84,20 +84,9 @@ export function isExpensiveOverride(member: string): boolean {
   return member === 'render';
 }
 
-/**
- * Which message set the widget's own chrome uses.
- *
- * ⚠️ Measured 2026-08-14: with `userLanguage: 'pt'` in the payload, the cards rendered in English
- * beside a title and a reason in Portuguese — the model's text obeyed the run and the widget's did
- * not. The base `getMessageKey` reads `document.documentElement.lang`, and with it unset returns the
- * FIRST key of the map, which is `en`. The run measured the language back at i0-classify and carries
- * it in the payload; preferring it is the whole fix.
- *
- * `fallback` is what the document says, kept for the case where the run recorded nothing.
- */
+/** @deprecated thin alias — the rule lives in helpers/imTypes so every widget of this agent shares it. */
 export function inheritMessageKey(userLanguage: string | undefined, available: string[], fallback: string): string {
-  const tag = (userLanguage || '').toLowerCase().split('-')[0];
-  return available.includes(tag) ? tag : fallback;
+  return imMessageKey(userLanguage, available, fallback);
 }
 
 /**

@@ -38,6 +38,7 @@ import {
   ImArtifact,
   ImArtifactKind,
   ImContext,
+  ImDefinitionDecision,
   ImInheritChoice,
   ImTriage,
   ImUnreachable,
@@ -113,6 +114,10 @@ async function beforePromptStep(
   const schema = parseMaybeJson(schemaRaw);
   if (!isRecord(schema)) throw new Error(`[${AGENT_NAME}] invalid i3-edit schema`);
 
+  // ROUTE A: the definition change a human confirmed at the checkpoint. It is an instruction, not a
+  // suggestion — they saw each line and dropped the ones they did not want.
+  const definition = await readJsonArtifact<ImDefinitionDecision>(imWorkFile(runKey, 'definition'), false);
+
   // THE PARENT IS SHOWN ON EVERY SHELL, not only on route C. Until 2026-08-14 it arrived only with
   // the choice 'override', so a route-B edit on a shell was told "a local override of a parent
   // member" with the parent invisible — and the model wrote a member the parent does not have. The
@@ -126,6 +131,7 @@ async function beforePromptStep(
     .split('{{userPrompt}}').join(ctx.userPrompt)
     .split('{{userLanguage}}').join(ctx.userLanguage || 'the language of the request')
     .split('{{triage}}').join(renderTriage(triage))
+    .split('{{definitionChanges}}').join(renderDefinitionChanges(definition))
     .split('{{inheritance}}').join(renderInheritance(ctx, choice))
     .split('{{files}}').join(renderFiles(ctx, triage, choice))
     .split('{{parentSource}}').join(
@@ -328,7 +334,12 @@ function renderFiles(ctx: ImContext, triage: ImTriage, choice: ImInheritChoice |
       ? `----- FILE: less (${less.reference}) -----\n${less.source}\n----- END FILE: less -----`
       : '----- FILE: less — DOES NOT EXIST YET, use op "create" -----';
   }
-  const wanted = EDITABLE.filter(kind => triage.expectedArtifacts.includes(kind));
+  // ROUTE A names no artifacts — the i2 gate forbids it, because on a rebuild the plan decided what
+  // to write. Here the confirmed definition change decides, and it always lands in the same two
+  // files: the contract that states the promise and the code that keeps it.
+  const wanted = triage.route === 'A'
+    ? (['defs', 'ts'] as ImArtifactKind[])
+    : EDITABLE.filter(kind => triage.expectedArtifacts.includes(kind));
   // The .ts is always shown: it is what the .less styles and what the .defs.ts describes, so an
   // edit to either is decided by reading it.
   if (!wanted.includes('ts')) wanted.unshift('ts');
@@ -446,6 +457,44 @@ function renderUnreachable(members: ImUnreachable[] | undefined): string {
     : `- \`${m.name}\` — module-scope constant: not a class member, no subclass can change it`);
   if (list.length > shown.length) shown.push(`- (and ${list.length - shown.length} more)`);
   return shown.join('\n');
+}
+
+/**
+ * ROUTE A — the confirmed definition change, as an instruction.
+ *
+ * Empty on every other route, and that is what makes the section conditional in the prompt: on B and
+ * C the contract may only be corrected for wording, and on A it is the thing being changed.
+ */
+function renderDefinitionChanges(definition: ImDefinitionDecision | null): string {
+  if (!definition?.changes?.length) return '';
+  const lines = definition.changes.map(change => {
+    const what = change.op === 'rename'
+      ? `RENAME ${change.kind} \`${change.previousName}\` to \`${change.name}\``
+      : `${change.op.toUpperCase()} ${change.kind} \`${change.name}\``;
+    return `- **${what}** — ${change.purpose}`;
+  });
+  return [
+    '## The definition change a HUMAN confirmed',
+    '',
+    'This is route A: the molecule\'s public surface moves, and these are the movements that were',
+    'confirmed at a checkpoint. They are an instruction, not a suggestion — every line was shown and',
+    'the ones the user did not want were dropped before you were called.',
+    '',
+    ...lines,
+    '',
+    '**Do exactly these and nothing more.** Two files change together and neither may lag the other:',
+    '',
+    '- the **`.defs.ts`** — the sentence that states the promise. Write it in the contract\'s own',
+    '  voice, next to the sentences already there; do not restate the whole contract and do not',
+    '  reformat what you are not changing;',
+    '- the **`.ts`** — the code that keeps it: `slotTags` for a slot, an `@propertyDataSource`',
+    '  declaration for a property, a `new CustomEvent` dispatch for an event, plus the render that',
+    '  actually uses it. A slot declared and never read is the defect this library already has 9 of.',
+    '',
+    'A later step regenerates the playground from the surface you leave behind, so the surface has to',
+    'be real: a promise in the contract with no code behind it produces a demo of something that does',
+    'not work.',
+  ].join('\n');
 }
 
 function retryOrFail(

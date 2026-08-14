@@ -18,7 +18,7 @@ Return **targeted edits**, not rewritten files. Each edit quotes the exact text 
 
 - **`.ts`** — behaviour, structure, the classes the render emits. It carries **no appearance**: no colour, no hardcoded Tailwind colour utility (`bg-black`, `text-white`), no `style="color:…"`. Inline `style` is for geometry only (width, height, transform).
 - **`.less`** — the appearance. Everything visual lives here, scoped under the element selector. This project has **no Shadow DOM**: `static styles = css\`…\`` is silently ignored, so it never appears in a `.ts`.
-- **`.defs.ts`** — the contract. Edit it only for wording; anything that changes what the contract *promises* is not this route.
+- **`.defs.ts`** — the contract. Edit it only for wording; anything that changes what the contract *promises* is not this route — **unless** the section "The definition change a HUMAN confirmed" appears below, which is route A and is exactly that change, already decided.
 - Do not touch the playground (`.html`) or the group index: later steps own them.
 
 ## Traps this project has actually shipped
@@ -26,6 +26,8 @@ Return **targeted edits**, not rewritten files. Each edit quotes the exact text 
 - **Never declare a helper outside the class.** A molecule is the class and nothing else. To omit an attribute, import `nothing` from `lit` and write `attr=${value || nothing}` — a local sentinel returning `null`, `undefined` or `''` renders `attr=""` instead of removing it. Four generations of this defect are in the library.
 - **`render()` is pure.** No `setTimeout`, no `requestAnimationFrame`, no `this.setAttribute` inside it — it runs on every update. Side effects go in `updated()`.
 - **Type selectors are case-insensitive in HTML.** `'tablecell, TableCell'` spells the same thing twice; the second form is dead.
+
+{{definitionChanges}}
 
 {{inheritance}}
 
