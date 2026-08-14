@@ -15,13 +15,14 @@ import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/n
 export const NS4_NAVIGATION_INDEX_SCHEMA_VERSION = '2026-08-14-ns4-navigation-index-v2' as const;
 export const NS4_NAVIGATION_STORE_SCHEMA_VERSION = '2026-08-13-ns4-navigation-store-v1' as const;
 export const NS4_NOTIFICATION_CATALOG_SCHEMA_VERSION = '2026-08-13-ns4-notifications-v1' as const;
-export const NS4_BFF_CONTRACT_SCHEMA_VERSION = '2026-08-13-ns4-bff-contract-v1' as const;
+export const NS4_BFF_CONTRACT_SCHEMA_VERSION = '2026-08-14-ns4-bff-contract-v2' as const;
 
-export type Ns4ContractValueType = 'string' | 'number' | 'boolean' | 'unknown';
+export type Ns4ContractValueType = 'string' | 'number' | 'boolean' | 'literalUnion' | 'unknown';
 export type Ns4BffInputSource = 'pageContext' | 'sliceParam' | 'selection' | 'userDecision' | 'actorSession';
+export type Ns4E9IssueOrigin = 'skeleton' | 'compiler';
 
 export interface Ns4E9Warning {
-  code: 'NS4_E9_FIELD_TITLE' | 'NS4_E9_JSON_UNKNOWN';
+  code: 'NS4_E9_FIELD_TITLE' | 'NS4_E9_JSON_UNKNOWN' | 'NS4_E9_DECISION_TRANSITIONS';
   path: string;
   message: string;
 }
@@ -87,15 +88,29 @@ export interface Ns4NotificationCatalogArtifact {
   notificationHash: string;
 }
 
-export interface Ns4BffFieldContract {
+export interface Ns4BffDataContract {
+  kind: 'data';
   inputId: string;
-  valueType: Ns4ContractValueType;
+  valueType: Exclude<Ns4ContractValueType, 'literalUnion'>;
   ontologyType: Ns4OntologyField['type'];
   required: boolean;
   source: Ns4BffInputSource;
   sourceRef: string;
   fieldRef: { entityId: string; fieldId: string; label: string };
 }
+
+export interface Ns4BffDecisionContract {
+  kind: 'decision';
+  inputId: string;
+  valueType: 'literalUnion' | 'unknown';
+  required: true;
+  source: 'userDecision';
+  sourceRef: string;
+  label: string;
+  transitions: string[];
+}
+
+export type Ns4BffFieldContract = Ns4BffDataContract | Ns4BffDecisionContract;
 
 export interface Ns4BffOutputField {
   entityId: string;
@@ -146,7 +161,7 @@ export interface Ns4E9Compilation {
   contracts: Ns4BffContractArtifact[];
   access: Ns4AccessMatrixArtifactV4;
   notificationEdgeKeys: string[];
-  diagnostics: Array<{ code: string; path: string; message: string }>;
+  diagnostics: Array<{ code: string; path: string; message: string; origin: Ns4E9IssueOrigin }>;
 }
 
 export async function compileNs4E9(sources: Ns4E9Sources): Promise<Ns4E9Compilation> {
@@ -168,7 +183,7 @@ export async function compileNs4E9(sources: Ns4E9Sources): Promise<Ns4E9Compilat
   const routeByScenario = new Map(routes.map(route => [`${route.workspaceId}\u0000${route.scenarioId}`, route]));
   const notificationEntries = notificationDraft.map(entry => {
     const route = routeByScenario.get(`${entry.targetWorkspaceId}\u0000${entry.targetScenarioId}`);
-    if (!route) diagnostics.push({ code: 'NS4_E9_NOTIFICATION_ROUTE', path: entry.notificationId, message: `Notification target ${entry.targetWorkspaceId}.${entry.targetScenarioId} has no compiled route.` });
+    if (!route) diagnostics.push({ code: 'NS4_E9_NOTIFICATION_ROUTE', path: entry.notificationId, message: `Notification target ${entry.targetWorkspaceId}.${entry.targetScenarioId} has no compiled route.`, origin: 'compiler' });
     return { ...entry, deepLink: route?.routePattern || '' };
   }).sort((left, right) => left.notificationId.localeCompare(right.notificationId));
   const notificationHash = await sha256Ns4(notificationEntries);
@@ -273,9 +288,10 @@ async function compileCommandContract(
   useCases: Map<string, Ns4UseCaseArtifactV3>, warnings: Ns4E9Warning[], diagnostics: Ns4E9Compilation['diagnostics'],
 ): Promise<Ns4BffContractArtifact> {
   const useCase = useCases.get(command.useCaseId);
-  if (!useCase) diagnostics.push({ code: 'NS4_E9_COMMAND_USECASE', path: `${workspace.workspaceId}.${scenario.scenarioId}`, message: `Command ${command.useCaseId} is not an approved E7 use case.` });
+  if (!useCase) diagnostics.push({ code: 'NS4_E9_COMMAND_USECASE', path: `${workspace.workspaceId}.${scenario.scenarioId}`, message: `Command ${command.useCaseId} is not an approved E7 use case.`, origin: 'skeleton' });
   const functionId = duplicate ? `${command.useCaseId}${upperCamel(scenario.scenarioId)}` : command.useCaseId;
   const input = command.inputs.map(item => {
+    if (item.source === 'userDecision' && item.sourceRef && !item.fieldRef) return decisionInput(item.inputId, item.sourceRef, useCase, sources.workspaceIndex.userLanguage, warnings, `${workspace.workspaceId}.${functionId}`);
     const context = contexts.get(item.sourceRef || item.inputId);
     return fieldInput(item.inputId, item.source, item.sourceRef || '', context, fields, warnings, diagnostics, `${workspace.workspaceId}.${functionId}`, item.fieldRef);
   }).sort((left, right) => left.inputId.localeCompare(right.inputId));
@@ -296,20 +312,35 @@ function fieldInput(
   inputId: string, source: Ns4BffInputSource, sourceRef: string, context: Ns4WorkspaceContext | undefined,
   fields: Map<string, Ns4OntologyField>, warnings: Ns4E9Warning[], diagnostics: Ns4E9Compilation['diagnostics'], path: string,
   explicitRef?: { entityId: string; fieldId: string; label: string },
-): Ns4BffFieldContract {
+): Ns4BffDataContract {
   const entityId = explicitRef?.entityId || context?.businessObject || '';
   const fieldId = explicitRef?.fieldId || context?.idFieldRef || '';
   const field = fields.get(`${entityId}.${fieldId}`);
-  if (!field) diagnostics.push({ code: 'NS4_E9_FIELD_REF', path: `${path}.${inputId}`, message: `Input ${inputId} has no resolvable ontology fieldRef (${entityId}.${fieldId}).` });
+  if (!field) diagnostics.push({ code: 'NS4_E9_FIELD_REF', path: `${path}.${inputId}`, message: `Input ${inputId} has no resolvable ontology fieldRef (${entityId}.${fieldId}).`, origin: 'skeleton' });
   const safeField = field || fallbackField(fieldId);
   if (field?.type === 'json') warnings.push({ code: 'NS4_E9_JSON_UNKNOWN', path: `${path}.${inputId}`, message: `JSON field ${entityId}.${fieldId} is emitted as unknown until its ontology shape is refined.` });
-  return { inputId, valueType: valueType(safeField.type), ontologyType: safeField.type, required: context?.required ?? safeField.required,
+  return { kind: 'data', inputId, valueType: valueType(safeField.type), ontologyType: safeField.type, required: context?.required ?? safeField.required,
     source, sourceRef, fieldRef: { entityId, fieldId, label: resolveLabel(explicitRef?.label || '', safeField, warnings, `${path}.${inputId}`) } };
+}
+
+function decisionInput(
+  inputId: string, sourceRef: string, useCase: Ns4UseCaseArtifactV3 | undefined, _userLanguage: string,
+  warnings: Ns4E9Warning[], path: string,
+): Ns4BffDecisionContract {
+  const transitions = unique(useCase?.transitionRefs || []);
+  if (!transitions.length) warnings.push({
+    code: 'NS4_E9_DECISION_TRANSITIONS', path: `${path}.${inputId}`,
+    message: `Decision input ${inputId} for use case ${useCase?.useCaseId || 'unknown'} has no compiled transitions and is emitted as unknown.`,
+  });
+  return {
+    kind: 'decision', inputId, valueType: transitions.length ? 'literalUnion' : 'unknown', required: true,
+    source: 'userDecision', sourceRef, label: transitions.length ? transitions.map(humanizeIdentifier).join(' / ') : humanizeIdentifier(inputId), transitions,
+  };
 }
 
 function outputField(ref: { entityId: string; fieldId: string; label: string }, fields: Map<string, Ns4OntologyField>, warnings: Ns4E9Warning[], diagnostics: Ns4E9Compilation['diagnostics'], path: string): Ns4BffOutputField {
   const field = fields.get(`${ref.entityId}.${ref.fieldId}`);
-  if (!field) diagnostics.push({ code: 'NS4_E9_FIELD_REF', path: `${path}.${ref.entityId}.${ref.fieldId}`, message: `Output field ${ref.entityId}.${ref.fieldId} is absent from E4.` });
+  if (!field) diagnostics.push({ code: 'NS4_E9_FIELD_REF', path: `${path}.${ref.entityId}.${ref.fieldId}`, message: `Output field ${ref.entityId}.${ref.fieldId} is absent from E4.`, origin: 'skeleton' });
   const safeField = field || fallbackField(ref.fieldId);
   if (field?.type === 'json') warnings.push({ code: 'NS4_E9_JSON_UNKNOWN', path: `${path}.${ref.entityId}.${ref.fieldId}`, message: `JSON field ${ref.entityId}.${ref.fieldId} is emitted as unknown until its ontology shape is refined.` });
   return { entityId: ref.entityId, fieldId: ref.fieldId, label: resolveLabel(ref.label, safeField, warnings, `${path}.${ref.entityId}.${ref.fieldId}`),
@@ -323,11 +354,16 @@ function resolveLabel(label: string, field: Ns4OntologyField, warnings: Ns4E9War
   return field.fieldId;
 }
 
-function valueType(type: Ns4OntologyField['type']): Ns4ContractValueType {
+function valueType(type: Ns4OntologyField['type']): Exclude<Ns4ContractValueType, 'literalUnion'> {
   if (type === 'number' || type === 'integer' || type === 'money') return 'number';
   if (type === 'boolean') return 'boolean';
   if (type === 'json') return 'unknown';
   return 'string';
+}
+
+function humanizeIdentifier(value: string): string {
+  const text = value.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : value;
 }
 
 function compileNotifications(
@@ -345,10 +381,10 @@ function compileNotifications(
       const providers = handoffs.filter(provider => provider.step.providesContext.some(context => context.contextId === contextId)
         && (!prerequisiteIds.size || prerequisiteIds.has(provider.journeyId)));
       const targetRef = `${targetJourney.journeyId}.${targetStep.stepId}`; const location = locations.get(targetRef);
-      if (!location) { diagnostics.push({ code: 'NS4_E9_NOTIFICATION_TARGET', path: targetRef, message: `Event-driven step ${targetRef} is not hosted by an E8 scenario.` }); continue; }
+      if (!location) { diagnostics.push({ code: 'NS4_E9_NOTIFICATION_TARGET', path: targetRef, message: `Event-driven step ${targetRef} is not hosted by an E8 scenario.`, origin: 'skeleton' }); continue; }
       const targetProfiles = (profilesByActor.get(targetJourney.business.actorRef) || []).filter(profile => location.profileRefs.includes(profile));
       if (!providers.length || !targetProfiles.length || !contexts.has(contextId)) {
-        diagnostics.push({ code: 'NS4_E9_NOTIFICATION_TARGET', path: targetRef, message: `Event-driven context ${contextId} needs a handoff provider, target profile and catalog entry.` });
+        diagnostics.push({ code: 'NS4_E9_NOTIFICATION_TARGET', path: targetRef, message: `Event-driven context ${contextId} needs a handoff provider, target profile and catalog entry.`, origin: 'skeleton' });
         continue;
       }
       for (const provider of providers) for (const targetProfileRef of targetProfiles) entries.push({
@@ -359,7 +395,7 @@ function compileNotifications(
     }
   }
   for (const handoff of handoffs) if (!entries.some(entry => entry.sourceStepRef === handoff.stepRef)) diagnostics.push({
-    code: 'NS4_E9_NOTIFICATION_TARGET', path: handoff.stepRef, message: `Handoff ${handoff.stepRef} has no event-driven receiver and cannot produce a notification contract.`,
+    code: 'NS4_E9_NOTIFICATION_TARGET', path: handoff.stepRef, message: `Handoff ${handoff.stepRef} has no event-driven receiver and cannot produce a notification contract.`, origin: 'skeleton',
   });
   return uniqueBy(entries, entry => entry.notificationId);
 }

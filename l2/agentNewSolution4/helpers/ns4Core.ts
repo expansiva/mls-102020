@@ -1,13 +1,13 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/helpers/ns4Core.ts" enhancement="_blank"/>
 
 export const NS4_FLOW_ID = 'agentNewSolution4' as const;
-export const NS4_FLOW_VERSION = '2026-08-14-ns4-flow-v34' as const;
+export const NS4_FLOW_VERSION = '2026-08-14-ns4-flow-v35' as const;
 export const NS4_E4_MAX_PARALLEL = 20 as const;
 export const NS4_E7_MAX_PARALLEL = 20 as const;
 export const NS4_E8_MAX_PARALLEL = 20 as const;
 export const NS4_MODULE_SCHEMA_VERSION = '2026-08-06-ns4-module-v4' as const;
 export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-06-ns4-pipeline-v5' as const;
-export type Ns4PermanentFlowVersion = typeof NS4_FLOW_VERSION | '2026-08-13-ns4-flow-v32' | '2026-08-13-ns4-flow-v31' | '2026-08-12-ns4-flow-v30' | '2026-08-11-ns4-flow-v24' | '2026-08-11-ns4-flow-v22' | '2026-08-10-ns4-flow-v21' | '2026-08-10-ns4-flow-v20' | '2026-08-09-ns4-flow-v19' | '2026-08-09-ns4-flow-v18' | '2026-08-08-ns4-flow-v17';
+export type Ns4PermanentFlowVersion = typeof NS4_FLOW_VERSION | '2026-08-14-ns4-flow-v34' | '2026-08-13-ns4-flow-v33' | '2026-08-13-ns4-flow-v32' | '2026-08-13-ns4-flow-v31' | '2026-08-12-ns4-flow-v30' | '2026-08-11-ns4-flow-v24' | '2026-08-11-ns4-flow-v22' | '2026-08-10-ns4-flow-v21' | '2026-08-10-ns4-flow-v20' | '2026-08-09-ns4-flow-v19' | '2026-08-09-ns4-flow-v18' | '2026-08-08-ns4-flow-v17';
 
 export const NS4_PLAN_IDS = [
   'e1-clarification',
@@ -255,7 +255,7 @@ export interface Ns4PipelineState {
     e9?: {
       status: Ns4E9Status;
       artifactPaths?: string[];
-      repairStep?: 'e8-workspaces';
+      repairStep?: 'e8-workspaces' | 'e9-navigation-compiler';
       error?: string;
       failedAt?: string;
       approvedAt?: string;
@@ -1478,8 +1478,14 @@ export function markNs4E9Running(state: Ns4PipelineState, now = new Date().toISO
   return { ...state, status: 'inProgress', steps: { ...state.steps, e9: { status: 'running', updatedAt: now } }, nextStep: 'e9-navigation-compiler', updatedAt: now };
 }
 
-export function markNs4E9Failed(state: Ns4PipelineState, failure: unknown, now = new Date().toISOString()): Ns4PipelineState {
+export function markNs4E9Failed(
+  state: Ns4PipelineState, failure: unknown, origin: 'skeleton' | 'compiler' = 'skeleton', now = new Date().toISOString(),
+): Ns4PipelineState {
   if (state.steps.e9?.status === 'approved') return state;
+  if (origin === 'compiler') return { ...state, status: 'failed', steps: {
+    ...state.steps,
+    e9: { status: 'failed', repairStep: 'e9-navigation-compiler', error: normalizeNs4Failure(failure), failedAt: now, updatedAt: now },
+  }, nextStep: 'e9-navigation-compiler', updatedAt: now };
   return { ...state, status: 'failed', steps: {
     ...state.steps,
     e8: state.steps.e8 ? { ...state.steps.e8, status: 'stale', updatedAt: now } : state.steps.e8,

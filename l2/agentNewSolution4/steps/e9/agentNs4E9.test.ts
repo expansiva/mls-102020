@@ -3,13 +3,23 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { compileNs4E9, type Ns4E9Sources } from '/_102020_/l2/agentNewSolution4/steps/e9/contracts.js';
-import { validateNs4E9 } from '/_102020_/l2/agentNewSolution4/steps/e9/gate.js';
+import { ns4E9FailureOrigin, validateNs4E9 } from '/_102020_/l2/agentNewSolution4/steps/e9/gate.js';
 import {
   createNs4Pipeline, markNs4E7Approved, markNs4E8Approved, markNs4E9Approved, markNs4E9Failed, resolveNs4ExistingAction,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 
 const fixture = JSON.parse(readFileSync(new URL('fixtures/run38-navigation.json', import.meta.url), 'utf8')) as any;
 function sources(): Ns4E9Sources { const { expected: _expected, notificationPatch: _patch, ...value } = structuredClone(fixture); return value as Ns4E9Sources; }
+
+function addDecisionCommand(input: Ns4E9Sources, transitionRefs: string[]): void {
+  const template = input.useCases.find(useCase => useCase.useCaseId === 'createTask')!;
+  input.useCases.push({ ...template, useCaseId: 'decideChangeOrder', title: 'Decide change order', compiledFrom: ['manageChangeOrder.decideChangeOrder'],
+    contexts: { requires: [], provides: [] }, useRules: [], transitionRefs, useCaseHash: 'uc-decide-change-order' });
+  const scenario = input.workspaces.find(workspace => workspace.workspaceId === 'projectWorkspace')!.scenarios.find(item => item.scenarioId === 'formCreateTask')!;
+  scenario.commandInputs.push({ useCaseId: 'decideChangeOrder', inputs: [
+    { inputId: 'decision', source: 'userDecision', sourceRef: 'changeOrderApprovalPolicy' },
+  ] });
+}
 
 test('run 38 navigation compiles a clean Project URL, typed contracts and ontology labels', async () => {
   const input = sources(); const compilation = await compileNs4E9(input); const gate = validateNs4E9(input, compilation);
@@ -88,6 +98,41 @@ test('E9 emits ontology json fields as unknown with a non-blocking warning', asy
   assert.deepEqual(gate.issues, []);
 });
 
+test('run 42 decision input emits the E7 transition literal union without an ontology fieldRef', async () => {
+  const input = sources(); addDecisionCommand(input, ['approveChangeOrder', 'rejectChangeOrder']);
+  const compilation = await compileNs4E9(input); const gate = validateNs4E9(input, compilation);
+  const contract = compilation.contracts.find(item => item.useCaseId === 'decideChangeOrder')!;
+  const decision = contract.input.find(item => item.inputId === 'decision')!;
+  assert.equal(decision.kind, 'decision');
+  if (decision.kind !== 'decision') assert.fail('decision input discriminator was not emitted');
+  assert.equal(decision.valueType, 'literalUnion');
+  assert.deepEqual(decision.transitions, ['approveChangeOrder', 'rejectChangeOrder']);
+  assert.equal(decision.label, 'Approve Change Order / Reject Change Order');
+  assert.equal('fieldRef' in decision, false);
+  assert.deepEqual(gate.issues, []);
+});
+
+test('dormant decision emits unknown plus warning and does not fail E9', async () => {
+  const input = sources(); addDecisionCommand(input, []);
+  const compilation = await compileNs4E9(input); const gate = validateNs4E9(input, compilation);
+  const decision = compilation.contracts.find(item => item.useCaseId === 'decideChangeOrder')!.input.find(item => item.inputId === 'decision')!;
+  assert.equal(decision.kind, 'decision');
+  assert.equal(decision.valueType, 'unknown');
+  assert.ok(compilation.navigation.warnings.some(warning => warning.code === 'NS4_E9_DECISION_TRANSITIONS' && /decideChangeOrder/.test(warning.message)));
+  assert.deepEqual(gate.issues, []);
+});
+
+test('field-bearing userDecision remains a strict data input', async () => {
+  const input = sources(); const command = input.workspaces.find(item => item.workspaceId === 'projectWorkspace')!.scenarios
+    .flatMap(scenario => scenario.commandInputs).find(item => item.useCaseId === 'createTask')!;
+  const editable = command.inputs.find(item => item.inputId === 'description')!;
+  const valid = await compileNs4E9(input); const data = valid.contracts.find(item => item.useCaseId === 'createTask')!.input.find(item => item.inputId === 'description')!;
+  assert.equal(data.kind, 'data');
+  delete editable.fieldRef;
+  const invalid = await compileNs4E9(input); const gate = validateNs4E9(input, invalid);
+  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E9_FIELD_REF' && issue.origin === 'skeleton' && /description/.test(issue.path)));
+});
+
 test('E9 rerun is byte-identical for unchanged approved inputs', async () => {
   const input = sources(); const first = await compileNs4E9(input); const second = await compileNs4E9(structuredClone(input));
   assert.equal(JSON.stringify(first.navigation), JSON.stringify(second.navigation));
@@ -156,14 +201,21 @@ test('E9 queue validation reads only compiled workflows', async () => {
   assert.ok(gate.issues.some(issue => issue.code === 'NS4_E9_QUEUE_WORKFLOW'));
 });
 
-test('E9 pipeline resumes deterministically and structural failure repairs through E8', () => {
+test('E9 pipeline routes skeleton failures to E8 and compiler failures only to E9', () => {
   const e7 = markNs4E7Approved(createNs4Pipeline('buildFlowFsm38', 'Build flow'), ['l4/buildFlowFsm38/usecases/index.defs.ts']);
   const e8 = markNs4E8Approved(e7, 'auto', ['l4/buildFlowFsm38/workspaces/index.defs.ts']);
   assert.equal(resolveNs4ExistingAction(true, e8, true), 'resume-e9');
-  const failed = markNs4E9Failed(e8, 'NS4_E9_PAGE_CONTEXT_ORPHAN');
+  const failed = markNs4E9Failed(e8, 'NS4_E9_PAGE_CONTEXT_ORPHAN', 'skeleton');
   assert.equal(failed.steps.e8?.status, 'stale');
   assert.equal(failed.steps.e9?.repairStep, 'e8-workspaces');
   assert.equal(resolveNs4ExistingAction(true, failed, true), 'resume-e8');
+  const compilerFailed = markNs4E9Failed(e8, 'NS4_E9_CONTRACT_FIELD', 'compiler');
+  assert.equal(compilerFailed.steps.e8?.status, 'approved');
+  assert.equal(compilerFailed.steps.e9?.repairStep, 'e9-navigation-compiler');
+  assert.equal(compilerFailed.nextStep, 'e9-navigation-compiler');
+  assert.equal(resolveNs4ExistingAction(true, compilerFailed, true), 'resume-e9');
+  assert.equal(ns4E9FailureOrigin([{ code: 'NS4_E9_CONTRACT_FIELD', path: 'contract.input', message: 'injected', origin: 'compiler' }]), 'compiler');
+  assert.equal(ns4E9FailureOrigin([{ code: 'NS4_E9_PAGE_CONTEXT_ORPHAN', path: 'workspace.context', message: 'injected', origin: 'skeleton' }]), 'skeleton');
   const approved = markNs4E9Approved(e8, ['l4/buildFlowFsm38/navigation/index.defs.ts']);
   assert.equal(approved.nextStep, 'e10-validation');
   assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-e10');

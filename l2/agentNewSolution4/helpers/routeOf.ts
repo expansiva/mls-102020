@@ -8,6 +8,8 @@ export interface Ns4RouteUseCase {
   entityRefs: string[];
 }
 
+type Ns4RouteWorkspace = Pick<Ns4E8SkeletonWorkspace, 'workspaceId' | 'kind' | 'anchorEntity' | 'pageContext'>;
+
 export interface Ns4RouteProjection {
   routePattern: string;
   pathContextIds: string[];
@@ -18,9 +20,9 @@ export interface Ns4RouteProjection {
 /** Total structural URL projection shared by the E8 preview and the E9 compiler. */
 export function routeOf(
   moduleName: string,
-  workspace: Ns4E8SkeletonWorkspace,
+  workspace: Ns4RouteWorkspace,
   scenario: Ns4WorkspaceScenario | undefined,
-  graph: { workspaces: Ns4E8SkeletonWorkspace[]; edges: Ns4E8Edge[]; useCases: Ns4RouteUseCase[] },
+  graph: { workspaces: Ns4RouteWorkspace[]; edges: Ns4E8Edge[]; useCases: Ns4RouteUseCase[] },
 ): Ns4RouteProjection {
   const moduleRoot = `/${lowerCamel(moduleName)}`;
   const hubs = graph.workspaces.filter(item => item.kind === 'hub').sort((left, right) => left.workspaceId.localeCompare(right.workspaceId));
@@ -61,7 +63,7 @@ export function routeOf(
   return projection(scenarioBase, workspaceContextIds, scenario.selectionContexts.map(item => item.contextId), decision);
 }
 
-function scenarioTargets(workspace: Ns4E8SkeletonWorkspace, scenario: Ns4WorkspaceScenario, useCases: Ns4RouteUseCase[]): Ns4WorkspaceContext[] {
+function scenarioTargets(workspace: Ns4RouteWorkspace, scenario: Ns4WorkspaceScenario, useCases: Ns4RouteUseCase[]): Ns4WorkspaceContext[] {
   const primaryEntities = new Set(scenario.useCaseIds.flatMap(useCaseId => {
     const primary = useCases.find(item => item.useCaseId === useCaseId)?.entityRefs[0];
     return primary ? [primary] : [];
@@ -71,13 +73,13 @@ function scenarioTargets(workspace: Ns4E8SkeletonWorkspace, scenario: Ns4Workspa
     .filter(context => context.contextId !== anchorId && context.required && context.cardinality === 'one' && primaryEntities.has(context.businessObject)));
 }
 
-function hubAnchor(workspace: Ns4E8SkeletonWorkspace): Ns4WorkspaceContext | undefined {
+function hubAnchor(workspace: Ns4RouteWorkspace): Ns4WorkspaceContext | undefined {
   return workspace.pageContext.filter(context => context.cardinality === 'one' && context.businessObject === workspace.anchorEntity)
     .sort((left, right) => Number(right.contextId === `selected${workspace.anchorEntity}`) - Number(left.contextId === `selected${workspace.anchorEntity}`)
       || left.contextId.localeCompare(right.contextId))[0];
 }
 
-function ambiguousTargetDecision(workspace: Ns4E8SkeletonWorkspace, scenario: Ns4WorkspaceScenario, count: number): Ns4SystemDecision {
+function ambiguousTargetDecision(workspace: Ns4RouteWorkspace, scenario: Ns4WorkspaceScenario, count: number): Ns4SystemDecision {
   return {
     decisionId: `e8RouteTarget${upperCamel(workspace.workspaceId)}${upperCamel(scenario.scenarioId)}`,
     stage: 'e8',
@@ -96,7 +98,7 @@ function projection(routePattern: string, pathContextIds: string[], selectionCon
 function uniqueContexts(values: Ns4WorkspaceContext[]): Ns4WorkspaceContext[] { return [...new Map(values.map(value => [value.contextId, value])).values()].sort((a, b) => a.contextId.localeCompare(b.contextId)); }
 function unique(values: string[]): string[] { return [...new Set(values.filter(Boolean))].sort(); }
 function idField(context: Ns4WorkspaceContext): string { return context.idFieldRef || `${lowerCamel(context.businessObject)}Id`; }
-function slugOf(workspace: Ns4E8SkeletonWorkspace): string { return pluralize(lowerCamel(workspace.anchorEntity || workspace.workspaceId.replace(/Workspace$/, '') || 'workspace')); }
+function slugOf(workspace: Ns4RouteWorkspace): string { return pluralize(lowerCamel(workspace.anchorEntity || workspace.workspaceId.replace(/Workspace$/, '') || 'workspace')); }
 function scenarioSlug(scenarioId: string, kind: string): string { const stripped = scenarioId.replace(new RegExp(`^${kind}`, 'i'), ''); return lowerCamel(stripped || scenarioId); }
 function lowerCamel(value: string): string { return value ? value.slice(0, 1).toLowerCase() + value.slice(1) : 'item'; }
 function upperCamel(value: string): string { return value ? value.slice(0, 1).toUpperCase() + value.slice(1) : 'Item'; }

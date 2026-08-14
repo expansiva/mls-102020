@@ -1,35 +1,36 @@
-import type { Ns4E9Compilation, Ns4E9Sources } from '/_102020_/l2/agentNewSolution4/steps/e9/contracts.js';
+import type { Ns4E9Compilation, Ns4E9IssueOrigin, Ns4E9Sources } from '/_102020_/l2/agentNewSolution4/steps/e9/contracts.js';
 import type { Ns4JourneyStep } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
 import type { Ns4WorkspaceArtifact } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
 import { routeOf } from '/_102020_/l2/agentNewSolution4/helpers/routeOf.js';
 
-export interface Ns4E9GateIssue { code: string; path: string; message: string; }
+export interface Ns4E9GateIssue { code: string; path: string; message: string; origin: Ns4E9IssueOrigin; }
 export interface Ns4E9GateResult { ok: boolean; issues: Ns4E9GateIssue[]; }
 
 export function validateNs4E9(sources: Ns4E9Sources, compilation: Ns4E9Compilation): Ns4E9GateResult {
   const issues: Ns4E9GateIssue[] = [...compilation.diagnostics];
-  const add = (code: string, path: string, message: string) => issues.push({ code, path, message });
+  const add = (origin: Ns4E9IssueOrigin) => (code: string, path: string, message: string) => issues.push({ code, path, message, origin });
+  const skeleton = add('skeleton'); const compiler = add('compiler');
   const moduleName = sources.workspaceIndex.moduleName;
   if (!moduleName || sources.journeys.moduleName !== moduleName || sources.access.moduleName !== moduleName || sources.ontology.moduleName !== moduleName
     || sources.workspaces.some(workspace => workspace.moduleName !== moduleName) || sources.useCases.some(useCase => useCase.moduleName !== moduleName)
-    || sources.workflows.some(workflow => workflow.moduleName !== moduleName)) add('NS4_E9_MODULE', 'moduleName', 'Every E2-E8 source must belong to the workspace-index module.');
+    || sources.workflows.some(workflow => workflow.moduleName !== moduleName)) skeleton('NS4_E9_MODULE', 'moduleName', 'Every E2-E8 source must belong to the workspace-index module.');
   const workspaceById = new Map(sources.workspaces.map(workspace => [workspace.workspaceId, workspace]));
   const indexById = new Map(sources.workspaceIndex.workspaces.map(workspace => [workspace.workspaceId, workspace]));
-  if (workspaceById.size !== indexById.size) add('NS4_E9_WORKSPACE_SET', 'workspaces', 'Workspace index and permanent workspace artifact sets differ.');
+  if (workspaceById.size !== indexById.size) skeleton('NS4_E9_WORKSPACE_SET', 'workspaces', 'Workspace index and permanent workspace artifact sets differ.');
   for (const [workspaceId, indexed] of indexById) {
     const workspace = workspaceById.get(workspaceId);
-    if (!workspace || workspace.workspaceHash !== indexed.workspaceHash || workspace.skeletonHash !== sources.workspaceIndex.skeletonHash) add('NS4_E9_WORKSPACE_HASH', workspaceId, `Workspace ${workspaceId} does not match the approved index hashes.`);
+    if (!workspace || workspace.workspaceHash !== indexed.workspaceHash || workspace.skeletonHash !== sources.workspaceIndex.skeletonHash) skeleton('NS4_E9_WORKSPACE_HASH', workspaceId, `Workspace ${workspaceId} does not match the approved index hashes.`);
   }
   const contextById = new Map(sources.workspaceIndex.menu.contextCatalog.map(context => [context.contextId, context]));
   const notificationTargets = new Map<string, Set<string>>();
   compilation.notifications.entries.forEach(entry => notificationTargets.set(entry.targetWorkspaceId,
     new Set([...(notificationTargets.get(entry.targetWorkspaceId) || []), entry.contextCarried])));
-  for (const workspace of sources.workspaces) validateWorkspaceContexts(workspace, sources, compilation, contextById, notificationTargets, add);
-  validateEdges(sources, compilation, contextById, workspaceById, add);
-  validateJourneyReachability(sources, compilation, workspaceById, add);
-  validateQueues(sources, add);
-  validateRoutesAndNotifications(sources, compilation, workspaceById, add);
-  validateContractsAndAccess(sources, compilation, add);
+  for (const workspace of sources.workspaces) validateWorkspaceContexts(workspace, sources, compilation, contextById, notificationTargets, skeleton);
+  validateEdges(sources, compilation, contextById, workspaceById, skeleton);
+  validateJourneyReachability(sources, compilation, workspaceById, skeleton);
+  validateQueues(sources, skeleton);
+  validateRoutesAndNotifications(sources, compilation, workspaceById, compiler);
+  validateContractsAndAccess(sources, compilation, compiler);
   return { ok: issues.length === 0, issues: uniqueIssues(issues) };
 }
 
@@ -182,7 +183,10 @@ function validateContractsAndAccess(sources: Ns4E9Sources, compilation: Ns4E9Com
   compilation.contracts.forEach(contract => {
     if (contract.skeletonHash !== sources.workspaceIndex.skeletonHash || contract.workspaceHash !== sources.workspaceIndex.workspaces.find(item => item.workspaceId === contract.workspaceId)?.workspaceHash) add('NS4_E9_CONTRACT_HASH', contract.operationRef, 'Contract source hashes do not match approved E8 artifacts.');
     if (!contract.routePattern || operationRefs.has(contract.operationRef)) add('NS4_E9_OPERATION', contract.operationRef, 'Operation refs must be unique and route-backed.'); operationRefs.add(contract.operationRef);
-    contract.input.forEach(input => { if (!input.fieldRef.entityId || !input.fieldRef.fieldId || !input.fieldRef.label) add('NS4_E9_CONTRACT_FIELD', `${contract.operationRef}.${input.inputId}`, 'Contract input requires a resolved fieldRef and label.'); });
+    contract.input.forEach(input => {
+      if (input.kind === 'data' && (!input.fieldRef.entityId || !input.fieldRef.fieldId || !input.fieldRef.label)) add('NS4_E9_CONTRACT_FIELD', `${contract.operationRef}.${input.inputId}`, 'Data contract input requires a resolved fieldRef and label.');
+      if (input.kind === 'decision' && !input.label) add('NS4_E9_CONTRACT_FIELD', `${contract.operationRef}.${input.inputId}`, 'Decision contract input requires a deterministic label.');
+    });
     contract.output.slices.flatMap(slice => slice.fields).forEach(field => { if (!field.entityId || !field.fieldId || !field.label) add('NS4_E9_CONTRACT_FIELD', `${contract.operationRef}.${field.entityId}.${field.fieldId}`, 'Contract output requires a resolved fieldRef and label.'); });
   });
   const realized = compilation.access.realization.operationAuthorityRefs;
@@ -193,4 +197,8 @@ function validateContractsAndAccess(sources: Ns4E9Sources, compilation: Ns4E9Com
 }
 
 function unique(values: string[]): string[] { return [...new Set(values.filter(Boolean))].sort(); }
-function uniqueIssues(issues: Ns4E9GateIssue[]): Ns4E9GateIssue[] { return [...new Map(issues.map(issue => [`${issue.code}:${issue.path}:${issue.message}`, issue])).values()].sort((left, right) => `${left.code}:${left.path}`.localeCompare(`${right.code}:${right.path}`)); }
+function uniqueIssues(issues: Ns4E9GateIssue[]): Ns4E9GateIssue[] { return [...new Map(issues.map(issue => [`${issue.origin}:${issue.code}:${issue.path}:${issue.message}`, issue])).values()].sort((left, right) => `${left.origin}:${left.code}:${left.path}`.localeCompare(`${right.origin}:${right.code}:${right.path}`)); }
+
+export function ns4E9FailureOrigin(issues: Ns4E9GateIssue[]): Ns4E9IssueOrigin {
+  return issues.some(issue => issue.origin === 'compiler') ? 'compiler' : 'skeleton';
+}

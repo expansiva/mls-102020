@@ -16,8 +16,8 @@ import type {
   Ns4UseCaseArtifactV3, Ns4UseCaseIndexArtifactV3, Ns4WorkflowArtifactV2, Ns4WorkflowIndexArtifactV2, Ns4WorkflowIndexArtifactV3,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 import type { Ns4WorkspaceArtifact, Ns4WorkspaceIndex } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
-import { compileNs4E9, type Ns4E9Sources } from '/_102020_/l2/agentNewSolution4/steps/e9/contracts.js';
-import { validateNs4E9 } from '/_102020_/l2/agentNewSolution4/steps/e9/gate.js';
+import { compileNs4E9, type Ns4E9IssueOrigin, type Ns4E9Sources } from '/_102020_/l2/agentNewSolution4/steps/e9/contracts.js';
+import { ns4E9FailureOrigin, validateNs4E9 } from '/_102020_/l2/agentNewSolution4/steps/e9/gate.js';
 
 interface Ns4E9Args { planId: 'e9-navigation-compiler'; moduleName: string; }
 
@@ -25,7 +25,7 @@ export async function beforeNs4E9PromptStep(
   _agent: IAgentMeta, context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep,
   step: mls.msg.AIAgentStep, hookSequential: number, args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  let moduleName = '';
+  let moduleName = ''; let failureOrigin: Ns4E9IssueOrigin = 'skeleton';
   try {
     const parsed = resolveArgs(context, args || step.prompt); moduleName = parsed.moduleName;
     const pipeline = await requirePipeline(moduleName);
@@ -33,7 +33,7 @@ export async function beforeNs4E9PromptStep(
     await writeNs4Pipeline(markNs4E9Running(pipeline));
     const sources = await loadSources(moduleName); const compilation = await compileNs4E9(sources);
     const gate = validateNs4E9(sources, compilation);
-    if (!gate.ok) throw new Error(formatGate(gate.issues));
+    if (!gate.ok) { failureOrigin = ns4E9FailureOrigin(gate.issues); throw new Error(formatGate(gate.issues)); }
     const artifactPaths: string[] = [];
     for (const contract of compilation.contracts) artifactPaths.push(await writeNs4BffContract(moduleName, contract));
     artifactPaths.push(await writeNs4NavigationIndex(moduleName, compilation.navigation));
@@ -52,7 +52,7 @@ export async function beforeNs4E9PromptStep(
     }), status(context, mutationParent, step, hookSequential, 'completed',
       `E9 compiled ${compilation.navigation.routes.length} routes, ${compilation.contracts.length} BFF contracts and ${compilation.notifications.entries.length} notifications.`, 'input_output')];
   } catch (error) {
-    const message = errorMessage(error); if (moduleName) await fail(moduleName, message);
+    const message = errorMessage(error); if (moduleName) await fail(moduleName, message, failureOrigin);
     return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')];
   }
 }
@@ -62,7 +62,7 @@ export async function afterNs4E9PromptStep(
   step: mls.msg.AIAgentStep, hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
   const message = 'E9 is deterministic and must never receive an LLM response.';
-  const parsed = resolveArgs(context, step.prompt); await fail(parsed.moduleName, message);
+  const parsed = resolveArgs(context, step.prompt); await fail(parsed.moduleName, message, 'compiler');
   return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')];
 }
 
@@ -100,11 +100,11 @@ function findE8Module(context: mls.msg.ExecutionContext): string {
   const anchor = getAllSteps(context.task?.iaCompressed?.nextSteps).find(step => step.planning?.planId === 'e8-result');
   const value = anchor?.type === 'result' ? parse(anchor.result) : null; return isRecord(value) ? text(value.moduleName) : '';
 }
-async function requirePipeline(moduleName: string): Promise<Ns4PipelineState> { const pipeline = await readNs4Pipeline(moduleName); if (!isNs4Pipeline(pipeline)) throw new Error(`agentNewSolution4 v31 pipeline not found for ${moduleName}.`); return pipeline; }
-async function fail(moduleName: string, message: string): Promise<void> { try { const pipeline = await readNs4Pipeline(moduleName); if (isNs4Pipeline(pipeline)) await writeNs4Pipeline(markNs4E9Failed(pipeline, message)); } catch { /* task trace remains the fallback */ } }
+async function requirePipeline(moduleName: string): Promise<Ns4PipelineState> { const pipeline = await readNs4Pipeline(moduleName); if (!isNs4Pipeline(pipeline)) throw new Error(`Current agentNewSolution4 pipeline not found for ${moduleName}.`); return pipeline; }
+async function fail(moduleName: string, message: string, origin: Ns4E9IssueOrigin): Promise<void> { try { const pipeline = await readNs4Pipeline(moduleName); if (isNs4Pipeline(pipeline)) await writeNs4Pipeline(markNs4E9Failed(pipeline, message, origin)); } catch { /* task trace remains the fallback */ } }
 function result(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, value: Record<string, unknown>): mls.msg.AgentIntentAddStep { return { type: 'add-step', messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parent.stepId, step: { type: 'result', stepId: 0, interaction: null, stepTitle: 'E9 navigation compiled', status: 'completed', nextSteps: [], result: JSON.stringify({ ...value, completedStep: 'e9-navigation-compiler', nextStep: 'e10-validation' }, null, 2), planning: { planId: 'e9-result', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' } } as mls.msg.AIResultStep }; }
 function status(context: mls.msg.ExecutionContext, parent: mls.msg.AIPayload, step: mls.msg.AIPayload, hookSequential: number, state: mls.msg.AIStepStatus, traceMsg: string, cleaner: 'input_output'): mls.msg.AgentIntentUpdateStatus { return { type: 'update-status', hookSequential, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parent.stepId, stepId: step.stepId, status: state, traceMsg, cleaner }; }
-function formatGate(issues: Array<{ code: string; path: string; message: string }>): string { return issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n'); }
+function formatGate(issues: Array<{ code: string; path: string; message: string; origin: Ns4E9IssueOrigin }>): string { return issues.map(issue => `${issue.code} [${issue.origin}] ${issue.path}: ${issue.message}`).join('\n'); }
 function parse(value: unknown): unknown { if (typeof value !== 'string') return value; try { return JSON.parse(value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); } catch { return value; } }
 function isRecord(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }

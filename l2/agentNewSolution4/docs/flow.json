@@ -1,6 +1,6 @@
 {
   "flowId": "agentNewSolution4",
-  "schemaVersion": "2026-08-14-ns4-flow-v34",
+  "schemaVersion": "2026-08-14-ns4-flow-v35",
   "status": "e1-e10",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts and deterministic L5 delivery contracts.",
   "canonicalReferences": [
@@ -63,7 +63,8 @@
     "E9 is a zero-LLM deterministic compiler. It reads only approved E2-E8 permanent artifacts, validates navigation reachability and context provenance, and emits typed BFF contracts, route/store/notification contracts plus realized operation authorities without a checkpoint.",
     "E8 previews and E9 compiles routes through the same total helpers/routeOf.ts projection. Routes derive only from module, hub/place structure and a unique primary scenario target; zero or multiple targets omit the item id and record a system decision instead of failing.",
     "E9 validates notification deep links by carried contextId against routeOf output, never by idFieldRef text; a local selection may legitimately share an id field name with a route identity.",
-    "Every E9 structural finding is Type A. A failed compile persists the pipeline error and returns repair ownership to E8; E9 never weakens navigation, field or workflow gates and never emits a partial approval anchor.",
+    "Every E9 finding is Type A and records whether it came from the approved E8 skeleton or from E9 emission. Skeleton failures mark E8 stale and return repair ownership to E8; compiler failures preserve E8 approval and replay only E9. E9 never emits a partial approval anchor.",
+    "E9 BFF inputs are a discriminated data-or-decision contract. Data inputs retain strict ontology fieldRef validation, including editable userDecision fields already carrying a fieldRef. A verb decision is the E8 userDecision form with a policy sourceRef and no fieldRef; it carries approved E7 transitionIds as a literal-union catalog and deterministic label, or unknown plus a non-blocking warning when the use case has no transitions.",
     "E9 emissions are canonical and timestamp-free. Identical approved E8/E7/E4/E3 inputs produce byte-identical typed defs on every run.",
     "E10 first validates the complete saved L4 graph and emits no L5 delivery when a blocking check fails. Resolution, journey reachability, decision coherence, compiled workflow health and source-hash staleness are deterministic errors with an explicit owning repair step.",
     "E10 disclosure and dormant-command checks are registrars. Disclosure never compares E3 prose with field ids; dormant commands remain visible and produce an auditable system decision naming their missing compiled transition evidence.",
@@ -74,7 +75,7 @@
     "new": "@@newSolution4 <description-or-moduleName>",
     "fast": "@@newSolution4 <description-or-moduleName> /fast",
     "resume": "@@newSolution4 <moduleName>",
-    "resumeRule": "A v33-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
+    "resumeRule": "A v35-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected."
   },
   "artifacts": {
     "module": "l4/{module}/module.defs.ts",
@@ -415,11 +416,11 @@
         "The compiler validates context provenance, actor-compatible edges, real carried-context providers, actor journey reachability and queue evidence against compiled E7 workflows. Route membership is derived structurally; shared identifier field names such as projectId are never membership evidence.",
         "Hub collection and record routes, nested place routes, focused scenario routes and standalone routes are derived by the shared total routeOf helper from stable workspace/scenario ids and unique primary use-case targets. Ambiguous targets omit the optional item id and emit a system decision. URL path ids hydrate first; the per-tab store is only a cache.",
         "Handoff and eventDriven delivery is compiled into notifications with receiver profile, carried context and a route-backed deep link. Notification delivery is not kept as a navigation edge.",
-        "One view contract per workspace plus one command contract per hosted command records exact typed inputs, projected outputs, business errors, source metadata, routePattern, skeletonHash and workspaceHash. Missing ontology field refs are terminal; json fields become unknown with a warning.",
+        "One view contract per workspace plus one command contract per hosted command records exact typed inputs, projected outputs, business errors, source metadata, routePattern, skeletonHash and workspaceHash. Data inputs require ontology field refs, even when their interaction source is userDecision. Verb decisions are identified by policy sourceRef plus absent fieldRef, carry E7 transitionIds as literalUnion metadata and never fabricate a fieldRef. JSON fields and decisions without transitions become unknown with a warning.",
         "Empty organism labels resolve from the approved E4 field title. A missing title records a non-blocking warning without inventing localized text.",
         "Access realization maps every emitted operation route to its exact E3 authority refs through frozen scenario step/use-case ownership.",
         "All emitted arrays and file order are stable, hashes are source hashes only, and no generated timestamp is written, making a no-change rerun byte-identical.",
-        "Any gate failure marks pipeline.steps.e9 failed with repairStep=e8-workspaces and does not add e9-result. A successful compile atomically advances module/pipeline ownership to E10."
+        "Every gate issue records origin=skeleton or origin=compiler. A skeleton failure marks E8 stale and repairs e8-workspaces; a compiler failure leaves E8 approved and repairs e9-navigation-compiler. Neither failure adds e9-result. A successful compile atomically advances module/pipeline ownership to E10."
       ]
     },
     {

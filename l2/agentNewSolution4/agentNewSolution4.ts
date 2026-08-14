@@ -107,7 +107,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-57 (2026-08-14) structural E8/E9 routes';
+export const NS4_AGENT_BUILD = 'build-58 (2026-08-14) typed E9 decisions and failure ownership';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
