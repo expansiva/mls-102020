@@ -44,6 +44,19 @@ approved ontology. Your job is the narrative and the right entity — nothing ab
    outcome-oriented journeys: one creates the record, the other locates it first and then operates
    on it. Do not simulate a conditional branch inside one linear step.
 
+## A journey is a PROCESS
+
+A journey exists for a flow: a decision, a sequence where one step depends on the record another step
+selected, more than one actor, or a handoff. **Pure capture or pure maintenance of a record catalogue
+is NOT a journey** — the module already ships a standard catalogue screen (list, create, edit, delete)
+for every persisted business entity, derived from the ontology. Do not write `manageClients`,
+`registerMaterials` or any journey whose whole content is "create/edit one entity".
+
+Write the journey when the record only makes sense inside the flow that produces it (a change order
+that is submitted and then approved, a daily log that closes a task), and let the catalogue own the
+plain cases. A journey with no decide step, no handoff and a single entity is automatically recorded
+as a demotion choice at the review checkpoint.
+
 ## Journey quality
 
 ## Policy decisions first

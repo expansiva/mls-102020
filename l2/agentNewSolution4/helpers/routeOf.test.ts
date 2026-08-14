@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { routeOf } from '/_102020_/l2/agentNewSolution4/helpers/routeOf.js';
 
-const fixture = JSON.parse(readFileSync(new URL('../steps/e8/fixtures/run41-route-projection.json', import.meta.url), 'utf8')) as any;
+// The run 41 projection, kept inline: routeOf is a helper and outlived the E8 fixture that recorded it.
+const fixture = {
+  moduleName: 'buildFlowFsm41',
+  expected: {
+    unique: '/buildFlowFsm41/projects/:projectId/changeOrders/decide/:changeOrderId',
+    ambiguous: '/buildFlowFsm41/projects/:projectId/changeOrders/decide',
+  },
+} as const;
 const selectedProject = { contextId: 'selectedProject', businessObject: 'Project', cardinality: 'one' as const, required: true, idFieldRef: 'projectId' };
 const selectedChangeOrder = { contextId: 'selectedChangeOrder', businessObject: 'ChangeOrder', cardinality: 'one' as const, required: true, idFieldRef: 'changeOrderId' };
 const selectedRisk = { contextId: 'selectedRisk', businessObject: 'Risk', cardinality: 'one' as const, required: true, idFieldRef: 'riskId' };

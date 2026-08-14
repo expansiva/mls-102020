@@ -4,6 +4,8 @@ import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/n
 import { collectNs4JourneyEntities, type Ns4DerivedContext } from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
 import {
   analyzeNs4E2MechanicalCoverage,
+  isNs4E2DemotionDecisionId,
+  ns4E2DemotionDecisionId,
   Ns4E2StepKindHistogram,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageSignals.js';
 
@@ -238,7 +240,8 @@ export interface Ns4E2ImpactReport {
 
 export function normalizeNs4E2Review(value: unknown, fallbackModule = ''): Ns4E2Review {
   const root = record(value);
-  const journeys = array(root.journeys).map(normalizeJourney);
+  const userLanguage = text(root.userLanguage) || 'en';
+  const journeys = withNs4DemotionDecisions(array(root.journeys).map(normalizeJourney), userLanguage);
   const features = array(root.features).map(item => {
     const feature = record(item);
     return {
@@ -251,7 +254,7 @@ export function normalizeNs4E2Review(value: unknown, fallbackModule = ''): Ns4E2
   return {
     planId: 'e2-review',
     moduleName: text(root.moduleName) || fallbackModule,
-    userLanguage: text(root.userLanguage) || 'en',
+    userLanguage,
     title: text(root.title) || 'Review business journeys',
     reviewRound: positiveInteger(root.reviewRound, 1),
     journeys,
@@ -440,6 +443,49 @@ export function normalizeNs4BusinessObjectId(value: unknown): string {
     if (/^[A-Z0-9]+$/.test(word)) return word;
     return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
   }).join('');
+}
+
+/**
+ * A journey with no decision, no handoff and one single entity IS the record catalogue of that
+ * entity. Tier 1 already owns that screen, so the module records the demotion as a visible product
+ * choice at the E2 checkpoint instead of shipping the same catalogue twice. The decision is
+ * deterministic: it is recomputed on every round and is never authored by the generator.
+ */
+export function withNs4DemotionDecisions(journeys: Ns4JourneyProposal[], userLanguage: string): Ns4JourneyProposal[] {
+  const portuguese = userLanguage.toLowerCase().startsWith('pt');
+  const captureOnly = new Map(analyzeNs4E2MechanicalCoverage({ journeys }).captureOnlyJourneys
+    .map(item => [item.journeyId, item.entity]));
+  return journeys.map(journey => {
+    const entity = captureOnly.get(journey.journeyId);
+    const decisionId = ns4E2DemotionDecisionId(journey.journeyId);
+    const kept = journey.policyDecisions.filter(decision => !isNs4E2DemotionDecisionId(decision.decisionId));
+    if (!entity) return kept.length === journey.policyDecisions.length ? journey : { ...journey, policyDecisions: kept };
+    const chosen = portuguese ? `Tela de cadastro padrão de ${entity}` : `Standard ${entity} record catalogue`;
+    const alternative = portuguese ? `Manter ${journey.business.title} como jornada própria` : `Keep ${journey.business.title} as its own journey`;
+    return {
+      ...journey,
+      policyDecisions: [...kept, {
+        decisionId,
+        question: portuguese
+          ? `${journey.business.title} não tem decisão nem repasse: vira a tela de cadastro padrão de ${entity}?`
+          : `${journey.business.title} has no decision and no handoff: should it become the standard ${entity} record catalogue?`,
+        chosen,
+        alternatives: [chosen, alternative],
+      }],
+    };
+  });
+}
+
+/** The journeys the approved review demoted to the tier 1 record catalogue of their entity. */
+export function collectNs4DemotedJourneyIds(
+  review: Pick<Ns4E2Review, 'journeys'>,
+  selections: Array<Pick<Ns4PolicyDecisionSelection, 'decisionId' | 'selectedChoice'>> = [],
+): string[] {
+  const selected = new Map(selections.map(selection => [selection.decisionId, selection.selectedChoice]));
+  return review.journeys.filter(journey => journey.policyDecisions.some(decision => {
+    if (!isNs4E2DemotionDecisionId(decision.decisionId)) return false;
+    return (selected.get(decision.decisionId) ?? decision.chosen) === decision.chosen;
+  })).map(journey => journey.journeyId).sort();
 }
 
 /** Business objects that later ontology compilation must realize as entities or projections. */

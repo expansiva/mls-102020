@@ -39,6 +39,11 @@ user outcomes.
 - `complete` is true only when there are no blocking issues.
 - Each blocking repair instruction must tell the repair model exactly which complete journey or which
   missing locate step is absent, while preserving unaffected content.
+- The mechanical signal `journeyWithoutProcess` lists journeys with no decision, no handoff and one
+  single entity. It is a REGISTRAR: the runtime already records each one as a visible demotion choice
+  ("becomes the standard record catalogue"), so never raise a blocking issue for it and never ask for
+  a journey to be deleted. Treat those journeys as already covered by the catalogue screen when you
+  judge E1 coverage.
 - For every issue, phrase one business-language `question`, list at least two `alternatives`, and set
   `defaultChoice` to the behavior already implicit in the generated E2 draft. This is evidence about
   the draft, never the judge's preference. After the bounded repair, the runtime may record that

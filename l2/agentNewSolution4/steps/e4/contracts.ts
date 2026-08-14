@@ -43,6 +43,12 @@ export interface Ns4OntologyField {
   required: boolean;
   description: string;
   constraints: Ns4FieldConstraint[];
+  /**
+   * The literal values of an enumerated field, derived from its enum constraint (or from the entity
+   * lifecycle for a status field). It is what turns a decision into a closed selector on the page
+   * instead of a free text box; the constraint stays as the human-readable rule.
+   */
+  enum?: string[];
 }
 
 export interface Ns4LifecyclePredicate {
@@ -65,6 +71,8 @@ export interface Ns4OntologyEntity {
   };
   fields: Ns4OntologyField[];
   lifecycleStates: string[];
+  /** The lifecycle values as a literal union; mirrors lifecycleStates and is never a second truth. */
+  statusEnum?: string[];
   initialState?: string;
   terminalStates?: string[];
   lifecyclePredicates: Ns4LifecyclePredicate[];
@@ -275,9 +283,31 @@ export function normalizeNs4E4EntityDraft(
     moduleName,
     reviewRound,
     entityId,
-    fields: normalized.fields,
+    // The worker tool schema is strict and owns no union key: the entity draft is the worker's own
+    // contract, so the derived union is stripped back out here and lives only in the review artifact.
+    fields: stripNs4DerivedFieldUnions(normalized.fields),
     useRules: normalized.useRules,
   };
+}
+
+/**
+ * Removes the derived literal union from fields before they are echoed back to an entity worker.
+ * The union is a projection E4 adds for the consumers; the worker's strict tool schema forbids the
+ * key, so showing it in a prompt would invite an invalid repair answer.
+ */
+export function stripNs4DerivedFieldUnions<T extends { fields?: unknown }>(value: T): T;
+export function stripNs4DerivedFieldUnions(value: Ns4OntologyField[]): Ns4OntologyField[];
+export function stripNs4DerivedFieldUnions(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(item => {
+      const { enum: _union, ...field } = record(item);
+      return field;
+    });
+  }
+  const source = record(value);
+  if (!Array.isArray(source.fields)) return value;
+  const { statusEnum: _states, ...entity } = source;
+  return { ...entity, fields: stripNs4DerivedFieldUnions(source.fields as Ns4OntologyField[]) };
 }
 
 export function assembleNs4E4Review(
@@ -394,6 +424,35 @@ function requireResolvedRelationships(relationships: Ns4OntologyRelationship[]):
   });
 }
 
+/** A status field is the one the lifecycle names; the suffix is the only stable structural marker. */
+function isStatusFieldId(fieldId: string): boolean {
+  return /(^|[a-z0-9])status$/i.test(fieldId);
+}
+
+/**
+ * Reads the literal values out of an enum constraint. The constraint value is authored as free text,
+ * so the three shapes the generators actually produce are all accepted: a JSON array, a
+ * comma-separated list and a pipe-separated list. Anything else yields no values, and the field
+ * simply stays without a union.
+ */
+function enumValues(constraints: Ns4FieldConstraint[]): string[] {
+  const raw = constraints.find(constraint => constraint.kind === 'enum')?.value || '';
+  if (!raw) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return unique(parsed.map(item => text(item)));
+    } catch { /* not JSON: fall through to the separated forms */ }
+  }
+  const separator = trimmed.includes('|') ? '|' : ',';
+  return unique(trimmed.replace(/^[[(]|[\])]$/g, '').split(separator).map(item => text(item).replace(/^['"]|['"]$/g, '')));
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
+}
+
 function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity {
   const entity = record(value);
   const sourceRefs = record(entity.sourceRefs);
@@ -401,24 +460,30 @@ function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity 
   const entityId = text(entity.entityId);
   const kind = entityKind(entity.kind);
   const entityOwnership = ownership(entity.ownership);
+  const lifecycleStates = strings(entity.lifecycleStates);
   const fields = array(entity.fields).map(item => {
     const field = record(item);
+    const fieldId = text(field.fieldId);
+    const constraints = array(field.constraints).map(constraintValue => {
+      const constraint = record(constraintValue);
+      return {
+        constraintId: text(constraint.constraintId),
+        kind: constraintKind(constraint.kind),
+        value: text(constraint.value),
+        description: text(constraint.description),
+        source: constraintSource(constraint.source),
+      };
+    });
+    const declared = enumValues(constraints);
+    const values = declared.length ? declared : (isStatusFieldId(fieldId) ? lifecycleStates : []);
     return {
-      fieldId: text(field.fieldId),
+      fieldId,
       title: text(field.title),
       type: fieldType(field.type),
       required: field.required === true,
       description: text(field.description),
-      constraints: array(field.constraints).map(constraintValue => {
-        const constraint = record(constraintValue);
-        return {
-          constraintId: text(constraint.constraintId),
-          kind: constraintKind(constraint.kind),
-          value: text(constraint.value),
-          description: text(constraint.description),
-          source: constraintSource(constraint.source),
-        };
-      }),
+      constraints,
+      ...(values.length ? { enum: values } : {}),
     };
   });
   const target = storageTarget(storage.target, kind, entityOwnership);
@@ -437,7 +502,8 @@ function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity 
       authorityRefs: strings(sourceRefs.authorityRefs),
     },
     fields,
-    lifecycleStates: strings(entity.lifecycleStates),
+    lifecycleStates,
+    ...(lifecycleStates.length ? { statusEnum: lifecycleStates } : {}),
     ...(text(entity.initialState) ? { initialState: text(entity.initialState) } : {}),
     ...(strings(entity.terminalStates).length ? { terminalStates: strings(entity.terminalStates) } : {}),
     lifecyclePredicates: array(entity.lifecyclePredicates).map(item => {

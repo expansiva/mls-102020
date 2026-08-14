@@ -36,8 +36,7 @@ import {
   ns4RulesFile,
   ns4CompositionFile,
   ns4UseCaseIndexFile,
-  ns4NavigationIndexFile,
-  ns4ProcessFile,
+  ns4ProcessFile, ns4SiteMapFile,
   readNs4AgentText,
   readNs4Module,
   readNs4Pipeline,
@@ -83,7 +82,6 @@ import {
   afterNs4E8PromptStep,
   beforeNs4E8PromptStep,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/agentNs4E8.js';
-import { isNs4E8ImplementedPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
 import {
   afterNs4E9PromptStep,
   beforeNs4E9PromptStep,
@@ -92,6 +90,11 @@ import {
   afterNs4E10PromptStep,
   beforeNs4E10PromptStep,
 } from '/_102020_/l2/agentNewSolution4/steps/e10/agentNs4E10.js';
+
+/** E8 owns its base plan id and the single constrained composition repair it may schedule. */
+function isNs4E8PlanId(planId: string): boolean {
+  return planId === 'e8-workspaces' || /^e8-workspaces-presentation-repair-\d+-\d+$/.test(planId);
+}
 
 export function createAgent(): IAgentAsync {
   return {
@@ -183,8 +186,8 @@ async function beforePromptImplicit(
           approvedE7.approvedAt,
         );
       }
-      if (pipeline.steps.e9?.status !== 'approved' && approvedE9 && ns4FileExists(ns4NavigationIndexFile(existingModule))) {
-        pipeline = markNs4E9Approved(pipeline, [`l4/${existingModule}/navigation/index.defs.ts`], approvedE9.approvedAt);
+      if (pipeline.steps.e9?.status !== 'approved' && approvedE9 && ns4FileExists(ns4SiteMapFile(existingModule))) {
+        pipeline = markNs4E9Approved(pipeline, [`l4/${existingModule}/siteMap.defs.ts`], approvedE9.approvedAt);
       }
       if (pipeline.steps.e10?.status !== 'approved' && approvedE10 && ns4FileExists(ns4ProcessFile(existingModule))) {
         pipeline = markNs4E10Approved(pipeline, approvedE10.approvedBy, approvedE10.approvedAt);
@@ -284,7 +287,7 @@ async function beforePromptStep(
   if (planId === 'e7-realization' || planId.startsWith('e7-realization-finalize-')) {
     return beforeNs4E7PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
-  if (isNs4E8ImplementedPlanId(planId)) {
+  if (isNs4E8PlanId(planId)) {
     return beforeNs4E8PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
   if (planId === 'e9-navigation-compiler') return beforeNs4E9PromptStep(agent, context, parentStep, step, hookSequential, args);
@@ -326,7 +329,7 @@ async function afterPromptStep(
   if (planId === 'e7-realization' || planId.startsWith('e7-realization-finalize-')) {
     return afterNs4E7PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
-  if (isNs4E8ImplementedPlanId(planId)) {
+  if (isNs4E8PlanId(planId)) {
     return afterNs4E8PromptStep(agent, context, parentStep, step, hookSequential, args);
   }
   if (planId === 'e9-navigation-compiler') return afterNs4E9PromptStep(agent, context, parentStep, step, hookSequential);

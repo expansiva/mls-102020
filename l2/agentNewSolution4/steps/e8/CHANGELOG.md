@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-08-14 — o modelo aprovado é artefato permanente
+
+- `pipeline/` é estado de trabalho de UM run e é descartado depois; por isso o modelo de workspaces
+  saiu de `pipeline/e8-workspace-model.draft.json` para `l4/{module}/workspace-model.defs.ts`, na
+  raiz do módulo. O E9 e o E10 leem ele como contrato de registro — apagar o pipeline não perde nada
+  além do rastro. A raiz é segura: os dois consumidores varrem por PASTA (`/workspaces`,
+  `/operations`) e por nome exato na raiz, então o modelo nunca é confundido com um workspace.
+
+## 2026-08-14 — swap: o E8 passa a ser o compilador ligado
+
+- `agentNs4E8.ts` reescrito sobre `deriveNs4E8Model`; **o fan-out de workers de detalhe deixou de
+  existir**. Uma única call de LLM (composição do hub) e persistência do modelo aprovado.
+- Removidos com o caminho antigo: `deriveNs4E8Skeleton` e toda a derivação de skeleton/scenarios/
+  slices, `gate.ts` de skeleton/detail, `dispatch.ts`, `prompt.md`, `promptWorkspace.md`, os schemas
+  de apresentação e de worker de detalhe, e as fixtures run35-run43.
+- `contracts.ts` ficou com o que o modelo novo usa (`Ns4E8Sources`, `deriveE8HubScore`,
+  `Ns4WorkspaceContext`, `Ns4E8Edge`) mais os tipos congelados de compatibilidade de compilação.
+
+
+## 2026-08-14 — Parte B: E8 compila os três tiers
+
+- `model.ts` é o contrato do modelo de workspaces (tier, bffCalls, sections, operations, catálogo do
+  hub) — a forma que o E9 vai transpor para o formato clássico sem tomar nenhuma decisão de tela.
+- `tiers.ts` é o compilador determinístico: catálogo por entidade persistida (tier 1), workspace por
+  jornada aprovada e não demovida (tier 2), hub da âncora dominante e projeções standalone (tier 3).
+  Sem clustering, sem partição inventada. O menu lista LUGARES; jornada nunca é item de menu.
+- `hubComposition.ts` é a única call de LLM com julgamento do E8: recebe o catálogo FECHADO e só
+  ordena, promove, nomeia e agrupa. Resposta que inventa ou remove id é rejeitada; após o único
+  reparo a ordem derivada vence com systemDecision registrada.
+- `modelGate.ts` separa o que é referência quebrada (tipo A) do que é evidência sobre o produto
+  (registrador tipo B via ns4Resolve). A origem de um registro sem consulta local é registrador.
+- Fixture `run44-tier-model.json`: o módulo real do run 44 (E2 já no schema v5) compila inteiro —
+  32 workspaces (16 catálogos, 12 jornadas, 3 projeções, 1 hub), 3 jornadas demovidas pelo E2,
+  0 achados bloqueantes.
+
+
 ## 2026-08-14 — derived contexts, entity clustering and satellite affinity
 
 - Contexts, the catalog, page contexts and selection contexts all come from

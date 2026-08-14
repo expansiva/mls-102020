@@ -28,6 +28,16 @@ real until the final confirmation.
   selection inputs are pickers, never typed ids; fields the system resolves
   (session/context — who runs the process, which unit) never render as inputs, at most a
   quiet caption.
+- **A step whose record already arrived collapses to a summary line.** Many processes are
+  opened from somewhere that already carries the record a step exists to choose — a hub, a
+  related list, a notification. When that happens the step does NOT ask again: it renders a
+  single quiet line naming the record ("Project: Riverside remodel") with one "change" link
+  that reopens the picker in place, and the corridor advances past it. Opened cold, with
+  nothing carried, the same step renders its picker in full. **One step, two faces — the
+  difference is whether the record is already there, never a different screen.**
+- A collapsed line is not a completed step in the rail: the rail marks it done and the user
+  never lands on it, but "change" always brings the choice back without losing what came
+  after it.
 - **The final step is always the summary**: everything entered, in plain words, grouped
   by step, each group with one quiet "edit" link jumping back to its OWN step (the one
   legitimate rail shortcut — backward only). The single commit button names the outcome
