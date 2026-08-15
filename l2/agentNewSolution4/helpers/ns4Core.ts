@@ -1547,6 +1547,21 @@ export function markNs4E10Running(state: Ns4PipelineState, now = new Date().toIS
   return { ...state, status: 'inProgress', steps: { ...state.steps, e10: { status: 'running', updatedAt: now } }, nextStep: 'e10-validation', updatedAt: now };
 }
 
+/**
+ * E10 failed on a defect of the pipeline, not of the product: nothing upstream is stale, because
+ * nothing upstream is wrong. The module waits on a fixed pipeline and re-validates from E10.
+ */
+export function markNs4E10PipelineDefect(
+  state: Ns4PipelineState, failure: unknown, reportPath?: string, now = new Date().toISOString(),
+): Ns4PipelineState {
+  if (state.steps.e10?.status === 'approved') return state;
+  return {
+    ...state, status: 'failed', nextStep: 'e10-validation', updatedAt: now,
+    steps: { ...state.steps, e10: { status: 'failed', ...(reportPath ? { reportPath } : {}),
+      error: normalizeNs4Failure(failure), failedAt: now, updatedAt: now } },
+  };
+}
+
 export function markNs4E10Failed(
   state: Ns4PipelineState, failure: unknown,
   repairStep: Exclude<Ns4NextStep, 'complete' | 'e10-validation'>,

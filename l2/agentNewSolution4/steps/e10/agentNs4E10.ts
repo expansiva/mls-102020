@@ -2,7 +2,7 @@ import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
 import {
-  isNs4Pipeline, markNs4E10Approved, markNs4E10Failed, markNs4E10Running, markNs4E10RuntimeFailed,
+  isNs4Pipeline, markNs4E10Approved, markNs4E10Failed, markNs4E10PipelineDefect, markNs4E10Running, markNs4E10RuntimeFailed,
   markNs4ModuleE10Approved, type Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { readNs4ApprovedJourneys, readNs4ApprovedOntology } from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
@@ -41,7 +41,10 @@ export async function beforeNs4E10PromptStep(
     reportPath = await writeNs4E10ValidationReport(moduleName, report);
     if (report.finalStatus !== 'passed') {
       const message = formatErrors(report);
-      await writeNs4Pipeline(markNs4E10Failed(await requirePipeline(moduleName), message, report.repairStep || 'e8-workspaces', reportPath));
+      const failed = await requirePipeline(moduleName);
+      await writeNs4Pipeline(report.pipelineDefect
+        ? markNs4E10PipelineDefect(failed, message, reportPath)
+        : markNs4E10Failed(failed, message, report.repairStep || 'e8-workspaces', reportPath));
       return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')];
     }
     const delivery = await compileNs4E10Delivery(sources, report, await readNs4L5Config(), mls.actualProject || 0);

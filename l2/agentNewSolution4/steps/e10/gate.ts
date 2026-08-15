@@ -17,6 +17,9 @@ import {
 
 type Add = (bucket: 'errors' | 'warnings' | 'registrars', issue: Ns4E10Issue) => void;
 
+/** Findings no step can repair, because the source they read was written wrong by the pipeline. */
+const PIPELINE_DEFECT_CODES = new Set(['NS4_E10_POLICY_DECISIONS_ABSENT']);
+
 export async function validateNs4E10(sources: Ns4E10Sources): Promise<Ns4E10ValidationReport> {
   const errors: Ns4E10Issue[] = []; const warnings: Ns4E10Issue[] = []; const registrars: Ns4E10Issue[] = [];
   const add: Add = (bucket, issue) => ({ errors, warnings, registrars })[bucket].push(issue);
@@ -36,13 +39,17 @@ export async function validateNs4E10(sources: Ns4E10Sources): Promise<Ns4E10Vali
     ...sources.model.systemDecisions,
     ...dormantDecisions,
   ]);
-  const repairStep = earliestRepair(errors.map(error => error.repairStep).filter((value): value is Ns4E10RepairStep => !!value));
+  // A defect of our own pipeline outranks any content repair: sending the module back to a step
+  // that reads a broken source would re-run everything and land in the same place.
+  const pipelineDefect = errors.some(error => PIPELINE_DEFECT_CODES.has(error.code));
+  const repairStep = pipelineDefect ? undefined
+    : earliestRepair(errors.map(error => error.repairStep).filter((value): value is Ns4E10RepairStep => !!value));
   const value = {
     schemaVersion: NS4_E10_VALIDATION_REPORT_VERSION, moduleName: sources.moduleName, userLanguage: sources.userLanguage,
     finalStatus: errors.length ? 'failed' as const : 'passed' as const,
     checks: summarizeChecks(errors, warnings, registrars),
     errors: uniqueIssues(errors), warnings: uniqueIssues(warnings), registrars: uniqueIssues(registrars),
-    policyDecisions, systemDecisions, ...(repairStep ? { repairStep } : {}),
+    policyDecisions, systemDecisions, ...(repairStep ? { repairStep } : {}), ...(pipelineDefect ? { pipelineDefect: true as const } : {}),
     sourceHashes: {
       journeys: sources.journeyIndex.journeys.map(item => ({ journeyId: item.journeyId, businessHash: item.businessHash })).sort((left, right) => left.journeyId.localeCompare(right.journeyId)),
       accessHash: sources.access.accessHash, ontologyHash: sources.ontologyIndex.ontologyHash, rulesHash: sources.rules.rulesHash,
@@ -99,10 +106,22 @@ function compare<T>(expected: T[], saved: T[], key: (item: T) => string, label: 
   for (const id of savedById.keys()) report(id, `Saved ${label} ${id} has no counterpart in the approved model.`);
 }
 
+/**
+ * Decisions and selections are compared inside the SAME permanent artifact. Reading the bodies from
+ * the journey artifacts made this check unsatisfiable by construction: E7 rewrites them as
+ * realized-v5, which carries no policyDecisions, so every selection looked unknown.
+ */
 function validateDecisionCoherence(sources: Ns4E10Sources, add: Add): void {
   const selections = new Map((sources.journeyIndex.policyDecisionSelections || []).map(selection => [selection.decisionId, selection]));
-  const decisions = new Map<string, Ns4PolicyDecision>();
-  sources.journeys.journeys.forEach(journey => journey.policyDecisions.forEach(decision => decisions.set(decision.decisionId, decision)));
+  const decisions = new Map<string, Ns4PolicyDecision>(
+    (sources.journeyIndex.policyDecisions || []).map(decision => [decision.decisionId, decision]));
+  // An index that answers decisions it does not carry was written by a pipeline that lost them:
+  // our defect, not the product's. Sending the module back to E2 would re-run everything for nothing.
+  if (!decisions.size && selections.size) {
+    add('errors', { code: 'NS4_E10_POLICY_DECISIONS_ABSENT', path: 'journeys.index.policyDecisions',
+      message: `The journey index persists ${selections.size} selections and no decision to answer; the approved index lost the decision bodies.` });
+    return;
+  }
   for (const [decisionId, decision] of decisions) {
     const selection = selections.get(decisionId);
     if (!selection) {

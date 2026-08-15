@@ -1,5 +1,19 @@
 # E10 changelog
 
+## 2026-08-15 — coerência de decisões: índice × índice (bug_e10_1)
+
+- `validateDecisionCoherence` lia os CORPOS das decisões dos artefatos de jornada, mas o E7 reescreve
+  cada jornada como `realized-v5`, que não carrega `policyDecisions`. O mapa chegava vazio e TODA
+  seleção virava `NS4_E10_POLICY_SELECTION_UNKNOWN` — o check era insatisfazível por construção, e o
+  run 46 foi o primeiro a alcançá-lo. Agora decisões e seleções são dois campos do MESMO artefato
+  permanente (`journeys/index.defs.ts`); os três sub-checks (MISSING, VALUE, UNKNOWN) não mudaram.
+- **Defeito de pipeline não devolve para etapa nenhuma.** Índice com seleções e sem corpos =
+  `NS4_E10_POLICY_DECISIONS_ABSENT`, `pipelineDefect: true`, sem `repairStep`: falha sem marcar
+  E2→E9 stale (`markNs4E10PipelineDefect`), porque nenhuma etapa conserta uma fonte escrita errada —
+  devolver em massa re-executaria o run inteiro para cair no mesmo lugar. Um defeito assim vence
+  qualquer reparo de conteúdo no `earliestRepair`.
+- `NS4_E10_VALIDATION_REPORT_VERSION` → v2 (o relatório ganhou `pipelineDefect`).
+
 ## 2026-08-14 — validação sobre o modelo de workspaces e o L4 clássico
 
 - `Ns4E10Sources` deixou de estender o modelo antigo: agora é o modelo aprovado do E8 mais o que o

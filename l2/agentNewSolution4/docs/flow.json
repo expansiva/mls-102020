@@ -233,7 +233,8 @@
         "entry declares only its mode and an optional preferredFromJourneyRef; the entry context of an event-driven journey is derived from the sending handoff step, or from its own first step when no internal sender exists.",
         "A handoff step names the receiving E3 profile in targetProfile, which is the only routing fact E9 needs to compile its notification.",
         "The E2 structural gate checks step identity, kind, entity shape, sequence and feature references. Context provenance is not an E2 concern because there is no declared context left to check.",
-        "Journey rule references are stored only in business.useRules as lower-camel ids; E2 never copies rule descriptions."
+        "Journey rule references are stored only in business.useRules as lower-camel ids; E2 never copies rule descriptions.",
+        "The approved journey index is the durable home of the policy decisions, next to the selections that answer them: E7 rewrites every journey artifact as realized-v5, which carries no decisions, so anything read after E7 reads the index."
       ]
     },
     {
@@ -482,7 +483,9 @@
         "The named checks keep their contract: A1 model integrity, A2 journey hosting, A3 decision coherence, A4 disclosure registrar, A5 lifecycle health, A6 staleness, A7 warnings and A8 dormant commands.",
         "beforePromptStep performs validate-all and L5 compilation without an LLM. afterPromptStep is an invariant failure path.",
         "Blocking validation persists the report, marks its earliest owning step stale and does not write or update L5 files.",
-        "The L5 config merger updates only the current module navigation/headerLinks in an existing client project or top-level module seed. Unrelated keys and modules are preserved; identical inputs produce byte-identical config JSON."
+        "The L5 config merger updates only the current module navigation/headerLinks in an existing client project or top-level module seed. Unrelated keys and modules are preserved; identical inputs produce byte-identical config JSON.",
+        "Decision coherence compares the journey index against itself — decisions and selections are two fields of the same permanent artifact, never a draft of the pipeline.",
+        "An index that answers decisions it does not carry is a defect of the pipeline, not of the product: E10 fails without a repair step and without marking any step stale, because no step can repair a source that was written wrong."
       ]
     }
   ]

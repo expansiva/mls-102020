@@ -1,5 +1,12 @@
 # E2 changelog
 
+- 2026-08-15 (bug_e10_1): `buildNs4JourneyIndex` persiste os CORPOS das decisões
+  (`policyDecisions`, cada um com o `journeyRef` do dono) ao lado das `policyDecisionSelections` que
+  já moravam no índice — casa durável. A cópia no artefato da jornada continua, porque é estado de
+  trabalho pré-E7 (o E2 relê a review a partir dos artefatos entre rounds); o E7 a descarta ao
+  reescrever como `realized-v5`, e era por isso que o E10 via um mapa vazio.
+  `NS4_JOURNEY_INDEX_SCHEMA_VERSION` → `2026-08-15-ns4-journey-index-v7`.
+
 - 2026-08-14: The declared context graph is gone. A step is now
   `{stepId, kind, entity, title, description, featureRefs}` plus `targetProfile` on a handoff;
   `requiresContext`, `providesContext`, `entry.carries` and `prerequisites` no longer exist and the

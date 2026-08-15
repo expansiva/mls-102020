@@ -10,7 +10,7 @@ import {
 } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageSignals.js';
 
 export const NS4_JOURNEY_SCHEMA_VERSION = '2026-08-14-ns4-journey-v5' as const;
-export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-14-ns4-journey-index-v6' as const;
+export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-15-ns4-journey-index-v7' as const;
 export const NS4_REALIZED_JOURNEY_SCHEMA_VERSION = '2026-08-14-ns4-journey-realized-v5' as const;
 export const NS4_E2_IMPACT_REPORT_SCHEMA_VERSION = '2026-08-13-ns4-e2-impact-report-v2' as const;
 
@@ -202,7 +202,7 @@ export function isNs4CurrentJourneyBusiness(value: Ns4JourneyArtifact['business'
 }
 
 export interface Ns4JourneyIndex {
-  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION | '2026-08-12-ns4-journey-index-v5' | '2026-08-10-ns4-journey-index-v4' | '2026-08-04-ns4-journey-index-v1' | '2026-08-10-ns4-journey-index-v3' | '2026-08-09-ns4-journey-index-v2';
+  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION | '2026-08-14-ns4-journey-index-v6' | '2026-08-12-ns4-journey-index-v5' | '2026-08-10-ns4-journey-index-v4' | '2026-08-04-ns4-journey-index-v1' | '2026-08-10-ns4-journey-index-v3' | '2026-08-09-ns4-journey-index-v2';
   moduleName: string;
   approvedAt: string;
   approvedBy: 'human' | 'auto';
@@ -217,9 +217,20 @@ export interface Ns4JourneyIndex {
     useCaseRefs?: string[];
   }>;
   features: Ns4E2Feature[];
+  /**
+   * The decisions themselves, next to the selections that answer them. This is their durable home:
+   * the journey artifact carries a copy while E2 is still reviewing, and E7 rewrites the artifact as
+   * realized-v5, which has no policyDecisions — everything read after E7 reads the index.
+   */
+  policyDecisions?: Ns4JourneyIndexPolicyDecision[];
   policyDecisionSelections?: Ns4PolicyDecisionSelection[];
   systemDecisions?: Ns4SystemDecision[];
   realizationHash?: string;
+}
+
+/** A policy decision with the journey that owns it; the index is flat, journeys reference by id. */
+export interface Ns4JourneyIndexPolicyDecision extends Ns4PolicyDecision {
+  journeyRef: string;
 }
 
 export interface Ns4E2ReviewEvent {
@@ -303,6 +314,8 @@ export function buildNs4JourneyIndex(
       artifactPath: artifactPaths[index],
     })),
     features: review.features,
+    policyDecisions: review.journeys.flatMap(journey => journey.policyDecisions
+      .map(decision => ({ ...decision, journeyRef: journey.journeyId }))),
     policyDecisionSelections,
     systemDecisions: review.systemDecisions,
   };

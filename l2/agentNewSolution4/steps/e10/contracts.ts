@@ -13,7 +13,7 @@ import type { Ns4UseCaseArtifactV3, Ns4WorkflowArtifactV2 } from '/_102020_/l2/a
 import type { Ns4E8Model } from '/_102020_/l2/agentNewSolution4/steps/e8/model.js';
 import type { Ns4ClassicL4 } from '/_102020_/l2/agentNewSolution4/steps/e9/classic.js';
 
-export const NS4_E10_VALIDATION_REPORT_VERSION = '2026-08-13-ns4-e10-validation-report-v1' as const;
+export const NS4_E10_VALIDATION_REPORT_VERSION = '2026-08-15-ns4-e10-validation-report-v2' as const;
 export const NS4_L5_TODO_FRONTEND_VERSION = '2026-08-13-ns4-todo-frontend-v1' as const;
 export const NS4_L5_TODO_BACKEND_VERSION = '2026-08-13-ns4-todo-backend-v1' as const;
 export const NS4_L5_PROCESS_VERSION = '2026-08-13-ns4-process-v1' as const;
@@ -96,6 +96,11 @@ export interface Ns4E10ValidationReport {
   policyDecisions: Ns4PolicyDecisionSelection[];
   systemDecisions: Ns4SystemDecision[];
   repairStep?: Ns4E10RepairStep;
+  /**
+   * The failure is a defect of the pipeline itself, not of the product: no step can repair it, so
+   * nothing is marked stale and the module waits for a fixed pipeline instead of re-running whole.
+   */
+  pipelineDefect?: true;
   sourceHashes: {
     journeys: Array<{ journeyId: string; businessHash: string }>;
     accessHash: string;
