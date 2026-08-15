@@ -2,7 +2,7 @@ import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
 import {
-  createNs4E8PresentationRepairStep, isNs4Pipeline, markNs4E8Approved, markNs4E8Failed, markNs4E8Running,
+  createNs4E8HubCompositionRepairStep, isNs4Pipeline, ns4E8HubRepairPlanId, markNs4E8Approved, markNs4E8Failed, markNs4E8Running,
   markNs4ModuleE8Approved, Ns4ApprovedBy, Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { readNs4ApprovedAccess, readNs4ApprovedJourneys, readNs4ApprovedOntology } from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
@@ -72,9 +72,9 @@ export async function afterNs4E8PromptStep(_agent: IAgentMeta, context: mls.msg.
     const compositionGate = validateNs4HubComposition(hub.hubCatalogue!, proposal);
     if (!compositionGate.ok && (parsed.presentationAttempt || 0) < 1) {
       const mutationParent = findParent(context, parent, step);
-      const repairPlanId = `e8-workspaces-presentation-repair-${round}-1`;
+      const repairPlanId = ns4E8HubRepairPlanId(round, 1);
       const alreadyScheduled = getAllSteps(context.task?.iaCompressed?.nextSteps).some(item => item.planning?.planId === repairPlanId);
-      return [...(alreadyScheduled ? [] : [addStep(context, mutationParent, createNs4E8PresentationRepairStep(moduleName, round, 1, formatGate(compositionGate.issues), pipeline.presentation.stepTitles['e8-workspaces']))]),
+      return [...(alreadyScheduled ? [] : [addStep(context, mutationParent, createNs4E8HubCompositionRepairStep(moduleName, round, 1, formatGate(compositionGate.issues), pipeline.presentation.stepTitles['e8-workspaces']))]),
         status(context, mutationParent, step, hookSequential, 'completed', alreadyScheduled ? 'E8 hub composition repair was already scheduled; duplicate response ignored.' : 'E8 hub composition was invalid; one constrained repair was scheduled.', 'input_output')];
     }
     const decisions: Ns4SystemDecision[] = [];
