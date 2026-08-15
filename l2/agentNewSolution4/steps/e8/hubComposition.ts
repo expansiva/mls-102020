@@ -9,7 +9,7 @@
 
 import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 import type { Ns4ResolutionResult } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
-import type { Ns4E8HubCatalogue, Ns4E8HubComposition, Ns4E8ModelWorkspace } from '/_102020_/l2/agentNewSolution4/steps/e8/model.js';
+import type { Ns4E8HubCatalogue, Ns4E8HubComposition, Ns4E8ModelWorkspace, Ns4E8NavigationTarget } from '/_102020_/l2/agentNewSolution4/steps/e8/model.js';
 
 export interface Ns4E8CompositionIssue { code: string; path: string; message: string; }
 export interface Ns4E8CompositionResult { ok: boolean; issues: Ns4E8CompositionIssue[]; }
@@ -77,7 +77,14 @@ export function validateNs4HubComposition(catalogue: Ns4E8HubCatalogue, composit
   return { ok: !issues.length, issues };
 }
 
-/** Applies a composition over the derived catalogue: order, promotion and labels — nothing else. */
+/**
+ * Applies a composition over the derived catalogue: order, promotion and labels — nothing else.
+ *
+ * Two rules of the classic format decide the shape of the result, and getting them wrong is what
+ * broke run 46: an organism consumes a call of its OWN workspace, so an item the hub reads becomes a
+ * LOCAL call over the same shared operation; and a journey is navigation, so it leaves the sections
+ * for the site map instead of pretending to be an embedded command.
+ */
 export function applyNs4HubComposition(workspace: Ns4E8ModelWorkspace, composition: Ns4E8HubComposition): Ns4E8ModelWorkspace {
   const catalogue = workspace.hubCatalogue;
   if (!catalogue) return workspace;
@@ -87,14 +94,31 @@ export function applyNs4HubComposition(workspace: Ns4E8ModelWorkspace, compositi
   const items = [...catalogue.items]
     .map(item => ({ ...item, ...(labels.get(item.itemId) ? { label: labels.get(item.itemId)! } : {}) }))
     .sort((left, right) => (rank.get(left.itemId) ?? Number.MAX_SAFE_INTEGER) - (rank.get(right.itemId) ?? Number.MAX_SAFE_INTEGER));
-  const recordSection = workspace.sections.find(section => section.sectionId === 'record');
-  const sections = workspace.sections.map(section => section !== recordSection ? section : {
-    ...section,
-    organisms: items.map(item => item.kind === 'action'
-      ? { role: primary.has(item.itemId) ? 'primarySurface' as const : 'contextualAction' as const, action: item.targetRef }
-      : { role: 'detailPanel' as const, dataSource: item.targetRef }),
+
+  const bffCalls = [...workspace.bffCalls];
+  const organisms: Ns4E8ModelWorkspace['sections'][number]['organisms'] = [];
+  const navigation: Ns4E8NavigationTarget[] = [];
+  items.forEach((item, index) => {
+    if (item.kind === 'action' || item.kind === 'pending') {
+      navigation.push({ targetWorkspaceId: item.targetRef, label: item.label,
+        prominence: primary.has(item.itemId) ? 'primary' : 'contextual', order: index });
+      return;
+    }
+    if (!item.sourceOperationId) return;
+    const bffId = item.sourceBffId || `qry${upperCamel(item.entityRef)}`;
+    if (!bffCalls.some(call => call.bffId === bffId)) {
+      bffCalls.push({ bffId, kind: 'query', operationId: item.sourceOperationId,
+        outputKind: item.sourceOutputKind || 'object', entityRef: item.entityRef });
+    }
+    organisms.push({ role: 'detailPanel', dataSource: bffId });
   });
-  return { ...workspace, title: composition.title || workspace.title, hubCatalogue: { ...catalogue, items }, sections };
+
+  const sections = workspace.sections.map(section => section.sectionId === 'record' ? { ...section, organisms } : section);
+  return {
+    ...workspace, title: composition.title || workspace.title,
+    bffCalls, sections, hubCatalogue: { ...catalogue, items },
+    ...(navigation.length ? { navigation } : {}),
+  };
 }
 
 /**

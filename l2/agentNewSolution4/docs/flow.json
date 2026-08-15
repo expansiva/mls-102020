@@ -421,7 +421,9 @@
         "A journey workspace emits one query call per locate/inspect step and one command call per act/decide/handoff step, and one section per step in the order of the journey; the locate section renders the picker.",
         "A record catalogue synthesizes its four operations from the ontology, because E7 compiles journeys and a catalogue is not a journey. Its inputs are classified structurally: identity and foreign keys are chosen, a platform-owned parent is the session, a lifecycle status and a timestamp are set by the server, everything else is typed. A state transition never belongs to a catalogue.",
         "An entity no journey operates still gets its catalogue; the audience falls back to the internal profiles and the choice is recorded as a system decision instead of leaving the data unreachable.",
-        "The validation report is persisted before any throw, so an irrecoverable model stays auditable."
+        "The validation report is persisted before any throw, so an irrecoverable model stays auditable.",
+        "A broken organism reference is detected exactly as before and resolved deterministically instead of ending the run: a source that names another workspace's query becomes a local call over the same shared operation, an action that names a journey becomes a navigation target of the site map, and a reference that resolves to nothing drops its organism with a recorded decision. Only a model that cannot render at all stays terminal.",
+        "A journey is reached from the hub by navigation, carrying the prominence and order the composition chose; it is never an embedded command of the hub page."
       ]
     },
     {

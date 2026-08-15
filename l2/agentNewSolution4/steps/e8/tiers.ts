@@ -14,6 +14,7 @@ import { deriveNs4Contexts, isNs4PlatformOwnedEntity, ns4ContextIdOf } from '/_1
 import type { Ns4DerivedContextGraph } from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
 import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 import { deriveE8HubScore, type Ns4E8Sources } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
+import { applyNs4HubComposition, defaultNs4HubComposition } from '/_102020_/l2/agentNewSolution4/steps/e8/hubComposition.js';
 import {
   NS4_E8_MODEL_VERSION,
   type Ns4E8BffCall, type Ns4E8HubCatalogue, type Ns4E8HubCatalogueItem, type Ns4E8Input,
@@ -46,11 +47,12 @@ export function deriveNs4E8Model(sources: Ns4E8Sources, reviewRound = 1): Ns4E8M
     operations.push(...built.operations);
     workspaces.push(built.workspace);
   }
-  if (context.hubEntity) workspaces.push(buildHubWorkspace(context, workspaces));
   for (const projection of context.standaloneProjections) {
     const built = buildProjectionWorkspace(projection, context);
     if (built) { operations.push(...built.operations); workspaces.push(built.workspace); }
   }
+  // The hub is built last: its catalogue points at calls of the workspaces that already exist.
+  if (context.hubEntity) workspaces.push(buildHubWorkspace(context, workspaces));
 
   workspaces.sort((left, right) => left.workspaceId.localeCompare(right.workspaceId));
   return {
@@ -463,7 +465,7 @@ function buildHubWorkspace(context: Ns4E8TierContext, workspaces: Ns4E8ModelWork
   const listCall = workspaces.find(workspace => workspace.tier === 'recordCatalogue' && workspace.entity === context.hubEntity)
     ?.bffCalls.find(call => call.kind === 'query');
   const bffCalls: Ns4E8BffCall[] = listCall ? [{ ...listCall }] : [];
-  return {
+  const hub: Ns4E8ModelWorkspace = {
     workspaceId: `${lowerCamel(context.hubEntity)}Hub`, tier: 'hub',
     title: anchor?.title || context.hubEntity,
     purpose: label(context, `Painel de ${anchor?.title || context.hubEntity}.`, `${anchor?.title || context.hubEntity} command centre.`),
@@ -480,6 +482,10 @@ function buildHubWorkspace(context: Ns4E8TierContext, workspaces: Ns4E8ModelWork
     ],
     hubCatalogue: catalogue,
   };
+  // The derived hub is already a whole page: the score order is the composition until an LLM
+  // proposes another one, so a module whose anchor makes no composition call still wires its tiles
+  // and still reaches its journeys.
+  return applyNs4HubComposition(hub, defaultNs4HubComposition(hub));
 }
 
 /**
@@ -493,15 +499,21 @@ export function deriveNs4E8HubCatalogue(context: Ns4E8TierContext, workspaces: N
 
   for (const projection of context.standaloneProjections) {
     if (!projection.sourceRefs.journeyIds.some(id => anchoredJourneys.has(id))) continue;
+    const view = workspaces.find(workspace => workspace.tier === 'projection' && workspace.entity === projection.entityId);
+    const call = view?.bffCalls.find(item => item.kind === 'query');
+    if (!view || !call) continue;
     items.push({ itemId: `tile${projection.entityId}`, kind: 'projectionTile', label: projection.title,
-      entityRef: projection.entityId, targetRef: `${lowerCamel(projection.entityId)}View`, score: 3 });
+      entityRef: projection.entityId, targetRef: view.workspaceId,
+      sourceOperationId: call.operationId, sourceBffId: call.bffId, sourceOutputKind: call.outputKind, score: 3 });
   }
   for (const [entityId, parents] of context.parentsOf) {
     if (!parents.some(parent => parent.parent === context.hubEntity && parent.required)) continue;
     const satellite = workspaces.find(workspace => workspace.tier === 'recordCatalogue' && workspace.entity === entityId);
     if (!satellite) continue;
+    const list = satellite.bffCalls.find(item => item.kind === 'query');
     items.push({ itemId: `related${entityId}`, kind: 'relatedList', label: context.entities.get(entityId)?.title || entityId,
-      entityRef: entityId, targetRef: satellite.workspaceId, score: 2 });
+      entityRef: entityId, targetRef: satellite.workspaceId,
+      ...(list ? { sourceOperationId: list.operationId, sourceBffId: list.bffId, sourceOutputKind: list.outputKind } : {}), score: 2 });
   }
   for (const workspace of workspaces) {
     if (workspace.tier !== 'journey' || !anchoredJourneys.has(workspace.journeyRef || '')) continue;

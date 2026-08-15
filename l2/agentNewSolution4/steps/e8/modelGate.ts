@@ -6,11 +6,20 @@
  */
 
 import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
-import type { Ns4ResolutionResult } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
+import type { Ns4ResolutionFinding, Ns4ResolutionResult } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 import type { Ns4E8Sources } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
 import type { Ns4E8Model } from '/_102020_/l2/agentNewSolution4/steps/e8/model.js';
 
-export interface Ns4E8ModelIssue { code: string; path: string; message: string; severity?: 'warning'; }
+/**
+ * How a broken organism reference can be repaired without an LLM. The gate DETECTS as strictly as
+ * before; only the outcome changed — a screen missing one panel is a product, a dead run is not.
+ */
+export type Ns4E8ModelResolution =
+  | { kind: 'wireLocalQuery'; workspaceId: string; sectionId: string; organismIndex: number; reference: string; bffId: string; operationId: string; entityRef: string; outputKind: 'object' | 'list' | 'paginated' }
+  | { kind: 'moveActionToNavigation'; workspaceId: string; sectionId: string; organismIndex: number; reference: string; targetWorkspaceId: string; label: string }
+  | { kind: 'dropOrganism'; workspaceId: string; sectionId: string; organismIndex: number; reference: string };
+
+export interface Ns4E8ModelIssue { code: string; path: string; message: string; severity?: 'warning'; resolution?: Ns4E8ModelResolution; }
 export interface Ns4E8ModelResult { ok: boolean; issues: Ns4E8ModelIssue[]; }
 
 const MEMBER_ID = /^[a-z][A-Za-z0-9]*$/;
@@ -69,12 +78,34 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
     workspace.sections.forEach((section, sectionIndex) => {
       const sectionPath = `${path}.sections[${sectionIndex}]`;
       if (!MEMBER_ID.test(section.sectionId)) add('NS4_E8_SECTION_ID', `${sectionPath}.sectionId`, 'Section id must be lower-camel.');
-      section.organisms.forEach(organism => {
+      section.organisms.forEach((organism, organismIndex) => {
+        const anchor = { workspaceId: workspace.workspaceId, sectionId: section.sectionId, organismIndex };
         if (organism.dataSource && !queries.has(organism.dataSource)) {
-          add('NS4_E8_ORGANISM_SOURCE', sectionPath, `Organism reads ${organism.dataSource}, which is not a query of this workspace.`);
+          // The reference may name another workspace's query: operations are shared, so the same
+          // operation becomes a local call here instead of a cross-workspace read that cannot exist.
+          const foreign = model.workspaces.find(item => item.workspaceId === organism.dataSource
+            || item.bffCalls.some(call => call.bffId === organism.dataSource && call.kind === 'query'));
+          const call = foreign?.bffCalls.find(item => item.kind === 'query'
+            && (item.bffId === organism.dataSource || foreign.workspaceId === organism.dataSource));
+          issues.push({
+            code: 'NS4_E8_ORGANISM_SOURCE', path: `${sectionPath}.organisms[${organismIndex}]`,
+            message: `Organism reads ${organism.dataSource}, which is not a query of this workspace.`,
+            resolution: call
+              ? { kind: 'wireLocalQuery', ...anchor, reference: organism.dataSource, bffId: call.bffId,
+                  operationId: call.operationId, entityRef: call.entityRef, outputKind: call.outputKind }
+              : { kind: 'dropOrganism', ...anchor, reference: organism.dataSource },
+          });
         }
         if (organism.action && !commands.has(organism.action)) {
-          add('NS4_E8_ORGANISM_ACTION', sectionPath, `Organism runs ${organism.action}, which is not a command of this workspace.`);
+          // A journey is a screen, and a button that opens a screen is navigation, never a command.
+          const journey = model.workspaces.find(item => item.workspaceId === organism.action && item.tier === 'journey');
+          issues.push({
+            code: 'NS4_E8_ORGANISM_ACTION', path: `${sectionPath}.organisms[${organismIndex}]`,
+            message: `Organism runs ${organism.action}, which is not a command of this workspace.`,
+            resolution: journey
+              ? { kind: 'moveActionToNavigation', ...anchor, reference: organism.action, targetWorkspaceId: journey.workspaceId, label: journey.title }
+              : { kind: 'dropOrganism', ...anchor, reference: organism.action },
+          });
         }
       });
     });
@@ -114,8 +145,12 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
   return { ok: issues.every(issue => issue.severity === 'warning'), issues };
 }
 
+/**
+ * Decide, record, continue. A reference the code can repair is repaired; a reference that points at
+ * nothing loses its panel and says so; only a model that cannot render at all stays terminal.
+ */
 export function resolveNs4E8ModelFindings(model: Ns4E8Model, issues: Ns4E8ModelIssue[]): Ns4ResolutionResult<Ns4E8Model> {
-  return resolveNs4Findings(model, issues.map(issue => issue.severity === 'warning' ? {
+  return resolveNs4Findings(model, issues.map(issue => issue.resolution ? resolutionFinding(issue, issue.resolution) : issue.severity === 'warning' ? {
     classification: 'B' as const,
     decisionId: decisionId('e8Model', issue.code, issue.path),
     findingRef: `${issue.code}:${issue.path}`,
@@ -132,6 +167,81 @@ export function resolveNs4E8ModelFindings(model: Ns4E8Model, issues: Ns4E8ModelI
     alternatives: [],
     changeHint: `Corrigir ${issue.path} no modelo de workspaces do E8.`,
   }));
+}
+
+function resolutionFinding(issue: Ns4E8ModelIssue, resolution: Ns4E8ModelResolution): Ns4ResolutionFinding<Ns4E8Model> {
+  const anchor = `${resolution.workspaceId}:${resolution.sectionId}:${resolution.organismIndex}`;
+  if (resolution.kind === 'wireLocalQuery') return {
+    classification: 'C', decisionId: decisionId('e8WireLocalQuery', anchor),
+    findingRef: `${issue.code}:${anchor}`, stage: 'e8-workspaces',
+    question: `O painel de ${resolution.entityRef} passa a ler a consulta na própria tela, em vez de outra tela.`,
+    deterministicChoice: 'wireLocalQuery', alternatives: ['reviewDashboardComposition'],
+    changeHint: `Revisar o painel de ${resolution.entityRef} em ${resolution.workspaceId}.`,
+    apply: artifact => wireLocalQuery(artifact, resolution),
+  };
+  if (resolution.kind === 'moveActionToNavigation') return {
+    classification: 'C', decisionId: decisionId('e8ActionToNavigation', anchor),
+    findingRef: `${issue.code}:${anchor}`, stage: 'e8-workspaces',
+    question: `A ação ${resolution.label} abre a tela do fluxo, não um comando embutido.`,
+    deterministicChoice: 'openJourneyScreen', alternatives: ['embedCommandInPage'],
+    changeHint: `A tela ${resolution.label} é alcançada a partir de ${resolution.workspaceId}.`,
+    apply: artifact => moveActionToNavigation(artifact, resolution),
+  };
+  return {
+    classification: 'C', decisionId: decisionId('e8DropOrganism', anchor),
+    findingRef: `${issue.code}:${anchor}`, stage: 'e8-workspaces',
+    question: `O painel ${resolution.reference} não pôde ser montado nesta versão e sai da tela ${resolution.workspaceId}.`,
+    deterministicChoice: 'dropUnbuildablePanel', alternatives: ['reviewDashboardComposition'],
+    changeHint: `Revisar o que ${resolution.reference} deveria mostrar em ${resolution.workspaceId}.`,
+    apply: artifact => dropOrganism(artifact, resolution),
+  };
+}
+
+function patchWorkspace(
+  model: Ns4E8Model, workspaceId: string, patch: (workspace: Ns4E8Model['workspaces'][number]) => Ns4E8Model['workspaces'][number],
+): Ns4E8Model {
+  return { ...model, workspaces: model.workspaces.map(workspace => workspace.workspaceId === workspaceId ? patch(workspace) : workspace) };
+}
+function patchOrganisms(
+  workspace: Ns4E8Model['workspaces'][number], sectionId: string,
+  patch: (organisms: Ns4E8Model['workspaces'][number]['sections'][number]['organisms']) => Ns4E8Model['workspaces'][number]['sections'][number]['organisms'],
+): Ns4E8Model['workspaces'][number] {
+  return { ...workspace, sections: workspace.sections.map(section => section.sectionId === sectionId ? { ...section, organisms: patch(section.organisms) } : section) };
+}
+
+function wireLocalQuery(model: Ns4E8Model, resolution: Extract<Ns4E8ModelResolution, { kind: 'wireLocalQuery' }>): Ns4E8Model {
+  return patchWorkspace(model, resolution.workspaceId, workspace => {
+    const bffCalls = workspace.bffCalls.some(call => call.bffId === resolution.bffId) ? workspace.bffCalls
+      : [...workspace.bffCalls, { bffId: resolution.bffId, kind: 'query' as const, operationId: resolution.operationId,
+          outputKind: resolution.outputKind, entityRef: resolution.entityRef }];
+    return patchOrganisms({ ...workspace, bffCalls }, resolution.sectionId, organisms => organisms
+      .map(organism => organism.dataSource === resolution.reference ? { ...organism, dataSource: resolution.bffId } : organism));
+  });
+}
+
+function moveActionToNavigation(model: Ns4E8Model, resolution: Extract<Ns4E8ModelResolution, { kind: 'moveActionToNavigation' }>): Ns4E8Model {
+  return patchWorkspace(model, resolution.workspaceId, workspace => {
+    const navigation = workspace.navigation || [];
+    const next = navigation.some(item => item.targetWorkspaceId === resolution.targetWorkspaceId) ? navigation
+      : [...navigation, { targetWorkspaceId: resolution.targetWorkspaceId, label: resolution.label, prominence: 'contextual' as const, order: navigation.length }];
+    return patchOrganisms({ ...workspace, navigation: next }, resolution.sectionId, organisms => dropFirst(organisms, resolution.reference));
+  });
+}
+
+function dropOrganism(model: Ns4E8Model, resolution: Extract<Ns4E8ModelResolution, { kind: 'dropOrganism' }>): Ns4E8Model {
+  return patchWorkspace(model, resolution.workspaceId, workspace => patchOrganisms(workspace, resolution.sectionId,
+    organisms => dropFirst(organisms, resolution.reference)));
+}
+
+/**
+ * Repairs are applied one after another, so an index captured while validating is stale as soon as
+ * the first organism leaves the section: each repair finds its own organism by the reference it read.
+ */
+function dropFirst(
+  organisms: Ns4E8Model['workspaces'][number]['sections'][number]['organisms'], reference: string,
+): Ns4E8Model['workspaces'][number]['sections'][number]['organisms'] {
+  const index = organisms.findIndex(organism => organism.dataSource === reference || organism.action === reference);
+  return index < 0 ? organisms : [...organisms.slice(0, index), ...organisms.slice(index + 1)];
 }
 
 function decisionId(prefix: string, ...parts: string[]): string {

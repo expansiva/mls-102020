@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-08-15 — a fiação do registro do hub e a doutrina no gate (bug_e8_5)
+
+- **Tiles do hub são chamadas LOCAIS.** O item do catálogo passou a carregar a operation/call do
+  workspace que ele lê (`sourceOperationId`/`sourceBffId`), e o hub ganha um bffCall próprio sobre a
+  MESMA operation compartilhada. No formato clássico um organism consome chamada do PRÓPRIO
+  workspace — "ler a query de outro workspace" nunca existiu.
+- **A forma viaja junto com a chamada** (`sourceOutputKind`): o hub fia `qryListWorkTask` como
+  `list`, não como `object` — uma lista lida como objeto projetaria um registro só, e nem o
+  round-trip do formato clássico nem a igualdade de `operationId` pegariam isso.
+- **Jornada é navegação.** Ações de jornada saem das sections e viram `navigation` do workspace
+  (`prominence`/`order` da composição), que o E9 emite nas `navigationEdges` do siteMap. Nenhum
+  organism novo de "link" foi criado — navegação continua morando no siteMap.
+- **O hub derivado já é uma página inteira**: a ordem por score é a composição até uma LLM propor
+  outra, então um módulo que não faz call de composição fia os tiles e alcança as jornadas do mesmo
+  jeito.
+- **Doutrina no desfecho.** `NS4_E8_ORGANISM_SOURCE`/`NS4_E8_ORGANISM_ACTION` detectam exatamente
+  como antes e deixam de ser terminais: referência que resolve para uma query de outro workspace é
+  auto-fiada, ação que resolve para jornada vira navegação, e o que não resolve para nada perde o
+  organism com decisão registrada — o hub degrada, o run segue. Só permanece terminal o modelo que
+  não renderiza. Cada reparo acha o próprio organism pela REFERÊNCIA, não pelo índice: o índice
+  colhido na validação fica velho assim que o primeiro organism sai da seção.
+- Verificado no modelo persistido do run 46 (o que matou o E8): 23 findings — 13 auto-fiados, 10
+  migrados para navegação, 0 sem resolver, 0 remanescentes.
+
 ## 2026-08-14 — o modelo aprovado é artefato permanente
 
 - `pipeline/` é estado de trabalho de UM run e é descartado depois; por isso o modelo de workspaces

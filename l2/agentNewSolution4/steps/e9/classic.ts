@@ -63,7 +63,7 @@ export interface Ns4ClassicSiteMap {
   note: string;
   workspaces: Array<{ workspaceId: string; title: string; actors: string[]; kind: string; entity: string; operationIds: string[]; purpose: string }>;
   landings: Array<{ actorId: string; workspaceId: string; reason: string }>;
-  navigationEdges: Array<{ from: string; to: string; operationId: string; description: string }>;
+  navigationEdges: Array<{ from: string; to: string; operationId: string; description: string; prominence?: 'primary' | 'contextual'; order?: number }>;
   workspaceIds: string[];
 }
 
@@ -229,11 +229,22 @@ export function buildNs4ClassicSiteMap(model: Ns4E8Model, classic: Ns4ClassicWor
       actorId: landing.profileRef, workspaceId: landing.workspaceId,
       reason: byId.get(landing.workspaceId)?.purpose || '',
     })),
-    // A journey is reached from the hub that anchors it, never from the menu: the edge records that.
-    navigationEdges: hub ? (hub.hubCatalogue?.items || [])
-      .filter(item => byId.has(item.targetRef))
-      .map(item => ({ from: hub.workspaceId, to: item.targetRef, operationId: '', description: item.label }))
-      : [],
+    // A journey is reached from the hub that anchors it, never from the menu: the edge records that,
+    // with the prominence and order the composition chose — this is where the hub template reads them.
+    navigationEdges: [
+      ...model.workspaces.flatMap(workspace => (workspace.navigation || [])
+        .filter(target => byId.has(target.targetWorkspaceId))
+        .map(target => ({
+          from: workspace.workspaceId, to: target.targetWorkspaceId, operationId: '',
+          description: target.label, prominence: target.prominence, order: target.order,
+        }))),
+      // A tile the hub reads still links to the page that owns it, so the projection stays reachable.
+      ...(hub ? (hub.hubCatalogue?.items || [])
+        .filter(item => item.kind !== 'action' && item.kind !== 'pending'
+          && byId.has(item.targetRef) && item.targetRef !== hub.workspaceId)
+        .map(item => ({ from: hub.workspaceId, to: item.targetRef, operationId: '', description: item.label }))
+        : []),
+    ],
     workspaceIds: classic.map(workspace => workspace.workspaceId),
   };
 }

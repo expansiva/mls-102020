@@ -145,9 +145,28 @@ test('the hub composition may order, promote and name — never add or drop a ca
   assert.equal(composed.title, 'Painel do projeto');
   assert.deepEqual(composed.hubCatalogue!.items.map(item => item.itemId), proposal.tileOrder);
   assert.equal(composed.hubCatalogue!.items.find(item => item.itemId === catalogue.items[0].itemId)!.label, 'Custos');
-  // The record section now renders the composed catalogue, and nothing outside it.
+  // The record section renders what the hub READS, over calls of its own; a journey is navigation.
   const record = composed.sections.find(section => section.sectionId === 'record')!;
-  assert.equal(record.organisms.length, catalogue.items.length);
+  const readable = composed.hubCatalogue!.items.filter(item => item.kind !== 'action' && item.kind !== 'pending');
+  assert.equal(record.organisms.length, readable.filter(item => item.sourceOperationId).length);
+  const localQueries = new Set(composed.bffCalls.filter(call => call.kind === 'query').map(call => call.bffId));
+  assert.equal(record.organisms.every(organism => localQueries.has(organism.dataSource!)), true);
+  // A tile reuses the operation of the workspace that owns it — a new CALL, never a new operation.
+  readable.filter(item => item.sourceOperationId).forEach(item => {
+    const call = composed.bffCalls.find(entry => entry.bffId === (item.sourceBffId || ''))
+      || composed.bffCalls.find(entry => entry.operationId === item.sourceOperationId)!;
+    assert.equal(call.operationId, item.sourceOperationId);
+    assert.equal(model.operations.some(operation => operation.operationId === call.operationId), true);
+    // The shape travels with the call: a list read as an object would project a single record.
+    const owner = model.workspaces.find(entry => entry.workspaceId === item.targetRef)!;
+    assert.equal(call.outputKind, owner.bffCalls.find(entry => entry.bffId === call.bffId)!.outputKind);
+  });
+  // The actions the composition chose left the sections carrying their prominence and order.
+  const actions = composed.hubCatalogue!.items.filter(item => item.kind === 'action' || item.kind === 'pending');
+  assert.equal((composed.navigation || []).length, actions.length);
+  assert.equal(record.organisms.some(organism => actions.some(item => item.targetRef === organism.action)), false);
+  assert.equal((composed.navigation || []).filter(target => target.prominence === 'primary').length,
+    proposal.primaryActionIds.length);
 
   const invented = normalizeNs4HubComposition({ ...proposal, tileOrder: [...proposal.tileOrder, 'tileInvented'] }, hub.workspaceId, hub.title);
   const rejected = validateNs4HubComposition(catalogue, invented);
@@ -172,6 +191,59 @@ test('an invalid hub composition falls back to the derived order and records the
     resolution.artifact.hubCatalogue!.items.map(item => item.itemId),
     defaultNs4HubComposition(hub).tileOrder,
   );
+});
+
+test('a broken organism reference is repaired, migrated or dropped — never a dead run', () => {
+  const input = sources();
+  const model = deriveNs4E8Model(input);
+  const hub = model.workspaces.find(workspace => workspace.tier === 'hub')!;
+  const projection = model.workspaces.find(workspace => workspace.tier === 'projection'
+    && workspace.bffCalls.some(call => call.kind === 'query'))!;
+  const journey = model.workspaces.find(workspace => workspace.tier === 'journey')!;
+  const foreignQuery = projection.bffCalls.find(call => call.kind === 'query')!;
+
+  // The three vocabularies run 46 emitted into the record section of the hub.
+  const broken = {
+    ...model,
+    workspaces: model.workspaces.map(workspace => workspace.workspaceId !== hub.workspaceId ? workspace : {
+      ...workspace,
+      sections: workspace.sections.map(section => section.sectionId !== 'record' ? section : {
+        ...section,
+        organisms: [
+          { role: 'detailPanel' as const, dataSource: projection.workspaceId },
+          { role: 'contextualAction' as const, action: journey.workspaceId },
+          { role: 'detailPanel' as const, dataSource: 'panelNobodyDerived' },
+        ],
+      }),
+    }),
+  };
+  const gate = validateNs4E8Model(broken, input);
+  // The detection did not loosen: all three are still findings.
+  assert.equal(gate.issues.filter(issue => issue.code === 'NS4_E8_ORGANISM_SOURCE').length, 2);
+  assert.equal(gate.issues.filter(issue => issue.code === 'NS4_E8_ORGANISM_ACTION').length, 1);
+
+  const resolved = resolveNs4E8ModelFindings(broken, gate.issues);
+  assert.deepEqual(resolved.unresolved, []);
+  const repaired = resolved.artifact.workspaces.find(workspace => workspace.workspaceId === hub.workspaceId)!;
+  const record = repaired.sections.find(section => section.sectionId === 'record')!;
+
+  // 1. The projection tile became a local call over the SAME shared operation, with its shape.
+  const wired = repaired.bffCalls.find(call => call.bffId === foreignQuery.bffId)!;
+  assert.equal(wired.operationId, foreignQuery.operationId);
+  assert.equal(wired.outputKind, foreignQuery.outputKind);
+  assert.equal(record.organisms.some(organism => organism.dataSource === foreignQuery.bffId), true);
+  // 2. The journey action left the sections and became navigation.
+  assert.equal(record.organisms.some(organism => organism.action === journey.workspaceId), false);
+  assert.equal((repaired.navigation || []).some(target => target.targetWorkspaceId === journey.workspaceId), true);
+  // 3. What resolved to nothing lost its panel — the hub degrades, the run continues.
+  assert.equal(record.organisms.some(organism => organism.dataSource === 'panelNobodyDerived'), false);
+  assert.equal(record.organisms.length, 1, 'the wired tile stayed; the action and the phantom left');
+  assert.deepEqual(
+    resolved.systemDecisions.filter(decision => decision.findingRef.startsWith('NS4_E8_ORGANISM_')).map(decision => decision.chosen).sort(),
+    ['dropUnbuildablePanel', 'openJourneyScreen', 'wireLocalQuery'],
+  );
+  assert.equal(validateNs4E8Model(resolved.artifact, input).issues
+    .filter(issue => issue.severity !== 'warning').length, 0);
 });
 
 test('actors are actor ids and profileRefs are E3 profiles — the backend derives route scopes from actors', () => {

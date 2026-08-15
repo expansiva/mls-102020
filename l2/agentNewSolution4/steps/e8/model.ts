@@ -103,6 +103,8 @@ export interface Ns4E8ModelWorkspace {
   sections: Ns4E8Section[];
   /** Only a hub carries the closed catalogue its composition call may order and name. */
   hubCatalogue?: Ns4E8HubCatalogue;
+  /** Workspaces this one links to; the site map turns them into navigation edges. */
+  navigation?: Ns4E8NavigationTarget[];
 }
 
 export interface Ns4E8HubCatalogueItem {
@@ -110,9 +112,29 @@ export interface Ns4E8HubCatalogueItem {
   kind: 'projectionTile' | 'relatedList' | 'action' | 'pending';
   label: string;
   entityRef: string;
-  /** The bffId or workspaceId the item opens; never invented by the composition call. */
+  /** The workspace the item belongs to; never invented by the composition call. */
   targetRef: string;
+  /**
+   * For an item the hub READS: the operation behind it. Operations are shared across the module and
+   * calls are per workspace, so a tile becomes a local call of the hub over the same operation — an
+   * organism only ever consumes a call of its own workspace.
+   */
+  sourceOperationId?: string;
+  sourceBffId?: string;
+  /** The shape the source call declares; a list read as an object would project a single record. */
+  sourceOutputKind?: 'object' | 'list' | 'paginated';
   score: number;
+}
+
+/**
+ * A journey reached from the hub is NAVIGATION, not an embedded command: it leaves the sections and
+ * travels to the site map, carrying the prominence and order the composition chose.
+ */
+export interface Ns4E8NavigationTarget {
+  targetWorkspaceId: string;
+  label: string;
+  prominence: 'primary' | 'contextual';
+  order: number;
 }
 
 export interface Ns4E8HubCatalogue {
