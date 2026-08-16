@@ -21,8 +21,11 @@ import {
   collectPageExperienceIssues,
   collectTechnicalVocabularyIssues,
   collectPageTemplateHygieneIssues,
+  contractTsPathOf,
   countPage11Items,
+  countSharedItems,
   isSystemicPageFailure,
+  isSystemicSharedFailure,
   parseDefs,
   testPathForOutputPath,
   validateGeneratedPageQuality,
@@ -164,6 +167,21 @@ async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.
       hookSequential,
       'failed',
       `MATERIALIZE-SYSTEMIC-FAILURE: all ${total} page11 item(s) failed the first compile. That points at an environment/configuration fault (typically a package or path the compiler cannot resolve — check the repeated error below), not at ${total} independent code bugs. Repair rounds were NOT started: they cannot fix a resolution fault and would rewrite already-correct files until they regress. Fix the root cause and re-run.\n${summary}`,
+    )];
+  }
+
+  // Same reasoning for the shared phase (run cf2: 34/34 broken with the same first error). Kept as a
+  // separate guard because the two phases fail for different reasons — and this one is defence in
+  // depth now that the contract is preloaded before the shared compiles.
+  if (isSystemicSharedFailure(args.attempt, checkedItems)) {
+    const total = countSharedItems(checkedItems);
+    return [createUpdateStatusIntent(
+      context,
+      parentStep,
+      step,
+      hookSequential,
+      'failed',
+      `MATERIALIZE-SYSTEMIC-FAILURE: all ${total} shared item(s) failed the first compile. That points at an environment/configuration fault (typically a contract or path the compiler cannot resolve — check the repeated error below), not at ${total} independent code bugs. Repair rounds were NOT started: they cannot fix a resolution fault and would rewrite already-correct files until they regress. Fix the root cause and re-run.\n${summary}`,
     )];
   }
 
@@ -358,7 +376,12 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   // and — because the verify item set only shrinks — was never re-checked). Best-effort: never block.
   const sharedDefsPath = pipelineItem.type === 'l2_page' ? sharedDefsPathForPageOutput(outputPath) : null;
   const sharedDefs = sharedDefsPath ? await getContentByMlsPath(sharedDefsPath) : null;
-  if (pipelineItem.type === 'l2_page') await preloadPageTypecheckDeps(sharedDefsPath, sharedDefs);
+  if (pipelineItem.type === 'l2_page') {
+    await preloadTypecheckDeps([sharedDefsPath ? sharedDefsPath.replace(/\.defs\.ts$/, '.ts') : null, contractTsPathOf(sharedDefs)]);
+  } else if (pipelineItem.type === 'l2_shared') {
+    // The shared imports its own contract; its defs is the one already read above.
+    await preloadTypecheckDeps([contractTsPathOf(defsContent)]);
+  }
 
   const errors = [...await compileMlsPathAndGetErrors(outputPath)];
   const warnings: string[] = [];
@@ -424,21 +447,20 @@ function deriveVerifyModule(items: GenStepArgs[]): string {
   return '';
 }
 
-// Compile the page's dependency .d.ts (its shared base class runtime .ts + the contract .ts it imports)
-// so they are loaded/typed BEFORE the page compiles — otherwise the Studio per-file compile resolves the
-// imports loosely and cross-file type errors vanish. Best-effort: a dep that fails to compile just leaves
-// its import unresolved (same as the old behaviour), never throws.
-async function preloadPageTypecheckDeps(sharedDefsPath: string | null, sharedDefs: string | null): Promise<void> {
-  const deps: string[] = [];
-  if (sharedDefsPath) deps.push(sharedDefsPath.replace(/\.defs\.ts$/, '.ts'));
-  if (sharedDefs) {
-    try {
-      const data = parseDefs(sharedDefs).data as Record<string, unknown>;
-      const ref = data && typeof data.contractRef === 'object' && data.contractRef ? data.contractRef as Record<string, unknown> : null;
-      if (ref && typeof ref.tsPath === 'string' && ref.tsPath) deps.push(ref.tsPath);
-    } catch { /* malformed shared defs: skip the contract dep */ }
-  }
+// Compile a file's dependency .d.ts (a page: its shared base class runtime .ts + the contract it
+// imports; a shared: the contract it imports) so they are loaded/typed BEFORE it compiles —
+// otherwise the Studio per-file compile resolves the imports loosely. The contract model is
+// disposed as soon as the contract phase compiled it, so without this the shared saw its own import
+// as unresolvable (TS2792 on all 34 of them in run cf2) and every one was declared broken.
+// Best-effort: a dep that fails to compile just leaves its import unresolved, never throws.
+//
+// The preloaded model is deliberately LEFT ALIVE for the rest of the phase: it exists precisely so
+// the files compiled after it can resolve their imports, and disposing it here would recreate the
+// very problem this solves. It is bounded (one per contract) and released with the phase, so this is
+// not the unbounded listener leak of 29/jul.
+async function preloadTypecheckDeps(deps: Array<string | null>): Promise<void> {
   for (const dep of deps) {
+    if (!dep) continue;
     try { await getCompiledDtsByMlsPath(dep); } catch { /* best-effort */ }
   }
 }

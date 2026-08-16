@@ -71,6 +71,49 @@ export function countPage11Items(items: { outputPath: string | null }[]): number
 }
 
 /**
+ * The contract .ts a shared/page defs declares, or '' when it names none. The contract model is
+ * disposed as soon as the contract phase compiled it, so whoever compiles a file that imports it has
+ * to load it back first — otherwise the import resolves to nothing and yields a false TS2792.
+ */
+export function contractTsPathOf(defsContent: string | null): string {
+  if (!defsContent) return '';
+  try {
+    const data = parseDefs(defsContent).data as Record<string, unknown>;
+    const ref = data && typeof data.contractRef === 'object' && data.contractRef ? data.contractRef as Record<string, unknown> : null;
+    return ref && typeof ref.tsPath === 'string' ? ref.tsPath : '';
+  } catch {
+    return '';   // malformed defs: no contract dep to preload
+  }
+}
+
+const SHARED_OUTPUT = /\/web\/shared\/[^/]+\.ts$/;
+
+/**
+ * The same guard for the SHARED phase, which has its own way of failing wholesale: in run cf2 all 34
+ * shared files broke on the first compile with the SAME first error (a false TS2792 — the contract
+ * model had been disposed), and the repair fan-out started anyway. One environment fault is not 34
+ * code bugs, and rewriting 34 correct files is how the previous run regressed them.
+ *
+ * Kept independent from the page guard: the two phases fail for different reasons and one must never
+ * mask the other. A `.defs.ts` is never an output of this phase, so it is excluded.
+ */
+export function isSystemicSharedFailure(attempt: number, items: { outputPath: string | null; errors: string[] }[]): boolean {
+  if (attempt !== 1) return false;
+  const shared = items.filter(item => isSharedOutput(item.outputPath));
+  return shared.length >= SYSTEMIC_FAILURE_MIN_PAGES && shared.every(item => item.errors.length > 0);
+}
+
+/** The shared items considered by isSystemicSharedFailure — used to report how many failed. */
+export function countSharedItems(items: { outputPath: string | null }[]): number {
+  return items.filter(item => isSharedOutput(item.outputPath)).length;
+}
+
+function isSharedOutput(outputPath: string | null): boolean {
+  const path = outputPath || '';
+  return SHARED_OUTPUT.test(path) && !path.endsWith('.defs.ts');
+}
+
+/**
  * B1 — internal vocabulary must never reach the screen.
  *
  * `displayHint` "summary-first" became a tile literally titled "Summary first" in the 31/jul test. The

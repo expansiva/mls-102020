@@ -758,7 +758,7 @@ test('ns4 and the old dialect coexist: each module is reconciled and planned by 
   // Neither module reports the other's owners as missing (the ns4 todo has no operation owner, the
   // old one has no workspace owner) — a project-wide answer would have failed the whole run.
   assert.deepEqual(ctx.warnings.filter((warning: string) => /missing l4 owner|absent from l4/.test(warning)), []);
-  const pages = new Map(ctx.pages.map((page: any) => [page.moduleName, page]));
+  const pages = new Map<string, any>(ctx.pages.map((page: any) => [page.moduleName, page]));
   assert.deepEqual(pages.get(NS4)?.ownerIds[0], 'workspace:projectCatalogue');
   assert.deepEqual(pages.get('oldShop')?.ownerIds, ['operation:listItem']);
 });

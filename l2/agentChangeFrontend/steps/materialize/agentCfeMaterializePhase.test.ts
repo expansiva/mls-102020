@@ -5,7 +5,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SYSTEMIC_FAILURE_MIN_PAGES, countPage11Items, isSystemicPageFailure } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import {
+  SYSTEMIC_FAILURE_MIN_PAGES, contractTsPathOf, countPage11Items, countSharedItems,
+  isSystemicPageFailure, isSystemicSharedFailure,
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -104,4 +107,72 @@ void test('the split fan-out of the page waits for the organisms', () => {
   // a pagina importa o que os organismos exportam: nao pode comecar antes deles.
   assert.match(src, /createFanoutStep\(pagePlanId,[^)]*\[organismsPlanId\]\)/s);
   assert.match(src, /status: dependsOn\.length \? 'waiting_dependency' : 'in_progress'/);
+});
+
+// ── the shared phase (run cf2) ───────────────────────────────────────────────
+const sharedItem = (name: string, errors: string[]) => ({
+  outputPath: `_102046_/l2/buildFlowFsm47/web/shared/${name}.ts`,
+  errors,
+});
+
+void test('systemic guard trips when every shared item fails the first compile', () => {
+  // Run cf2: all 34 shared files broke with the SAME first error (a false TS2792 — the contract model
+  // had been disposed) and the repair fan-out started anyway, rewriting 34 correct files.
+  const items = ['a', 'b', 'c'].map(name => sharedItem(name, ["TS2792 Cannot find module '/_102046_/l2/buildFlowFsm47/web/contracts/x.js'"]));
+  assert.equal(isSystemicSharedFailure(1, items), true);
+  assert.equal(countSharedItems(items), 3);
+  // Only on the first attempt, and never below the minimum.
+  assert.equal(isSystemicSharedFailure(2, items), false);
+  assert.equal(isSystemicSharedFailure(1, items.slice(0, 2)), false);
+  // One shared that compiles means the fault is not systemic.
+  assert.equal(isSystemicSharedFailure(1, [sharedItem('a', []), ...items]), false);
+});
+
+void test('the two systemic guards never count each other', () => {
+  const mixed = [
+    ...['a', 'b', 'c'].map(name => sharedItem(name, ['boom'])),
+    ...['a', 'b', 'c'].map(name => pageItem('page11', name, [])),
+  ];
+  assert.equal(isSystemicSharedFailure(1, mixed), true);
+  assert.equal(isSystemicPageFailure(1, mixed), false);
+  assert.equal(countSharedItems(mixed), 3);
+  assert.equal(countPage11Items(mixed), 3);
+  // A defs is never an output of this phase and must not be counted as a shared item.
+  assert.equal(countSharedItems([{ outputPath: '_102046_/l2/buildFlowFsm47/web/shared/a.defs.ts', errors: ['boom'] }]), 0);
+});
+
+// The contract model is disposed as soon as the contract phase compiled it, so a shared that imports
+// it saw an unresolvable import (TS2792 on all 34 in run cf2). Both the scaffold gate and the verify
+// must load it back first.
+void test('a shared verifies with its contract preloaded, not only a page', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  assert.match(src, /pipelineItem\.type === 'l2_shared'[\s\S]{0,200}preloadTypecheckDeps\(\[contractTsPathOf\(defsContent\)\]\)/);
+  const gen = readFileSync(path.join(HERE, 'agentCfeMaterializeGen.ts'), 'utf8');
+  assert.match(gen, /getCompiledDtsByMlsPath\(contractTsPath\)[\s\S]{0,200}compileAndGetErrors/);
+});
+
+void test('contractTsPathOf reads the contract the defs declares, and never throws', () => {
+  const defs = (body: string) => `export const x = ${body} as const;\n\nexport const pipeline = [] as const;\n`;
+  assert.equal(contractTsPathOf(defs(JSON.stringify({ data: { contractRef: { tsPath: '_102046_/l2/m/web/contracts/p.ts' } } }))), '_102046_/l2/m/web/contracts/p.ts');
+  assert.equal(contractTsPathOf(defs(JSON.stringify({ data: { componentName: 'x' } }))), '');
+  assert.equal(contractTsPathOf('not a defs file at all'), '');
+  assert.equal(contractTsPathOf(null), '');
+});
+
+// T1: the server matches the waiting slot by EXACT string (`q.args === args`), so the slot's args must
+// travel verbatim. Re-serializing the parsed object reordered the keys on a repair and the fan-out
+// slot was never found — the round hung in waiting_human_input and the task never finished.
+void test('the repair args string is never rebuilt on the way to prompt_ready', () => {
+  const queued = JSON.stringify({ planId: 'materialize-x-l2-shared', defPath: '_102046_/l2/m/a.defs.ts', itemId: 'item1', attempt: 2 });
+  // What the old code sent back, after parse + spread: the same data, a different string.
+  const parsed = JSON.parse(queued);
+  const rebuilt = JSON.stringify({ planId: parsed.planId, defPath: parsed.defPath, attempt: parsed.attempt, itemId: parsed.itemId });
+  assert.notEqual(rebuilt, queued, 'the reorder is what broke the match');
+
+  const gen = readFileSync(path.join(HERE, 'agentCfeMaterializeGen.ts'), 'utf8');
+  // The raw string reaches the intent factory and is used as-is.
+  assert.match(gen, /createPromptReadyIntent\(context, parentStep, hookSequential, args, genContext/);
+  assert.match(gen, /rawArgs: string/);
+  assert.match(gen, /const args = rawArgs;/);
+  assert.doesNotMatch(gen, /const args = JSON\.stringify\(compactArgs\)/);
 });
