@@ -30,11 +30,19 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // named a module (e.g. "@@changeFrontend /rebuild all cafeFlow"), process exactly that one;
     // otherwise the first module (todo order) that still has pending pages. Other modules are handled by
     // re-running the agent. 'all'/'defs' are CLI keywords and never reach here as a module (parseCliCommand).
-    const targetModule = scanArgs.module || createContext.moduleNames.find(name => createContext.pages.some(page => page.moduleName === name));
+    // Module names are canonical camelCase, but they are typed by hand ('buildFlowFSM47'): resolve the
+    // request against the modules that exist, or the run reports "no pending pages" for a module that
+    // has 34 of them.
+    const requested = scanArgs.module
+      ? createContext.moduleNames.find(name => name.toLowerCase() === scanArgs.module!.toLowerCase()) || scanArgs.module
+      : '';
+    const targetModule = requested || createContext.moduleNames.find(name => createContext.pages.some(page => page.moduleName === name));
     createContext.pages = targetModule ? createContext.pages.filter(page => page.moduleName === targetModule) : [];
 
     if (createContext.pages.length === 0) {
-      const reason = scanArgs.module ? `No todoFrontend=toCreate pages for module ${scanArgs.module}.` : 'No todoFrontend=toCreate owners.';
+      const reason = scanArgs.module
+        ? `No todoFrontend=toCreate pages for module ${requested}${createContext.moduleNames.includes(requested) ? '' : ` (known modules: ${createContext.moduleNames.join(', ') || 'none'})`}.`
+        : 'No todoFrontend=toCreate owners.';
       if (scanArgs.materialize !== false) {
         const materialize = createMaterializeStep(scanArgs, []);
         return [

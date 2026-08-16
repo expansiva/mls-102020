@@ -39,7 +39,7 @@ import {
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
 import { findLanguageByCode } from '/_102027_/l2/collabLanguages.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
-import { parseDefsSource } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
+import { parseDefsSource, replaceDefsValue } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentChangeFrontend/uxTemplates/selectUxTemplates.js';
 
 type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
@@ -473,6 +473,9 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
     // l4 holds ONLY .defs.ts (it is not a compilable layer). Never read a .ts/.d.ts from l4 — the l2
     // contract .ts is generated deterministically from the bffCall in the workspace defs (F3).
     if (extension !== '.defs.ts') continue;
+    // The approved workspace model is the generator's own contract (hundreds of KB) and nothing here
+    // reads it: the pages come from workspaces/ + siteMap. Skipping it before the parse is free.
+    if (shortName === 'workspace-model') continue;
     const parsed = parseDefsSource(String(await file.getContent()));
     if (!parsed) continue;
     const fileInfo: FileInfo = { project: file.project, level: file.level, folder, shortName, extension };
@@ -483,7 +486,9 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
     const topModule = folder && !folder.includes('/') ? folder : '';
 
     if (folder === 'workflows' || folder.endsWith('/workflows')) {
-      const workflow = workflowFromData(parsed.data, fileInfo, parsed.exportName, folderModule);
+      // ns4 workflows are entity lifecycles (states/transitions) with no operations and no page: they
+      // are lifecycle metadata, never an owner of frontend work.
+      const workflow = isEntityLifecycle(parsed.data) ? null : workflowFromData(parsed.data, fileInfo, parsed.exportName, folderModule);
       if (workflow) workflows.set(workflow.workflowId, workflow);
     } else if (folder === 'operations' || folder.endsWith('/operations')) {
       const operation = operationFromData(parsed.data, fileInfo, parsed.exportName, folderModule);
@@ -504,6 +509,14 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
     } else if (shortName === 'actors' && topModule) {
       ensureModule(modules, topModule);
       actorsByModule[topModule] = actorsFromData(parsed.data);
+    } else if (shortName === 'access-matrix' || folder.endsWith('/access')) {
+      // ns4: the audience of the module is the access matrix, whose profileIds are the same ids the
+      // workspaces and operations already name as actors.
+      const moduleName = readString(parsed.data.moduleName) || folderModule || topModule;
+      if (moduleName) {
+        ensureModule(modules, moduleName);
+        actorsByModule[moduleName] = profilesFromData(parsed.data);
+      }
     } else if (shortName === 'module' && topModule) {
       const moduleData = isRecord(parsed.data.module) ? parsed.data.module : parsed.data;
       const designContext = isRecord(parsed.data.designContext) ? parsed.data.designContext : {};
@@ -516,8 +529,17 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
       // which makes 'en' + 'en-AU' indistinguishable — a module CAN declare both (a regional variant next
       // to the plain language), so the runtime config and the translation handoff must use THIS list.
       module.i18nLocalesRaw = runtimeLocaleKeys(readStringArray(moduleData.languages));
-      module.i18nDefaultLocale = languageKey(readString(designContext.userLanguage)) || module.i18nLocales[0] || '';
-      module.i18nDefaultLocaleRaw = runtimeLocaleKey(readString(designContext.userLanguage)) || module.i18nLocalesRaw[0] || '';
+      // ns/ns3 recorded the user language in designContext; ns4 declares the product languages and
+      // the default in `localization`. Reading only designContext silently defaulted a module to its
+      // first declared language, which is not the one the product was written in.
+      const localization = isRecord(parsed.data.localization) ? parsed.data.localization : isRecord(moduleData.localization) ? moduleData.localization : {};
+      const declaredDefault = readString(localization.defaultLanguage) || readString(designContext.userLanguage);
+      if (!module.i18nLocales.length) {
+        module.i18nLocales = languageKeys(readStringArray(localization.productLanguages));
+        module.i18nLocalesRaw = runtimeLocaleKeys(readStringArray(localization.productLanguages));
+      }
+      module.i18nDefaultLocale = languageKey(declaredDefault) || module.i18nLocales[0] || '';
+      module.i18nDefaultLocaleRaw = runtimeLocaleKey(readString(localization.defaultLocale) || declaredDefault) || module.i18nLocalesRaw[0] || '';
     } else if (folder.endsWith('/ontology')) {
       const moduleName = folder.split('/')[0];
       const entity = entityFromData(parsed.data, shortName);
@@ -527,7 +549,9 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
         entities.set(entity.entityId, entity);
       }
     } else if (folder.endsWith('/journeys')) {
-      const journey = journeyFromData(parsed.data, folder.split('/')[0]);
+      // ns4 journeys are business artifacts ({journeyId, business, realization}), not the map of
+      // workspaces this agent reads: its map comes entirely from workspaces/ + siteMap.
+      const journey = readString(parsed.data.journeyId) ? null : journeyFromData(parsed.data, folder.split('/')[0]);
       if (journey) journeys.set(journey.moduleName, journey);
     }
   }
@@ -573,17 +597,39 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   // Scope the todo to modules that exist in l4 so an orphaned module's stale l5 never blocks the run.
   const todoState = await readFrontendTodoState(project, new Set(moduleNames));
   const warnings: string[] = [...todoState.warnings];
-  const ownerKeys = new Set<string>([
-    ...Array.from(operations.values()).map(op => `operation:${op.operationId}`),
-    ...Array.from(workflows.values()).map(wf => `workflow:${wf.workflowId}`),
-  ]);
+  // Every key l4 offers, by owner type. The todo is reconciled ONLY against the types it declares:
+  // ns4 tracks workspace+contract and never mentions an operation, ns/ns3 does the opposite, and
+  // demanding both would make each dialect report the other's owners as missing.
+  const l4Keys: Record<CfeTodoOwnerType, Set<string>> = {
+    operation: new Set(Array.from(operations.values()).map(op => `operation:${op.operationId}`)),
+    workflow: new Set(Array.from(workflows.values()).map(wf => `workflow:${wf.workflowId}`)),
+    workspace: new Set(),
+    contract: new Set(),
+  };
+  for (const workspaces of standaloneWorkspaces.values()) {
+    for (const workspace of workspaces) {
+      l4Keys.workspace.add(`workspace:${workspace.workspaceId}`);
+      for (const call of workspace.bffCalls) if (call.route) l4Keys.contract.add(`contract:${call.route}`);
+    }
+  }
+  const ownerKeys = new Set<string>([...l4Keys.operation, ...l4Keys.workflow]);
   if (ownerKeys.size > 0 && todoState.files === 0) {
     throw new Error('l5/{module}/todoFrontend.defs.ts not found; frontend generation status must come from todoFrontend, not inline l4 statusFrontend.');
   }
+  // Per MODULE: a project can hold one module written by ns4 (workspace owners) next to one written
+  // by ns/ns3 (operation owners), and a project-wide answer would make each one read the other's rule.
+  const declaredByModule = new Map<string, Set<CfeTodoOwnerType>>();
+  for (const owner of todoState.ownersByKey.values()) {
+    if (!declaredByModule.has(owner.moduleName)) declaredByModule.set(owner.moduleName, new Set());
+    declaredByModule.get(owner.moduleName)!.add(owner.ownerType);
+  }
+  const declaresType = (moduleName: string, type: CfeTodoOwnerType): boolean =>
+    !!declaredByModule.get(moduleName)?.has(type);
+  const declaredTypes = new Set([...todoState.ownersByKey.values()].map(owner => owner.ownerType));
   const missingTodo: string[] = [];
   for (const operation of operations.values()) {
     const todoOwner = todoState.ownersByKey.get(`operation:${operation.operationId}`);
-    if (!todoOwner) { missingTodo.push(`operation:${operation.operationId}`); continue; }
+    if (!todoOwner) { if (declaresType(operation.moduleName, 'operation')) missingTodo.push(`operation:${operation.operationId}`); continue; }
     operation.todoStatus = todoOwner.status;
     if (operation.inlineStatusFrontend && operation.inlineStatusFrontend !== todoOwner.status) {
       warnings.push(`operation:${operation.operationId} inline statusFrontend=${operation.inlineStatusFrontend} ignored; todoFrontend=${todoOwner.status}`);
@@ -591,13 +637,24 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   }
   for (const workflow of workflows.values()) {
     const todoOwner = todoState.ownersByKey.get(`workflow:${workflow.workflowId}`);
-    if (!todoOwner) { missingTodo.push(`workflow:${workflow.workflowId}`); continue; }
+    if (!todoOwner) { if (declaresType(workflow.moduleName, 'workflow')) missingTodo.push(`workflow:${workflow.workflowId}`); continue; }
     workflow.todoStatus = todoOwner.status;
     if (workflow.inlineStatusFrontend && workflow.inlineStatusFrontend !== todoOwner.status) {
       warnings.push(`workflow:${workflow.workflowId} inline statusFrontend=${workflow.inlineStatusFrontend} ignored; todoFrontend=${todoOwner.status}`);
     }
   }
-  const extraTodo = [...todoState.ownersByKey.keys()].filter(key => !ownerKeys.has(key));
+  for (const [moduleName, workspaces] of standaloneWorkspaces) {
+    for (const workspace of workspaces) {
+      if (declaresType(moduleName, 'workspace') && !todoState.ownersByKey.has(`workspace:${workspace.workspaceId}`)) {
+        missingTodo.push(`workspace:${workspace.workspaceId}`);
+      }
+      if (!declaresType(moduleName, 'contract')) continue;
+      for (const call of workspace.bffCalls) {
+        if (call.route && !todoState.ownersByKey.has(`contract:${call.route}`)) missingTodo.push(`contract:${call.route}`);
+      }
+    }
+  }
+  const extraTodo = [...todoState.ownersByKey.keys()].filter(key => !l4Keys[todoState.ownersByKey.get(key)!.ownerType].has(key));
   if (missingTodo.length || extraTodo.length || todoState.errors.length) {
     throw new Error([
       ...todoState.errors,
@@ -613,7 +670,14 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
     if (edgeCount === 0) warnings.push(`journey ${journey.moduleName}: no navigationEdges; navigation falls back to selectedEntity from inputs`);
   }
 
-  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, journeys: journeyList, actorsByModule, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList), warnings };
+  // ns4 tracks the page itself: a workspace owner marked toCreate IS the pending page. A module with
+  // no workspace owners keeps deriving pendency from its pending operations (ns/ns3), so the two
+  // dialects can live in the same project without either reading the other's rule.
+  const pendingWorkspaces = {
+    modules: new Set([...declaredByModule].filter(([, types]) => types.has('workspace')).map(([moduleName]) => moduleName)),
+    ids: new Set([...todoState.ownersByKey.values()].filter(owner => owner.ownerType === 'workspace' && owner.status === 'toCreate').map(owner => owner.ownerId)),
+  };
+  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, journeys: journeyList, actorsByModule, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList, pendingWorkspaces), warnings };
 }
 
 export async function generatePageDefs(page: CfePagePlan): Promise<void> {
@@ -3439,11 +3503,44 @@ function contractTsPath(project: number, page: CfePagePlan): string { return `_$
 // (the L4 v2 model): this can split one workflow across actors and group entityManagement CRUD
 // into a single page. Without a journey (or for owners not covered by any workspace), it falls
 // back to the legacy workflow/operation grouping.
-function buildPagePlans(workflows: Map<string, CfeWorkflowDef>, operations: Map<string, CfeOperationDef>, moduleFallback: string, journeys: CfeJourneyMap[] = []): CfePagePlan[] {
+function buildPagePlans(
+  workflows: Map<string, CfeWorkflowDef>, operations: Map<string, CfeOperationDef>, moduleFallback: string,
+  journeys: CfeJourneyMap[] = [],
+  pendingWorkspaces: { modules: Set<string>; ids: Set<string> } = { modules: new Set(), ids: new Set() },
+): CfePagePlan[] {
   const pendingWorkflows = Array.from(workflows.values()).filter(owner => owner.todoStatus === 'toCreate');
   const pendingOperations = Array.from(operations.values()).filter(owner => owner.todoStatus === 'toCreate');
-  const workspaces = journeys.flatMap(journey => journey.workspaces);
-  if (workspaces.length === 0) return buildLegacyPagePlans(pendingWorkflows, pendingOperations, moduleFallback);
+  // A module whose todo owns workspaces plans BY PAGE; the others keep planning by pending owner.
+  const pageDriven = journeys.filter(journey => pendingWorkspaces.modules.has(journey.moduleName));
+  const ownerDriven = journeys.filter(journey => !pendingWorkspaces.modules.has(journey.moduleName));
+  const workspaces = ownerDriven.flatMap(journey => journey.workspaces);
+  if (workspaces.length === 0 && !pageDriven.length) return buildLegacyPagePlans(pendingWorkflows, pendingOperations, moduleFallback);
+  // The todo owns the page: pendency is the workspace's, and its operations come along whatever their
+  // own status is — in this dialect an operation has no status of its own (it belongs to the backend).
+  const byPage: CfePagePlan[] = pageDriven.flatMap(journey => journey.workspaces)
+      .filter(ws => pendingWorkspaces.ids.has(ws.workspaceId))
+      .map(ws => {
+        const wsOps = ws.operationIds.map(id => operations.get(id)).filter((op): op is CfeOperationDef => !!op);
+        const wsWf = ws.workflowId ? workflows.get(ws.workflowId) : undefined;
+        return {
+          pageId: toSafeShortName(ws.workspaceId),
+          pageName: ws.title || humanizeId(ws.workspaceId),
+          moduleName: wsWf?.moduleName || wsOps[0]?.moduleName || moduleFallback,
+          sourceKind: ws.kind === 'workflow' ? 'workflow' as const : 'operation' as const,
+          // What this run will mark done: the page and every wire it writes.
+          ownerIds: unique([`workspace:${ws.workspaceId}`, ...ws.bffCalls.map(call => `contract:${call.route}`).filter(key => key !== 'contract:')]),
+          actorIds: unique([ws.actor, ...(wsWf ? wsWf.actors : []), ...wsOps.map(op => op.actor)]),
+          entityIds: unique([ws.entity, ...(wsWf ? wsWf.entities : []), ...wsOps.flatMap(operationEntities)]),
+          operationIds: unique(wsOps.map(op => op.operationId)),
+          rulesApplied: unique([...(wsWf ? wsWf.rulesApplied : []), ...wsOps.flatMap(op => op.rulesApplied)]),
+          capabilities: unique([...(wsWf ? wsWf.capabilities.map(capability => readString(capability.capabilityId)) : []), ...wsOps.map(op => readString(op.capability?.capabilityId))]),
+          origin: workspaceOrigin(ws, wsWf, wsOps),
+        };
+      });
+  if (workspaces.length === 0) {
+    return [...byPage, ...buildLegacyPagePlans(pendingWorkflows, pendingOperations, moduleFallback)]
+      .sort((a, b) => `${a.moduleName}:${a.pageId}`.localeCompare(`${b.moduleName}:${b.pageId}`));
+  }
 
   const pendingOpsById = new Map(pendingOperations.map(op => [op.operationId, op]));
   const pendingWfById = new Map(pendingWorkflows.map(wf => [wf.workflowId, wf]));
@@ -3476,6 +3573,7 @@ function buildPagePlans(workflows: Map<string, CfeWorkflowDef>, operations: Map<
   const leftoverWorkflows = pendingWorkflows.filter(wf => !coveredWfs.has(wf.workflowId));
   const leftoverOperations = pendingOperations.filter(op => !coveredOps.has(op.operationId));
   pages.push(...buildLegacyPagePlans(leftoverWorkflows, leftoverOperations, moduleFallback));
+  pages.push(...byPage);
   return pages.sort((a, b) => `${a.moduleName}:${a.pageId}`.localeCompare(`${b.moduleName}:${b.pageId}`));
 }
 
@@ -4026,7 +4124,25 @@ async function updateOwnerStatuses(context: CfeCreateContext, ownerIds: string[]
   return setTodoFrontendStatuses(context.project, new Set(ownerIds), status);
 }
 
-interface CfeTodoOwner { ownerType: string; ownerId: string; status: string; moduleName: string; }
+interface CfeTodoOwner { ownerType: CfeTodoOwnerType; ownerId: string; status: string; moduleName: string; workspaceId: string; }
+
+/**
+ * The generator names the units of frontend work in its own vocabulary. ns/ns3 tracked the l4 owners
+ * (`operation`/`workflow`) with `status`; ns4 tracks what this agent actually produces — the page
+ * (`workspace`) and the wire (`contract`, keyed by the bffCall route) — with `statusFrontend`.
+ * Both are read; the run reconciles against the owner types the file actually declares.
+ */
+type CfeTodoOwnerType = 'operation' | 'workflow' | 'workspace' | 'contract';
+const TODO_OWNER_TYPES: readonly CfeTodoOwnerType[] = ['operation', 'workflow', 'workspace', 'contract'];
+const TODO_STATUS_FIELDS = ['status', 'statusFrontend'] as const;
+
+function todoOwnerType(raw: string): CfeTodoOwnerType | '' {
+  return TODO_OWNER_TYPES.includes(raw as CfeTodoOwnerType) ? raw as CfeTodoOwnerType : '';
+}
+/** The field the file actually uses, so a write-back lands where the read came from. */
+function todoStatusField(raw: Record<string, unknown>): typeof TODO_STATUS_FIELDS[number] {
+  return TODO_STATUS_FIELDS.find(field => typeof raw[field] === 'string') || 'status';
+}
 interface CfeTodoState { files: number; moduleNames: string[]; ownersByKey: Map<string, CfeTodoOwner>; warnings: string[]; errors: string[]; }
 
 function isOwnerStatus(status: string): boolean {
@@ -4060,14 +4176,14 @@ async function readFrontendTodoState(project: number, validModules: Set<string>)
     if (moduleName) moduleNames.add(moduleName);
     const owners = Array.isArray(data.owners) ? data.owners.filter(isRecord) : [];
     for (const raw of owners) {
-      const ownerType = readString(raw.ownerType);
+      const ownerType = todoOwnerType(readString(raw.ownerType));
       const ownerId = readString(raw.ownerId);
-      const status = readString(raw.status);
-      if ((ownerType !== 'operation' && ownerType !== 'workflow') || !ownerId) { errors.push(`todoFrontend ${moduleName || String(file.folder || '')} has invalid owner entry`); continue; }
+      const status = readString(raw[todoStatusField(raw)]);
+      if (!ownerType || !ownerId) { errors.push(`todoFrontend ${moduleName || String(file.folder || '')} has invalid owner entry`); continue; }
       if (!isOwnerStatus(status)) { errors.push(`todoFrontend ${moduleName || String(file.folder || '')}/${ownerType}:${ownerId} has invalid status "${status}"`); continue; }
       const key = `${ownerType}:${ownerId}`;
       if (ownersByKey.has(key)) warnings.push(`duplicate todoFrontend owner ${key}; first entry kept`);
-      else ownersByKey.set(key, { ownerType, ownerId, status, moduleName });
+      else ownersByKey.set(key, { ownerType, ownerId, status, moduleName, workspaceId: readString(raw.workspaceId) });
     }
   }
   return { files, moduleNames: Array.from(moduleNames).sort(), ownersByKey, warnings, errors };
@@ -4078,21 +4194,21 @@ async function setTodoFrontendStatuses(project: number, wanted: Set<string>, sta
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
     if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoFrontend') continue;
-    const parsed = parseDefsSource(String(await file.getContent()));
+    const content = String(await file.getContent());
+    const parsed = parseDefsSource(content);
     if (!parsed) continue;
     const owners = Array.isArray(parsed.data.owners) ? parsed.data.owners.filter(isRecord) : [];
     let changed = false;
     for (const owner of owners) {
       const key = `${readString(owner.ownerType)}:${readString(owner.ownerId)}`;
       if (!wanted.has(key)) continue;
-      owner.status = status;
+      owner[todoStatusField(owner)] = status;
       updated.push(key);
       changed = true;
     }
     if (changed) {
-      parsed.data.updatedAt = new Date().toISOString();
       const fileInfo: FileInfo = { project: file.project, level: 5, folder: String(file.folder || ''), shortName: 'todoFrontend', extension: '.defs.ts' };
-      await saveConstDefault(fileInfo, parsed.exportName, parsed.data);
+      await saveTodoDefs(fileInfo, content, parsed.exportName, parsed.data);
     }
   }
   return updated;
@@ -4200,7 +4316,7 @@ function pageRegisterMarkerFileInfo(project: number, page: CfePagePlan): FileInf
 function operationFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string, folderModule = ''): CfeOperationDef | null {
   const operationId = readString(data.operationId);
   if (!operationId) return null;
-  return { operationId, commandName: readString(data.commandName) || operationId, pageId: readString(data.pageId), bffName: readString(data.bffName), title: readString(data.title) || humanizeId(operationId), actor: readString(data.actor), entity: normalizeEntityRef(readString(data.entity)), kind: readString(data.kind), reads: readStringArray(data.reads), writes: readStringArray(data.writes), rulesApplied: readStringArray(data.rulesApplied), storySteps: readStorySteps(data), todoStatus: '', inlineStatusFrontend: readString(data.statusFrontend), capability: isRecord(data.capability) ? data.capability : undefined, moduleName: '', folderModule, fileInfo, exportName, data };
+  return { operationId, commandName: readString(data.commandName) || operationId, pageId: readString(data.pageId), bffName: readString(data.bffName), title: readString(data.title) || humanizeId(operationId), actor: readString(data.actor) || readStringArray(data.actors)[0] || '', entity: normalizeEntityRef(readString(data.entity)), kind: readString(data.kind), reads: readStringArray(data.reads), writes: readStringArray(data.writes), rulesApplied: readStringArray(data.rulesApplied), storySteps: readStorySteps(data), todoStatus: '', inlineStatusFrontend: readString(data.statusFrontend), capability: isRecord(data.capability) ? data.capability : undefined, moduleName: '', folderModule, fileInfo, exportName, data };
 }
 
 function syntheticOperation(page: CfePagePlan, operationId: string, project: number): CfeOperationDef {
@@ -4288,6 +4404,18 @@ function landingsFromData(data: Record<string, unknown>): CfeLanding[] {
     .filter(landing => landing.actorId && landing.workspaceId);
 }
 
+/** ns4 access matrix: `profiles[]` is the actor list, and `kind` (internal/external) the role scope. */
+function profilesFromData(data: Record<string, unknown>): CfeActorDef[] {
+  return (Array.isArray(data.profiles) ? data.profiles.filter(isRecord) : [])
+    .map(raw => ({ actorId: readString(raw.profileId), title: readString(raw.title) || humanizeId(readString(raw.profileId)), description: readString(raw.description), roleScope: readString(raw.kind) }))
+    .filter(actor => actor.actorId);
+}
+
+/** A ns4 workflow: the lifecycle of one entity, with states and transitions and no operations. */
+function isEntityLifecycle(data: Record<string, unknown>): boolean {
+  return !!readString(data.entityRef) && Array.isArray(data.states) && Array.isArray(data.transitions);
+}
+
 function actorsFromData(data: Record<string, unknown>): CfeActorDef[] {
   return (Array.isArray(data.actors) ? data.actors.filter(isRecord) : [])
     .map(raw => ({ actorId: readString(raw.actorId), title: readString(raw.title) || humanizeId(readString(raw.actorId)), description: readString(raw.description), roleScope: readString(raw.roleScope) }))
@@ -4301,8 +4429,27 @@ function readRecordArray(value: unknown): Record<string, unknown>[] {
 function entityFromData(data: Record<string, unknown>, fallbackId: string): CfeEntityDef | null {
   const entityId = readString(data.entityId) || fallbackId;
   if (!entityId) return null;
-  const fields = Array.isArray(data.fields) ? data.fields.filter(isRecord).map(field => ({ fieldId: readString(field.fieldId), type: readString(field.type), required: field.required === true, description: readString(field.description), enum: readStringArray(field.enum) })).filter(field => field.fieldId) : [];
+  const fields = Array.isArray(data.fields) ? data.fields.filter(isRecord).map(field => ({ fieldId: readString(field.fieldId), type: readString(field.type), required: field.required === true, description: readString(field.description), enum: fieldEnumValues(field) })).filter(field => field.fieldId) : [];
   return { entityId, title: readString(data.title) || humanizeId(entityId), fields, rulesApplied: readStringArray(data.rulesApplied), statusEnum: readStringArray(data.statusEnum), lifecycleStates: readStringArray(data.lifecycleStates) };
+}
+
+/**
+ * The literal values of an enumerated field. ns/ns3 wrote `field.enum`; ns4 states it as a
+ * constraint (`{kind:'enum', value:'["a","b"]'}`), and losing it lets a generated form or test
+ * emit a value the domain never allows.
+ */
+function fieldEnumValues(field: Record<string, unknown>): string[] {
+  const declared = readStringArray(field.enum);
+  if (declared.length) return declared;
+  const constraint = (Array.isArray(field.constraints) ? field.constraints.filter(isRecord) : [])
+    .find(item => readString(item.kind) === 'enum');
+  if (!constraint) return [];
+  const value = readString(constraint.value);
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.map(readString).filter(Boolean);
+  } catch { /* not JSON: fall through to the separated forms */ }
+  return value.split(/[|,]/).map(item => item.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
 }
 
 function queryInput(operation: CfeOperationDef, entity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>): unknown[] {
@@ -4460,6 +4607,19 @@ async function saveStorContent(fileInfo: FileInfo, source: string): Promise<void
   if (storFile.status !== 'renamed' && storFile.status !== 'new') storFile.status = 'changed';
   storFile.updatedAt = new Date().toISOString();
   await mls.stor.localStor.setContent(storFile, { contentType: 'string', content: source });
+}
+
+/**
+ * Write a todo file back. The file belongs to the generator that emitted it — ns4 ships it with an
+ * `import type` and a `satisfies`, and re-serializing would drop both (and `updatedAt` would then be
+ * an excess property the generated project no longer compiles). So the value is replaced in place
+ * whenever the original can be recovered, and only the legacy shape is rewritten wholesale.
+ */
+export async function saveTodoDefs(fileInfo: FileInfo, content: string, exportName: string, data: Record<string, unknown>): Promise<void> {
+  const replaced = replaceDefsValue(content, data);
+  if (replaced) { await saveStorContent(fileInfo, replaced); return; }
+  data.updatedAt = new Date().toISOString();
+  await saveConstDefault(fileInfo, exportName, data);
 }
 
 async function saveConstDefault(fileInfo: FileInfo, exportName: string, data: unknown): Promise<void> {

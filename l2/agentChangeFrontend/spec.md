@@ -29,6 +29,14 @@ Olhar o status dos owners no `l5/todoFrontend` e **fazer só o que está pendent
 Este worker lê/escreve **apenas `todoFrontend`**; o `agentChangeBackend` cuida do `todoBackend`. O l4 é read-only para ambos.
 São independentes — sem ordem obrigatória entre os dois workers nem ambiguidade de status único. Status inline legado no l4 (`statusFrontend`), se existir em módulo antigo, é ignorado para decisão e vira apenas warning de trace.
 
+**Dois vocabulários de owner, conforme o gerador que escreveu o todo:** o ns/ns3 rastreava os owners
+do l4 (`operation`/`workflow`) com o campo `status`; o **ns4** rastreia o que este agente de fato
+produz — a página (`workspace`) e o fio (`contract`, com a rota do bffCall como id) — no campo
+`statusFrontend`. A reconciliação plano×disco é feita **apenas contra os tipos que o arquivo
+declara**: exigir os dois faria cada dialeto acusar os owners do outro como ausentes. A escrita de
+status volta no MESMO campo lido e preserva o arquivo como o gerador escreveu (header, `import
+type`, `satisfies`) — reserializar tiraria o typecheck do projeto gerado.
+
 **Espaço de IDs:** as referências de entidade usadas para derivar páginas/layout vêm SEMPRE do id de ontologia (qualificado entre módulos). **Nunca** nomes de agregado (`OrderAggregate`, `menuEntity`). O contrato frontend não deve publicar esses ids; eles ficam no L4 e são lidos diretamente pelo `agentChangeBackend`.
 
 **Guardrails (lições analise10/11/12):**
@@ -62,6 +70,19 @@ São independentes — sem ordem obrigatória entre os dois workers nem ambiguid
 ## Status (l5/todoFrontend)
 
 Pega owners com status em `toCreate | toUpdate | toRemove` no `l5/{module}/todoFrontend.defs.ts`; ao iniciar um item seta `status = inProgress`; ao concluir a parte de frontend, marca `status = done`. **O l4 é read-only** — o agente nunca regrava owner do l4 para avançar status. Não toca em owners `done` nem em owners `inProgress`, salvo se existir uma rotina explícita de recuperação. **Independente do backend:** o `agentChangeBackend` controla o `todoBackend` separadamente, então não há ordem obrigatória entre os dois workers nem a antiga ambiguidade do status único. Owners semeados pela Etapa 1 (`agentNewSolution2`) nascem com `status = toCreate` no `todoFrontend` e no `todoBackend`. Divergência plano×disco (owner no l4 sem entrada no todo, ou vice-versa) falha o scan com erro objetivo.
+
+**Dialetos do L4 que este agente lê:** `} as const;` e `} as const satisfies <Artefato>;` (ns4). No
+ns4 mudou também DE ONDE vem cada coisa: o idioma default está em `localization.defaultLanguage`
+(não em `designContext.userLanguage`), o público do módulo são os `profiles` de
+`{module}/access/access-matrix.defs.ts` (não há mais `actors.defs.ts`), o enum de um campo é um
+`constraints[{kind:'enum'}]`, `workflows/` passou a ser o **lifecycle de uma entidade** (não é owner
+de página) e `journeys/*.defs.ts` é artefato de negócio — o mapa de telas vem 100% de `workspaces/`
++ `siteMap`. O `workspace-model.defs.ts` é contrato do gerador e é ignorado sem parse.
+
+**Dono do menu (`modules[].navigation` do l5/config.json): este agente.** O ns4 semeia um menu no e10
+para todos os workspaces compilados — é a prévia certa, mas aponta para páginas que ainda não
+existem. O menu final é reconstruído a partir das páginas que realmente materializaram, então nunca
+mostra link morto.
 
 ## O que este agente NÃO faz
 

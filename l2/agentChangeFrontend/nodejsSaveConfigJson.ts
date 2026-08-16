@@ -58,7 +58,9 @@ function readDefsData(file: string): Record<string, unknown> | null {
   try { content = fs.readFileSync(file, 'utf8'); } catch { return null; }
   const start = content.indexOf('= {');
   if (start === -1) return null;
-  const asConst = content.lastIndexOf(' as const;');
+  // `} as const;` and `} as const satisfies <Artifact>;` (agentNewSolution4) both end the value at
+  // ' as const'; the brace fallback keeps untyped defs readable.
+  const asConst = content.indexOf(' as const', start);
   const end = asConst !== -1 ? asConst : content.lastIndexOf('};') + 1;
   if (end <= start) return null;
   try {
@@ -151,11 +153,12 @@ function discoverPages(clientRoot: string, moduleName: string): DiscoveredPage[]
     ...listDefsIn(path.join(clientRoot, 'l4', moduleName, folder)),
   ];
 
-  // Actors catalog + landings (l4/<module>/actors.defs.ts + siteMap.defs.ts | navigation.defs.ts).
-  const validActors = new Set(
-    (readDefsData(path.join(clientRoot, 'l4', moduleName, 'actors.defs.ts'))?.actors as Record<string, unknown>[] | undefined || [])
-      .map(actor => readString(actor?.actorId)).filter(Boolean),
-  );
+  // Actors catalog + landings (l4/<module>/actors.defs.ts, or the ns4 access matrix, + siteMap).
+  const actorCatalog = (readDefsData(path.join(clientRoot, 'l4', moduleName, 'actors.defs.ts'))?.actors as Record<string, unknown>[] | undefined || [])
+    .map(actor => readString(actor?.actorId));
+  const profileCatalog = (readDefsData(path.join(clientRoot, 'l4', moduleName, 'access', 'access-matrix.defs.ts'))?.profiles as Record<string, unknown>[] | undefined || [])
+    .map(profile => readString(profile?.profileId));
+  const validActors = new Set([...actorCatalog, ...profileCatalog].filter(Boolean));
   const siteMapData = readDefsData(path.join(clientRoot, 'l4', moduleName, 'siteMap.defs.ts'))
     || readDefsData(path.join(clientRoot, 'l4', moduleName, 'navigation.defs.ts'));
   const landingWorkspaceIds = new Set(
@@ -391,6 +394,9 @@ function main(): void {
   mod.designSystems = moduleDesignSystems;
 
   const labels = customize.navigationLabels || {};
+  // Ownership of `modules[].navigation`: THIS agent. agentNewSolution4 seeds a menu at e10 for every
+  // workspace it compiled, which is the right preview but points at pages that do not exist yet; the
+  // menu here is rebuilt from the pages that actually materialized, so it never shows a dead link.
   // F5: menu derived from workspaces + siteMap/actors. `actors` lets the shell filter the menu by the
   // logged-in actor (menu is UX; route enforcement is changeBackend's job). `landing` marks the
   // public/pre-login entry. Both ride as extra JSON fields (the shell reads them; types stay in 102029).

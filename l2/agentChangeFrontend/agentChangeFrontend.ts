@@ -102,22 +102,23 @@ async function resetFrontendDoneStatuses(): Promise<{ updated: number; owners: s
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted' || file.extension !== '.defs.ts') continue;
     if (String(file.shortName || '') !== 'todoFrontend') continue;
-    const parsed = parseDefsSource(String(await file.getContent()));
+    const content = String(await file.getContent());
+    const parsed = parseDefsSource(content);
     if (!parsed) continue;
     const todoOwners = Array.isArray(parsed.data.owners)
       ? parsed.data.owners.filter((o: unknown): o is Record<string, unknown> => !!o && typeof o === 'object' && !Array.isArray(o))
       : [];
     let changed = false;
     for (const owner of todoOwners) {
-      if (readString(owner.status) !== 'done') continue;
-      owner.status = 'toCreate';
+      // The status field is the generator's: ns/ns3 wrote `status`, ns4 writes `statusFrontend`.
+      const field = typeof owner.statusFrontend === 'string' ? 'statusFrontend' : 'status';
+      if (readString(owner[field]) !== 'done') continue;
+      owner[field] = 'toCreate';
       owners.push(`${readString(owner.ownerType)}:${readString(owner.ownerId)}`);
       changed = true;
     }
-    if (changed) {
-      parsed.data.updatedAt = new Date().toISOString();
-      await saveConstDefault(file, parsed.exportName, parsed.data);
-    }
+    if (changed) await saveTodoDefs(file, content, parsed.exportName, parsed.data);
+
   }
   return { updated: owners.length, owners };
 }
@@ -160,6 +161,23 @@ function extractJsonLiteral(content: string, fromIndex: number): string {
     }
   }
   return '';
+}
+
+/**
+ * Write the todo back keeping the file the generator wrote — ns4 ships it with an `import type` and
+ * a `satisfies`, and reserializing would drop both (and make `updatedAt` an excess property the
+ * generated project no longer compiles). Only the legacy shape is rewritten wholesale.
+ */
+async function saveTodoDefs(file: any, content: string, exportName: string, data: Record<string, unknown>): Promise<void> {
+  const start = content.indexOf('= ');
+  const first = start === -1 ? -1 : content.indexOf(' as const', start);
+  if (start !== -1 && first > start) {
+    const replaced = `${content.slice(0, start + 2)}${JSON.stringify(data, null, 2)}${content.slice(first)}`;
+    await mls.stor.localStor.setContent(file, { contentType: 'string', content: replaced });
+    return;
+  }
+  data.updatedAt = new Date().toISOString();
+  await saveConstDefault(file, exportName, data);
 }
 
 async function saveConstDefault(file: any, exportName: string, data: Record<string, unknown>): Promise<void> {
