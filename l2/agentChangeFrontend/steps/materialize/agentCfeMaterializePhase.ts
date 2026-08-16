@@ -19,6 +19,7 @@ import {
   collectChartEventIssues,
   collectMutationFeedbackIssues,
   collectPageExperienceIssues,
+  isL4LookupGap,
   collectTechnicalVocabularyIssues,
   collectPageTemplateHygieneIssues,
   contractTsPathOf,
@@ -415,7 +416,12 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
       // The reduced page defs carries no layout, so these judge the GENERATED CODE anchored on
       // dataBindings (supervisor decision B.1, 31/jul). Errors, not warnings: each is deterministic and
       // fixed by rewriting the .ts — exactly what the repair round does.
-      errors.push(...collectPageExperienceIssues(pageData, sharedData, content));
+      // A lookup gap is a defect of the l4 workspace (no query to feed the picker), and this phase can
+      // only rewrite .ts: routing it to repair burns the budget and ends broken anyway. Warning keeps
+      // it visible in the verdict without stopping the run.
+      const experienceIssues = collectPageExperienceIssues(pageData, sharedData, content);
+      errors.push(...experienceIssues.filter(issue => !isL4LookupGap(issue)));
+      warnings.push(...experienceIssues.filter(isL4LookupGap));
       errors.push(...collectMutationFeedbackIssues(pageData, sharedData, content));
       errors.push(...collectTechnicalVocabularyIssues(pageData, content));
       errors.push(...collectHeadingDisciplineIssues(content));

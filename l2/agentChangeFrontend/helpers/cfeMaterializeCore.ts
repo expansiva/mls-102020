@@ -245,6 +245,18 @@ function isBoundToEditableControl(pageCode: string, property: string): boolean {
  * slot study): with a reduced defs the truth lives in the OUTPUT — validation judges what was generated,
  * not what was asked (the same move the 102040 harness made with checks.mjs over page.ts).
  */
+/**
+ * Marks an issue no page rewrite can fix: the l4 workspace does not offer the lookup query the
+ * picker would consume. The materialization phase reports these as warnings so the run finishes and
+ * the gap is fixed where it lives (agentNewSolution4 E8 — see todo/newSolution4/bug_from_backend.md).
+ */
+export const L4_LOOKUP_GAP = 'L4-LOOKUP-GAP' as const;
+
+/** True for an issue that belongs to the l4 contract, not to the generated .ts. */
+export function isL4LookupGap(issue: string): boolean {
+  return issue.includes(L4_LOOKUP_GAP);
+}
+
 export function collectPageExperienceIssues(pageDefinition: unknown, sharedDefinition: unknown, pageCode: string): string[] {
   if (!pageCode) return [];
   const issues: string[] = [];
@@ -268,10 +280,19 @@ export function collectPageExperienceIssues(pageDefinition: unknown, sharedDefin
       if (isIdInputName(input.name) && !USER_DECIDED_SOURCES.has(input.source) && editable) {
         // The remedy names the CONTRACT's own origin, so the message tells the model what to render
         // instead of only what to stop doing.
+        if (PICKER_SOURCES.has(input.source) && !input.sourceRef) {
+          // The contract says "the user picks an existing record" but the page has no query to pick
+          // FROM: an organism only ever consumes a call of its OWN workspace, so no rewrite of this
+          // .ts can produce the picker. Reporting it as an error made the repair rounds rewrite a
+          // correct page three times and fail anyway. It stays detected and traced — as a gap of the
+          // L4 workspace, which is where the lookup query has to be added.
+          issues.push(`${binding.command}.${input.name} is a technical id with source '${input.source}' and this page has NO query that could populate a picker for it (${L4_LOOKUP_GAP}): the l4 workspace must expose a lookup query for the referenced entity — rewriting this page cannot fix it`);
+          continue;
+        }
         const remedy = PICKER_SOURCES.has(input.source)
           ? (input.source === 'actordirectory'
-            ? `render a person picker over the '${input.sourceRef || '?'}' role directory`
-            : `render a picker over the '${input.sourceRef || '?'}' query already on this page`)
+            ? `render a person picker over the '${input.sourceRef}' role directory`
+            : `render a picker over the '${input.sourceRef}' query already on this page`)
           : `take it from context (${input.sourceRef || input.source})`;
         issues.push(`${binding.command}.${input.name} is a technical id with source '${input.source}' but is bound to an editable control: ${remedy} instead of rendering a field`);
       }

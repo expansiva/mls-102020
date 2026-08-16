@@ -23,7 +23,7 @@ export interface Ns4ClassicBffCall {
   bffId: string;
   kind: 'query' | 'command';
   uses: Array<{ operationId: string }>;
-  input: Array<{ name: string; from: string; required?: boolean; source: string; type: string }>;
+  input: Array<{ name: string; from: string; required?: boolean; source: string; sourceRef?: string; type: string }>;
   output: { kind: 'object' | 'list'; fields: Ns4ClassicField[] };
   route: string;
 }
@@ -174,6 +174,9 @@ function transposeCall(
       from: ns4ClassicFrom(call.operationId, input.inputId),
       ...(input.required ? { required: true } : {}),
       source: input.source,
+      // `source` alone is an unusable label: the consumer needs the call the picker reads FROM, and it
+      // is the one thing only this workspace knows. Absent when the value is not chosen on the page.
+      ...(inputSourceOf(call, input.inputId) ? { sourceRef: inputSourceOf(call, input.inputId) } : {}),
       // 2. The type comes from the ontology field the input names, never from a lucky match against
       // an output projection path (a list output is `$items.`-prefixed and would never match).
       type: classicType(fieldTypeOf(ontology, input.fieldRef.entityId, input.fieldRef.fieldId)),
@@ -182,6 +185,10 @@ function transposeCall(
     output: { kind: list ? 'list' : 'object', fields },
     route: `${model.moduleName}.${workspaceId}.${call.bffId}`,
   };
+}
+
+function inputSourceOf(call: Ns4E8BffCall, inputId: string): string {
+  return (call.inputSources || []).find(entry => entry.inputId === inputId)?.bffId || '';
 }
 
 function fieldTypeOf(ontology: Ns4E4Review, entityId: string, fieldId: string): Ns4OntologyField['type'] {

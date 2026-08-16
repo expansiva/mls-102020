@@ -5,6 +5,7 @@
  * and everything that is evidence about the product is a registrar resolved through ns4Resolve.
  */
 
+import { buildNs4ParentIndex, ns4FkParentOf } from '/_102020_/l2/agentNewSolution4/helpers/ns4ForeignKeys.js';
 import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 import type { Ns4ResolutionFinding, Ns4ResolutionResult } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 import type { Ns4E8Sources } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
@@ -33,6 +34,7 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
     add('NS4_E8_MODULE', 'moduleName', 'The model and every approved source must belong to the same module.');
   }
   const operations = new Map(model.operations.map(operation => [operation.operationId, operation]));
+  const parentIndex = buildNs4ParentIndex(sources.ontology.relationships);
   const fields = new Set(sources.ontology.entities.flatMap(entity => entity.fields.map(field => `${entity.entityId}.${field.fieldId}`)));
   const entities = new Set(sources.ontology.entities.map(entity => entity.entityId));
   const profiles = new Set(sources.access.profiles.map(profile => profile.profileId));
@@ -112,13 +114,20 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
 
     // A record chosen on the page needs a query to choose it from. This is evidence about the
     // journeys, not a broken contract, so it is recorded and the run continues.
+    //
+    // The entity to look for is the one the key POINTS AT, which only the relationship graph knows:
+    // `fieldRef` names the entity that OWNS the field, so reading the target off it compared the
+    // catalogue's own entity with itself and the check passed in silence while 48 inputs asked for a
+    // record no screen could show.
     const pickerEntities = new Set(workspace.bffCalls.filter(call => call.kind === 'query').map(call => call.entityRef));
     workspace.bffCalls.filter(call => call.kind === 'command').forEach(call => {
       (operations.get(call.operationId)?.inputs || []).forEach(input => {
         if (input.source !== 'selectedEntity' || !input.required) return;
-        if (pickerEntities.has(input.fieldRef.entityId) || input.fieldRef.entityId === workspace.entity) return;
+        const parent = ns4FkParentOf(parentIndex, input.fieldRef.entityId, input.fieldRef.fieldId)?.parent
+          || input.fieldRef.entityId;
+        if (pickerEntities.has(parent) || parent === workspace.entity) return;
         add('NS4_E8_PICKER_SOURCE', `${path}.bffCalls.${call.bffId}.${input.inputId}`,
-          `A tela ${workspace.title} escolhe ${input.fieldRef.entityId} sem uma consulta que o liste; nesta versão o registro vem de fora da tela. Revisar?`, 'warning');
+          `A tela ${workspace.title} escolhe ${parent} sem uma consulta que o liste; nesta versão o registro vem de fora da tela. Revisar?`, 'warning');
       });
     });
   });

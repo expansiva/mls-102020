@@ -66,6 +66,12 @@ export interface Ns4E8BffCall {
   operationId: string;
   outputKind: 'object' | 'list' | 'paginated';
   entityRef: string;
+  /**
+   * Which LOCAL call feeds each input of this one. Operations are shared and calls are per workspace,
+   * so "where the user picks this record from" is a property of the call, never of the operation.
+   * Without it the screen knows an id must be chosen and not which query to choose it from.
+   */
+  inputSources?: Array<{ inputId: string; bffId: string }>;
 }
 
 export type Ns4E8OrganismRole = 'primarySurface' | 'detailPanel' | 'filterControl' | 'contextualAction';

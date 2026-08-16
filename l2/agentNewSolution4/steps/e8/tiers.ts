@@ -11,6 +11,7 @@ import type { Ns4JourneyProposal, Ns4JourneyStep } from '/_102020_/l2/agentNewSo
 import type { Ns4OntologyEntity, Ns4OntologyRelationship } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import type { Ns4UseCaseArtifactV3 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
 import { deriveNs4Contexts, isNs4PlatformOwnedEntity, ns4ContextIdOf } from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
+import { buildNs4ParentIndex, ns4FkParentOf } from '/_102020_/l2/agentNewSolution4/helpers/ns4ForeignKeys.js';
 import type { Ns4DerivedContextGraph } from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
 import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
 import { deriveE8HubScore, type Ns4E8Sources } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
@@ -51,6 +52,8 @@ export function deriveNs4E8Model(sources: Ns4E8Sources, reviewRound = 1): Ns4E8M
     const built = buildProjectionWorkspace(projection, context);
     if (built) { operations.push(...built.operations); workspaces.push(built.workspace); }
   }
+  // A record chosen on a screen needs a query on that same screen to choose it from.
+  wireNs4ParentPickers(workspaces, operations, context, decisions);
   // The hub is built last: its catalogue points at calls of the workspaces that already exist.
   if (context.hubEntity) workspaces.push(buildHubWorkspace(context, workspaces));
 
@@ -154,18 +157,84 @@ function selectHubEntity(sources: Ns4E8Sources, derived: Ns4DerivedContextGraph)
 }
 
 function buildParents(relationships: Ns4OntologyRelationship[]): Ns4E8TierContext['parentsOf'] {
-  const result = new Map<string, Array<{ parent: string; fieldId: string; required: boolean }>>();
-  for (const relationship of relationships) {
-    if (relationship.type !== 'manyToOne' && relationship.type !== 'oneToOne') continue;
-    const owner = relationship.realization?.ownerEntity || relationship.fromEntity;
-    if (owner !== relationship.fromEntity) continue;
-    const fieldId = relationship.realization?.from.fieldIds[0] || '';
-    if (!fieldId) continue;
-    const current = result.get(relationship.fromEntity) || [];
-    current.push({ parent: relationship.toEntity, fieldId, required: relationship.required });
-    result.set(relationship.fromEntity, current);
+  return buildNs4ParentIndex(relationships);
+}
+
+/**
+ * Wire every required foreign key the user must CHOOSE to a query of its own workspace.
+ *
+ * A command input with source `selectedEntity` says "the user picks an existing record". The screen
+ * can only render that as a picker over a call it owns (an organism never consumes another
+ * workspace's call — bug_e8_5), so a workspace that asks for a parent id without reading the parent
+ * leaves the frontend with a text field where someone would type a key: 48 inputs across 15
+ * workspaces of buildFlowFsm47 were exactly that.
+ *
+ * The fix is derivation, not judgement: the module already compiles a list operation for the parent
+ * (a catalogue always does), so the workspace gains a LOCAL call over that SHARED operation — the
+ * same mechanism the hub tiles use — plus the picker organism and the input->call link the emitted
+ * contract carries as `sourceRef`. When no read of the parent exists anywhere, nothing is invented:
+ * the model gate registers it and the run continues.
+ */
+function wireNs4ParentPickers(
+  workspaces: Ns4E8ModelWorkspace[], operations: Ns4E8Operation[], context: Ns4E8TierContext, decisions: Ns4SystemDecision[],
+): void {
+  const byOperationId = new Map(operations.map(operation => [operation.operationId, operation]));
+  const readsOf = new Map<string, Ns4E8Operation[]>();
+  for (const operation of operations) {
+    if (operation.accessPattern.kind !== 'list') continue;
+    readsOf.set(operation.entityRef, [...(readsOf.get(operation.entityRef) || []), operation]);
   }
-  return result;
+
+  for (const workspace of workspaces) {
+    const alreadyRead = new Set(workspace.bffCalls.filter(call => call.kind === 'query').map(call => call.entityRef));
+    for (const call of [...workspace.bffCalls]) {
+      if (call.kind !== 'command') continue;
+      const operation = byOperationId.get(call.operationId);
+      if (!operation) continue;
+      for (const input of operation.inputs) {
+        if (input.source !== 'selectedEntity' || !input.required) continue;
+        // Two shapes of the same fact: a catalogue input names the OWNER of the key
+        // (`ChangeOrder.project`) and the graph says where it points, while a use-case input compiled
+        // from a journey already names the target (`Client.clientId`). Both must resolve.
+        const target = ns4FkParentOf(context.parentsOf, input.fieldRef.entityId, input.fieldRef.fieldId)?.parent
+          || input.fieldRef.entityId;
+        // Not a key, the record the screen is already about, or an identity the session supplies.
+        if (!target || target === workspace.entity || isNs4PlatformOwnedEntity(context.entities.get(target))) continue;
+        const source = pickParentRead(readsOf.get(target) || []);
+        if (!source) continue;   // nothing lists the parent: NS4_E8_PICKER_SOURCE registers it
+        const bffId = `qry${upperCamel(target)}Picker`;
+        if (!alreadyRead.has(target) && !workspace.bffCalls.some(item => item.bffId === bffId)) {
+          workspace.bffCalls.push({
+            bffId, kind: 'query', operationId: source.operationId,
+            outputKind: outputKindOfRead(source), entityRef: target,
+          });
+          const formSection = workspace.sections.find(section => section.organisms.some(organism => organism.action === call.bffId))
+            || workspace.sections[workspace.sections.length - 1];
+          formSection?.organisms.push({ role: 'filterControl', dataSource: bffId, usage: 'picker' });
+          alreadyRead.add(target);
+        }
+        const feeder = workspace.bffCalls.find(item => item.kind === 'query' && item.entityRef === target)!;
+        call.inputSources = [...(call.inputSources || []).filter(entry => entry.inputId !== input.inputId),
+          { inputId: input.inputId, bffId: feeder.bffId }];
+      }
+    }
+    if (workspace.bffCalls.some(call => (call.inputSources || []).length)) {
+      workspace.bffCalls.forEach(call => call.inputSources?.sort((left, right) => left.inputId.localeCompare(right.inputId)));
+    }
+  }
+  void decisions;
+}
+
+/** The cheapest read of an entity: fewest required inputs, then the first id alphabetically. */
+function pickParentRead(candidates: Ns4E8Operation[]): Ns4E8Operation | null {
+  return [...candidates].sort((left, right) =>
+    left.inputs.filter(input => input.required).length - right.inputs.filter(input => input.required).length
+    || left.operationId.localeCompare(right.operationId))[0] || null;
+}
+
+/** The shape travels with the call: a list read as an object would offer a single record to pick. */
+function outputKindOfRead(operation: Ns4E8Operation): Ns4E8BffCall['outputKind'] {
+  return operation.accessPattern.pagination === 'optional' ? 'paginated' : 'list';
 }
 
 // ---------------------------------------------------------------------------------------------

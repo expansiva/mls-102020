@@ -424,7 +424,9 @@
         "An entity no journey operates still gets its catalogue; the audience falls back to the internal profiles and the choice is recorded as a system decision instead of leaving the data unreachable.",
         "The validation report is persisted before any throw, so an irrecoverable model stays auditable.",
         "A broken organism reference is detected exactly as before and resolved deterministically instead of ending the run: a source that names another workspace's query becomes a local call over the same shared operation, an action that names a journey becomes a navigation target of the site map, and a reference that resolves to nothing drops its organism with a recorded decision. Only a model that cannot render at all stays terminal.",
-        "A journey is reached from the hub by navigation, carrying the prominence and order the composition chose; it is never an embedded command of the hub page."
+        "A journey is reached from the hub by navigation, carrying the prominence and order the composition chose; it is never an embedded command of the hub page.",
+        "A required foreign key the user must CHOOSE is wired to a query of its own workspace: the module already compiles a list of the parent, so the screen gains a local call over that shared operation plus a picker organism, and the command records which call feeds the input. A workspace that asks for a parent id it cannot show would leave the frontend with a text field for a key.",
+        "The entity a key points at comes from the relationship graph, never from the prefix of the input's fieldRef — that names the entity that OWNS the field, and reading the target off it compared a catalogue's entity with itself and passed in silence. A use-case input compiled from a journey already names the target; both shapes resolve through the same helper."
       ]
     },
     {
@@ -455,7 +457,8 @@
         "Empty organism labels resolve from the approved E4 field title. A missing title records a non-blocking warning without inventing localized text.",
         "Access realization maps every emitted operation route to its exact E3 authority refs through frozen scenario step/use-case ownership.",
         "All emitted arrays and file order are stable, hashes are source hashes only, and no generated timestamp is written, making a no-change rerun byte-identical.",
-        "Every gate issue records origin=skeleton or origin=compiler. A skeleton failure marks E8 stale and repairs e8-workspaces; a compiler failure leaves E8 approved and repairs e9-navigation-compiler. Neither failure adds e9-result. A successful compile atomically advances module/pipeline ownership to E10."
+        "Every gate issue records origin=skeleton or origin=compiler. A skeleton failure marks E8 stale and repairs e8-workspaces; a compiler failure leaves E8 approved and repairs e9-navigation-compiler. Neither failure adds e9-result. A successful compile atomically advances module/pipeline ownership to E10.",
+        "Each bffCall input carries `sourceRef` — the call the picker reads from — whenever the workspace declares one: `source: 'selectedEntity'` without it tells the consumer that a record must be chosen and not where to choose it from."
       ]
     },
     {

@@ -102,8 +102,10 @@ test('a record catalogue classifies its inputs structurally and never transition
 
   const catalogue = model.workspaces.find(workspace => workspace.workspaceId === 'changeOrderCatalogue')!;
   assert.equal(catalogue.categoryRef, 'entityRecordManagement');
+  // The catalogue also READS the parent it asks the user to choose: `project` is a required foreign
+  // key with source selectedEntity, so the screen owns the query the picker reads from.
   assert.deepEqual(catalogue.bffCalls.map(call => call.bffId),
-    ['qryListChangeOrder', 'cmdCreateChangeOrder', 'cmdUpdateChangeOrder', 'cmdDeleteChangeOrder']);
+    ['qryListChangeOrder', 'cmdCreateChangeOrder', 'cmdUpdateChangeOrder', 'cmdDeleteChangeOrder', 'qryProjectPicker']);
   assert.equal(model.operations.some(operation => operation.operationId === 'deleteChangeOrder'), true);
 
   // The catalogue edits a whole record: a field required on create stays required on update, and
@@ -275,4 +277,70 @@ test('a projection only reads a journey that is actually compiled', () => {
       assert.equal(operations.has(call.operationId), true, `${workspace.workspaceId}.${call.bffId} -> ${call.operationId}`);
     }
   }
+});
+
+test('a foreign key the user must choose is wired to a query of its own workspace', () => {
+  const input = sources();
+  const model = deriveNs4E8Model(input);
+  const catalogue = model.workspaces.find(workspace => workspace.workspaceId === 'changeOrderCatalogue')!;
+
+  // 1. The picker call is LOCAL and reuses the operation the module already compiles for the parent —
+  // operations are shared, calls are per workspace (the same rule the hub tiles follow).
+  const picker = catalogue.bffCalls.find(call => call.bffId === 'qryProjectPicker')!;
+  assert.equal(picker.kind, 'query');
+  assert.equal(picker.entityRef, 'Project');
+  assert.equal(model.operations.some(operation => operation.operationId === picker.operationId), true);
+  const source = model.operations.find(operation => operation.operationId === picker.operationId)!;
+  assert.equal(source.accessPattern.kind, 'list');
+  // The shape travels with the call: a list read as an object would offer a single record to pick.
+  assert.equal(picker.outputKind, source.accessPattern.pagination === 'optional' ? 'paginated' : 'list');
+
+  // 2. The screen renders it as a picker, not as one more panel.
+  const organisms = catalogue.sections.flatMap(section => section.organisms);
+  const control = organisms.find(organism => organism.dataSource === 'qryProjectPicker')!;
+  assert.equal(control.usage, 'picker');
+
+  // 3. Every command that asks for the key says WHICH call feeds it — without this the emitted
+  // contract carries `source: selectedEntity` and no origin, which is what left the frontend with a
+  // text field for a key (28 of the 32 pages the CF rejected).
+  for (const call of catalogue.bffCalls.filter(item => item.kind === 'command')) {
+    const operation = model.operations.find(item => item.operationId === call.operationId)!;
+    const chosen = operation.inputs.filter(item => item.source === 'selectedEntity' && item.required
+      && item.fieldRef.entityId === 'ChangeOrder' && item.fieldRef.fieldId !== 'changeOrderId');
+    for (const item of chosen) {
+      assert.equal((call.inputSources || []).find(entry => entry.inputId === item.inputId)?.bffId, 'qryProjectPicker',
+        `${call.bffId}.${item.inputId} has no picker source`);
+    }
+  }
+
+  // 4. The gate is quiet about what is now wired (the path is index-based, so anchor on the call).
+  const gate = validateNs4E8Model(model, input);
+  assert.equal(gate.issues.some(issue => issue.code === 'NS4_E8_PICKER_SOURCE' && issue.path.includes('cmdCreateChangeOrder')), false);
+});
+
+test('nothing is invented when the module cannot list the parent', () => {
+  const input = sources();
+  // Drop every list of Project: the screen has nothing to offer, so the model records it instead.
+  const model = deriveNs4E8Model(input);
+  const stripped = {
+    ...model,
+    workspaces: model.workspaces.map(workspace => workspace.workspaceId === 'changeOrderCatalogue'
+      ? {
+        ...workspace,
+        bffCalls: workspace.bffCalls.filter(call => call.bffId !== 'qryProjectPicker'),
+        sections: workspace.sections.map(section => ({
+          ...section,
+          organisms: section.organisms.filter(organism => organism.dataSource !== 'qryProjectPicker'),
+        })),
+      }
+      : workspace),
+  };
+  const gate = validateNs4E8Model(stripped, input);
+  const picker = gate.issues.filter(issue => issue.code === 'NS4_E8_PICKER_SOURCE' && issue.path.includes('cmdCreateChangeOrder'));
+  // The message names the entity the key POINTS AT, which is the whole point of the fix.
+  assert.equal(picker.every(issue => issue.message.includes('Project')), true);
+  // Detected — and as a registrar, never a blocker: a screen missing a picker is still a product.
+  assert.ok(picker.length, 'the check that used to compare an entity with itself now fires');
+  assert.equal(picker.every(issue => issue.severity === 'warning'), true);
+  assert.equal(validateNs4E8Model(stripped, input).ok, true);
 });

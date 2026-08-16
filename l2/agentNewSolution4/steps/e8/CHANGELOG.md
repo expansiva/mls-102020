@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-16 — a chave estrangeira ganha de onde escolher (bug_from_backend)
+
+- **O check estava cego.** O `NS4_E8_PICKER_SOURCE` lia o alvo da FK do prefixo de `input.fieldRef`,
+  que nomeia a entidade DONA do campo (`ChangeOrder.project`) — comparava a entidade do catálogo com
+  ela mesma e nunca disparava. O alvo agora sai do grafo de relacionamentos
+  (`helpers/ns4ForeignKeys.ts`, uma resolução para todos os consumidores). Input de use case vindo de
+  jornada já nomeia o alvo direto (`Client.clientId`): as duas formas resolvem pelo mesmo helper.
+- **O workspace ganha a consulta do pai.** Para todo input `selectedEntity` obrigatório cujo alvo o
+  workspace não lê, entra um bffCall LOCAL sobre a operation de lista que o módulo já compila
+  (`qry<Entidade>Picker`, mesma operationId, `outputKind` derivado do accessPattern) mais o organism
+  `usage: 'picker'`. Operations são compartilhadas, calls são por workspace — o mesmo mecanismo dos
+  tiles do hub.
+- **O contrato diz de ONDE.** `Ns4E8BffCall.inputSources` liga input → call local, e o E9 emite isso
+  como `sourceRef` no input do bffCall clássico. Sem ele o consumidor sabe que um id deve ser
+  escolhido e não sabe de qual consulta — foi o que deixou 28 das 32 páginas do run cf3 com um campo
+  de id digitável.
+- Nada é inventado: sem leitura do pai no módulo, o registrar continua e o run segue.
+
 ## 2026-08-15 — a fiação do registro do hub e a doutrina no gate (bug_e8_5)
 
 - **Tiles do hub são chamadas LOCAIS.** O item do catálogo passou a carregar a operation/call do

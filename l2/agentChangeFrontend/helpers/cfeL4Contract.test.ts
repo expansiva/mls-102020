@@ -24,6 +24,7 @@ import {
   collectMutationFeedbackIssues,
   collectPageExperienceIssues,
   collectTechnicalVocabularyIssues,
+  isL4LookupGap,
   normalizeGeneratedCode,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
@@ -293,9 +294,26 @@ test('B2/B3: pagination and non-user-decided ids must not be editable controls',
   assert.equal(bad.length, 2);
   assert.match(bad[0], /collection wiring/);
   assert.match(bad[1], /technical id with source 'selectedentity'/);
-  // The remedy now NAMES the contract's own origin (ajuste_actors.md): telling the model what to render
-  // beats telling it only what to stop doing. Without a sourceRef in this fixture it says '?'.
-  assert.match(bad[1], /render a picker over the '.*' query already on this page/);
+  // Without a sourceRef there is no query on the page to pick FROM, so the message says exactly that
+  // and the issue is tagged as an l4 gap: no rewrite of this .ts can produce the picker, and the
+  // materialization phase reports it as a warning instead of looping the repair rounds on it.
+  assert.match(bad[1], /NO query that could populate a picker/);
+  assert.equal(isL4LookupGap(bad[1]), true);
+  assert.equal(isL4LookupGap(bad[0]), false);
+
+  // WITH a sourceRef the page DOES have the query: the remedy names it and the issue stays a
+  // repairable error — the downgrade must never swallow a defect the rewrite can fix.
+  const pageWithQuery = {
+    ...PAGE_DEFS,
+    dataBindings: PAGE_DEFS.dataBindings.map(binding => ({
+      ...binding,
+      inputs: binding.inputs.map(input => input.name === 'orderId' ? { ...input, sourceRef: 'listOrders' } : input),
+    })),
+  };
+  const withQuery = collectPageExperienceIssues(pageWithQuery, SHARED_DEFS, `html\`<input .value=\${this.updateOrderCmdOrderId}>\``);
+  assert.equal(withQuery.length, 1);
+  assert.match(withQuery[0], /render a picker over the 'listOrders' query already on this page/);
+  assert.equal(isL4LookupGap(withQuery[0]), false);
 
   // Correct: the user-decided fields ARE editable; the id comes from selection; no pager input.
   assert.deepEqual(collectPageExperienceIssues(PAGE_DEFS, SHARED_DEFS, `html\`
