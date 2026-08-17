@@ -1,5 +1,83 @@
 # Changelog
 
+## 2026-08-16 — a chave estrangeira ganha de onde escolher (bug_from_backend)
+
+- **O check estava cego.** O `NS4_E8_PICKER_SOURCE` lia o alvo da FK do prefixo de `input.fieldRef`,
+  que nomeia a entidade DONA do campo (`ChangeOrder.project`) — comparava a entidade do catálogo com
+  ela mesma e nunca disparava. O alvo agora sai do grafo de relacionamentos
+  (`helpers/ns4ForeignKeys.ts`, uma resolução para todos os consumidores). Input de use case vindo de
+  jornada já nomeia o alvo direto (`Client.clientId`): as duas formas resolvem pelo mesmo helper.
+- **O workspace ganha a consulta do pai.** Para todo input `selectedEntity` obrigatório cujo alvo o
+  workspace não lê, entra um bffCall LOCAL sobre a operation de lista que o módulo já compila
+  (`qry<Entidade>Picker`, mesma operationId, `outputKind` derivado do accessPattern) mais o organism
+  `usage: 'picker'`. Operations são compartilhadas, calls são por workspace — o mesmo mecanismo dos
+  tiles do hub.
+- **O contrato diz de ONDE.** `Ns4E8BffCall.inputSources` liga input → call local, e o E9 emite isso
+  como `sourceRef` no input do bffCall clássico. Sem ele o consumidor sabe que um id deve ser
+  escolhido e não sabe de qual consulta — foi o que deixou 28 das 32 páginas do run cf3 com um campo
+  de id digitável.
+- Nada é inventado: sem leitura do pai no módulo, o registrar continua e o run segue.
+
+## 2026-08-15 — a fiação do registro do hub e a doutrina no gate (bug_e8_5)
+
+- **Tiles do hub são chamadas LOCAIS.** O item do catálogo passou a carregar a operation/call do
+  workspace que ele lê (`sourceOperationId`/`sourceBffId`), e o hub ganha um bffCall próprio sobre a
+  MESMA operation compartilhada. No formato clássico um organism consome chamada do PRÓPRIO
+  workspace — "ler a query de outro workspace" nunca existiu.
+- **A forma viaja junto com a chamada** (`sourceOutputKind`): o hub fia `qryListWorkTask` como
+  `list`, não como `object` — uma lista lida como objeto projetaria um registro só, e nem o
+  round-trip do formato clássico nem a igualdade de `operationId` pegariam isso.
+- **Jornada é navegação.** Ações de jornada saem das sections e viram `navigation` do workspace
+  (`prominence`/`order` da composição), que o E9 emite nas `navigationEdges` do siteMap. Nenhum
+  organism novo de "link" foi criado — navegação continua morando no siteMap.
+- **O hub derivado já é uma página inteira**: a ordem por score é a composição até uma LLM propor
+  outra, então um módulo que não faz call de composição fia os tiles e alcança as jornadas do mesmo
+  jeito.
+- **Doutrina no desfecho.** `NS4_E8_ORGANISM_SOURCE`/`NS4_E8_ORGANISM_ACTION` detectam exatamente
+  como antes e deixam de ser terminais: referência que resolve para uma query de outro workspace é
+  auto-fiada, ação que resolve para jornada vira navegação, e o que não resolve para nada perde o
+  organism com decisão registrada — o hub degrada, o run segue. Só permanece terminal o modelo que
+  não renderiza. Cada reparo acha o próprio organism pela REFERÊNCIA, não pelo índice: o índice
+  colhido na validação fica velho assim que o primeiro organism sai da seção.
+- Verificado no modelo persistido do run 46 (o que matou o E8): 23 findings — 13 auto-fiados, 10
+  migrados para navegação, 0 sem resolver, 0 remanescentes.
+
+## 2026-08-14 — o modelo aprovado é artefato permanente
+
+- `pipeline/` é estado de trabalho de UM run e é descartado depois; por isso o modelo de workspaces
+  saiu de `pipeline/e8-workspace-model.draft.json` para `l4/{module}/workspace-model.defs.ts`, na
+  raiz do módulo. O E9 e o E10 leem ele como contrato de registro — apagar o pipeline não perde nada
+  além do rastro. A raiz é segura: os dois consumidores varrem por PASTA (`/workspaces`,
+  `/operations`) e por nome exato na raiz, então o modelo nunca é confundido com um workspace.
+
+## 2026-08-14 — swap: o E8 passa a ser o compilador ligado
+
+- `agentNs4E8.ts` reescrito sobre `deriveNs4E8Model`; **o fan-out de workers de detalhe deixou de
+  existir**. Uma única call de LLM (composição do hub) e persistência do modelo aprovado.
+- Removidos com o caminho antigo: `deriveNs4E8Skeleton` e toda a derivação de skeleton/scenarios/
+  slices, `gate.ts` de skeleton/detail, `dispatch.ts`, `prompt.md`, `promptWorkspace.md`, os schemas
+  de apresentação e de worker de detalhe, e as fixtures run35-run43.
+- `contracts.ts` ficou com o que o modelo novo usa (`Ns4E8Sources`, `deriveE8HubScore`,
+  `Ns4WorkspaceContext`, `Ns4E8Edge`) mais os tipos congelados de compatibilidade de compilação.
+
+
+## 2026-08-14 — Parte B: E8 compila os três tiers
+
+- `model.ts` é o contrato do modelo de workspaces (tier, bffCalls, sections, operations, catálogo do
+  hub) — a forma que o E9 vai transpor para o formato clássico sem tomar nenhuma decisão de tela.
+- `tiers.ts` é o compilador determinístico: catálogo por entidade persistida (tier 1), workspace por
+  jornada aprovada e não demovida (tier 2), hub da âncora dominante e projeções standalone (tier 3).
+  Sem clustering, sem partição inventada. O menu lista LUGARES; jornada nunca é item de menu.
+- `hubComposition.ts` é a única call de LLM com julgamento do E8: recebe o catálogo FECHADO e só
+  ordena, promove, nomeia e agrupa. Resposta que inventa ou remove id é rejeitada; após o único
+  reparo a ordem derivada vence com systemDecision registrada.
+- `modelGate.ts` separa o que é referência quebrada (tipo A) do que é evidência sobre o produto
+  (registrador tipo B via ns4Resolve). A origem de um registro sem consulta local é registrador.
+- Fixture `run44-tier-model.json`: o módulo real do run 44 (E2 já no schema v5) compila inteiro —
+  32 workspaces (16 catálogos, 12 jornadas, 3 projeções, 1 hub), 3 jornadas demovidas pelo E2,
+  0 achados bloqueantes.
+
+
 ## 2026-08-14 — derived contexts, entity clustering and satellite affinity
 
 - Contexts, the catalog, page contexts and selection contexts all come from

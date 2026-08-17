@@ -18,12 +18,40 @@ export interface IParsedDefs {
 export function parseDefsSource(content: string): IParsedDefs | null {
     const exportMatch = content.match(/export\s+const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=/);
     const start = content.indexOf('= ');
-    const end = content.lastIndexOf(' as const;');
-    if (!exportMatch || start === -1 || end === -1 || end <= start) return null;
-    try {
-        const parsed = JSON.parse(content.slice(start + 2, end));
-        return isRecord(parsed) ? { exportName: exportMatch[1], data: parsed } : null;
-    } catch { return null; }
+    if (!exportMatch || start === -1) return null;
+    // Two emission dialects: `} as const;` and `} as const satisfies <Artifact>;` (agentNewSolution4,
+    // which types every artifact). The type assertion is never part of the value. The first cut wins
+    // for a file that appends a second export; the last is the fallback.
+    const first = content.indexOf(' as const', start);
+    const last = content.lastIndexOf(' as const');
+    for (const end of first === last ? [first] : [first, last]) {
+        if (end <= start) continue;
+        try {
+            const parsed = JSON.parse(content.slice(start + 2, end));
+            if (isRecord(parsed)) return { exportName: exportMatch[1], data: parsed };
+        } catch { /* try the other cut */ }
+    }
+    return null;
+}
+
+/**
+ * Replace only the exported value, keeping everything the generator wrote around it: the header, the
+ * `import type`, the `satisfies` and the trailing exports. An agent that only flips a status inside
+ * a generated file must not rewrite the file's shape.
+ */
+export function replaceDefsValue(content: string, value: unknown): string | null {
+    const start = content.indexOf('= ');
+    if (start === -1) return null;
+    const first = content.indexOf(' as const', start);
+    const last = content.lastIndexOf(' as const');
+    for (const end of first === last ? [first] : [first, last]) {
+        if (end <= start) continue;
+        try {
+            JSON.parse(content.slice(start + 2, end));
+        } catch { continue; }
+        return `${content.slice(0, start + 2)}${JSON.stringify(value, null, 2)}${content.slice(end)}`;
+    }
+    return null;
 }
 
 function moduleDefsFileInfo(project: number, moduleName: string): FileInfo {

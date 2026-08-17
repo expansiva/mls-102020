@@ -1,5 +1,13 @@
 # E4 changelog
 
+- 2026-08-14: An enumerated field now carries its literal values in `fields[].enum`, and an entity
+  with a lifecycle carries the same list in `statusEnum`. Both are derived in `normalizeEntity` from
+  contracts that already existed — the `kind: 'enum'` constraint (JSON array, comma or pipe separated)
+  and `lifecycleStates` — so no prompt, tool schema or gate changed. A status field with no constraint
+  falls back to the lifecycle. The constraint stays as the human-readable rule; the union never
+  replaces it. Consequence: `ontologyHash` changes, so a run started before this version reports
+  source drift on resume instead of silently mixing shapes.
+
 - 2026-08-12: Unwrap the platform tool-call transport before normalizing an entity worker result.
   Run 33 otherwise persisted every valid worker answer as an empty entity draft.
 

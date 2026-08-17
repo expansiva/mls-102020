@@ -36,6 +36,15 @@ read before it let them act.
 - **Session/context inputs never render as fields** — the reviewer's identity is known;
   show it at most as a quiet caption. Ids are never typed; the record under review comes
   from context, and any comment target is implicit.
+- **The record under review is normally already there, and then its selection collapses.**
+  A reviewer arrives from a notification, a queue or a related list, carrying the record. The
+  step that exists to choose it renders one quiet line naming it ("Change order #418 ·
+  Riverside remodel") with a "change" link that reopens the picker in place — never a
+  selector the reviewer has to operate before reading. **Opened cold, with nothing carried,
+  the same step renders the picker in full**, and the decision block stays inert until a
+  record is chosen. One screen, two faces.
+- A collapsed selection never hides the record's identity: the line IS the identity header,
+  and reading down still starts from it.
 
 ## The decision beats (the spine of this experience)
 

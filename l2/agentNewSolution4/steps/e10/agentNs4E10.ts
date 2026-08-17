@@ -2,29 +2,26 @@ import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution4/helpers/ns4StepTree.js';
 import {
-  isNs4Pipeline, markNs4E10Approved, markNs4E10Failed, markNs4E10Running, markNs4E10RuntimeFailed,
+  isNs4Pipeline, markNs4E10Approved, markNs4E10Failed, markNs4E10PipelineDefect, markNs4E10Running, markNs4E10RuntimeFailed,
   markNs4ModuleE10Approved, type Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { readNs4ApprovedJourneys, readNs4ApprovedOntology } from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
 import {
-  ns4AccessMatrixFile, ns4BffContractFile, ns4JourneyIndexFile, ns4NavigationIndexFile,
-  ns4NavigationStoreFile, ns4NotificationsFile, ns4OntologyIndexFile, ns4RulesFile, ns4UseCaseFile, ns4UseCaseIndexFile,
-  ns4WorkflowFile, ns4WorkflowIndexFile, ns4WorkspaceFile, ns4WorkspaceIndexFile, readNs4DefsJson, readNs4L5Config,
+  ns4ClassicContractFile, ns4WorkspaceModelFile, ns4OperationFile, ns4SiteMapFile, readNs4Text,
+  ns4AccessMatrixFile, ns4JourneyIndexFile, ns4OntologyIndexFile, ns4RulesFile, ns4UseCaseFile, ns4UseCaseIndexFile,
+  ns4WorkflowFile, ns4WorkflowIndexFile, ns4WorkspaceFile, readNs4DefsJson, readNs4L5Config,
   readNs4Module, readNs4Pipeline, writeNs4E10ValidationReport, writeNs4L5Config, writeNs4Module, writeNs4Pipeline,
   writeNs4Process, writeNs4TodoBackend, writeNs4TodoFrontend,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
 import type { Ns4JourneyIndex } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
-import type { Ns4AccessMatrixArtifactV4 } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
+import type { Ns4AccessMatrixArtifact } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
 import type { Ns4OntologyIndexArtifact } from '/_102020_/l2/agentNewSolution4/steps/e4/contracts.js';
 import type { Ns4RulesArtifact } from '/_102020_/l2/agentNewSolution4/steps/e5/contracts.js';
 import type {
   Ns4UseCaseArtifactV3, Ns4UseCaseIndexArtifactV3, Ns4WorkflowArtifactV2, Ns4WorkflowIndexArtifactV2, Ns4WorkflowIndexArtifactV3,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
-import type { Ns4WorkspaceArtifact, Ns4WorkspaceIndex } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
-import {
-  compileNs4E9, type Ns4BffContractArtifact, type Ns4NavigationIndexArtifact, type Ns4NavigationStoreArtifact,
-  type Ns4NotificationCatalogArtifact,
-} from '/_102020_/l2/agentNewSolution4/steps/e9/contracts.js';
+import type { Ns4E8Model } from '/_102020_/l2/agentNewSolution4/steps/e8/model.js';
+import type { Ns4ClassicOperation, Ns4ClassicSiteMap, Ns4ClassicWorkspace } from '/_102020_/l2/agentNewSolution4/steps/e9/classic.js';
 import { compileNs4E10Delivery, type Ns4E10Sources, type Ns4E10ValidationReport } from '/_102020_/l2/agentNewSolution4/steps/e10/contracts.js';
 import { validateNs4E10 } from '/_102020_/l2/agentNewSolution4/steps/e10/gate.js';
 
@@ -44,7 +41,10 @@ export async function beforeNs4E10PromptStep(
     reportPath = await writeNs4E10ValidationReport(moduleName, report);
     if (report.finalStatus !== 'passed') {
       const message = formatErrors(report);
-      await writeNs4Pipeline(markNs4E10Failed(await requirePipeline(moduleName), message, report.repairStep || 'e8-workspaces', reportPath));
+      const failed = await requirePipeline(moduleName);
+      await writeNs4Pipeline(report.pipelineDefect
+        ? markNs4E10PipelineDefect(failed, message, reportPath)
+        : markNs4E10Failed(failed, message, report.repairStep || 'e8-workspaces', reportPath));
       return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')];
     }
     const delivery = await compileNs4E10Delivery(sources, report, await readNs4L5Config(), mls.actualProject || 0);
@@ -79,27 +79,46 @@ export async function afterNs4E10PromptStep(
 }
 
 async function loadSources(moduleName: string): Promise<Ns4E10Sources> {
-  const [journeys, ontology, journeyIndex, access, ontologyIndex, rules, useCaseIndex, workflowIndex, workspaceIndex, navigation, store, notifications] = await Promise.all([
+  const [journeys, ontology, journeyIndex, access, ontologyIndex, rules, useCaseIndex, workflowIndex, model] = await Promise.all([
     readNs4ApprovedJourneys(moduleName), readNs4ApprovedOntology(moduleName), readRequired<Ns4JourneyIndex>(ns4JourneyIndexFile(moduleName), 'journey index'),
-    readRequired<Ns4AccessMatrixArtifactV4>(ns4AccessMatrixFile(moduleName), 'E9 realized access matrix'),
+    readRequired<Ns4AccessMatrixArtifact>(ns4AccessMatrixFile(moduleName), 'access matrix'),
     readRequired<Ns4OntologyIndexArtifact>(ns4OntologyIndexFile(moduleName), 'ontology index'), readRequired<Ns4RulesArtifact>(ns4RulesFile(moduleName), 'rules'),
     readRequired<Ns4UseCaseIndexArtifactV3>(ns4UseCaseIndexFile(moduleName), 'use-case index'),
     readRequired<Ns4WorkflowIndexArtifactV2 | Ns4WorkflowIndexArtifactV3>(ns4WorkflowIndexFile(moduleName), 'workflow index'),
-    readRequired<Ns4WorkspaceIndex>(ns4WorkspaceIndexFile(moduleName), 'workspace index'),
-    readRequired<Ns4NavigationIndexArtifact>(ns4NavigationIndexFile(moduleName), 'navigation index'),
-    readRequired<Ns4NavigationStoreArtifact>(ns4NavigationStoreFile(moduleName), 'navigation store'),
-    readRequired<Ns4NotificationCatalogArtifact>(ns4NotificationsFile(moduleName), 'notification catalog'),
+    readApprovedModel(moduleName),
   ]);
-  const [workspaces, useCases, workflows] = await Promise.all([
-    Promise.all(workspaceIndex.workspaces.map(entry => readRequired<Ns4WorkspaceArtifact>(ns4WorkspaceFile(moduleName, entry.workspaceId), `workspace ${entry.workspaceId}`))),
+  const [useCases, workflows] = await Promise.all([
     Promise.all(useCaseIndex.useCases.map(entry => readRequired<Ns4UseCaseArtifactV3>(ns4UseCaseFile(moduleName, entry.useCaseId), `use case ${entry.useCaseId}`))),
     Promise.all(workflowIndex.workflows.map(entry => readRequired<Ns4WorkflowArtifactV2>(ns4WorkflowFile(moduleName, entry.workflowId), `workflow ${entry.workflowId}`))),
   ]);
-  const base = { journeys, access, ontology, useCases, workflows, workspaceIndex, workspaces };
-  const expected = await compileNs4E9(base);
-  const contracts = await Promise.all(expected.contracts.map(contract => readRequired<Ns4BffContractArtifact>(
-    ns4BffContractFile(moduleName, contract.workspaceId, contract.functionId), `BFF contract ${contract.operationRef}`)));
-  return { ...base, journeyIndex, ontologyIndex, rules, useCaseIndex, workflowIndex, navigation, store, notifications, contracts };
+  // What E9 actually wrote, read back from L4: the staleness check compares it to a fresh compilation.
+  const saved = {
+    workspaces: await Promise.all(model.workspaces.map(workspace => readRequired<Ns4ClassicWorkspace>(ns4WorkspaceFile(moduleName, workspace.workspaceId), `workspace ${workspace.workspaceId}`))),
+    operations: await Promise.all(model.operations.map(operation => readRequired<Ns4ClassicOperation>(ns4OperationFile(moduleName, operation.operationId), `operation ${operation.operationId}`))),
+    contracts: await Promise.all(model.workspaces.flatMap(workspace => workspace.bffCalls.map(async call => ({
+      workspaceId: workspace.workspaceId, bffId: call.bffId, route: `${moduleName}.${workspace.workspaceId}.${call.bffId}`,
+      source: await readRequiredText(ns4ClassicContractFile(moduleName, workspace.workspaceId, call.bffId), `contract ${workspace.workspaceId}.${call.bffId}`),
+    })))),
+    siteMap: await readRequired<Ns4ClassicSiteMap>(ns4SiteMapFile(moduleName), 'site map'),
+  };
+  return {
+    moduleName, userLanguage: model.userLanguage, journeys, journeyIndex, ontology, ontologyIndex, rules, access,
+    useCases, useCaseIndex, workflows, workflowIndex, model, saved,
+  };
+}
+
+async function readApprovedModel(moduleName: string): Promise<Ns4E8Model> {
+  const parsed = await readNs4DefsJson<Ns4E8Model>(ns4WorkspaceModelFile(moduleName), true);
+  if (!parsed || parsed.planId !== 'e8-workspace-model' || parsed.moduleName !== moduleName) {
+    throw new Error(`Approved E8 workspace model not found for ${moduleName}.`);
+  }
+  return parsed;
+}
+
+async function readRequiredText(file: Parameters<typeof readNs4Text>[0], label: string): Promise<string> {
+  const raw = await readNs4Text(file, true);
+  if (typeof raw !== 'string' || !raw.trim()) throw new Error(`Unable to read approved ${label}.`);
+  return raw;
 }
 
 async function readRequired<T>(file: Parameters<typeof readNs4DefsJson>[0], label: string): Promise<T> {

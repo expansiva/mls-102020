@@ -4,11 +4,13 @@ import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/n
 import { collectNs4JourneyEntities, type Ns4DerivedContext } from '/_102020_/l2/agentNewSolution4/helpers/ns4Context.js';
 import {
   analyzeNs4E2MechanicalCoverage,
+  isNs4E2DemotionDecisionId,
+  ns4E2DemotionDecisionId,
   Ns4E2StepKindHistogram,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageSignals.js';
 
 export const NS4_JOURNEY_SCHEMA_VERSION = '2026-08-14-ns4-journey-v5' as const;
-export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-14-ns4-journey-index-v6' as const;
+export const NS4_JOURNEY_INDEX_SCHEMA_VERSION = '2026-08-15-ns4-journey-index-v7' as const;
 export const NS4_REALIZED_JOURNEY_SCHEMA_VERSION = '2026-08-14-ns4-journey-realized-v5' as const;
 export const NS4_E2_IMPACT_REPORT_SCHEMA_VERSION = '2026-08-13-ns4-e2-impact-report-v2' as const;
 
@@ -200,7 +202,7 @@ export function isNs4CurrentJourneyBusiness(value: Ns4JourneyArtifact['business'
 }
 
 export interface Ns4JourneyIndex {
-  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION | '2026-08-12-ns4-journey-index-v5' | '2026-08-10-ns4-journey-index-v4' | '2026-08-04-ns4-journey-index-v1' | '2026-08-10-ns4-journey-index-v3' | '2026-08-09-ns4-journey-index-v2';
+  schemaVersion: typeof NS4_JOURNEY_INDEX_SCHEMA_VERSION | '2026-08-14-ns4-journey-index-v6' | '2026-08-12-ns4-journey-index-v5' | '2026-08-10-ns4-journey-index-v4' | '2026-08-04-ns4-journey-index-v1' | '2026-08-10-ns4-journey-index-v3' | '2026-08-09-ns4-journey-index-v2';
   moduleName: string;
   approvedAt: string;
   approvedBy: 'human' | 'auto';
@@ -215,9 +217,20 @@ export interface Ns4JourneyIndex {
     useCaseRefs?: string[];
   }>;
   features: Ns4E2Feature[];
+  /**
+   * The decisions themselves, next to the selections that answer them. This is their durable home:
+   * the journey artifact carries a copy while E2 is still reviewing, and E7 rewrites the artifact as
+   * realized-v5, which has no policyDecisions — everything read after E7 reads the index.
+   */
+  policyDecisions?: Ns4JourneyIndexPolicyDecision[];
   policyDecisionSelections?: Ns4PolicyDecisionSelection[];
   systemDecisions?: Ns4SystemDecision[];
   realizationHash?: string;
+}
+
+/** A policy decision with the journey that owns it; the index is flat, journeys reference by id. */
+export interface Ns4JourneyIndexPolicyDecision extends Ns4PolicyDecision {
+  journeyRef: string;
 }
 
 export interface Ns4E2ReviewEvent {
@@ -238,7 +251,8 @@ export interface Ns4E2ImpactReport {
 
 export function normalizeNs4E2Review(value: unknown, fallbackModule = ''): Ns4E2Review {
   const root = record(value);
-  const journeys = array(root.journeys).map(normalizeJourney);
+  const userLanguage = text(root.userLanguage) || 'en';
+  const journeys = withNs4DemotionDecisions(array(root.journeys).map(normalizeJourney), userLanguage);
   const features = array(root.features).map(item => {
     const feature = record(item);
     return {
@@ -251,7 +265,7 @@ export function normalizeNs4E2Review(value: unknown, fallbackModule = ''): Ns4E2
   return {
     planId: 'e2-review',
     moduleName: text(root.moduleName) || fallbackModule,
-    userLanguage: text(root.userLanguage) || 'en',
+    userLanguage,
     title: text(root.title) || 'Review business journeys',
     reviewRound: positiveInteger(root.reviewRound, 1),
     journeys,
@@ -300,6 +314,8 @@ export function buildNs4JourneyIndex(
       artifactPath: artifactPaths[index],
     })),
     features: review.features,
+    policyDecisions: review.journeys.flatMap(journey => journey.policyDecisions
+      .map(decision => ({ ...decision, journeyRef: journey.journeyId }))),
     policyDecisionSelections,
     systemDecisions: review.systemDecisions,
   };
@@ -440,6 +456,49 @@ export function normalizeNs4BusinessObjectId(value: unknown): string {
     if (/^[A-Z0-9]+$/.test(word)) return word;
     return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
   }).join('');
+}
+
+/**
+ * A journey with no decision, no handoff and one single entity IS the record catalogue of that
+ * entity. Tier 1 already owns that screen, so the module records the demotion as a visible product
+ * choice at the E2 checkpoint instead of shipping the same catalogue twice. The decision is
+ * deterministic: it is recomputed on every round and is never authored by the generator.
+ */
+export function withNs4DemotionDecisions(journeys: Ns4JourneyProposal[], userLanguage: string): Ns4JourneyProposal[] {
+  const portuguese = userLanguage.toLowerCase().startsWith('pt');
+  const captureOnly = new Map(analyzeNs4E2MechanicalCoverage({ journeys }).captureOnlyJourneys
+    .map(item => [item.journeyId, item.entity]));
+  return journeys.map(journey => {
+    const entity = captureOnly.get(journey.journeyId);
+    const decisionId = ns4E2DemotionDecisionId(journey.journeyId);
+    const kept = journey.policyDecisions.filter(decision => !isNs4E2DemotionDecisionId(decision.decisionId));
+    if (!entity) return kept.length === journey.policyDecisions.length ? journey : { ...journey, policyDecisions: kept };
+    const chosen = portuguese ? `Tela de cadastro padrão de ${entity}` : `Standard ${entity} record catalogue`;
+    const alternative = portuguese ? `Manter ${journey.business.title} como jornada própria` : `Keep ${journey.business.title} as its own journey`;
+    return {
+      ...journey,
+      policyDecisions: [...kept, {
+        decisionId,
+        question: portuguese
+          ? `${journey.business.title} não tem decisão nem repasse: vira a tela de cadastro padrão de ${entity}?`
+          : `${journey.business.title} has no decision and no handoff: should it become the standard ${entity} record catalogue?`,
+        chosen,
+        alternatives: [chosen, alternative],
+      }],
+    };
+  });
+}
+
+/** The journeys the approved review demoted to the tier 1 record catalogue of their entity. */
+export function collectNs4DemotedJourneyIds(
+  review: Pick<Ns4E2Review, 'journeys'>,
+  selections: Array<Pick<Ns4PolicyDecisionSelection, 'decisionId' | 'selectedChoice'>> = [],
+): string[] {
+  const selected = new Map(selections.map(selection => [selection.decisionId, selection.selectedChoice]));
+  return review.journeys.filter(journey => journey.policyDecisions.some(decision => {
+    if (!isNs4E2DemotionDecisionId(decision.decisionId)) return false;
+    return (selected.get(decision.decisionId) ?? decision.chosen) === decision.chosen;
+  })).map(journey => journey.journeyId).sort();
 }
 
 /** Business objects that later ontology compilation must realize as entities or projections. */

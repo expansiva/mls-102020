@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/helpers/ns4Fs.ts" enhancement="_blank"/>
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
+import { extractNs4ClassicJsonObject, ns4ClassicDefsSource } from '/_102020_/l2/agentNewSolution4/helpers/ns4ClassicDefs.js';
 import { normalizeNs4ModuleName } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { readNs4AvailableContent } from '/_102020_/l2/agentNewSolution4/helpers/ns4ContentRead.js';
 import { renderNs4TypedDefsSource } from '/_102020_/l2/agentNewSolution4/helpers/ns4TypedDefs.js';
@@ -20,12 +21,6 @@ import type {
   Ns4UseCaseIndexArtifactV3,
   Ns4WorkflowArtifactV2,
   Ns4WorkflowIndexArtifactV3,
-  Ns4WorkspaceArtifact,
-  Ns4WorkspaceIndex,
-  Ns4NavigationIndexArtifact,
-  Ns4NavigationStoreArtifact,
-  Ns4NotificationCatalogArtifact,
-  Ns4BffContractArtifact,
   Ns4E10ValidationReport,
   Ns4L5TodoFrontendArtifact,
   Ns4L5TodoBackendArtifact,
@@ -164,20 +159,22 @@ export function ns4E8ValidationReportFile(moduleName: string): Ns4FileInfo {
 export function ns4WorkspaceFile(moduleName: string, workspaceId: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/workspaces`, shortName: workspaceId, extension: '.defs.ts' };
 }
-export function ns4WorkspaceIndexFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/workspaces`, shortName: 'index', extension: '.defs.ts' };
+/**
+ * The approved workspace model is a PERMANENT artifact, not a pipeline draft: `pipeline/` is working
+ * state for one run and is thrown away afterwards, while E9 and E10 read this model as the contract
+ * of record. It sits at the module root, where neither consumer's folder scan picks it up.
+ */
+export function ns4WorkspaceModelFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: normalizeNs4ModuleName(moduleName), shortName: 'workspace-model', extension: '.defs.ts' };
 }
-export function ns4NavigationIndexFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/navigation`, shortName: 'index', extension: '.defs.ts' };
+export function ns4OperationFile(moduleName: string, operationId: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/operations`, shortName: operationId, extension: '.defs.ts' };
 }
-export function ns4NavigationStoreFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/navigation`, shortName: 'store', extension: '.defs.ts' };
+export function ns4SiteMapFile(moduleName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: normalizeNs4ModuleName(moduleName), shortName: 'siteMap', extension: '.defs.ts' };
 }
-export function ns4NotificationsFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/navigation`, shortName: 'notifications', extension: '.defs.ts' };
-}
-export function ns4BffContractFile(moduleName: string, workspaceId: string, functionId: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/contracts`, shortName: `${workspaceId}.${functionId}`, extension: '.defs.ts' };
+export function ns4ClassicContractFile(moduleName: string, workspaceId: string, bffId: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/contracts`, shortName: `${workspaceId}.${bffId}`, extension: '.defs.ts' };
 }
 export function ns4E10ValidationReportFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e10-validation-report', extension: '.json' };
@@ -219,7 +216,7 @@ export async function readNs4Pipeline(moduleName: string): Promise<Ns4PipelineSt
 
 export async function readNs4Module(moduleName: string): Promise<Ns4ModuleArtifact | null> {
   const raw = await readNs4Text(ns4ModuleFile(moduleName), false);
-  const json = extractNs4JsonObject(raw);
+  const json = extractNs4ClassicJsonObject(raw);
   if (!json) return null;
   try {
     return JSON.parse(json) as Ns4ModuleArtifact;
@@ -393,24 +390,6 @@ export async function writeNs4WorkflowIndex(moduleName: string, artifact: Ns4Wor
   await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}WorkflowIndex`, artifact, 'Ns4WorkflowIndexArtifactV3');
   return displayPath(fileInfo);
 }
-export async function writeNs4Workspace(moduleName: string, workspaceId: string, artifact: Ns4WorkspaceArtifact): Promise<string> {
-  const fileInfo = ns4WorkspaceFile(moduleName, workspaceId); await writeNs4Defs(fileInfo, `${workspaceId}Workspace`, artifact, 'Ns4WorkspaceArtifact'); return displayPath(fileInfo);
-}
-export async function writeNs4WorkspaceIndex(moduleName: string, artifact: Ns4WorkspaceIndex): Promise<string> {
-  const fileInfo = ns4WorkspaceIndexFile(moduleName); await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}WorkspaceIndex`, artifact, 'Ns4WorkspaceIndex'); return displayPath(fileInfo);
-}
-export async function writeNs4NavigationIndex(moduleName: string, artifact: Ns4NavigationIndexArtifact): Promise<string> {
-  const fileInfo = ns4NavigationIndexFile(moduleName); await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}NavigationIndex`, artifact, 'Ns4NavigationIndexArtifact'); return displayPath(fileInfo);
-}
-export async function writeNs4NavigationStore(moduleName: string, artifact: Ns4NavigationStoreArtifact): Promise<string> {
-  const fileInfo = ns4NavigationStoreFile(moduleName); await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}NavigationStore`, artifact, 'Ns4NavigationStoreArtifact'); return displayPath(fileInfo);
-}
-export async function writeNs4Notifications(moduleName: string, artifact: Ns4NotificationCatalogArtifact): Promise<string> {
-  const fileInfo = ns4NotificationsFile(moduleName); await writeNs4Defs(fileInfo, `${normalizeNs4ModuleName(moduleName)}Notifications`, artifact, 'Ns4NotificationCatalogArtifact'); return displayPath(fileInfo);
-}
-export async function writeNs4BffContract(moduleName: string, artifact: Ns4BffContractArtifact): Promise<string> {
-  const fileInfo = ns4BffContractFile(moduleName, artifact.workspaceId, artifact.functionId); await writeNs4Defs(fileInfo, `${artifact.workspaceId}${artifact.functionId}Contract`, artifact, 'Ns4BffContractArtifact'); return displayPath(fileInfo);
-}
 export async function writeNs4E10ValidationReport(moduleName: string, report: Ns4E10ValidationReport): Promise<string> {
   const fileInfo = ns4E10ValidationReportFile(moduleName); await writeNs4Text(fileInfo, `${JSON.stringify(report, null, 2)}\n`); return displayPath(fileInfo);
 }
@@ -488,7 +467,7 @@ export async function readNs4Text(fileInfo: Ns4FileInfo, required: boolean): Pro
 
 export async function readNs4DefsJson<T>(fileInfo: Ns4FileInfo, required = false): Promise<T | null> {
   const source = await readNs4Text(fileInfo, required);
-  const json = extractNs4JsonObject(source);
+  const json = extractNs4ClassicJsonObject(source);
   if (!json) return null;
   try { return JSON.parse(json) as T; }
   catch {
@@ -496,6 +475,38 @@ export async function readNs4DefsJson<T>(fileInfo: Ns4FileInfo, required = false
     return null;
   }
 }
+
+/**
+ * The classic L4 emission of E9. These artifacts are plain data the consumers parse, so they are
+ * written as untyped defs: the ns4 artifact interfaces describe the ns4 model, not the classic wire.
+ */
+export async function writeNs4ClassicWorkspace(moduleName: string, workspaceId: string, value: unknown): Promise<string> {
+  const fileInfo = ns4WorkspaceFile(moduleName, workspaceId);
+  await writeNs4Text(fileInfo, ns4ClassicDefsSource(fileInfo, `${workspaceId}Workspace`, value));
+  return displayPath(fileInfo);
+}
+export async function writeNs4Operation(moduleName: string, operationId: string, value: unknown): Promise<string> {
+  const fileInfo = ns4OperationFile(moduleName, operationId);
+  await writeNs4Text(fileInfo, ns4ClassicDefsSource(fileInfo, `operation${operationId.slice(0, 1).toUpperCase()}${operationId.slice(1)}`, value));
+  return displayPath(fileInfo);
+}
+export async function writeNs4SiteMap(moduleName: string, value: unknown): Promise<string> {
+  const fileInfo = ns4SiteMapFile(moduleName);
+  await writeNs4Text(fileInfo, ns4ClassicDefsSource(fileInfo, `${normalizeNs4ModuleName(moduleName)}SiteMap`, value));
+  return displayPath(fileInfo);
+}
+/** A bffCall contract is already TypeScript source; E9 hands it over verbatim. */
+export async function writeNs4ClassicContract(moduleName: string, workspaceId: string, bffId: string, source: string): Promise<string> {
+  const fileInfo = ns4ClassicContractFile(moduleName, workspaceId, bffId);
+  await writeNs4Text(fileInfo, source);
+  return displayPath(fileInfo);
+}
+export async function writeNs4WorkspaceModel(moduleName: string, model: unknown): Promise<string> {
+  const fileInfo = ns4WorkspaceModelFile(moduleName);
+  await writeNs4Text(fileInfo, ns4ClassicDefsSource(fileInfo, `${normalizeNs4ModuleName(moduleName)}WorkspaceModel`, model));
+  return displayPath(fileInfo);
+}
+
 
 async function writeNs4Text(fileInfo: Ns4FileInfo, content: string): Promise<void> {
   const key = mls.stor.getKeyToFile(fileInfo);
@@ -518,27 +529,6 @@ async function writeNs4Defs<T extends Ns4PermanentArtifactTypeName>(
   await writeNs4Text(fileInfo, renderNs4TypedDefsSource(fileInfo, exportName, value, artifactType));
 }
 
-function extractNs4JsonObject(source: string): string {
-  const assignment = source.search(/export\s+const\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=/);
-  const start = source.indexOf('{', Math.max(0, assignment));
-  if (assignment < 0 || start < 0) return '';
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let index = start; index < source.length; index += 1) {
-    const char = source[index];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (char === '\\') escaped = true;
-      else if (char === '"') inString = false;
-      continue;
-    }
-    if (char === '"') inString = true;
-    else if (char === '{') depth += 1;
-    else if (char === '}' && --depth === 0) return source.slice(start, index + 1);
-  }
-  return '';
-}
 
 function displayPath(fileInfo: Ns4FileInfo): string {
   return `l${fileInfo.level}/${fileInfo.folder ? `${fileInfo.folder}/` : ''}${fileInfo.shortName}${fileInfo.extension}`;

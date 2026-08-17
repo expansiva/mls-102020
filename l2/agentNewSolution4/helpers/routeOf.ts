@@ -1,7 +1,25 @@
 import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution4/helpers/ns4Resolve.js';
-import type {
-  Ns4E8Edge, Ns4E8SkeletonWorkspace, Ns4WorkspaceContext, Ns4WorkspaceScenario,
-} from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
+import type { Ns4E8Edge, Ns4WorkspaceContext } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
+
+/**
+ * routeOf outlived the workspace model that used to feed it: the classic L4 format carries a call
+ * key (`<module>.<workspaceId>.<bffId>`), not a URL pattern, and the frontend derives the page URL
+ * itself. The projection is kept — it is the one total URL derivation the module ever agreed on —
+ * and now declares the shapes it needs instead of importing a model that no longer exists.
+ */
+interface Ns4E8SkeletonWorkspace {
+  workspaceId: string;
+  kind: 'hub' | 'place';
+  anchorEntity?: string;
+  pageContext: Ns4WorkspaceContext[];
+}
+interface Ns4WorkspaceScenario {
+  scenarioId: string;
+  kind: string;
+  title: string;
+  useCaseIds: string[];
+  selectionContexts: Ns4WorkspaceContext[];
+}
 
 export interface Ns4RouteUseCase {
   useCaseId: string;

@@ -24,10 +24,6 @@ import type {
   Ns4WorkflowIndexArtifactV2,
   Ns4WorkflowIndexArtifactV3,
 } from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
-import type { Ns4WorkspaceArtifact, Ns4WorkspaceIndex } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
-import type {
-  Ns4BffContractArtifact, Ns4NavigationIndexArtifact, Ns4NavigationStoreArtifact, Ns4NotificationCatalogArtifact,
-} from '/_102020_/l2/agentNewSolution4/steps/e9/contracts.js';
 import type {
   Ns4L5ProcessArtifact, Ns4L5TodoBackendArtifact, Ns4L5TodoFrontendArtifact,
 } from '/_102020_/l2/agentNewSolution4/steps/e10/contracts.js';
@@ -154,36 +150,36 @@ export type {
 export type {
   Ns4E8Edge,
   Ns4E8HubScore,
-  Ns4E8MenuSection,
-  Ns4E8SkeletonReview,
-  Ns4E8SkeletonWorkspace,
+  Ns4E8Sources,
   Ns4WorkspaceArtifact,
-  Ns4WorkspaceCommandInput,
   Ns4WorkspaceContext,
-  Ns4WorkspaceDetailDraft,
-  Ns4WorkspaceDetailScenario,
-  Ns4WorkspaceFieldRef,
   Ns4WorkspaceIndex,
-  Ns4WorkspaceKind,
-  Ns4WorkspaceOrganism,
-  Ns4WorkspaceScenario,
-  Ns4WorkspaceScenarioKind,
-  Ns4WorkspaceSlice,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
 
 export type {
-  Ns4BffContractArtifact,
-  Ns4BffFieldContract,
-  Ns4BffOutputField,
-  Ns4ContractValueType,
-  Ns4E9Warning,
-  Ns4NavigationIndexArtifact,
-  Ns4NavigationRoute,
-  Ns4NavigationStoreArtifact,
-  Ns4NavigationStoreContext,
-  Ns4NotificationCatalogArtifact,
-  Ns4NotificationEntry,
-} from '/_102020_/l2/agentNewSolution4/steps/e9/contracts.js';
+  Ns4E8BffCall,
+  Ns4E8HubCatalogue,
+  Ns4E8HubCatalogueItem,
+  Ns4E8HubComposition,
+  Ns4E8Input,
+  Ns4E8InputSource,
+  Ns4E8MenuEntry,
+  Ns4E8Model,
+  Ns4E8ModelWorkspace,
+  Ns4E8Operation,
+  Ns4E8Organism,
+  Ns4E8Section,
+  Ns4WorkspaceTier,
+} from '/_102020_/l2/agentNewSolution4/steps/e8/model.js';
+
+export type {
+  Ns4ClassicBffCall,
+  Ns4ClassicL4,
+  Ns4ClassicOperation,
+  Ns4ClassicSiteMap,
+  Ns4ClassicWorkspace,
+} from '/_102020_/l2/agentNewSolution4/steps/e9/classic.js';
+
 
 export type {
   Ns4E10CheckSummary,
@@ -219,12 +215,6 @@ export const NS4_PERMANENT_ARTIFACT_TYPE_NAMES = [
   'Ns4WorkflowIndexArtifact',
   'Ns4WorkflowIndexArtifactV2',
   'Ns4WorkflowIndexArtifactV3',
-  'Ns4WorkspaceArtifact',
-  'Ns4WorkspaceIndex',
-  'Ns4NavigationIndexArtifact',
-  'Ns4NavigationStoreArtifact',
-  'Ns4NotificationCatalogArtifact',
-  'Ns4BffContractArtifact',
   'Ns4L5TodoFrontendArtifact',
   'Ns4L5TodoBackendArtifact',
   'Ns4L5ProcessArtifact',
@@ -250,12 +240,6 @@ export interface Ns4PermanentArtifactByType {
   Ns4WorkflowIndexArtifact: Ns4WorkflowIndexArtifact;
   Ns4WorkflowIndexArtifactV2: Ns4WorkflowIndexArtifactV2;
   Ns4WorkflowIndexArtifactV3: Ns4WorkflowIndexArtifactV3;
-  Ns4WorkspaceArtifact: Ns4WorkspaceArtifact;
-  Ns4WorkspaceIndex: Ns4WorkspaceIndex;
-  Ns4NavigationIndexArtifact: Ns4NavigationIndexArtifact;
-  Ns4NavigationStoreArtifact: Ns4NavigationStoreArtifact;
-  Ns4NotificationCatalogArtifact: Ns4NotificationCatalogArtifact;
-  Ns4BffContractArtifact: Ns4BffContractArtifact;
   Ns4L5TodoFrontendArtifact: Ns4L5TodoFrontendArtifact;
   Ns4L5TodoBackendArtifact: Ns4L5TodoBackendArtifact;
   Ns4L5ProcessArtifact: Ns4L5ProcessArtifact;

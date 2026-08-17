@@ -7,17 +7,14 @@ import {
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Core.js';
 import { readNs4ApprovedJourneys, readNs4ApprovedOntology } from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
 import {
-  ns4AccessMatrixFile, ns4UseCaseFile, ns4UseCaseIndexFile, ns4WorkflowFile, ns4WorkflowIndexFile, ns4WorkspaceFile, ns4WorkspaceIndexFile,
-  readNs4DefsJson, readNs4Module, readNs4Pipeline, writeNs4AccessMatrix, writeNs4BffContract, writeNs4Module,
-  writeNs4NavigationIndex, writeNs4NavigationStore, writeNs4Notifications, writeNs4Pipeline,
+  ns4WorkspaceModelFile, readNs4DefsJson, readNs4Module, readNs4Pipeline, readNs4Text, writeNs4ClassicContract, writeNs4ClassicWorkspace,
+  writeNs4Module, writeNs4Operation, writeNs4Pipeline, writeNs4SiteMap,
 } from '/_102020_/l2/agentNewSolution4/helpers/ns4Fs.js';
-import type { Ns4AccessMatrixArtifact } from '/_102020_/l2/agentNewSolution4/steps/e3/contracts.js';
-import type {
-  Ns4UseCaseArtifactV3, Ns4UseCaseIndexArtifactV3, Ns4WorkflowArtifactV2, Ns4WorkflowIndexArtifactV2, Ns4WorkflowIndexArtifactV3,
-} from '/_102020_/l2/agentNewSolution4/steps/e7/contracts.js';
-import type { Ns4WorkspaceArtifact, Ns4WorkspaceIndex } from '/_102020_/l2/agentNewSolution4/steps/e8/contracts.js';
-import { compileNs4E9, type Ns4E9IssueOrigin, type Ns4E9Sources } from '/_102020_/l2/agentNewSolution4/steps/e9/contracts.js';
-import { ns4E9FailureOrigin, validateNs4E9 } from '/_102020_/l2/agentNewSolution4/steps/e9/gate.js';
+import { readNs4ApprovedOntology as readOntology } from '/_102020_/l2/agentNewSolution4/helpers/ns4ApprovedArtifacts.js';
+import type { Ns4E8Model } from '/_102020_/l2/agentNewSolution4/steps/e8/model.js';
+import { compileNs4ClassicL4 } from '/_102020_/l2/agentNewSolution4/steps/e9/classic.js';
+/** E9 is a transpiler: a failure is either the approved model or the emission itself. */
+type Ns4E9IssueOrigin = 'skeleton' | 'compiler';
 
 interface Ns4E9Args { planId: 'e9-navigation-compiler'; moduleName: string; }
 
@@ -31,26 +28,24 @@ export async function beforeNs4E9PromptStep(
     const pipeline = await requirePipeline(moduleName);
     if (pipeline.steps.e8?.status !== 'approved') throw new Error(`E9 requires an approved E8 workspace index for ${moduleName}.`);
     await writeNs4Pipeline(markNs4E9Running(pipeline));
-    const sources = await loadSources(moduleName); const compilation = await compileNs4E9(sources);
-    const gate = validateNs4E9(sources, compilation);
-    if (!gate.ok) { failureOrigin = ns4E9FailureOrigin(gate.issues); throw new Error(formatGate(gate.issues)); }
+    // E9 takes no screen decision: it transposes the approved E8 model into the classic L4 format.
+    const [model, ontology] = await Promise.all([readApprovedModel(moduleName), readOntology(moduleName)]);
+    const l4 = await compileNs4ClassicL4(model, ontology);
     const artifactPaths: string[] = [];
-    for (const contract of compilation.contracts) artifactPaths.push(await writeNs4BffContract(moduleName, contract));
-    artifactPaths.push(await writeNs4NavigationIndex(moduleName, compilation.navigation));
-    artifactPaths.push(await writeNs4NavigationStore(moduleName, compilation.store));
-    artifactPaths.push(await writeNs4Notifications(moduleName, compilation.notifications));
-    artifactPaths.push(await writeNs4AccessMatrix(moduleName, compilation.access));
+    for (const workspace of l4.workspaces) artifactPaths.push(await writeNs4ClassicWorkspace(moduleName, workspace.workspaceId, workspace));
+    for (const operation of l4.operations) artifactPaths.push(await writeNs4Operation(moduleName, operation.operationId, operation));
+    for (const contract of l4.contracts) artifactPaths.push(await writeNs4ClassicContract(moduleName, contract.workspaceId, contract.bffId, contract.source));
+    artifactPaths.push(await writeNs4SiteMap(moduleName, l4.siteMap));
     const module = await readNs4Module(moduleName); if (!module) throw new Error(`Module artifact not found for ${moduleName}.`);
     const approvedAt = new Date().toISOString();
     await writeNs4Module(moduleName, markNs4ModuleE9Approved(module, approvedAt));
     await writeNs4Pipeline(markNs4E9Approved(await requirePipeline(moduleName), artifactPaths, approvedAt));
     const mutationParent = resolveNs4MutableParent(getAllSteps(context.task?.iaCompressed?.nextSteps), parent, step);
     return [result(context, mutationParent, {
-      moduleName, contractCount: compilation.contracts.length, routeCount: compilation.navigation.routes.length,
-      notificationCount: compilation.notifications.entries.length, navigationHash: compilation.navigation.navigationHash,
-      artifactPaths,
+      moduleName, workspaceCount: l4.workspaces.length, operationCount: l4.operations.length,
+      contractCount: l4.contracts.length, artifactPaths,
     }), status(context, mutationParent, step, hookSequential, 'completed',
-      `E9 compiled ${compilation.navigation.routes.length} routes, ${compilation.contracts.length} BFF contracts and ${compilation.notifications.entries.length} notifications.`, 'input_output')];
+      `E9 emitted ${l4.workspaces.length} workspaces, ${l4.operations.length} operations and ${l4.contracts.length} contracts.`, 'input_output')];
   } catch (error) {
     const message = errorMessage(error); if (moduleName) await fail(moduleName, message, failureOrigin);
     return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')];
@@ -66,29 +61,12 @@ export async function afterNs4E9PromptStep(
   return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')];
 }
 
-async function loadSources(moduleName: string): Promise<Ns4E9Sources> {
-  const [journeys, ontology, access, workspaceIndex, useCaseIndex, workflowIndex] = await Promise.all([
-    readNs4ApprovedJourneys(moduleName), readNs4ApprovedOntology(moduleName),
-    readRequired<Ns4AccessMatrixArtifact>(ns4AccessMatrixFile(moduleName), 'access matrix'),
-    readRequired<Ns4WorkspaceIndex>(ns4WorkspaceIndexFile(moduleName), 'workspace index'),
-    readRequired<Ns4UseCaseIndexArtifactV3>(ns4UseCaseIndexFile(moduleName), 'use-case index'),
-    readRequired<Ns4WorkflowIndexArtifactV2 | Ns4WorkflowIndexArtifactV3>(ns4WorkflowIndexFile(moduleName), 'workflow index'),
-  ]);
-  const [workspaces, useCases, workflows] = await Promise.all([
-    Promise.all(workspaceIndex.workspaces.map(entry => readRequired<Ns4WorkspaceArtifact>(ns4WorkspaceFile(moduleName, entry.workspaceId), `workspace ${entry.workspaceId}`))),
-    Promise.all(useCaseIndex.useCases.map(entry => readRequired<Ns4UseCaseArtifactV3>(ns4UseCaseFile(moduleName, entry.useCaseId), `use case ${entry.useCaseId}`))),
-    Promise.all(workflowIndex.workflows.map(entry => readRequired<Ns4WorkflowArtifactV2>(ns4WorkflowFile(moduleName, entry.workflowId), `workflow ${entry.workflowId}`))),
-  ]);
-  return { journeys, access, ontology, useCases, workflows, workspaceIndex, workspaces };
-}
-
-async function readRequired<T>(file: Parameters<typeof readNs4DefsJson>[0], label: string): Promise<T> {
-  let failure = '';
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try { const value = await readNs4DefsJson<T>(file, true); if (value) return value; }
-    catch (error) { failure = errorMessage(error); }
+async function readApprovedModel(moduleName: string): Promise<Ns4E8Model> {
+  const parsed = await readNs4DefsJson<Ns4E8Model>(ns4WorkspaceModelFile(moduleName), true);
+  if (!parsed || parsed.planId !== 'e8-workspace-model' || parsed.moduleName !== moduleName) {
+    throw new Error(`Approved E8 workspace model not found for ${moduleName}.`);
   }
-  throw new Error(`Unable to read approved ${label}: ${failure || 'invalid artifact'}`);
+  return parsed;
 }
 
 function resolveArgs(context: mls.msg.ExecutionContext, value: unknown): Ns4E9Args {

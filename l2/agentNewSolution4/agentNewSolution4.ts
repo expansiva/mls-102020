@@ -19,6 +19,7 @@ import {
   markNs4E6Approved,
   markNs4E7Approved,
   markNs4E9Approved,
+  resolveNs4StepOwner,
   markNs4E10Approved,
   normalizeNs4RootPlan,
   Ns4RootPlan,
@@ -36,8 +37,7 @@ import {
   ns4RulesFile,
   ns4CompositionFile,
   ns4UseCaseIndexFile,
-  ns4NavigationIndexFile,
-  ns4ProcessFile,
+  ns4ProcessFile, ns4SiteMapFile,
   readNs4AgentText,
   readNs4Module,
   readNs4Pipeline,
@@ -83,7 +83,6 @@ import {
   afterNs4E8PromptStep,
   beforeNs4E8PromptStep,
 } from '/_102020_/l2/agentNewSolution4/steps/e8/agentNs4E8.js';
-import { isNs4E8ImplementedPlanId } from '/_102020_/l2/agentNewSolution4/steps/e8/dispatch.js';
 import {
   afterNs4E9PromptStep,
   beforeNs4E9PromptStep,
@@ -107,7 +106,7 @@ export function createAgent(): IAgentAsync {
   };
 }
 
-export const NS4_AGENT_BUILD = 'build-58 (2026-08-14) typed E9 decisions and failure ownership';
+export const NS4_AGENT_BUILD = 'build-59 (2026-08-15) tier workspace model, classic L4 emission and one dispatch table';
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -183,8 +182,8 @@ async function beforePromptImplicit(
           approvedE7.approvedAt,
         );
       }
-      if (pipeline.steps.e9?.status !== 'approved' && approvedE9 && ns4FileExists(ns4NavigationIndexFile(existingModule))) {
-        pipeline = markNs4E9Approved(pipeline, [`l4/${existingModule}/navigation/index.defs.ts`], approvedE9.approvedAt);
+      if (pipeline.steps.e9?.status !== 'approved' && approvedE9 && ns4FileExists(ns4SiteMapFile(existingModule))) {
+        pipeline = markNs4E9Approved(pipeline, [`l4/${existingModule}/siteMap.defs.ts`], approvedE9.approvedAt);
       }
       if (pipeline.steps.e10?.status !== 'approved' && approvedE10 && ns4FileExists(ns4ProcessFile(existingModule))) {
         pipeline = markNs4E10Approved(pipeline, approvedE10.approvedBy, approvedE10.approvedAt);
@@ -263,32 +262,19 @@ async function beforePromptStep(
   if (dynamic.worker === 'e7') return beforeNs4E7PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
   if (dynamic.worker === 'e8') return beforeNs4E8PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
   const planId = step.planning?.planId || '';
-  if (planId === 'e1-clarification' || planId.startsWith('e1-clarification-round-') || planId === 'e1-compile') {
-    return beforeNs4E1PromptStep(agent, context, parentStep, step, hookSequential, args);
+  switch (resolveNs4StepOwner(planId)) {
+    case 'e1': return beforeNs4E1PromptStep(agent, context, parentStep, step, hookSequential, args);
+    case 'e2': return beforeNs4E2PromptStep(agent, context, parentStep, step, hookSequential, args);
+    case 'e3': return beforeNs4E3PromptStep(agent, context, parentStep, step, hookSequential, args);
+    case 'e4': return beforeNs4E4PromptStep(agent, context, parentStep, step, hookSequential, args);
+    case 'e5': return beforeNs4E5PromptStep(agent, context, parentStep, step, hookSequential, args);
+    case 'e6': return beforeNs4E6PromptStep(agent, context, parentStep, step, hookSequential, args);
+    case 'e7': return beforeNs4E7PromptStep(agent, context, parentStep, step, hookSequential, args);
+    case 'e8': return beforeNs4E8PromptStep(agent, context, parentStep, step, hookSequential, args);
+    case 'e9': return beforeNs4E9PromptStep(agent, context, parentStep, step, hookSequential, args);
+    case 'e10': return beforeNs4E10PromptStep(agent, context, parentStep, step, hookSequential, args);
+    default: break;
   }
-  if (planId.startsWith('e2-journeys-round-')) {
-    return beforeNs4E2PromptStep(agent, context, parentStep, step, hookSequential, args);
-  }
-  if (planId.startsWith('e3-access-matrix-round-')) {
-    return beforeNs4E3PromptStep(agent, context, parentStep, step, hookSequential, args);
-  }
-  if (planId.startsWith('e4-ontology-round-')) {
-    return beforeNs4E4PromptStep(agent, context, parentStep, step, hookSequential, args);
-  }
-  if (planId.startsWith('e5-rules-round-')) {
-    return beforeNs4E5PromptStep(agent, context, parentStep, step, hookSequential, args);
-  }
-  if (planId.startsWith('e6-behaviors-round-')) {
-    return beforeNs4E6PromptStep(agent, context, parentStep, step, hookSequential, args);
-  }
-  if (planId === 'e7-realization' || planId.startsWith('e7-realization-finalize-')) {
-    return beforeNs4E7PromptStep(agent, context, parentStep, step, hookSequential, args);
-  }
-  if (isNs4E8ImplementedPlanId(planId)) {
-    return beforeNs4E8PromptStep(agent, context, parentStep, step, hookSequential, args);
-  }
-  if (planId === 'e9-navigation-compiler') return beforeNs4E9PromptStep(agent, context, parentStep, step, hookSequential, args);
-  if (planId === 'e10-validation') return beforeNs4E10PromptStep(agent, context, parentStep, step, hookSequential, args);
   return [rootStatus(context, parentStep, step, hookSequential, 'failed', `Unsupported implemented step: ${planId || '(missing)'}`)];
 }
 
@@ -305,32 +291,20 @@ async function afterPromptStep(
   if (dynamic.worker === 'e7') return afterNs4E7PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
   if (dynamic.worker === 'e8') return afterNs4E8PromptStep(agent, context, parentStep, step, hookSequential, dynamic.args);
   const planId = step.planning?.planId || '';
-  if (planId === 'e1-clarification' || planId.startsWith('e1-clarification-round-')) {
-    return afterNs4E1PromptStep(agent, context, parentStep, step, hookSequential);
+  // E1's after hook has no compile stage, and only the root falls through to planning.
+  switch (planId === 'e1-compile' ? '' : resolveNs4StepOwner(planId)) {
+    case 'e1': return afterNs4E1PromptStep(agent, context, parentStep, step, hookSequential);
+    case 'e2': return afterNs4E2PromptStep(agent, context, parentStep, step, hookSequential);
+    case 'e3': return afterNs4E3PromptStep(agent, context, parentStep, step, hookSequential);
+    case 'e4': return afterNs4E4PromptStep(agent, context, parentStep, step, hookSequential);
+    case 'e5': return afterNs4E5PromptStep(agent, context, parentStep, step, hookSequential);
+    case 'e6': return afterNs4E6PromptStep(agent, context, parentStep, step, hookSequential, args);
+    case 'e7': return afterNs4E7PromptStep(agent, context, parentStep, step, hookSequential, args);
+    case 'e8': return afterNs4E8PromptStep(agent, context, parentStep, step, hookSequential, args);
+    case 'e9': return afterNs4E9PromptStep(agent, context, parentStep, step, hookSequential);
+    case 'e10': return afterNs4E10PromptStep(agent, context, parentStep, step, hookSequential);
+    default: break;
   }
-  if (planId.startsWith('e2-journeys-round-')) {
-    return afterNs4E2PromptStep(agent, context, parentStep, step, hookSequential);
-  }
-  if (planId.startsWith('e3-access-matrix-round-')) {
-    return afterNs4E3PromptStep(agent, context, parentStep, step, hookSequential);
-  }
-  if (planId.startsWith('e4-ontology-round-')) {
-    return afterNs4E4PromptStep(agent, context, parentStep, step, hookSequential);
-  }
-  if (planId.startsWith('e5-rules-round-')) {
-    return afterNs4E5PromptStep(agent, context, parentStep, step, hookSequential);
-  }
-  if (planId.startsWith('e6-behaviors-round-')) {
-    return afterNs4E6PromptStep(agent, context, parentStep, step, hookSequential, args);
-  }
-  if (planId === 'e7-realization' || planId.startsWith('e7-realization-finalize-')) {
-    return afterNs4E7PromptStep(agent, context, parentStep, step, hookSequential, args);
-  }
-  if (isNs4E8ImplementedPlanId(planId)) {
-    return afterNs4E8PromptStep(agent, context, parentStep, step, hookSequential, args);
-  }
-  if (planId === 'e9-navigation-compiler') return afterNs4E9PromptStep(agent, context, parentStep, step, hookSequential);
-  if (planId === 'e10-validation') return afterNs4E10PromptStep(agent, context, parentStep, step, hookSequential);
   if (memoryString(context, 'statusOnly') === 'true') {
     const failed = memoryString(context, 'statusOutcome') === 'error';
     return [rootStatus(context, parentStep, step, hookSequential, failed ? 'failed' : 'completed', 'Status task completed.')];

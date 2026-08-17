@@ -586,3 +586,179 @@ test('mutation feedback keys are backfilled for every command, never for a query
   assert.deepEqual(mod.addMutationFeedbackI18n(commands, i18n), []);
   assert.equal(i18n['action.createProjectCmd.success'], 'Projeto criado');
 });
+
+// ── agentNewSolution4 dialect ────────────────────────────────────────────────
+// The generator now types every artifact (`as const satisfies`), tracks frontend work by PAGE
+// (workspace) and WIRE (contract) instead of by operation, keeps the audience in an access matrix,
+// declares the default language in `localization`, and ships entity lifecycles under workflows/.
+
+const NS4 = 'buildFlowFsm47';
+
+function ns4Defs(exportName: string, artifact: string, body: unknown): string {
+  return [
+    `/// <mls fileReference="_${PROJECT}_/l4/x.defs.ts" enhancement="_blank"/>`,
+    '',
+    `import type { ${artifact} } from '/_102020_/l2/agentNewSolution4/types.js';`,
+    '',
+    `export const ${exportName} = ${JSON.stringify(body, null, 2)} as const satisfies ${artifact};`,
+    '',
+    `export type ${exportName}Type = typeof ${exportName};`,
+    '',
+    `export default ${exportName};`,
+    '',
+  ].join('\n');
+}
+
+const NS4_WORKSPACE = {
+  workspaceId: 'projectCatalogue', title: 'Projetos', actors: ['projectManager'], kind: 'record',
+  entity: 'Project', purpose: 'Catálogo de projetos',
+  bffCalls: [
+    { bffId: 'qryListProject', kind: 'query', uses: [{ operationId: 'listProject' }], input: [], output: { kind: 'list', fields: [{ name: 'projectId', from: 'listProject.$items.projectId', type: 'string', required: true }] }, route: `${NS4}.projectCatalogue.qryListProject` },
+    { bffId: 'cmdCreateProject', kind: 'command', uses: [{ operationId: 'createProject' }], input: [{ name: 'name', from: 'createProject.name', type: 'string', required: true }], output: { kind: 'object', fields: [{ name: 'projectId', from: 'createProject.projectId', type: 'string', required: true }] }, route: `${NS4}.projectCatalogue.cmdCreateProject` },
+  ],
+  sections: [{ sectionId: 'recordCatalogue', intent: 'Listar', organisms: [{ role: 'primarySurface', dataSource: 'qryListProject' }, { role: 'contextualAction', action: 'cmdCreateProject' }] }],
+  operationIds: ['listProject', 'createProject'],
+  presentation: { categoryRef: 'inventoryControl' },
+};
+
+function installNs4Stor(withLegacyModule = false): void {
+  const operation = (operationId: string, kind: string, extra: Record<string, unknown>) => ns4Defs(
+    `${operationId}Operation`, 'Ns4OperationArtifact',
+    { operationId, commandName: operationId, kind, entity: 'Project', actors: ['projectManager'], reads: ['Project'], writes: [], rulesApplied: [], ...extra },
+  );
+  const files = [
+    file(4, NS4, 'module', '.defs.ts', ns4Defs(`${NS4}Module`, 'Ns4ModuleArtifact', {
+      module: { moduleName: NS4, visualStyle: {}, languages: ['pt-BR', 'en', 'es'] },
+      localization: { productLanguages: ['pt-BR', 'en', 'es'], defaultLanguage: 'en' },
+      designContext: { initialPrompt: 'construction' },
+    })),
+    file(4, `${NS4}/access`, 'access-matrix', '.defs.ts', ns4Defs(`${NS4}AccessMatrix`, 'Ns4AccessMatrixArtifact', {
+      moduleName: NS4, profiles: [{ profileId: 'projectManager', title: 'Gerente de projeto', kind: 'internal', actorRefs: ['projectManager'] }],
+    })),
+    file(4, NS4, 'siteMap', '.defs.ts', defs(`${NS4}SiteMap`, JSON.stringify({
+      moduleName: NS4, landings: [{ actorId: 'projectManager', workspaceId: 'projectCatalogue', reason: 'entra no catálogo' }],
+      navigationEdges: [{ from: 'projectHub', to: 'projectCatalogue', operationId: '', description: 'Projetos', prominence: 'primary', order: 0 }],
+    }))),
+    file(4, `${NS4}/ontology`, 'Project', '.defs.ts', ns4Defs('ProjectEntity', 'Ns4OntologyEntityArtifact', {
+      entityId: 'Project', title: 'Projeto', fields: [
+        { fieldId: 'projectId', type: 'string', required: true },
+        { fieldId: 'name', type: 'string', required: true },
+        // The literal union states itself as a constraint now, not as `enum`.
+        { fieldId: 'phase', type: 'string', required: true, constraints: [{ kind: 'enum', value: '["planned","active","closed"]' }] },
+      ],
+    })),
+    file(4, `${NS4}/ontology`, 'index', '.defs.ts', ns4Defs(`${NS4}OntologyIndex`, 'Ns4OntologyIndexArtifact', {
+      moduleName: NS4, entities: [{ entityId: 'Project' }], relationships: [],
+    })),
+    file(4, `${NS4}/operations`, 'listProject', '.defs.ts', operation('listProject', 'list', {
+      accessPattern: { kind: 'list' }, inputs: [],
+      outputShape: { kind: 'list', fields: [{ name: 'projectId', type: 'string', required: true }] },
+    })),
+    file(4, `${NS4}/operations`, 'createProject', '.defs.ts', operation('createProject', 'create', {
+      accessPattern: { kind: 'create' },
+      inputs: [{ inputId: 'name', fieldRef: 'Project.name', required: true, source: 'userInput' }],
+      outputShape: { kind: 'object', fields: [{ name: 'projectId', type: 'string', required: true }] },
+    })),
+    file(4, `${NS4}/workspaces`, 'projectCatalogue', '.defs.ts', defs('projectCatalogueWorkspace', JSON.stringify(NS4_WORKSPACE))),
+    // An entity lifecycle, which is metadata and not a unit of frontend work.
+    file(4, `${NS4}/workflows`, 'projectLifecycle', '.defs.ts', ns4Defs('projectLifecycleWorkflow', 'Ns4WorkflowArtifactV2', {
+      moduleName: NS4, workflowId: 'projectLifecycle', entityRef: 'Project', initialState: 'planned',
+      states: ['planned', 'active', 'closed'], transitions: [{ transitionId: 'start', from: 'planned', to: 'active' }],
+    })),
+    // A journey business artifact, which is not the map of workspaces this agent reads.
+    file(4, `${NS4}/journeys`, 'createProject', '.defs.ts', ns4Defs('createProjectJourney', 'Ns4JourneyArtifact', {
+      journeyId: 'createProject', revision: 1, business: { actorRef: 'projectManager', title: 'Criar projeto', steps: [] },
+      realization: { status: 'compiled', steps: [] },
+    })),
+    file(5, NS4, 'todoFrontend', '.defs.ts', ns4Defs(`${NS4}TodoFrontend`, 'Ns4L5TodoFrontendArtifact', {
+      schemaVersion: '2026-08-13-ns4-todo-frontend-v1', layer: 'frontend', moduleName: NS4,
+      owners: [
+        { ownerType: 'workspace', ownerId: 'projectCatalogue', workspaceId: 'projectCatalogue', statusFrontend: 'toCreate' },
+        { ownerType: 'contract', ownerId: `${NS4}.projectCatalogue.qryListProject`, workspaceId: 'projectCatalogue', statusFrontend: 'toCreate' },
+        { ownerType: 'contract', ownerId: `${NS4}.projectCatalogue.cmdCreateProject`, workspaceId: 'projectCatalogue', statusFrontend: 'toCreate' },
+      ],
+    })),
+  ];
+  // A second module written by the OLD generator: its todo owns operations, and it must keep planning
+  // by pending owner while the ns4 module plans by page.
+  const legacy = [
+    file(4, 'oldShop', 'module', '.defs.ts', defs('oldShopModule', JSON.stringify({ moduleName: 'oldShop', languages: ['pt-BR'] }))),
+    file(4, 'oldShop/ontology', 'Item', '.defs.ts', defs('Item', JSON.stringify({ entityId: 'Item', fields: [{ fieldId: 'itemId', type: 'string', required: true }] }))),
+    file(4, 'oldShop/operations', 'listItem', '.defs.ts', defs('listItemOperation', JSON.stringify({
+      operationId: 'listItem', commandName: 'listItem', kind: 'query', entity: 'Item', actor: 'lojista', reads: ['Item'], writes: [], rulesApplied: [],
+      accessPattern: { kind: 'list' }, inputs: [], outputShape: { kind: 'list', fields: [{ name: 'itemId', type: 'string', required: true }] },
+    }))),
+    file(4, 'oldShop/workspaces', 'itemList', '.defs.ts', defs('itemListWorkspace', JSON.stringify({
+      workspaceId: 'itemList', title: 'Itens', actors: ['lojista'], kind: 'operation', entity: 'Item', purpose: 'Listar',
+      bffCalls: [{ bffId: 'qryListItem', kind: 'query', uses: [{ operationId: 'listItem' }], input: [], output: { kind: 'list', fields: [{ name: 'itemId', from: 'listItem.$items.itemId' }] }, route: 'oldShop.itemList.qryListItem' }],
+      sections: [{ sectionId: 'list', intent: 'Listar', organisms: [{ role: 'primarySurface', dataSource: 'qryListItem' }] }],
+      operationIds: ['listItem'],
+    }))),
+    file(5, 'oldShop', 'todoFrontend', '.defs.ts', defs('oldShopTodoFrontend', JSON.stringify({
+      moduleName: 'oldShop', layer: 'frontend', owners: [{ ownerType: 'operation', ownerId: 'listItem', status: 'toCreate' }],
+    }))),
+  ];
+  const all = withLegacyModule ? [...files, ...legacy] : files;
+  g.mls.actualProject = PROJECT;
+  g.mls.stor = { ...(g.mls.stor || {}), files: Object.fromEntries(all.map((f, i) => [`n${i}`, f])) };
+}
+
+test('ns4: a typed artifact parses, and the page plan comes from the workspace owners', async () => {
+  const { readCreateContext } = await loadModule();
+  installNs4Stor();
+  const ctx = await readCreateContext();
+
+  // `as const satisfies` used to make every one of these files unreadable.
+  assert.deepEqual(ctx.moduleNames, [NS4]);
+  assert.ok(ctx.operations.get('listProject'), 'operations parsed');
+  assert.equal(ctx.entities.get('Project')?.fields.length, 3);
+
+  // One page per pending workspace, carrying the page owner and every wire it will write.
+  assert.deepEqual(ctx.pages.map((page: any) => page.pageId), ['projectCatalogue']);
+  assert.deepEqual(ctx.pages[0].ownerIds, [
+    'workspace:projectCatalogue',
+    `contract:${NS4}.projectCatalogue.qryListProject`,
+    `contract:${NS4}.projectCatalogue.cmdCreateProject`,
+  ]);
+  // The operations of the page come along even though no operation has a status of its own here.
+  assert.deepEqual(ctx.pages[0].operationIds, ['listProject', 'createProject']);
+  assert.deepEqual(ctx.warnings.filter((warning: string) => /missing l4 owner|absent from l4/.test(warning)), []);
+});
+
+test('ns4: lifecycles, journey artifacts and indexes are never owners of frontend work', async () => {
+  const { readCreateContext } = await loadModule();
+  installNs4Stor();
+  const ctx = await readCreateContext();
+  // A lifecycle carries a workflowId; taking it as an owner made the run fail on a missing todo entry.
+  assert.equal(ctx.workflows.size, 0);
+  // The journey map is built from workspaces/ + siteMap, never from the ns4 journey artifacts.
+  const journey = ctx.journeys.find((item: any) => item.moduleName === NS4);
+  assert.deepEqual(journey.workspaces.map((ws: any) => ws.workspaceId), ['projectCatalogue']);
+  assert.equal(journey.landings[0]?.workspaceId, 'projectCatalogue');
+  assert.equal(journey.navigationEdges[0]?.prominence, 'primary');
+});
+
+test('ns4: the default language is the one the product was written in, and enums survive', async () => {
+  const { readCreateContext } = await loadModule();
+  installNs4Stor();
+  const ctx = await readCreateContext();
+  // 'en' is declared in localization; languages[0] ('pt-BR') is only the fallback.
+  assert.equal(ctx.moduleI18n[NS4].defaultLocale, 'en');
+  assert.equal(ctx.moduleI18n[NS4].runtimeLocales[0], 'en');
+  // The literal union now arrives as a constraint; losing it lets a form emit an impossible value.
+  assert.deepEqual(ctx.entities.get('Project')?.fields.find((field: any) => field.fieldId === 'phase')?.enum, ['planned', 'active', 'closed']);
+  // The audience comes from the access matrix profiles.
+  assert.deepEqual((ctx.actorsByModule[NS4] || []).map((actor: any) => actor.actorId), ['projectManager']);
+});
+
+test('ns4 and the old dialect coexist: each module is reconciled and planned by its own rule', async () => {
+  const { readCreateContext } = await loadModule();
+  installNs4Stor(true);
+  const ctx = await readCreateContext();
+  // Neither module reports the other's owners as missing (the ns4 todo has no operation owner, the
+  // old one has no workspace owner) — a project-wide answer would have failed the whole run.
+  assert.deepEqual(ctx.warnings.filter((warning: string) => /missing l4 owner|absent from l4/.test(warning)), []);
+  const pages = new Map<string, any>(ctx.pages.map((page: any) => [page.moduleName, page]));
+  assert.deepEqual(pages.get(NS4)?.ownerIds[0], 'workspace:projectCatalogue');
+  assert.deepEqual(pages.get('oldShop')?.ownerIds, ['operation:listItem']);
+});

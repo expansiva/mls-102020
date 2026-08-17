@@ -53,7 +53,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const args = parseArgs(step.prompt);
     const generated = await listGeneratedCreatePages();
     const candidates = await readMaterializeCandidates(generated.project);
-    const planned = planMaterialization(candidates, args.force === true);
+    const planned = planMaterialization(candidates, args.force === true, await readBrokenVerdictPlanIds(generated.project));
     const todo = planned.filter(item => item.stale);
     const phasePlan = createMaterializePhaseSteps(context, step, todo);
     const registerDeps = phasePlan.terminalPlanIds;
@@ -144,7 +144,17 @@ function toMlsRef(file: any): string {
   return `_${file.project}_/l${file.level}/${folder}${file.shortName}${file.extension}`;
 }
 
-function planMaterialization(candidates: MaterializeCandidate[], force: boolean): PlannedMaterializeItem[] {
+/**
+ * The planner is a freshness check (defs newer than .ts), so a file that was materialized BROKEN is
+ * "up to date" forever: its defs never changes again, no run regenerates it, and only the module
+ * compile gate of the finalize ever sees it — which is how run cf2 left shared files that failed the
+ * gate of run cf3 with errors the run had not caused.
+ *
+ * The last verify verdict of each phase is already persisted (one file per phase, overwritten by the
+ * last round), so a plan can simply believe it: an item the last verdict lists as broken is stale.
+ * No module-wide compile inside the plan.
+ */
+function planMaterialization(candidates: MaterializeCandidate[], force: boolean, brokenPlanIds: Set<string> = new Set()): PlannedMaterializeItem[] {
   const byOutput = new Map(candidates.map(candidate => [candidate.item.outputPath, candidate]));
   const orderedItems = orderItems(candidates.map(candidate => candidate.item));
   const scheduledOutputs = new Set<string>();
@@ -159,11 +169,14 @@ function planMaterialization(candidates: MaterializeCandidate[], force: boolean)
     const testMs = expectsTypecheck ? modifiedMs(testPathForOutputPath(item.outputPath)) : null;
     const depMs = newestDependencyMs(item);
     const scheduledDep = (item.dependsFiles ?? []).some(dep => scheduledOutputs.has(dep));
-    const stale = force || scheduledDep || isStale(defsMs, tsMs, depMs) || (expectsTypecheck && (testMs == null || (defsMs != null && defsMs > testMs)));
+    const verdictBroken = brokenPlanIds.has(materializePlanId(item));
+    const stale = force || scheduledDep || verdictBroken || isStale(defsMs, tsMs, depMs) || (expectsTypecheck && (testMs == null || (defsMs != null && defsMs > testMs)));
     const reason = force
       ? 'forced'
       : tsMs == null
         ? 'output missing'
+        : verdictBroken
+          ? 'last verify verdict: broken'
         : expectsTypecheck && testMs == null
           ? 'typecheck missing'
           : scheduledDep
@@ -180,6 +193,29 @@ function planMaterialization(candidates: MaterializeCandidate[], force: boolean)
   }
 
   return planned;
+}
+
+/**
+ * The plan ids the LAST verify verdict of each phase still lists as broken. One file per phase
+ * (`<phase>-summary.json`, overwritten by the final round), so this is always the current verdict:
+ * once a run leaves a phase clean the file says `allClear` and nothing is re-scheduled.
+ */
+async function readBrokenVerdictPlanIds(project: number): Promise<Set<string>> {
+  const broken = new Set<string>();
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
+    if (file.extension !== '.json' || !String(file.folder || '').endsWith('/trace/frontend-materialize-verify')) continue;
+    if (!String(file.shortName || '').endsWith('-summary')) continue;
+    try {
+      const verdict = JSON.parse(String(await file.getContent()));
+      if (!verdict || verdict.allClear !== false || !Array.isArray(verdict.broken)) continue;
+      for (const item of verdict.broken) {
+        const planId = item && typeof item.planId === 'string' ? item.planId : '';
+        if (planId) broken.add(planId);
+      }
+    } catch { /* an unreadable verdict schedules nothing */ }
+  }
+  return broken;
 }
 
 function newestDependencyMs(item: PipelineItem): number | null {
@@ -200,7 +236,12 @@ function modifiedMs(ref: string): number | null {
 function createMaterializePhaseSteps(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, planned: PlannedMaterializeItem[]): { intents: mls.msg.AgentIntentAddStep[]; terminalPlanIds: string[] } {
   const groups = groupByMaterializePhase(planned);
   const intents: mls.msg.AgentIntentAddStep[] = [];
-  let priorFanoutPlanIds: string[] = [];
+  // The barrier is the PHASE, never its fan-out. A fan-out completes when the first pass of its items
+  // ends; the phase step only completes when fan-out + verify + repair rounds + verify-v2 are done.
+  // Depending on the fan-out let register/finalize run the module compile gate while 32 pages were
+  // still being repaired (run cf3: the task failed and killed the repair mid-flight), and let a phase
+  // start while the previous one was still repairing (run cf2: pages compiled against broken shared).
+  let priorPhasePlanIds: string[] = [];
   let terminalPlanIds: string[] = [];
 
   for (const group of groups) {
@@ -218,13 +259,13 @@ function createMaterializePhaseSteps(context: mls.msg.ExecutionContext, parentSt
       'agentCfeMaterializePhase',
       group.parentTitle,
       { planId: phasePlanId, fanoutPlanId, title: group.parentTitle, fanoutTitle: group.progressTitle, items, maxParallel: 10 },
-      priorFanoutPlanIds,
+      priorPhasePlanIds,
       'sequential',
-      priorFanoutPlanIds.length > 0 ? 'waiting_dependency' : 'waiting_human_input',
+      priorPhasePlanIds.length > 0 ? 'waiting_dependency' : 'waiting_human_input',
     );
     intents.push(createAddStepIntent(context, parentStep, phase));
-    priorFanoutPlanIds = [fanoutPlanId];
-    terminalPlanIds = [fanoutPlanId];
+    priorPhasePlanIds = [phasePlanId];
+    terminalPlanIds = [phasePlanId];
   }
 
   return { intents, terminalPlanIds };

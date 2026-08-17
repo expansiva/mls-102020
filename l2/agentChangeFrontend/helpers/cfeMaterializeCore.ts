@@ -71,6 +71,49 @@ export function countPage11Items(items: { outputPath: string | null }[]): number
 }
 
 /**
+ * The contract .ts a shared/page defs declares, or '' when it names none. The contract model is
+ * disposed as soon as the contract phase compiled it, so whoever compiles a file that imports it has
+ * to load it back first — otherwise the import resolves to nothing and yields a false TS2792.
+ */
+export function contractTsPathOf(defsContent: string | null): string {
+  if (!defsContent) return '';
+  try {
+    const data = parseDefs(defsContent).data as Record<string, unknown>;
+    const ref = data && typeof data.contractRef === 'object' && data.contractRef ? data.contractRef as Record<string, unknown> : null;
+    return ref && typeof ref.tsPath === 'string' ? ref.tsPath : '';
+  } catch {
+    return '';   // malformed defs: no contract dep to preload
+  }
+}
+
+const SHARED_OUTPUT = /\/web\/shared\/[^/]+\.ts$/;
+
+/**
+ * The same guard for the SHARED phase, which has its own way of failing wholesale: in run cf2 all 34
+ * shared files broke on the first compile with the SAME first error (a false TS2792 — the contract
+ * model had been disposed), and the repair fan-out started anyway. One environment fault is not 34
+ * code bugs, and rewriting 34 correct files is how the previous run regressed them.
+ *
+ * Kept independent from the page guard: the two phases fail for different reasons and one must never
+ * mask the other. A `.defs.ts` is never an output of this phase, so it is excluded.
+ */
+export function isSystemicSharedFailure(attempt: number, items: { outputPath: string | null; errors: string[] }[]): boolean {
+  if (attempt !== 1) return false;
+  const shared = items.filter(item => isSharedOutput(item.outputPath));
+  return shared.length >= SYSTEMIC_FAILURE_MIN_PAGES && shared.every(item => item.errors.length > 0);
+}
+
+/** The shared items considered by isSystemicSharedFailure — used to report how many failed. */
+export function countSharedItems(items: { outputPath: string | null }[]): number {
+  return items.filter(item => isSharedOutput(item.outputPath)).length;
+}
+
+function isSharedOutput(outputPath: string | null): boolean {
+  const path = outputPath || '';
+  return SHARED_OUTPUT.test(path) && !path.endsWith('.defs.ts');
+}
+
+/**
  * B1 — internal vocabulary must never reach the screen.
  *
  * `displayHint` "summary-first" became a tile literally titled "Summary first" in the 31/jul test. The
@@ -202,6 +245,18 @@ function isBoundToEditableControl(pageCode: string, property: string): boolean {
  * slot study): with a reduced defs the truth lives in the OUTPUT — validation judges what was generated,
  * not what was asked (the same move the 102040 harness made with checks.mjs over page.ts).
  */
+/**
+ * Marks an issue no page rewrite can fix: the l4 workspace does not offer the lookup query the
+ * picker would consume. The materialization phase reports these as warnings so the run finishes and
+ * the gap is fixed where it lives (agentNewSolution4 E8 — see todo/newSolution4/bug_from_backend.md).
+ */
+export const L4_LOOKUP_GAP = 'L4-LOOKUP-GAP' as const;
+
+/** True for an issue that belongs to the l4 contract, not to the generated .ts. */
+export function isL4LookupGap(issue: string): boolean {
+  return issue.includes(L4_LOOKUP_GAP);
+}
+
 export function collectPageExperienceIssues(pageDefinition: unknown, sharedDefinition: unknown, pageCode: string): string[] {
   if (!pageCode) return [];
   const issues: string[] = [];
@@ -225,10 +280,19 @@ export function collectPageExperienceIssues(pageDefinition: unknown, sharedDefin
       if (isIdInputName(input.name) && !USER_DECIDED_SOURCES.has(input.source) && editable) {
         // The remedy names the CONTRACT's own origin, so the message tells the model what to render
         // instead of only what to stop doing.
+        if (PICKER_SOURCES.has(input.source) && !input.sourceRef) {
+          // The contract says "the user picks an existing record" but the page has no query to pick
+          // FROM: an organism only ever consumes a call of its OWN workspace, so no rewrite of this
+          // .ts can produce the picker. Reporting it as an error made the repair rounds rewrite a
+          // correct page three times and fail anyway. It stays detected and traced — as a gap of the
+          // L4 workspace, which is where the lookup query has to be added.
+          issues.push(`${binding.command}.${input.name} is a technical id with source '${input.source}' and this page has NO query that could populate a picker for it (${L4_LOOKUP_GAP}): the l4 workspace must expose a lookup query for the referenced entity — rewriting this page cannot fix it`);
+          continue;
+        }
         const remedy = PICKER_SOURCES.has(input.source)
           ? (input.source === 'actordirectory'
-            ? `render a person picker over the '${input.sourceRef || '?'}' role directory`
-            : `render a picker over the '${input.sourceRef || '?'}' query already on this page`)
+            ? `render a person picker over the '${input.sourceRef}' role directory`
+            : `render a picker over the '${input.sourceRef}' query already on this page`)
           : `take it from context (${input.sourceRef || input.source})`;
         issues.push(`${binding.command}.${input.name} is a technical id with source '${input.source}' but is bound to an editable control: ${remedy} instead of rendering a field`);
       }

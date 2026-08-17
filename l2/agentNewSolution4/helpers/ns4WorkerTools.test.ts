@@ -18,7 +18,6 @@ test('NS4 worker tools use strict flexible envelopes with root-level $defs', () 
   for (const schemaFile of [
     'schemas/e4-entity-worker.schema.json',
     'schemas/e7-usecase-worker.schema.json',
-    'schemas/e8-workspace-detail-worker.schema.json',
   ]) {
     const tool = createNs4FlexibleWorkerTool('submitFixture', 'Fixture tool.', readJson(schemaFile));
     const parameters = tool.function.parameters as Record<string, unknown>;

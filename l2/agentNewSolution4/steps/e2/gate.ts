@@ -4,6 +4,7 @@ import {
   Ns4E2Review,
   Ns4PolicyDecisionSelection,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import { isNs4E2DemotionDecisionId } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageSignals.js';
 
 export interface Ns4E2GateIssue {
   code: string;
@@ -151,7 +152,9 @@ export function validateNs4E2PolicySelections(
     if (selection.selectedChoice !== decision.chosen && !decision.alternatives.includes(selection.selectedChoice)) {
       issues.push({ code: 'NS4_E2_POLICY_SELECTION_VALUE', path, message: 'Selected policy choice must be the generated choice or one declared alternative.' });
     }
-    if (requireHonored && selection.selectedChoice !== decision.chosen) {
+    // A demotion decision is recomputed deterministically on every round, so the generator cannot
+    // "honor" it in a rewrite; the human choice is honored by E8 when it assigns the tier instead.
+    if (requireHonored && !isNs4E2DemotionDecisionId(selection.decisionId) && selection.selectedChoice !== decision.chosen) {
       issues.push({ code: 'NS4_E2_POLICY_SELECTION_NOT_HONORED', path, message: `Rewritten draft must choose the human selection for ${selection.decisionId}.` });
     }
   });

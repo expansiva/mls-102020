@@ -60,6 +60,7 @@ import {
   applyNs4E4RelationshipBindings,
   buildNs4OntologyArtifacts,
   normalizeNs4E4EntityDraft,
+  stripNs4DerivedFieldUnions,
   normalizeNs4E4PlanDraft,
   normalizeNs4E4RelationshipBindings,
   normalizeNs4E4Review,
@@ -257,7 +258,7 @@ async function buildEntityPrompt(
     '## Relationships touching this entity', JSON.stringify(touchingRelationships),
     '## Related E2 journeys and features', JSON.stringify({ journeys: relatedJourneys, features: relatedFeatures }),
     '## Related E3 authorities and grants', JSON.stringify({ authorities: relatedAuthorities, grants: relatedGrants }),
-    previousEntity ? `## Previous human-reviewed entity; preserve unaffected edits\n${JSON.stringify(previousEntity)}` : '',
+    previousEntity ? `## Previous human-reviewed entity; preserve unaffected edits\n${JSON.stringify(stripNs4DerivedFieldUnions(previousEntity))}` : '',
     currentDetail ? `## Current entity draft\n${JSON.stringify(currentDetail)}` : '',
     currentGate && !currentGate.ok
       ? `## Entity gate repair required\n${formatGate(currentGate.issues)}` : '',

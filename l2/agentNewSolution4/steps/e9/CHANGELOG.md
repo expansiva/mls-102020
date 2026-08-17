@@ -1,5 +1,23 @@
 # E9 changelog
 
+## 2026-08-14 — Parte C: transpilador do formato clássico
+
+- `classic.ts` transpõe o modelo aprovado do E8 para o formato clássico: `workspaces/*.defs.ts`,
+  `operations/*.defs.ts`, `contracts/<ws>.<bff>.defs.ts` e `siteMap.defs.ts`. Zero decisão de tela.
+- O caminho `"<operationId>.<inputId>"` é a única coisa que precisa estar exata: os DOIS consumidores
+  rastreiam a origem de um input e a união literal de um campo por ele.
+- A origem que a tela renderiza sai em `operations[].inputs[].source`, no vocabulário de fronteira
+  do cliente (`userInput`/`selectedEntity`/`routeParam` renderizam; o resto é resolvido em runtime).
+- Uma call carrega no máximo uma coleção; composição é várias calls na mesma página.
+- Paginação sai declarada como `none` enquanto nenhuma call projetar o meta da página — declarar uma
+  forma que o módulo não emite só faria o contrato mentir sobre si mesmo.
+- `classic.test.ts` roda os PARSERS DOS PRÓPRIOS CONSUMIDORES sobre a emissão
+  (`parseWorkspaceDefs` e `resolveBffProjection` do 102021; `parseWorkspaceBffCalls`,
+  `bffCallCommandShape`, `parseWorkspaceSections` e `frontendOutputShapeForOperation` do CFE).
+- `ns4Fs.ts` ganhou os caminhos e escritores de `operations/`, `siteMap.defs.ts`, contrato clássico
+  e o rascunho do modelo do E8.
+
+
 ## 2026-08-14 — notifications compile from the handoff itself
 
 - A notification is compiled from the handoff `targetProfile` and the sending step entity instead of

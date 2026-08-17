@@ -19,6 +19,8 @@ import {
   normalizeNs4E2Review,
   sha256Ns4,
 } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import { collectNs4DemotedJourneyIds } from '/_102020_/l2/agentNewSolution4/steps/e2/contracts.js';
+import { analyzeNs4E2MechanicalCoverage } from '/_102020_/l2/agentNewSolution4/steps/e2/coverageSignals.js';
 import { validateNs4E2PolicySelections, validateNs4E2Review } from '/_102020_/l2/agentNewSolution4/steps/e2/gate.js';
 import { resolveNs4E2HookArgs } from '/_102020_/l2/agentNewSolution4/steps/e2/hookArgs.js';
 
@@ -236,4 +238,43 @@ test('E2 approval advances both pipeline and module to the E3 access matrix', ()
   assert.equal(markNs4E2Running(approved, 2), approved);
   assert.equal(markNs4E2WaitingHuman(approved, 2, 'late-draft.json'), approved);
   assert.equal(markNs4E2Failed(approved, 'late duplicate callback'), approved);
+});
+
+test('a journey with no decision, no handoff and one entity is recorded as a demotion choice', () => {
+  const captureOnly: any = structuredClone(reviewInput);
+  captureOnly.journeys = [captureOnly.journeys[0]];
+  captureOnly.features = [captureOnly.features[0]];
+  const review = normalizeNs4E2Review(captureOnly);
+
+  assert.deepEqual(analyzeNs4E2MechanicalCoverage(review).captureOnlyJourneys, []);
+
+  captureOnly.journeys[0].business.steps.push({
+    stepId: 'captureProject', kind: 'act', entity: 'Project',
+    title: 'Registrar um projeto.', description: 'O projeto fica cadastrado.', featureRefs: ['projectManagement'],
+  });
+  const demoted = normalizeNs4E2Review(captureOnly);
+  assert.deepEqual(analyzeNs4E2MechanicalCoverage(demoted).captureOnlyJourneys, [{ journeyId: 'manageProjects', entity: 'Project' }]);
+
+  const decision = demoted.journeys[0].policyDecisions.find(item => item.decisionId === 'demoteManageProjectsToRecordCatalogue')!;
+  assert.ok(decision, 'the demotion decision is appended deterministically');
+  assert.equal(decision.alternatives.length, 2);
+  assert.ok(decision.alternatives.includes(decision.chosen));
+  assert.deepEqual(validateNs4E2Review(demoted), { ok: true, issues: [] });
+  assert.deepEqual(collectNs4DemotedJourneyIds(demoted), ['manageProjects']);
+
+  // Keeping the journey is the declared alternative, and E8 reads that selection to assign the tier.
+  const kept = [{ decisionId: decision.decisionId, selectedChoice: decision.alternatives[1] }];
+  assert.deepEqual(collectNs4DemotedJourneyIds(demoted, kept), []);
+  // The honor gate never asks the generator to rewrite a decision the code owns.
+  assert.equal(validateNs4E2PolicySelections(demoted, kept, true).ok, true);
+});
+
+test('a journey with a decide step is never demoted', () => {
+  const withDecision: any = structuredClone(reviewInput);
+  withDecision.journeys[1].business.steps.push({
+    stepId: 'decideChangeOrder', kind: 'decide', entity: 'ChangeOrder',
+    title: 'Decidir a ordem.', description: 'A ordem fica decidida.', featureRefs: ['changeOrderManagement'],
+  });
+  const review = normalizeNs4E2Review(withDecision);
+  assert.deepEqual(collectNs4DemotedJourneyIds(review), []);
 });

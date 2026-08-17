@@ -30,6 +30,7 @@ import {
   applyNs4E4RelationshipBindings,
   buildNs4OntologyArtifacts,
   normalizeNs4E4EntityDraft,
+  stripNs4DerivedFieldUnions,
   normalizeNs4E4PlanDraft,
   normalizeNs4E4RelationshipBindings,
   normalizeNs4E4Review,
@@ -374,4 +375,72 @@ test('E4 lifecycle resumes an E3-approved current flow and advances to E5', () =
   assert.equal(markNs4E4Running(approved, 3), approved);
   assert.equal(markNs4E4WaitingHuman(approved, 3, 'late-draft.json'), approved);
   assert.equal(markNs4E4Failed(approved, 'late duplicate callback'), approved);
+});
+
+test('an enumerated field carries its literal values, in every shape the generators author', () => {
+  const withUnions: any = structuredClone(reviewInput);
+  const entity = withUnions.entities[0];
+  entity.lifecycleStates = ['draft', 'active', 'closed'];
+  entity.fields = [
+    ...entity.fields,
+    { fieldId: 'status', title: 'Status', type: 'string', required: true, description: 'Estado.', constraints: [] },
+    { fieldId: 'impactType', title: 'Impacto', type: 'string', required: true, description: 'Impacto.',
+      constraints: [{ constraintId: 'impactTypeEnum', kind: 'enum', value: '["cost","schedule","both"]', description: 'Custo, prazo ou ambos.', source: 'journey' }] },
+    { fieldId: 'channel', title: 'Canal', type: 'string', required: false, description: 'Canal.',
+      constraints: [{ constraintId: 'channelEnum', kind: 'enum', value: 'email, portal, phone', description: 'Canais aceitos.', source: 'journey' }] },
+    { fieldId: 'priority', title: 'Prioridade', type: 'string', required: false, description: 'Prioridade.',
+      constraints: [{ constraintId: 'priorityEnum', kind: 'enum', value: 'low|medium|high', description: 'Níveis.', source: 'journey' }] },
+    { fieldId: 'note', title: 'Nota', type: 'text', required: false, description: 'Nota livre.', constraints: [] },
+  ];
+  const review = normalizeNs4E4Review(withUnions);
+  const normalized = review.entities[0];
+  const fieldOf = (fieldId: string) => normalized.fields.find(field => field.fieldId === fieldId);
+
+  // The lifecycle is the union of a status field even when nobody wrote the constraint.
+  assert.deepEqual(normalized.statusEnum, ['draft', 'active', 'closed']);
+  assert.deepEqual(fieldOf('status')?.enum, ['draft', 'active', 'closed']);
+  // JSON array, comma-separated and pipe-separated are all authored in practice.
+  assert.deepEqual(fieldOf('impactType')?.enum, ['cost', 'schedule', 'both']);
+  assert.deepEqual(fieldOf('channel')?.enum, ['email', 'portal', 'phone']);
+  assert.deepEqual(fieldOf('priority')?.enum, ['low', 'medium', 'high']);
+  // A field without a union stays without one; the constraint is never invented.
+  assert.equal('enum' in (fieldOf('note') || {}), false);
+  // The constraint remains the human-readable rule; the union does not replace it.
+  assert.equal(fieldOf('impactType')?.constraints[0].kind, 'enum');
+
+  // Re-reading an already-derived artifact derives the same values: the emission is idempotent.
+  assert.deepEqual(normalizeNs4E4Review(review).entities[0], normalized);
+});
+
+test('an entity without lifecycle carries no statusEnum', () => {
+  const review = normalizeNs4E4Review(structuredClone(reviewInput));
+  const stateless = review.entities.find(entity => !entity.lifecycleStates.length);
+  assert.ok(stateless, 'the fixture has a stateless entity');
+  assert.equal('statusEnum' in stateless!, false);
+});
+
+test('the derived union never reaches the strict entity worker, and always reaches the emitted artifact', async () => {
+  const source: any = structuredClone(reviewInput);
+  const entity = source.entities[0];
+  entity.lifecycleStates = ['draft', 'active'];
+  entity.fields = [...entity.fields, { fieldId: 'status', title: 'Status', type: 'string', required: true, description: 'Estado.',
+    constraints: [{ constraintId: 'statusEnum', kind: 'enum', value: '["draft","active"]', description: 'Rascunho ou ativo.', source: 'journey' }] }];
+
+  // The worker contract owns no union key (schemas/e4-entity-worker.schema.json is strict), so the
+  // persisted entity draft must not carry one back into the repair prompt.
+  const draft = normalizeNs4E4EntityDraft({ fields: entity.fields, useRules: entity.useRules },
+    source.moduleName, 1, entity.entityId);
+  assert.equal(draft.fields.some(field => 'enum' in field), false);
+
+  // An approved entity echoed as "previous entity" is stripped the same way.
+  const review = normalizeNs4E4Review(source);
+  const built = await buildNs4OntologyArtifacts(review, 'auto', '2026-08-14T00:00:00.000Z');
+  const artifact = built.entities.find(item => item.entityId === entity.entityId)!;
+  const echoed = stripNs4DerivedFieldUnions(artifact as unknown as { fields?: unknown });
+  assert.equal((echoed as any).fields.some((field: any) => 'enum' in field), false);
+  assert.equal('statusEnum' in (echoed as any), false);
+
+  // The emitted artifact is what the frontend parses: it reads data.statusEnum and data.fields[].enum.
+  assert.deepEqual(artifact.statusEnum, ['draft', 'active']);
+  assert.deepEqual(artifact.fields.find(field => field.fieldId === 'status')?.enum, ['draft', 'active']);
 });

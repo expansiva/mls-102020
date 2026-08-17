@@ -101,7 +101,7 @@ async function beforePromptStep(
     // Deterministic page skeleton (i18n.md §4) — same helper the CLI uses, so both surfaces emit the
     // identical file shape. Only on the first attempt (see createPromptReadyIntent).
     const skeleton = repairHint ? undefined : await pageSkeletonFor(genContext.pipelineItem, genContext.siblings, genContext.definitionData);
-    return [createPromptReadyIntent(context, parentStep, hookSequential, genArgs, genContext, repairHint, skeleton)];
+    return [createPromptReadyIntent(context, parentStep, hookSequential, args, genContext, repairHint, skeleton)];
   } catch (error) {
     const message = formatError('beforePromptStep', error);
     console.error(`[${agent.agentName}] ${message}`);
@@ -151,6 +151,13 @@ async function materializeSharedDeterministic(
     const typecheckPath = typecheckTest ? testPathForOutputPath(pipelineItem.outputPath) : null;
     if (typecheckPath && typecheckTest && !await saveGeneratedTsByMlsPath(typecheckPath, typecheckTest)) return null;
 
+    // The contract model was disposed as soon as the contract phase compiled it, so the shared —
+    // which imports `/_<proj>_/l2/<module>/web/contracts/<pageId>.js` — could not resolve its own
+    // import and every scaffold failed the gate with a FALSE TS2792, falling back to the LLM for 34
+    // files that were already correct. Load it back first; best-effort, never blocking.
+    // The model stays alive on purpose: it is what the shared resolves against for the rest of the
+    // phase, and it is bounded (one per contract).
+    try { await getCompiledDtsByMlsPath(contractTsPath); } catch { /* best-effort */ }
     const compileErrors = [
       ...await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName),
       ...(typecheckPath ? await compileMlsPathAndGetErrors(typecheckPath) : []),
@@ -260,7 +267,7 @@ function createPromptReadyIntent(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
   hookSequential: number,
-  genArgs: GenStepArgs,
+  rawArgs: string,
   genContext: {
     pipelineItem: PipelineItem;
     definitionData: unknown;
@@ -270,10 +277,13 @@ function createPromptReadyIntent(
   repairHint?: string,
   skeleton?: string,
 ): mls.msg.AgentIntentPromptReady {
-  // args become the slot's persisted prompt — keep them compact (never carry the repair hint).
-  const { repairHint: omitted, ...compactArgs } = genArgs;
-  void omitted;
-  const args = JSON.stringify(compactArgs);
+  // The args of the slot travel VERBATIM: the server matches the waiting slot by exact string
+  // (`q.args === args`), so re-serializing the parsed object silently changed the key order on a
+  // repair ({planId, defPath, itemId, attempt} became {planId, defPath, attempt, itemId}) and the
+  // fan-out slot was never found — the round stayed forever in waiting_human_input. The queued
+  // string is by definition the one the server compares, and the phase never puts a repair hint in
+  // it (it carries only {planId, defPath, itemId, attempt}), so nothing has to be stripped here.
+  const args = rawArgs;
   return {
     type: 'prompt_ready',
     args,

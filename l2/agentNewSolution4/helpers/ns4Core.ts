@@ -1,13 +1,13 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution4/helpers/ns4Core.ts" enhancement="_blank"/>
 
 export const NS4_FLOW_ID = 'agentNewSolution4' as const;
-export const NS4_FLOW_VERSION = '2026-08-14-ns4-flow-v35' as const;
+export const NS4_FLOW_VERSION = '2026-08-14-ns4-flow-v40' as const;
 export const NS4_E4_MAX_PARALLEL = 20 as const;
 export const NS4_E7_MAX_PARALLEL = 20 as const;
 export const NS4_E8_MAX_PARALLEL = 20 as const;
 export const NS4_MODULE_SCHEMA_VERSION = '2026-08-06-ns4-module-v4' as const;
 export const NS4_PIPELINE_SCHEMA_VERSION = '2026-08-06-ns4-pipeline-v5' as const;
-export type Ns4PermanentFlowVersion = typeof NS4_FLOW_VERSION | '2026-08-14-ns4-flow-v34' | '2026-08-13-ns4-flow-v33' | '2026-08-13-ns4-flow-v32' | '2026-08-13-ns4-flow-v31' | '2026-08-12-ns4-flow-v30' | '2026-08-11-ns4-flow-v24' | '2026-08-11-ns4-flow-v22' | '2026-08-10-ns4-flow-v21' | '2026-08-10-ns4-flow-v20' | '2026-08-09-ns4-flow-v19' | '2026-08-09-ns4-flow-v18' | '2026-08-08-ns4-flow-v17';
+export type Ns4PermanentFlowVersion = typeof NS4_FLOW_VERSION | '2026-08-14-ns4-flow-v39' | '2026-08-14-ns4-flow-v38' | '2026-08-14-ns4-flow-v37' | '2026-08-14-ns4-flow-v36' | '2026-08-14-ns4-flow-v35' | '2026-08-14-ns4-flow-v34' | '2026-08-13-ns4-flow-v33' | '2026-08-13-ns4-flow-v32' | '2026-08-13-ns4-flow-v31' | '2026-08-12-ns4-flow-v30' | '2026-08-11-ns4-flow-v24' | '2026-08-11-ns4-flow-v22' | '2026-08-10-ns4-flow-v21' | '2026-08-10-ns4-flow-v20' | '2026-08-09-ns4-flow-v19' | '2026-08-09-ns4-flow-v18' | '2026-08-08-ns4-flow-v17';
 
 export const NS4_PLAN_IDS = [
   'e1-clarification',
@@ -561,6 +561,43 @@ export function createNs4E7Step(
   );
 }
 
+export type Ns4StepOwner = 'e1' | 'e2' | 'e3' | 'e4' | 'e5' | 'e6' | 'e7' | 'e8' | 'e9' | 'e10';
+
+/**
+ * The dispatch table, next to the factories that mint the plan ids it matches. The router and the
+ * factories drifted apart once — a factory emitting `e8-workspaces-round-1` against a router that
+ * only knew `e8-workspaces` — and the step died before reaching any agent, with no trace to read.
+ * One table, one truth, and a test that walks every factory through it.
+ */
+export function resolveNs4StepOwner(planId: string): Ns4StepOwner | '' {
+  if (planId === 'e1-clarification' || planId.startsWith('e1-clarification-round-') || planId === 'e1-compile') return 'e1';
+  if (planId.startsWith('e2-journeys-round-')) return 'e2';
+  if (planId.startsWith('e3-access-matrix-round-')) return 'e3';
+  if (planId.startsWith('e4-ontology-round-')) return 'e4';
+  if (planId.startsWith('e5-rules-round-')) return 'e5';
+  if (planId.startsWith('e6-behaviors-round-')) return 'e6';
+  if (planId === 'e7-realization' || planId.startsWith('e7-realization-finalize-')) return 'e7';
+  if (isNs4E8PlanId(planId)) return 'e8';
+  if (planId === 'e9-navigation-compiler') return 'e9';
+  if (planId === 'e10-validation') return 'e10';
+  return '';
+}
+
+/**
+ * The E8 plan ids live in ONE place, next to the factories that mint them. The router matched a
+ * hand-written pattern once and stopped seeing the real step: a plan id the factory emits and the
+ * router does not recognize is a step that dies without ever reaching its agent.
+ */
+export function ns4E8StepPlanId(reviewRound: number): string {
+  return `e8-workspaces-round-${reviewRound}`;
+}
+export function ns4E8HubRepairPlanId(reviewRound: number, attempt: number): string {
+  return `e8-workspaces-hub-repair-${reviewRound}-${attempt}`;
+}
+export function isNs4E8PlanId(planId: string): boolean {
+  return /^e8-workspaces-round-\d+$/.test(planId) || /^e8-workspaces-hub-repair-\d+-\d+$/.test(planId);
+}
+
 export function createNs4E8Step(
   moduleName = '',
   reviewRound = 1,
@@ -569,24 +606,25 @@ export function createNs4E8Step(
   stepTitle = NS4_DEFAULT_TITLES['e8-workspaces'],
 ): mls.msg.AIAgentStep {
   return createNs4AgentStep(
-    `e8-workspaces-round-${reviewRound}`,
+    ns4E8StepPlanId(reviewRound),
     adjustment ? plainNs4StepTitle(`${stepTitle} · ${reviewRound}`) : plainNs4StepTitle(stepTitle),
     dependsOn, dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
-    { planId: 'e8-workspaces', ...(moduleName ? { moduleName } : {}), reviewRound, ...(adjustment ? { adjustment } : {}), stage: 'skeleton' },
+    { planId: 'e8-workspaces', ...(moduleName ? { moduleName } : {}), reviewRound, ...(adjustment ? { adjustment } : {}) },
   );
 }
 
-export function createNs4E8PresentationRepairStep(
+/** The one bounded repair E8 still schedules: the hub composition over its closed catalogue. */
+export function createNs4E8HubCompositionRepairStep(
   moduleName: string,
   reviewRound: number,
-  presentationAttempt: number,
+  compositionAttempt: number,
   gateFeedback: string,
   stepTitle = NS4_DEFAULT_TITLES['e8-workspaces'],
 ): mls.msg.AIAgentStep {
   return createNs4AgentStep(
-    `e8-workspaces-presentation-repair-${reviewRound}-${presentationAttempt}`,
-    plainNs4StepTitle(`${stepTitle} · repair ${presentationAttempt}`), [], 'waiting_human_input',
-    { planId: 'e8-workspaces', moduleName, reviewRound, stage: 'skeleton', presentationAttempt, gateFeedback },
+    ns4E8HubRepairPlanId(reviewRound, compositionAttempt),
+    plainNs4StepTitle(`${stepTitle} · repair ${compositionAttempt}`), [], 'waiting_human_input',
+    { planId: 'e8-workspaces', moduleName, reviewRound, presentationAttempt: compositionAttempt, gateFeedback },
   );
 }
 
@@ -1507,6 +1545,21 @@ export function markNs4ModuleE9Approved(artifact: Ns4ModuleArtifact, now = new D
 export function markNs4E10Running(state: Ns4PipelineState, now = new Date().toISOString()): Ns4PipelineState {
   if (state.steps.e10?.status === 'approved') return state;
   return { ...state, status: 'inProgress', steps: { ...state.steps, e10: { status: 'running', updatedAt: now } }, nextStep: 'e10-validation', updatedAt: now };
+}
+
+/**
+ * E10 failed on a defect of the pipeline, not of the product: nothing upstream is stale, because
+ * nothing upstream is wrong. The module waits on a fixed pipeline and re-validates from E10.
+ */
+export function markNs4E10PipelineDefect(
+  state: Ns4PipelineState, failure: unknown, reportPath?: string, now = new Date().toISOString(),
+): Ns4PipelineState {
+  if (state.steps.e10?.status === 'approved') return state;
+  return {
+    ...state, status: 'failed', nextStep: 'e10-validation', updatedAt: now,
+    steps: { ...state.steps, e10: { status: 'failed', ...(reportPath ? { reportPath } : {}),
+      error: normalizeNs4Failure(failure), failedAt: now, updatedAt: now } },
+  };
 }
 
 export function markNs4E10Failed(
