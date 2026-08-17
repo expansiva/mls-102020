@@ -63,6 +63,27 @@ export function readEvents(tsSource: string): string[] {
   return [...events];
 }
 
+/**
+ * Every identifier the GROUP contract names between backticks — its declared vocabulary.
+ *
+ * ⚠️ WHY THIS EXISTS, measured 2026-08-14. The group contract (`skills/<group>/creation.ts`) is what
+ * enumerates a molecule's public surface: slots in a table, properties in a table, events in a table.
+ * A route B fix that DECLARES one the molecule was missing is legitimate — 27 molecules are missing a
+ * slot their group requires. A route B fix that INVENTS one is a definition change made on the wrong
+ * route, and on `ml-currency-input` that is exactly what happened: asked for a label and help text,
+ * which the group defines as the slots `Label` and `Helper`, the run added public properties named
+ * `label` and `helper` instead.
+ *
+ * Case matters, and it is what separates the two: the group names `Label` and `Helper`, never `label`
+ * or `helper`. Deliberately loose in the admitting direction — it also picks up type names like
+ * `boolean` — because the cost of admitting one extra name is nothing, and the cost of refusing a
+ * legitimate fix is a failed run.
+ */
+export function groupVocabulary(groupSkill: string): Set<string> {
+  // The skill is a template literal, so the backticks arrive escaped: \`Label\`.
+  return new Set([...groupSkill.matchAll(/\\?`([A-Za-z_$][\w$]*)\\?`/g)].map(m => m[1]));
+}
+
 export function readSurface(tsSource: string): ImSurface {
   return {
     className: tsSource.match(/export\s+class\s+(\w+)/)?.[1] || '',

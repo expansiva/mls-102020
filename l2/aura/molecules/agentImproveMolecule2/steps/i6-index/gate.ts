@@ -17,6 +17,20 @@ import { countImports } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/
 export interface ImIndexGateInputs {
   playgroundChanged: boolean;
   indexUpdated: boolean;
+  /**
+   * Did the index actually have work to do? From `planIndexWork`: a missing import, or an added slot
+   * the showcase does not exercise.
+   *
+   * ⚠️ MEASURED 2026-08-14, and it blocked the first run that ever reached this step. The rule used
+   * to be `playgroundChanged => the index changed`, full stop. But the playground can change for a
+   * reason the index has no part in: on `ml-currency-input` the run added an example, the import was
+   * already there and no slot was added, so the deterministic branch produced `after === before` and
+   * this gate called it the 2026-08-05 defect. It was not — there was nothing to do.
+   *
+   * The protection is unchanged where it applies: if there IS work and the index did not move, it
+   * still fails. Optional so a caller that cannot compute it keeps the old, stricter behaviour.
+   */
+  workExpected?: boolean;
   before: string;
   after: string;
   project: number;
@@ -38,14 +52,17 @@ export function runImIndexGate(inputs: ImIndexGateInputs): ImGateResult {
       : imGateOk();
   }
 
-  if (!inputs.indexUpdated) {
+  // Nothing to do is not the same as not doing it. `workExpected === false` means the plan found no
+  // missing import and no added slot the showcase lacks — the index is already in step.
+  if (!inputs.indexUpdated && inputs.workExpected !== false) {
     return imGateFail(
       issue(
         'index_stale',
-        'the playground changed and the group index was not updated — this is the exact 2026-08-05 defect: the demo was fixed and the group page kept showing the old component',
+        'the playground changed, the index had work to do — a missing import or a slot the showcase does not exercise — and it was not updated. This is the exact 2026-08-05 defect: the demo was fixed and the group page kept showing the old component',
       ),
     );
   }
+  if (!inputs.indexUpdated) return imGateOk();
 
   const errors: string[] = [];
   const after = inputs.after;

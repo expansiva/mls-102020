@@ -62,6 +62,8 @@ Retry 1 with the gate errors; a 2nd failure fails the step, molecule untouched.
 | `appearance_class` / `appearance_style` | the edit introduced a hardcoded colour |
 | `render_side_effect`, `helper_outside_class`, `base_internals`, `selector_duplicate` | traps the library has actually shipped |
 | `dead_member` | on a shell: the edit declared or assigned a member the parent does not have and nobody reads |
+| `definition_changed` | on routes B and C: the edit adds a public slot/property/event the GROUP contract does not declare — that is route A, through the checkpoint |
+| `definition_removed` | on routes B and C: the edit removes one. Removal is never a repair |
 | `compile` | an error the edit added |
 
 ## On a shell, the parent is always shown
@@ -77,10 +79,12 @@ stylesheet, and the `.ts` is not offered to `applyEdits` at all.
 
 ## Tests
 
-`applyEdits.test.ts` (25) and `gate.test.ts` (19), both pure. The four that carry the design are
+`applyEdits.test.ts` (25) and `gate.test.ts` (24), both pure. The four that carry the design are
 "a `find` that matches twice is REJECTED", "a colour the file ALREADY hardcoded does not block
 an unrelated fix", "THE 13/08 DEFECT: um bloco que chega rente à margem é alinhado à âncora" and
-"assigning a dead member is refused too — it is what the SECOND run did".
+"assigning a dead member is refused too — it is what the SECOND run did". A fifth pins the boundary
+that makes the definition check usable at all: "DECLARING a slot the group already requires PASSES —
+that is the defect fix".
 
 **Indentation is the file's, not the model's** (CHANGELOG 2026-08-13). `alignReplacement` places the
 written block at the depth of the text it replaces and shifts the rest of the block by the same amount.

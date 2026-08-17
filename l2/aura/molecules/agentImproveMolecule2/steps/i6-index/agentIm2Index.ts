@@ -106,6 +106,9 @@ async function beforePromptStep(
       : before;
     const gate = runImIndexGate({
       playgroundChanged, indexUpdated: after !== before, before, after,
+      // The plan already knows whether there was anything to do; without this the branch below
+      // fails whenever the import was present and no slot was added — see ImIndexGateInputs.
+      workExpected: !!plan.missingImport || plan.missingSlots.length > 0,
       project: ctx.target.project, groupFolder: ctx.target.groupFolder,
       shortName: ctx.target.shortName, tag: ctx.target.tag, addedSlots,
     });
@@ -115,7 +118,7 @@ async function beforePromptStep(
     if (after !== before) await writeImSource(imFileInfoFor(ctx, 'groupIndex'), after);
     return done(
       context, parentStep, step, hookSequential, runKey, after !== before,
-      after !== before ? 'index updated — import added' : 'index already in step',
+      after !== before ? 'index updated — import added' : 'index already in step: the import is there and no added slot needs a card',
     );
   }
 
@@ -196,6 +199,9 @@ async function afterPromptStep(
     ? { ok: false, errors: apply.errors }
     : runImIndexGate({
       playgroundChanged, indexUpdated: after !== before, before, after,
+      // The model was only called because the plan found work, so here it IS expected — and the
+      // strict reading is the right one: it was asked to write a card and must have written it.
+      workExpected: true,
       project: ctx.target.project, groupFolder: ctx.target.groupFolder,
       shortName: ctx.target.shortName, tag: ctx.target.tag, addedSlots,
     });

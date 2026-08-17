@@ -26,6 +26,13 @@ correction is recorded in `indexPlan.ts` rather than hidden:
 
 So there are three exits: nothing to do, import-only (no model), and card work (model).
 
+⚠️ **The second exit can legitimately write nothing**, and until 2026-08-14 the gate called that the
+2026-08-05 defect. The first run ever to reach this step with a changed playground —
+`ml-currency-input` — had the import already in place and no added slot, so `after === before`, and
+`index_stale` fired. The rule is now judged against the **work the plan found** (`workExpected`), not
+against `playgroundChanged` alone: it still fails when there was a missing import or an unexercised
+added slot, which is the case 2026-08-05 was about.
+
 ## Invariants
 
 - the molecule is imported **exactly once**;

@@ -182,6 +182,17 @@ widget-definition-choice-102020 {
     color: var(--collab-warning, #f59e0b);
   }
 
+  // The widget's own answer to the click. The framework applies the intents without re-rendering the
+  // checkpoint, so without this the button looks dead — see the comment on finish().
+  .dfc-finished {
+    margin: 0;
+    padding: 0.5rem 0.7rem;
+    border-radius: 0.4rem;
+    font-size: 0.85rem;
+    border: 1px solid var(--collab-border, rgba(127, 127, 127, 0.35));
+    background: var(--collab-surface-2, rgba(127, 127, 127, 0.06));
+  }
+
   .dfc-footer {
     display: flex;
     justify-content: flex-end;

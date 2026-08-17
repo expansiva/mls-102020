@@ -177,7 +177,7 @@ async function afterPromptStep(
   const parsedArgs = nmParseStepArgs(step.prompt);
   const attempt = parsedArgs.retryAttempt || 1;
   const runKey = getImRunKey(context, parsedArgs.runKey);
-  const { ctx } = await readRun(runKey);
+  const { ctx, triage } = await readRun(runKey);
   const choice = await readJsonArtifact<ImInheritChoice>(imWorkFile(runKey, 'inherit'), false);
 
   let edits: ImEdit[] = [];
@@ -225,6 +225,10 @@ async function afterPromptStep(
     currentProject: ctx.target.project,
     parentReference: ctx.inheritance.parentReference,
     parentSource: await readParentSourceFor(ctx, choice),
+    // The route and the group's declared vocabulary: only route A may move the public surface, and
+    // only the names the group already declares count as "the molecule was missing this".
+    route: triage.route,
+    groupSkill: await loadGroupSkill(ctx),
     compileErrors,
     compileErrorsBefore,
   });
@@ -276,6 +280,17 @@ async function afterPromptStep(
 }
 
 // ---- helpers ----
+
+/** Best effort, exactly as i7 does it: an unreadable group skill costs the surface check, not the run. */
+async function loadGroupSkill(ctx: ImContext): Promise<string> {
+  if (!ctx.groupSkill.reference) return '';
+  try {
+    const mod = await import(ctx.groupSkill.reference) as { skill?: unknown };
+    return typeof mod.skill === 'string' ? mod.skill : '';
+  } catch {
+    return '';
+  }
+}
 
 async function readRun(runKey: string): Promise<{ ctx: ImContext; triage: ImTriage }> {
   const ctx = await readJsonArtifact<ImContext>(imContextFileInfo(runKey), true);

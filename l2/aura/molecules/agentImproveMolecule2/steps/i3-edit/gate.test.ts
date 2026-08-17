@@ -8,6 +8,9 @@ import {
   runImEditGate,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/gate.js';
 
+// The group contract's declared vocabulary, in the shape a skill carries it (escaped backticks).
+const GROUP_SKILL = '| \\`Label\\` | No | Title | \\`Helper\\` | \\`size\\` | \\`action\\` |';
+
 const HEADER = '/// <mls fileReference="_102054_/l2/molecules/groupviewtable/ml-data-table-brutal.ts" enhancement="_102027_/l2/enhancementAgent"/>';
 
 function file(over: Partial<ImEditedFile> = {}): ImEditedFile {
@@ -27,6 +30,8 @@ function inputs(over: Partial<ImEditGateInputs> = {}): ImEditGateInputs {
     currentProject: 102054,
     parentReference: null,
     parentSource: '',
+    route: 'B',
+    groupSkill: GROUP_SKILL,
     compileErrors: [],
     compileErrorsBefore: [],
     ...over,
@@ -186,4 +191,51 @@ test('writing nothing is a failure', () => {
 
 test('an empty result file is a failure', () => {
   assert.match(runImEditGate(inputs({ files: [file({ after: '  ' })] })).errors[0], /^empty: /);
+});
+
+// ---- a definition change made on a route that does not do those (2026-08-14) ----
+
+function withSurface(slots: string, extra = ''): string {
+  return [HEADER, 'export class X extends MoleculeAuraElement {', `  slotTags = [${slots}];`, extra, '}'].join('\n');
+}
+
+test('ADDING a public property the group never declares is refused on route B', () => {
+  // Measured on ml-currency-input: asked for a label and help text — which the group defines as the
+  // SLOTS `Label` and `Helper` — the run added public properties `label` and `helper` instead.
+  const before = withSurface("'Label'");
+  const after = withSurface("'Label'", '  @propertyDataSource({ type: String })\n  helper = \'\';');
+  const result = runImEditGate(inputs({ files: [file({ before, after })] }));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(e => /^definition_changed: /.test(e)));
+  assert.match(result.errors.join('\n'), /helper/);
+});
+
+test('DECLARING a slot the group already requires PASSES — that is the defect fix', () => {
+  // 27 molecules are missing a slot their group mandates. Fixing one moves the surface and is
+  // exactly the route B run that finally reaches i5 and i6; refusing it would block the fix.
+  const result = runImEditGate(inputs({
+    files: [file({ before: withSurface("'Label'"), after: withSurface("'Label','Helper'") })],
+  }));
+  assert.equal(result.ok, true);
+});
+
+test('REMOVING a public element is refused whatever the group says', () => {
+  const result = runImEditGate(inputs({
+    files: [file({ before: withSurface("'Label','Helper'"), after: withSurface("'Label'") })],
+  }));
+  assert.ok(result.errors.some(e => /^definition_removed: /.test(e)));
+});
+
+test('ROUTE A may move the surface — that is what the checkpoint confirmed', () => {
+  const result = runImEditGate(inputs({
+    route: 'A',
+    files: [file({ before: withSurface("'Label'"), after: withSurface("'Label','Footer'") })],
+  }));
+  assert.equal(result.ok, true);
+});
+
+test('without the group contract the check admits — unmeasured is not forbidden', () => {
+  const after = withSurface("'Label'", '  @propertyDataSource({ type: String })\n  invented = \'\';');
+  const result = runImEditGate(inputs({ groupSkill: '', files: [file({ before: withSurface("'Label'"), after })] }));
+  assert.equal(result.ok, true);
 });

@@ -15,10 +15,12 @@
 import {
   ImArtifactKind,
   ImGateResult,
+  ImRoute,
   imGateFail,
   imGateOk,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import { deadShellMembers, offendingForeignWrite } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
+import { diffSurface, groupVocabulary, readSurface } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
 import { mlsHeaderOf } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/applyEdits.js';
 import {
   findBaseInternals,
@@ -49,6 +51,16 @@ export interface ImEditGateInputs {
    * then does not run, because without the parent every member of the shell looks invented.
    */
   parentSource: string;
+  /**
+   * The route this edit is executing. Only route A may move the public surface, and it does so
+   * through a human checkpoint; on B and C a surface movement is a definition change made without one.
+   */
+  route: ImRoute;
+  /**
+   * The GROUP contract's text, for `groupVocabulary`. Empty when it could not be read — the surface
+   * check then admits everything, because unmeasured must not mean forbidden.
+   */
+  groupSkill: string;
   /** From compileStorTs / compileStorLess on the AFTER content. */
   compileErrors: string[];
   /** The same compilers on the BEFORE content — read lazily, only when `compileErrors` is non-empty. */
@@ -85,6 +97,58 @@ function introducedLines(file: ImEditedFile): string[] {
     if (left > 0) before.set(line.trim(), left - 1);
     else out.push(line);
   }
+  return out;
+}
+
+/**
+ * Surface movements this edit introduced that the route is not allowed to make.
+ *
+ * ADDING something the group contract already names is a defect fix — the molecule was missing what
+ * it was supposed to declare. Adding something the group never names is an invention. REMOVING is
+ * never a repair: a promise that disappears breaks pages already written against it, and that is
+ * route A whatever the intention.
+ */
+function introducedDefinition(file: ImEditedFile, inputs: ImEditGateInputs): string[] {
+  if (inputs.route === 'A' || file.created) return [];
+  const diff = diffSurface(readSurface(file.before), readSurface(file.after));
+  const vocabulary = groupVocabulary(inputs.groupSkill);
+  const out: string[] = [];
+
+  const added: Array<[string, string[]]> = [
+    ['slot', diff.addedSlots],
+    ['property', diff.addedProperties],
+    ['event', diff.addedEvents],
+  ];
+  for (const [kind, names] of added) {
+    for (const name of names) {
+      // No group contract read = nothing measured. Admit, and say nothing: refusing on an absent
+      // measurement is the failure mode this agent keeps deciding against.
+      if (!inputs.groupSkill.trim() || vocabulary.has(name)) continue;
+      out.push(
+        issue(
+          'definition_changed',
+          `the edit adds the public ${kind} '${name}', which the group contract does not declare — that is a change to what this molecule PROMISES, and it needs the route A checkpoint, not an edit. If the request is really about something the group already defines, use that name exactly: the contract is case-sensitive`,
+        ),
+      );
+    }
+  }
+
+  const removed: Array<[string, string[]]> = [
+    ['slot', diff.removedSlots],
+    ['property', diff.removedProperties],
+    ['event', diff.removedEvents],
+  ];
+  for (const [kind, names] of removed) {
+    for (const name of names) {
+      out.push(
+        issue(
+          'definition_removed',
+          `the edit removes the public ${kind} '${name}' — every page already written against it breaks, and no repair needs that. It is route A, through the checkpoint`,
+        ),
+      );
+    }
+  }
+
   return out;
 }
 
@@ -152,6 +216,18 @@ export function runImEditGate(inputs: ImEditGateInputs): ImGateResult {
       for (const member of introduced(findBaseInternals, file)) {
         errors.push(issue('base_internals', `'${member}' is internal plumbing of the base class — do not drive it from the molecule`));
       }
+      // A DEFINITION CHANGE ON A ROUTE THAT DOES NOT DO THOSE. Route A moves the public surface and
+      // asks a human first; B and C repair or restyle what the molecule already promises. Measured
+      // 2026-08-14 on `ml-currency-input`: asked for a label and help text — which the group defines
+      // as the slots `Label` and `Helper` — a route B run added public properties `label` and
+      // `helper` instead, and nothing stopped it. The .defs.ts was not touched, so the molecule ended
+      // with two public properties its contract does not mention.
+      //
+      // DECLARING what the group already requires is NOT that, and must keep passing: 27 molecules
+      // are missing a slot their group mandates, and fixing one is the defect fix that finally
+      // reaches i5 and i6. The group's own vocabulary is what separates the two.
+      for (const error of introducedDefinition(file, inputs)) errors.push(error);
+
       // AN OVERRIDE THAT OVERRIDES NOTHING. Only on a shell, and only for what this edit touched:
       // the member has to be absent from the parent AND read by no one. See deadShellMembers for the
       // run that produced `protected copiedDurationMs = 3000` against a parent holding the duration

@@ -1,5 +1,44 @@
 # CHANGELOG — i3-edit
 
+## 2026-08-14 — a rota B mudou a definição pública, e nada barrava
+
+Medido no T1, `ml-currency-input`. O pedido: *"não consigo colocar um rótulo nem um texto de ajuda no
+campo"*. O contrato do grupo `groupEnterMoney` define rótulo e ajuda como os **slots** `Label` e
+`Helper`, e o triage acertou — *"o contrato já prevê os slots Label e Helper, portanto é um defeito de
+implementação"*, rota B.
+
+O `i3` então adicionou **duas propriedades públicas**, `label` e `helper`, com `@propertyDataSource`. O
+`slotTags` continua ausente; o código lê `hasSlot('Label')` sem declarar o slot. E o `.defs.ts` não foi
+tocado, então a molécula terminou com duas propriedades públicas que o contrato dela não menciona.
+
+**Isso é mudança de definição feita na rota que não as faz** — sem checkpoint, sem humano — e nenhum
+gate viu.
+
+### A regra, e por que ela não pode ser "rota B não move a superfície"
+
+Essa versão simples estaria errada, e barraria justamente o caso que faz este passo valer: **27
+moléculas não declaram um slot que o grupo delas exige**, e consertar uma move a superfície e é o run
+de rota B que finalmente alcança o `i5` e o `i6`.
+
+O que separa os dois casos é o **contrato do grupo**. Declarar o que ele já exige é conserto de
+defeito; inventar o que ele nunca nomeia é mudança de definição. `groupVocabulary` (em `imSurface`) lê
+os identificadores entre crases do `creation.ts` do grupo — a maiúscula é o que discrimina: o grupo
+nomeia `Label` e `Helper`, nunca `label` nem `helper`.
+
+- `definition_changed` — adiciona slot/propriedade/evento público que o grupo não declara;
+- `definition_removed` — remove qualquer um deles. Remoção nunca é reparo: quebra toda página já
+  escrita, e é rota A com checkpoint, qualquer que fosse a intenção;
+- na **rota A** a checagem não roda: mover a superfície é o que ela faz, com um humano tendo confirmado;
+- **sem o contrato do grupo legível, admite tudo.** Recusar sobre medição ausente é o modo de falha
+  contra o qual este agente já decidiu três vezes.
+
+Verificado contra os arquivos reais do run: o diff medido é `addedProperties: ['label','helper']`, e a
+regra recusa os dois — com o rollback do gate devolvendo o arquivo ao estado anterior.
+
+⚠️ **O que este conserto NÃO resolve:** o `i3` continua sem ver as tabelas do contrato do grupo, só a
+descrição. Ele agora é impedido de inventar, mas não é ensinado a acertar — pedir rótulo e ajuda ainda
+não o leva a `slotTags = ['Label','Helper']`. Isso é decisão à parte, porque muda o tamanho do prompt.
+
 ## 2026-08-14 — the override that overrode nothing
 
 Measured in the Studio, `ml-copy-button-glass` (102055), runKey `copy-confirmation-delay`. Asked for a

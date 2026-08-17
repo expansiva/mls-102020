@@ -50,6 +50,8 @@ const message_pt = {
   wasCalled: 'antes',
   dropHint: 'Desmarque o que não deve entrar.',
   noChange: 'Nada selecionado — confirmar assim seria o mesmo que cancelar.',
+  cancelled: 'Cancelado — nada foi alterado. O run para aqui; pode fechar.',
+  confirmed: 'Confirmado. O agente está aplicando a mudança.',
   cancel: 'Cancelar',
   confirm: 'Confirmar',
 };
@@ -77,6 +79,8 @@ const message_en = {
   wasCalled: 'was',
   dropHint: 'Uncheck anything that should not go in.',
   noChange: 'Nothing selected — confirming this would be the same as cancelling.',
+  cancelled: 'Cancelled — nothing was changed. The run stops here; you can close this.',
+  confirmed: 'Confirmed. The agent is applying the change.',
   cancel: 'Cancel',
   confirm: 'Confirm',
 };
@@ -96,21 +100,35 @@ export class WidgetDefinitionChoice102020 extends StateLitElement {
 
   @state() private selection: boolean[] = [];
   @state() private initialized = false;
+  /** Set on the click that ends the checkpoint, so the widget can answer before the framework does. */
+  @state() private finished: DefinitionAction | null = null;
 
   private msg: MessageType = messages['en'];
 
   private toggle(index: number) {
-    if (this.readonly) return;
+    if (this.readonly || this.finished) return;
     this.selection = toggleSelection(this.selection, index);
   }
 
+  /**
+   * ⚠️ THE CLICK HAS TO ANSWER, measured 2026-08-14. The intents are applied with `resume: false`, so
+   * the framework does not re-render the checkpoint and the widget stays exactly as it was. The user
+   * clicked Cancel, saw nothing move, and only later noticed the step had gone red — "nada aconteceu"
+   * followed by an error is the worst possible reading of a button that worked.
+   *
+   * So the widget answers for itself: it locks and says what it did. The step status still travels
+   * the same path — cancelling has to FAIL the step, because i3, i5, i6 and i7 are already planted
+   * and waiting on the `i2a-done` anchor. Completing without that anchor would hang the run, which is
+   * the 2026-08-10 defect recorded in i4-inherit.
+   */
   private finish(action: DefinitionAction) {
     const value = this.value;
-    if (!value) return;
+    if (!value || this.finished) return;
     const detail: { value: DefinitionChoiceResult; action: DefinitionAction } = {
       value: buildDefinitionResult(value.changes, this.selection, action),
       action,
     };
+    this.finished = action;
     this.dispatchEvent(new CustomEvent('clarification-finish', { detail, bubbles: true, composed: true }));
   }
 
@@ -195,14 +213,18 @@ export class WidgetDefinitionChoice102020 extends StateLitElement {
           <p class="dfc-hint">${this.msg.dropHint}</p>
         </div>
 
-        ${blocking.includes('no_change') ? html`<p class="dfc-blocking">${this.msg.noChange}</p>` : nothing}
+        ${blocking.includes('no_change') && !this.finished ? html`<p class="dfc-blocking">${this.msg.noChange}</p>` : nothing}
 
-        <div class="dfc-footer">
-          <button class="dfc-btn dfc-cancel" @click=${() => this.finish('cancel')}>${this.msg.cancel}</button>
-          <button class="dfc-btn dfc-confirm" ?disabled=${!canConfirm || this.readonly} @click=${() => this.finish('continue')}>
-            ${this.msg.confirm}
-          </button>
-        </div>
+        ${this.finished
+          ? html`<p class="dfc-finished">${this.finished === 'cancel' ? this.msg.cancelled : this.msg.confirmed}</p>`
+          : html`
+            <div class="dfc-footer">
+              <button class="dfc-btn dfc-cancel" @click=${() => this.finish('cancel')}>${this.msg.cancel}</button>
+              <button class="dfc-btn dfc-confirm" ?disabled=${!canConfirm || this.readonly} @click=${() => this.finish('continue')}>
+                ${this.msg.confirm}
+              </button>
+            </div>
+          `}
       </div>
     `;
   }
