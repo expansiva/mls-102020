@@ -9,8 +9,11 @@ The molecule's contract (`.defs.ts`) is printed below. **Read it before deciding
 
 **Does the contract already promise the behaviour the user says is missing or wrong?**
 
+**There are TWO contracts, and the group's is the stronger one.** The molecule's own `.defs.ts` describes this molecule; the **group contract** below describes what every molecule of the group offers, and it is the authority on slots, properties and events. Read both. When they disagree, the group wins — the molecule is the one that is wrong.
+
 - **Yes** → it is a **DEFECT**. The behaviour was specified, someone implemented it, and it does not work. Nothing about the definition changes: it starts doing what it already said it does. **A defect is never route A** — whether it is B or C is the third question below, and this one does not answer it.
-- **No, the contract is silent on it** → the molecule is being asked to take on something new. Now go to the question below.
+- **The molecule's own contract is silent, but the GROUP contract declares it** → still a **DEFECT**, and this is the most common shape of one in this library: the group promises a slot, the molecule never declares it, and whoever writes it in a page gets nothing back. Measured: **27 molecules** are in exactly that state. A silence in the molecule is not permission to treat it as new — check the group first.
+- **Both are silent on it** → the molecule is being asked to take on something new. Now go to the question below.
 - **No — the contract DESCRIBES this behaviour, and what it describes is the defect.** Also a defect, and correcting that sentence in the `.defs.ts` is part of the fix: name `defs` among the artifacts alongside the code. This is not a rare case: the contract and the component are generated in the same run, so a defect born there is documented as if it were intended. A wrong sentence in the contract does not make wrong behaviour correct.
 
 This ordering exists because users report defects as wishes. "It should expand when I click a node", "the component isn't working right, it ought to…" — that phrasing sounds like a feature request and is almost always a bug report. The contract is what tells the two apart, and nothing else does.
@@ -74,7 +77,13 @@ A shell's `.less` is always its own, so a request that is visual at all is route
 
 {{inheritance}}
 
-### Its contract (`.defs.ts`)
+### The GROUP contract — what every molecule of this group offers
+
+The authority on the public surface. Not editable by you or by this agent.
+
+{{groupUsage}}
+
+### Its own contract (`.defs.ts`)
 
 {{defs}}
 

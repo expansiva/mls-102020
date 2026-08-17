@@ -37,6 +37,7 @@ import {
   imContextFileInfo,
   imTraceFileInfo,
   imTriageFileInfo,
+  readGroupSkill,
   readImAgentText,
   sourceOf,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
@@ -84,11 +85,18 @@ async function beforePromptStep(
   if (!isRecord(schema)) throw new Error(`[${AGENT_NAME}] invalid i2-triage schema`);
 
   const present = ctx.artifacts.filter(a => a.present).map(a => a.kind);
+  // THE GROUP's usage contract — what the group OFFERS a consumer, which is exactly what the first
+  // question asks: "does the contract already promise this?". The molecule's own .defs.ts can be silent
+  // where the group is not, and 27 molecules in this library are in that state; without this the triage
+  // reads a silence as "a new responsibility" when it is a defect. Read, never written.
+  const groupUsage = await readGroupSkill(ctx.groupSkill.usageReference);
+
   const systemPrompt = promptMd
     .split('{{tag}}').join(ctx.target.tag)
     .split('{{groupCanonical}}').join(ctx.target.groupCanonical)
     .split('{{artifactsPresent}}').join(present.join(', ') || '(none)')
     .split('{{inheritance}}').join(renderInheritance(ctx))
+    .split('{{groupUsage}}').join(groupUsage || '(the group usage contract could not be read — decide from the molecule\'s own contract)')
     .split('{{surface}}').join(renderSurface(readSurface(sourceOf(ctx.artifacts, 'ts'))))
     .split('{{defs}}').join(renderContract(ctx))
     .split('{{userPrompt}}').join(ctx.userPrompt)

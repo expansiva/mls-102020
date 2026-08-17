@@ -1,5 +1,39 @@
 # CHANGELOG — i3-edit
 
+## 2026-08-17 — os contratos do grupo voltaram ao prompt
+
+**Decisão registrada:** os agentes **leem** os contratos de criação e de uso do grupo e **nunca os
+alteram**. Alterar contrato de grupo é trabalho manual em `mls-102020` — é onde a superfície pública de
+todas as moléculas daquele grupo é definida, e um agente que pudesse editá-lo poderia alargar em
+silêncio o que um grupo inteiro promete.
+
+**E ler não é desenho novo: é restaurar o que o fluxo anterior fazia.** O
+`agentImproveMoleculeMaterialize` — o passo que escrevia código no agente antigo — injetava três skills
+no prompt: o overview do Aura, o `moleculeGeneration` e o **contrato de criação do grupo**, resolvido
+pelo `skills/index`. O IM2 herdou as *referências* no `context.json` e deixou de injetar o conteúdo.
+
+**O que a ausência custou, medido em 14/08:** pediram "um rótulo e um texto de ajuda" na
+`ml-currency-input`. O grupo `groupEnterMoney` define rótulo e ajuda como os slots `Label` e `Helper`.
+Sem as tabelas do grupo, o editor criou duas **propriedades públicas** `label` e `helper` — mudança de
+definição na rota que não as faz, com o `slotTags` continuando ausente. O gate passou a recusar a
+invenção no mesmo dia; ele não sabia qual era o acerto.
+
+**A divisão entre os dois contratos segue a semântica dos arquivos:**
+
+| passo | recebe | por quê |
+|---|---|---|
+| `i2-triage` | **uso** | a primeira pergunta dele é "o contrato já promete isto?", e uso é o que o grupo oferece a quem consome |
+| `i3-edit` | **criação + uso** | ele escreve o código: precisa de como se constrói e do que se promete |
+| `i7-summary` | **criação** | já usava, para o relatório de coerência |
+
+`readGroupSkill` (em `imResolve`) passou a ser o único leitor — havia três cópias da mesma função em
+três passos. O gate do `i3` recebe a **união** dos dois textos como vocabulário: um nome que qualquer um
+dos dois declara é sancionado pelo grupo.
+
+**A regra nova no prompt do triage**, e é ela que endereça as 27 moléculas: *o silêncio do `.defs.ts` da
+molécula não é permissão para tratar o pedido como novo* — se o grupo declara e a molécula não, é
+**defeito**, não responsabilidade nova.
+
 ## 2026-08-14 — a rota B mudou a definição pública, e nada barrava
 
 Medido no T1, `ml-currency-input`. O pedido: *"não consigo colocar um rótulo nem um texto de ajuda no

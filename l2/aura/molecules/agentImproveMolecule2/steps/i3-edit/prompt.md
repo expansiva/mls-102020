@@ -39,7 +39,29 @@ Return **targeted edits**, not rewritten files. Each edit quotes the exact text 
 
 {{userPrompt}}
 
-### Its contract — what the molecule promises
+### The GROUP contract — what every molecule of this group promises
+
+This is the authority on the **public surface**: the slots, the properties and the events. It is not
+advice and it is not editable — not by you, not by this agent. Two rules follow from it, and they are
+the difference between a repair and a mess:
+
+- **the names come from here.** If the request is about something the group already declares, use that
+  name **exactly** — the contract is case-sensitive, and `Label` the slot is not `label` the property.
+  Inventing a name the group does not declare is a change to what the molecule promises, which is not
+  this route;
+- **what the group declares and this molecule does not implement is a DEFECT**, and implementing it is
+  ordinary work here: declare it in `slotTags`, in a property, or in a dispatch, and actually read it in
+  the render. 27 molecules in this library are in exactly that state.
+
+#### How a molecule of this group is built
+
+{{groupCreation}}
+
+#### What this group offers whoever uses it
+
+{{groupUsage}}
+
+### Its own contract — what THIS molecule promises
 
 {{contract}}
 

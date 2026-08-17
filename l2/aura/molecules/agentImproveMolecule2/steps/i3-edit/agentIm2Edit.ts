@@ -52,6 +52,7 @@ import {
   imTriageFileInfo,
   imWorkFile,
   readImAgentText,
+  readGroupSkill,
   readParentTs,
   writeImSource,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
@@ -125,6 +126,11 @@ async function beforePromptStep(
   // the .ts is not even offered to applyEdits.
   const parentSource = await readParentSourceFor(ctx, choice);
 
+  // THE GROUP CONTRACTS. Read, never written — see readGroupSkill for the decision and for the run
+  // that measured what their absence costs.
+  const groupCreation = await readGroupSkill(ctx.groupSkill.reference);
+  const groupUsage = await readGroupSkill(ctx.groupSkill.usageReference);
+
   const systemPrompt = promptMd
     .split('{{tag}}').join(ctx.target.tag)
     .split('{{groupCanonical}}').join(ctx.target.groupCanonical)
@@ -132,6 +138,8 @@ async function beforePromptStep(
     .split('{{userLanguage}}').join(ctx.userLanguage || 'the language of the request')
     .split('{{triage}}').join(renderTriage(triage))
     .split('{{definitionChanges}}').join(renderDefinitionChanges(definition))
+    .split('{{groupCreation}}').join(groupCreation || '(the group creation contract could not be read — rely on the molecule\'s own contract below)')
+    .split('{{groupUsage}}').join(groupUsage || '(the group usage contract could not be read)')
     .split('{{inheritance}}').join(renderInheritance(ctx, choice))
     .split('{{files}}').join(renderFiles(ctx, triage, choice))
     .split('{{parentSource}}').join(
@@ -228,7 +236,11 @@ async function afterPromptStep(
     // The route and the group's declared vocabulary: only route A may move the public surface, and
     // only the names the group already declares count as "the molecule was missing this".
     route: triage.route,
-    groupSkill: await loadGroupSkill(ctx),
+    // The union of both contracts: a name either of them declares is sanctioned by the group.
+    groupSkill: [
+      await readGroupSkill(ctx.groupSkill.reference),
+      await readGroupSkill(ctx.groupSkill.usageReference),
+    ].join('\n'),
     compileErrors,
     compileErrorsBefore,
   });
@@ -280,17 +292,6 @@ async function afterPromptStep(
 }
 
 // ---- helpers ----
-
-/** Best effort, exactly as i7 does it: an unreadable group skill costs the surface check, not the run. */
-async function loadGroupSkill(ctx: ImContext): Promise<string> {
-  if (!ctx.groupSkill.reference) return '';
-  try {
-    const mod = await import(ctx.groupSkill.reference) as { skill?: unknown };
-    return typeof mod.skill === 'string' ? mod.skill : '';
-  } catch {
-    return '';
-  }
-}
 
 async function readRun(runKey: string): Promise<{ ctx: ImContext; triage: ImTriage }> {
   const ctx = await readJsonArtifact<ImContext>(imContextFileInfo(runKey), true);

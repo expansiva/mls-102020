@@ -43,6 +43,7 @@ import {
   imTraceFileInfo,
   imTriageFileInfo,
   imWorkFile,
+  readGroupSkill,
   readImAgentText,
   sourceOf,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
@@ -258,7 +259,7 @@ async function gatherFacts(runKey: string): Promise<ImRunFacts> {
 }
 
 async function coherence(ctx: ImContext) {
-  const groupCreationSkill = await loadGroupSkill(ctx);
+  const groupCreationSkill = await readGroupSkill(ctx.groupSkill.reference);
   return buildCoherenceReport(
     {
       // A shell has no .defs.ts of its own; the contract that governs it is the parent's, and
@@ -276,17 +277,6 @@ async function coherence(ctx: ImContext) {
     },
     new Date().toISOString(),
   );
-}
-
-/** Best effort: an unreadable group skill costs the contract check, not the run. */
-async function loadGroupSkill(ctx: ImContext): Promise<string> {
-  if (!ctx.groupSkill.reference) return '';
-  try {
-    const mod = await import(ctx.groupSkill.reference) as { skill?: unknown };
-    return typeof mod.skill === 'string' ? mod.skill : '';
-  } catch {
-    return '';
-  }
 }
 
 function coherenceHeading(facts: ImRunFacts): string {

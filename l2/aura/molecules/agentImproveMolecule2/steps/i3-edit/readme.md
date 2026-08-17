@@ -4,8 +4,9 @@ One LLM call (`code`). Routes B and C. **The only step that writes into the mole
 
 ## Input
 
-- `context.json`, `triage.json` (and `inherit.json` on route C)
+- `context.json`, `triage.json` (and `inherit.json` on route C, `definition.json` on route A)
 - the current content of the editable artifacts, verbatim
+- the group's **creation** and **usage** contracts — read, never written
 
 Editable here: `defs`, `ts`, `less`. The playground belongs to i5 and the group index to i6. The
 `.ts` is always shown even when it is not being edited — it is what the `.less` styles and what the
@@ -65,6 +66,20 @@ Retry 1 with the gate errors; a 2nd failure fails the step, molecule untouched.
 | `definition_changed` | on routes B and C: the edit adds a public slot/property/event the GROUP contract does not declare — that is route A, through the checkpoint |
 | `definition_removed` | on routes B and C: the edit removes one. Removal is never a repair |
 | `compile` | an error the edit added |
+
+## The group contracts are the authority on the surface
+
+Both are injected: **creation** (how a molecule of this group is built) and **usage** (what the group
+offers a consumer). The step reads them and can never change them — altering a group contract is manual
+work in `mls-102020`, because it defines the public surface of every molecule in the group.
+
+Two rules come from them, and they are the difference between a repair and a mess: **the names come from
+the contract**, case-sensitive — `Label` the slot is not `label` the property; and **what the group
+declares and the molecule does not implement is a DEFECT**, which is ordinary work here.
+
+⚠️ This restores what the previous flow did — `agentImproveMoleculeMaterialize` injected the group's
+creation skill. IM2 inherited the references and stopped injecting the content; the measured cost is in
+the CHANGELOG for 2026-08-17.
 
 ## On a shell, the parent is always shown
 

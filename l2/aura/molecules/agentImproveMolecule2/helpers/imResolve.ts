@@ -238,6 +238,36 @@ export async function readParentTs(parentReference: string): Promise<string> {
   return readParentSource(parentReference);
 }
 
+/**
+ * A GROUP contract, by reference. Returns '' when it cannot be read.
+ *
+ * Two of them exist per group and they answer different questions:
+ *
+ *   creation (`skillReference`)      — how a molecule of this group is BUILT. Declares the surface in
+ *                                     tables, plus the implementation rules.
+ *   usage    (`skillUsageReference`) — what the group OFFERS to whoever consumes it: slots,
+ *                                     properties, events, composition examples, design tokens.
+ *
+ * ⚠️ THE AGENTS READ THESE AND NEVER WRITE THEM (decision of 2026-08-17). The group contract is where
+ * the public surface of every molecule in the group is defined; changing it is manual work in
+ * mls-102020. An agent that could edit it could quietly widen what a whole group promises.
+ *
+ * ⚠️ AND READING THEM IS NOT NEW. `agentImproveMoleculeMaterialize`, the step that wrote code in the
+ * previous flow, injected the group's creation skill into its prompt. agentImproveMolecule2 inherited
+ * the REFERENCES in context.json and stopped injecting the content — and the measured cost was the
+ * defect of 2026-08-14: asked for a label and help text on `ml-currency-input`, the editor invented two
+ * public properties instead of declaring the slots `Label` and `Helper` that the group already requires.
+ */
+export async function readGroupSkill(reference: string): Promise<string> {
+  if (!reference) return '';
+  try {
+    const mod = await import(reference) as { skill?: unknown };
+    return typeof mod.skill === 'string' ? mod.skill : '';
+  } catch {
+    return '';
+  }
+}
+
 /** Best-effort read of a file in another project. Returns '' when it is not reachable. */
 async function readParentSource(parentReference: string): Promise<string> {
   const m = parentReference.match(/^_?(\d+)_\/l(\d+)\/(.+)\/([^/]+)\.ts$/);

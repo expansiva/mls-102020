@@ -8,9 +8,16 @@ One LLM call (`reasoning`). Runs on every route, because it is what chooses the 
 - the user's prose, carried in `context.userPrompt`
 
 What the model actually sees: the tag, the group, which artifacts exist, the inheritance block, the
-**derived public surface** (slots, properties with their real attribute names, events) and the full
-`.defs.ts`. It does **not** see the molecule's source — `ml-data-table` is 300+ lines and its
-surface is 20, and the other 280 cannot answer the routing question.
+**derived public surface** (slots, properties with their real attribute names, events), the group's
+**usage contract**, and the full `.defs.ts`.
+
+⚠️ **Two contracts, and the group's is the stronger one** (2026-08-17). The molecule's `.defs.ts` can be
+silent where the group is not: **27 molecules** do not declare a slot their group requires. Reading that
+silence as "a new responsibility" would route a defect as a feature, so the prompt says it outright — if
+the group declares it and the molecule does not, the molecule is the one that is wrong.
+
+It does **not** see the molecule's source — `ml-data-table` is 300+ lines and its surface is 20, and the
+other 280 cannot answer the routing question.
 
 ## Output
 
@@ -23,7 +30,8 @@ surface is 20, and the other 280 cannot answer the routing question.
 Three ordered questions, and the third is the one that was missing until 2026-08-14.
 
 1. **Does the contract already promise this?** Yes, or it describes the wrong behaviour → a **defect**,
-   which is never route A. No, it is silent → a new responsibility.
+   which is never route A. **Two contracts count, and the group's is the stronger:** the molecule's own
+   `.defs.ts` silent + the group declaring it is still a defect. Both silent → a new responsibility.
 2. **Would a page that uses this molecule today have to be WRITTEN DIFFERENTLY?** Yes → A. No → not A.
    The public surface is exactly slots, attributes and events. On anything that is not a shell, this
    settles it: B.
@@ -48,7 +56,7 @@ rebuild; rewriting a whole render to fix a layout bug is an edit.
 
 | route | when |
 |---|---|
-| A | the definition changes — rebuild through `agentNewMolecule2` |
+| A | the definition changes — checkpoint, then edit in place (i2a-definition) |
 | B | appearance, a code defect, wording — edit in place |
 | C | shell **and** the code that would change is in the parent, out of the shell's reach |
 | D | not a request to change this molecule; the rationale is the whole answer |
