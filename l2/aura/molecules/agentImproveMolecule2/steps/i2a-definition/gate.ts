@@ -12,6 +12,7 @@
 // route that changes what the molecule PROMISES, and every promise it moves is checked against what
 // the molecule declares today.
 
+import { groupVocabulary } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
 import {
   ImDefinitionChange,
   ImGateResult,
@@ -35,6 +36,18 @@ export interface ImDefinitionGateInputs {
   answer: ImDefinitionAnswer;
   /** The surface as the CODE declares it today, from imSurface. The gate checks against this. */
   current: ImSurfaceNames;
+  /**
+   * The GROUP's usage contract, for `groupVocabulary`. Empty when it could not be read — the check
+   * then admits everything, because unmeasured must not mean forbidden.
+   *
+   * ⚠️ WHY THE CHECKPOINT NEEDS IT (2026-08-17). The group contract declares the public surface of
+   * every molecule in the group, and altering it is MANUAL work in mls-102020 — the agents read it and
+   * never write it. Without this check route A was the hole in that rule: measured on
+   * `ml-kpi-indicator`, "define the label by attribute" was routed A and the checkpoint was ready to
+   * add a public property `label` that `groupViewMetric` does not declare anywhere. The route that
+   * exists to change a promise was the one route that could widen a whole group by accident.
+   */
+  groupSkill: string;
   /** True when validating the model's proposal, false for the human's confirmation. */
   fromModel: boolean;
 }
@@ -90,6 +103,16 @@ export function runImDefinitionGate(inputs: ImDefinitionGateInputs): ImGateResul
     const key = `${kind}:${name}`;
     if (seen.has(key)) errors.push(issue('duplicate', `${at}: ${kind} \`${name}\` is named twice`));
     seen.add(key);
+
+    // The group's vocabulary bounds what may be added at all: widening the group is manual work.
+    if ((op === 'add' || op === 'rename') && inputs.groupSkill.trim() && !groupVocabulary(inputs.groupSkill).has(name)) {
+      errors.push(
+        issue(
+          'not_in_group',
+          `${at}: the group contract does not declare a ${kind} called \`${name}\`, and this agent never widens a group — that file is edited by hand. Either use the name the group already has, exactly (it is case-sensitive), or the group contract has to change first`,
+        ),
+      );
+    }
 
     const declared = existing(inputs.current, kind);
     if (op === 'add' && declared.includes(name)) {

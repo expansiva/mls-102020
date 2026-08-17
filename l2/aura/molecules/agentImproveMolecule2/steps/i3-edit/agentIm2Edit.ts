@@ -126,9 +126,23 @@ async function beforePromptStep(
   // the .ts is not even offered to applyEdits.
   const parentSource = await readParentSourceFor(ctx, choice);
 
-  // THE GROUP CONTRACTS. Read, never written — see readGroupSkill for the decision and for the run
-  // that measured what their absence costs.
-  const groupCreation = await readGroupSkill(ctx.groupSkill.reference);
+  // THE GROUP's USAGE CONTRACT — read, never written. See readGroupSkill for the decision and for the
+  // run that measured what its absence costs.
+  //
+  // ⚠️ THE CREATION CONTRACT IS DELIBERATELY *NOT* INJECTED, and the precedent argues the other way:
+  // the previous flow's materialize step injected it. Two measurements from 2026-08-17 overruled that:
+  //
+  //   1. SIZE. `groupSelectOne/creation.ts` is 19.7 KB (9.9 KB on average across the 31 groups). On
+  //      `ml-combobox` — 23 KB of its own .ts — creation + usage took this prompt from ~31 KB to ~58 KB
+  //      and the run died with "fetchQl: Failed to fetch" applying the prompt intent, twice.
+  //   2. IT MADE THE GATE WORSE. `groupVocabulary` treats every backticked name as sanctioned by the
+  //      group, and creation's extra names are INTERNALS — `isOpen`, `searchQuery`, `portalContainer`,
+  //      `TemplateResult`. With creation in, the gate would have admitted a new public property called
+  //      `isOpen` as "the group declares it".
+  //
+  // The usage contract carries the whole PUBLIC surface — verified: all 8 slots of groupSelectOne —
+  // which is what this step needs, because it EDITS and does not generate. Creation's build rules are
+  // the generator's, and the library traps this step must respect are already in its own prompt.
   const groupUsage = await readGroupSkill(ctx.groupSkill.usageReference);
 
   const systemPrompt = promptMd
@@ -138,8 +152,7 @@ async function beforePromptStep(
     .split('{{userLanguage}}').join(ctx.userLanguage || 'the language of the request')
     .split('{{triage}}').join(renderTriage(triage))
     .split('{{definitionChanges}}').join(renderDefinitionChanges(definition))
-    .split('{{groupCreation}}').join(groupCreation || '(the group creation contract could not be read — rely on the molecule\'s own contract below)')
-    .split('{{groupUsage}}').join(groupUsage || '(the group usage contract could not be read)')
+    .split('{{groupUsage}}').join(groupUsage || '(the group usage contract could not be read — rely on the molecule\'s own contract below)')
     .split('{{inheritance}}').join(renderInheritance(ctx, choice))
     .split('{{files}}').join(renderFiles(ctx, triage, choice))
     .split('{{parentSource}}').join(
@@ -204,8 +217,29 @@ async function afterPromptStep(
     ? { changed: new Map<ImArtifactKind, string>(), errors: [`extract: ${extractError}`], applied: [] as string[] }
     : applyEdits(fileStates(ctx, choice), edits);
 
+  // ⚠️ THE TRACE IS WRITTEN ON THIS PATH TOO, and until 2026-08-17 it was not.
+  //
+  // An apply error — a `find` that is not in the file, an edit that changes nothing — returned from
+  // here, BEFORE the writeJsonArtifact further down. So the most common failure mode of this step left
+  // NO record at all: on 2026-08-14 a run showed `attempt: 2` with only `trace-i3-edit-02.json`, and
+  // the missing attempt 1 was written off as "the retry is blind". It was not blind by design, it was
+  // this early return. Measured again on `ml-kpi-indicator`, where the step failed twice and the l4
+  // folder had no i3 trace whatsoever — the error in the UI was the only evidence anywhere.
+  //
+  // "How many attempts did each step take" is one of the acceptance criteria for this agent, so the
+  // record has to survive the failure that makes it interesting.
   if (apply.errors.length) {
-    return retryOrFail(context, parentStep, step, hookSequential, runKey, attempt, apply.errors.join('\n'), edits);
+    const errorText = apply.errors.join('\n');
+    await writeJsonArtifact(imTraceFileInfo(runKey, PLAN_ID, attempt), {
+      savedAt: new Date().toISOString(),
+      planId: PLAN_ID,
+      attempt,
+      ok: false,
+      stage: 'apply',
+      error: errorText,
+      edits,
+    });
+    return retryOrFail(context, parentStep, step, hookSequential, runKey, attempt, errorText, edits);
   }
 
   // The compile baseline is taken from what is ON DISK, before the write. Two compiles per touched
@@ -236,11 +270,9 @@ async function afterPromptStep(
     // The route and the group's declared vocabulary: only route A may move the public surface, and
     // only the names the group already declares count as "the molecule was missing this".
     route: triage.route,
-    // The union of both contracts: a name either of them declares is sanctioned by the group.
-    groupSkill: [
-      await readGroupSkill(ctx.groupSkill.reference),
-      await readGroupSkill(ctx.groupSkill.usageReference),
-    ].join('\n'),
+    // The USAGE contract only, and that is deliberate: it carries the public surface, while creation
+    // adds internals like `isOpen` that the vocabulary would then treat as sanctioned names.
+    groupSkill: await readGroupSkill(ctx.groupSkill.usageReference),
     compileErrors,
     compileErrorsBefore,
   });

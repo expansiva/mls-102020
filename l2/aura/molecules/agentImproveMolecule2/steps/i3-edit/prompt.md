@@ -39,7 +39,7 @@ Return **targeted edits**, not rewritten files. Each edit quotes the exact text 
 
 {{userPrompt}}
 
-### The GROUP contract — what every molecule of this group promises
+### The GROUP contract — what this group offers whoever uses it
 
 This is the authority on the **public surface**: the slots, the properties and the events. It is not
 advice and it is not editable — not by you, not by this agent. Two rules follow from it, and they are
@@ -53,12 +53,6 @@ the difference between a repair and a mess:
   lists that this molecule does not declare may be perfectly normal — `Cell` belongs to the table
   variant of a select group, not to a dropdown. Implement what the triage asked for, in the group's
   spelling; do not go declaring every slot the group happens to name.
-
-#### How a molecule of this group is built
-
-{{groupCreation}}
-
-#### What this group offers whoever uses it
 
 {{groupUsage}}
 

@@ -16,6 +16,24 @@ Three operations, and they are not equal:
 
 Prefer `add`. Propose `remove` or `rename` only when the request actually says the old thing must go: "rename Label to Caption" is a rename; "I want a caption too" is an add.
 
+## The hard boundary: the GROUP contract
+
+The surface of every molecule in a group is declared by the **group contract**, and that file is edited
+**by hand**, outside this agent. So a name the group does not declare **cannot be added here by any
+route** — not by you, not by the human at the checkpoint. The gate refuses it.
+
+That leaves two legitimate shapes for a proposal:
+
+- **a name the group already declares** and this molecule does not implement — use its exact spelling,
+  the contract is case-sensitive;
+- **nothing**, and saying so is a valid answer: if what the user wants needs a name the group does not
+  have, the change starts in the group contract, and that is a human's job before this agent can help.
+
+⚠️ Measured 2026-08-17: asked to "define the label by attribute" on a metric molecule, this step was
+ready to add a public property `label` that `groupViewMetric` declares nowhere — the group defines the
+label as the **slot** `Label`. The route that exists to change one molecule's promise was the one route
+that could widen a whole group by accident.
+
 ## What you must not do
 
 - **Do not propose something the molecule already declares.** Its current surface is printed below. If the element is already there and does not work, that is a **defect**, and a defect is not a definition change — it is a route B edit, and saying so is a valid answer here.

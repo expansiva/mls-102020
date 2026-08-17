@@ -68,6 +68,7 @@ import {
   imTraceFileInfo,
   imTriageFileInfo,
   imWorkFile,
+  readGroupSkill,
   readImAgentText,
   sourceOf,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
@@ -149,7 +150,7 @@ async function afterPromptStep(
   const answer = envelopeError ? null : readProposal(step.interaction?.payload?.[0]);
 
   const gate = answer
-    ? runImDefinitionGate({ answer, current: currentSurface(ctx), fromModel: true })
+    ? runImDefinitionGate({ answer, current: currentSurface(ctx), groupSkill: await readGroupSkill(ctx.groupSkill.usageReference), fromModel: true })
     : { ok: false, errors: [`payload: ${envelopeError || 'the clarification json could not be read'}`] };
   const errorText = gate.errors.join('\n');
 
@@ -242,7 +243,12 @@ async function applyDecision(
 
   // The human dropped lines, so what they confirmed is NOT what the model proposed. It is gated
   // again for the same reason i4 does it: this is what gets written.
-  const gate = runImDefinitionGate({ answer: { changes: confirmed.changes }, current: currentSurface(ctx), fromModel: false });
+  const gate = runImDefinitionGate({
+    answer: { changes: confirmed.changes },
+    current: currentSurface(ctx),
+    groupSkill: await readGroupSkill(ctx.groupSkill.usageReference),
+    fromModel: false,
+  });
   if (!gate.ok) {
     await nmApplyIntentsAndRefresh(context, [
       nmUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', `the confirmed definition change is not valid:\n${gate.errors.join('\n')}`),

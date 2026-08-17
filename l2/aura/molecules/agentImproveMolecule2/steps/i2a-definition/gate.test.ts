@@ -19,8 +19,17 @@ function change(over: Partial<ImDefinitionChange> = {}): ImDefinitionChange {
   return { kind: 'slot', op: 'add', name: 'Footer', purpose: 'aparece abaixo da árvore', ...over };
 }
 
+// O vocabulário do grupo, na forma em que uma skill o carrega (crases escapadas).
+const GROUP_SKILL = '| \\`Label\\` | \\`Icon\\` | \\`Footer\\` | \\`Caption\\` | \\`size\\` | \\`action\\` | \\`change\\` |';
+
 function inputs(over: Partial<ImDefinitionGateInputs> = {}): ImDefinitionGateInputs {
-  return { answer: { changes: [change()], reason: 'o pedido adiciona uma área nova' }, current: CURRENT, fromModel: true, ...over };
+  return {
+    answer: { changes: [change()], reason: 'o pedido adiciona uma área nova' },
+    current: CURRENT,
+    groupSkill: GROUP_SKILL,
+    fromModel: true,
+    ...over,
+  };
 }
 
 test('a well-formed addition passes', () => {
@@ -92,4 +101,46 @@ test("the MODEL's proposal must say why; the HUMAN's confirmation need not", () 
 test('a molecule with no events yet still accepts a first event', () => {
   const empty = { slots: [], properties: [], events: [] };
   assert.equal(runImDefinitionGate(inputs({ current: empty, answer: { changes: [change({ kind: 'event', name: 'change' })], reason: 'x' } })).ok, true);
+});
+
+// ---- a fronteira do contrato do grupo (2026-08-17) ----
+
+test('ADICIONAR um nome que o grupo não declara é recusado — alargar grupo é trabalho manual', () => {
+  // Medido na ml-kpi-indicator: "definir o rótulo por atributo" foi para a rota A e o checkpoint
+  // estava pronto para adicionar a propriedade pública `label`, que groupViewMetric não declara.
+  const result = runImDefinitionGate(inputs({
+    answer: { changes: [change({ kind: 'property', name: 'label', purpose: 'rótulo por atributo' })], reason: 'x' },
+  }));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(e => /^not_in_group: /.test(e)));
+  assert.match(result.errors.join('\n'), /edited by hand/);
+});
+
+test('a grafia do grupo é o que vale — `Label` passa, `label` não', () => {
+  const maiuscula = runImDefinitionGate(inputs({
+    answer: { changes: [change({ kind: 'slot', name: 'Footer', purpose: 'rodapé' })], reason: 'x' },
+  }));
+  assert.equal(maiuscula.ok, true);
+});
+
+test('RENOMEAR para um nome fora do grupo é recusado pelo mesmo motivo', () => {
+  const result = runImDefinitionGate(inputs({
+    answer: { changes: [change({ op: 'rename', name: 'Rodape', previousName: 'Label', purpose: 'x' })], reason: 'x' },
+  }));
+  assert.ok(result.errors.some(e => /^not_in_group: /.test(e)));
+});
+
+test('REMOVER não passa pelo vocabulário — o nome sai, não entra', () => {
+  const result = runImDefinitionGate(inputs({
+    answer: { changes: [change({ op: 'remove', name: 'Icon', purpose: 'não usamos ícone' })], reason: 'x' },
+  }));
+  assert.equal(result.ok, true);
+});
+
+test('sem contrato de grupo legível, admite — medição ausente não é proibição', () => {
+  const result = runImDefinitionGate(inputs({
+    groupSkill: '',
+    answer: { changes: [change({ kind: 'property', name: 'inventada', purpose: 'x' })], reason: 'x' },
+  }));
+  assert.equal(result.ok, true);
 });
