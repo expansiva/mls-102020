@@ -199,7 +199,10 @@ function wireNs4ParentPickers(
         const target = ns4FkParentOf(context.parentsOf, input.fieldRef.entityId, input.fieldRef.fieldId)?.parent
           || input.fieldRef.entityId;
         // Not a key, the record the screen is already about, or an identity the session supplies.
-        if (!target || target === workspace.entity || isNs4PlatformOwnedEntity(context.entities.get(target))) continue;
+        const targetEntity = context.entities.get(target);
+        // An entity the module does not describe, the record the screen is already about, or an
+        // identity the session supplies — none of them is picked by the user.
+        if (!targetEntity || target === workspace.entity || isNs4PlatformOwnedEntity(targetEntity)) continue;
         const source = pickParentRead(readsOf.get(target) || []);
         if (!source) continue;   // nothing lists the parent: NS4_E8_PICKER_SOURCE registers it
         const bffId = `qry${upperCamel(target)}Picker`;
