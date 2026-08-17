@@ -225,6 +225,21 @@ export interface ImDefinitionChange {
 export interface ImDefinitionDecision {
   changes: ImDefinitionChange[];
   confirmedAt: string;
+  /**
+   * The change cannot be made at all: it needs a name the GROUP contract does not declare, and that
+   * file is edited by hand. `changes` is empty and nothing is written — the run ends with the
+   * instruction, exactly like route C's `parent` outcome.
+   *
+   * ⚠️ MEASURED 2026-08-17, and it is the reason this field exists. Asked to "define the label by
+   * attribute" on `ml-kpi-indicator`, the model answered `changes: []` with the reason "no element can
+   * be proposed until the group contract declares this property" — the correct answer, and the prompt
+   * had told it so in as many words. The gate then refused it with `no_change`, and on the retry the
+   * model, forced to name something, proposed REMOVING the `Label` slot. Prose asked, code refused,
+   * and the escalation was destructive.
+   */
+  blocked?: boolean;
+  /** Why it is blocked, in the user's language. It IS the deliverable when nothing is written. */
+  blockedReason?: string;
 }
 
 /**

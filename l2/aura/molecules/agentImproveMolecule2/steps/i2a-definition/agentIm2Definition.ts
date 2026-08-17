@@ -51,6 +51,7 @@ import {
   nmCheckClarificationPayload,
   nmClarificationPromptReady,
   nmFindMutableParent,
+  nmResultStepIntent,
   nmParseStepArgs,
   nmUpdateStatusIntent,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
@@ -161,6 +162,33 @@ async function afterPromptStep(
     ok: gate.ok,
     ...(gate.ok ? { proposal: answer } : { error: errorText, proposal: answer }),
   });
+
+  // BLOCKED: nothing to choose, so no widget. The request needs a name the group contract does not
+  // declare, and that file is edited by hand — the run ends here with the instruction, which IS the
+  // deliverable. Same shape as route C's `parent`: the anchor is emitted so the branch already planted
+  // (i3, i5, i6, i7) completes instead of hanging on it (the 2026-08-10 defect).
+  if (gate.ok && answer?.blocked) {
+    const reference = ctx.groupSkill.reference || '(the group contract)';
+    const pt = (ctx.userLanguage || '').startsWith('pt');
+    const summary = pt
+      ? `nada foi alterado — o contrato do grupo precisa mudar primeiro: ${reference}`
+      : `nothing was changed — the group contract has to change first: ${reference}`;
+    await writeJsonArtifact(imWorkFile(runKey, 'definition'), {
+      changes: [],
+      blocked: true,
+      blockedReason: answer.reason || '',
+      confirmedAt: new Date().toISOString(),
+    });
+    return [
+      nmResultStepIntent(context, parentStep, {
+        planId: imDoneAnchor(PLAN_ID),
+        dependsOn: [],
+        stepTitle: summary,
+        result: { changes: [], blocked: true, blockedReason: answer.reason || '', groupContract: reference, runKey },
+      }),
+      nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${summary}\n\n${answer.reason || ''}`, 'input_output'),
+    ];
+  }
 
   // Kept on disk so beforeClarificationStep rebuilds the widget value from DISK rather than trusting
   // the mounted payload — same reason n2-plan and i4-inherit do it.
@@ -330,6 +358,7 @@ function readProposal(payload: unknown): ImDefinitionAnswer | null {
     })),
     reason: typeof json.reason === 'string' ? json.reason : '',
     title: typeof json.title === 'string' ? json.title : '',
+    ...(json.blocked === true || json.blocked === 'true' ? { blocked: true } : {}),
   };
 }
 

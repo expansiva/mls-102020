@@ -119,6 +119,22 @@ async function beforePromptStep(
   // suggestion — they saw each line and dropped the ones they did not want.
   const definition = await readJsonArtifact<ImDefinitionDecision>(imWorkFile(runKey, 'definition'), false);
 
+  // ROUTE A, blocked: the change needs a name the GROUP contract does not declare, and that file is
+  // edited by hand. Nothing for a model to do, so no prompt — the same declared no-op shape the route C
+  // 'parent' outcome uses above. i5, i6 and i7 follow and the run ends with the instruction.
+  if (definition?.blocked) {
+    const summary = 'nothing edited — the group contract has to change first';
+    return [
+      nmResultStepIntent(context, parentStep, {
+        planId: imDoneAnchor(PLAN_ID),
+        dependsOn: [],
+        stepTitle: summary,
+        result: { touched: [], why: [], runKey, attempt: 1, skipped: 'group-contract' },
+      }),
+      nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', summary, 'input_output'),
+    ];
+  }
+
   // THE PARENT IS SHOWN ON EVERY SHELL, not only on route C. Until 2026-08-14 it arrived only with
   // the choice 'override', so a route-B edit on a shell was told "a local override of a parent
   // member" with the parent invisible — and the model wrote a member the parent does not have. The

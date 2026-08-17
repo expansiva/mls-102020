@@ -34,6 +34,11 @@ export interface ImRunFacts {
    * nothing actionable to say — see the CHANGELOG.
    */
   parentReference: string;
+  /** Route A only: the change needed a name the group contract does not declare. Nothing was written. */
+  definitionBlocked: boolean;
+  definitionBlockedReason: string;
+  /** The group contract to edit by hand, when the run is blocked on it. */
+  groupContract: string;
   findings: ImCoherenceFinding[];
 }
 
@@ -41,7 +46,8 @@ export function emptyRunFacts(): ImRunFacts {
   return {
     tag: '', groupCanonical: '', route: '', rationale: '', request: '',
     touched: [], why: [], playgroundChanged: false, addedSlots: [],
-    indexUpdated: false, inheritWhere: '', inheritMember: '', parentReference: '', findings: [],
+    indexUpdated: false, inheritWhere: '', inheritMember: '', parentReference: '',
+    definitionBlocked: false, definitionBlockedReason: '', groupContract: '', findings: [],
   };
 }
 
@@ -73,6 +79,19 @@ export function renderRunFacts(facts: ImRunFacts): string {
 
   if (facts.why.length) {
     lines.push('', '**What was done, as the edits themselves recorded it**', ...facts.why.map(w => `- ${w}`));
+  }
+
+  // Blocked on the group contract: nothing was written, on purpose, so the instruction IS the answer —
+  // the same rule the 'parent' outcome taught on 2026-08-14.
+  if (facts.definitionBlocked) {
+    lines.push(
+      '',
+      '**This request needs the GROUP contract to change first, and nothing was changed here**',
+      `- ${facts.definitionBlockedReason || 'the group contract does not declare what the request needs'}`,
+      facts.groupContract
+        ? `- The group contract is \`${facts.groupContract}\`, and it is edited BY HAND — no agent writes it. Tell the user that is the next step, and that this molecule can be changed once the group declares the name.`
+        : '- Say that the group contract has to declare the name before this molecule can offer it.',
+    );
   }
 
   // THREE outcomes, and there must be three branches. Until 2026-08-14 this was an if/else, so

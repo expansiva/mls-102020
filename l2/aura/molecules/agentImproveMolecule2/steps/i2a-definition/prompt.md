@@ -26,8 +26,11 @@ That leaves two legitimate shapes for a proposal:
 
 - **a name the group already declares** and this molecule does not implement — use its exact spelling,
   the contract is case-sensitive;
-- **nothing**, and saying so is a valid answer: if what the user wants needs a name the group does not
-  have, the change starts in the group contract, and that is a human's job before this agent can help.
+- **blocked**, and this is a first-class answer, not a failure: if what the user wants needs a name the
+  group does not have, return `"blocked": true` with **no changes** and a `reason` that says which name
+  is missing and that the group contract is edited by hand. The run then ends with your reason as the
+  answer the user reads. Do NOT invent a change to fill the list — and in particular do not propose
+  REMOVING something so that the list is non-empty.
 
 ⚠️ Measured 2026-08-17: asked to "define the label by attribute" on a metric molecule, this step was
 ready to add a public property `label` that `groupViewMetric` declares nowhere — the group defines the
@@ -72,6 +75,7 @@ Return JSON only. Do not call tools. Do not explain. The exact payload:
     "planId": "i2a-definition",
     "title": "<short title in {{userLanguage}}>",
     "reason": "<one or two sentences in {{userLanguage}}: why the definition has to move at all. The human weighs this>",
+    "blocked": false,
     "changes": [
       {
         "kind": "slot | property | event",

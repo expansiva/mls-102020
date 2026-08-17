@@ -33,6 +33,7 @@ import {
   IM_MAX_ATTEMPTS,
   ImArtifactKind,
   ImContext,
+  ImDefinitionDecision,
   ImInheritChoice,
   ImTriage,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
@@ -243,6 +244,13 @@ async function gatherFacts(runKey: string): Promise<ImRunFacts> {
   if (index?.indexUpdated) {
     facts.indexUpdated = true;
     if (!facts.touched.includes('groupIndex')) facts.touched.push('groupIndex');
+  }
+
+  const definition = await readJsonArtifact<ImDefinitionDecision>(imWorkFile(runKey, 'definition'), false);
+  if (definition?.blocked) {
+    facts.definitionBlocked = true;
+    facts.definitionBlockedReason = definition.blockedReason || '';
+    facts.groupContract = ctx.groupSkill.reference || '';
   }
 
   const inherit = await readJsonArtifact<ImInheritChoice>(imWorkFile(runKey, 'inherit'), false);

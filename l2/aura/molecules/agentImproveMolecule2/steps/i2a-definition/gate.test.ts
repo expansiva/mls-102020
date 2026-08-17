@@ -130,9 +130,12 @@ test('RENOMEAR para um nome fora do grupo é recusado pelo mesmo motivo', () => 
   assert.ok(result.errors.some(e => /^not_in_group: /.test(e)));
 });
 
-test('REMOVER não passa pelo vocabulário — o nome sai, não entra', () => {
+test('REMOVER algo que o grupo NÃO declara é permitido — aí o nome é anomalia da molécula', () => {
+  // A regra do vocabulário é sobre o que ENTRA. Mas remover algo que o grupo declara faz a molécula
+  // virar a exceção do grupo, e isso tem gate próprio (group_declares_it, abaixo).
   const result = runImDefinitionGate(inputs({
-    answer: { changes: [change({ op: 'remove', name: 'Icon', purpose: 'não usamos ícone' })], reason: 'x' },
+    current: { slots: ['Label', 'Icon', 'Legado'], properties: [], events: [] },
+    answer: { changes: [change({ op: 'remove', name: 'Legado', purpose: 'não faz parte do grupo' })], reason: 'x' },
   }));
   assert.equal(result.ok, true);
 });
@@ -143,4 +146,40 @@ test('sem contrato de grupo legível, admite — medição ausente não é proib
     answer: { changes: [change({ kind: 'property', name: 'inventada', purpose: 'x' })], reason: 'x' },
   }));
   assert.equal(result.ok, true);
+});
+
+// ---- "o contrato do grupo tem de mudar primeiro" é resposta, não falha (2026-08-17) ----
+
+test('BLOQUEADO com motivo e sem changes é aceito — punir a resposta certa fez o modelo escalar', () => {
+  // Medido: o modelo respondeu `changes: []` com "nenhum elemento pode ser proposto até que o contrato
+  // do grupo declare essa propriedade" — exatamente o que o prompt pedia. O gate recusou com
+  // `no_change`, e na tentativa 2 ele propôs REMOVER o slot Label.
+  const result = runImDefinitionGate(inputs({
+    answer: { changes: [], blocked: true, reason: 'o grupo declara o rótulo só como o slot `Label`' },
+  }));
+  assert.deepEqual(result, { ok: true, errors: [] });
+});
+
+test('bloqueado sem motivo é recusado — o motivo É a resposta que o usuário lê', () => {
+  const result = runImDefinitionGate(inputs({ answer: { changes: [], blocked: true } }));
+  assert.match(result.errors[0], /^reason_missing: /);
+});
+
+test('bloqueado E com changes é incoerente', () => {
+  const result = runImDefinitionGate(inputs({ answer: { changes: [change()], blocked: true, reason: 'x' } }));
+  assert.match(result.errors[0], /^blocked_with_changes: /);
+});
+
+test('a mensagem de no_change passa a oferecer o caminho bloqueado', () => {
+  const result = runImDefinitionGate(inputs({ answer: { changes: [], reason: 'x' } }));
+  assert.match(result.errors[0], /^no_change: /);
+  assert.match(result.errors[0], /`blocked`/);
+});
+
+test('REMOVER algo que o grupo declara é recusado — foi a escalada destrutiva medida', () => {
+  const result = runImDefinitionGate(inputs({
+    answer: { changes: [change({ op: 'remove', name: 'Label', purpose: 'deixar de expor o rótulo' })], reason: 'x' },
+  }));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(e => /^group_declares_it: /.test(e)));
 });

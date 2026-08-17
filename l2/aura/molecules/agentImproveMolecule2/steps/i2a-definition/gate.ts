@@ -26,6 +26,11 @@ const OPS = ['add', 'remove', 'rename'];
 
 export interface ImDefinitionAnswer {
   changes: ImDefinitionChange[];
+  /**
+   * "This needs the group contract to change first." A valid, terminal answer with no changes — see
+   * ImDefinitionDecision.blocked for the run that proved the gate had to accept it.
+   */
+  blocked?: boolean;
   /** Only on the model's proposal; the human's confirmation carries none. */
   reason?: string;
   /** Checkpoint title, in the user's language. Cosmetic — never gated. */
@@ -68,10 +73,23 @@ export function runImDefinitionGate(inputs: ImDefinitionGateInputs): ImGateResul
   const changes = inputs.answer.changes || [];
   const errors: string[] = [];
 
-  // Route A exists to move the public surface. A checkpoint that moves nothing is not a definition
-  // change, and the run would go on to instruct i3-edit with an empty list.
+  // BLOCKED is a valid answer with no changes: the request needs a name the group does not declare,
+  // and that file is edited by hand. It must be accepted, or the model is punished for being right and
+  // escalates — measured 2026-08-17, where the escalation was "remove the Label slot".
+  if (inputs.answer.blocked) {
+    if (changes.length) {
+      return imGateFail(issue('blocked_with_changes', 'the answer is that the group contract has to change first, and it also names changes — one or the other'));
+    }
+    if (!(inputs.answer.reason || '').trim()) {
+      return imGateFail(issue('reason_missing', 'a blocked answer IS the answer the user reads: say which name the group lacks and that its contract is edited by hand'));
+    }
+    return imGateOk();
+  }
+
+  // Route A exists to move the public surface. A checkpoint that moves nothing and is not blocked is
+  // not a definition change, and the run would go on to instruct i3-edit with an empty list.
   if (!changes.length) {
-    return imGateFail(issue('no_change', 'a definition change that names nothing is not a definition change — say which slot, property or event moves, or this request is a route B edit'));
+    return imGateFail(issue('no_change', 'a definition change that names nothing is not a definition change — say which slot, property or event moves, or set `blocked` when the group contract is what has to change, or this request is a route B edit'));
   }
 
   const seen = new Set<string>();
@@ -117,6 +135,17 @@ export function runImDefinitionGate(inputs: ImDefinitionGateInputs): ImGateResul
     const declared = existing(inputs.current, kind);
     if (op === 'add' && declared.includes(name)) {
       errors.push(issue('already_exists', `${at}: ${kind} \`${name}\` already exists in this molecule — adding it changes nothing. If it exists and does not work, that is a defect, and defects are route B`));
+    }
+    // REMOVING something the GROUP declares makes this molecule non-conformant, and the group contract
+    // is edited by hand. Measured 2026-08-17: refused the correct "blocked" answer and the retry
+    // proposed removing the group's `Label` slot — which the gate accepted. It must not.
+    if (op === 'remove' && inputs.groupSkill.trim() && groupVocabulary(inputs.groupSkill).has(name)) {
+      errors.push(
+        issue(
+          'group_declares_it',
+          `${at}: the group contract declares the ${kind} \`${name}\`, so a molecule of this group is expected to offer it — dropping it here makes this one the odd molecule out. If it really should go, the group contract changes first, by hand`,
+        ),
+      );
     }
     if ((op === 'remove' || op === 'rename') && !declared.includes(op === 'rename' ? previousName : name)) {
       const missing = op === 'rename' ? previousName : name;
