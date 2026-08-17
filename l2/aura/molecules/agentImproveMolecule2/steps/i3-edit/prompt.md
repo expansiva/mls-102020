@@ -49,9 +49,10 @@ the difference between a repair and a mess:
   name **exactly** — the contract is case-sensitive, and `Label` the slot is not `label` the property.
   Inventing a name the group does not declare is a change to what the molecule promises, which is not
   this route;
-- **what the group declares and this molecule does not implement is a DEFECT**, and implementing it is
-  ordinary work here: declare it in `slotTags`, in a property, or in a dispatch, and actually read it in
-  the render. 27 molecules in this library are in exactly that state.
+- **the group contract is a UNION across the group's variants, not a per-molecule mandate.** A slot it
+  lists that this molecule does not declare may be perfectly normal — `Cell` belongs to the table
+  variant of a select group, not to a dropdown. Implement what the triage asked for, in the group's
+  spelling; do not go declaring every slot the group happens to name.
 
 #### How a molecule of this group is built
 

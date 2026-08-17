@@ -12,9 +12,11 @@ What the model actually sees: the tag, the group, which artifacts exist, the inh
 **usage contract**, and the full `.defs.ts`.
 
 ⚠️ **Two contracts, and the group's is the stronger one** (2026-08-17). The molecule's `.defs.ts` can be
-silent where the group is not: **27 molecules** do not declare a slot their group requires. Reading that
-silence as "a new responsibility" would route a defect as a feature, so the prompt says it outright — if
-the group declares it and the molecule does not, the molecule is the one that is wrong.
+silent where the group is not, and the group's spelling is the one to use. Reading that silence as "a new
+responsibility" can route a defect as a feature.
+
+⚠️ **The group contract is a UNION across the group's variants, not a per-molecule mandate**, and the prompt
+says so — otherwise the fix overshoots. 26 molecules do not declare every slot their group lists, but the group contract is a UNION across the group's variants: 15 of those 26 are missing only table-variant slots and 10 more are missing `Detail`, the row-expansion slot 2 of 12 tables implement. Nearly all are normal, so this is evidence and not a backlog.
 
 It does **not** see the molecule's source — `ml-data-table` is 300+ lines and its surface is 20, and the
 other 280 cannot answer the routing question.

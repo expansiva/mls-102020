@@ -87,7 +87,7 @@ async function beforePromptStep(
   const present = ctx.artifacts.filter(a => a.present).map(a => a.kind);
   // THE GROUP's usage contract — what the group OFFERS a consumer, which is exactly what the first
   // question asks: "does the contract already promise this?". The molecule's own .defs.ts can be silent
-  // where the group is not, and 27 molecules in this library are in that state; without this the triage
+  // where the group is not, and the group's name is the one to use; without this the triage
   // reads a silence as "a new responsibility" when it is a defect. Read, never written.
   const groupUsage = await readGroupSkill(ctx.groupSkill.usageReference);
 

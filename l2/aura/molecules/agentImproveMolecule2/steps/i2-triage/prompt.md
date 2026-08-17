@@ -9,11 +9,17 @@ The molecule's contract (`.defs.ts`) is printed below. **Read it before deciding
 
 **Does the contract already promise the behaviour the user says is missing or wrong?**
 
-**There are TWO contracts, and the group's is the stronger one.** The molecule's own `.defs.ts` describes this molecule; the **group contract** below describes what every molecule of the group offers, and it is the authority on slots, properties and events. Read both. When they disagree, the group wins — the molecule is the one that is wrong.
+**There are TWO contracts, and they answer different questions.** The molecule's own `.defs.ts` says what THIS molecule promises. The **group contract** below is the **vocabulary of the whole group** — the union of what its molecules may offer, across all their shapes.
 
-- **Yes** → it is a **DEFECT**. The behaviour was specified, someone implemented it, and it does not work. Nothing about the definition changes: it starts doing what it already said it does. **A defect is never route A** — whether it is B or C is the third question below, and this one does not answer it.
-- **The molecule's own contract is silent, but the GROUP contract declares it** → still a **DEFECT**, and this is the most common shape of one in this library: the group promises a slot, the molecule never declares it, and whoever writes it in a page gets nothing back. Measured: **27 molecules** are in exactly that state. A silence in the molecule is not permission to treat it as new — check the group first.
-- **Both are silent on it** → the molecule is being asked to take on something new. Now go to the question below.
+⚠️ **The group contract is a union, not a per-molecule mandate.** `groupSelectMany` declares `Cell` and `Column` because one of its molecules is a table; a dropdown in the same group has no cells and is not defective for lacking them. Measured: of the 26 molecules that do not declare every slot their group lists, **15 are missing only table-variant slots** and 10 more are missing `Detail`, the row-expansion slot that 2 of 12 tables implement. Nearly all are normal.
+
+So the group contract is **evidence, not proof**:
+
+- **the molecule's own contract promises it and the code fails** → **DEFECT**. The behaviour was specified, someone implemented it, and it does not work. Nothing about the definition changes: it starts doing what it already said it does. **A defect is never route A** — whether it is B or C is the third question below, and this one does not answer it;
+- **the molecule's own contract is silent, and the group declares it** → **look at the molecule's shape and at the request.** If this molecule is the kind that should have it — the user is asking for something the group already has a name for, and the molecule plausibly always meant to offer it — treat it as a **DEFECT** and use the group's name, exactly. If it is a slot that belongs to a different variant of the group, the molecule is not defective, and this is a **new responsibility**;
+- **both are silent** → a new responsibility. Go to the question below.
+
+**Where the group contract is never evidence and always binding: the NAMES.** If the change is about something the group already declares, use that spelling — the contract is case-sensitive, and `Label` the slot is not `label` a property. And a name the group does not declare at all cannot be added by any route here: the group contract is edited by hand, outside this agent.
 - **No — the contract DESCRIBES this behaviour, and what it describes is the defect.** Also a defect, and correcting that sentence in the `.defs.ts` is part of the fix: name `defs` among the artifacts alongside the code. This is not a rare case: the contract and the component are generated in the same run, so a defect born there is documented as if it were intended. A wrong sentence in the contract does not make wrong behaviour correct.
 
 This ordering exists because users report defects as wishes. "It should expand when I click a node", "the component isn't working right, it ought to…" — that phrasing sounds like a feature request and is almost always a bug report. The contract is what tells the two apart, and nothing else does.

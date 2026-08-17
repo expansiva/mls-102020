@@ -30,9 +30,9 @@ invenção no mesmo dia; ele não sabia qual era o acerto.
 três passos. O gate do `i3` recebe a **união** dos dois textos como vocabulário: um nome que qualquer um
 dos dois declara é sancionado pelo grupo.
 
-**A regra nova no prompt do triage**, e é ela que endereça as 27 moléculas: *o silêncio do `.defs.ts` da
-molécula não é permissão para tratar o pedido como novo* — se o grupo declara e a molécula não, é
-**defeito**, não responsabilidade nova.
+**A regra nova no prompt do triage:** *o silêncio do `.defs.ts` da molécula não é permissão para tratar o pedido como novo* — o nome pode já existir no grupo, e aí é o nome do grupo que se usa.
+
+⚠️ **E uma ressalva medida em 17/08, que impede o excesso oposto:** o contrato do grupo é a **união das variantes**, não uma exigência por molécula. Das 26 moléculas que não declaram todos os slots do grupo, 15 só não têm slots de variante-tabela e outras 10 não têm o `Detail`, de expansão de linha. `Cell` pertence à tabela do grupo de seleção, não ao dropdown. Então o grupo é **evidência, não prova** — o prompt diz isso, senão o triage passaria a rotear "adicione Cell ao ml-dial-select" como defeito.
 
 ## 2026-08-14 — "it is a defect" was answering a question it does not answer
 

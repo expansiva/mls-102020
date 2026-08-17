@@ -211,7 +211,7 @@ test('ADDING a public property the group never declares is refused on route B', 
 });
 
 test('DECLARING a slot the group already requires PASSES — that is the defect fix', () => {
-  // 27 molecules are missing a slot their group mandates. Fixing one moves the surface and is
+  // A molecule missing what its own contract promised is repaired by declaring it. That moves the surface and is
   // exactly the route B run that finally reaches i5 and i6; refusing it would block the fix.
   const result = runImEditGate(inputs({
     files: [file({ before: withSurface("'Label'"), after: withSurface("'Label','Helper'") })],

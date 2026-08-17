@@ -18,17 +18,23 @@
 // only this: a human saying "yes, it will start promising that". NM2 is not involved, and the
 // collision gate never comes up.
 //
-// ⚠️ A CORRECTION TO WHY THIS WAS BUILT, made the same day. The first version of this comment said
-// route A was the ONLY way to reach the active branch of i5-playground and i6-index, on a sweep that
-// compared each molecule's own `.defs.ts` prose against its code. That sweep used the wrong source.
-// The GROUP contract (`skills/<group>/creation.ts`) is what enumerates the surface, and against it
-// **27 molecules are missing a slot their group requires** — `ml-currency-input` declares no
-// `slotTags` at all where the group requires `Label` and `Helper`. Adding one is a defect fix, so
-// route B, and it moves the measured surface. i5 and i6 are reachable without this step.
+// ⚠️ CAN ANY OTHER ROUTE REACH i5 AND i6? The claim went back and forth twice on 2026-08-14, so here is
+// where it landed, with the measurements:
 //
-// This route is still the only one for an INTENTIONAL change of what the molecule promises, which is
-// what the tables consolidation needs. But note the consequence of the group contract enumerating the
-// surface: a legitimate route A on this library usually implies the group contract moving first.
+//   1. i5-playground and i6-index decide by MEASURING the public surface before and after the edit.
+//   2. Route B DID move it once — `ml-currency-input`, where the edit added the public properties
+//      `label` and `helper`. But those were an invention the group contract does not declare, and
+//      i3-edit's `definition_changed` gate now refuses exactly that. So that path is closed.
+//   3. A LEGITIMATE route B movement would need a molecule missing something whose name the group
+//      already declares. Swept for it and found no confirmed case: of the 26 molecules that do not
+//      declare every slot their group lists, 15 are missing only table-variant slots and 10 more the
+//      `Detail` of row expansion — the group contract is a UNION across variants, so nearly all are
+//      normal rather than defective.
+//
+// So route A is, as far as anything measured shows, still the only route that reaches those two
+// branches — and it is certainly the only one for an INTENTIONAL change of what the molecule promises,
+// which is what the tables consolidation needs. Note the consequence of the group contract enumerating
+// the surface: a legitimate route A on this library usually implies the group contract moving first.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {

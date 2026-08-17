@@ -68,8 +68,8 @@ export function readEvents(tsSource: string): string[] {
  *
  * ⚠️ WHY THIS EXISTS, measured 2026-08-14. The group contract (`skills/<group>/creation.ts`) is what
  * enumerates a molecule's public surface: slots in a table, properties in a table, events in a table.
- * A route B fix that DECLARES one the molecule was missing is legitimate — 27 molecules are missing a
- * slot their group requires. A route B fix that INVENTS one is a definition change made on the wrong
+ * A route B fix that DECLARES one the molecule was missing is legitimate. Note the group contract is a UNION
+ * across the group's variants, so it says what MAY be declared, never what must be. A route B fix that INVENTS one is a definition change made on the wrong
  * route, and on `ml-currency-input` that is exactly what happened: asked for a label and help text,
  * which the group defines as the slots `Label` and `Helper`, the run added public properties named
  * `label` and `helper` instead.

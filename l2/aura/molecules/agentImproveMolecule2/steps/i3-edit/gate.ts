@@ -223,9 +223,11 @@ export function runImEditGate(inputs: ImEditGateInputs): ImGateResult {
       // `helper` instead, and nothing stopped it. The .defs.ts was not touched, so the molecule ended
       // with two public properties its contract does not mention.
       //
-      // DECLARING what the group already requires is NOT that, and must keep passing: 27 molecules
-      // are missing a slot their group mandates, and fixing one is the defect fix that finally
-      // reaches i5 and i6. The group's own vocabulary is what separates the two.
+      // DECLARING a name the group already knows is NOT that, and must keep passing: a molecule that
+      // was missing something its own contract promised is repaired by declaring it, and that repair
+      // moves the surface. The group's vocabulary is what separates a repair from an invention — note
+      // that the group contract is a UNION across variants, so it says what MAY be declared here, not
+      // what must be.
       for (const error of introducedDefinition(file, inputs)) errors.push(error);
 
       // AN OVERRIDE THAT OVERRIDES NOTHING. Only on a shell, and only for what this edit touched:

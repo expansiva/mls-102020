@@ -41,13 +41,19 @@ The collision gate never comes up, because nothing hands anything to NM2.
 An **intentional** change of what the molecule promises has no other path. That is what the tables
 consolidation the diretoria asked for needs, and until this step existed the router failed on it.
 
-⚠️ **A stronger claim was made here first, and it was wrong.** This section said route A was the only
-way to reach the active branch of `i5-playground` and `i6-index`, on a sweep that compared each
-molecule's own `.defs.ts` prose against its code and found nothing. That sweep used the wrong source.
-The **group contract** (`skills/<group>/creation.ts`) is what enumerates the surface, in tables, and
-against it **27 molecules are missing a slot their group requires** — `ml-currency-input` declares no
-`slotTags` at all where the group requires `Label` and `Helper`. Adding it is a defect fix, so route
-B, and it moves the measured surface. **i5 and i6 are reachable without this route.**
+**And it is, as far as anything measured shows, the only route that reaches the active branch of
+`i5-playground` and `i6-index`** — they decide by measuring the public surface, and moving it is what
+this route does.
+
+⚠️ That claim went back and forth twice on 2026-08-14, so here is where it landed:
+
+- route B **did** move the surface once, on `ml-currency-input`, where the edit added the public
+  properties `label` and `helper`. But the group contract declares neither, and `definition_changed`
+  now refuses exactly that — **that path is closed**;
+- a *legitimate* route B movement would need a molecule missing something the group already declares.
+  Swept for it, no confirmed case: of the 26 molecules that do not declare every slot their group
+  lists, **15 are missing only table-variant slots** and 10 more the `Detail` of row expansion. The
+  group contract is a **union across variants**, so nearly all of them are normal, not defective.
 
 Worth knowing before using this step: the group contract fixing the surface means a legitimate route A
 on this library usually implies the group contract moving first.

@@ -43,22 +43,31 @@ isso".** O NM2 não participa, e o gate de colisão nunca aparece.
 Uma mudança **intencional** do que a molécula promete não tem outro caminho, e é o que a consolidação
 de tabelas pedida pela diretoria exige. Até este passo existir, o roteador falhava nesse pedido.
 
-### ⚠️ Uma correção, no mesmo dia, a uma afirmação mais forte que eu tinha escrito aqui
+### A rota A é a única que alcança o `i5` e o `i6` — e essa afirmação foi e voltou duas vezes
 
-Este bloco dizia que a rota A era **a única** forma de alcançar o ramo ativo do `i5` e do `i6`. A
-varredura que sustentava isso comparava a prosa do `.defs.ts` de cada molécula com o próprio código, e
-não achava nada. **Ela usava a fonte errada.**
+Vale registrar as três versões, porque a diferença entre elas é sempre **contra o que se mediu**:
 
-Quem enumera a superfície é o **contrato do grupo** (`skills/<grupo>/creation.ts`), em tabelas de
-slots, propriedades e eventos. Medido contra ele: **27 moléculas não declaram um slot que o grupo
-exige** — a `ml-currency-input` não tem `slotTags` nenhum onde o grupo exige `Label` e `Helper`.
-Acrescentá-lo é conserto de **defeito**, portanto rota B, e **move a superfície medida**. Ou seja: o
-`i5` e o `i6` são alcançáveis sem esta rota, e o teste que os exercita ficou mais barato e mais seguro
-do que mexer na definição de uma molécula da biblioteca compartilhada.
+1. **"É a única"** — dedução: o `i5` e o `i6` decidem medindo a superfície, e toda movimentação de
+   superfície é rota A.
+2. **"Não é a única"** — varri as moléculas comparando a prosa do `.defs.ts` de cada uma com o próprio
+   código, não achei nada, e concluí que o **contrato do grupo** era a fonte certa. Aí achei 27
+   moléculas "sem slot que o grupo exige" e o `ml-currency-input` rodou o `i5` de verdade.
+3. **"É a única, pelo que se mediu"** — e aqui está o porquê:
+   - o run do `ml-currency-input` moveu a superfície **adicionando as propriedades públicas `label` e
+     `helper`**, que o contrato do grupo não declara. O gate `definition_changed` do `i3` passou a
+     recusar exatamente isso, então **esse caminho está fechado**;
+   - a molécula **já declarava** `slotTags: string[] = ['Label','Helper']` antes do run. Meu
+     levantamento usava um regex mais estrito que o do agente e não os via — o defeito dela era outro:
+     slots declarados e nunca lidos;
+   - as "27" são **26**, e o contrato do grupo é a **união das variantes**: 15 delas só não têm slots de
+     variante-tabela e outras 10 não têm o `Detail` de expansão de linha. Quase todas são normais.
 
-Vale registrar a consequência maior: como o contrato do grupo fixa a superfície, uma rota A legítima
-nesta biblioteca normalmente implica o **contrato do grupo mudar primeiro** — o que é outro artefato,
-fora deste agente.
+Uma movimentação de superfície legítima na rota B precisaria de uma molécula sem algo que o grupo já
+nomeia **e** que ela deveria ter. Não há caso confirmado.
+
+Consequência maior, que sobrevive às três versões: como o contrato do grupo fixa a superfície, uma rota A
+legítima nesta biblioteca normalmente implica o **contrato do grupo mudar primeiro** — outro artefato,
+fora deste agente e editado à mão.
 
 ### O desenho do checkpoint
 
