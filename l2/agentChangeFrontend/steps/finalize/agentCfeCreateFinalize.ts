@@ -7,7 +7,8 @@ import { createUpdateStatusIntent, finalizeGeneratedPages } from '/_102020_/l2/a
 // @@changeBackend/@@changeFrontend. The runtime strips the mention before the agent sees the payload
 // (aiAgentOrchestration.ts:48), so agentAddLanguage receives exactly its JSON args.
 import { addMessage as sendThreadMessage } from '/_102025_/l2/collabMessagesHelper.js';
-import { compileMlsPathAndGetErrors } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
+import { compileMlsPathAndGetErrors, releaseBorrowedModelScope } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
+import { orderModuleCompile } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
 /**
  * Whole-module compile — the closing gate the frontend lacked.
@@ -25,18 +26,17 @@ import { compileMlsPathAndGetErrors } from '/_102020_/l2/agentChangeFrontend/hel
  * client's localStorage — a host without `strict` will not report TS7053 here (gap E of
  * todo/changeFrontend/bug_typescript.md, owned elsewhere). The CLI/publish tsc always does.
  */
-function unique(values: string[]): string[] { return Array.from(new Set(values.filter(Boolean))); }
-
-async function compileModuleClosure(moduleName: string): Promise<{ checked: number; errors: string[] }> {
+async function compileModuleClosure(moduleName: string): Promise<{ checked: number; errors: string[]; released: number }> {
   const project = mls.actualProject || 0;
-  if (!project || !moduleName) return { checked: 0, errors: [] };
+  if (!project || !moduleName) return { checked: 0, errors: [], released: 0 };
   const prefix = `${moduleName}/`;
-  const refs: string[] = [];
+  const unordered: string[] = [];
   for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string }[]) {
     if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
     if (file.extension !== '.ts' || !String(file.folder || '').startsWith(prefix)) continue;
-    refs.push(`_${project}_/l2/${file.folder}/${file.shortName}${file.extension}`);
+    unordered.push(`_${project}_/l2/${file.folder}/${file.shortName}${file.extension}`);
   }
+  const refs = orderModuleCompile(unordered);
 
   const compile = async (ref: string): Promise<string[]> => {
     try {
@@ -46,17 +46,19 @@ async function compileModuleClosure(moduleName: string): Promise<{ checked: numb
     }
   };
 
-  // TWO passes on purpose. The per-file compile resolves an import only if that dependency's model is
-  // already loaded, so a file compiled before its dependency reports a FALSE cross-file error (the class
-  // of failure that made 102051 run19 unreliable). Pass 1 compiles everything, which loads every model;
-  // pass 2 re-checks ONLY the files that failed. An error that survives with the whole module loaded is
-  // real. Cheap: pass 2 touches just the failures.
-  const firstPass: string[] = [];
-  for (const ref of refs) firstPass.push(...await compile(ref));
-  const suspect = unique(firstPass.map(error => error.slice(0, error.indexOf(': '))).filter(Boolean));
+  // TWO FULL passes. Pass 1 (in dependency order) exists to LOAD every model; pass 2 is the one whose
+  // answers count, because by then the whole module is resident and the per-file compile sees what
+  // `tsc -p` sees. Re-checking only the failures — what this did before — catches a false FAILURE but is
+  // blind to a false PASS: a file that passed with an unloaded import never enters the suspect set and is
+  // never asked again. That is exactly how a real TS2339 reached `done` while the run reported clean.
+  // Cost is one extra compile per file, paid once, at the last gate before the module goes to runtime.
+  for (const ref of refs) await compile(ref);
   const errors: string[] = [];
-  for (const ref of suspect) errors.push(...await compile(ref));
-  return { checked: refs.length, errors };
+  for (const ref of refs) errors.push(...await compile(ref));
+  // The whole module is loaded by now (~200 models on a 34-workspace module, enough for Monaco to warn
+  // about listeners): give back everything this gate borrowed, in one go, at the end. The count travels
+  // in the step trace, never in the console.
+  return { checked: refs.length, errors, released: releaseBorrowedModelScope() };
 }
 
 export function createAgent(): IAgentAsync {
@@ -105,7 +107,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed',
         `MODULE-COMPILE-FAILED: ${closure.errors.length} error(s) across ${closure.checked} .ts of module ${result.moduleName} (includes files this run did not touch — they are not stale, so only this gate sees them).\n${shown}${more}\n${base}`)];
     }
-    const trace = `${base}; moduleCompile=${closure.checked} file(s) clean`;
+    const trace = `${base}; moduleCompile=${closure.checked} file(s) clean; released ${closure.released} borrowed model(s)`;
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

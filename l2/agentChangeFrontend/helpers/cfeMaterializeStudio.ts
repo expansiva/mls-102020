@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.ts" enhancement="_blank"/>
 
-import { parseDefs, type PipelineItem } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { parseDefs, contractTsPathOf, type PipelineItem } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import { createStorFile } from '/_102027_/l2/libStor.js';
 
 declare const mls: any;
@@ -315,6 +315,64 @@ export async function getCompiledDtsByMlsPath(mlsPath: string): Promise<string |
     recordStudioMessage('error', 'getCompiledDtsByMlsPath failed', error);
     return null;
   }
+}
+
+/**
+ * Compile a file's dependency `.d.ts` BEFORE it is compiled, so the per-file Studio compile resolves
+ * cross-file types the way `tsc -p` does. An unloaded import resolves to `any` and the check silently
+ * PASSES (102051 run19: shiftWorkspace passed the verify and failed the real tsc).
+ *
+ * The preloaded models are deliberately left alive: they exist so the files compiled after them resolve,
+ * and they go back at the phase boundary (`releaseBorrowedModelScope`). Best-effort — a dependency that
+ * fails to compile just leaves its import unresolved, never throws.
+ */
+export async function preloadTypecheckDeps(deps: Array<string | null>): Promise<void> {
+  for (const dep of deps) {
+    if (!dep) continue;
+    try { await getCompiledDtsByMlsPath(dep); } catch { /* best-effort */ }
+  }
+}
+
+/**
+ * `…/web/desktop/page11/x.ts` -> `…/web/shared/x.defs.ts`, the defs that names the page's contract.
+ *
+ * A split page's organism is `…/page11/x_O1.ts` (`organismShortName`), and its shared defs is the PAGE's:
+ * the organism is a render function over the same base class and the same contract, so it needs the same
+ * two models loaded to be typechecked at all.
+ */
+export function sharedDefsPathForPageOutput(outputPath: string): string | null {
+  const match = outputPath.match(/^(.*\/web)\/(?:desktop|mobile)\/page\d+\/([^/]+?)(?:_O\d+)?\.ts$/u);
+  return match ? `${match[1]}/shared/${match[2]}.defs.ts` : null;
+}
+
+/**
+ * The dependency preload for ONE item, by type — a page needs its shared base class runtime `.ts` and the
+ * contract that shared imports; a shared needs its own contract.
+ *
+ * It lives here, next to the compile, because every place that compiles a generated file must load the
+ * same deps or it asks a different question: the verify preloaded and the repair hint did not, so a
+ * cross-file TS2339 was visible to the verify and INVISIBLE to the hint — the model was handed a repair
+ * without the error it had to fix, returned an almost identical file, and the round burned. Three rounds
+ * went that way on one `project.clientName` in the buildFlowFsm run.
+ */
+export async function preloadItemTypecheckDeps(
+  type: string,
+  outputPath: string,
+  ownDefsContent: string | null,
+): Promise<void> {
+  // A split page's organism resolves against the SAME shared base class and contract as its page, and
+  // `computeRepairHint` and the worker compile run for organisms too — leaving it out would keep exactly
+  // the blindness this function exists to remove, one file type further down.
+  if (type === 'l2_page' || type === 'l2_page_organism') {
+    const sharedDefsPath = sharedDefsPathForPageOutput(outputPath);
+    const sharedDefs = sharedDefsPath ? await getContentByMlsPath(sharedDefsPath) : null;
+    await preloadTypecheckDeps([
+      sharedDefsPath ? sharedDefsPath.replace(/\.defs\.ts$/u, '.ts') : null,
+      contractTsPathOf(sharedDefs),
+    ]);
+    return;
+  }
+  if (type === 'l2_shared') await preloadTypecheckDeps([contractTsPathOf(ownDefsContent)]);
 }
 
 export function extractToolCallArgs<T>(raw: unknown, toolName: string): T | null {

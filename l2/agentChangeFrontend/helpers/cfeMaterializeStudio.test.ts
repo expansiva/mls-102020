@@ -68,6 +68,56 @@ async function loadModule(): Promise<any> {
   return import('/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js');
 }
 
+/**
+ * A stub whose stor answers by mls path, recording which files had a model created — that is what
+ * "preloaded" means here, since the preload exists to put the dependency's model in the registry before
+ * the dependent file compiles.
+ */
+function installPathStub(files: Record<string, string>): { loaded: string[] } {
+  const loaded: string[] = [];
+  const keyModel = (project: number, shortName: string, folder: string, level: number) => `${project}:${level}:${folder}:${shortName}`;
+  const models: Record<string, any> = {};
+  const storFiles: Record<string, any> = {};
+  const parse = (mlsPath: string) => {
+    const match = mlsPath.match(/^_(\d+)_\/l(\d+)\/(.+)$/u);
+    if (!match) return null;
+    const rest = match[3];
+    const at = rest.lastIndexOf('/');
+    const filename = rest.slice(at + 1);
+    const extension = filename.endsWith('.defs.ts') ? '.defs.ts' : '.ts';
+    return {
+      project: Number(match[1]), level: Number(match[2]), folder: rest.slice(0, at),
+      shortName: filename.slice(0, -extension.length), extension,
+    };
+  };
+  for (const [mlsPath, source] of Object.entries(files)) {
+    const info = parse(mlsPath)!;
+    storFiles[`${info.project}:${info.level}:${info.folder}:${info.shortName}:${info.extension}`] = {
+      ...info, status: 'changed',
+      getContent: async () => source,
+      getOrCreateModel: async () => {
+        loaded.push(mlsPath);
+        const model = { model: { getVersionId: () => 1, isDisposed: () => false }, compilerResults: { errors: [], prodDTS: 'declare const x: number;' } };
+        models[keyModel(info.project, info.shortName, info.folder, info.level)] = { ts: model };
+        return model;
+      },
+    };
+  }
+  g.mls = {
+    actualProject: PROJECT,
+    events: { addEventListener() { /* noop */ }, removeEventListener() { /* noop */ }, dispatch() { /* noop */ } },
+    stor: {
+      files: storFiles,
+      getKeyToFile: (info: any) => `${info.project}:${info.level}:${info.folder}:${info.shortName}:${info.extension}`,
+      convertFileReferenceToFile: (mlsPath: string) => parse(mlsPath),
+      localStor: { setContent: async () => undefined },
+    },
+    editor: { models, getKeyModel: keyModel, deleteModels: () => undefined },
+    l2: { typescript: { compile: async () => true } },
+  };
+  return { loaded };
+}
+
 test('verify/preload borrows the models it creates and gives them back at the scope boundary', async () => {
   const stub = installStub();
   const studio = await loadModule();
@@ -101,4 +151,72 @@ test('a model the Studio already had (file open in a tab) is never released', as
   assert.equal(studio.releaseBorrowedModelScope(), 1);
   assert.deepEqual(stub.deleted.map(d => d.shortName), ['itemA']);
   assert.ok(!stub.deleted.some(d => d.shortName === 'openInTab'), 'disposing it would kill the open tab');
+});
+
+// T10. The repair hint used to compile WITHOUT this preload while the verify compiled WITH it, so a
+// cross-file TS2339 was visible to the verify and invisible to the hint: the model got a repair with no
+// error in it, returned the same file, and the round burned — three times on one `project.clientName`.
+// Both call the same function now, so what is pinned here is WHICH dependencies that function loads.
+const SHARED_DEFS = `_${PROJECT}_/l2/buildFlowFsm/web/shared/projectCatalogue.defs.ts`;
+const SHARED_TS = `_${PROJECT}_/l2/buildFlowFsm/web/shared/projectCatalogue.ts`;
+const CONTRACT_TS = `_${PROJECT}_/l2/buildFlowFsm/web/contracts/projectCatalogue.ts`;
+const PAGE_TS = `_${PROJECT}_/l2/buildFlowFsm/web/desktop/page31/projectCatalogue.ts`;
+
+const sharedDefsSource = [
+  '/// <mls fileReference="x" enhancement="_blank"/>',
+  'export const projectCatalogueShared = {',
+  `  "contractRef": { "tsPath": "${CONTRACT_TS}" }`,
+  '} as const;',
+].join('\n');
+
+test('a page preloads its shared runtime AND the contract that shared imports', async () => {
+  const stub = installPathStub({
+    [SHARED_DEFS]: sharedDefsSource,
+    [SHARED_TS]: 'export class Base {}',
+    [CONTRACT_TS]: 'export interface QryListProjectOutput { clientId: string }',
+    [PAGE_TS]: 'export class Page extends Base {}',
+  });
+  const studio = await loadModule();
+  studio.releaseBorrowedModelScope();
+
+  await studio.preloadItemTypecheckDeps('l2_page', PAGE_TS, null);
+  assert.deepEqual(stub.loaded.sort(), [CONTRACT_TS, SHARED_TS].sort(),
+    'without the contract loaded the page import resolves to any and the cross-file error disappears');
+});
+
+test('a shared preloads the contract named in its own defs', async () => {
+  const stub = installPathStub({
+    [SHARED_DEFS]: sharedDefsSource,
+    [CONTRACT_TS]: 'export interface QryListProjectOutput { clientId: string }',
+    [SHARED_TS]: 'export class Base {}',
+  });
+  const studio = await loadModule();
+  studio.releaseBorrowedModelScope();
+
+  await studio.preloadItemTypecheckDeps('l2_shared', SHARED_TS, sharedDefsSource);
+  assert.deepEqual(stub.loaded, [CONTRACT_TS]);
+});
+
+test('a split-page organism preloads the same two models as its page', async () => {
+  const organismTs = `_${PROJECT}_/l2/buildFlowFsm/web/desktop/page31/projectCatalogue_O1.ts`;
+  const stub = installPathStub({
+    [SHARED_DEFS]: sharedDefsSource,
+    [SHARED_TS]: 'export class Base {}',
+    [CONTRACT_TS]: 'export interface QryListProjectOutput { clientId: string }',
+    [organismTs]: 'export function renderList(host: Base) { return null; }',
+  });
+  const studio = await loadModule();
+  studio.releaseBorrowedModelScope();
+
+  await studio.preloadItemTypecheckDeps('l2_page_organism', organismTs, null);
+  assert.deepEqual(stub.loaded.sort(), [CONTRACT_TS, SHARED_TS].sort());
+});
+
+test('an item type with no cross-file dependency loads nothing', async () => {
+  const stub = installPathStub({ [CONTRACT_TS]: 'export interface X {}' });
+  const studio = await loadModule();
+  studio.releaseBorrowedModelScope();
+
+  await studio.preloadItemTypecheckDeps('l2_contract', CONTRACT_TS, null);
+  assert.deepEqual(stub.loaded, []);
 });

@@ -36,6 +36,7 @@ import {
   extractToolCallArgs,
   getCompiledDtsByMlsPath,
   releaseBorrowedModelScope,
+  preloadItemTypecheckDeps,
   getContentByMlsPath,
   getFileModifiedByMlsPath,
   parseMlsPath,
@@ -245,6 +246,10 @@ async function afterPromptStep(
       }
     }
 
+    // Same reason as the repair hint: this compile decides whether the worker accepts its own output, so
+    // it must see what the verify will see. Without the deps loaded it accepts a file the verify then
+    // rejects, and the round is spent discovering that.
+    await preloadItemTypecheckDeps(pipelineItem.type, pipelineItem.outputPath, defsContent);
     const compileErrors = [
       ...await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName),
       ...(typecheckPath ? await compileMlsPathAndGetErrors(typecheckPath) : []),
@@ -406,6 +411,16 @@ async function computeRepairHint(pipelineItem: PipelineItem): Promise<string | u
   if (!content || !content.trim()) {
     return buildMissingCodeRepairHint(outputPath, `generated file missing or empty: ${outputPath}`);
   }
+  // THE SAME preload the verify does, before the same compile. Without it the imports resolve loosely
+  // and a cross-file TS2339 simply is not reported: the verify (which preloads) failed the item, the hint
+  // (which did not) came back empty, and the model was asked to repair a file with no error in hand. It
+  // returned an almost identical file three rounds running on one `project.clientName`. After T6 the
+  // verify releases its models at the end of each round, so by the time the hint compiles the deps are
+  // ALWAYS unloaded — the blindness stopped being intermittent and became certain.
+  // Not released here: the rewrite this hint feeds compiles right after and needs the same models
+  // loaded; the phase verify is the boundary that gives them back.
+  const ownDefs = pipelineItem.defPath ? await getContentByMlsPath(pipelineItem.defPath) : null;
+  await preloadItemTypecheckDeps(pipelineItem.type, outputPath, ownDefs);
   const errors = [...await compileMlsPathAndGetErrors(outputPath)];
   const testPath = testPathForOutputPath(outputPath);
   const testContent = await getContentByMlsPath(testPath);

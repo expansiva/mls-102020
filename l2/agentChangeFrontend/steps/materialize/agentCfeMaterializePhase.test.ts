@@ -176,3 +176,14 @@ void test('the repair args string is never rebuilt on the way to prompt_ready', 
   assert.match(gen, /const args = rawArgs;/);
   assert.doesNotMatch(gen, /const args = JSON\.stringify\(compactArgs\)/);
 });
+
+// T8: the borrowed-model count is a fact about the run and belongs where the run is read (step trace /
+// verdict), not in the browser console — a console.info here printed on every verify of every phase.
+void test('the verify reports released models in the step trace, never in the console', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  const finalize = readFileSync(path.join(HERE, '..', 'finalize', 'agentCfeCreateFinalize.ts'), 'utf8');
+  assert.ok(!/console\.(info|log)\([^)]*released/u.test(src), 'the verify must not print the released count');
+  assert.ok(!/console\.(info|log)\([^)]*released/u.test(finalize), 'the module gate must not print the released count');
+  assert.match(src, /released \$\{released\} borrowed model\(s\)/u);
+  assert.match(finalize, /released \$\{closure\.released\} borrowed model\(s\)/u);
+});

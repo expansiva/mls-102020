@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile } from './cfeMaterializeCore.js';
 
 // bugpage21: the EXACT shape generated into
 // mls-102051/l2/cafeFlow/web/desktop/page21/shiftWorkspace.ts — `: nothing` in the template with a
@@ -376,4 +376,30 @@ test('a context source says take it from context, naming the ref when there is o
 
 test('a user-decided field in an editable control is correct', () => {
   assert.deepEqual(collectPageExperienceIssues(sourceDefs('userDecision'), SHARED_WITH_INPUT, EDITABLE), []);
+});
+
+// T11: the module gate compiles per file, and a per-file compile only resolves an import whose model is
+// already loaded. Compiling in this order is what lets pass 1 load the dependencies before the files that
+// import them — without it a page's contract is unloaded, the import resolves to `any`, and a real
+// TS2339 PASSES (which is how one reached `done` with the run reported clean).
+test('orderModuleCompile puts contracts before shared before pages', () => {
+  const refs = [
+    '_102046_/l2/buildFlowFsm/web/desktop/page31/projectCatalogue.ts',
+    '_102046_/l2/buildFlowFsm/web/shared/projectCatalogue.ts',
+    '_102046_/l2/buildFlowFsm/web/contracts/projectCatalogue.ts',
+    '_102046_/l2/buildFlowFsm/web/desktop/page11/projectCatalogue.ts',
+    '_102046_/l2/buildFlowFsm/web/contracts/clientPicker.ts',
+  ];
+  assert.deepEqual(orderModuleCompile(refs), [
+    '_102046_/l2/buildFlowFsm/web/contracts/clientPicker.ts',
+    '_102046_/l2/buildFlowFsm/web/contracts/projectCatalogue.ts',
+    '_102046_/l2/buildFlowFsm/web/shared/projectCatalogue.ts',
+    '_102046_/l2/buildFlowFsm/web/desktop/page11/projectCatalogue.ts',
+    '_102046_/l2/buildFlowFsm/web/desktop/page31/projectCatalogue.ts',
+  ]);
+  // Pure: the caller's array is not reordered in place, and an unknown folder simply lands in the last tier.
+  const original = ['_102046_/l2/buildFlowFsm/web/other/x.ts', '_102046_/l2/buildFlowFsm/web/contracts/a.ts'];
+  const copy = [...original];
+  assert.equal(orderModuleCompile(original)[0], '_102046_/l2/buildFlowFsm/web/contracts/a.ts');
+  assert.deepEqual(original, copy);
 });
