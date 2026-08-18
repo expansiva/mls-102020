@@ -1,8 +1,11 @@
 # agentImproveMolecule2 — spec
 
 Human-readable rationale for `flow.json`. The flow is the contract; this file is the *why*.
-Design decisions are closed in `todo/analise-improve-molecule-2.md`; when they change, change the
-flow first, then this file, then the code.
+
+**This file, `flow.json` and the per-step `CHANGELOG.md` ARE the design record.** The decisions were
+closed on 2026-08-06, before any code, and everything that changed since is recorded here — there is
+no other document to find. When a decision changes, change the flow first, then this file, then the
+code.
 
 Written per `skills/agentsBestPractices.md` — spec first (§1), one folder per step (§2),
 deterministic first (§3), prompts as data (§5), declared orchestration (§6), gates (§7).
@@ -39,20 +42,33 @@ So the split is by layer, not by step:
 
 One generator, two orchestrations. Nothing to drift.
 
-## 3. Four routes, and triage is a first-class step
+## 3. Five routes, and triage is a first-class step
 
-A change request is not one thing. The flow triages into four, and only the matching branch is
+A change request is not one thing. The flow triages into five, and only the matching branch is
 planted:
 
-- **(A) the DEFINITION changes** — slots, properties, events, responsibilities. That is not an
-  edit, it is a rebuild: hand off to the NM2 pipeline with the existing artifacts pre-filling its
-  clarification. Improving in place would leave a molecule whose defs and code describe different
-  components, which is exactly the defect this agent exists to prevent.
+- **(A) the DEFINITION changes** — slots, properties, events, responsibilities. A **checkpoint**
+  (`i2a-definition`) confirms the delta with the human, and then the contract and the code are
+  edited **in place**.
+
+  > This was a handoff to the NM2 pipeline until 2026-08-14, and the route was blocked on how NM2's
+  > collision gate could ever be satisfied by a rebuild. The premise was false: a definition change
+  > is not a rebuild. Editing in place keeps the playground and the contract that already work, and
+  > NM2 never enters — so the collision gate never arises.
+
 - **(B) a MINOR change** — style, a code fix, text. Edit, save, and only then ask whether the
   playground and the index have to follow.
 - **(C) an INHERITED shell whose fix needs the parent** — its own clarification; the user decides
   where the change lands.
 - **(D) out of scope** — readable failure, no retry, nothing written.
+- **(E) a DERIVED artifact is broken** — the playground or the group index is regenerated and the
+  molecule is not touched, so `i3-edit` is never planted. Added 2026-08-18.
+
+  > The line that holds E in place: the playground and the index are **derived** — given the
+  > molecule's surface there is a correct form, which is why `i5` and `i6` can produce them. The
+  > `.defs.ts`, the `.ts` and the `.less` are **authored**, and regenerating them would discard
+  > decisions nobody can recover. And a page that WORKS is never regenerated: code measures the
+  > page's invariants before spending a call, so "regenerate it" cannot destroy a healthy demo.
 
 ## 4. Inheritance: the shells, and the price of overriding
 

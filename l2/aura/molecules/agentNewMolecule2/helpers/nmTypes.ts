@@ -35,7 +35,7 @@ export const NM_PLAN_IDS = [
 
 export type NmPlanId = typeof NM_PLAN_IDS[number];
 
-// The five artifacts of the contract (todo/analise-fluxo-new-molecule-atual.md §3).
+// The five artifacts of the contract (flow.json.conventions.artifacts).
 export type NmArtifactKind = 'defs' | 'ts' | 'less' | 'html' | 'index';
 
 // What the root's cheap classifier returns. `runKey` names the l4 work folder for this run; it
@@ -68,7 +68,7 @@ export interface MoleculePlan {
   // Layout-rule axes this molecule candidates for, confirmed at the checkpoint. Written into the
   // .defs.ts as `export const layoutConfig`. An OMITTED axis is a wildcard, so an empty bag makes the
   // molecule the group's fallback pick — correct only for the 5 groups with no governing axis
-  // (decision D7; analysis in todo/analise-layoutconfig-new-molecule-2.md).
+  // (decision D7; the measurement behind it is at the top of helpers/nmLayoutAxes.ts).
   layoutConfig: Record<string, string>;
 }
 

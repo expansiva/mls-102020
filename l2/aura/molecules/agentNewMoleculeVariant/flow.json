@@ -1,11 +1,11 @@
 {
   "flowId": "agentNewMoleculeVariant",
   "schemaVersion": "2026-07-23-variant-v1",
-  "specFirst": "This file was written BEFORE the code (todo/todo-agents-molecules-modelos-novos.md Fase 2; design in todo/analise-agentes-molecules-modelos-novos.md §15). The code is validated against it. Maintenance changes the spec FIRST, then the code.",
+  "specFirst": "This file was written BEFORE the code, and THIS FILE plus spec.md and the step CHANGELOG.md are the design record — there is no other document to look for. The code is validated against it. Maintenance changes the spec FIRST, then the code.",
   "description": "Standalone agent that derives a themed variant (Strategy D) of an existing molecule into the CURRENT project. Invoked manually with the origin molecule reference (same input mechanism as agentImproveMolecule); in v1 it is NEVER routed from New Molecule / Improve Molecule. Deterministic-first: the shell .ts is a template, names/paths/class-inventory are derived in code, and the .defs.ts is the origin contract REPLICATED verbatim (only the identity fields swapped). Generation LLM calls: the .less theme sheet, the group showcase index page (reusing the indexGroupPage skill), the demo page, and a cheap summary.",
   "principles": [
     "Deterministic first: everything derivable (tag, class name, file paths, portal detection, ml-* class inventory, .defs.ts contract replication, index.html tag) is computed in code. LLM calls only for judgment: the .less theme sheet, the group showcase index.ts, and the demo page examples.",
-    "Theme is data: all theme knowledge comes from the destination project's l2/skills/theme.ts (contract v1: themeInfo + skill payload + examples). Generic Strategy D knowledge lives in the step prompts (source: todo/fase1-template-strategy-d.md). Prompts NEVER instruct the model to 'go read' a file; every needed source is attached to the prompt by the step code.",
+    "Theme is data: all theme knowledge comes from the destination project's l2/skills/theme.ts (contract v1: themeInfo + skill payload + examples). Generic Strategy D knowledge lives in the step prompts. Prompts NEVER instruct the model to 'go read' a file; every needed source is attached to the prompt by the step code.",
     "Fail early and readable: bootstrap validates theme presence/contract, origin readability (origin project must be a dependency of the destination) and name collisions BEFORE any generation. Gate failures retry once with the gate errors in context; a second failure completes-with-trace and blocks downstream (no done anchor).",
     "Step is the maintenance unit: 1 folder per step (agent hook, prompt.md when LLM, gate + test, readme, CHANGELOG). helpers/ is minimal and policy-frozen.",
     "System that builds systems: prompts and gates stay generic for ANY theme following the contract — no brutal/glass specific fixes in prompts or gates.",
@@ -56,8 +56,15 @@
       "noLlm": true,
       "dependsOn": [],
       "goal": "Deterministic admission + context assembly. Parse/validate input; load destination theme.ts and validate the contract; load origin .ts/.less (+ .defs when present) via mls.stor; detect portal (getPortalTemplate/portalWidgetName usage in the origin source); extract the ml-* class inventory from origin .ts+.less and the ml-* classes the render positions absolute/fixed (absoluteMlClasses, for the v3-less position-override gate); derive variant names/paths; check destination collisions (variant files must not exist); resolve the theme example matching the pattern (portal|simple) and read it; write context.json.",
-      "input": ["{ page, prompt } from the root plan"],
-      "output": { "result": "context summary (one line)", "savedArtifact": ["l4/agentVariant/<shortName>/context.json"] },
+      "input": [
+        "{ page, prompt } from the root plan"
+      ],
+      "output": {
+        "result": "context summary (one line)",
+        "savedArtifact": [
+          "l4/agentVariant/<shortName>/context.json"
+        ]
+      },
       "gate": {
         "file": "steps/v1-bootstrap/gate.ts",
         "checks": [
@@ -76,10 +83,21 @@
       "agentName": "agentVariantShell",
       "type": "agent",
       "noLlm": true,
-      "dependsOn": ["v1-done"],
+      "dependsOn": [
+        "v1-done"
+      ],
       "goal": "Render and write the deterministic files: the shell .ts (standard comment header; enhancement _102020_/l2/enhancementAura; @customElement(variantTag); extends OriginClass; + portalWidgetName line iff portal) and the .defs.ts. The .defs.ts is a CONTRACT other collab routines consume (e.g. the DS agent reads layoutConfig); since the variant inherits ALL behavior (Strategy D), its contract is the origin's — the origin .defs.ts is read via mls.stor and REPLICATED VERBATIM, swapping ONLY the two identity fields (the mls header fileReference and the skill's TagName line). No LLM.",
-      "input": ["context.json", "origin .defs.ts (read from mls.stor)"],
-      "output": { "result": "written file refs", "savedArtifact": ["l2/molecules/<group>/<shortName>.ts", "l2/molecules/<group>/<shortName>.defs.ts"] },
+      "input": [
+        "context.json",
+        "origin .defs.ts (read from mls.stor)"
+      ],
+      "output": {
+        "result": "written file refs",
+        "savedArtifact": [
+          "l2/molecules/<group>/<shortName>.ts",
+          "l2/molecules/<group>/<shortName>.defs.ts"
+        ]
+      },
       "gate": {
         "file": "steps/v2-shell/gate.ts",
         "checks": [
@@ -95,10 +113,22 @@
       "agentName": "agentVariantLess",
       "type": "agent",
       "model": "generation",
-      "dependsOn": ["v2-done"],
+      "dependsOn": [
+        "v2-done"
+      ],
       "goal": "THE generation call. prompt.md (generic Strategy D .less instructions, from the fase1 template §A.3-A.5) + attached context: theme skill payload + themeInfo, origin .ts + .less (the class inventory), the matching theme example .less (or the explicit no-example/pilot instruction §C), and the user's optional notes. Output via strict tool schema: the COMPLETE .less content scoped under the variant tag.",
-      "input": ["context.json", "theme skill payload", "origin sources", "example .less | cold-start instruction"],
-      "output": { "result": "less content", "savedArtifact": ["l2/molecules/<group>/<shortName>.less"] },
+      "input": [
+        "context.json",
+        "theme skill payload",
+        "origin sources",
+        "example .less | cold-start instruction"
+      ],
+      "output": {
+        "result": "less content",
+        "savedArtifact": [
+          "l2/molecules/<group>/<shortName>.less"
+        ]
+      },
       "gate": {
         "file": "steps/v3-less/gate.ts",
         "checks": [
@@ -119,13 +149,33 @@
       "agentName": "agentVariantIndex",
       "type": "agent",
       "model": "generation",
-      "dependsOn": ["v3-done"],
+      "dependsOn": [
+        "v3-done"
+      ],
       "goal": "Regenerate the group SHOWCASE index page (index.ts + index.html) in the destination project reusing the shared indexGroupPage skill — the same content agentUpdateIndexGroupPage produces (hero + showcase cards + reference table covering EVERY molecule of the group), BUT themed: the prompt injects themeInfo.background + the theme's Visual Signature (from theme.ts) and instructs the same mandatory deviation as v5-demo — the neutral bg-white/slate chrome of the skill is replaced by the theme background on the page container and theme-coherent surfaces/text, so the themed molecules render in their intended context (e.g. glass is invisible on white). It does NOT invoke agentUpdateIndexGroupPage: that agent's afterPromptStep chains 'next groups' off the task's original message, which inside our task would fan out over all groups / break our anchors — so the SKILL is reused and generation is driven as a normal pipeline step. index.html is deterministic (the group index custom element tag). Best-effort compile of index.ts; on a compile error, schedule agentNewMoleculeFix on the index fileReference. Index failure NEVER blocks the molecule delivery.",
-      "input": ["context.json", "indexGroupPage skill", "themeInfo.background + theme Visual Signature", "group description + usage skill", "molecule list of the destination group"],
-      "output": { "result": "index files", "savedArtifact": ["l2/molecules/<group>/index.ts", "l2/molecules/<group>/index.html"] },
+      "input": [
+        "context.json",
+        "indexGroupPage skill",
+        "themeInfo.background + theme Visual Signature",
+        "group description + usage skill",
+        "molecule list of the destination group"
+      ],
+      "output": {
+        "result": "index files",
+        "savedArtifact": [
+          "l2/molecules/<group>/index.ts",
+          "l2/molecules/<group>/index.html"
+        ]
+      },
       "gate": {
         "file": "steps/v4-index/gate.ts",
-        "checks": ["index.ts non-empty and fence-free", "header references _<destProject>_/l2/molecules/<group>/index.ts", "declares @customElement('molecules--<group>--index-<destProject>')", "imports the variant module and references the variant tag", "page container carries the theme background (themeInfo.background.css)"],
+        "checks": [
+          "index.ts non-empty and fence-free",
+          "header references _<destProject>_/l2/molecules/<group>/index.ts",
+          "declares @customElement('molecules--<group>--index-<destProject>')",
+          "imports the variant module and references the variant tag",
+          "page container carries the theme background (themeInfo.background.css)"
+        ],
         "onFail": "retry 1 with gate errors; 2nd failure completes-with-trace and emits the v4-done anchor ok:false (does NOT block v5/v6; v6-summary reports it)"
       },
       "doneAnchor": "v4-done"
@@ -135,13 +185,30 @@
       "agentName": "agentVariantDemo",
       "type": "agent",
       "model": "generation",
-      "dependsOn": ["v4-done"],
+      "dependsOn": [
+        "v4-done"
+      ],
       "goal": "Generate the variant's .html demo page (the molecule's sibling .html IS the demo — fase 0 finding). prompt.md: variant tag + origin source/defs + group skillUsageReference + themeInfo.background (page container MUST use it; e.g. glass needs the dark gradient) asking for >=6 realistic examples exercising variants/sizes/states/slots. Deterministic post-processing reuses the playgroundDinamicState substitution (helper port of agentNewMoleculePlayground.generatePlaygroundState).",
-      "input": ["context.json", "origin defs/source", "group usage skill", "themeInfo.background"],
-      "output": { "result": "demo html", "savedArtifact": ["l2/molecules/<group>/<shortName>.html"] },
+      "input": [
+        "context.json",
+        "origin defs/source",
+        "group usage skill",
+        "themeInfo.background"
+      ],
+      "output": {
+        "result": "demo html",
+        "savedArtifact": [
+          "l2/molecules/<group>/<shortName>.html"
+        ]
+      },
       "gate": {
         "file": "steps/v5-demo/gate.ts",
-        "checks": ["html non-empty and fence-free", "variant tag appears >= 3 times", "themeInfo.background.css present on the page container", "no <script> tags"],
+        "checks": [
+          "html non-empty and fence-free",
+          "variant tag appears >= 3 times",
+          "themeInfo.background.css present on the page container",
+          "no <script> tags"
+        ],
         "onFail": "retry 1 with gate errors; 2nd failure completes-with-trace (demo failure does NOT block v6-summary: summary reports it)"
       },
       "doneAnchor": "v5-done"
@@ -151,10 +218,18 @@
       "agentName": "agentVariantSummary",
       "type": "agent",
       "model": "summary",
-      "dependsOn": ["v5-done"],
+      "dependsOn": [
+        "v5-done"
+      ],
       "goal": "Cheap final summary in the user's language: what was created (files), portal or simple, gate results, cold-start pilot notice + suggestion to register the molecule in theme.ts examples when coldStart, demo failure notice when v5 failed. Completes the task.",
-      "input": ["context.json", "step outcomes"],
-      "output": { "result": "human summary", "savedArtifact": [] }
+      "input": [
+        "context.json",
+        "step outcomes"
+      ],
+      "output": {
+        "result": "human summary",
+        "savedArtifact": []
+      }
     }
   ],
   "acceptance": {

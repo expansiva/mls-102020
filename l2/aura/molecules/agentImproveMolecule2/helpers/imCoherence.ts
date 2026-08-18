@@ -2,7 +2,7 @@
 
 // The two coherence gates. PURE: takes source text, returns findings.
 //
-// REPORT ONLY — they never block (decision §8.2 of todo/analise-improve-molecule-2.md). An improve
+// REPORT ONLY — they never block (the decision, and why, in spec.md §8). An improve
 // run is when these are cheapest to fix, so the report is an opportunity, not a barrier; blocking
 // on pre-existing debt would freeze the agent on molecules nobody asked to repair.
 //

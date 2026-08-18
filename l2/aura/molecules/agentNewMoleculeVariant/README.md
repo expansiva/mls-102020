@@ -19,7 +19,7 @@ passam por `helpers/vOrigin.parseVariantEntry`.
 ## Spec
 
 - `flow.json` — contrato máquina (spec-first; mudanças alteram o spec ANTES do código).
-- `spec.md` — racional humana + links para a análise (`todo/analise-agentes-molecules-modelos-novos.md`).
+- `spec.md` — racional humana. Junto com o `flow.json` e os `CHANGELOG.md` dos steps, é o registro do desenho.
 
 ## Pipeline
 

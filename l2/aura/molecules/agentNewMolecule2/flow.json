@@ -1,7 +1,7 @@
 {
   "flowId": "agentNewMolecule2",
   "schemaVersion": "2026-07-29-newmolecule2-v1",
-  "specFirst": "Written BEFORE the code. Control: todo/todo-agents-molecules-modelos-novos.md (Fase 3, decisions D1-D6 and Q1-Q7b). The artifact contract this flow must honor was measured from the OLD chain and lives in todo/analise-fluxo-new-molecule-atual.md — every gate below points at a line of it. Maintenance changes the spec FIRST, then the code.",
+  "specFirst": "Written BEFORE the code. THIS FILE, spec.md and the per-step CHANGELOG.md are the design record — the decisions carry their original letter codes (D1-D6, Q1-Q7b) as provenance tags, and each one is stated in full wherever it governs code, so the tag is never the only thing you get. The artifact contract this flow honors was measured from the OLD chain and is enforced here: the deterministic half by helpers/nmTemplates.ts, the judged half by the per-step gates. When behavior must change, change this spec first, then the code.",
   "description": "Creates a NEW molecule from a prose description: .defs.ts + .ts + .less + .html + the group index entry. Replaces the 8-agent chain (agentNewMolecule -> Planner -> Defs -> Materialize -> [Fix] -> MaterializeLess -> Playground -> IndexGroupPage) with the spec-first structure: flow.json, one folder per step, a deterministic gate and a test per step. The old chain stays untouched until acceptance decides its fate. In a project WITH l2/skills/theme.ts the molecule is born PURE IN THE THEME (theme payload injected, theme suffix in the name); in a project WITHOUT a theme the behaviour is the neutral one, exactly like the old flow.",
   "principles": [
     "New agent, not a refactor: the old chain has no flow.json, no gate and no test — injecting the theme into it would touch 8 agents with no safety net.",
@@ -23,9 +23,9 @@
     "groupSkills": "skills/index.ts maps each group to { name, description, skillReference, skillUsageReference }. The CREATION skill feeds the plan/defs/render/less steps; the USAGE skill feeds the demo. A group without a skill FAILS readable (decision Q5) — today that is only groupnavigatemain (31 of 32 groups have one).",
     "clarification": "The checkpoint uses the supported pattern (skills/collab_messages.md): n2-plan's LLM returns { type: 'clarification', json } into its OWN payload, afterPromptStep returns [] so the payload stays mounted, beforeClarificationStep mounts shared/widgetDefsClarification, and the confirmed value becomes plan.json in l4 plus the completed 'n2-done' anchor. Unlike the old flow it does NOT rely on the framework's {{clarification}} substitution — the next steps read plan.json.",
     "checkpointContract": "shared/widgetDefsClarification reproduces the interface of the current agentNewMoleculePlannerClarification (decision D2): data { fileReference, description, prompt, group, functionalRequirements[], visualRequirements[] }; click-to-edit fields; collapsible requirement lists with add/edit/remove; footer Cancel/Confirm; event 'clarification-finish' with { value: { tagName, ...data }, action }; pt/en i18n inside collab_i18n markers. It ADDS one read-only line naming the detected theme (decision Q3).",
-    "artifacts": "5 files, in this order: .defs.ts (the spec that guides everything after it), .ts, .less, .html, and the group index. Content contract per file: todo/analise-fluxo-new-molecule-atual.md §3.",
+    "artifacts": "5 files, in this order: .defs.ts (the spec that guides everything after it), .ts, .less, .html, and the group index. Content contract per file: helpers/nmTemplates.ts for what is deterministic (headers, escaping, the .defs.ts shape) and the gate of each step for what is judged.",
     "defsBoundary": "Template writes the mls header, the 'Do not change' comment, `export const group`, `export const layoutConfig` (carrying the axes confirmed at the checkpoint — decision D7) and the skill wrapper; the LLM writes only the 5-section markdown; the gate checks the skeleton. Mandatory escaping inside the skill template literal: backtick -> \\backtick and ${ -> \\${ (without it the file does not compile). The skill's `- TagName:` line is SWAPPED deterministically for the derived tag (same as the Variant's renderShellDefs), so the tag can never be wrong even when the model writes one.",
-    "layoutConfig": "The molecule declares which Design System layout AXES it candidates for (`designSystemAuraBase.layoutAxes` is the canonical vocabulary). dsMatch/matchVariant ANDs over the declared axes, treats an omitted axis as a WILDCARD and breaks ties by specificity then alphabetical catalog order — so an EMPTY bag is not neutral, it makes the molecule the group's fallback pick. Code derives the candidate axes from the group (case-insensitive: the same group is spelled two ways across the codebase); the model proposes a value per axis inside the closed enum; the human confirms or changes it at the checkpoint (option (c) of decision D8); the gate validates with `isValidAxisValue` + `axis_not_governing` + `axis_required`. The 5 groups with no governing axis correctly emit `{}` and no LLM is consulted. Analysis: todo/analise-layoutconfig-new-molecule-2.md.",
+    "layoutConfig": "The molecule declares which Design System layout AXES it candidates for (`designSystemAuraBase.layoutAxes` is the canonical vocabulary). dsMatch/matchVariant ANDs over the declared axes, treats an omitted axis as a WILDCARD and breaks ties by specificity then alphabetical catalog order — so an EMPTY bag is not neutral, it makes the molecule the group's fallback pick. Code derives the candidate axes from the group (case-insensitive: the same group is spelled two ways across the codebase); the model proposes a value per axis inside the closed enum; the human confirms or changes it at the checkpoint (option (c) of decision D8); the gate validates with `isValidAxisValue` + `axis_not_governing` + `axis_required`. The 5 groups with no governing axis correctly emit `{}` and no LLM is consulted. The two consequences that drive the implementation, with the measurement behind them, are at the top of helpers/nmLayoutAxes.ts.",
     "runKey": "The l4 work folder is named by `runKey`, a kebab slug the root's cheap classifier proposes and `nmRunKey` sanitizes (ascii, <=40 chars, falls back to the group). It is NOT the molecule name — n2-plan proposes that, and the human may edit it. Re-running with the same intent reuses the folder, which is what you want after a cancel.",
     "pureModules": "nmTypes/nmContext/nmTemplates must NEVER import nmFs (or anything reaching the 102027 stor runtime): a pure module that does cannot be loaded by its own node test. Template constants therefore live in nmTypes.",
     "lessAuthoring": "The .less rules live in the SHARED skill skills/lessAuthoring (decision D3), extracted from agentNewMoleculeVariant/steps/v3-less/prompt.md and consumed by both agents in the same batch (Q6) — the ~12 rules there were paid for one Studio run at a time (T1, T3, T10-T13, T16, T17, T20, T22, per-class property scope, thin primitives, border budget).",
@@ -83,8 +83,12 @@
       "model": "classify",
       "dependsOn": [],
       "goal": "Cheap classifier over skills/index.ts descriptions: pick the GROUP, detect userLanguage, propose the runKey slug and produce a short task title. Refuse readably when the prose is not about creating a web component.",
-      "input": ["prose from the mention"],
-      "output": { "result": "{ group, runKey, userLanguage, title, validInput }" },
+      "input": [
+        "prose from the mention"
+      ],
+      "output": {
+        "result": "{ group, runKey, userLanguage, title, validInput }"
+      },
       "gate": {
         "file": "steps/n1-bootstrap/gate.ts (shared with the bootstrap gate)",
         "checks": [
@@ -102,8 +106,17 @@
       "model": "none (deterministic)",
       "dependsOn": [],
       "goal": "Assemble context.json ONCE: destination project, group + both skill refs, the molecule base source (_102033_), theme detection (present/absent/invalid) with themeInfo when valid, and the naming rule (suffix when themed). No LLM.",
-      "input": ["root classification", "mls.actualProject", "l2/skills/theme.ts (optional)"],
-      "output": { "result": "context summary", "savedArtifact": ["l4/agentNewMolecule2/<shortName>/context.json"] },
+      "input": [
+        "root classification",
+        "mls.actualProject",
+        "l2/skills/theme.ts (optional)"
+      ],
+      "output": {
+        "result": "context summary",
+        "savedArtifact": [
+          "l4/agentNewMolecule2/<shortName>/context.json"
+        ]
+      },
       "gate": {
         "file": "steps/n1-bootstrap/gate.ts",
         "checks": [
@@ -121,10 +134,20 @@
       "agentName": "agentNm2Plan",
       "type": "agent",
       "model": "plan",
-      "dependsOn": ["n1-done"],
+      "dependsOn": [
+        "n1-done"
+      ],
       "goal": "THE requirements call, and the human checkpoint. Injects the group creation skill + moleculeGeneration + the molecule base, maps the request onto the group contract and returns { type: 'clarification', json } with description, final prompt, functional and visual requirements and a PROPOSED fileReference (already carrying the theme suffix when themed). beforeClarificationStep mounts shared/widgetDefsClarification with a read-only line naming the theme; Confirm writes plan.json + the n2-done anchor, Cancel stops the run with nothing written.",
-      "input": ["context.json", "user prose"],
-      "output": { "result": "confirmed requirements + layout axes", "savedArtifact": ["l4/agentNewMolecule2/<runKey>/plan.json"] },
+      "input": [
+        "context.json",
+        "user prose"
+      ],
+      "output": {
+        "result": "confirmed requirements + layout axes",
+        "savedArtifact": [
+          "l4/agentNewMolecule2/<runKey>/plan.json"
+        ]
+      },
       "gate": {
         "file": "steps/n2-plan/gate.ts",
         "checks": [
@@ -144,10 +167,21 @@
       "agentName": "agentNm2Defs",
       "type": "agent",
       "model": "defs",
-      "dependsOn": ["n2-done"],
+      "dependsOn": [
+        "n2-done"
+      ],
       "goal": "Write .defs.ts. The LLM produces ONLY the 5-section markdown (Metadata/Objective/Responsibilities/Constraints/Notes) from the confirmed requirements; the template wraps it with the header, the 'Do not change' comment, `export const group`, `export const layoutConfig = {}` and the escaped skill literal.",
-      "input": ["plan.json", "context.json", "group creation skill"],
-      "output": { "result": "defs written", "savedArtifact": ["l2/molecules/<group>/<shortName>.defs.ts"] },
+      "input": [
+        "plan.json",
+        "context.json",
+        "group creation skill"
+      ],
+      "output": {
+        "result": "defs written",
+        "savedArtifact": [
+          "l2/molecules/<group>/<shortName>.defs.ts"
+        ]
+      },
       "gate": {
         "file": "steps/n3-defs/gate.ts",
         "checks": [
@@ -166,10 +200,21 @@
       "agentName": "agentNm2Render",
       "type": "agent",
       "model": "render",
-      "dependsOn": ["n3-done"],
+      "dependsOn": [
+        "n3-done"
+      ],
       "goal": "Write the molecule .ts. Injects the aura overview, moleculeGeneration, the molecule base (_102033_), the group creation skill and the .defs.ts just written. The orchestrator owns the mls header and the destination path — the model returns the body only. Writes, compiles, and retries once with the compiler errors.",
-      "input": ["context.json", "plan.json", ".defs.ts"],
-      "output": { "result": "render written + compile status", "savedArtifact": ["l2/molecules/<group>/<shortName>.ts"] },
+      "input": [
+        "context.json",
+        "plan.json",
+        ".defs.ts"
+      ],
+      "output": {
+        "result": "render written + compile status",
+        "savedArtifact": [
+          "l2/molecules/<group>/<shortName>.ts"
+        ]
+      },
       "gate": {
         "file": "steps/n4-render/gate.ts",
         "checks": [
@@ -188,10 +233,22 @@
       "agentName": "agentNm2Less",
       "type": "agent",
       "model": "less",
-      "dependsOn": ["n4-done"],
+      "dependsOn": [
+        "n4-done"
+      ],
       "goal": "Write the .less. Injects skills/lessAuthoring (shared with the Variant), the .ts source as the source of truth for the semantic classes, the group skill and — in themed mode — the theme payload (skill sections + themeInfo). The header is prepended by code with enhancementStyleAura; the model returns the body from the tag selector on.",
-      "input": ["context.json", ".ts source", "lessAuthoring skill", "theme payload when themed"],
-      "output": { "result": "stylesheet written", "savedArtifact": ["l2/molecules/<group>/<shortName>.less"] },
+      "input": [
+        "context.json",
+        ".ts source",
+        "lessAuthoring skill",
+        "theme payload when themed"
+      ],
+      "output": {
+        "result": "stylesheet written",
+        "savedArtifact": [
+          "l2/molecules/<group>/<shortName>.less"
+        ]
+      },
       "gate": {
         "file": "steps/n5-less/gate.ts",
         "checks": [
@@ -212,10 +269,22 @@
       "agentName": "agentNm2Demo",
       "type": "agent",
       "model": "demo",
-      "dependsOn": ["n5-done"],
+      "dependsOn": [
+        "n5-done"
+      ],
       "goal": "Write the .html playground page. Injects skills/playgroundGenerator, the group USAGE skill, the .ts source and — when themed — themeInfo.background for the page container. The model returns { html, examples[] }; the literal placeholder playgroundDinamicState is replaced DETERMINISTICALLY by the state built from examples[].state.",
-      "input": ["context.json", ".ts source", "playgroundGenerator skill", "group usage skill"],
-      "output": { "result": "demo written", "savedArtifact": ["l2/molecules/<group>/<shortName>.html"] },
+      "input": [
+        "context.json",
+        ".ts source",
+        "playgroundGenerator skill",
+        "group usage skill"
+      ],
+      "output": {
+        "result": "demo written",
+        "savedArtifact": [
+          "l2/molecules/<group>/<shortName>.html"
+        ]
+      },
       "gate": {
         "file": "steps/n6-demo/gate.ts",
         "checks": [
@@ -234,10 +303,22 @@
       "agentName": "agentNm2Index",
       "type": "agent",
       "model": "index",
-      "dependsOn": ["n6-done"],
+      "dependsOn": [
+        "n6-done"
+      ],
       "goal": "Regenerate the group's showcase index (index.ts + index.html) reusing skills/indexGroupPage with the group's molecule list — WITHOUT invoking another agent (decision D5: agentUpdateIndexGroupPage fan-outs, lesson P4). In themed mode the page chrome follows themeInfo.background and the theme's visual signature.",
-      "input": ["context.json", "group molecule list", "indexGroupPage skill"],
-      "output": { "result": "index written", "savedArtifact": ["l2/molecules/<group>/index.ts", "l2/molecules/<group>/index.html"] },
+      "input": [
+        "context.json",
+        "group molecule list",
+        "indexGroupPage skill"
+      ],
+      "output": {
+        "result": "index written",
+        "savedArtifact": [
+          "l2/molecules/<group>/index.ts",
+          "l2/molecules/<group>/index.html"
+        ]
+      },
       "gate": {
         "file": "steps/n7-index/gate.ts",
         "checks": [
@@ -254,17 +335,28 @@
       "agentName": "agentNm2Summary",
       "type": "agent",
       "model": "summary",
-      "dependsOn": ["n7-done"],
+      "dependsOn": [
+        "n7-done"
+      ],
       "goal": "Final summary in userLanguage: what was created, where, whether the molecule is themed, and anything that failed with ok:false upstream.",
-      "input": ["context.json", "step outcomes"],
-      "output": { "result": "summary" },
-      "gate": { "file": "n/a", "checks": [], "onFail": "n/a" },
+      "input": [
+        "context.json",
+        "step outcomes"
+      ],
+      "output": {
+        "result": "summary"
+      },
+      "gate": {
+        "file": "n/a",
+        "checks": [],
+        "onFail": "n/a"
+      },
       "doneAnchor": "n8-done (terminal)"
     }
   ],
   "acceptance": {
     "regression": "none on the old chain (untouched) and none on agentNewMoleculeVariant beyond pointing its v3-less prompt at skills/lessAuthoring (its suite must stay green)",
-    "test1": "mls-102040 (NO theme): create a molecule from prose. Check it against todo/analise-fluxo-new-molecule-atual.md §5 — 5 artifacts, ml- prefix, derived tag, checkpoint before the .defs.ts, >=6 examples, index updated, and NOTHING theme-related anywhere. This is acceptance 3.11.",
+    "test1": "mls-102040 (NO theme): create a molecule from prose. Check: 5 artifacts, ml- prefix, derived tag, checkpoint before the .defs.ts, >=6 examples, index updated, and NOTHING theme-related anywhere. This is acceptance 3.11.",
     "test2": "mls-102053 (WITH theme): the plan proposes the name already suffixed, the checkpoint shows the detected theme, the .less follows the theme payload and the demo carries the theme background. This is acceptance 3.12.",
     "test3": "cycle: run agentNewMoleculeVariant on the molecule created by test2 — it must be derivable (that is what the ml-* discipline gate protects).",
     "test4": "cancel at the checkpoint: nothing is written."

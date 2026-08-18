@@ -2,9 +2,12 @@
 
 > Spec-first: o `flow.json` ao lado é o contrato máquina; este arquivo é a
 > racional humana. Mudanças de comportamento alteram PRIMEIRO o flow.json,
-> depois o código. Histórico de decisões:
-> `todo/analise-agentes-molecules-modelos-novos.md` (§5, §10–§15) e
-> `todo/todo-agents-molecules-modelos-novos.md` (Fases 0–2).
+> depois o código.
+>
+> **Este arquivo, o `flow.json` e os `CHANGELOG.md` dos steps são o registro
+> do desenho** — não há outro documento a procurar. O contrato de tema que
+> este agente consome é `shared/vThemeContract.ts`, que é a fonte de verdade
+> do `l2/skills/theme.ts`.
 
 ## O que este agente faz
 
@@ -44,10 +47,11 @@ do destino (senão o bootstrap falha com orientação).
   index são código; a LLM entra só onde há julgamento (o `.less` e os
   exemplos da demo).
 - **Tema é dado**: todo o conhecimento do tema vem do `theme.ts` do projeto
-  (contrato v1 — Fase 1); o conhecimento genérico do Strategy D vem do
-  template `todo/fase1-template-strategy-d.md` embutido nos `prompt.md`.
-  Prompt nunca manda "ler" arquivo: cada step anexa as fontes (análise §11).
-- **Cold start** (rascunho do contrato §8): `examples` vazio => instrução
+  (contrato v1, validado por `shared/vThemeContract.ts`); o conhecimento
+  genérico do Strategy D **está embutido nos `prompt.md` dos steps** — é lá
+  que ele mora, não num documento à parte. Prompt nunca manda "ler" arquivo:
+  cada step anexa as fontes.
+- **Cold start**: `examples` vazio => instrução
   explícita de "primeira molécula do tema (piloto)" no prompt do `.less` e
   aviso + sugestão de bootstrap no summary.
 - **Gates com retry limitado**: `.less` e demo têm 1 retry com os erros do

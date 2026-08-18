@@ -1,7 +1,7 @@
 {
   "flowId": "agentImproveMolecule2",
   "schemaVersion": "2026-08-06-improvemolecule2-v1",
-  "specFirst": "Written BEFORE the code, per skills/agentsBestPractices.md §1. The design decisions this flow implements are closed in todo/analise-improve-molecule-2.md (§6 architecture, §7 open questions, §8 the two last calls). When behavior must change, change this spec first, then the code.",
+  "specFirst": "Written BEFORE the code, per skills/agentsBestPractices.md §1. THIS FILE, spec.md and the per-step CHANGELOG.md are the design record — the decisions were closed on 2026-08-06 and every change since is recorded in them; there is no other document to look for. When behavior must change, change this spec first, then the code.",
   "description": "Changes an EXISTING molecule. Triages the request into one of five routes: (A) definition change -> confirm the delta with the human, then edit the contract and the code in place; (B) minor change -> edit, save, regenerate the playground when affected, and then the group index; (C) inherited shell whose fix needs parent code -> its own clarification, the user decides between .less, a local override and the base component; (D) out of scope -> readable failure; (E) a derived artifact (the playground, the group index) is broken and only it is regenerated, with the molecule untouched. Replaces agentsManageMolecules/agentImproveMolecule{,Defs,Materialize}.ts, which stay in place until this one is accepted.",
   "principles": [
     "REUSE THE HELPERS, NOT THE STEPS. agentNewMolecule2 generates the same five artifacts, and its generation lives in helpers/nmTemplates.ts + helpers/nmFs.ts, not in the step agents. This flow imports those and brings its own steps and gates. Measured reason: nmFs.ts:75 states 'a new molecule must not overwrite an existing one' — the NM2 gate REFUSES an existing file, which is the exact inverse of this agent's precondition. Making the same step serve both would need a create/update mode field inside it, the 'multi-role agent switched by a mode field' that agentsBestPractices forbids.",
@@ -13,7 +13,7 @@
   ],
   "conventions": {
     "input": "PROSE ONLY: @@agentImproveMolecule2 <what to change, on which molecule>. Same parsing as agentNewMolecule2 (shared/mentionEntry: stripAgentMention + isBareMention); mls.common.safeParseArgs is NOT called — it throws on prose. A bare mention fails readable: there is nothing to change without a description.",
-    "targetProject": "mls.actualProject. The agent acts ONLY on the current project (decision §7.3). It never writes into another project, even when the fix belongs to a parent that lives elsewhere.",
+    "targetProject": "mls.actualProject. The agent acts ONLY on the current project (spec.md §5). It never writes into another project, even when the fix belongs to a parent that lives elsewhere.",
     "identity": "The target molecule is resolved to a fileReference _<project>_/l2/molecules/<groupLowercase>/<shortName>.ts and that reference is the single source of truth, exactly as in agentNewMolecule2. The tag is DERIVED from the path, never authored.",
     "mustExist": "The inverse of the NM2 collision check: i1-locate FAILS when the target does not exist. Creating is agentNewMolecule2's job, and the failure message says so.",
     "inheritance": "A molecule is a SHELL when its class extends another molecule imported from a different project. Detected deterministically from the import + extends clause. Measured on 2026-08-06: 84 shells exist (42 in mls-102054, 42 in mls-102055), 70 with an empty body, 14 overriding a single property, ZERO overriding render().",
@@ -248,7 +248,7 @@
       "options": {
         "less": "Style only, in the shell's own .less. TRY THIS FIRST — 70 of the 84 shells need nothing else.",
         "override": "A local override in the shell. Solves anything, but that shell STOPS INHERITING the parent: a later fix in the base no longer reaches it. Prefer the SMALLEST member — a property or a narrow method before render().",
-        "parent": "INFORMATION ONLY, never executed. The fix belongs to the base molecule, which lives in another project; this agent does not cross that boundary (§7.3). The user opens the request there."
+        "parent": "INFORMATION ONLY, never executed. The fix belongs to the base molecule, which lives in another project; this agent does not cross that boundary (spec.md §5). The user opens the request there."
       },
       "gate": {
         "file": "steps/i4-inherit/gate.ts",
@@ -403,14 +403,14 @@
     }
   ],
   "coherenceReport": {
-    "when": "computed by helpers/imCoherence.ts and rendered by i7-summary. REPORT ONLY — never blocks (decision §8.2).",
+    "when": "computed by helpers/imCoherence.ts and rendered by i7-summary. REPORT ONLY — never blocks (spec.md §8).",
     "gate1": "defs x slotTags x group contract: the slots named in the defs text match the real slotTags array of the .ts, and both match the group's creation.ts. Catches the 2026-08-05 case where the defs described the OLD design, omitted a slot the code read, and claimed 'does not introduce slots beyond the contract' while violating it — three errors at once, none detected.",
     "gate2": "declared x used: every tag in slotTags is actually read in the render (getSlotContent / getSlot / renderLiveSlot). Catches the 9 molecules that declare a slot they never read — writing <Label> in them does nothing, silently.",
     "knownDebt": "Both gates WILL fire on molecules nobody asked to repair. That is intended: the report names it, the user decides.",
     "notCovered": "A defect the agent itself just introduced (e.g. adding a slot to the defs and not to the code) is reported like any other. If that shows up in practice, the answer is ONE bounded repair attempt (agentsBestPractices §7), not a block. Deliberately out of v1."
   },
   "outOfScope": {
-    "parentEdits": "Changing the base molecule of a shell. Out of scope by decision §7.3: the agent only writes in the current project.",
+    "parentEdits": "Changing the base molecule of a shell. Out of scope by spec.md §5: the agent only writes in the current project.",
     "dependentWarning": "Warning that a base molecule has shells inheriting from it. NOT IMPLEMENTABLE today: from the base project the agent cannot see who inherits — the dependency is one-way and there is no access to other projects. Revisit only if that changes."
   },
   "acceptance": {

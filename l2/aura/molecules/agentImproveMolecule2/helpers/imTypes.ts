@@ -292,7 +292,7 @@ export interface ImCoherenceFinding {
 }
 
 /**
- * REPORT ONLY — never blocks (decision §8.2 of the analysis). An improve run is when these are
+ * REPORT ONLY — never blocks (the decision, and why, in spec.md §8). An improve run is when these are
  * cheapest to fix, so the report is an opportunity; blocking on pre-existing debt would freeze the
  * agent on molecules nobody asked to repair.
  */

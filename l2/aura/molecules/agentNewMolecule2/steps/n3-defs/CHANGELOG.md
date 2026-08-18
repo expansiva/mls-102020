@@ -30,8 +30,8 @@ Other decisions:
 (`{\n  metric: "big-number"\n}`; `{}` on one line for the 5 axis-less groups). The gate compares the
 emitted object with `plan.json` and **re-runs the vocabulary gate on the file itself** — defence in
 depth, because a hand-edited plan.json would otherwise ship an axis that `buildMoleculeCatalog` drops
-with a `console.warn`, silently turning the molecule into a wildcard. Analysis:
-todo/analise-layoutconfig-new-molecule-2.md.
+with a `console.warn`, silently turning the molecule into a wildcard — creation time is the only
+place a typo can be caught, which is why the check runs twice (`helpers/nmLayoutAxes.ts`).
 
 ## 2026-07-30 — the .defs.ts is written with the canonical stor spelling (first-run bug)
 

@@ -59,8 +59,8 @@ node scripts/run-tests.mjs 102020
 ```
 
 Runs the gate/logic tests (contract validator, t1/t3 gates, theme.html renderer, widget
-logic). Acceptance (Studio) after publishing 102020: see `todo/todo-agent-new-theme.md`
-Fase 7.
+logic). The Studio acceptance — what to run after publishing 102020 and what each run must
+show — is `flow.json.acceptance` (test1 to test4 plus the regression note).
 
 Every `prompt.md` must open with `<!-- modelType: X -->` (see `skills/modelTypes.md`);
 without it the platform picks a cost-based fallback alias and the call 404s. Quick check:
@@ -72,5 +72,6 @@ for f in steps/*/prompt.md; do grep -m1 -o 'modelType: [a-z]*' $f; done
 ## Status
 
 The pipeline is complete and unit-tested (spec, helpers, the four steps, both checkpoint
-widgets, the theme.html renderer, the t1/t3 gates). NOT yet exercised in the Studio:
-publishing 102020 and the acceptance run are `todo/todo-agent-new-theme.md` Fase 7.
+widgets, the theme.html renderer, the t1/t3 gates). **Delivered and working in the Studio**;
+what remains is refinement, and it is paused by the product owner since 2026-07-29 — the
+priority moved to agentNewMolecule2. The acceptance runs are `flow.json.acceptance`.

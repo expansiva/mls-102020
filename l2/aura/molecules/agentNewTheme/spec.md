@@ -1,7 +1,8 @@
 # agentNewTheme — spec
 
 > Human-readable rationale. The machine contract is `flow.json` (authoritative).
-> Analysis: `todo/analise-agent-new-theme.md`. Control/checklist: `todo/todo-agent-new-theme.md`.
+> **This file, `flow.json` and the step `CHANGELOG.md` are the design record** — there is no other
+> document to look for. The acceptance runs are `flow.json.acceptance`.
 > Contract v1 validator: `l2/aura/molecules/shared/vThemeContract.ts`.
 > Authoring guidance injected at generation: `l2/aura/molecules/skills/themeAuthoring`.
 

@@ -3,7 +3,8 @@
 // Theme contract v1 — SHARED validator + types. Single source of truth for the
 // l2/skills/theme.ts contract, consumed by every agent that reads or writes a
 // theme (agentNewMoleculeVariant, agentNewTheme, and a future Improve Theme).
-// Pure (unit-testable under node:test). Contract: todo/rascunho-contrato-theme-skill.md.
+// Pure (unit-testable under node:test). THIS FILE IS THE CONTRACT: the types below and the
+// validator are v1, and a theme.ts is valid exactly when it passes here.
 
 export interface VThemeBackground {
   kind: 'light' | 'dark' | 'image';

@@ -2,8 +2,13 @@
 
 > Written BEFORE the code (`skills/agentsBestPractices.md`). `flow.json` is the contract; this file
 > is the rationale — why each decision is what it is, so a future maintainer does not undo it by
-> accident. Control: `todo/todo-agents-molecules-modelos-novos.md` (Fase 3). Artifact contract:
-> `todo/analise-fluxo-new-molecule-atual.md`.
+> accident.
+>
+> **This file, `flow.json` and the per-step `CHANGELOG.md` are the design record.** There is no other
+> document to look for: the decisions keep their original letter codes (D1–D6, Q1–Q7b) as provenance
+> tags, and each is stated in full where it governs code. The artifact contract — what each of the
+> five files must contain — was measured from the OLD chain and lives where it is enforced:
+> `helpers/nmTemplates.ts` for the deterministic half, the gate of each step for the judged half.
 
 ## 1. What it does
 

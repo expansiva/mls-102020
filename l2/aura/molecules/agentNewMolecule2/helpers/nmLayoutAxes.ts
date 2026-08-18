@@ -6,7 +6,7 @@
 // candidates for. The Design System matcher (dsMatch/matchVariant) ANDs over the declared axes,
 // treats an omitted axis as a wildcard, and breaks ties by specificity and then catalog order.
 //
-// Two consequences drive everything here (analysis: todo/analise-layoutconfig-new-molecule-2.md):
+// Two consequences drive everything here, and they are the reason this file exists:
 // - an EMPTY layoutConfig is not neutral: it makes the molecule a specificity-0 wildcard, i.e. the
 //   group's fallback pick, chosen by alphabetical order. Measured: the 18 empty ones in mls-102040 are
 //   ALL in the 5 groups that have no governing axis, and ZERO are in a group that has one.

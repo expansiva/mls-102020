@@ -1,7 +1,7 @@
 {
   "flowId": "agentNewTheme",
   "schemaVersion": "2026-07-27-newtheme-v1",
-  "specFirst": "This file was written BEFORE the code (todo/todo-agent-new-theme.md; design in todo/analise-agent-new-theme.md). The code is validated against it. Maintenance changes the spec FIRST, then the code.",
+  "specFirst": "This file was written BEFORE the code, and THIS FILE plus spec.md are the design record — there is no other document to look for. The code is validated against it. Maintenance changes the spec FIRST, then the code.",
   "description": "Standalone agent that GENERATES FROM SCRATCH the current project's theme file (l2/skills/theme.ts, contract v1) via an LLM, guided by the shared themeAuthoring meta-skill, with ONE human checkpoint (clarification). It does NOT clone an existing theme and does NOT improve one (backlog). The theme.ts (plus a deterministic theme.html doc/preview) is written as soon as the generation passes its contract gate. Consumed downstream by the molecule agents (New Molecule / Variant / Improve), which read the theme to style each molecule's .less.",
   "principles": [
     "Generate, don't clone: v1 authors a NEW theme from a natural-language description + clarification answers. Clone (mode A) and Improve Theme (mode C) are backlog.",
@@ -61,11 +61,24 @@
       "model": "plan",
       "dependsOn": [],
       "goal": "Cheap classifier. Admission (project has NO l2/skills/theme.ts; else fail readable). Detect userLanguage + a short title. Split the request into `known` — ONLY what the prompt STATES — and `questions` for everything else: the missing fields AND the ones it merely INFERRED, the latter with the inference pre-selected (recommended) so a click confirms it. 'tema brutalismo' states nothing about name/shadow/corners; it only lets the model guess, and a guess must be shown. Identity (name + displayName) is asked whenever the checkpoint runs, since nothing downstream reviews it. CLOSED fields (enums + typography.uppercaseLabels) carry 2-4 options with enum ids and one recommended; OPEN fields (name, displayName, primary, border.color, background.css) carry no options or exactly the proposed value as one recommended option, and always allowNotes. Persist plan.json. If the prompt states everything, `questions` is empty and t3 is planted directly (fast path, no checkpoint); otherwise plant t2 then t3.",
-      "input": ["{ prompt } from the mention"],
-      "output": { "result": "plan summary", "savedArtifact": ["l4/agentNewTheme/plan.json"] },
+      "input": [
+        "{ prompt } from the mention"
+      ],
+      "output": {
+        "result": "plan summary",
+        "savedArtifact": [
+          "l4/agentNewTheme/plan.json"
+        ]
+      },
       "gate": {
         "file": "steps/t1-plan/gate.ts",
-        "checks": ["output parses to {known, questions[]} with valid field ids/options", "a field is never asked twice", "a question about a value already decided in `known` must carry it as a recommended (pre-selected) option — asking without pre-selecting would make the human retype a decision (code question_not_preselected; it REPLACED the old question_known rule, which forbade the question altogether and is why an inferred theme name could never be corrected)", "CLOSED fields: 2+ options, enum ids, at most one recommended", "OPEN fields: options may be empty, but then allowNotes must be true (else the widget could never mark it answered)"],
+        "checks": [
+          "output parses to {known, questions[]} with valid field ids/options",
+          "a field is never asked twice",
+          "a question about a value already decided in `known` must carry it as a recommended (pre-selected) option — asking without pre-selecting would make the human retype a decision (code question_not_preselected; it REPLACED the old question_known rule, which forbade the question altogether and is why an inferred theme name could never be corrected)",
+          "CLOSED fields: 2+ options, enum ids, at most one recommended",
+          "OPEN fields: options may be empty, but then allowNotes must be true (else the widget could never mark it answered)"
+        ],
         "onFail": "NO retry: fail readable. Admission (no existing theme.ts) is checked EARLIER, in beforePromptImplicit, so it costs no LLM call"
       },
       "doneAnchor": "none (the root plants the tree directly)"
@@ -78,9 +91,20 @@
       "dependsOn": [],
       "onlyWhen": "plan.questions is non-empty (else this step is not planted — fast path)",
       "goal": "THE checkpoint (collect missing fields + the free-text slot). Emit a clarification into this step's own payload; beforeClarificationStep mounts the shared Decision Clarification widget with plan.questions (options + recommended defaults + free-text). On answer, write answers.json to l4 and emit the completed 't2-done' result (the anchor t3-generate dependsOn) carrying the collected values. Cancel => this step fails and the pipeline stops with nothing written.",
-      "input": ["plan.json (questions)"],
-      "output": { "result": "collected answers", "savedArtifact": ["l4/agentNewTheme/answers.json"] },
-      "gate": { "file": "n/a (human checkpoint)", "checks": [], "onFail": "n/a" },
+      "input": [
+        "plan.json (questions)"
+      ],
+      "output": {
+        "result": "collected answers",
+        "savedArtifact": [
+          "l4/agentNewTheme/answers.json"
+        ]
+      },
+      "gate": {
+        "file": "n/a (human checkpoint)",
+        "checks": [],
+        "onFail": "n/a"
+      },
       "doneAnchor": "t2-done"
     },
     {
@@ -88,10 +112,24 @@
       "agentName": "agentNtGenerate",
       "type": "agent",
       "model": "generation",
-      "dependsOn": ["t2-done (when the checkpoint ran; otherwise none — it is the first runnable step)"],
+      "dependsOn": [
+        "t2-done (when the checkpoint ran; otherwise none — it is the first runnable step)"
+      ],
       "goal": "THE generation call, and the ONLY writer. prompt.md injects the themeAuthoring meta-skill + the initial prompt + `known` + the checkpoint answers. Output via strict tool schema: the COMPLETE theme.ts (string, contract v1, English comments) + a structured summary (name, displayName, background, palette[], signature[]). On a GREEN gate: persist draft.json, write _<dest>_/l2/skills/theme.ts + theme.html (deterministic renderer from the summary), compile the .ts best-effort, and emit the terminal t3-done anchor with { theme, files[], compiled }. openStepView mounts the shared Theme Confirmation widget in READONLY mode (palette + signature stay inspectable after the fact — it is a view, not a gate).",
-      "input": ["themeAuthoring skill", "prompt", "known", "answers (when the checkpoint ran)"],
-      "output": { "result": "created theme + files", "savedArtifact": ["l4/agentNewTheme/draft.json", "l2/skills/theme.ts", "l2/skills/theme.html"] },
+      "input": [
+        "themeAuthoring skill",
+        "prompt",
+        "known",
+        "answers (when the checkpoint ran)"
+      ],
+      "output": {
+        "result": "created theme + files",
+        "savedArtifact": [
+          "l4/agentNewTheme/draft.json",
+          "l2/skills/theme.ts",
+          "l2/skills/theme.html"
+        ]
+      },
       "gate": {
         "file": "steps/t3-generate/gate.ts",
         "checks": [

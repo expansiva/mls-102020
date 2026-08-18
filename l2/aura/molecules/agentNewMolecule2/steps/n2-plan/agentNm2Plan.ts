@@ -330,7 +330,7 @@ function buildAxisOptions(ctx: MoleculeContext): DefsAxisOption[] {
 
 // The Design System vocabulary is GIVEN to the model as a closed enum: it picks a value per axis, or
 // says the molecule is a wildcard on it. Code never lets a value outside the enum through (decision
-// D7; analysis in todo/analise-layoutconfig-new-molecule-2.md).
+// D7; the measurement is at the top of helpers/nmLayoutAxes.ts).
 function buildLayoutAxesSection(ctx: MoleculeContext): string {
   const axes = nmCandidateAxes(ctx.destination.groupCanonical);
   if (!axes.length) {
