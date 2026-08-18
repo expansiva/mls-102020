@@ -1,5 +1,39 @@
 # CHANGELOG — i2-triage
 
+## 2026-08-18 — o artefato que o editor não escreve, e a lista de rotas que eu duplicei
+
+Duas coisas, e a segunda é pior que a primeira.
+
+**1. `artifacts_not_writable`.** Uma rota B ou C que nomeia **só** `html`/`groupIndex` promete o que
+nenhum passo do ramo cumpre — o `i3` escreve `defs`, `ts`, `less`. A mensagem aponta a rota **E**.
+
+A regra é estreita de propósito: **nomear `html` ao lado de um artefato editável continua válido.** Foi o
+caso da `ml-combobox`, em que a edição moveu a superfície e o playground realmente seguiu. Recusar isso
+quebraria um run correto — e é o erro que este arquivo já cometeu duas vezes (ver 13/08 e 14/08): um gate
+que recusa a resposta certa custa o run inteiro e ensina o modelo a mentir sobre seus artefatos.
+
+**2. O defeito que a rota E introduziu, medido no primeiro run depois de publicar.** O triage respondeu
+`route: "E"` com o rationale certo. O gate aceitou. E o run morreu em
+**`the triage result could not be read — no route to plant`**.
+
+O roteador tinha uma **segunda lista de rotas válidas**, literal:
+
+```ts
+route: (['A', 'B', 'C', 'D'].includes(route) ? route : null) as ImRoute | null,
+```
+
+`'E'` entrou no `ImRoute`, no `ROUTES` deste gate e no `ROUTE_STEPS` — e não nessa. **Duas listas para a
+mesma verdade, e eu atualizei uma.** A ironia é que o cabeçalho do `agentImproveMolecule2.ts` se orgulha
+disso: *"the successor knowledge stays in ONE table here and is never scattered"*. A tabela de sucessores
+estava centralizada; a de **validade** estava duplicada, a 245 linhas de distância.
+
+Agora a validade é **derivada** de `ROUTE_STEPS`, que é `Record<ImRoute, ImPlanId[]>` — o compilador exige
+entrada para toda rota do tipo, então a próxima rota não pode existir sem aparecer nas duas. Varredura nos
+dois agentes: nenhuma outra cópia literal da lista.
+
+**A lição é a de sempre neste projeto:** prosa pede, tipo impõe. O comentário dizia a regra certa e não a
+sustentava.
+
 ## 2026-08-17 — os contratos do grupo voltaram ao prompt
 
 **Decisão registrada:** os agentes **leem** os contratos de criação e de uso do grupo e **nunca os

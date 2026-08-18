@@ -1,5 +1,45 @@
 # CHANGELOG — i5-playground
 
+## 2026-08-18 — rota E: regenerar o playground, porque nenhuma rota existente podia
+
+Pediram *"o playground não foi gerado"* numa molécula cujo `.html` havia sido substituído por
+`<h1>teste</h1>`. O run morreu no `i3-edit`, duas tentativas, com o modelo dizendo a verdade: *"o html e o
+groupIndex não foram incluídos, não consigo fazer edições pontuais"*.
+
+**Nenhuma rota estava errada — todas eram inadequadas.** O triage respondeu **B** com
+`expectedArtifacts: ['html','groupIndex']`, leitura correta do pedido: nada da superfície se move. Mas B
+roda o editor, e o editor escreve `defs`, `ts` e `less`. O pedido nomeava só artefatos que nenhum passo do
+ramo escreve.
+
+### A distinção que a rota nova carrega
+
+**Derivado × autorado.** O playground e o índice do grupo são **derivados**: dada a superfície da
+molécula existe forma correta, e é justamente por isso que o `i5` e o `i6` conseguem produzi-los do zero.
+O `.defs.ts`, o `.ts` e o `.less` são **autorados** — regenerá-los descartaria decisões que ninguém
+recupera. É o mesmo argumento que manteve a rota A como edição no lugar, e não reconstrução.
+
+Por isso o `.less` ficou **fora** da rota E, de propósito: *"atualize o `.less`"* é rota B, edição
+pontual, e criar um que falta já funciona lá.
+
+### A precondição, que é o que impede o botão de destruir demo boa
+
+`playgroundIntegrityIssues(html, tag)` — pura, extraída das invariantes que este gate já cobrava: página
+vazia, sem a tag da molécula, sem o widget de estado, documento HTML completo, ou slot como atributo.
+
+**O pedido não decide; a medição decide.** Um playground carrega exemplos autorados, então reescrever um
+saudável joga trabalho fora. Página íntegra → o run termina dizendo isso **antes de gastar chamada de
+modelo**. Pinado com a página do experimento: `<h1>teste</h1>` acusa duas razões, a página real acusa zero.
+
+O prompt recebe `{{regenerate}}` com **os motivos medidos**, em vez de "escreva de novo". O `i5` já sabia
+criar (`op: "create"`, `IM_CREATABLE_ARTIFACTS` inclui `html`), então o caminho veio de graça — e é
+exatamente o caminho latente que o registro do slot-como-atributo apontava como nunca exercitado.
+
+### Limitação registrada
+
+A rota E entra pelo `i5`. Um pedido **só sobre o índice** regenera o playground primeiro, e se ele estiver
+íntegro o run termina sem tocar no índice. Uma segunda entrada pelo `i6` não foi construída; está anotada
+no `flow.json` como a forma a acrescentar se pedidos só-de-índice se mostrarem comuns.
+
 ## 2026-08-18 — slot como atributo: a convenção errada estava instruída, abençoada e pinada por teste
 
 `<div slot="Label">` **não faz nada nesta biblioteca.** Não há Shadow DOM: `moleculeBase.getSlotContent(tag)`

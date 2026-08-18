@@ -329,7 +329,11 @@ function readTriageResult(context: mls.msg.ExecutionContext): { route: ImRoute |
   if (!isRecord(parsed)) return { route: null, rationale: '', definitionElements: [] };
   const route = String(parsed.route || '').trim().toUpperCase();
   return {
-    route: (['A', 'B', 'C', 'D'].includes(route) ? route : null) as ImRoute | null,
+    // ⚠️ DERIVED from ROUTE_STEPS, never a second list. Until 2026-08-18 this was a literal
+    // ['A','B','C','D']: route E was added to ImRoute, to the i2 gate and to ROUTE_STEPS, and the
+    // triage answered E correctly — then this line rejected it as unreadable and the run died on "no
+    // route to plant". One truth, one place; the table below already knows every route there is.
+    route: (Object.keys(ROUTE_STEPS) as ImRoute[]).includes(route as ImRoute) ? (route as ImRoute) : null,
     rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
     // On route A these ARE the argument: they name the slots, properties or events that changed.
     definitionElements: Array.isArray(parsed.definitionElements)
