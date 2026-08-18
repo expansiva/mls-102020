@@ -16,6 +16,7 @@
 
 import { ImGateResult, imGateFail, imGateOk } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import { ImSurfaceDiff, slotIsExercised } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
+import { findAttributeSlots } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n6-demo/gate.js';
 
 /** The widget every playground page carries; measured 146/146 in mls-102040. */
 export const IM_STATE_WIDGET = 'widget-playground-state-102020';
@@ -52,6 +53,20 @@ export function runImPlaygroundGate(inputs: ImPlaygroundGateInputs): ImGateResul
   const html = inputs.after;
 
   if (!html.trim()) return imGateFail(issue('empty', 'the playground came out empty'));
+
+  // Slot content as an ATTRIBUTE renders empty here — no Shadow DOM, the molecule reads by tag name.
+  // The DELTA rule applies: a page that already carried the wrong form is not this run's fault, and
+  // blocking on it would freeze the agent on a page nobody asked to repair. What the edit ADDED is.
+  const attributeSlots = findAttributeSlots(html)
+    .filter(name => !findAttributeSlots(inputs.before).includes(name));
+  for (const name of attributeSlots) {
+    errors.push(
+      issue(
+        'slot_as_attribute',
+        `the page writes slot content as \`slot="${name}"\`, and this library has NO Shadow DOM — a molecule reads its slots by TAG NAME, so that renders empty. Write <${name}>…</${name}> inside the molecule instance`,
+      ),
+    );
+  }
   if (/```/.test(html)) errors.push(issue('fence', 'the page carries a markdown fence — raw HTML only'));
 
   // The page is a FRAGMENT rendered inside the Studio. Measured 0/146 in the library.

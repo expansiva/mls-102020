@@ -13,7 +13,7 @@ const NO_DIFF: ImSurfaceDiff = {
 const PAGE = `<div class="p-6">
   <aura--molecules--playground--widget-playground-state-102020 state='playgroundDinamicState'></aura--molecules--playground--widget-playground-state-102020>
   <groupviewtable--ml-data-table>
-    <div slot="Caption">Customers</div>
+    <Caption>Customers</Caption>
   </groupviewtable--ml-data-table>
 </div>`;
 
@@ -55,7 +55,7 @@ test('THE 2026-08-05 CHECK: an added slot that no example uses is refused', () =
 
 test('an added slot that the page exercises passes, in either spelling', () => {
   const diff = { ...NO_DIFF, addedSlots: ['Detail'], changed: true };
-  const asAttribute = PAGE.replace('</groupviewtable--ml-data-table>', '<div slot="Detail">x</div></groupviewtable--ml-data-table>');
+  const asAttribute = PAGE.replace('</groupviewtable--ml-data-table>', '<Detail>x</Detail></groupviewtable--ml-data-table>');
   assert.equal(runImPlaygroundGate(inputs({ diff, after: asAttribute })).ok, true);
 
   const asElement = PAGE.replace('</groupviewtable--ml-data-table>', '<Detail>x</Detail></groupviewtable--ml-data-table>');
@@ -97,7 +97,31 @@ test('a binding to a property the molecule no longer has is refused', () => {
 });
 
 test('slotIsExercised accepts both spellings and rejects a mere mention', () => {
-  assert.equal(slotIsExercised('<div slot="Detail">x</div>', 'Detail'), true);
+  assert.equal(slotIsExercised('<Detail>x</Detail>', 'Detail'), true);
   assert.equal(slotIsExercised('<Detail>x</Detail>', 'Detail'), true);
   assert.equal(slotIsExercised('<!-- the Detail slot goes here -->', 'Detail'), false);
+});
+
+// ---- slot como atributo, e a regra do delta (2026-08-18) ----
+
+const DIFF_DETAIL: ImSurfaceDiff = { ...NO_DIFF, addedSlots: ['Detail'] };
+
+test('o slot escrito como ATRIBUTO pela edição é recusado', () => {
+  const after = PAGE.replace('</groupviewtable--ml-data-table>', '<div slot="Detail">x</div></groupviewtable--ml-data-table>');
+  const result = runImPlaygroundGate(inputs({ after, diff: DIFF_DETAIL }));
+  assert.ok(result.errors.some(e => /^slot_as_attribute: /.test(e)));
+});
+
+test('THE DELTA RULE: a forma errada que a página JÁ tinha não bloqueia', () => {
+  // Travar em dívida pré-existente congelaria o agente numa página que ninguém pediu para consertar.
+  // Só o que a edição introduziu conta.
+  const before = PAGE.replace('</groupviewtable--ml-data-table>', '<div slot="Legado">x</div></groupviewtable--ml-data-table>');
+  const after = before.replace('</groupviewtable--ml-data-table>', '<Detail>y</Detail></groupviewtable--ml-data-table>');
+  const result = runImPlaygroundGate(inputs({ before, after, diff: DIFF_DETAIL }));
+  assert.equal(result.errors.some(e => /^slot_as_attribute: /.test(e)), false);
+});
+
+test('slotIsExercised só aceita a TAG — era ela que cegava todos os gates', () => {
+  assert.equal(slotIsExercised('<x><Detail>y</Detail></x>', 'Detail'), true);
+  assert.equal(slotIsExercised('<x><div slot="Detail">y</div></x>', 'Detail'), false);
 });

@@ -164,14 +164,26 @@ export function renderSurface(surface: ImSurface): string {
 }
 
 /**
- * Is a slot really USED in a page, as `slot="X"` or as an `<X>` element?
+ * Is a slot really USED in a page — as the `<X>` NAMED TAG this library actually reads?
  *
  * In helpers/ because i5-playground and i6-index both ask it — of the playground page and of the
  * group index card. The two must agree: 2026-08-05 was the playground being fixed and the index
  * being left behind, and a second, subtly different reading of "exercised" is how that recurs.
  *
  * A mere mention in a comment does not count.
+ *
+ * ⚠️ IT USED TO ACCEPT `slot="X"` TOO, and that was the reason no gate could ever catch the defect of
+ * 2026-08-17: this project has NO Shadow DOM, `moleculeBase.getSlotContent(tag)` is
+ * `querySelector(tag)`, and `<div slot="X">` matches nothing. So the attribute form renders empty —
+ * and this function, which decides whether a page exercises a slot, called it exercised. The wrong
+ * convention was instructed by a prompt, blessed by this function, and pinned by the fixtures of three
+ * gates: anyone fixing the prompt would break the tests and conclude the prompt was right.
+ *
+ * Measured before narrowing it: across the 671 index and playground files of the six projects, the
+ * attribute form appears in exactly TWO — the two molecules the generator had just produced — against
+ * 22.903 named-tag uses. So this is strictly a defect detector, not a behaviour change for anything
+ * that exists.
  */
 export function slotIsExercised(html: string, slot: string): boolean {
-  return new RegExp(`slot\\s*=\\s*['"]${slot}['"]|<${slot}[\\s>/]`, 'i').test(html);
+  return new RegExp(`<${slot}[\\s>/]`, 'i').test(html);
 }

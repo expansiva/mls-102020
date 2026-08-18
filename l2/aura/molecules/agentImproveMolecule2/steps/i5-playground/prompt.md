@@ -9,7 +9,7 @@ Return **targeted edits**, the same way the molecule itself was edited: quote th
 
 {{surfaceDiff}}
 
-Cover **every added slot** with at least one example that really uses it — `<div slot="Detail">…</div>` inside the molecule instance, or the `<Detail>…</Detail>` element form. A slot the page does not exercise is a slot nobody can see working, which is the exact defect this step exists to prevent.
+Cover **every added slot** with at least one example that really uses it — `<Detail>…</Detail>` inside the molecule instance — a NAMED TAG, never `slot="Detail"`: this project has no Shadow DOM, the molecule reads slots by tag name, and the attribute form renders empty. The `<Detail>…</Detail>` element form. A slot the page does not exercise is a slot nobody can see working, which is the exact defect this step exists to prevent.
 
 Remove or repoint any binding to a property the molecule no longer has: it renders empty.
 

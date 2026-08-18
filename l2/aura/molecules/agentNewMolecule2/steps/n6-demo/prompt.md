@@ -32,7 +32,9 @@ For every example:
 
 A binding whose key no example declares renders EMPTY, and a state name in any other shape is silently dropped — a deterministic gate rejects both.
 
-Slot content goes in the markup (`<div slot="Label">Revenue</div>`), not in the state.
+Slot content goes in the markup as a **NAMED TAG** — `<Label>Revenue</Label>` — never in the state, and
+**never** as an attribute. This project has no Shadow DOM: a molecule reads its slots by tag name, so
+`<div slot="Label">` renders EMPTY. A deterministic gate rejects it.
 
 ## The molecule `.ts` (its real property and slot surface)
 

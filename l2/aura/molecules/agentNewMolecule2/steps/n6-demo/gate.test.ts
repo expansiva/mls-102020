@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runNm2DemoGate } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n6-demo/gate.js';
+import { findAttributeSlots, runNm2DemoGate } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n6-demo/gate.js';
 import { MoleculePlan } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import { type MoleculeDemoExample } from '/_102020_/l2/aura/molecules/shared/moleculeTemplates.js';
@@ -56,7 +56,7 @@ function page(options: { keys?: string[]; background?: string } = {}): string {
   const keys = options.keys || KEYS;
   const cards = keys.map(key => `      <div class="p-4">
         <${PLAN.tag} loading="{{playground.${key}.loading}}">
-          <div slot="Label">Revenue</div>
+          <Label>Revenue</Label>
         </${PLAN.tag}>
       </div>`).join('\n');
   const container = options.background ? `<div style="${options.background}" class="min-h-screen">` : '<div class="bg-white dark:bg-slate-900 min-h-screen">';
@@ -162,4 +162,14 @@ test('a binding with no matching example state is rejected — it would render e
   const issues = gate(withOrphan, EXAMPLES);
   assert.ok(issues.some(issue => issue.code === 'state_binding'));
   assert.ok(issues.find(issue => issue.code === 'state_binding')?.message.includes('playground.ghost'));
+});
+
+// ---- slot como atributo é inerte nesta biblioteca (2026-08-18) ----
+
+test('SLOT COMO ATRIBUTO é recusado — sem Shadow DOM, `<div slot="Label">` renderiza vazio', () => {
+  // Medido: este prompt DAVA `<div slot="Label">Revenue</div>` como exemplo, e duas moléculas geradas em
+  // dias e grupos diferentes saíram com 68 ocorrências dele e zero tags nomeadas. A classe base lê por
+  // tag: getSlotContent(tag) é querySelector(tag).
+  assert.deepEqual(findAttributeSlots('<x><div slot="Label">a</div><div slot="Icon">b</div></x>'), ['Label', 'Icon']);
+  assert.deepEqual(findAttributeSlots('<x><Label>a</Label></x>'), []);
 });

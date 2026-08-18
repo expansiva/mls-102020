@@ -20,6 +20,30 @@ import { NmGateIssue } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps
 import { PLAYGROUND_STATE_PLACEHOLDER, type MoleculeDemoExample } from '/_102020_/l2/aura/molecules/shared/moleculeTemplates.js';
 
 export const NM_MIN_DEMO_EXAMPLES = 6;
+
+/**
+ * Slot content written as an ATTRIBUTE — `<div slot="Label">` — which does nothing in this library.
+ *
+ * ⚠️ MEASURED 2026-08-17/18. This project has **no Shadow DOM**, so a molecule reads its slots BY TAG
+ * NAME: `moleculeBase.getSlotContent(tag)` is `getSnapshot().querySelector(tag)`, and the mutation
+ * observer compares `tagName` against `slotTags`. `<div slot="Label">` matches neither. It renders, it
+ * does not crash, and the slot is simply empty.
+ *
+ * It shipped because the wrong form was INSTRUCTED: this step's prompt gave
+ * `<div slot="Label">Revenue</div>` as the example, and two molecules generated on two different days,
+ * in two different groups, came out with 68 occurrences of it and zero named tags. Across the 671 index
+ * and playground files of the six projects, those two are the ONLY ones — the other 22.903 slot uses
+ * are named tags.
+ *
+ * `slot="name"` is standard practice for web components WITH Shadow DOM, which is exactly why it leaks
+ * in. Same shape as the `nothing` sentinel that reappeared in five generations of code: a platform
+ * habit arriving in a library that does not use it.
+ */
+export function findAttributeSlots(html: string): string[] {
+  const names = new Set<string>();
+  for (const m of (html || '').matchAll(/slot\s*=\s*['"]([A-Za-z][\w-]*)['"]/g)) names.add(m[1]);
+  return [...names];
+}
 export const NM_STATE_WIDGET = 'widget-playground-state-102020';
 
 export function runNm2DemoGate(
@@ -44,6 +68,15 @@ export function runNm2DemoGate(
       message: 'the demo must be a FRAGMENT, not a full HTML document — remove <!DOCTYPE>/<html>/<head>/<body>/<style>/<link>',
     });
   }
+  // Slot content by attribute is inert here — see findAttributeSlots. Named tags or nothing.
+  const attributeSlots = findAttributeSlots(content);
+  if (attributeSlots.length) {
+    issues.push({
+      code: 'slot_as_attribute',
+      message: `slot content is written as an attribute (${attributeSlots.map(n => `slot="${n}"`).join(', ')}) and this library has NO Shadow DOM — a molecule reads its slots by TAG NAME, so those render empty. Write <${attributeSlots[0]}>…</${attributeSlots[0]}> instead`,
+    });
+  }
+
   if (/<script[\s>]/i.test(content)) {
     issues.push({ code: 'script', message: 'the demo page must not contain <script> tags' });
   }
