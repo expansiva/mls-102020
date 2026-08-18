@@ -138,7 +138,7 @@ void test('the two systemic guards never count each other', () => {
   assert.equal(countSharedItems(mixed), 3);
   assert.equal(countPage11Items(mixed), 3);
   // A defs is never an output of this phase and must not be counted as a shared item.
-  assert.equal(countSharedItems([{ outputPath: '_102046_/l2/buildFlowFsm47/web/shared/a.defs.ts', errors: ['boom'] }]), 0);
+  assert.equal(countSharedItems([{ outputPath: '_102046_/l2/buildFlowFsm47/web/shared/a.defs.ts' }]), 0);
 });
 
 // The contract model is disposed as soon as the contract phase compiled it, so a shared that imports

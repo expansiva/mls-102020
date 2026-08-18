@@ -2,25 +2,27 @@
 
 # collab.codes platform baseline
 
-These capabilities are already provided by the collab.codes platform. They must not become a module,
-entity, workflow, operation, MDM, or horizontal capability recreated by agentNewSolution.
+Canonical agent-development references:
 
-## Do Not Recreate
+- `mls-base/skills/collab_messages.md`
+- `mls-base/skills/agentsBestPractices.md`
+- `mls-base/skills/modelTypes.md`
 
-- Authentication, authorization, and RBAC: login, sessions, OAuth2, users, roles, and permissions.
-- i18n: UI multi-language support. Declare language when needed, but do not model translations.
-- Multi-tenant isolation: tenant isolation already exists.
-- Business context: the active company/unit comes from runtime context. Model companies only when
-  the domain actually manages companies as customers, suppliers, branches, or partners.
-- File/media storage: file upload and delivery are platform capabilities.
-- LLM/AI proxy: LLM calls go through the platform proxy.
-- Messaging/task runtime: threads, messages, tasks, and agent runtime are the platform itself.
-- Monitoring, auditing, and basic operational metrics.
+The following capabilities are supplied by the platform. Do not create module entities, journeys,
+operations or rules that rebuild them:
 
-## How To Treat
+- authentication, sessions, OAuth2, users, roles and base RBAC;
+- tenant isolation and active organization/business context;
+- frontend internationalization infrastructure;
+- file/media storage and delivery;
+- the LLM proxy;
+- messages, tasks and the agent runtime;
+- monitoring, audit plumbing and basic operational telemetry.
 
-- Mention as a platform assumption or reference.
-- Do not create artifacts to rebuild these capabilities.
-- Horizontals to build are only domain capabilities that the platform does not provide.
+The 102034 runtime also supplies shared MDM persistence, relationship traversal, bulk hydration,
+database monitoring and audit infrastructure. Modules define their own business master-record types
+and may write organization-scoped MDM records through that platform; they must not recreate the MDM
+engine or its common tables. Transactional records remain in the project-namespaced module database.
 
-The model must stay focused on the user's domain.
+Mention them as assumptions or external references only when relevant. The generated module must stay
+focused on the user's business domain.

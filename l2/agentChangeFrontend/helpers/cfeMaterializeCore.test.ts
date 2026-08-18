@@ -58,6 +58,38 @@ test('a module-level helper that IS called is legitimate', () => {
   assert.deepEqual(collectPageTemplateHygieneIssues(BROKEN_NAMED_HELPER), []);
 });
 
+// Verbatim shape of page31/declineChangeOrder.ts of the buildFlowFsm run: the render kept
+// `const msg = this.msg` (which the skill teaches) but the i18n block and the getter that define `msg`
+// were deleted, on the assumption that the shared base class provides it. It does not.
+test('a page that uses this.msg without defining the getter is caught before the compiler', () => {
+  const code = [
+    "import { html, nothing } from 'lit';",
+    "import { BaseX } from '/_102046_/l2/m/web/shared/x.js';",
+    'export class P extends BaseX {',
+    '  render() { const msg = this.msg; return html`<p>${msg[\'section.title\']}</p>`; }',
+    '}',
+  ].join('\n');
+  const issues = collectPageTemplateHygieneIssues(code);
+  assert.equal(issues.length, 1, issues.join(' | '));
+  assert.match(issues[0], /defines no `get msg\(\)`/u);
+  assert.match(issues[0], /shared base class does NOT provide `msg`/u);
+
+  // An ORGANISM is a plain function with no `this`, and this gate runs on organisms too: the remedy has
+  // to point at its own catalog, not at a getter it cannot have.
+  const organism = [
+    "import { html } from 'lit';",
+    'export function renderQueue(host: Host) { const msg = this.msg; return html`<p>${msg.title}</p>`; }',
+  ].join('\n');
+  const organismIssues = collectPageTemplateHygieneIssues(organism);
+  assert.equal(organismIssues.length, 1, organismIssues.join(' | '));
+  assert.match(organismIssues[0], /render FUNCTION, which has no `this`/u);
+  assert.match(organismIssues[0], /host\.getMessageKey/u);
+
+  // The same file WITH its getter is the normal, correct page — silence.
+  const withGetter = code.replace('  render()', '  protected get msg(): M { return pageFallback; }\n  render()');
+  assert.deepEqual(collectPageTemplateHygieneIssues(withGetter), []);
+});
+
 test('a const arrow helper passed by name is caught too — it used to be invisible', () => {
   const code = [
     "import { html, nothing } from 'lit';",

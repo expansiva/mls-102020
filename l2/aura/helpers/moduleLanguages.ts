@@ -19,7 +19,7 @@ export function parseDefsSource(content: string): IParsedDefs | null {
     const exportMatch = content.match(/export\s+const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=/);
     const start = content.indexOf('= ');
     if (!exportMatch || start === -1) return null;
-    // Two emission dialects: `} as const;` and `} as const satisfies <Artifact>;` (agentNewSolution4,
+    // Two emission dialects: `} as const;` and `} as const satisfies <Artifact>;` (agentNewSolution,
     // which types every artifact). The type assertion is never part of the value. The first cut wins
     // for a file that appends a second export; the last is the fallback.
     const first = content.indexOf(' as const', start);

@@ -103,6 +103,8 @@ this experience needs with short keys too. Repeat EVERY key in each locale const
 or misspelled key does not compile.
 Access messages ONLY as typed member access on this.msg using the exact key string. Read it once per
 render function - const msg = this.msg; - then use msg['key'].
+this.msg resolves to the getter THIS file defines below the i18n block - the base class you extend does
+NOT provide msg, so deleting the block (as four pages of a real run did) is a TS2339 with no text at all.
 NEVER cast this.msg and NEVER wrap it in a getMsg/t helper.
 NEVER write a visible literal into the template: it is untranslatable and it compiles clean, which is how
 a whole page once shipped in English. If you need a word, add a key.

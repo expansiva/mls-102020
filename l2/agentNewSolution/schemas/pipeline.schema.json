@@ -1,0 +1,160 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewSolution/pipeline/2026-08-06-v5",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "flowId", "flowVersion", "moduleName", "sourcePrompt", "presentation", "status", "steps", "nextStep", "createdAt", "updatedAt"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "2026-08-06-ns4-pipeline-v5" },
+    "flowId": { "type": "string", "const": "agentNewSolution" },
+    "flowVersion": { "type": "string", "const": "2026-08-10-ns4-flow-v20" },
+    "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "sourcePrompt": { "type": "string", "minLength": 1 },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["userLanguage", "stepTitles"],
+      "properties": {
+        "userLanguage": { "type": "string", "minLength": 2 },
+        "stepTitles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["e1-clarification", "e1-compile", "e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors", "e7-realization", "e8-workspaces", "e9-navigation-compiler", "e10-validation"],
+          "properties": {
+            "e1-clarification": { "type": "string", "minLength": 1 },
+            "e1-compile": { "type": "string", "minLength": 1 },
+            "e2-journeys": { "type": "string", "minLength": 1 },
+            "e3-access-matrix": { "type": "string", "minLength": 1 },
+            "e4-ontology": { "type": "string", "minLength": 1 },
+            "e5-rules": { "type": "string", "minLength": 1 },
+            "e6-behaviors": { "type": "string", "minLength": 1 },
+            "e7-realization": { "type": "string", "minLength": 1 },
+            "e8-workspaces": { "type": "string", "minLength": 1 },
+            "e9-navigation-compiler": { "type": "string", "minLength": 1 },
+            "e10-validation": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "status": { "type": "string", "enum": ["inProgress", "complete", "failed"] },
+    "steps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["e1"],
+      "properties": {
+        "e1": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "updatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["running", "approved", "failed"] },
+            "artifactPath": { "type": "string" },
+            "approvedBy": { "type": "string", "enum": ["human", "auto"] },
+            "approvedAt": { "type": "string" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "failedAt": { "type": "string", "minLength": 10 },
+            "updatedAt": { "type": "string", "minLength": 10 }
+          }
+        },
+        "e2": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reviewRound", "updatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["running", "waitingHuman", "approved", "failed"] },
+            "reviewRound": { "type": "integer", "minimum": 1 },
+            "draftPath": { "type": "string" },
+            "artifactPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "approvedBy": { "type": "string", "enum": ["human", "auto"] },
+            "approvedAt": { "type": "string" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "failedAt": { "type": "string", "minLength": 10 },
+            "updatedAt": { "type": "string", "minLength": 10 }
+          }
+        },
+        "e3": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reviewRound", "updatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["running", "waitingHuman", "approved", "failed"] },
+            "reviewRound": { "type": "integer", "minimum": 1 },
+            "draftPath": { "type": "string" },
+            "artifactPath": { "type": "string" },
+            "approvedBy": { "type": "string", "enum": ["human", "auto"] },
+            "approvedAt": { "type": "string" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "failedAt": { "type": "string", "minLength": 10 },
+            "updatedAt": { "type": "string", "minLength": 10 }
+          }
+        },
+        "e4": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reviewRound", "solutionMode", "updatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["running", "waitingHuman", "approved", "failed"] },
+            "reviewRound": { "type": "integer", "minimum": 1 },
+            "solutionMode": { "type": "string", "const": "new" },
+            "draftPath": { "type": "string" },
+            "artifactPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "approvedBy": { "type": "string", "enum": ["human", "auto"] },
+            "approvedAt": { "type": "string" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "failedAt": { "type": "string", "minLength": 10 },
+            "updatedAt": { "type": "string", "minLength": 10 }
+          }
+        },
+        "e5": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reviewRound", "updatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["running", "waitingHuman", "approved", "failed"] },
+            "reviewRound": { "type": "integer", "minimum": 1 },
+            "draftPath": { "type": "string" },
+            "artifactPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "approvedBy": { "type": "string", "enum": ["human", "auto"] },
+            "approvedAt": { "type": "string" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "failedAt": { "type": "string", "minLength": 10 },
+            "updatedAt": { "type": "string", "minLength": 10 }
+          }
+        },
+        "e6": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reviewRound", "updatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["running", "waitingHuman", "approved", "failed"] },
+            "reviewRound": { "type": "integer", "minimum": 1 },
+            "draftPath": { "type": "string" },
+            "artifactPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "approvedBy": { "type": "string", "enum": ["human", "auto"] },
+            "approvedAt": { "type": "string" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "failedAt": { "type": "string", "minLength": 10 },
+            "updatedAt": { "type": "string", "minLength": 10 }
+          }
+        },
+        "e7": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "updatedAt"],
+          "properties": {
+            "status": { "type": "string", "enum": ["running", "approved", "failed"] },
+            "planPath": { "type": "string" },
+            "artifactPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "approvedAt": { "type": "string" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "failedAt": { "type": "string", "minLength": 10 },
+            "updatedAt": { "type": "string", "minLength": 10 }
+          }
+        }
+      }
+    },
+    "nextStep": { "type": "string", "enum": ["e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors", "e7-realization", "e8-workspaces"] },
+    "createdAt": { "type": "string", "minLength": 10 },
+    "updatedAt": { "type": "string", "minLength": 10 }
+  }
+}

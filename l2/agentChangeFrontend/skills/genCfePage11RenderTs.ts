@@ -119,6 +119,8 @@ Then repeat EVERY key in each other locale const, translated, taking shared text
 s_<locale>. A missing or misspelled key does not compile, so it cannot ship broken.
 Access messages ONLY as typed member access on this.msg using the exact key string. Read it once at the
 top of each render function - const msg = this.msg; - then use msg['key'].
+this.msg resolves to the getter THIS file defines below the i18n block - the base class you extend does
+NOT provide msg, so deleting the block (as four pages of a real run did) is a TS2339 with no text at all.
 NEVER cast this.msg (no "as Record<string, string>", no "as any") and NEVER wrap it in a helper such as
 getMsg/t/translate. Those erase key typing and let broken keys ship silently as empty strings.
 NEVER write a visible literal into the template: a hardcoded string is untranslatable and it compiles

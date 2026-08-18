@@ -1,0 +1,43 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewSolution/e4-relationship-bindings/2026-08-09-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["planId", "moduleName", "reviewRound", "bindings"],
+  "properties": {
+    "planId": { "type": "string", "const": "e4-relationship-bindings" },
+    "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "reviewRound": { "type": "integer", "minimum": 1 },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["relationshipId", "realization"],
+        "properties": {
+          "relationshipId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+          "realization": {
+            "type": "object", "additionalProperties": false,
+            "required": ["kind", "ownerEntity", "from", "to", "description"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["fieldReference", "fieldCollection", "mdmRelationship", "derived", "externalReference", "embedded"] },
+              "ownerEntity": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
+              "from": { "$ref": "#/$defs/endpoint" },
+              "to": { "$ref": "#/$defs/endpoint" },
+              "description": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "endpoint": {
+      "type": "object", "additionalProperties": false,
+      "required": ["entityId", "fieldIds"],
+      "properties": {
+        "entityId": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
+        "fieldIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" } }
+      }
+    }
+  }
+}

@@ -587,7 +587,7 @@ test('mutation feedback keys are backfilled for every command, never for a query
   assert.equal(i18n['action.createProjectCmd.success'], 'Projeto criado');
 });
 
-// ── agentNewSolution4 dialect ────────────────────────────────────────────────
+// ── agentNewSolution dialect ────────────────────────────────────────────────
 // The generator now types every artifact (`as const satisfies`), tracks frontend work by PAGE
 // (workspace) and WIRE (contract) instead of by operation, keeps the audience in an access matrix,
 // declares the default language in `localization`, and ships entity lifecycles under workflows/.
@@ -598,7 +598,7 @@ function ns4Defs(exportName: string, artifact: string, body: unknown): string {
   return [
     `/// <mls fileReference="_${PROJECT}_/l4/x.defs.ts" enhancement="_blank"/>`,
     '',
-    `import type { ${artifact} } from '/_102020_/l2/agentNewSolution4/types.js';`,
+    `import type { ${artifact} } from '/_102020_/l2/agentNewSolution/types.js';`,
     '',
     `export const ${exportName} = ${JSON.stringify(body, null, 2)} as const satisfies ${artifact};`,
     '',

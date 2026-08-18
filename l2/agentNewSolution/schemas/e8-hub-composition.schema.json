@@ -1,0 +1,35 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewSolution/e8-hub-composition/2026-08-14-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["workspaceId", "title", "tileOrder", "primaryActionIds", "labels", "menuGroups"],
+  "properties": {
+    "workspaceId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "title": { "type": "string", "minLength": 1 },
+    "tileOrder": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "primaryActionIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["itemId", "label"],
+        "properties": { "itemId": { "type": "string", "minLength": 1 }, "label": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "menuGroups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["groupId", "label", "itemIds"],
+        "properties": {
+          "groupId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+          "label": { "type": "string", "minLength": 1 },
+          "itemIds": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    }
+  }
+}

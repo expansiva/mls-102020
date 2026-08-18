@@ -1,0 +1,157 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewSolution/module/2026-08-06-v4",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "presentation", "module", "designContext", "reviewPolicy", "solutionStrategy", "businessScope", "localization", "declaredConstraints", "specStatus"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "2026-08-06-ns4-module-v4" },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["userLanguage", "stepTitles"],
+      "properties": {
+        "userLanguage": { "type": "string", "minLength": 2 },
+        "stepTitles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["e1-clarification", "e1-compile", "e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors", "e7-realization", "e8-workspaces", "e9-navigation-compiler", "e10-validation"],
+          "properties": {
+            "e1-clarification": { "type": "string", "minLength": 1 },
+            "e1-compile": { "type": "string", "minLength": 1 },
+            "e2-journeys": { "type": "string", "minLength": 1 },
+            "e3-access-matrix": { "type": "string", "minLength": 1 },
+            "e4-ontology": { "type": "string", "minLength": 1 },
+            "e5-rules": { "type": "string", "minLength": 1 },
+            "e6-behaviors": { "type": "string", "minLength": 1 },
+            "e7-realization": { "type": "string", "minLength": 1 },
+            "e8-workspaces": { "type": "string", "minLength": 1 },
+            "e9-navigation-compiler": { "type": "string", "minLength": 1 },
+            "e10-validation": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["moduleName", "title", "purpose", "languages"],
+      "properties": {
+        "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 60 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "purpose": { "type": "string", "minLength": 1 },
+        "languages": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z]{2,3}(?:-(?:[A-Z]{2}|[A-Z][a-z]{3}|[A-Za-z0-9]{2,8}))*$" }
+        }
+      }
+    },
+    "designContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["initialPrompt", "clarification"],
+      "properties": {
+        "initialPrompt": { "type": "string", "minLength": 1 },
+        "clarification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mainActors", "mainGoal", "boundaries"],
+          "properties": {
+            "mainActors": { "type": "string" },
+            "mainGoal": { "type": "string", "minLength": 1 },
+            "boundaries": { "type": "string" }
+          }
+        }
+      }
+    },
+    "reviewPolicy": {
+      "type": "object", "additionalProperties": false, "required": ["mode"],
+      "properties": { "mode": { "type": "string", "enum": ["guided", "smart", "automatic"] } }
+    },
+    "solutionStrategy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "rationale", "databaseChangePolicy"],
+      "properties": {
+        "mode": { "type": "string", "enum": ["newSolution", "modernizePreserveDatabase", "modernizeEvolveDatabase", "replaceAndMigrateData"] },
+        "rationale": { "type": "string", "minLength": 1 },
+        "databaseChangePolicy": { "type": "string", "enum": ["new", "forbidden", "additiveControlled", "replacement"] },
+        "modernization": {
+          "type": "object", "additionalProperties": false,
+          "required": ["sourceSystemName", "schemaAvailability"],
+          "properties": {
+            "sourceSystemName": { "type": "string", "minLength": 1 },
+            "sourceTechnology": { "type": "string" }, "databaseEngine": { "type": "string" },
+            "databaseVersion": { "type": "string" },
+            "schemaAvailability": { "type": "string", "enum": ["uploadAtE4", "metadataAtE4", "notAvailableYet"] },
+            "notes": { "type": "string" }
+          }
+        }
+      }
+    },
+    "businessScope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mainGoal", "actors", "expectedOutcomes", "inScope", "outOfScope"],
+      "properties": {
+        "mainGoal": { "type": "string", "minLength": 1 },
+        "actors": { "type": "array", "minItems": 1, "items": {
+          "type": "object", "additionalProperties": false, "required": ["actorId", "title", "kind", "expectedOutcome"],
+          "properties": { "actorId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" }, "title": { "type": "string", "minLength": 1 }, "kind": { "type": "string", "enum": ["internal", "external", "system"] }, "expectedOutcome": { "type": "string", "minLength": 1 } }
+        } },
+        "expectedOutcomes": { "type": "array", "minItems": 1, "items": {
+          "type": "object", "additionalProperties": false, "required": ["outcomeId", "title", "description"],
+          "properties": { "outcomeId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" }, "title": { "type": "string", "minLength": 1 }, "description": { "type": "string", "minLength": 1 } }
+        } },
+        "inScope": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "outOfScope": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "localization": {
+      "type": "object", "additionalProperties": false, "required": ["productLanguages", "defaultLanguage"],
+      "properties": {
+        "productLanguages": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 2 } },
+        "defaultLanguage": { "type": "string", "minLength": 2 }, "defaultLocale": { "type": "string" },
+        "currency": { "type": "string" }, "timeZone": { "type": "string" }, "primaryMarket": { "type": "string" }
+      }
+    },
+    "declaredConstraints": {
+      "type": "object", "additionalProperties": false, "required": ["mandatoryIntegrations"],
+      "properties": {
+        "mandatoryIntegrations": { "type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["dependencyId", "title", "kind", "reason"],
+          "properties": { "dependencyId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" }, "title": { "type": "string", "minLength": 1 }, "kind": { "type": "string", "enum": ["externalSystem", "platform", "unknown"] }, "reason": { "type": "string", "minLength": 1 } }
+        } },
+        "regulatoryNotes": { "type": "string" }, "criticalNotes": { "type": "string" }
+      }
+    },
+    "specStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["flowId", "flowVersion", "state", "artifactCompleteness", "completedSteps", "nextStep", "updatedAt"],
+      "properties": {
+        "flowId": { "type": "string", "const": "agentNewSolution" },
+        "flowVersion": { "type": "string", "const": "2026-08-10-ns4-flow-v20" },
+        "state": { "type": "string", "const": "inProgress" },
+        "artifactCompleteness": { "type": "string", "const": "partial" },
+        "completedSteps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stepId", "status", "approvedBy", "approvedAt"],
+            "properties": {
+              "stepId": { "type": "string", "enum": ["e1", "e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors", "e7-realization"] },
+              "status": { "type": "string", "const": "approved" },
+              "approvedBy": { "type": "string", "enum": ["human", "auto"] },
+              "approvedAt": { "type": "string", "minLength": 10 }
+            }
+          }
+        },
+        "nextStep": { "type": "string", "enum": ["e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors", "e7-realization", "e8-workspaces"] },
+        "updatedAt": { "type": "string", "minLength": 10 }
+      }
+    }
+  }
+}

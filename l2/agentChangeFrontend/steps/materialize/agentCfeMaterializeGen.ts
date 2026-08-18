@@ -35,6 +35,7 @@ import {
   consumeMaterializeStudioMessages,
   extractToolCallArgs,
   getCompiledDtsByMlsPath,
+  releaseBorrowedModelScope,
   getContentByMlsPath,
   getFileModifiedByMlsPath,
   parseMlsPath,
@@ -170,6 +171,13 @@ async function materializeSharedDeterministic(
     }
 
     await persistSharedDtsArtifact(pipelineItem.outputPath);
+    // ONLY on the success path. The contract preloaded above is this item's own (one per shared) and has
+    // no reader once the compiles are done — but a `return null` above falls through to the LLM path IN
+    // THIS SAME HOOK, whose compile (afterPromptStep) resolves the shared against that very contract
+    // model and has no preload of its own. Releasing on a bail exit would recreate the false TS2792 that
+    // T2 fixed; those borrows go back at the verify boundary instead. Queued, not disposed —
+    // `activeCompiles` still decides.
+    releaseBorrowedModelScope();
     const studioDiagnostics = consumeMaterializeStudioMessages();
     const trace = `deterministic scaffold: ${scaffold.code.length}b, no LLM call${typecheckPath ? ' + typecheck test' : ''}`;
     return [mkStatus(context, parentStep, step, hookSequential, 'completed', studioDiagnostics.length ? `${trace}. ${formatStudioDiagnostics(studioDiagnostics)}` : trace, 'input_output')];

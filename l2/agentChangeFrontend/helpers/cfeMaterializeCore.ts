@@ -248,7 +248,7 @@ function isBoundToEditableControl(pageCode: string, property: string): boolean {
 /**
  * Marks an issue no page rewrite can fix: the l4 workspace does not offer the lookup query the
  * picker would consume. The materialization phase reports these as warnings so the run finishes and
- * the gap is fixed where it lives (agentNewSolution4 E8 — see todo/newSolution4/bug_from_backend.md).
+ * the gap is fixed where it lives (agentNewSolution E8 — see todo/newSolution4/bug_from_backend.md).
  */
 export const L4_LOOKUP_GAP = 'L4-LOOKUP-GAP' as const;
 
@@ -441,6 +441,22 @@ export function collectPageTemplateHygieneIssues(pageCode: string): string[] {
   // deleted but the import was never added).
   if (!litImportsNothing && /[:?]\s*nothing\s*(?:\}|\))/u.test(pageCode) && !/^function\s+nothing\b/mu.test(pageCode)) {
     issues.push("template uses `nothing` for an empty branch but it is not imported: add `nothing` to the import from 'lit'");
+  }
+
+  // `this.msg` with NO getter in this file. The skeleton gives every page its own i18n block plus
+  // `protected get msg()`, and the skill teaches `const msg = this.msg` — correct, but only while the
+  // block is there. Four pages of the buildFlowFsm run (page11 forwardChangeOrderForClientApproval and
+  // recordProjectMaterialUsage, page31 declineChangeOrder and monitorDailyProjectRecords) deleted the
+  // catalog and kept the access, assuming the shared base class provides `msg`; it does not, so it is a
+  // TS2339 and the shared keys they reference are unreachable. Caught here it costs no round: it is
+  // named in the same loop that saved the file, instead of arriving as a compiler diagnostic that says
+  // nothing about the cause.
+  if (/\bthis\.msg\b/u.test(pageCode) && !/\bget\s+msg\s*\(/u.test(pageCode)) {
+    // The remedy differs by artifact, and this gate also runs on organisms: an organism is a plain
+    // function taking `host`, so telling it to add a getter would send the repair the wrong way.
+    issues.push(/^export\s+class\s/mu.test(pageCode)
+      ? '`this.msg` is used but this file defines no `get msg()`: the i18n block of the skeleton (/// **collab_i18n_start** … the messages consts … `protected get msg()`) was deleted — the shared base class does NOT provide `msg`. Restore the block with the keys this render references.'
+      : '`this.msg` is used in a render FUNCTION, which has no `this`: an organism reads its own catalog — `const msg = o<N>Messages[host.getMessageKey(o<N>Messages)] || o<N>Fallback` — and takes everything else from `host`.');
   }
   return issues;
 }

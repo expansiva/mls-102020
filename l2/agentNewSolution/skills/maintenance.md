@@ -1,36 +1,24 @@
 <!-- mls fileReference="_102020_/l2/agentNewSolution/skills/maintenance.md" enhancement="_blank" -->
 
-# agentNewSolution Maintenance Protocol
+# agentNewSolution maintenance protocol
 
-Core rule: every maintenance change must belong to one pipeline step. If the fix needs a change under
-`helpers/`, stop and request human review.
+Before changing orchestration, read the canonical references in `mls-base/skills/`, especially
+`collab_messages.md` and `agentsBestPractices.md`.
 
-## Required Cycle
+Rules:
 
-1. Reproduce the failure with a fixture.
-2. Locate the owning step by the failed artifact or gate.
-3. Change only the owning step folder, unless the spec requires a contract change.
-4. If schema or gate behavior changes, bump the schema version and update fixtures.
-5. Run the touched gate/helper tests.
-6. Run replay or structural fixture comparison for the step.
-7. Run `tsc -p tsconfig.json --noEmit` from `mls-base`.
-8. Add one line to the step `CHANGELOG.md` with what changed and why.
-
-## Boundaries
-
-- Prompts live in `.md`; prompt edits should not touch TypeScript.
-- Gate and schema are contracts; do not loosen a gate to hide an upstream bug.
-- Widgets never write step artifacts. Every artifact change goes through agent + gate.
-- No local examples or point fixes embedded in prompts or gates.
-- No imports from `agentNewSolution` or `agentNewSolution2`.
-- No `console`; use trace and objective task errors.
-
-## Stop Conditions
-
-Stop and request human review when:
-
-- The change alters an artifact consumed by another step.
-- The fix needs a generic helper change.
-- The failure suggests drift between `flow.json` and code.
-- The test would depend on literal LLM prose instead of structural invariants.
-
+1. Change `docs/flow.json` before changing runtime behavior.
+2. A step owns its prompt, gate, tests, readme and changelog under `steps/<step>/`.
+3. Shared helpers contain only cross-step mechanics. They do not contain E1-specific policy.
+4. Prompts live in Markdown, never inline in TypeScript.
+5. Every implemented compile phase writes a permanent L4 artifact and updates the disk pipeline;
+   clarification and result anchors only coordinate those phases.
+6. A gate is deterministic. Do not loosen it to absorb a model error.
+7. Never overwrite an existing module unless its pipeline identifies this flow and the run is a
+   legitimate resume.
+8. Console output is not a durable trace or a substitute for a failed step status.
+9. Version schemas and update fixtures/tests together.
+10. Run the touched tests and `tsc -p tsconfig.frontend.json --noEmit` before delivery.
+11. Approved pipeline states are monotonic; a late or duplicate callback must never regress them.
+12. Immediate successors receive a bounded approved result handoff and use permanent L4 artifacts
+    for resume. Draft files are never approval evidence.

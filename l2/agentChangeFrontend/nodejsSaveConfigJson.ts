@@ -58,7 +58,7 @@ function readDefsData(file: string): Record<string, unknown> | null {
   try { content = fs.readFileSync(file, 'utf8'); } catch { return null; }
   const start = content.indexOf('= {');
   if (start === -1) return null;
-  // `} as const;` and `} as const satisfies <Artifact>;` (agentNewSolution4) both end the value at
+  // `} as const;` and `} as const satisfies <Artifact>;` (agentNewSolution) both end the value at
   // ' as const'; the brace fallback keeps untyped defs readable.
   const asConst = content.indexOf(' as const', start);
   const end = asConst !== -1 ? asConst : content.lastIndexOf('};') + 1;
@@ -394,7 +394,7 @@ function main(): void {
   mod.designSystems = moduleDesignSystems;
 
   const labels = customize.navigationLabels || {};
-  // Ownership of `modules[].navigation`: THIS agent. agentNewSolution4 seeds a menu at e10 for every
+  // Ownership of `modules[].navigation`: THIS agent. agentNewSolution seeds a menu at e10 for every
   // workspace it compiled, which is the right preview but points at pages that do not exist yet; the
   // menu here is rebuilt from the pages that actually materialized, so it never shows a dead link.
   // F5: menu derived from workspaces + siteMap/actors. `actors` lets the shell filter the menu by the

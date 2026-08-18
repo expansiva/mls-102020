@@ -34,6 +34,7 @@ import {
 import {
   compileMlsPathAndGetErrors,
   getCompiledDtsByMlsPath,
+  releaseBorrowedModelScope,
   getContentByMlsPath,
   type GenStepArgs,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
@@ -128,7 +129,26 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 // compile. Broken items get one repair round: a parallel fan-out of agentCfeMaterializeGen slots
 // whose args carry only {planId, defPath, attempt} — the gen agent recomputes the compiler
 // errors from disk (attempt >= 2) so no error text is persisted in step prompts.
+/**
+ * The verify is the phase boundary where the borrowed Monaco models go back.
+ *
+ * Every `verifyItem` compiles a file and preloads its dependencies, and each of those creates a model
+ * that nothing used to release — hundreds per run of a 34-workspace module, until Monaco hit its 200
+ * listener ceiling and buried the real errors. The release is here, once, around EVERY exit of the
+ * verify (there are seven: clean, two systemic guards, budget exhausted, split, repair round, catch)
+ * instead of inside `verifyItem`, so a file that is an import of the next item is never disposed while
+ * that compile is in flight. The dispose itself still waits for `activeCompiles === 0`.
+ */
 async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args: MaterializeVerifyArgs): Promise<mls.msg.AgentIntent[]> {
+  try {
+    return await runVerifyItems(context, parentStep, step, hookSequential, args);
+  } finally {
+    const released = releaseBorrowedModelScope();
+    if (released) console.info(`[agentCfeMaterializePhase] verify released ${released} borrowed monaco model(s)`);
+  }
+}
+
+async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args: MaterializeVerifyArgs): Promise<mls.msg.AgentIntent[]> {
   const checkedItems: BrokenItem[] = [];
   for (const item of args.items) {
     const checked = await verifyItem(item);

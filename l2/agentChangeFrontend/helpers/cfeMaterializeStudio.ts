@@ -139,6 +139,23 @@ let activeCompiles = 0;
 const pendingRelease: BorrowedModel[] = [];
 
 /**
+ * Models the VERIFY/PRELOAD path created, keyed by the editor key so borrowing the same file twice is
+ * queued once.
+ *
+ * `saveGeneratedTs` releases the model it created in its own `finally`, but `compileAndGetErrors` and
+ * `getCompiledDtsByMlsPath` also reach `getOrCreateModel`, and those creations were never released: a
+ * run of a 34-workspace module verifies 34 shared + 102 pages + 34 tests and preloads a contract per
+ * item, so Monaco reported "potential listener LEAK detected, having 200 listeners already" and the
+ * console stopped being usable for diagnosis.
+ *
+ * Released at a PHASE boundary rather than per item, on purpose: the 102029 runtime contracts a page
+ * preloads for its context are the same for every page of the phase, and disposing them per item would
+ * trade the leak for one full recompile each. The queue still honours `activeCompiles` — a model
+ * disposed mid-compile of a file that imports it is a FALSE error that burns repair budget.
+ */
+const borrowedByScope = new Map<string, BorrowedModel>();
+
+/**
  * Release the Monaco models THIS step created, once no compile is in flight.
  *
  * Without any release the registry only grows — every materialized file leaves a model behind and Monaco
@@ -156,12 +173,32 @@ const pendingRelease: BorrowedModel[] = [];
  */
 function releaseBorrowedModels(borrowed: BorrowedModel[]): void {
   pendingRelease.push(...borrowed);
+  // Whoever releases a borrow owns it: keep the scope from queuing the same model a second time.
+  for (const model of borrowed) {
+    try { borrowedByScope.delete(mls.editor.getKeyModel(model.project, model.shortName, model.folder, model.level)); } catch { /* best effort */ }
+  }
   if (activeCompiles > 0) return;
   for (const model of pendingRelease.splice(0, pendingRelease.length)) {
     // Signature is (project, shortName, folder, releaseMonacoModel, level) — the boolean comes BEFORE
     // the level. `true` disposes the underlying monaco model, which is what holds the listeners.
     try { mls.editor.deleteModels(model.project, model.shortName, model.folder, true, model.level); } catch { /* best effort */ }
   }
+}
+
+/**
+ * Queue every model the verify/preload path borrowed since the last call. Returns how many were queued,
+ * for the caller's trace — the actual dispose still waits for `activeCompiles === 0`.
+ */
+export function releaseBorrowedModelScope(): number {
+  const borrowed = [...borrowedByScope.values()];
+  if (borrowed.length) releaseBorrowedModels(borrowed);
+  borrowedByScope.clear();
+  return borrowed.length;
+}
+
+/** How many borrowed models are waiting for the next scope release (telemetry/tests). */
+export function borrowedModelScopeSize(): number {
+  return borrowedByScope.size;
 }
 
 export async function saveGeneratedTs(
@@ -392,6 +429,10 @@ async function getGeneratedModel(
   const slot = getModelSlot(extension);
   let modelBase = mls.editor.models[editorKey];
   if (modelBase?.[slot]?.model) return modelBase[slot];
+  // OWNERSHIP, decided BEFORE getOrCreateModel can create anything — the same rule saveGeneratedTs
+  // applies: no registry entry at all means the Studio does not have this file open, so a model created
+  // below is ours to release. An entry that already exists belongs to a tab and is never disposed.
+  const owned = !modelBase;
 
   const key = mls.stor.getKeyToFile({ project, level, folder, shortName, extension });
   const file = (mls.stor.files as Record<string, any>)[key];
@@ -399,6 +440,7 @@ async function getGeneratedModel(
 
   const model = await file.getOrCreateModel?.();
   modelBase = mls.editor.models[editorKey];
+  if (owned && modelBase) borrowedByScope.set(editorKey, { project, shortName, folder, level });
   return modelBase?.[slot] ?? model ?? null;
 }
 
