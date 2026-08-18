@@ -10,7 +10,7 @@ export const skill = `
 | Field       | Value                              |
 |-------------|------------------------------------|
 | **Name**    | \`moleculePlaygroundGenerator\`    |
-| **Version** | \`2.6.0\`                          |
+| **Version** | \`2.7.0\`                          |
 
 ---
 
@@ -154,6 +154,17 @@ All elements MUST include \`dark:\` variants so the playground renders correctly
 
 ### 6.2 Demo Card
 
+> ⚠️ **The block below is ONE card, and every example gets the whole of it** — its own \`<demo id>\`, its own
+> \`Properties\` details with one editor widget per bound property, and its own \`HTML\` details pointing at
+> that id. Measured 2026-08-18 over the 153 playground pages of \`mls-102040\`: **153/153** carry the editor
+> widgets for **every** example key they bind. A page where only the first card has its Properties area
+> was produced twice by reading this template as if it described the page instead of the card — the other
+> cards become static screenshots.
+>
+> ⚠️ **Slot content is LITERAL TEXT** — \`<Label>Copy</Label>\`. Bindings resolve on ATTRIBUTES only: a
+> \`{{playground.basic.label}}\` written inside a slot is printed on the screen as that token. Zero of the
+> 196 pages in the three projects do it; a deterministic gate now refuses it.
+
 \`\`\`html
 <div class="bg-white dark:bg-slate-900 min-h-screen">
 <div class="mx-auto p-8 font-sans">
@@ -258,6 +269,8 @@ O widget:
 - [ ] aura--molecules--playground--widget-playground-state-102020 vem ANTES das demos
 - [ ] Cada demo tem namespace próprio
 - [ ] Cada \`<demo>\` tem id único e contém o HTML do componente
+- [ ] **CADA exemplo** tem o cartão completo: \`Properties\` com um widget por propriedade ligada, e \`HTML\` apontando para o seu \`<demo id>\`
+- [ ] Conteúdo de slot é texto literal — nunca \`{{playground...}}\` dentro do slot
 - [ ] string → aura--molecules--playground--widget-playground-state-text-102020
 - [ ] number → aura--molecules--playground--widget-playground-state-number-102020
 - [ ] boolean → aura--molecules--playground--widget-playground-state-boolean-102020
@@ -276,6 +289,7 @@ O widget:
 | 2.2.0   | 2026-04-16 | Added HTML editor widget for live code editing |
 | 2.3.0   | 2026-04-16 | HTML editor uses template element for source code |
 | 2.4.0   | 2026-04-16 | HTML duplicated in demo AND template - demo works independently |
+| 2.7.0   | 2026-08-18 | Every example carries the full card (Properties + HTML details); slot content is literal text, never a binding |
 | 2.5.0   | 2026-04-17 | Added §2 explicit rule: tag name must be copied from @customElement, never derived |
 | 2.6.0   | 2026-04-22 | Added dark mode: dark: variants on all styling elements, page root wrapper, updated Demo Card example and checklist |
 

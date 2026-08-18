@@ -1,5 +1,65 @@
 # CHANGELOG — i5-playground
 
+## 2026-08-18 (noite) — a página melhorou de 2.1KB para 10.2KB e ainda ficou pobre: foi o RETRY
+
+Com o skill de criação injetado, a rota E produziu uma página com os widgets certos e 12 instâncias. Duas
+coisas continuaram erradas, e ambas apareceram na tela.
+
+### 1. `Properties` só no primeiro cartão
+
+| | biblioteca (`ml-button-standard`) | NM2 (`ml-copy-label-button`) | IM2 rota E |
+|---|---|---|---|
+| `<details>` | 12 (6 Properties + 6 HTML) | 12 | **7 (1 + 6)** |
+| chaves com widget de controle | 6/6 | 6/6 | **1/6** |
+
+**Veio do retry.** A tentativa 1 escreveu **15.215 bytes** com os seis conjuntos de controles — e declarou
+`examples` com `state: []`, então o check de binding órfão a recusou, nomeando as seis chaves. A tentativa
+2 consertou o estado e voltou com **10.214 bytes**, sem cinco dos seis painéis. **Apagar é sempre o jeito
+mais barato de satisfazer "estes bindings não têm estado"**, e a mensagem do gate descrevia o sintoma.
+
+Três consertos, e o primeiro é o único que impõe:
+
+1. **`controls_missing`** — na regeneração, toda chave que a página liga precisa dos seus widgets de
+   controle. Medido: **153 de 153** páginas do `mls-102040` fazem isso. As 40 páginas da biblioteca que não
+   fazem são cascas de tema (`mls-102054/102055`), família diferente de artefato;
+2. **a mensagem do órfão aponta o conserto** — *"declare as entradas que faltam em `examples`, nunca apague
+   bindings, cartões ou controles para calar esta mensagem"*;
+3. **o cabeçalho do retry é por rota.** Na regeneração não há `find` para recopiar, e o texto agora diz
+   para mandar a página inteira de novo mantendo o que já estava certo: *"uma página menor não é uma página
+   consertada"*.
+
+### 2. `<Label>{{playground.basic.label}}</Label>` — o token na tela
+
+Binding resolve em **atributo**. Dentro de slot é texto puro, então a tela mostrava literalmente
+`{{playground.basic.label}}` onde devia estar "Copy". Medido: **0** ocorrências nas 196 páginas dos três
+projetos; a página regenerada tinha **12**.
+
+`findSlotBindings` (ao lado do `findAttributeSlots`, mesma família de defeito) recusa nos dois agentes. No
+`i5` vale a **regra do delta**, então página herdada não bloqueia uma emenda — e na regeneração todo o
+conteúdo é introduzido, então cobre igual.
+
+### A causa comum, e ela estava no skill compartilhado
+
+O `### 6.2 Demo Card` do `skills/playgroundGenerator` mostra **um** cartão, e o cartão do exemplo é
+`Basic` — com `Properties` e `HTML` completos. O skill nunca dizia que aquilo se repete por exemplo. Um
+modelo que lê o template como se ele descrevesse a **página** produz exatamente o que saiu: o primeiro
+cartão inteiro, os outros magros. Explica também **por que foi justamente o `basic`**.
+
+O skill passou a 2.7.0 dizendo as duas coisas — o cartão é por exemplo, e conteúdo de slot é texto
+literal. Vale para o `n6-demo` e o `v5-demo` também, e não muda nenhuma regra: só escreve o que 153/153
+páginas já fazem.
+
+**Falso positivo medido antes de valer:** as duas regras novas contra as 153 páginas reais do `mls-102040`
+→ **0 reprovações**. Contra os arquivos do caso: a página do IM2 acusa 12 bindings em slot e 5 exemplos sem
+controle; a do NM2 passa limpa.
+
+### O que NÃO foi injetado, e por quê
+
+O `n6-demo` também injeta o contrato de **uso do grupo**. Aqui não: o prompt da regeneração já soma ~20KB
+com o skill de 10.7KB, e o contrato de uso tem 38KB — os 58KB que fizeram o `i3` falhar com
+`Failed to fetch` em 14/08. Se faltar repertório de cenário, o caminho é o `surface` + o skill, não o
+contrato inteiro.
+
 ## 2026-08-18 (tarde) — a rota E regenerou, e a página não servia: o prompt é de EMENDA
 
 Primeiro run da rota E, com o `.html` substituído por `<h1>teste</h1>`. Roteou E, regenerou, terminou.

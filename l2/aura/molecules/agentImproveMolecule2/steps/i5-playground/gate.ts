@@ -20,6 +20,7 @@ import {
   NM_MIN_DEMO_EXAMPLES,
   demoStateIssues,
   findAttributeSlots,
+  findSlotBindings,
 } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n6-demo/gate.js';
 import {
   PLAYGROUND_STATE_PLACEHOLDER,
@@ -119,6 +120,20 @@ export function runImPlaygroundGate(inputs: ImPlaygroundGateInputs): ImGateResul
       ),
     );
   }
+  // A binding as slot CONTENT shows the literal `{{playground...}}` on screen — bindings resolve on
+  // attributes only. The delta rule again, and on a regeneration it costs nothing: the broken page it
+  // replaces has none, so everything the run writes is "introduced".
+  const introducedBindings = findSlotBindings(html)
+    .filter(found => !findSlotBindings(inputs.before).includes(found));
+  for (const found of introducedBindings) {
+    errors.push(
+      issue(
+        'slot_binding',
+        `\`${found}\` binds slot CONTENT to the state, and bindings only resolve on ATTRIBUTES — inside a slot the token is plain text, so the page shows the literal {{playground...}} on screen. Measured: 0 of the 196 pages in this library do it. Write the content as literal text`,
+      ),
+    );
+  }
+
   if (/```/.test(html)) errors.push(issue('fence', 'the page carries a markdown fence — raw HTML only'));
 
   // The page is a FRAGMENT rendered inside the Studio. Measured 0/146 in the library.
@@ -204,5 +219,33 @@ export function regeneratedPageIssues(html: string, tag: string, examples: Molec
     out.push(issue('tag_uses', `<${tag}> must appear at least once per declared example (${expected} expected, ${uses} found)`));
   }
   for (const problem of demoStateIssues(html, examples)) out.push(issue(problem.code, problem.message));
+
+  // ⚠️ MEASURED 2026-08-18, and it is the difference the user saw on screen: in mls-102040 **153 of 153**
+  // pages carry the control widgets (text/boolean/number) for EVERY example key they bind, so each card
+  // has its own editable "Properties" area. The regenerated page had them for `basic` and for none of the
+  // other five — Properties appeared on the first card only.
+  //
+  // It came from the RETRY. Attempt 1 wrote 15.2KB with all six sets of controls and declared no state
+  // entries, so the orphan-binding check refused it; attempt 2 fixed the state and came back at 10.2KB,
+  // having dropped the controls. Deleting is always the cheapest way to satisfy "these bindings have no
+  // state" — hence both this floor and the reworded message that says not to.
+  //
+  // The 40 pages in the library that DO lack controls are all theme shells (mls-102054/102055), a
+  // different artifact family; the neutral library, which is what this agent writes, is at 153/153.
+  const bound = new Set<string>();
+  for (const m of html.matchAll(/\{\{\s*playground\.([A-Za-z0-9_$]+)\./g)) bound.add(m[1]);
+  const controlled = new Set<string>();
+  for (const m of html.matchAll(/<aura--molecules--playground--widget-playground-state-(?:boolean|text|number)-102020[^>]*>/g)) {
+    for (const key of m[0].matchAll(/playground\.([A-Za-z0-9_$]+)\./g)) controlled.add(key[1]);
+  }
+  const uncontrolled = [...bound].filter(key => !controlled.has(key));
+  if (uncontrolled.length) {
+    out.push(
+      issue(
+        'controls_missing',
+        `these examples have no control widgets, so their card has no editable Properties area: ${uncontrolled.join(', ')}. Every example gets its own text/boolean/number widgets, one per bound property — 153 of the 153 pages in the library do this, and a card without them is a static screenshot`,
+      ),
+    );
+  }
   return out;
 }

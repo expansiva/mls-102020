@@ -185,3 +185,12 @@ test('a tag TRUNCADA do widget de estado é recusada — não é elemento regist
   const issues = gate(truncado);
   assert.ok(issues.some(i => i.code === 'state_widget'), issues.map(i => i.code).join(','));
 });
+
+test('binding como conteúdo de slot é recusado — resolve só em atributo', () => {
+  // 0 ocorrências nas 196 páginas dos três projetos. O prompt já dizia "slot content goes in the markup,
+  // never in the state" — prosa pede, código impõe.
+  const html = page().replace('</aura--molecules--playground--widget-playground-state-102020>',
+    '</aura--molecules--playground--widget-playground-state-102020>\n<Label>{{playground.basic.label}}</Label>');
+  const issues = gate(html);
+  assert.ok(issues.some(i => i.code === 'slot_binding'), issues.map(i => i.code).join(','));
+});

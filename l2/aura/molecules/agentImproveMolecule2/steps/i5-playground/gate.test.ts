@@ -181,7 +181,7 @@ test('integridade: a tag truncada do widget torna a página regenerável', () =>
   assert.match(razoes[0], /state widget/);
 });
 
-test('A PÁGINA QUE O PRIMEIRO RUN DA ROTA E ESCREVEU é recusada, pelos quatro motivos', () => {
+test('A PÁGINA QUE O PRIMEIRO RUN DA ROTA E ESCREVEU é recusada, por todos os motivos', () => {
   // Medida contra a real: 2.1KB contra os 21KB da referência da biblioteca, 4 instâncias, 4 chaves de
   // exemplo, widget truncado e ZERO estado — 20 bindings vivos sem nada atrás. Todo check do gate
   // passou, porque todos eram do DELTA de uma edição, e regeneração não tem delta.
@@ -192,7 +192,10 @@ test('A PÁGINA QUE O PRIMEIRO RUN DA ROTA E ESCREVEU é recusada, pelos quatro 
   ].join('\n');
   const erros = regeneratedPageIssues(html, 'grouptriggeraction--ml-copy-button', []);
   const codigos = erros.map(e => e.split(':')[0]);
-  assert.deepEqual(codigos.sort(), ['examples_count', 'state_binding', 'state_placeholder', 'state_widget_missing', 'tag_uses'].sort());
+  assert.deepEqual(
+    codigos.sort(),
+    ['controls_missing', 'examples_count', 'state_binding', 'state_placeholder', 'state_widget_missing', 'tag_uses'].sort(),
+  );
 });
 
 test('a rota E entra no gate e recusa a página pobre; a mesma página sem rota E passa', () => {
@@ -214,7 +217,11 @@ test('a rota E entra no gate e recusa a página pobre; a mesma página sem rota 
 test('uma página regenerada COMPLETA passa', () => {
   const seis = ['basic', 'disabled', 'loading', 'iconOnly', 'longLabel', 'small'];
   const cards = seis.map(chave =>
-    `<div><h3>${chave}</h3><grouptriggeraction--ml-copy-button size="{{playground.${chave}.size}}"><Label>Copiar</Label></grouptriggeraction--ml-copy-button></div>`,
+    [
+      `<div><h3>${chave}</h3>`,
+      `<aura--molecules--playground--widget-playground-state-text-102020 state='playground.${chave}.size'></aura--molecules--playground--widget-playground-state-text-102020>`,
+      `<grouptriggeraction--ml-copy-button size="{{playground.${chave}.size}}"><Label>Copiar</Label></grouptriggeraction--ml-copy-button></div>`,
+    ].join(''),
   ).join('\n');
   const html = `<div class="p-6"><header><h1>ml-copy-button</h1></header>\n${PAGE.split('\n')[1]}\n${cards}</div>`;
   const examples = seis.map(chave => ({ name: chave, state: [{ stateName: `playground.${chave}.size`, value: '"medium"' }] }));
@@ -226,9 +233,53 @@ test('regeneração: estado inventado à mão é recusado — o token tem de sob
   // página que já traz o objeto de estado pronto perdeu o token, e um objeto malformado é descartado
   // em silêncio: o binding renderiza vazio e ninguém percebe.
   const seis = ['a', 'b', 'c', 'd', 'e', 'f'];
-  const cards = seis.map(k => `<grouptriggeraction--ml-copy-button size="{{playground.${k}.size}}"></grouptriggeraction--ml-copy-button>`).join('\n');
+  const cards = seis.map(k =>
+    `<aura--molecules--playground--widget-playground-state-text-102020 state='playground.${k}.size'></aura--molecules--playground--widget-playground-state-text-102020>`
+    + `<grouptriggeraction--ml-copy-button size="{{playground.${k}.size}}"></grouptriggeraction--ml-copy-button>`,
+  ).join('\n');
   const html = `<aura--molecules--playground--widget-playground-state-102020 state='{"playground":{}}'></aura--molecules--playground--widget-playground-state-102020>\n${cards}`;
   const erros = regeneratedPageIssues(html, 'grouptriggeraction--ml-copy-button', seis.map(k => ({ name: k, state: [{ stateName: `playground.${k}.size`, value: '"medium"' }] })));
   assert.equal(erros.length, 1);
   assert.match(erros[0], /^state_placeholder: /);
+});
+
+// ---- o run de 18/08 (tarde): a página melhorou e ainda ficou pobre ----
+
+test('binding DENTRO de slot nomeado é recusado — o token vai para a tela', () => {
+  // Medido: 0 das 196 páginas da biblioteca fazem isso; a página regenerada tinha 12. A tela mostrava
+  // literalmente "{{playground.basic.label}}" onde devia estar "Copy".
+  const html = `${PAGE}\n<groupviewtable--ml-data-table><Label>{{playground.basic.label}}</Label></groupviewtable--ml-data-table>`;
+  const result = runImPlaygroundGate(inputs({ after: html }));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(e => /^slot_binding: /.test(e)), result.errors.join('|'));
+});
+
+test('a regra do delta vale para o binding em slot: página herdada não bloqueia', () => {
+  const html = `${PAGE}\n<groupviewtable--ml-data-table><Label>{{playground.basic.label}}</Label></groupviewtable--ml-data-table>`;
+  assert.equal(runImPlaygroundGate(inputs({ before: html, after: html })).ok, true);
+});
+
+test('regeneração sem controles por exemplo é recusada — Properties só no primeiro cartão', () => {
+  // O que o usuário viu na tela. Veio do RETRY: a tentativa 1 tinha 15.2KB com os seis conjuntos de
+  // controles e nenhum estado declarado; a 2 consertou o estado e voltou com 10.2KB, sem os controles.
+  const chaves = ['basic', 'loading', 'disabled', 'noIcon', 'longLabel', 'iconRight'];
+  const controlesSoBasic = "<aura--molecules--playground--widget-playground-state-text-102020 state='playground.basic.label'></aura--molecules--playground--widget-playground-state-text-102020>";
+  const cards = chaves.map(k => `<div><grouptriggeraction--ml-copy-button size="{{playground.${k}.size}}"><Label>Copiar</Label></grouptriggeraction--ml-copy-button></div>`).join('\n');
+  const html = `${PAGE.split('\n')[1]}\n${controlesSoBasic}\n${cards}`;
+  const examples = chaves.map(k => ({ name: k, state: [{ stateName: `playground.${k}.size`, value: '"medium"' }] }));
+  const erros = regeneratedPageIssues(html, 'grouptriggeraction--ml-copy-button', examples);
+  assert.equal(erros.length, 1);
+  assert.match(erros[0], /^controls_missing: /);
+  // nomeia os cinco que ficaram sem, e não o que tem
+  assert.match(erros[0], /loading/);
+  assert.doesNotMatch(erros[0], /basic/);
+});
+
+test('com controles para todo exemplo, a mesma página passa', () => {
+  const chaves = ['basic', 'loading', 'disabled', 'noIcon', 'longLabel', 'iconRight'];
+  const controles = chaves.map(k => `<aura--molecules--playground--widget-playground-state-text-102020 state='playground.${k}.size'></aura--molecules--playground--widget-playground-state-text-102020>`).join('\n');
+  const cards = chaves.map(k => `<div><grouptriggeraction--ml-copy-button size="{{playground.${k}.size}}"><Label>Copiar</Label></grouptriggeraction--ml-copy-button></div>`).join('\n');
+  const html = `${PAGE.split('\n')[1]}\n${controles}\n${cards}`;
+  const examples = chaves.map(k => ({ name: k, state: [{ stateName: `playground.${k}.size`, value: '"medium"' }] }));
+  assert.deepEqual(regeneratedPageIssues(html, 'grouptriggeraction--ml-copy-button', examples), []);
 });

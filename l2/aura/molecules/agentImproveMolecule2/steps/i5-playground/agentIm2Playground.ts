@@ -157,9 +157,16 @@ async function beforePromptStep(
     )
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the playground cannot be updated from what is shown')}`;
 
+  // The retry line is route-aware for a measured reason. On a REGENERATION there are no `find` strings
+  // to re-copy, and the cheapest way to satisfy "these bindings have no matching state" is to delete
+  // the bindings — which is what the second attempt of the 18/08 run did, coming back 5KB smaller with
+  // the per-example controls gone. The instruction now forbids exactly that.
+  const retryHeader = regenerate
+    ? '## What the gate rejected — fix ALL of these and send the WHOLE page again\nKeep everything that was already right: the same six-or-more scenarios, their cards and their control widgets. Fix the named problems by ADDING what is missing, never by removing cards, controls or bindings — a smaller page is not a fixed page.'
+    : '## What the gate rejected — fix ALL of these, and re-copy every `find` from the page above';
   const humanPrompt = [
     `Update the playground of ${ctx.target.tag}.`,
-    parsedArgs.retryContext ? `## What the gate rejected — fix ALL of these, and re-copy every \`find\` from the page above\n${parsedArgs.retryContext}` : '',
+    parsedArgs.retryContext ? `${retryHeader}\n${parsedArgs.retryContext}` : '',
   ].filter(Boolean).join('\n\n');
 
   return [{
@@ -320,7 +327,8 @@ function renderRegenerate(integrity: string[]): string {
     `- **one edit**, \`op: "create"\`, whose \`content\` is the entire fragment. It OVERWRITES the broken page — do not quote \`find\` strings out of it;`,
     `- the state widget with its **registered tag**, carrying the literal token, exactly: \`<${PLAYGROUND_STATE_WIDGET} state='${PLAYGROUND_STATE_PLACEHOLDER}'></${PLAYGROUND_STATE_WIDGET}>\`. A shortened tag is not a registered element: it renders nothing and every binding on the page dies. Do not write a state object — code assembles it from your \`examples\`;`,
     '- **at least six distinct scenarios**, each a real question a developer has ("what does it look like while loading?", "with no icon?", "with a long label?"), one demo card each, and a matching entry in `examples`;',
-    '- slot content as **NAMED TAGS** inside the instance — `<Label>…</Label>`, never `slot="Label"`.',
+    '- **every scenario gets its own controls** — the text/boolean/number state widgets, one per bound property, so each card has a live Properties area. 153 of the 153 pages in the library do this; a card without them is a static screenshot. The skill below shows the markup;',
+    '- slot content as **NAMED TAGS** holding **literal text** — `<Label>Copy</Label>`. Never `slot="Label"`, and never a binding inside the slot: bindings resolve on ATTRIBUTES, so `<Label>{{playground.basic.label}}</Label>` prints the token on screen.',
   ].join('\n');
 }
 

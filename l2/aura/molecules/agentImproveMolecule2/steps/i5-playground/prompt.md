@@ -21,7 +21,7 @@ Remove or repoint any binding to a property the molecule no longer has: it rende
 - It is an HTML **fragment**: no `<!DOCTYPE>`, `<html>`, `<head>`, `<body>`, `<style>`, `<link>`, `<script>`.
 - The playground state widget is what every `{{playground.*}}` binding on the page depends on. **When amending, it stays exactly where it is**; when regenerating, you write it — with its registered tag, and carrying the literal token, both spelled out in the regeneration section.
 - A binding is written `{{playground.<exampleKey>.<property>}}`, and the `<exampleKey>` must be one the page declares — when amending, one it **already** declares; when regenerating, one of the `examples` you return. A key nothing declares renders empty.
-- Slot content goes in the markup, never in the state.
+- Slot content goes in the markup as **literal text** — `<Label>Copy</Label>`. A binding is resolved on an ATTRIBUTE only: `<Label>{{playground.basic.label}}</Label>` puts the token itself on the screen. Measured: 0 of the 196 pages in this library bind slot content.
 - **When amending:** add examples for what changed, and do not restyle, renumber or reorder the examples that are already there.
 
 ## The rules of an edit

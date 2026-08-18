@@ -1,5 +1,22 @@
 # n6-demo — CHANGELOG
 
+## 2026-08-18 (noite) — binding dentro de slot, e a mensagem do órfão que convidava a apagar
+
+Duas correções que vieram de um run do IM2 e valem igualmente aqui, porque este passo escreve a mesma página.
+
+**`slot_binding`.** `<Label>{{playground.basic.label}}</Label>` imprime o token na tela: binding resolve em
+**atributo**, dentro de slot é texto puro. Medido: **0** ocorrências nas 196 páginas dos três projetos.
+O prompt já dizia *"slot content goes in the markup, never in the state"* — prosa pede, código impõe. A
+função é `findSlotBindings`, vizinha da `findAttributeSlots`, mesma família de defeito.
+
+**A mensagem de `state_binding` passou a apontar o conserto.** Ela nomeava o sintoma ("estes bindings não
+têm estado correspondente"), e no IM2 o retry a satisfez **apagando** — página 5KB menor, cinco painéis de
+`Properties` a menos. Agora diz para declarar as entradas em `examples` e que apagar bindings, cartões ou
+controles não é conserto.
+
+Este passo nunca produziu o defeito: as páginas do `n6` saem com controles para 6/6 exemplos e zero
+bindings em slot. As duas regras protegem o que ele já faz.
+
 ## 2026-08-18 (tarde) — a tag do widget de estado era conferida pelo SUFIXO, e 5 páginas foram publicadas mortas
 
 `NM_STATE_WIDGET` era `'widget-playground-state-102020'` — o **sufixo** — e o check era
