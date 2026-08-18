@@ -944,6 +944,21 @@ export function buildCompileRepairHint(outputPath: string, errors: string[]): st
   ].join('\n');
 }
 
+/**
+ * Dependency order for a whole-module compile: contracts, then shared, then everything that imports them
+ * (pages and organisms).
+ *
+ * The per-file Studio compile resolves an import ONLY if that dependency's model is already loaded, so
+ * the ORDER decides which questions the compile is able to ask at all. A page compiled before its
+ * contract resolves the import to `any` and PASSES — which is how a real
+ * `TS2339 clientName does not exist on QryListProjectOutput` survived the module gate and was found only
+ * by `tsc`.
+ */
+export function orderModuleCompile(refs: string[]): string[] {
+  const tier = (ref: string): number => (/\/web\/contracts\//u.test(ref) ? 0 : /\/web\/shared\//u.test(ref) ? 1 : 2);
+  return [...refs].sort((left, right) => tier(left) - tier(right) || left.localeCompare(right));
+}
+
 export function applyHeader(outputPath: string, code: string): string {
   const header = mlsHeaderForOutputPath(outputPath);
   const trimmed = code.trimStart();

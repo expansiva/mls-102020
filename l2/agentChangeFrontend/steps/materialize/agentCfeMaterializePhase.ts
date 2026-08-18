@@ -33,8 +33,9 @@ import {
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import {
   compileMlsPathAndGetErrors,
-  getCompiledDtsByMlsPath,
   releaseBorrowedModelScope,
+  preloadTypecheckDeps,
+  sharedDefsPathForPageOutput,
   getContentByMlsPath,
   type GenStepArgs,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
@@ -140,12 +141,23 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
  * that compile is in flight. The dispose itself still waits for `activeCompiles === 0`.
  */
 async function runVerify(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args: MaterializeVerifyArgs): Promise<mls.msg.AgentIntent[]> {
+  let released = 0;
+  let intents: mls.msg.AgentIntent[];
   try {
-    return await runVerifyItems(context, parentStep, step, hookSequential, args);
+    intents = await runVerifyItems(context, parentStep, step, hookSequential, args);
   } finally {
-    const released = releaseBorrowedModelScope();
-    if (released) console.info(`[agentCfeMaterializePhase] verify released ${released} borrowed monaco model(s)`);
+    released = releaseBorrowedModelScope();
   }
+  // The number goes in the STEP TRACE, not the console: it is a fact about this run and belongs where
+  // the run is read (task/verdict), instead of in a browser log nobody keeps.
+  return released ? intents.map(intent => appendVerifyTrace(intent, `released ${released} borrowed model(s)`)) : intents;
+}
+
+/** Append a note to the update-status this step emits, leaving every other intent untouched. */
+function appendVerifyTrace(intent: mls.msg.AgentIntent, note: string): mls.msg.AgentIntent {
+  if (intent.type !== 'update-status') return intent;
+  const status = intent as mls.msg.AgentIntentUpdateStatus;
+  return { ...status, traceMsg: status.traceMsg ? `${status.traceMsg}; ${note}` : note };
 }
 
 async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args: MaterializeVerifyArgs): Promise<mls.msg.AgentIntent[]> {
@@ -457,11 +469,6 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
 }
 
 
-function sharedDefsPathForPageOutput(outputPath: string): string | null {
-  const match = outputPath.match(/^(.*\/web)\/(?:desktop|mobile)\/page\d+\/([^/]+)\.ts$/);
-  return match ? `${match[1]}/shared/${match[2]}.defs.ts` : null;
-}
-
 // Module name from the verify items' `_<project>_/l2/<module>/...` defPath (one run = one module).
 function deriveVerifyModule(items: GenStepArgs[]): string {
   for (const item of items) {
@@ -484,13 +491,6 @@ function deriveVerifyModule(items: GenStepArgs[]): string {
 // the files compiled after it can resolve their imports, and disposing it here would recreate the
 // very problem this solves. It is bounded (one per contract) and released with the phase, so this is
 // not the unbounded listener leak of 29/jul.
-async function preloadTypecheckDeps(deps: Array<string | null>): Promise<void> {
-  for (const dep of deps) {
-    if (!dep) continue;
-    try { await getCompiledDtsByMlsPath(dep); } catch { /* best-effort */ }
-  }
-}
-
 // Local copy of the ns3 findMutableParentStep pattern (skills/collab_messages.md): if the
 // original parent was auto-completed by setStepCompletedIfChildrenCompleted, anchor new steps
 // on the nearest non-terminal agent step (owner parent, then root).
