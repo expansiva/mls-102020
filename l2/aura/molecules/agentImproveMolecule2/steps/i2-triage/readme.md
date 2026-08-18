@@ -62,6 +62,7 @@ rebuild; rewriting a whole render to fix a layout bug is an edit.
 | B | appearance, a code defect, wording — edit in place |
 | C | shell **and** the code that would change is in the parent, out of the shell's reach |
 | D | not a request to change this molecule; the rationale is the whole answer |
+| E | a DERIVED artifact (playground, group index) is broken and only it is regenerated — the molecule is untouched |
 
 ## Invariants
 

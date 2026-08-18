@@ -294,3 +294,40 @@ test('o caminho tolerante a espaçamento também alinha', () => {
 function leading(line: string): string {
   return (line.match(/^[ \t]*/) || [''])[0];
 }
+
+// ---- overwrite, e é opt-in por rota (2026-08-18) ----
+
+test('create num arquivo que existe continua recusado — o padrão não mudou', () => {
+  const files = new Map([['html', { present: true, source: '<h1>teste</h1>' }]]) as Parameters<typeof applyEdits>[0];
+  const result = applyEdits(files, [{ artifact: 'html', op: 'create', content: '<div>novo</div>', why: 'x' }]);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /already exists/);
+});
+
+test('com overwrite nomeado pelo chamador, o create sobrescreve', () => {
+  // A rota E passa `['html']` só depois de a precondição de integridade ter medido que a página está
+  // quebrada. Foi a primeira tentativa inteira do primeiro run da rota E que se perdeu nisso: o próprio
+  // prompt do i5 dizia "prefer op: create" e esta função recusava.
+  const files = new Map([['html', { present: true, source: '<h1>teste</h1>' }]]) as Parameters<typeof applyEdits>[0];
+  const result = applyEdits(
+    files,
+    [{ artifact: 'html', op: 'create', content: '<div>página inteira</div>', why: 'regenera' }],
+    { overwrite: ['html'] },
+  );
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.changed.get('html'), '<div>página inteira</div>');
+});
+
+test('overwrite vale só para o artefato nomeado — os autorados seguem protegidos', () => {
+  const files = new Map([
+    ['html', { present: true, source: '<h1>t</h1>' }],
+    ['ts', { present: true, source: 'export class A {}' }],
+  ]) as Parameters<typeof applyEdits>[0];
+  const result = applyEdits(
+    files,
+    [{ artifact: 'ts', op: 'create', content: 'export class B {}', why: 'x' }],
+    { overwrite: ['html'] },
+  );
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /already exists/);
+});

@@ -31,6 +31,7 @@ import {
   IM_MAX_ATTEMPTS,
   ImArtifactKind,
   ImContext,
+  ImTriage,
   imDoneAnchor,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import {
@@ -38,10 +39,11 @@ import {
   imContextFileInfo,
   imFileInfoFor,
   imTraceFileInfo,
+  imTriageFileInfo,
   imWorkFile,
   readImAgentText,
-  writeImSource,
   sourceOf,
+  writeImSource,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
 import { getImRunKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imRootPlan.js';
 import {
@@ -52,7 +54,14 @@ import {
   renderSurfaceDiff,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
 import { ImEdit, ImFileState, applyEdits } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/applyEdits.js';
-import { runImPlaygroundGate } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i5-playground/gate.js';
+import { playgroundIntegrityIssues, runImPlaygroundGate } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i5-playground/gate.js';
+import {
+  MoleculeDemoExample,
+  PLAYGROUND_STATE_PLACEHOLDER,
+  PLAYGROUND_STATE_WIDGET,
+  substituteDemoState,
+} from '/_102020_/l2/aura/molecules/shared/moleculeTemplates.js';
+import { skill as playgroundGeneratorSkill } from '/_102020_/l2/aura/molecules/skills/playgroundGenerator.js';
 
 const AGENT_NAME = 'agentIm2Playground';
 const PLAN_ID = 'i5-playground';
@@ -83,10 +92,34 @@ async function beforePromptStep(
   const runKey = getImRunKey(context, parsedArgs.runKey);
   const ctx = await readContext(runKey);
   const { diff } = await measure(ctx);
+  const triage = await readJsonArtifact<ImTriage>(imTriageFileInfo(runKey), false);
+  const page = await currentPage(ctx);
+
+  // ROUTE E — regeneration by explicit request, with the molecule untouched. The request does NOT
+  // decide on its own: a playground carries authored sample data, so rewriting a healthy page throws
+  // away work. `playgroundIntegrityIssues` is the precondition, and it is the same set of invariants
+  // the gate enforces on what the model writes.
+  const regenerate = triage?.route === 'E';
+  const integrity = regenerate ? playgroundIntegrityIssues(page, ctx.target.tag) : [];
+  if (regenerate && !integrity.length) {
+    const pt = (ctx.userLanguage || '').startsWith('pt');
+    const summary = pt
+      ? 'o playground está íntegro — nada foi alterado'
+      : 'the playground is healthy — nothing was changed';
+    return [
+      nmResultStepIntent(context, parentStep, {
+        planId: imDoneAnchor(PLAN_ID),
+        dependsOn: [],
+        stepTitle: summary,
+        result: { playgroundChanged: false, runKey, reason: 'playground healthy' },
+      }),
+      nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', summary, 'input_output'),
+    ];
+  }
 
   // THE NO-OP BRANCH. No prompt is emitted at all: the step ends here, having decided in code that
   // there is nothing for a model to do. i6-index reads playgroundChanged=false and follows.
-  if (!diff.changed) {
+  if (!diff.changed && !regenerate) {
     const summary = 'playground unchanged — the public surface did not move';
     return [
       nmResultStepIntent(context, parentStep, {
@@ -104,12 +137,18 @@ async function beforePromptStep(
   const schema = parseMaybeJson(schemaRaw);
   if (!isRecord(schema)) throw new Error(`[${AGENT_NAME}] invalid i5-playground schema`);
 
-  const page = await currentPage(ctx);
   const systemPrompt = promptMd
     .split('{{tag}}').join(ctx.target.tag)
     .split('{{groupCanonical}}').join(ctx.target.groupCanonical)
     .split('{{userLanguage}}').join(ctx.userLanguage || 'the language of the request')
     .split('{{surfaceDiff}}').join(renderSurfaceDiff(diff))
+    .split('{{regenerate}}').join(regenerate ? renderRegenerate(integrity) : '')
+    // The creation contract, and ONLY on a regeneration. On the amend path the page itself teaches the
+    // conventions — that is the measured lesson of the `<div slot=` defect, where the file to imitate
+    // was what kept i5 correct while the prompt was ambiguous. Here there is no file to imitate, so the
+    // contract has to be stated; and injecting 10.7KB on every run would push the amend prompt (which
+    // already carries a page of up to 21KB) toward the size that made i3 fail with `Failed to fetch`.
+    .split('{{playgroundGenerator}}').join(regenerate ? playgroundGeneratorSkill : '')
     .split('{{surface}}').join(renderSurface(readSurface(await currentTs(ctx))))
     .split('{{page}}').join(
       page
@@ -118,9 +157,16 @@ async function beforePromptStep(
     )
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the playground cannot be updated from what is shown')}`;
 
+  // The retry line is route-aware for a measured reason. On a REGENERATION there are no `find` strings
+  // to re-copy, and the cheapest way to satisfy "these bindings have no matching state" is to delete
+  // the bindings — which is what the second attempt of the 18/08 run did, coming back 5KB smaller with
+  // the per-example controls gone. The instruction now forbids exactly that.
+  const retryHeader = regenerate
+    ? '## What the gate rejected — fix ALL of these and send the WHOLE page again\nKeep everything that was already right: the same six-or-more scenarios, their cards and their control widgets. Fix the named problems by ADDING what is missing, never by removing cards, controls or bindings — a smaller page is not a fixed page.'
+    : '## What the gate rejected — fix ALL of these, and re-copy every `find` from the page above';
   const humanPrompt = [
     `Update the playground of ${ctx.target.tag}.`,
-    parsedArgs.retryContext ? `## What the gate rejected — fix ALL of these, and re-copy every \`find\` from the page above\n${parsedArgs.retryContext}` : '',
+    parsedArgs.retryContext ? `${retryHeader}\n${parsedArgs.retryContext}` : '',
   ].filter(Boolean).join('\n\n');
 
   return [{
@@ -151,35 +197,46 @@ async function afterPromptStep(
   const runKey = getImRunKey(context, parsedArgs.runKey);
   const ctx = await readContext(runKey);
   const { diff } = await measure(ctx);
+  const triage = await readJsonArtifact<ImTriage>(imTriageFileInfo(runKey), false);
 
   const before = await currentPage(ctx);
   const artifact = artifactOf(ctx.artifacts, 'html');
 
+  const regenerate = triage?.route === 'E';
+
   let edits: ImEdit[] = [];
+  let examples: MoleculeDemoExample[] = [];
   let extractError = '';
   try {
     const raw = extractVToolOutput(step.interaction?.payload?.[0], TOOL_NAME, ['edits']);
     if (raw.status === 'failed') extractError = `model reported failure: ${raw.trace.join('; ') || 'no reason'}`;
-    else edits = normalizeEdits(raw.result.edits);
+    else {
+      edits = normalizeEdits(raw.result.edits);
+      examples = normalizeExamples(raw.result.examples);
+    }
   } catch (error) {
     extractError = error instanceof Error ? error.message : String(error);
   }
 
   const files = new Map<ImArtifactKind, ImFileState>([['html', { present: !!before, source: before }]]);
+  // On route E a `create` OVERWRITES: the integrity precondition already established the page is
+  // broken, and quoting `find` out of a broken page is what burned the first attempt of the first run.
   const apply = extractError
     ? { changed: new Map<ImArtifactKind, string>(), errors: [`extract: ${extractError}`], applied: [] as string[] }
-    : applyEdits(files, edits);
+    : applyEdits(files, edits, regenerate ? { overwrite: ['html'] } : undefined);
 
   const after = apply.changed.get('html') || '';
   const gate = apply.errors.length
     ? { ok: false, errors: apply.errors }
     : runImPlaygroundGate({
-      shouldChange: diff.changed,
+      shouldChange: diff.changed || regenerate,
       playgroundChanged: !!after,
       before,
       after,
       tag: ctx.target.tag,
       diff,
+      regenerate,
+      examples,
     });
   const errorText = gate.errors.join('\n');
 
@@ -208,10 +265,15 @@ async function afterPromptStep(
     ];
   }
 
-  await writeImSource(imFileInfoFor(ctx, 'html'), after);
+  // The state, assembled DETERMINISTICALLY from the declared examples — the same helper n6-demo uses,
+  // and the reason the gate above runs on the page while the placeholder is still in it. The model
+  // never writes a state object: a malformed one is dropped silently and the page renders empty.
+  const finalPage = regenerate ? substituteDemoState(after, examples) : after;
+  await writeImSource(imFileInfoFor(ctx, 'html'), finalPage);
   await writeJsonArtifact(imWorkFile(runKey, 'playground'), {
     savedAt: new Date().toISOString(),
     playgroundChanged: true,
+    ...(regenerate ? { regenerated: true, examples: examples.map(item => item.name) } : {}),
     addedSlots: diff.addedSlots,
     why: edits.map(e => e.why.trim()).filter(Boolean),
     attempt,
@@ -243,6 +305,33 @@ async function currentTs(ctx: ImContext): Promise<string> {
   return readStorText(imFileInfoFor(ctx, 'ts'), false);
 }
 
+/**
+ * ROUTE E — what is wrong with the page, as the instruction to rewrite it.
+ *
+ * The list is not decoration: it is the measured reason this regeneration was allowed at all, so the
+ * model is told exactly what has to end up different rather than "write it again".
+ */
+function renderRegenerate(integrity: string[]): string {
+  return [
+    '## THIS RUN IS A REGENERATION — it was asked for exactly that',
+    '',
+    'The public surface did NOT move: the molecule is untouched and stays untouched. What is broken is',
+    'this page, and these are the measured reasons:',
+    '',
+    ...integrity.map(issue => `- ${issue}`),
+    '',
+    'So **nothing on the page is worth preserving** — write it whole, as if it had never existed, and to',
+    'the same standard as a page for a brand-new molecule. The full contract is in the skill below; the',
+    'four things this run is judged on:',
+    '',
+    `- **one edit**, \`op: "create"\`, whose \`content\` is the entire fragment. It OVERWRITES the broken page — do not quote \`find\` strings out of it;`,
+    `- the state widget with its **registered tag**, carrying the literal token, exactly: \`<${PLAYGROUND_STATE_WIDGET} state='${PLAYGROUND_STATE_PLACEHOLDER}'></${PLAYGROUND_STATE_WIDGET}>\`. A shortened tag is not a registered element: it renders nothing and every binding on the page dies. Do not write a state object — code assembles it from your \`examples\`;`,
+    '- **at least six distinct scenarios**, each a real question a developer has ("what does it look like while loading?", "with no icon?", "with a long label?"), one demo card each, and a matching entry in `examples`;',
+    '- **every scenario gets its own controls** — the text/boolean/number state widgets, one per bound property, so each card has a live Properties area. 153 of the 153 pages in the library do this; a card without them is a static screenshot. The skill below shows the markup;',
+    '- slot content as **NAMED TAGS** holding **literal text** — `<Label>Copy</Label>`. Never `slot="Label"`, and never a binding inside the slot: bindings resolve on ATTRIBUTES, so `<Label>{{playground.basic.label}}</Label>` prints the token on screen.',
+  ].join('\n');
+}
+
 async function currentPage(ctx: ImContext): Promise<string> {
   const artifact = artifactOf(ctx.artifacts, 'html');
   if (!artifact?.present) return '';
@@ -260,6 +349,19 @@ async function measure(ctx: ImContext): Promise<{ diff: ImSurfaceDiff }> {
   const before = readSurface(sourceOf(ctx.artifacts, 'ts'));
   const after = readSurface(await currentTs(ctx));
   return { diff: diffSurface(before, after) };
+}
+
+function normalizeExamples(raw: unknown): MoleculeDemoExample[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isRecord).map(item => ({
+    name: typeof item.name === 'string' ? item.name : '',
+    state: Array.isArray(item.state)
+      ? item.state.filter(isRecord).map(entry => ({
+        stateName: typeof entry.stateName === 'string' ? entry.stateName : '',
+        value: typeof entry.value === 'string' ? entry.value : '',
+      }))
+      : [],
+  }));
 }
 
 function normalizeEdits(raw: unknown): ImEdit[] {

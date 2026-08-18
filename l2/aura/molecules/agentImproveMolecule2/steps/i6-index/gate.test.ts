@@ -22,7 +22,7 @@ export class GroupViewTableIndex extends StateLitElement {
   render() {
     return html\`
       <groupviewtable--ml-data-table>
-        <div slot="Caption">Customers</div>
+        <Caption>Customers</Caption>
       </groupviewtable--ml-data-table>\`;
   }
 }
@@ -119,7 +119,7 @@ test('an added slot missing from the showcase card is refused', () => {
 });
 
 test('an added slot present in the card passes', () => {
-  const after = INDEX.replace('</groupviewtable--ml-data-table>', '<div slot="Detail">x</div></groupviewtable--ml-data-table>');
+  const after = INDEX.replace('</groupviewtable--ml-data-table>', '<Detail>x</Detail></groupviewtable--ml-data-table>');
   assert.equal(runImIndexGate(inputs({ addedSlots: ['Detail'], after })).ok, true);
 });
 

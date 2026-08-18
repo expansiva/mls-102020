@@ -84,3 +84,15 @@ test('THE ONE CHECK: a summary that drops findings is caught', () => {
 test('blank lines do not count as carried findings', () => {
   assert.equal(findingsCarried(['a', '   ', ''], FINDINGS).ok, false);
 });
+
+test('rota E: "não mexeu" tem de dizer o motivo CERTO — a página está íntegra', () => {
+  // Medido em 18/08: o run íntegro resumiu "a superfície pública não mudou, por isso a demonstração já
+  // estava correta". Verdade sobre a superfície, e resposta errada para quem pediu um playground novo.
+  const facts = { ...emptyRunFacts(), route: 'E' as const, tag: 'grouptriggeraction--ml-copy-button' };
+  const texto = renderRunFacts(facts);
+  assert.match(texto, /the page was checked and is intact/);
+  assert.doesNotMatch(texto, /public surface did not change/);
+
+  const regenerado = renderRunFacts({ ...facts, playgroundChanged: true });
+  assert.match(regenerado, /REGENERATED, because the page was broken/);
+});

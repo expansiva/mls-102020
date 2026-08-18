@@ -67,24 +67,21 @@ const STEP_AGENTS: Partial<Record<ImPlanId, string>> = {
  * and reuses steps that already exist — i3 writes `.defs.ts` and `.ts`, i5 regenerates the
  * playground because the surface moved, i6 follows. Only the checkpoint was missing.
  *
- * ⚠️ IT IS NOT the only route that reaches the active branch of i5 and i6, and the first version of
- * this comment said it was. The sweep behind that claim compared each molecule's own `.defs.ts`
- * PROSE against its code and found no route B change that moves the surface. Re-measured on
- * 2026-08-14 against the source that actually governs — the GROUP contract in
- * `skills/<group>/creation.ts`, which enumerates the slots, properties and events in tables — **27
- * molecules are missing a slot their group requires**, `ml-currency-input` declaring no `slotTags`
- * at all where the group requires `Label` and `Helper`. Adding it is a DEFECT fix, so route B, and
- * it moves the measured surface. i5 and i6 are reachable without route A.
- *
- * What route A is for, then, is what it always said: an INTENTIONAL change of what the molecule
- * promises. Note that the group contract fixes that surface, so a legitimate route A on this library
- * usually implies the group contract moving first.
+ * ⚠️ WHETHER ANY OTHER ROUTE REACHES the active branch of i5 and i6 went back and forth twice on
+ * 2026-08-14. Where it landed: route B moved the surface once, on `ml-combobox`, by declaring a slot
+ * the group already named — a real defect fix. Route E, added 2026-08-18, reaches i5 by explicit
+ * request. What route A is for is what it always said: an INTENTIONAL change of what the molecule
+ * promises. The group contract fixes that surface, so a legitimate route A here usually implies the
+ * group contract moving first — by hand, outside this agent.
  */
 const ROUTE_STEPS: Record<ImRoute, ImPlanId[]> = {
   A: ['i2a-definition', 'i3-edit', 'i5-playground', 'i6-index', 'i7-summary'],
   B: ['i3-edit', 'i5-playground', 'i6-index', 'i7-summary'],
   C: ['i4-inherit', 'i3-edit', 'i5-playground', 'i6-index', 'i7-summary'],
   D: [],
+  // ROUTE E — regenerate a DERIVED artifact. No i3: the molecule itself is not touched, so there is
+  // nothing to edit. i5 rewrites the playground, i6 follows it (the 2026-08-05 rule), i7 closes.
+  E: ['i5-playground', 'i6-index', 'i7-summary'],
 };
 
 /**
@@ -332,7 +329,11 @@ function readTriageResult(context: mls.msg.ExecutionContext): { route: ImRoute |
   if (!isRecord(parsed)) return { route: null, rationale: '', definitionElements: [] };
   const route = String(parsed.route || '').trim().toUpperCase();
   return {
-    route: (['A', 'B', 'C', 'D'].includes(route) ? route : null) as ImRoute | null,
+    // ⚠️ DERIVED from ROUTE_STEPS, never a second list. Until 2026-08-18 this was a literal
+    // ['A','B','C','D']: route E was added to ImRoute, to the i2 gate and to ROUTE_STEPS, and the
+    // triage answered E correctly — then this line rejected it as unreadable and the run died on "no
+    // route to plant". One truth, one place; the table below already knows every route there is.
+    route: (Object.keys(ROUTE_STEPS) as ImRoute[]).includes(route as ImRoute) ? (route as ImRoute) : null,
     rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
     // On route A these ARE the argument: they name the slots, properties or events that changed.
     definitionElements: Array.isArray(parsed.definitionElements)
