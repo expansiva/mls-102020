@@ -57,7 +57,8 @@ test('nomear elementos de definição fora da rota A continua sendo erro', () =>
 });
 
 test('an invalid route is reported ALONE — every other message would be misleading', () => {
-  const result = runImTriageGate(inputs({ output: { route: 'E' } }));
+  // 'E' used to be the example of an invalid route here; it became a real route on 2026-08-18.
+  const result = runImTriageGate(inputs({ output: { route: 'Z' } }));
   assert.equal(result.errors.length, 1);
   assert.match(result.errors[0], /^route_invalid: /);
 });
@@ -114,10 +115,18 @@ test('routes B and C must name at least one artifact', () => {
 });
 
 test('a missing .html may still be named — i5-playground creates it', () => {
-  const result = runImTriageGate(
-    inputs({ artifactsPresent: ['defs', 'ts', 'less'], output: { route: 'B', expectedArtifacts: ['html'] } }),
+  // A intenção original: `artifact_absent` não vale para o html, porque o i5 sabe criá-lo. Segue
+  // valendo. O que mudou em 2026-08-18 é a FORMA: numa rota B o html vem ao lado de um artefato que o
+  // editor escreve, porque ele é previsão do que vai seguir. Html sozinho é rota E.
+  const comEditavel = runImTriageGate(
+    inputs({ artifactsPresent: ['defs', 'ts', 'less'], output: { route: 'B', expectedArtifacts: ['ts', 'html'] } }),
   );
-  assert.equal(result.ok, true);
+  assert.equal(comEditavel.ok, true);
+
+  const rotaE = runImTriageGate(
+    inputs({ artifactsPresent: ['defs', 'ts', 'less'], output: { route: 'E', expectedArtifacts: ['html'] } }),
+  );
+  assert.equal(rotaE.ok, true);
 });
 
 test('an invented artifact is rejected', () => {
@@ -141,4 +150,35 @@ test('naming the playground pulls in the group index, without spending a retry',
 
 test('normalization drops unknown kinds and duplicates', () => {
   assert.deepEqual(normalizeExpectedArtifacts(['less', 'less', 'tests']), ['less']);
+});
+
+// ---- rota E e o artefato que o editor não escreve (2026-08-18) ----
+
+test('rota B nomeando SÓ html/groupIndex é recusada, e a mensagem aponta a rota E', () => {
+  // Medido: "o playground não foi gerado" virou rota B com expectedArtifacts ['html','groupIndex'].
+  // O i3 mostra só defs/ts/less, então o modelo recebeu o .ts sozinho e recusou duas vezes — com razão.
+  const result = runImTriageGate(inputs({ output: { route: 'B', expectedArtifacts: ['html', 'groupIndex'] } }));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(e => /^artifacts_not_writable: /.test(e)));
+  assert.match(result.errors.join('\n'), /route E/);
+});
+
+test('html AO LADO de um artefato editável continua válido — a previsão está certa', () => {
+  // Uma edição de rota B que move a superfície faz o playground seguir de verdade. Foi o caso da
+  // ml-combobox, e recusar isso quebraria um run correto.
+  assert.equal(runImTriageGate(inputs({ output: { route: 'B', expectedArtifacts: ['ts', 'html', 'groupIndex'] } })).ok, true);
+});
+
+test('rota E é rota que ESCREVE: precisa nomear artefato', () => {
+  assert.ok(runImTriageGate(inputs({ output: { route: 'E', expectedArtifacts: [] } }))
+    .errors.some(e => /^artifacts_empty: /.test(e)));
+  assert.equal(runImTriageGate(inputs({ output: { route: 'E', expectedArtifacts: ['html'] } })).ok, true);
+});
+
+test('rota E não é limitada pelo que o editor escreve — ela não usa o editor', () => {
+  assert.equal(runImTriageGate(inputs({ output: { route: 'E', expectedArtifacts: ['html', 'groupIndex'] } })).ok, true);
+});
+
+test("'E' é rota válida", () => {
+  assert.equal(runImTriageGate(inputs({ output: { route: 'E', expectedArtifacts: ['html'] } })).errors.some(e => /^route_invalid/.test(e)), false);
 });

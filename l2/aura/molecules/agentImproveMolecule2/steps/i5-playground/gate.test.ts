@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ImPlaygroundGateInputs, runImPlaygroundGate } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i5-playground/gate.js';
+import { ImPlaygroundGateInputs, playgroundIntegrityIssues, runImPlaygroundGate } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i5-playground/gate.js';
 import { ImSurfaceDiff, slotIsExercised } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
 
 const NO_DIFF: ImSurfaceDiff = {
@@ -124,4 +124,33 @@ test('THE DELTA RULE: a forma errada que a página JÁ tinha não bloqueia', () 
 test('slotIsExercised só aceita a TAG — era ela que cegava todos os gates', () => {
   assert.equal(slotIsExercised('<x><Detail>y</Detail></x>', 'Detail'), true);
   assert.equal(slotIsExercised('<x><div slot="Detail">y</div></x>', 'Detail'), false);
+});
+
+// ---- a precondição da rota E: só página quebrada é regenerada (2026-08-18) ----
+
+test('uma página ÍNTEGRA não tem o que regenerar', () => {
+  // "Gere novamente o playground" é destrutivo por natureza: a página carrega exemplos autorados.
+  // O pedido não decide; estas invariantes decidem.
+  assert.deepEqual(playgroundIntegrityIssues(PAGE, 'groupviewtable--ml-data-table'), []);
+});
+
+test('a página que o teste real produziu — <h1>teste</h1> — é regenerável', () => {
+  const issues = playgroundIntegrityIssues('<h1>teste</h1>', 'groupviewtable--ml-data-table');
+  assert.ok(issues.length >= 2);
+  assert.ok(issues.some(i => /does not instantiate/.test(i)));
+  assert.ok(issues.some(i => /state widget/.test(i)));
+});
+
+test('página vazia, e a razão é uma só', () => {
+  assert.deepEqual(playgroundIntegrityIssues('   ', 'x--y'), ['the page is empty']);
+});
+
+test('slot como atributo conta como quebrada — renderiza vazio', () => {
+  const page = PAGE.replace('<Caption>Customers</Caption>', '<div slot="Caption">Customers</div>');
+  assert.ok(playgroundIntegrityIssues(page, 'groupviewtable--ml-data-table').some(i => /renders empty/.test(i)));
+});
+
+test('documento completo conta como quebrada — o playground é fragmento', () => {
+  assert.ok(playgroundIntegrityIssues('<!DOCTYPE html><html><body>' + PAGE + '</body></html>', 'groupviewtable--ml-data-table')
+    .some(i => /full HTML document/.test(i)));
 });

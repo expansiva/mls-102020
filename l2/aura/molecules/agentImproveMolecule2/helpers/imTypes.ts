@@ -41,12 +41,24 @@ export function imDoneAnchor(planId: ImPlanId): string {
 /**
  * The routes of flow.json.routes. The tree is planted per route — only the chosen branch runs.
  *
- * A: the DEFINITION changes → rebuild through agentNewMolecule2.
+ * A: the DEFINITION changes → checkpoint, then edit the contract and the code in place.
  * B: a MINOR change → edit in place.
  * C: an inherited SHELL whose fix needs the parent → its own clarification.
  * D: out of scope → readable failure, nothing written.
+ * E: a DERIVED artifact is broken or missing → regenerate it, without touching the molecule.
+ *
+ * ⚠️ WHY E EXISTS, and why it stops at the derived artifacts (2026-08-18). Asked "the playground was
+ * not generated", every route was wrong: B runs the editor, which writes only defs/ts/less; A needs the
+ * definition to move, and it does not; D would refuse work the agent can plainly do. The playground and
+ * the group index are DERIVED — given the molecule's surface there is a correct form, which is why i5
+ * and i6 can produce them at all. Regenerating them is well defined.
+ *
+ * The `.less`, the `.ts` and the `.defs.ts` are AUTHORED: regenerating them means discarding decisions
+ * nobody can recover, which is the same argument that stopped route A from being a rebuild. "Update the
+ * .less" is already route B — a targeted edit — and creating one that is missing already works
+ * (IM_CREATABLE_ARTIFACTS, and route C's `less` outcome).
  */
-export type ImRoute = 'A' | 'B' | 'C' | 'D';
+export type ImRoute = 'A' | 'B' | 'C' | 'D' | 'E';
 
 /** The four artifacts a molecule is made of, plus the group index that must follow the playground. */
 export type ImArtifactKind = 'defs' | 'ts' | 'less' | 'html' | 'groupIndex';

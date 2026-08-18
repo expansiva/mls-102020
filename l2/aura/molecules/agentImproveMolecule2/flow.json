@@ -2,7 +2,7 @@
   "flowId": "agentImproveMolecule2",
   "schemaVersion": "2026-08-06-improvemolecule2-v1",
   "specFirst": "Written BEFORE the code, per skills/agentsBestPractices.md §1. The design decisions this flow implements are closed in todo/analise-improve-molecule-2.md (§6 architecture, §7 open questions, §8 the two last calls). When behavior must change, change this spec first, then the code.",
-  "description": "Changes an EXISTING molecule. Triages the request into one of four routes: (A) definition change -> confirm the delta with the human, then edit the contract and the code in place; (B) minor change -> edit, save, regenerate the playground when affected, and then the group index; (C) inherited shell whose fix needs parent code -> its own clarification, the user decides between .less and a local override; (D) out of scope -> readable failure. Replaces agentsManageMolecules/agentImproveMolecule{,Defs,Materialize}.ts, which stay in place until this one is accepted.",
+  "description": "Changes an EXISTING molecule. Triages the request into one of four routes: (A) definition change -> confirm the delta with the human, then edit the contract and the code in place; (B) minor change -> edit, save, regenerate the playground when affected, and then the group index; (C) inherited shell whose fix needs parent code; (E) a derived artifact (playground, group index) is broken and only it is regenerated -> its own clarification, the user decides between .less and a local override; (D) out of scope -> readable failure. Replaces agentsManageMolecules/agentImproveMolecule{,Defs,Materialize}.ts, which stay in place until this one is accepted.",
   "principles": [
     "REUSE THE HELPERS, NOT THE STEPS. agentNewMolecule2 generates the same five artifacts, and its generation lives in helpers/nmTemplates.ts + helpers/nmFs.ts, not in the step agents. This flow imports those and brings its own steps and gates. Measured reason: nmFs.ts:75 states 'a new molecule must not overwrite an existing one' — the NM2 gate REFUSES an existing file, which is the exact inverse of this agent's precondition. Making the same step serve both would need a create/update mode field inside it, the 'multi-role agent switched by a mode field' that agentsBestPractices forbids.",
     "CREATE vs UPDATE is the whole difference. Every step here reads the current artifact first and writes a delta. A step that cannot read what exists must not write.",
@@ -85,6 +85,20 @@
         "i2-triage"
       ],
       "then": "readable failure, nothing written, no summary step"
+    },
+    "E": {
+      "steps": [
+        "i0-classify",
+        "i1-locate",
+        "i2-triage",
+        "i5-playground",
+        "i6-index",
+        "i7-summary"
+      ],
+      "then": "ROUTE E — regenerate a DERIVED artifact, added 2026-08-18. The playground (.html) or the group index is broken or missing and only it has to be rebuilt; the molecule is NOT touched, so i3-edit is not planted at all. i5-playground rewrites the page, i6-index follows it (the 2026-08-05 rule), i7-summary closes.",
+      "decision": "WHY IT STOPS AT THE DERIVED ARTIFACTS. Asked \"the playground was not generated\", every existing route was wrong: B runs the editor, which writes only defs/ts/less, so the model was shown the .ts alone and refused twice — correctly; A needs the definition to move, and it does not; D would refuse work the agent can plainly do. The playground and the group index are DERIVED: given the molecule's surface there is a correct form, which is why i5 and i6 can produce them at all. The .defs.ts, the .ts and the .less are AUTHORED — regenerating them means discarding decisions nobody can recover, the same argument that stopped route A from being a rebuild. \"Update the .less\" is route B (a targeted edit), and creating a missing one already works.",
+      "precondition": "A page that WORKS is never regenerated. A playground carries authored sample data (six examples minimum), so rewriting a healthy one throws away work, and the agent cannot tell \"broken\" from \"not how I would have written it\". So the request does not decide: playgroundIntegrityIssues() does, using the same invariants the gate enforces on what the model writes — empty page, missing state widget, the molecule's own tag absent, a full HTML document, or slot content as an attribute. An intact page ends the run saying so, before any model call.",
+      "limitation": "Route E enters through i5. An index-only request therefore regenerates the playground first and the index follows; if the playground is intact the run ends without touching the index. A second entry point through i6 was not built — it would be the shape to add if index-only requests turn out to be common."
     }
   },
   "steps": [

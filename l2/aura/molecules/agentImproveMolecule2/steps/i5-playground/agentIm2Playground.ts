@@ -31,6 +31,7 @@ import {
   IM_MAX_ATTEMPTS,
   ImArtifactKind,
   ImContext,
+  ImTriage,
   imDoneAnchor,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import {
@@ -38,10 +39,11 @@ import {
   imContextFileInfo,
   imFileInfoFor,
   imTraceFileInfo,
+  imTriageFileInfo,
   imWorkFile,
   readImAgentText,
-  writeImSource,
   sourceOf,
+  writeImSource,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
 import { getImRunKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imRootPlan.js';
 import {
@@ -52,7 +54,7 @@ import {
   renderSurfaceDiff,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
 import { ImEdit, ImFileState, applyEdits } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/applyEdits.js';
-import { runImPlaygroundGate } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i5-playground/gate.js';
+import { playgroundIntegrityIssues, runImPlaygroundGate } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i5-playground/gate.js';
 
 const AGENT_NAME = 'agentIm2Playground';
 const PLAN_ID = 'i5-playground';
@@ -83,10 +85,34 @@ async function beforePromptStep(
   const runKey = getImRunKey(context, parsedArgs.runKey);
   const ctx = await readContext(runKey);
   const { diff } = await measure(ctx);
+  const triage = await readJsonArtifact<ImTriage>(imTriageFileInfo(runKey), false);
+  const page = await currentPage(ctx);
+
+  // ROUTE E — regeneration by explicit request, with the molecule untouched. The request does NOT
+  // decide on its own: a playground carries authored sample data, so rewriting a healthy page throws
+  // away work. `playgroundIntegrityIssues` is the precondition, and it is the same set of invariants
+  // the gate enforces on what the model writes.
+  const regenerate = triage?.route === 'E';
+  const integrity = regenerate ? playgroundIntegrityIssues(page, ctx.target.tag) : [];
+  if (regenerate && !integrity.length) {
+    const pt = (ctx.userLanguage || '').startsWith('pt');
+    const summary = pt
+      ? 'o playground está íntegro — nada foi alterado'
+      : 'the playground is healthy — nothing was changed';
+    return [
+      nmResultStepIntent(context, parentStep, {
+        planId: imDoneAnchor(PLAN_ID),
+        dependsOn: [],
+        stepTitle: summary,
+        result: { playgroundChanged: false, runKey, reason: 'playground healthy' },
+      }),
+      nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', summary, 'input_output'),
+    ];
+  }
 
   // THE NO-OP BRANCH. No prompt is emitted at all: the step ends here, having decided in code that
   // there is nothing for a model to do. i6-index reads playgroundChanged=false and follows.
-  if (!diff.changed) {
+  if (!diff.changed && !regenerate) {
     const summary = 'playground unchanged — the public surface did not move';
     return [
       nmResultStepIntent(context, parentStep, {
@@ -104,12 +130,12 @@ async function beforePromptStep(
   const schema = parseMaybeJson(schemaRaw);
   if (!isRecord(schema)) throw new Error(`[${AGENT_NAME}] invalid i5-playground schema`);
 
-  const page = await currentPage(ctx);
   const systemPrompt = promptMd
     .split('{{tag}}').join(ctx.target.tag)
     .split('{{groupCanonical}}').join(ctx.target.groupCanonical)
     .split('{{userLanguage}}').join(ctx.userLanguage || 'the language of the request')
     .split('{{surfaceDiff}}').join(renderSurfaceDiff(diff))
+    .split('{{regenerate}}').join(regenerate ? renderRegenerate(integrity) : '')
     .split('{{surface}}').join(renderSurface(readSurface(await currentTs(ctx))))
     .split('{{page}}').join(
       page
@@ -151,6 +177,7 @@ async function afterPromptStep(
   const runKey = getImRunKey(context, parsedArgs.runKey);
   const ctx = await readContext(runKey);
   const { diff } = await measure(ctx);
+  const triage = await readJsonArtifact<ImTriage>(imTriageFileInfo(runKey), false);
 
   const before = await currentPage(ctx);
   const artifact = artifactOf(ctx.artifacts, 'html');
@@ -174,7 +201,7 @@ async function afterPromptStep(
   const gate = apply.errors.length
     ? { ok: false, errors: apply.errors }
     : runImPlaygroundGate({
-      shouldChange: diff.changed,
+      shouldChange: diff.changed || (triage?.route === 'E'),
       playgroundChanged: !!after,
       before,
       after,
@@ -241,6 +268,27 @@ async function readContext(runKey: string): Promise<ImContext> {
 /** The .ts as it is NOW — i3 has already written to it; context.json holds the pre-edit snapshot. */
 async function currentTs(ctx: ImContext): Promise<string> {
   return readStorText(imFileInfoFor(ctx, 'ts'), false);
+}
+
+/**
+ * ROUTE E — what is wrong with the page, as the instruction to rewrite it.
+ *
+ * The list is not decoration: it is the measured reason this regeneration was allowed at all, so the
+ * model is told exactly what has to end up different rather than "write it again".
+ */
+function renderRegenerate(integrity: string[]): string {
+  return [
+    '## REGENERATE the page — this run was asked for exactly that',
+    '',
+    'The public surface did NOT move: the molecule is untouched and stays untouched. What is broken is',
+    'this page, and these are the measured reasons:',
+    '',
+    ...integrity.map(issue => `- ${issue}`),
+    '',
+    'Write the page the molecule deserves, from its surface below — the state widget, one card per',
+    'example, and slot content as NAMED TAGS. Prefer `op: "create"` with the whole fragment: there is no',
+    'point quoting `find` strings from a page that is broken.',
+  ].join('\n');
 }
 
 async function currentPage(ctx: ImContext): Promise<string> {

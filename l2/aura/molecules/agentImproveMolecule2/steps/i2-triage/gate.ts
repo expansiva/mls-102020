@@ -39,11 +39,26 @@ import {
   imGateOk,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 
-const ROUTES: ImRoute[] = ['A', 'B', 'C', 'D'];
+const ROUTES: ImRoute[] = ['A', 'B', 'C', 'D', 'E'];
 const KINDS: ImArtifactKind[] = ['defs', 'ts', 'less', 'html', 'groupIndex'];
 
-/** Routes that WRITE. A hands over to a rebuild and D writes nothing, so both name no artifacts. */
-const WRITING_ROUTES: ImRoute[] = ['B', 'C'];
+/** Routes that WRITE. A hands its work to the checkpoint and D writes nothing, so both name no artifacts. */
+const WRITING_ROUTES: ImRoute[] = ['B', 'C', 'E'];
+
+/**
+ * What i3-edit can actually write. The playground belongs to i5 and the group index to i6.
+ *
+ * ⚠️ MEASURED 2026-08-18, and it is a whole run lost. Asked "the playground was not generated", the
+ * triage answered route B with `expectedArtifacts: ['html','groupIndex']` — a correct reading of the
+ * request, since nothing about the surface moves. But route B runs i3-edit, i3 offers only these three
+ * kinds, so the model was shown the `.ts` alone and refused, twice: "the html and groupIndex were not
+ * included, so I cannot make targeted edits." It was right.
+ *
+ * Naming html/groupIndex ALONGSIDE a writable artifact is fine and accurate — a route B edit that moves
+ * the surface really does make the playground follow. What cannot happen is naming ONLY artifacts no
+ * step in the branch can write. That request is route E.
+ */
+const I3_WRITABLE: ImArtifactKind[] = ['defs', 'ts', 'less'];
 
 export interface ImTriageOutput {
   route: string;
@@ -84,7 +99,7 @@ export function runImTriageGate(inputs: ImTriageInputs): ImGateResult {
   if (!ROUTES.includes(route)) {
     // Nothing below means anything without a route, and a wrong route makes every other message
     // misleading. Fail alone.
-    return imGateFail(issue('route_invalid', `route '${output.route}' is not one of A, B, C or D`));
+    return imGateFail(issue('route_invalid', `route '${output.route}' is not one of A, B, C, D or E`));
   }
 
   if (!output.rationale?.trim()) {
@@ -130,6 +145,15 @@ export function runImTriageGate(inputs: ImTriageInputs): ImGateResult {
 
   if (WRITING_ROUTES.includes(route) && !expected.length) {
     errors.push(issue('artifacts_empty', `route ${route} makes a change and named no artifact to change — a change that touches nothing is not a change`));
+  }
+  // See I3_WRITABLE: naming only artifacts the editing step cannot write is a promise nothing keeps.
+  if ((route === 'B' || route === 'C') && expected.length && !expected.some(kind => (I3_WRITABLE as string[]).includes(kind))) {
+    errors.push(
+      issue(
+        'artifacts_not_writable',
+        `route ${route} named only ${expected.join(', ')}, and the step that edits writes just ${I3_WRITABLE.join(', ')} — the playground belongs to i5 and the group index to i6, and both FOLLOW the surface rather than being edited. If the request is only about regenerating a derived artifact, that is route E`,
+      ),
+    );
   }
   if (!WRITING_ROUTES.includes(route) && expected.length) {
     errors.push(

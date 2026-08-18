@@ -21,8 +21,37 @@ import { findAttributeSlots } from '/_102020_/l2/aura/molecules/agentNewMolecule
 /** The widget every playground page carries; measured 146/146 in mls-102040. */
 export const IM_STATE_WIDGET = 'widget-playground-state-102020';
 
+/**
+ * Is the page BROKEN in a way that regenerating it fixes? Pure, and it is the precondition of route E.
+ *
+ * ⚠️ WHY A REQUEST IS NOT ENOUGH (2026-08-18). "Regenerate the playground" is destructive by nature: a
+ * playground carries **authored sample data** — six examples minimum, each with its own values — and the
+ * group index carries hand-written cards. Regenerating a page that works throws that away, and the
+ * agent cannot tell "broken" from "not how I would have written it".
+ *
+ * So the request does not decide; these invariants do. They are the same ones the gate below enforces
+ * on what the model writes, which is the point: a page that could not pass the gate is a page worth
+ * regenerating. An empty list means the page is healthy and route E ends saying so.
+ */
+export function playgroundIntegrityIssues(html: string, tag: string): string[] {
+  const out: string[] = [];
+  if (!html.trim()) return ['the page is empty'];
+  if (!html.includes(`<${tag}`)) out.push(`the page does not instantiate <${tag}> even once`);
+  if (!html.includes(IM_STATE_WIDGET)) out.push(`the playground state widget ('${IM_STATE_WIDGET}') is missing — every {{playground.*}} binding depends on it`);
+  if (/<!DOCTYPE|<html[\s>]|<head[\s>]|<body[\s>]/i.test(html)) out.push('the page is a full HTML document, and the playground is a fragment');
+  for (const name of findAttributeSlots(html)) {
+    out.push(`slot content is written as \`slot="${name}"\`, which renders empty in a library with no Shadow DOM`);
+  }
+  return out;
+}
+
 export interface ImPlaygroundGateInputs {
-  /** False = the surface did not move; nothing may be written. */
+  /**
+   * False = nothing may be written. True when the surface moved OR route E asked for a regeneration.
+   *
+   * The two reasons are deliberately collapsed into one flag: from here on the checks are the same —
+   * whatever the reason, the page that comes out has to be a valid playground for this molecule.
+   */
   shouldChange: boolean;
   playgroundChanged: boolean;
   /** '' when the page did not exist before. */
