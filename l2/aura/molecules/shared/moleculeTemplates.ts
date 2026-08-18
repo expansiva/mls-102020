@@ -114,6 +114,28 @@ export interface MoleculeDemoExample {
   state: { stateName: string; value: string }[];
 }
 
+/**
+ * The playground state widget, as the custom element is REGISTERED — `@customElement(...)` in
+ * `playground/widgetPlaygroundState.ts`.
+ *
+ * ⚠️ MEASURED 2026-08-18, and it had already shipped. Two gates carried this as the SUFFIX
+ * (`'widget-playground-state-102020'`) and tested it with `html.includes(...)`, which the truncated
+ * tag satisfies. Across the six projects: **398 pages** carry the registered tag and **8** the
+ * truncated one — 5 of those 8 are NM2 output that is otherwise perfect (12 instances, 6 example keys,
+ * real state, header). `<widget-playground-state-102020>` is not a registered element, so it renders
+ * nothing and EVERY `{{playground.*}}` binding on the page is dead.
+ *
+ * Same species as `slotIsExercised` accepting `slot="X"`: the check measured a substring, so the
+ * measurement that blessed it ("146/146 carry the widget") could not see the prefix. Compare with
+ * `pageHasStateWidget`, never with `includes` of a bare name.
+ */
+export const PLAYGROUND_STATE_WIDGET = 'aura--molecules--playground--widget-playground-state-102020';
+
+/** The widget present AS A TAG — `<tag` followed by whitespace, `>` or `/`, never a longer name. */
+export function pageHasStateWidget(html: string): boolean {
+  return new RegExp(`<${PLAYGROUND_STATE_WIDGET}[\\s>/]`, 'i').test(html || '');
+}
+
 export const PLAYGROUND_STATE_PLACEHOLDER = 'playgroundDinamicState';
 
 export function substituteDemoState(html: string, examples: MoleculeDemoExample[]): string {

@@ -1,5 +1,51 @@
 # CHANGELOG — i5-playground
 
+## 2026-08-18 (tarde) — a rota E regenerou, e a página não servia: o prompt é de EMENDA
+
+Primeiro run da rota E, com o `.html` substituído por `<h1>teste</h1>`. Roteou E, regenerou, terminou.
+E a página saiu assim, medida contra a referência da biblioteca:
+
+| | referência (`ml-button-standard`) | o que a rota E escreveu |
+|---|---|---|
+| tamanho | 21.096 bytes, 262 linhas | **2.131 bytes**, 52 linhas |
+| instâncias da molécula | 12 | **4** |
+| chaves de exemplo | 6 | **4** |
+| `<header>` / Tailwind | 1 / 35 classes | **0 / 0** |
+| widget de estado | `<aura--molecules--playground--widget-playground-state-102020>` | **`<widget-playground-state-102020>`** |
+| estado | real, montado por código | **nenhum** — 20 bindings vivos sem nada atrás |
+
+**A causa é o prompt, não o modelo.** Este passo é escrito para **emendar**: *"you are adding to it, not
+replacing it"*, *"the state widget stays where it is"*, *"do not restyle, renumber or reorder"*. A rota E
+lhe entrega um trabalho de **criação**, e o bloco `{{regenerate}}` que eu acrescentei disputava com
+quarenta linhas dizendo o contrário. O modelo obedeceu à maioria.
+
+E o contrato de criação **já existia**: `skills/playgroundGenerator`, 10.7KB, injetado pelo `n6-demo` e
+pelo `v5-demo`, com a tag registrada 7 vezes e o token do estado 3. O `i5` não o injetava.
+
+### O conserto, sem duplicar contrato
+
+1. **o skill entra — só na regeneração.** Na emenda o próprio arquivo ensina a convenção, que é a lição
+   medida do defeito do `<div slot=`: a instrução ambígua só errou onde não havia arquivo para imitar. E
+   injetar 10.7KB em todo run empurraria o prompt de emenda (que já carrega uma página de até 21KB) para
+   o tamanho que fez o `i3` falhar com `Failed to fetch`;
+2. **o estado vem por código.** O modelo devolve `examples[]` e escreve o token literal; o
+   `substituteDemoState` — o mesmo helper do `n6` — monta o estado real depois do gate. Um objeto de
+   estado escrito à mão é descartado em silêncio, e é por isso que o `n6` nunca deixou o modelo escrevê-lo;
+3. **`regeneratedPageIssues`** — a metade cobrável do contrato: widget com a tag registrada, token
+   presente, **≥6 cenários**, uma instância por cenário, e as duas checagens de binding morto extraídas
+   do gate do `n6` (`demoStateIssues`, agora compartilhada em vez de copiada);
+4. **`op: create` sobrescreve**, e só aqui. O `applyEdits` recebe do CHAMADOR quais artefatos podem ser
+   sobrescritos; o `i5` passa `['html']` depois de a precondição ter medido a página como quebrada, e o
+   `i3` não passa nada. A primeira tentativa inteira do primeiro run se perdeu em *"the file already
+   exists — use replace or append, never create"*, que a minha própria instrução mandava fazer.
+
+### Por que nenhum check pegou
+
+Todos os checks deste gate são do **delta de uma edição** — e existem por isso, para não punir um run pela
+página que ele herdou. Regeneração não tem delta: `before` estava quebrado, então o check do widget
+(*"before tinha e after não"*) nunca dispara. As regras novas valem **só** com `regenerate`, e o teste
+pina as duas direções.
+
 ## 2026-08-18 — rota E: regenerar o playground, porque nenhuma rota existente podia
 
 Pediram *"o playground não foi gerado"* numa molécula cujo `.html` havia sido substituído por

@@ -17,7 +17,12 @@
 import { MoleculePlan } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import { NmGateIssue } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n1-bootstrap/gate.js';
-import { PLAYGROUND_STATE_PLACEHOLDER, type MoleculeDemoExample } from '/_102020_/l2/aura/molecules/shared/moleculeTemplates.js';
+import {
+  PLAYGROUND_STATE_PLACEHOLDER,
+  PLAYGROUND_STATE_WIDGET,
+  pageHasStateWidget,
+  type MoleculeDemoExample,
+} from '/_102020_/l2/aura/molecules/shared/moleculeTemplates.js';
 
 export const NM_MIN_DEMO_EXAMPLES = 6;
 
@@ -44,7 +49,51 @@ export function findAttributeSlots(html: string): string[] {
   for (const m of (html || '').matchAll(/slot\s*=\s*['"]([A-Za-z][\w-]*)['"]/g)) names.add(m[1]);
   return [...names];
 }
-export const NM_STATE_WIDGET = 'widget-playground-state-102020';
+/**
+ * ⚠️ 2026-08-18: this was the SUFFIX, tested with `includes`, so the truncated
+ * `<widget-playground-state-102020>` passed — and 5 pages shipped with it. The truncated tag is not a
+ * registered element: it renders nothing and every binding on the page is dead. The prose of the
+ * message below already spelled the full name, which is how the discrepancy was visible all along.
+ * Now the one shared constant, compared AS A TAG.
+ */
+export const NM_STATE_WIDGET = PLAYGROUND_STATE_WIDGET;
+
+/**
+ * The two ways a page's bindings die silently, as one pure check.
+ *
+ * Extracted 2026-08-18 so i5-playground can run the SAME rule when route E regenerates a page from
+ * scratch — that path had no state rule at all and produced 20 bindings with no state behind them.
+ * A malformed `stateName` is dropped by `substituteDemoState` without a word, and a binding whose key
+ * no example declares renders empty: both are invisible on screen and trivial to check here.
+ */
+export function demoStateIssues(html: string, examples: MoleculeDemoExample[]): NmGateIssue[] {
+  const issues: NmGateIssue[] = [];
+  const stateKeys = new Set<string>();
+  for (const example of examples) {
+    for (const entry of example.state || []) {
+      const parts = (entry.stateName || '').split('.');
+      if (parts.length !== 3 || parts[0] !== 'playground') {
+        issues.push({
+          code: 'state_shape',
+          message: `example '${example.name}' has the state name '${entry.stateName}' — it must be 'playground.<exampleKey>.<property>'`,
+        });
+        continue;
+      }
+      stateKeys.add(parts[1]);
+    }
+  }
+
+  const boundKeys = new Set<string>();
+  for (const match of (html || '').matchAll(/\{\{\s*playground\.([A-Za-z0-9_$]+)\./g)) boundKeys.add(match[1]);
+  const orphans = [...boundKeys].filter(key => !stateKeys.has(key));
+  if (orphans.length) {
+    issues.push({
+      code: 'state_binding',
+      message: `these bindings have no matching example state and would render empty: ${orphans.map(key => `playground.${key}`).join(', ')}`,
+    });
+  }
+  return issues;
+}
 
 export function runNm2DemoGate(
   html: string,
@@ -84,10 +133,10 @@ export function runNm2DemoGate(
     issues.push({ code: 'footer', message: 'the demo must not add a <footer>/attribution — emit only the playground structure (container, header, state widget, demo cards)' });
   }
 
-  if (!content.includes(NM_STATE_WIDGET)) {
+  if (!pageHasStateWidget(content)) {
     issues.push({
       code: 'state_widget',
-      message: `the demo must include the playground state widget ('aura--molecules--playground--${NM_STATE_WIDGET}') before the demo cards`,
+      message: `the demo must include the playground state widget before the demo cards, written with its REGISTERED tag: <${NM_STATE_WIDGET} state='${PLAYGROUND_STATE_PLACEHOLDER}'></${NM_STATE_WIDGET}>. A shortened tag is not a registered element — it renders nothing and every {{playground.*}} binding dies`,
     });
   }
   if (!content.includes(PLAYGROUND_STATE_PLACEHOLDER)) {
@@ -115,33 +164,7 @@ export function runNm2DemoGate(
     });
   }
 
-  // Malformed state entries are silently dropped by the substitution, so the binding they were meant
-  // to feed would render dead.
-  const stateKeys = new Set<string>();
-  for (const example of examples) {
-    for (const entry of example.state || []) {
-      const parts = (entry.stateName || '').split('.');
-      if (parts.length !== 3 || parts[0] !== 'playground') {
-        issues.push({
-          code: 'state_shape',
-          message: `example '${example.name}' has the state name '${entry.stateName}' — it must be 'playground.<exampleKey>.<property>'`,
-        });
-        continue;
-      }
-      stateKeys.add(parts[1]);
-    }
-  }
-
-  // A binding whose key no example produces renders empty on the page.
-  const boundKeys = new Set<string>();
-  for (const match of content.matchAll(/\{\{\s*playground\.([A-Za-z0-9_$]+)\./g)) boundKeys.add(match[1]);
-  const orphans = [...boundKeys].filter(key => !stateKeys.has(key));
-  if (orphans.length) {
-    issues.push({
-      code: 'state_binding',
-      message: `these bindings have no matching example state and would render empty: ${orphans.map(key => `playground.${key}`).join(', ')}`,
-    });
-  }
+  issues.push(...demoStateIssues(content, examples));
 
   // A themed project's demo page must provide the theme's background contract — glass is invisible on
   // white. With no theme there is no such requirement (the library's pages use a neutral Tailwind

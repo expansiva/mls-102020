@@ -55,6 +55,13 @@ import {
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
 import { ImEdit, ImFileState, applyEdits } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/applyEdits.js';
 import { playgroundIntegrityIssues, runImPlaygroundGate } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i5-playground/gate.js';
+import {
+  MoleculeDemoExample,
+  PLAYGROUND_STATE_PLACEHOLDER,
+  PLAYGROUND_STATE_WIDGET,
+  substituteDemoState,
+} from '/_102020_/l2/aura/molecules/shared/moleculeTemplates.js';
+import { skill as playgroundGeneratorSkill } from '/_102020_/l2/aura/molecules/skills/playgroundGenerator.js';
 
 const AGENT_NAME = 'agentIm2Playground';
 const PLAN_ID = 'i5-playground';
@@ -136,6 +143,12 @@ async function beforePromptStep(
     .split('{{userLanguage}}').join(ctx.userLanguage || 'the language of the request')
     .split('{{surfaceDiff}}').join(renderSurfaceDiff(diff))
     .split('{{regenerate}}').join(regenerate ? renderRegenerate(integrity) : '')
+    // The creation contract, and ONLY on a regeneration. On the amend path the page itself teaches the
+    // conventions — that is the measured lesson of the `<div slot=` defect, where the file to imitate
+    // was what kept i5 correct while the prompt was ambiguous. Here there is no file to imitate, so the
+    // contract has to be stated; and injecting 10.7KB on every run would push the amend prompt (which
+    // already carries a page of up to 21KB) toward the size that made i3 fail with `Failed to fetch`.
+    .split('{{playgroundGenerator}}').join(regenerate ? playgroundGeneratorSkill : '')
     .split('{{surface}}').join(renderSurface(readSurface(await currentTs(ctx))))
     .split('{{page}}').join(
       page
@@ -182,31 +195,41 @@ async function afterPromptStep(
   const before = await currentPage(ctx);
   const artifact = artifactOf(ctx.artifacts, 'html');
 
+  const regenerate = triage?.route === 'E';
+
   let edits: ImEdit[] = [];
+  let examples: MoleculeDemoExample[] = [];
   let extractError = '';
   try {
     const raw = extractVToolOutput(step.interaction?.payload?.[0], TOOL_NAME, ['edits']);
     if (raw.status === 'failed') extractError = `model reported failure: ${raw.trace.join('; ') || 'no reason'}`;
-    else edits = normalizeEdits(raw.result.edits);
+    else {
+      edits = normalizeEdits(raw.result.edits);
+      examples = normalizeExamples(raw.result.examples);
+    }
   } catch (error) {
     extractError = error instanceof Error ? error.message : String(error);
   }
 
   const files = new Map<ImArtifactKind, ImFileState>([['html', { present: !!before, source: before }]]);
+  // On route E a `create` OVERWRITES: the integrity precondition already established the page is
+  // broken, and quoting `find` out of a broken page is what burned the first attempt of the first run.
   const apply = extractError
     ? { changed: new Map<ImArtifactKind, string>(), errors: [`extract: ${extractError}`], applied: [] as string[] }
-    : applyEdits(files, edits);
+    : applyEdits(files, edits, regenerate ? { overwrite: ['html'] } : undefined);
 
   const after = apply.changed.get('html') || '';
   const gate = apply.errors.length
     ? { ok: false, errors: apply.errors }
     : runImPlaygroundGate({
-      shouldChange: diff.changed || (triage?.route === 'E'),
+      shouldChange: diff.changed || regenerate,
       playgroundChanged: !!after,
       before,
       after,
       tag: ctx.target.tag,
       diff,
+      regenerate,
+      examples,
     });
   const errorText = gate.errors.join('\n');
 
@@ -235,10 +258,15 @@ async function afterPromptStep(
     ];
   }
 
-  await writeImSource(imFileInfoFor(ctx, 'html'), after);
+  // The state, assembled DETERMINISTICALLY from the declared examples — the same helper n6-demo uses,
+  // and the reason the gate above runs on the page while the placeholder is still in it. The model
+  // never writes a state object: a malformed one is dropped silently and the page renders empty.
+  const finalPage = regenerate ? substituteDemoState(after, examples) : after;
+  await writeImSource(imFileInfoFor(ctx, 'html'), finalPage);
   await writeJsonArtifact(imWorkFile(runKey, 'playground'), {
     savedAt: new Date().toISOString(),
     playgroundChanged: true,
+    ...(regenerate ? { regenerated: true, examples: examples.map(item => item.name) } : {}),
     addedSlots: diff.addedSlots,
     why: edits.map(e => e.why.trim()).filter(Boolean),
     attempt,
@@ -278,16 +306,21 @@ async function currentTs(ctx: ImContext): Promise<string> {
  */
 function renderRegenerate(integrity: string[]): string {
   return [
-    '## REGENERATE the page — this run was asked for exactly that',
+    '## THIS RUN IS A REGENERATION — it was asked for exactly that',
     '',
     'The public surface did NOT move: the molecule is untouched and stays untouched. What is broken is',
     'this page, and these are the measured reasons:',
     '',
     ...integrity.map(issue => `- ${issue}`),
     '',
-    'Write the page the molecule deserves, from its surface below — the state widget, one card per',
-    'example, and slot content as NAMED TAGS. Prefer `op: "create"` with the whole fragment: there is no',
-    'point quoting `find` strings from a page that is broken.',
+    'So **nothing on the page is worth preserving** — write it whole, as if it had never existed, and to',
+    'the same standard as a page for a brand-new molecule. The full contract is in the skill below; the',
+    'four things this run is judged on:',
+    '',
+    `- **one edit**, \`op: "create"\`, whose \`content\` is the entire fragment. It OVERWRITES the broken page — do not quote \`find\` strings out of it;`,
+    `- the state widget with its **registered tag**, carrying the literal token, exactly: \`<${PLAYGROUND_STATE_WIDGET} state='${PLAYGROUND_STATE_PLACEHOLDER}'></${PLAYGROUND_STATE_WIDGET}>\`. A shortened tag is not a registered element: it renders nothing and every binding on the page dies. Do not write a state object — code assembles it from your \`examples\`;`,
+    '- **at least six distinct scenarios**, each a real question a developer has ("what does it look like while loading?", "with no icon?", "with a long label?"), one demo card each, and a matching entry in `examples`;',
+    '- slot content as **NAMED TAGS** inside the instance — `<Label>…</Label>`, never `slot="Label"`.',
   ].join('\n');
 }
 
@@ -308,6 +341,19 @@ async function measure(ctx: ImContext): Promise<{ diff: ImSurfaceDiff }> {
   const before = readSurface(sourceOf(ctx.artifacts, 'ts'));
   const after = readSurface(await currentTs(ctx));
   return { diff: diffSurface(before, after) };
+}
+
+function normalizeExamples(raw: unknown): MoleculeDemoExample[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isRecord).map(item => ({
+    name: typeof item.name === 'string' ? item.name : '',
+    state: Array.isArray(item.state)
+      ? item.state.filter(isRecord).map(entry => ({
+        stateName: typeof entry.stateName === 'string' ? entry.stateName : '',
+        value: typeof entry.value === 'string' ? entry.value : '',
+      }))
+      : [],
+  }));
 }
 
 function normalizeEdits(raw: unknown): ImEdit[] {

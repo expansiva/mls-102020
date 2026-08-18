@@ -2,7 +2,13 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ImPlaygroundGateInputs, playgroundIntegrityIssues, runImPlaygroundGate } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i5-playground/gate.js';
+import {
+  ImPlaygroundGateInputs,
+  playgroundIntegrityIssues,
+  regeneratedPageIssues,
+  runImPlaygroundGate,
+} from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i5-playground/gate.js';
+import { pageHasStateWidget } from '/_102020_/l2/aura/molecules/shared/moleculeTemplates.js';
 import { ImSurfaceDiff, slotIsExercised } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
 
 const NO_DIFF: ImSurfaceDiff = {
@@ -153,4 +159,76 @@ test('slot como atributo conta como quebrada — renderiza vazio', () => {
 test('documento completo conta como quebrada — o playground é fragmento', () => {
   assert.ok(playgroundIntegrityIssues('<!DOCTYPE html><html><body>' + PAGE + '</body></html>', 'groupviewtable--ml-data-table')
     .some(i => /full HTML document/.test(i)));
+});
+
+// ---- a página regenerada, e o que o primeiro run da rota E entregou (2026-08-18) ----
+
+/** A forma TRUNCADA, que não é elemento registrado. Foi o que o run gerou, e o gate aprovou. */
+const TRUNCADO = "<widget-playground-state-102020 value='{}'></widget-playground-state-102020>";
+
+test('o widget é conferido como TAG: a forma truncada não conta', () => {
+  // O defeito de medição: a constante era o sufixo e o teste era `includes`, então o truncado passava.
+  // 398 páginas nos seis projetos usam a tag registrada, 8 a truncada — 5 delas saíram do NM2.
+  assert.equal(pageHasStateWidget(PAGE), true);
+  assert.equal(pageHasStateWidget(TRUNCADO), false);
+  assert.equal(pageHasStateWidget(''), false);
+});
+
+test('integridade: a tag truncada do widget torna a página regenerável', () => {
+  const html = `<div>${TRUNCADO}<groupviewtable--ml-data-table></groupviewtable--ml-data-table></div>`;
+  const razoes = playgroundIntegrityIssues(html, 'groupviewtable--ml-data-table');
+  assert.equal(razoes.length, 1);
+  assert.match(razoes[0], /state widget/);
+});
+
+test('A PÁGINA QUE O PRIMEIRO RUN DA ROTA E ESCREVEU é recusada, pelos quatro motivos', () => {
+  // Medida contra a real: 2.1KB contra os 21KB da referência da biblioteca, 4 instâncias, 4 chaves de
+  // exemplo, widget truncado e ZERO estado — 20 bindings vivos sem nada atrás. Todo check do gate
+  // passou, porque todos eram do DELTA de uma edição, e regeneração não tem delta.
+  const html = [
+    TRUNCADO,
+    '<div class="playground-card"><grouptriggeraction--ml-copy-button size="{{playground.default.size}}"><Label>Copiar</Label></grouptriggeraction--ml-copy-button></div>',
+    '<div class="playground-card"><grouptriggeraction--ml-copy-button disabled="{{playground.disabled.disabled}}"><Label>Indisponível</Label></grouptriggeraction--ml-copy-button></div>',
+  ].join('\n');
+  const erros = regeneratedPageIssues(html, 'grouptriggeraction--ml-copy-button', []);
+  const codigos = erros.map(e => e.split(':')[0]);
+  assert.deepEqual(codigos.sort(), ['examples_count', 'state_binding', 'state_placeholder', 'state_widget_missing', 'tag_uses'].sort());
+});
+
+test('a rota E entra no gate e recusa a página pobre; a mesma página sem rota E passa', () => {
+  const pobre = `${TRUNCADO}\n<grouptriggeraction--ml-copy-button></grouptriggeraction--ml-copy-button>`;
+  const comRotaE = runImPlaygroundGate(inputs({
+    before: '<h1>teste</h1>', after: pobre, tag: 'grouptriggeraction--ml-copy-button', regenerate: true, examples: [],
+  }));
+  assert.equal(comRotaE.ok, false);
+  assert.ok(comRotaE.errors.some(e => /^state_widget_missing: /.test(e)));
+
+  // Sem rota E as mesmas regras não valem — a página herdada não é culpa desta execução, e é a regra
+  // do delta que já governava este gate.
+  const semRotaE = runImPlaygroundGate(inputs({
+    before: '<h1>teste</h1>', after: pobre, tag: 'grouptriggeraction--ml-copy-button',
+  }));
+  assert.equal(semRotaE.ok, true);
+});
+
+test('uma página regenerada COMPLETA passa', () => {
+  const seis = ['basic', 'disabled', 'loading', 'iconOnly', 'longLabel', 'small'];
+  const cards = seis.map(chave =>
+    `<div><h3>${chave}</h3><grouptriggeraction--ml-copy-button size="{{playground.${chave}.size}}"><Label>Copiar</Label></grouptriggeraction--ml-copy-button></div>`,
+  ).join('\n');
+  const html = `<div class="p-6"><header><h1>ml-copy-button</h1></header>\n${PAGE.split('\n')[1]}\n${cards}</div>`;
+  const examples = seis.map(chave => ({ name: chave, state: [{ stateName: `playground.${chave}.size`, value: '"medium"' }] }));
+  assert.deepEqual(regeneratedPageIssues(html, 'grouptriggeraction--ml-copy-button', examples), []);
+});
+
+test('regeneração: estado inventado à mão é recusado — o token tem de sobreviver ao gate', () => {
+  // O estado é montado por código a partir de `examples` (substituteDemoState), depois do gate. Uma
+  // página que já traz o objeto de estado pronto perdeu o token, e um objeto malformado é descartado
+  // em silêncio: o binding renderiza vazio e ninguém percebe.
+  const seis = ['a', 'b', 'c', 'd', 'e', 'f'];
+  const cards = seis.map(k => `<grouptriggeraction--ml-copy-button size="{{playground.${k}.size}}"></grouptriggeraction--ml-copy-button>`).join('\n');
+  const html = `<aura--molecules--playground--widget-playground-state-102020 state='{"playground":{}}'></aura--molecules--playground--widget-playground-state-102020>\n${cards}`;
+  const erros = regeneratedPageIssues(html, 'grouptriggeraction--ml-copy-button', seis.map(k => ({ name: k, state: [{ stateName: `playground.${k}.size`, value: '"medium"' }] })));
+  assert.equal(erros.length, 1);
+  assert.match(erros[0], /^state_placeholder: /);
 });

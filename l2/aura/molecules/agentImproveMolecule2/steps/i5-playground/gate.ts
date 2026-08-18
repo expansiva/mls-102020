@@ -16,10 +16,25 @@
 
 import { ImGateResult, imGateFail, imGateOk } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import { ImSurfaceDiff, slotIsExercised } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
-import { findAttributeSlots } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n6-demo/gate.js';
+import {
+  NM_MIN_DEMO_EXAMPLES,
+  demoStateIssues,
+  findAttributeSlots,
+} from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n6-demo/gate.js';
+import {
+  PLAYGROUND_STATE_PLACEHOLDER,
+  PLAYGROUND_STATE_WIDGET,
+  pageHasStateWidget,
+  type MoleculeDemoExample,
+} from '/_102020_/l2/aura/molecules/shared/moleculeTemplates.js';
 
-/** The widget every playground page carries; measured 146/146 in mls-102040. */
-export const IM_STATE_WIDGET = 'widget-playground-state-102020';
+/**
+ * ⚠️ 2026-08-18: this was the SUFFIX and the check was `includes`, so
+ * `<widget-playground-state-102020>` — not a registered element — satisfied it. The route E page came
+ * out with the truncated tag, no state at all, and the gate approved it. Measured across the six
+ * projects: 398 registered against 8 truncated. One shared constant now, compared AS A TAG.
+ */
+export const IM_STATE_WIDGET = PLAYGROUND_STATE_WIDGET;
 
 /**
  * Is the page BROKEN in a way that regenerating it fixes? Pure, and it is the precondition of route E.
@@ -37,7 +52,7 @@ export function playgroundIntegrityIssues(html: string, tag: string): string[] {
   const out: string[] = [];
   if (!html.trim()) return ['the page is empty'];
   if (!html.includes(`<${tag}`)) out.push(`the page does not instantiate <${tag}> even once`);
-  if (!html.includes(IM_STATE_WIDGET)) out.push(`the playground state widget ('${IM_STATE_WIDGET}') is missing — every {{playground.*}} binding depends on it`);
+  if (!pageHasStateWidget(html)) out.push(`the playground state widget (<${IM_STATE_WIDGET}>) is missing or written with a shortened tag — it is not a registered element then, so every {{playground.*}} binding on the page is dead`);
   if (/<!DOCTYPE|<html[\s>]|<head[\s>]|<body[\s>]/i.test(html)) out.push('the page is a full HTML document, and the playground is a fragment');
   for (const name of findAttributeSlots(html)) {
     out.push(`slot content is written as \`slot="${name}"\`, which renders empty in a library with no Shadow DOM`);
@@ -59,6 +74,14 @@ export interface ImPlaygroundGateInputs {
   after: string;
   tag: string;
   diff: ImSurfaceDiff;
+  /**
+   * ROUTE E — the page is being WRITTEN, not amended. Everything below that is delta-scoped exists to
+   * avoid punishing a run for a page it inherited; on a regeneration there is nothing inherited, so the
+   * page has to satisfy the same contract a NEW playground does (n6-demo's, deliberately the same rules).
+   */
+  regenerate?: boolean;
+  /** Only on a regeneration: the scenarios the state is assembled from. */
+  examples?: MoleculeDemoExample[];
 }
 
 function issue(code: string, message: string): string {
@@ -105,7 +128,7 @@ export function runImPlaygroundGate(inputs: ImPlaygroundGateInputs): ImGateResul
   if (/<script[\s>]/i.test(html)) errors.push(issue('script', 'the playground must not contain <script> tags'));
 
   // Losing the widget is how an edit silently breaks every binding on the page.
-  if (inputs.before.includes(IM_STATE_WIDGET) && !html.includes(IM_STATE_WIDGET)) {
+  if (pageHasStateWidget(inputs.before) && !pageHasStateWidget(html)) {
     errors.push(issue('state_widget', `the playground state widget ('${IM_STATE_WIDGET}') was removed — every {{playground.*}} binding on the page depends on it`));
   }
 
@@ -130,5 +153,56 @@ export function runImPlaygroundGate(inputs: ImPlaygroundGateInputs): ImGateResul
     }
   }
 
+  if (inputs.regenerate) errors.push(...regeneratedPageIssues(html, inputs.tag, inputs.examples || []));
+
   return errors.length ? imGateFail(...errors) : imGateOk();
+}
+
+/**
+ * What a REGENERATED page must be, and it is n6-demo's contract on purpose.
+ *
+ * ⚠️ MEASURED 2026-08-18, first route E run. The page came out at 2.1KB against the library's 21KB
+ * median: 4 cards, 4 example keys, a truncated widget tag, and **no state at all** — 20 live
+ * `{{playground.*}}` bindings with nothing behind them. Every check in the gate above passed, because
+ * every one of them is scoped to the DELTA of an edit, and a regeneration has no delta.
+ *
+ * The cause was the prompt, not the model: i5 is written for amending ("you are adding to it, not
+ * replacing it", "the state widget stays where it is"), and route E hands it a creation job. The
+ * creation contract already exists — `skills/playgroundGenerator`, injected by n6-demo and v5-demo —
+ * and i5 was not injecting it. These checks are the enforceable half of the same contract.
+ */
+export function regeneratedPageIssues(html: string, tag: string, examples: MoleculeDemoExample[]): string[] {
+  const out: string[] = [];
+
+  if (!pageHasStateWidget(html)) {
+    out.push(
+      issue(
+        'state_widget_missing',
+        `a regenerated page must carry the playground state widget with its REGISTERED tag: <${PLAYGROUND_STATE_WIDGET} state='${PLAYGROUND_STATE_PLACEHOLDER}'></${PLAYGROUND_STATE_WIDGET}>. A shortened tag is not a registered element — it renders nothing and every binding dies`,
+      ),
+    );
+  }
+  if (!html.includes(PLAYGROUND_STATE_PLACEHOLDER)) {
+    out.push(
+      issue(
+        'state_placeholder',
+        `the state widget must carry the literal token state='${PLAYGROUND_STATE_PLACEHOLDER}' — code replaces it with the real state, assembled from the examples you declare. Do not write a state object yourself`,
+      ),
+    );
+  }
+  if (examples.length < NM_MIN_DEMO_EXAMPLES) {
+    out.push(
+      issue(
+        'examples_count',
+        `a playground page answers at least ${NM_MIN_DEMO_EXAMPLES} distinct questions a developer has, and ${examples.length} were declared — the library's own pages carry 6 or more, never fewer`,
+      ),
+    );
+  }
+  const uses = html.split(`<${tag}`).length - 1;
+  const expected = Math.max(NM_MIN_DEMO_EXAMPLES, examples.length);
+  if (uses < expected) {
+    out.push(issue('tag_uses', `<${tag}> must appear at least once per declared example (${expected} expected, ${uses} found)`));
+  }
+  for (const problem of demoStateIssues(html, examples)) out.push(issue(problem.code, problem.message));
+  return out;
 }

@@ -4,7 +4,8 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "edits"
+    "edits",
+    "examples"
   ],
   "properties": {
     "edits": {
@@ -28,7 +29,7 @@
               "append",
               "create"
             ],
-            "description": "replace: swap an exact block. append: add at the end. create: write the whole page, only when it does not exist yet."
+            "description": "replace: swap an exact block. append: add at the end. create: write the whole page \u2014 when it does not exist yet, and on a REGENERATION, where it overwrites the broken page."
           },
           "find": {
             "type": "string",
@@ -42,6 +43,31 @@
             "type": "string",
             "minLength": 3,
             "description": "One short line, in the user's language."
+          }
+        }
+      }
+    },
+    "examples": {
+      "type": "array",
+      "description": "ONLY on a regeneration (the prompt says so explicitly): the scenarios the page demonstrates, at least 6. Each example's key is what the page binds with {{playground.<key>.<property>}}, and code assembles the real state from these entries and substitutes it for the playgroundDinamicState token. Send an EMPTY ARRAY when amending an existing page \u2014 its state stays as it is.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "state"],
+        "properties": {
+          "name": { "type": "string", "description": "Short scenario name, also the state key (camelCase, e.g. 'loading', 'noIcon')." },
+          "state": {
+            "type": "array",
+            "description": "State entries for this scenario. Empty when the scenario needs no state.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["stateName", "value"],
+              "properties": {
+                "stateName": { "type": "string", "description": "Exactly 'playground.<exampleKey>.<property>'." },
+                "value": { "type": "string", "description": "JSON value as a string ('true', '42', '\"Revenue\"')." }
+              }
+            }
           }
         }
       }

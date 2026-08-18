@@ -1,5 +1,26 @@
 # n6-demo — CHANGELOG
 
+## 2026-08-18 (tarde) — a tag do widget de estado era conferida pelo SUFIXO, e 5 páginas foram publicadas mortas
+
+`NM_STATE_WIDGET` era `'widget-playground-state-102020'` — o **sufixo** — e o check era
+`content.includes(...)`. A tag truncada satisfaz um `includes` do sufixo. A mensagem de erro logo abaixo
+escrevia o nome completo em prosa, o que deixava a divergência visível o tempo todo.
+
+**Medido nos seis projetos:** **398** páginas com a tag registrada
+(`aura--molecules--playground--widget-playground-state-102020`) contra **8** com a truncada. Cinco das 8
+saíram deste passo, e são estruturalmente **perfeitas** — 12 instâncias, 6 chaves de exemplo, estado real,
+header, 8 a 20KB. Só a tag do widget está truncada, e `<widget-playground-state-102020>` **não é elemento
+registrado**: não renderiza, e todo `{{playground.*}}` da página fica morto.
+
+É a mesma espécie do `slotIsExercised` aceitando `slot="X"`: **o check media um pedaço**, então a medição
+que o abençoou (*"146/146 carregam o widget"*) não conseguia ver o prefixo. A constante agora é uma só,
+em `shared/moleculeTemplates.ts`, comparada **como tag** por `pageHasStateWidget` — e as 196 páginas reais
+da biblioteca passam, zero falso positivo.
+
+Também saiu daqui, extraída e compartilhada: `demoStateIssues(html, examples)` — as duas formas de um
+binding morrer em silêncio (`stateName` malformado, chave que nenhum exemplo declara). O `i5-playground`
+passa a rodar a mesma regra quando a rota E cria uma página do zero, onde antes não havia regra nenhuma.
+
 ## 2026-08-18 — slot como atributo: a convenção errada estava instruída, abençoada e pinada por teste
 
 `<div slot="Label">` **não faz nada nesta biblioteca.** Não há Shadow DOM: `moleculeBase.getSlotContent(tag)`

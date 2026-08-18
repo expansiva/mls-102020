@@ -120,8 +120,13 @@ export function renderRunFacts(facts: ImRunFacts): string {
     '',
     '**Playground**',
     facts.playgroundChanged
-      ? `- updated${facts.addedSlots.length ? `, covering the new slot(s): ${facts.addedSlots.join(', ')}` : ''}`
-      : '- not touched: the molecule\'s public surface did not change, so the demo was already correct',
+      ? `- ${facts.route === 'E' ? 'REGENERATED, because the page was broken' : 'updated'}${facts.addedSlots.length ? `, covering the new slot(s): ${facts.addedSlots.join(', ')}` : ''}`
+      // Two different reasons for the same "not touched", and saying the wrong one misleads. On route E
+      // the run was ASKED to regenerate and refused because the page passed its integrity check — that
+      // is the answer the user needs, not a statement about a surface they never mentioned.
+      : facts.route === 'E'
+        ? '- not touched: the page was checked and is intact — a working playground carries authored examples, so it is not rewritten on request. Say this plainly, and say what was checked'
+        : '- not touched: the molecule\'s public surface did not change, so the demo was already correct',
     '',
     '**Group index page**',
     facts.indexUpdated ? '- updated to match the playground' : '- not touched: the playground did not change',

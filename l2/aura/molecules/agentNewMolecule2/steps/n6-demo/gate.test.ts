@@ -173,3 +173,15 @@ test('SLOT COMO ATRIBUTO é recusado — sem Shadow DOM, `<div slot="Label">` re
   assert.deepEqual(findAttributeSlots('<x><div slot="Label">a</div><div slot="Icon">b</div></x>'), ['Label', 'Icon']);
   assert.deepEqual(findAttributeSlots('<x><Label>a</Label></x>'), []);
 });
+
+test('a tag TRUNCADA do widget de estado é recusada — não é elemento registrado', () => {
+  // ⚠️ 2026-08-18: a constante era o sufixo e a checagem era `includes`, então esta forma passava — e 5
+  // páginas do NM2 foram publicadas com ela, estruturalmente perfeitas no resto (12 instâncias, 6
+  // chaves, estado real) e com todos os bindings mortos, porque o widget nunca renderiza.
+  const truncado = page().replace(
+    /aura--molecules--playground--widget-playground-state-102020/g,
+    'widget-playground-state-102020',
+  );
+  const issues = gate(truncado);
+  assert.ok(issues.some(i => i.code === 'state_widget'), issues.map(i => i.code).join(','));
+});

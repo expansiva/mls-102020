@@ -179,6 +179,24 @@ function findFlexible(haystack: string, find: string): FlexibleMatch {
 }
 
 /**
+ * Which artifacts a `create` may OVERWRITE, and it is opt-in for one reason.
+ *
+ * ⚠️ 2026-08-18, and the whole first attempt of the first route E run was spent on it. Route E is a
+ * REGENERATION: the page on disk is the broken thing, so quoting `find` strings out of it is pointless
+ * and i5's own instruction says "prefer op: create with the whole fragment" — which this function then
+ * refused, because `create` on an existing file is exactly how i3 catches a model that lost track of
+ * what exists.
+ *
+ * So the ban stays the default and the exception is named by the CALLER: i5 passes `['html']` only when
+ * route E's integrity precondition already established the page is broken. i3 never passes anything, so
+ * for the molecule's own sources — authored files, where a wholesale overwrite discards work nobody
+ * recovers — nothing changed.
+ */
+export interface ImApplyOptions {
+  overwrite?: ImArtifactKind[];
+}
+
+/**
  * Applies the edits in order onto a copy of the current files.
  *
  * Order matters and is the model's: a later `replace` sees the result of an earlier one. That is
@@ -189,6 +207,7 @@ function findFlexible(haystack: string, find: string): FlexibleMatch {
 export function applyEdits(
   files: Map<ImArtifactKind, ImFileState>,
   edits: ImEdit[],
+  options?: ImApplyOptions,
 ): ImApplyResult {
   const working = new Map<ImArtifactKind, string>();
   const touched = new Set<ImArtifactKind>();
@@ -206,7 +225,7 @@ export function applyEdits(
     const current = working.has(edit.artifact) ? working.get(edit.artifact)! : state.source;
 
     if (edit.op === 'create') {
-      if (state.present) {
+      if (state.present && !options?.overwrite?.includes(edit.artifact)) {
         errors.push(fail(index, edit.artifact, 'the file already exists — use replace or append, never create'));
         return;
       }
