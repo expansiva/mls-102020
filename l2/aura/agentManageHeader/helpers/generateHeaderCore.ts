@@ -9,7 +9,7 @@
 // the shell depends on stays out of the model's reach, and the validation below can be narrow and
 // mechanical instead of "read the whole file and hope".
 
-import { AURA_HEADER_HEIGHT_PX } from '/_102029_/l2/contracts/shellLayout.js';
+import { AURA_HEADER_HEIGHT_PX } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
 import type {
   AppHeaderAction,
   AppHeaderBrand,
