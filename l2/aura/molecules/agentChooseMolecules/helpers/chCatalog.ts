@@ -1,0 +1,196 @@
+/// <mls fileReference="_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chCatalog.ts" enhancement="_blank"/>
+
+// Reading the catalog, and the l4 paths of a run. The ONLY module here that touches the disk — every
+// gate and the report renderer are pure and are fed from what this one reads.
+//
+// ⚠️ THE GESTURE IS agentImproveMolecule2's readGroupSkill (imResolve.ts:261): `await import(reference)`
+// and take the exported string. Validating that this works for the catalog of §10 is half of what the
+// pilot is for, so it is used exactly as it stands rather than reinvented — what is added here is the
+// STRUCTURED part of the module (groups, molecules, scenarios), which the gates need and a skill string
+// cannot give.
+//
+// ⚠️ THE CATALOG BELONGS TO THE ACTIVE PROJECT, never to a hardcoded 102040. `mls.actualProject` is what
+// nmDestProject() returns, so the probe reads whichever project it runs in — which is also why the
+// pilot's mls-102040-temp needs no special case: uploaded to the Studio it IS the active project.
+
+import { nmDestProject, nmFileExists, readStorText, type NmFileInfo } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
+import { CH_AGENT_FOLDER, CH_AGENT_PROJECT, chGroupFolder } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
+
+// ---- agent-owned files (prompt.md, schemas) in the 102020 agent folder ----
+
+export function chAgentFile(folder: string, shortName: string, extension: string): NmFileInfo {
+  const sub = folder ? `${CH_AGENT_FOLDER}/${folder}` : CH_AGENT_FOLDER;
+  return { project: CH_AGENT_PROJECT, level: 2, folder: sub, shortName, extension };
+}
+
+export async function readChAgentText(folder: string, shortName: string, extension: string, required = false): Promise<string> {
+  return readStorText(chAgentFile(folder, shortName, extension), required);
+}
+
+// ---- l4 work artifacts of one run ----
+
+export function chWorkFile(runKey: string, shortName: string): NmFileInfo {
+  return { project: nmDestProject(), level: 4, folder: `agentChooseMolecules/${runKey}`, shortName, extension: '.json' };
+}
+
+export const chInputFileInfo = (runKey: string): NmFileInfo => chWorkFile(runKey, 'input');
+export const chGroupsFileInfo = (runKey: string): NmFileInfo => chWorkFile(runKey, 'c1-groups');
+export const chRunFileInfo = (runKey: string): NmFileInfo => chWorkFile(runKey, 'run');
+
+export function chGroupArtifactFileInfo(runKey: string, groupName: string): NmFileInfo {
+  return chWorkFile(runKey, `c2-${chGroupFolder(groupName)}`);
+}
+
+export function chTraceFileInfo(runKey: string, planId: string, attempt: number): NmFileInfo {
+  return chWorkFile(runKey, `trace-${planId}-${String(attempt).padStart(2, '0')}`);
+}
+
+/** The prompt-size measurement of one attempt — written by beforePromptStep, before the call. */
+export function chPromptSizeFileInfo(runKey: string, planId: string, attempt: number): NmFileInfo {
+  return chWorkFile(runKey, `prompt-${planId}-${String(attempt).padStart(2, '0')}`);
+}
+
+// ---- level 1: which groups the active project publishes ----
+
+export interface ChCatalogGroup {
+  name: string;
+  molecules: number;
+  /** The import reference of the group's level 2. Published by level 1; never built here. */
+  indexDefs: string;
+}
+
+export interface ChLevel1 {
+  reference: string;
+  groups: ChCatalogGroup[];
+  skill: string;
+  theme: string | null;
+}
+
+export function chLevel1FileInfo(): NmFileInfo {
+  return { project: nmDestProject(), level: 2, folder: 'molecules', shortName: 'skill', extension: '.ts' };
+}
+
+export function chLevel1Reference(): string {
+  return `/_${nmDestProject()}_/l2/molecules/skill`;
+}
+
+export async function readChLevel1(): Promise<{ level1: ChLevel1 | null; error: string }> {
+  const reference = chLevel1Reference();
+  // Checked before importing: a missing catalog must reach the user as one readable line, not as a
+  // module-resolution exception thrown from inside a hook.
+  if (!nmFileExists(chLevel1FileInfo())) {
+    return { level1: null, error: `the project has no molecule catalog: l2/molecules/skill.ts not found (expected at ${reference})` };
+  }
+  try {
+    const mod = await import(reference) as { groups?: unknown; skill?: unknown; theme?: unknown };
+    const groups = normalizeGroups(mod.groups);
+    const skill = typeof mod.skill === 'string' ? mod.skill : '';
+    if (!groups.length) return { level1: null, error: `${reference} publishes no group — nothing can be chosen from it` };
+    if (!skill.trim()) return { level1: null, error: `${reference} exports no 'skill' text — level 1 is what the first call reads` };
+    return { level1: { reference, groups, skill, theme: typeof mod.theme === 'string' ? mod.theme : null }, error: '' };
+  } catch (error) {
+    return { level1: null, error: `could not read ${reference}: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+// ---- level 2: which molecules one group has ----
+
+export interface ChMoleculeEntry {
+  /** The published tag, group prefix included: 'groupselectone--ml-card-selector'. */
+  tag: string;
+  /** null marks a molecule with no .defs.ts — in the pilot, ml-table-multi-select. */
+  defs: string | null;
+}
+
+export interface ChScenario {
+  scenario: string;
+  recommended: string[];
+}
+
+export interface ChGroupCatalog {
+  reference: string;
+  group: string;
+  usageContract: string;
+  molecules: ChMoleculeEntry[];
+  scenarios: ChScenario[];
+  skill: string;
+}
+
+export async function readChGroupCatalog(reference: string): Promise<{ catalog: ChGroupCatalog | null; error: string }> {
+  if (!reference) return { catalog: null, error: 'the group has no index.defs reference in level 1' };
+  try {
+    const mod = await import(reference) as {
+      group?: unknown;
+      usageContract?: unknown;
+      molecules?: unknown;
+      scenarios?: unknown;
+      skill?: unknown;
+    };
+    const molecules = normalizeMolecules(mod.molecules);
+    const skill = typeof mod.skill === 'string' ? mod.skill : '';
+    // The 26 groups outside the pilot are seeded as one-line stubs: they resolve, and they publish
+    // nothing. Saying so beats "cannot read", which would point at the wrong problem.
+    if (!molecules.length || !skill.trim()) {
+      return { catalog: null, error: `${reference} has no catalog yet (no molecules or no 'skill' text) — this group is not part of the published catalog` };
+    }
+    return {
+      catalog: {
+        reference,
+        group: typeof mod.group === 'string' ? mod.group : '',
+        usageContract: typeof mod.usageContract === 'string' ? mod.usageContract : '',
+        molecules,
+        scenarios: normalizeScenarios(mod.scenarios),
+        skill,
+      },
+      error: '',
+    };
+  } catch (error) {
+    return { catalog: null, error: `could not read ${reference}: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+// ---- normalizers: the catalog is generated code, so shape is checked and never assumed ----
+
+function normalizeGroups(value: unknown): ChCatalogGroup[] {
+  if (!Array.isArray(value)) return [];
+  const out: ChCatalogGroup[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    const indexDefs = typeof item.indexDefs === 'string' ? item.indexDefs.trim() : '';
+    if (!name || !indexDefs) continue;
+    out.push({ name, molecules: typeof item.molecules === 'number' ? item.molecules : 0, indexDefs });
+  }
+  return out;
+}
+
+function normalizeMolecules(value: unknown): ChMoleculeEntry[] {
+  if (!Array.isArray(value)) return [];
+  const out: ChMoleculeEntry[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const tag = typeof item.tag === 'string' ? item.tag.trim() : '';
+    if (!tag) continue;
+    out.push({ tag, defs: typeof item.defs === 'string' && item.defs.trim() ? item.defs.trim() : null });
+  }
+  return out;
+}
+
+function normalizeScenarios(value: unknown): ChScenario[] {
+  if (!Array.isArray(value)) return [];
+  const out: ChScenario[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const scenario = typeof item.scenario === 'string' ? item.scenario.trim() : '';
+    if (!scenario) continue;
+    const recommended = Array.isArray(item.recommended)
+      ? item.recommended.filter((tag): tag is string => typeof tag === 'string')
+      : [];
+    out.push({ scenario, recommended });
+  }
+  return out;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
