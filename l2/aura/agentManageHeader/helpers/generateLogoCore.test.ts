@@ -15,8 +15,8 @@ import { AURA_HEADER_HEIGHT_PX, isSafeLogoSvg } from '/_102033_/l2/shared/layout
 const PROJECT = 999999;
 
 const VALID_SVG = '<svg viewBox="0 0 32 32" fill="none">'
-  + '<rect x="1.5" y="1.5" width="29" height="29" rx="8" stroke="currentColor" stroke-width="2.5"/>'
-  + '<path d="M22 11.5a7.5 7.5 0 1 0 0 9" stroke="currentColor" stroke-width="3"/></svg>';
+  + '<rect x="1.75" y="1.75" width="28.5" height="28.5" rx="8" stroke="currentColor" stroke-width="2.5"/>'
+  + '<path d="M21 11a8 8 0 1 0 0 10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
 
 /** A client config with a header profile whose brand already has a title. */
 function clientConfig(brand: Record<string, unknown> = { title: 'Sample App' }) {
@@ -95,7 +95,7 @@ test('the mark must scale into the band', () => {
   );
   // width/height on an inner shape is legitimate — that is how a rect is drawn.
   assert.deepEqual(
-    validateLogoSvg('<svg viewBox="0 0 32 32"><rect width="10" height="10" fill="currentColor"/></svg>'),
+    validateLogoSvg('<svg viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="7" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>'),
     [],
   );
 });
@@ -104,7 +104,7 @@ test('the mark must be monochrome, so it survives the dark theme', () => {
   assert.match(validateLogoSvg('<svg viewBox="0 0 32 32"><rect fill="#ff0000"/></svg>').join('; '), /monochrome/);
   assert.match(validateLogoSvg('<svg viewBox="0 0 32 32"><rect fill="rgb(1,2,3)"/></svg>').join('; '), /monochrome/);
   assert.match(validateLogoSvg('<svg viewBox="0 0 32 32"><rect fill="red"/></svg>').join('; '), /not allowed/);
-  assert.deepEqual(validateLogoSvg('<svg viewBox="0 0 32 32"><rect fill="currentColor"/></svg>'), []);
+  assert.deepEqual(validateLogoSvg(VALID_SVG), []);
 });
 
 test('two roots, empty markup and oversized markup are refused', () => {
@@ -130,12 +130,47 @@ test('the black-blob failure mode is refused', () => {
 
   // The same drawing as an outline is fine.
   const outlined = '<svg viewBox="0 0 32 32"><rect x="1.75" y="1.75" width="28.5" height="28.5" rx="8" fill="none" stroke="currentColor" stroke-width="2.5"/>'
-    + '<path d="M20 10a8 8 0 1 0 0 12" fill="none" stroke="currentColor" stroke-width="3"/></svg>';
+    + '<path d="M20 10a8 8 0 1 0 0 12" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>';
   assert.deepEqual(validateLogoSvg(outlined), []);
 
   // Inheriting from a root that DOES declare fill="none" is legitimate.
-  const inheritedNone = '<svg viewBox="0 0 32 32" fill="none"><rect x="4" y="4" width="10" height="10" stroke="currentColor"/></svg>';
+  const inheritedNone = '<svg viewBox="0 0 32 32" fill="none"><rect x="2" y="2" width="28" height="28" rx="7" stroke="currentColor" stroke-width="2.5"/></svg>';
   assert.deepEqual(validateLogoSvg(inheritedNone), []);
+});
+
+test('the legibility budget is enforced, with the real failures as cases', () => {
+  const box = (inner: string) => `<svg viewBox="0 0 32 32">${inner}</svg>`;
+  const frame = '<rect x="2.5" y="2.5" width="27" height="27" rx="7" fill="none" stroke="currentColor" stroke-width="2.5"/>';
+
+  // Two stroke widths in the same drawing — shipped in 3 of the first 6 real marks.
+  const mixed = box(frame + '<path d="M19 22V10h7" fill="none" stroke="currentColor" stroke-width="2.8"/>');
+  assert.match(validateLogoSvg(mixed).join('; '), /mixes stroke widths/);
+
+  // The steam wisp: 1.5 x 4 units, about 3px at render size.
+  const speck = box(frame + '<path d="M14 10c-1.5-1.5 1.5-2.5 0-4" fill="none" stroke="currentColor" stroke-width="2.5"/>');
+  assert.match(validateLogoSvg(speck).join('; '), /disappears at 28px/);
+
+  // Five shapes is a collage, not a mark.
+  const crowded = box(frame
+    + '<path d="M9 12a6 6 0 1 0 0 8" fill="none" stroke="currentColor" stroke-width="2.5"/>'
+    + '<path d="M17 20V12h6" fill="none" stroke="currentColor" stroke-width="2.5"/>'
+    + '<circle cx="24" cy="24" r="3" fill="none" stroke="currentColor" stroke-width="2.5"/>'
+    + '<circle cx="8" cy="24" r="3" fill="none" stroke="currentColor" stroke-width="2.5"/>');
+  assert.match(validateLogoSvg(crowded).join('; '), /too many for 28px/);
+
+  // A motif hiding in a third of the box.
+  const tiny = box('<circle cx="10" cy="10" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/>');
+  assert.match(validateLogoSvg(tiny).join('; '), /covers only/);
+
+  // What the budget accepts: one idea, one width, filling the box.
+  const good = box(frame + '<path d="M21 11a8 8 0 1 0 0 10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>');
+  assert.deepEqual(validateLogoSvg(good), []);
+});
+
+test('the budget scales with the viewBox instead of assuming 32', () => {
+  // Same drawing in a 64-unit box: the 12-unit shape is proportionally the same as 6 in 32.
+  const svg = '<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="24" fill="none" stroke="currentColor" stroke-width="5"/></svg>';
+  assert.deepEqual(validateLogoSvg(svg), []);
 });
 
 test('markdown fences around the svg are stripped', () => {

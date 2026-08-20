@@ -10,6 +10,15 @@ export const skill = `
 You draw ONE small mark that identifies an app in its header band. The markup is INLINED in the page
 (that is what lets it follow the design system), so it must be plain geometry and nothing else.
 
+## One idea, drawn big
+The single thing that separates a professional mark from an amateur one at this size is RESTRAINT.
+Pick ONE idea and let it own the box:
+- a container (circle / rounded square / cup silhouette) with ONE letter or ONE motif inside, or
+- a free-standing letterform, or
+- a free-standing motif.
+**Never a container plus two letters** — inside a 32-unit box with a 2.5 stroke there is no room for
+two glyphs, and it renders as a smudge. Two initials are fine ONLY without a container.
+
 ## Where it renders
 - 28px tall, on a header band one line high, next to the brand name. Legibility at that size beats
   detail: 2 to 6 shapes, generous strokes, no hairlines.
@@ -28,10 +37,13 @@ You draw ONE small mark that identifies an app in its header band. The markup is
 5. Plain shapes only: \`path\`, \`circle\`, \`rect\`, \`ellipse\`, \`line\`, \`polygon\`, \`polyline\`, \`g\`.
 6. Keep it under 4KB of markup — a monogram is normally under 1KB.
 7. Round the ends and joins of open strokes (\`stroke-linecap="round"\`, \`stroke-linejoin="round"\`).
-8. Stroke width between 2 and 3.5 in a 32-unit viewBox (scaled proportionally in a larger one):
-   thinner disappears at 28px, thicker closes the counters.
-9. Leave breathing room: keep the drawing inside ~90% of the viewBox and keep at least 2 units of gap
-   between distinct shapes, or they merge into one silhouette at 28px.
+8. **ONE stroke width for the whole mark**, between 2 and 3.5 in a 32-unit viewBox (scaled
+   proportionally in a larger one). Two different widths read as a mistake, not as hierarchy.
+9. **At most 4 shapes.** Each one must span at least 6 units (a 32-unit box) — a smaller element is a
+   speck at render size. Prefer 2 or 3 confident shapes.
+10. **Fill the box:** the drawing must span at least 60% of the viewBox on one axis, and stay inside
+   ~90% of it. A motif in a corner reads as an accident.
+11. Keep at least 2 units of gap between distinct shapes, or they merge into one silhouette at 28px.
 
 ## NEVER
 1. No \`<script>\`, \`<style>\`, \`<image>\`, \`<use>\`, \`<foreignObject>\`, \`<animate>\`, \`<iframe>\`.
@@ -43,8 +55,10 @@ You draw ONE small mark that identifies an app in its header band. The markup is
 7. No shape that fills the whole viewBox (a full-bleed rect/circle): at 28px that is just a colored
    square with the rest of the drawing lost inside it. A container shape must be an OUTLINE
    (\`fill="none"\` + stroke) with the motif visible inside it.
-8. No detail that survives only when large: sub-2-unit gaps, text under 8 units tall, more than ~6
-   shapes, or a motif drawn inside another filled shape.
+8. No detail that survives only when large: sub-2-unit gaps, text under 8 units tall, a shape under 6
+   units across (steam wisps, sparkles, dots), or a motif drawn inside another filled shape.
+9. No second idea "to enrich it": a cup AND a bean AND steam AND a frame is four ideas competing in
+   11px of usable interior.
 
 ## Style
 - \`monogram\`: the initial(s) drawn as geometry, optionally inside a container shape (circle, rounded
