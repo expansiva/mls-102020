@@ -42,25 +42,32 @@ function clientConfig(brand: Record<string, unknown> = { title: 'Sample App' }) 
 
 // ── request ────────────────────────────────────────────────────────────────
 
-test('the entry needs a project, and the style falls back to monogram', () => {
+test('the entry needs a project, and no style is imposed', () => {
   assert.throws(() => normalizeLogoRequest('nope'), /JSON object/);
   assert.throws(() => normalizeLogoRequest({}), /projectId/);
-  assert.equal(normalizeLogoRequest({ projectId: PROJECT }).style, 'monogram');
-  assert.equal(normalizeLogoRequest({ projectId: PROJECT, style: 'teleport' }).style, 'monogram');
+  // No default style: forcing 'monogram' is how a "cup and bean" brief came back as the letter C.
+  assert.equal(normalizeLogoRequest({ projectId: PROJECT }).style, undefined);
+  assert.equal(normalizeLogoRequest({ projectId: PROJECT, style: 'teleport' }).style, undefined);
   assert.equal(normalizeLogoRequest({ projectId: PROJECT, style: 'wordmark' }).style, 'wordmark');
 });
 
-test('the prompt carries the brand, the style and the size it must survive', () => {
-  const prompt = buildGenerateLogoHumanPrompt(normalizeLogoRequest({
+test('the brief leads the prompt; the style only appears when asked for', () => {
+  const withStyle = buildGenerateLogoHumanPrompt(normalizeLogoRequest({
     projectId: PROJECT,
     brandTitle: 'Sample App',
-    brief: 'warm and geometric',
+    brief: 'cup and bean, warm and geometric',
     style: 'mark',
   }));
-  assert.match(prompt, /Brand: Sample App/);
-  assert.match(prompt, /Style: mark/);
-  assert.match(prompt, /warm and geometric/);
-  assert.match(prompt, /28px/);
+  assert.match(withStyle, /^Draw: cup and bean, warm and geometric/);
+  assert.match(withStyle, /Sample App/);
+  assert.match(withStyle, /draw the thing, not the letters/);
+
+  const briefOnly = buildGenerateLogoHumanPrompt(normalizeLogoRequest({
+    projectId: PROJECT,
+    brief: 'cup and bean',
+  }));
+  assert.match(briefOnly, /^Draw: cup and bean/);
+  assert.equal(/Preferred form/u.test(briefOnly), false, 'no style is imposed');
 });
 
 // ── svg validation ─────────────────────────────────────────────────────────
@@ -76,7 +83,7 @@ test('anything that fetches, scripts or embeds is refused', () => {
     ['<svg viewBox="0 0 32 32"><image href="http://x/y.png"/></svg>', /plain shapes|external/],
     ['<svg viewBox="0 0 32 32"><use xlink:href="#a"/></svg>', /plain shapes|external/],
     ['<svg viewBox="0 0 32 32"><rect onload="alert(1)" fill="currentColor"/></svg>', /event handler/],
-    ['<svg viewBox="0 0 32 32"><rect fill="url(#g)"/></svg>', /external|not allowed/],
+    ['<svg viewBox="0 0 32 32"><rect fill="url(http://x/y.svg#g)"/></svg>', /external/],
     ['<svg viewBox="0 0 32 32"><style>rect{fill:red}</style></svg>', /plain shapes/],
   ];
   for (const [svg, expected] of cases) {
@@ -100,78 +107,29 @@ test('the mark must scale into the band', () => {
   );
 });
 
-test('the mark must be monochrome, so it survives the dark theme', () => {
-  assert.match(validateLogoSvg('<svg viewBox="0 0 32 32"><rect fill="#ff0000"/></svg>').join('; '), /monochrome/);
-  assert.match(validateLogoSvg('<svg viewBox="0 0 32 32"><rect fill="rgb(1,2,3)"/></svg>').join('; '), /monochrome/);
-  assert.match(validateLogoSvg('<svg viewBox="0 0 32 32"><rect fill="red"/></svg>').join('; '), /not allowed/);
-  assert.deepEqual(validateLogoSvg(VALID_SVG), []);
+
+test('a rich mark is accepted: many shapes, fixed colors, an inline gradient', () => {
+  const rich = '<svg viewBox="0 0 512 512">'
+    + '<defs><linearGradient id="g"><stop offset="0" stop-color="#c85a2a"/><stop offset="1" stop-color="#e0723f"/></linearGradient></defs>'
+    + '<circle cx="256" cy="256" r="240" fill="url(#g)"/>'
+    + '<path d="M140 200h200v90a100 100 0 0 1-200 0z" fill="#fffdfa"/>'
+    + '<path d="M340 220h30a45 45 0 0 1 0 90h-30" fill="none" stroke="#fffdfa" stroke-width="20"/>'
+    + '<ellipse cx="256" cy="150" rx="30" ry="45" fill="#3b2f2f"/></svg>';
+  assert.deepEqual(validateLogoSvg(rich), [], 'the frame is safety + scaling, not taste');
+  assert.ok(isSafeLogoSvg(rich));
+  // Monochrome is available as an OPT-IN for a mark that must follow the design system.
+  assert.equal(isSafeLogoSvg(rich, { monochrome: true }), false);
 });
 
 test('two roots, empty markup and oversized markup are refused', () => {
   assert.match(validateLogoSvg('<svg viewBox="0 0 8 8"></svg><svg viewBox="0 0 8 8"></svg>').join('; '), /single <svg> root|exactly one/);
   assert.deepEqual(validateLogoSvg('   '), ['no svg was returned']);
-  const huge = `<svg viewBox="0 0 32 32">${'<rect fill="currentColor"/>'.repeat(400)}</svg>`;
+  const huge = `<svg viewBox="0 0 32 32">${'<rect fill="currentColor"/>'.repeat(600)}</svg>`;
   assert.match(validateLogoSvg(huge).join('; '), /over the .* limit/);
 });
 
-test('the black-blob failure mode is refused', () => {
-  // What actually shipped once: a container rect filling the whole box, painted because the CSS
-  // fill overrode the markup. Even with that CSS fixed, a FILLED full-bleed rect is a black square.
-  const fullBleed = '<svg viewBox="0 0 32 32"><rect x="0" y="0" width="32" height="32" rx="8" fill="currentColor"/>'
-    + '<path d="M20 10a8 8 0 1 0 0 12" fill="none" stroke="currentColor" stroke-width="3"/></svg>';
-  assert.match(validateLogoSvg(fullBleed).join('; '), /solid square/);
 
-  const fullCircle = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="currentColor"/></svg>';
-  assert.match(validateLogoSvg(fullCircle).join('; '), /solid blob/);
 
-  // A shape with no fill of its own, under a root that does not declare fill="none", inherits black.
-  const inherited = '<svg viewBox="0 0 32 32"><rect x="4" y="4" width="10" height="10" stroke="currentColor"/></svg>';
-  assert.match(validateLogoSvg(inherited).join('; '), /inherits solid black/);
-
-  // The same drawing as an outline is fine.
-  const outlined = '<svg viewBox="0 0 32 32"><rect x="1.75" y="1.75" width="28.5" height="28.5" rx="8" fill="none" stroke="currentColor" stroke-width="2.5"/>'
-    + '<path d="M20 10a8 8 0 1 0 0 12" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>';
-  assert.deepEqual(validateLogoSvg(outlined), []);
-
-  // Inheriting from a root that DOES declare fill="none" is legitimate.
-  const inheritedNone = '<svg viewBox="0 0 32 32" fill="none"><rect x="2" y="2" width="28" height="28" rx="7" stroke="currentColor" stroke-width="2.5"/></svg>';
-  assert.deepEqual(validateLogoSvg(inheritedNone), []);
-});
-
-test('the legibility budget is enforced, with the real failures as cases', () => {
-  const box = (inner: string) => `<svg viewBox="0 0 32 32">${inner}</svg>`;
-  const frame = '<rect x="2.5" y="2.5" width="27" height="27" rx="7" fill="none" stroke="currentColor" stroke-width="2.5"/>';
-
-  // Two stroke widths in the same drawing — shipped in 3 of the first 6 real marks.
-  const mixed = box(frame + '<path d="M19 22V10h7" fill="none" stroke="currentColor" stroke-width="2.8"/>');
-  assert.match(validateLogoSvg(mixed).join('; '), /mixes stroke widths/);
-
-  // The steam wisp: 1.5 x 4 units, about 3px at render size.
-  const speck = box(frame + '<path d="M14 10c-1.5-1.5 1.5-2.5 0-4" fill="none" stroke="currentColor" stroke-width="2.5"/>');
-  assert.match(validateLogoSvg(speck).join('; '), /disappears at 28px/);
-
-  // Five shapes is a collage, not a mark.
-  const crowded = box(frame
-    + '<path d="M9 12a6 6 0 1 0 0 8" fill="none" stroke="currentColor" stroke-width="2.5"/>'
-    + '<path d="M17 20V12h6" fill="none" stroke="currentColor" stroke-width="2.5"/>'
-    + '<circle cx="24" cy="24" r="3" fill="none" stroke="currentColor" stroke-width="2.5"/>'
-    + '<circle cx="8" cy="24" r="3" fill="none" stroke="currentColor" stroke-width="2.5"/>');
-  assert.match(validateLogoSvg(crowded).join('; '), /too many for 28px/);
-
-  // A motif hiding in a third of the box.
-  const tiny = box('<circle cx="10" cy="10" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/>');
-  assert.match(validateLogoSvg(tiny).join('; '), /covers only/);
-
-  // What the budget accepts: one idea, one width, filling the box.
-  const good = box(frame + '<path d="M21 11a8 8 0 1 0 0 10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>');
-  assert.deepEqual(validateLogoSvg(good), []);
-});
-
-test('the budget scales with the viewBox instead of assuming 32', () => {
-  // Same drawing in a 64-unit box: the 12-unit shape is proportionally the same as 6 in 32.
-  const svg = '<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="24" fill="none" stroke="currentColor" stroke-width="5"/></svg>';
-  assert.deepEqual(validateLogoSvg(svg), []);
-});
 
 test('markdown fences around the svg are stripped', () => {
   const sanitized = sanitizeGeneratedLogo({ svg: '```svg\n' + VALID_SVG + '\n```', notes: 'ok' });
@@ -181,9 +139,9 @@ test('markdown fences around the svg are stripped', () => {
 });
 
 test('a refused mark reports why instead of being written', () => {
-  const sanitized = sanitizeGeneratedLogo({ svg: '<svg viewBox="0 0 32 32"><rect fill="#000"/></svg>' });
+  const sanitized = sanitizeGeneratedLogo({ svg: '<svg viewBox="0 0 32 32"><script>alert(1)</script></svg>' });
   assert.equal(sanitized.ok, false);
-  assert.match(sanitized.error ?? '', /monochrome/);
+  assert.match(sanitized.error ?? '', /plain shapes/);
 });
 
 // ── config write ───────────────────────────────────────────────────────────
@@ -216,7 +174,7 @@ test('a brand with no title yet gets the one from the request', () => {
 
 test('writing an invalid mark is refused before it reaches the config', () => {
   assert.throws(
-    () => applyLogoToBrand(clientConfig(), { svg: '<svg viewBox="0 0 32 32"><rect fill="#000"/></svg>' }),
+    () => applyLogoToBrand(clientConfig(), { svg: '<svg viewBox="0 0 32 32" width="32"><rect fill="#000"/></svg>' }),
     /refusing to write an invalid mark/,
   );
 });

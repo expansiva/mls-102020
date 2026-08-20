@@ -9,7 +9,6 @@
 // executable surface — `isSafeLogoSvg`, shared with the runtime, is what keeps it honest.
 
 import { isSafeLogoSvg, MAX_LOGO_SVG_BYTES } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
-import { boxDiagonal, markGeometry } from '/_102020_/l2/aura/agentManageHeader/helpers/logoGeometry.js';
 import { DEFAULT_HEADER_PROFILE } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
 import type {
   AppHeaderBrand,
@@ -55,7 +54,8 @@ export function normalizeLogoRequest(raw: unknown): GenerateLogoRequest {
     projectId,
     brandTitle: readString(raw.brandTitle) || undefined,
     brief: readString(raw.brief) || undefined,
-    style: style ?? 'monogram',
+    // No default: forcing a style is how a 'cup and bean' brief came back as the letter C.
+    style,
     profileName: readString(raw.profileName) || undefined,
     requestId: readString(raw.requestId) || undefined,
     commit: raw.commit === true,
@@ -68,109 +68,6 @@ export function normalizeLogoRequest(raw: unknown): GenerateLogoRequest {
 function attr(tag: string, name: string): string | undefined {
   const match = new RegExp(`\\s${name}\\s*=\\s*"([^"]*)"`, 'u').exec(tag);
   return match ? match[1].trim() : undefined;
-}
-
-/**
- * The "black blob" failure mode, mechanically.
- *
- * Two ways a mark comes out as a solid square at 28px: a shape that fills the whole viewBox, or a
- * shape with no paint of its own while the root does not declare fill="none" (SVG's default fill is
- * black, so it inherits a solid). Both are cheap to detect and both are fatal to legibility.
- */
-function findBlobRisks(svg: string): string[] {
-  const errors: string[] = [];
-  const rootTag = svg.slice(0, svg.indexOf('>') + 1);
-  const viewBox = (attr(rootTag, 'viewBox') ?? '').split(/[\s,]+/u).map(Number);
-  const [, , boxWidth, boxHeight] = viewBox.length === 4 && viewBox.every((n) => Number.isFinite(n))
-    ? viewBox
-    : [0, 0, 0, 0];
-  const rootFill = attr(rootTag, 'fill');
-
-  for (const shape of svg.matchAll(/<(rect|circle|ellipse|path|polygon|polyline|line)\b[^>]*>/gu)) {
-    const [tag, name] = [shape[0], shape[1]];
-    const fill = attr(tag, 'fill');
-    const stroke = attr(tag, 'stroke');
-
-    // Inheriting a non-"none" fill means inheriting black.
-    if (!fill && name !== 'line' && name !== 'polyline' && rootFill !== 'none') {
-      errors.push(`<${name}> declares no fill and the root does not set fill="none" — it inherits solid black; state fill="none" or fill="currentColor" on every shape`);
-      break;
-    }
-    if (!fill && !stroke && (name === 'line' || name === 'polyline')) {
-      errors.push(`<${name}> has neither fill nor stroke — it draws nothing`);
-      break;
-    }
-
-    const painted = (fill ?? rootFill ?? 'black') !== 'none';
-    if (!painted || !boxWidth || !boxHeight) continue;
-
-    if (name === 'rect') {
-      const width = Number(attr(tag, 'width') ?? 0);
-      const height = Number(attr(tag, 'height') ?? 0);
-      if (width >= boxWidth * 0.9 && height >= boxHeight * 0.9) {
-        errors.push('a filled <rect> covering the whole viewBox reads as a solid square at 28px — make the container an outline (fill="none" + stroke)');
-        break;
-      }
-    }
-    if (name === 'circle' || name === 'ellipse') {
-      const radiusX = Number(attr(tag, name === 'circle' ? 'r' : 'rx') ?? 0);
-      const radiusY = Number(attr(tag, name === 'circle' ? 'r' : 'ry') ?? 0);
-      if (radiusX >= boxWidth * 0.45 && radiusY >= boxHeight * 0.45) {
-        errors.push(`a filled <${name}> covering the whole viewBox reads as a solid blob at 28px — make the container an outline (fill="none" + stroke)`);
-        break;
-      }
-    }
-  }
-
-  return errors;
-}
-
-/** Legibility budget of a mark rendered 28px tall. Every number here is enforced, not advisory. */
-export const MARK_LIMITS = {
-  /** More shapes than this stop reading as one idea at 28px. */
-  maxShapes: 4,
-  /** A shape smaller than this (box diagonal, viewBox units of 32) is a speck on screen. */
-  minShapeDiagonal: 6,
-  /** The drawing must own the box: below this the mark floats, small, in a corner. */
-  minCoverage: 0.6,
-} as const;
-
-/** Scales a limit expressed in a 32-unit viewBox to the viewBox actually used. */
-function scaled(value: number, boxSize: number): number {
-  return boxSize > 0 ? (value * boxSize) / 32 : value;
-}
-
-/**
- * Geometric legibility, measured. These are the three failure modes the first real marks had:
- * more than one stroke width in the same drawing, a detail a few pixels wide, and a motif that
- * uses a third of the box.
- */
-function findLegibilityIssues(svg: string): string[] {
-  const errors: string[] = [];
-  const geometry = markGeometry(svg);
-
-  if (geometry.strokeWidths.length > 1) {
-    errors.push(`the mark mixes stroke widths [${geometry.strokeWidths.join(', ')}] — use ONE stroke width for the whole drawing`);
-  }
-  if (geometry.shapes.length > MARK_LIMITS.maxShapes) {
-    errors.push(`${geometry.shapes.length} shapes is too many for 28px — keep at most ${MARK_LIMITS.maxShapes} and draw ONE idea`);
-  }
-
-  const minDiagonal = scaled(MARK_LIMITS.minShapeDiagonal, geometry.boxWidth || 32);
-  const speck = geometry.shapes.find((shape) => boxDiagonal(shape) < minDiagonal);
-  if (speck) {
-    errors.push(`a <${speck.name}> spans only ${boxDiagonal(speck).toFixed(1)} units — anything under ${minDiagonal.toFixed(1)} disappears at 28px; drop it or make it part of a bigger shape`);
-  }
-
-  if (geometry.union && geometry.boxWidth > 0 && geometry.boxHeight > 0) {
-    const coverX = (geometry.union.maxX - geometry.union.minX) / geometry.boxWidth;
-    const coverY = (geometry.union.maxY - geometry.union.minY) / geometry.boxHeight;
-    if (Math.max(coverX, coverY) < MARK_LIMITS.minCoverage) {
-      errors.push(`the drawing covers only ${Math.round(coverX * 100)}%x${Math.round(coverY * 100)}% of the viewBox — fill at least ${Math.round(MARK_LIMITS.minCoverage * 100)}% on one axis`);
-    }
-  }
-
-  return errors;
 }
 
 /** Why a returned mark was refused, in terms the prompt can act on. Empty = accepted. */
@@ -193,27 +90,13 @@ export function validateLogoSvg(markup: string): string[] {
   if (/\son[a-z]+\s*=/u.test(lower) || lower.includes('javascript:')) {
     errors.push('svg must carry no event handler or javascript: URL');
   }
-  if (lower.includes('href=') || lower.includes('xlink:') || lower.includes('url(')) {
-    errors.push('svg must not reference anything external');
+  // Internal url(#id) is fine (a gradient the markup carries); anything else leaves the page.
+  if (/(?:href|src)\s*=/u.test(lower) || lower.includes('xlink:') || /url\(\s*(?!#)/u.test(lower)) {
+    errors.push('svg must not reference anything external (url(#id) for an inline gradient is fine)');
   }
 
   const root = lower.slice(0, lower.indexOf('>') + 1);
   if (/\s(width|height)\s*=/u.test(root)) errors.push('the <svg> root must not declare width/height — the band sizes it');
-
-  if (/#[0-9a-f]{3,8}/u.test(lower) || /(rgb|rgba|hsl|hsla)\(/u.test(lower)) {
-    errors.push('the mark must be monochrome: no literal color, paint with currentColor');
-  }
-  for (const paint of lower.matchAll(/(?:fill|stroke)\s*=\s*"([^"]*)"/gu)) {
-    const value = paint[1].trim();
-    if (value && value !== 'currentcolor' && value !== 'none') {
-      errors.push(`fill/stroke "${paint[1]}" is not allowed — use currentColor or none`);
-      break;
-    }
-  }
-
-  // Legibility, not safety: a mark that renders as a solid block is worse than no mark.
-  if (errors.length === 0) errors.push(...findBlobRisks(svg));
-  if (errors.length === 0) errors.push(...findLegibilityIssues(svg));
 
   // Last word to the runtime's own predicate, so a mark accepted here always renders there.
   if (errors.length === 0 && !isSafeLogoSvg(svg)) errors.push('svg was refused by the runtime sanitizer');
@@ -295,20 +178,20 @@ export function readBrandTitle(config: unknown, profileName?: string): string {
 // ─── prompt ──────────────────────────────────────────────────────────────────
 
 const STYLE_GUIDE: Record<LogoStyle, string> = {
-  monogram: 'a monogram: the initial(s) of the name as geometry, inside or against a simple container shape',
-  mark: 'an abstract mark: 2 to 4 geometric shapes evoking the activity, with no letters',
-  wordmark: 'a compact wordmark: the name drawn as paths, no wider than 12 characters',
+  monogram: 'a monogram built from the initial(s) of the name',
+  mark: 'an object/symbol mark — draw the thing, not the letters',
+  wordmark: 'the name drawn as letterforms',
 };
 
+/**
+ * The brief IS the prompt. Style is a hint and only when the caller asked for one; the brand name is
+ * context (the header already prints it in text, so the mark does not have to spell it).
+ */
 export function buildGenerateLogoHumanPrompt(request: GenerateLogoRequest): string {
-  const style = request.style ?? 'monogram';
-  return [
-    `Brand: ${request.brandTitle || '(unnamed)'}`,
-    `Style: ${style} — ${STYLE_GUIDE[style]}`,
-    request.brief ? `What it should evoke: ${request.brief}` : '',
-    'It renders 28px tall in an app header band. Budget, enforced: at most 4 shapes, ONE stroke width'
-      + ' (2 to 3.5 in a 32-unit viewBox), every shape at least 6 units across, and the drawing filling'
-      + ' at least 60% of the viewBox on one axis. One idea, drawn big — a container plus two letters'
-      + ' does not fit and will be refused.',
-  ].filter(Boolean).join('\n');
+  const lines = [
+    request.brief ? `Draw: ${request.brief}` : '',
+    request.brandTitle ? `For the app "${request.brandTitle}" (its name is already written next to the mark).` : '',
+    request.style ? `Preferred form: ${STYLE_GUIDE[request.style]}.` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
 }

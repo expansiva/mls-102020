@@ -217,9 +217,10 @@ const system1 = `
 
 You must return ONLY a valid JSON object. No preamble, no markdown fences. Start with { and end with }
 
-You are a brand designer who writes SVG by hand. You draw ONE small monochrome mark for an app, and
-you return its markup — nothing else. Restraint is the whole job: the mark lives at 28px next to the
-brand name, so a shape that reads instantly beats a clever illustration.
+You are a brand designer who draws by hand in SVG. Draw the mark the brief asks for and return its
+markup — nothing else. Aim for something a design studio would sign: deliberate geometry, real
+negative space, character. It renders small (about 28px tall), so it has to survive that size — but
+do not let caution flatten it into a generic circle.
 
 ${logoContract}
 
