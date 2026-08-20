@@ -146,10 +146,10 @@ export async function readChGroupCatalog(reference: string): Promise<{ catalog: 
   };
   const molecules = normalizeMolecules(mod.molecules);
   const skill = typeof mod.skill === 'string' ? mod.skill : '';
-  // The 26 groups outside the pilot are seeded as one-line stubs: they resolve, and they publish
-  // nothing. Saying so beats "cannot read", which would point at the wrong problem.
+  // The 26 groups outside the pilot are one-line stubs: the file is there and says nothing. Saying that
+  // beats "cannot read", which would point at the wrong problem.
   if (!molecules.length || !skill.trim()) {
-    return { catalog: null, error: `${reference} has no catalog yet (no molecules or no 'skill' text) — this group is not part of the published catalog` };
+    return { catalog: null, error: `${reference} has no catalog yet (no molecules or no 'skill' text) — this group is not part of the catalog of this project` };
   }
   return {
     catalog: {
@@ -205,4 +205,53 @@ async function loadCatalogModule(reference: string): Promise<ChLoaded> {
   }
 
   return { mod: null, via: null, error: `${reference} could not be read: ${trace.join('; ')}.` };
+}
+
+// ---- normalizers: the catalog is generated code, so shape is checked and never assumed ----
+//
+// Both rungs pass through them. chExtract already returns typed arrays, so on the stor path they are a
+// second guard; on the published path they are the only one, since a module can export anything.
+
+function normalizeGroups(value: unknown): ChCatalogGroup[] {
+  if (!Array.isArray(value)) return [];
+  const out: ChCatalogGroup[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    const indexDefs = typeof item.indexDefs === 'string' ? item.indexDefs.trim() : '';
+    if (!name || !indexDefs) continue;
+    out.push({ name, molecules: typeof item.molecules === 'number' ? item.molecules : 0, indexDefs });
+  }
+  return out;
+}
+
+function normalizeMolecules(value: unknown): ChMoleculeEntry[] {
+  if (!Array.isArray(value)) return [];
+  const out: ChMoleculeEntry[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const tag = typeof item.tag === 'string' ? item.tag.trim() : '';
+    if (!tag) continue;
+    out.push({ tag, defs: typeof item.defs === 'string' && item.defs.trim() ? item.defs.trim() : null });
+  }
+  return out;
+}
+
+function normalizeScenarios(value: unknown): ChScenario[] {
+  if (!Array.isArray(value)) return [];
+  const out: ChScenario[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const scenario = typeof item.scenario === 'string' ? item.scenario.trim() : '';
+    if (!scenario) continue;
+    const recommended = Array.isArray(item.recommended)
+      ? item.recommended.filter((tag): tag is string => typeof tag === 'string')
+      : [];
+    out.push({ scenario, recommended });
+  }
+  return out;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
