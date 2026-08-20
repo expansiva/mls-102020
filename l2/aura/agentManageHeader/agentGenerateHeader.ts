@@ -14,6 +14,10 @@
 //   * commit: writes `_<proj>_/l2/layout/appHeader.ts` and points the `defaultAura` header profile
 //     of `l5/config.json` at it (renderer entrypoint/source/tag), which is what the shell boots, or
 //   * draft: parks everything in `config.headerDraft` (one-shot, by requestId) for a reviewer.
+//
+// With `logo: 'generate'` the commit also queues agentGenerateLogo as a CHILD step of the current
+// one, so a single call produces header + mark. That agent writes into the same profile's `brand`,
+// and a later header regeneration carries the mark over (it is not the header's to lose).
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
@@ -153,17 +157,27 @@ async function afterPromptStep(
     if (!sanitized.ok || !sanitized.value) throw new Error(`LLM output rejected: ${sanitized.error || 'invalid result'}`);
 
     const { source, paths, parts } = sanitized.value;
+    let profileName = req.profileName;
     if (!context.isTest) {
       if (req.commit) {
         await saveFile(paths.fileReference, source);
-        await pointConfigAtHeader(req, paths);
+        profileName = await pointConfigAtHeader(req, paths);
       } else {
         await persistDraft(req, source, parts.notes);
       }
     }
 
     console.info(`[agentGenerateHeader] ✓ ${req.commit ? 'wrote' : 'drafted'} ${paths.fileReference} (${source.split('\n').length} lines, tag ${paths.tag})`);
-    return [mkCompleted(context, parentStep, step, hookSequential)];
+    const intents: mls.msg.AgentIntent[] = [];
+    // The mark is drawn by agentGenerateLogo, parented to the CURRENT step (an already-completed
+    // ancestor cannot be modified). Only after a commit: that agent writes into a header profile,
+    // which a draft run has not created yet.
+    if (req.logo === 'generate') {
+      if (req.commit) intents.push(logoStepIntent(context, step, req, profileName));
+      else console.warn('[agentGenerateHeader] logo:"generate" ignored on a draft run — the mark needs a written header profile');
+    }
+    intents.push(mkCompleted(context, parentStep, step, hookSequential));
+    return intents;
   } catch (error) {
     const msg = `[agentGenerateHeader] ${error instanceof Error ? error.message : String(error)}`;
     console.error('✗', msg);
@@ -176,13 +190,14 @@ async function afterPromptStep(
  * the profile the shell boots with, so the project header IS the app's header with nothing in
  * between. The other profiles (e.g. `studio`) stay as they are.
  */
-async function pointConfigAtHeader(req: GenerateHeaderRequest, paths: HeaderPaths): Promise<void> {
+async function pointConfigAtHeader(req: GenerateHeaderRequest, paths: HeaderPaths): Promise<string> {
   const { storFile, config: current } = await readClientConfig(req.projectId);
   const written = pointHeaderProfileAtProject(current, {
     paths,
     brand: req.brand,
     actions: req.actions,
     profileName: req.profileName,
+    dropLogo: req.logo === 'none',
   });
 
   if (storFile.status !== 'renamed' && storFile.status !== 'new') storFile.status = 'changed';
@@ -192,6 +207,48 @@ async function pointConfigAtHeader(req: GenerateHeaderRequest, paths: HeaderPath
     content: `${JSON.stringify(written.config, null, 2)}\n`,
   });
   console.info(`[agentGenerateHeader] header profile "${written.profileName}" now points at ${paths.tag}${written.previousTag ? ` (was ${written.previousTag})` : ''}`);
+  return written.profileName;
+}
+
+/**
+ * Child step that draws the brand mark. Sequential and `pending`, so it runs as soon as this step
+ * completes; brief and style default to the header's own, so one call needs no extra input.
+ */
+function logoStepIntent(
+  context: mls.msg.ExecutionContext,
+  step: mls.msg.AIAgentStep,
+  req: GenerateHeaderRequest,
+  profileName?: string,
+): mls.msg.AgentIntentAddStep {
+  const prompt = {
+    projectId: req.projectId,
+    brandTitle: req.brand?.title,
+    brief: req.logoBrief ?? req.brief,
+    style: req.logoStyle ?? 'monogram',
+    profileName,
+    commit: true,
+    requestId: req.requestId ? `${req.requestId}-logo` : undefined,
+  };
+
+  return {
+    type: 'add-step',
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    parentStepId: step.stepId,
+    step: {
+      type: 'agent',
+      stepId: 0,
+      interaction: null,
+      stepTitle: req.brand?.title ? `Generate logo · ${req.brand.title}` : 'Generate logo',
+      status: 'pending',
+      nextSteps: [],
+      agentName: 'agentGenerateLogo',
+      prompt: JSON.stringify(prompt),
+      rags: [],
+      planning: { planId: 'header-logo', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+    } as mls.msg.AIAgentStep,
+  };
 }
 
 /** One-shot channel to a reviewer: config.headerDraft (never composed into config.json). */

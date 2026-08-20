@@ -335,6 +335,50 @@ test('pointing twice is idempotent', () => {
   assert.deepEqual(second.config, first.config);
 });
 
+test('the logo intent defaults to keep, and only accepts the two explicit modes', () => {
+  const base = { projectId: PROJECT, brand: { title: 'Sample App' } };
+  assert.equal(normalizeHeaderRequest(base).logo, 'keep');
+  assert.equal(normalizeHeaderRequest({ ...base, logo: 'draw it' }).logo, 'keep');
+  assert.equal(normalizeHeaderRequest({ ...base, logo: 'generate', logoStyle: 'mark', logoBrief: 'cup' }).logo, 'generate');
+  assert.equal(normalizeHeaderRequest({ ...base, logo: 'none' }).logo, 'none');
+  const req = normalizeHeaderRequest({ ...base, logo: 'generate', logoStyle: 'mark', logoBrief: 'cup and bean' });
+  assert.equal(req.logoStyle, 'mark');
+  assert.equal(req.logoBrief, 'cup and bean');
+});
+
+test('regenerating the header keeps the mark the logo agent drew', () => {
+  const svg = '<svg viewBox="0 0 32 32"><rect fill="currentColor" width="8" height="8"/></svg>';
+  const withMark = clientConfig();
+  (withMark as any).clientShell.regions.header.profiles.defaultAura.brand = { title: 'Sample App', logoSvg: svg };
+
+  const again = pointHeaderProfileAtProject(withMark, {
+    paths: headerPaths(PROJECT),
+    brand: { title: 'Sample App', subtitle: 'Operations' },
+  });
+  const brand = (again.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(brand.logoSvg, svg, 'the mark belongs to the logo agent, not to the header request');
+  assert.equal(brand.subtitle, 'Operations', 'the rest of the brand still comes from the request');
+
+  // dropLogo is the explicit way out.
+  const dropped = pointHeaderProfileAtProject(withMark, {
+    paths: headerPaths(PROJECT),
+    brand: { title: 'Sample App' },
+    dropLogo: true,
+  });
+  assert.equal((dropped.config as any).clientShell.regions.header.profiles.defaultAura.brand.logoSvg, undefined);
+});
+
+test('a brand-less regeneration still keeps the mark', () => {
+  const svg = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="8" fill="currentColor"/></svg>';
+  const withMark = clientConfig();
+  (withMark as any).clientShell.regions.header.profiles.defaultAura.brand = { title: 'Sample App', logoSvg: svg };
+
+  const again = pointHeaderProfileAtProject(withMark, { paths: headerPaths(PROJECT) });
+  const brand = (again.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(brand.logoSvg, svg);
+  assert.equal(brand.title, undefined, 'a brand the request omits is not invented');
+});
+
 test('a contract violation is reported instead of written', () => {
   const sanitized = sanitizeGeneratedHeader({ bandHtml: '<div>${this.renderBrand()}</div>' }, { projectId: PROJECT });
   assert.equal(sanitized.ok, false);

@@ -33,6 +33,16 @@ export interface GenerateHeaderRequest {
   requestId?: string;
   /** Header profile of l5/config.json to take over; `defaultAura` by default. */
   profileName?: string;
+  /**
+   * What to do about the brand mark: `keep` (default) leaves whatever the profile has, `generate`
+   * queues agentGenerateLogo as a child step right after the header is written, `none` drops the
+   * mark from the profile.
+   */
+  logo?: 'keep' | 'generate' | 'none';
+  /** Style hint forwarded to agentGenerateLogo (it normalizes an unknown value to monogram). */
+  logoStyle?: string;
+  /** Brief forwarded to agentGenerateLogo; falls back to the header brief. */
+  logoBrief?: string;
   /** true = write the header file + point the config profile at it; false/absent = draft only. */
   commit?: boolean;
 }
@@ -110,6 +120,8 @@ export interface HeaderProfileOptions {
   actions?: AppHeaderAction[];
   /** Profile to take over; the master's own `defaultAura` by default. */
   profileName?: string;
+  /** Drop the mark the profile already had instead of carrying it over. */
+  dropLogo?: boolean;
 }
 
 /**
@@ -144,9 +156,16 @@ export function pointHeaderProfileAtProject(config: unknown, options: HeaderProf
   };
 
   // Brand and actions are config, not code: absent in the request means absent in the profile,
-  // otherwise a regeneration would keep a stale brand around.
+  // otherwise a regeneration would keep a stale brand around. The MARK is the exception — it is
+  // agentGenerateLogo's artifact, not the header request's, so regenerating the header carries it
+  // over instead of wiping it (`dropLogo` is the explicit way out).
+  const previousLogoSvg = readString((isRecord(previous?.brand) ? previous.brand.logoSvg : undefined));
   if (options.brand) profile.brand = { ...options.brand };
   else delete profile.brand;
+  if (!options.dropLogo && previousLogoSvg) {
+    const brand = (isRecord(profile.brand) ? profile.brand : (profile.brand = {})) as Record<string, unknown>;
+    if (!readString(brand.logoSvg)) brand.logoSvg = previousLogoSvg;
+  }
   if (options.actions?.length) profile.props = { ...(isRecord(previous?.props) ? previous.props : {}), actions: [...options.actions] };
   else if (isRecord(profile.props)) delete (profile.props as Record<string, unknown>).actions;
 
@@ -202,6 +221,9 @@ export function normalizeHeaderRequest(raw: unknown): GenerateHeaderRequest {
     tokens: tokens?.length ? tokens : undefined,
     requestId: readString(raw.requestId) || undefined,
     profileName: readString(raw.profileName) || undefined,
+    logo: raw.logo === 'generate' || raw.logo === 'none' ? raw.logo : 'keep',
+    logoStyle: readString(raw.logoStyle) || undefined,
+    logoBrief: readString(raw.logoBrief) || undefined,
     commit: raw.commit === true,
   };
 }
