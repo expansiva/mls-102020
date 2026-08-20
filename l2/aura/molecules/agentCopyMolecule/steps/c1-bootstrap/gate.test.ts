@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CopyContext, CopyItem } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cContext.js';
-import { CBootstrapInputs, CItemProbe, formatIssues, runBootstrapGate } from '/_102020_/l2/aura/molecules/agentCopyMolecule/steps/c1-bootstrap/gate.js';
+import { CBootstrapInputs, CItemProbe, C_BOOTSTRAP_NON_BLOCKING, formatIssues, runBootstrapGate } from '/_102020_/l2/aura/molecules/agentCopyMolecule/steps/c1-bootstrap/gate.js';
 
 function probe(overrides: Partial<CItemProbe> = {}): CItemProbe {
   return {
@@ -160,4 +160,13 @@ test('casca sem parentRef no contexto é incoerência detectada', () => {
     context: ctx([shell]),
   }));
   assert.ok(issues.some(issue => issue.code === 'parent_ref'));
+});
+
+// Regressão do Studio (2026-08-20): uma molécula sem aparência própria não pode abortar o lote.
+test('origem sem .less é AVISO, não bloqueio', () => {
+  const issues = runBootstrapGate(inputs({ probes: [probe({ lessFound: false })] }));
+  assert.deepEqual(issues.map(issue => issue.code), ['origin_less_missing']);
+  assert.ok(C_BOOTSTRAP_NON_BLOCKING.includes('origin_less_missing'));
+  const blocking = issues.filter(issue => !C_BOOTSTRAP_NON_BLOCKING.includes(issue.code));
+  assert.deepEqual(blocking, [], 'nada bloqueante: o lote segue');
 });

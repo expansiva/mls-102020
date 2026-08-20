@@ -60,9 +60,10 @@ export function runBootstrapGate(inputs: CBootstrapInputs): CGateIssue[] {
       issues.push({ code: 'origin_class', message: `${probe.ref}: não foi possível extrair a classe exportada do .ts` });
     }
     if (!probe.lessFound) {
-      // Not fatal on its own, but a molecule with no sheet copies without appearance —
-      // worth naming instead of discovering it in the preview.
-      issues.push({ code: 'origin_less_missing', message: `${probe.ref}: origem sem .less — a cópia sairia sem aparência; confirme a referência` });
+      // NOT blocking (the step filters this code out): a molecule with no appearance of its own is
+      // a legitimate state in the base, and aborting a 12-molecule group copy because one item has
+      // no sheet is the wrong trade — it was the Studio failure of 2026-08-20 one step earlier.
+      issues.push({ code: 'origin_less_missing', message: `${probe.ref}: origem sem .less — a cópia sai sem aparência própria` });
     }
     if (probe.chainError) {
       issues.push({ code: 'chain', message: `${probe.ref}: ${probe.chainError}` });
@@ -125,6 +126,9 @@ export function runBootstrapGate(inputs: CBootstrapInputs): CGateIssue[] {
 
   return issues;
 }
+
+// Codes the step must NOT treat as blocking (same convention as c3's `defs_missing`).
+export const C_BOOTSTRAP_NON_BLOCKING = ['origin_less_missing'];
 
 export function formatIssues(issues: CGateIssue[]): string {
   return issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');

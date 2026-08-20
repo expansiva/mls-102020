@@ -37,7 +37,7 @@ import {
 } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cOrigin.js';
 import { extractCopiedFrom } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cTemplates.js';
 import { cDoneAnchor, cParseStepArgs, cResultStepIntent, cUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cSteps.js';
-import { CBootstrapInputs, CItemProbe, formatIssues, runBootstrapGate } from '/_102020_/l2/aura/molecules/agentCopyMolecule/steps/c1-bootstrap/gate.js';
+import { CBootstrapInputs, CItemProbe, C_BOOTSTRAP_NON_BLOCKING, formatIssues, runBootstrapGate } from '/_102020_/l2/aura/molecules/agentCopyMolecule/steps/c1-bootstrap/gate.js';
 import { getCInput, getCRootPlan, getCRunKey } from '/_102020_/l2/aura/molecules/agentCopyMolecule/agentCopyMolecule.js';
 
 const AGENT_NAME = 'agentCopyBootstrap';
@@ -107,16 +107,17 @@ async function beforePromptStep(
     context: ctx,
   };
   const issues = runBootstrapGate(gateInputs);
+  const blocking = issues.filter(issue => !C_BOOTSTRAP_NON_BLOCKING.includes(issue.code));
 
-  if (issues.length || !ctx) {
-    const message = formatIssues(issues) || 'admissão falhou';
+  if (blocking.length || !ctx) {
+    const message = formatIssues(blocking) || 'admissão falhou';
     // The trace is written even on failure: it is the record of WHY nothing was copied.
     await writeJsonArtifact(cTraceFileInfo(runKey, PLAN_ID, 1), {
       savedAt: new Date().toISOString(),
       planId: PLAN_ID,
       entryText: input.entryText,
       refs: expanded.refs.map(ref => ref.ref),
-      issues,
+      issues: blocking,
     });
     return [cUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
@@ -126,6 +127,7 @@ async function beforePromptStep(
     savedAt: new Date().toISOString(),
     planId: PLAN_ID,
     summary: copyContextSummary(ctx),
+    warnings: issues,
     items: ctx.items.map(item => ({
       origin: item.origin.ref,
       shell: item.origin.chain.isShell ? item.origin.chain.parentRef : null,

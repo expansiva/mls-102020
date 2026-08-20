@@ -52,6 +52,7 @@ async function beforePromptStep(
     const shortName = copyShortName(item);
     const html = cDestMoleculeFile(item.destination.group, shortName, '.html');
     const defs = cDestMoleculeFile(item.destination.group, shortName, '.defs.ts');
+    const less = cDestMoleculeFile(item.destination.group, shortName, '.less');
     return {
       tag: copyTag(item),
       shortName,
@@ -63,21 +64,24 @@ async function beforePromptStep(
       files: [
         item.destination.files.ts,
         ...(cFileExists(defs) ? [item.destination.files.defs] : []),
-        item.destination.files.less,
+        ...(cFileExists(less) ? [item.destination.files.less] : []),
         ...(cFileExists(html) ? [item.destination.files.html] : []),
       ],
       demoCopied: cFileExists(html),
+      stylesheetCopied: cFileExists(less),
     };
   });
   const cancelled = !!ctx.cancelled;
   const skipped = cancelled ? [] : ctx.items.filter(item => item.skip).map(item => item.destination.files.ts);
   const demoFailed = copied.some(entry => !entry.demoCopied);
+  const stylesheetMissing = copied.some(entry => !entry.stylesheetCopied);
 
   const promptMd = await readCAgentText('steps/c6-summary', 'prompt', '.md', true);
   const systemPrompt = promptMd
     .split('{{userLanguage}}').join(ctx.userLanguage)
     .split('{{demoFailed}}').join(demoFailed ? 'YES' : 'no')
     .split('{{cancelled}}').join(cancelled ? 'YES' : 'no')
+    .split('{{stylesheetMissing}}').join(stylesheetMissing ? 'YES' : 'no')
     .split('{{skipped}}').join(skipped.length ? `${skipped.length} ignorada(s)` : 'nenhuma');
 
   const humanPrompt = JSON.stringify({
@@ -90,6 +94,7 @@ async function beforePromptStep(
     copied,
     skipped,
     demoFailed,
+    stylesheetMissing,
     userNotes: ctx.userNotes,
   }, null, 2);
 

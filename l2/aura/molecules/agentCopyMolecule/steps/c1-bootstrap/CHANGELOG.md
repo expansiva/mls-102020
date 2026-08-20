@@ -14,3 +14,10 @@ Escrito depois do `flow.json` (spec-first). Decisões que já nasceram aqui, tod
 - **trace também no caminho de falha**: é o registro de por que nada foi copiado;
 - `.less` ausente na origem entra como erro nomeado (a cópia sairia sem aparência) em vez de
   ser descoberto no preview.
+
+## 2026-08-20 — `origin_less_missing` deixa de bloquear
+
+Uma molécula sem `.less` legível não pode abortar a admissão de um lote de 12: molécula sem aparência
+própria é estado legítimo na base (o `ml-data-table` prova o caso vizinho, com folha só de header). O
+código continua sendo emitido — vai para o `warnings` do trace — mas entrou em
+`C_BOOTSTRAP_NON_BLOCKING` e o step filtra antes de decidir falhar.
