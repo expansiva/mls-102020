@@ -91,6 +91,13 @@ export function applyChoiceToContext(ctx: CopyContext, answer: CClarifyAnswer): 
   return { ...ctx, items };
 }
 
+// Cancel is terminal, and terminal is not the same as silent: every item is skipped AND the run
+// is marked cancelled, so the downstream steps no-op WITH their anchors and the summary closes the
+// run saying nothing was copied.
+export function applyCancelToContext(ctx: CopyContext): CopyContext {
+  return { ...ctx, cancelled: true, items: ctx.items.map(item => ({ ...item, skip: true })) };
+}
+
 export function collisionSummary(ctx: CopyContext, choice: string): string {
   const colliding = ctx.items.filter(item => !!item.collision);
   if (!colliding.length) return 'sem colisão';

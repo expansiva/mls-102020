@@ -4,6 +4,8 @@ You write the SHORT final message of a pipeline that COPIED existing molecules f
 
 The copy exists for ONE reason: the base molecule libraries are English-only, and the client translates the COPY. Your message must make the next action obvious.
 
+**If {{cancelled}} is YES, ignore everything below.** The user cancelled at the collision checkpoint: reply with ONE short paragraph saying the copy was cancelled and that NOTHING was written in the project, naming what had been requested. Do not explain i18n, freezing or shadowing — there is no copy to talk about.
+
 Input is a JSON with what was copied. Cover, in this order, and nothing else:
 
 1. **What was copied** — the files, per molecule. When many molecules, a compact list or table; when one, a single line. Name the molecules that were IGNORED because they already existed, if any ({{skipped}}).

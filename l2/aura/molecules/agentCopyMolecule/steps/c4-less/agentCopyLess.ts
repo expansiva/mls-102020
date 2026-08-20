@@ -50,6 +50,20 @@ async function beforePromptStep(
   const ctx = await readJsonArtifact<CopyContext>(cContextFileInfo(runKey), true);
   if (!ctx) throw new Error(`[${AGENT_NAME}] context.json missing for ${runKey}`);
 
+  // Cancelled run (c2): no-op, but ANCHOR — the pipeline has to reach the summary so the user is
+  // told the run ended and nothing was written (T2 lesson, 2026-08-20).
+  if (ctx.cancelled) {
+    return [
+      cResultStepIntent(context, parentStep, {
+        planId: cDoneAnchor('c4-less'),
+        dependsOn: [],
+        stepTitle: 'cancelado — nada escrito',
+        result: { cancelled: true, written: [] },
+      }),
+      cUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'cancelado pelo usuário', 'input_output'),
+    ];
+  }
+
   const pending = itemsToWrite(ctx);
   const prepared: { item: CopyItem; less: string }[] = [];
   const issues: CGateIssue[] = [];

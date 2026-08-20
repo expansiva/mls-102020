@@ -63,6 +63,10 @@ export interface CopyContext {
   userLanguage: string;
   userNotes: string;
   copiedFromDate: string;  // YYYY-MM-DD stamped once, so every file of the run agrees
+  // Set by c2 when the user cancels. The run does NOT die silently: c3/c4/c5 no-op, still emit
+  // their anchors, and c6 closes with "nothing was copied". Leaving the planted steps waiting on
+  // an anchor that never lands is what made the Studio show nothing at all (T2, 2026-08-20).
+  cancelled?: boolean;
   items: CopyItem[];
 }
 
@@ -107,6 +111,7 @@ export function deriveClassName(shortName: string, originClassName: string): str
 // The items c3/c4/c5 actually write. `skip` is the ONLY reason an item is left out at
 // this point: invalid items never make it past c1 (fail-fast).
 export function itemsToWrite(ctx: CopyContext): CopyItem[] {
+  if (ctx.cancelled) return [];
   return ctx.items.filter(item => !item.skip);
 }
 

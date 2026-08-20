@@ -149,18 +149,18 @@ void test('the summary shows the joined table, the zero and the estimate caveat'
   assert.match(text, /pontuação contra o gabarito é manual/);
 });
 
-void test('a catalog read from the local cache is reported as a finding', () => {
+void test('a catalog read from the editor is reported as a finding', () => {
   const report = buildChRunReport(facts({
     regions: [REGIONS[0]],
-    groups: [groupArtifact({ catalogVia: 'local-cache' })],
+    groups: [groupArtifact({ catalogVia: 'stor' })],
   }), 4);
-  assert.deepEqual(report.catalog.groupsViaLocalCache, ['groupEnterText']);
-  assert.match(report.notes.join('\n'), /CACHE LOCAL/);
-  assert.match(renderChRunSummary(report), /CACHE LOCAL/);
+  assert.deepEqual(report.catalog.groupsReadFromEditor, ['groupEnterText']);
+  assert.match(report.notes.join('\n'), /EDITOR \(stor\)/);
+  assert.match(renderChRunSummary(report), /EDITOR \(stor\)/);
 });
 
-void test('a catalog served by the published project leaves no such note', () => {
+void test('a catalog served by the published module leaves no such note', () => {
   const report = buildChRunReport(facts({ regions: [REGIONS[0]], groups: [groupArtifact({})] }), 4);
-  assert.deepEqual(report.catalog.groupsViaLocalCache, []);
-  assert.equal(report.notes.some(note => note.includes('CACHE LOCAL')), false);
+  assert.deepEqual(report.catalog.groupsReadFromEditor, []);
+  assert.equal(report.notes.some(note => note.includes('EDITOR')), false);
 });

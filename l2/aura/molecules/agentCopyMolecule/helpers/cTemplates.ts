@@ -141,15 +141,30 @@ export function swapLessRootSelector(less: string, fromTag: string, toTag: strin
   return replaceTag(less, fromTag, toTag);
 }
 
+// The root selectors of a sheet, ONE PER COMMA PART. The comma split is not cosmetic: a portal
+// molecule scopes itself twice — `tag,\ndiv[data-widget="tag"] { … }` — and returning that whole
+// text as a single selector is what made the c4 gate reject a perfectly good copy of
+// ml-datetime-picker in the Studio (2026-08-20). Every portal molecule would have failed.
 export function extractLessRootSelectors(less: string): string[] {
   const scrubbed = less.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/[^\n]*$/gm, '');
   const selectors: string[] = [];
   const pattern = /^([^{}@\s][^{}]*)\{/gm;
   for (const match of scrubbed.matchAll(pattern)) {
-    const selector = match[1].trim();
-    if (selector) selectors.push(selector);
+    for (const part of match[1].split(',')) {
+      const selector = part.trim().replace(/\s+/g, ' ');
+      if (selector) selectors.push(selector);
+    }
   }
   return selectors;
+}
+
+// Is this root selector scoped to the copy's tag? Either the tag itself (possibly with a pseudo,
+// class or descendant) or the PORTAL form: the panel a portal molecule renders into document.body
+// carries data-widget=<tag>, so `div[data-widget="<tag>"]` is the same scope by another route.
+export function isTagScopedSelector(selector: string, tag: string): boolean {
+  if (selector === tag) return true;
+  if (selector.startsWith(`${tag} `) || selector.startsWith(`${tag}.`) || selector.startsWith(`${tag}:`)) return true;
+  return new RegExp(`\\[data-widget\\s*=\\s*["']${escapeRegExp(tag)}["']\\]`).test(selector);
 }
 
 // ---- the i18n block ----------------------------------------------------------

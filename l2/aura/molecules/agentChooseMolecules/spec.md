@@ -85,9 +85,14 @@ data:
 
 The second half is a finding about the design of §10, not an incident, and it outlives the pilot: an
 `index.defs.ts` written by the index steps (n7/i6/v4) is **unreadable by any consumer until it is
-published**. The read is now a ladder — published module, then the same file compiled into the browser
-cache, then a failure that names the fix — and which rung answered is recorded in `run.json`. A consumer
-that is not the editor has only the first rung, so publishing is part of generating a catalog.
+published**, and publishing is therefore part of generating a catalog.
+
+It also decided the read order. The import came from the pilot plan — it is `readGroupSkill`'s gesture —
+but the rest of this family reads the **stor**, which is how `agentNewMolecule2` writes a molecule and
+reads it back in the same run. So the stor is now rung 1 (its text parsed by the pure `helpers/chExtract`,
+which evaluates nothing) and the published module is rung 2, the only rung a consumer that is not the
+editor has. The order matters twice over: the import cannot see an unpublished catalog, and on a published
+one with unsaved edits it silently reads the old content. Which rung answered is recorded in `run.json`.
 
 ## How to run the battery
 

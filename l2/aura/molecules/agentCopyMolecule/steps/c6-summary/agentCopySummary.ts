@@ -69,19 +69,24 @@ async function beforePromptStep(
       demoCopied: cFileExists(html),
     };
   });
-  const skipped = ctx.items.filter(item => item.skip).map(item => item.destination.files.ts);
+  const cancelled = !!ctx.cancelled;
+  const skipped = cancelled ? [] : ctx.items.filter(item => item.skip).map(item => item.destination.files.ts);
   const demoFailed = copied.some(entry => !entry.demoCopied);
 
   const promptMd = await readCAgentText('steps/c6-summary', 'prompt', '.md', true);
   const systemPrompt = promptMd
     .split('{{userLanguage}}').join(ctx.userLanguage)
     .split('{{demoFailed}}').join(demoFailed ? 'YES' : 'no')
+    .split('{{cancelled}}').join(cancelled ? 'YES' : 'no')
     .split('{{skipped}}').join(skipped.length ? `${skipped.length} ignorada(s)` : 'nenhuma');
 
   const humanPrompt = JSON.stringify({
     destProject: ctx.destProject,
     mode: ctx.mode,
     copiedFromDate: ctx.copiedFromDate,
+    cancelled,
+    // What the user asked for, so the cancel message can name it.
+    requested: ctx.items.map(item => item.origin.ref),
     copied,
     skipped,
     demoFailed,

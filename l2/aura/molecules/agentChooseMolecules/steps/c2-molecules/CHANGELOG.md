@@ -1,25 +1,31 @@
 # CHANGELOG — c2-molecules
 
-## 2026-08-19 (b) — o `import()` não lê catálogo não publicado
+## 2026-08-19 (b) — o `import()` não lê catálogo não publicado; o stor passou a ser o primeiro degrau
 
 **Primeiro run no Studio.** O c1 passou; os c2 morreram em
 `Failed to fetch dynamically imported module: https://on.collab.codes/_102040_/l2/molecules/groupenterdate/index.defs`.
-Causa: **import dinâmico é servido pelo projeto PUBLICADO**, e os `index.defs.ts` dos grupos existiam só
-no editor (o nível 1 importou porque já estava publicado).
+Causa medida: **import dinâmico é servido pelo projeto PUBLICADO**, e os `index.defs.ts` dos grupos
+existiam só no editor (o nível 1 importou porque já estava publicado).
 
-Correção em `helpers/chCatalog.ts` — a leitura virou escada, e **qual degrau respondeu fica registrado**
-(`catalogVia` no artefato do grupo, `catalog.groupsViaLocalCache` no `run.json`, observação no resumo):
+O `await import()` tinha vindo do plano do piloto (é o gesto do `readGroupSkill`). Mas o resto desta
+família **não lê por import — lê pelo stor** (`nmFs`), e é assim que o `agentNewMolecule2` escreve uma
+molécula e a lê de volta no mesmo run sem publicar; o `readGroupSkill` é exceção porque lê skills do
+próprio 102020, publicado. Então a ordem inverteu:
 
-1. `await import(reference)` — o gesto do `readGroupSkill`, e o único degrau que um consumidor fora do
-   editor tem;
-2. o mesmo arquivo compilado para o cache do browser (`compileAndPostProcess(model, false, true)` +
-   `mls.stor.cache.AddMfileIfNeed`) e importado de lá;
-3. falha legível que **nomeia o conserto** ("salve e publique o arquivo"), distinguindo três casos: não
-   existe no projeto, existe e não compila, existe e não é servido.
+1. **stor** — texto do arquivo no projeto, convertido em valores pelo `helpers/chExtract` (puro; extrai só
+   o que os gates precisam — tags, a marca `defs: null`, os cenários, o `skill` — e **não avalia nada**);
+2. **módulo publicado** (`await import`) — único degrau de quem não é o editor, e o que não precisa de
+   parser;
+3. falha legível dizendo qual degrau falhou como: ausente do projeto é problema diferente de presente,
+   ilegível e não publicado.
 
-⚠️ Não é só conserto de infra: é achado sobre o desenho da §10. Um `index.defs.ts` escrito pelos passos de
-índice é **ilegível para qualquer consumidor até ser publicado** — publicar faz parte de gerar catálogo, e
-o `page12` vai ter só o degrau 1.
+Por que o stor primeiro, e não só como fallback: o import não vê catálogo não publicado, **e** num
+catálogo publicado com edição não salva ele devolve o conteúdo velho **sem avisar**. `catalogVia` grava
+qual degrau respondeu, e o resumo avisa quando a leitura veio do editor.
+
+⚠️ Não é só conserto de infra: um `index.defs.ts` escrito pelos passos de índice é **ilegível para
+qualquer consumidor até ser publicado** — publicar faz parte de gerar catálogo, e o `page12` vai ter só o
+degrau 2.
 
 ## 2026-08-19 — nascimento
 

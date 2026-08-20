@@ -53,7 +53,7 @@ export interface ChRunReport {
   runKey: string;
   definition: string;
   userLanguage: string;
-  catalog: { level1Reference: string; publishedGroups: string[]; level1Via: ChCatalogVia; groupsViaLocalCache: string[] };
+  catalog: { level1Reference: string; publishedGroups: string[]; level1Via: ChCatalogVia; groupsReadFromEditor: string[] };
   rows: ChRunRow[];
   totals: {
     regions: number;
@@ -101,14 +101,14 @@ export function buildChRunReport(facts: ChRunFacts, charsPerToken: number): ChRu
   });
 
   const notes: string[] = [];
-  // The catalog read from the local cache is a finding, not a detail: the measurement is valid, but a
-  // consumer outside the editor has only the published URL and would have read nothing.
-  const viaCache = [
-    ...(facts.level1Via === 'local-cache' ? ['nível 1'] : []),
-    ...facts.groups.filter(artifact => artifact.catalogVia === 'local-cache').map(artifact => artifact.group),
+  // Reading from the editor is a finding, not a detail: the choice is valid, but a consumer that is not
+  // the editor sees only the published module and would have read nothing.
+  const fromEditor = [
+    ...(facts.level1Via === 'stor' ? ['nível 1'] : []),
+    ...facts.groups.filter(artifact => artifact.catalogVia === 'stor').map(artifact => artifact.group),
   ];
-  if (viaCache.length) {
-    notes.push(`catálogo lido do CACHE LOCAL (não do projeto publicado): ${viaCache.join(', ')} — a escolha vale, mas um consumidor fora do editor não conseguiria ler; publicar o arquivo`);
+  if (fromEditor.length) {
+    notes.push(`catálogo lido do EDITOR (stor), não do módulo publicado: ${fromEditor.join(', ')} — a escolha vale, mas um consumidor fora do editor não teria lido nada; publicar o arquivo`);
   }
   for (const artifact of facts.groups) {
     if (!artifact.ok) {
@@ -136,7 +136,7 @@ export function buildChRunReport(facts: ChRunFacts, charsPerToken: number): ChRu
       level1Reference: facts.level1Reference,
       publishedGroups: facts.publishedGroups,
       level1Via: facts.level1Via,
-      groupsViaLocalCache: facts.groups.filter(artifact => artifact.catalogVia === 'local-cache').map(artifact => artifact.group),
+      groupsReadFromEditor: facts.groups.filter(artifact => artifact.catalogVia === 'stor').map(artifact => artifact.group),
     },
     rows,
     totals: {

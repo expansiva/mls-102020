@@ -35,6 +35,7 @@ import {
 import {
   COLLISION_QUESTION_ID,
   CClarifyAnswer,
+  applyCancelToContext,
   applyChoiceToContext,
   collisionLines,
   collisionSummary,
@@ -171,13 +172,33 @@ async function applyAnswer(
     newShortName: raw?.notes,
   };
 
-  // Cancel cancels EVERYTHING, with nothing written (decision 5). The widget's own cancel
-  // button and the 'cancel' option end in the same place.
+  // Cancel cancels EVERYTHING, with nothing written (decision 5). The widget's own cancel button
+  // and the 'cancel' option end in the same place.
+  //
+  // It ANCHORS, though — and that is the lesson T2 cost us in the Studio (2026-08-20). Failing this
+  // step without emitting c2-done left c3/c4/c5/c6 planted and waiting on an anchor that would
+  // never land: the run sat there and the user saw NOTHING happen. So cancel marks the context
+  // cancelled, emits the anchor, and lets the pipeline walk to the summary, which closes the run
+  // saying nothing was copied. Same shape as agentImproveMolecule2's terminal 'parent' choice.
   if (action !== 'continue' || answer.choice === 'cancel') {
+    const cancelled = applyCancelToContext(ctx);
+    await writeJsonArtifact(cContextFileInfo(runKey), cancelled);
     await writeJsonArtifact(cAnswersFileInfo(runKey), { savedAt: new Date().toISOString(), choice: 'cancel' });
+    await writeJsonArtifact(cTraceFileInfo(runKey, PLAN_ID, 1), {
+      savedAt: new Date().toISOString(),
+      planId: PLAN_ID,
+      choice: 'cancel',
+      cancelled: true,
+      collisions: collisionLines(ctx),
+    });
     await cApplyIntentsAndRefresh(context, [
-      cUpdateStatusIntent(context, mutationParent, step, hookSequential, 'failed', 'cancelado pelo usuário — nada foi copiado'),
-    ], false);
+      cAnswerResultIntent(context, mutationParent, {
+        planId: cDoneAnchor(PLAN_ID),
+        stepTitle: 'cancelado — nada foi copiado',
+        result: { choice: 'cancel', cancelled: true, willWrite: 0 },
+      }),
+      cUpdateStatusIntent(context, mutationParent, step, hookSequential, 'completed', 'cancelado pelo usuário — nada foi copiado', 'input_output'),
+    ], true);
     return;
   }
 

@@ -3,23 +3,24 @@
 // Reading the catalog, and the l4 paths of a run. The ONLY module here that touches the disk — every
 // gate and the report renderer are pure and are fed from what this one reads.
 //
-// ⚠️ THE GESTURE IS agentImproveMolecule2's readGroupSkill (imResolve.ts:261): `await import(reference)`
-// and take the exported string. Validating that this works for the catalog of §10 is half of what the
-// pilot is for, so it is used exactly as it stands rather than reinvented — what is added here is the
-// STRUCTURED part of the module (groups, molecules, scenarios), which the gates need and a skill string
-// cannot give.
+// ⚠️ THE STOR IS READ FIRST, and the published module is the fallback. Inverted on 2026-08-19 after the
+// first Studio run, for a reason that outlives the pilot: `await import(reference)` — the gesture of
+// imResolve.readGroupSkill, which the pilot plan asked for — is served by the PUBLISHED project, so a
+// catalog that exists in the editor and was never published is unreadable by it, and a published one that
+// has unsaved edits is read STALE without saying so. Every other agent of this family reads the stor
+// (nmFs), which is how agentNewMolecule2 writes a molecule and reads it back in the same run;
+// readGroupSkill is the exception because it reads 102020's own published skills.
+//
+// The import stays as the second rung: it is the only one a consumer outside the editor has, and it needs
+// no parser. Which rung answered is recorded per level (`via`).
 //
 // ⚠️ THE CATALOG BELONGS TO THE ACTIVE PROJECT, never to a hardcoded 102040. `mls.actualProject` is what
 // nmDestProject() returns, so the probe reads whichever project it runs in — which is also why the
 // pilot's mls-102040-temp needs no special case: uploaded to the Studio it IS the active project.
 //
-// ⚠️ AND `await import()` ALONE IS NOT ENOUGH, measured on the first Studio run (2026-08-19). A dynamic
-// import is served from the PUBLISHED project — `https://on.collab.codes/_102040_/...` — so level 1
-// imported fine and every level 2 died on 'Failed to fetch dynamically imported module': the group
-// catalogs existed in the editor and had never been published. The read is therefore a ladder, and which
-// rung answered is RECORDED (`via`), because it is a finding about the §10 design and not an incident: a
-// generated catalog is unreadable by any consumer until it is published, and a consumer running outside
-// the editor has only the first rung.
+// ⚠️ AND THE FINDING BEHIND THAT ORDER IS ABOUT THE §10 DESIGN, not about this agent: a generated
+// `index.defs.ts` is unreadable by any consumer until it is published. Publishing is part of generating a
+// catalog, and the report says which rung answered so a run can never pass that off silently.
 
 import { nmDestProject, nmFileExists, readStorText, type NmFileInfo } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import {
@@ -29,6 +30,7 @@ import {
   chFileRefFromImport,
   chGroupFolder,
 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
+import { chExtractCatalogModule } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chExtract.js';
 
 // ---- agent-owned files (prompt.md, schemas) in the 102020 agent folder ----
 
@@ -91,12 +93,7 @@ export function chLevel1Reference(): string {
 
 export async function readChLevel1(): Promise<{ level1: ChLevel1 | null; error: string }> {
   const reference = chLevel1Reference();
-  // Checked before importing: a missing catalog must reach the user as one readable line, not as a
-  // module-resolution exception thrown from inside a hook.
-  if (!nmFileExists(chLevel1FileInfo())) {
-    return { level1: null, error: `the project has no molecule catalog: l2/molecules/skill.ts not found (expected at ${reference})` };
-  }
-  const imported = await importCatalogModule(reference);
+  const imported = await loadCatalogModule(reference);
   if (!imported.mod || !imported.via) return { level1: null, error: imported.error };
 
   const mod = imported.mod as { groups?: unknown; skill?: unknown; theme?: unknown };
@@ -137,7 +134,7 @@ export interface ChGroupCatalog {
 export async function readChGroupCatalog(reference: string): Promise<{ catalog: ChGroupCatalog | null; error: string }> {
   if (!reference) return { catalog: null, error: 'the group has no index.defs reference in level 1' };
 
-  const imported = await importCatalogModule(reference);
+  const imported = await loadCatalogModule(reference);
   if (!imported.mod || !imported.via) return { catalog: null, error: imported.error };
 
   const mod = imported.mod as {
@@ -168,104 +165,44 @@ export async function readChGroupCatalog(reference: string): Promise<{ catalog: 
   };
 }
 
-// ---- the ladder: published module, then the same file compiled into the browser cache ----
+// ---- the ladder: the stor first, the published module second ----
 
-interface ChImported {
+interface ChLoaded {
   mod: Record<string, unknown> | null;
   via: ChCatalogVia | null;
   error: string;
 }
 
 /**
- * Rung 1 is `await import(reference)` — the gesture of readGroupSkill, and the ONLY one available to a
- * consumer that is not the editor. Rung 2 exists because of what the first Studio run measured: the file
- * was in the project, unpublished, and therefore unreachable by URL. `compileAndPostProcess(model, false,
- * true)` emits it into the browser cache (saveCache) and `AddMfileIfNeed` returns the url to import.
+ * Rung 1 is the STOR: the source of truth inside the editor, including content that was never published.
+ * Its text is turned into values by the pure chExtract, which parses only what the gates need and
+ * evaluates nothing.
  *
- * Rung 2 has a side effect — it puts the compiled file in the local cache — and it is the platform's own
- * mechanism for exactly this, so nothing is written to the project and no source is touched.
+ * Rung 2 is `await import(reference)`, the published module — the only rung available to a consumer that
+ * is not the editor, and the one that needs no parser.
+ *
+ * Failing both, the message says which rung failed how: a file absent from the project is a different
+ * problem from a file that is present, unparseable and unpublished.
  */
-async function importCatalogModule(reference: string): Promise<ChImported> {
-  let publishedError = '';
+async function loadCatalogModule(reference: string): Promise<ChLoaded> {
+  const trace: string[] = [];
+  const ref = chFileRefFromImport(reference);
+
+  if (!ref) {
+    trace.push(`'${reference}' is not a project reference`);
+  } else if (!nmFileExists(ref)) {
+    trace.push('it is not in this project');
+  } else {
+    const extracted = chExtractCatalogModule(await readStorText(ref, false));
+    if (extracted.module) return { mod: extracted.module as Record<string, unknown>, via: 'stor', error: '' };
+    trace.push(`the file in this project could not be read as a catalog (${extracted.error})`);
+  }
+
   try {
     return { mod: await import(reference) as Record<string, unknown>, via: 'published', error: '' };
   } catch (error) {
-    publishedError = error instanceof Error ? error.message : String(error);
+    trace.push(`the published project does not serve it (${error instanceof Error ? error.message : String(error)})`);
   }
 
-  const ref = chFileRefFromImport(reference);
-  if (!ref) return { mod: null, via: null, error: `'${reference}' is not a project reference (${publishedError})` };
-  if (!nmFileExists(ref)) {
-    return { mod: null, via: null, error: `${reference} does not exist in this project (${publishedError})` };
-  }
-
-  try {
-    const storFile = mls.stor.files[mls.stor.getKeyToFile(ref)];
-    const model = await storFile.getOrCreateModel() as mls.editor.IModelTS;
-    await mls.l2.typescript.compileAndPostProcess(model, false, true);
-    const compileErrors = model.compilerResults?.errors || [];
-    if (compileErrors.length) {
-      return { mod: null, via: null, error: `${reference} exists in this project but does not compile (${compileErrors.length} error(s)), so nothing can read it` };
-    }
-    const cacheUrl = await mls.stor.cache.AddMfileIfNeed(model);
-    if (!cacheUrl) throw new Error('the local cache returned no url for it');
-    return { mod: await import(cacheUrl) as Record<string, unknown>, via: 'local-cache', error: '' };
-  } catch (error) {
-    const cacheError = error instanceof Error ? error.message : String(error);
-    return {
-      mod: null,
-      via: null,
-      error: [
-        `${reference} exists in this project but could not be read.`,
-        `The published project does not serve it (${publishedError}) and the local cache could not either (${cacheError}).`,
-        'SAVE AND PUBLISH the file: a dynamic import is served from the published project, not from the editor.',
-      ].join(' '),
-    };
-  }
-}
-
-// ---- normalizers: the catalog is generated code, so shape is checked and never assumed ----
-
-function normalizeGroups(value: unknown): ChCatalogGroup[] {
-  if (!Array.isArray(value)) return [];
-  const out: ChCatalogGroup[] = [];
-  for (const item of value) {
-    if (!isRecord(item)) continue;
-    const name = typeof item.name === 'string' ? item.name.trim() : '';
-    const indexDefs = typeof item.indexDefs === 'string' ? item.indexDefs.trim() : '';
-    if (!name || !indexDefs) continue;
-    out.push({ name, molecules: typeof item.molecules === 'number' ? item.molecules : 0, indexDefs });
-  }
-  return out;
-}
-
-function normalizeMolecules(value: unknown): ChMoleculeEntry[] {
-  if (!Array.isArray(value)) return [];
-  const out: ChMoleculeEntry[] = [];
-  for (const item of value) {
-    if (!isRecord(item)) continue;
-    const tag = typeof item.tag === 'string' ? item.tag.trim() : '';
-    if (!tag) continue;
-    out.push({ tag, defs: typeof item.defs === 'string' && item.defs.trim() ? item.defs.trim() : null });
-  }
-  return out;
-}
-
-function normalizeScenarios(value: unknown): ChScenario[] {
-  if (!Array.isArray(value)) return [];
-  const out: ChScenario[] = [];
-  for (const item of value) {
-    if (!isRecord(item)) continue;
-    const scenario = typeof item.scenario === 'string' ? item.scenario.trim() : '';
-    if (!scenario) continue;
-    const recommended = Array.isArray(item.recommended)
-      ? item.recommended.filter((tag): tag is string => typeof tag === 'string')
-      : [];
-    out.push({ scenario, recommended });
-  }
-  return out;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return { mod: null, via: null, error: `${reference} could not be read: ${trace.join('; ')}.` };
 }

@@ -279,5 +279,10 @@ export function chFileRefFromImport(reference: string): ChFileRef | null {
   };
 }
 
-/** How a catalog level was actually read. Recorded per run: the first Studio run turned it into a finding. */
-export type ChCatalogVia = 'published' | 'local-cache';
+/**
+ * How a catalog level was actually read: from the editor's stor, or from the published module.
+ *
+ * Recorded per level because the first Studio run turned it into a finding — a catalog that only exists
+ * in the editor is invisible to any consumer that is not the editor.
+ */
+export type ChCatalogVia = 'stor' | 'published';

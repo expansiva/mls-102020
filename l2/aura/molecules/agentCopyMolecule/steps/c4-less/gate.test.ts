@@ -99,3 +99,50 @@ test('seletor raiz com pseudo/classe ainda conta como escopo certo', () => {
     .replace('groupshowprogress--ml-indeterminate-spinner {', 'groupshowprogress--ml-indeterminate-spinner:hover {');
   assert.deepEqual(runLessGate({ item: target, destProject: DEST, writtenLess: withPseudo, sourceIsShellSheet: true }), []);
 });
+
+// Regressão do T5 (Studio, 2026-08-20): a folha de uma molécula PORTAL tem seletor raiz composto
+// (`tag, div[data-widget="tag"]`) e era rejeitada pelo gate, mesmo estando correta.
+const PORTAL_LESS = `/// <mls fileReference="_102040_/l2/molecules/groupenterdatetime/ml-datetime-picker.less" enhancement="_102020_/l2/enhancementStyleAura"/>
+
+groupenterdatetime--ml-datetime-picker,
+div[data-widget="groupenterdatetime--ml-datetime-picker"] {
+  .ml-label { color: red; }
+}
+`;
+
+function portalItem(rename: string | null = null): CopyItem {
+  return item({
+    origin: {
+      ref: '_102040_/l2/molecules/groupenterdatetime/ml-datetime-picker',
+      project: 102040,
+      group: 'groupenterdatetime',
+      shortName: 'ml-datetime-picker',
+      tag: 'groupenterdatetime--ml-datetime-picker',
+      className: 'DatetimePickerMolecule',
+      chain: { isShell: false },
+    },
+    destination: {
+      group: 'groupenterdatetime',
+      files: {
+        ts: 'l2/molecules/groupenterdatetime/ml-datetime-picker.ts',
+        defs: 'l2/molecules/groupenterdatetime/ml-datetime-picker.defs.ts',
+        less: 'l2/molecules/groupenterdatetime/ml-datetime-picker.less',
+        html: 'l2/molecules/groupenterdatetime/ml-datetime-picker.html',
+      },
+    },
+    rename,
+  });
+}
+
+test('molécula portal: folha com seletor raiz composto passa (regressão T5)', () => {
+  const target = portalItem();
+  const written = renderCopiedLess(target, PORTAL_LESS, DEST);
+  assert.deepEqual(runLessGate({ item: target, destProject: DEST, writtenLess: written, sourceIsShellSheet: true }), []);
+});
+
+test('molécula portal renomeada: as DUAS formas do escopo são re-escopadas', () => {
+  const target = portalItem('ml-datetime-picker-app');
+  const written = renderCopiedLess(target, PORTAL_LESS, DEST);
+  assert.deepEqual(runLessGate({ item: target, destProject: DEST, writtenLess: written, sourceIsShellSheet: true }), []);
+  assert.match(written, /div\[data-widget="groupenterdatetime--ml-datetime-picker-app"\]/);
+});

@@ -11,6 +11,7 @@ import { copyClassName, copyTag, deriveClassName } from '/_102020_/l2/aura/molec
 import {
   containsTag,
   extractCopiedFrom,
+  isTagScopedSelector,
   extractDefsTagName,
   extractI18nBlock,
   extractLessRootSelectors,
@@ -288,4 +289,36 @@ test('renderCopiedHtml no achatamento: a tag da casca sobrevive intacta', () => 
   const shell = shellItem();
   const html = '<grouptriggeraction--ml-button-standard-brutal></grouptriggeraction--ml-button-standard-brutal>';
   assert.equal(renderCopiedHtml(shell, html), html);
+});
+
+// ---- molécula PORTAL: seletor raiz composto ------------------------------------
+// Encontrado no Studio em 2026-08-20 (T5): uma molécula portal escopa a si mesma DUAS vezes,
+// `tag,\ndiv[data-widget="tag"] { … }`. Devolver esse texto inteiro como um seletor único fez o
+// gate do c4 rejeitar uma cópia perfeita do ml-datetime-picker — e teria rejeitado TODA molécula
+// portal.
+
+const PORTAL_LESS = `/// <mls fileReference="_102040_/l2/molecules/groupenterdatetime/ml-datetime-picker.less" enhancement="_102020_/l2/enhancementStyleAura"/>
+
+groupenterdatetime--ml-datetime-picker,
+div[data-widget="groupenterdatetime--ml-datetime-picker"] {
+  .ml-label { color: red; }
+}
+`;
+
+test('extractLessRootSelectors: separa as partes da vírgula', () => {
+  assert.deepEqual(extractLessRootSelectors(PORTAL_LESS), [
+    'groupenterdatetime--ml-datetime-picker',
+    'div[data-widget="groupenterdatetime--ml-datetime-picker"]',
+  ]);
+});
+
+test('isTagScopedSelector: a tag, a tag com pseudo/classe/descendente e a forma portal', () => {
+  const tag = 'groupenterdatetime--ml-datetime-picker';
+  assert.equal(isTagScopedSelector(tag, tag), true);
+  assert.equal(isTagScopedSelector(`${tag}:hover`, tag), true);
+  assert.equal(isTagScopedSelector(`${tag}.ml-error`, tag), true);
+  assert.equal(isTagScopedSelector(`${tag} .ml-label`, tag), true);
+  assert.equal(isTagScopedSelector(`div[data-widget="${tag}"]`, tag), true);
+  assert.equal(isTagScopedSelector("div[data-widget='outra--tag']", tag), false);
+  assert.equal(isTagScopedSelector('outra--tag', tag), false);
 });

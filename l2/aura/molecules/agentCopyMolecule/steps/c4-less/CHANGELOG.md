@@ -14,3 +14,20 @@
 
 A checagem de "tag antiga sobrou" tinha a armadilha da tag-prefixo (ver o CHANGELOG do c3): uma
 folha renomeada para `ml-x-app` contém `ml-x`. Agora usa `cTemplates.containsTag`.
+
+## 2026-08-20 — seletor raiz composto das moléculas PORTAL (falha T5 no Studio)
+
+O gate rejeitou uma cópia correta do `ml-datetime-picker` com `less_scope`. Motivo: uma molécula
+portal escopa a si mesma DUAS vezes na mesma regra —
+
+```less
+groupenterdatetime--ml-datetime-picker,
+div[data-widget="groupenterdatetime--ml-datetime-picker"] { … }
+```
+
+— e o `extractLessRootSelectors` devolvia o texto inteiro como **um** seletor, que nunca é igual à tag.
+Teria rejeitado **toda** molécula portal da base.
+
+Corrigido no helper (separa as partes da vírgula) mais um `isTagScopedSelector` que reconhece as duas
+formas legítimas de escopo: a tag (com pseudo/classe/descendente) e `div[data-widget="<tag>"]`. O
+`replaceTag` já cuidava do renomear nas duas formas, porque a tag entre aspas tem fronteira.

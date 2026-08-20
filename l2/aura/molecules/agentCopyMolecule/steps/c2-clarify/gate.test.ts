@@ -11,6 +11,7 @@ import { itemsToWrite } from '/_102020_/l2/aura/molecules/agentCopyMolecule/help
 import {
   BATCH_OPTIONS,
   SINGLE_OPTIONS,
+  applyCancelToContext,
   applyChoiceToContext,
   collisionLines,
   collisionSummary,
@@ -133,4 +134,25 @@ test('as linhas mostradas ao usuário nomeiam o arquivo e a data da cópia em ri
 test('resumo do step diz quantas colidiram e o que foi escolhido', () => {
   assert.match(collisionSummary(ctx('list', [item('ml-a', true), item('ml-b', true)]), 'ignore-existing'), /2 colis/);
   assert.equal(collisionSummary(ctx('list', [item('ml-a', false)]), 'x'), 'sem colisão');
+});
+
+// Regressão do T2 (Studio, 2026-08-20): cancelar precisa ser TERMINAL e VISÍVEL. Antes o step
+// falhava sem emitir a âncora, e c3/c4/c5/c6 ficavam plantados esperando para sempre — o usuário
+// não via nada acontecer. Agora o contexto fica marcado como cancelado, o que faz os steps
+// seguintes no-op COM âncora até o summary fechar o run.
+
+test('cancelar: marca o contexto e nenhum item é escrito', () => {
+  const before = ctx('list', [item('ml-a', true), item('ml-b', false)]);
+  const after = applyCancelToContext(before);
+  assert.equal(after.cancelled, true);
+  assert.deepEqual(after.items.map(entry => entry.skip), [true, true]);
+  assert.equal(itemsToWrite(after).length, 0);
+  // o contexto original não é mutado
+  assert.equal(before.cancelled, undefined);
+  assert.equal(itemsToWrite(before).length, 2);
+});
+
+test('itemsToWrite: um contexto cancelado não escreve nem os itens sem colisão', () => {
+  const cancelled = { ...ctx('list', [item('ml-a', false), item('ml-b', false)]), cancelled: true };
+  assert.equal(itemsToWrite(cancelled).length, 0);
 });
