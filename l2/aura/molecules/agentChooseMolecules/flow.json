@@ -39,7 +39,7 @@
       "agentName": "agentChooseMolecules (the root itself — no separate step agent)",
       "model": "classifier",
       "dependsOn": [],
-      "goal": "Cheap classifier over the prose: is this a definition of a page or system? Propose the runKey slug, detect userLanguage and localize the step titles. It must NOT name a group, a molecule or a tag — the whole point of the probe is that those come from the catalog, one level at a time.",
+      "goal": "Cheap classifier over the prose: does it describe something a UI has to do? Propose the runKey slug, detect userLanguage and localize the step titles. It must NOT name a group, a molecule or a tag — the whole point of the probe is that those come from the catalog, one level at a time. A SINGLE region is valid input (measured on 2026-08-20: it was being refused, and 6 of the 10 battery cases are phrased that way) — refusing produces no measurement, while a region nothing covers is answered honestly with none.",
       "output": { "result": "{ validInput, reason, runKey, userLanguage, title, titles }" },
       "gate": { "file": "helpers/chRootPlan.ts", "checks": ["validInput true", "runKey is a slug"], "onFail": "no retry: readable failure" },
       "doneAnchor": "none (the root plants the tree directly)"

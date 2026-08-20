@@ -12,8 +12,14 @@
 Decisão de reunião de **2026-08-18**: as bibliotecas base (`mls-102040`, `mls-102054`,
 `mls-102055`) ficam **só em inglês**, e a tradução mora na **cópia**, dentro do projeto
 do cliente. Este agente é o veículo dessa decisão — ele dá ao cliente o **código real**
-da molécula, com o bloco `collab_i18n` no arquivo dele, para ele acrescentar o `pt` (ou
-o que quiser).
+da molécula, com o bloco `collab_i18n` no arquivo dele.
+
+⚠️ **Divisão de responsabilidade, decidida em 2026-08-20: este agente NÃO traduz, e não vai
+traduzir.** Ele entrega a cópia; **acrescentar idiomas é de outro agente do Studio**, que
+trabalha sobre uma molécula que já pertence ao projeto. A consequência prática está no gate do
+`c3`: o bloco `collab_i18n` atravessa **byte a byte**, e essa checagem deixou de proteger só "o
+motivo da cópia" — ela é o **contrato de entrega** para o agente seguinte. Cópia com bloco
+mexido é cópia em que o outro agente não pode confiar.
 
 A alternativa medida na análise era catálogo de runtime + migração de 137 moléculas +
 mexida na classe base do `102029`/`102033` — o custo que a equipe recusou.
@@ -35,8 +41,9 @@ arquivo da tag em `[projeto atual, ...dependências]` **nessa ordem**, então a 
 
 ## O que ele NÃO faz (v1)
 
-- **Não traduz.** A cópia sai crua, com o bloco `en` como está. Traduzir no ato, lendo
-  os idiomas do projeto, é a evolução natural — e é v2.
+- **Não traduz, nem no v1 nem depois.** A cópia sai crua, com o bloco `en` como está. Ler os
+  idiomas do projeto e traduzir era a evolução prevista para o v2; em 2026-08-20 a equipe passou
+  isso para **outro agente do Studio**. Este aqui copia.
 - **Não gera nem atualiza o `index.ts` do grupo.** O index deste código-base é uma
   página showcase gerada por LLM, e copiar os side-effect imports dela é exatamente
   como se cria um `customElements.define` duplicado. Também não é necessário: o preview
@@ -135,8 +142,11 @@ fan-out** — `c3`, `c4` e `c5` iteram sobre `context.items` dentro do mesmo ste
 
 ## Aceite (controle Fase 5)
 
-1. **O teste da premissa**: copiar `ml-indeterminate-spinner`, acrescentar `pt` ao
-   `collab_i18n` da cópia e ver o português com o runtime em `pt` — sem index nenhum.
+1. **A cópia é traduzível** (valida a ARQUITETURA de 18/08, não este agente — traduzir é do outro
+   agente): copiar `ml-upload-file-list` (só `en`, e as chaves `addFiles`, `dropHere` e `noFiles` são
+   TEXTO VISÍVEL no estado padrão), acrescentar `pt` **à mão** no `collab_i18n` da cópia e ver o
+   português com o runtime em `pt` — sem index nenhum. Não usar `ml-indeterminate-spinner` para isto:
+   a única chave dela vira `aria-label`, invisível na tela.
 2. Casca achatada (`ml-button-standard-brutal`): código real do pai sob a identidade
    brutal, com o `.less` brutal.
 3. Colisão single: substituir / cancelar / renomear.

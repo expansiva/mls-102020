@@ -70,7 +70,7 @@ whether they hurt:
   sources. If the probe misses case #4 consistently, the registered fallback is a contrastive
   sentence in the source objectives — never a new keywords field.
 
-## What the first Studio run measured (2026-08-19)
+## What the Studio runs measured
 
 The first run (`cadastro-cliente`, battery case #1) got through c1 and died in c2, and both halves are
 data:
@@ -87,7 +87,13 @@ The second half is a finding about the design of §10, not an incident, and it o
 `index.defs.ts` written by the index steps (n7/i6/v4) is **unreadable by any consumer until it is
 published**, and publishing is therefore part of generating a catalog.
 
-It also decided the read order. The import came from the pilot plan — it is `readGroupSkill`'s gesture —
+A later run (2026-08-20) fixed a second one, in the classifier: *"a country selector for checkout, with the
+flag next to the name"* came back refused as *"an isolated element, not a definition of a page"*. **One
+region is valid input** — 6 of the 10 cases of the battery are phrased exactly that way, and refusing
+produces no measurement at all, while a region no group covers is already answered honestly with `none`.
+The rejection criterion is now "does it describe something a UI has to do", not "is it a whole page".
+
+The import finding also decided the read order. The import came from the pilot plan — it is `readGroupSkill`'s gesture —
 but the rest of this family reads the **stor**, which is how `agentNewMolecule2` writes a molecule and
 reads it back in the same run. So the stor is now rung 1 (its text parsed by the pure `helpers/chExtract`,
 which evaluates nothing) and the published module is rung 2, the only rung a consumer that is not the
